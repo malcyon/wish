@@ -315,11 +315,23 @@ Remaining, in rough order of value:
    everywhere; `+0x1C` and `+0x1E` are zero in all twenty-four blocks of
    Donald's saves and non-zero only on the editor-hacked disk. Encumbrance and
    status are ruled out of the block.
-6. ~~**Handle NPCs deliberately.**~~ ✅ **DONE.** `npc:` is exported from the
-   eight-byte marker and can be written, with the caveat reported in the change
-   list. A half-set marker is reported as a warning. What remains is proving any
-   of it in game.
-7. **Levels — what is left.** Two of the four parts are done: `level` is in the
+6. ~~**Handle NPCs deliberately.**~~ ✅ **DONE** as far as reading and writing
+   the marker goes. `npc:` is exported from the eight-byte fingerprint and can
+   be written, with the caveat reported in the change list, and a half-set
+   marker is a warning. **What the game actually permits is unknown** — see
+   "how big a party is" below.
+7. **How big a party is, and how many NPCs it may hold.** Eight slots exist and
+   the roster has eight blocks, so eight is the structural ceiling. Beyond that
+   we know nothing: the only save with eight filled is `npc_party.d64`, which is
+   editor-hacked and has never been loaded in the game, so it is evidence about
+   a *file*, not about the game's rules. Its 3-player/5-NPC split was written up
+   here as "up to five NPCs", which was induction from one specimen and is
+   withdrawn — and the thread it came from called the disk *unusual*, which
+   points the other way. Gold Box games are commonly said to allow six player
+   characters plus two NPCs; we have not verified that from anything we hold.
+   **The experiment is cheap:** recruit NPCs in play until the game refuses,
+   and save at each step.
+8. **Levels — what is left.** Two of the four parts are done: `level` is in the
    YAML, and editing `levels:` now carries `0x0A0` with it. Remaining:
    * **What `0x0A0` holds for a multi-class character is unknown.** Every
      specimen is single-class, where it simply equals the class level. `wish`
@@ -329,10 +341,10 @@ Remaining, in rough order of value:
    * **The level-drain pair** — undead drain levels, so the game should track a
      current and a "true" level to restore to. Expect a pair per class. Testable
      at last, now that specimens above level 1 exist.
-8. **Prove a level edit in game.** Changing level without touching experience
+9. **Prove a level edit in game.** Changing level without touching experience
    also answers whether the game re-derives one from the other on load, which
    decides whether the editor must write both.
-9. **Every value the save holds twice.** Take each pair in
+10. **Every value the save holds twice.** Take each pair in
    `docs/80-fields-wanted.md` §"Values the save appears to hold twice" and find
    the circumstance that separates it. Every pair already understood turned out
    to be **base versus current** or **potential versus actual** — none was a
@@ -341,7 +353,7 @@ Remaining, in rough order of value:
    undead** and see whether `0x0A0` and the per-class array part company, which
    would make `0x0A0` "highest level attained" and give us the drain pair in the
    same stroke.
-10. **Racial traits, properly.** `0x0AD` is non-zero only for elves (107) and
+11. **Racial traits, properly.** `0x0AD` is non-zero only for elves (107) and
     half-elves (124) and is the strongest candidate, but nothing is known about
     what the value means or how many traits there are. This needs a campaign of
     small experiments rather than one:
@@ -358,14 +370,27 @@ Remaining, in rough order of value:
     * **Check `0x099`**, which is 0 for all three dwarves and 1 for everyone
       else, against a gnome or halfling: those races share the dwarf's
       constitution-scaled saving-throw bonus, so it should follow them.
-11. **The two class fields.** `char_class` (`0x073`) and `class_bits` (`0x0EB`)
+12. **The two class fields.** `char_class` (`0x073`) and `class_bits` (`0x0EB`)
    encode the same thing twice and agree in all twenty specimens, so nothing says
    which the game reads. `class_bits` shares its bit order with the item-type
    usage mask, which makes it the likely answer to "what may this character
    wield" — and the likely target of Gold Box Companion's four checkboxes.
    `wish` now keeps the two in step, so separating them needs a deliberate hex
    edit rather than falling out of a `classes:` change.
-12. **Explain BRUTUS's extra AC point** and record byte `0x0B8`, the one place the
+13. **What the trainer does to an ability score.** One save, one score altered
+    at the trainer, one save, one diff. It settles whether the game keeps a true
+    score beside the current one — the pattern every other pair here has turned
+    out to follow — and it is the only way to test the forum rumour that altering
+    scores is penalised in play. Also the cheapest safety check available for
+    `wish`, which writes those six bytes directly.
+14. **Find the first quest flag.** The header and everything in `SAVEDGAME1`
+    past `$8400` are unread — about 1.9 KB between them — and they must hold what
+    the game remembers about the world. Any single, isolated, memorable action
+    gives a way in; a guide's claim that talking to the fortune teller in the
+    slums changes later encounters is a good candidate because one conversation
+    is easy to isolate. Out of scope for editing a character, in scope for the
+    automapper in Phase 5, which needs exactly this region.
+15. **Explain BRUTUS's extra AC point** and record byte `0x0B8`, the one place the
     AD&D derivation and the cached value disagree.
 
 ## Phase 4 — GUI character editor

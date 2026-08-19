@@ -137,6 +137,24 @@ the party keeps icons in this shared table instead.
 Note the table has **8** entries where there are **6** character slots. Unexplained
 — possibly two extra for NPCs who can join the party.
 
+### Where world and quest state must live
+
+Nothing outside the character records and the roster has been decoded, and two
+regions are the candidates for everything else the game remembers: the header at
+`$4900`–`$4BDF`, and all of `SAVEDGAME1` past the roster page, `$8400`–`$8AFF`.
+Between them they are about 1.9 KB and are densely populated.
+
+We know they hold *something* that changes with play: the diff between two of
+Donald's consecutive saves moved twenty header bytes around `$49C0`–`$4A07` and
+scattered widely through `SAVEDGAME1` above `$86B4`, none of it explained.
+
+The cheapest way in is a **flag experiment**: save, do exactly one thing in the
+game that the game must remember, save again, diff. A guide reports that talking
+to the fortune teller in the slums raises the difficulty of random encounters
+there — true or not, if the game changes its behaviour it has to record that it
+happened, and one conversation is about as isolated an action as this game
+offers. See `docs/50-experiments.md`.
+
 ### Other header bytes
 
 Sparse and mostly unidentified. One candidate worth testing:

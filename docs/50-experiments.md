@@ -525,14 +525,30 @@ on load is untested, and worth knowing before anyone dual-classes an elf.
 ## The eight-character NPC party
 **Source.** `npc_party.d64`, a save disk found online (Donald; discussed on
 r/c64, "An unusual Pool of Radiance save disk"). Three player characters and
-five NPCs. It has plainly been through a character editor -- one NPC has
-`$FFFFFF` experience and every hacked character's ability scores are 18 -- so
-its *values* prove nothing. Its *structure* proves a great deal.
+five NPCs. Two things in it cannot have come from ordinary play: PRINCESS
+FATIMA's race byte is **0**, outside the 1-8 enumeration character creation
+offers, and MAD MAN's experience is exactly **`$FFFFFF`** while the rest of the
+party holds 10,200 to 115,311 -- a saturation value, and exactly what the 1989
+editor's documented "set XP to the max" writes. So its *values* prove nothing.
+Its *structure* proves a great deal.
+
+*Two reasons originally given here were wrong and are withdrawn: that every
+character had all-18 abilities (four of the eight have ordinary spreads
+including 8s and 9s), and that its item names were garbled (they read correctly
+once our own `ITEMNAMES` gap bug was fixed).*
 
 **Result. Four findings, in order of how much they change.**
 
-**1. The party really is eight, and the roster is exactly one page.** All eight
+**1. Eight slots can be occupied, and the roster is exactly one page.** All eight
 `SAVEDGAME0` slots are occupied and the `SAVEDGAME1` roster index bytes run 0..7.
+
+*Care with this one.* It proves the **file format** holds eight, which the slot
+area and the roster page already implied. It does **not** prove the game lets you
+run a party of eight, still less that five of them may be NPCs: this disk has
+been through a character editor and has never been loaded in play under
+observation. An earlier version of these notes drew "a party can hold eight
+characters, up to five of them NPCs" from it. That was induction from one
+hacked specimen and is withdrawn.
 Eight blocks of `$20` fill `$8300`-`$83FF`, and `$8400` starts a jump table
 (`4C xx 84`). The roster section had been written up as six blocks purely because
 every save to hand held six characters. See `docs/30-savegame-layout.md`.
@@ -1156,6 +1172,28 @@ Named, not numbered — the name is how they get referred to elsewhere in the do
   `0x073` is the real class and `0x0EB` is a cache. Either answer is worth having,
   and the experiment costs one edit. Use a throwaway party: this deliberately
   writes an inconsistent record.
+- **The fortune teller in the slums.** A guide reports that talking to her
+  raises the difficulty of random encounters in the slums. Split this in two,
+  because the halves are wildly different in cost:
+  * **Does the game record the conversation?** Save outside, talk to her, save
+    again, diff. Decisive either way and takes minutes. A byte or a bit moving in
+    the header or in `SAVEDGAME1` past `$8400` would be the **first quest flag
+    we have located**, and those regions are otherwise entirely unread.
+  * **Does it actually make encounters harder?** Much more expensive — random
+    encounters need a lot of samples before a difficulty change is
+    distinguishable from luck, and "harder" is not defined. Not worth attempting
+    unless the first half finds something, and even then it is a claim about
+    behaviour rather than about the file.
+  Note the first half is worth running **whatever the guide got right**: it is a
+  controlled single action, and a diff that shows nothing at all is also
+  informative.
+- **The trainer's ability-score change.** Save, alter exactly one ability score
+  at the trainer, save again, diff. Cheap, isolated, and it answers two things
+  at once: whether the game keeps a second copy of the score or a flag saying it
+  was altered, and whether a forum rumour — that an original developer said
+  altering scores carries negative effects in play — has anything behind it. If
+  the diff shows only the one byte moving, the rumour has nowhere to live in the
+  save file and can be set aside. If it shows more, we have found a field.
 - **The racial-traits hunt.** Gold Box Companion on the DOS version exposes an editable
   trait list — and a trait survives a race change, so it is stored per character rather
   than derived from race. Find that field. See `docs/80-fields-wanted.md`.

@@ -23,7 +23,7 @@ Two more disks came from outside the project and live in `~/Downloads`:
 
 | Image | Role |
 |---|---|
-| `npc_party.d64` | a save found online: three player characters and five NPCs, levels 4–8. Editor-hacked, so its *values* prove nothing — but it is the only specimen with eight slots filled, characters above level 1, and spells memorised |
+| `npc_party.d64` | a save found online: three player characters and five NPCs, levels 4–8. Been through an editor — one character has an impossible race code and another a saturated `$FFFFFF` experience — so its *values* prove nothing — but it is the only specimen with eight slots filled, characters above level 1, and spells memorised |
 | `poolce.d64` | "POR EDITOR V5", a listable 1989 BASIC character editor plus its readme. Corroborates our record layout offset for offset, and carries the item name table and 162 complete item records |
 
 Both are described in `docs/90-specimens.md`.

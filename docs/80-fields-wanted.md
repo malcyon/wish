@@ -230,6 +230,31 @@ genuinely the character's class, because `0x073` and `0x0EB` are redundant in al
 twenty specimens — every one encodes the same classes twice, and none disagrees.
 The experiment that separates them is cheap and is described below.
 
+**Whatever records that an ability score was altered at the trainer** — if
+anything does. Two separate things here, and they should not be run together:
+
+* **Fact, first-hand from Donald:** the game's own trainer will alter an ability
+  score. So a score is not fixed at creation, and a score outside the 3–18 a
+  character rolls is not by itself evidence of tampering.
+* **Rumour:** a post on the Gold Box forums reports a claim, attributed to one
+  of the original developers, that using it carries **negative effects in play**.
+  That is two removes from evidence — a forum post about what someone says a
+  developer said — and it should be treated the way this knowledge base treats
+  everything in `docs/60-goldbox-field-checklist.md` §5 until it is tested.
+
+It is worth testing anyway, because **the rumour makes a prediction we can
+check**: if the game penalises an altered score, it has to remember that the
+score was altered. Either a flag, or — far more likely given everything else in
+this save format — a **true** score kept alongside the **current** one. Every
+pair of values we have come to understand has turned out to be base-versus-
+current, and this would be another. Nothing of the sort has been found near
+`0x014`–`0x019`, but nobody has looked for it with a before/after pair in hand.
+
+**Why it matters for the editor.** `wish` writes `0x014`–`0x019` directly. If a
+second copy or a flag exists, editing the scores alone would leave a character in
+a state the game never produces — exactly the trap the class and level pairs
+already set. Until the experiment is run, that risk is unquantified.
+
 **Racial traits** — Gold Box Companion on the DOS version shows an editable
 trait list, and a trait **survives a race change**, so a trait is stored per
 character rather than derived from race. Detecting magic was set that way and

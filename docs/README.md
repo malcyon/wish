@@ -36,8 +36,9 @@ written by hand.
 * D64 container read/write, including byte-exact in-place rewrites.
 * `SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`: a party header, a
   combat-icon table at `$4BE0`, **8 character slots of `$100`** at `$4D00`, and
-  an item area from `$5900`. A party really can hold eight characters, up to
-  five of them NPCs.
+  an item area from `$5900`. **Eight** slots exist structurally, and the
+  roster confirms the same count — but how many the game lets you *fill*, and
+  how many may be NPCs, is not established. See below.
 * `SAVEDGAME1` opens with **eight 32-byte roster blocks** filling `$8300`–`$83FF`
   exactly. They hold the derived combat numbers the character record does not:
   armour class, THAC0, current hit points, movement, and the memorised spell
@@ -87,6 +88,10 @@ over them on load.
 * **The level-drain pair**, now testable at last: specimens above level 1 exist.
 * **Racial traits**, and **item effect bytes** — both known to exist from the
   Gold Box Companion on the DOS version.
+* **How large a party the game actually permits.** Eight slots exist and one
+  save has all eight filled, but that save is editor-hacked and has never been
+  loaded in the game. Nothing tells us the split between player characters and
+  NPCs that normal play allows.
 * **Roster `+0x03`–`+0x05`** — read as per-level spell counts on the strength of
   one save, and flatly contradicted by another. Back to unknown.
 * **Whether `0x0A0` is "level" or "highest level attained"**, and whether

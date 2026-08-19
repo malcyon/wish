@@ -232,8 +232,8 @@ darts. Both are recorded in `docs/30-savegame-layout.md`.
 
 ## NPCs
 
-A party holds eight characters and up to five of them can be companions the
-party picked up rather than characters you made. `npc:` reports which:
+There are eight character slots. `npc:` reports which of them hold a companion
+the party picked up rather than a character you made:
 
 ```yaml
     npc: false
@@ -266,6 +266,13 @@ Those are reachable now (`docs/85-item-tables.md`); they are simply not
 exported.
 
 ## Cautions
+
+**Ability scores may not be as simple as they look.** The game's own trainer can
+alter them, and there is an untested rumour that doing so carries a penalty in
+play. If that is true the save must record it somewhere, and `wish` writes only
+the six bytes at `0x014`–`0x019`. Nothing has been found alongside them, but
+nobody has yet diffed a save taken before and after a trainer visit. See
+`docs/80-fields-wanted.md`.
 
 **Derived values may not behave as you expect.** Saving throws, infravision and
 the thief skills are computed by the game from class, race and level. They are

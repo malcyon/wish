@@ -66,12 +66,37 @@ controlled saves. Their values prove nothing; their structure proves a lot.
 ### `npc_party.d64` — three PCs and five NPCs
 
 Found online by Donald (discussed on r/c64 as "An unusual Pool of Radiance save
-disk"). It has plainly been through a character editor: every hacked character
-has all-18 abilities and one NPC has `$FFFFFF` experience. What makes it valuable
+disk"). Two things in it cannot have come from ordinary play:
+
+* **PRINCESS FATIMA's race byte is 0.** Races are 1-based, `DWARF=1` through
+  `MONSTER=8`, and character creation offers nothing outside that. The other
+  four NPCs are race 7, so it is not an NPC convention.
+* **MAD MAN's experience is exactly `$FFFFFF`** — every bit of the 24-bit field
+  set — while the rest of the party holds 10,200 to 115,311. That is a
+  saturation value, and it is precisely what the 1989 editor on `poolce.d64`
+  writes: its own documentation says the XP option "just sets it at the max".
+
+~~Weaker corroboration: XAVIER has DEX 19 and GRON CON 20, above the 3–18 a
+character rolls.~~ **Withdrawn.** Donald points out that the game's own trainer
+lets you alter ability scores, so a score outside the rolled range is not
+evidence of anything. Whether the trainer will go above 18 is not known, but the
+inference was weak enough that it is not worth leaning on either way. Four
+separate characters carrying a RING OF PROTECTION +3 remains mildly odd and
+proves nothing on its own.
+
+*An earlier version of this page said "every hacked character has all-18
+abilities". That is simply false — GENHEERIS, MAD MAN, DIRTEN and SKULLCRUSHER
+have ordinary spreads with 8s, 9s and 10s in them. Only XAVIER and SIMON are
+all-18. The conclusion stands on the two anomalies above and not on that.*
+
+What makes it valuable
 is everything an editor does *not* touch —
 
-* it fills **all eight** character slots, which no save of ours does, settling the
-  party size and bounding the `SAVEDGAME1` roster at exactly one page;
+* it fills **all eight** character slots, which no save of ours does. That
+  bounds the `SAVEDGAME1` roster at exactly one page — but it says nothing about
+  how large a party the *game* permits, because this disk has been through an
+  editor and has never been loaded in play. Its 3-player/5-NPC split is a fact
+  about a file, not a rule;
 * its characters are **levels 4 to 8**, where every other specimen we hold is
   level 1 — which is what finally identified `0x0A0` as level;
 * four of them are **casters with spells memorised**, which gave both the
