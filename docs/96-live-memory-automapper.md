@@ -86,7 +86,10 @@ position is in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and `$49C2`
 the standing candidate and is ruled out — walking leaves it byte-identical.
 
 A save-file automapper could be built today: export a position from every save
-and plot it. The live-memory version still needs the same addresses read out of
+and plot it. Drawing the *walls* around that position needs the `GEO*` files,
+which are twenty-nine uncompressed 1024-byte maps whose structure is partly
+worked out -- 16 bytes to a row, with recognisable enclosures -- but whose
+encoding is not yet settled. See `docs/50-experiments.md`. The live-memory version still needs the same addresses read out of
 a running game rather than off a disk, and `SAVEDGAME0` is a verbatim image of
 `$4900`–`$64FF`, so the addresses are the same ones. `SAVEDGAME1` past `$83FF` is
 still unread and still the other thing

@@ -386,8 +386,18 @@ _DECLARED: Sequence[Field] = (
            "(magic-user/thief, confirmed by Donald) and LARA SPELLSWORD is 9 "
            "(magic-user/fighter -- her name says so). Far more usable than the "
            "single char_class code at 0x073"),
-    _field(0x0FE, 3, _RAW, "region_0fe", "unknown @0x0FE", _NOPE,
-           "08 07 01", candidate=True),
+    _field(0x0FE, 1, _U8, "portrait_head", "Portrait head", _OK,
+           "index into the HEAD* files on the game disks, in hex: 0x2D is "
+           "HEAD2D. All eleven values across our exports name a file that "
+           "exists, and the odds of that happening by chance are negligible -- "
+           "the ids used include $2D, $43, $44 and $67, not just small numbers. "
+           "BRUTUS carries the same pair on two unrelated disks, and the two "
+           "female half-elves share a portrait"),
+    _field(0x0FF, 1, _U8, "portrait_body", "Portrait body", _OK,
+           "index into the BODY* files, the same way. Head and body are "
+           "adjacent and independent"),
+    _field(0x100, 1, _RAW, "region_100", "unknown @0x100", _NOPE,
+           "01", candidate=True),
     _field(0x0EC, 1, _U8, "region_0ec", "unknown @0x0EC", _NOPE,
            "0 -> 1 after combat for MALCYON and LADY KATHERINE and nobody else "
            "-- exactly the two spellcasters, so probably spell state rather "

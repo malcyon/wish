@@ -199,8 +199,9 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
    that matter (each carries its load address in its first two bytes, so `da65` gets correct
    addressing for free). No whole-game disassembly — the overlay data (`ECL*`, `GEO*`, `PIC*`,
    `MON*`) is out of scope for a character editor.
-6. **The fields still unfound.** The level-drain pair, the remaining item effect
-   bytes, the portrait head/body pair, and the icon large/small flag. The party's
+6. **The fields still unfound.** The level-drain pair and the remaining item
+   effect bytes. The portrait pair (`0x0FE`/`0x0FF`) and the size flag
+   (`0x099`) are both found. The party's
    **map coordinates are found** — `$49C0`/`$49C1`, with facing at `$49C2`. Racial traits have a strong candidate at `0x0AD` but no
    decoded meaning. THAC0 and damage are both found — THAC0 as a base in the
    record and a current value in the roster, damage in the item-type table. The full list with its evidence lives in
@@ -228,7 +229,13 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
 11. ~~**The spell id table.**~~ ✅ **DONE.** `SPELLN00`, read through its pointer
     table because the strings overlap. Six class/level groups, ids 1-55. See
     `docs/86-spell-table.md`.
-12. ~~**The monster table.**~~ ✅ **Largely done.** 117 files, `MON00`-`MON7C`,
+12. **Decode the `GEO` map files.** Twenty-nine uncompressed 1024-byte files,
+    16 bytes to a row, containing recognisable walled enclosures — the map data,
+    structure partly worked out and encoding not settled. The way in is to
+    **anchor one file to a known area**: stand somewhere distinctive, save, walk
+    a short known route along a wall, and match the coordinates against the
+    file. Everything the automapper needs is behind this.
+13. ~~**The monster table.**~~ ✅ **Largely done.** 117 files, `MON00`-`MON7C`,
     one monster each, using the **character record layout** — which is why the
     race table ends `MONSTER=8`. Names, abilities, class, age and hit points all
     decode; armour class, hit dice and experience value do not yet.

@@ -288,12 +288,11 @@ status strings somewhere worth locating.
 are the player's spells in six class/level groups, 56 is RESTORATION, and from 57
 the table continues with combat messages. See [the spell table](86-spell-table.md).
 
-**Portrait (head / body)** — half found. Export byte `0x10D` reads 8, 3 and 4 for
-our three exported characters and `BODY08`, `BODY03` and `BODY04` all exist on
-the disks, so it is a good **body** index. The **head** index is not found:
-`0x10E` reads 42, 39, 39, and neither hex nor decimal turns those into filenames
-that all exist. Three characters is too small a sample; a party with visibly
-different portraits would settle it.
+~~**Portrait (head / body)**~~ — **found: `0x0FE` head, `0x0FF` body**, each an
+index into the `HEAD*` and `BODY*` files in hex. All twenty-two values across
+eleven exports name a file that exists. The earlier guess at `0x10D`/`0x10E` was
+wrong on both counts: `0x10E` is the current THAC0, and `0x10D` looks like
+marching order.
 
 ~~**Icon large/small flag**~~ — **found: `0x099`.** 1 for medium, 0 for small,
 and the only byte in the stored 256 separating dwarves, gnomes and halflings

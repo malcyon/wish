@@ -1535,6 +1535,71 @@ over specimens can only prove losslessness for states the specimens contain.
 
 ---
 
+## The portrait indices
+
+**Result. SOLVED: `0x0FE` is the head and `0x0FF` the body**, each an index into
+the `HEAD*` and `BODY*` files on the game disks, in hex -- `0x2D` is `HEAD2D`.
+
+Found by scanning eleven full exports for bytes that vary and whose *every*
+value names a file that exists. Two adjacent bytes do, one landing entirely in
+the 41-strong HEAD set and the other entirely in the 21-strong BODY set. All
+twenty-two values name real files.
+
+That is not a small-numbers coincidence: the head ids in use include `$2D`,
+`$43`, `$44` and `$67`, which are only meaningful if the set is right. Two more
+checks agree -- BRUTUS carries the same pair on two unrelated disks, and the two
+female half-elves, LADY KATHERINE and DELILIA, share a portrait.
+
+The pair had been sitting in the notes as "`0x0FE`-`0x0FF`, vary per character
+with no pattern identified yet". What made them findable was having eleven
+exports rather than three; four of the eleven came from Donald's roster disk.
+
+---
+
+## The map data: found, not yet decoded
+
+**Method.** Inventory every file on the eight disks by name stem, size and load
+address, then look for the shape a set of maps would have.
+
+**`GEO*` is the map data.** Twenty-nine files, **every one exactly 1024 bytes**,
+all loading at `$0400`. Uniform size across twenty-nine files is what a set of
+fixed-size maps looks like, and Pool of Radiance has roughly that many areas.
+Nothing else on the disks has that shape: `SQRDATA` has three files of two
+sizes, `WALLDEF` nineteen of nineteen sizes, `SECSET` eight of five, `SQRPACI`
+three of three.
+
+**It is not compressed.** 44% of the bytes are zero and only 85 distinct values
+appear. The project's notes warn that game data may be ByteKiller-compressed;
+these files are not.
+
+**The row stride is 16 bytes.** Measured rather than guessed, by scoring how
+often a byte equals the byte one stride earlier -- real two-dimensional data
+peaks at its true width. `GEO04` and `GEO10` peak hard at 16 (0.47 against a
+0.29 baseline); `GEO00` peaks at 32.
+
+**There are walls in it.** Laid out 16 bytes to a row, rectangular structures
+appear: horizontal runs of high-nibble `3` terminated at both ends, and vertical
+columns of low-nibble `3` running down beside them. `GEO04` has two such
+enclosures, spanning rows 4-15 and rows 19-31, with interior values drawn from a
+small set (7, 8, 9) that is plainly not noise. Both nibbles carry data.
+
+**What I could not establish**, and where a guess went wrong. The obvious reading
+of 1024 bytes was four 16x16 maps, and the rendering seemed to break at rows 16,
+32 and 48. It does not survive: the enclosures are not 16-row aligned -- one runs
+rows 4 to 15 and the next 19 to 31 -- and the apparent block boundary was an
+artefact of splitting the data where I expected a split. The squares-per-byte
+question is likewise open: one byte per square with two attributes, or one nibble
+per square, both fit what is visible.
+
+**What would settle it in one step.** Match a `GEO` file to an area whose map we
+can see. The party's position is now readable from any save, so: stand somewhere
+distinctive in a known area, save, and walk a short known route along a wall. The
+coordinates give the row and column, and the wall the party cannot walk through
+gives a fixed point to align the file against. Without that anchor this is
+pattern-matching; with it, it is arithmetic.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
