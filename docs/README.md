@@ -101,7 +101,9 @@ over them on load.
 * **Whether `0x0A0` is "level" or "highest level attained"**, and whether
   `0x073` and `0x0EB` really say the same thing. Every pair of fields we have
   understood turned out to be base-versus-current rather than a duplicate.
-* The portrait head/body indices and the icon large/small flag.
+* The portrait head index (`0x10D` is a good body-index candidate).
+* What `0x0AD` is — non-zero only for elves and half-elves, and not the racial
+  trait mask it looked like.
 * Adding or replacing an inventory item, as opposed to editing one.
 * ~83% of each record remains unidentified, as does everything in
   `SAVEDGAME1` past its first page.

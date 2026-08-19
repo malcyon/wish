@@ -1335,6 +1335,63 @@ trait mask.
 
 ---
 
+## Four new characters, and the size flag
+
+**Method.** Donald made NYX (gnome thief), DAX (halfling fighter/thief), ASTRID
+(half-elf cleric/fighter) and DELILIA (half-elf cleric/fighter/magic-user), and
+saved the roster as `PORSAVE10.D64`. It holds no `SAVEDGAME0` at all -- eight
+**full 580-byte exports**, which is better, because a save slot stores only the
+first 256 bytes.
+
+**Result 1. SOLVED: `0x099` is the size flag** -- 1 for a medium character, 0 for
+a small one. It is the **only** byte in the stored 256 that separates dwarves,
+gnomes and halflings from humans, elves and half-elves, which are exactly the
+AD&D size categories. Five small characters against fifteen medium.
+
+This is the **icon large/small flag** that had been on the wanted list since the
+combat icons were decoded, where it was recorded as "not among the 36 icon bytes,
+so it lives elsewhere". It does.
+
+Donald supplied what made it findable, and what had made it confusing: MAGNUS is
+a dwarf and shows as small in game, but his icon does not *look* smaller. The
+difference is the head -- a small character's body is the same size and its head
+is smaller, so the icon reads as small without being smaller. Without that we
+would have gone looking for a size in the icon bytes, where it is not.
+
+**Result 2. `0x0AD` is not a racial-trait mask.** It reads 107 for elves and 124
+for half-elves, and it was the leading candidate for a general trait field.
+Gnomes and halflings read **0** -- and both races are rich in AD&D racial traits,
+detecting slopes and listening at doors and saving-throw bonuses. Whatever
+`0x0AD` is belongs to elves and half-elves specifically. Resistance to sleep and
+charm is the trait those two share and the others lack, but 107 and 124 are not
+the AD&D percentages (90 and 30), so that is a description of the pattern and not
+an identification.
+
+**Result 3. Thief skills are signed.** Our first two thieves. DAX reads 251 in
+two of the eight, and 251 as a signed byte is **-5** -- which is exactly the
+halfling's read-languages adjustment in AD&D. The layout had them as unsigned,
+where a 251% skill is nonsense. They are `I8` now.
+
+**Result 4. Two more class codes, confirmed on player characters.** ASTRID is
+cleric/fighter and carries code **8**; DELILIA is cleric/fighter/magic-user and
+carries code **9**. Both match the 1989 editor's multi-class table, which now
+agrees with six independently obtained values and has never disagreed. Code 9
+also matches the NPC `ENVOY` found in the monster files.
+
+**Result 5, from a limitation Donald hit.** The game **refuses a seventh player
+character**: six is the maximum, and the remaining two of the eight slots are for
+NPCs only. That answers a question this knowledge base got wrong earlier, when
+"up to five NPCs" was inferred from a single hacked save and withdrawn. The rule
+is **at most six player characters and at most eight in total**, which fits
+`npc_party.d64` exactly: three player characters and five NPCs.
+
+**A note for later.** Curse of the Azure Bonds does offer paladins and rangers,
+so class codes 3 and 4 are likely to be real there even though nothing in Pool
+of Radiance uses them. Gold Box Companion converts a fighter into one. Worth
+knowing if `wish` ever grows beyond this game; not worth doing now.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

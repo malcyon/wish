@@ -25,7 +25,8 @@ written back and confirmed in game.
 | five saving throws | `0x09A`–`0x09E` | CONFIRMED |
 | movement | `0x09F` | CONFIRMED |
 | **character level** | `0x0A0` | PROBABLE |
-| thief skills | `0x0A5`–`0x0AC` | CONFIRMED |
+| thief skills | `0x0A5`–`0x0AC` | CONFIRMED — **signed**; a halfling's read-languages is -5 |
+| **small size flag** | `0x099` | PROBABLE — 0 small, 1 medium; the icon large/small flag |
 | **money — all seven types** | `0x0BB`–`0x0C8` | CONFIRMED |
 | **level, per class** | `0x0C9`–`0x0CC` | PROBABLE |
 | infravision | `0x0D5` | CONFIRMED |
@@ -258,7 +259,13 @@ already set. Until the experiment is run, that risk is unquantified.
 **Racial traits** — Gold Box Companion on the DOS version shows an editable
 trait list, and a trait **survives a race change**, so a trait is stored per
 character rather than derived from race. Detecting magic was set that way and
-then worked permanently in play. Nothing in our record is tied to it yet.
+then worked permanently in play.
+
+`0x0AD` was the leading candidate and is **ruled out as a general trait mask**:
+it is non-zero only for elves (107) and half-elves (124), and gnomes and
+halflings — both rich in racial traits — read 0. It is still unexplained and
+still belongs to those two races specifically. Nothing else in the record is
+tied to traits.
 
 **Item effects** — a `+1 long sword` and a `flame tongue` differ from a plain
 long sword somewhere in the 16 bytes. Byte `+4` is the numeric bonus, signed,
@@ -288,8 +295,11 @@ the disks, so it is a good **body** index. The **head** index is not found:
 that all exist. Three characters is too small a sample; a party with visibly
 different portraits would settle it.
 
-**Icon large/small flag** — the Gold Box Companion exposes it; it is not among
-the 36 icon bytes.
+~~**Icon large/small flag**~~ — **found: `0x099`.** 1 for medium, 0 for small,
+and the only byte in the stored 256 separating dwarves, gnomes and halflings
+from humans, elves and half-elves. It is not among the 36 icon bytes because it
+is not icon data: a small character has the same body and a smaller head, so the
+icon reads as small without being smaller.
 
 **What marks an NPC** — eight record bytes (`0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`,
 `0x0D4`, `0x0E4`, `0x0E5`, `0x0FB`) read `$FF` for every NPC and `$00` for every

@@ -93,6 +93,8 @@ def add_load_address(record: bytes, address: int = LOAD_ADDRESS) -> bytes:
 def _decode_field(f: Field, raw: bytes) -> Any:
     if f.kind is Kind.U8:
         return raw[0]
+    if f.kind is Kind.I8:
+        return raw[0] - 256 if raw[0] > 127 else raw[0]
     if f.kind is Kind.U16LE:
         return int.from_bytes(raw, "little")
     if f.kind is Kind.ASCII_NUL:
@@ -101,6 +103,11 @@ def _decode_field(f: Field, raw: bytes) -> Any:
 
 
 def _encode_field(f: Field, value: Any) -> bytes:
+    if f.kind is Kind.I8:
+        value = int(value)
+        if not -128 <= value <= 127:
+            raise ValueError(f"{f.name}: {value} does not fit in a signed byte")
+        return bytes([value & 0xFF])
     if f.kind is Kind.U8:
         value = int(value)
         if not 0 <= value <= 0xFF:

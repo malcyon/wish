@@ -322,17 +322,12 @@ Remaining, in rough order of value:
    be written, with the caveat reported in the change list, and a half-set
    marker is a warning. **What the game actually permits is unknown** — see
    "how big a party is" below.
-7. **How big a party is, and how many NPCs it may hold.** Eight slots exist and
-   the roster has eight blocks, so eight is the structural ceiling. Beyond that
-   we know nothing: the only save with eight filled is `npc_party.d64`, which is
-   editor-hacked and has never been loaded in the game, so it is evidence about
-   a *file*, not about the game's rules. Its 3-player/5-NPC split was written up
-   here as "up to five NPCs", which was induction from one specimen and is
-   withdrawn — and the thread it came from called the disk *unusual*, which
-   points the other way. Gold Box games are commonly said to allow six player
-   characters plus two NPCs; we have not verified that from anything we hold.
-   **The experiment is cheap:** recruit NPCs in play until the game refuses,
-   and save at each step.
+7. ~~**How big a party is, and how many NPCs it may hold.**~~ ✅ **ANSWERED.**
+   The game refuses a seventh **player** character: six is the maximum, and the
+   remaining two of the eight slots are NPC-only. Donald hit the limit while
+   making test characters. That fits `npc_party.d64` exactly — three player
+   characters and five NPCs, eight in total — and it settles a question this
+   plan had two wrong answers to.
 8. **Levels — what is left.** Two of the four parts are done: `level` is in the
    YAML, and editing `levels:` now carries `0x0A0` with it. Remaining:
    * **What `0x0A0` holds for a multi-class character is unknown.** Every
@@ -355,14 +350,13 @@ Remaining, in rough order of value:
    undead** and see whether `0x0A0` and the per-class array part company, which
    would make `0x0A0` "highest level attained" and give us the drain pair in the
    same stroke.
-11. **Racial traits, properly.** `0x0AD` is non-zero only for elves (107) and
-    half-elves (124) and is the strongest candidate, but nothing is known about
-    what the value means or how many traits there are. This needs a campaign of
-    small experiments rather than one:
-    * **Get specimens of the missing races.** No gnome, halfling or half-orc
-      exists among our twenty characters, and each should show a distinct value
-      if `0x0AD` is a trait mask. Creating one character of each race is cheap
-      and settles the shape of the field in one pass.
+11. **Racial traits, properly.** `0x0AD` was the strongest candidate and is now
+    **ruled out as a general trait mask**: gnomes and halflings read 0, and both
+    races are rich in AD&D traits. It remains unexplained and specific to elves
+    and half-elves. What is left:
+    * ~~**Get specimens of the missing races.**~~ ✅ Done — `PORSAVE10.D64` has
+      a gnome and a halfling, and half-orc turns out to be NPC-only and readable
+      from the monster files.
     * **Repeat Donald's Gold Box Companion experiment on the C64.** Set a trait,
       change the race, save, and see which byte keeps the trait. That is what
       showed traits are stored per character rather than derived from race.

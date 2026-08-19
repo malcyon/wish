@@ -136,12 +136,23 @@ of them by `npc_party.d64` rather than by a save we made:
   located it: AC is cached in `SAVEDGAME1`, not in the character record. See
   [the roster blocks](30-savegame-layout.md).
 
+### `PORSAVE10.D64` — the roster disk
+
+Eight **full 580-byte exports** and no `SAVEDGAME0` at all, which makes it more
+informative than a save: a slot stores only the first 256 bytes. Four characters
+Donald made to fill gaps — NYX (gnome thief), DAX (halfling fighter/thief),
+ASTRID (half-elf cleric/fighter) and DELILIA (half-elf cleric/fighter/magic-user)
+— alongside BRUTUS, MAGNUS, SILAS and ROLAND.
+
+It closed four things at once: the **size flag** at `0x099`, the first **thief
+skill** specimens (which showed the skills are signed), class codes **8** and
+**9** on player characters, and the two races nothing had ever carried.
+
 **Races we will never get from character creation.** Half-orc is not on the
 menu; the only two in the game are the NPCs MACE and NORRIS THE GRAY, readable
-out of the monster files. Gnome and halfling appear in no specimen at all --
-player or monster -- and both *are* creatable, which makes them the two most
-valuable characters anyone could add. They are the only way to test whether
-`0x0AD` is a racial trait mask.
+out of the monster files. Gnome and halfling were missing from every specimen
+and are now supplied by `PORSAVE10.D64` above — which settled `0x0AD`, though
+not the way anyone expected: both read 0, so it is not a racial trait mask.
 
 Still wanted, and each needs a save we make ourselves:
 

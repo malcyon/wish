@@ -85,6 +85,9 @@ class Kind(enum.Enum):
 
     #: Unsigned 8-bit integer.
     U8 = "u8"
+    #: Signed 8-bit integer, two's complement. Thief skills use it: a
+    #: halfling's read-languages sits at -5, stored as 251.
+    I8 = "i8"
     #: Unsigned 16-bit little-endian integer.
     U16LE = "u16le"
     #: Fixed-width, NUL-padded ASCII text (see :mod:`por.petscii`).
@@ -156,6 +159,7 @@ def _field(
 
 # Shorthands so the table below stays readable / one line per field.
 _U8 = Kind.U8
+_I8 = Kind.I8
 _U16 = Kind.U16LE
 _TXT = Kind.ASCII_NUL
 _RAW = Kind.RAW
@@ -259,14 +263,14 @@ _DECLARED: Sequence[Field] = (
     _field(0x09D, 1, _U8, "save_breath", "Save vs breath weapon", _OK, "fighter 17, cleric 16"),
     _field(0x09E, 1, _U8, "save_spell", "Save vs spell", _OK, "fighter 17, cleric 15"),
     _field(0x09F, 1, _U8, "movement", "Movement", _OK, "12 in all three specimens"),
-    _field(0x0A5, 1, _U8, "thief_pick_pockets", "Pick pockets %", _OK, "30 at L1"),
-    _field(0x0A6, 1, _U8, "thief_open_locks", "Open locks %", _OK, "25 at L1"),
-    _field(0x0A7, 1, _U8, "thief_find_traps", "Find/remove traps %", _OK, "20 at L1"),
-    _field(0x0A8, 1, _U8, "thief_move_silently", "Move silently %", _OK, "20 at L1"),
-    _field(0x0A9, 1, _U8, "thief_hide_in_shadows", "Hide in shadows %", _OK, "10 at L1"),
-    _field(0x0AA, 1, _U8, "thief_hear_noise", "Hear noise %", _OK, "10 at L1"),
-    _field(0x0AB, 1, _U8, "thief_climb_walls", "Climb walls %", _OK, "85 at L1"),
-    _field(0x0AC, 1, _U8, "thief_read_languages", "Read languages %", _OK, "5 at L1"),
+    _field(0x0A5, 1, _I8, "thief_pick_pockets", "Pick pockets %", _OK, "30 at L1"),
+    _field(0x0A6, 1, _I8, "thief_open_locks", "Open locks %", _OK, "25 at L1"),
+    _field(0x0A7, 1, _I8, "thief_find_traps", "Find/remove traps %", _OK, "20 at L1"),
+    _field(0x0A8, 1, _I8, "thief_move_silently", "Move silently %", _OK, "20 at L1"),
+    _field(0x0A9, 1, _I8, "thief_hide_in_shadows", "Hide in shadows %", _OK, "10 at L1"),
+    _field(0x0AA, 1, _I8, "thief_hear_noise", "Hear noise %", _OK, "10 at L1"),
+    _field(0x0AB, 1, _I8, "thief_climb_walls", "Climb walls %", _OK, "85 at L1"),
+    _field(0x0AC, 1, _I8, "thief_read_languages", "Read languages %", _OK, "5 at L1"),
     _field(0x0BB, 2, _U16, "copper", "Copper", _OK,
            "set to 100 in the edit test and shown in the game (the thirteen-field edit)"),
     _field(0x0BD, 2, _U16, "silver", "Silver", _OK,
@@ -317,9 +321,15 @@ _DECLARED: Sequence[Field] = (
            "different places"),
     _field(0x0ED, 1, _U8, "hp_rolled", "HP rolled", _MAYBE, "9; +2 CON = hp_max"),
     # --- Explicitly unknown regions (unchanged) ---------------------------
-    _field(0x099, 1, _RAW, "region_099", "unknown @0x099", _NOPE,
-           "01 0E 0F 10 11 11 0C 01 - six mid-teens values bracketed by 0x01",
-           candidate=True),
+    _field(0x099, 1, _U8, "size_small", "Small-sized", _MAYBE,
+           "1 for a medium character, 0 for a small one. The only byte in the "
+           "stored 256 that separates dwarves, gnomes and halflings from "
+           "humans, elves and half-elves -- the AD&D size categories exactly. "
+           "This is the icon large/small flag the Gold Box Companion exposes. "
+           "Donald confirmed MAGNUS, a dwarf, shows as small in game, and that "
+           "the visible difference is the head: a small character's body is "
+           "the same size and its head is smaller, which is why the icon looks "
+           "small without being smaller"),
     _field(0x0A0, 1, _U8, "level", "Level", _MAYBE,
            "character level. Two independent lines of evidence: the 1989 "
            "BASIC editor on poolce.d64 reads and pokes exactly this byte as "

@@ -18,10 +18,10 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | level | bytes | share |
 |---|---:|---:|
 | CONFIRMED | 73 | 12.6% |
-| PROBABLE | 28 | 4.8% |
+| PROBABLE | 29 | 5.0% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 479 | 82.6% |
-| **known** | **101** | **17.4%** |
+| UNKNOWN | 478 | 82.4% |
+| **known** | **102** | **17.6%** |
 
 ## Known fields
 
@@ -42,6 +42,7 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x074` | 2 | `age` | 16-bit little endian | CONFIRMED | 16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected |
 | `0x076` | 1 | `hp_max` | unsigned byte | PROBABLE | 11 = 9 rolled + 2 CON |
 | `0x078` | 7 | `spells_known` | raw bytes | CONFIRMED | a bitmask of the spells the character KNOWS, indexed by spell id: bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster we hold -- clerics know every spell of every level they can cast (8 at level 1, 24 at level 6) and magic-users know a subset, which is how AD&D 1st edition works. No cleric has a magic-user id set and no magic-user has a cleric one. MALCYON, a starting mage, knows detect magic, read magic, shield and sleep. Distinct from spells_memorised at 0x020, which is what is currently prepared |
+| `0x099` | 1 | `size_small` | unsigned byte | PROBABLE | 1 for a medium character, 0 for a small one. The only byte in the stored 256 that separates dwarves, gnomes and halflings from humans, elves and half-elves -- the AD&D size categories exactly. This is the icon large/small flag the Gold Box Companion exposes. Donald confirmed MAGNUS, a dwarf, shows as small in game, and that the visible difference is the head: a small character's body is the same size and its head is smaller, which is why the icon looks small without being smaller |
 | `0x09A` | 1 | `save_paralysis` | unsigned byte | CONFIRMED | fighter 14, cleric 10 -- both match the AD&D 1e L1 tables |
 | `0x09B` | 1 | `save_petrification` | unsigned byte | CONFIRMED | fighter 15, cleric 13 |
 | `0x09C` | 1 | `save_wands` | unsigned byte | CONFIRMED | fighter 16, cleric 14 |
@@ -49,14 +50,14 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x09E` | 1 | `save_spell` | unsigned byte | CONFIRMED | fighter 17, cleric 15 |
 | `0x09F` | 1 | `movement` | unsigned byte | CONFIRMED | 12 in all three specimens |
 | `0x0A0` | 1 | `level` | unsigned byte | PROBABLE | character level. Two independent lines of evidence: the 1989 BASIC editor on poolce.d64 reads and pokes exactly this byte as LEVEL, and across the eight characters of npc_party.d64 it equals the character's per-class level at four distinct values (4, 6, 7, 8). Every earlier specimen was level 1, which is why it long read as a constant 01. Not yet distinguishable from 'the single class's level' -- no multi-class specimen above level 1 has been seen |
-| `0x0A5` | 1 | `thief_pick_pockets` | unsigned byte | CONFIRMED | 30 at L1 |
-| `0x0A6` | 1 | `thief_open_locks` | unsigned byte | CONFIRMED | 25 at L1 |
-| `0x0A7` | 1 | `thief_find_traps` | unsigned byte | CONFIRMED | 20 at L1 |
-| `0x0A8` | 1 | `thief_move_silently` | unsigned byte | CONFIRMED | 20 at L1 |
-| `0x0A9` | 1 | `thief_hide_in_shadows` | unsigned byte | CONFIRMED | 10 at L1 |
-| `0x0AA` | 1 | `thief_hear_noise` | unsigned byte | CONFIRMED | 10 at L1 |
-| `0x0AB` | 1 | `thief_climb_walls` | unsigned byte | CONFIRMED | 85 at L1 |
-| `0x0AC` | 1 | `thief_read_languages` | unsigned byte | CONFIRMED | 5 at L1 |
+| `0x0A5` | 1 | `thief_pick_pockets` | I8 | CONFIRMED | 30 at L1 |
+| `0x0A6` | 1 | `thief_open_locks` | I8 | CONFIRMED | 25 at L1 |
+| `0x0A7` | 1 | `thief_find_traps` | I8 | CONFIRMED | 20 at L1 |
+| `0x0A8` | 1 | `thief_move_silently` | I8 | CONFIRMED | 20 at L1 |
+| `0x0A9` | 1 | `thief_hide_in_shadows` | I8 | CONFIRMED | 10 at L1 |
+| `0x0AA` | 1 | `thief_hear_noise` | I8 | CONFIRMED | 10 at L1 |
+| `0x0AB` | 1 | `thief_climb_walls` | I8 | CONFIRMED | 85 at L1 |
+| `0x0AC` | 1 | `thief_read_languages` | I8 | CONFIRMED | 5 at L1 |
 | `0x0BB` | 2 | `copper` | 16-bit little endian | CONFIRMED | set to 100 in the edit test and shown in the game (the thirteen-field edit) |
 | `0x0BD` | 2 | `silver` | 16-bit little endian | CONFIRMED | 25-26 each after looting orcs, where it was 0 before |
 | `0x0BF` | 2 | `electrum` | 16-bit little endian | CONFIRMED | set to 100 in the edit test and shown in the game (the thirteen-field edit) |
@@ -85,7 +86,6 @@ Regions explicitly declared as candidates because they are non-zero in at least 
 
 | offset | size | notes |
 |---|---:|---|
-| `0x099` | 1 | 01 0E 0F 10 11 11 0C 01 - six mid-teens values bracketed by 0x01 |
 | `0x0D9` | 8 | 03 02 00 01 00 02 00 00 - byte/zero alternation suggests 16-bit LE words. Shortened by one when 0x0E1 turned out to be the base armour class |
 | `0x0E3` | 5 | between strength_index and experience. 0x0E4-0x0E7 is $FF FF FF FF in every NPC. Its first two bytes, 0x0E4-0x0E5, are $00 in every player character and belong to the eight-byte NPC marker -- 0x0B7, 0x0B9, 0x0BA, 0x0D3, 0x0D4, 0x0E4, 0x0E5 and 0x0FB -- which reads $FF in all five NPCs of npc_party.d64 and $00 in all twenty known player characters. 0x0E6-0x0E7 are NOT part of it and were briefly miscounted as such: they hold a non-zero, high-entropy per-character value in every single player character, so they are not a 0/$FF pair. Whether one marker byte is the flag and the rest follow, or all eight are separate 'not applicable' sentinels, is unproven |
 | `0x0FE` | 3 | 08 07 01 |
