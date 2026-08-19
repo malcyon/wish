@@ -136,6 +136,13 @@ of them by `npc_party.d64` rather than by a save we made:
   located it: AC is cached in `SAVEDGAME1`, not in the character record. See
   [the roster blocks](30-savegame-layout.md).
 
+**Races we will never get from character creation.** Half-orc is not on the
+menu; the only two in the game are the NPCs MACE and NORRIS THE GRAY, readable
+out of the monster files. Gnome and halfling appear in no specimen at all --
+player or monster -- and both *are* creatable, which makes them the two most
+valuable characters anyone could add. They are the only way to test whether
+`0x0AD` is a racial trait mask.
+
 Still wanted, and each needs a save we make ourselves:
 
 * a character **wounded and then saved** — the roster block's `+0x19` should

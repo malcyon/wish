@@ -1281,6 +1281,60 @@ byte-identical across all six saves. Walking changes the world, not the party.
 
 ---
 
+## The tables enumerate more than the game implements
+
+**Prompted by Donald**, who was about to make characters to fill gaps in the
+specimen set and pointed out that two of the things asked for cannot be made:
+paladin and ranger are reported to exist in the game data in an unfinished
+state, and **half-orc is not on the character-creation menu at all**. He
+wondered whether half-orc might be NPC-only.
+
+**It is.** The 108 monster records use the character layout, so they can be read
+for race and class like any character. Two are half-orcs, and both are named
+NPCs: **MACE** (cleric) and **NORRIS THE GRAY** (fighter). Race 6 is real and
+used; it is simply not offered to the player.
+
+**Three class codes came free with that check.** The monster files are labelled
+with names that state the class outright, which makes them ground truth:
+
+| Code | Evidence |
+|---|---|
+| 6 | NPCs named `1ST LVL THIEF`, `6TH LVL THIEF`, `7TH LVL THIEF`, and `ROBBER` |
+| 9 | `ENVOY` -- consistent with cleric/fighter/magic-user, though the name does not say so |
+| 15 | `DRIDER`, and it is race **elf** -- consistent with fighter/magic-user/thief |
+
+Code 6 in particular was an assumption until now: the field table asserted
+`THIEF=6` from the Gold Box convention, and only 0, 2 and 5 had been checked
+against saving-throw tables. Three NPCs with the word THIEF in their names
+settle it.
+
+**And four codes appear nowhere at all.** DRUID=1, PALADIN=3, RANGER=4 and
+MONK=7 are absent from twenty player characters *and* from all 108 monster
+records. That is consistent with Donald's report and extends it: whatever state
+paladin and ranger were left in, no character in the shipped game uses those
+codes, and druid and monk look the same.
+
+**The pattern is worth stating on its own.** The game's tables enumerate more
+than the game implements, and they do it twice over:
+
+* the **race** table at `$3243` lists eight races; the creation menu offers six,
+  and half-orc appears only on NPCs;
+* the **class** menu list at `$3288` names CLERIC DRUID FIGHTER MAGIC-USER THIEF
+  MONK, and two of those six are never instantiated by anything.
+
+So a name in one of these tables is evidence about what the *format* supports,
+not about what the *game* does. That matters for an editor, which can write a
+race or class the game never produces. `wish` will happily write `race: monster`
+today. Whether the game copes is untested.
+
+**Still missing from every specimen we hold:** gnome and halfling. Neither
+appears among the twenty player characters or the 108 monsters, and both are
+creatable, which makes them the two most valuable characters anyone could make
+for this project -- they are the only way to test whether `0x0AD` is a racial
+trait mask.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

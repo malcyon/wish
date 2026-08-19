@@ -223,11 +223,22 @@ _DECLARED: Sequence[Field] = (
            "different fields in different files"),
     _field(0x072, 1, _U8, "race", "Race", _OK,
            "1-based: DWARF=1 ELF=2 GNOME=3 HALF-ELF=4 HALFLING=5 HALF-ORC=6 "
-           "HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf"),
+           "HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf. HALF-ORC "
+           "is real but NPC-only: it is not on the character-creation menu, "
+           "and the only two half-orcs in the game are the named NPCs MACE "
+           "and NORRIS THE GRAY. GNOME and HALFLING have never been seen in "
+           "any specimen, player or monster"),
     _field(0x073, 1, _U8, "char_class", "Class", _OK,
            "0-based, standard Gold Box order: CLERIC=0 DRUID=1 FIGHTER=2 "
-           "PALADIN=3 RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7, verified by each "
-           "character's saving-throw table. Codes above 7 are multi-class: "
+           "PALADIN=3 RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7. 0, 2 and 5 are "
+           "verified by saving-throw tables; 6 is verified by the monster "
+           "files, which contain NPCs literally named '1ST LVL THIEF' and "
+           "'7TH LVL THIEF' carrying code 6. DRUID=1, PALADIN=3, RANGER=4 and "
+           "MONK=7 appear in NO character anywhere -- not in twenty player "
+           "characters, not in 108 monster records -- and Donald reports that "
+           "paladin and ranger were left unfinished in the game data, so "
+           "those four names rest on the Gold Box convention alone. "
+           "Codes above 7 are multi-class: "
            "8 = cleric/fighter, 9 = cleric/fighter/magic-user, 10 and 11 = "
            "cleric/magic-user, 12 = cleric/thief, 13 = fighter/magic-user, "
            "14 = fighter/thief, 15 = fighter/magic-user/thief, 16 = "
