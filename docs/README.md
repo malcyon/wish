@@ -28,8 +28,6 @@ changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are genera
 `python3 tools/gentemplates.py`, which need a game disk. Everything else is
 written by hand.
 
-Copy-protection material lives in a **separate private repository**
-(`~/src/por-codewheel`) and is deliberately not in this one.
 
 ## Where things stand
 
