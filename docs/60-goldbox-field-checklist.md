@@ -387,12 +387,14 @@ experiment on the list.
   values we later derived independently from the bitmask at `0x0EB`, and that table is now the
   documented enumeration. So: take the editor's *offsets* seriously, its multi-class labels
   seriously, and its single-class labels with suspicion.
-- ~~**The C64 editor's item slot geometry does not fit our specimen.**~~ **Resolved: the editor
-  was right.** Items are 16-byte records. The apparent mismatch came from comparing an
-  *exported* character, where items sit inline from `0x110`, against a *save slot*, where only
-  the first 256 bytes are stored and the items live in a separate area at `$5900` + slot ×
-  `$100`. Its two loops really do disagree with each other — that part was a genuine bug in the
-  editor — but the 16-byte stride was never wrong.
+- **The C64 editor's item slot geometry: half right, and this document was right to distrust
+  it.** Items are 16-byte records — that part the editor got correct. But its *base* is wrong,
+  and so was the resolution written here earlier. In an export the sixteen item records run
+  from **`0x120`** to `0x21F`, ending exactly where the combat icon begins at `0x220`. The
+  editor scans from `0x110`, sixteen bytes early, which is precisely the discrepancy this
+  section originally flagged between its two loops. Confirmed by finding BRUTUS's banded mail,
+  shield and long sword at `0x120` and nothing coherent at `0x110`. In a *save slot* the items
+  are elsewhere again, in a separate area at `$5900` + slot × `$100`.
 - **The C64 editor writes 581 bytes, not 580.** It saves `$6B00`–`$6D44` inclusive. Our specimen's
   payload is 580 bytes (`$6B00`–`$6D43`). Probably an off-by-one in the editor, but if a
   580-vs-581 discrepancy ever shows up in our own round-trips, this is the precedent.

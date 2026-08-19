@@ -1392,6 +1392,111 @@ knowing if `wish` ever grows beyond this game; not worth doing now.
 
 ---
 
+## A research sweep: what the new specimens settled
+
+Four questions worked from the desk, using the eight full exports on
+`PORSAVE10.D64` and the 108 monster records.
+
+**The two class fields CAN disagree, and the bitmask is the one to trust.**
+Across 105 characters, `char_class` and `class_bits` agree everywhere except
+four monster records:
+
+| NPC | code | bits |
+|---|---|---|
+| DWARVEN FIGHTER | 0 (cleric) | fighter |
+| ENVOY | 9 | magic-user, fighter |
+| DRIDER | 15 | magic-user, fighter |
+
+`DWARVEN FIGHTER` is the telling one: its *name* says fighter, its bits say
+fighter, and its code says cleric. Where they part company the bits match
+reality. `DRIDER` is a drow, and fighter/magic-user is what a drow should be.
+
+So the pair is **not** redundant, and `wish` forcing them into agreement imposes
+a consistency the shipped game does not maintain. Every player character we hold
+agrees, so the tool is right about player characters and cannot represent an NPC
+the game itself ships.
+
+**`0x0A0` is not a sum.** DELILIA is a three-class character at level 1 and reads
+1, not 3; `ENVOY` is magic-user 6 / fighter 6 and reads 6, not 12; `DRIDER` is
+7/7 and reads 7. That leaves "the maximum" or "the single class's level", which
+coincide in every specimen. It is what `wish` already writes, so the risk flagged
+earlier is smaller than it looked. Whether it is *current* level or *highest
+level attained* still needs a drained character.
+
+**`0x10E` is the current THAC0**, stored as `60 - THAC0`, immediately before the
+current armour class at `0x10F`. Matches the AD&D table on all eleven exports.
+Both exist only in an export, and both agree with the `SAVEDGAME1` roster for the
+same character -- so an exported `.chr` carries both combat numbers after all.
+That is worth recording, because the 1989 editor's author reported he could never
+find either, and this is where they were.
+
+**The item area in an export is at `0x120`, not `0x110`.** Sixteen records of
+sixteen bytes, running to `0x21F` and ending exactly where the combat icon starts
+at `0x220`. Found by searching BRUTUS's export for a known banded-mail record.
+The `0x110` figure came from the 1989 editor, whose two item loops disagree with
+each other by sixteen bytes -- a discrepancy
+`docs/60-goldbox-field-checklist.md` originally flagged and which was later
+"resolved" in the editor's favour. That resolution was wrong. Nothing in `wish`
+was affected: it reads items out of saves, where the area is at `$5900`.
+
+**Not settled.** `0x10D` reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and
+BRUTUS -- exactly the party slots they occupied -- and 8 for four characters
+freshly made. Marching order is the obvious reading and the DOS catalogue has
+such a field, but three older exports disagree with their own party order, so it
+stays a candidate. The **portrait head index** is still not found; neither
+`0x10D` nor `0x10E` is it, and the earlier note calling `0x10D` a good body-index
+candidate was near-vacuous -- `BODY01` through `BODY09` all exist, so any small
+number "lands".
+
+---
+
+## Monsters, `0x0B8`, and the noise floor in SAVEDGAME1
+
+**Monster experience value: not in the record.** Scanning all 480 bytes of eight
+monsters whose AD&D experience values are known -- kobold 7, orc 10, hobgoblin
+20, zombie 20, gnoll 35, ogre 90, troll 350, skeleton 16 -- finds **no byte and
+no 16-bit word** that matches on all eight. The record's own experience field at
+`0x0E8` is zero for every monster. Gold Box games are known to compute a
+creature's award from its hit dice and abilities, and this is consistent with
+that: there is nothing to find.
+
+Hit dice at `0x0A0`, armour class at `0x0E1` and movement at `0x09F` were already
+confirmed. What is still unfound is the attack routine -- how many attacks and
+for how much -- which is not in the item area either, because generic monsters
+carry no items at all.
+
+**Named NPCs are fully equipped characters; generic monsters are not.** ORC,
+TROLL, OGRE carry nothing. KOBOLD carries a short sword. **MACE** carries chain
+mail, a shield and a `MACE +1`; **NORRIS THE GRAY** carries chain mail, a shield
+and a `LONG SWORD +1`. So the two half-orcs in the game are not just readable
+characters, they are equipped ones, and they are a source of magic-item records
+that never appear in a shop.
+
+**`0x0B8` remains BRUTUS's alone.** Eight more characters, four of them made
+from scratch, all read 0. Twenty-eight characters now, and BRUTUS is the only
+one -- 0 before the party equipped, 1 after, and 1 in his roster export. Not
+race, not class, not level, not equipment in any way that shows on anyone else.
+Still unexplained.
+
+**`SAVEDGAME1` past `$8400` is noisy, and that matters for planning.** Walking
+out of the inn left it byte-identical. But every save taken **from camp** rewrites
+about 96 bytes of it, spread the same way every time -- roughly 3 bytes in
+`$8600`, 43 in `$8800`, 15 in `$8900`, 35 in `$8A00` -- whether the party walked
+three steps, turned on the spot, or did nothing at all.
+
+Changing by the same amount regardless of what happened is the signature of
+volatile state: a random-number generator, or a scratch buffer that gets written
+out incidentally. It is not what game progress looks like.
+
+**Consequence for the quest-flag hunt.** Diffing that region will be noisy, and
+the signal is more likely to be in the header, which is where position, facing
+and the counter all turned out to live and which moved only six bytes for a
+whole walk. It also means the two bytes left over from leaving the inn --
+`$4A07` and `$4BC6` -- are better leads than they looked, because they came from
+the quiet file.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

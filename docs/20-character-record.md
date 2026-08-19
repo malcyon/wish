@@ -18,10 +18,10 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | level | bytes | share |
 |---|---:|---:|
 | CONFIRMED | 73 | 12.6% |
-| PROBABLE | 29 | 5.0% |
+| PROBABLE | 30 | 5.2% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 478 | 82.4% |
-| **known** | **102** | **17.6%** |
+| UNKNOWN | 477 | 82.2% |
+| **known** | **103** | **17.8%** |
 
 ## Known fields
 
@@ -77,6 +77,7 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x0E8` | 3 | `experience` | raw bytes | CONFIRMED | 24-bit LE. After one orc fight the party holds 17 each and LADY KATHERINE 8 -- non-zero and differing, which is what confirms it |
 | `0x0EB` | 1 | `class_bits` | unsigned byte | CONFIRMED | magic-user=1 cleric=2 thief=4 fighter=8, OR-ed together. This is how multi-class is really represented: LADY KATHERINE is 5 (magic-user/thief, confirmed by Donald) and LARA SPELLSWORD is 9 (magic-user/fighter -- her name says so). Far more usable than the single char_class code at 0x073 |
 | `0x0ED` | 1 | `hp_rolled` | unsigned byte | PROBABLE | 9; +2 CON = hp_max |
+| `0x10E` | 1 | `thac0` | unsigned byte | PROBABLE | current THAC0 including strength and the readied weapon, stored as 60 - THAC0, sitting immediately before the current armour class at 0x10F. Matches the AD&D table on all eleven exports we hold. Like 0x10F it exists only in an export, and it agrees with the SAVEDGAME1 roster's +0x0E for the same character -- so an exported .chr does carry both combat numbers after all, which is worth knowing given the 1989 editor's author reported he could never find either |
 | `0x10F` | 1 | `armour_class` | unsigned byte | PROBABLE | current armour class including armour, shield and dexterity, stored as 60 - AC. Present only in an exported .chr -- it lies beyond the 256 bytes a save slot stores -- and it agrees exactly with the SAVEDGAME1 roster's +0x0F for the same character: BRUTUS 9, MALCYON 8, LADY KATHERINE 8. Base and current again, in different places |
 | `0x119` | 1 | `hp_current` | unsigned byte | PROBABLE | UNVERIFIED. Equals hp_max in every specimen, and no wounded character has ever been seen in an exported .chr, so it may simply be a second copy of hp_max. Note the hunt for current hit points searched both save files for a wounded character's current total and found nothing -- but this byte lies beyond the 256 a save slot stores, so it is only present in an export and that search does not settle it |
 
@@ -89,8 +90,8 @@ Regions explicitly declared as candidates because they are non-zero in at least 
 | `0x0D9` | 8 | 03 02 00 01 00 02 00 00 - byte/zero alternation suggests 16-bit LE words. Shortened by one when 0x0E1 turned out to be the base armour class |
 | `0x0E3` | 5 | between strength_index and experience. 0x0E4-0x0E7 is $FF FF FF FF in every NPC. Its first two bytes, 0x0E4-0x0E5, are $00 in every player character and belong to the eight-byte NPC marker -- 0x0B7, 0x0B9, 0x0BA, 0x0D3, 0x0D4, 0x0E4, 0x0E5 and 0x0FB -- which reads $FF in all five NPCs of npc_party.d64 and $00 in all twenty known player characters. 0x0E6-0x0E7 are NOT part of it and were briefly miscounted as such: they hold a non-zero, high-entropy per-character value in every single player character, so they are not a 0/$FF pair. Whether one marker byte is the flag and the rest follow, or all eight are separate 'not applicable' sentinels, is unproven |
 | `0x0FE` | 3 | 08 07 01 |
-| `0x10D` | 2 | 08 2A - two bytes before the current armour class |
-| `0x110` | 9 | 30 00 00 01 00 02 00 05 00 - an ascending 16-bit LE sequence 1,2,5,... in an export; the item area in a save |
+| `0x10D` | 1 | party order? Reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and BRUTUS, which are exactly the slots they occupied, and 8 -- one past the last slot -- for four characters freshly made and not yet placed. The DOS field catalogue has a marching-order field. Three older exports disagree with their own party order, so this is a candidate and not a finding |
+| `0x110` | 9 | a short block ending at hp_current. NOT the item area: in an export the sixteen 16-byte item records start at 0x120 and run to 0x21F, ending exactly where the combat icon begins at 0x220. The 1989 editor scans from 0x110, and its own two loops disagree with each other by sixteen bytes, which is how that error got in here |
 | `0x11A` | 2 | 0x11B is 12 in every specimen -- possibly a movement/encumbrance copy |
 | `0x220` | 36 | E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E 0E 08 0E 0E 0E 0E 0F 08 0E 0E 00 0E 0E 0E - densest region in the specimen; runs to the final byte of the record |
 

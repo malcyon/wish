@@ -313,10 +313,12 @@ editor supplies 162 known-good records to copy from. What is missing is the
 meaning of byte `+0` and a written-and-loaded proof that a hand-built record is
 accepted.
 
-**The monster table** — not a save-game field at all, and listed here because it
-is the same kind of question. Monster stats are somewhere on the game disks; an
-incomplete transcription exists for the Apple IIe version. Finding the table
-would document how the game stores creature data.
+**The monster attack routine** — how many attacks a creature makes and for how
+much. Everything else about a monster is decoded: they use the character record
+layout, with hit dice at `0x0A0`, armour class at `0x0E1` and movement at
+`0x09F`. The **experience award is not stored at all** — no byte or word in the
+480 matches the AD&D value for any of eight creatures — which fits Gold Box
+games computing it from hit dice.
 
 ## Values the save appears to hold twice
 

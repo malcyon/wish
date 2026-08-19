@@ -402,11 +402,29 @@ _DECLARED: Sequence[Field] = (
            "a wounded character's current total and found nothing -- but this "
            "byte lies beyond the 256 a save slot stores, so it is only present "
            "in an export and that search does not settle it"),
-    _field(0x10D, 2, _RAW, "region_10d", "unknown @0x10D", _NOPE,
-           "08 2A - two bytes before the current armour class", candidate=True),
+    _field(0x10D, 1, _U8, "region_10d", "unknown @0x10D", _NOPE,
+           "party order? Reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and "
+           "BRUTUS, which are exactly the slots they occupied, and 8 -- one "
+           "past the last slot -- for four characters freshly made and not yet "
+           "placed. The DOS field catalogue has a marching-order field. Three "
+           "older exports disagree with their own party order, so this is a "
+           "candidate and not a finding", candidate=True),
+    _field(0x10E, 1, _U8, "thac0", "THAC0 current (60 - value)", _MAYBE,
+           "current THAC0 including strength and the readied weapon, stored as "
+           "60 - THAC0, sitting immediately before the current armour class at "
+           "0x10F. Matches the AD&D table on all eleven exports we hold. Like "
+           "0x10F it exists only in an export, and it agrees with the "
+           "SAVEDGAME1 roster's +0x0E for the same character -- so an exported "
+           ".chr does carry both combat numbers after all, which is worth "
+           "knowing given the 1989 editor's author reported he could never "
+           "find either"),
     _field(0x110, 9, _RAW, "region_110", "unknown @0x110", _NOPE,
-           "30 00 00 01 00 02 00 05 00 - an ascending 16-bit LE sequence "
-           "1,2,5,... in an export; the item area in a save", candidate=True),
+           "a short block ending at hp_current. NOT the item area: in an "
+           "export the sixteen 16-byte item records start at 0x120 and run to "
+           "0x21F, ending exactly where the combat icon begins at 0x220. The "
+           "1989 editor scans from 0x110, and its own two loops disagree with "
+           "each other by sixteen bytes, which is how that error got in here",
+           candidate=True),
     _field(0x220, 36, _RAW, "region_220", "unknown @0x220 (record tail)", _NOPE,
            "E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E"
            " 0E 08 0E 0E 0E 0E 0F 08 0E 0E 00 0E 0E 0E - densest region in the"
