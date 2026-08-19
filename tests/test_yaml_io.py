@@ -653,3 +653,60 @@ def test_spell_inconsistencies_are_reported(tmp_path):
                     if e["name"] == "MALCYON")["_warnings"]
     assert any("not in the spellbook" in w for w in warnings)
     assert any("only 1 may be" in w for w in warnings)
+
+
+# --- records whose class fields disagree, as the game's own NPCs do ----------
+
+def _disagreeing_save(tmp_path):
+    """A save where a character has a fighter's bits and a cleric's code --
+    the shape DWARVEN FIGHTER has in the shipped game data."""
+    import shutil
+    from por.savegame import SaveGame0 as SG
+    src = tmp_path / "npcish.d64"
+    shutil.copy(SAVE, src)
+    img = D64.open(str(src))
+    sg = SG.from_prg(img.read_file(b"SAVEDGAME0"))
+    rec = sg.slot(2).record
+    rec.class_bits = 8              # fighter
+    rec.set("char_class", 0)        # cleric
+    sg.write_record(2, rec)
+    img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
+    img.save(str(src))
+    return src
+
+
+@live
+def test_a_record_whose_class_fields_disagree_survives_a_round_trip(tmp_path):
+    """wish used to force the two into agreement, which silently rewrote a
+    byte on an import that edited nothing -- and would corrupt any NPC the
+    game ships in that state."""
+    src = _disagreeing_save(tmp_path)
+    data = export_save(str(src), GAME)
+    out = tmp_path / "rt.d64"
+    changes = import_into(str(src), data, str(out), game_disk=GAME)
+    assert changes == []
+    assert src.read_bytes() == out.read_bytes()
+
+
+@live
+def test_the_per_class_levels_survive_it_too(tmp_path):
+    """The level array was being reconciled against the bitmask the same way,
+    which cleared a level nobody had asked to change."""
+    src = _disagreeing_save(tmp_path)
+    before = _record(src, "ROLAND").get("level_cleric")
+    data = export_save(str(src), GAME)
+    out = tmp_path / "lv.d64"
+    import_into(str(src), data, str(out), game_disk=GAME)
+    assert _record(out, "ROLAND").get("level_cleric") == before
+
+
+@live
+def test_an_npc_shaped_class_code_can_be_written_deliberately(tmp_path):
+    src = _disagreeing_save(tmp_path)
+    data = export_save(str(src), GAME)
+    next(e for e in data["party"] if e["slot"] == 2)["class_code"] = 9
+    out = tmp_path / "npc.d64"
+    changes = import_into(str(src), data, str(out), game_disk=GAME)
+    assert _record(out, "ROLAND").get("char_class") == 9
+    assert _record(out, "ROLAND").get("class_bits") == 8      # bits untouched
+    assert any("does not match classes" in c for c in changes)

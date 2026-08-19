@@ -122,13 +122,22 @@ Spells themselves are two separate lists further up the character — `spells_kn
 Two values exist in two places, and `wish` keeps both halves in step so an edit
 cannot leave a save in a state no real save has been seen in:
 
-* **class** — the bitmask at `0x0EB` and the single class code at `0x073`.
-  Editing `classes:` writes both. Three combinations have no code in the game's
-  table (magic-user/cleric/thief, cleric/thief/fighter, and all four), and are
-  refused with the valid list rather than written wrongly.
+* **class** — the bitmask at `0x0EB` and the single class code at `0x073`,
+  shown as `classes:` and `class_code:`. Editing `classes:` updates the code to
+  match; three combinations have no code in the game's table
+  (magic-user/cleric/thief, cleric/thief/fighter, and all four) and are refused
+  rather than written wrongly.
+
+  **They are allowed to disagree.** The game itself ships NPCs where they do —
+  `DWARVEN FIGHTER` has a fighter's bits and a cleric's code. So `class_code:`
+  is only touched when you change something, and setting it yourself overrides
+  the reconciliation, with a note in the change list. A record that arrives
+  disagreeing leaves untouched.
 * **level** — the per-class array at `0x0C9`–`0x0CC` and the character level at
   `0x0A0`. Edit `levels:` and `level:` follows automatically; edit `level:`
-  yourself and your value is kept. For a multi-class character the derived value
+  yourself and your value is kept. The per-class array is reconciled against the
+  class bitmask **only when you edit the classes**, for the same reason: a
+  record that already disagrees is not ours to correct. For a multi-class character the derived value
   is the highest of the per-class levels, and the import says so in its change
   list, because what that byte holds for a multi-class character is unproven —
   every specimen above level 1 is single-class.

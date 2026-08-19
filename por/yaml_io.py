@@ -138,6 +138,10 @@ FIELD_COMMENTS = {
                   "chaotic good    chaotic neutral   chaotic evil"),
     "classes": ("one or more of: magic-user, cleric, thief, fighter\n"
                 "e.g. [magic-user, thief] for a multi-class character"),
+    "class_code": ("the game stores the class twice: as the list above, and as\n"
+                   "this single code. Edit `classes` and this follows. They can\n"
+                   "disagree -- the game ships NPCs that do -- so it is left\n"
+                   "alone unless you change one of them."),
     "levels": ("one level per class above. A dual-classed human keeps the old\n"
                "class frozen at its level while the new one advances, so these\n"
                "can differ. Adding a class here starts it at level 1."),
@@ -296,6 +300,7 @@ def export_save(path: str, game_disk: str | None = None) -> dict[str, Any]:
         entry["alignment"] = _decode(dict(enumerate(ALIGNMENTS)),
                                      rec.alignment, "alignment")
         entry["classes"] = classes_to_names(rec.class_bits)
+        entry["class_code"] = rec.get("char_class")
         # One level per class the character actually has. A dual-classed human
         # keeps the old class at its frozen level while the new one advances,
         # which this represents directly.
@@ -377,6 +382,10 @@ def _class_block(entry: dict[str, Any]) -> list[str]:
     for line in FIELD_COMMENTS["classes"].split("\n"):
         out.append(f"    # {line}")
     out.append(f"    classes: [{', '.join(str(c) for c in entry['classes'])}]")
+    if "class_code" in entry:
+        for line in FIELD_COMMENTS["class_code"].split("\n"):
+            out.append(f"    # {line}")
+        out.append(f"    class_code: {entry['class_code']}")
     for line in FIELD_COMMENTS["levels"].split("\n"):
         out.append(f"    # {line}")
     pairs = ", ".join(f"{k}: {v}" for k, v in entry["levels"].items())
@@ -741,29 +750,63 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                                f"{entry[field]!r}")
                 rec.set(field, want)
 
+        # The game stores the class twice, at 0x0EB as a bitmask and at 0x073
+        # as a single code, and they do NOT always agree: DWARVEN FIGHTER
+        # carries a fighter's bits and a cleric's code, and two more NPCs
+        # disagree too. So reconcile them only when the classes were actually
+        # edited. Left alone, a record that disagrees survives untouched --
+        # which is what makes the round-trip lossless for an NPC.
+        classes_changed = False
         if "classes" in entry:
             want = names_to_classes(entry["classes"])
             if want != rec.class_bits:
+                classes_changed = True
                 changes.append(f"slot {slot} {who}: classes "
                                f"{classes_to_names(rec.class_bits)} -> "
                                f"{entry['classes']}")
                 rec.class_bits = want
-            # The game stores the same thing twice. Refuse an unrepresentable
-            # combination before writing either half.
-            code = class_code_for(want)
-            if code != rec.get("char_class"):
-                changes.append(f"slot {slot} {who}: char_class "
-                               f"{rec.get('char_class')} -> {code} "
-                               f"(kept in step with classes)")
-                rec.set("char_class", code)
 
-        # Levels follow the classes: a class present with no level given starts
-        # at 1, and a class removed has its level cleared.
+        # class_code follows the bitmask when the classes were edited, unless
+        # the file gives one of its own -- which is how an NPC-shaped record
+        # gets written deliberately.
+        old_code = rec.get("char_class")
+        given_code = entry.get("class_code")
+        # A code equal to the one exported was not touched by anybody, so it
+        # does not count as an instruction -- same rule as `level`.
+        explicit = given_code is not None and int(given_code) != old_code
+        if explicit:
+            want_code = int(given_code)
+        elif classes_changed:
+            want_code = class_code_for(rec.class_bits)
+        else:
+            want_code = old_code
+        if want_code != old_code:
+            if not 0 <= want_code <= 0xFF:
+                raise ValueError_(
+                    f"slot {slot} {who}: class_code must be 0-255")
+            changes.append(f"slot {slot} {who}: class_code {old_code} -> "
+                           f"{want_code}")
+            rec.set("char_class", want_code)
+            if want_code != class_code_for(rec.class_bits):
+                changes.append(
+                    f"slot {slot} {who}: NOTE class_code {want_code} does not "
+                    f"match classes {classes_to_names(rec.class_bits)}. The "
+                    f"game ships NPCs like that, but no player character has "
+                    f"ever been seen that way")
+
+        # Levels follow the classes, but only when the classes were edited: a
+        # class newly present with no level given starts at 1, and a class just
+        # removed has its level cleared. Otherwise only explicit values apply,
+        # so a record whose array disagrees with its bits survives a round-trip.
         levels = entry.get("levels") or {}
         for name, field in LEVEL_FIELDS.items():
             bit = dict((n, b) for b, n in CLASS_BITS)[name]
-            if rec.class_bits & bit:
-                want_level = int(levels.get(name, rec.get(field) or 1))
+            if name in levels:
+                want_level = int(levels[name])
+            elif not classes_changed:
+                continue
+            elif rec.class_bits & bit:
+                want_level = rec.get(field) or 1
             else:
                 want_level = 0
             if want_level != rec.get(field):

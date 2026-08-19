@@ -1497,6 +1497,44 @@ the quiet file.
 
 ---
 
+## A losslessness bug, found by taking the NPCs seriously
+
+**Prompted by Donald**, on reading that `char_class` and `class_bits` disagree
+in four of the game's own NPC records: if the game ships records like that, an
+editor that forces them into agreement cannot represent them.
+
+It was worse than a limitation. Constructing a record with a fighter's bits and
+a cleric's code -- the shape `DWARVEN FIGHTER` actually has -- and putting it
+through **an export and import that changed nothing**:
+
+    slot 2 ROLAND: char_class 0 -> 2 (kept in step with classes)
+    slot 2 ROLAND: cleric level 1 -> 0
+
+Two bytes rewritten by an import that edited nothing, and the disks no longer
+byte-identical. That is a direct violation of the property the whole tool rests
+on, and every test asserting losslessness passed, because no specimen we had was
+in that state.
+
+**Why it happened.** The reconciliation ran unconditionally: on every import,
+`char_class` was recomputed from the bitmask, and the per-class level array was
+zeroed for any class whose bit was clear. Both are the right thing to do when
+somebody *edits* the classes and the wrong thing to do otherwise. The rule was
+already understood elsewhere -- `level` uses "follow unless the file says
+otherwise" -- and was simply not applied here.
+
+**The fix.** Reconcile only when the classes actually changed. A record that
+arrives disagreeing survives untouched. `class_code` is now its own field, so an
+NPC-shaped record can be written deliberately, and doing so reports that it does
+not match the classes rather than silently allowing it.
+
+**What it says about the test suite.** The losslessness tests exercised real
+saves, and every real save we hold has these fields in agreement, so the bug was
+invisible to them. The test that catches it now *constructs* the state rather
+than looking for it. Worth remembering for the other pairs: a round-trip test
+over specimens can only prove losslessness for states the specimens contain.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
