@@ -366,7 +366,12 @@ Remaining, in rough order of value:
     * ~~**Check `0x099`.**~~ ✅ Done, and it is not a trait at all: gnomes and
       halflings read 0 with the dwarves, which makes it the **size** flag
       (small versus medium) and the icon large/small flag the editor wanted.
-12. **The two class fields.** `char_class` (`0x073`) and `class_bits` (`0x0EB`)
+12. **The two class fields — partly answered.** They **can** disagree: four NPC
+    records in the shipped game do, and where they part company the bitmask
+    matches reality (`DWARVEN FIGHTER` has a fighter's bits, a fighter's name and
+    a cleric's code). So they are not duplicates. What is still unknown is which
+    one the *game reads*, and the experiment below is unchanged.
+    `char_class` (`0x073`) and `class_bits` (`0x0EB`)
    encode the same thing twice and agree in all twenty specimens, so nothing says
    which the game reads. `class_bits` shares its bit order with the item-type
    usage mask, which makes it the likely answer to "what may this character
@@ -386,7 +391,16 @@ Remaining, in rough order of value:
     `$4A07` and `$4BC6`, that moved only when the party left the inn. Those are
     the first candidates for indoors/outdoors or for a location flag. The
     fortune teller in the slums is the next isolated action worth diffing.
-15. **Explain record byte `0x0B8`.** Unready and re-ready BRUTUS's armour,
+15. **Prove losslessness for states no specimen contains.** The class-field bug
+    was invisible to every round-trip test, because all of them run over real
+    saves and every real save has those fields in agreement. A round-trip test
+    over specimens can only prove losslessness for states the specimens hold.
+    Each remaining pair in `docs/80-fields-wanted.md` §"Values the save appears
+    to hold twice" wants a test that **constructs** a disagreeing record and
+    round-trips it: `level` against the per-class array, `hp_max` against the
+    roster's current, the base and current THAC0 and armour class. The one for
+    the class fields exists and is the template.
+16. **Explain record byte `0x0B8`.** Unready and re-ready BRUTUS's armour,
     saving at each step, and watch whether it tracks equipment. His armour class
     is no longer a puzzle, but this byte still is.
 
