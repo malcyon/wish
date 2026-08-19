@@ -43,10 +43,12 @@ written by hand.
   exactly. They hold the derived combat numbers the character record does not:
   armour class, THAC0, current hit points, movement, and the memorised spell
   counts.
-* **The two files divide cleanly:** `SAVEDGAME0` is the *characters*,
-  `SAVEDGAME1` opens with the *party roster*. Base values live in the first,
-  current ones in the second — THAC0, movement and hit points each exist in
-  both. See [30-savegame-layout.md](30-savegame-layout.md).
+* **The two files divide three ways, not two:** `SAVEDGAME0` holds the eight
+  character slots *and* a header carrying the party's place in the world;
+  `SAVEDGAME1` opens with the roster of derived combat values. Base values live
+  in the record, current ones in the roster — THAC0, movement, hit points and
+  armour class each exist in both. See
+  [30-savegame-layout.md](30-savegame-layout.md).
 * **The party's position** — x, y and facing in the `SAVEDGAME0` header, with
   the previous square and a turn counter beside them.
 * **Spells** — the spellbook at `0x078`–`0x07E` (what a character knows) and the

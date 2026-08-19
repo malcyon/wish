@@ -61,11 +61,12 @@ data is not** — it is stored uncompressed, which is why this project is tracta
 
 ## Two files a save disk holds
 
-A save disk carries `SAVEDGAME0` (the party and its characters, a verbatim image
-of `$4900`–`$64FF`) and `SAVEDGAME1` (`$8300`–`$8AFF`). Both matter: the
-character *record* is in the first, but the numbers the game *derives* — armour
-class, THAC0, current hit points, movement, memorised spell counts — are cached
-in the second. A tool that reads only `SAVEDGAME0` will find, as the author of
+A save disk carries `SAVEDGAME0` (a verbatim image of `$4900`–`$64FF`) and
+`SAVEDGAME1` (`$8300`–`$8AFF`). Both matter, and neither is what its name
+suggests. `SAVEDGAME0` holds the character *records* **and** the party's place in
+the world — where it is standing, which way it faces. `SAVEDGAME1` holds the
+numbers the game *derives* — armour class, THAC0, current hit points, movement —
+and nothing about the world at all. A tool that reads only `SAVEDGAME0` will find, as the author of
 the 1989 editor did, that AC and THAC0 appear to be nowhere at all.
 
 Exported characters are a third thing: a single `\x01NAME` PRG holding the

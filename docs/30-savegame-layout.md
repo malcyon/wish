@@ -2,18 +2,34 @@
 
 ## The two files: characters, and the party
 
-A save disk holds two files, and the split between them is not arbitrary.
+A save disk holds two files, and the split between them is not arbitrary. It is
+also not quite "characters here, everything else there" — `SAVEDGAME0` holds
+three distinct things:
 
-**`SAVEDGAME0` is the characters.** Eight slots of `$100`, each holding what a
-character *is* in their own right: name, race, class, ability scores, hit point
-maximum, money, experience, thief skills, saving throws, the spellbook, and the
-spells currently memorised. Nothing here depends on who else is in the party.
+**`SAVEDGAME0`, the character slots** (`$4D00`–`$54FF`). Eight slots of `$100`,
+each holding what a character *is* in their own right: name, race, class,
+ability scores, hit point maximum, money, experience, thief skills, saving
+throws, the spellbook, and the spells currently memorised. Nothing here depends
+on who else is in the party.
 
-**`SAVEDGAME1` opens with the party roster.** Eight 32-byte blocks holding what
+**`SAVEDGAME0`, the header** (`$4900`–`$4CFF`). The party and its place in the
+world: where it is standing (`$49C0`, `$49C1`), which way it faces (`$49C2`), a
+counter that rises with everything it does, and the combat-icon table at
+`$4BE0`. This is the part that moves when you walk, and most of its 1 KB is
+still unread.
+
+**`SAVEDGAME1`, the roster** (`$8300`–`$83FF`). Eight 32-byte blocks holding what
 a character *is right now, as a member of this party*: armour class, THAC0,
 current hit points, movement as encumbered, damage bonus. Every one of these is
 a value the game **derives** from the character plus their equipment, and caches
-rather than recomputing on load.
+rather than recomputing on load. Everything past `$8400` is unread.
+
+**A caution about the obvious reading.** "`SAVEDGAME0` is the characters and
+`SAVEDGAME1` is the world" is wrong, and it was assumed here for a while: the
+automapper note had map coordinates down as `SAVEDGAME1`'s business on exactly
+that reasoning. Walking six saves' worth leaves `SAVEDGAME1` **byte-identical**.
+The world is in `SAVEDGAME0`'s header; `SAVEDGAME1` is about the party's
+characters and nothing else.
 
 That division is Donald's reading of the game's own behaviour, and it explains
 the layout well: you can create as many characters as you like and add only some
@@ -162,6 +178,11 @@ Established by walking three steps north and three steps west and diffing: each
 leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`
 exposes all of it as `SaveGame0.party`. Two header bytes that moved only on
 leaving the inn, `$4A07` and `$4BC6`, are still unexplained.
+
+`SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`, so a file offset is just
+`address - $4900 + 2`, the two being the PRG load address. The coordinates are
+bytes **194**, **195** and **196** of the file — useful if you want to read them
+without the library.
 
 The cheapest way in is a **flag experiment**: save, do exactly one thing in the
 game that the game must remember, save again, diff. A guide reports that talking
