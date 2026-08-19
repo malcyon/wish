@@ -363,9 +363,9 @@ Remaining, in rough order of value:
     * **Change one bit of `0x0AD` at a time** on a throwaway elf and look for a
       trait appearing or disappearing in play — the only way to map bit to
       meaning.
-    * **Check `0x099`**, which is 0 for all three dwarves and 1 for everyone
-      else, against a gnome or halfling: those races share the dwarf's
-      constitution-scaled saving-throw bonus, so it should follow them.
+    * ~~**Check `0x099`.**~~ ✅ Done, and it is not a trait at all: gnomes and
+      halflings read 0 with the dwarves, which makes it the **size** flag
+      (small versus medium) and the icon large/small flag the editor wanted.
 12. **The two class fields.** `char_class` (`0x073`) and `class_bits` (`0x0EB`)
    encode the same thing twice and agree in all twenty specimens, so nothing says
    which the game reads. `class_bits` shares its bit order with the item-type
