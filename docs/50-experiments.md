@@ -1228,6 +1228,59 @@ that moves in both is not a coordinate.
 
 ---
 
+## Three steps north, three steps west: the party's position
+
+**Method.** Donald took four saves, each one action apart:
+
+| Save | Action |
+|---|---|
+| `PORSAVE6` | out of camp and back in, no movement (control) |
+| `PORSAVE7` | three steps in the direction already faced |
+| `PORSAVE8` | turned left to face west, then three steps |
+| `PORSAVE9` | turned to face north, no movement |
+
+**Result. SOLVED, and cleanly.** Every value falls out of one diff or another,
+and the two legs of the walk cross-check each other:
+
+| Address | Field |
+|---|---|
+| `$49C0` | **x** |
+| `$49C1` | **y** — rises going *south*; north decreases it |
+| `$49C2` | **facing**: 0 north, 1 east, 2 south, 3 west |
+| `$49F0`, `$49F1` | the square occupied **before the last move** |
+| `$49C7`-`$49C9` | a counter, three decimal digits least significant first |
+
+**Why each is certain rather than likely.**
+
+*x and y* isolate each other. Three steps north moved `$49C1` by exactly 3 and
+left `$49C0` untouched; three steps west moved `$49C0` by exactly 3 and left
+`$49C1` untouched. A counter that merely ticks would have moved in both legs.
+
+*Facing* is confirmed twice over by a save with **no movement at all**. Turning
+to north set `$49C2` to 0. Earlier, turning left from north set it to 3, and
+`0 - 1 mod 4 = 3` is west, which is the direction he turned. Walking three steps
+never changed it.
+
+*The previous square* is one step behind the party along the direction last
+moved, in every save. It is genuinely the previous *step*, not the previous
+save: at `PORSAVE7` the party stands at (3,11) having walked three squares from
+(3,14), and it reads (3,12).
+
+*The counter* rises on everything -- 637, 639, 640, 644, 648, 649 -- and carried
+from 9 to 0 with the next digit going 3 to 4, which is what makes it decimal
+rather than binary. A turn costs 1. Units unknown, so it is recorded as a
+counter and not as a clock.
+
+**Two bytes are still unexplained**, and both moved only when the party left the
+inn and never since: `$4A07` (1 to 0) and `$4BC6` (0 to `$80`). Indoors-versus-
+outdoors is the obvious guess for a pair that behaves like that, and it is only
+a guess.
+
+**The character data is untouched throughout.** The `SAVEDGAME1` roster page is
+byte-identical across all six saves. Walking changes the world, not the party.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

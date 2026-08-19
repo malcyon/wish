@@ -200,8 +200,8 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
    addressing for free). No whole-game disassembly — the overlay data (`ECL*`, `GEO*`, `PIC*`,
    `MON*`) is out of scope for a character editor.
 6. **The fields still unfound.** The level-drain pair, the remaining item effect
-   bytes, the portrait head/body pair, the icon large/small flag, and the party's
-   map coordinates. Racial traits have a strong candidate at `0x0AD` but no
+   bytes, the portrait head/body pair, and the icon large/small flag. The party's
+   **map coordinates are found** — `$49C0`/`$49C1`, with facing at `$49C2`. Racial traits have a strong candidate at `0x0AD` but no
    decoded meaning. THAC0 and damage are both found — THAC0 as a base in the
    record and a current value in the roster, damage in the item-type table. The full list with its evidence lives in
    `docs/80-fields-wanted.md` §Still wanted — that file is the source of truth and
@@ -386,12 +386,12 @@ Remaining, in rough order of value:
     scores is penalised in play. Also the cheapest safety check available for
     `wish`, which writes those six bytes directly.
 14. **Find the first quest flag.** The header and everything in `SAVEDGAME1`
-    past `$8400` are unread — about 1.9 KB between them — and they must hold what
-    the game remembers about the world. Any single, isolated, memorable action
-    gives a way in; a guide's claim that talking to the fortune teller in the
-    slums changes later encounters is a good candidate because one conversation
-    is easy to isolate. Out of scope for editing a character, in scope for the
-    automapper in Phase 5, which needs exactly this region.
+    past `$8400` are still mostly unread, and they must hold what the game
+    remembers about the world. The walk experiment already opened the header —
+    position, facing and a counter came out of it — and left two bytes behind,
+    `$4A07` and `$4BC6`, that moved only when the party left the inn. Those are
+    the first candidates for indoors/outdoors or for a location flag. The
+    fortune teller in the slums is the next isolated action worth diffing.
 15. **Explain record byte `0x0B8`.** Unready and re-ready BRUTUS's armour,
     saving at each step, and watch whether it tracks equipment. His armour class
     is no longer a puzzle, but this byte still is.

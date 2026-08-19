@@ -76,6 +76,22 @@ SLOT_STRIDE = 0x100
 SLOT_COUNT = 8
 SLOT_AREA_END = SLOT_AREA_BASE + SLOT_COUNT * SLOT_STRIDE   # $5500
 
+# Where the party is standing. All in the SAVEDGAME0 header, established by
+# walking a known number of steps in known directions and diffing:
+# three steps north moved PARTY_Y by exactly 3 and left PARTY_X alone, three
+# steps west did the reverse, and turning on the spot moved only PARTY_FACING.
+PARTY_X = 0x49C0
+PARTY_Y = 0x49C1
+PARTY_FACING = 0x49C2
+PARTY_PREV_X = 0x49F0          # the square occupied before the last move
+PARTY_PREV_Y = 0x49F1
+PARTY_CLOCK = 0x49C7           # three decimal digits, least significant first
+
+NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3
+FACINGS = {NORTH: "north", EAST: "east", SOUTH: "south", WEST: "west"}
+# y decreases going north, x increases going east.
+FACING_STEP = {NORTH: (0, -1), EAST: (1, 0), SOUTH: (0, 1), WEST: (-1, 0)}
+
 ICON_TABLE_BASE = 0x4BE0        # 8 combat icons of 36 bytes, ending at $4D00
 ICON_SIZE = 0x24
 
@@ -137,6 +153,81 @@ def looks_occupied(window: bytes) -> bool:
     return all(3 <= b <= 25 for b in window[0x14:0x1A])
 
 
+class PartyPosition:
+    """Where the party is standing, as a live view on a SaveGame0.
+
+    Writes go straight through, so nothing else in the header is disturbed.
+    Reading is confirmed; **writing has never been loaded in the game**, and a
+    position the game did not put there may well be somewhere it cannot cope
+    with -- inside a wall, or off the edge of a map whose dimensions we do not
+    know.
+    """
+
+    def __init__(self, data: bytearray):
+        self._data = data
+
+    def _get(self, addr: int) -> int:
+        return self._data[addr - SAVE0_LOAD_ADDRESS]
+
+    def _set(self, addr: int, value: int) -> None:
+        if not 0 <= value <= 0xFF:
+            raise SaveGameError(f"${addr:04X}: {value} does not fit in a byte")
+        self._data[addr - SAVE0_LOAD_ADDRESS] = value
+
+    @property
+    def x(self) -> int:
+        return self._get(PARTY_X)
+
+    @x.setter
+    def x(self, value: int) -> None:
+        self._set(PARTY_X, value)
+
+    @property
+    def y(self) -> int:
+        return self._get(PARTY_Y)
+
+    @y.setter
+    def y(self, value: int) -> None:
+        self._set(PARTY_Y, value)
+
+    @property
+    def facing(self) -> int:
+        return self._get(PARTY_FACING)
+
+    @facing.setter
+    def facing(self, value) -> None:
+        if isinstance(value, str):
+            lookup = {name: code for code, name in FACINGS.items()}
+            if value.lower() not in lookup:
+                raise SaveGameError(
+                    f"facing must be one of {sorted(lookup)}, got {value!r}")
+            value = lookup[value.lower()]
+        if value not in FACINGS:
+            raise SaveGameError(f"facing must be 0-3, got {value}")
+        self._set(PARTY_FACING, value)
+
+    @property
+    def facing_name(self) -> str:
+        return FACINGS.get(self.facing, str(self.facing))
+
+    @property
+    def previous(self) -> tuple[int, int]:
+        """The square the party occupied before its last move."""
+        return self._get(PARTY_PREV_X), self._get(PARTY_PREV_Y)
+
+    @property
+    def clock(self) -> int:
+        """A counter that rises with everything the party does, stored as three
+        decimal digits least significant first. Units unknown."""
+        return (self._get(PARTY_CLOCK)
+                + self._get(PARTY_CLOCK + 1) * 10
+                + self._get(PARTY_CLOCK + 2) * 100)
+
+    def __repr__(self) -> str:
+        return (f"<PartyPosition ({self.x},{self.y}) facing {self.facing_name}"
+                f" clock {self.clock}>")
+
+
 class SaveGame0:
     """The party save: header region plus the character slot area."""
 
@@ -146,6 +237,11 @@ class SaveGame0:
                 f"SAVEDGAME0 payload must be {SAVE0_SIZE} bytes, got {len(payload)}"
             )
         self._data = bytearray(payload)
+
+    @property
+    def party(self) -> PartyPosition:
+        """Where the party is standing."""
+        return PartyPosition(self._data)
 
     # -- construction -----------------------------------------------------
     @classmethod

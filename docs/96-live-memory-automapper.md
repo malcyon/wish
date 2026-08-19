@@ -80,10 +80,15 @@ one.
 ## The actual first task is not the transport
 
 **We do not know where the party's map coordinates are.** Nothing in the
-character record looks like an x/y pair. `SAVEDGAME1` was the standing
-candidate and is now **ruled out**: Donald walked out of the inn and saved, and
-that file came back byte-identical. Position is in the `SAVEDGAME0` party
-header — six bytes moved there and nowhere else. `SAVEDGAME1` past `$83FF` is
+character record looks like an x/y pair. **This is now answered**: the party's
+position is in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and `$49C2`
+(facing), established by walking known distances and diffing. `SAVEDGAME1` was
+the standing candidate and is ruled out — walking leaves it byte-identical.
+
+A save-file automapper could be built today: export a position from every save
+and plot it. The live-memory version still needs the same addresses read out of
+a running game rather than off a disk, and `SAVEDGAME0` is a verbatim image of
+`$4900`–`$64FF`, so the addresses are the same ones. `SAVEDGAME1` past `$83FF` is
 still unread and still the other thing
 the game saves.
 

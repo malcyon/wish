@@ -260,3 +260,61 @@ class TestRosterBlocks:
             sg1.roster(0).armour_class = 999
         with pytest.raises(SaveGameError):
             sg1.roster(0).spells_memorised = (1, 2)
+
+
+class TestPartyPosition:
+    """Where the party stands, established by walking known distances in known
+    directions. Three steps north moved y by exactly 3 and left x alone; three
+    steps west did the reverse; turning on the spot moved only facing."""
+
+    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+
+    def _save(self, name):
+        import pathlib
+        p = pathlib.Path(f"{self.DISKS}/{name}.D64")
+        if not p.exists():
+            pytest.skip("needs the walk-experiment save disks")
+        from por.d64 import D64
+        return SaveGame0.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME0"))
+
+    def test_three_steps_north_moves_only_y(self):
+        before, after = self._save("PORSAVE6").party, self._save("PORSAVE7").party
+        assert (before.x, before.y) == (3, 14)
+        assert (after.x, after.y) == (3, 11)          # y fell by exactly 3
+        assert after.facing == before.facing          # walking does not turn you
+
+    def test_three_steps_west_moves_only_x(self):
+        before, after = self._save("PORSAVE7").party, self._save("PORSAVE8").party
+        assert (before.x, before.y) == (3, 11)
+        assert (after.x, after.y) == (0, 11)          # x fell by exactly 3
+
+    def test_turning_on_the_spot_moves_only_facing(self):
+        before, after = self._save("PORSAVE8").party, self._save("PORSAVE9").party
+        assert (before.x, before.y) == (after.x, after.y)
+        assert before.facing_name == "west" and after.facing_name == "north"
+
+    def test_previous_square_is_one_step_back(self):
+        from por.savegame import FACING_STEP
+        for name in ("PORSAVE7", "PORSAVE8"):
+            p = self._save(name).party
+            dx, dy = FACING_STEP[p.facing]
+            assert p.previous == (p.x - dx, p.y - dy)
+
+    def test_the_clock_only_ever_rises(self):
+        names = ["PORSAVE4", "PORSAVE5", "PORSAVE6", "PORSAVE7", "PORSAVE8", "PORSAVE9"]
+        clocks = [self._save(n).party.clock for n in names]
+        assert clocks == sorted(clocks) and clocks[0] < clocks[-1]
+
+    def test_writes_touch_only_their_own_byte(self):
+        sg = self._save("PORSAVE9")
+        before = sg.to_bytes()
+        sg.party.facing = "south"
+        after = sg.to_bytes()
+        diff = [i for i in range(len(before)) if before[i] != after[i]]
+        assert diff == [0x49C2 - 0x4900]
+        assert sg.party.facing_name == "south"
+
+    def test_a_bad_facing_is_refused(self):
+        sg = self._save("PORSAVE9")
+        with pytest.raises(SaveGameError):
+            sg.party.facing = "widdershins"

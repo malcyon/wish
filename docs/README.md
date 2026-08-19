@@ -47,6 +47,8 @@ written by hand.
   `SAVEDGAME1` opens with the *party roster*. Base values live in the first,
   current ones in the second — THAC0, movement and hit points each exist in
   both. See [30-savegame-layout.md](30-savegame-layout.md).
+* **The party's position** — x, y and facing in the `SAVEDGAME0` header, with
+  the previous square and a turn counter beside them.
 * **Spells** — the spellbook at `0x078`–`0x07E` (what a character knows) and the
   memorised list at `0x020` (what is prepared), both readable by name.
 * **101 of 580 record bytes known** — name, six abilities,
@@ -97,8 +99,7 @@ over them on load.
 * **Whether `0x0A0` is "level" or "highest level attained"**, and whether
   `0x073` and `0x0EB` really say the same thing. Every pair of fields we have
   understood turned out to be base-versus-current rather than a duplicate.
-* The portrait head/body indices, the icon large/small flag, and map
-  coordinates.
+* The portrait head/body indices and the icon large/small flag.
 * Adding or replacing an inventory item, as opposed to editing one.
 * ~83% of each record remains unidentified, as does everything in
   `SAVEDGAME1` past its first page.

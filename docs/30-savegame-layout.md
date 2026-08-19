@@ -148,9 +148,20 @@ We know they hold *something* that changes with play: the diff between two of
 Donald's consecutive saves moved twenty header bytes around `$49C0`–`$4A07` and
 scattered widely through `SAVEDGAME1` above `$86B4`, none of it explained.
 
-Position is now known to be **in the header**, not in `SAVEDGAME1`: walking out
-of the inn moved six header bytes and left `SAVEDGAME1` byte-identical. Which of
-the six is a coordinate is not yet established. See `docs/50-experiments.md`.
+**Position is solved**, and it is in the header, not in `SAVEDGAME1`:
+
+| Address | Field |
+|---|---|
+| `$49C0` | x |
+| `$49C1` | y — rises going south |
+| `$49C2` | facing: 0 north, 1 east, 2 south, 3 west |
+| `$49F0`, `$49F1` | the square occupied before the last move |
+| `$49C7`–`$49C9` | a counter, three decimal digits least significant first |
+
+Established by walking three steps north and three steps west and diffing: each
+leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`
+exposes all of it as `SaveGame0.party`. Two header bytes that moved only on
+leaving the inn, `$4A07` and `$4BC6`, are still unexplained.
 
 The cheapest way in is a **flag experiment**: save, do exactly one thing in the
 game that the game must remember, save again, diff. A guide reports that talking
