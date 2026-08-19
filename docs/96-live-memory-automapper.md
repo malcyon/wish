@@ -80,10 +80,11 @@ one.
 ## The actual first task is not the transport
 
 **We do not know where the party's map coordinates are.** Nothing in the
-character record looks like an x/y pair, and most of `SAVEDGAME1`
-(`$8300`–`$8AFF`) is still unread — its first page is the party roster and
-everything past `$83FF` is untouched, so it remains the obvious candidate, being
-the other thing
+character record looks like an x/y pair. `SAVEDGAME1` was the standing
+candidate and is now **ruled out**: Donald walked out of the inn and saved, and
+that file came back byte-identical. Position is in the `SAVEDGAME0` party
+header — six bytes moved there and nowhere else. `SAVEDGAME1` past `$83FF` is
+still unread and still the other thing
 the game saves.
 
 Finding them is straightforward with the technique that has worked all along:

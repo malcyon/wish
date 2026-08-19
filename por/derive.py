@@ -29,7 +29,19 @@ _THAC0 = {
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 
 # Dexterity's defensive adjustment: how much it improves armour class.
-_DEX_AC = {3: -4, 4: -3, 5: -2, 6: -1, 15: 1, 16: 2, 17: 3, 18: 4}
+#
+# NOT the AD&D 1st edition table. The Players Handbook starts the bonus at 15;
+# Pool of Radiance starts it at **14**. Read straight off the save where nobody
+# is wearing anything, so armour class is 10 minus this and nothing else:
+#
+#     DEX 12 -> AC 10     DEX 15 -> AC 9
+#     DEX 13 -> AC 10     DEX 16 -> AC 8
+#     DEX 14 -> AC  9
+#
+# The penalties for low dexterity are left at the book values because no
+# specimen has a dexterity below 12. If the whole table is shifted by one they
+# are wrong too, and nothing we hold would show it.
+_DEX_AC = {3: -4, 4: -3, 5: -2, 6: -1, 14: 1, 15: 1, 16: 2, 17: 3, 18: 4}
 # Strength's to-hit and damage bonuses. Exceptional strength splits 18.
 _STR_HIT = {17: 1, 18: 1}
 _STR_DAMAGE = {16: 1, 17: 2, 18: 2}

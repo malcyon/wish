@@ -607,12 +607,29 @@ def test_an_unknown_template_is_refused(tmp_path):
 
 @live
 def test_a_consistent_party_raises_no_warnings():
-    """Everyone in the unarmoured save adds up except BRUTUS, whose armour
-    class is a known and documented one-point anomaly."""
+    """Nobody in the unarmoured save should be flagged. BRUTUS used to be, on
+    an armour class one point better than predicted -- which turned out to be
+    our dexterity table, not his record."""
     data = export_save(f"{DISKS}/PORSAVE.D64", GAME)
     flagged = {e["name"]: e["_warnings"] for e in data["party"] if e.get("_warnings")}
-    assert set(flagged) == {"BRUTUS"}
-    assert "armour class" in flagged["BRUTUS"][0]
+    assert flagged == {}
+
+
+@live
+def test_the_dexterity_table_starts_a_point_early():
+    """Pool of Radiance gives an armour class bonus from DEX 14, where AD&D 1st
+    edition starts at 15. Read off the save where nobody wears anything, so
+    armour class is 10 minus this and nothing else."""
+    from por.derive import dexterity_ac_bonus
+    assert dexterity_ac_bonus(13) == 0
+    assert dexterity_ac_bonus(14) == 1          # the book says 0
+    assert dexterity_ac_bonus(15) == 1
+    assert dexterity_ac_bonus(16) == 2
+    data = export_save(f"{DISKS}/PORSAVE.D64", GAME)
+    by = {e["name"]: e for e in data["party"]}
+    assert by["ROLAND"]["dexterity"] == 13 and by["ROLAND"]["combat"]["armour_class"] == 10
+    assert by["BRUTUS"]["dexterity"] == 14 and by["BRUTUS"]["combat"]["armour_class"] == 9
+    assert by["MAGNUS"]["dexterity"] == 15 and by["MAGNUS"]["combat"]["armour_class"] == 9
 
 
 @live4

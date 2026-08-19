@@ -225,10 +225,12 @@ The same check covers spells — a memorised spell that is not in the spellbook,
 or more memorised at a level than the character's class, level and Wisdom allow.
 
 **Nothing here is enforced**, only reported. No save that breaks these rules has
-been written and loaded in game, so refusing one would be guessing. Two
-discrepancies are known and expected: BRUTUS is one point of armour class better
-than the rules predict, and MALCYON's THAC0 improves by one when he readies
-darts. Both are recorded in `docs/30-savegame-layout.md`.
+been written and loaded in game, so refusing one would be guessing.
+
+One discrepancy is known and expected: MALCYON's THAC0 improves by one when he
+readies darts, which nothing accounts for. A second — BRUTUS coming out a point
+of armour class better than predicted — turned out to be our own dexterity
+table, not his record, and is fixed. See `docs/30-savegame-layout.md`.
 
 ## NPCs
 

@@ -214,8 +214,10 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
    and `60 - x` the first encoding to try. Roster byte `+0x0C` is a specific open
    question: `$80` for every NPC in one save and for one player character in
    another.
-8. **BRUTUS's extra AC point**, and record byte `0x0B8` — the single place where
-   the AD&D derivation and the cached value disagree.
+8. **Record byte `0x0B8`** — BRUTUS is the only character whose copy changed,
+   0 to 1, when the party equipped. It was suspected of causing his extra point
+   of armour class; that turned out to be our dexterity table, so `0x0B8` is now
+   an unexplained equipment-linked byte with nothing pinned to it.
 9. **Item effect bytes.** Mostly settled: `+0` indexes the `ITEMS` type table,
    `+6`'s low bits are the hidden-name mask, `+7` bit 7 is cursed, and
    `+13`–`+15` are a scroll's spells or a wand's charges. Only `+5` is left --
@@ -390,8 +392,9 @@ Remaining, in rough order of value:
     slums changes later encounters is a good candidate because one conversation
     is easy to isolate. Out of scope for editing a character, in scope for the
     automapper in Phase 5, which needs exactly this region.
-15. **Explain BRUTUS's extra AC point** and record byte `0x0B8`, the one place the
-    AD&D derivation and the cached value disagree.
+15. **Explain record byte `0x0B8`.** Unready and re-ready BRUTUS's armour,
+    saving at each step, and watch whether it tracks equipment. His armour class
+    is no longer a puzzle, but this byte still is.
 
 ## Phase 4 — GUI character editor
 

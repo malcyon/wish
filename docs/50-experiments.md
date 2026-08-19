@@ -1148,6 +1148,86 @@ different portraits would settle it in one save.
 
 ---
 
+## BRUTUS was never the anomaly
+
+**Prompted by Donald**, who was about to go into the game and unready BRUTUS's
+shield and banded mail to find out why his armour class was one point better
+than the rules predicted. The desk check that should have come first answers it.
+
+**All three fighters carry identical, non-magical gear.** SILAS, MAGNUS and
+BRUTUS each have banded mail, a shield and a long sword, every one of them with
+a `+0` bonus. So the difference was never equipment.
+
+**The dexterity table is the answer, and it is not AD&D's.** Pool of Radiance
+gives an armour-class bonus from **DEX 14**; the Players Handbook starts at 15.
+`PORSAVE.D64` shows it directly, because nobody in it is wearing anything, so
+armour class is 10 minus the dexterity adjustment and nothing else:
+
+| DEX | 12 | 13 | 14 | 15 | 16 |
+|---|---|---|---|---|---|
+| stored armour class | 10 | 10 | **9** | 9 | 8 |
+| AD&D 1st edition | 10 | 10 | **10** | 9 | 8 |
+
+BRUTUS is the only character in twenty with DEX 14, which is why a table error
+looked like a fact about him. With the boundary corrected, **every character in
+every save comes out consistent**, and the only remaining discrepancy anywhere is
+MALCYON's THAC0 improving by one when he readies darts.
+
+**The lesson is about where the anomaly was.** For weeks the notes recorded
+"BRUTUS is one point better than the rules predict" as a property of the save.
+The save was right; the model was wrong. An anomaly in a comparison always has
+two sides and the assumption was never checked, even though the check cost
+nothing: it needed no emulator, no new save, and no experiment.
+
+`0x0B8` is still unexplained. BRUTUS remains the only character whose copy went
+0 to 1 when the party equipped, and it is now a loose end on its own rather than
+a suspected cause of something that has turned out not to exist.
+
+---
+
+## Walking out of the inn
+
+**Method.** Donald loaded `PORSAVE4.D64`, walked outside the inn, and saved to
+`PORSAVE5.D64`. One action, nothing else.
+
+**Result: six bytes moved, all of them in the `SAVEDGAME0` party header.**
+
+| Address | Before | After |
+|---|---|---|
+| `$49C0` | 2 | 3 |
+| `$49C2` | 3 | 0 |
+| `$49C7` | 7 | 9 |
+| `$49F0` | 3 | 2 |
+| `$4A07` | 1 | 0 |
+| `$4BC6` | `$00` | `$80` |
+
+**And `SAVEDGAME1` is byte-identical.** That is the firmest thing here, and it is
+a correction: the automapper design note had `SAVEDGAME1` as "the obvious
+candidate" for map coordinates, on the reasoning that it is the other thing a
+save contains. Walking does not touch it. **Position lives in the `SAVEDGAME0`
+header.**
+
+**Candidates, none confirmed.** `$49C0` rose by one and `$49F0` fell by one,
+which is the shape a coordinate pair makes. Both sit as the first byte of a
+`xx 0E` pair — `02 0E` and `03 0E` before, exchanged after — and 14 recurring
+beside both is suggestive of a map dimension, or of two 16-bit values around
+3586 moving in opposite directions. `$4BC6` setting bit 7 looks like a flag
+rather than a number, and is a candidate for "the party is outdoors" or for a
+first quest flag.
+
+**Why this is not yet an answer.** Walking out of a building is a *transition*,
+not a step: it can change position, facing, area and time all at once, and six
+bytes is more than one action's worth of information. Nothing here distinguishes
+a coordinate from a facing from a step counter.
+
+**What settles it** is three saves and two short walks: save standing still,
+walk exactly three steps in one direction and save, then three steps
+perpendicular and save. A byte that moves by exactly 3 in the first leg and not
+the second is one axis; the byte that does the reverse is the other. Anything
+that moves in both is not a coordinate.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

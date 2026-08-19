@@ -148,6 +148,10 @@ We know they hold *something* that changes with play: the diff between two of
 Donald's consecutive saves moved twenty header bytes around `$49C0`–`$4A07` and
 scattered widely through `SAVEDGAME1` above `$86B4`, none of it explained.
 
+Position is now known to be **in the header**, not in `SAVEDGAME1`: walking out
+of the inn moved six header bytes and left `SAVEDGAME1` byte-identical. Which of
+the six is a coordinate is not yet established. See `docs/50-experiments.md`.
+
 The cheapest way in is a **flag experiment**: save, do exactly one thing in the
 game that the game must remember, save again, diff. A guide reports that talking
 to the fortune teller in the slums raises the difficulty of random encounters
@@ -358,10 +362,30 @@ five of six characters:
 | MAGNUS | banded mail, shield | 15 | 2 | 2 |
 | BRUTUS | banded mail, shield | 14 | 3 | **2** |
 
-BRUTUS is one point better than the rules predict, and he is also the only
-character whose record byte `0x0B8` changed (0 -> 1) when the party equipped.
-Those two anomalies are probably the same unexplained thing; `0x0B8` is still a
-GUESS and is not yet exposed in the YAML.
+~~BRUTUS is one point better than the rules predict~~ — **resolved, and the
+rules were the problem.** Pool of Radiance gives a dexterity bonus to armour
+class from **14**, where AD&D 1st edition starts at 15. Read straight off
+`PORSAVE.D64`, where nobody is wearing anything at all, so armour class is 10
+minus the dexterity adjustment and nothing else:
+
+| DEX | 12 | 13 | 14 | 15 | 16 |
+|---|---|---|---|---|---|
+| armour class | 10 | 10 | **9** | 9 | 8 |
+| AD&D would give | 10 | 10 | **10** | 9 | 8 |
+
+BRUTUS has DEX 14 and was the only character in the party who did, so the
+one-point gap looked like something about *him*. It was about the table. With
+the corrected table every character in every save comes out consistent, and
+`por/derive.py` uses it.
+
+The penalties for low dexterity are still the book's, because no specimen has a
+dexterity below 12. If the whole table is shifted by one they are wrong too, and
+nothing we hold would show it.
+
+**Record byte `0x0B8` is still unexplained.** BRUTUS remains the only character
+whose copy changed, 0 to 1, when the party equipped — but that is now a loose end
+on its own rather than a suspected cause of an armour-class discrepancy that has
+turned out not to exist.
 
 ### An independent check on all of this
 
