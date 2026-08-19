@@ -229,12 +229,15 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
 11. ~~**The spell id table.**~~ ✅ **DONE.** `SPELLN00`, read through its pointer
     table because the strings overlap. Six class/level groups, ids 1-55. See
     `docs/86-spell-table.md`.
-12. **Decode the `GEO` map files.** Twenty-nine uncompressed 1024-byte files,
-    16 bytes to a row, containing recognisable walled enclosures — the map data,
-    structure partly worked out and encoding not settled. The way in is to
-    **anchor one file to a known area**: stand somewhere distinctive, save, walk
-    a short known route along a wall, and match the coordinates against the
-    file. Everything the automapper needs is behind this.
+12. **Decode the `GEO` map files.** 29 uniform 1024-byte files with the lowest
+    entropy of any undecoded family on the disks (3.36, beside the record
+    formats already decoded). Uncompressed and 2D. `WALLDEF` and `SQRDATA` have
+    been checked and ruled out — the first is wall graphics, the second is high
+    entropy. Four readings of `GEO` have failed and are recorded so nobody
+    repeats them. The way in is an **anchor**: stand somewhere identifiable,
+    save, walk a known route along a wall, and match the coordinates — or
+    compare shapes against a fan map by eye, since GameFAQs blocks automated
+    fetches.
 13. ~~**The monster table.**~~ ✅ **Largely done.** 117 files, `MON00`-`MON7C`,
     one monster each, using the **character record layout** — which is why the
     race table ends `MONSTER=8`. Names, abilities, class, age and hit points all

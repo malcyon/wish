@@ -1600,6 +1600,106 @@ pattern-matching; with it, it is arithmetic.
 
 ---
 
+## The GEO files resist three more attacks
+
+**Donald's suggestion** was that the walls might be the *blank* space -- that zero
+means wall and non-zero means floor, the opposite of how it was first rendered --
+and that comparing against the fan-made maps on GameFAQs might shake something
+loose.
+
+**The fan maps could not be fetched.** GameFAQs returns 403 to an automated
+request; both the NES Phlan block maps and the PC slums walkthrough are behind
+bot protection. Somebody reading them by eye could still do this comparison, and
+it remains a good idea.
+
+**So three tests were run on the data instead. All three came back negative.**
+
+**1. Connectivity, with a null model.** A real map has one connected walkable
+region. Measuring the largest connected region under each polarity looked
+promising at first -- two files scored above 99% -- until the obvious confound
+was controlled for: when 80% of a grid is one class it connects *by default*.
+Against shuffled data of identical density, those two files drop to +0.003 and
++0.106, i.e. nothing. Most files score positively under **both** polarities,
+which says only that the data has 2D structure, not which reading is right.
+
+**2. The squares the party actually walked.** This is the strongest evidence we
+own: seven squares -- (3,14) through (3,11), then (2,11), (1,11), (0,11) -- are
+known walkable, from the controlled walk. Requiring all seven to be non-zero at
+width 16 leaves exactly one file, `GEO02`. That is **not a result**: about 70% of
+its bytes are non-zero, so seven hits have a 1-in-12 chance per file, and across
+29 files roughly two should pass by luck. One did. Rendering `GEO02` with the
+party's path marked shows no street, no corridor, nothing.
+
+**3. Are they screens rather than grids?** 1024 bytes loading at `$0400` is
+exactly C64 screen RAM, so the files could be *pictures* of maps drawn in the
+game's own character set -- which would explain why no wall-bit reading works.
+Testing that: a tiled picture repeats along its rows, so horizontal runs should
+be long. They are not. Average run length is **1.3 to 1.9** at every candidate
+width, against 4.5 for the one file that is mostly zeros. These are not screens.
+
+**Where that leaves it.** `GEO` is 29 uniform, uncompressed, spatially structured
+1024-byte files -- and that is *all* we can say. The earlier write-up called them
+"the map data" with more confidence than the evidence carries: uniform sizing and
+visible enclosures are suggestive, not probative, and three independent attempts
+to read them as maps have now failed. Other candidates deserve a look before
+settling: `WALLDEF` has nineteen files of nineteen different sizes, which is what
+*variable-sized* maps would look like.
+
+**Blind analysis has run out.** No amount of statistics on 1024 bytes will name a
+square. The anchor experiment is the only way forward: stand somewhere
+identifiable, save, walk a known route along a wall, and match the coordinates --
+or read a fan map by eye and compare shapes.
+
+---
+
+## WALLDEF is graphics, and entropy puts GEO back in the frame
+
+**`WALLDEF` is not the maps.** Nineteen files of nineteen different sizes looked
+like variable-sized maps, which is why it was worth checking. It is wall
+*graphics*, exactly as its name says: **80% of its bytes are C64 screen codes**
+(`$40`-`$BF`), and it is built of short repeating blocks -- `63 63 63`,
+`4C 4C 4C`, `76 75 74 71 72 73` -- which is a tile drawn as a run of characters,
+not a floor plan. `WALLSET` beside it is the character shapes.
+
+**`SQRDATA` and `SQRPACI` are not either.** Their names are the most map-like on
+the disks, which is why they were checked next. 231 to 247 distinct byte values
+and 2% zeros: high entropy, so compressed data or bitmap graphics.
+
+**Then a measurement that settles which files are even candidates.** Shannon
+entropy per byte, averaged by family:
+
+| Family | Entropy | What it is |
+|---|---|---|
+| `SAVEDGAME`, `.chr` | 1.2-1.3 | decoded |
+| `MON` | 1.67 | decoded |
+| `ITEMS`, `ITEMFILE` | 2.2-2.5 | decoded |
+| **`GEO`** | **3.36** | **undecoded** |
+| `COMPIC`, `SPRITE`, `CHARSET` | 4.4-4.7 | graphics |
+| `WALLDEF`, `SPELLN`, `HEAD` | 4.9-5.2 | graphics and tables |
+| `SQRDATA`, `ECL`, `CAMP`, `COMBAT` | 6.2-6.9 | compressed or code |
+
+**`GEO` has the lowest entropy of any undecoded family on the disks**, and it
+sits in the same band as the record formats already decoded -- well below the
+graphics and far below anything compressed.
+
+**Which is a correction to the previous entry.** After three readings failed,
+that entry backed away from calling `GEO` the map data and pointed at `WALLDEF`
+instead. That was an over-correction. `WALLDEF` is graphics; `GEO` is the most
+structured undecoded data on the eight disks, uncompressed, uniform, and 2D. The
+failures were failures of *reading*, not evidence against the file.
+
+**Four readings are now ruled out**, which is worth having written down so nobody
+repeats them: walls as set bits in either polarity; a screen picture of tiles
+(horizontal runs are 1.3-1.9, far too short); four bytes per square as N/E/S/W
+(no assignment makes neighbouring squares agree about the wall between them --
+the best scores 0.3 where a correct one would score near 1.0); and the seven
+squares the party is known to have walked, which pick out one file at exactly the
+rate chance predicts.
+
+**It still needs an anchor.** Nothing statistical will name a square.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
