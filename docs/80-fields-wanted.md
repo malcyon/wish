@@ -17,7 +17,7 @@ written back and confirmed in game.
 | six ability scores | `0x014`–`0x019` | CONFIRMED |
 | **base THAC0**, as `60 - THAC0` | `0x071` | PROBABLE — matches the AD&D table for all 12 of Donald's characters and the 6 shipped |
 | **base armour class**, as `60 - AC` | `0x0E1` | PROBABLE — 10 for every player character; monsters carry their real AC here |
-| **current armour class**, as `60 - AC` | `0x10F` | PROBABLE — export only; agrees with the roster exactly |
+| **current armour class**, as `60 - AC` | `0x10F` | PROBABLE — **export only**, beyond the 256 a save slot holds; agrees with the roster exactly |
 | exceptional strength | `0x01A` | CONFIRMED |
 | race | `0x072` | CONFIRMED |
 | class (single code) | `0x073` | CONFIRMED — but prefer the bitmask |
@@ -67,21 +67,34 @@ change, never on an ability change.
 `60 - THAC0`, while the 20 on screen is the *current* value in the roster block
 at `+0x0E`. 39 is `60 - 21`, MALCYON's base as a level-1 magic-user.
 
-### A caveat on `hp_current` in an export
+### Everything above `0x0FF` exists only in an export
 
-`0x119` equals `hp_max` in every specimen and **has never been seen differing**.
-No wounded character has ever been captured in an exported `.chr`, so it may
-simply be a second copy of the maximum. [The hunt for current hit points](50-experiments.md) searched both save files for a
-wounded character's current total and found nothing — but that byte lies beyond
-the 256 a save slot stores, so it exists only in exports and that search does
-not settle it either way.
+A save slot is **256 bytes**. A record is 580. So `0x100` and above — including
+`0x10D`, `0x10E` (current THAC0), `0x10F` (current armour class), `0x119`, the
+item area and the combat icon — are present in a standalone `.chr` and **absent
+from a save**. `wish` will accept an edit to them and the write is silently
+dropped, because the slot has nowhere to put it.
 
-Treat the name as a hypothesis. Exporting a wounded character's `.chr` would
-resolve it in one step.
+This is why the THAC0, armour-class and hit-point "triples" are really **pairs**
+in a save: the record's base value, and the roster's current one. The third copy
+is an export-only artefact.
 
-This is a separate question from *current hit points in a save*, which are found:
-roster byte `+0x19`, confirmed against MALCYON's character sheet. What `0x119` in
-an export is remains open.
+### Hit points are 16-bit, in three places
+
+| where | field |
+|---|---|
+| record `0x076`–`0x077` | maximum |
+| record `0x119`–`0x11A` | current — **export only** |
+| roster `+0x19` | current, in a save |
+
+`0x119` **is** current hit points and not a copy of the maximum: `GEN $0BD0`
+initialises it from `hp_max`, and both the trainer and the drain routine move it
+independently afterwards. It equals `hp_max` in every specimen only because no
+wounded character has yet been exported.
+
+The high bytes went unread for so long because nobody in this party has more
+than 255 hit points. The drain routine decrements the pair, which is what fixes
+the width.
 
 ### Money
 
@@ -346,23 +359,26 @@ seen the circumstance that separates them.
 | armour class | roster `+0x0F` total | roster `+0x10` armour only | **Understood.** The second excludes the shield |
 | armour class again | `0x0E1` base | `0x10F` current (export only) | **Understood.** Base is 10 for every character; monsters carry a real one |
 | **class** | `0x073` single code | `0x0EB` bitmask | **ASSUMED.** Agree in all 20 specimens; nothing has been seen that separates them |
-| **level** | `0x0A0` | `0x0C9`–`0x0CC` per class | **ASSUMED.** Agree in all 20; every specimen is single-class and none has been level-drained |
+| **level** | `0x0A0` | `0x0C9`–`0x0CC` per class | **Understood.** `0x0A0` is the *current* level. Drain state is a separate pair at `0x0A1`/`0x0A2`, so there is no hidden 'level highest' |
 
 The pattern is instructive: every pair we *understand* turned out to be **base
 versus current**, or **potential versus actual**. Not one of them was a
-redundant copy. That is a reason to doubt the two marked ASSUMED rather than to
-trust them.
+redundant copy. That is a reason to doubt the row still marked ASSUMED rather
+than to trust it.
 
-**The specific worry about `0x0A0`.** The Gold Box DOS field catalogue has a
-field called *level highest*, which records the best level a character has
-reached so it can be restored after a level drain. If `0x0A0` is that, then the
-per-class array is the *current* level and the two are base-and-current like
-everything else here — and they would agree in every save we hold, because none
-of our characters has ever been drained. `wish` currently keeps them in step
-when `levels:` is edited, which is right if they are duplicates and wrong if they
-are not. This was flagged early as a possibility in
-`docs/60-goldbox-field-checklist.md` and then overridden; the override may have
-been the mistake.
+**The worry about `0x0A0` is settled, and the answer was neither option.** The
+Gold Box DOS field catalogue has a field called *level highest*, which records
+the best level reached so it can be restored after a drain, and the fear was
+that `0x0A0` was it — making `wish` finish a drain every time it reconciled the
+two. Reading the drain routine settles it: **`0x0A0` is the current level**, and
+drain state lives in its own pair at `0x0A1` and `0x0A2` as levels-drained and
+hit-points-lost. Keeping `0x0A0` in step with the per-class array is exactly
+what the game does.
+
+A real bug was found here anyway, and it was the *other* direction: an import
+that edited nothing rewrote `0x0A0` from the per-class array, so a record that
+arrived already disagreeing was silently "corrected". Now gated behind an actual
+edit, and covered by constructed-state tests in `tests/test_pairs.py`.
 
 **The specific worry about `0x073`.** `class_bits` shares its bit order with the
 item-type table's class-usage mask, which makes it a good candidate for "what may

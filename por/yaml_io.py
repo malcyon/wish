@@ -800,6 +800,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # removed has its level cleared. Otherwise only explicit values apply,
         # so a record whose array disagrees with its bits survives a round-trip.
         levels = entry.get("levels") or {}
+        levels_changed = False
         for name, field in LEVEL_FIELDS.items():
             bit = dict((n, b) for b, n in CLASS_BITS)[name]
             if name in levels:
@@ -811,6 +812,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             else:
                 want_level = 0
             if want_level != rec.get(field):
+                levels_changed = True
                 changes.append(f"slot {slot} {who}: {name} level "
                                f"{rec.get(field)} -> {want_level}")
                 rec.set(field, want_level)
@@ -866,14 +868,17 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                     f"in spells_known, and within the capacity the character's "
                     f"class, level and wisdom allow. Neither is enforced")
 
-        # Character level. If the file still carries the level it was exported
-        # with, follow the per-class array; if it was edited, honour it. That
-        # way editing `levels` alone cannot leave the two disagreeing, and
-        # editing `level` deliberately still works.
+        # Character level. Reconcile it with the per-class array only when that
+        # array was edited -- editing `levels` alone must not leave the two
+        # disagreeing, but an import that edits nothing must not touch it
+        # either. A record can arrive already disagreeing: `0x0A0` is the
+        # leading candidate for *level highest*, so a level-drained character
+        # disagrees by construction, and rewriting it would finish the drain.
         old_level = rec.get("level")
         per_class = [rec.get(f) for f in LEVEL_FIELDS.values() if rec.get(f)]
         want_level = int(entry.get("level", old_level))
-        if want_level == old_level and per_class and max(per_class) != old_level:
+        if (want_level == old_level and levels_changed
+                and per_class and max(per_class) != old_level):
             want_level = max(per_class)
             if len(per_class) > 1:
                 changes.append(
