@@ -187,7 +187,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$49C1` | y — rises going south |
 | `$49C2` | facing: 0 north, 1 east, 2 south, 3 west |
 | `$49F0`, `$49F1` | the square occupied before the last move |
-| `$49C7`–`$49C9` | a counter, three decimal digits least significant first |
+| `$49C7`–`$49C9` | **turn counter**, 24-bit little-endian. Rises by one per step *and* per turn in place; `PORSAVE11` carries `$10` in the top byte |
 
 Established by walking three steps north and three steps west and diffing: each
 leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`

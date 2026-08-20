@@ -2158,6 +2158,87 @@ at `ua.reonis.com` is dead — 404, including its indexed topic "GEO#.DAX format
 still has no `GEO` parser. Had the search stopped at documentation it would have
 found nothing; it succeeded by reading somebody's reimplementation.
 
+## Every Phlan city block, matched to its GEO file
+
+**Question.** The format was decoded, but nothing said which of the 29 files was
+which place. Without that a map is a floor plan of nowhere.
+
+**Method.** Transcribe the nine city blocks off the fan-drawn NES map
+(`work/maps/phlan-block-maps-nes.jpg`) into 16×16 wall grids, then score every
+file against every block. The blocks' dimensions were **measured, not assumed**:
+215 px at 13.4375 px per cell is 16 exactly, on both axes, for all nine.
+
+**Result. CONFIRMED. Nine blocks, nine files, every one a mutual best match.**
+
+| Block | File | φ | Disk | Next-best file |
+|---|---|---|---|---|
+| Slums | `GEO14` | 0.992 | POOL2 | 0.154 |
+| Stojanow Gate | `GEO09` | 0.965 | POOL2 | 0.112 |
+| Podol Plaza | `GEO12` | 0.924 | POOL1 | 0.316 |
+| Sokol Keep | `GEO15` | 0.912 | POOL4 | 0.100 |
+| Kuto's Well Catacombs | `GEO20` | 0.869 | POOL8 | 0.156 |
+| Cadorna Textile House | `GEO02` | 0.818 | POOL4 | 0.155 |
+| Mendor's Library | `GEO0F` | 0.768 | POOL2 | 0.199 |
+| Kuto's Well | `GEO1D` | 0.762 | POOL8 | 0.108 |
+| **New Phlan** | **`GEO00`** | **0.733** | POOL3 | 0.164 |
+
+261 file × block comparisons, mean φ 0.046, standard deviation 0.169. The nine
+hits span 0.733–0.992; **the highest score anywhere else in the matrix is
+0.316**, so there is nothing in the gap. `CMP_GEO14_Slums.png` is wall-for-wall
+identical to the drawn map.
+
+The two lowest scores, New Phlan and Kuto's Well, are the two blocks with large
+water bodies — which the fan map draws as outlined rectangles that transcribe as
+walls with nothing to match in `GEO`. Not a decode fault.
+
+**`$49C0` is x, `$49C1` is y.** Settled at last, and it matters beyond the maps:
+`GEO00` read as `(x, y)` scores 0.737 and the transposed reading of the same
+file scores 0.129. The index is `x + (y << 4)`.
+
+**Two anchors inside `GEO00` confirm the alignment independently.** `PORSAVE4` at
+`(2,14)` sits on the only run of roofed squares in the bottom rows, and the fan
+map draws its inn glyph at exactly `(2,14)`. Square `(3,14)` — `PORSAVE5`, where
+Donald "walked out of the inn" — carries a **door flag on its west edge**. That
+is the inn door. Shifting the alignment by ±1 or ±2 in x or y drops the score
+from 0.705 to 0.146 or less.
+
+**The format was rediscovered independently, before the research landed.** An
+exhaustive affine-layout search — `unit[base + x*sx + y*sy]` over
+unit ∈ {byte, high nibble, low nibble}, `sx`, `sy` ∈ ±{1…128}, base 0–1023, all
+29 files, **1,029,312 layouts** — scored against the fan-map transcription and
+returned, in order: plane 0 high = north, plane 0 low = east, plane 1 high =
+south, plane 1 low = west, `sx = +1`, `sy = +16`. That is the `coab` layout
+exactly, recovered from a fan-drawn NES map and the C64 bytes alone, 18 standard
+deviations above the population mean. The DOS source and our own data now agree
+by two routes that share no evidence.
+
+**Other findings from the same pass**
+
+* **No area id exists in the save.** All of `$4900`–`$4BDF` was scanned for a
+  byte constant across the six New Phlan saves and different elsewhere. There is
+  none. The game does not record which `GEO` is loaded, so a save-file
+  automapper has to infer the area from the walls around the party.
+* **`$49C7`–`$49C9` is a turn counter**, incrementing once per step *and* once
+  per turn in place: 640 → 644 over three steps plus one action, 648 → 649 over
+  a single turn. It is not "three decimal digits" as previously recorded —
+  `PORSAVE11` carries `$10` in the top byte.
+* `GEO1C` is listed **twice** on `POOL6.D64`, byte-identical: 30 directory
+  entries, 29 files. No two files are near-identical otherwise.
+* Names run `GEO00`–`GEO20` in hex with `08`, `0B`, `0C` and `13` absent — 33
+  slots, 29 present.
+* **No header in the payload.** Zero bytes of common prefix; the planes land at
+  `$000`/`$100`/`$200`/`$300` unadjusted. The DOS block's two-byte prefix is not
+  in the C64 file.
+* Plane `$200`, bits 0-4: **PROBABLE a 5-bit zone or trigger id**. Values are
+  densely allocated from 1 in every file, and a square with a door edge carries
+  a non-zero id 42.4% of the time against 17.2% without — 2.5× enrichment. Bit 6
+  is used by six files and bit 5 by seven, almost all the same family, which is
+  the dungeon-floor group.
+* `GEO19` and `GEO1B` are PROBABLE dungeon mazes: 255-256 roofed squares, **zero**
+  doors, wall set 1 only, largest connected region just 24%. `GEO10` and `GEO11`
+  are PROBABLE wilderness: 0 and 13 roofed squares, with 222-336 walk-through
+  edges.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

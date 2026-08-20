@@ -18,14 +18,16 @@ library in `por/` and the `wish` editor in `tools/`.
 | [85-item-tables.md](85-item-tables.md) | **generated** word table and item-type table, read off a game disk |
 | [86-spell-table.md](86-spell-table.md) | **generated** spell id -> name table, read off a game disk |
 | [87-item-templates.md](87-item-templates.md) | **generated** every item on the game disks, for use as `template:` |
+| [88-map-files.md](88-map-files.md) | **generated** the `GEO` map format and an inventory of all 29 files |
 | [90-specimens.md](90-specimens.md) | every character record we have, with independently-known attributes |
 | [95-wish-cli.md](95-wish-cli.md) | the `wish` save editor: usage, safety properties, what can be edited |
 | [96-live-memory-automapper.md](96-live-memory-automapper.md) | design note for a possible live-memory automapper — **not started** |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
-`python3 tools/genitems.py`, `python3 tools/genspells.py` and
-`python3 tools/gentemplates.py`, which need a game disk. Everything else is
+`python3 tools/genitems.py`, `python3 tools/genspells.py`,
+`python3 tools/gentemplates.py` and `python3 tools/genmaps.py`, which need a
+game disk. Everything else is
 written by hand.
 
 
