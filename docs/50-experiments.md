@@ -2064,6 +2064,33 @@ characters took part. Also moved: `$49FD` 11→8, `$4A07` 1→0, `$4A80` 1→3,
 `MALCYON` and `LADY KATHERINE` are not on it. It is a roster disk in the literal
 sense and cannot be used for header diffs.
 
+## Party strength is probably computed, not stored
+
+**Claim under test.** The game manual says "From the moment the party begins its
+adventures in Phlan, the clock is ticking. The longer it takes a party to
+complete a mission, the harder it becomes." A slums walkthrough adds that
+encounters scale on a *party strength* value and that killing the fortune teller
+or entering the old rope guild maxes it.
+
+**What the community actually says.** On the Gold Box forums, Null Null: Pool of
+Radiance "scales the enemy size to party strength in many encounters", the
+graveyard increments some encounters by missions completed, and the game does
+**not** track time spent resting. Set encounters never change; only random ones
+do. Players on `r/goldbox` add that the scaling responds to **ability scores**
+as well as levels — editing a party to all-18 stats is reported to produce
+bigger random encounters.
+
+**Why that matters to us.** If party strength moves when you change a stat, it is
+being **derived from the party on demand**, not stored and updated. That predicts
+no party-strength byte exists in the save at all, and it is consistent with the
+`SAVEDGAME1` result above: there is nowhere left for one but `$2E0` bytes of
+header.
+
+Status: the manual's time claim is **almost certainly false** — three independent
+sources say encounter size tracks party strength, not elapsed time. The
+fortune-teller experiment is still worth running, because it is a controlled
+single action and a diff showing nothing is also informative, but expect nothing.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
