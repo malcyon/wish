@@ -32,6 +32,7 @@ import pathlib
 
 from .d64 import D64, split_load_address
 from .savegame import SAVE0_LOAD_ADDRESS
+from .spells import LAST_SPELL
 
 ITEM_AREA_BASE = 0x5900
 ITEM_BLOCK_STRIDE = 0x100
@@ -95,6 +96,7 @@ ITEM_TYPES_FILE = b"ITEMS"
 ITEM_TYPE_SIZE = 16
 ITEM_TYPE_COUNT = 128
 
+TYPE_LOCATION = 0            # where on the body it goes
 TYPE_HANDS = 1
 TYPE_DAMAGE_LARGE = 2        # three bytes: dice, sides, bonus
 TYPE_RATE = 5
@@ -111,6 +113,25 @@ PROTECTION_AC_BASE = 12
 
 # Same bit order as the character record's class_bits at 0x0EB.
 CLASS_USAGE_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
+
+# Type byte +0, the body location. This is what decides how an item's own
+# +13..+15 read: a scroll carries three spell ids, everything else carries
+# charges, an effect and a dispatch byte.
+LOCATIONS = {0: "weapon", 1: "shield", 2: "body", 3: "hands", 5: "neck",
+             7: "back", 8: "feet", 9: "finger", 10: "carried",
+             11: "scroll", 12: "scroll"}
+LOCATION_USABLE_MAGIC = 14   # and above
+
+# Item byte +14 holds one namespace. Up to LAST_SPELL it is a real spell id;
+# from EFFECT_BASE it is an item-only effect stored EFFECT_BIAS above its real
+# id. Both CAMP and COMBAT do the SBC #$17 that recovers it.
+EFFECT_BASE = 80
+EFFECT_BIAS = 23
+
+# Item byte +15: bit 7 marks a power applied when the item is readied and
+# removed when it is un-readied; the low bits select the handler. The dispatch
+# table is in ECL65, relocated to $9900, and covers $80-$88, $8A and $8B.
+PASSIVE_POWER = 0x80
 
 
 @dataclass(frozen=True)
@@ -271,22 +292,91 @@ class Item:
     def effects(self) -> tuple[int, int, int]:
         """Bytes +13, +14, +15 -- what a magical item *does*.
 
-        On a scroll these are up to three **spell ids**: a "CLERICAL SCROLL
+        On a **scroll** these are up to three spell ids: a "CLERICAL SCROLL
         WITH 3 SPELLS" carries three cleric ids, a "MU SCROLL WITH 1 SPELL"
         one arcane id and two zeroes. Confirmed against the game's own spell
         table on every scroll in the game data.
 
-        On a wand or potion they mean something else -- +13 varies between
-        copies of the same wand and looks like charges, while +14 stays
-        constant per wand type. Not settled; see docs/50-experiments.md.
+        On everything else they are `charges`, `effect` and `power`. Which
+        reading applies is decided by the item's location in the ITEMS type
+        table, not by anything in these three bytes.
         """
         return self.raw[13], self.raw[14], self.raw[15]
 
     @property
+    def charges(self) -> int:
+        """Byte +13. Decremented on each use; at zero the game spends one of
+        the quantity at +10, and when that runs out it zeroes +0 and the item
+        is gone."""
+        return self.raw[13]
+
+    @property
+    def effect(self) -> int | None:
+        """Byte +14 resolved to a spell id -- but only when +15 is zero.
+
+        One namespace, two ranges. At or below `LAST_SPELL` the byte is a real
+        spell id; from `EFFECT_BASE` it is an item-only effect stored
+        `EFFECT_BIAS` above its true id, so 80..90 mean 57..67 -- the SBC #$17
+        that both CAMP and COMBAT apply. POTION OF SPEED carries 80 and WAND OF
+        MAGIC MISSILES 88, giving 57 and 65.
+
+        **When +15 is non-zero, +14 is that handler's argument and not an
+        effect at all**, so None is returned. GAUNTLETS OF OGRE POWER carries
+        +15 = $83 with +14 = 38, and TWO-HANDED SWORD +1 +3 VS UNDEAD carries
+        +15 = $88 with +14 = 3 -- the 3 is its bonus against undead. Reading
+        either as a spell id would be nonsense.
+        """
+        if self.raw[15]:
+            return None
+        v = self.raw[14]
+        if v == 0:
+            return None
+        if v <= LAST_SPELL:
+            return v
+        return v - EFFECT_BIAS if v >= EFFECT_BASE else None
+
+    @property
+    def power(self) -> int:
+        """Byte +15: which handler runs, 0 for none.
+
+        The dispatch table lives in ECL65, relocated to $9900, and covers $80
+        through $88 plus $8A and $8B. Three handlers are named in SPELLE04:
+        $83 sets strength to 18/100 (LDX #$12 / LDA #$64) -- the gauntlets;
+        $84 is an alignment-locked sword that compares +14's low nibble
+        against record 0x0D8 and, on a mismatch, un-readies itself and takes
+        +14's high nibble off current hit points; $87 demands strength 19, the
+        giant's boulder.
+
+        Two values on the game disks, 34 and 42, fall outside the table and are
+        unexplained.
+        """
+        return self.raw[15]
+
+    @property
+    def is_passive(self) -> bool:
+        """Byte +15 bit 7: the power is applied when the item is readied and
+        removed when it is un-readied, rather than fired on use."""
+        return bool(self.raw[15] & PASSIVE_POWER)
+
+    @property
+    def saving_throw_bonus(self) -> int:
+        """Byte +5, signed.
+
+        The single read of it in the game accumulates it into $6DA7, and $6DA7
+        is consumed in exactly one place: added to a d20 saving-throw roll.
+        RING OF PROTECTION +1 carries +4 = 1 and +5 = 1 -- the AD&D 1st edition
+        ring exactly, one byte for armour class and one for saves. CURSED
+        NECKLACE carries -5 in both.
+        """
+        b = self.raw[5]
+        return b - 256 if b > 127 else b
+
+    @property
     def is_cursed(self) -> bool:
-        """Bit 7 of +13's neighbour at +7. PROBABLE: set on both cursed items
-        in the 1989 editor's list and on nothing else, but no cursed item has
-        ever been seen in one of our own saves."""
+        """Bit 7 of +7. The un-ready handler refuses while it is set, and
+        SPELLE04 -- remove curse -- is the only thing that clears it. The rest
+        of +7 is unused, as are bits 3-6 of +6: the only masks applied to
+        either byte anywhere in the game are $80, $7F, $07 and $F8."""
         return bool(self.raw[7] & 0x80)
 
     @property

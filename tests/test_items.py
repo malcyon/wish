@@ -145,3 +145,77 @@ def test_the_hidden_name_mask_produces_the_unidentified_name(names):
         if real in tpl:
             assert Item(tpl[real], names).unidentified_name == shown
     assert Item(tpl["BATTLE AXE"], names).is_identified
+
+
+# --- the bytes decoded from the game's own code -----------------------------
+
+def _monster_items(disk, name):
+    """The MON* files are character records, and 0x120 begins twelve item slots.
+    They carry magic the shop lists never do."""
+    from por.d64 import D64, split_load_address
+    from por.items import ITEM_SIZE, Item
+    _, payload = split_load_address(D64.open(disk).read_file(name))
+    out = []
+    for i in range(12):
+        raw = payload[0x120 + i * ITEM_SIZE:0x120 + (i + 1) * ITEM_SIZE]
+        if any(raw):
+            out.append(Item(raw))
+    return out
+
+
+@game_disks
+def test_the_ring_of_protection_carries_both_bonuses():
+    """+4 is the armour-class plus and +5 the saving-throw plus -- the AD&D 1st
+    edition ring exactly, from two bytes. The shop's copy on POOL1 has +5 = 0;
+    the one a monster carries has both, which is what identified the byte."""
+    ring = _monster_items(f"{DISKS}/POOL3.D64", b"MON6E")[0]
+    assert ring.bonus == 1
+    assert ring.saving_throw_bonus == 1
+
+
+@game_disks
+def test_a_cursed_item_is_negative_on_both():
+    from por.items import Item, load_item_templates
+    tpl = load_item_templates(f"{DISKS}/POOL1.D64")
+    item = Item(tpl["CURSED NECKLACE"])
+    assert item.is_cursed
+    assert item.bonus < 0 and item.saving_throw_bonus < 0
+
+
+@game_disks
+def test_potions_and_wands_decode_to_item_only_effects():
+    """+14 is one namespace: <=56 a real spell id, >=80 an item-only effect
+    stored 23 above its true id."""
+    from por.items import Item, load_item_templates
+    tpl = load_item_templates(f"{DISKS}/POOL1.D64")
+    assert Item(tpl["POTION OF SPEED"]).effect == 57
+    assert Item(tpl["WAND OF MAGIC MISSILES"]).effect == 65
+    assert Item(tpl["WAND OF MAGIC MISSILES"]).charges == 20
+
+
+@game_disks
+def test_a_handler_argument_is_not_read_as_an_effect():
+    """When +15 selects a handler, +14 is that handler's argument. The sword's
+    3 is its bonus against undead, not spell id 3."""
+    from por.items import Item, load_item_templates
+    tpl = load_item_templates(f"{DISKS}/POOL1.D64")
+    sword = Item(tpl["TWO-HANDED SWORD +1 +3 VS UNDEAD"])
+    assert sword.power == 0x88 and sword.is_passive
+    assert sword.effect is None
+
+
+@game_disks
+def test_worn_powers_are_passive_and_used_ones_are_not():
+    from por.items import Item, load_item_templates
+    tpl = load_item_templates(f"{DISKS}/POOL1.D64")
+    assert Item(tpl["CLOAK OF DISPLACEMENT"]).is_passive
+    assert Item(tpl["GAUNTLETS OF OGRE POWER"]).is_passive
+    assert not Item(tpl["POTION OF SPEED"]).is_passive
+
+
+@game_disks
+def test_the_type_table_says_where_an_item_is_worn():
+    from por.items import LOCATIONS, TYPE_LOCATION, load_item_types
+    types = load_item_types(f"{DISKS}/POOL1.D64")
+    seen = {LOCATIONS.get(t.raw[TYPE_LOCATION]) for t in types.values()}
+    assert {"weapon", "shield", "body", "hands", "finger"} <= seen

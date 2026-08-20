@@ -2259,6 +2259,105 @@ for weeks. The item buffer has the same property: it is at `$6D7C`, with its
 `ITEMS` type record at `$6D8C`, so every read of `item+N` is found by scanning
 for `AD/AE/AC (7C+N) 6D`.
 
+## Level drain, status, and the byte the game really tests
+
+### Level drain: `0x0A1` and `0x0A2`. CONFIRMED
+
+There is **no second copy of the level**. The pair is **current plus delta**,
+which is why a "true level" was never found:
+
+| offset | meaning |
+|---|---|
+| `0x0A1` | levels currently drained |
+| `0x0A2` | hit points lost to draining |
+
+`SPELLE02` computes `hp_max / total levels`, loops that many times doing
+`DEC $6B76 / DEC $6BED / INC $6BA2 / DEC $6C19`, then `INC $6BA1`,
+`DEC $6BC9,X`, and writes the character level down from the per-class array. If a
+class level reaches 0 it sets level 0 and hit points 0. `RESTORATION` in
+`SPELLE04` reverses it exactly and prints string 94 — which `SPELLN00`
+independently gives as **`IS RESTORED`**. Two separately derived tables agreeing
+on the same index is about as good as this gets.
+
+**This settles `0x0A0` as the current level**, and it settles a design question
+too: `wish` keeping `0x0A0` in step with `0x0C9`–`0x0CC` is exactly what the game
+does.
+
+### Status: solved as a negative
+
+`LIBRARY` holds the strings. Indices 42–48 are
+`OK GONE DEAD DYING UNCONSIOUS RUNNING STONED` — the game's own misspelling, and
+"fled" is `RUNNING`. **Nothing on any of the nine disks references indices
+42–48.** All 64 call sites into the string printer were disassembled.
+
+The C64 party list prints name, armour class and hit points only, colouring hit
+points when current is below maximum. **Status is derived, not stored**, and it
+can be: hit points turn out to be **16-bit** — `0x076`/`0x077` maximum,
+`0x119`/`0x11A` current — which is enough to separate unconscious from dying from
+dead by rule. The ROLAND diff between `PORSAVE4` and `PORSAVE11` agrees: three
+bytes moved, all of them money and experience.
+
+`0x119` is therefore **genuinely current hit points**, not a copy of the maximum.
+`GEN $0BD0` initialises it from `hp_max`, and both the trainer and the drain
+routine move it independently afterwards. The old caveat can go.
+
+### `0x0AD` is the first slot of an effect list. PROBABLE
+
+`0x0AD`–`0x0B6` is a **ten-slot list of active effect codes**, in the same
+namespace as item byte `+14`. Three overlays loop `LDX #$09` over it, and XAVIER
+— carrying 107 in the first slot and 89 in the tenth — proves the extent
+independently.
+
+`GEN $0BF3` seeds it per race from the table `[1, 0, 107, 0, 124, 0, 0, 0]`, so
+an elf is born with 107 and a half-elf with 124. Codes decoded against Gold Box
+Companion's generated monster manual: **85 = drain one level** (wight, wraith),
+**86 = drain two levels** (spectre, vampire), 64 = poison, **108 = immunity to
+sleep and charm**, 110 = immunity to cold, 125 = combined immunity, and fifteen
+more.
+
+107 and 124 sit **immediately below 108 and 125**, and the table grades other
+families the same way — 64, 65 and 66 are poison by save modifier. So they read
+as elf and half-elf *partial* resistance to sleep and charm. PROBABLE.
+
+Note what this closes: the resistance **percentage is not in the byte and could
+not be**. It is a table index. The earlier attempt to find 90 and 30 in it was
+looking for something that was never there.
+
+### `0x0B8` is the NPC flag, and it also answers the trainer rumour. CONFIRMED
+
+**Bit 7 is "this is an NPC or a monster".** Every read of `$6BB8` in the overlays
+tests bit 7; the party-count routine tallies player characters with it and
+enforces `CMP #$06` — **the six-character party limit exists in code**, not just
+in the error message Donald hit; NPC money is zeroed on it. `npc_party.d64`
+splits its three players from its five NPCs exactly here.
+
+The eight `$FF` bytes `wish` had been exposing as `npc:` really are fill residue,
+as the notes suspected. `wish` now writes bit 7 and leaves them alone.
+
+**Bit 0 records that an ability score was altered at the trainer.** `GEN $155D`
+sets it immediately after `INC`/`DEC $6B14,X`, and clears it again if the change
+is cancelled. That is the flag the base-versus-current hunt predicted.
+
+**And nothing reads it back.** Every read of `$6BB8` anywhere in the game tests
+bit 7. The forum rumour — that an original developer said altering scores carries
+negative effects in play — **has no code behind it on this port**. The prediction
+was right that the game would have to remember; it remembers, and then never
+looks. `wish` writing `0x014`–`0x019` directly is safe.
+
+### Also out of the same reading
+
+* **`0x0A3` is the undead turning class.** Non-zero in exactly 13 specimens,
+  every one undead, matching the AD&D 1e turning table on all of them: skeleton
+  1, zombie 2, ghoul 3, wight 5, wraith 7, mummy 8, spectre 9, vampire 10, with
+  giant skeleton 8 and juju zombie 9.
+* `0x0E6`–`0x0E7` are two calls to the RNG at `GEN $0C01`. Not a checksum.
+* `0x0E1` is written as `LDA #$32 ; STA $6BE1` — the `60 - AC` encoding, read
+  straight off a literal.
+* **Correction, and it exonerates the 1989 editor.** Paladin and ranger really do
+  display as `MAGIC-USER`: pointer entries 13, 14 and 15 all hold `$329D`. The
+  editor was copying the game, not making a mistake. Race 0 prints as `MONSTER`
+  (`LIBRARY $3508`), which explains PRINCESS FATIMA.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
