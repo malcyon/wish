@@ -1991,6 +1991,79 @@ game's own NPC-versus-PC decision is made somewhere we have not looked.
 
 ---
 
+## SAVEDGAME1 past the roster is code, not state
+
+**Question.** `$8400`–`$8AFF` — 1792 bytes, densely populated, never read. It was
+the standing candidate for the journal, the quest flags and the explored-squares
+bitmap an automapper needs. What is in it?
+
+**Method.** Diff every specimen against every other: the nine save disks, plus
+`npc_party.d64`, a foreign hacked playthrough with a different party at levels
+4–8 somewhere else entirely in the game.
+
+**Result. CONFIRMED — none of it is save data.**
+
+| Range | Size | Contents |
+|---|---|---|
+| `$8400`–`$8753` | 852 | the on-disk file `ANIMATE00`, 6502 code: a 7-entry jump table (`4C xx 84`) then a VIC bitmap blitter |
+| `$8754`–`$882F` | 220 | zero in all 15 specimens |
+| `$8830`–`$8AFF` | 720 | C64 multicolour bitmap scratch |
+
+Five things settle it, and the third alone would be enough:
+
+1. Only **107 of 1792** bytes ever vary.
+2. Those 107 form exactly **three classes**, and membership ignores chronology —
+   `PORSAVE4`, `5` and `7` are one class, `PORSAVE6` and `8` another, interleaved
+   in time. State does not behave like that.
+3. `npc_party.d64` is **byte-identical** to `PORSAVE`, `2`, `3`, `6` and `8` over
+   the whole region. A different party, at different levels, in a different part
+   of the game, cannot share its state bytes with ours.
+4. `$8400`–`$8753` matches `ANIMATE00` — which ships on every `POOL1`–`POOL8` and
+   on `POOLBOOT` — in **829 of 852** bytes.
+5. Of the 23 differences, 20 are identical in every save: loader-patched `$FF` /
+   `$00` placeholders. The three that vary (`$86B4`, `$86B5`, `$86E4`) are
+   **self-modified operands**. `$86D6` is `8D E4 86` — `STA $86E4` — rewriting
+   the immediate of the `LDA #` at `$86E3`; `$86B4`/`$86B5` is a source pointer
+   taking the values `$90C1`, `$8FBB` and `$8EBE`.
+
+The loader fixups locate the graphics too: `$862B` is `LDA $8A55,Y : STA $D700,Y`
+and `$865C` is `LDA $8B1D,X`, so the animator's data begins near `$8A55` and runs
+**past `$8AFF`**. The dump caught its leading edge, nothing more.
+
+The `EUD` / `PTTP` / `DQP` / `DPU` "short uppercase ASCII runs" that
+`30-savegame-layout.md` flagged as a possible journal are `45 55 44` and
+`50 54 54 50` — pixel patterns.
+
+**What it costs us.** The explored-squares bitmap is not here, and neither is
+anything else. Every remaining piece of world state has to fit in the header at
+`$4900`–`$4BDF`, which is `$2E0` bytes. It is also possible the C64 version
+simply does not save some of what we have been looking for.
+
+**Where the state does move.** `PORSAVE4` → `PORSAVE11` spans a change of city
+block, two random encounters, two sleep spells, damage, a heal from 0 hit points,
+XP and loot. It moves **34 header bytes** and nothing in `SAVEDGAME1` but
+animator scratch. Three of the 34 are six-wide per-character arrays, all zero
+before the fights:
+
+| Address | PORSAVE4 | PORSAVE11 |
+|---|---|---|
+| `$497A`–`$497F` | 0×6 | 15 19 14 11 9 8 |
+| `$49BA`–`$49BF` | 0×6 | 4 3 4 5 4 5 |
+| `$4BBA`–`$4BBF` | 0×6 | 1 1 1 1 1 1 |
+
+None matches current hit points (`4 4 5 6 9 6`), armour class, THAC0 or movement,
+so they are not a roster copy. GUESS: last-combat scratch — initiative, or which
+characters took part. Also moved: `$49FD` 11→8, `$4A07` 1→0, `$4A80` 1→3,
+`$4ABB` 1→3, `$4BC1` `$81`→`$E4`, `$4BC6` 0→`$80`, `$4BC7` `$E4`→`$81`, `$4BCA`
+`$84`→`$80`, `$4BCE` `$AD`→`$96`, `$4BD7` `$84`→`$82`. `$4BC1` and `$4BC7`
+**swapped values with each other**.
+
+**One specimen is not what the notes assumed.** `PORSAVE10.D64` holds no
+`SAVEDGAME0` and no `SAVEDGAME1` — it is eight standalone character files
+(`NYX`, `DAX`, `ASTRID`, `DELILIA`, `BRUTUS`, `MAGNUS`, `SILAS`, `ROLAND`), and
+`MALCYON` and `LADY KATHERINE` are not on it. It is a roster disk in the literal
+sense and cannot be used for header diffs.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

@@ -69,7 +69,9 @@ A save disk carries `SAVEDGAME0` (a verbatim image of `$4900`–`$64FF`) and
 suggests. `SAVEDGAME0` holds the character *records* **and** the party's place in
 the world — where it is standing, which way it faces. `SAVEDGAME1` holds the
 numbers the game *derives* — armour class, THAC0, current hit points, movement —
-and nothing about the world at all. A tool that reads only `SAVEDGAME0` will find, as the author of
+and nothing about the world at all. Only its **first page** is even save data;
+`$8400`–`$8AFF` is the resident `ANIMATE00` overlay and a bitmap buffer, caught
+in the dump. A tool that reads only `SAVEDGAME0` will find, as the author of
 the 1989 editor did, that AC and THAC0 appear to be nowhere at all.
 
 Exported characters are a third thing: a single `\x01NAME` PRG holding the

@@ -31,7 +31,7 @@ readable** — no ByteKiller unpacking needed for save data, unlike the game's s
 | File | Size (payload) | PRG load addr | Covers |
 |---|---|---|---|
 | `.BRUTUS` (`$01`+`BRUTUS`) | 580 B (`$244`) | `$6B00` | standalone character export |
-| `SAVEDGAME1` | 2048 B (`$800`) | `$8300` | `$8300–$8AFF`, dense — eight party roster blocks fill `$8300–$83FF`; the rest is globals/journal/map state and is unread |
+| `SAVEDGAME1` | 2048 B (`$800`) | `$8300` | `$8300–$8AFF` — eight party roster blocks fill `$8300–$83FF`; the rest is the resident `ANIMATE00` overlay and a bitmap buffer, not save data |
 | `SAVEDGAME0` | 7168 B (`$1C00`) | `$4900` | `$4900–$64FF` — party |
 
 `SAVEDGAME0` is a **raw memory image**: the game dumps `$4900–$64FF` verbatim. Non-zero page map:

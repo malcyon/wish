@@ -22,7 +22,9 @@ still unread.
 a character *is right now, as a member of this party*: armour class, THAC0,
 current hit points, movement as encumbered, damage bonus. Every one of these is
 a value the game **derives** from the character plus their equipment, and caches
-rather than recomputing on load. Everything past `$8400` is unread.
+rather than recomputing on load. **Everything past `$8400` is not save data at
+all** — it is resident code and a graphics buffer that happened to be in memory
+when the game dumped the range. See below.
 
 **A caution about the obvious reading.** "`SAVEDGAME0` is the characters and
 `SAVEDGAME1` is the world" is wrong, and it was assumed here for a while: the
@@ -170,14 +172,12 @@ The table has **8** entries, one per character slot.
 
 ### Where world and quest state must live
 
-Nothing outside the character records and the roster has been decoded, and two
-regions are the candidates for everything else the game remembers: the header at
-`$4900`–`$4BDF`, and all of `SAVEDGAME1` past the roster page, `$8400`–`$8AFF`.
-Between them they are about 1.9 KB and are densely populated.
+**One region, not two.** The header at `$4900`–`$4BDF` — `$2E0` bytes — is the
+only place left. `SAVEDGAME1` past the roster page is ruled out: it is code and
+graphics scratch, not state.
 
-We know they hold *something* that changes with play: the diff between two of
-Donald's consecutive saves moved twenty header bytes around `$49C0`–`$4A07` and
-scattered widely through `SAVEDGAME1` above `$86B4`, none of it explained.
+The change in `SAVEDGAME1` above `$86B4` that this section once pointed at is
+the animator **modifying its own operands**, not the game recording anything.
 
 **Position is solved**, and it is in the header, not in `SAVEDGAME1`:
 
@@ -217,11 +217,21 @@ Sparse and mostly unidentified. One candidate worth testing:
 Everything else in `$4900–$4BDF` is a scatter of single bytes with no established
 meaning. The editor preserves the whole header verbatim.
 
-## SAVEDGAME1
+## SAVEDGAME1 past the roster: `ANIMATE00` and a bitmap buffer
 
-`$8300–$8AFF`, densely populated throughout. Contains short uppercase ASCII runs (`EUD`,
-`PTTP`, `DQP`, `DPU`) that are probably not names. Purpose unknown — candidate: journal /
-quest flags / map state. Not needed for a character editor.
+**CONFIRMED. `$8400`–`$8AFF` holds no save data.** The game dumps `$8300`–`$8AFF`
+verbatim, and only the first page is state; the rest is whatever was resident.
+
+| Range | Size | Contents |
+|---|---|---|
+| `$8400`–`$8753` | 852 | the on-disk file **`ANIMATE00`** — a 7-entry jump table (`4C xx 84`) and a VIC bitmap blitter |
+| `$8754`–`$882F` | 220 | zero in every specimen |
+| `$8830`–`$8AFF` | 720 | C64 multicolour bitmap scratch, the leading edge of the animator's data |
+
+The `EUD` / `PTTP` / `DQP` / `DPU` "ASCII runs" this section once flagged as a
+possible journal are `45 55 44` and `50 54 54 50` — pixel patterns.
+
+Ruled out by [SAVEDGAME1 past the roster is code](50-experiments.md).
 
 ## Character export vs in-party copy
 
