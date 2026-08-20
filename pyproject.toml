@@ -9,14 +9,28 @@ dependencies = ["pyyaml>=6.0"]
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 gui = ["PyQt6>=6.6"]
+# The live automapper reads a running VICE; it needs the GUI extra.
+automap = ["PyQt6>=6.6"]
+
+[project.scripts]
+wish = "wish.__main__:main"
+wish-cli = "tools.wish:main"
+# Thin aliases: the same window, opened on the tab the name implies. Nobody's
+# habit breaks, and the map stays usable as a single-purpose window beside the
+# game, which is how it is actually used.
+wish-editor = "wish.__main__:editor_main"
+wish-automap = "wish.__main__:automap_main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# Only the library and the app ship. tools/ is discovery scaffolding.
-packages = ["por", "editor"]
+# The library, the editor, the automapper and the window that hosts them both
+# ship. tools/ is discovery scaffolding. The automapper stays its own package
+# because the editor is a file tool with no emulator dependency and must stay
+# that way -- `wish` may import both, `editor` imports neither.
+packages = ["por", "editor", "automap", "wish"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
