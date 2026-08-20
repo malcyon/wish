@@ -2091,6 +2091,73 @@ sources say encounter size tracks party strength, not elapsed time. The
 fortune-teller experiment is still worth running, because it is a controlled
 single action and a diff showing nothing is also informative, but expect nothing.
 
+## GEO is solved: four planes, and a wall is not a barrier
+
+**Five readings of `GEO` had failed.** All five made the same mistake, and it is
+worth naming because it is a general one: they assumed **one field per edge**,
+so that "there is a wall here" and "you cannot walk through here" were the same
+bit. They are two independent fields, stored in different planes.
+
+**The source. CONFIRMED.** `github.com/simeonpilgrim/coab` is a C#
+reimplementation of *Curse of the Azure Bonds*, reversed from the DOS overlays.
+`Classes/GeoBlock.cs` parses the block literally; `ovr031`, `ovr015` and `ovr029`
+supply the semantics. The DOS block is `0x402` bytes — a two-byte prefix and
+1024. **Our C64 files are that same 1024 with no prefix.** Dungeon Craft
+(`github.com/grannypron/uaf`) corroborates the nibble scheme through FRUA's
+later six-byte-per-cell format.
+
+**The layout.** Four 256-byte planes over a 16×16 grid, indexed
+`x + (y << 4)` — row-major, y southward, origin top-left.
+
+| Plane | Offset | Content |
+|---|---|---|
+| 0 | `$000` | high nibble = wall art **north**, low nibble = **east** |
+| 1 | `$100` | high nibble = **south**, low nibble = **west** |
+| 2 | `$200` | square attributes; **bit 7 = roofed / indoor** |
+| 3 | `$300` | passability, **two bits per direction**: N = bits 0-1, E = 2-3, S = 4-5, W = 6-7 |
+
+A wall nibble of 0 means no wall; otherwise `wallset = (v-1)/5` and
+`slice = (v-1)%5` index `WALLDEF` — which is why `WALLDEF` reads as graphics.
+It is.
+
+The passability field is **only consulted when the wall nibble is non-zero**:
+
+| value | meaning |
+|---|---|
+| 0 | solid |
+| 1 | passable — an opening or an open door |
+| 2 | locked door |
+| 3 | wizard-locked door |
+
+**Verified against our own 29 files**, independently of the source:
+
+| check | result |
+|---|---|
+| `$300` reciprocity between adjacent squares | **13793 / 13920 = 0.991** |
+| best of all 24 nibble-to-direction permutations | the DOS assignment, 0.845 against 0.652 for the next |
+| non-zero passability flags sitting on an edge that has wall art | 97.2% — they are doors |
+| flag histogram | 26590 solid, 2962 open, 130 locked, 14 wizard-locked |
+| plane `$200` | dominated by `$00` / `$80` |
+
+The 0.991 reciprocity is the decisive number. The best any previous reading
+reached was about 0.3, which is chance. And it needs no ground truth at all: the
+east edge of a square is the west edge of its neighbour, so the file checks
+itself.
+
+`GEO1B` and `GEO04` render as 16×16 floor plans with complete outer boundary
+walls and doors.
+
+**Still open:** bits 0-6 of plane `$200`. In the DOS engine the ECL script VM
+reads this plane as location `0x04`, which makes a per-square trigger or zone id
+the obvious candidate. PROBABLE, not confirmed.
+
+**A negative worth recording.** Nobody has written the 1988 `GEO` format down in
+prose anywhere. It survives only as code, in `coab`. The FRUA "Hacking UA" board
+at `ua.reonis.com` is dead — 404, including its indexed topic "GEO#.DAX format
+(and all GB/FRUA formats)" — with no Wayback capture found. Gold Box Explorer
+still has no `GEO` parser. Had the search stopped at documentation it would have
+found nothing; it succeeded by reading somebody's reimplementation.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

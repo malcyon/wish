@@ -53,7 +53,7 @@ demand rather than holding everything resident. Relevant groupings:
 
 - **code overlays**: `BOOT`, `INIT`, `LIBRARY`, `CAMP`, `COMBAT`, `DUNGEON`, `POST.COM`,
   `COM.PREP`, `LOAD/SAVE`, `MDRIVER`, `LINKER`
-- **data**: `ECL*` (encounter/event scripts), `GEO*` (geometry/maps), `PIC*`, `HEAD*`, `BODY*`,
+- **data**: `ECL*` (encounter/event scripts), `GEO*` (**map geometry — decoded**), `PIC*`, `HEAD*`, `BODY*`,
   `SPRITE*`, `COMPIC*`, `WALLSET*`/`WALLDEF*` (graphics), `MON*` (monsters),
   `ITEMFILE*` / `ITEMS` / `ITEMNAMES`, `SPELLE*` / `SPELLN*` (spells), `CHARSET`, `MUSIC`
 

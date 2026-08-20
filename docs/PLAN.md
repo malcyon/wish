@@ -234,15 +234,13 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
 11. ~~**The spell id table.**~~ ✅ **DONE.** `SPELLN00`, read through its pointer
     table because the strings overlap. Six class/level groups, ids 1-55. See
     `docs/86-spell-table.md`.
-12. **Decode the `GEO` map files.** 29 uniform 1024-byte files with the lowest
-    entropy of any undecoded family on the disks (3.36, beside the record
-    formats already decoded). Uncompressed and 2D. `WALLDEF` and `SQRDATA` have
-    been checked and ruled out — the first is wall graphics, the second is high
-    entropy. Four readings of `GEO` have failed and are recorded so nobody
-    repeats them. The way in is an **anchor**: stand somewhere identifiable,
-    save, walk a known route along a wall, and match the coordinates — or
-    compare shapes against a fan map by eye, since GameFAQs blocks automated
-    fetches.
+12. ~~**Decode the `GEO` map files.**~~ ✅ **DONE.** Four 256-byte planes over a
+    16×16 grid: wall art as a nibble per edge in planes 0 and 1, square
+    attributes in plane 2, and passability as **two bits per edge** in plane 3.
+    A wall and a barrier are separate fields, which is why five readings failed.
+    Confirmed against `simeonpilgrim/coab` and verified on our own 29 files at
+    0.991 edge reciprocity. See [GEO is solved](50-experiments.md).
+    What remains is **which file is which area**, and bits 0-6 of plane 2.
 13. ~~**The monster table.**~~ ✅ **Largely done.** 117 files, `MON00`-`MON7C`,
     one monster each, using the **character record layout** — which is why the
     race table ends `MONSTER=8`. Names, abilities, class, age and hit points all
