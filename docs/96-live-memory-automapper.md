@@ -87,19 +87,22 @@ the standing candidate and is ruled out — walking leaves it byte-identical.
 
 A save-file automapper could be built today: export a position from every save
 and plot it. Drawing the *walls* around that position needs the `GEO*` files,
-which are twenty-nine uncompressed 1024-byte maps whose structure is partly
-worked out -- 16 bytes to a row, with recognisable enclosures -- but whose
-encoding is not yet settled. See `docs/50-experiments.md`. The live-memory version still needs the same addresses read out of
-a running game rather than off a disk, and `SAVEDGAME0` is a verbatim image of
-`$4900`–`$64FF`, so the addresses are the same ones. `SAVEDGAME1` past `$83FF` is
-still unread and still the other thing
-the game saves.
+and **those are decoded** — four 256-byte planes over a 16×16 grid, with wall
+art as a nibble per edge and passability as two bits per edge. See
+[GEO is solved](50-experiments.md). What is still missing is **which `GEO` file a given save is on**. That has to be
+recorded somewhere — the game restores the party's position on load — but it is
+not located, and the earlier claim that no such field exists has been withdrawn.
+It is the last thing between here and a working map. See
+[the area id must exist](50-experiments.md).
 
-Finding them is straightforward with the technique that has worked all along:
-**take one step in the game, save, and diff.** Two or three saves a few squares
-apart would isolate the coordinates without touching an emulator. That work is
-worth doing regardless of whether a live map ever gets built, because it also
-tells us what `SAVEDGAME1` is for.
+The live-memory version needs the same addresses read out of a running game
+rather than off a disk, and `SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`,
+so the addresses are the same ones.
+
+`SAVEDGAME1` past `$83FF` is **not** the other thing the game saves: it is
+resident code and a graphics buffer. So an explored-squares bitmap is either in
+the `$2E0`-byte header or is not saved at all, and an automapper may have to
+track exploration itself.
 
 ## If it is ever built
 

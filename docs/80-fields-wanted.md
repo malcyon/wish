@@ -330,6 +330,14 @@ editor supplies 162 known-good records to copy from. What is missing is the
 meaning of byte `+0` and a written-and-loaded proof that a hand-built record is
 accepted.
 
+**Which map the party is on** — it must be recorded, or loading a save could not
+restore the party's position, but it is not located. The scan that reported it
+absent was invalid: every save we hold is in New Phlan, so it had nothing to
+contrast against. `LIBRARY` builds the filename from a stem at `$24B4` with two
+patched digits at `$24B7`/`$24B8`; nothing stores to them directly, so a generic
+loader writes them and its argument is the thing to find. **Open, and the highest
+priority.** See [the area id must exist](50-experiments.md).
+
 **The monster attack routine** — how many attacks a creature makes and for how
 much. Everything else about a monster is decoded: they use the character record
 layout, with hit dice at `0x0A0`, armour class at `0x0E1` and movement at

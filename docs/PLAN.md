@@ -450,8 +450,9 @@ guessed: they are in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and
 `$49C2` (facing), established by walking known distances and diffing. Walking
 leaves `SAVEDGAME1` byte-identical, which rules it out. Its first eight 32-byte
 blocks are the party roster (see `docs/30-savegame-layout.md`); everything past
-`$83FF` is still unread. What a live map still needs is the `GEO*` encoding, so
-it can draw walls around the position.
+`$83FF` is still unread. `GEO*` is decoded and every Phlan city block is matched to its file, so a map can
+be drawn today. What is missing is that **the save does not record which map it
+is on** — the area has to be inferred from the walls around the party.
 
 ---
 

@@ -2064,6 +2064,7 @@ characters took part. Also moved: `$49FD` 11→8, `$4A07` 1→0, `$4A80` 1→3,
 `MALCYON` and `LADY KATHERINE` are not on it. It is a roster disk in the literal
 sense and cannot be used for header diffs.
 
+
 ## Party strength is probably computed, not stored
 
 **Claim under test.** The game manual says "From the moment the party begins its
@@ -2090,6 +2091,7 @@ Status: the manual's time claim is **almost certainly false** — three independ
 sources say encounter size tracks party strength, not elapsed time. The
 fortune-teller experiment is still worth running, because it is a controlled
 single action and a diff showing nothing is also informative, but expect nothing.
+
 
 ## GEO is solved: four planes, and a wall is not a barrier
 
@@ -2157,6 +2159,7 @@ at `ua.reonis.com` is dead — 404, including its indexed topic "GEO#.DAX format
 (and all GB/FRUA formats)" — with no Wayback capture found. Gold Box Explorer
 still has no `GEO` parser. Had the search stopped at documentation it would have
 found nothing; it succeeded by reading somebody's reimplementation.
+
 
 ## Every Phlan city block, matched to its GEO file
 
@@ -2239,7 +2242,6 @@ by two routes that share no evidence.
   are PROBABLE wilderness: 0 and 13 roofed squares, with 222-336 walk-through
   edges.
 
-.
 
 ## The character record answers to a fixed base of `$6B00`
 
@@ -2258,6 +2260,7 @@ Comparing saves was the wrong tool for these fields, and had been failing on the
 for weeks. The item buffer has the same property: it is at `$6D7C`, with its
 `ITEMS` type record at `$6D8C`, so every read of `item+N` is found by scanning
 for `AD/AE/AC (7C+N) 6D`.
+
 
 ## Level drain, status, and the byte the game really tests
 
@@ -2358,6 +2361,7 @@ looks. `wish` writing `0x014`–`0x019` directly is safe.
   editor was copying the game, not making a mistake. Race 0 prints as `MONSTER`
   (`LIBRARY $3508`), which explains PRINCESS FATIMA.
 
+
 ## Every remaining item byte
 
 Two sources broke this open, both cheap and both previously unused. First, **the
@@ -2433,6 +2437,191 @@ fell out anyway:
 * The game **clears `+6` bit 7 in the copy** and merges quantities: three orcs'
   20 arrows each became one stack of 60.
 
+
+## The emulator stops being a wall
+
+Three things that had each been recorded as impossible turned out not to be. All
+three were solved in one pass; the method notes are in
+[driving the game](70-driving-the-game.md).
+
+### Disk swapping works — through the *text* monitor
+
+`Alt+N` was the right binding and was never going to work, because VICE's GTK
+layer does not see synthetic modifiers. But the **text** monitor has
+`attach "<path>" 8`, and both monitor servers can run at once.
+
+Three rules, each learned by wedging the emulator:
+
+1. The text monitor never breaks in on connect and sends no banner. It answers
+   only while the machine is **already stopped** — which is what connecting the
+   binary monitor does. Open binary, then talk text.
+2. VICE serves **one** text-monitor connection per run. Close it and every
+   monitor goes deaf, binary included, and the emulator freezes. So the driver
+   must be one long-lived process.
+3. Never send `x` on the text socket. Resuming is the binary monitor's job.
+
+Same class of trap on the binary side: **never close the connection while a
+checkpoint is armed.** VICE re-enters the monitor on whichever socket was live
+when it stopped, and with that socket gone only a kill recovers it.
+
+### R1: the roster blocks are writable. CONFIRMED
+
+The acceptance bar for `wish` writing `SAVEDGAME1` at all, and it is met.
+
+MALCYON was edited to armour class 1 and 11 hit points — **two bytes**, `$830F`
+and `$8319`, with `SAVEDGAME0` untouched. The game shows `MALCYON 1 11` on the
+party list and `HITPOINTS 11 / AC 1 / THACO 18` on his sheet, then writes the
+identical roster page back when the game is saved.
+
+Everything that lives only in the roster — current THAC0, current armour class,
+damage bonus, current hit points, movement — is now editable in a way that has
+been seen to work.
+
+### Character creation: the name prompt, solved
+
+`$0C46` is `CMP #$5B / BCS` — it rejects any name byte at or above `$5B`. And
+`xdotool key W` sends **Shift+w**, which is `$D7`.
+
+So the name typed *correctly*, the screen showed it, `$9700` held it, and the
+validator threw the whole field away. Type lowercase and the character is
+created: `\x01WYVERN`, 582 bytes, load address `$6B00`, written to disk under
+script. The dead end recorded across two earlier sessions was a shift key.
+
+### A walk corpus, and what it confirms
+
+`work/drive/walks/` holds 20 saves the game itself wrote, one step apart, each
+position verified against the disk and against the game's own status line.
+Checked against the decoded `GEO00`: **7 adjacent steps, 7 legal, 0
+contradicted**, and none of the occupied squares is sealed. Independent of the
+fan-map matching that identified `GEO00` in the first place.
+
+### The training-hall hang corroborates the zone id
+
+One route died reproducibly: stepping **east into (6,2)** prints `THE ROOM IS
+FILLED WITH DUELING PAIRS.`, stops redrawing the command bar, and from then on
+every key is consumed and dropped. It is not an input fault — a store watchpoint
+on `$C6` shows the KERNAL buffering the key and the game taking it at `$2E5E`,
+and a single-step trace from `$10E3` shows it dispatched through `$306D`-`$30BA`
+and discarded. Four runs died there; routes avoiding (6,2) complete.
+
+`GEO00` explains where it is, and the agreement is exact:
+
+| square | roofed | zone id | east edge | west edge |
+|---|---|---|---|---|
+| (4,2) | no | 0 | 0/0 | 0/0 |
+| (5,2) | no | 0 | **12/1** | 0/0 |
+| (6,2) | **yes** | **10** | 3/1 | **12/1** |
+| (7,2) | yes | 14 | 0/0 | 3/1 |
+
+(6,2) is the first **roofed** square on that line, it is entered **through a
+door** — wall art 12 with barrier 1, reciprocal on both sides — and it carries a
+**non-zero zone id**. That is the training hall interior, and the message is a
+script firing on entry.
+
+This is the best evidence yet that **plane `$200` bits 0-4 are a trigger or zone
+id**: a square whose id is non-zero ran a script. 68 of `GEO00`'s 256 squares
+carry one, and the ids run 1-31 with no gaps. Still PROBABLE — one observation
+does not make a rule, and what wedges the game afterwards is a separate question
+— but it is a prediction that came true rather than a correlation found after
+the fact.
+
+
+## The area id must exist, and the search for it was invalid
+
+**Status: OPEN. This is the highest-priority unsolved question in the project.**
+
+### Why the negative was wrong
+
+It was reported that no byte in `$4900`–`$4BDF` identifies the map, on the
+grounds that nothing there is "constant across the six New Phlan saves and
+different in the others". Donald caught the flaw immediately, and it is
+fundamental: **the game must record the area, or loading a save could not put
+the party back where it was.**
+
+The search had **no negative example**. Every save we hold is in New Phlan:
+
+| disk | position | area |
+|---|---|---|
+| `PORSAVE` | (9,13) | New Phlan |
+| `PORSAVE2`, `PORSAVE3` | (7,0) | New Phlan |
+| `PORSAVE4` | (2,14) | New Phlan — in the inn |
+| `PORSAVE5`, `PORSAVE6` | (3,14) | New Phlan |
+| `PORSAVE7` | (3,11) | New Phlan |
+| `PORSAVE8`, `PORSAVE9` | (0,11) | New Phlan |
+| `PORSAVE11` | (4,2) | New Phlan — walked to the slums and **back** before saving |
+
+`PORSAVE11` is the near miss: the party fought two encounters in the slums and
+returned before saving. Ten disks, one area, nothing to contrast against.
+
+The only foreign specimen, `npc_party.d64`, is useless for this: it is a
+different party at levels 4-8 somewhere else entirely, and **218 header bytes**
+differ between it and ours. No signal survives that much noise.
+
+### The decisive experiment, and it is cheap
+
+**One save inside a different area.** Save in New Phlan, walk into the slums,
+save again. Two disks differing by one deliberate act, and the diff is the answer.
+
+This is now runnable without Donald, because `tools/walkrun.py` drives the game
+end to end and `work/drive/walks/` already holds a corpus generated that way. The
+route out of New Phlan into the slums is longer than anything driven so far, and
+the training-hall trigger at (6,2) has to be avoided, but neither is a blocker.
+
+Do the same for a third area if the first pair is ambiguous — a value that moves
+between two areas could be a counter; one that takes three distinct values
+matching three areas is an id.
+
+### The code route, which is sharper
+
+`LIBRARY` carries a table of data-file name stems at **`$24B4`**:
+
+```
+GDRIVE00 SQRPACI00 GEO00 SECSET00 SQRDATA00 PIC00 SPELLN00 SPELL...
+```
+
+Each stem ends in two placeholder digits that the loader patches, so `GEO00`
+occupies `$24B4`-`$24B8` and **the digits are at `$24B7` and `$24B8`**. Whatever
+writes them is choosing the map.
+
+Scanning every overlay on all nine disks for a direct store to `$24B7` or
+`$24B8` finds **nothing**, so the digits are written indirectly — the usual Gold
+Box pattern is one generic "load data file *n* of type *t*" routine that takes a
+pointer to the stem plus a number, converts it to two hex digits, and stores
+through a pointer. Find that routine, find the call that passes the `GEO` stem,
+and trace its number argument back. That argument is the area id, live in memory.
+
+Then the second half: **is that value saved, or recomputed?**
+
+This is the `$6B00` technique that solved level drain, the NPC flag, `0x0AD` and
+every remaining item byte. It reads the game's intent instead of guessing at
+correlations, and it has been the more productive of the two routes every time.
+
+### Keep derivation open
+
+Donald's own caution: it may not be a stored byte at all. Candidates worth
+holding in mind, roughly in order of how much they would explain:
+
+* **A stored area index** somewhere not yet scanned. The scan covered
+  `$4900`–`$4BDF` only. Not covered: `$4BE0`–`$4CFF` (nominally the eight
+  36-byte combat icons, but a party under eight leaves unused slots), and the
+  slot area `$4D00`–`$64FF` outside the eight character records — including the
+  `$5500` staging page and `$5600`–`$58FF`, which is zero in every save we hold.
+* **The active ECL script.** Each area has its own encounter/event script. If the
+  save records which `ECL` is live, the map follows from it and there is no
+  separate map id at all. This would also explain why a plain byte scan finds
+  nothing shaped like a small area index.
+* **A coarse world coordinate.** Phlan's blocks tile a city. If the save holds a
+  block coordinate as well as the 0-15 square coordinates, the `GEO` file is a
+  lookup, not a stored id.
+* **Nothing is stored, and the load path asks.** Least likely, since the game
+  restores position silently, but it should be ruled out rather than assumed
+  away.
+
+Whatever the answer, record how it was distinguished from the others. The
+mistake this entry exists to correct was reporting an absence that the evidence
+could not have detected.
+
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
@@ -2459,8 +2648,8 @@ Named, not numbered — the name is how they get referred to elsewhere in the do
   because the halves are wildly different in cost:
   * **Does the game record the conversation?** Save outside, talk to her, save
     again, diff. Decisive either way and takes minutes. A byte or a bit moving in
-    the header or in `SAVEDGAME1` past `$8400` would be the **first quest flag
-    we have located**, and those regions are otherwise entirely unread.
+    the header `$4900`–`$4BDF` would be the **first quest flag we have located**.
+    `SAVEDGAME1` past `$8400` is no longer a candidate — it is code.
   * **Does it actually make encounters harder?** Much more expensive — random
     encounters need a lot of samples before a difficulty change is
     distinguishable from luck, and "harder" is not defined. Not worth attempting
