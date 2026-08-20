@@ -261,7 +261,8 @@ _DECLARED: Sequence[Field] = (
            "class_bits stays the field to prefer"),
     _field(0x074, 2, _U16, "age", "Age", _OK,
            "16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected"),
-    _field(0x076, 1, _U8, "hp_max", "HP max", _MAYBE, "11 = 9 rolled + 2 CON"),
+    _field(0x076, 2, _U16, "hp_max", "HP max", _OK,
+           "16-bit LE. 11 = 9 rolled + 2 CON. The high byte was long read as filler because no character has yet exceeded 255 hit points; the drain routine in SPELLE02 decrements the pair, which is what settles the width"),
     _field(0x09A, 1, _U8, "save_paralysis", "Save vs para/poison/death", _OK,
            "fighter 14, cleric 10 -- both match the AD&D 1e L1 tables"),
     _field(0x09B, 1, _U8, "save_petrification", "Save vs petrify/polymorph", _OK, "fighter 15, cleric 13"),
@@ -291,6 +292,17 @@ _DECLARED: Sequence[Field] = (
            "set to 10 in the edit test and shown in the game (the thirteen-field edit)"),
     _field(0x0C7, 2, _U16, "jewelry", "Jewelry", _OK,
            "set to 10 in the edit test and shown in the game (the thirteen-field edit)"),
+    _field(0x0B8, 1, _U8, "flags_0b8", "Flags", _OK,
+           "bit 7 is the real 'this is an NPC or a monster' flag, and bit 0 "
+           "records that an ability score was altered at the trainer. "
+           "npc_party.d64 splits three players from five NPCs exactly on bit "
+           "7; the code counts player characters with it and enforces CMP #$06, "
+           "which is the six-PC party limit in code rather than in anecdote; "
+           "NPC money is zeroed by it. Bit 0 is set by GEN $155D straight "
+           "after INC/DEC $6B14,X and cleared again if the change is "
+           "cancelled. **Nothing anywhere reads bit 0 back**, so the forum "
+           "rumour that altering a score carries a penalty in play has no code "
+           "behind it on this port"),
     _field(0x0E1, 1, _U8, "armour_class_base", "AC base (60 - AC)", _MAYBE,
            "base armour class, stored as 60 - AC, the same encoding used for "
            "THAC0 at 0x071 and for the current AC in the SAVEDGAME1 roster. It "
@@ -344,6 +356,34 @@ _DECLARED: Sequence[Field] = (
            "8). Every earlier specimen was level 1, which is why it long read "
            "as a constant 01. Not yet distinguishable from 'the single class's "
            "level' -- no multi-class specimen above level 1 has been seen"),
+    _field(0x0A1, 1, _U8, "levels_drained", "Levels drained", _OK,
+           "how many levels undead have drained, not a second copy of the "
+           "level. The pair is current-plus-delta, which is why no 'true "
+           "level' was ever found. SPELLE02 computes hp_max / total levels, "
+           "loops that many times doing DEC $6B76 / DEC $6BED / INC $6BA2 / "
+           "DEC $6C19, then INC $6BA1 and DEC $6BC9,X. RESTORATION in "
+           "SPELLE04 reverses it exactly and prints string 94, which "
+           "SPELLN00 gives as IS RESTORED"),
+    _field(0x0A2, 1, _U8, "hp_lost_to_drain", "HP lost to drain", _OK,
+           "hit points removed by level drain, restored alongside 0x0A1"),
+    _field(0x0A3, 1, _U8, "turn_class", "Undead turning class", _OK,
+           "which row of the AD&D 1e turning table a creature answers to. "
+           "Non-zero in exactly 13 specimens, every one undead, and it matches "
+           "the published table on all of them: skeleton 1, zombie 2, ghoul 3, "
+           "wight 5, wraith 7, mummy 8, spectre 9, vampire 10, with giant "
+           "skeleton 8 and juju zombie 9"),
+    _field(0x0AD, 10, _RAW, "item_effects", "Active effects", _MAYBE,
+           "ten slots holding the effect codes of worn magic items -- the "
+           "same namespace as item byte +14. Three overlays loop LDX #$09 "
+           "over it, and XAVIER carrying 107 in the first slot and 89 in the "
+           "tenth proves the extent. GEN $0BF3 seeds it per race from the "
+           "table [1, 0, 107, 0, 124, 0, 0, 0], so an elf is born with 107 and "
+           "a half-elf with 124. Those sit immediately below 108 and 125, "
+           "which are full immunity to sleep and charm, and the table grades "
+           "other families the same way (64/65/66 are poison by save "
+           "modifier) -- so 107 and 124 are read as elf and half-elf partial "
+           "resistance to sleep and charm. PROBABLE. The percentage is not in "
+           "the byte and could not be: it is a table index"),
     # A four-entry level array, indexed in the same order as the class bits at
     # 0x0EB (magic-user, cleric, thief, fighter). Across all twelve specimens a
     # byte here is non-zero exactly when the corresponding class bit is set --
@@ -411,16 +451,17 @@ _DECLARED: Sequence[Field] = (
            "LADY KATHERINE also cast a spell and hers did not move, so it is "
            "not simply a count of spells cast. Zero in BRUTUS, so not flagged "
            "as a candidate region."),
-    _field(0x11A, 2, _RAW, "region_11a", "unknown @0x11A", _NOPE,
-           "0x11B is 12 in every specimen -- possibly a movement/encumbrance "
-           "copy", candidate=True),
-    _field(0x119, 1, _U8, "hp_current", "HP now", _MAYBE,
-           "UNVERIFIED. Equals hp_max in every specimen, and no wounded "
-           "character has ever been seen in an exported .chr, so it may simply "
-           "be a second copy of hp_max. Note the hunt for current hit points searched both save files for "
-           "a wounded character's current total and found nothing -- but this "
-           "byte lies beyond the 256 a save slot stores, so it is only present "
-           "in an export and that search does not settle it"),
+    _field(0x11B, 1, _RAW, "region_11b", "unknown @0x11B", _NOPE,
+           "12 in every specimen -- possibly a movement/encumbrance copy",
+           candidate=True),
+    _field(0x119, 2, _U16, "hp_current", "HP now", _OK,
+           "16-bit LE, and genuinely current hit points rather than a second "
+           "copy of the maximum: GEN $0BD0 initialises it from hp_max, and "
+           "both the trainer and the drain routine move it independently "
+           "afterwards. It equals hp_max in every specimen only because no "
+           "wounded character has yet been exported. Note it lies beyond the "
+           "256 bytes a save slot holds, so it exists in an export and not in "
+           "a save"),
     _field(0x10D, 1, _U8, "region_10d", "unknown @0x10D", _NOPE,
            "party order? Reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and "
            "BRUTUS, which are exactly the slots they occupied, and 8 -- one "

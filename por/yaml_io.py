@@ -150,9 +150,8 @@ FIELD_COMMENTS = {
               "above. Edit `levels` and this follows automatically; edit this\n"
               "and your value is kept."),
     "npc": ("true for a companion the party picked up rather than one you\n"
-            "made. Recognised from eight record bytes that agree across every\n"
-            "character we have; which one the game tests is not known, so\n"
-            "changing this is unproven in both directions."),
+            "made. This is bit 7 of 0x0B8, the byte the game itself tests --\n"
+            "it counts player characters with it and refuses a seventh."),
     "exceptional_strength": "0-100, only meaningful when strength is 18",
     "experience": "24-bit, so up to 16777215",
 }
@@ -825,11 +824,10 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             changes.append(f"slot {slot} {who}: npc {not entry['npc']} -> "
                            f"{bool(entry['npc'])}")
             changes.append(
-                f"slot {slot} {who}: NOTE which byte the game tests for this "
-                f"is unknown, so all eight marker bytes were written"
-                + ("" if entry["npc"] else
-                   ". 0x0E6-0x0E7 still read $FF FF, a value no player "
-                   "character has -- what that field is remains unknown"))
+                f"slot {slot} {who}: NOTE only bit 7 of 0x0B8 was written. The "
+                f"eight $FF residue bytes are left as found, so a character "
+                f"made an NPC this way still looks like a player character to "
+                f"anything reading those instead")
 
         if "spells_known" in entry:
             book = [int(s) for s in (entry["spells_known"] or [])]

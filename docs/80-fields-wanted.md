@@ -24,7 +24,10 @@ written back and confirmed in game.
 | age | `0x074` (16-bit) | CONFIRMED |
 | five saving throws | `0x09A`–`0x09E` | CONFIRMED |
 | movement | `0x09F` | CONFIRMED |
-| **character level** | `0x0A0` | PROBABLE |
+| **character level** | `0x0A0` | CONFIRMED — the drain routine writes it down from the per-class array |
+| **levels drained** | `0x0A1` | CONFIRMED — current-plus-delta, not a second copy of the level |
+| **hit points lost to draining** | `0x0A2` | CONFIRMED — restored alongside `0x0A1` |
+| **undead turning class** | `0x0A3` | CONFIRMED — matches the AD&D 1e table on all 13 undead specimens |
 | thief skills | `0x0A5`–`0x0AC` | CONFIRMED — **signed**; a halfling's read-languages is -5 |
 | **small size flag** | `0x099` | PROBABLE — 0 small, 1 medium; the icon large/small flag |
 | **money — all seven types** | `0x0BB`–`0x0C8` | CONFIRMED |
@@ -35,8 +38,10 @@ written back and confirmed in game.
 | effective strength | `0x0E2` | PROBABLE |
 | **experience** (24-bit) | `0x0E8` | CONFIRMED |
 | **class bitmask** | `0x0EB` | CONFIRMED |
-| hp max / hp rolled | `0x076` / `0x0ED` | PROBABLE |
-| hp current? | `0x119` | PROBABLE — see caveat below |
+| hp max / hp rolled | `0x076` (**16-bit**) / `0x0ED` | CONFIRMED |
+| **active effect list**, ten slots | `0x0AD`–`0x0B6` | PROBABLE — same namespace as item `+14`; seeded per race |
+| **NPC flag** (bit 7) and **score altered at the trainer** (bit 0) | `0x0B8` | CONFIRMED — the byte the game itself tests |
+| hp current | `0x119` (**16-bit**) | CONFIRMED — **export only**; initialised from `hp_max`, then moved independently |
 | **combat icon** | `0x220`–`0x243` | CONFIRMED |
 | **inventory** | `$5900` + slot × `$100` | CONFIRMED |
 
@@ -248,58 +253,51 @@ genuinely the character's class, because `0x073` and `0x0EB` are redundant in al
 twenty specimens — every one encodes the same classes twice, and none disagrees.
 The experiment that separates them is cheap and is described below.
 
-**Whatever records that an ability score was altered at the trainer** — if
-anything does. Two separate things here, and they should not be run together:
+~~**Whatever records that an ability score was altered at the trainer**~~ —
+**found, and it closes the rumour.** `0x0B8` **bit 0** is set by `GEN $155D`
+immediately after `INC`/`DEC $6B14,X`, and cleared again if the change is
+cancelled. So the game does remember.
 
-* **Fact, first-hand from Donald:** the game's own trainer will alter an ability
-  score. So a score is not fixed at creation, and a score outside the 3–18 a
-  character rolls is not by itself evidence of tampering.
-* **Rumour:** a post on the Gold Box forums reports a claim, attributed to one
-  of the original developers, that using it carries **negative effects in play**.
-  That is two removes from evidence — a forum post about what someone says a
-  developer said — and it should be treated the way this knowledge base treats
-  everything in `docs/60-goldbox-field-checklist.md` §5 until it is tested.
+**And nothing ever reads it back.** Every read of `$6BB8` anywhere in the game
+tests bit 7, the NPC flag. The forum claim that an original developer said
+altering scores carries negative effects in play has **no code behind it on this
+port**. The prediction that the game would have to remember was right; it
+remembers and then never looks.
 
-It is worth testing anyway, because **the rumour makes a prediction we can
-check**: if the game penalises an altered score, it has to remember that the
-score was altered. Either a flag, or — far more likely given everything else in
-this save format — a **true** score kept alongside the **current** one. Every
-pair of values we have come to understand has turned out to be base-versus-
-current, and this would be another. Nothing of the sort has been found near
-`0x014`–`0x019`, but nobody has looked for it with a before/after pair in hand.
+That also settles the safety question for the editor: `wish` writing
+`0x014`–`0x019` directly is safe, and there is no second copy of a score.
 
-**Why it matters for the editor.** `wish` writes `0x014`–`0x019` directly. If a
-second copy or a flag exists, editing the scores alone would leave a character in
-a state the game never produces — exactly the trap the class and level pairs
-already set. Until the experiment is run, that risk is unquantified.
+~~**Racial traits**~~ — **found: `0x0AD`–`0x0B6`, a ten-slot list of active
+effect codes**, in the same namespace as item byte `+14`. Three overlays loop
+`LDX #$09` over it, and XAVIER carrying 107 in the first slot and 89 in the tenth
+proves the extent. `GEN $0BF3` seeds it per race from `[1, 0, 107, 0, 124, 0, 0,
+0]`.
 
-**Racial traits** — Gold Box Companion on the DOS version shows an editable
-trait list, and a trait **survives a race change**, so a trait is stored per
-character rather than derived from race. Detecting magic was set that way and
-then worked permanently in play.
+That explains why `0x0AD` was non-zero only for elves (107) and half-elves (124):
+those are the two races the seed table gives anything. 107 and 124 sit
+immediately below 108 and 125 — full immunity to sleep and charm — and the table
+grades other families the same way, so they read as *partial* resistance.
+PROBABLE.
 
-`0x0AD` was the leading candidate and is **ruled out as a general trait mask**:
-it is non-zero only for elves (107) and half-elves (124), and gnomes and
-halflings — both rich in racial traits — read 0. It is still unexplained and
-still belongs to those two races specifically. Nothing else in the record is
-tied to traits.
+The percentage is **not in the byte and could not be**; it is a table index. The
+earlier hunt for 90 and 30 was looking for something that was never there.
 
-**Item effects** — a `+1 long sword` and a `flame tongue` differ from a plain
-long sword somewhere in the 16 bytes. Byte `+4` is the numeric bonus, signed,
-and `+3`/`+2`/`+1` build the printed name. **`+0` is settled**: it indexes the
-`ITEMS` type table, which carries damage, protection, hands, range and class
-usage (`docs/85-item-tables.md`). Still unread: `+5`, `+7`, `+13`, `+14`, `+15`,
-and `+6` below its readied bit — charges are the obvious candidate, since the
-1989 editor's documentation describes editing them. Its 162 item records include
-magic items we have never seen in play and remain the cheapest way in.
+~~**Item effects**~~ — **every byte is read.** `+5` is a signed saving-throw
+bonus, `+13` charges, `+14` the spell or effect carried, `+15` a handler
+selector whose bit 7 marks a passive power. `+6` bits 3-6 and `+7` bits 0-6 are
+unused. See [every remaining item byte](50-experiments.md) and
+[the item tables](85-item-tables.md).
 
-**Level-drain state** — undead drain levels, so the game should track both a
-current and a "true" level to restore to. Expect a *pair* per class. Now
-testable in a way it was not before: `0x0A0` and the per-class array at
-`0x0C9`-`0x0CC` finally have specimens above level 1.
+~~**Level-drain state**~~ — **found: `0x0A1` levels drained, `0x0A2` hit points
+lost.** There is no second copy of the level; the pair is current plus delta,
+which is why a "true level" was never found. `RESTORATION` reverses it exactly.
 
-**Current status** — OK / unconscious / dead / stoned / fled. The game has
-status strings somewhere worth locating.
+~~**Current status**~~ — **it is not stored.** `LIBRARY` holds the strings at
+indices 42–48 (`OK GONE DEAD DYING UNCONSIOUS RUNNING STONED`, the game's own
+misspelling), and **nothing on any of the nine disks references them**. All 64
+call sites into the string printer were checked. The C64 party list prints name,
+armour class and hit points only, colouring hit points when current is below
+maximum. Status is derived — and 16-bit hit points are enough to derive it.
 
 ~~**Which spells are which**~~ — **done.** `SPELLN00` holds the names; ids 1-55
 are the player's spells in six class/level groups, 56 is RESTORATION, and from 57
@@ -317,16 +315,14 @@ from humans, elves and half-elves. It is not among the 36 icon bytes because it
 is not icon data: a small character has the same body and a smaller head, so the
 icon reads as small without being smaller.
 
-**What marks an NPC** — eight record bytes (`0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`,
-`0x0D4`, `0x0E4`, `0x0E5`, `0x0FB`) read `$FF` for every NPC and `$00` for every
-player character, so the distinction is readable today and `wish` exposes it as
-`npc:`. **They are probably not a flag at all.** All five NPCs we hold are
-records the game ships in its `MON*` files, and the eight bytes read `$FF` in
-the shipped file before any save exists — so this is residue of a fill that
-survives the load, and a player character reads `$00` because nothing ever wrote
-`$FF`. That fits the evidence better than a deliberate marker and predicts that
-writing `npc:` does nothing. Whatever the game really tests is somewhere we have
-not looked.
+~~**What marks an NPC**~~ — **found: `0x0B8` bit 7.** Every read of `$6BB8`
+tests it; the party-count routine tallies player characters with it and enforces
+`CMP #$06`, so **the six-character limit exists in code**, not merely in the
+error message. NPC money is zeroed on it. `npc_party.d64` splits three players
+from five NPCs exactly here.
+
+The eight `$FF` bytes were fill residue after all, as the earlier note suspected.
+`wish` now writes bit 7 and leaves them untouched.
 
 **Constructing an item** — much closer than it was. The name is three word
 indices, the cost is 16-bit, the weight is in tenths of a pound, and the 1989

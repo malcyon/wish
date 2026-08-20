@@ -150,6 +150,11 @@ NPC_MARKER_OFFSETS = (0x0B7, 0x0B9, 0x0BA, 0x0D3, 0x0D4,
                       0x0E4, 0x0E5, 0x0FB)
 NPC_MARKER = 0xFF
 
+# The flag the game actually tests, at record offset 0x0B8.
+NPC_FLAG_OFFSET = 0x0B8
+NPC_FLAG_BIT = 0x80
+SCORE_ALTERED_BIT = 0x01
+
 
 class CharacterRecord:
     """A mutable view over one 580-byte character record.
@@ -345,26 +350,48 @@ class CharacterRecord:
     # -- player character or NPC ------------------------------------------
     @property
     def is_npc(self) -> bool:
-        """True when every byte of the NPC fingerprint reads $FF.
+        """True for an NPC or a monster: bit 7 of `0x0B8`.
 
-        See `NPC_MARKER_OFFSETS`. Eight bytes agree perfectly across all
-        twenty-five characters we hold, so an NPC is reliably *recognisable*;
-        which byte the game actually tests is not known.
+        This is the byte the game itself tests. Every read of $6BB8 in the
+        overlays checks bit 7; the party-count routine tallies player
+        characters with it and enforces CMP #$06, which is the six-PC limit;
+        and NPC money is zeroed on it. npc_party.d64 splits three players from
+        five NPCs exactly here.
+
+        The eight $FF bytes at `NPC_MARKER_OFFSETS` correlate perfectly and
+        were read as the flag for a while. They are fill residue -- they read
+        $FF in the shipped MON* files before any save exists.
         """
-        return all(self._data[o] == NPC_MARKER for o in NPC_MARKER_OFFSETS)
+        return bool(self._data[NPC_FLAG_OFFSET] & NPC_FLAG_BIT)
+
+    @property
+    def score_altered_at_trainer(self) -> bool:
+        """Bit 0 of `0x0B8`, set by GEN $155D when a score is changed.
+
+        **Nothing reads it back.** A forum rumour holds that an original
+        developer said altering scores carries a penalty in play; on this port
+        there is no code that could apply one.
+        """
+        return bool(self._data[NPC_FLAG_OFFSET] & SCORE_ALTERED_BIT)
 
     @property
     def npc_marker_is_consistent(self) -> bool:
-        """False if the fingerprint is half set -- a state no save has been
-        seen in, and a sign something has corrupted the record."""
+        """False if the eight residue bytes are half set -- no save has been
+        seen like that, so it means something has corrupted the record."""
         vals = {self._data[o] for o in NPC_MARKER_OFFSETS}
         return vals in ({NPC_MARKER}, {0x00})
 
     def set_npc(self, value: bool) -> None:
-        """Write the whole fingerprint. Unproven in both directions -- nothing
-        has yet been changed here and checked in game."""
-        for o in NPC_MARKER_OFFSETS:
-            self._data[o] = NPC_MARKER if value else 0x00
+        """Set or clear the flag the game tests.
+
+        The eight residue bytes are left alone: writing them changes nothing
+        the game reads, and rewriting bytes we do not understand is how a
+        lossless editor stops being lossless.
+        """
+        if value:
+            self._data[NPC_FLAG_OFFSET] |= NPC_FLAG_BIT
+        else:
+            self._data[NPC_FLAG_OFFSET] &= ~NPC_FLAG_BIT & 0xFF
 
 
 def _hexdump(data: bytes, base: int, width: int = 16) -> list[str]:

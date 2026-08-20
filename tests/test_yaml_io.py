@@ -475,17 +475,40 @@ def test_the_party_is_all_player_characters():
 
 
 @live
-def test_the_npc_flag_writes_every_marker_byte(tmp_path):
-    from por.record import NPC_MARKER, NPC_MARKER_OFFSETS
+def test_the_npc_flag_writes_only_the_byte_the_game_tests(tmp_path):
+    """The eight $FF residue bytes must be left exactly as found. They are fill
+    that survives the load, not a marker, and rewriting them would be the
+    editor inventing state."""
+    from por.record import NPC_FLAG_BIT, NPC_FLAG_OFFSET, NPC_MARKER_OFFSETS
     data = export_save(SAVE, GAME)
+    before = _record(SAVE, "MALCYON").to_bytes()
     next(e for e in data["party"] if e["name"] == "MALCYON")["npc"] = True
     out = tmp_path / "npc.d64"
     changes = import_into(SAVE, data, str(out), game_disk=GAME)
     rec = _record(out, "MALCYON")
-    assert rec.is_npc and rec.npc_marker_is_consistent
+    assert rec.is_npc
     raw = rec.to_bytes()
-    assert all(raw[o] == NPC_MARKER for o in NPC_MARKER_OFFSETS)
+    assert raw[NPC_FLAG_OFFSET] & NPC_FLAG_BIT
+    assert all(raw[o] == before[o] for o in NPC_MARKER_OFFSETS)
     assert any("NOTE" in c for c in changes)          # the caveat is reported
+
+
+@live
+def test_clearing_the_npc_flag_leaves_the_rest_of_0x0b8_alone(tmp_path):
+    """Bit 0 records that a score was altered at the trainer. Toggling npc
+    must not disturb it."""
+    from por.record import NPC_FLAG_OFFSET
+    data = export_save(SAVE, GAME)
+    entry = next(e for e in data["party"] if e["name"] == "MALCYON")
+    entry["npc"] = True
+    once = tmp_path / "on.d64"
+    import_into(SAVE, data, str(once), game_disk=GAME)
+    back = export_save(str(once), GAME)
+    next(e for e in back["party"] if e["name"] == "MALCYON")["npc"] = False
+    twice = tmp_path / "off.d64"
+    import_into(str(once), back, str(twice), game_disk=GAME)
+    assert (_record(twice, "MALCYON").to_bytes()[NPC_FLAG_OFFSET]
+            == _record(SAVE, "MALCYON").to_bytes()[NPC_FLAG_OFFSET])
 
 
 def _items(disk, slot):

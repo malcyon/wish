@@ -2241,6 +2241,24 @@ by two routes that share no evidence.
 
 .
 
+## The character record answers to a fixed base of `$6B00`
+
+**The technique that unlocked the rest of this page.** The overlays address the
+resident character record at a **fixed absolute base of `$6B00`** — the same
+address an exported `.chr` carries as its load address. So `LDA $6BA0` *is*
+record offset `0x0A0`.
+
+Scanning every absolute operand in `$6B00`–`$6D44` across every file on the nine
+disks yields a map of which offsets the game's own code touches, and the routines
+can then be read out directly. Four independent checks fix the base against
+`por/layout.py`: `$6B14` is strength, `$6BD8` alignment, `$6BEB` class_bits,
+`$6C19` current hit points.
+
+Comparing saves was the wrong tool for these fields, and had been failing on them
+for weeks. The item buffer has the same property: it is at `$6D7C`, with its
+`ITEMS` type record at `$6D8C`, so every read of `item+N` is found by scanning
+for `AD/AE/AC (7C+N) 6D`.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.

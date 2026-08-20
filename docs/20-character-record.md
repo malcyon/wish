@@ -17,11 +17,11 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 
 | level | bytes | share |
 |---|---:|---:|
-| CONFIRMED | 75 | 12.9% |
-| PROBABLE | 30 | 5.2% |
+| CONFIRMED | 83 | 14.3% |
+| PROBABLE | 38 | 6.6% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 475 | 81.9% |
-| **known** | **105** | **18.1%** |
+| UNKNOWN | 459 | 79.1% |
+| **known** | **121** | **20.9%** |
 
 ## Known fields
 
@@ -40,7 +40,7 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x072` | 1 | `race` | unsigned byte | CONFIRMED | 1-based: DWARF=1 ELF=2 GNOME=3 HALF-ELF=4 HALFLING=5 HALF-ORC=6 HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf. HALF-ORC is real but NPC-only: it is not on the character-creation menu, and the only two half-orcs in the game are the named NPCs MACE and NORRIS THE GRAY. Two values outside that list matter. **0 is the commonest race in the game**, carried by 75 of the 135 distinct monster records -- every generic creature and some humanoid NPCs -- so it reads as 'not applicable' rather than as a race, and a 0 is not evidence that a record was tampered with. **8 (MONSTER) is used by nothing anywhere**, player or monster: the table enumerates it and the game never instantiates it, the same way it names DRUID, PALADIN, RANGER and MONK |
 | `0x073` | 1 | `char_class` | unsigned byte | CONFIRMED | 0-based, standard Gold Box order: CLERIC=0 DRUID=1 FIGHTER=2 PALADIN=3 RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7. 0, 2 and 5 are verified by saving-throw tables; 6 is verified by the monster files, which contain NPCs literally named '1ST LVL THIEF' and '7TH LVL THIEF' carrying code 6. DRUID=1, PALADIN=3, RANGER=4 and MONK=7 appear in NO character anywhere -- not in twenty player characters, not in 108 monster records -- and Donald reports that paladin and ranger were left unfinished in the game data, so those four names rest on the Gold Box convention alone. Codes above 7 are multi-class: 8 = cleric/fighter, 9 = cleric/fighter/magic-user, 10 and 11 = cleric/magic-user, 12 = cleric/thief, 13 = fighter/magic-user, 14 = fighter/thief, 15 = fighter/magic-user/thief, 16 = magic-user/thief. That enumeration is the table the 1989 BASIC editor on poolce.d64 displays, and it agrees with all four multi-class codes we had already read off the bitmask at 0x0EB. Two caveats: the editor lists 3, 4 and 5 all as MAGIC-USER, which is its author's gap rather than the game's, and listing both 10 and 11 as cleric/magic-user looks like a slip in his table. class_bits stays the field to prefer |
 | `0x074` | 2 | `age` | 16-bit little endian | CONFIRMED | 16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected |
-| `0x076` | 1 | `hp_max` | unsigned byte | PROBABLE | 11 = 9 rolled + 2 CON |
+| `0x076` | 2 | `hp_max` | 16-bit little endian | CONFIRMED | 16-bit LE. 11 = 9 rolled + 2 CON. The high byte was long read as filler because no character has yet exceeded 255 hit points; the drain routine in SPELLE02 decrements the pair, which is what settles the width |
 | `0x078` | 7 | `spells_known` | raw bytes | CONFIRMED | a bitmask of the spells the character KNOWS, indexed by spell id: bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster we hold -- clerics know every spell of every level they can cast (8 at level 1, 24 at level 6) and magic-users know a subset, which is how AD&D 1st edition works. No cleric has a magic-user id set and no magic-user has a cleric one. MALCYON, a starting mage, knows detect magic, read magic, shield and sleep. Distinct from spells_memorised at 0x020, which is what is currently prepared |
 | `0x099` | 1 | `size_small` | unsigned byte | PROBABLE | 1 for a medium character, 0 for a small one. The only byte in the stored 256 that separates dwarves, gnomes and halflings from humans, elves and half-elves -- the AD&D size categories exactly. This is the icon large/small flag the Gold Box Companion exposes. Donald confirmed MAGNUS, a dwarf, shows as small in game, and that the visible difference is the head: a small character's body is the same size and its head is smaller, which is why the icon looks small without being smaller |
 | `0x09A` | 1 | `save_paralysis` | unsigned byte | CONFIRMED | fighter 14, cleric 10 -- both match the AD&D 1e L1 tables |
@@ -50,6 +50,9 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x09E` | 1 | `save_spell` | unsigned byte | CONFIRMED | fighter 17, cleric 15 |
 | `0x09F` | 1 | `movement` | unsigned byte | CONFIRMED | 12 in all three specimens |
 | `0x0A0` | 1 | `level` | unsigned byte | PROBABLE | character level. Two independent lines of evidence: the 1989 BASIC editor on poolce.d64 reads and pokes exactly this byte as LEVEL, and across the eight characters of npc_party.d64 it equals the character's per-class level at four distinct values (4, 6, 7, 8). Every earlier specimen was level 1, which is why it long read as a constant 01. Not yet distinguishable from 'the single class's level' -- no multi-class specimen above level 1 has been seen |
+| `0x0A1` | 1 | `levels_drained` | unsigned byte | CONFIRMED | how many levels undead have drained, not a second copy of the level. The pair is current-plus-delta, which is why no 'true level' was ever found. SPELLE02 computes hp_max / total levels, loops that many times doing DEC $6B76 / DEC $6BED / INC $6BA2 / DEC $6C19, then INC $6BA1 and DEC $6BC9,X. RESTORATION in SPELLE04 reverses it exactly and prints string 94, which SPELLN00 gives as IS RESTORED |
+| `0x0A2` | 1 | `hp_lost_to_drain` | unsigned byte | CONFIRMED | hit points removed by level drain, restored alongside 0x0A1 |
+| `0x0A3` | 1 | `turn_class` | unsigned byte | CONFIRMED | which row of the AD&D 1e turning table a creature answers to. Non-zero in exactly 13 specimens, every one undead, and it matches the published table on all of them: skeleton 1, zombie 2, ghoul 3, wight 5, wraith 7, mummy 8, spectre 9, vampire 10, with giant skeleton 8 and juju zombie 9 |
 | `0x0A5` | 1 | `thief_pick_pockets` | I8 | CONFIRMED | 30 at L1 |
 | `0x0A6` | 1 | `thief_open_locks` | I8 | CONFIRMED | 25 at L1 |
 | `0x0A7` | 1 | `thief_find_traps` | I8 | CONFIRMED | 20 at L1 |
@@ -58,6 +61,8 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x0AA` | 1 | `thief_hear_noise` | I8 | CONFIRMED | 10 at L1 |
 | `0x0AB` | 1 | `thief_climb_walls` | I8 | CONFIRMED | 85 at L1 |
 | `0x0AC` | 1 | `thief_read_languages` | I8 | CONFIRMED | 5 at L1 |
+| `0x0AD` | 10 | `item_effects` | raw bytes | PROBABLE | ten slots holding the effect codes of worn magic items -- the same namespace as item byte +14. Three overlays loop LDX #$09 over it, and XAVIER carrying 107 in the first slot and 89 in the tenth proves the extent. GEN $0BF3 seeds it per race from the table [1, 0, 107, 0, 124, 0, 0, 0], so an elf is born with 107 and a half-elf with 124. Those sit immediately below 108 and 125, which are full immunity to sleep and charm, and the table grades other families the same way (64/65/66 are poison by save modifier) -- so 107 and 124 are read as elf and half-elf partial resistance to sleep and charm. PROBABLE. The percentage is not in the byte and could not be: it is a table index |
+| `0x0B8` | 1 | `flags_0b8` | unsigned byte | CONFIRMED | bit 7 is the real 'this is an NPC or a monster' flag, and bit 0 records that an ability score was altered at the trainer. npc_party.d64 splits three players from five NPCs exactly on bit 7; the code counts player characters with it and enforces CMP #$06, which is the six-PC party limit in code rather than in anecdote; NPC money is zeroed by it. Bit 0 is set by GEN $155D straight after INC/DEC $6B14,X and cleared again if the change is cancelled. **Nothing anywhere reads bit 0 back**, so the forum rumour that altering a score carries a penalty in play has no code behind it on this port |
 | `0x0BB` | 2 | `copper` | 16-bit little endian | CONFIRMED | set to 100 in the edit test and shown in the game (the thirteen-field edit) |
 | `0x0BD` | 2 | `silver` | 16-bit little endian | CONFIRMED | 25-26 each after looting orcs, where it was 0 before |
 | `0x0BF` | 2 | `electrum` | 16-bit little endian | CONFIRMED | set to 100 in the edit test and shown in the game (the thirteen-field edit) |
@@ -81,7 +86,7 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x0FF` | 1 | `portrait_body` | unsigned byte | CONFIRMED | index into the BODY* files, the same way. Head and body are adjacent and independent |
 | `0x10E` | 1 | `thac0` | unsigned byte | PROBABLE | current THAC0 including strength and the readied weapon, stored as 60 - THAC0, sitting immediately before the current armour class at 0x10F. Matches the AD&D table on all eleven exports we hold. Like 0x10F it exists only in an export, and it agrees with the SAVEDGAME1 roster's +0x0E for the same character -- so an exported .chr does carry both combat numbers after all, which is worth knowing given the 1989 editor's author reported he could never find either |
 | `0x10F` | 1 | `armour_class` | unsigned byte | PROBABLE | current armour class including armour, shield and dexterity, stored as 60 - AC. Present only in an exported .chr -- it lies beyond the 256 bytes a save slot stores -- and it agrees exactly with the SAVEDGAME1 roster's +0x0F for the same character: BRUTUS 9, MALCYON 8, LADY KATHERINE 8. Base and current again, in different places |
-| `0x119` | 1 | `hp_current` | unsigned byte | PROBABLE | UNVERIFIED. Equals hp_max in every specimen, and no wounded character has ever been seen in an exported .chr, so it may simply be a second copy of hp_max. Note the hunt for current hit points searched both save files for a wounded character's current total and found nothing -- but this byte lies beyond the 256 a save slot stores, so it is only present in an export and that search does not settle it |
+| `0x119` | 2 | `hp_current` | 16-bit little endian | CONFIRMED | 16-bit LE, and genuinely current hit points rather than a second copy of the maximum: GEN $0BD0 initialises it from hp_max, and both the trainer and the drain routine move it independently afterwards. It equals hp_max in every specimen only because no wounded character has yet been exported. Note it lies beyond the 256 bytes a save slot holds, so it exists in an export and not in a save |
 
 ## Unknown regions that hold data
 
@@ -94,7 +99,7 @@ Regions explicitly declared as candidates because they are non-zero in at least 
 | `0x100` | 1 | 01 |
 | `0x10D` | 1 | party order? Reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and BRUTUS, which are exactly the slots they occupied, and 8 -- one past the last slot -- for four characters freshly made and not yet placed. The DOS field catalogue has a marching-order field. Three older exports disagree with their own party order, so this is a candidate and not a finding |
 | `0x110` | 9 | a short block ending at hp_current. NOT the item area: in an export the sixteen 16-byte item records start at 0x120 and run to 0x21F, ending exactly where the combat icon begins at 0x220. The 1989 editor scans from 0x110, and its own two loops disagree with each other by sixteen bytes, which is how that error got in here |
-| `0x11A` | 2 | 0x11B is 12 in every specimen -- possibly a movement/encumbrance copy |
+| `0x11B` | 1 | 12 in every specimen -- possibly a movement/encumbrance copy |
 | `0x220` | 36 | E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E 0E 08 0E 0E 0E 0E 0F 08 0E 0E 00 0E 0E 0E - densest region in the specimen; runs to the final byte of the record |
 
 ## Invariant
