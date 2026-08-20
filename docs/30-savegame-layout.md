@@ -71,9 +71,10 @@ early as "not THAC0" -- MALCYON's sheet reads `THACO 20` while the byte holds
 39, and `60 - 39` is 21, his base as a level-1 magic-user. The 20 on screen is
 the roster's value after he readied a dart.
 
-Sources: `PORSAVE.D64` (Donald's own save, one character) and the **sample save
-shipped on `POOL1.D64`** (two characters). Three character specimens in total.
-The slot layout is settled — see [the slot stride, corrected](50-experiments.md) in the experiment log.
+The slot layout is settled by a full six-character party — see
+[the slot stride, corrected](50-experiments.md) in the experiment log. The
+specimen set has grown well past the two saves that first suggested it; it is
+listed in [90-specimens.md](90-specimens.md).
 
 ## Files on the save disk
 
@@ -87,8 +88,9 @@ Raw sizes include the 2-byte PRG load address; payloads are 580 / 2048 / 7168.
 
 ## SAVEDGAME0 is a raw memory image
 
-The game dumps `$4900–$64FF` verbatim — no header, no packing, no checksum observed (checksum
-still to be disproved, see `docs/50-experiments.md`). Non-zero byte counts per page:
+The game dumps `$4900–$64FF` verbatim — no header, no packing, no checksum (the
+thirteen-field edit was accepted without complaint). Non-zero byte counts per
+page, on the original **single-character** save:
 
 ```
 $4900:  8   $4A00:  2   $4B00: 52   $4C00: 255    <- header region ($400 bytes)
@@ -105,7 +107,8 @@ The name `BRUTUS` appears at `$4D00` and `$5500`.
 $4900–$4BDF   header / party globals
 $4BE0–$4CFF   8 combat icons of 36 bytes  (ends exactly at $4D00)
 $4D00–$54FF   8 character slots of $100
-$5500–$64FF   item / inventory area — all zero until something is bought
+$5500–$58FF   a one-record staging page — see below
+$5900–$64FF   item area — one $100 block per slot, 16 items of 16 bytes
 ```
 
 A slot holds only the **first 256 bytes** of the 580-byte character record.
@@ -119,6 +122,19 @@ in the shared `$4BE0` table) and the item area.
 
 The icon table having **8** entries is what first suggested 8 slots; the count
 matching is not a coincidence.
+
+### The staging page at `$5500`
+
+The page immediately after the slots holds **one record in the character
+layout**, and it is whatever the game loaded there last: a copy of slot 0 in the
+original single-character save, and the encountered monster — `MON04`, `ORC`,
+254 of its 256 bytes identical to the file on the game disk — in every save
+taken after the orc fight. `$5600`–`$58FF` is zero in every save we hold, so the
+page is one record wide, and it is empty again in `PORSAVE11`, so nothing
+accumulates. Treat it as scratch: it is not part of the item area, which begins
+at `$5900`, and nothing should read it — a monster loaded there carries seven of
+the eight `$FF` NPC-marker bytes, so it would read as a half-marked NPC. See
+[the orc left behind at `$5500`](50-experiments.md).
 
 ### Correction: this was previously recorded as 6 slots of `$400`
 
@@ -150,8 +166,7 @@ offset `0x220–0x243` (its final bytes). That is what accounts for most of the
 in-party copy: the icon is present in the export and zero in the slot, because
 the party keeps icons in this shared table instead.
 
-Note the table has **8** entries where there are **6** character slots. Unexplained
-— possibly two extra for NPCs who can join the party.
+The table has **8** entries, one per character slot.
 
 ### Where world and quest state must live
 
@@ -246,13 +261,13 @@ its index bytes run 0..7.
 | `+0x0E` | **THAC0**, stored as `60 - THAC0` | PROBABLE | see below |
 | `+0x0F` | **armour class**, stored as `60 - AC` | CONFIRMED | AC 8 -> 52, AC 2 -> 58 |
 | `+0x10` | armour bonus (shield excluded), stored as `48 + bonus` | PROBABLE | none 48, leather 50, banded mail 54 |
-| `+0x11` | 1 when armour has cut the movement rate | PROBABLE | 1 for banded mail, 0 for leather and for nothing |
+| `+0x11` | unknown; **not** a flag | GUESS | 1 for banded mail and 0 for leather across six characters, which read as "armour has cut the movement rate" until MALCYON turned up reading 3, unarmoured, at full movement |
 | `+0x15` | tracks readied equipment | GUESS | 2 with nothing readied; +1 per weapon, +2 per shield, +3 per body armour |
 | `+0x17` | **damage bonus** | PROBABLE | strength bonus plus the readied weapon's own |
 | `+0x19` | **current hit points** | CONFIRMED | |
 | `+0x1B` | **movement rate** | CONFIRMED | 12 normally, 9 in banded mail |
 
-### `+0x03`-`+0x05`: NOT the spell counts
+### `+0x03`-`+0x05`: retracted as the spell counts, and not settled since
 
 These three bytes were written up as the number of spells memorised at levels 1,
 2 and 3. **That reading is wrong**, and it is worth keeping the whole story
@@ -270,12 +285,27 @@ did not change *at all* -- it is byte-identical to the save before it, and these
 three bytes still read `0/0/0` for a party with five spells memorised between
 them.
 
-So whatever they are, they are not a count of memorised spells. `wish` exports
-them as `unknown_03_05` rather than pretend otherwise.
+So whatever they are, they are not a straightforward count of the list at
+`0x020`. `wish` exports them as `unknown_03_05` rather than pretend otherwise.
 
 *An earlier version of this document explained the discrepancy as "memorised but
 not yet rested". Donald had rested. The explanation was invented to save the
 hypothesis, which is exactly what it should not have been used for.*
+
+**A later reading weakens the retraction without overturning it.** Two things
+came out of `PORSAVE11`, the save that had never been read. The per-level
+agreement on `npc_party.d64` is sharper than was recorded — the three bytes
+match the ids **level by level**, eight characters for eight, not merely in
+sum — and in `PORSAVE11` ROLAND's three level-1 cleric spells sit beside a
+`+0x03` of 3 while both magic-users, whose lists are now empty, read 0. Against
+that, the contradicting save is a **single** observation: the roster page is
+byte-identical across `PORSAVE2` through `PORSAVE9`, so it was written once, on
+an equipment change, and was stale for everything that happened afterwards —
+which is the caching behaviour armour class already shows. The bytes stay
+unknown, because "the cache was stale" is exactly the kind of explanation that
+rescued the hypothesis last time. What settles it is a save taken straight after
+memorising at two different spell levels. See
+[the spell counts, and how thin the retraction was](50-experiments.md).
 
 **Where the spell data actually lives**, both in the character record:
 
@@ -338,16 +368,22 @@ byte is the *total*: strength bonus plus the weapon's own.
 
 ### What the rest of the block is not
 
-Seven bytes are still unread: `+0x00`, `+0x11`, `+0x13`, `+0x15`, `+0x17`
-(now identified), `+0x1C` and `+0x1E`. Everything else in the 32 is zero in
-every specimen. Ruled out along the way:
+Six bytes carry something we cannot name: `+0x00`, `+0x03`–`+0x05`, `+0x13`,
+`+0x1C` and `+0x1E`. (`+0x11`, `+0x15` and `+0x17` have readings in the table
+above.) Everything else in the 32 is zero in every specimen. Ruled out along
+the way:
 
-* **Encumbrance is not in the block.** Carried weight is computable from the
-  inventory and runs 0 to 129 lb across the specimens; no byte tracks it.
+* **Encumbrance is not in the block** as a number: no byte holds the carried
+  weight, which is computable from the inventory. The movement rate at `+0x1B`
+  does respond to it, though — LADY KATHERINE drops from 12 to 6 between two
+  saves on loot alone, with no change of armour.
 * **Status is not in the block** -- no specimen has a wounded-to-unconscious or
   dead character to move one, but nothing plausible varies.
 * `+0x00` and `+0x13` are `1` in every occupied block on every disk. Structural
   markers rather than data.
+* `+0x0A` and `+0x0B` were zero in every specimen until `PORSAVE11`, where they
+  read 21 and 8 on ROLAND — the one character whose `+0x03` moved at the same
+  time. Unexplained.
 * `+0x1C` and `+0x1E` are zero in all of Donald's saves and non-zero only on the
   editor-hacked `npc_party.d64`, so nothing can be concluded from them.
 

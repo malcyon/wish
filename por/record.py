@@ -133,9 +133,15 @@ def _encode_field(f: Field, value: Any) -> bytes:
 # The record
 # ---------------------------------------------------------------------------
 # Eight bytes read $FF in every one of the five NPCs on npc_party.d64 and $00
-# in all twenty player characters we hold. Whether one of these is the flag and
-# the rest follow from it, or all eight are separate "not applicable"
-# sentinels, is unproven -- so we read and write all eight together.
+# in all twenty player characters we hold, so an NPC is reliably recognisable.
+#
+# What they are is now clearer and less flag-like: all five of those NPCs are
+# records the game itself ships in its MON* files, and the eight bytes read $FF
+# *in the shipped file*, before any save is involved. So this is residue of the
+# $FF fill a shipped record carries, surviving the load into a party slot, and
+# a player character has $00 because nothing ever wrote $FF. Whether the game
+# tests any of them is unproven -- possibly none -- so we read and write all
+# eight together and treat writing the flag as unproven in both directions.
 #
 # 0x0E6-0x0E7 read $FF FF in those NPCs too and were briefly counted here, but
 # they are a *different* field: every player character has a non-zero,

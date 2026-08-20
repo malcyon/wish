@@ -10,7 +10,7 @@ owns it is resident.
 |---|---|
 | `$4900–$4CFF` | party/global header (what `SAVEDGAME0` saves first) |
 | `$4D00–$64FF` | character slot area — see `docs/30-savegame-layout.md` |
-| `$8300–$83FF` | the **party roster blocks** — eight 32-byte entries, one per slot, holding AC, THAC0, current hit points, movement and the memorised spell counts. See `docs/30-savegame-layout.md` |
+| `$8300–$83FF` | the **party roster blocks** — eight 32-byte entries, one per slot, holding AC, THAC0, current hit points, movement and the damage bonus. See `docs/30-savegame-layout.md` |
 | `$8400` | a jump table (`4C xx 84`) — code, and the reason the roster is known to stop at `$83FF` |
 | `$8300–$8AFF` | the whole region saved as `SAVEDGAME1` |
 

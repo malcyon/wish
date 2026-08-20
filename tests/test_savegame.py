@@ -15,6 +15,7 @@ from por.savegame import (
     HEADER_SIZE,
     ICON_SIZE,
     ICON_TABLE_BASE,
+    ITEM_AREA_BASE,
     SAVE0_LOAD_ADDRESS,
     SAVE0_SIZE,
     SAVE1_SIZE,
@@ -22,6 +23,7 @@ from por.savegame import (
     SLOT_AREA_END,
     SLOT_COUNT,
     SLOT_STRIDE,
+    STAGING_PAGE_BASE,
     SaveGame0,
     SaveGame1,
     SaveGameError,
@@ -259,7 +261,236 @@ class TestRosterBlocks:
         with pytest.raises(SaveGameError):
             sg1.roster(0).armour_class = 999
         with pytest.raises(SaveGameError):
-            sg1.roster(0).spells_memorised = (1, 2)
+            sg1.roster(0).unknown_03_05 = (1, 2)
+
+
+class TestStagingPage:
+    """$5500 holds one record in the character layout -- whatever the game last
+    loaded there. See docs/50-experiments.md, "the orc left behind at $5500"."""
+
+    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+
+    @staticmethod
+    def _page(save: SaveGame0) -> bytes:
+        off = STAGING_PAGE_BASE - SAVE0_LOAD_ADDRESS
+        return save.to_bytes()[off:off + SLOT_STRIDE]
+
+    def test_it_is_the_page_right_after_the_slots(self):
+        assert STAGING_PAGE_BASE == SLOT_AREA_END
+
+    def test_empty_before_the_fight_and_a_monster_after(self, party6):
+        after = SaveGame0.from_prg(
+            (FIXTURES / "party6_after_combat.bin").read_bytes())
+        assert set(self._page(party6)) == {0}
+        page = self._page(after)
+        assert page[:3] == b"ORC"
+        assert sum(1 for b in page if b) == 79
+
+    def test_the_single_character_save_holds_a_copy_of_slot_zero(self, save0):
+        assert self._page(save0) == save0.slot(0).record_bytes
+
+    def test_only_one_record_wide(self, party6):
+        """$5600-$58FF is zero in every save we hold."""
+        after = SaveGame0.from_prg(
+            (FIXTURES / "party6_after_combat.bin").read_bytes())
+        base = STAGING_PAGE_BASE + SLOT_STRIDE - SAVE0_LOAD_ADDRESS
+        end = ITEM_AREA_BASE - SAVE0_LOAD_ADDRESS
+        assert set(after.to_bytes()[base:end]) == {0}
+
+    def test_the_monster_is_MON04_bar_two_bytes(self):
+        """The game fills strength_index in from the ability score, and
+        overwrites one of the NPC marker bytes."""
+        import pathlib as _p
+        disk = _p.Path(f"{self.DISKS}/POOL1.D64.orig")
+        if not disk.exists():
+            pytest.skip("needs a game disk")
+        from por.d64 import D64, split_load_address
+        _, mon = split_load_address(D64.open(str(disk)).read_file(b"MON04"))
+        after = SaveGame0.from_prg(
+            (FIXTURES / "party6_after_combat.bin").read_bytes())
+        page = self._page(after)
+        differing = [i for i in range(SLOT_STRIDE) if page[i] != mon[i]]
+        assert differing == [0x0E2, 0x0FB]
+        assert mon[0x0E2] == 0xFF and page[0x0E2] == mon[0x014] == 10  # STR
+
+
+class TestRosterSpellCounts:
+    """+0x03-+0x05 were read as per-level counts of the memorised list, and
+    retracted. The evidence on both sides is pinned here so neither is lost.
+    See docs/50-experiments.md, "the spell counts, and how thin the retraction
+    was"."""
+
+    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+
+    def _pair(self, path):
+        import pathlib as _p
+        p = _p.Path(path)
+        if not p.exists():
+            pytest.skip(f"needs {p.name}")
+        from por.d64 import D64
+        img = D64.open(str(p))
+        return (SaveGame0.from_prg(img.read_file(b"SAVEDGAME0")),
+                SaveGame1.from_prg(img.read_file(b"SAVEDGAME1")))
+
+    @staticmethod
+    def _by_level(record):
+        from collections import Counter
+        from por.spells import spell_group
+        ids = [b for b in record.get_raw("spells_memorised") if b]
+        per = Counter(spell_group(i)[1] for i in ids)
+        return (per.get(1, 0), per.get(2, 0), per.get(3, 0))
+
+    def test_npc_party_agrees_level_by_level(self):
+        """Eight for eight, per level -- not merely in sum, as first recorded."""
+        import os
+        sg0, sg1 = self._pair(os.path.expanduser("~/Downloads/npc_party.d64"))
+        for slot in sg0.characters:
+            assert self._by_level(slot.record) == sg1.roster(slot.index).unknown_03_05
+
+    def test_porsave11_agrees_too(self):
+        sg0, sg1 = self._pair(f"{self.DISKS}/PORSAVE11.D64")
+        for slot in sg0.characters:
+            assert self._by_level(slot.record) == sg1.roster(slot.index).unknown_03_05
+
+    def test_but_porsave4_does_not(self):
+        """The observation that retracted the reading. ROLAND holds three
+        level-1 cleric spells and the roster reads 0/0/0."""
+        sg0, sg1 = self._pair(f"{self.DISKS}/PORSAVE4.D64")
+        roland = next(s for s in sg0.characters if s.record.name == "ROLAND")
+        assert self._by_level(roland.record) == (3, 0, 0)
+        assert sg1.roster(roland.index).unknown_03_05 == (0, 0, 0)
+
+    def test_the_contradicting_page_is_one_observation_not_eight(self):
+        """PORSAVE2-PORSAVE9 share a byte-identical roster page, so the reading
+        fails on one stale cache rather than on eight independent saves."""
+        pages = []
+        for n in range(2, 10):
+            _, sg1 = self._pair(f"{self.DISKS}/PORSAVE{n}.D64")
+            pages.append(sg1.to_bytes()[:0x100])
+        assert len(set(pages)) == 1
+
+
+class TestShippedNpcRecords:
+    """The five NPCs on npc_party.d64 are records the game itself ships, and the
+    "NPC marker" is $FF in the shipped file. See docs/50-experiments.md,
+    "PRINCESS FATIMA was never impossible"."""
+
+    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    SHIPPED = {
+        "GENHEERIS": ("POOL5.D64", b"MON58"),
+        "MAD MAN": ("POOL2.D64", b"MON19"),
+        "PRINCESS FATIMA": ("POOL8.D64", b"MON68"),
+        "DIRTEN": ("POOL3.D64", b"MON6B"),
+        "SKULLCRUSHER": ("POOL4.D64", b"MON1B"),
+    }
+
+    def _monster(self, disk, name):
+        import pathlib as _p
+        p = _p.Path(f"{self.DISKS}/{disk}")
+        if not p.exists():
+            pytest.skip("needs the game disks")
+        from por.d64 import D64, split_load_address
+        _, payload = split_load_address(D64.open(str(p)).read_file(name))
+        return payload
+
+    def _npc_party(self):
+        import os
+        import pathlib as _p
+        p = _p.Path(os.path.expanduser("~/Downloads/npc_party.d64"))
+        if not p.exists():
+            pytest.skip("needs npc_party.d64")
+        from por.d64 import D64
+        return SaveGame0.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME0"))
+
+    def test_fatimas_race_is_the_one_the_game_shipped(self):
+        """Race 0 was called impossible and used as proof of tampering."""
+        sg = self._npc_party()
+        slot = next(s for s in sg.characters
+                    if s.record.name == "PRINCESS FATIMA")
+        shipped = self._monster(*self.SHIPPED["PRINCESS FATIMA"])
+        assert slot.record.get("race") == shipped[0x072] == 0
+        same = sum(1 for i in range(SLOT_STRIDE)
+                   if slot.record_bytes[i] == shipped[i])
+        assert same == 252
+
+    def test_every_npc_is_a_shipped_record_and_no_pc_is(self):
+        sg = self._npc_party()
+        for slot in sg.characters:
+            name = slot.record.name
+            if name in self.SHIPPED:
+                shipped = self._monster(*self.SHIPPED[name])
+                same = sum(1 for i in range(SLOT_STRIDE)
+                           if slot.record_bytes[i] == shipped[i])
+                assert slot.record.is_npc and same >= 230, name
+            else:
+                assert not slot.record.is_npc, name
+
+    def test_the_marker_bytes_are_FF_before_any_save_exists(self):
+        """So the marker is fill residue, not a flag the game sets on joining."""
+        from por.record import NPC_MARKER, NPC_MARKER_OFFSETS
+        for disk, name in self.SHIPPED.values():
+            shipped = self._monster(disk, name)
+            assert all(shipped[o] == NPC_MARKER for o in NPC_MARKER_OFFSETS), name
+
+    def test_no_record_anywhere_uses_race_8(self):
+        """MONSTER=8 is enumerated and never instantiated, like PALADIN."""
+        import pathlib as _p
+        from por.d64 import D64, split_load_address
+        races = set()
+        for n in range(1, 9):
+            disk = _p.Path(f"{self.DISKS}/POOL{n}.D64"
+                           if n != 1 else f"{self.DISKS}/POOL1.D64.orig")
+            if not disk.exists():
+                pytest.skip("needs the game disks")
+            img = D64.open(str(disk))
+            for e in img.directory():
+                if bytes(e.name).startswith(b"MON"):
+                    _, p = split_load_address(img.read_file(e))
+                    races.add(p[0x072])
+        assert 8 not in races
+        assert 0 in races
+
+
+class TestTheCacheRefreshed:
+    """PORSAVE11: MALCYON's armour class finally caught up with the dexterity
+    the thirteen-field edit gave him, and landed on what por.derive predicts.
+    See docs/50-experiments.md, "the spell counts, and how thin the retraction
+    was"."""
+
+    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+
+    def _save(self, name):
+        import pathlib as _p
+        p = _p.Path(f"{self.DISKS}/{name}.D64")
+        if not p.exists():
+            pytest.skip("needs the later save disks")
+        from por.d64 import D64
+        img = D64.open(str(p))
+        return (SaveGame0.from_prg(img.read_file(b"SAVEDGAME0")),
+                SaveGame1.from_prg(img.read_file(b"SAVEDGAME1")))
+
+    def test_armour_class_was_stale_and_is_now_right(self):
+        from por import derive
+        for name, expected in (("PORSAVE9", 8), ("PORSAVE11", 6)):
+            sg0, sg1 = self._save(name)
+            malcyon = sg0.slot(0)
+            assert malcyon.record.name == "MALCYON"
+            assert malcyon.record.get("dexterity") == 18
+            assert sg1.roster(0).armour_class == expected
+            assert derive.expected_armour_class(malcyon.record, []) == 6
+
+    def test_strength_index_caught_up_too(self):
+        """0x0E2 sat at his pre-edit Strength of 15 for eight saves."""
+        assert self._save("PORSAVE9")[0].slot(0).record.get("strength_index") == 15
+        assert self._save("PORSAVE11")[0].slot(0).record.get("strength_index") == 18
+
+    def test_eighteen_with_a_zero_percentile_is_plain_eighteen(self):
+        sg0, _ = self._save("PORSAVE11")
+        by_name = {s.record.name: s.record for s in sg0.characters}
+        assert by_name["MALCYON"].get("exceptional_strength") == 0
+        assert by_name["MALCYON"].get("strength_index") == 18
+        assert by_name["SILAS"].get("strength_index") == 21    # 18/81
+        assert by_name["BRUTUS"].get("strength_index") == 22   # 18/98
 
 
 class TestPartyPosition:

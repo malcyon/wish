@@ -43,8 +43,9 @@ written back and confirmed in game.
 ## Decoded — in the `SAVEDGAME1` roster blocks
 
 One 32-byte block per party slot at `$8300 + N * $20`, eight of them, filling
-`$8300`–`$83FF` exactly. **None of these is editable yet**; `wish` does not touch
-`SAVEDGAME1`. See `docs/30-savegame-layout.md`.
+`$8300`–`$83FF` exactly. All of them are editable: `wish` reads and writes this
+page, and it is the only part of `SAVEDGAME1` it touches. See
+`docs/30-savegame-layout.md`.
 
 | field | offset | confidence |
 |---|---|---|
@@ -118,18 +119,21 @@ sixteen 16-byte records per character:
 | `+2` | name word 2 (qualifier): `MAIL`, `OF`, `AC3` |
 | `+3` | name word 1 (noun): `CLOAK`, `BANDED`, `LONG SWORD` |
 | `+4` | magic bonus, signed — `254` is a cursed −2 |
-| `+6` | bit 7 = readied |
+| `+6` | bit 7 = readied; low 3 bits = which name words are hidden until identified |
+| `+7` | bit 7 = cursed |
 | `+8`–`+9` | weight, 16-bit, in tenths of a pound |
 | `+10` | quantity |
 | `+11`–`+12` | cost in gold pieces, 16-bit |
+| `+13`–`+15` | a scroll's spell ids, or a wand's charges at `+13` and its type at `+14` |
 
 Verified against the AD&D 1st edition price and weight tables. The name is
 assembled from three indices into the game's own `ITEMNAMES` table — `CLOAK` `OF`
 `DISPLACEMENT`, `BROAD SWORD` `-2` `CURSED`. Two of these were wrong until the
 1989 editor supplied 162 records containing magic items: the third name word was
 being dropped, and cost was read as one byte, which is enough for everything
-buyable in a shop and wrong for everything interesting. `+5`, `+7` and `+13`–`+15`
-are still unread. See `por/items.py`.
+buyable in a shop and wrong for everything interesting. Only `+5` is still
+unread — 0 on 162 of the 163 items on the game disks and 251 on CURSED NECKLACE
+alone. See `por/items.py`.
 
 **Combat icon: ✅ done** ([the combat-icon edits](50-experiments.md)). 36 bytes, split exactly in half — 18 screen
 codes for the **shape**, then 18 **colour** values. In a save they live in a
@@ -151,8 +155,8 @@ than the single differing character we had before:
   `$10 $11` — which hints at a grid where part of the frame is constant. Not
   yet worked out.
 
-**Still missing: the large/small flag** the Gold Box Companion offers. It is not
-among these 36 bytes, so it lives elsewhere or is implied by the shape.
+The large/small flag the Gold Box Companion offers is **not** among these 36
+bytes. It lives in the record instead, at `0x099` — see below.
 
 ### Alignment encoding
 
@@ -303,8 +307,13 @@ icon reads as small without being smaller.
 **What marks an NPC** — eight record bytes (`0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`,
 `0x0D4`, `0x0E4`, `0x0E5`, `0x0FB`) read `$FF` for every NPC and `$00` for every
 player character, so the distinction is readable today and `wish` exposes it as
-`npc:`. Which of them the game actually tests is not known, so writing the flag
-is unproven in both directions.
+`npc:`. **They are probably not a flag at all.** All five NPCs we hold are
+records the game ships in its `MON*` files, and the eight bytes read `$FF` in
+the shipped file before any save exists — so this is residue of a fill that
+survives the load, and a player character reads `$00` because nothing ever wrote
+`$FF`. That fits the evidence better than a deliberate marker and predicts that
+writing `npc:` does nothing. Whatever the game really tests is somewhere we have
+not looked.
 
 **Constructing an item** — much closer than it was. The name is three word
 indices, the cost is 16-bit, the weight is in tenths of a pound, and the 1989
@@ -378,18 +387,16 @@ checkboxes appear to do.
 * `0x0B8` — BRUTUS is the only character whose copy changed (0 → 1) when the
   party equipped, and he is also the only one whose armour class comes out a
   point better than the AD&D tables predict. Probably one thing, not two.
-* `0x0FE`–`0x0FF` — vary per character with no pattern identified yet.
-* `0x10E` — 42, 39, 39 across the three exports. Sits between the body index and
-  the current armour class, which is where a **head** index belongs, but no
-  filename reading of those values works.
 * `0x117` — 5, 0, 1 across the three exports; unexplained.
 * **Item byte `+5`** — 0 on 162 of the 163 items on the game disks and 251 on
   CURSED NECKLACE alone.
 
-Two entries previously listed here have since been resolved: `0x0C9`–`0x0CC`
+Four entries previously listed here have since been resolved: `0x0C9`–`0x0CC`
 turned out to be the per-class levels, and `0x0CC` alone was wrongly read as an
 exceptional-strength flag because the only fighters in the specimen set at the
-time happened to be the only characters with exceptional strength.
+time happened to be the only characters with exceptional strength; `0x0FE`–`0x0FF`
+are the portrait head and body; and `0x10E` is the current THAC0, not the head
+index it sat next to.
 
 ## How the remaining fields will most likely be found
 

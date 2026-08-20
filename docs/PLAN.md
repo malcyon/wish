@@ -45,6 +45,11 @@ $4D00: 41   ...zero...  $5500: 41   ...zero...  <- character slots
 bytes** at `$4D00, $5100, $5500, $5900, $5D00, $6100`, ending exactly at `$64FF`; slots 0 and 2
 occupied. Competing hypothesis: 3 slots of `$800`. Resolving this is experiment #1.
 
+> **Both were wrong**, and a two-character save could not tell them apart. It is
+> **8 slots of `$100`** at `$4D00`. Left as written because the error is the
+> point — see Phase 2 below and
+> [the slot stride, corrected](50-experiments.md).
+
 Confirmed field offsets inside the 580-byte character record:
 
 ```
@@ -306,7 +311,7 @@ Remaining, in rough order of value:
 1. ~~**Read and write `SAVEDGAME1`.**~~ ✅ **DONE.** `por/savegame.py` grew a
    `RosterBlock` view over the eight roster blocks, and the YAML carries a
    `combat:` block per character: armour class, THAC0, current hit points,
-   movement and the memorised spell counts. Writes go through the live view, so
+   movement and the damage bonus. Writes go through the live view, so
    the nineteen unread bytes per block are never disturbed — asserted by a test
    that an armour-class edit moves exactly one byte.
 2. ~~**Expose the fields found since.**~~ ✅ **DONE.** `level` (`0x0A0`) is in the
@@ -441,11 +446,13 @@ Commodore 64 Ultimate** and nothing else.
 `por/` is already transport-agnostic, so this costs nothing to defer. The design
 is in `docs/96-live-memory-automapper.md`.
 
-**The first task is not the transport**: we do not know where the map coordinates
-are. `SAVEDGAME1` remains the obvious candidate. It is no longer entirely unread —
-its first eight 32-byte blocks are the party roster (see
-`docs/30-savegame-layout.md`) — but everything past `$83FF` still is. Finding the
-coordinates needs only a few saves a few squares apart and a diff, no emulator.
+**The map coordinates are found**, and they are not where this plan first
+guessed: they are in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and
+`$49C2` (facing), established by walking known distances and diffing. Walking
+leaves `SAVEDGAME1` byte-identical, which rules it out. Its first eight 32-byte
+blocks are the party roster (see `docs/30-savegame-layout.md`); everything past
+`$83FF` is still unread. What a live map still needs is the `GEO*` encoding, so
+it can draw walls around the position.
 
 ---
 

@@ -200,12 +200,12 @@ _DECLARED: Sequence[Field] = (
            "Ids are CONFIRMED against the game's own SPELLN00 table and "
            "against spells Donald memorised on purpose: 1 BLESS, 3 CURE LIGHT "
            "WOUNDS, 21 SLEEP. Cleric and magic-user ids fall in disjoint "
-           "ranges; see por/spells.py. The roster block at +0x03/+0x04/+0x05 "
-           "holds a per-level count that usually equals the number of non-zero "
-           "bytes here, but NOT always: in PORSAVE4 the counts read 0/0/0 "
-           "while this list is set, because the party memorised and had not "
-           "yet rested. Length is unproven: the most seen in use is 13 bytes, "
-           "and 0x02D-0x070 is zero in every specimen"),
+           "ranges; see por/spells.py. The roster block's +0x03/+0x04/+0x05 "
+           "were read as a per-level count of this list, because they matched "
+           "it for all eight characters of npc_party.d64. That reading is "
+           "RETRACTED: in PORSAVE4 they read 0/0/0 while this list is set, on "
+           "a save taken after resting. Length is unproven: the most seen in "
+           "use is 13 bytes, and 0x02D-0x070 is zero in every specimen"),
     _field(0x078, 7, _RAW, "spells_known", "Spellbook", _OK,
            "a bitmask of the spells the character KNOWS, indexed by spell id: "
            "bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster "
@@ -230,8 +230,14 @@ _DECLARED: Sequence[Field] = (
            "HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf. HALF-ORC "
            "is real but NPC-only: it is not on the character-creation menu, "
            "and the only two half-orcs in the game are the named NPCs MACE "
-           "and NORRIS THE GRAY. GNOME and HALFLING have never been seen in "
-           "any specimen, player or monster"),
+           "and NORRIS THE GRAY. Two values outside that list matter. **0 is "
+           "the commonest race in the game**, carried by 75 of the 135 "
+           "distinct monster records -- every generic creature and some "
+           "humanoid NPCs -- so it reads as 'not applicable' rather than as a "
+           "race, and a 0 is not evidence that a record was tampered with. "
+           "**8 (MONSTER) is used by nothing anywhere**, player or monster: "
+           "the table enumerates it and the game never instantiates it, the "
+           "same way it names DRUID, PALADIN, RANGER and MONK"),
     _field(0x073, 1, _U8, "char_class", "Class", _OK,
            "0-based, standard Gold Box order: CLERIC=0 DRUID=1 FIGHTER=2 "
            "PALADIN=3 RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7. 0, 2 and 5 are "
@@ -401,7 +407,10 @@ _DECLARED: Sequence[Field] = (
     _field(0x0EC, 1, _U8, "region_0ec", "unknown @0x0EC", _NOPE,
            "0 -> 1 after combat for MALCYON and LADY KATHERINE and nobody else "
            "-- exactly the two spellcasters, so probably spell state rather "
-           "than damage. Zero in BRUTUS, so not flagged as a candidate region."),
+           "than damage. Went 1 -> 3 for MALCYON alone in PORSAVE11, where "
+           "LADY KATHERINE also cast a spell and hers did not move, so it is "
+           "not simply a count of spells cast. Zero in BRUTUS, so not flagged "
+           "as a candidate region."),
     _field(0x11A, 2, _RAW, "region_11a", "unknown @0x11A", _NOPE,
            "0x11B is 12 in every specimen -- possibly a movement/encumbrance "
            "copy", candidate=True),

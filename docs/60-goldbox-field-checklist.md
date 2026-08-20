@@ -47,20 +47,22 @@ win; `docs/80-fields-wanted.md` is the current field list and
 **Where it was wrong or incomplete.**
 
 * It assumed the whole record was the unit of study. Several of the fields it
-  hunts for are **not in the character record at all** — armour class, THAC0,
-  current hit points, movement and the memorised spell counts live in the
-  `SAVEDGAME1` roster blocks. That is also why the 1989 editor's author could
+  hunts for are **not in the character record at all** — the current armour
+  class, THAC0, hit points, movement and damage bonus live in the `SAVEDGAME1`
+  roster blocks. That is also why the 1989 editor's author could
   never find AC or THAC0: he was editing an export, which has no roster block.
 * Per-class levels are at `0xC9`–`0xCC`, not `0xCA`–`0xD1`.
 * `0xA0` is character level after all, and the doubt recorded in §5 was
   misplaced — see the correction there.
 * The item slot geometry it distrusted is correct: 16-byte records, and in a
   save they sit in the item area at `$5900` rather than inline.
-* Its guess that `0x71` is THAC0-base is wrong. THAC0 is roster byte `+0x0E`.
+* Its guess that `0x71` is THAC0-base was right, and was wrongly written off
+  here for a while. `0x71` is the **base** THAC0 and roster byte `+0x0E` is the
+  **current** one, both stored as `60 - value`.
 
-**Still open from its list:** damage, the level-drain pair, status, portrait
-head/body, order number, encumbrance, attacks per round, and active magical
-effects.
+**Still open from its list:** the level-drain pair, status, order number,
+encumbrance, attacks per round, and active magical effects. Damage and the
+portrait head/body have since been found.
 
 ## 0. The evidence base (read this before trusting anything below)
 
@@ -408,8 +410,8 @@ experiment on the list.
   was wrong.** `0xA0` is character level. On `npc_party.d64` it reads 4, 6, 7 and 8 and matches
   the per-class array for all eight characters. The per-class array does also exist, at
   `0xC9`–`0xCC`; the two are not alternatives. Whether editing `0xA0` alone does anything visible
-  is still untested — and worse, `wish` currently writes the per-class array without updating
-  `0xA0`, which can leave them disagreeing.
+  is still untested. `wish` keeps the two in step: editing `levels:` carries `0xA0` with it,
+  and an explicit `level:` wins.
 - **amiga-dev.wikidot's Pool of Radiance project.** Explicitly says "Data File Format: Undetermined
   at this time", last edited 2012. It documents ByteKiller decompression and nothing else. There is
   no Amiga character-record layout published there or anywhere I could find.

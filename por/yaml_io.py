@@ -4,16 +4,17 @@ The design goal is a **lossless round-trip**: exporting a save and importing it
 unchanged must reproduce the original file byte for byte. That is what makes the
 tool safe to use on a real save, and it is asserted by the tests.
 
-Only fields we actually understand are editable. Everything else — the ~84% of
+Only fields we actually understand are editable. Everything else — the ~82% of
 each record still unidentified, the party header, and everything in
 `SAVEDGAME1` past its first page — is carried through untouched, because an edit
 must never destroy bytes whose meaning we do not know.
 
 Two files make up a save, and both are written. `SAVEDGAME0` holds the character
 records; `SAVEDGAME1` opens with eight roster blocks holding the values the game
-*derives* — armour class, THAC0, current hit points, movement, and the memorised
-spell counts. Those appear under `combat:` and are the only part of `SAVEDGAME1`
-this module touches.
+*derives* — armour class, THAC0, current hit points, movement and the damage
+bonus. Those appear under `combat:`, together with the three bytes at
+`+0x03`–`+0x05` whose meaning is not established, and are the only part of
+`SAVEDGAME1` this module touches.
 
 Two fields the game stores twice are kept in step, because writing one without
 the other leaves a record no save has ever been seen in: the class code at
@@ -149,7 +150,7 @@ FIELD_COMMENTS = {
               "above. Edit `levels` and this follows automatically; edit this\n"
               "and your value is kept."),
     "npc": ("true for a companion the party picked up rather than one you\n"
-            "made. Recognised from ten record bytes that agree across every\n"
+            "made. Recognised from eight record bytes that agree across every\n"
             "character we have; which one the game tests is not known, so\n"
             "changing this is unproven in both directions."),
     "exceptional_strength": "0-100, only meaningful when strength is 18",
@@ -357,7 +358,7 @@ def export_save(path: str, game_disk: str | None = None) -> dict[str, Any]:
                 "damage_bonus": block.damage_bonus,
                 "hp_current": block.hit_points,
                 "movement_current": block.movement,
-                "unknown_03_05": list(block.spells_memorised),
+                "unknown_03_05": list(block.unknown_03_05),
             }
         party.append(entry)
 
@@ -589,7 +590,7 @@ COMBAT_FIELDS = {
     "damage_bonus": "damage_bonus",
     "hp_current": "hit_points",
     "movement_current": "movement",
-    "unknown_03_05": "spells_memorised",
+    "unknown_03_05": "unknown_03_05",
 }
 
 
@@ -601,7 +602,7 @@ def _apply_combat(block, combat: dict[str, Any], slot: int, who: str) -> list[st
             continue
         old = getattr(block, attr)
         new = combat[key]
-        if attr == "spells_memorised":
+        if attr == "unknown_03_05":
             new = tuple(int(n) for n in new)
         else:
             new = int(new)

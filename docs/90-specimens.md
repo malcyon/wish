@@ -66,15 +66,20 @@ controlled saves. Their values prove nothing; their structure proves a lot.
 ### `npc_party.d64` — three PCs and five NPCs
 
 Found online by Donald (discussed on r/c64 as "An unusual Pool of Radiance save
-disk"). Two things in it cannot have come from ordinary play:
+disk"). **One** thing in it cannot have come from ordinary play:
 
-* **PRINCESS FATIMA's race byte is 0.** Races are 1-based, `DWARF=1` through
-  `MONSTER=8`, and character creation offers nothing outside that. The other
-  four NPCs are race 7, so it is not an NPC convention.
 * **MAD MAN's experience is exactly `$FFFFFF`** — every bit of the 24-bit field
-  set — while the rest of the party holds 10,200 to 115,311. That is a
-  saturation value, and it is precisely what the 1989 editor on `poolce.d64`
-  writes: its own documentation says the XP option "just sets it at the max".
+  set. He is a shipped record, `MON19`, and the shipped copy holds **0**, so the
+  value did not come from play. It is precisely what the 1989 editor on
+  `poolce.d64` writes: its own documentation says the XP option "just sets it at
+  the max".
+
+~~**PRINCESS FATIMA's race byte is 0**, outside the 1-based `DWARF=1` through
+`MONSTER=8` enumeration.~~ **Withdrawn.** Race 0 is the game's own commonest
+value — 75 of the 135 distinct monster records carry it — and FATIMA is
+`MON68`, a shipped record whose slot matches the file on the game disk in 252 of
+256 bytes, race byte included. Nothing was tampered with. See
+[PRINCESS FATIMA was never impossible](50-experiments.md).
 
 ~~Weaker corroboration: XAVIER has DEX 19 and GRON CON 20, above the 3–18 a
 character rolls.~~ **Withdrawn.** Donald points out that the game's own trainer
@@ -99,10 +104,19 @@ is everything an editor does *not* touch —
   about a file, not a rule;
 * its characters are **levels 4 to 8**, where every other specimen we hold is
   level 1 — which is what finally identified `0x0A0` as level;
-* four of them are **casters with spells memorised**, which gave both the
-  per-level counts and the packed spell list;
+* four of them are **casters with spells memorised**, which gave the packed
+  spell list at `0x020`. It also gave the roster's `+0x03`–`+0x05` a reading as
+  per-level counts, which a later save contradicted;
 * three are **player characters and five are NPCs**, a contrast we could not
   otherwise produce.
+
+**All five NPCs are shipped records and all three player characters are not** —
+GENHEERIS is `MON58`, MAD MAN `MON19`, PRINCESS FATIMA `MON68`, DIRTEN `MON6B`
+and SKULLCRUSHER `MON1B`, each matching in 230 to 252 of 256 bytes, ability
+scores included. Four of the five have experience that has risen plausibly from
+its shipped value. So the disk is better described as **genuine play with one
+edited field** than as "hacked, values worthless", and its NPC records are worth
+more than that phrase allowed.
 
 It also carries three exported `.chr` files. Those are the *pre-hack* originals,
 so diffing them against the slots does not give a clean export delta.
@@ -118,9 +132,9 @@ ours, it settles level, it completes the multi-class enumeration, and it carries
 
 ## What this set still lacks
 
-Every specimen *of Donald's own* is *level 1*, and none has ever been seen
-wounded in a save. Three of the four gaps listed here have since been closed, two
-of them by `npc_party.d64` rather than by a save we made:
+Every specimen *of Donald's own* is *level 1*. All three of the gaps listed
+here have since been closed, two of them by `npc_party.d64` rather than by a
+save we made:
 
 * ~~a character who has **levelled up**~~ — **found**, in `npc_party.d64`:
   characters at levels 4, 6, 7 and 8 identified `0x0A0` as level. The
@@ -154,14 +168,40 @@ out of the monster files. Gnome and halfling were missing from every specimen
 and are now supplied by `PORSAVE10.D64` above — which settled `0x0AD`, though
 not the way anyone expected: both read 0, so it is not a racial trait mask.
 
+### `PORSAVE11.D64` — the save nobody had read
+
+The latest state of Donald's party, and undocumented until a sweep found it. It
+is the only save of ours whose roster page differs from the one written on the
+shopping trip, which is what makes it worth its own entry:
+
+* **three characters are wounded** — ROLAND 5 of 7, SILAS 6 of 9, BRUTUS 6 of 11;
+* the party has **looted heavily**: SILAS, MAGNUS and BRUTUS carry a full
+  sixteen items, SILAS 230 lb of them, and movement falls with the weight;
+* ROLAND's `+0x03` reads **3** beside three memorised level-1 cleric spells,
+  which is the first support for the retracted spell-count reading from a save
+  of our own;
+* both magic-users have **empty** memorised lists, having cast their sleeps;
+* experience runs 45 to 86, against 17 in every earlier save.
+
+What Donald did to produce it is not recorded, which limits what can be
+concluded from it. See
+[the spell counts, and how thin the retraction was](50-experiments.md).
+
+Two more have closed since:
+
+* ~~a character **wounded and then saved**~~ — **found**, in `PORSAVE4.D64`:
+  LADY KATHERINE at 4 of 5 hit points, which confirmed roster `+0x19`. It does
+  **not** settle `0x119` in an export, because no wounded character has been
+  exported.
+* ~~the party **moved a few squares** between two saves~~ — **done**, four
+  saves one action apart, which located x, y, facing, the previous square and
+  the counter in the `SAVEDGAME0` header.
+
 Still wanted, and each needs a save we make ourselves:
 
-* a character **wounded and then saved** — the roster block's `+0x19` should
-  move, and it would settle `hp_current` in an export;
+* a character **exported while wounded** — the one step that settles `0x119`;
 * a character **drained a level** by undead — the current/true level pair;
 * a **magical weapon or armour** obtained in play — to read the item effect bytes
   against a known item, rather than against the 1989 editor's synthesised ones;
 * a **multi-class character above level 1** — to tell "character level" at
-  `0x0A0` apart from "the single class's level";
-* the party **moved a few squares** between two saves — map coordinates, which
-  nothing has yet touched.
+  `0x0A0` apart from "the single class's level".

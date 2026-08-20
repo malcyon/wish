@@ -1700,25 +1700,313 @@ rate chance predicts.
 
 ---
 
+## The orc left behind at `$5500`
+
+**Hypothesis.** `$5500`-`$58FF` is recorded in two places as "stays zero even
+with a fully equipped party", and the same claim reached `por/savegame.py`. One
+page between the character slots and the item area, said to be empty in every
+save, is exactly the sort of claim that survives because nobody looked twice.
+
+**Method.** Read the page out of every save disk we hold and both save fixtures
+in the repo, and compare whatever is there against the game's own files. No
+emulator.
+
+**Result. It is not zero, and it holds one record in the character layout.**
+
+| Save | `$5500` | Party experience |
+|---|---|---|
+| `PORSAVE` | zero | 0 |
+| `PORSAVE2`-`PORSAVE9` | **`ORC`**, 79 non-zero bytes | 17 |
+| `PORSAVE11` | zero | 45-86 |
+| `party6_savedgame0.bin` | zero | before the fight |
+| `party6_after_combat.bin` | **`ORC`**, identical to `PORSAVE2`'s | after the fight |
+| `savedgame0.bin` (the original single-character save) | **`BRUTUS`**, byte-identical to slot 0 | - |
+
+**The repo already contained the controlled before/after.** `party6_savedgame0`
+and `party6_after_combat` are the same party either side of the orc fight that
+gave us experience and silver, and the page fills in across it. Nothing had to
+be arranged.
+
+**The record is `MON04`.** Of the 256 bytes, 254 are byte-identical to the
+`MON04` file on the game disk. Two differ, and both are informative:
+
+| Offset | On disk | In the save |
+|---|---|---|
+| `0x0E2` `strength_index` | `$FF` | 10, the orc's Strength |
+| `0x0FB` | `$FF` | 6 |
+
+So the game does not copy a monster file verbatim: it fills `strength_index` in
+from the ability score, which is one more corroboration that `0x0E2` is the
+effective-strength field. `0x0FB` is one of the **eight NPC marker bytes**, and
+it reads `$FF` on disk and 6 once loaded -- so a loaded monster is not evidence
+about the marker, and the marker's `$FF` may be a "not applicable" fill that the
+game overwrites for whatever the byte really means.
+
+**What the page is.** One record, immediately after the eight character slots,
+holding the last such record the game loaded: a copy of the party's only
+character in the earliest save, the encountered monster after a fight. It is a
+**staging page**, not storage -- `$5600`-`$58FF` is zero in every save we hold,
+so it is one record wide, and `PORSAVE11` has it zero again after later fights,
+so nothing accumulates there.
+
+**Two corrections fall out.** The item area begins at `$5900`, not `$5500`, and
+one line of `por/savegame.py` said otherwise. And "`$5500`-`$58FF` stays zero
+even with a fully equipped party" was written from the shopping-trip diff --
+where `PORSAVE2`, one of the two disks being compared, already had the orc in it.
+
+**Not established.** Whether the game reads this page back on load, or simply
+dumps `$4900`-`$64FF` and picks up whatever was resident. The second is much
+more likely, given `SAVEDGAME0` is a verbatim memory image, and it would make
+the page inert for an editor. Nothing here tests it.
+
+---
+
+## The spell counts, and how thin the retraction was
+
+**Prompted by** finding `PORSAVE11.D64` on the disk shelf. No document mentioned
+it; it is the latest save of Donald's party and nothing had read it.
+
+**What produced it**, from Donald: the party went into the slums, fought a
+couple of random encounters and came out wounded, **ROLAND the cleric died**,
+they retreated to town, bought a cure light wounds for ROLAND at the church, and
+saved outside it. Everything below is that one sequence, and it matters, because
+**nobody memorised a spell and nobody changed a piece of equipment.**
+
+**Hypothesis.** Roster bytes `+0x03`-`+0x05` were read as the number of spells
+memorised at levels 1, 2 and 3, then **retracted** when they stayed `0/0/0` on a
+save where three characters had spells memorised. Test the reading again against
+every roster page we hold, per spell level rather than by sum, including the
+save nobody had looked at.
+
+**Method.** For each caster, split the memorised ids at record offset `0x020`
+into spell levels through the `SPELLN00` groups, and compare with the three
+bytes. No emulator.
+
+**Result 1. Where the reading was checked before, it is stronger than recorded.**
+On `npc_party.d64` it was reported that the *sum* of the three bytes equals the
+number of ids. It is better than that: the **per-level breakdown matches
+exactly**, eight characters for eight, including `GENHEERIS` at 3/2/0 and
+`SIMON` at 5/5/3. A sum can agree by luck; three numbers agreeing cannot.
+
+**Result 2. `PORSAVE11` agrees too, it is one of ours, and the count cannot
+have come from anywhere else.**
+
+| Character | ids at `0x020`, by level | `+0x03`-`+0x05` |
+|---|---|---|
+| ROLAND | 3 cleric level-1 spells | **3, 0, 0** |
+| MALCYON | none | 0, 0, 0 |
+| LADY KATHERINE | none | 0, 0, 0 |
+
+Both magic-users have **empty** memorised lists here, where in every earlier save
+they each held `SLEEP`. They cast them in the slums. ROLAND's list is unchanged
+from `PORSAVE4` -- the same `[3, 3, 1]` -- and only the roster byte moved, from
+0 to 3.
+
+**That is the argument.** ROLAND memorised nothing between the two saves, so a 3
+cannot have been counted from anything new. The only three of anything he has is
+the three level-1 cleric spells already sitting at `0x020`. The byte was derived
+from that list, at some point in this sequence, having read 0 while the same
+list sat there for eight previous saves.
+
+**Result 3. The contradicting evidence is one observation, not six.** The roster page is **byte-identical across `PORSAVE2`,
+`PORSAVE3`, `PORSAVE4`, `PORSAVE5`, `PORSAVE6`, `PORSAVE7`, `PORSAVE8` and
+`PORSAVE9`** -- eight saves spanning a shopping trip, memorising spells, resting,
+a point of damage and two walks. The page was written once, when equipment
+changed, and then not again until something in `PORSAVE11` rewrote it.
+
+That is the caching behaviour armour class already demonstrates, and it changes
+what the retraction means. The reading holds in **every save where the page was
+actually written** and fails only where the page is stale. "They read 0/0/0 for a
+party with five spells memorised" is true, and it is a statement about a cache
+that had not been refreshed since before those spells were chosen.
+
+**Status: still not restored, but only just.** The bytes stay `unknown_03_05`
+in `wish` and UNKNOWN in the docs. Two things are missing. The three bytes have
+never been seen holding **different** values from each other in one of our own
+saves, so "level 1, level 2, level 3" rests on `npc_party.d64` alone; and what
+triggers the refresh is not established, so "the cache was stale" is still an
+explanation reached for rather than tested. What settles both at once is a save
+taken straight after memorising, with a caster who memorises at **two different
+spell levels**.
+
+**The stale cache from the thirteen-field edit has refreshed, and it landed
+exactly where `wish` predicted.** This is the largest thing in the save.
+MALCYON's dexterity was edited 16 to 18 by that experiment; the game went on
+showing `AC 8`, the value for his old score, through eight saves. Here it reads
+**6** -- precisely what `por/derive.py` has been computing and reporting as
+stale all along. His `strength_index` at `0x0E2` did the same thing, sitting at
+15 (his pre-edit Strength) until this save and now reading 18.
+
+Two consequences:
+
+* **An edited ability score does reach the game's derived values**, so the
+  editor's central premise holds for more than the fields the sheet prints
+  directly. This is the second in-game confirmation `wish` has, after the
+  thirteen-field edit, and the first for a value the game computes itself.
+* **"Recomputed only when equipment changes" is too narrow.** No equipment
+  changed here. What did happen is combat, a death, and a temple healing.
+
+**And it explains the last outstanding discrepancy in the project.** MALCYON's
+THAC0 improved from 21 to 20 across the shopping trip, where all he acquired was
+darts, and no reading accounted for it. Here it improves again, 20 to 18, and
+his readied weapon is still a dart. A **readied missile weapon picks up a
+dexterity to-hit bonus** -- DEX 16 was worth 1 at the shopping trip, DEX 18 is
+worth more now. Two points do not pin the table down, and the project has
+already found that Pool of Radiance's dexterity tables are not the book's, so
+the shape is left open. `por/derive.py` does not model it and now reports
+MALCYON's THAC0 as stale when it is correct.
+
+**Strength 18 with a percentile of 0 is plain 18, not 18/00.** The recomputed
+`strength_index` reads **18** beside 21, 21 and 22 for the three fighters with
+real exceptional rolls. The AD&D top band would have given 21 or 22. His damage
+bonus stayed 0 throughout, where plain Strength 18 should be worth 2 -- either
+the game gives no Strength damage to a thrown dart, or `+0x17` was not part of
+the refresh.
+
+**Three more observations from the same diff**, weaker than the above:
+
+* **`+0x11` is not a boolean.** It was read as "1 when armour has cut the
+  movement rate". MALCYON reads **3** here, wears nothing, and his movement is
+  unchanged at 12.
+* **Movement responds to encumbrance, not only to armour.** LADY KATHERINE goes
+  from 18.7 lb to 122.2 lb of loot and her `+0x1B` falls 12 to 6; SILAS goes to
+  230.5 lb and falls 9 to 6, with no change of armour in either case. The
+  earlier finding stands as far as it went -- no byte in the block holds the
+  carried *weight* -- but the movement byte plainly reacts to it.
+* **`+0x0A` and `+0x0B` are non-zero for the first time**, 21 and 8, on ROLAND,
+  the one character whose spell count moved. They sit in the run the roster
+  section calls "zero in every specimen". Unexplained, and the obvious thing to
+  watch on the next save with spells prepared.
+* **`0x0EC` went 1 to 3 for MALCYON and moved for nobody else.** It is the byte
+  recorded as "probably spell state rather than damage" because it rose for the
+  two spellcasters after a fight. LADY KATHERINE cast a sleep here too and hers
+  did not move, so whatever it counts, it is not simply spells cast.
+* **ROLAND died and was healed, and his record barely noticed.** His slot shows
+  silver spent and experience gained and nothing else; his current hit points,
+  5 of 7, are in the roster. If the game records having died, or having been
+  restored, it is not in the character record.
+
+---
+
+## PRINCESS FATIMA was never impossible
+
+**Prompted by** a sweep of the race byte across the monster files, run for an
+unrelated reason. `npc_party.d64` has been described throughout this knowledge
+base as editor-hacked on two pieces of evidence, and the first of them is that
+`PRINCESS FATIMA`'s race byte is **0**, "outside the 1-8 enumeration character
+creation offers".
+
+**Method.** Read the race byte from every distinct monster record on the eight
+disks, then match each of `npc_party.d64`'s eight characters against that corpus
+byte for byte. No emulator.
+
+**Result 1. Race 0 is the game's own most common value.** Across the 135
+distinct records in the 116 `MON*` files:
+
+| Race byte | Records | What they are |
+|---|---:|---|
+| **0** | **75** | every generic creature — `ORC`, `TROLL`, `KOBOLD`, `WOLF` — and some humanoid NPCs (`ACOLYTE`, `1ST LVL CLERIC`) |
+| 7 human | 54 | named and generic humans |
+| 1 dwarf | 3 | |
+| 2 elf | 1 | `DRIDER` |
+| 6 half-orc | 2 | `MACE`, `NORRIS THE GRAY` |
+| **8 monster** | **0** | **nothing, anywhere** |
+
+So race 0 is not an impossible value. It is what three quarters of the game's
+own character-layout records carry, and reads as "not applicable" rather than
+"monster" — `ACOLYTE` and `1ST LVL CLERIC` are plainly people.
+
+**Result 2. This corrects "monsters are characters with race 8".** That was an
+inference from the race table ending `HUMAN=7 MONSTER=8`, and it was never
+measured. Nothing in the game uses race 8. It is the **same pattern already
+documented for classes**: the tables enumerate more than the game instantiates,
+exactly as `DRUID`, `PALADIN`, `RANGER` and `MONK` are named and never used.
+
+**Result 3. FATIMA is a shipped record.** She is `MON68`, present on POOL4 and
+POOL8, and **252 of the 256 bytes** in her `npc_party.d64` slot are identical to
+the file on the game disk — including all six ability scores and her experience,
+10,200, which matches the shipped value exactly. Her race byte is the race the
+game gave her.
+
+**Result 4. All five "NPCs" are shipped records, and all three player characters
+are not.**
+
+| Character | `npc:` | In the monster files |
+|---|---|---|
+| GENHEERIS | true | `MON58`, 241 of 256 identical |
+| MAD MAN | true | `MON19`, 240 of 256 |
+| PRINCESS FATIMA | true | `MON68`, 252 of 256 |
+| DIRTEN | true | `MON6B`, 230 of 256 |
+| SKULLCRUSHER | true | `MON1B`, 249 of 256 |
+| XAVIER, SIMON, GRON | false | not present |
+
+Five for five and three for three. The `npc:` flag `wish` exports is reading
+something real.
+
+**Result 5, and it is the structural one. The eight "NPC marker" bytes are
+`$FF` in the shipped file itself.** `0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`, `0x0D4`,
+`0x0E4`, `0x0E5` and `0x0FB` all read `$FF` in `MON58`, `MON19`, `MON68`,
+`MON6B` and `MON1B` on the game disk, before any save is involved.
+
+That changes what the marker *is*. It is not a flag the game sets when an NPC
+joins the party: it is **residue of the `$FF` fill a shipped record carries**,
+which survives being loaded into a slot. A player character, created by the
+game, has zero there because nothing ever wrote `$FF`. Which would explain the
+question nobody could answer — *which* of the eight the game tests — with
+"possibly none of them".
+
+The loading is only partial, and the pattern is the same one the orc at `$5500`
+showed: of FATIMA's 33 differing bytes, 29 are `$FF` on disk and something else
+in the save, including the whole `0x080`-`0x097` run and `strength_index` at
+`0x0E2`, filled in from her Strength. The eight marker bytes are among the ones
+*not* cleared. In the orc's case `0x0FB` alone was overwritten, leaving seven of
+eight — so a record loaded for combat would trip the half-set-marker warning
+`wish` implements, which is one more reason nothing should read `$5500`.
+
+**Result 6. What survives as evidence that the disk was edited.** One thing, and
+it is stronger than before:
+
+* **MAD MAN's experience.** The shipped `MON19` holds **0**. His slot holds
+  `$FFFFFF`. That cannot have come from play, and it is exactly what the 1989
+  editor's "set XP to the max" writes.
+* The other four NPCs' experience has risen **plausibly** from its shipped
+  value — GENHEERIS 64,000 to 71,584, DIRTEN 19,800 to 57,803, SKULLCRUSHER
+  11,200 to 11,687, FATIMA unchanged at 10,200 — and their ability scores match
+  their shipped records byte for byte. Nobody edited them.
+* The three characters with scores above 18 — XAVIER's DEX 19, GRON's CON 20 —
+  are precisely the three **player** characters. That observation was withdrawn
+  earlier because the game's own trainer alters scores, and it stays withdrawn;
+  it is recorded here only because the split is so clean.
+
+**What this costs.** Two claims have to go: that FATIMA's race is impossible,
+and that monsters are race 8. What it buys is better: the disk's NPC records are
+*genuine shipped data that has been played with*, so their structure is worth
+more than "hacked, values worthless" allowed. The one hacked field we can point
+at is MAD MAN's experience.
+
+**Still unknown.** Whether the game ever *tests* an NPC marker byte, and
+therefore whether `wish` writing `npc: true` on a player character does anything
+at all. The `$FF`-fill reading predicts it does not, and predicts that the
+game's own NPC-versus-PC decision is made somewhere we have not looked.
+
+---
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
 
 - **The export delta.** Which of the 44 bytes that differ between an exported `.chr`
   and the same character in a save slot are party context, and which are real fields?
-- **The checksum probe.** Corrupt one byte in a region nothing reads, then reload. If
-  the game rejects the save, the editor needs a checksum fixer. Worth knowing before
-  the editor grows more write paths.
-- **The eight-character party.** `npc_party.d64` holds 3 PCs and 5 NPCs. Confirms the
-  party can exceed six, and should expose the PC/NPC distinction and the join/leave
-  bookkeeping. See `docs/90-specimens.md`.
+- **The checksum probe.** Largely answered by the thirteen-field edit, which the
+  game accepted without complaint. A dedicated corruption probe would only add
+  the case of a byte in a region nothing reads, and nothing depends on it.
 - **The two class fields, separated.** `char_class` (`0x073`) and `class_bits`
-  (`0x0EB`) encode the same classes twice, and agree in all twenty specimens, so
-  nothing yet says which one the game reads. Set them to *disagree* — give a
-  fighter `class_bits` of fighter|cleric while leaving `0x073` at 2 — and try to
-  ready a mace. This used to fall out of a `classes:` edit, because `wish` wrote
-  `0x0EB` and never touched `0x073`; it now keeps them in step, so the split has
-  to be made deliberately with a hex editor. If the character can then wield
+  (`0x0EB`) encode the same classes twice, and agree in every player character
+  we hold, so nothing yet says which one the game reads. (They *can* disagree:
+  four of the game's own NPC records do.) Set them to disagree deliberately —
+  give a fighter `class_bits` of fighter|cleric while leaving `0x073` at 2 — and
+  try to ready a mace. `wish` keeps the two in step when you edit `classes:`, so
+  the split has to be made by setting `class_code:` yourself. If the character can then wield
   clerical gear, `class_bits` is the field the game tests, and it is very likely
   what Gold Box Companion's four "can wield" checkboxes edit. If nothing changes,
   `0x073` is the real class and `0x0EB` is a cache. Either answer is worth having,
@@ -1748,11 +2036,14 @@ Named, not numbered — the name is how they get referred to elsewhere in the do
   save file and can be set aside. If it shows more, we have found a field.
 - **The racial-traits hunt.** Gold Box Companion on the DOS version exposes an editable
   trait list — and a trait survives a race change, so it is stored per character rather
-  than derived from race. Find that field. See `docs/80-fields-wanted.md`.
-- **The item-name table.** Item records hold type numbers; the names they print must
-  live in the game files. Find the table so the YAML can say what an item *is*.
-- **The item-effect bytes.** A `+1 long sword` and a `flame tongue` differ from a plain
-  one somewhere in the 16-byte record. Buy or find a magical weapon and diff.
-- **The monster table.** Not in the save files, so it is in the game data. Stats for
-  every monster exist somewhere on the disks; finding them documents how the game
-  stores creature data.
+  than derived from race. Find that field. `0x0AD` was the leading candidate and
+  is ruled out: gnomes and halflings read 0. See `docs/80-fields-wanted.md`.
+- **The remaining item-effect byte.** `+5` is 0 on 162 of the 163 items on the
+  game disks and 251 on CURSED NECKLACE alone. Everything else in the 16 is
+  read. Finding a magical weapon in play would also let the effect bytes be
+  checked against an item we watched arrive, rather than against the 1989
+  editor's synthesised records.
+- **The monster attack routine.** The monster files otherwise decode: they use
+  the character record layout, with hit dice at `0x0A0`, armour class at `0x0E1`
+  and movement at `0x09F`. How many attacks a creature makes, and for how much,
+  is not located, and the experience award is not stored at all.

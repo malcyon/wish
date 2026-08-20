@@ -99,9 +99,10 @@ and `wish` reads and writes that page:
     combat:
       armour_class: 8
       thac0: 20
+      damage_bonus: 0
       hp_current: 4
       movement_current: 12
-      spells_memorised: [0, 0, 0]
+      unknown_03_05: [0, 0, 0]
 ```
 
 Both combat numbers are stored as `60 - value`, so `wish` refuses anything that

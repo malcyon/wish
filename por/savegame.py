@@ -15,8 +15,11 @@ A slot holds only the **first 256 bytes** of the 580-byte character record --
 verified byte-identical against every character's own exported .chr file for a
 full six-character party. The rest of the record lives elsewhere: the combat
 icon in the shared table at $4BE0 (8 entries of 36 bytes, ending exactly at
-$4D00), and items in the region from $5500 which is all zero until something is
-bought.
+$4D00), and items in the area from $5900, one $100 block per slot (see
+por/items.py). $5500 is a one-record staging page in the character layout,
+holding whatever the game loaded there last -- a copy of slot 0 in the earliest
+save, the encountered monster after a fight. $5600-$58FF is zero in every save
+we hold.
 
 Everything a character sheet needs -- name, abilities, race, class, age, hit
 points, saving throws, movement, money -- falls inside those first 256 bytes.
@@ -53,13 +56,20 @@ ROSTER_COUNT = 8
 ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 
 # Offsets within one roster block.
-ROSTER_SPELLS = 0x03          # three bytes: spells memorised at levels 1, 2, 3
-ROSTER_SPELL_LEVELS = 3
+# Three bytes whose meaning is NOT established. They were read as the number of
+# spells memorised at levels 1, 2 and 3 -- which matches npc_party.d64 level by
+# level, and PORSAVE11 too, and is contradicted by PORSAVE4, where they read
+# 0/0/0 for a party with five spells memorised. That contradicting page is stale
+# (PORSAVE2-PORSAVE9 share one byte-identical roster), which weakens the
+# retraction without settling it. See docs/30-savegame-layout.md; the bytes are
+# carried through a round trip rather than interpreted.
+ROSTER_UNKNOWN_03 = 0x03
+ROSTER_UNKNOWN_03_LEN = 3
 ROSTER_SLOT_INDEX = 0x0D
 ROSTER_THAC0 = 0x0E
 ROSTER_ARMOUR_CLASS = 0x0F
 ROSTER_ARMOUR_BONUS = 0x10
-ROSTER_ENCUMBERED = 0x11      # 1 when armour has cut the movement rate
+ROSTER_UNKNOWN_11 = 0x11      # not a flag: MALCYON reads 3, unarmoured
 ROSTER_EQUIPMENT = 0x15       # rises with what is readied; see docs
 ROSTER_DAMAGE_BONUS = 0x17
 ROSTER_HP_CURRENT = 0x19
@@ -96,7 +106,9 @@ ICON_TABLE_BASE = 0x4BE0        # 8 combat icons of 36 bytes, ending at $4D00
 ICON_SIZE = 0x24
 
 # Items live at $5900, not immediately after the slots -- see por/items.py.
-# $5500-$58FF stays zero even with a fully equipped party; purpose unknown.
+# $5500 is a staging page holding one record (the last one the game loaded
+# there); $5600-$58FF is zero in every save we hold.
+STAGING_PAGE_BASE = 0x5500
 ITEM_AREA_BASE = 0x5900
 
 
@@ -110,7 +122,7 @@ class Slot:
 
     index: int
     address: int
-    window: bytes          # the full $400 window
+    window: bytes          # the $100 the slot stores
     occupied: bool
 
     @property
@@ -439,9 +451,14 @@ class RosterBlock:
         self._set(ROSTER_DAMAGE_BONUS, value)
 
     @property
-    def encumbered(self) -> bool:
-        """True when armour has reduced the movement rate."""
-        return bool(self._get(ROSTER_ENCUMBERED))
+    def unknown_11(self) -> int:
+        """+0x11, meaning unknown.
+
+        Read as "armour has cut the movement rate" on six characters, where it
+        was 1 for banded mail and 0 for leather. MALCYON reads 3 in PORSAVE11
+        wearing nothing, at full movement, so it is not that flag.
+        """
+        return self._get(ROSTER_UNKNOWN_11)
 
     @property
     def hit_points(self) -> int:
@@ -460,25 +477,29 @@ class RosterBlock:
         self._set(ROSTER_MOVEMENT, value)
 
     @property
-    def spells_memorised(self) -> tuple[int, ...]:
-        """How many spells are memorised at levels 1, 2 and 3. Pool of Radiance
-        casts no higher; the bytes above are zero in every specimen."""
-        b = self._base + ROSTER_SPELLS
-        return tuple(self._data[b:b + ROSTER_SPELL_LEVELS])
+    def unknown_03_05(self) -> tuple[int, ...]:
+        """The three bytes at +0x03-+0x05, whose meaning is not established.
 
-    @spells_memorised.setter
-    def spells_memorised(self, counts) -> None:
-        counts = list(counts)
-        if len(counts) != ROSTER_SPELL_LEVELS:
+        Exposed so they can be round-tripped and edited, not because we know
+        what they do. See `ROSTER_UNKNOWN_03`.
+        """
+        b = self._base + ROSTER_UNKNOWN_03
+        return tuple(self._data[b:b + ROSTER_UNKNOWN_03_LEN])
+
+    @unknown_03_05.setter
+    def unknown_03_05(self, values) -> None:
+        values = list(values)
+        if len(values) != ROSTER_UNKNOWN_03_LEN:
             raise SaveGameError(
-                f"spells_memorised needs {ROSTER_SPELL_LEVELS} counts, "
-                f"got {len(counts)}")
-        for level, n in enumerate(counts, start=1):
+                f"unknown_03_05 needs {ROSTER_UNKNOWN_03_LEN} bytes, "
+                f"got {len(values)}")
+        for offset, n in enumerate(values):
             if not 0 <= int(n) <= 0xFF:
                 raise SaveGameError(
-                    f"level {level} spell count out of range: {n}")
-        b = self._base + ROSTER_SPELLS
-        self._data[b:b + ROSTER_SPELL_LEVELS] = bytes(int(n) for n in counts)
+                    f"roster byte +0x{ROSTER_UNKNOWN_03 + offset:02X} out of "
+                    f"range: {n}")
+        b = self._base + ROSTER_UNKNOWN_03
+        self._data[b:b + ROSTER_UNKNOWN_03_LEN] = bytes(int(n) for n in values)
 
     def __repr__(self) -> str:
         if not self.occupied:
@@ -493,8 +514,8 @@ class SaveGame1:
 
     The first page is the party roster -- eight 32-byte blocks holding the
     combat numbers the character record does not: armour class, THAC0, current
-    hit points, movement and the memorised spell counts. Everything from $8400
-    on is still opaque, and is carried through a load/save cycle untouched.
+    hit points, movement and the damage bonus. Everything from $8400 on is
+    still opaque, and is carried through a load/save cycle untouched.
     """
 
     def __init__(self, payload: bytes):

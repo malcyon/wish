@@ -16,6 +16,9 @@ not a full disassembly.
 | `PORSAVE2.D64` | the same party after shopping — banded mail, shields, leather. The pair that located armour class and THAC0 |
 | `PORSAVE3.D64` | a later state of the same party |
 | `PORSAVE4.D64` | MALCYON with DEX edited 16 → 18; the save that proved AC is cached, not recomputed |
+| `PORSAVE5.D64` … `PORSAVE9.D64` | leaving the inn, then the controlled walk that located the party's position |
+| `PORSAVE10.D64` | eight full 580-byte exports and no `SAVEDGAME0` — the roster disk that gave the size flag |
+| `PORSAVE11.D64` | the latest state: wounded characters, a full inventory, and the only roster page of ours that differs from the shopping trip's |
 | `POOL1.D64.orig` | pristine copy of side 1 |
 | `Pool of Radiance.vfl` | VICE fliplist covering all sides |
 
@@ -23,7 +26,7 @@ Two more disks came from outside the project and live in `~/Downloads`:
 
 | Image | Role |
 |---|---|
-| `npc_party.d64` | a save found online: three player characters and five NPCs, levels 4–8. Been through an editor — one character has an impossible race code and another a saturated `$FFFFFF` experience — so its *values* prove nothing — but it is the only specimen with eight slots filled, characters above level 1, and spells memorised |
+| `npc_party.d64` | a save found online: three player characters and five NPCs, levels 4–8. One character's experience is a saturated `$FFFFFF` where its shipped record holds 0, so an editor has been near it — but the five NPCs are the game's own `MON*` records, played with rather than rewritten. The only specimen with eight slots filled, characters above level 1, and spells memorised |
 | `poolce.d64` | "POR EDITOR V5", a listable 1989 BASIC character editor plus its readme. Corroborates our record layout offset for offset, and carries the item name table and 162 complete item records |
 
 Both are described in `docs/90-specimens.md`.

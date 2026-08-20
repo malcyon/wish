@@ -9,15 +9,21 @@ Nothing here writes anything. It computes what the AD&D 1st edition rules say a
 character's combat numbers should be, so `wish` can say "this looks stale"
 rather than leaving you to notice.
 
-Every formula below is checked against real saves in the tests, and against the
-one character the rules do not explain: BRUTUS comes out one point of armour
-class better than they predict, which is a real anomaly and not a bug here.
+Every formula below is checked against real saves in the tests. BRUTUS used to
+come out one point of armour class better than the rules predicted; that was the
+dexterity table below being AD&D's rather than the game's, and with the boundary
+corrected every character in every save is consistent. The one discrepancy left
+anywhere is MALCYON's THAC0 improving by one when he readies darts.
 See docs/30-savegame-layout.md.
 """
 
 from __future__ import annotations
 
-from .items import ItemType
+from .items import TYPE_DAMAGE_MEDIUM, ItemType
+
+# The third byte of a damage expression is its flat bonus: a mace is 1d6+1, so
+# its type record carries 1 here and readying it is worth a point of damage.
+_TYPE_DAMAGE_BONUS = TYPE_DAMAGE_MEDIUM + 2
 
 # THAC0 by class and level, AD&D 1st edition. Index by level - 1.
 _THAC0 = {
@@ -118,7 +124,7 @@ def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int
                                  record.get("exceptional_strength"))
     for item, kind in readied:
         if kind.is_weapon:
-            return damage + (item.raw[11] if False else 0) + (kind.raw[11] or 0)
+            return damage + kind.raw[_TYPE_DAMAGE_BONUS]
     return damage
 
 
