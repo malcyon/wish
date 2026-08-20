@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .d64 import D64, load_payload, split_load_address
 from .savegame import SAVE0_LOAD_ADDRESS
 
 ICON_TABLE_BASE = 0x4BE0
@@ -67,3 +68,80 @@ class Icon:
 def icon_for_slot(save0_payload: bytes, slot: int) -> Icon:
     base = ICON_TABLE_BASE - SAVE0_LOAD_ADDRESS + slot * ICON_SIZE
     return Icon(bytes(save0_payload[base: base + ICON_SIZE]))
+
+
+# -- drawing the thing ------------------------------------------------------
+
+# The 18 cells are **two 3x3 poses stacked**, not one 3x6 figure. Rendering the
+# party's icons showed a fighter in one stance on top and a second stance below.
+CELL_COLS = 3
+POSE_ROWS = 3
+POSES = 2
+CELL_ROWS = POSE_ROWS * POSES
+
+# The glyphs. CHARPIC00 -- "character picture" -- is the only charset on the
+# disks big enough: icon shape codes reach 243, and the other candidate,
+# CHARSET, holds 64 glyphs. Byte-identical on all eight disks.
+#
+# **Eight bytes per glyph from byte 0, no header.** Splitting it at every phase,
+# phase 0 is the only one with a blank glyph anywhere meaningful, and that blank
+# is index 32 -- the screen code for space, which real icons use. The payload is
+# 2030 bytes, six past the end of glyph 252, so the file stops two bytes into
+# glyph 253: 2032 = 8 x 254 is the largest an eight-block PRG carries, and a full
+# 2048-byte charset would need a ninth block. Glyph 253's lost tail is `D4 D4`,
+# recoverable because glyphs 81 and 251 are the only ones sharing its six present
+# bytes. Nothing reaches it -- the highest shape code across every source is 243,
+# ending 72 bytes clear -- so the clamp in `icon_pixels` never fires.
+ICON_CHARSET_FILE = b"CHARPIC00"
+
+# Combat is a **multicolour** text screen, so a cell is four double-width pixels
+# per row, not eight. Three of the four colours are shared and live in VIC
+# registers, not in the save. COM.PREP -- the combat-preparation overlay, byte
+# identical on all eight disks -- sets them:
+#
+#     LDX #$0C / STX $D020 / DEX / STX $D021 / DEX / STX $D022
+#     LDA #$00 / STA $D023
+COMBAT_BORDER = 0x0C            # grey
+COMBAT_BACKGROUND = 0x0B        # dark grey   -> bit pair 00
+COMBAT_MULTICOLOUR_1 = 0x0A     # light red   -> bit pair 01
+COMBAT_MULTICOLOUR_2 = 0x00     # black       -> bit pair 10
+#                                 bit pair 11 -> the cell's own colour, low 3 bits
+
+# Pepto's measured VIC-II palette, as #rrggbb.
+C64_PALETTE = [
+    "#000000", "#FFFFFF", "#813338", "#75CEC8", "#8E3C97", "#56AC4D",
+    "#2E2C9B", "#EDF171", "#8E5029", "#553800", "#C46C71", "#4A4A4A",
+    "#7B7B7B", "#A9FF9F", "#706DEB", "#B2B2B2",
+]
+
+PIXELS_WIDE = CELL_COLS * 4      # multicolour halves the horizontal resolution
+PIXELS_HIGH = CELL_ROWS * 8
+
+
+def load_icon_charset(disk: D64 | str) -> bytes:
+    """The glyph bitmaps the combat icons are drawn from."""
+    payload = load_payload(disk, ICON_CHARSET_FILE)
+    return payload
+
+
+def icon_pixels(icon: "Icon", charset: bytes) -> list[list[int]]:
+    """Both poses as a grid of C64 colour indices, `[y][x]`.
+
+    Pure data -- no Qt, no image library -- so the renderer can be tested and
+    the same function serves the editor, a PNG dump and a terminal preview.
+    """
+    shared = {0: COMBAT_BACKGROUND, 1: COMBAT_MULTICOLOUR_1,
+              2: COMBAT_MULTICOLOUR_2}
+    out = [[COMBAT_BACKGROUND] * PIXELS_WIDE for _ in range(PIXELS_HIGH)]
+    for cell in range(CELLS):
+        code = icon.shape[cell]
+        own = icon.colours[cell] & 0x07
+        cx, cy = cell % CELL_COLS, cell // CELL_COLS
+        base = code * 8
+        glyph = charset[base:base + 8]
+        for row in range(8):
+            bits = glyph[row] if row < len(glyph) else 0
+            for pair in range(4):
+                value = (bits >> (6 - pair * 2)) & 0x03
+                out[cy * 8 + row][cx * 4 + pair] = shared.get(value, own)
+    return out
