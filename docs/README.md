@@ -86,11 +86,15 @@ bonus can all be changed — as can character level, which is kept in step with
 the per-class array, and the class code, which is kept in step with the class
 bitmask.
 
-**The caveat that matters most:** nothing found since the thirteen-field edit has
-ever been *written back and confirmed in game*. Every field above is written on
-the strength of reading it correctly, which is not the same thing. The roster
-blocks in particular have never been proven writable — the game may recompute
-over them on load.
+**The roster blocks are now proven writable.** MALCYON's armour class and current
+hit points were edited to 1 and 11 — a two-byte change to `SAVEDGAME1`, with
+`SAVEDGAME0` byte-identical — and the game showed `AC 1` and `HITPOINTS 11` on
+both the party list and the character sheet, then wrote the same bytes back when
+it saved. So the game reads that cache and does not recompute over it.
+
+**The caveat that still stands:** everything *else* found since the thirteen-field
+edit is written on the strength of reading it correctly, which is not the same as
+having been written back and confirmed in game.
 
 **Open**
 
@@ -111,13 +115,24 @@ over them on load.
 * ~82% of each record remains unidentified, as does everything in
   `SAVEDGAME1` past its first page.
 
-**Abandoned**
+**No longer abandoned**
 
-* Watchpoints via the VICE monitor — never worked, and comparing saved data
-  consistently beat watching the game read it.
-* Driving the game to *create* characters — the name prompt could never be got
-  past. Not needed: arranging varied data and comparing it proved far more
-  productive.
+Both of these were written off and both now work; see
+[70-driving-the-game.md](70-driving-the-game.md).
+
+* **Watchpoints via the VICE monitor** — they do work, and they settled the
+  character-creation question in one run. The trick is to keep the connection
+  open and `resume()` rather than close it: VICE re-enters the monitor on the
+  connection that was live when it stopped.
+* **Driving the game to create characters** — solved. The name prompt rejects
+  any byte `>= $5B` and `xdotool` was sending capitals as Shift+letter, i.e.
+  `$D7` for `W`. Type lowercase.
+* **Disk swapping**, which blocked every experiment needing the game to read a
+  disk we built — solved through VICE's *text* monitor `attach` command.
+* **The roster blocks are writable.** An edited armour class and hit-point
+  total appeared on the character sheet and survived a save, so the caveat
+  above about `SAVEDGAME1` never having been written back is now discharged for
+  the combat block.
 
 ## Two outside sources worth knowing about
 

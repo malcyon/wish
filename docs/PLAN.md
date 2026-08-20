@@ -397,9 +397,10 @@ Remaining, in rough order of value:
     out to follow — and it is the only way to test the forum rumour that altering
     scores is penalised in play. Also the cheapest safety check available for
     `wish`, which writes those six bytes directly.
-14. **Find the first quest flag.** The header and everything in `SAVEDGAME1`
-    past `$8400` are still mostly unread, and they must hold what the game
-    remembers about the world. The walk experiment already opened the header —
+14. **Find the first quest flag.** The header `$4900`–`$4BDF` is now the only
+    candidate — `SAVEDGAME1` past `$8400` turned out to be code — so whatever
+    the game remembers about the world fits in `$2E0` bytes, if it is saved at
+    all. The walk experiment already opened the header —
     position, facing and a counter came out of it — and left two bytes behind,
     `$4A07` and `$4BC6`, that moved only when the party left the inn. Those are
     the first candidates for indoors/outdoors or for a location flag. The
@@ -474,7 +475,9 @@ A and B converge at `por/savegame.py`, which is written once both have landed.
 **Deliberately serial — do not fan out:**
 
 - **Anything touching the emulator.** One VICE instance, one port 6502. Concurrent agents
-  would fight over the monitor socket and over the game's single save disk.
+  would fight over the monitor socket and over the game's single save disk. This is
+  now a hard rule rather than a caution: VICE serves **one** text-monitor connection
+  per run, and closing it deafens every monitor including the binary one.
 - **Phase 2 differential experiments.** "Change exactly one thing, then diff" *is* the method;
   running experiments concurrently destroys the attribution that makes the results mean
   anything.

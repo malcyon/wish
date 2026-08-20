@@ -300,6 +300,23 @@ same place and behaves the same way. Editing ability scores is safe, but expect
 combat numbers to lag until the game recalculates them for some other reason;
 re-readying a piece of armour in game forces it.
 
+**Writing `SAVEDGAME1` is proven.** MALCYON was edited to armour class 1 and 11
+hit points — two bytes, `$830F` and `$8319` — booted, and the game showed both on
+the party list and the character sheet, then wrote the same roster page back on
+save. Everything that lives only in the roster is editable for real.
+
+`0x0E2`, **effective strength**, is a third cached value and the quietest one.
+It is not exported, not editable, and not among the discrepancies `wish`
+reports, so editing `strength` leaves it holding the old score while the roster
+numbers that depend on strength *are* flagged. That is deliberate — the game
+refills it — but it means a hand-edited save disagrees with itself in one place
+the tool will not tell you about.
+
+**An edit above `0x0FF` is silently dropped.** A save slot is 256 bytes, so the
+record's tail — `0x10D`, `0x10E`, `0x10F`, `0x119` and the combat icon — exists
+only in a standalone `.chr` export. `wish` will accept the change and the write
+goes nowhere.
+
 **Everything decoded is now editable**, including the spellbook and the
 memorised list. Two consistency rules the editor does **not** enforce, because
 neither has been proven in game: a memorised spell ought to be one the character

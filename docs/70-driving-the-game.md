@@ -52,21 +52,82 @@ send.
 
 | attempt | result |
 |---|---|
-| KERNAL buffer injection | game never reads it |
 | `xdotool key --window <id>` | VICE ignores synthetic `XSendEvent` |
 | `Alt+N` (fliplist next), plain or held | does not change the attached disk |
 | `F10` | does not open the menu bar |
 | synthetic mouse clicks on menus | do not register |
+| **capitals via `xdotool key W`** | arrives as Shift+w, PETSCII `$D7`; the name prompt rejects any byte ≥ `$5B` and silently re-prompts. Type lowercase |
+| XTEST `Return` at the code-word prompt | letters arrive, Return does not. Inject it instead |
+| a single self-contained boot disk | impossible: the game demands side 3 the moment the copy protection passes, and other sides later |
+| closing the binary monitor while a checkpoint is armed | VICE re-enters the monitor on the connection that was live when it stopped; with that socket closed the emulator freezes and no new connection is read. Only a kill recovers it |
+| closing the text-monitor connection | wedges the binary monitor too — VICE serves one text-monitor connection per run |
+| connecting to the text monitor first | it never breaks in on connect and sends no banner; it answers only while the machine is already stopped |
 
 `Alt+N` genuinely *is* the right binding (VICE's own
 `share/vice/hotkeys/hotkeys-fliplist.vhk` maps `fliplist-next-8` to `<Alt>n`).
 The problem is that VICE's **GTK layer never sees synthetic modifiers or
-clicks** — only the emulation canvas receives keys. So no disk swapping,
-menu use, or hotkey beyond plain keypresses is available to automation.
+clicks** — only the emulation canvas receives keys.
 
-**This blocks any experiment that needs the game to read a disk we constructed.**
-Untried workarounds: build a boot disk that already carries the save files so no
-swap is needed, or find a runtime attach route (the binary monitor has none).
+## Disk swapping — solved, through the text monitor
+
+VICE's **text** monitor has an `attach "<path>" 8` command, and both monitor
+servers can be enabled at once (`-binarymonitor … -remotemonitor …`). That is
+the whole disk-swap mechanism, and it removes the block the table above used to
+describe.
+
+Three rules, each learned by wedging the emulator:
+
+1. **Open the binary monitor first.** The text monitor answers only while the
+   machine is stopped, which is what connecting the binary monitor does.
+2. **Open the text socket once and never close it.** VICE serves one such
+   connection per run; closing it kills the binary monitor as well.
+3. **Never send `x` on the text socket.** Resuming is the binary monitor's job.
+
+`tools/session.py` implements this as `Session.attach(path)`, and
+`tools/walkrun.py` runs whole batches on it. Only copies under `work/drive/`
+are ever attached — `attach` refuses any other path.
+
+## Driving a session end to end
+
+The order of operations, all of it in `tools/session.py`:
+
+| step | what to do |
+|---|---|
+| `DISABLE FASTLOADER (Y/N)?` | `Y` (VICE runs JiffyDOS here) |
+| credits screen | row 24 is `PLAY GAME  DEMO`; take it at once — **left alone the screen starts the demo by itself** |
+| `INPUT THE CODE WORD:` | patch `$12D9` `D0 04` → `EA EA` (check the bytes first), type six letters, then inject `Return` through the KERNAL buffer |
+| `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3` / `INSERT GAME DISK #3` | attach that side, press a key. Three wordings, on row 24 **or** row 18 — match the text, not the row |
+| `INSERT YOUR SAVE GAME DISK` | attach the save disk, press a key |
+| main menu | `LOAD SAVED GAME`, then `Return` on the already-white `YES` |
+| party menu | `BEGIN ADVENTURING` |
+| in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y |
+| `MOVE` | `I` forward, `J` turn left, `K` turn right, **`M` steps *backward*** without turning; `Return` leaves |
+| `ENCAMP` → `SAVE` → `SAVE GAME` | writes `SAVEDGAME0`/`SAVEDGAME1` to whatever disk is in the drive |
+
+**Read the position off the status line, not `$49C0`.** The memory copy is real
+and it is what reaches the disk, but it lags a move — reading it straight after
+a step gives the previous square.
+
+**Nothing here can be taken on trust.** The command bar is not always redrawn,
+so finding `MOVE` on row 24 is no evidence that MOVE was selected; and the first
+input burst after a save is reliably swallowed. Verify every action by effect.
+
+**One state has no way out.** Stepping east into `6,2` in the training hall
+prints `THE ROOM IS FILLED WITH DUELING PAIRS.`, stops redrawing the command
+bar, and from then on every key is consumed and dropped — confirmed with a store
+watchpoint on `$C6` (the KERNAL buffers it, the game takes it at `$2E5E`) and a
+single-step trace showing it dispatched through `$306D`–`$30BA` and discarded.
+Four runs died there. Route around it until somebody works out what that square
+is waiting for.
+
+## The KERNAL keyboard buffer *does* work at text prompts
+
+The blanket claim that it does not is wrong. The game's key fetcher at `$2E4E`
+reads `$0277` with the count at `$C6` — writing those two delivers a keystroke,
+and it is the only thing that submits the code-word prompt. It is also the
+reliable way to send `Return` anywhere. The menus are a different matter: they
+were never shown to read the buffer, so treat XTEST as the default and the
+buffer as the escape hatch.
 
 ## Reading the screen
 
@@ -137,14 +198,26 @@ Menus can be driven: **race → gender → roll stats → class → alignment �
 each a highlight-and-Return list. The class list offered depends on the race
 (HUMAN offers only CLERIC / FIGHTER / MAGIC-USER / THIEF).
 
-**Creation cannot currently be completed.** At the name prompt the name types
-correctly — verified both on screen and in the input buffer at `$9700` — but
-Return silently clears the field and re-prompts, and no record appears in
-`$4D00`+. Ruled out: leftover patches, the disk in the drive, input timing, and
-a hung CPU. Cause unknown. See [the two dead ends in driving VICE](50-experiments.md).
+**Creation works.** It was blocked for a long time by one instruction:
+
+```
+$0C41  A2 13      LDX #$13
+$0C43  BD 00 97   LDA $9700,X
+$0C46  C9 5B      CMP #$5B
+$0C48  B0 D0      BCS $0C1A     ; any byte >= $5B -> start the prompt over
+$0C4A  9D 00 6B   STA $6B00,X
+```
+
+The name must be **unshifted PETSCII**, `$41`–`$5A`. `xdotool key W` sends
+Shift+w, which arrives as `$D7`, so every capital failed the compare and the
+prompt restarted — which is exactly what "Return clears the field and
+re-prompts" looked like. Type the name in lowercase and the character is
+created; `\x01WYVERN` was written to a save disk under script.
 
 ## Input buffer
 
-Typed text lands at **`$9700`, in PETSCII** (`$C1` = `A`), not screen codes. It
-is copied there when Return is pressed, so a memory scan taken *before* Return
-will only find the text in screen RAM.
+Typed text lands at **`$9700`, in PETSCII**, not screen codes, and it appears
+there **as it is typed**, not only when Return is pressed. Which PETSCII matters:
+unshifted letters are `$41`–`$5A` and shifted ones `$C1`–`$DA`, and the
+name-entry routine rejects anything at or above `$5B` (see above). The length
+typed so far is at `$03B7` and the field width at `$03B8`.

@@ -2358,6 +2358,81 @@ looks. `wish` writing `0x014`–`0x019` directly is safe.
   editor was copying the game, not making a mistake. Race 0 prints as `MONSTER`
   (`LIBRARY $3508`), which explains PRINCESS FATIMA.
 
+## Every remaining item byte
+
+Two sources broke this open, both cheap and both previously unused. First, **the
+`MON*` files carry item records** — every monster file is a character record, and
+bytes `0x120`–`0x1DF` are twelve item slots. That is **132 more distinct item
+records**, holding the magic the shop lists never do: `WAND OF PARALYZATION`,
+`NECKLACE OF MISSILES`, `JAVELIN OF LIGHTNING`, a giant's `BOULDER`, and a `RING
+OF PROTECTION +1` that differs from the shop's copy in exactly the byte under
+investigation. Second, the disassembly technique above.
+
+| byte | finding | confidence |
+|---|---|---|
+| `+5` | **bonus to saving throws**, signed | CONFIRMED |
+| `+6` bits 3-6 | unused | CONFIRMED negative |
+| `+7` bit 7 | cursed | CONFIRMED (was PROBABLE) |
+| `+7` bits 0-6 | unused | CONFIRMED negative |
+| `+13` | charges | CONFIRMED |
+| `+14` | the spell or effect carried | CONFIRMED |
+| `+15` | bit 7 = passive; low bits select a handler | CONFIRMED |
+
+**`+5` is the good one.** The single read of it accumulates into `$6DA7`, and
+`$6DA7` is consumed in exactly one place: added to a d20 saving-throw roll.
+`RING OF PROTECTION +1` from `MON6E` carries `+4` = 1 **and `+5` = 1**. That is
+the AD&D 1st edition ring exactly — +1 to armour class and +1 on saves, from two
+bytes. `CURSED NECKLACE` carries -5 in both.
+
+The negatives are worth as much. The only masks applied to `+6` or `+7` anywhere
+in the game are `$80`, `$7F`, `$07` and `$F8` — and `$F8` is *identify*. So the
+four spare bits of `+6` are not charges, which had been the standing guess, and
+the low seven bits of `+7` hold nothing.
+
+**`+13` charges** decrement per use. At zero the game spends one of the quantity
+at `+10`; when that runs out it zeroes `+0` and the item is gone.
+
+**`+14` is one namespace with two ranges.** At or below 56 it is a real spell id.
+From 80 it is an item-only effect stored **23 above** its true id, so 80–90 mean
+57–67; both `CAMP` and `COMBAT` do the `SBC #$17`. `POTION OF SPEED` carries 80
+and `WAND OF MAGIC MISSILES` 88.
+
+**`+15` selects a handler**, from a dispatch table in `ECL65` relocated to
+`$9900`, covering `$80`–`$88` plus `$8A` and `$8B`. Three are named in
+`SPELLE04` at `$A700`:
+
+* **`$83`** sets strength to **18/100** (`LDX #$12 / LDA #$64`) — `GAUNTLETS OF
+  OGRE POWER`. A second rules-level confirmation.
+* **`$84`** is an **alignment-locked sword**: `+14 & $0F` against record `0x0D8`,
+  and on a mismatch it un-readies itself and takes `+14 >> 4` off current hit
+  points. `LONG SWORD +2` is `$F0` — alignment 0, 15 damage; `LONG SWORD +3` is
+  `$52` — alignment 2, 5 damage. `COMBAT` also tests `CPX #$84` and zeroes the
+  damage roll.
+* **`$87`** requires **strength 19 or better** — the giant's boulder.
+
+**When `+15` is non-zero, `+14` is that handler's argument, not an effect.**
+`TWO-HANDED SWORD +1 +3 VS UNDEAD` carries `+15` = `$88` with `+14` = 3, and the
+3 is its bonus against undead. Reading it as spell id 3 would be nonsense. Two
+values on the disks, 34 and 42, fall outside the dispatch table and are
+unexplained.
+
+**A bonus: `ITEMS` type byte `+0` is the body location** — 0 weapon, 1 shield, 2
+body, 3 hands, 5 neck, 7 back, 8 feet, 9 finger, 10 carried, 11 and 12 scrolls,
+14 and above usable magic. It is what decides whether `+13`–`+15` read as three
+spell ids or as charges plus effect plus handler.
+
+### What `PORSAVE11` gave, and did not
+
+21 new items, **every one mundane**: `+5`, `+7`, `+13`–`+15` and all of `+6` bar
+the readied bit are zero in all of them. A clean negative — but two mechanics
+fell out anyway:
+
+* **Loot is copied byte for byte out of the dead monster's own `MON*` item
+  slot.** That is why the looted shield is worth 0 gp and the looted scale mail
+  15 rather than the shop's 45.
+* The game **clears `+6` bit 7 in the copy** and merges quantities: three orcs'
+  20 arrows each became one stack of 60.
+
 ## Planned, not yet run
 
 Named, not numbered — the name is how they get referred to elsewhere in the docs.
