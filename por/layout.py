@@ -90,6 +90,11 @@ class Kind(enum.Enum):
     I8 = "i8"
     #: Unsigned 16-bit little-endian integer.
     U16LE = "u16le"
+    #: Unsigned little-endian integer of whatever width the field declares.
+    #: `U16LE` was always width-generic in the codec -- it encodes with
+    #: `f.size` -- so this is the same machinery under an honest name, for the
+    #: 24-bit experience total.
+    UINT_LE = "uint_le"
     #: Fixed-width, NUL-padded ASCII text (see :mod:`por.petscii`).
     ASCII_NUL = "ascii_nul"
     #: Opaque bytes, passed through untouched.
@@ -161,6 +166,7 @@ def _field(
 _U8 = Kind.U8
 _I8 = Kind.I8
 _U16 = Kind.U16LE
+_UINT = Kind.UINT_LE
 _TXT = Kind.ASCII_NUL
 _RAW = Kind.RAW
 _OK = Confidence.CONFIRMED
@@ -327,7 +333,7 @@ _DECLARED: Sequence[Field] = (
     _field(0x0E2, 1, _U8, "strength_index", "Effective STR", _MAYBE,
            "equals STR below 18; 18/80 and 18/81 give 21, 18/98 gives 22 -- the "
            "AD&D exceptional-strength bands collapsed to one number"),
-    _field(0x0E8, 3, _RAW, "experience", "XP", _OK,
+    _field(0x0E8, 3, _UINT, "experience", "XP", _OK,
            "24-bit LE. After one orc fight the party holds 17 each and LADY "
            "KATHERINE 8 -- non-zero and differing, which is what confirms it"),
     _field(0x10F, 1, _U8, "armour_class", "AC current (60 - AC)", _MAYBE,
@@ -373,8 +379,11 @@ _DECLARED: Sequence[Field] = (
            "wight 5, wraith 7, mummy 8, spectre 9, vampire 10, with giant "
            "skeleton 8 and juju zombie 9"),
     _field(0x0AD, 10, _RAW, "item_effects", "Active effects", _MAYBE,
-           "ten slots holding the effect codes of worn magic items -- the "
-           "same namespace as item byte +14. Three overlays loop LDX #$09 "
+           "ten slots holding active effect codes. It shares storage with "
+           "item byte +14 -- SPELLE04 $ADD4 copies a readied passive item's +14 "
+           "verbatim into a free slot -- but NOT its meaning: 85 is POTION OF "
+           "HEALING as an item and 'drains one level' on a wight. Three "
+           "overlays loop LDX #$09 "
            "over it, and XAVIER carrying 107 in the first slot and 89 in the "
            "tenth proves the extent. GEN $0BF3 seeds it per race from the "
            "table [1, 0, 107, 0, 124, 0, 0, 0], so an elf is born with 107 and "
@@ -432,6 +441,16 @@ _DECLARED: Sequence[Field] = (
            "(magic-user/thief, confirmed by Donald) and LARA SPELLSWORD is 9 "
            "(magic-user/fighter -- her name says so). Far more usable than the "
            "single char_class code at 0x073"),
+    _field(0x0EE, 6, _RAW, "spells_castable", "Spells castable", _MAYBE,
+           "how many spells of each level the character may memorise, one byte "
+           "per spell level, **nibble-packed**: cleric in the high nibble, "
+           "magic-user in the low. ROLAND, a level-1 cleric with wisdom 16, "
+           "reads $30 -- three first-level spells, one base plus two for "
+           "wisdom, which is exactly what his sheet allows. MALCYON and LADY "
+           "KATHERINE, both level-1 magic-users, read $01. The three fighters "
+           "read zero throughout. Found while surveying Curse of the Azure "
+           "Bonds, which uses the same offsets; the docs had this down as not "
+           "stored anywhere"),
     _field(0x0FE, 1, _U8, "portrait_head", "Portrait head", _OK,
            "index into the HEAD* files on the game disks, in hex: 0x2D is "
            "HEAD2D. All eleven values across our exports name a file that "
@@ -442,8 +461,16 @@ _DECLARED: Sequence[Field] = (
     _field(0x0FF, 1, _U8, "portrait_body", "Portrait body", _OK,
            "index into the BODY* files, the same way. Head and body are "
            "adjacent and independent"),
-    _field(0x100, 1, _RAW, "region_100", "unknown @0x100", _NOPE,
-           "01", candidate=True),
+    _field(0x100, 1, _U8, "roster_in_use", "Roster in use", _MAYBE,
+           "record 0x100-0x11F **is** the SAVEDGAME1 roster block. An exported "
+           ".chr and the roster page agree in 31 of those 32 bytes for every "
+           "character, differing only at 0x10D. Two agents reached that "
+           "independently -- one from LIBRARY $3189/$319A, which copies "
+           "$8300 + N*$20 in and out, the other from matching exports against "
+           "saves by name. So a record is four blocks the game saves "
+           "separately: 256 + 32 + 256 + 36 = 580.\n"
+           "This byte is roster +0x00, and the combat research saw it go $01 "
+           "-> $84 when a monster died"),
     _field(0x0EC, 1, _U8, "region_0ec", "unknown @0x0EC", _NOPE,
            "0 -> 1 after combat for MALCYON and LADY KATHERINE and nobody else "
            "-- exactly the two spellcasters, so probably spell state rather "
@@ -451,9 +478,11 @@ _DECLARED: Sequence[Field] = (
            "LADY KATHERINE also cast a spell and hers did not move, so it is "
            "not simply a count of spells cast. Zero in BRUTUS, so not flagged "
            "as a candidate region."),
-    _field(0x11B, 1, _RAW, "region_11b", "unknown @0x11B", _NOPE,
-           "12 in every specimen -- possibly a movement/encumbrance copy",
-           candidate=True),
+    _field(0x11B, 1, _U8, "roster_movement", "Movement (roster)", _MAYBE,
+           "roster +0x1B, the movement rate as encumbered. Long recorded as "
+           "'12 in every specimen', which held only because every specimen was "
+           "the same six characters: PORSAVE10's exports read 9 in banded "
+           "mail"),
     _field(0x119, 2, _U16, "hp_current", "HP now", _OK,
            "16-bit LE, and genuinely current hit points rather than a second "
            "copy of the maximum: GEN $0BD0 initialises it from hp_max, and "
@@ -462,13 +491,13 @@ _DECLARED: Sequence[Field] = (
            "wounded character has yet been exported. Note it lies beyond the "
            "256 bytes a save slot holds, so it exists in an export and not in "
            "a save"),
-    _field(0x10D, 1, _U8, "region_10d", "unknown @0x10D", _NOPE,
-           "party order? Reads 2, 3, 4 and 5 for ROLAND, SILAS, MAGNUS and "
-           "BRUTUS, which are exactly the slots they occupied, and 8 -- one "
-           "past the last slot -- for four characters freshly made and not yet "
-           "placed. The DOS field catalogue has a marching-order field. Three "
-           "older exports disagree with their own party order, so this is a "
-           "candidate and not a finding", candidate=True),
+    _field(0x10D, 1, _U8, "party_order", "Party order", _MAYBE,
+           "the only byte where an export and the roster block disagree, and "
+           "across a six-character party the export values form a complete 0-5 "
+           "permutation -- so it is marching order at the moment of export. In "
+           "a roster block the same byte is the record slot index, which is "
+           "how the combat code finds a combatant's record; 8 means not in a "
+           "party"),
     _field(0x10E, 1, _U8, "thac0", "THAC0 current (60 - value)", _MAYBE,
            "current THAC0 including strength and the readied weapon, stored as "
            "60 - THAC0, sitting immediately before the current armour class at "
@@ -478,13 +507,10 @@ _DECLARED: Sequence[Field] = (
            ".chr does carry both combat numbers after all, which is worth "
            "knowing given the 1989 editor's author reported he could never "
            "find either"),
-    _field(0x110, 9, _RAW, "region_110", "unknown @0x110", _NOPE,
-           "a short block ending at hp_current. NOT the item area: in an "
-           "export the sixteen 16-byte item records start at 0x120 and run to "
-           "0x21F, ending exactly where the combat icon begins at 0x220. The "
-           "1989 editor scans from 0x110, and its own two loops disagree with "
-           "each other by sixteen bytes, which is how that error got in here",
-           candidate=True),
+    _field(0x110, 9, _RAW, "roster_tail", "Roster +0x10..+0x18", _MAYBE,
+           "roster +0x10 to +0x18: armour bonus, encumbrance, equipment and "
+           "damage bonus, all already decoded in por/savegame.py. Kept RAW "
+           "here because the roster is the place to read them"),
     _field(0x220, 36, _RAW, "region_220", "unknown @0x220 (record tail)", _NOPE,
            "E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E"
            " 0E 08 0E 0E 0E 0E 0F 08 0E 0E 00 0E 0E 0E - densest region in the"

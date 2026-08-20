@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
-from . import petscii
+from . import encoding, petscii
 from .layout import (
     LAYOUT,
     LOAD_ADDRESS,
@@ -95,7 +95,7 @@ def _decode_field(f: Field, raw: bytes) -> Any:
         return raw[0]
     if f.kind is Kind.I8:
         return raw[0] - 256 if raw[0] > 127 else raw[0]
-    if f.kind is Kind.U16LE:
+    if f.kind in (Kind.U16LE, Kind.UINT_LE):
         return int.from_bytes(raw, "little")
     if f.kind is Kind.ASCII_NUL:
         return petscii.decode_record_name(raw)
@@ -113,7 +113,7 @@ def _encode_field(f: Field, value: Any) -> bytes:
         if not 0 <= value <= 0xFF:
             raise ValueError(f"{f.name}: {value} does not fit in a byte")
         return bytes([value])
-    if f.kind is Kind.U16LE:
+    if f.kind in (Kind.U16LE, Kind.UINT_LE):
         value = int(value)
         limit = (1 << (8 * f.size)) - 1
         if not 0 <= value <= limit:
@@ -156,6 +156,10 @@ NPC_FLAG_BIT = 0x80
 SCORE_ALTERED_BIT = 0x01
 
 
+class FieldNotStored(KeyError):
+    """A field beyond the bytes this record actually carries."""
+
+
 class CharacterRecord:
     """A mutable view over one 580-byte character record.
 
@@ -165,11 +169,11 @@ class CharacterRecord:
     strictly alone.
     """
 
-    __slots__ = ("_data",)
+    __slots__ = ("_data", "stored_size")
 
     SIZE = RECORD_SIZE
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, stored_size: int | None = None) -> None:
         if len(data) != RECORD_SIZE:
             raise RecordSizeError(
                 f"a character record is {RECORD_SIZE} bytes, got {len(data)}"
@@ -180,6 +184,8 @@ class CharacterRecord:
                 )
             )
         object.__setattr__(self, "_data", bytearray(data))
+        object.__setattr__(self, "stored_size",
+                           RECORD_SIZE if stored_size is None else stored_size)
 
     # -- constructors ------------------------------------------------------
     @classmethod
@@ -219,9 +225,42 @@ class CharacterRecord:
         return len(self._data)
 
     # -- generic field access ---------------------------------------------
+    @property
+    def thac0_base_value(self) -> int:
+        """Base THAC0 as the sheet shows it, not the `60 - x` byte.
+
+        `get("thac0_base")` returns 39 for a THAC0 of 21, which is correct and
+        catches people out. Use this.
+        """
+        return encoding.combat_value(self.get("thac0_base"))
+
+    @property
+    def armour_class_base_value(self) -> int:
+        """Base armour class, unbiased. 10 for every player character; a monster
+        carries its real AC here."""
+        return encoding.combat_value(self.get("armour_class_base"))
+
+    def is_stored(self, name: str) -> bool:
+        """Does this record actually carry the bytes of `name`?
+
+        A record read out of a **save slot** holds only its first 256 bytes;
+        the rest is zero padding. That matters because the tail is not junk --
+        `0x100`-`0x11F` is the SAVEDGAME1 roster block and `0x120`+ is the item
+        area, both of which the game keeps elsewhere. Reading `armour_class`
+        from a slot therefore yields `60 - 0`, i.e. **AC 60**, which is a
+        plausible-looking number and completely wrong.
+        """
+        return field_by_name(name).end <= self.stored_size
+
     def get(self, name: str) -> Any:
         """Decoded value of the field called *name*."""
         f = field_by_name(name)
+        if f.end > self.stored_size:
+            raise FieldNotStored(
+                f"{name} is at {f.offset:#05x}, past the {self.stored_size} "
+                f"bytes this record carries. A save slot stores 256; the "
+                f"roster block and the item area hold the rest. Read it from "
+                f"there, or check is_stored() first")
         return _decode_field(f, self._data[f.span])
 
     def set(self, name: str, value: Any) -> None:

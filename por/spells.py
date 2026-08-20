@@ -24,7 +24,7 @@ and not the meaning.
 
 from __future__ import annotations
 
-from .d64 import D64, split_load_address
+from .d64 import D64, load_payload, split_load_address
 
 SPELL_NAMES_FILE = b"SPELLN00"
 NAMES_TABLE_ENTRIES = 128
@@ -53,8 +53,7 @@ LAST_SPELL = SPELL_RESTORATION
 
 def load_spell_names(disk: D64 | str) -> dict[int, str]:
     """Every string in `SPELLN00`, keyed by id. Includes the non-spell tail."""
-    img = D64.open(disk) if isinstance(disk, str) else disk
-    _, payload = split_load_address(img.read_file(SPELL_NAMES_FILE))
+    payload = load_payload(disk, SPELL_NAMES_FILE)
     out: dict[int, str] = {}
     for idx in range(NAMES_TABLE_ENTRIES):
         addr = payload[idx] | payload[NAMES_HIGH_BYTES + idx] << 8
@@ -97,6 +96,15 @@ def describe(spell_id: int, names: dict[int, str] | None = None) -> str:
 SPELLBOOK_OFFSET = 0x078
 SPELLBOOK_SIZE = 7
 
+# The spellbook is seven bytes, so it holds ids 1-55 and stops. Id 56 --
+# RESTORATION -- is a **clerical scroll** spell, not one a character learns, and
+# bit 56 would land in byte 7, one past the field. Reading to LAST_SPELL here
+# was an off-by-one: `spells_known` peeked at 0x07F, which belongs to something
+# else, and `spellbook_bytes([56])` raised IndexError. Nothing was ever
+# misreported, because 0x07F reads zero in every specimen we hold -- but the
+# read was outside the field and the write would have crashed.
+LAST_SPELLBOOK_SPELL = SPELLBOOK_SIZE * 8 - 1        # 55
+
 # Spells castable per level, before Wisdom bonuses. Index by level - 1.
 _MAGIC_USER = [(1, 0, 0), (2, 0, 0), (2, 1, 0), (3, 2, 0), (4, 2, 1),
                (4, 2, 2), (4, 3, 2), (4, 3, 3), (4, 3, 3), (4, 4, 3)]
@@ -108,8 +116,8 @@ _WISDOM_BONUS = {13: (1, 0, 0), 14: (2, 0, 0), 15: (2, 1, 0), 16: (2, 2, 0),
 
 
 def spells_known(record_bytes: bytes) -> list[int]:
-    """Every spell id the bitmask at 0x078 has set."""
-    return [i for i in range(1, LAST_SPELL + 1)
+    """Every spell id the bitmask at 0x078 has set. Ids 1-55."""
+    return [i for i in range(1, LAST_SPELLBOOK_SPELL + 1)
             if record_bytes[SPELLBOOK_OFFSET + (i >> 3)] & (1 << (i & 7))]
 
 
@@ -118,8 +126,10 @@ def spellbook_bytes(ids) -> bytes:
     out = bytearray(SPELLBOOK_SIZE)
     for i in ids:
         i = int(i)
-        if not 1 <= i <= LAST_SPELL:
-            raise ValueError(f"{i} is not a spell id (1-{LAST_SPELL})")
+        if not 1 <= i <= LAST_SPELLBOOK_SPELL:
+            raise ValueError(
+                f"{i} cannot be in a spellbook (1-{LAST_SPELLBOOK_SPELL}); "
+                f"56 is RESTORATION, which is a scroll spell")
         out[i >> 3] |= 1 << (i & 7)
     return bytes(out)
 

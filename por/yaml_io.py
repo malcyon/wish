@@ -123,6 +123,7 @@ EDITABLE = [
     "thief_pick_pockets", "thief_open_locks", "thief_find_traps",
     "thief_move_silently", "thief_hide_in_shadows", "thief_hear_noise",
     "thief_climb_walls", "thief_read_languages",
+    "portrait_head", "portrait_body",
 ]
 
 # These appear in EDITABLE for ordering, but carry names rather than numbers in
@@ -134,6 +135,8 @@ FIELD_COMMENTS = {
     "sex": "male or female",
     "race": ("dwarf, elf, gnome, half-elf, halfling, half-orc, human, "
              "monster"),
+    "portrait_head": "which HEADnn file the character sheet draws",
+    "portrait_body": "which BODYnn file the character sheet draws",
     "alignment": ("lawful good     lawful neutral    lawful evil\n"
                   "neutral good    true neutral      neutral evil\n"
                   "chaotic good    chaotic neutral   chaotic evil"),
@@ -204,13 +207,15 @@ SECTIONS = {
     "thief_pick_pockets": "thief skills (derived; zero for non-thieves)",
 }
 
+# Experience is a 24-bit field and the layout now says so, so these are one
+# line each. Kept as names rather than inlined because they read better at the
+# call sites and because "u24" is what the format calls it.
 def _u24(rec: CharacterRecord) -> int:
-    b = rec.get_raw("experience")
-    return b[0] | b[1] << 8 | b[2] << 16
+    return rec.get("experience")
 
 
 def _set_u24(rec: CharacterRecord, value: int) -> None:
-    rec.set_raw("experience", bytes(((value >> s) & 0xFF) for s in (0, 8, 16)))
+    rec.set("experience", value)
 
 
 def _consistency(rec, block, payload, slot, names, types, spell_names):
@@ -701,6 +706,27 @@ def _item_bytes(item: dict[str, Any], names, where: str,
         raise ValueError_(f"{where}: {exc}") from None
 
 
+def _apply_npc(rec, entry, slot: int, who: str) -> list[str]:
+    """The NPC flag: bit 7 of 0x0B8, and nothing else.
+
+    Pulled out of `import_into` because it is genuinely self-contained. Most of
+    the rest of that function is not -- the class, per-class level and character
+    level blocks share `classes_changed` and `levels_changed`, and separating
+    them mechanically drops the coupling and breaks fifty tests. They stay
+    together on purpose; see the comments there.
+    """
+    if "npc" not in entry or bool(entry["npc"]) == rec.is_npc:
+        return []
+    rec.set_npc(bool(entry["npc"]))
+    return [
+        f"slot {slot} {who}: npc {not entry['npc']} -> {bool(entry['npc'])}",
+        f"slot {slot} {who}: NOTE only bit 7 of 0x0B8 was written. The eight "
+        f"$FF residue bytes are left as found, so a character made an NPC this "
+        f"way still looks like a player character to anything reading those "
+        f"instead",
+    ]
+
+
 def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 game_disk: str | None = None) -> list[str]:
     """Apply a parsed YAML document to a save disk, writing to `out_path`.
@@ -750,6 +776,15 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                                f"{entry[field]!r}")
                 rec.set(field, want)
 
+        # The next eighty lines -- classes, class code, per-class levels,
+        # character level -- look like four independent blocks and are not. They
+        # share `classes_changed` and `levels_changed`, and those two flags are
+        # the whole reason the round trip is lossless: each says "the user
+        # actually edited this", and without them the importer rewrites fields
+        # nobody touched. Splitting them into separate functions was tried and
+        # dropped the coupling silently; fifty tests caught it. They belong
+        # together.
+        #
         # The game stores the class twice, at 0x0EB as a bitmask and at 0x073
         # as a single code, and they do NOT always agree: DWARVEN FIGHTER
         # carries a fighter's bits and a cleric's code, and two more NPCs
@@ -819,15 +854,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             changes.append(
                 f"slot {slot} {who}: WARNING the eight NPC marker bytes disagree "
                 f"with each other. No real save has been seen like that")
-        if "npc" in entry and bool(entry["npc"]) != rec.is_npc:
-            rec.set_npc(bool(entry["npc"]))
-            changes.append(f"slot {slot} {who}: npc {not entry['npc']} -> "
-                           f"{bool(entry['npc'])}")
-            changes.append(
-                f"slot {slot} {who}: NOTE only bit 7 of 0x0B8 was written. The "
-                f"eight $FF residue bytes are left as found, so a character "
-                f"made an NPC this way still looks like a player character to "
-                f"anything reading those instead")
+        changes += _apply_npc(rec, entry, slot, who)
 
         if "spells_known" in entry:
             book = [int(s) for s in (entry["spells_known"] or [])]

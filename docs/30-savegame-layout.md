@@ -98,7 +98,7 @@ page, on the original **single-character** save:
 $4900:  8   $4A00:  2   $4B00: 52   $4C00: 255    <- header region ($400 bytes)
 $4D00: 41   $4E00:  0   $4F00:  0   $5000:   0
 $5100:  0   $5200:  0   $5300:  0   $5400:   0
-$5500: 41   $5600:  0   ... all zero through $64FF
+$5500: 41   $5600:  0   ... slots 8-11, used only in combat
 ```
 
 The name `BRUTUS` appears at `$4D00` and `$5500`.
@@ -108,8 +108,7 @@ The name `BRUTUS` appears at `$4D00` and `$5500`.
 ```
 $4900–$4BDF   header / party globals
 $4BE0–$4CFF   8 combat icons of 36 bytes  (ends exactly at $4D00)
-$4D00–$54FF   8 character slots of $100
-$5500–$58FF   a one-record staging page — see below
+$4D00–$58FF   12 character slots of $100 — 0-7 the party, 8-11 combat
 $5900–$64FF   item area — one $100 block per slot, 16 items of 16 bytes
 ```
 
@@ -122,21 +121,37 @@ abilities, race, class, age, hit points, saving throws, money. What lives
 *outside* them is the combat icon (record offset `0x220`, stored once per slot
 in the shared `$4BE0` table) and the item area.
 
-The icon table having **8** entries is what first suggested 8 slots; the count
-matching is not a coincidence.
+The icon table has **8** entries, which is what first suggested 8 slots. That
+match is real but it counts the *party*, not the slot array — icons are a party
+thing, and slots 8-11 never need one.
 
-### The staging page at `$5500`
+### Twelve slots, of which the party uses eight
 
-The page immediately after the slots holds **one record in the character
-layout**, and it is whatever the game loaded there last: a copy of slot 0 in the
-original single-character save, and the encountered monster — `MON04`, `ORC`,
-254 of its 256 bytes identical to the file on the game disk — in every save
-taken after the orc fight. `$5600`–`$58FF` is zero in every save we hold, so the
-page is one record wide, and it is empty again in `PORSAVE11`, so nothing
-accumulates. Treat it as scratch: it is not part of the item area, which begins
-at `$5900`, and nothing should read it — a monster loaded there carries seven of
-the eight `$FF` NPC-marker bytes, so it would read as a half-marked NPC. See
-[the orc left behind at `$5500`](50-experiments.md).
+`LIBRARY $312B` computes **both** `$4D00 + n*$100` and `$5900 + n*$100`, and the
+arithmetic only closes at twelve:
+
+```
+records   $4D00 + 12 * $100 = $5900     <- exactly where the item area starts
+items     $5900 + 12 * $100 = $6500     <- exactly where SAVEDGAME0 ends
+```
+
+At eight there is an unexplained `$400` gap. So `$5500` is **slot 8** and
+`$5600`–`$58FF` are slots 9, 10 and 11. Combat fills them: the combatant table
+indexes 0–63, the party occupies 0–7 in save-slot order, and monsters take the
+rest.
+
+**This page was long described here as a "staging page."** It held one record in
+the character layout — a copy of slot 0 in the original single-character save,
+and the encountered monster (`MON04`, `ORC`, 254 of its 256 bytes identical to
+the file on the game disk) in every save taken after the orc fight. That reading
+was right about what was *in* it and wrong about what it *was*: not scratch, but
+slot 8 holding a combatant. See [the orc left behind at `$5500`](50-experiments.md)
+and [the combat research](50-experiments.md).
+
+Nothing outside combat should read slots 8–11. A monster loaded there carries
+seven of the eight `$FF` residue bytes, so it reads as a half-marked NPC.
+`SLOT_COUNT` in `por/savegame.py` is deliberately **8** — the party, which the
+game enforces at six player characters and eight total.
 
 ### Correction: this was previously recorded as 6 slots of `$400`
 
@@ -187,7 +202,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$49C1` | y — rises going south |
 | `$49C2` | facing: 0 north, 1 east, 2 south, 3 west |
 | `$49F0`, `$49F1` | the square occupied before the last move |
-| `$49C7`–`$49C9` | **turn counter**, 24-bit little-endian. Rises by one per step *and* per turn in place; `PORSAVE11` carries `$10` in the top byte |
+| `$49C7`–`$49C9` | **the clock, HH:MM**: units of a minute, tens of a minute, then the hour. `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7`. Rises by a minute per step and per turn in place |
 
 Established by walking three steps north and three steps west and diffing: each
 leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`

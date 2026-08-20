@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import pathlib
 
-from .d64 import D64, split_load_address
+from .d64 import D64, load_payload, split_load_address
 from .savegame import SAVE0_LOAD_ADDRESS
 from .spells import LAST_SPELL
 
@@ -69,8 +69,7 @@ def load_item_names(disk: D64 | str) -> dict[int, str]:
     62 by one and then by three. That put a wrong -- but entirely plausible --
     name on every item above the gap.
     """
-    img = D64.open(disk) if isinstance(disk, str) else disk
-    _, payload = split_load_address(img.read_file(b"ITEMNAMES"))
+    payload = load_payload(disk, b"ITEMNAMES")
     low = payload[NAMES_LOW_BYTES:NAMES_LOW_BYTES + NAMES_TABLE_ENTRIES]
     high = payload[NAMES_HIGH_BYTES:NAMES_HIGH_BYTES + NAMES_TABLE_ENTRIES]
     names: dict[int, str] = {}
@@ -124,7 +123,15 @@ LOCATION_USABLE_MAGIC = 14   # and above
 
 # Item byte +14 holds one namespace. Up to LAST_SPELL it is a real spell id;
 # from EFFECT_BASE it is an item-only effect stored EFFECT_BIAS above its real
-# id. Both CAMP and COMBAT do the SBC #$17 that recovers it.
+# id, continuing the spell list past RESTORATION (56) as a clean run 57-67.
+# Both CAMP and COMBAT do the SBC #$17 that recovers it.
+#
+# **It is not the same namespace as the record's effect list at 0x0AD**, though
+# the two share storage: SPELLE04 $ADD4 copies +14 verbatim into a free slot
+# when a passive item is readied. 85 is POTION OF HEALING as an item and "drains
+# one level" on a wight. A passive item's +14 is its handler's argument -- the
+# gauntlets carry 38, the cloak 89, the ring 61 -- and those land in the same
+# slots as monster traits do.
 EFFECT_BASE = 80
 EFFECT_BIAS = 23
 
@@ -215,8 +222,7 @@ class ItemType:
 def load_item_types(disk: D64 | str) -> dict[int, ItemType]:
     """Read the ITEMS type table off a game disk, keyed by the index an item
     record stores in its byte +0."""
-    img = D64.open(disk) if isinstance(disk, str) else disk
-    _, payload = split_load_address(img.read_file(ITEM_TYPES_FILE))
+    payload = load_payload(disk, ITEM_TYPES_FILE)
     out: dict[int, ItemType] = {}
     for i in range(min(ITEM_TYPE_COUNT, len(payload) // ITEM_TYPE_SIZE)):
         raw = bytes(payload[i * ITEM_TYPE_SIZE:(i + 1) * ITEM_TYPE_SIZE])

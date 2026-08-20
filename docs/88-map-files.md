@@ -91,8 +91,7 @@ in the matrix scoring above 0.316. See
 `GEO10` and `GEO11` are PROBABLE wilderness — barely roofed, hundreds of
 walk-through edges.
 
-**Which map a save is on is not yet located** -- but it must be recorded
-somewhere, because loading a save puts the party back in the right place. An
-earlier claim that no such field exists has been withdrawn: the scan behind it
-compared our saves against each other, and every save we hold is in New Phlan,
-so it had no negative example to work against.
+**Which map a save is on is `$4BC2`**, the `GEO` file number, inside the
+loader's "what is currently loaded" cache at `$4BC0`-`$4BD8`. Bit 7 is a reload
+marker and must be masked off. `por/savegame.py` exposes it as `SaveGame0.area`
+and `.area_file`.

@@ -16,10 +16,19 @@ verified byte-identical against every character's own exported .chr file for a
 full six-character party. The rest of the record lives elsewhere: the combat
 icon in the shared table at $4BE0 (8 entries of 36 bytes, ending exactly at
 $4D00), and items in the area from $5900, one $100 block per slot (see
-por/items.py). $5500 is a one-record staging page in the character layout,
-holding whatever the game loaded there last -- a copy of slot 0 in the earliest
-save, the encountered monster after a fight. $5600-$58FF is zero in every save
-we hold.
+por/items.py).
+
+**There are twelve record slots, not eight.** `LIBRARY $312B` computes both
+`$4D00 + n*$100` and `$5900 + n*$100`, and the arithmetic only closes at twelve:
+records run $4D00-$58FF and items $5900-$64FF, which is exactly where SAVEDGAME0
+ends. So $5500 is **slot 8** -- long described here as a "staging page" because
+it held the last record the game loaded, which was the encountered monster after
+a fight. It was a combatant occupying a real slot. $5600-$58FF are slots 9, 10
+and 11, and read zero only because our saves have never used them.
+
+`SLOT_COUNT` stays 8 deliberately: that is the *party*, which the game enforces
+at six player characters and eight total. Slots 8-11 are combat scratch and must
+never appear in a party list.
 
 Everything a character sheet needs -- name, abilities, race, class, age, hit
 points, saving throws, movement, money -- falls inside those first 256 bytes.
@@ -40,6 +49,7 @@ from dataclasses import dataclass
 # split/attach_load_address are the *generic* PRG helpers; record.py's variants
 # are record-specific and validate a 582-byte length.
 from .d64 import attach_load_address, split_load_address
+from . import encoding as _enc
 from .record import CharacterRecord, RECORD_SIZE
 
 SAVE0_LOAD_ADDRESS = 0x4900
@@ -77,8 +87,9 @@ ROSTER_MOVEMENT = 0x1B
 
 # THAC0 and armour class are both stored as (60 - value): lower armour class is
 # better, and the game keeps the byte rising as the character improves.
-COMBAT_BIAS = 60
-ARMOUR_BIAS = 48              # armour bonus is stored as 48 + bonus
+# Re-exported from por/encoding.py, which is now the one place these live.
+COMBAT_BIAS = _enc.COMBAT_BIAS
+ARMOUR_BIAS = _enc.ARMOUR_BONUS_BIAS
 
 HEADER_SIZE = 0x400
 SLOT_AREA_BASE = SAVE0_LOAD_ADDRESS + HEADER_SIZE   # $4D00
@@ -95,20 +106,39 @@ PARTY_Y = 0x49C1
 PARTY_FACING = 0x49C2
 PARTY_PREV_X = 0x49F0          # the square occupied before the last move
 PARTY_PREV_Y = 0x49F1
-PARTY_CLOCK = 0x49C7           # three decimal digits, least significant first
+PARTY_CLOCK = 0x49C7           # game time in minutes, 3 digits
 
 NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3
 FACINGS = {NORTH: "north", EAST: "east", SOUTH: "south", WEST: "west"}
 # y decreases going north, x increases going east.
 FACING_STEP = {NORTH: (0, -1), EAST: (1, 0), SOUTH: (0, 1), WEST: (-1, 0)}
 
+# The loader's "what is currently loaded" cache, 25 entries, saved verbatim.
+# LIBRARY $4225 is the universal "ensure file number A of type X is loaded" and
+# keeps this at $6E13,X in a running game; CAMP $0D00 copies all 25 into the
+# header when saving, and GEN $25DE copies them back on load with bit 7 set to
+# force a reload. **Bit 7 is that dirty marker, not data** -- mask it off.
+LOADED_FILES = 0x4BC0
+LOADED_FILE_COUNT = 25
+LOADED_DIRTY = 0x80
+
+# Which of the 29 GEO maps the party is standing on. This is the answer to the
+# question that stood open longest: a scan once reported no such field, but every
+# save then held was in New Phlan, so it had no negative example to find one
+# against. All ten read 0 -- GEO00, New Phlan, agreeing with the independent
+# wall-match -- and the one foreign save reads 13, a fully roofed dungeon.
+AREA = 0x4BC2
+
 ICON_TABLE_BASE = 0x4BE0        # 8 combat icons of 36 bytes, ending at $4D00
 ICON_SIZE = 0x24
 
-# Items live at $5900, not immediately after the slots -- see por/items.py.
-# $5500 is a staging page holding one record (the last one the game loaded
-# there); $5600-$58FF is zero in every save we hold.
-STAGING_PAGE_BASE = 0x5500
+# The party is 8 slots; the slot *array* is 12. Combat fills 8-11, which is why
+# a monster's record turns up at $5500 after a fight.
+RECORD_SLOT_COUNT = 12
+COMBAT_SLOT_BASE = 0x5500          # slot 8; was called STAGING_PAGE_BASE
+STAGING_PAGE_BASE = COMBAT_SLOT_BASE   # old name, kept so callers do not break
+
+# Items live at $5900, immediately after the twelfth slot -- see por/items.py.
 ITEM_AREA_BASE = 0x5900
 
 
@@ -140,8 +170,9 @@ class Slot:
         """
         if not self.occupied:
             return None
-        return CharacterRecord.from_bytes(
-            self.window + bytes(RECORD_SIZE - len(self.window)))
+        return CharacterRecord(
+            self.window + bytes(RECORD_SIZE - len(self.window)),
+            stored_size=len(self.window))
 
     def __repr__(self) -> str:
         if not self.occupied:
@@ -228,16 +259,31 @@ class PartyPosition:
         return self._get(PARTY_PREV_X), self._get(PARTY_PREV_Y)
 
     @property
-    def clock(self) -> int:
-        """A counter that rises with everything the party does, stored as three
-        decimal digits least significant first. Units unknown."""
-        return (self._get(PARTY_CLOCK)
-                + self._get(PARTY_CLOCK + 1) * 10
-                + self._get(PARTY_CLOCK + 2) * 100)
+    def clock(self) -> tuple[int, int]:
+        """The time of day as `(hour, minute)`.
+
+        Three bytes: units of a minute, tens of a minute, then the **hour**.
+        `DUNGEON $09F7` prints `$49C9`, a colon, `$49C8`, `$49C7`, so the
+        display is HH:MM and the top byte was never a hundreds digit.
+
+        This was read as "minutes, three decimal digits" for a while and the
+        arithmetic looked sound, because 637 through 649 across PORSAVE4 to
+        PORSAVE9 is a believable count either way. PORSAVE11 gave it away: 1647
+        "minutes" is 27:27, an impossible time, where the real reading is a
+        plain 16:47. PORSAVE12 and 13 are 16:58 and 16:59 -- one minute apart
+        across one step, which is exactly right.
+        """
+        return (self._get(PARTY_CLOCK + 2),
+                self._get(PARTY_CLOCK + 1) * 10 + self._get(PARTY_CLOCK))
+
+    @property
+    def clock_text(self) -> str:
+        hour, minute = self.clock
+        return f"{hour}:{minute:02d}"
 
     def __repr__(self) -> str:
         return (f"<PartyPosition ({self.x},{self.y}) facing {self.facing_name}"
-                f" clock {self.clock}>")
+                f" clock {self.clock_text}>")
 
 
 class SaveGame0:
@@ -249,6 +295,23 @@ class SaveGame0:
                 f"SAVEDGAME0 payload must be {SAVE0_SIZE} bytes, got {len(payload)}"
             )
         self._data = bytearray(payload)
+
+    @property
+    def area(self) -> int:
+        """The GEO map number the party is on, with the dirty bit masked off."""
+        return self._data[AREA - SAVE0_LOAD_ADDRESS] & ~LOADED_DIRTY & 0xFF
+
+    @property
+    def area_file(self) -> str:
+        """That number as the GEO filename, e.g. `GEO14` for the slums."""
+        return f"GEO{self.area:02X}"
+
+    @property
+    def loaded_files(self) -> bytes:
+        """All 25 cache entries, dirty bits masked off."""
+        base = LOADED_FILES - SAVE0_LOAD_ADDRESS
+        return bytes(b & ~LOADED_DIRTY & 0xFF
+                     for b in self._data[base:base + LOADED_FILE_COUNT])
 
     @property
     def party(self) -> PartyPosition:
@@ -415,7 +478,7 @@ class RosterBlock:
     # -- the fields -------------------------------------------------------
     @property
     def thac0(self) -> int:
-        return COMBAT_BIAS - self._get(ROSTER_THAC0)
+        return _enc.combat_value(self._get(ROSTER_THAC0))
 
     @thac0.setter
     def thac0(self, value: int) -> None:
@@ -423,7 +486,7 @@ class RosterBlock:
 
     @property
     def armour_class(self) -> int:
-        return COMBAT_BIAS - self._get(ROSTER_ARMOUR_CLASS)
+        return _enc.combat_value(self._get(ROSTER_ARMOUR_CLASS))
 
     @armour_class.setter
     def armour_class(self, value: int) -> None:
@@ -434,7 +497,7 @@ class RosterBlock:
     def armour_bonus(self) -> int:
         """Armour's own contribution, shield excluded. Read only -- the game
         derives it from equipment and nothing is known about writing it."""
-        return self._get(ROSTER_ARMOUR_BONUS) - ARMOUR_BIAS
+        return _enc.armour_bonus_value(self._get(ROSTER_ARMOUR_BONUS))
 
     @property
     def damage_bonus(self) -> int:

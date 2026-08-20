@@ -20,6 +20,7 @@ Sectors are stored back to back in track order, so the byte offset of
 from __future__ import annotations
 
 import os
+import pathlib
 from dataclasses import dataclass
 from typing import Iterator, Union
 
@@ -38,6 +39,7 @@ __all__ = [
     "BlockCountMismatch",
     "DirEntry",
     "D64",
+    "load_payload",
     "sectors_per_track",
     "sector_offset",
     "split_load_address",
@@ -220,6 +222,20 @@ class D64:
 
     def __init__(self, data: bytes | bytearray):
         if len(data) != IMAGE_SIZE:
+            # Name the likely variants rather than just the byte count. A
+            # 40-track image or one carrying error bytes is a perfectly good
+            # disk that this reader does not handle, and "expected 174848" does
+            # not tell you that.
+            hint = {
+                175531: " (35 tracks plus error bytes)",
+                196608: " (40 tracks)",
+                197376: " (40 tracks plus error bytes)",
+                174848 + 1: "",
+            }.get(len(data), "")
+            if hint:
+                raise InvalidImageError(
+                    f"this is a {len(data)}-byte D64{hint}; only plain 35-track "
+                    f"images of {IMAGE_SIZE} bytes are supported")
             raise InvalidImageError(
                 f"expected a {IMAGE_SIZE}-byte 35-track D64 image, got {len(data)} bytes"
             )
@@ -240,8 +256,26 @@ class D64:
         return bytes(self._data)
 
     def save(self, path: str | os.PathLike) -> None:
-        with open(path, "wb") as fh:
-            fh.write(self._data)
+        """Write the image, atomically.
+
+        A save disk is often the only copy of hours of play, and the editor
+        writes back over the file it opened. A plain truncate-and-write loses
+        the lot if the process dies or the filesystem fills half way through, so
+        write a temporary beside the target, flush it to the platter, and rename
+        over. `os.replace` is atomic on POSIX: after it, the file is either
+        entirely the old image or entirely the new one.
+        """
+        target = pathlib.Path(path)
+        tmp = target.with_name(f".{target.name}.tmp{os.getpid()}")
+        try:
+            with open(tmp, "wb") as fh:
+                fh.write(self._data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, target)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
     @property
     def data(self) -> bytearray:
@@ -446,6 +480,17 @@ class D64:
 # ---- PRG load-address helpers -------------------------------------------
 # Kept separate from read_file/write_file_inplace on purpose: the caller
 # decides whether a file is a PRG and whether to peel the load address off.
+
+
+def load_payload(disk: "D64 | str", name: NameLike) -> bytes:
+    """Read one file off a disk and drop its 2-byte PRG load address.
+
+    Four modules were each opening the image, reading a file and splitting the
+    load address by hand. One place to get that wrong is enough.
+    """
+    image = D64.open(disk) if isinstance(disk, (str, os.PathLike)) else disk
+    _, payload = split_load_address(image.read_file(name))
+    return payload
 
 
 def split_load_address(data: bytes) -> tuple[int, bytes]:

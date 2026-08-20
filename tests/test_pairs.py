@@ -16,6 +16,8 @@ ones a save can actually hold.
 import pathlib
 import shutil
 
+from por.record import FieldNotStored
+
 import pytest
 
 from por.d64 import D64
@@ -111,8 +113,14 @@ def test_the_records_own_current_values_are_not_in_a_save(tmp_path):
     img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
     img.save(str(src))
     after = _record(src, MALCYON)
-    assert (after.get("thac0"), after.get("armour_class"),
-            after.get("hp_current")) == (0, 0, 0)
+    # The write went nowhere, and reading it back is now refused outright rather
+    # than answering 0 -- which decoded as `60 - 0`, i.e. AC 60, a plausible
+    # number that is entirely wrong. Those three offsets are the roster block,
+    # which the record and SAVEDGAME1 share.
+    for name in ("thac0", "armour_class", "hp_current"):
+        assert not after.is_stored(name)
+        with pytest.raises(FieldNotStored):
+            after.get(name)
 
 
 # --- THAC0: record 0x071 base, roster +0x0E current -------------------------

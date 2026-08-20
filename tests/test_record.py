@@ -354,3 +354,136 @@ def test_equality_and_blank() -> None:
     assert blank == bytes(layout.RECORD_SIZE)
     assert blank == CharacterRecord.blank()
     assert blank != CharacterRecord(bytes([1] + [0] * (layout.RECORD_SIZE - 1)))
+
+
+def test_the_spellbook_stops_at_55_not_56():
+    """Seven bytes hold ids 1-55. Id 56 is RESTORATION, a scroll spell, and its
+    bit would land one byte past the field -- `spells_known` used to peek at
+    0x07F and `spellbook_bytes([56])` used to raise IndexError."""
+    import pytest
+
+    from por.spells import (LAST_SPELLBOOK_SPELL, SPELLBOOK_OFFSET,
+                            SPELLBOOK_SIZE, spellbook_bytes, spells_known)
+
+    assert LAST_SPELLBOOK_SPELL == SPELLBOOK_SIZE * 8 - 1 == 55
+    book = spellbook_bytes([1, 55])
+    assert len(book) == SPELLBOOK_SIZE
+    record = bytes(SPELLBOOK_OFFSET) + book + bytes(400)
+    assert spells_known(record) == [1, 55]
+
+    with pytest.raises(ValueError, match="RESTORATION"):
+        spellbook_bytes([56])
+
+
+def test_reading_a_spellbook_never_touches_the_byte_after_it():
+    """0x07F belongs to something else. Setting it must not invent a spell."""
+    from por.spells import SPELLBOOK_OFFSET, spells_known
+
+    record = bytearray(600)
+    record[SPELLBOOK_OFFSET + 7] = 0xFF
+    assert spells_known(bytes(record)) == []
+
+
+def test_a_slot_record_refuses_the_fields_it_does_not_carry():
+    """The hazard this guards: a save slot holds 256 bytes, and 0x100-0x11F is
+    the roster block kept in SAVEDGAME1. Reading armour_class from a slot used
+    to answer 0, which through the roster's `60 - value` bias decodes as AC 60 --
+    a plausible number and completely wrong. The record stores the biased byte,
+    so 0 is not even a legal reading of it."""
+    from por.record import CharacterRecord, FieldNotStored, RECORD_SIZE
+
+    full = CharacterRecord(bytes(RECORD_SIZE))
+    assert full.stored_size == RECORD_SIZE
+    assert full.is_stored("armour_class")
+    full.get("armour_class")                        # allowed, whatever it says
+
+    slot = CharacterRecord(bytes(RECORD_SIZE), stored_size=256)
+    assert not slot.is_stored("armour_class")
+    assert slot.is_stored("strength")
+    with pytest.raises(FieldNotStored, match="past the 256 bytes"):
+        slot.get("armour_class")
+    slot.get("strength")                            # still fine
+
+
+def test_is_stored_is_decided_by_the_end_of_the_field_not_its_start():
+    """A field straddling the boundary is not stored either."""
+    from por.layout import field_by_name
+    from por.record import CharacterRecord, RECORD_SIZE
+
+    hp = field_by_name("hp_current")                # 0x119, two bytes
+    rec = CharacterRecord(bytes(RECORD_SIZE), stored_size=hp.offset + 1)
+    assert not rec.is_stored("hp_current")
+
+
+def test_the_biased_encodings_round_trip_and_refuse_nonsense():
+    """A silent wrap here produces a plausible number -- 60 - (-5) is 65, an
+    ordinary byte -- so the encoders raise instead."""
+    import pytest
+
+    from por.encoding import (armour_bonus_byte, armour_bonus_value,
+                              combat_byte, combat_value, item_protection_ac)
+
+    for thac0 in (13, 20, 21):
+        assert combat_value(combat_byte(thac0)) == thac0
+    for bonus in (-2, 0, 1, 5):
+        assert armour_bonus_value(armour_bonus_byte(bonus)) == bonus
+
+    with pytest.raises(ValueError):
+        combat_byte(-200)
+    with pytest.raises(ValueError):
+        armour_bonus_byte(300)
+
+    assert item_protection_ac(0x04) == 8      # leather
+    assert item_protection_ac(0x09) == 3      # plate
+
+
+# ---------------------------------------------------------------------------
+# 8. Attacks and the experience award, read as a monster's statistics
+# ---------------------------------------------------------------------------
+def _armed(dice_a=(2, 1, 8, 0), dice_b=(0, 0, 0, 0)) -> CharacterRecord:
+    """A record carrying one or two attack forms, as five parallel pairs."""
+    raw = bytearray(layout.RECORD_SIZE)
+    for form, (rate, dice, die, mod) in enumerate((dice_a, dice_b)):
+        raw[0x0D9 + form] = rate
+        raw[0x0DB + form] = dice
+        raw[0x0DD + form] = die
+        raw[0x0DF + form] = mod & 0xFF
+    return CharacterRecord(bytes(raw))
+
+
+def test_attacks_per_round_are_stored_doubled():
+    """COMBAT $12EC adds the round's parity before halving, so an odd value is
+    AD&D's 3/2 attacks per round and not a rounding error."""
+    from por import monster
+
+    assert monster.attacks(_armed((2, 1, 8, 0)))[0].rate_text == "1"
+    assert monster.attacks(_armed((3, 1, 8, 2)))[0].rate_text == "3/2"
+    assert monster.attacks(_armed((8, 1, 4, 0)))[0].rate_text == "4"
+
+
+def test_two_attack_forms_and_no_more():
+    """LDA $6C13,Y / LDX $6C15,Y, a stride of 2. A troll's 2 x 1d4+4 and one
+    2d6 is what the pair is for."""
+    from por import monster
+
+    troll = monster.attacks(_armed((4, 1, 4, 4), (2, 2, 6, 0)))
+    assert [a.text for a in troll] == ["2 attacks per round (1d4+4)",
+                                       "1 attack per round (2d6)"]
+    assert len(monster.attacks(_armed((2, 1, 2, 0)))) == 1
+
+
+def test_a_negative_damage_modifier_is_signed():
+    from por import monster
+
+    assert monster.attacks(_armed((2, 1, 6, -1)))[0].damage_text == "1d6-1"
+
+
+def test_the_experience_award_is_base_plus_a_rate_per_hit_point():
+    """POST.COM $09BB: a 16-bit base plus a per-hit-point rate times hp_max,
+    which is how AD&D expresses an award."""
+    from por import monster
+
+    raw = bytearray(layout.RECORD_SIZE)
+    raw[0x0F7], raw[0x0F8], raw[0x0F9] = 0x2C, 0x01, 4        # 300 + 4/hp
+    rec = CharacterRecord(bytes(raw))
+    assert monster.experience_award(rec, hp_max=11) == 344

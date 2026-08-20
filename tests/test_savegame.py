@@ -549,3 +549,70 @@ class TestPartyPosition:
         sg = self._save("PORSAVE9")
         with pytest.raises(SaveGameError):
             sg.party.facing = "widdershins"
+
+
+# --- the area the party is on ------------------------------------------------
+
+def _area_of(name: str):
+    import pathlib
+
+    import pytest
+
+    from por.d64 import D64
+    from por.savegame import SaveGame0
+
+    path = pathlib.Path(f"/home/donald/c64/Pool of Radiance Disks/{name}.D64")
+    if not path.exists():
+        pytest.skip(f"needs {name}.D64")
+    return SaveGame0.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME0"))
+
+
+def test_the_boundary_pair_settles_the_area_byte():
+    """One step apart across the New Phlan / slums doorway.
+
+    PORSAVE12 stands on the west edge of New Phlan at (0,4); PORSAVE13 on the
+    east edge of the slums at (15,4), the same row. $4BC2 goes $00 -> $14, and
+    GEO14 is the file the wall-matching independently identified as the Slums at
+    the highest score in that whole matrix.
+    """
+    phlan, slums = _area_of("PORSAVE12"), _area_of("PORSAVE13")
+    assert (phlan.area, phlan.area_file) == (0x00, "GEO00")
+    assert (slums.area, slums.area_file) == (0x14, "GEO14")
+    assert (phlan.party.x, phlan.party.y) == (0, 4)
+    assert (slums.party.x, slums.party.y) == (15, 4)
+
+
+def test_the_older_saves_are_all_new_phlan():
+    """Why the scan that once looked for this field found nothing: it compared
+    these against each other, and every one of them is in the same place."""
+    for name in ("PORSAVE", "PORSAVE2", "PORSAVE4", "PORSAVE5", "PORSAVE7",
+                 "PORSAVE9", "PORSAVE11"):
+        sg = _area_of(name)
+        assert sg.area == 0x00, name
+
+
+def test_a_foreign_save_reports_a_different_area():
+    """npc_party.d64 is somebody else's playthrough at levels 4-8. It reads 13 --
+    a fully roofed map, which is where such a party would be."""
+    import pathlib
+
+    import pytest
+
+    from por.d64 import D64
+    from por.savegame import SaveGame0
+
+    path = pathlib.Path("/home/donald/Downloads/npc_party.d64")
+    if not path.exists():
+        pytest.skip("needs npc_party.d64")
+    sg = SaveGame0.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME0"))
+    assert sg.area == 0x0D
+    assert sg.area_file == "GEO0D"
+
+
+def test_the_dirty_bit_is_masked_off():
+    """Bit 7 is the loader's "reload me" marker, not part of the number."""
+    from por.savegame import AREA, LOADED_DIRTY, SAVE0_LOAD_ADDRESS, SaveGame0
+
+    payload = bytearray(0x1C00)
+    payload[AREA - SAVE0_LOAD_ADDRESS] = 0x14 | LOADED_DIRTY
+    assert SaveGame0.from_bytes(bytes(payload)).area == 0x14

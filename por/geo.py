@@ -25,7 +25,7 @@ the two-byte load address.
 
 from __future__ import annotations
 
-from .d64 import D64, split_load_address
+from .d64 import D64, load_payload, split_load_address
 
 GRID = 16
 PLANE = 0x100
@@ -36,10 +36,29 @@ WALLS_SOUTH_WEST = 0x100
 ATTRIBUTES = 0x200
 BARRIERS = 0x300
 
-# Attribute bit 7. Bits 0-6 are unread; in the DOS engine the ECL script VM
-# reads this plane as its location $04, which makes a per-square trigger or
-# zone id the obvious candidate. Unproven.
+# Plane $200, bit by bit.
+#
+# Bit 7 is roofed/indoor. The rest is a **per-square script id**: the area's own
+# ECL script does `AND <mask>, ATTR, [v]` then `ONGOTO idx=[v]`, so the id
+# indexes a jump table. GEO00 square (6,2) holds $8A; masked with $7F that is
+# 10; ECL00's table entry 10 runs `NEWECL 11`; and ECL0B prints
+# "THE ROOM IS FILLED WITH DUELING PAIRS." -- which is exactly what the game does
+# when you step there. 14 of 22 GEO/ECL pairs have a table exactly `max id + 1`
+# long, covering 0..max with nothing spare.
 INDOOR = 0x80
+SCRIPT_ID = 0x7F
+
+# **The mask is the area's, not ours.** Eighteen scripts mask $7F, the
+# dungeon-floor family masks $1F, and ECL17 masks $3F. Only in the $1F family do
+# the two freed bits mean anything, and there they control wandering monsters:
+# byte-identical code in ECL03/04/06/09, immediately before the zone dispatch,
+# tests bit 6 to suppress a random encounter on that square and bit 5 to double
+# the RNG range, halving the rate. Elsewhere those bits are part of the id.
+# So read them only when you know the area's mask. Across all 29 files bit 6 is
+# set on 114 squares and bit 5 on 517, of 7424.
+NO_ENCOUNTER = 0x40
+HALF_ENCOUNTER_RATE = 0x20
+DUNGEON_FLOOR_MASK = 0x1F
 
 NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3
 DIRECTIONS = (NORTH, EAST, SOUTH, WEST)
@@ -85,8 +104,7 @@ class Geo:
 
     @classmethod
     def from_disk(cls, disk: D64 | str, name: bytes | str) -> "Geo":
-        img = D64.open(disk) if isinstance(disk, str) else disk
-        return cls.from_bytes(img.read_file(name))
+        return cls(load_payload(disk, name))
 
     def to_bytes(self) -> bytes:
         return self._data
@@ -98,6 +116,15 @@ class Geo:
 
     def is_indoor(self, x: int, y: int) -> bool:
         return bool(self.attributes(x, y) & INDOOR)
+
+    def script_id(self, x: int, y: int, mask: int = SCRIPT_ID) -> int:
+        """Which entry of the area's ECL jump table this square runs, if any.
+
+        0 means no script. Pass the area's own mask -- `DUNGEON_FLOOR_MASK` for
+        the dungeon-floor family, whose scripts use the two freed bits for
+        encounter control instead.
+        """
+        return self.attributes(x, y) & mask
 
     # -- edges -----------------------------------------------------------
 
