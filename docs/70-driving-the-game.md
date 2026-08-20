@@ -3,6 +3,21 @@
 Everything here was established the hard way. If you are automating Pool of
 Radiance under VICE, read this before writing any input code.
 
+## What the automapper needs, versus what automation needs
+
+Worth separating, because they got conflated and made the map look harder to run
+than it is.
+
+**Reading** a running game needs one thing: VICE started with
+`-binarymonitor -binarymonitoraddress 127.0.0.1:6502`, plus
+`flatpak override --user --share=network net.sf.VICE` if it is the Flatpak. Set
+`BinaryMonitor=1` in `vicerc` and every launch has it, including from a desktop
+menu. Nothing below this line applies.
+
+**Driving** a game — sending keys — needs everything below: the nested X server,
+the input timing, the whole apparatus. `tools/porlaunch.sh` exists for that, not
+for the automapper.
+
 ## Run it in a nested X server
 
 `tools/rungame.sh <experiment>` starts **Xephyr** and runs VICE inside it. This
@@ -62,6 +77,10 @@ send.
 | closing the binary monitor while a checkpoint is armed | VICE re-enters the monitor on the connection that was live when it stopped; with that socket closed the emulator freezes and no new connection is read. Only a kill recovers it |
 | closing the text-monitor connection | wedges the binary monitor too — VICE serves one text-monitor connection per run |
 | connecting to the text monitor first | it never breaks in on connect and sends no banner; it answers only while the machine is already stopped |
+| a **second** binary-monitor connection while one is open | VICE accepts the TCP connection and then never answers it — the read times out with zero bytes. One binary monitor client at a time, so `automap` and `tools/session.py` cannot both be live |
+| a stray **`wish` GUI** left running | the same failure wearing a different hat: it holds `6502` open, so every later `Monitor()` times out and the game looks frozen. `ss -tnp \| grep 6502` names the process holding it; nothing recovers but closing that client |
+| `select_bar` on the **combat** and **items** command bars | their highlight is colour **7**, not 1, so `highlight_span` finds nothing and the call returns `False` after silently sending nothing. Read row 24's colour RAM and step the highlight yourself |
+| `EXIT` out of `VIEW:ITEMS` → `READY` | the item list re-arms itself: choosing its `EXIT` returns to the bar, and the next `Return` drops straight back into the list. Rebooting the session was faster than escaping it |
 
 `Alt+N` genuinely *is* the right binding (VICE's own
 `share/vice/hotkeys/hotkeys-fliplist.vhk` maps `fliplist-next-8` to `<Alt>n`).
@@ -112,13 +131,25 @@ a step gives the previous square.
 so finding `MOVE` on row 24 is no evidence that MOVE was selected; and the first
 input burst after a save is reliably swallowed. Verify every action by effect.
 
-**One state has no way out.** Stepping east into `6,2` in the training hall
-prints `THE ROOM IS FILLED WITH DUELING PAIRS.`, stops redrawing the command
-bar, and from then on every key is consumed and dropped — confirmed with a store
-watchpoint on `$C6` (the KERNAL buffers it, the game takes it at `$2E5E`) and a
-single-step trace showing it dispatched through `$306D`–`$30BA` and discarded.
-Four runs died there. Route around it until somebody works out what that square
-is waiting for.
+**The training hall is not a dead end** — that claim is withdrawn. Stepping
+east from `6,2` into `7,2` prints `THE ROOM IS FILLED WITH DUELING PAIRS.` and
+row 24 becomes **`PRESS <RETURN> OR BUTTON TO CONTINUE`**. Press Return, wait
+~25 seconds for the scene to load, and answer the two `YES NO` questions the
+arena master asks; the party then stands at `7,2` in the ordinary move mode.
+Three things made this look like a wedge:
+
+* **The square is `7,2`, not `6,2`.** The status line keeps showing `6,2` for
+  the whole encounter, because the step does not complete until the questions
+  are answered.
+* **`$306D` is the menu key reader**, and it only accepts `<`, `,`, CRSR-up,
+  `>`, `.`, CRSR-down, CRSR-left, CRSR-right, `$0D`, `$5F` and the joystick.
+  `I`, `J`, `K`, `M` fall out at `$30B6` with carry clear and are dropped —
+  correct behaviour, not a fault.
+* **The load takes ~25 s**, and `leave_move()` gives up after eight tries of
+  0.6 s, so a `Return` that worked looked like one that did nothing.
+
+Do not conclude "wedged" because row 24 lacks the label you wanted. Match
+`PRESS <RETURN>` and `YES NO` and answer them.
 
 ## The KERNAL keyboard buffer *does* work at text prompts
 
@@ -163,6 +194,13 @@ time out. Use `import` unless you need the MCP for another reason.
   Use connect → read → **close**; closing resumes. Verified against the KERNAL
   jiffy clock at `$A0-$A2`, which advances at exactly real time between
   connections.
+* **A held-open connection that resumes does the opposite: it makes the game run
+  fast.** Each stop/resume pair hands the emulation ~14.3 ms of *extra* emulated
+  time, and the cost is per `resume()`, not per byte — one 7168-byte read costs
+  the same as one `peek`. Measured against the same jiffy clock: polling flat
+  out runs the machine at 3.05× real time, every 200 ms at 1.07×, every 500 ms
+  at 1.03×. So batch a poll into **one** resume, and treat the poll interval as
+  a speed dial: distortion is `14.3 ms / interval`.
 * Do **not** infer "stopped" from a constant `$D012`. Monitor reads with
   side-effects disabled do not return live VIC counter values.
 * VICE interleaves **unsolicited events** into the stream (type `0x62` STOPPED,

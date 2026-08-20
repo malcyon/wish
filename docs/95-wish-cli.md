@@ -4,9 +4,9 @@ A command-line character editor for Pool of Radiance (C64) save disks. Exports a
 party to YAML, and imports an edited YAML back onto a **new** disk.
 
 ```
-tools/wish.py --export PORSAVE.D64 --output party.yaml
+wish-cli --export PORSAVE.D64 --output party.yaml
 vi party.yaml
-tools/wish.py --import party.yaml  --output PORSAVE-EDITED.D64
+wish-cli --import party.yaml  --output PORSAVE-EDITED.D64
 ```
 
 The mode flag carries the file being read; `--output` is what gets written.

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""wish — read and edit Pool of Radiance (C64) save disks via YAML.
+"""wish-cli — read and edit Pool of Radiance (C64) save disks via YAML.
 
-    wish.py --export PORSAVE.D64 --output party.yaml
+    wish-cli --export PORSAVE.D64 --output party.yaml
     vi party.yaml
-    wish.py --import party.yaml  --output PORSAVE-EDITED.D64
+    wish-cli --import party.yaml  --output PORSAVE-EDITED.D64
 
 The mode flag carries the file being read; --output is what gets written.
 
@@ -128,7 +128,7 @@ def _do_import(args, data, original) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        prog="wish",
+        prog="wish-cli",
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     mode = ap.add_mutually_exclusive_group(required=True)

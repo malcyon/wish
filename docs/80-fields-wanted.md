@@ -208,6 +208,19 @@ bitmask:
 The full enumeration is unknown, and does not need to be: **`class_bits` at
 `0x0EB` expresses any combination directly**, which is what `wish` uses.
 
+**Which one the game believes: both, for different things.** CONFIRMED by
+building a save where they disagree — SILAS with `0x073` = 5 (MAGIC-USER) and
+`0x0EB` = 8 (fighter), loaded unreconciled — and by the disassembly:
+
+| field | the game uses it for | evidence |
+|---|---|---|
+| `0x073` char_class | **the class printed on the sheet**, and as a table index | the sheet said `MAGIC-USER`; `LIBRARY $31E1`-`$320D` index three name tables by it, `POST.COM $123F`/`$15E3` `LDX` it |
+| `0x0EB` class_bits | **what the character may ready** | he readied a `LONG SWORD` anyway. `LIBRARY $465D` is `LDA $6D99 / AND $6BEB / BNE` — the item type's class-usage byte against the bitmask, else "WRONG CLASS." `CAMP $167D` is the same test |
+
+Control: LADY KATHERINE, `0x0EB` = 5, was refused `SCALE MAIL` (cleric/fighter),
+so the check is real. Neither field is a cache of the other, and an editor should
+keep offering both.
+
 ### Class bitmask encoding
 
 | bit | class |
@@ -324,26 +337,24 @@ from five NPCs exactly here.
 The eight `$FF` bytes were fill residue after all, as the earlier note suspected.
 `wish` now writes bit 7 and leaves them untouched.
 
-**Constructing an item** — much closer than it was. The name is three word
-indices, the cost is 16-bit, the weight is in tenths of a pound, and the 1989
-editor supplies 162 known-good records to copy from. What is missing is the
-meaning of byte `+0` and a written-and-loaded proof that a hand-built record is
-accepted.
+~~**Constructing an item**~~ — **done, and proven in game.** A `LONG SWORD +4`,
+which ships on no disk, was built from word indices, type, bonus, cost and
+weight with no template copied, written to a save and booted: the sheet showed
+the name, THAC0 went 21 → 17 and damage `1D6+1` → `1D8+5`. Weight is PROBABLE
+(movement fell 6 → 3) and cost UNVERIFIED — neither is printed on the C64 sheet.
 
-**Which map the party is on** — it must be recorded, or loading a save could not
-restore the party's position, but it is not located. The scan that reported it
-absent was invalid: every save we hold is in New Phlan, so it had nothing to
-contrast against. `LIBRARY` builds the filename from a stem at `$24B4` with two
-patched digits at `$24B7`/`$24B8`; nothing stores to them directly, so a generic
-loader writes them and its argument is the thing to find. **Open, and the highest
-priority.** See [the area id must exist](50-experiments.md).
+~~**Which map the party is on**~~ — **found: `$4BC2`**, the `GEO` file number,
+inside the loader's 25-entry "what is currently loaded" cache at
+`$4BC0`–`$4BD8`. Bit 7 is a reload marker and must be masked. All ten saves read
+`$00` (New Phlan, agreeing with the independent wall-match); `npc_party.d64`
+reads `$0D`. See [the area id](50-experiments.md).
 
-**The monster attack routine** — how many attacks a creature makes and for how
-much. Everything else about a monster is decoded: they use the character record
-layout, with hit dice at `0x0A0`, armour class at `0x0E1` and movement at
-`0x09F`. The **experience award is not stored at all** — no byte or word in the
-480 matches the AD&D value for any of eight creatures — which fits Gold Box
-games computing it from hit dice.
+~~**The monster attack routine**~~ — **found: `0x0D9`–`0x0E0`.** Attacks per
+round are stored **doubled**, which is how AD&D's 3/2 attacks work; then two
+attack forms, dice count, die size and a signed modifier. Checked against the
+*Monster Manual* on twenty creatures. The **experience award is stored** too —
+`0x0F7`/`0x0F8` base plus `0x0F9` per hit point, multiplied by `hp_max`; the
+earlier negative failed because the award is two numbers, not one.
 
 ## Values the save appears to hold twice
 

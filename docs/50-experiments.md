@@ -2221,10 +2221,24 @@ by two routes that share no evidence.
   byte constant across the six New Phlan saves and different elsewhere. There is
   none. The game does not record which `GEO` is loaded, so a save-file
   automapper has to infer the area from the walls around the party.
-* **`$49C7`–`$49C9` is a turn counter**, incrementing once per step *and* once
-  per turn in place: 640 → 644 over three steps plus one action, 648 → 649 over
-  a single turn. It is not "three decimal digits" as previously recorded —
-  `PORSAVE11` carries `$10` in the top byte.
+* **`$49C7`–`$49C9` is the clock, and it reads HH:MM**: units of a minute, tens
+  of a minute, then the **hour**. `DUNGEON $09F7` prints `$49C9`, a colon,
+  `$49C8`, `$49C7`. It advances a minute per step and per turn in place.
+
+  **Three readings of these three bytes were wrong before this one**, which is
+  worth recording because each looked fine at the time:
+
+  | reading | `PORSAVE4` | why it survived, and what killed it |
+  |---|---|---|
+  | 24-bit little-endian turn counter | 393991 | never checked against the bytes; nonsense on sight |
+  | three decimal digits | 637 | the top byte holds 16 in `PORSAVE11`, so not a digit |
+  | minutes, `d0 + 10*d1 + 100*d2` | 637 = 10:37 | plausible across `PORSAVE4`–`9`; but `PORSAVE11` gives 1647, i.e. 27:27 |
+  | **HH:MM** | **6:37** | the game's own print routine, and every specimen is a real time |
+
+  The middle reading survived longest because 637 through 649 across the walk
+  saves counts up believably either way, and 1647 was explained away as
+  "minutes modulo a day". `PORSAVE12` and `PORSAVE13` settle it beyond argument:
+  16:58 and 16:59, one minute apart across one step.
 * `GEO1C` is listed **twice** on `POOL6.D64`, byte-identical: 30 directory
   entries, 29 files. No two files are near-identical otherwise.
 * Names run `GEO00`–`GEO20` in hex with `08`, `0B`, `0C` and `13` absent — 33
@@ -2573,22 +2587,44 @@ matching three areas is an id.
 
 ### The code route, which is sharper
 
-`LIBRARY` carries a table of data-file name stems at **`$24B4`**:
+`LIBRARY` carries a table of data-file name stems. **Both figures given for it
+here earlier were wrong**, and the corrected one is this.
 
-```
-GDRIVE00 SQRPACI00 GEO00 SECSET00 SQRDATA00 PIC00 SPELLN00 SPELL...
-```
+Its declared load address of `$1000` is a lie, as all the overlays' are.
+`docs/40-memory-map.md` records the stem table live at **`$40EA`**, and
+`GDRIVE00` sits at payload `+0x14A3`, which fixes the resident base at
+**`$2C47`**:
 
-Each stem ends in two placeholder digits that the loader patches, so `GEO00`
-occupies `$24B4`-`$24B8` and **the digits are at `$24B7` and `$24B8`**. Whatever
-writes them is choosing the map.
+| stem | live |
+|---|---|
+| `GDRIVE00` | `$40EA` |
+| `SQRPACI00` | `$40F2` |
+| **`GEO00`** | **`$40FB`** |
+| `SECSET00` | `$4100` |
+| `SQRDATA00` | `$4108` |
+| `PIC00` | `$4111` |
 
-Scanning every overlay on all nine disks for a direct store to `$24B7` or
-`$24B8` finds **nothing**, so the digits are written indirectly — the usual Gold
-Box pattern is one generic "load data file *n* of type *t*" routine that takes a
-pointer to the stem plus a number, converts it to two hex digits, and stores
-through a pointer. Find that routine, find the call that passes the `GEO` stem,
-and trace its number argument back. That argument is the area id, live in memory.
+So `GEO`'s two placeholder digits are at **`$40FE` and `$40FF`** — not `$24B7`
+and `$24B8`, which was this entry's earlier arithmetic and was `$1C47` out.
+
+**And nothing writes to them.** Scanning every file on all nine disks for any
+store landing anywhere in `$40E0`–`$4150` returns two hits, both inside sprite
+graphics. The stems are not patched in place at all: the loader must copy a stem
+into a scratch buffer and assemble the filename there.
+
+That kills this route as stated. What is left, in order of promise:
+
+* **Find the scratch buffer.** Whatever assembles `GEO` plus two digits writes
+  those digits somewhere, and the byte it converts from is the area id.
+* **Find how a stem is selected.** There is no pointer table into the stems — no
+  16-bit table anywhere contains two consecutive stem addresses — and no caller
+  passes one as an immediate pair. So selection indexes variable-length strings,
+  which means a length table or terminators exist somewhere. Find those and the
+  caller falls out.
+* **Stop chasing the filename.** The question is which area the party is in; the
+  filename is only one expression of it. A save-diff across two different areas
+  answers it directly and needs no disassembly.
+
 
 Then the second half: **is that value saved, or recomputed?**
 
@@ -2622,27 +2658,720 @@ mistake this entry exists to correct was reporting an absence that the evidence
 could not have detected.
 
 
+## The combat icon is two poses, in multicolour
+
+**Question.** `por/icons.py` had the 36 bytes -- 18 screen codes then 18 colours
+-- but nothing that could *draw* them. Three things were missing: the cell grid,
+the glyphs, and the colours.
+
+**The grid is 3 wide by 6 tall, and it is two 3x3 poses stacked.** Rendering
+MALCYON at 3x6, 6x3, 2x9 and 9x2, only 3x6 produced a figure -- and it produced
+*two*, one above the other. They are two frames: a standing stance and an
+attacking one.
+
+**The glyphs are `CHARPIC00`.** 2030 bytes loading at `$8000`, about 253 glyphs.
+It has to be this file: icon shape codes reach 233, and the only other charset on
+the disks, `CHARSET`, holds 64.
+
+**It is multicolour, and `COM.PREP` supplies the shared colours.** Every colour
+byte in the specimen is at or above 8, and bit 3 of a C64 colour nibble is what
+selects multicolour for a cell -- so a cell row is four double-width pixels, not
+eight, and three of the four colours come from VIC registers that no save file
+holds.
+
+They were found by static analysis, not by running anything. `COM.PREP` -- the
+combat-preparation overlay, byte-identical on all eight disks -- contains:
+
+```
++0C6A  LDX #$0C
++0C6C  STX $D020        ; border          12  grey
++0C6F  DEX
++0C70  STX $D021        ; background      11  dark grey   -> bit pair 00
++0C73  DEX
++0C74  STX $D022        ; multicolour 1   10  light red   -> bit pair 01
++0C77  LDA #$00
++0C79  STA $D023        ; multicolour 2    0  black       -> bit pair 10
+```
+
+Bit pair 11 takes the cell's own colour, low three bits.
+
+**Result. CONFIRMED by rendering.** The party's six icons come out as
+recognisable little fighters -- blonde hair, blue and red tunics, swords raised
+-- in two poses each. A wrong reading does not produce that by accident.
+
+`por/icons.py` grew `icon_pixels()`, which returns the whole thing as a grid of
+C64 colour indices with no image library involved, so the editor, a PNG dump and
+a terminal preview all share one implementation.
+
+**What this closes.** The editor plan had this as its one piece of genuine
+research, to be done by peeking `$D021`-`$D023` in a running game. It did not
+need the emulator: the same read-the-game's-own-code technique that solved level
+drain, the NPC flag and the item bytes solved this too, in one search for
+`STA $D02x`.
+
+## The area id: `$4BC2`, and it was in the header all along
+
+**SOLVED.** `$4BC2` — `SAVEDGAME0` offset `+$2C4` — is the `GEO` file number,
+the map the party is standing on.
+
+**How it works.** `$4BC0`–`$4BD8` is the loader's *"what is currently loaded"*
+cache: 25 entries, one per data-file type, saved verbatim.
+
+* `LIBRARY $4225` is the universal "ensure file number A of type X is loaded",
+  and keeps the cache at `$6E13,X` in a running game.
+* `CAMP $0D00`: `LDX #$18 / LDA $6E13,X / STA $4BC0,X` — all 25 copied into the
+  header when the game saves.
+* `GEN $25DE`: `LDA $4BC0,X / ORA #$80 / STA $6E13,X` — copied back on load,
+  **bit 7 set to force a reload**. That bit is a dirty marker, not data. Mask it.
+
+**Verified on every specimen.** All ten of Donald's saves read `$00` = `GEO00` =
+New Phlan — which independently agrees with the wall-matching that identified
+`GEO00` as New Phlan at φ 0.733, by completely different evidence. The one
+foreign save, `npc_party.d64`, reads `$0D`; `GEO0D` is roofed on all 256 squares,
+a dungeon interior, which is where somebody else's level 4–8 party would be.
+
+Other entries decode too: `ECL` moves in step with `GEO` (both `0D` in the
+foreign save), and the type→load-address table includes `MON` at `$6B00` — the
+character-record base — and `ECL` at `$9900`.
+
+**Why it took four attempts.** The first three all chased the *filename*: find
+what patches the digits in `LIBRARY`'s `GEO00` stem, and trace its argument back.
+Every step of that was wrong in an instructive way.
+
+1. The stem's address was computed as `$24B4`, which was `$1C47` out.
+2. Corrected to `$40FB` — and **nothing writes there**, because the stems are
+   templates copied elsewhere, not patched in place.
+3. A buffer at `$03D0` looked like where the filename is assembled. It is the
+   **number-to-decimal buffer for printing on screen**: its entry `$2F29` has 122
+   call sites and is handed things like `LDA $6BA0`, the character's level.
+
+The answer was never in the filename. It was a plain byte in the header, in the
+`$2E0` bytes that were already the only place left, and the thing that found it
+was scanning for what *reads and writes* the header rather than reasoning
+forwards from the filename.
+
+**Two corrections that fall out.**
+
+* `LIBRARY` loads at **`$2C48`**, not the `$2C47` derived here earlier from the
+  stem table. Three independent patch sites fix it — `CAMP`'s `STA $301C` and
+  `STA $301E`, and two vector patches in `COMBAT` — all of which land one byte
+  early at `$2C47`. So `GEO00` is at `$40FC` and its digits at `$40FF`/`$4100`.
+* **A stem pointer table does exist**, contrary to the note that none does. It is
+  split into parallel low and high tables at `$4196` and `$41AA`, with lengths at
+  `$4182`. The search that missed it looked for consecutive 16-bit addresses,
+  which a split table does not contain.
+
+`por/savegame.py` exposes it as `SaveGame0.area` and `.area_file`, with
+`.loaded_files` for the whole cache.
+
+**Confirmed by observation, not only by code.** Donald made the boundary pair:
+
+| disk | area byte | reads as | position |
+|---|---|---|---|
+| `PORSAVE12` | `$00` | `GEO00`, New Phlan | (0, 4) facing west |
+| `PORSAVE13` | `$14` | `GEO14`, **Slums** | (15, 4) facing west |
+
+Two saves either side of one step through the New Phlan / slums doorway: the
+west edge of New Phlan at `(0,4)` and the east edge of the slums at `(15,4)`,
+the same row. The byte changed from `$00` to `$14`, and `$14` is the file the
+wall-matching had independently identified as the Slums at φ 0.992 — the highest
+score in that whole matrix. Two unrelated methods, same answer.
+
+## The square attribute is a script id, and the ECL bytecode decodes
+
+**SOLVED.** Plane `$200`, bits 0-6, is a **per-square script id**: the area's own
+`ECL` script does `AND <mask>, ATTR, [v]` then `ONGOTO idx=[v]`, so the id
+indexes a jump table.
+
+The way in was the bytecode, not the maps. `coab` gives the DOS VM — opcode
+table, operand encoding, and a variable window in which **`$C04F` is the
+plane-`$200` byte of the party's square**. The C64 files are the same bytecode
+with the block based at **`$9900`** rather than `$8000`: five entry-point words
+in the first `$14` bytes, and coab's 6-bit string unpacker turns the `80`
+operands into clean English. `ECL00` decodes linearly from `$9914` to its last
+byte and lands on every entry point and jump target. Disassembler at
+`work/analysis/ecl.py`.
+
+**The training-hall prediction closes exactly**, which is the proof:
+
+| step | value |
+|---|---|
+| `GEO00` (6,2) attribute | `$8A` |
+| `& $7F` | 10 |
+| `ECL00` jump table entry 10 (`$9B4C`) | `$A22D` |
+| `$A22D` | `NEWECL 11` |
+| `ECL0B` `$9BB0` | `THE ROOM IS FILLED WITH DUELING PAIRS.` |
+
+That message is what the game prints when you step there, and it is what wedged
+four automated runs. Predicted from the map bytes, confirmed in the script.
+
+**14 of 22 `GEO<nn>`/`ECL<nn>` pairs have a jump table exactly `max id + 1`
+long** — covering `0…max` with nothing spare. The pairing is independently
+confirmed by the scripts' own text: `ECL14` is the Slums, `ECL1D` Kuto's Well,
+`ECL0F` Mendor's Library, matching the wall-match results exactly.
+
+Ids are 63% single-square triggers and 37% multi-square regions — shopfronts and
+rooms — so both readings guessed earlier are true, per id.
+
+**Bits 5 and 6 control wandering monsters, but only in some areas. CONFIRMED.**
+Byte-identical code in `ECL03`, `ECL04`, `ECL06` and `ECL09`, immediately before
+the zone dispatch, tests **bit 6 to suppress a random encounter** on that square
+and **bit 5 to double the RNG range**, halving the rate. Those scripts then mask
+the id with `$1F`.
+
+**The mask is the area's, not ours**: `$7F` in eighteen areas, `$1F` in the
+dungeon-floor family, `$3F` in `ECL17`. So outside that family bits 5 and 6 are
+simply part of the id, and reading them as encounter control would be wrong.
+Across all 29 files bit 6 is set on 114 squares and bit 5 on 517, of 7424.
+
+Loose end: `GEO05` sets bit 5 on 126 squares and `ECL05` never tests it.
+
+This also gives the encounter-rate question a home. Community sources say Pool
+of Radiance scales encounters to party strength; here is the *other* half, a
+per-square rate the map itself carries.
+
+
+## `CHARPIC00` is eight bytes a glyph, and truncated by two
+
+**SOLVED**, and the ragged end is harmless.
+
+No header: splitting the file into 8-byte groups at every phase, **phase 0 is the
+only one with a blank glyph anywhere meaningful, and that blank is index 32** —
+the screen code for space, which real icons use. `CHARSET` (514 = 2 + 64 x 8) has
+no header either.
+
+The payload is 2030 bytes, six past the end of glyph 252, so the file **stops two
+bytes into glyph 253**. `2032 = 8 x 254` is the most an eight-block PRG can
+carry; a full 2048-byte charset would need a ninth block. Glyph 253's present
+bytes are `00 00 00 00 3C F4`, and glyphs 81 and 251 are the only ones matching
+those six — so the lost tail is `D4 D4`.
+
+**Nothing touches it.** The highest shape code across thirteen sources is **243**
+(the earlier note said 233, which was one specimen short), ending 72 bytes clear
+of the truncation, and glyphs 244-252 are non-blank so the file is not
+blank-padded. The clamp in `por/icons.py` never fires. One `CHARPIC` exists,
+byte-identical on all eight disks.
+
+
+## The effect list shares storage with item `+14`, not meaning
+
+**A standing PROBABLE, corrected.** `docs/80-fields-wanted.md` and `por/layout.py`
+both said record `0x0AD`-`0x0B6` used "the same namespace as item byte `+14`".
+They share the *slots*, not the vocabulary.
+
+`SPELLE04 $ADD4` copies a readied passive item's `+14` verbatim into a free slot.
+But `85` is `POTION OF HEALING` as an item and **drains one level** on a wight. A
+passive item's `+14` is its handler's argument — the gauntlets carry 38, the
+cloak 89, the ring 61 — and those land in the same array as monster traits.
+
+**Sixty-one monster records enumerated**, about forty codes with confidence
+levels. The self-proving ones are the ones to trust, because each lands on
+exactly the creatures the *Monster Manual* says it should:
+
+| code | on exactly |
+|---|---|
+| 83 | the two petrifiers |
+| 119 | the five monsters needing a magic weapon to hit |
+| 109 | the four level-drainers |
+| 120 | the two boulder-throwing giants |
+| 100 / 101 | troll regeneration |
+| 64-67 | a graded poison family |
+
+The `+15` handler table is located exactly: `ECL65`, resident at `$9900`, three
+parallel arrays at `$9AD5`/`$9AEE`/`$9B06`, 24 entries, handlers all inside
+`SPELLE04` at `$A700`. `$ADD4` is the shared default for eight of eleven item
+codes — and it is the same routine reached independently from the `$6BAD` scan.
+
+A new save region falls out: `$4900`-`$493F` is 64 party-wide active-effect
+codes, `$4940`-`$497F` the owner (bit 7 = whole party), `$4B80`-`$4BBF` a third
+parallel array, from `LIBRARY $3FE0` and `CAMP $131F`. Zero in all eleven saves —
+an out-of-combat party, not a refutation.
+
+
+## `LIBRARY` is at `$2C48`
+
+Two agents reached it independently and both beat the `$2C47` derived here from
+the stem table. Three patch sites fix it — `CAMP`'s `STA $301C` and `STA $301E`,
+and two vector patches in `COMBAT` — all landing one byte early otherwise; and
+fitting by JSR-target alignment scores 359 of 522 at `$2C48` against 290 at
+`$2C47`, with `JSR $3FE1` only decoding at all under `$2C48`.
+
+So `GEO00` is at `$40FC` with its digits at `$40FF`/`$4100`. It no longer
+matters — the area id is `$4BC2` — but the base is used for every other
+`LIBRARY` address in this log.
+
+Also established and reusable: **every game overlay loads at `$0800`**, not the
+`$1000` its header claims. `COMBAT`, `DUNGEON`, `CAMP`, `POST.COM`, `COM.PREP`,
+`GEN` and `INIT` all score 480-550 internal call targets there and near zero
+elsewhere. `SPELLE04` is at `$A700`, `ECL*` at `$9900`, `MON*` at `$6B00`.
+
+## The live map: the game leaves it at `$0400`
+
+**CONFIRMED.** The `GEO` block the game is drawing sits at **`$0400`**, and the
+game does not relocate it at all. The file is a PRG loading at `$0400` — screen
+memory at boot — but in the world the screen has moved to `$CC00`, so the page is
+free and the loader simply leaves the map there.
+
+`$0400`–`$07FF` was byte-identical to `GEO00` with 480/480 reciprocity, and a
+sweep of all 64K in both the `cpu` and `ram` banks found no second copy.
+
+**This is why the search that was meant to settle the area question kept coming
+back empty.** `automap/area.py` shipped with `SEARCH_RANGES = ((0x0800, 0xCFFF),)`
+— one page too high, and mine. The live map now names its area on the first poll,
+before the party moves, by matching those 1024 bytes against the disk copies.
+
+`FilenameDigits` is dead as a strategy: `$24B4` reads `50 55 5A 5F 20 87`.
+
+One thing nobody has taken, and it is cheap: `Fingerprint` needs **111 steps** to
+identify New Phlan from positive evidence alone, because a square being walkable
+rules out very little. **One refused step would settle it instantly** — and the
+status line already carries the clock, so *clock advanced + square unchanged +
+facing unchanged* is a refused step. `Fingerprint.refused()` exists and nothing
+calls it.
+
+
+## Polling does not stall the emulator. It speeds it up
+
+**The premise was wrong, and it was mine.** `docs/96` said a live map that polled
+would "stutter the game visibly", and the whole `resume()`-instead-of-reconnect
+design was built to avoid a stall. Measured against the KERNAL jiffy clock at
+`$A0`–`$A2`, with idle windows either side reading 1.000 and 1.002:
+
+| polling | emulated seconds per wall second |
+|---|---|
+| flat out | **3.048** |
+| every 100 ms | 1.129 |
+| every 200 ms (the default) | **1.068** |
+| every 500 ms | 1.028 |
+
+Each `fix()` hands the emulation about **14.3 ms of *extra* emulated time**. The
+monitor does not pause the machine on balance — it lets it run unthrottled while
+the socket is serviced. So the risk was never a stall; it is the game running
+**fast**.
+
+The cost is **per `resume()`, not per byte**: a 7168-byte read costs the same as
+one `peek`, and four peeks with four resumes cost 45.9 ms against 14.4 ms for the
+same work batched. That vindicates the "read `$4900`–`$64FF` in one call" advice
+for a reason opposite to the one given.
+
+**Keep 200 ms.** Seven per cent fast is imperceptible in a game whose clock
+advances per move, and the 715 ms that would buy a 2% error makes the marker lag
+behind the party.
+
+Negative result worth having: **VICE never serves a second binary-monitor
+connection while the first is open.** It accepts the TCP connection and then
+ignores it. So `automap` and `tools/session.py` cannot both be live.
+
+
+## There is no training-hall wedge, and it was never (6,2)
+
+**Withdrawn.** `docs/70-driving-the-game.md` recorded that stepping east into
+(6,2) consumes every keypress thereafter and that only a kill recovers it. Four
+runs "died there". None of that is true.
+
+Stepping *into* (6,2) is harmless. Stepping **(6,2) → (7,2)** prints `THE ROOM IS
+FILLED WITH DUELING PAIRS.` and row 24 becomes **`PRESS <RETURN> OR BUTTON TO
+CONTINUE`**. Press Return, wait about **25 seconds** of loading, and the arena
+master asks two `YES NO` questions. Answer them and you walk back out.
+
+Three compounding mistakes made an ordinary encounter look fatal:
+
+1. **The status line keeps reading `6,2` for the whole encounter**, because the
+   step does not complete until the questions are answered. So the driver
+   concluded the move had failed.
+2. **`$306D` is the *menu* key reader**, not the world one. It accepts `<`, `,`,
+   the four cursor keys, `$0D`, `$5F` and the joystick. `I`/`J`/`K`/`M` fall out
+   at `$30B6` and are *correctly* discarded. The single-step trace that showed
+   keys "dispatched and discarded" was watching the right code do the right
+   thing.
+3. **`leave_move()` gives up after 8 x 0.6 s** — five seconds, against a 25-second
+   load.
+
+Sampling the PC 300 times at (6,2) gives a distribution identical to before
+entry: the ordinary `$10C2` key-wait loop.
+
+The lesson is the one this log keeps relearning. "Four runs died there" was four
+runs of the same wrong assumption, not four pieces of evidence.
+
+
+## A constructed item is accepted by the game
+
+**CONFIRMED.** A `LONG SWORD +4` — no such item ships on any disk — built from
+word indices, type, bonus, cost and weight with no template copied:
+
+```
+24 00 a5 24 04 00 00 00 3c 00 00 10 27 00 00 00
+```
+
+Seven bytes changed at `$5A90`–`$5A9C`; `SAVEDGAME1` untouched. On booting and
+readying it:
+
+| | before | after |
+|---|---|---|
+| weapon | `SHORT SWORD` | **`LONG SWORD +4`** |
+| THAC0 | 21 | **17** |
+| damage | `1D6+1` | **`1D8+5`** |
+
+−4 on THAC0 is byte `+4`; `1d8` comes from the type table via byte `+0`; `+5` is
+strength +1 plus the item's +4. Only slot 1's roster block changed, and `SAVE
+CURRENT GAME` wrote the record back verbatim.
+
+Weight is **PROBABLE** only — slot 1's movement fell 6 → 3 and nobody else's did.
+Cost is **UNVERIFIED**; neither is printed on the C64 sheet.
+
+The attempt to make weight decisive failed and turned up something better:
+**poking `$5A98` to 150 lb was reverted by the game**, so the item area at
+`$5900`+ is a *copy* fed from a master elsewhere, and live pokes there do not
+stick. That is a new fact about the format and a trap for any future live edit.
+
+Incidental: the game **silently** refuses to ready a second weapon — no message
+at all. Un-ready the first.
+
+## Combat: the mode flag, and where the combatants are
+
+Both halves of the combat research landed.
+
+### `$6E11` is the mode flag. CONFIRMED
+
+**`$6E11` holds the number of the overlay currently running, and `2` is
+combat.** Not a screen to scrape — the game's own dispatcher.
+
+`LINKER` is a **136-byte resident at `$2B80`** (its declared `$1000` is the usual
+lie) and it is the entire outer loop: `LDA $6E11`, index the name table at
+`$2BBB`, load that overlay at `$0800`, `JSR $0800`, repeat. An overlay sets
+`$6E11` to whatever should run next and returns.
+
+| `$6E11` | 0 | 1 | 2 | 3 | 4 | 5 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|
+| | `GEN` | `DUNGEON` | **`COMBAT`** | `INIT` | `COM.PREP` | `POST.COM` | `FINAL` | `CAMP` |
+
+Every write agrees: `COM.PREP $0936` writes 2, `COMBAT $090C` writes 5,
+`INIT $09D8` writes 1, `DUNGEON $10B1` writes 9. Sampled live across one driven
+session: menu `00`, New Phlan `01`, combat map drawn `02`, post-fight `05`, back
+in the world `01`. `04` was never seen live — that row is disassembly only.
+
+`$6E11` sits in the loader's resident page beside the file cache at `$6E13`, so
+no overlay moves it.
+
+**The loaded-files cache does not work for this**, which was the first thing to
+try and is a clean negative: `COMPIC` read `$82` before a fight, `$8B` during and
+`$8B` after — populated in the world and never cleared — and `MON` stayed `$FF`
+throughout.
+
+### The combatant table
+
+| what | where |
+|---|---|
+| who is fighting, and their combat stats | **`$8300 + i*32`** — the `SAVEDGAME1` roster block, simply continued past `$83FF` |
+| where they stand | **`$8B00 + i*4`** = `x, y, i*4 \| pose, 0`; `$FF $FF` means off the map |
+| which record is theirs | roster `+0x0D` names the record slot |
+
+`i` runs 0–63, with 0–7 the party **in save-slot order** and 8 upward the
+monsters — exactly the encoding the effects owner byte at `$4940` already used.
+That lead paid off.
+
+The chain: `COMBAT $28CB` → `LIBRARY $4415` → `JSR $3189` (`$8300 + i*32` into
+`$6C00`), `LDA $6C0D`, `JMP $315A` (slot into `$6B00`).
+
+`COM.PREP $08B6` fills `$8B00`–`$8BFF` with `$FF` before every fight, which fixes
+the table at one page. Observed in two duels:
+
+* BRUTUS, save slot 5, at `$8B14` = `19 0D 14 00` — (25,13) — then `18 0C 16 00`,
+  then `19 0B 14 00` as he moved.
+* The monster at `$8B20` = `1E 0D 22 00` — (30,13); on death `FF FF 22 00`, with
+  its roster `+0x00` going `$01` → `$84`.
+* Every other entry `FF FF FF FF`.
+
+x reached 30, so **the combat map is at least 32 squares wide** — bigger than the
+16×16 `GEO` grids, as expected.
+
+**`$A380 + i` is the initiative array.** `COMBAT $08BE` scans it for the maximum
+with ties broken randomly, and the round ends when all 64 are zero (`$090C`, then
+`$6E11 = 5`). `COM.PREP $1663` clears seven such arrays with `LDX #$3F` — which
+is where the 64-combatant limit comes from.
+
+### A long-standing reading corrected: there are twelve record slots, not eight
+
+`LIBRARY $312B` computes **both** `$4D00 + n*$100` and `$5900 + n*$100`, and the
+arithmetic only closes at twelve:
+
+```
+records  $4D00 + 12 * $100 = $5900   <- exactly where the item area begins
+items    $5900 + 12 * $100 = $6500   <- exactly where SAVEDGAME0 ends
+```
+
+At eight slots there is an unexplained gap. So **`$5500` is slot 8**, not the
+"staging page" it has been called since early in this project, and `$5600`–`$58FF`
+are slots 9, 10 and 11 rather than dead space. The orc found at `$5500` after a
+fight was a combatant occupying a real slot.
+
+`SLOT_COUNT` in `por/savegame.py` stays **8** deliberately: that is the *party*,
+which the game enforces at six player characters and eight total. The extra four
+are combat scratch and must not appear in a party list.
+
+### Limitations, stated plainly
+
+* **One monster, observed twice.** Both fights were training-hall duels with a
+  single opponent at index 8. Monsters at 9, 10, 11 and slot sharing follow from
+  the code, not from observation. A multi-monster fight is the next check.
+* `$6E11 == 4` was never sampled live.
+* Position byte `+3` is always 0 and unexplained; `+2 = i*4 | pose` is PROBABLE
+  on three samples.
+* The combat map's terrain format is untouched. `SQRPACI01` loads at `$0400`–
+  `$07FF` during combat — verified against RAM — but contains 6502 code, so it is
+  the square *renderer*, not the map.
+* **Gate any reader on the flag.** `$8B00` reads all **zero** in the world, not
+  `$FF`, so an ungated reader would happily draw 64 combatants stacked at (0,0).
+
+## What Curse of the Azure Bonds gave Pool of Radiance
+
+A survey of what a second game would cost turned up two findings about *this*
+game, both confirmed here directly.
+
+### The roster block is record bytes `0x100`-`0x11F`. CONFIRMED
+
+A 580-byte record is **four blocks the game saves separately**:
+
+| record | size | where it goes in a save |
+|---|---|---|
+| `0x000`-`0x0FF` | 256 | `$4D00 + N*$100`, the character slot |
+| `0x100`-`0x11F` | 32 | **`$8300 + N*$20`, the `SAVEDGAME1` roster block** |
+| `0x120`-`0x21F` | 256 | `$5900 + N*$100`, the item area |
+| `0x220`-`0x243` | 36 | `$4BE0 + N*$24`, the icon table |
+
+Two agents reached this independently — one from `LIBRARY $3189`/`$319A`, which
+copies `$8300 + N*$20` in and out, the other from matching exports against saves
+by name. Checked here on `PORSAVE.D64`: an exported `.chr` and the roster page
+agree in **31 of 32 bytes for all six characters**, differing only at `0x10D`.
+
+**So there was never a 44-byte "export delta."** That figure came from reading
+580 contiguous bytes from `$4D00` and running off the end of a `$100` slot into
+zeroed neighbours. The real difference between an export and a save is one byte:
+`0x10D`, which is marching order in an export and the record slot index in a
+roster block.
+
+Renamed accordingly: `region_100` → `roster_in_use`, `region_10d` →
+`party_order`, `region_110` → `roster_tail`, `region_11b` → `roster_movement`.
+That last one was recorded as "12 in every specimen", which held only because
+every specimen was the same six characters — `PORSAVE10`'s exports read 9 in
+banded mail.
+
+### `0x0EE`-`0x0F3` is spells castable per level. CONFIRMED
+
+The docs had this down as not stored anywhere. It is six bytes, one per spell
+level, **nibble-packed: cleric in the high nibble, magic-user in the low**.
+
+| character | class, level, wisdom | `0x0EE` | reads as |
+|---|---|---|---|
+| ROLAND | cleric 1, WIS 16 | `$30` | 3 cleric — one base plus two for wisdom |
+| MALCYON | magic-user 1 | `$01` | 1 magic-user |
+| LADY KATHERINE | magic-user/thief 1 | `$01` | 1 magic-user |
+| SILAS, MAGNUS, BRUTUS | fighters | `$00` | none |
+
+ROLAND's 3 is exactly what his sheet allows, and it is what
+`docs/50-experiments.md` recorded when he memorised spells. The editor no longer
+has to compute capacity from class, level and wisdom — the game already did.
+
+### Where it came from
+
+The Curse disks are on this machine, and pointing `por/` at them worked: `geo.py`
+decodes all 16 of Curse's `GEO` files unchanged, `items.py` reads its `ITEMNAMES`
+after changing one address, and Pool of Radiance's record offsets read Curse's
+own pre-generated party correctly — abilities, race, age, saves, money, levels,
+class bits, experience. Paladin and ranger turn out to fit *existing* slots: the
+per-class array at `0x0C9` is eight wide, not four.
+
+Full survey in `work/reports/coab-research.md`; a proposed plan in
+`work/reports/coab-plan.md`.
+
+## A real fight, and what it settles
+
+Donald walked `PORSAVE13` around the slums until a random encounter started and
+left the machine sitting in it. Live memory read at `$6E11 = 2`, no actions
+taken. This is the multi-monster case the earlier combat research explicitly
+did not have.
+
+**Fifteen combatants:**
+
+| index | who | record slot | position | hp | AC |
+|---|---|---|---|---|---|
+| 0-5 | the party, in save-slot order | 0-5 | (25-29, 13-14) | | |
+| 8-15 | **eight `GOBLIN GUARD`s** | **8, all of them** | (23-28, 11-12) | 4 | 6 |
+| 16 | `GOBLIN LEADER` | 9 | (23,11) | 7 | 4 |
+
+**Monsters share one record slot per *type*.** Eight goblins, one record. That
+was written up as "follows from the code, not from observation"; it is observed
+now. It also explains why twelve slots is enough for a fight with twenty-five
+creatures in it.
+
+**Correction: position byte `+2` is `record_slot * 4 | pose`, not
+`index * 4 | pose`.** Indices 9 and 15 both read 32, which `index * 4` would
+make 36 and 60. The party carries pose 2 and the monsters pose 0. The earlier
+reading was taken from a duel where index and slot happened to be equal, so the
+two were indistinguishable — exactly the trap a single-specimen inference sets.
+
+**`$0400` is not the combat map**, and scoring it as a `GEO` reciprocates
+137/480 = 0.285, which is chance — but it is not merely "the square renderer"
+either. `SQRPACI01` is a mixed page: a tile remap at `$0580`, **the combat-view
+parameter block at `$0600`**, and code from `$0680`. The parameter block is what
+finds the map; see "The combat map is at `$8C00`" below.
+
+The map reaches x=29 and y=14, so it is at least 30 wide.
+
+One number worth a second look: the walkthrough for the slums gives `GOBLIN
+GUARD` as AC 7, and the roster says 6. **Resolved: the shield.** `MON02`'s own
+record says AC 7 (`0x0E1` = `0x10F` = 53) and its item block holds a readied
+`STUDDED LEATHER ARMOR` (protection `$B5`, AC 12-5 = 7) *and* a readied `SHIELD`
+(protection `$81`, -1). `0x0E1` is the unequipped base — 10 for every player
+character — and the roster's `+0x0F` is recomputed from readied equipment when
+the record is loaded into a combat slot. The C64 does not differ from the PC.
+
+
+## The combat map is at `$8C00`, and the shape is in `SQRPACI`
+
+**Question.** Where is the combat terrain, and what shape is it? The last
+unknown blocking `docs/101-combat-view.md`.
+
+**Answer.** `map[x, y] = peek($8C00 + y * 56 + x)`, 56 x 26, bit 7 meaning "a
+combatant stands here". CONFIRMED.
+
+### Method: follow the renderer, not the data
+
+Blind statistics on candidate regions had already failed on `GEO`, so this went
+at the problem from the drawing code.
+
+1. A **store checkpoint on `$CE81`** — one character cell inside the combat map
+   window — hit at `PC $C0FC`, inside `GDRIVE00`'s resident page.
+2. `$C082` is a 3 x 3 glyph blitter. It reads the square through `LDA ($07),Y`,
+   remaps it through `$0580`, multiplies by 18 (9 screen codes + 9 colours) and
+   adds a glyph base held at `$0600`/`$0601`.
+3. An **exec checkpoint at `$C084`**, reading `$07`/`$08` on every hit, printed
+   the whole redraw: **49 pointers, 7 x 7, exactly `$38` = 56 apart.**
+4. Three pointers matched squares whose coordinates were known from `$8B00` —
+   `$8DDC` = (28,8), `$8E13` = (27,9), `$8E4B` = (27,10) — and all three solve
+   to base `$8C00`, stride 56.
+
+### The parameter block, which gives the rest
+
+`$0600`-`$0613`, read live in combat:
+
+| address | value | meaning |
+|---|---|---|
+| `$0600`/`$0601` | `$91B0` | tile glyph table, 18 bytes a tile |
+| `$0602`/`$0603` | `$8C00` | **the map** |
+| `$0604`/`$0605` | `$8B00` | the position table |
+| `$0606` | `$40` | 64 combatants |
+| `$0607` | `$38` | **row stride, 56** |
+| `$0610`/`$0611` | 49, 19 | maximum camera origin |
+| `$0612`/`$0613` | 55, 25 | **maximum square x and y** |
+| `$037E`/`$037F` | | the window's top-left square |
+
+`COM.PREP $08C6` derives the clamps and proves the reading — `LDA #$07 /
+STA $061A`, then `LDA $0612,X / SEC / SBC $061A / CLC / ADC #$01 /
+STA $0610,X`. The view is 7 squares, so `55 - 6 = 49`. `$037E`/`$037F` read
+(26,4) while the acting character stood at (29,7), dead centre.
+
+**And the size closes arithmetically:** 56 x 26 = 1456 = `$5B0`, so the map runs
+`$8C00`-`$91AF` and ends exactly where the glyph table at `$91B0` begins.
+
+### `SQRPACI<nn>` is where the block comes from
+
+`POOL1__SQRPACI01`, 1024 bytes loading at `$0400`, holds the `$0580` remap at
+`+0x180`, **the `$0600` block at `+0x200`** and the code at `+0x280` — all three
+byte-identical to live memory. So the page is table, parameters and code
+together, which is why reading it as a map scored at chance.
+
+**The geometry is per-file and must be read at runtime.** `POOL6__SQRPACI00`
+carries a different block: glyph base `$8E88`, stride **20**, bounds 17 and 35.
+Stride and width are separate fields.
+
+### Bit 7 is occupancy
+
+`$C086 BPL` skips the glyph lookup when bit 7 is set and draws the combatant
+instead. Seen twice:
+
+| when | `$80` squares | `$8B00` says |
+|---|---|---|
+| a duel's first frame | (25,13), (30,13) | the same two |
+| a slums encounter | sixteen squares at x 25-30, y 11-15 | the same sixteen |
+
+So mask `& $7F` for terrain, and `& $80` is a free cross-check on `$8B00`.
+
+### Two maps, and what is still open
+
+The training-hall arena and a slums random encounter differ in 246 of the 1456
+bytes and read as plainly different floor plans, both with the same parameter
+block. Terrain values run 0-7, 0 being floor: glyph 48 is nine spaces.
+
+**Where the bytes come from is not established.** `$8C00` is LIBRARY's file
+staging buffer, so the map is most likely loaded and decompressed into it at
+fight setup. What is ruled out:
+
+* **`SQRDATA`.** Its loader-cache slot read `$FF` — never loaded — in *both*
+  fights. The file with the most map-like name on the disks is not it.
+* **A verbatim file.** 32-byte probes from both maps match nothing on any
+  `POOL*.D64`.
+
+`GEO` differed between the two fights (`$80` = GEO00, `$94` = GEO14) and so did
+the map, which fits "derived from the area" and fits "a per-area backdrop file"
+equally well. The decisive experiment is a **store checkpoint on
+`$8C00`-`$91AF` armed while a fight starts**; both fights here were already
+running by the time one could be armed.
+
+## The two class fields, separated at last
+
+**Question.** `char_class` (`0x073`) and `class_bits` (`0x0EB`) say the same
+thing twice and agree in all twenty specimens. Which does the game read?
+
+**Answer: both, for different things.** `0x073` names the character; `0x0EB`
+decides what they may use. CONFIRMED.
+
+**Method.** `wish-cli` built a save from a copy of `PORSAVE13` with one byte
+changed — SILAS `class_code 2 -> 5` — leaving `classes: [fighter]`. The game
+loaded it **without reconciling**: `$5073` = `05`, `$50EB` = `08`.
+
+| test | result | so |
+|---|---|---|
+| the sheet's class line | `MAGIC-USER` | `0x073` is what is displayed |
+| un-ready then re-ready his `LONG SWORD` (thief/fighter) | allowed | `0x0EB` is what is tested |
+| control: LADY KATHERINE (`0x0EB` = 5) readying `SCALE MAIL` (cleric/fighter) | refused | the check is real |
+
+The control is the point. "It readied" alone would be equally consistent with
+the game never checking.
+
+**The code agrees.** `LIBRARY $465A`:
+
+```
+$465A  ad 99 6d  LDA $6D99      ; the item type's class-usage byte
+$465D  2d eb 6b  AND $6BEB      ; class_bits
+$4660  d0 07     BNE $4669      ; overlap -> allowed
+$4662  a9 ad     LDA #$AD       ; else $46AD = "WRONG CLASS."
+```
+
+`$6D8C` is the resident item's `ITEMS` record and the usage byte is its 13th, so
+`$6D99` is exactly that field. `CAMP $167D` runs the same test. A scan of every
+overlay for the two addresses splits them cleanly: `$6BEB` is only ever `AND`ed
+(`COMBAT $1EE8`/`$202A`, `CAMP $167D`, `LIBRARY $465D`), while `$6B73` is only
+ever an index (`POST.COM $123F`/`$15E3` `LDX`; `LIBRARY $31E1`-`$320D` `LDY`
+into three parallel class-name tables joined with `/`).
+
 ## Planned, not yet run
 
-Named, not numbered — the name is how they get referred to elsewhere in the docs.
 
-- **The export delta.** Which of the 44 bytes that differ between an exported `.chr`
-  and the same character in a save slot are party context, and which are real fields?
+- ~~**The export delta.**~~ **There is none.** A record is four blocks the game
+  saves separately -- 256 to the slot, 32 to the roster page, 256 to the item
+  area, 36 to the icon table -- and an export matches a save in 579 of 580
+  bytes. The "44 differing bytes" came from reading 580 contiguous bytes from
+  `$4D00` and running off the end of a `$100` slot into zeroed neighbours. The
+  one real difference is `0x10D`: marching order in an export, record slot in a
+  roster block.
+
 - **The checksum probe.** Largely answered by the thirteen-field edit, which the
   game accepted without complaint. A dedicated corruption probe would only add
   the case of a byte in a region nothing reads, and nothing depends on it.
-- **The two class fields, separated.** `char_class` (`0x073`) and `class_bits`
-  (`0x0EB`) encode the same classes twice, and agree in every player character
-  we hold, so nothing yet says which one the game reads. (They *can* disagree:
-  four of the game's own NPC records do.) Set them to disagree deliberately —
-  give a fighter `class_bits` of fighter|cleric while leaving `0x073` at 2 — and
-  try to ready a mace. `wish` keeps the two in step when you edit `classes:`, so
-  the split has to be made by setting `class_code:` yourself. If the character can then wield
-  clerical gear, `class_bits` is the field the game tests, and it is very likely
-  what Gold Box Companion's four "can wield" checkboxes edit. If nothing changes,
-  `0x073` is the real class and `0x0EB` is a cache. Either answer is worth having,
-  and the experiment costs one edit. Use a throwaway party: this deliberately
-  writes an inconsistent record.
+- ~~**The two class fields, separated.**~~ **Run, and both fields are real.**
+  `0x073` is what the sheet prints; `0x0EB` is what the game ANDs against an
+  item's class-usage byte to decide whether it may be readied. Written up below.
 - **The fortune teller in the slums.** A guide reports that talking to her
   raises the difficulty of random encounters in the slums. Split this in two,
   because the halves are wildly different in cost:
@@ -2658,23 +3387,53 @@ Named, not numbered — the name is how they get referred to elsewhere in the do
   Note the first half is worth running **whatever the guide got right**: it is a
   controlled single action, and a diff that shows nothing at all is also
   informative.
-- **The trainer's ability-score change.** Save, alter exactly one ability score
-  at the trainer, save again, diff. Cheap, isolated, and it answers two things
-  at once: whether the game keeps a second copy of the score or a flag saying it
-  was altered, and whether a forum rumour — that an original developer said
-  altering scores carries negative effects in play — has anything behind it. If
-  the diff shows only the one byte moving, the rumour has nowhere to live in the
-  save file and can be set aside. If it shows more, we have found a field.
-- **The racial-traits hunt.** Gold Box Companion on the DOS version exposes an editable
-  trait list — and a trait survives a race change, so it is stored per character rather
-  than derived from race. Find that field. `0x0AD` was the leading candidate and
-  is ruled out: gnomes and halflings read 0. See `docs/80-fields-wanted.md`.
-- **The remaining item-effect byte.** `+5` is 0 on 162 of the 163 items on the
-  game disks and 251 on CURSED NECKLACE alone. Everything else in the 16 is
-  read. Finding a magical weapon in play would also let the effect bytes be
-  checked against an item we watched arrive, rather than against the 1989
-  editor's synthesised records.
-- **The monster attack routine.** The monster files otherwise decode: they use
-  the character record layout, with hit dice at `0x0A0`, armour class at `0x0E1`
-  and movement at `0x09F`. How many attacks a creature makes, and for how much,
-  is not located, and the experience award is not stored at all.
+- ~~**The trainer's ability-score change.**~~ **Answered without running it.**
+  `0x0B8` bit 0 is set by `GEN $155D` right after `INC`/`DEC $6B14,X` and
+  cleared if the change is cancelled — so the game does remember. And every
+  read of `$6BB8` anywhere tests bit 7, the NPC flag: **nothing reads bit 0
+  back**. The rumour has no code behind it on this port, and `wish` writing
+  the six ability bytes directly is safe.
+
+- ~~**The racial-traits hunt.**~~ **Found:** `0x0AD`–`0x0B6`, a ten-slot list
+  of active effect codes seeded per race by `GEN $0BF3` from
+  `[1, 0, 107, 0, 124, 0, 0, 0]`. That is why `0x0AD` was non-zero only for
+  elves and half-elves.
+
+- ~~**The remaining item-effect byte.**~~ **Found: `+5` is a signed
+  saving-throw bonus.** Its single read accumulates into `$6DA7`, which is
+  consumed in exactly one place — added to a d20 saving throw. `RING OF
+  PROTECTION +1` from `MON6E` carries `+4` = 1 and `+5` = 1, the AD&D ring
+  exactly.
+
+- ~~**The monster attack routine.**~~ **Found.** `0x0D9`-`0x0E0`: attacks per
+  round stored **doubled** so AD&D's 3/2 works out, two attack forms, dice
+  count, die size and a signed modifier. Twenty creatures match the *Monster
+  Manual*. And the experience award **is** stored after all -- `0x0F7`/`0x0F8`
+  base plus `0x0F9` per hit point, times `hp_max`. The earlier "not stored at
+  all" failed because AD&D's award is two numbers, not one.
+
+- ~~**What icons the game can actually make.**~~ **Found, and it is small.**
+  `SPELLN64` (disk 3, `$AF00`, entry `$AF24`) is the icon editor: `ICON: PARTS
+  COLOR SIZE EXIT`, then `PARTS: WEAPON HEAD EXIT`. Its data file `SPELLE64`
+  holds four option tables — 35 weapons and 23 heads for one size, 28 and 14
+  for the other — with counts at `$B0DA` and pointers at `$B0DE`, both read
+  rather than assumed by `por/iconparts.py`.
+
+  The reachable set is **15328 shapes**, not the 805 + 392 that "one weapon
+  times one head" predicts, because a weapon change *preserves* cells 0, 1, 9
+  and 10 (`$B26F`/`$B29B`) and because SIZE is never written back to `0x099`,
+  so the two table pairs can be mixed in one session. Both matter: of the 11
+  distinct icons on our disks only **6** come from a single (weapon, head)
+  pair, and all **11** are in the closure. A product model would have called
+  five real icons impossible.
+
+  Colour is constrained too: `colour[cell] = C[class(glyph)] | (8 if the glyph's
+  class byte has bit 7)`, seven values 0–7, one per part class. It reproduces
+  **103 of 104** icon slots cell for cell; the exception is SHARA THE GRAY on
+  the shipped `POOL1` party, hand-authored with `$0F` in two cells. Cells
+  holding no part are *not* governed — a space has class `$0F` and its colour
+  byte is residue, and computing one anyway is what first made the rule
+  disagree with all eight icons in a save.
+
+  `HEAD*`/`BODY*` are the **portrait**, a different overlay writing `0x0FE` and
+  `0x0FF`; `GEN` offers 14 heads and 12 bodies there. Unrelated to the icon.

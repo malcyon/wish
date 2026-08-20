@@ -418,10 +418,10 @@ Remaining, in rough order of value:
     saving at each step, and watch whether it tracks equipment. His armour class
     is no longer a puzzle, but this byte still is.
 
-## Phase 4 — GUI character editor
+## Phase 4 — GUI character editor  ✅ BUILT
 
-Not started, and optional. A PyQt6 front end over the same `por/` library, with
-PyInstaller packaging after it works.
+`python -m editor [SAVE.D64]`. A PyQt6 front end over the same `por/` library.
+PyInstaller packaging is still to do.
 
 The library is already the right shape for this: `por/` holds the file formats and
 `por/layout.py` is a declarative field table, so a GUI can render its widgets from
@@ -430,17 +430,28 @@ the table rather than hard-coding a form. Nothing in `por/` imports the CLI.
 The gate is Phase 3 rather than any GUI work: a form that shows a character sheet
 is only worth building once the fields behind it are known and writable.
 
+**The design is in [`docs/97-editor.md`](97-editor.md).** In short: the form is a
+Qt Designer `.ui` file loaded at runtime, widgets bind to `por/layout.py` fields
+by `objectName` so rearranging the form needs no code change, read-only state is
+derived from `por/derive.py` and the confidence levels rather than hand-listed,
+and the combat icon gets a real pixel-art editor with a sixteen-colour palette.
+
 Worth a look before designing anything: **Gold Box Explorer**
 (`github.com/bsimser/Gold-Box-Explorer`). It targets the DOS games and is
 probably Windows-only, so it is a reference rather than a dependency — but it is
 someone else's answer to "what is worth showing about a Gold Box game's files",
 and that is exactly the question a GUI has to answer.
 
-## Phase 5 — Optional: live memory and an automapper
+## Phase 5 — Live memory and an automapper  ✅ BUILT (VICE only)
 
-Not started, and explicitly beyond the character editor. Reading the party's map
-coordinates from a running game to draw a live automap, supporting **VICE and the
-Commodore 64 Ultimate** and nothing else.
+The `automap/` package: a PyQt6 window that reads a running game and draws the
+map as the party walks. **VICE only** so far; the Commodore 64 Ultimate backend
+is the reason `Target` is two methods wide and nothing else.
+
+It is a **separate top-level package** on purpose. Decision 1 at the top of this
+plan says the shipped editor is a file tool that never talks to VICE, so
+everything that does is quarantined in `automap/`; `por/` and `editor/` do not
+import it.
 
 `por/` is already transport-agnostic, so this costs nothing to defer. The design
 is in `docs/96-live-memory-automapper.md`.
@@ -451,8 +462,9 @@ guessed: they are in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and
 leaves `SAVEDGAME1` byte-identical, which rules it out. Its first eight 32-byte
 blocks are the party roster (see `docs/30-savegame-layout.md`); everything past
 `$83FF` is still unread. `GEO*` is decoded and every Phlan city block is matched to its file, so a map can
-be drawn today. What is missing is that **the save does not record which map it
-is on** — the area has to be inferred from the walls around the party.
+be drawn today. **Which map a save is on is `$4BC2`**, so a save-file automapper is
+complete: position, facing, walls, doors and area all decode. See
+[the area id](50-experiments.md).
 
 ---
 

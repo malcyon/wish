@@ -11,6 +11,7 @@ library in `por/` and the `wish` editor in `tools/`.
 | [20-character-record.md](20-character-record.md) | **generated** field table for the 580-byte record, with confidence levels |
 | [30-savegame-layout.md](30-savegame-layout.md) | `SAVEDGAME0`/`SAVEDGAME1`, the `$100`×8 slot layout, the party header, the icon table and the roster blocks |
 | [40-memory-map.md](40-memory-map.md) | live addresses and the game's own race/class/alignment/item tables |
+| [41-memory-regions.md](41-memory-regions.md) | **generated** every named address, from `por/memory.py` |
 | [50-experiments.md](50-experiments.md) | append-only experiment log, including the failures |
 | [60-goldbox-field-checklist.md](60-goldbox-field-checklist.md) | research pass: what fields *ought* to exist, and which online claims are unreliable |
 | [70-driving-the-game.md](70-driving-the-game.md) | how to automate the game under VICE, and what does not work |
@@ -19,9 +20,15 @@ library in `por/` and the `wish` editor in `tools/`.
 | [86-spell-table.md](86-spell-table.md) | **generated** spell id -> name table, read off a game disk |
 | [87-item-templates.md](87-item-templates.md) | **generated** every item on the game disks, for use as `template:` |
 | [88-map-files.md](88-map-files.md) | **generated** the `GEO` map format and an inventory of all 29 files |
+| [89-level-tables.md](89-level-tables.md) | **generated** experience thresholds, THAC0, hit dice and spells per class |
 | [90-specimens.md](90-specimens.md) | every character record we have, with independently-known attributes |
 | [95-wish-cli.md](95-wish-cli.md) | the `wish` save editor: usage, safety properties, what can be edited |
-| [96-live-memory-automapper.md](96-live-memory-automapper.md) | design note for a possible live-memory automapper — **not started** |
+| [101-combat-view.md](101-combat-view.md) | the combat map, inside the automapper — **built**, on the automapper tab |
+| [100-live-view.md](100-live-view.md) | a live read-only view of the running game — **built**, on the automapper tab |
+| [99-one-window.md](99-one-window.md) | the `wish` window: the editor and the automapper in two tabs, one live connection, and the backend registry |
+| [98-automap-notes.md](98-automap-notes.md) | note-taking on the automap — **planned**, for review |
+| [97-editor.md](97-editor.md) | the PyQt6 character editor: the `.ui` form, the read-only rules, and the icon editor |
+| [96-live-memory-automapper.md](96-live-memory-automapper.md) | the live automapper in `automap/`: how it reads a running game, draws the map and shows the party |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -53,7 +60,7 @@ written by hand.
   armour class each exist in both. See
   [30-savegame-layout.md](30-savegame-layout.md).
 * **The party's position** — x, y and facing in the `SAVEDGAME0` header, with
-  the previous square and a turn counter beside them.
+  the previous square and the game clock beside them.
 * **The page at `$5500`** — one record in the character layout, holding whatever
   the game loaded there last. After a fight it is the monster, byte-identical to
   its `MON*` file bar two derived bytes.
