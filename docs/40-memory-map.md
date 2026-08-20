@@ -4,6 +4,10 @@ Addresses observed in a running game via VICE's binary monitor. Remember the
 game is heavily overlaid: an address is only meaningful while the overlay that
 owns it is resident.
 
+**For a plain lookup — "what is at `$4BC2`" — see
+[41-memory-regions.md](41-memory-regions.md)**, generated from `por/memory.py`.
+This page keeps the reasoning and the game's own string tables.
+
 ## Party / character data
 
 | Range | Contents |
