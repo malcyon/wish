@@ -1,0 +1,3 @@
+#!/usr/bin/bash
+
+/usr/lib/qt6/bin/designer editor/character.ui

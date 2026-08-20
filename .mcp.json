@@ -2,12 +2,18 @@
   "mcpServers": {
     "vice": {
       "command": "node",
-      "args": ["/home/donald/src/mcp-vice-emu/dist/index.js"],
+      "args": [
+        "/home/donald/src/mcp-vice-emu/dist/index.js"
+      ],
       "env": {
         "VICE_PATH": "/home/donald/.local/share/flatpak/app/net.sf.VICE/current/active/files/bin",
         "VICE_EMULATOR": "x64sc",
         "VICE_MONITOR_PORT": "6502"
       }
+    },
+    "qt-docs": {
+      "type": "http",
+      "url": "https://qt-docs-mcp.qt.io/mcp"
     }
   }
 }
