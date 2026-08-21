@@ -104,6 +104,11 @@ give the evidence in one clause, link the experiment by name.
 Prune when a claim changes. A doc that accretes corrections without deleting the
 superseded text is how the contradictions got in.
 
+**Leave the top-level `README.md` alone** unless Donald asks for it by name. It
+is the page a stranger reads first and it is his, not a scratchpad the assistant
+tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
+say so and wait to be asked.
+
 ## Code comments
 
 Comment the *why*, and only when it is not obvious. A field note that carries
