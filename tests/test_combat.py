@@ -66,15 +66,29 @@ def test_a_parameter_block_that_cannot_be_one_is_refused():
 
 
 def test_the_shape_is_read_and_never_assumed():
-    """SQRPACI00 carries a stride of 20 and bounds 17 x 35, so hard-coding
-    56 x 26 would be wrong for it."""
+    """`SQRPACI00` bounds 17 x 35, so hard-coding 56 x 26 would be wrong."""
     block = bytearray(synthetic_arena()[combat.PARAMS])
     block[combat.P_STRIDE] = 20
     block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
     shape = combat.shape_from_params(bytes(block))
-    assert (shape.stride, shape.width, shape.height) == (20, 18, 36)
-    assert shape.length == 20 * 36
-    assert shape.index(3, 2) == 43
+    assert (shape.stride, shape.width, shape.height) == (18, 18, 36)
+    assert shape.length == 18 * 36
+    assert shape.index(3, 2) == 39
+
+
+def test_the_stride_comes_from_the_bounds_not_from_0607():
+    """`GDRIVE00 $C3AF` is `LDX $0612 / INX / STX $4B`: the renderer derives
+    the row stride from the maximum square, and `$0607` is something else.
+
+    In a fight both are 56 and it never shows. `SQRPACI00` has `$0607` = 20
+    against a true 18, and 18 x 36 = 648 is exactly the grid in front of the
+    glyph table in a `SQRDATA` file. This test is here because the earlier one
+    asserted the wrong field and would have sheared the overland map.
+    """
+    block = bytearray(synthetic_arena()[combat.PARAMS])
+    block[combat.P_STRIDE] = 99                 # nonsense, and ignored
+    block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
+    assert combat.shape_from_params(bytes(block)).stride == 18
 
 
 # --- what the fight holds ---------------------------------------------------

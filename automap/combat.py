@@ -13,7 +13,8 @@ combat `$8B00` is a graphics buffer, and in a captured world snapshot it reads
 
 **The shape is read, never assumed.** `SQRPACI<nn>` supplies a parameter block
 at `$0600` and the two combat files seen do not agree: `SQRPACI01` has a row
-stride of 56 and bounds 55 x 25, `SQRPACI00` a stride of 20 and bounds 17 x 35.
+bounds 55 x 25, `SQRPACI00` bounds 17 x 35 -- and 18 x 36 squares is exactly
+the 648 bytes that sit in front of the glyph table in a `SQRDATA` file.
 `COM.PREP $08C6` derives the camera clamps from the same bytes, which is what
 proves the reading. Full write-up in `work/reports/combat-terrain.md`.
 """
@@ -48,7 +49,7 @@ PARAMS_LEN = 0x14
 P_MAP = 0x02              # the combat map, one byte a square
 P_POSITIONS = 0x04        # the combatant table
 P_COUNT = 0x06            # how many combatants the table holds
-P_STRIDE = 0x07           # bytes between one map row and the next
+P_STRIDE = 0x07           # NOT the row stride -- see `Shape` below
 P_MAX_X = 0x12            # last square, not the width
 P_MAX_Y = 0x13
 
@@ -122,7 +123,12 @@ def shape_from_params(block: bytes) -> Shape | None:
     if len(block) < PARAMS_LEN:
         return None
     word = lambda at: block[at] | (block[at + 1] << 8)          # noqa: E731
-    shape = Shape(map_base=word(P_MAP), stride=block[P_STRIDE],
+    # The row stride is `$0612 + 1`, not `$0607`. `GDRIVE00 $C3AF` is
+    # `LDX $0612 / INX / STX $4B` -- the renderer derives it from the maximum
+    # square. In a fight the two agree at 56 and the difference never shows;
+    # on the overland map `$0607` is 20 against a true 18, and reading it there
+    # shears every row two squares further along than the one before.
+    shape = Shape(map_base=word(P_MAP), stride=block[P_MAX_X] + 1,
                   width=block[P_MAX_X] + 1, height=block[P_MAX_Y] + 1,
                   positions=word(P_POSITIONS), count=block[P_COUNT])
     if not (shape.map_base and shape.positions and shape.count):
