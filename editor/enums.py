@@ -46,11 +46,11 @@ ALIGNMENT = {i: name.upper() for i, name in enumerate(ALIGNMENTS)}
 
 SEX = dict(SEXES)
 
-# Record 0x099. Stored the way it reads here: 0 is a small character, 1 a
-# medium one. Shown as a flag called "small" it said 1 for every human, which
-# is the opposite of what it means.
+# Record 0x099. The game offers two sizes and no more -- its ALTER menu shows
+# LARGE and SMALL -- so those are the words. Shown as a flag called "small" it
+# said 1 for every human, which is the opposite of what it means.
 # The dropdown prints the number itself, so these are names only.
-SIZE = {0: "small", 1: "medium"}
+SIZE = {0: "small", 1: "large"}
 
 # Which field each table belongs to. A `field_*` QComboBox on the form is
 # filled from here by name, like every other binding.

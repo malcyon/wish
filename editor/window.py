@@ -695,7 +695,7 @@ class EditorWindow(QMainWindow):
                                  self.charset)
             # Record 0x099 bit 0 picks which pair of option tables the icon
             # editor offers -- SPELLN64 $AF24 reads it and never writes it back.
-            size = "small" if (member.record.get("size_small") or 0) & 1 else "large"
+            size = "large" if (member.record.get("size_small") or 0) & 1 else "small"
             icon_widget.set_parts(getattr(self, "icon_parts", None), size)
             icon_widget.setMaximumWidth(ICON_MAX_WIDTH)
         self._loading = False

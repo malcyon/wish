@@ -15,17 +15,18 @@ Four option tables, chosen in pairs by size:
 
 | size | weapons | heads |
 |---|---|---|
-| large (`0x099` bit 0 clear) | 28 at `$A9E0` | 14 at `$AAD0` |
-| small (bit 0 set)           | 35 at `$A800` | 23 at `$A8F0` |
+| small (`0x099` bit 0 clear) | 28 at `$A9E0` | 14 at `$AAD0` |
+| large (bit 0 set)           | 35 at `$A800` | 23 at `$A8F0` |
 
 Both counts and pointers are read from the overlay rather than hardcoded here --
 `$B0DA` holds `1C 0E 23 17` and `$B0DE` the four addresses -- so a different
 build would be read correctly rather than silently mis-parsed.
 
-**The labels read backwards** against AD&D size categories: menu item SMALL
-stores 1, LARGE stores 0. The wiring is not in doubt, and `GEN $0958` sets
-`0x099` from a race table (dwarf, gnome and halfling 0; elf, half-elf and human
-1), so "large" is the short race's table. Named as the game names them.
+**The game offers exactly two sizes**, LARGE and SMALL, which is what its own
+ALTER > ICON > SIZE menu shows. `GEN $0958` sets `0x099` from a race table --
+dwarf, gnome and halfling 0; elf, half-elf and human 1 -- and the `$A9E0` set,
+the one the 0 races get, is the one that draws a smaller head lower down. So 0
+is small and 1 is large, which is also what the game shows for a dwarf.
 
 **Size is never written back.** No `STA $6B99` exists in `SPELLN64`: choosing
 SIZE only switches which lists this session offers. So an icon may legally mix a
@@ -88,11 +89,12 @@ class IconParts:
         self._editor = editor
         counts = self._at(editor, EDITOR_BASE, COUNTS, 4)
         addrs = self._at(editor, EDITOR_BASE, POINTERS, 8)
-        # Order in both tables is large-weapon, large-head, small-weapon,
-        # small-head -- i.e. indexed by size*2 + kind, with large as size 0.
         self.tables: dict[tuple[str, str], tuple[int, int]] = {}
-        for i, (size, kind) in enumerate((("large", "weapon"), ("large", "head"),
-                                          ("small", "weapon"), ("small", "head"))):
+        # Order in both tables is small-weapon, small-head, large-weapon,
+        # large-head -- `$A9E0` first, and `$A9E0` is the set with the smaller
+        # head, which record `0x099` = 0 selects.
+        for i, (size, kind) in enumerate((("small", "weapon"), ("small", "head"),
+                                          ("large", "weapon"), ("large", "head"))):
             self.tables[(size, kind)] = (addrs[i * 2] | (addrs[i * 2 + 1] << 8),
                                          counts[i])
         self.classes = parts[0:0x100]

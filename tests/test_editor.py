@@ -356,8 +356,8 @@ def test_the_icon_picker_offers_the_game_s_own_two_lists(app, editor):
     shape = parts.compose("small", 0, 1)
     colours = parts.colours_for(shape, {k: 1 for k in range(7)}, bytes(18))
     picker = PartsPicker(parts, editor.charset, shape, colours)
-    assert picker.weapons.count() == 35
-    assert picker.heads.count() == 23
+    assert picker.weapons.count() == 28
+    assert picker.heads.count() == 14
 
 
 @game_disks

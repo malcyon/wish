@@ -29,7 +29,7 @@ written back and confirmed in game.
 | **hit points lost to draining** | `0x0A2` | CONFIRMED — restored alongside `0x0A1` |
 | **undead turning class** | `0x0A3` | CONFIRMED — matches the AD&D 1e table on all 13 undead specimens |
 | thief skills | `0x0A5`–`0x0AC` | CONFIRMED — **signed**; a halfling's read-languages is -5 |
-| **small size flag** | `0x099` | PROBABLE — 0 small, 1 medium; the icon large/small flag |
+| **size flag** | `0x099` | PROBABLE — 0 small, 1 large; picks the icon part tables |
 | **money — all seven types** | `0x0BB`–`0x0C8` | CONFIRMED |
 | **level, per class** | `0x0C9`–`0x0CC` | PROBABLE |
 | infravision | `0x0D5` | CONFIRMED |
@@ -322,7 +322,7 @@ eleven exports name a file that exists. The earlier guess at `0x10D`/`0x10E` was
 wrong on both counts: `0x10E` is the current THAC0, and `0x10D` looks like
 marching order.
 
-~~**Icon large/small flag**~~ — **found: `0x099`.** 1 for medium, 0 for small,
+~~**Icon large/small flag**~~ — **found: `0x099`.** 1 for large, 0 for small,
 and the only byte in the stored 256 separating dwarves, gnomes and halflings
 from humans, elves and half-elves. It is not among the 36 icon bytes because it
 is not icon data: a small character has the same body and a smaller head, so the

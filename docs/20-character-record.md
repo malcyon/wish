@@ -18,10 +18,10 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | level | bytes | share |
 |---|---:|---:|
 | CONFIRMED | 83 | 14.3% |
-| PROBABLE | 47 | 8.1% |
+| PROBABLE | 56 | 9.7% |
 | GUESS | 0 | 0.0% |
-| UNKNOWN | 450 | 77.6% |
-| **known** | **130** | **22.4%** |
+| UNKNOWN | 441 | 76.0% |
+| **known** | **139** | **24.0%** |
 
 ## Known fields
 
@@ -42,7 +42,7 @@ A character record is **580 bytes**. Exported to disk it is a PRG with a 2-byte 
 | `0x074` | 2 | `age` | 16-bit little endian | CONFIRMED | 16-bit LE; 21 for two humans, 176 for an elf -- long-lived, as expected |
 | `0x076` | 2 | `hp_max` | 16-bit little endian | CONFIRMED | 16-bit LE. 11 = 9 rolled + 2 CON. The high byte was long read as filler because no character has yet exceeded 255 hit points; the drain routine in SPELLE02 decrements the pair, which is what settles the width |
 | `0x078` | 7 | `spells_known` | raw bytes | CONFIRMED | a bitmask of the spells the character KNOWS, indexed by spell id: bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster we hold -- clerics know every spell of every level they can cast (8 at level 1, 24 at level 6) and magic-users know a subset, which is how AD&D 1st edition works. No cleric has a magic-user id set and no magic-user has a cleric one. MALCYON, a starting mage, knows detect magic, read magic, shield and sleep. Distinct from spells_memorised at 0x020, which is what is currently prepared |
-| `0x099` | 1 | `size_small` | unsigned byte | PROBABLE | 1 for a medium character, 0 for a small one. The only byte in the stored 256 that separates dwarves, gnomes and halflings from humans, elves and half-elves -- the AD&D size categories exactly. This is the icon large/small flag the Gold Box Companion exposes. Donald confirmed MAGNUS, a dwarf, shows as small in game, and that the visible difference is the head: a small character's body is the same size and its head is smaller, which is why the icon looks small without being smaller |
+| `0x099` | 1 | `size_small` | unsigned byte | PROBABLE | 0 small, 1 large -- the only two the game offers, and the two its ALTER > ICON > SIZE menu shows. The only byte in the stored 256 that separates dwarves, gnomes and halflings from humans, elves and half-elves -- the AD&D size categories exactly. This is the icon large/small flag the Gold Box Companion exposes. Donald confirmed MAGNUS, a dwarf, shows as small in game, and that the visible difference is the head: a small character's body is the same size and its head is smaller, which is why the icon looks small without being smaller |
 | `0x09A` | 1 | `save_paralysis` | unsigned byte | CONFIRMED | fighter 14, cleric 10 -- both match the AD&D 1e L1 tables |
 | `0x09B` | 1 | `save_petrification` | unsigned byte | CONFIRMED | fighter 15, cleric 13 |
 | `0x09C` | 1 | `save_wands` | unsigned byte | CONFIRMED | fighter 16, cleric 14 |
@@ -90,6 +90,7 @@ This byte is roster +0x00, and the combat research saw it go $01 -> $84 when a m
 | `0x10D` | 1 | `party_order` | unsigned byte | PROBABLE | the only byte where an export and the roster block disagree, and across a six-character party the export values form a complete 0-5 permutation -- so it is marching order at the moment of export. In a roster block the same byte is the record slot index, which is how the combat code finds a combatant's record; 8 means not in a party |
 | `0x10E` | 1 | `thac0` | unsigned byte | PROBABLE | current THAC0 including strength and the readied weapon, stored as 60 - THAC0, sitting immediately before the current armour class at 0x10F. Matches the AD&D table on all eleven exports we hold. Like 0x10F it exists only in an export, and it agrees with the SAVEDGAME1 roster's +0x0E for the same character -- so an exported .chr does carry both combat numbers after all, which is worth knowing given the 1989 editor's author reported he could never find either |
 | `0x10F` | 1 | `armour_class` | unsigned byte | PROBABLE | current armour class including armour, shield and dexterity, stored as 60 - AC. Present only in an exported .chr -- it lies beyond the 256 bytes a save slot stores -- and it agrees exactly with the SAVEDGAME1 roster's +0x0F for the same character: BRUTUS 9, MALCYON 8, LADY KATHERINE 8. Base and current again, in different places |
+| `0x110` | 9 | `roster_tail` | raw bytes | PROBABLE | roster +0x10 to +0x18: armour bonus, encumbrance, equipment and damage bonus, all already decoded in por/savegame.py. Kept RAW here because the roster is the place to read them |
 | `0x119` | 2 | `hp_current` | 16-bit little endian | CONFIRMED | 16-bit LE, and genuinely current hit points rather than a second copy of the maximum: GEN $0BD0 initialises it from hp_max, and both the trainer and the drain routine move it independently afterwards. It equals hp_max in every specimen only because no wounded character has yet been exported. Note it lies beyond the 256 bytes a save slot holds, so it exists in an export and not in a save |
 | `0x11B` | 1 | `roster_movement` | unsigned byte | PROBABLE | roster +0x1B, the movement rate as encumbered. Long recorded as '12 in every specimen', which held only because every specimen was the same six characters: PORSAVE10's exports read 9 in banded mail |
 

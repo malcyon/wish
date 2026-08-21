@@ -378,7 +378,7 @@ Remaining, in rough order of value:
       meaning.
     * ~~**Check `0x099`.**~~ ✅ Done, and it is not a trait at all: gnomes and
       halflings read 0 with the dwarves, which makes it the **size** flag
-      (small versus medium) and the icon large/small flag the editor wanted.
+      (small versus large) and the icon large/small flag the editor wanted.
 12. **The two class fields — partly answered.** They **can** disagree: four NPC
     records in the shipped game do, and where they part company the bitmask
     matches reality (`DWARVEN FIGHTER` has a fighter's bits, a fighter's name and

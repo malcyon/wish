@@ -31,25 +31,25 @@ def test_the_counts_come_from_the_overlay_not_from_here(parts):
     Read rather than hardcoded, so a different build would be parsed correctly
     instead of being silently mis-sliced into plausible-looking rubbish.
     """
-    assert parts.count("large", "weapon") == 28
-    assert parts.count("large", "head") == 14
-    assert parts.count("small", "weapon") == 35
-    assert parts.count("small", "head") == 23
-    assert parts.tables[("small", "weapon")][0] == 0xA800
-    assert parts.tables[("small", "head")][0] == 0xA8F0
-    assert parts.tables[("large", "weapon")][0] == 0xA9E0
-    assert parts.tables[("large", "head")][0] == 0xAAD0
+    assert parts.count("small", "weapon") == 28
+    assert parts.count("small", "head") == 14
+    assert parts.count("large", "weapon") == 35
+    assert parts.count("large", "head") == 23
+    assert parts.tables[("large", "weapon")][0] == 0xA800
+    assert parts.tables[("large", "head")][0] == 0xA8F0
+    assert parts.tables[("small", "weapon")][0] == 0xA9E0
+    assert parts.tables[("small", "head")][0] == 0xAAD0
 
 
 def test_a_composed_icon_is_eighteen_cells(parts):
-    shape = parts.compose("small", 0, 1)
+    shape = parts.compose("large", 0, 1)
     assert len(shape) == CELLS_PER_POSE * 2
     assert shape != bytes([SPACE]) * len(shape)
 
 
-def test_the_factory_default_is_small_weapon_zero_head_one(parts):
+def test_the_factory_default_is_large_weapon_zero_head_one(parts):
     """The commonest shape in the corpus, and it reconstructs exactly."""
-    assert parts.compose("small", 0, 1).hex() == (
+    assert parts.compose("large", 0, 1).hex() == (
         "20a02086878806070820a020898a8b061011")
 
 
@@ -59,8 +59,8 @@ def test_changing_the_weapon_keeps_the_head(parts):
     Without it the two menu items would not be independent and the reachable
     set would collapse to roughly the number of weapons.
     """
-    one = parts.compose("small", 0, 5)
-    two = parts.apply(one, "small", "weapon", 9)
+    one = parts.compose("large", 0, 5)
+    two = parts.apply(one, "large", "weapon", 9)
     assert two[1] == one[1] and two[10] == one[10]
     assert two[4] != one[4]              # the body did change
 
@@ -69,8 +69,8 @@ def test_the_reachable_set_is_bigger_than_the_naive_product(parts, legal):
     """35x23 would be 805. Order matters and the two size pairs interact, so
     the real answer is larger -- which is why the editor explores rather than
     enumerating pairs."""
-    assert len(parts.legal_shapes(("small",))) == 3138
-    assert len(parts.legal_shapes(("large",))) == 1227
+    assert len(parts.legal_shapes(("large",))) == 3138
+    assert len(parts.legal_shapes(("small",))) == 1227
     assert len(legal) == 15328
     assert len(legal) > 35 * 23 + 28 * 14
 
@@ -100,9 +100,9 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
 
 def test_an_option_out_of_range_is_refused(parts):
     with pytest.raises(ValueError):
-        parts.compose("small", 35, 0)
+        parts.compose("large", 35, 0)
     with pytest.raises(ValueError):
-        parts.compose("large", 0, 14)
+        parts.compose("small", 0, 14)
 
 
 def test_the_colour_rule_reproduces_the_icons_we_hold(parts):
@@ -149,7 +149,7 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
 
     app = QApplication.instance() or QApplication([])
     charset = bytes(2048)               # shape is what matters, not the art
-    shape = parts.compose("small", 0, 1)
+    shape = parts.compose("large", 0, 1)
     colours = parts.colours_for(shape, {k: 1 for k in range(7)}, bytes(18))
     dialog = PartsPicker(parts, charset, shape, colours)
 
@@ -159,7 +159,7 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
     for row in (2, 11, 22):
         dialog.heads.setCurrentRow(row)
         assert dialog.shape in legal
-    dialog.size_box.setCurrentText("large")
+    dialog.size_box.setCurrentText("small")
     dialog.weapons.setCurrentRow(5)
     assert dialog.shape in legal, "mixing sizes must stay inside the set"
     assert len(dialog.shape) == CELLS_PER_POSE * 2

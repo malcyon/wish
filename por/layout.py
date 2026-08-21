@@ -345,8 +345,9 @@ _DECLARED: Sequence[Field] = (
            "different places"),
     _field(0x0ED, 1, _U8, "hp_rolled", "HP rolled", _MAYBE, "9; +2 CON = hp_max"),
     # --- Explicitly unknown regions (unchanged) ---------------------------
-    _field(0x099, 1, _U8, "size_small", "Small-sized", _MAYBE,
-           "1 for a medium character, 0 for a small one. The only byte in the "
+    _field(0x099, 1, _U8, "size_small", "Size", _MAYBE,
+           "0 small, 1 large -- the only two the game offers, and the two its "
+           "ALTER > ICON > SIZE menu shows. The only byte in the "
            "stored 256 that separates dwarves, gnomes and halflings from "
            "humans, elves and half-elves -- the AD&D size categories exactly. "
            "This is the icon large/small flag the Gold Box Companion exposes. "
