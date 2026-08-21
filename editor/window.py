@@ -27,10 +27,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from por import games as por_games
 from por.iconparts import IconParts
 from por.icons import load_icon_charset
 from por.items import load_item_names, load_item_templates, load_item_types
 from por.layout import FIELDS_BY_NAME
+from por.savegame import store_save
 from por.spells import capacity, load_spell_names
 
 from . import changes, files, inventory
@@ -240,6 +242,13 @@ class EditorWindow(QMainWindow):
         self._compact()
         self._weight_columns()
         self._wire_dirty()
+        # Which title is open, kept in the permanent corner of the status bar.
+        # The message beside it is transient and the window title belongs to
+        # the file; this is the one thing that must stay on screen, because a
+        # Curse save and a Pool of Radiance save look alike from outside.
+        self._game_label = QLabel("")
+        self._game_label.setObjectName("label_game")
+        self.statusBar().addPermanentWidget(self._game_label)
         if path:
             self.load(path)
         else:
@@ -423,7 +432,7 @@ class EditorWindow(QMainWindow):
     def open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Open a save disk", str(self.path.parent if self.path else ""),
-            "Pool of Radiance disks (*.d64 *.D64);;All files (*)")
+            "Gold Box disks (*.d64 *.D64);;All files (*)")
         if path:
             self.load(path)
 
@@ -444,6 +453,7 @@ class EditorWindow(QMainWindow):
         if len(party):
             self.ui.roster.selectRow(0)
         self._apply_read_only()
+        self._game_label.setText(party.game.title if party.is_save else "")
         self.status(f"{party.describe()}"
                     + ("" if self.charset else
                        "  -- no game disk, so no item names and no icons"))
@@ -488,8 +498,10 @@ class EditorWindow(QMainWindow):
 
 
     def _disk_candidates(self) -> list[str]:
-        """`--game-disk`, then $POR_GAME_DISK, then any POOL*.D64 beside the
-        save. Everything the save cannot name itself comes from one of these."""
+        """`--game-disk`, then $POR_GAME_DISK, then any game disk of the open
+        title beside the save -- `POOL*.D64` for Pool of Radiance, `CURSE*.D64`
+        for Curse. Everything the save cannot name itself comes from one of
+        these."""
         import glob
         import os
         import pathlib
@@ -499,15 +511,17 @@ class EditorWindow(QMainWindow):
         env = os.environ.get("POR_GAME_DISK")
         if env:
             candidates.append(env)
+        pattern = (self.party.game.disk_glob if self.party is not None
+                   else por_games.DEFAULT.disk_glob)
         if self.path:
-            candidates += sorted(glob.glob(str(self.path.parent / "POOL*.[dD]64")))
+            candidates += sorted(glob.glob(str(self.path.parent / pattern)))
         # The disks come as a set. Being told POOL1.D64 says where the other
         # seven are, and they are not interchangeable -- the icon charset and
         # the icon option tables live on different ones.
         for named in (self.game_disk, os.environ.get("POR_GAME_DISK")):
             if named:
                 beside = pathlib.Path(named).parent
-                candidates += sorted(glob.glob(str(beside / "POOL*.[dD]64")))
+                candidates += sorted(glob.glob(str(beside / pattern)))
         seen, unique = set(), []
         for c in candidates:
             if c not in seen:
@@ -631,7 +645,7 @@ class EditorWindow(QMainWindow):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Save the disk as", str(self.path or ""),
-            "Pool of Radiance disks (*.d64 *.D64);;All files (*)")
+            "Gold Box disks (*.d64 *.D64);;All files (*)")
         if not path:
             return
         self.path = pathlib.Path(path)
@@ -645,9 +659,7 @@ class EditorWindow(QMainWindow):
                 party.save0.write_record(m.index, m.record)
             party.write_items()
             party.write_icons()
-            party.disk.write_file_inplace(b"SAVEDGAME0", party.save0.to_prg())
-            if party.save1 is not None:
-                party.disk.write_file_inplace(b"SAVEDGAME1", party.save1.to_prg())
+            store_save(party.disk, party.save0, party.save1, party.game)
         else:
             for m in party.members:
                 if m.source:
@@ -857,13 +869,13 @@ class EditorWindow(QMainWindow):
         must not look like a bug.
         """
         if member.inventory is None:
-            text = ("Items live in SAVEDGAME0, so this file has none -- a "
+            text = ("Items live in the save game, so this file has none -- a "
                     "roster disk and a .chr export both carry the character "
                     "only")
         elif not self.item_names:
             text = (f"{member.inventory.used} of 16 slots used. No game disk "
                     f"found, so items show as name-table indices: pass "
-                    f"--game-disk, set $POR_GAME_DISK, or put a POOL*.D64 "
+                    f"--game-disk, set $POR_GAME_DISK, or put a game disk "
                     f"beside the save")
         else:
             text = f"{member.inventory.used} of 16 slots used"

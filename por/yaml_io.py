@@ -9,12 +9,19 @@ each record still unidentified, the party header, and everything in
 `SAVEDGAME1` past its first page — is carried through untouched, because an edit
 must never destroy bytes whose meaning we do not know.
 
-Two files make up a save, and both are written. `SAVEDGAME0` holds the character
-records; `SAVEDGAME1` opens with eight roster blocks holding the values the game
-*derives* — armour class, THAC0, current hit points, movement and the damage
-bonus. Those appear under `combat:`, together with the three bytes at
-`+0x03`–`+0x05` whose meaning is not established, and are the only part of
-`SAVEDGAME1` this module touches.
+Pool of Radiance's save is two files, and both are written. `SAVEDGAME0` holds
+the character records; `SAVEDGAME1` opens with eight roster blocks holding the
+values the game *derives* — armour class, THAC0, current hit points, movement
+and the damage bonus. Those appear under `combat:`, together with the three
+bytes at `+0x03`–`+0x05` whose meaning is not established, and are the only part
+of `SAVEDGAME1` this module touches. Curse of the Azure Bonds and the four
+titles after it write **one** file with the same roster as its last page; which
+shape a disk has is `por/games.py`'s business, not this module's.
+
+**The document records the title it came from**, as `game:`, and an import into
+a different title's disk is refused. The container geometry differs between them
+and the race and class tables differ again, so a silent cross-title import would
+write a plausible-looking corrupt save.
 
 Two fields the game stores twice are kept in step, because writing one without
 the other leaves a record no save has ever been seen in: the class code at
@@ -37,6 +44,8 @@ import yaml
 
 from . import derive
 from .d64 import D64
+from .games import DEFAULT as DEFAULT_GAME
+from .games import Game, by_key
 from .icons import icon_for_slot
 from .items import (
     ITEM_AREA_BASE,
@@ -52,7 +61,13 @@ from .items import (
     word_index,
 )
 from .record import CharacterRecord
-from .savegame import SAVE0_LOAD_ADDRESS, SaveGame0, SaveGame1, SaveGameError
+from .savegame import (
+    SAVE0_LOAD_ADDRESS,
+    SaveGame0,
+    SaveGameError,
+    load_save,
+    store_save,
+)
 from .spells import (
     LAST_SPELL,
     capacity,
@@ -271,24 +286,15 @@ def _spell_level(spell_id: int) -> int | None:
     return group[1] if group else None
 
 
-def _read_save1(img: D64) -> SaveGame1 | None:
-    """SAVEDGAME1, or None if this disk has no such file.
+def export_save(path: str, game_disk: str | None = None,
+                game: Game | None = None) -> dict[str, Any]:
+    """Read a save disk and return the whole party as plain data.
 
-    A game disk's sample save carries only SAVEDGAME0, so the combat block is
-    optional rather than required.
+    The title is identified from the disk unless one is named.
     """
-    try:
-        return SaveGame1.from_prg(img.read_file(b"SAVEDGAME1"))
-    except Exception:
-        return None
-
-
-def export_save(path: str, game_disk: str | None = None) -> dict[str, Any]:
-    """Read a save disk and return the whole party as plain data."""
     img = D64.open(path)
-    sg = SaveGame0.from_prg(img.read_file(b"SAVEDGAME0"))
+    game, sg, sg1 = load_save(img, game)
     payload = sg.to_bytes()
-    sg1 = _read_save1(img)
 
     names = types = spell_names = None
     if game_disk:
@@ -382,9 +388,10 @@ def export_save(path: str, game_disk: str | None = None) -> dict[str, Any]:
 
     return {
         # Absolute, so `--import` can default to it and the YAML alone is
-        # enough to reproduce an edit. The only non-party key, and the only one
-        # that is data rather than guidance.
+        # enough to reproduce an edit.
         "source_path": str(pathlib.Path(path).resolve()),
+        # Which title wrote it. Checked on import; see `_check_game`.
+        "game": game.key,
         "party": party,
     }
 
@@ -449,8 +456,13 @@ def to_yaml(data: dict[str, Any]) -> str:
     """
     out: list[str] = []
     name = pathlib.Path(data.get("source_path", "")).name or "save disk"
+    key = data.get("game", DEFAULT_GAME.key)
+    try:
+        title = by_key(key).title
+    except Exception:
+        title = key
     out += [
-        f"# Pool of Radiance character export -- {name}",
+        f"# {title} character export -- {name}",
         "#",
         "# Edit any field below, then write it to a NEW disk with:",
         "#     wish.py --import <this file> --output NEW.D64",
@@ -458,11 +470,12 @@ def to_yaml(data: dict[str, Any]) -> str:
         "# The original disk is never modified. Unknown bytes and the party",
         "# header are carried through untouched.",
         "#",
-        "# `combat:` is the one part of SAVEDGAME1 this file reaches. The game",
-        "# caches those values rather than deriving them on load, so they can",
-        "# go stale -- see the note above each block.",
+        "# `combat:` is the one part of the party roster this file reaches. The",
+        "# game caches those values rather than deriving them on load, so they",
+        "# can go stale -- see the note above each block.",
         "",
         f"source_path: {_scalar(data['source_path'])}",
+        f"game: {_scalar(key)}",
         "",
         "party:",
     ]
@@ -574,10 +587,11 @@ def to_yaml(data: dict[str, Any]) -> str:
         if combat:
             out.append("")
             out += [
-                "    # --- combat (cached by the game in SAVEDGAME1, not in the",
-                "    # character record). It recomputes armour class and THAC0 when",
-                "    # equipment changes and never when an ability score changes, so",
-                "    # raising dexterity here will not move armour_class by itself.",
+                "    # --- combat (cached by the game in the party roster, not",
+                "    # in the character record). It recomputes armour class and",
+                "    # THAC0 when equipment changes and never when an ability",
+                "    # score changes, so raising dexterity here will not move",
+                "    # armour_class by itself.",
                 "    combat:",
                 f"      armour_class: {_scalar(combat['armour_class'])}",
                 f"      thac0: {_scalar(combat['thac0'])}",
@@ -741,16 +755,37 @@ def _apply_npc(rec, entry, slot: int, who: str) -> list[str]:
     ]
 
 
+def _check_game(data: dict[str, Any], game: Game) -> None:
+    """Refuse a party exported from one title into another title's disk.
+
+    A document with no `game:` key predates this check and is assumed to be
+    Pool of Radiance, which is what every such document is.
+    """
+    key = data.get("game", DEFAULT_GAME.key)
+    if key == game.key:
+        return
+    try:
+        came_from = by_key(key).title
+    except Exception:
+        came_from = key
+    raise ValueError_(
+        f"this party came from {came_from} and the disk is a {game.title} "
+        f"save. The two games lay their saves out differently and number "
+        f"races and classes differently, so importing across them would "
+        f"write a corrupt save. Export from a {came_from} disk instead.")
+
+
 def import_into(save_path: str, data: dict[str, Any], out_path: str,
-                game_disk: str | None = None) -> list[str]:
+                game_disk: str | None = None,
+                game: Game | None = None) -> list[str]:
     """Apply a parsed YAML document to a save disk, writing to `out_path`.
 
     Returns a human-readable list of the changes made. The input file is never
     modified; the caller chooses the destination.
     """
     img = D64.open(save_path)
-    sg = SaveGame0.from_prg(img.read_file(b"SAVEDGAME0"))
-    sg1 = _read_save1(img)
+    game, sg, sg1 = load_save(img, game)
+    _check_game(data, game)
     names = templates = None
     if game_disk:
         try:
@@ -978,18 +1013,16 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 changes.append(f"slot {slot} {who}: combat icon changed")
             payload[ibase:ibase + ICON_SIZE] = new_icon
 
-        sg = SaveGame0.from_bytes(bytes(payload))
+        sg = SaveGame0.from_bytes(bytes(payload), game)
 
         combat = entry.get("combat")
         if combat:
             if sg1 is None:
                 raise ValueError_(
                     f"slot {slot}: the YAML carries a combat block but "
-                    f"{save_path} has no SAVEDGAME1 to write it to")
+                    f"{save_path} has no roster to write it to")
             changes += _apply_combat(sg1.roster(slot), combat, slot, who)
 
-    img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
-    if sg1 is not None:
-        img.write_file_inplace(b"SAVEDGAME1", sg1.to_prg())
+    store_save(img, sg, sg1, game)
     img.save(out_path)
     return changes

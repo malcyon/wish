@@ -1,4 +1,10 @@
-"""SAVEDGAME0 / SAVEDGAME1 structure for Pool of Radiance (C64).
+"""The save container: Pool of Radiance's two files, and the family's one.
+
+Which title a save belongs to is a `por.games.Game`, passed to every class here
+and defaulting to Pool of Radiance so that callers written before there was a
+second game keep working. The constants below are Pool of Radiance's and stay
+for those callers; anything that must work on Curse reads the `Game`.
+
 
 `SAVEDGAME0` is a **raw memory image** of $4900-$64FF with no header, no packing
 and (so far) no observed checksum. Character records sit in a slot area that
@@ -39,7 +45,8 @@ zero and so agreed with a mostly-zero exported record. A full party disproves
 it outright. Occupancy is still *detected* per slot, since a slot can hold
 leftover bytes from a previous save without holding a live character.
 
-Nothing in this module does disk I/O; it takes and returns bytes.
+`load_save` and `store_save` are the only things here that touch a D64;
+everything else takes and returns bytes.
 """
 
 from __future__ import annotations
@@ -47,10 +54,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import encoding as _enc
+from . import games as _games
 
 # split/attach_load_address are the *generic* PRG helpers; record.py's variants
 # are record-specific and validate a 582-byte length.
 from .d64 import attach_load_address, split_load_address
+from .games import Game
 from .record import RECORD_SIZE, CharacterRecord
 
 SAVE0_LOAD_ADDRESS = 0x4900
@@ -207,15 +216,20 @@ class PartyPosition:
     know.
     """
 
-    def __init__(self, data: bytearray):
+    def __init__(self, data: bytearray, game: Game = _games.DEFAULT):
         self._data = data
+        self._game = game
 
+    # The constants above are Pool of Radiance's *addresses*; subtracting its
+    # load address turns each into the payload offset, which is the same number
+    # in every title of the family. Only the base moves.
     def _get(self, addr: int) -> int:
         return self._data[addr - SAVE0_LOAD_ADDRESS]
 
     def _set(self, addr: int, value: int) -> None:
         if not 0 <= value <= 0xFF:
-            raise SaveGameError(f"${addr:04X}: {value} does not fit in a byte")
+            live = self._game.save_load_address + addr - SAVE0_LOAD_ADDRESS
+            raise SaveGameError(f"${live:04X}: {value} does not fit in a byte")
         self._data[addr - SAVE0_LOAD_ADDRESS] = value
 
     @property
@@ -288,14 +302,21 @@ class PartyPosition:
 
 
 class SaveGame0:
-    """The party save: header region plus the character slot area."""
+    """The party save: header region plus the character slot area.
 
-    def __init__(self, payload: bytes):
-        if len(payload) != SAVE0_SIZE:
+    In Pool of Radiance this is the whole of `SAVEDGAME0`. In every later title
+    it is the whole of the single save file, roster page included -- the roster
+    is reached through `SaveGame1`, not through here.
+    """
+
+    def __init__(self, payload: bytes, game: Game = _games.DEFAULT):
+        if len(payload) != game.save_size:
             raise SaveGameError(
-                f"SAVEDGAME0 payload must be {SAVE0_SIZE} bytes, got {len(payload)}"
+                f"{game.save_file.decode()} payload must be {game.save_size} "
+                f"bytes, got {len(payload)}"
             )
         self._data = bytearray(payload)
+        self.game = game
 
     @property
     def area(self) -> int:
@@ -317,28 +338,30 @@ class SaveGame0:
     @property
     def party(self) -> PartyPosition:
         """Where the party is standing."""
-        return PartyPosition(self._data)
+        return PartyPosition(self._data, self.game)
 
     # -- construction -----------------------------------------------------
     @classmethod
-    def from_bytes(cls, payload: bytes) -> "SaveGame0":
-        return cls(payload)
+    def from_bytes(cls, payload: bytes,
+                   game: Game = _games.DEFAULT) -> "SaveGame0":
+        return cls(payload, game)
 
     @classmethod
-    def from_prg(cls, data: bytes) -> "SaveGame0":
+    def from_prg(cls, data: bytes, game: Game = _games.DEFAULT) -> "SaveGame0":
         load, payload = split_load_address(data)
-        if load != SAVE0_LOAD_ADDRESS:
+        if load != game.save_load_address:
             raise SaveGameError(
-                f"expected load address ${SAVE0_LOAD_ADDRESS:04X}, got ${load:04X}"
+                f"expected load address ${game.save_load_address:04X}, "
+                f"got ${load:04X}"
             )
-        return cls(payload)
+        return cls(payload, game)
 
     # -- serialisation ----------------------------------------------------
     def to_bytes(self) -> bytes:
         return bytes(self._data)
 
     def to_prg(self) -> bytes:
-        return attach_load_address(SAVE0_LOAD_ADDRESS, bytes(self._data))
+        return attach_load_address(self.game.save_load_address, bytes(self._data))
 
     def __bytes__(self) -> bytes:
         return self.to_bytes()
@@ -350,8 +373,9 @@ class SaveGame0:
         return bytes(self._data[:HEADER_SIZE])
 
     def _window_offset(self, index: int) -> int:
-        if not 0 <= index < SLOT_COUNT:
-            raise IndexError(f"slot index {index} out of range 0..{SLOT_COUNT - 1}")
+        count = self.game.slot_count
+        if not 0 <= index < count:
+            raise IndexError(f"slot index {index} out of range 0..{count - 1}")
         return HEADER_SIZE + index * SLOT_STRIDE
 
     def slot(self, index: int) -> Slot:
@@ -359,14 +383,34 @@ class SaveGame0:
         window = bytes(self._data[off:off + SLOT_STRIDE])
         return Slot(
             index=index,
-            address=SLOT_AREA_BASE + index * SLOT_STRIDE,
+            address=self.game.slot_area_base + index * SLOT_STRIDE,
             window=window,
             occupied=looks_occupied(window),
         )
 
     @property
     def slots(self) -> list[Slot]:
-        return [self.slot(i) for i in range(SLOT_COUNT)]
+        return [self.slot(i) for i in range(self.game.slot_count)]
+
+    # -- the roster, for titles that keep it in this payload ---------------
+    def roster_page(self) -> bytes:
+        """The roster bytes, when this title keeps them here. Else `b""`."""
+        if not self.game.roster_in_payload:
+            return b""
+        at = self.game.roster_offset
+        return bytes(self._data[at:at + self.game.roster_size])
+
+    def set_roster_page(self, payload: bytes) -> None:
+        if not self.game.roster_in_payload:
+            raise SaveGameError(
+                f"{self.game.title} keeps its roster in "
+                f"{self.game.roster_file.decode()}, not in the save payload")
+        if len(payload) != self.game.roster_size:
+            raise SaveGameError(
+                f"roster page must be {self.game.roster_size} bytes, "
+                f"got {len(payload)}")
+        at = self.game.roster_offset
+        self._data[at:at + self.game.roster_size] = payload
 
     @property
     def characters(self) -> list[Slot]:
@@ -390,13 +434,15 @@ class SaveGame0:
 
     # -- reporting --------------------------------------------------------
     def summary(self) -> str:
+        g = self.game
+        base, size = g.save_load_address, g.save_size
         lines = [
-            f"SAVEDGAME0  ${SAVE0_LOAD_ADDRESS:04X}-"
-            f"${SAVE0_LOAD_ADDRESS + SAVE0_SIZE - 1:04X}  ({SAVE0_SIZE} bytes)",
-            f"  header  ${SAVE0_LOAD_ADDRESS:04X}-${SLOT_AREA_BASE - 1:04X}"
+            f"{g.save_file.decode()}  ${base:04X}-"
+            f"${base + size - 1:04X}  ({size} bytes)",
+            f"  header  ${base:04X}-${g.slot_area_base - 1:04X}"
             f"  ({sum(1 for b in self.header if b)} non-zero of {HEADER_SIZE})",
-            f"  slots   {SLOT_COUNT} x ${SLOT_STRIDE:04X} from ${SLOT_AREA_BASE:04X}"
-            f"  (record head only)",
+            f"  slots   {g.slot_count} x ${SLOT_STRIDE:04X} from "
+            f"${g.slot_area_base:04X}  (record head only)",
         ]
         for s in self.slots:
             if s.occupied:
@@ -428,10 +474,13 @@ class RosterBlock:
     stale. See docs/30-savegame-layout.md.
     """
 
-    def __init__(self, data: bytearray, index: int):
+    def __init__(self, data: bytearray, index: int,
+                 game: Game = _games.DEFAULT, offset: int = 0):
         self._data = data
         self._index = index
-        self._base = index * ROSTER_STRIDE
+        self._game = game
+        self._offset = offset
+        self._base = offset + index * ROSTER_STRIDE
 
     # -- identity ---------------------------------------------------------
     @property
@@ -440,7 +489,7 @@ class RosterBlock:
 
     @property
     def address(self) -> int:
-        return SAVE1_LOAD_ADDRESS + self._base
+        return self._game.roster_base + self._index * ROSTER_STRIDE
 
     @property
     def raw(self) -> bytes:
@@ -454,7 +503,7 @@ class RosterBlock:
 
     @property
     def slot_index(self) -> int:
-        """Which SAVEDGAME0 slot this block describes. Always equals `index`
+        """Which save slot this block describes. Always equals `index`
         in every save seen, but the game stores it, so we read it."""
         return self._data[self._base + ROSTER_SLOT_INDEX]
 
@@ -582,37 +631,105 @@ class SaveGame1:
     still opaque, and is carried through a load/save cycle untouched.
     """
 
-    def __init__(self, payload: bytes):
-        if len(payload) != SAVE1_SIZE:
+    def __init__(self, payload: bytes, game: Game = _games.DEFAULT):
+        if len(payload) != game.roster_size:
             raise SaveGameError(
-                f"SAVEDGAME1 payload must be {SAVE1_SIZE} bytes, got {len(payload)}"
+                f"roster payload must be {game.roster_size} bytes, "
+                f"got {len(payload)}"
             )
         self._data = bytearray(payload)
+        self.game = game
 
     # -- the roster -------------------------------------------------------
     def roster(self, index: int) -> RosterBlock:
         if not 0 <= index < ROSTER_COUNT:
             raise IndexError(f"roster index {index} out of range 0..{ROSTER_COUNT - 1}")
-        return RosterBlock(self._data, index)
+        # `_data` is the roster payload itself in both shapes -- Pool of
+        # Radiance's whole SAVEDGAME1, or the single page lifted out of a
+        # later title's save -- so blocks always start at 0 within it.
+        return RosterBlock(self._data, index, self.game)
 
     @property
     def roster_blocks(self) -> list[RosterBlock]:
         return [self.roster(i) for i in range(ROSTER_COUNT)]
 
     @classmethod
-    def from_prg(cls, data: bytes) -> "SaveGame1":
-        load, payload = split_load_address(data)
-        if load != SAVE1_LOAD_ADDRESS:
+    def from_prg(cls, data: bytes, game: Game = _games.DEFAULT) -> "SaveGame1":
+        if game.roster_in_payload:
             raise SaveGameError(
-                f"expected load address ${SAVE1_LOAD_ADDRESS:04X}, got ${load:04X}"
+                f"{game.title} has no separate roster file; its roster is the "
+                f"last page of {game.save_file.decode()}")
+        load, payload = split_load_address(data)
+        if load != game.roster_load_address:
+            raise SaveGameError(
+                f"expected load address ${game.roster_load_address:04X}, "
+                f"got ${load:04X}"
             )
-        return cls(payload)
+        return cls(payload, game)
 
     def to_bytes(self) -> bytes:
         return bytes(self._data)
 
     def to_prg(self) -> bytes:
-        return attach_load_address(SAVE1_LOAD_ADDRESS, bytes(self._data))
+        if self.game.roster_in_payload:
+            raise SaveGameError(
+                f"{self.game.title} has no separate roster file")
+        return attach_load_address(self.game.roster_load_address,
+                                   bytes(self._data))
 
     def __bytes__(self) -> bytes:
         return self.to_bytes()
+
+
+# -- the disk, for the callers that would otherwise name files by hand ------
+
+def load_save(disk, game: Game | None = None):
+    """Read a save off a D64 image as `(game, SaveGame0, SaveGame1 | None)`.
+
+    With no `game` the title is identified from the disk's own directory, which
+    is what makes opening a Curse save need no argument. The size check is the
+    corroborator: Curse's side B carries a 2032-byte `SAVEAZURE` that is a
+    truncated demo party, and this refuses it by name rather than decoding
+    nonsense.
+
+    `SaveGame1` is None only for Pool of Radiance, and only when the disk
+    carries `SAVEDGAME0` alone -- which its own game disks do. Every later
+    title keeps the roster inside the save payload, so it is always there.
+    """
+    if game is None:
+        game = _games.detect(disk)
+        if game is None:
+            known = ", ".join(g.save_file.decode() for g in _games.GAMES)
+            raise SaveGameError(
+                f"no save file on this disk: looked for {known}")
+    prg = disk.read_file(game.save_file)
+    if len(prg) != game.save_prg_size:
+        raise SaveGameError(
+            f"{game.save_file.decode()} here is {len(prg)} bytes, not the "
+            f"{game.save_prg_size} a {game.title} save measures")
+    sg0 = SaveGame0.from_prg(prg, game)
+    if game.roster_in_payload:
+        return game, sg0, SaveGame1(sg0.roster_page(), game)
+    try:
+        sg1 = SaveGame1.from_prg(disk.read_file(game.roster_file), game)
+    except Exception:
+        sg1 = None
+    return game, sg0, sg1
+
+
+def store_save(disk, sg0: SaveGame0, sg1: "SaveGame1 | None" = None,
+               game: Game | None = None) -> None:
+    """Write a save back into a D64 image, in place.
+
+    The mirror of `load_save`, and the only place that knows a later title's
+    roster has to be folded back into the save payload before it is written.
+    """
+    game = game or sg0.game
+    if game.roster_in_payload:
+        if sg1 is not None:
+            sg0.set_roster_page(sg1.to_bytes())
+        disk.write_file_inplace(game.save_file, sg0.to_prg())
+        return
+    disk.write_file_inplace(game.save_file, sg0.to_prg())
+    if sg1 is not None:
+        disk.write_file_inplace(game.roster_file, sg1.to_prg())

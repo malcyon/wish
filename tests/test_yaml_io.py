@@ -10,12 +10,14 @@ import pathlib
 
 import pytest
 import yaml
+from gamedata import disk_dir
 
 from por.d64 import D64
 from por.savegame import SaveGame0
 from por.yaml_io import export_save, import_into, strip_annotations, to_yaml
 
-DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 SAVE = f"{DISKS}/PORSAVE2.D64"
 GAME = "work/POOL1.D64.orig"
 
@@ -135,7 +137,7 @@ def test_comments_do_not_affect_what_is_parsed():
     data = export_save(SAVE, GAME)
     parsed = yaml.safe_load(to_yaml(data))
     assert parsed["source_path"] == data["source_path"]
-    assert set(parsed) == {"source_path", "party"}   # guidance is comments, not data
+    assert set(parsed) == {"source_path", "game", "party"}  # guidance is comments, not data
     assert len(parsed["party"]) == len(data["party"])
     for got, want in zip(parsed["party"], strip_annotations(data)["party"]):
         for field, value in want.items():
@@ -226,7 +228,7 @@ def test_guidance_is_comments_not_data():
     assert text.startswith("# Pool of Radiance character export")
     assert "never modified" in text
     assert "note:" not in text
-    assert set(yaml.safe_load(text)) == {"source_path", "party"}
+    assert set(yaml.safe_load(text)) == {"source_path", "game", "party"}
 
 
 @live

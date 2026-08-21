@@ -6,23 +6,27 @@ all 64 call sites into the game's string printer, while hunting for a status
 field, showed the C64 party list prints exactly those three and colours the hit
 points when current is below maximum.
 
-Armour class and current hit points come from `SAVEDGAME1`, not from the
+Armour class and current hit points come from the party roster, not from the
 character record. They live nowhere else in a save.
+
+Which title a disk belongs to is detected from its directory and kept as
+`Party.game`; no filename is spelled out here any more. Pool of Radiance writes
+`SAVEDGAME0` plus `SAVEDGAME1`, Curse of the Azure Bonds writes `SAVEAZURE`
+alone, and `por/games.py` is the only place that knows the difference.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from por import games
 from por.d64 import D64
-from por.icons import ICON_SIZE, ICON_TABLE_BASE, Icon, icon_for_slot
+from por.games import ICON_TABLE_OFFSET, Game
+from por.icons import ICON_SIZE, Icon, icon_for_slot
 from por.record import CharacterRecord
-from por.savegame import SAVE0_LOAD_ADDRESS, SaveGame0, SaveGame1
+from por.savegame import SaveGame0, SaveGame1, load_save
 
 from .inventory import Inventory
-
-SAVE0 = b"SAVEDGAME0"
-SAVE1 = b"SAVEDGAME1"
 
 
 @dataclass
@@ -92,34 +96,33 @@ class Party:
 
     Three shapes of file all arrive here and produce the same roster:
 
-    * a **save disk** -- `SAVEDGAME0` plus `SAVEDGAME1`, up to eight slots;
+    * a **save disk** -- one title's save files, up to eight slots;
     * a **roster disk** -- no save games at all, just standalone character
-      files. `PORSAVE10.D64` is one, and an editor that assumes `SAVEDGAME0`
+      files. `PORSAVE10.D64` is one, and an editor that assumes a save game
       exists falls over on it;
     * anything else holding standalone characters.
 
-    Detection is by what the directory holds, never by the filename.
+    Detection is by what the directory holds, never by the filename of the disk
+    -- and that now identifies the *title* as well as the kind of disk.
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, game: Game | None = None):
         self.path = path
         self.disk = D64.open(path)
-        names = {e.name for e in self.disk.directory()}
-        self.is_save = SAVE0 in names
+        self.game = game or games.detect(self.disk, games.DEFAULT)
+        self.is_save = games.detect(self.disk) is not None
         self.save0: SaveGame0 | None = None
         self.save1: SaveGame1 | None = None
         self.members: list[Member] = []
         if self.is_save:
-            self._load_save(SAVE1 in names)
+            self._load_save()
         else:
             self._load_standalone()
 
     # -- kinds of file ----------------------------------------------------
 
-    def _load_save(self, has_roster: bool) -> None:
-        self.save0 = SaveGame0.from_prg(self.disk.read_file(SAVE0))
-        if has_roster:
-            self.save1 = SaveGame1.from_prg(self.disk.read_file(SAVE1))
+    def _load_save(self) -> None:
+        self.game, self.save0, self.save1 = load_save(self.disk, self.game)
         payload = self.save0.to_bytes()
         for slot in self.save0.characters:
             record = slot.record
@@ -139,8 +142,8 @@ class Party:
     def _load_standalone(self) -> None:
         """A roster disk: one character per PRG file, no save games.
 
-        Armour class and hit points stay blank -- there is no `SAVEDGAME1` to
-        read them from, and inventing them would be worse than a gap.
+        Armour class and hit points stay blank -- there is no roster to read
+        them from, and inventing them would be worse than a gap.
         """
         for i, entry in enumerate(self.disk.directory()):
             if not entry.is_prg or entry.is_empty:
@@ -161,7 +164,7 @@ class Party:
         return self.is_save
 
     def write_items(self) -> None:
-        """Push edited item blocks back into SAVEDGAME0.
+        """Push edited item blocks back into the save payload.
 
         Only when something actually moved: a block nobody touched is not
         rewritten, so a no-op save stays byte-identical.
@@ -175,10 +178,10 @@ class Party:
         payload = bytearray(self.save0.to_bytes())
         for m in changed:
             m.inventory.write_into(payload)
-        self.save0 = SaveGame0.from_bytes(bytes(payload))
+        self.save0 = SaveGame0.from_bytes(bytes(payload), self.game)
 
     def write_icons(self) -> None:
-        """Push edited combat icons back into the shared table at $4BE0.
+        """Push edited combat icons back into the shared icon table.
 
         A save keeps the icons in one table of eight, not in the character
         slots, so this is a second patch into the same payload as the items --
@@ -192,9 +195,9 @@ class Party:
             return
         payload = bytearray(self.save0.to_bytes())
         for m in changed:
-            at = ICON_TABLE_BASE - SAVE0_LOAD_ADDRESS + m.index * ICON_SIZE
+            at = ICON_TABLE_OFFSET + m.index * ICON_SIZE
             payload[at:at + ICON_SIZE] = m.icon.raw
-        self.save0 = SaveGame0.from_bytes(bytes(payload))
+        self.save0 = SaveGame0.from_bytes(bytes(payload), self.game)
 
     def member(self, row: int) -> Member:
         return self.members[row]
@@ -203,5 +206,8 @@ class Party:
         return len(self.members)
 
     def describe(self) -> str:
-        kind = "save disk" if self.is_save else "roster disk"
-        return f"{kind}, {len(self.members)} character(s)"
+        # A roster disk holds bare character files and names no title, so it is
+        # not labelled with one rather than guessed at.
+        if not self.is_save:
+            return f"roster disk, {len(self.members)} character(s)"
+        return f"{self.game.title} save disk, {len(self.members)} character(s)"
