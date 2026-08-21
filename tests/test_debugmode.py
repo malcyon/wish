@@ -260,6 +260,37 @@ def bar(app, target=None, **kw):
     return row
 
 
+def _window(app, debug):
+    from automap.state import Automapper
+    from automap.window import AutomapWindow
+    return AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False,
+                         debug=debug)
+
+
+def test_the_warp_row_is_absent_from_the_window_outside_debug_mode(app):
+    """Absent, not disabled.
+
+    The row exists for our own troubleshooting and writes to a running
+    machine. A greyed-out `Warp To` a player can see is an invitation to ask
+    what it does; a row that was never built is not there to be found.
+    """
+    from PyQt6.QtWidgets import QAbstractButton, QComboBox
+
+    from automap.actionbar import WarpBar
+
+    plain = _window(app, debug=False)
+    assert plain.warp_bar is None
+    assert plain.findChildren(WarpBar) == []
+    assert plain.findChildren(QComboBox) == []
+    assert not [b for b in plain.findChildren(QAbstractButton)
+                if "arp" in b.text()]
+
+    debugging = _window(app, debug=True)
+    assert debugging.warp_bar is not None
+    assert sorted(b.text() for b in debugging.findChildren(QAbstractButton)
+                  if "arp" in b.text()) == ["Warp Back", "Warp To"]
+
+
 def test_the_row_lists_every_area_by_name_with_the_unnamed_last(app):
     row = bar(app)
     assert row.combo.count() == len(actions.area_rows())
