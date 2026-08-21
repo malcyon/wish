@@ -3704,3 +3704,49 @@ effect on the next fight is unproven.
   `DUNGEON $0A7B`, and neither accounts for the brick red on screen. **Open**,
   and one breakpoint after `LIBRARY $407B` reading `$D020`-`$D023`,
   `$49FD`-`$49FE` and `$6DDB` would settle it.
+
+- ~~**The effect and status system at `$4900`.**~~ **Decoded, and the game names
+  its own effects.** This is the finding that unblocks status icons, and it
+  turned on locating a table rather than on collecting specimens.
+
+  **`ECL65` loads at `$9900`, and its first 469 bytes are 67 records of 7.**
+  One per spell id 1-56, then eleven item-only effects 57-67 (item byte `+14` =
+  80-90). `CAMP $1429` computes `$9900 + (id - 1) * 7` and copies the record to
+  `$28C7`:
+
+  | byte | meaning |
+  |---|---|
+  | `+0` | duration: bits 0-5 the count, bits 6-7 the unit |
+  | `+1` | duration per caster level |
+  | `+2` | non-zero if castable outside combat |
+  | `+3` | **effect id** in the low 7 bits; **bit 7 marks a cleric spell** |
+  | `+4` | message index, `+ 57` into `SPELLN00` |
+  | `+5`, `+6` | the out-of-combat handler |
+
+  `SPELLN00` from index 57 holds the game's **own status wordings** — `IS
+  BLESSED`, `IS ENLARGED`, `IS HASTED`, `IS SILENCED`. So the names are the
+  game's, not ours. **40 ids named**, most CONFIRMED. `SPELLE04 $A79F` writes a
+  slot, `ECL64 $9A0D` is its combat twin, and `LIBRARY $3FE4` is the lookup: `A`
+  the id, `X` the owner, `A = 0` meaning "find a free slot".
+
+  **Confirmed live.** BLESS wrote six slots, id 1, one per party member,
+  duration `$06` — byte for byte the table's record 1. ENLARGE on BRUTUS wrote
+  id 12, owner 5, duration `$0A`, and magnitude **`$E2` = `$80 | 98`**, BRUTUS
+  being strength 18/**98**: the magnitude is the strength to put back. CURE
+  LIGHT WOUNDS wrote nothing, its `+3` being `$80`, id 0.
+
+  **Two of our own claims were wrong.** `$4B80` is *not* zero in every save --
+  `PORSAVE13` carries six slots with magnitude 1 that nobody had looked at. And
+  the clock is **six digits**, `$49C6`-`$49CB`, limits `0A 0A 06 18 1E 0C` from
+  `$A83C`: the three we knew are minutes, tens of minutes and the hour, and the
+  day and month follow. Expiry clears only `$4900,X`, leaving the other three
+  arrays as residue — which is exactly what that save is.
+
+  **Effect ids and trait codes are separate vocabularies.** They meet only at
+  `LIBRARY $4028` and the `$9AD5` dispatch. Ids run 1-71, item `+15` codes take
+  `$80`-`$8B`, monster traits 64-139; the single overlap is 71 and no monster
+  carries it. **`por/traits.py` must not be reused for the live panel** -- which
+  independently confirms what the combat-view work suspected.
+
+  Still unnamed: ids 49, 54, 58, 59, 60, 95 and 102, all combat-only, set by
+  literals in `SPELLE00`/`SPELLE01` with no name anywhere in the data.
