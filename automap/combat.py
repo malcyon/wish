@@ -25,9 +25,15 @@ from dataclasses import dataclass
 from por import monster
 from por.layout import RECORD_SIZE
 from por.record import CharacterRecord, FieldNotStored
-from por.savegame import (RECORD_SLOT_COUNT, ROSTER_STRIDE, SAVE1_LOAD_ADDRESS,
-                          SLOT_AREA_BASE, SLOT_STRIDE, RosterBlock,
-                          looks_occupied)
+from por.savegame import (
+    RECORD_SLOT_COUNT,
+    ROSTER_STRIDE,
+    SAVE1_LOAD_ADDRESS,
+    SLOT_AREA_BASE,
+    SLOT_STRIDE,
+    RosterBlock,
+    looks_occupied,
+)
 from por.traits import traits
 
 from .render import Label, Rect

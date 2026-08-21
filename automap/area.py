@@ -24,9 +24,9 @@ party's own movements contradict, the strategy is wrong.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from por.geo import DIRECTIONS, GEO_SIZE, GRID, STEP, Geo
+from por.geo import DIRECTIONS, GEO_SIZE, STEP, Geo
 
 # LIBRARY's data-file stem table: "GDRIVE00 SQRPACI00 GEO00 SECSET00 ...".
 # GEO00 occupies $24B4-$24B8, so the digits are the last two bytes.

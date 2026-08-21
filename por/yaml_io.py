@@ -35,18 +35,32 @@ from typing import Any
 
 import yaml
 
+from . import derive
 from .d64 import D64
 from .icons import icon_for_slot
-from .items import (ITEM_AREA_BASE, ITEM_BLOCK_STRIDE, ITEM_SIZE,
-                    ITEMS_PER_CHARACTER, ItemNameError, build_item,
-                    items_for_slot, load_item_names, load_item_types,
-                    load_item_templates, word_index)
+from .items import (
+    ITEM_AREA_BASE,
+    ITEM_BLOCK_STRIDE,
+    ITEM_SIZE,
+    ITEMS_PER_CHARACTER,
+    ItemNameError,
+    build_item,
+    items_for_slot,
+    load_item_names,
+    load_item_templates,
+    load_item_types,
+    word_index,
+)
 from .record import CharacterRecord
-from .savegame import (SAVE0_LOAD_ADDRESS, SaveGame0, SaveGame1,
-                       SaveGameError)
-from .spells import (LAST_SPELL, capacity, describe, load_spell_names,
-                     spellbook_bytes, spells_known)
-from . import derive
+from .savegame import SAVE0_LOAD_ADDRESS, SaveGame0, SaveGame1, SaveGameError
+from .spells import (
+    LAST_SPELL,
+    capacity,
+    describe,
+    load_spell_names,
+    spellbook_bytes,
+    spells_known,
+)
 
 RACES = {1: "dwarf", 2: "elf", 3: "gnome", 4: "half-elf",
          5: "halfling", 6: "half-orc", 7: "human", 8: "monster"}
@@ -955,7 +969,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # icon
         icon = entry.get("icon")
         if icon:
-            from .icons import CELLS, ICON_SIZE, ICON_TABLE_BASE
+            from .icons import ICON_SIZE, ICON_TABLE_BASE
             new_icon = bytearray.fromhex(icon["shape"]) + bytearray.fromhex(icon["colours"])
             if len(new_icon) != ICON_SIZE:
                 raise ValueError(f"slot {slot}: icon must total {ICON_SIZE} bytes")

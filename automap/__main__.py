@@ -16,16 +16,15 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import pathlib
 import sys
 
 from por.geo import load_geo_files
 
-import pathlib
-
-from .area import Candidates
-from .state import Automapper
 from .paths import find_disks, vice_settings_hint
+from .state import Automapper
 from .target import NotConnected, ViceTarget, monitor_listening
+
 
 def default_disks() -> str:
     """Where the game disks are. $POR_DISKS wins; otherwise go looking.

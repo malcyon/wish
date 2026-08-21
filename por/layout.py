@@ -29,7 +29,8 @@ those describe the DOS record, which has a different layout.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field as _dc_field
+from dataclasses import dataclass
+from dataclasses import field as _dc_field
 from typing import Iterable, Iterator, Sequence
 
 __all__ = [

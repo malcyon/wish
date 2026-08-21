@@ -20,12 +20,18 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
-from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QListWidget,
-                             QListWidgetItem, QPushButton, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from por.spells import (LAST_SPELL, SPELLBOOK_SIZE, SPELL_GROUPS, describe,
-                        spell_group)
+from por.spells import LAST_SPELL, SPELL_GROUPS, SPELLBOOK_SIZE, describe, spell_group
 
 MEMORISED_SIZE = 16          # the packed list at 0x020
 

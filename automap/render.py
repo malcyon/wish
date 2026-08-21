@@ -20,8 +20,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from por.geo import (DIRECTIONS, EAST, GRID, LOCKED, NORTH, OPPOSITE, PASSABLE,
-                     SOLID, SOUTH, STEP, WEST, WIZARD_LOCKED, Geo)
+from por.geo import (
+    DIRECTIONS,
+    EAST,
+    GRID,
+    LOCKED,
+    NORTH,
+    OPPOSITE,
+    PASSABLE,
+    SOLID,
+    SOUTH,
+    STEP,
+    WEST,
+    WIZARD_LOCKED,
+    Geo,
+)
 
 CELL = 34
 MARGIN = 26

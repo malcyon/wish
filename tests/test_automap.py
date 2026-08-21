@@ -11,18 +11,37 @@ import os
 import pathlib
 
 import pytest
-
 from gamedata import game_file
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.area import Fingerprint
-from automap.render import (CELL, Line, Poly, Rect, edge_primitives,
-                            map_primitives, merged_edge, party_marker, to_svg)
+from automap.render import (
+    CELL,
+    Line,
+    Poly,
+    Rect,
+    edge_primitives,
+    map_primitives,
+    merged_edge,
+    party_marker,
+    to_svg,
+)
 from automap.state import Automapper, AutomapState, Exploration
 from automap.target import Fix, ReplayTarget
-from por.geo import (EAST, GRID, LOCKED, NORTH, PASSABLE, SOLID, SOUTH, WEST,
-                     WIZARD_LOCKED, Geo, load_geo_files)
+from por.geo import (
+    EAST,
+    GRID,
+    LOCKED,
+    NORTH,
+    PASSABLE,
+    SOLID,
+    SOUTH,
+    WEST,
+    WIZARD_LOCKED,
+    Geo,
+    load_geo_files,
+)
 
 DISKS = "/home/donald/c64/Pool of Radiance Disks"
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -76,7 +95,7 @@ def test_a_door_breaks_the_wall_and_gets_a_leaf(geo):
     assert len(lines) == 2, "the wall must be broken either side of the doorway"
     assert len(leaves) == 1 and leaves[0].kind == "door"
     gap = CELL * 0.52
-    assert sum(abs(l.x2 - l.x1) + abs(l.y2 - l.y1) for l in lines) == \
+    assert sum(abs(ln.x2 - ln.x1) + abs(ln.y2 - ln.y1) for ln in lines) == \
         pytest.approx(CELL - gap)
 
 
@@ -426,7 +445,6 @@ def test_settings_ignore_keys_they_do_not_know(tmp_path, monkeypatch):
 
 def test_paths_differ_by_platform(monkeypatch):
     """Windows must not be handed an XDG path, or a dotfile in the user's home."""
-    import importlib
 
     import automap.paths as paths
 
@@ -482,9 +500,9 @@ def test_the_first_fix_is_believed_wherever_it_is(new_phlan, tmp_path,
 
 # --- the live party ---------------------------------------------------------
 
-from automap import live                                        # noqa: E402
-from automap.target import MemoryTarget                          # noqa: E402
-from por.record import FieldNotStored                            # noqa: E402
+from automap import live  # noqa: E402
+from automap.target import MemoryTarget  # noqa: E402
+from por.record import FieldNotStored  # noqa: E402
 
 
 @pytest.fixture
@@ -722,6 +740,7 @@ def test_a_socket_that_accepts_and_never_answers_is_busy_not_absent(monkeypatch)
     silence, so without this the map says "waiting for a game" about a game
     that is running."""
     import socket
+
     from automap.target import MonitorBusy, NotConnected, ViceTarget
 
     monkeypatch.setattr(ViceTarget, "GREETING", 0.15)

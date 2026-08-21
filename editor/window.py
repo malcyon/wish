@@ -12,14 +12,24 @@ import pathlib
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt6.QtGui import QBrush, QColor
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog,
-                             QLabel, QLineEdit, QMainWindow, QMessageBox,
-                             QPlainTextEdit, QSpinBox, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from por.iconparts import IconParts
 from por.icons import load_icon_charset
-from por.items import (load_item_names, load_item_templates,
-                       load_item_types)
+from por.items import load_item_names, load_item_templates, load_item_types
 from por.layout import FIELDS_BY_NAME
 from por.spells import capacity, load_spell_names
 
@@ -29,6 +39,7 @@ from .enums import TABLES
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
+
 
 def _size_combo(combo: QComboBox) -> None:
     """As wide as its longest name, and no wider.
@@ -286,8 +297,7 @@ class EditorWindow(QMainWindow):
         Done here rather than in the `.ui` so that a box added in Designer is
         compacted too, and so there is one number to change rather than eleven.
         """
-        from PyQt6.QtWidgets import (QAbstractItemView, QFormLayout,
-                                     QGroupBox, QLayout)
+        from PyQt6.QtWidgets import QAbstractItemView, QFormLayout, QGroupBox
 
         for form in self.findChildren(QFormLayout):
             form.setVerticalSpacing(FORM_VERTICAL_SPACING)

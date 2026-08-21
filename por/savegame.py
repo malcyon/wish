@@ -46,11 +46,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import encoding as _enc
+
 # split/attach_load_address are the *generic* PRG helpers; record.py's variants
 # are record-specific and validate a 582-byte length.
 from .d64 import attach_load_address, split_load_address
-from . import encoding as _enc
-from .record import CharacterRecord, RECORD_SIZE
+from .record import RECORD_SIZE, CharacterRecord
 
 SAVE0_LOAD_ADDRESS = 0x4900
 SAVE0_SIZE = 0x1C00

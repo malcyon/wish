@@ -19,12 +19,20 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QIcon, QImage, QPixmap
-from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
-                             QLabel, QListWidget, QListWidgetItem, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from por.icons import Icon, PIXELS_WIDE, POSE_ROWS, POSES, icon_pixels
 from por.iconparts import IconParts
+from por.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
 
 from .palette import colour
 

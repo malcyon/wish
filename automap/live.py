@@ -29,9 +29,16 @@ from dataclasses import dataclass
 from por import levels
 from por.derive import CLASS_BITS
 from por.record import FieldNotStored
-from por.savegame import (SAVE0_LOAD_ADDRESS, SAVE0_SIZE, SAVE1_LOAD_ADDRESS,
-                          SAVE1_SIZE, ROSTER_COUNT, ROSTER_STRIDE, SaveGame0,
-                          SaveGame1)
+from por.savegame import (
+    ROSTER_COUNT,
+    ROSTER_STRIDE,
+    SAVE0_LOAD_ADDRESS,
+    SAVE0_SIZE,
+    SAVE1_LOAD_ADDRESS,
+    SAVE1_SIZE,
+    SaveGame0,
+    SaveGame1,
+)
 
 # The two blocks, as (address, length). Whole-tab, per poll.
 ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100

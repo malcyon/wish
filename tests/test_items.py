@@ -106,7 +106,10 @@ def test_geometry():
 @equipped
 def test_experience_is_present_after_combat(save):
     """One orc fight: 17 xp each, 8 for LADY KATHERINE."""
-    u24 = lambda r: (lambda b: b[0] | b[1] << 8 | b[2] << 16)(r.get_raw("experience"))
+    def u24(r):
+        b = r.get_raw("experience")
+        return b[0] | b[1] << 8 | b[2] << 16
+
     xp = {s.record.name: u24(s.record) for s in save.characters}
     assert xp["BRUTUS"] == 17
     assert xp["LADY KATHERINE"] == 8
@@ -152,7 +155,7 @@ def test_the_hidden_name_mask_produces_the_unidentified_name(names):
 def _monster_items(disk, name):
     """The MON* files are character records, and 0x120 begins twelve item slots.
     They carry magic the shop lists never do."""
-    from por.d64 import D64, split_load_address
+    from por.d64 import split_load_address
     from por.items import ITEM_SIZE, Item
     _, payload = split_load_address(D64.open(disk).read_file(name))
     out = []

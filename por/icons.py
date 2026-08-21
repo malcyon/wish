@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .d64 import D64, load_payload, split_load_address
+from .d64 import D64, load_payload
 from .savegame import SAVE0_LOAD_ADDRESS
 
 ICON_TABLE_BASE = 0x4BE0

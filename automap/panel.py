@@ -16,8 +16,16 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
-from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QScrollArea,
-                             QSizePolicy, QToolButton, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 PAPER = QColor("#fbfcfd")
 CARD = QColor("#ffffff")

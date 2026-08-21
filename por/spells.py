@@ -24,7 +24,7 @@ and not the meaning.
 
 from __future__ import annotations
 
-from .d64 import D64, load_payload, split_load_address
+from .d64 import D64, load_payload
 
 SPELL_NAMES_FILE = b"SPELLN00"
 NAMES_TABLE_ENTRIES = 128

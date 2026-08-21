@@ -9,15 +9,14 @@ bitmap to read. The mapper therefore tracks exploration itself, which is why
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 from dataclasses import dataclass, field
 
-from por.geo import DIRECTIONS, GRID, STEP, Geo
+from por.geo import GRID, STEP, Geo
 
 from .area import Candidates, Fingerprint, ResidentGeo
-from .target import Fix, read_fix
 from .paths import data_dir as _data_dir
+from .target import Fix, read_fix
 
 AREA_NAMES = {
     "GEO14": "Slums",

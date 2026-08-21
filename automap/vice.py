@@ -250,9 +250,14 @@ class Monitor:
 # The decoding moved to `screen.py`, which works over any `read` callable.
 # These wrappers keep the Monitor-shaped spelling `tools/` already uses.
 
-from .screen import (COLOUR_RAM, SCREEN_COLS, SCREEN_ROWS,  # noqa: E402,F401
-                     Screen, codes_to_text)
-from . import screen as _screen                             # noqa: E402
+from . import screen as _screen  # noqa: E402
+from .screen import (  # noqa: E402,F401
+    COLOUR_RAM,
+    SCREEN_COLS,
+    SCREEN_ROWS,
+    Screen,
+    codes_to_text,
+)
 
 
 def screen_address(mon: Monitor) -> int:

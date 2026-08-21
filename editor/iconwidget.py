@@ -21,12 +21,19 @@ from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QDialog, QMenu, QWidget
 
-from por.icons import (CELL_COLS, CELL_ROWS, CELLS, COMBAT_BORDER, Icon,
-                       PIXELS_HIGH, PIXELS_WIDE, POSE_ROWS, POSES,
-                       icon_pixels)
+from por.icons import (
+    CELL_COLS,
+    CELLS,
+    COMBAT_BORDER,
+    PIXELS_WIDE,
+    POSE_ROWS,
+    POSES,
+    Icon,
+    icon_pixels,
+)
 
-from .partspicker import PartsPicker
 from .palette import COLOURS, NAMES, colour
+from .partspicker import PartsPicker
 
 ZOOM = 6                    # pixel doubling on top of multicolour's own
 

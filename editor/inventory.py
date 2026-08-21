@@ -20,12 +20,27 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QLineEdit, QListWidget,
-                             QVBoxLayout)
+from PyQt6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QLineEdit,
+    QListWidget,
+    QVBoxLayout,
+)
 
-from por.items import (ITEM_AREA_BASE, ITEM_BLOCK_STRIDE, ITEM_SIZE,
-                       ITEMS_PER_CHARACTER, LOCATION_USABLE_MAGIC, LOCATIONS,
-                       PASSIVE_POWER, READIED, TYPE_LOCATION, Item, ItemType)
+from por.items import (
+    ITEM_AREA_BASE,
+    ITEM_BLOCK_STRIDE,
+    ITEM_SIZE,
+    ITEMS_PER_CHARACTER,
+    LOCATION_USABLE_MAGIC,
+    LOCATIONS,
+    PASSIVE_POWER,
+    READIED,
+    TYPE_LOCATION,
+    Item,
+    ItemType,
+)
 from por.savegame import SAVE0_LOAD_ADDRESS
 from por.spells import LAST_SPELL
 from por.spells import describe as describe_spell

@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
         print("character.ui changed; recompiled the form")
 
     from PyQt6.QtWidgets import QApplication
+
     from .window import EditorWindow
 
     app = QApplication(sys.argv[:1])
