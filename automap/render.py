@@ -37,7 +37,7 @@ from por.geo import (
     Geo,
 )
 
-from . import icons
+from ui import icons
 
 CELL = 34
 MARGIN = 26

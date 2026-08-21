@@ -42,6 +42,7 @@ library in `por/` and the `wish` editor in `tools/`.
 | [112-test-harness.md](112-test-harness.md) | the suite opens real windows, and an intermittent findChild segfault |
 | [114-party-strength.md](114-party-strength.md) | what makes a random encounter bigger, term by term |
 | [113-world-map.md](113-world-map.md) | the overland travel map, which is the combat engine on other data |
+| [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run

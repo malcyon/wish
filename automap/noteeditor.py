@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import notes as notemod
-from .iconpaint import icon_pixmap
+from ui.iconpaint import icon_pixmap
 from .notes import Note
 from .panel import CARD, INK, LATTICE, MUTED, NOTE
 

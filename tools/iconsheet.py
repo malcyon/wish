@@ -43,8 +43,8 @@ from PyQt6.QtGui import (  # noqa: E402
     QPen,
 )
 
-from automap import icons  # noqa: E402
-from automap.iconpaint import draw_icon  # noqa: E402
+from ui import icons  # noqa: E402
+from ui.iconpaint import draw_icon  # noqa: E402
 
 # `panel.py` and `window.py`, copied rather than imported: importing them pulls
 # in the whole widget stack for six colour names.

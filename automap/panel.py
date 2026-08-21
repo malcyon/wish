@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .iconpaint import draw_icon, icon_pixmap
+from ui.iconpaint import draw_icon, icon_pixmap
 
 PAPER = QColor("#fbfcfd")
 CARD = QColor("#ffffff")

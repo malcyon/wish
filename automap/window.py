@@ -37,7 +37,7 @@ from .actionbar import ActionBar
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
 from .config import Settings
-from .iconpaint import draw_icon
+from ui.iconpaint import draw_icon
 from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (

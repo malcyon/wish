@@ -11,7 +11,7 @@ from __future__ import annotations
 import pathlib
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PyQt6.QtGui import QBrush, QColor
+from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -86,6 +86,8 @@ FORM_VERTICAL_SPACING = 2
 FORM_HORIZONTAL_SPACING = 6
 FORM_MARGINS = (8, 6, 8, 6)
 TABLE_ROW_HEIGHT = 20
+TOOLBAR_ICON = 16
+MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects")
 # Left to right: roster and character, the icon and the ability forms, then the
@@ -230,6 +232,7 @@ class EditorWindow(QMainWindow):
         self.ui.button_open.clicked.connect(self.open_file)
         self.ui.button_save.clicked.connect(self.save)
         self.ui.button_save_as.clicked.connect(self.save_as)
+        self._toolbar_icons()
 
         self._widgets = self._find_field_widgets()
         self._fill_combos()
@@ -241,6 +244,22 @@ class EditorWindow(QMainWindow):
             self.load(path)
         else:
             self.status("Open a save disk to begin")
+
+    def _toolbar_icons(self) -> None:
+        """Icons beside the button text, never instead of it.
+
+        Save and Save As share a glyph on purpose: the icon says the family and
+        the label says which member, the same division of labour the class
+        icons use in the roster.
+        """
+        from ui.iconpaint import icon_pixmap
+        for name, icon in (("button_open", "folder-open"),
+                           ("button_save", "floppy-disk"),
+                           ("button_save_as", "floppy-disk"),
+                           ("button_preview", "eye")):
+            button = self._child(name)
+            if button is not None:
+                button.setIcon(QIcon(icon_pixmap(icon, TOOLBAR_ICON, MUTED_INK)))
 
     def _child(self, name: str) -> QWidget | None:
         """A widget by objectName, or None if Designer no longer has one.

@@ -52,7 +52,7 @@ version-file = "wish/_version.py"
 # tools/ is discovery scaffolding but ships anyway, because two declared entry
 # points live in it: `wish-cli` is tools.wish:main, and the window imports
 # tools.genui at startup. Without it both were broken in an installed wheel.
-packages = ["por", "editor", "automap", "wish", "tools"]
+packages = ["por", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

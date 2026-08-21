@@ -901,7 +901,7 @@ def test_the_session_does_not_attach_until_a_tab_wants_live_data(monkeypatch):
 
 from PyQt6.QtWidgets import QPushButton  # noqa: E402
 
-from automap import icons  # noqa: E402
+from ui import icons  # noqa: E402
 from automap import notes as notemod  # noqa: E402
 
 
@@ -1015,7 +1015,7 @@ def test_the_hood_keeps_its_face(app):
     leaves a bell. See `docs/109-icon-choices.md`."""
     from PyQt6.QtGui import QColor, QImage, QPainter
 
-    from automap.iconpaint import draw_icon
+    from ui.iconpaint import draw_icon
 
     image = QImage(13, 13, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(QColor("white"))
@@ -1053,7 +1053,7 @@ def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
     two subpaths and winding fill -- odd-even would fill the hole in."""
     from PyQt6.QtCore import Qt as _Qt
 
-    from automap.iconpaint import painter_path
+    from ui.iconpaint import painter_path
     assert sum(1 for c in icons.commands("location-dot") if c[0] == "M") == 2
     assert painter_path("location-dot").fillRule() == _Qt.FillRule.WindingFill
 
