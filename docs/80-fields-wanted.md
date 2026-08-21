@@ -27,7 +27,7 @@ written back and confirmed in game.
 | **character level** | `0x0A0` | CONFIRMED — the drain routine writes it down from the per-class array |
 | **levels drained** | `0x0A1` | CONFIRMED — current-plus-delta, not a second copy of the level |
 | **hit points lost to draining** | `0x0A2` | CONFIRMED — restored alongside `0x0A1` |
-| **undead turning class** | `0x0A3` | CONFIRMED — matches the AD&D 1e table on all 13 undead specimens |
+| **undead turning class** | `0x0A3` | CONFIRMED — matches the AD&D 1e table on all 12 undead specimens, and is non-zero on no other record |
 | thief skills | `0x0A5`–`0x0AC` | CONFIRMED — **signed**; a halfling's read-languages is -5 |
 | **size flag** | `0x099` | PROBABLE — 0 small, 1 large; picks the icon part tables |
 | **money — all seven types** | `0x0BB`–`0x0C8` | CONFIRMED |

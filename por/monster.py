@@ -5,9 +5,9 @@ character record, so this is not a monster-only decode; a level-1 player
 character reads here as one unarmed 1d2 attack, which `GEN $0BBE` writes.
 
 **The offsets are literals rather than `por/layout.py` fields.** The layout
-still carries `0x0D9`-`0x0E0` as the one raw block `region_0d9`, and splitting
-it into eight named fields is a change to the character sheet and its generated
-documentation, not to this view. The reading itself is CONFIRMED --
+carries `0x0D9`-`0x0E0` as one named block, `attack_forms`, because the sheet
+has no box for a monster's attack table; this view is where it is read apart.
+The reading itself is CONFIRMED --
 `COMBAT $0CAD` rolls damage through `LDA $6C13,Y` / `LDX $6C15,Y` with a stride
 of 2, which is what proves there are exactly two attack forms, and twenty
 creatures match the *Monster Manual*. Full write-up in

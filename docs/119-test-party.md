@@ -152,8 +152,8 @@ operation.
 | `spells_castable` | `0x0EE` | new capacity, nibble-packed, cleric high / magic-user low | PROBABLE, checked only at level 1 | **no** |
 | `spells_known` | `0x078`–`0x07E` | a cleric gains every spell of the new level; a magic-user learns by roll | CONFIRMED, and `por/spells.spellbook_bytes` writes it | **cleric yes, magic-user no** |
 | eight thief skills | `0x0A5`–`0x0AC` | the per-level table | fields CONFIRMED (and **signed**); **there is no per-level thief table in this project at all** | **no** |
-| attacks per round | `0x0D9` | 1 → 3/2 at fighter 7, believed stored doubled | **UNKNOWN** — inside the eight-byte `region_0d9` | **no** |
-| turning level | `0x0A3` **or** `0x0A4` | rises with cleric level | **contradictory** — this is the experiment | **no** |
+| attacks per round | `0x0D9` | 1 → 3/2 at fighter 7 | CONFIRMED — `0x0D9`–`0x0E0` is `attack_forms`, count and damage per form, read on 20 creatures | **yes** |
+| turning power | `0x0A4` | rises with cleric level | PROBABLE — non-zero on eight records, every one a cleric; the *value* is unexplained, as three level-5 clerics read 1, 4 and 6 | **no** |
 | roster THAC0 / AC / damage bonus | `SAVEDGAME1` `+0x0E` / `+0x0F` / `+0x17` | recomputed | PROBABLE, and `por/derive.py` computes all three | **yes, derived** |
 
 Three of those blockers are cheap to remove and one is not:
@@ -296,13 +296,13 @@ the superseded text is how contradictions got in before.
 
 ---
 
-## Contradictions found while planning, worth fixing on the way past
+## Contradictions found while planning — all three since settled
 
-| where | what |
+| where | how it came out |
 |---|---|
-| `por/layout.py` `0x0A0` says **PROBABLE**; `docs/80-fields-wanted.md` says **CONFIRMED** | two different confidences for the same byte in two files. `docs/20` is generated and agrees with the layout, so `docs/80` is the outlier |
-| `tests/gamedata.py` writes `0x0D9` as attacks-doubled and `0x0DA`–`0x0DD` as a damage expression; `por/levels.py` repeats the attacks claim | `por/layout.py` calls all eight bytes of `region_0d9` **UNKNOWN**, and BRUTUS — a level-1 fighter, one attack — reads **03** there where that reading predicts 02. Either the reading is wrong or `0x0D9` is not the attacks byte |
-| `por/spells.py` `capacity()` docstring: "no field holding it has been found" | `0x0EE` is that field, found during the Curse survey. Stale |
+| `0x0A0` PROBABLE in `por/layout.py`, CONFIRMED in `docs/80-fields-wanted.md` | CONFIRMED. Twenty-one shipped `MON*` records name their own level, and `0x0A0` matches nineteen; the two that differ read 7 in the per-class array too, so the designer's label is what is wrong |
+| `0x0D9` read as attacks-doubled, and BRUTUS reading `03` where that predicts `02` | **the premise was false.** The `03` came from a dump starting at `0x0D8`, off by one; `0x0D9`–`0x0E0` is `attack_forms`, count and damage per form, CONFIRMED on twenty creatures |
+| `por/spells.py` `capacity()`: "no field holding it has been found" | `0x0EE`–`0x0F0`, nibble-packed magic-user low, cleric high. Docstring rewritten |
 
 ---
 
