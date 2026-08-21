@@ -1,12 +1,15 @@
 """Tests for por.geo, the GEO map geometry.
 
-The fixture is GEO04 off POOL5. The live game disks are used only for the
+GEO04 is read off the player's POOL5 at run time -- no game data lives in this
+repository. The live game disks are used only for the
 whole-corpus checks, which skip when they are not mounted.
 """
 
 import pathlib
 
 import pytest
+
+from gamedata import game_file, synthetic_geo
 
 from por.geo import (GEO_SIZE, GRID, LOCKED, NORTH, EAST, SOUTH, WEST, SOLID,
                      WIZARD_LOCKED, Geo, GeoError, load_geo_files)
@@ -19,7 +22,14 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL5.D64").exists(),
 
 @pytest.fixture
 def geo():
-    return Geo.from_bytes((FIXTURES / "GEO04.bin").read_bytes())
+    """A real map, off the player's disk. Skips without one."""
+    return Geo.from_bytes(game_file("GEO04"))
+
+
+@pytest.fixture
+def made():
+    """A map we generated from the format. Always available."""
+    return Geo.from_bytes(synthetic_geo())
 
 
 def test_a_geo_file_is_four_planes(geo):
@@ -32,7 +42,7 @@ def test_a_short_payload_is_rejected():
 
 
 def test_the_prg_load_address_is_stripped():
-    payload = (FIXTURES / "GEO04.bin").read_bytes()
+    payload = game_file("GEO04")
     assert Geo.from_bytes(b"\x00\x04" + payload).to_bytes() == payload
 
 
@@ -141,3 +151,46 @@ def test_locked_doors_are_rare_and_wizard_locked_rarer():
                     for d in (NORTH, EAST, SOUTH, WEST):
                         counts[g.barrier(x, y, d)] += 1
     assert counts == {SOLID: 26590, 1: 2962, LOCKED: 130, WIZARD_LOCKED: 14}
+
+
+# --- the decoder, without the game ------------------------------------------
+#
+# These run on a map we generated from the documented format, so a checkout on
+# a machine that does not own Pool of Radiance still proves the decoder works.
+# The tests above, on a real GEO, prove that our idea of the format matches
+# SSI's -- which is the thing a synthetic map can never show.
+
+def test_a_generated_map_decodes_without_the_game(made):
+    assert made.to_text()
+    assert not made.is_passable(0, 0, 0), "the north border is walled"
+
+
+def test_the_generated_border_is_solid_all_the_way_round(made):
+    for i in range(GRID):
+        assert made.wall(i, 0, 0), f"no north art at ({i},0)"
+        assert not made.is_passable(i, 0, 0)
+
+
+def test_a_door_is_art_plus_a_passable_barrier(made):
+    """(4,5) west: wall art with barrier PASSABLE is a door, not an opening."""
+    assert made.wall(4, 5, 3), "expected art on the west edge"
+    assert made.is_passable(4, 5, 3)
+    assert made.door(4, 5, 3)
+
+
+def test_the_barrier_bits_mean_nothing_without_art(made):
+    """(10,10) has SOLID on all four edges and no wall art at all.
+
+    The engine tests art first, so the square is open. This is the case five
+    earlier readings got wrong by treating art and passability as one field.
+    """
+    for direction in range(4):
+        assert made.wall(10, 10, direction) == 0
+        assert made.barrier(10, 10, direction) == 0      # SOLID
+        assert made.is_passable(10, 10, direction)
+        assert made.door(10, 10, direction) is None
+
+
+def test_the_roofed_bit_is_read_from_the_attribute_plane(made):
+    assert made.is_indoor(5, 5)
+    assert not made.is_indoor(0, 0)

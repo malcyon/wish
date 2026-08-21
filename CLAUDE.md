@@ -13,26 +13,61 @@ it.
 
 ## Commits
 
-**No essays.** Reasoning belongs in `docs/50-experiments.md`, which exists for
-exactly that; the commit points at it.
+**One sentence. No body, ever.** The whole message is the subject line.
+Reasoning belongs in `docs/50-experiments.md`, which exists for exactly that.
 
-* Subject: imperative, sentence case, no type prefix, ≤ 65 characters, no
-  trailing period. Match the existing history's voice — "Find the size flag, and
-  settle the party limit".
-* Body: **usually none.** Add one only for a non-obvious *why*, a breaking
-  change, or a correction of an earlier commit. Cap it at five lines, wrapped
-  at 72.
-* Never: "This commit does X", AI attribution, emoji, restating the diff.
+* Imperative, sentence case, no type prefix, <= 65 characters, no trailing
+  period. Match the existing history's voice -- "Find the size flag, and settle
+  the party limit".
+* Never: a body, "This commit does X", AI attribution, emoji, restating the
+  diff.
 
 One commit per finding. Three findings in one commit is worse for future
 archaeology than three commits, even when the files overlap.
 
 ```
 Find the staging page at $5500
-
-It holds one record — the last one the game loaded there. Written up as
-"the orc left behind at $5500".
 ```
+
+## What must never enter this repository
+
+This is a reverse-engineering project. It documents a game it does not ship.
+
+**Never commit, in any form:**
+
+* the game's **art, music, or sound** -- sprites, tilesets, portraits, SID
+  tunes, sampled audio;
+* the game's **manuals, cluebooks, maps or journal entries**, scanned,
+  transcribed or retyped;
+* the game's **executable code**, whole or in part -- overlays, PRG files, boot
+  images, or any extract of them;
+* **disassembly of that code** as a listing. Naming an address and the two or
+  three instructions at it, as evidence for a finding, is commentary and is
+  fine. A dump of a routine is not.
+* the game's **data files** -- maps, tables, scripts, character records -- as
+  committed bytes, including as test fixtures.
+
+Disk images are already ignored; keep them under `work/`, which is
+`.gitignore`d, and read them at run time from wherever the player keeps theirs.
+
+**Tests get their data from the player's own disks, not from the repository.**
+`tests/gamedata.py` is how: `game_file("GEO04")` reads it off whichever `POOL*`
+disk carries it and skips when there are none, and `synthetic_geo()` builds a
+well-formed map from the format we documented for the cases that only need
+*a* file rather than a specific one. A fixture that is a slice of a game file
+is the same copy the rule forbids, merely renamed.
+
+`tests/fixtures/` holds the player's own saved games and nothing else. Its
+contents are on an allowlist in `tests/test_repository_contents.py`, which
+fails the build if anything else appears there or if a disk image, executable,
+image or audio file is committed anywhere. **Do not add to that allowlist** --
+if a test needs game data, read it from the disks or generate it.
+
+**Citing is not copying.** Naming an address and the two or three instructions
+at it, as evidence for a finding, is exactly what `docs/50-experiments.md` is
+for and is encouraged. A dump of a routine is not.
+
+Describe, cite, measure, and generate. Do not copy.
 
 ## Documentation
 

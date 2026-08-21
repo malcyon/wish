@@ -12,6 +12,8 @@ import pathlib
 
 import pytest
 
+from gamedata import game_file
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.area import Fingerprint
@@ -30,7 +32,7 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL3.D64").exists(),
 
 @pytest.fixture
 def geo():
-    return Geo.from_bytes((FIXTURES / "GEO04.bin").read_bytes())
+    return Geo.from_bytes(game_file("GEO04"))
 
 
 @pytest.fixture

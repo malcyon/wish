@@ -4,6 +4,8 @@ import pathlib
 
 import pytest
 
+from gamedata import game_file
+
 from por.icons import ICON_COUNT, icon_for_slot
 from por.savegame import SaveGame0
 from por.iconparts import CELLS_PER_POSE, SPACE, IconParts
@@ -13,8 +15,8 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 @pytest.fixture(scope="module")
 def parts() -> IconParts:
-    return IconParts((FIXTURES / "SPELLE64.bin").read_bytes(),
-                     (FIXTURES / "SPELLN64.bin").read_bytes())
+    """The option tables, read off the player's character-creation disk."""
+    return IconParts(game_file("SPELLE64"), game_file("SPELLN64"))
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +84,7 @@ def test_every_icon_we_hold_is_one_the_game_could_have_made(legal):
     """
     shapes = set()
     for name in ("savedgame0.bin", "party6_savedgame0.bin",
-                 "pool1_savedgame0.bin", "party6_after_combat.bin"):
+                 "party6_after_combat.bin"):
         # The fixtures keep their two-byte load address; `from_prg` is what
         # strips it. Reading them raw shifts every icon two cells and makes
         # perfectly legal art look unreachable.

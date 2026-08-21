@@ -12,6 +12,8 @@ import pathlib
 
 import pytest
 
+from gamedata import game_file
+
 from por.d64 import D64, load_payload, split_load_address
 from por.geo import GEO_SIZE, Geo, GeoError, load_geo_files
 from por.icons import CELLS, ICON_SIZE, Icon, icon_pixels, load_icon_charset
@@ -41,7 +43,7 @@ def test_every_geo_file_round_trips():
 
 
 def test_a_geo_survives_the_prg_wrapper():
-    payload = (FIXTURES / "GEO04.bin").read_bytes()
+    payload = game_file("GEO04")
     assert Geo.from_bytes(b"\x00\x04" + payload).to_bytes() == payload
 
 
