@@ -621,6 +621,42 @@ def test_a_wounded_character_is_coloured_and_a_whole_one_is_not():
     assert hp_colour(1 / 7) == DANGER
 
 
+def test_the_hit_point_bands_keep_their_boundaries():
+    """Pinned because a `<=` turned back into a `<` is invisible in the panel
+    and changes the colour of every bar sitting exactly on a boundary."""
+    from automap.panel import DANGER, HURT, WELL, hp_colour
+    assert hp_colour(0.7500001) == WELL
+    assert hp_colour(0.75) == HURT             # the boundary is hurt, not well
+    assert hp_colour(0.2500001) == HURT
+    assert hp_colour(0.25) == DANGER           # and this one is danger, not hurt
+    assert hp_colour(0.0) == DANGER
+    assert [hp_colour(n / 8) for n in (8, 7, 6, 5, 4, 3, 2, 1, 0)] == [
+        WELL, WELL, HURT, HURT, HURT, HURT, DANGER, DANGER, DANGER]
+
+
+def test_the_hurt_colour_is_a_yellow_and_not_the_old_brown():
+    """`#c07d18` read as brown against the card. The replacement has to stay
+    light enough to carry the black numbers drawn across it."""
+    from automap.panel import DANGER, HURT, INK, WELL
+
+    def luminance(c):
+        def channel(v):
+            v /= 255
+            return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+        r, g, b = (channel(v) for v in (c.red(), c.green(), c.blue()))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    def contrast(a, b):
+        hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    assert 45 <= HURT.hue() <= 62                  # yellow, not the amber's 36
+    assert luminance(HURT) > 0.45                  # the amber's was 0.26
+    assert contrast(HURT, INK) >= 4.5              # the numbers over the fill
+    assert contrast(WELL, INK) >= 3
+    assert contrast(DANGER, INK) >= 3
+
+
 def test_a_card_at_a_class_ceiling_says_maximum(app):
     """`levels.progress` returns None at the ceiling -- a fighter stops at 8 --
     and an empty bar there would read as the opposite of what it means."""

@@ -28,16 +28,23 @@ PARTY = QColor("#0067c7")
 
 # Hit points, by proportion: comfortable, hurt, in danger.
 #
-# **Anything short of full reads as hurt.** `docs/100-live-view.md` fixes this
-# by example -- 5 of 7 is coloured as hurt and full is not -- and it is the
-# right rule for the question the panel exists to answer: who needs a cure
-# light wounds. A third or less is the second colour, because by then the
-# question is who is about to die.
+# Both boundaries fall to the worse state -- three quarters exactly is yellow, a
+# quarter exactly is red -- and the constants are named `_AT_OR_BELOW` so the
+# comparison cannot quietly drift back to `<`.
+#
+# The old `#c07d18` was an amber at luminance 0.26, dark enough to read as brown
+# beside the green; this is a true yellow at 0.56.
+#
+# Green and red are what collapses under red-green colour blindness: simulated
+# deuteranopia leaves them 1.12:1 apart, which is nothing. Nothing was added to
+# separate them, because the fill length already does -- a red bar is at most a
+# quarter full and a green one more than three quarters -- and the numbers are
+# written across the bar.
 WELL = QColor("#2f7d4f")
-HURT = QColor("#c07d18")
+HURT = QColor("#e6c229")
 DANGER = QColor("#c0392b")
-HURT_BELOW = 1.0
-DANGER_BELOW = 1 / 3
+HURT_AT_OR_BELOW = 0.75
+DANGER_AT_OR_BELOW = 0.25
 
 EXPERIENCE = QColor("#5a6ea8")
 
@@ -46,9 +53,9 @@ BAR_HEIGHT = 15
 
 
 def hp_colour(fraction: float) -> QColor:
-    if fraction < DANGER_BELOW:
+    if fraction <= DANGER_AT_OR_BELOW:
         return DANGER
-    if fraction < HURT_BELOW:
+    if fraction <= HURT_AT_OR_BELOW:
         return HURT
     return WELL
 

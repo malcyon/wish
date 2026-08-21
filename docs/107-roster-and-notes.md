@@ -1,31 +1,41 @@
 # The automapper's roster and notes — plan
 
-**Status: planned, not started.** Four changes to the live panel and the map
-notes.
+**Status: 1 is done; 2 to 4 are planned.** Four changes to the live panel and
+the map notes.
 
 ---
 
-## 1. Why some hit point bars are brown
+## 1. Hit point bar colours
 
-**They are not brown, they are amber, and it means "not at full health".**
-`automap/panel.py`:
+**Done.** `automap/panel.py`:
 
-```
-WELL   #2f7d4f   green    at full hit points
-HURT   #c07d18   amber    below full, at or above a third
-DANGER #c0392b   red      below a third
-```
+| remaining | colour | |
+|---|---|---|
+| above 75% | `#2f7d4f` | green |
+| above 25%, at or below 75% | `#e6c229` | yellow |
+| 25% or below | `#c0392b` | red |
 
-`HURT_BELOW = 1.0`, so **a single point of damage turns the bar amber.** That is
-why a party that has taken a scratch looks half-wounded, and why the amber reads
-as brown next to the green.
+Both boundaries fall to the worse state, and `hp_colour` uses `<=` for that
+reason; `test_the_hit_point_bands_keep_their_boundaries` pins it.
 
-Two things to change, and they are separate decisions:
+Before this, `HURT_BELOW = 1.0` meant a single point of damage turned the bar
+off green, so a scratched party looked half-dead, and the old `#c07d18` was dark
+enough (relative luminance 0.26) to read as brown next to the green. The new
+yellow sits at 0.56 and carries 9.5:1 against the black numbers drawn across it.
 
-* **The threshold.** Amber below full is too eager. Two thirds is the usual
-  choice and matches what the colour is trying to say.
-* **The colour.** `#c07d18` is dark enough to read as brown against the panel.
-  Lift it toward a true amber, and check both against the dark theme.
+**Themes.** The card is `#ffffff` and the bar's empty track `#fbfcfd`, both
+literal, so a bar is on a light ground whichever theme the system is in. The
+cards are light islands in a window that follows the theme; only the fill colour
+had to be chosen, and it needed no dark variant.
+
+**Colour blindness.** Green and red are the pair that fails, not the yellow:
+simulated deuteranopia puts them 1.12:1 apart, which is nothing, while the
+yellow stands 3.1:1 from the green and 2.8:1 from the red. Nothing was added to
+separate green from red, because **the fill length already does it** -- under
+these thresholds the colour is a function of how full the bar is, so a red bar
+is at most a quarter full and a green one more than three quarters -- and the
+numbers are written across the bar besides. A stripe or an icon would be a
+fourth encoding of the same fact.
 
 Worth keeping: three states, not a gradient. A gradient looks better and tells
 you less at a glance, which is the wrong trade in a panel you glance at.
@@ -101,8 +111,6 @@ adding a dependency.**
 
 ## Verification
 
-* A character at full hit points is green; one point down is amber, not brown;
-  below a third is red. Check on both themes.
 * A character with nothing readied shows a blank line, not a placeholder.
 * Hovering a note shows its whole text, and a very long note does not stretch
   the tooltip off the screen.
