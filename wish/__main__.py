@@ -22,6 +22,7 @@ import pathlib
 import sys
 
 from . import __version__
+from .debugmode import enable_from_argv
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -48,6 +49,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None, tab: str = "map") -> int:
+    # Before the parser sees them: `--debug` is not an option the window takes,
+    # it is a mode the whole process is in, and it has to be set before
+    # anything reads it.
+    enable_from_argv(argv)
     args = _parser().parse_args(argv)
     tab = args.tab or tab
 

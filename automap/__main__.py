@@ -80,6 +80,10 @@ def forget(area: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # See `wish/__main__.py`: `--debug` is a mode, not an option, and is
+    # stripped before the parser would reject it.
+    from wish.debugmode import enable_from_argv
+    enable_from_argv(argv)
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--area", help="force a GEO name instead of identifying it")

@@ -35,6 +35,7 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 
 from por import items as por_items
+from por.geo import GRID as GEO_GRID
 from por.layout import Confidence, field_by_name
 from por.record import CharacterRecord
 from por.savegame import (
@@ -705,3 +706,399 @@ def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
     store = store or SpellStore()
     return (HealParty(), IdentifyItems(), StoreSpells(store),
             RestoreSpells(store), ClearQuickfight(), LevelUp())
+
+
+# --- warping between areas ---------------------------------------------------
+#
+# Debug mode only (`wish/debugmode.py`), and the one thing in this file that
+# does more than poke a byte: it hands the CPU a new program counter.
+#
+# `docs/118-debug-mode.md` is the plan and the evidence. In short: an area exit
+# is a script ending in `NEWECL`, whose handler at `DUNGEON $2011` writes five
+# things and restarts the overlay. A warp is those writes made from outside,
+# with the operand fetch -- which needs a script stream we are not in --
+# skipped by entering the handler at its tail.
+#
+# **Nothing below has ever been run against the game.** The writes are copied
+# from the handler; entering it at `$2034` from the key-wait loop is a guess,
+# and so is what happens to the party afterwards.
+
+#: Which `POOL` disk the arriving area lives on. `LIBRARY $43A4` reads it and
+#: prompts if that disk is not in the drive.
+WARP_DISK = 0x6E12
+#: The live party square inside `GDRIVE00`, of which `$49C0`-`$49C2` is a
+#: lagging copy: x, y, facing. `$1A3C`, called from `$2034`, copies these into
+#: the save's own bytes, which is why the arrival square is written before the
+#: jump and not after.
+WARP_X, WARP_Y, WARP_FACING = 0xC04B, 0xC04C, 0xC04D
+#: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
+#: script's entry 4 compares it against its own id.
+WARP_FROM = 0x49F2
+#: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
+WARP_SLOT = 0x6E1B
+#: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
+WARP_SCRATCH, WARP_SCRATCH_LEN = 0x4A00, 0x20
+#: Non-zero indoors, zero on the overland map. Read, never written: it decides
+#: whether `LOADFILES` asks for a `GEO` or a `SQRDATA`.
+WARP_INDOORS = 0x49E6
+#: The tail of `NEWECL`'s handler, past the operand fetch. `$203A` reloads the
+#: stack pointer from `$03BF`, so the call depth we interrupt does not matter.
+NEWECL_TAIL = 0x2034
+#: `$6E11`: DUNGEON is the resident overlay. `$2034` is some other overlay's
+#: code when it is not.
+DUNGEON = 1
+#: `DUNGEON`'s key-wait loop in the world, the one place it is safe to take the
+#: PC from -- mid-script or mid-load the stack reset would discard work in
+#: flight. `$10C2` is the loop; **the end of this window is a guess**, taken
+#: from `$10EE`, the next address in `DUNGEON` anything has been read at. A
+#: warp refused with a PC just past the window is this constant being wrong,
+#: not the machine being busy.
+KEY_WAIT = (0x10C2, 0x10EE)
+
+
+def area_rows() -> tuple:
+    """The area table, or nothing if this build has not got one.
+
+    `por/areas.py` owns it. Imported here rather than at the top of the module
+    so that a checkout without it still has the other five actions.
+    """
+    try:
+        from por.areas import AREAS
+    except ImportError:                     # pragma: no cover - defensive
+        return ()
+    return tuple(AREAS)
+
+
+def walkable_square(geo) -> tuple[int, int, int] | None:
+    """A square of this map with at least one passable edge, and a way to face.
+
+    The fallback for the fifteen areas whose arrival square nobody has
+    harvested. Carrying the party's *current* square over is the one option to
+    avoid: the maps do not line up, and (13,13) in the Slums is a wall in Sokol
+    Keep.
+    """
+    if geo is None:
+        return None
+    for y in range(GEO_GRID):
+        for x in range(GEO_GRID):
+            for facing in range(4):
+                if geo.is_passable(x, y, facing):
+                    return (x, y, facing)
+    return None
+
+
+@dataclass(frozen=True)
+class Waypoint:
+    """Where the party was before a warp, so that `Warp Back` has an answer."""
+
+    area: int
+    disk: int | None
+    square: tuple[int, int, int] | None
+
+    @property
+    def id(self) -> int:
+        """Spelled the way a row of the area table spells it, so that the same
+        `legality` serves both buttons even when the table has no such row."""
+        return self.area
+
+
+def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
+                  arrival=None) -> tuple[tuple[int, bytes], ...]:
+    """The bytes `NEWECL` writes, in its own order, minus the operand fetch.
+
+    **The whole write sequence lives here**, in one function, because it is a
+    guess in the sense that matters: the individual writes are read off
+    `DUNGEON $2011`-`$2032`, and that they can be made from outside while the
+    game sits in its key-wait loop is not established. Correcting the sequence
+    should mean editing this function and nothing else.
+
+    `arrival` is `(x, y, facing)`, or `(x, y)` where the departing script sets
+    the square but not the direction, or None to write no square at all and let
+    the arriving script's entry 4 place the party.
+    """
+    writes: list[tuple[int, bytes]] = []
+    if disk is not None:
+        writes.append((WARP_DISK, bytes([disk & 0xFF])))
+    if arrival is not None:
+        writes.append((WARP_X, bytes(int(v) & 0xFF for v in arrival)))
+    writes.append((WARP_FROM, bytes([from_area & 0x7F])))
+    writes.append((WARP_SLOT, bytes([(to_area & 0x7F) | 0x80])))
+    writes.append((WARP_SCRATCH, bytes(WARP_SCRATCH_LEN)))
+    return tuple(writes)
+
+
+#: VICE's `e_PC`, taken on faith. See `program_counter`.
+PC_REGISTER = 3
+
+
+def program_counter(target):
+    """The CPU's PC, or None where this backend cannot say.
+
+    The `Target` contract is `read` and `write` and deliberately nothing else,
+    so the CPU is reached the two ways there are: a target that offers `pc()`
+    of its own (a test's, and whatever a second backend grows), or the VICE
+    monitor a `ViceTarget` is holding.
+
+    **The register id is not discoverable.** `CMD_REGISTERS_AVAILABLE` is
+    unsupported in this VICE build, so `PC_REGISTER` is VICE's own `e_PC` taken
+    on faith -- which is why the value is sanity-checked before anything is
+    written to it: a 6502's other registers are eight bits wide, so an id that
+    is not the PC cannot hold an address in `DUNGEON`.
+    """
+    own = getattr(target, "pc", None)
+    if callable(own):
+        return own()
+    mon = getattr(target, "_mon", None)
+    if mon is None:
+        return None
+    try:
+        regs = mon.registers()
+    except Exception:
+        return None
+    finally:
+        try:
+            mon.resume()
+        except Exception:
+            pass
+    return regs.get(PC_REGISTER)
+
+
+def jump(target, address: int) -> bool:
+    """Set the PC and let the machine run. False if this backend cannot.
+
+    The last step of a warp and the only irreversible one: everything before it
+    is bytes in RAM, and this is what makes the game act on them.
+    """
+    own = getattr(target, "set_pc", None)
+    if callable(own):
+        own(address)
+        return True
+    mon = getattr(target, "_mon", None)
+    if mon is None:
+        return False
+    try:
+        mon.set_registers({PC_REGISTER: address})
+    except Exception:
+        return False
+    finally:
+        try:
+            mon.resume()
+        except Exception:
+            pass
+    return True
+
+
+class Warp(Action):
+    """Put the party in another area, the way the game's own exits do.
+
+    **Unproven.** The writes are `NEWECL`'s (`docs/118-debug-mode.md`), but
+    nothing has yet entered its handler from outside, and the first thing to
+    try it may find that the key-wait loop is the wrong place to do it from.
+    Treat a refusal as information and a crash as the answer to open question 1
+    in that document.
+
+    Two guards that are not optional, both re-checked at `apply` time:
+
+    * **`$6E11` must be 1.** `$2034` is some other overlay's code otherwise,
+      and jumping there is an immediate crash.
+    * **the PC must be in `DUNGEON`'s key-wait loop.** Mid-script or mid-load
+      the stack reload at `$203A` throws away work in flight. This doubles as
+      the check that `PC_REGISTER` is the register we think it is.
+
+    What it cannot guard: the quest flags. A warp is not the same as having
+    played there, the arriving script assumes things the party never did, and
+    the honest answer is to say so rather than to pretend otherwise.
+    """
+
+    name = "warp"
+    label = "Warp To"
+    description = ("enter another area the way the game's own exits do -- "
+                   "unproven, and it writes to the running machine")
+    combat_legal = False
+    confirm = ("Warp writes five things into the running game and then hands "
+               "the CPU a new program counter.\n\nNothing has ever tried this: "
+               "it may crash the game, and the arriving area's script will "
+               "assume quest flags the party never set. Use a copy of your "
+               "save disk, never the original.\n\nWarp anyway?")
+
+    def __init__(self):
+        #: Where the last warp came from. `Warp Back` reads it; None until a
+        #: warp has been made, which is why the button starts disabled.
+        self.back: Waypoint | None = None
+
+    # -- reading the machine ---------------------------------------------
+
+    @staticmethod
+    def current_area(target) -> int | None:
+        """The id of the area running now: `$6E1B` without the reload bit."""
+        try:
+            raw = target.read(WARP_SLOT, 1)
+        except Exception:
+            return None
+        return raw[0] & 0x7F if raw else None
+
+    @staticmethod
+    def current_disk(target) -> int | None:
+        try:
+            raw = target.read(WARP_DISK, 1)
+        except Exception:
+            return None
+        return raw[0] if raw else None
+
+    @staticmethod
+    def current_square(target) -> tuple[int, int, int] | None:
+        try:
+            raw = target.read(WARP_X, 3)
+        except Exception:
+            return None
+        return (raw[0], raw[1], raw[2]) if len(raw) == 3 else None
+
+    def disk_note(self, target, area) -> str:
+        """What to say about disks before warping.
+
+        **Which image is actually in drive 8 is not readable** -- the monitor
+        does not say and `automap/vice.py` has no attach command -- so this
+        reports what the *game* last asked for and leaves the drive to the
+        person at the keyboard.
+        """
+        if area is None:
+            return ""
+        want = getattr(area, "disk", None)
+        if want is None:
+            return ""
+        now = self.current_disk(target) if target is not None else None
+        if now is None:
+            return f"needs POOL{want} in drive 8"
+        if now == want:
+            return f"needs POOL{want}, which is what the game last asked for"
+        return (f"needs POOL{want}; the game last asked for POOL{now} "
+                "($6E12) -- swap the disk first or the loader will stop and "
+                "ask")
+
+    # -- may we -----------------------------------------------------------
+
+    def legality(self, target, area=None) -> Verdict:
+        base = super().legality(target)
+        if not base:
+            return base
+        if mode(target) != DUNGEON:
+            return Verdict(False, "$6E11 is not 1, so DUNGEON is not the "
+                                  "resident overlay and $2034 is not NEWECL")
+        pc = program_counter(target)
+        if pc is None:
+            return Verdict(False, "this backend cannot read the CPU, and a "
+                                  "warp has to set the program counter")
+        lo, hi = KEY_WAIT
+        if not lo <= pc < hi:
+            return Verdict(False, f"the PC is ${pc:04X}, outside DUNGEON's "
+                                  f"key-wait loop (${lo:04X}-${hi - 1:04X}): "
+                                  f"the game is busy, or that window is wrong")
+        if area is None:
+            return Verdict(False, "choose an area")
+        here = self.current_area(target)
+        if here is not None and here == getattr(area, "id", None):
+            return Verdict(False, "the party is already in that area, and "
+                                  "NEWECL skips a same-area transition")
+        return Verdict(True)
+
+    def apply(self, target, area=None, arrival=None, **kwargs) -> Outcome:
+        verdict = self.legality(target, area)
+        if not verdict:
+            return Outcome(False, verdict.reason)
+        return self.run(target, area=area, arrival=arrival)
+
+    # -- doing it ---------------------------------------------------------
+
+    def run(self, target, area=None, arrival=None, **kwargs) -> Outcome:
+        here = self.current_area(target)
+        to = getattr(area, "id", area)
+        if arrival is None:
+            arrival = self.arrival_of(area)
+        notes = list(self.warnings(target, area, arrival))
+        # Read before writing: the first write is $6E12 and the second is
+        # $C04B, so a waypoint taken afterwards would record where we are
+        # going rather than where we were.
+        was = Waypoint(here, self.current_disk(target),
+                       self.current_square(target)) if here is not None else None
+        writes = newecl_writes(here or 0, to, getattr(area, "disk", None),
+                               arrival)
+        _write_all(target, writes)
+        if not jump(target, NEWECL_TAIL):
+            return Outcome(False,
+                           "the writes were made but the program counter could "
+                           "not be set, so nothing has happened yet -- $6E1B is "
+                           "flagged for reload and the next area change will "
+                           "act on it",
+                           writes, tuple(notes))
+        self.back = was
+        name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
+        return Outcome(True, f"warped to {name} - watch for the drive light",
+                       writes, tuple(notes))
+
+    @staticmethod
+    def arrival_of(area):
+        """The area's own arrival square as `(x, y[, facing])`, or None."""
+        got = getattr(area, "arrival", None)
+        if got is None:
+            return None
+        if isinstance(got, tuple):
+            return got
+        if got.facing is None:
+            return (got.x, got.y)
+        return (got.x, got.y, got.facing)
+
+    def warnings(self, target, area, arrival) -> tuple[str, ...]:
+        """Everything true about this warp that the caller should know first."""
+        out = ["the arriving script assumes quest flags the party never set; a "
+               "warp is not the same as having played there"]
+        if arrival is None:
+            out.append("no arrival square is known for this area, so the party "
+                       "lands wherever the arriving script leaves it")
+        if not getattr(area, "has_map", True):
+            out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
+                       "its own")
+        if getattr(area, "outdoors", False):
+            out.append("this is an overland area and loads a SQRDATA rather "
+                       "than a GEO; nothing here has been tried outdoors")
+        try:
+            indoors = target.read(WARP_INDOORS, 1)[0]
+        except Exception:
+            indoors = None
+        if indoors is not None:
+            outdoors_now = indoors == 0
+            if outdoors_now != bool(getattr(area, "outdoors", False)):
+                out.append(f"$49E6 is {indoors}, so LOADFILES will ask for a "
+                           f"{'SQRDATA' if outdoors_now else 'GEO'}")
+        return tuple(out)
+
+    # -- and back again ---------------------------------------------------
+
+    def back_verdict(self, target) -> Verdict:
+        if self.back is None:
+            return Verdict(False, "nothing to go back to: no warp has been "
+                                  "made this session")
+        area = area_by_id(self.back.area)
+        return self.legality(target, area or self.back)
+
+    def apply_back(self, target) -> Outcome:
+        """Warp to where the last warp started, on the square it started on."""
+        verdict = self.back_verdict(target)
+        if not verdict:
+            return Outcome(False, verdict.reason)
+        was, self.back = self.back, None
+        here = self.current_area(target)
+        writes = newecl_writes(here or 0, was.area, was.disk, was.square)
+        _write_all(target, writes)
+        if not jump(target, NEWECL_TAIL):
+            self.back = was
+            return Outcome(False, "the writes were made but the program "
+                                  "counter could not be set", writes)
+        return Outcome(True, f"warped back to area {was.area}", writes)
+
+
+def area_by_id(id: int):
+    """One row of the area table, or None."""
+    for row in area_rows():
+        if getattr(row, "id", None) == id:
+            return row
+    return None

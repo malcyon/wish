@@ -21,7 +21,7 @@ file path works with no emulator anywhere.
 from __future__ import annotations
 
 from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
 from PyQt6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
 
 from automap.config import Settings
@@ -29,13 +29,17 @@ from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
 
-from . import debuglog
+from . import backends, debuglog, debugmode
 from .about import install as install_help
 from .session import BUSY, CONNECTED, Session
 
 # The map is what a player has open while playing; the editor is the
 # occasional visit. Index order is tab order, so the map is first.
 MAP_TAB, EDITOR_TAB = 0, 1
+
+#: No preference: `backends.find` takes whichever answers first. The ordinary
+#: case, and what an empty `Settings.backend` means.
+ANY_BACKEND = ""
 
 
 def load_maps(disks: str | None = None) -> dict:
@@ -97,6 +101,7 @@ class WishWindow(QMainWindow):
         self.session.changed.connect(self._session_said)
 
         self._menu()
+        self._log_warps()
         self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.setCurrentIndex(tab)
         self._tab_changed(self.tabs.currentIndex())
@@ -146,7 +151,99 @@ class WishWindow(QMainWindow):
         self.show_log_action.triggered.connect(self.show_log)
         view.addAction(self.show_log_action)
 
+        self._backend_menu(view)
         install_help(self)
+
+    # -- which backend ---------------------------------------------------
+
+    def _backend_menu(self, view) -> None:
+        """Prefer one backend over another, without editing the JSON.
+
+        It only ever breaks a tie: with one thing answering, `backends.find`
+        needs no help and this menu changes nothing. The labels say which are
+        answering and which are unverified, because one of them is written from
+        a vendor document and nobody on this project has the hardware.
+        """
+        view.addSeparator()
+        menu = view.addMenu("&Backend")
+        menu.setToolTipsVisible(True)
+        self.backend_menu = menu
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self.backend_actions: dict[str, QAction] = {}
+        rows = [(ANY_BACKEND, "&Whichever answers", "")]
+        rows += [(b.name, b.name, b.setup_hint) for b in backends.backends()]
+        for name, text, hint in rows:
+            action = QAction(text, self, checkable=True)
+            action.setToolTip(hint)
+            action.setChecked(
+                (self.settings.backend or "").lower() == name.lower())
+            action.triggered.connect(
+                lambda _checked=False, n=name: self._prefer_backend(n))
+            group.addAction(action)
+            menu.addAction(action)
+            self.backend_actions[name] = action
+        if not any(a.isChecked() for a in self.backend_actions.values()):
+            # A remembered name for a backend this build no longer offers.
+            self.backend_actions[ANY_BACKEND].setChecked(True)
+        menu.aboutToShow.connect(self.label_backends)
+
+    def label_backends(self) -> None:
+        """Say which are answering, when the menu is opened and not before.
+
+        `probe()` is a TCP connect with a short timeout; doing it on the poll
+        timer would be noise, and doing it once at startup would be stale by
+        the time anybody looked.
+        """
+        for backend in backends.backends():
+            action = self.backend_actions.get(backend.name)
+            if action is None:
+                continue
+            state = "answering" if backend.present() else "not answering"
+            if not backend.verified:
+                state += ", unverified: nobody here has the hardware"
+            action.setText(f"{backend.name} - {state}")
+
+    def _prefer_backend(self, name: str) -> None:
+        """Remember the preference and act on it now.
+
+        `Session` takes its preference when it is built and offers no setter,
+        so this is the whole of the state it keeps about one. A different
+        backend already attached is dropped: the next poll reattaches, and the
+        point of choosing is to be on the other one.
+        """
+        self.settings.backend = name
+        self.settings.save()
+        self.session._preferred = name or None
+        attached = getattr(self.session, "backend", None)
+        if name and attached is not None and \
+                attached.name.lower() != name.lower():
+            self.session.detach(f"switching to {name}")
+        self.statusBar().showMessage(
+            f"backend: {name}" if name else "backend: whichever answers")
+
+    # -- the warp row ----------------------------------------------------
+
+    def _log_warps(self) -> None:
+        """A line in the debug log for every warp attempted, with its writes.
+
+        Our own writes to our own machine, so the log's privacy claims are
+        unaffected -- it still records no file paths, no character names and no
+        bytes from a save.
+        """
+        bar = getattr(self.map, "warp_bar", None)
+        if bar is None:
+            return
+        onward = bar.say
+
+        def say(text: str, detail: str = "", alarm: bool = False) -> None:
+            outcome = bar.last
+            where = ", ".join(f"${a:04X}+{len(b)}"
+                               for a, b in getattr(outcome, "writes", ()))
+            debuglog.note("warp: %s [%s]", text, where or "no writes")
+            onward(text, detail, alarm=alarm)
+
+        bar.say = say
 
     # -- the debug log ---------------------------------------------------
 
@@ -189,6 +286,7 @@ class WishWindow(QMainWindow):
     def _log_the_state(self) -> None:
         """What was already true when the log was turned on."""
         debuglog.note("tab: %s", self.tabs.tabText(self.tabs.currentIndex()))
+        debuglog.note("%s", debugmode.note())
         debuglog.note("session: %s, polling every %d ms",
                       self.session.note, self.session.interval_ms)
         self._log_save()
