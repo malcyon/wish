@@ -1,10 +1,10 @@
 # A commissions panel
 
-**Status: the reading half is built.** A quest log on the Automapper tab:
-what the City Council has asked the party to do, and what it has already paid
-for. `por/commissions.py` decodes it, `automap/commissions.py` draws it, and
-`tests/test_commissions.py` holds the verification below. It is **not wired
-into `automap/window.py`** yet -- that is the one step left.
+**Status: built and wired.** A quest log on the Automapper tab: what the City
+Council has asked the party to do, and what it has already paid for.
+`por/commissions.py` decodes it, `automap/commissions.py` draws it, it sits in
+the right-hand column of the map tab under the notes, and
+`tests/test_commissions.py` holds the verification below.
 
 The research is done and is in `work/reports/quest-flags.md`. Four lines are
 CONFIRMED and buildable from 224 bytes that are already inside `SAVEDGAME0`, so
@@ -35,10 +35,58 @@ ones, and anything above `$4AFF` — no ECL operand reaches there, so
 
 ---
 
+## The offer and the ledger entry are the same byte
+
+Playing the slums, the panel showed *clear the slums* under **Available** and
+*slums cleared* under **In progress** at the same time, which reads as two
+commissions. It is one byte.
+
+`ECL08`'s board gates candidate 0 on `$4AA6 + 21 != 255`, and `$4AA6 + 21` **is**
+the ledger entry the clerk pays for. The two halves of the panel were showing
+the same flag from two ends: the board's imperative on the way in, and the
+clerk's own speech -- which is phrased as the finished state, "slums cleared" --
+on the way out.
+
+The byte's four states, from `por/commissions.py`:
+
+| value | what it means |
+|---|---|
+| 0 | untouched |
+| 1-253 | an area script's own marker. For the slums it counted 3, and `$4ABB` -- documented as "slum progress, N of 25" -- read 3 at the same moment, so the two count the same thing |
+| 254 | done; the reward is still at the City Hall |
+| 255 | paid |
+
+**It is not one-to-one in either direction**, which is why the panel does not
+collapse the two into a single "quest" row:
+
+* offer 2, *bring back books, maps and tomes*, settles **six** ledger entries
+  (4-9);
+* offer 4, *see Councilman Cadorna*, is gated on `$4A97` and `$4ABE` as well as
+  ledger 18, and offer 13 has two separate routes through the same test;
+* offer 9 is withdrawn -- an unconditional `GOTO` past its own body -- and
+  settles nothing at all;
+* several ledger entries (2, 11, 24, 25) are never offered by the board.
+
+So the data does not carry a quest-log concept. What it carries is a board of
+sixteen speeches and a ledger of twenty-six bytes, related by the gates.
+
+**What the panel does about it**, in `automap/commissions.py`:
+
+* *Available from the clerk* keeps the board's own imperative, and each row's
+  tooltip names the ledger entries that offer would settle.
+* The ledger group is headed **Working towards**, not *In progress*, so a
+  completion phrase under it reads as a destination rather than a claim.
+* A row whose entry is also on the board right now says **on the board**, and
+  its tooltip says outright that it is one commission in one state, not two.
+* Every row keeps its address and raw value in the tooltip, because the value
+  between 1 and 253 means whatever its own area script decided.
+
+`test_the_commissions_panel_does_not_show_one_flag_as_two_commissions` pins it.
+
 ## Shape
 
-A collapsible panel beside the map, in the bottom strip with the rest of the
-live data. Three groups:
+A panel in the right-hand column of the map tab, between the notes list and the
+messages. Three groups:
 
 * **Available** — what the clerk would offer on the next visit.
 * **In progress** — accepted, not yet done.
@@ -65,12 +113,11 @@ or a `SaveGame0` — the lengths are distinct, so no flag is needed. No Qt.
 `set_message(text)` for when there are no bytes. It redraws only when the flag
 block changes, and holds nothing that can be typed into.
 
-**Wiring, still to do** — in `automap/window.py`: build a `CommissionsPanel()`
-beside `RosterPanel`, and in `poll_live` call `update_from(save0_bytes)` with
-the block `read_blocks` already fetches (`Snapshot` does not keep the raw bytes,
-so either widen it or hand the panel the bytes directly). On a poll that
-returns nothing, leave the panel alone — plot flags do not change while the
-game is in a menu.
+**Wired** in `automap/window.py`: `poll_live` reads the two blocks itself and
+hands the panel the `SAVEDGAME0` bytes — `Snapshot` does not keep them — once
+the snapshot has decoded. On a poll that yields nothing the panel is left
+alone, because plot flags do not change while the game is in a menu and a quest
+log that blanked every time somebody opened one would be a flicker.
 
 ## Verification — done, in `tests/test_commissions.py`
 

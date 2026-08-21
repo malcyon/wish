@@ -12,6 +12,20 @@ All the decoding is `por/commissions.py`, which has no Qt in it and is tested
 against saves. This module is presentation: `update_from()` takes the same
 bytes that module does -- the 224 flags at `$4A20`, a `SaveGame0`, or a whole
 `SAVEDGAME0` image -- so it works from a live read and from a save file alike.
+
+**The offer and the ledger entry are usually the same byte**, and the panel says
+so rather than pretending they are two things. `ECL08`'s board gates "clear the
+slums" on `$4AA6+21 != 255`, and that byte is also the ledger entry whose name
+is the clerk's speech when he pays for it -- "slums cleared". Showing the offer
+under *Available* and the same byte under a heading that read *In progress* made
+one flag look like two commissions, and named an unfinished one with the words
+for having finished it. So: the offers keep the clerk's own imperative, the
+ledger rows are headed **Working towards**, a row that is also on the board says
+so, and every row's tooltip carries the address and the value. The mapping is
+not one-to-one in either direction -- one offer can settle six entries, some
+gates read appointment flags as well, and one candidate settles nothing -- which
+is why the panel does not try to collapse the two into a single "quest".
+See `docs/103-commissions-panel.md`.
 """
 
 from __future__ import annotations
@@ -107,6 +121,21 @@ def _entry_rows(entries):
     return [(e.name, "", _entry_tip(e)) for e in entries]
 
 
+def _offer_tip(offer) -> str:
+    """Which ledger entries this offer would settle, by name.
+
+    The link is what stops the two halves of the panel reading as two different
+    commissions: `ECL08`'s gate for this candidate is a test on these bytes.
+    """
+    tip = f"offer {offer.order} on the board at ECL08 $A84D"
+    if offer.ledger:
+        settles = ", ".join(f"{i} ({book.ledger_name(i)})" for i in offer.ledger)
+        tip += f"\nsettles ledger {settles}"
+    else:
+        tip += "\nsettles no ledger entry"
+    return tip
+
+
 def _entry_tip(entry) -> str:
     tip = f"ledger {entry.index} at ${entry.address:04X} = {entry.value}"
     if entry.source:
@@ -144,10 +173,10 @@ class CommissionsPanel(QWidget):
         column.addWidget(self.completed)
 
         self.groups = {
-            "available": Group("Available"),
-            "progress": Group("In progress"),
-            "waiting": Group("Done - reward waiting"),
-            "paid": Group("Done - paid"),
+            "available": Group("Available from the clerk"),
+            "progress": Group("Working towards"),
+            "waiting": Group("Finished - reward waiting"),
+            "paid": Group("Finished - paid"),
             "summons": Group("Summoned to"),
         }
         for group in self.groups.values():
@@ -183,12 +212,18 @@ class CommissionsPanel(QWidget):
         self.completed.setText(f"Commissions completed: {state.completed}")
 
         self.groups["available"].show_rows(
-            [(o.text, "", f"offer {o.order} on the board at ECL08 $A84D")
-             for o in state.offers]
+            [(o.text, "", _offer_tip(o)) for o in state.offers]
             or [("the clerk has nothing to offer", "", "")])
         # Sorted by ledger index throughout, which is roughly the plot's order.
+        on_board = {i for o in state.offers for i in o.ledger}
         self.groups["progress"].show_rows(
-            [(e.name, f"{e.value}", _entry_tip(e)) for e in state.in_progress])
+            [(e.name, f"marker {e.value}"
+              + ("  on the board" if e.index in on_board else ""),
+              _entry_tip(e)
+              + ("\nthe clerk is offering this same byte: it is one "
+                 "commission in one state, not two" if e.index in on_board
+                 else ""))
+             for e in state.in_progress])
         self.groups["waiting"].show_rows(_entry_rows(state.reward_waiting))
         self.groups["paid"].show_rows(_entry_rows(state.paid))
         self.groups["summons"].show_rows(
