@@ -1,6 +1,7 @@
 """The combat view, against a captured fight.
 
-`fixtures/combat-arena.bin` is a real training-hall duel, taken out of a running
+The arena is composed rather than captured -- see `tests/gamedata.py`. It used
+to be a snapshot of live memory taken out of a running
 machine at `work/drive/c3-combat1.bin` and trimmed to the seven ranges the view
 reads. It is stored as chunks of `addr, length, bytes` so the addresses travel
 with the data and nothing here has to repeat them.
@@ -18,6 +19,7 @@ from automap import combat
 from automap.render import Label
 from automap.target import MemoryTarget
 from automap.state import Automapper
+from gamedata import synthetic_arena
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -28,19 +30,14 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def chunks(path: pathlib.Path) -> dict[int, bytes]:
-    raw = path.read_bytes()
-    out, at = {}, 0
-    while at < len(raw):
-        addr, length = struct.unpack_from("<HH", raw, at)
-        out[addr] = raw[at + 4:at + 4 + length]
-        at += 4 + length
-    return out
-
-
 def arena() -> MemoryTarget:
-    """The captured duel: BRUTUS at (25,13) against ROLF at (30,13)."""
-    return MemoryTarget(chunks(FIXTURES / "combat-arena.bin"))
+    """A duel: the party's slot 0 at (25,13) against a monster at (30,13).
+
+    Composed by `tests/gamedata.py` from the player's own saved games plus a
+    generated map and position table -- not a capture of live machine memory,
+    which would carry whatever game code was resident at the time.
+    """
+    return MemoryTarget(synthetic_arena())
 
 
 @pytest.fixture
@@ -72,7 +69,7 @@ def test_a_parameter_block_that_cannot_be_one_is_refused():
 def test_the_shape_is_read_and_never_assumed():
     """SQRPACI00 carries a stride of 20 and bounds 17 x 35, so hard-coding
     56 x 26 would be wrong for it."""
-    block = bytearray(chunks(FIXTURES / "combat-arena.bin")[combat.PARAMS])
+    block = bytearray(synthetic_arena()[combat.PARAMS])
     block[combat.P_STRIDE] = 20
     block[combat.P_MAX_X], block[combat.P_MAX_Y] = 17, 35
     shape = combat.shape_from_params(bytes(block))
@@ -88,13 +85,13 @@ def test_the_captured_duel_decodes(battle):
     assert battle.shape.map_base == 0x8C00 and battle.shape.stride == 56
     assert battle.camera == (22, 10)
     assert [(c.index, c.name, c.square) for c in battle.combatants] == [
-        (5, "BRUTUS", (25, 13)), (8, "ROLF", (30, 13))]
+        (0, "BRUTUS", (25, 13)), (8, "ORC", (30, 13))]
 
 
 def test_the_party_is_the_first_eight_slots(battle):
     """0-7 the party in save-slot order, 8 upward the monsters -- the same
     encoding the effects owner byte uses."""
-    assert [c.index for c in battle.party] == [5]
+    assert [c.index for c in battle.party] == [0]
     assert [c.index for c in battle.enemies] == [8]
     assert battle.party[0].kind == "party" and battle.enemies[0].kind == "enemy"
 
@@ -114,14 +111,14 @@ def test_the_combat_numbers_come_from_the_roster_not_the_record(battle):
     """$0E1 is the unarmoured base -- AC 10 for every player character -- and
     the roster block carries the AC they are actually fighting at."""
     brutus = battle.party[0]
-    assert (brutus.hp, brutus.hp_max) == (6, 11)
-    assert (brutus.armour_class, brutus.thac0) == (2, 18)
+    assert (brutus.hp, brutus.hp_max) == (11, 11)
+    assert (brutus.armour_class, brutus.thac0) == (9, 18)
     assert brutus.record.armour_class_base_value == 10
 
 
 def test_a_round_is_over_when_every_initiative_byte_is_spent(battle):
     assert not battle.round_over
-    assert {c.index: c.initiative for c in battle.combatants} == {5: 2, 8: 1}
+    assert {c.index: c.initiative for c in battle.combatants} == {0: 2, 8: 1}
 
 
 def test_the_whole_fight_costs_two_bursts():
@@ -136,11 +133,12 @@ def test_the_whole_fight_costs_two_bursts():
 
 def test_the_tooltip_only_shows_what_is_decoded(battle):
     lines = battle.enemies[0].lines()
-    assert lines[0] == "8. ROLF  (30,13)"
-    assert "6 / 11 hp" in lines
-    assert "AC 2   THAC0 18   move 9" in lines
-    assert "1 attack per round (1d2)" in lines
-    assert "50 experience" in lines
+    assert lines[0] == "8. ORC  (30,13)"
+    assert "5 / 5 hp" in lines
+    assert "AC 6   THAC0 19   move 9" in lines
+    assert "1 hit dice" in lines
+    # 10 + 1 a hit point, times 5 hit points -- the Monster Manual orc.
+    assert "15 experience" in lines
     assert any(line.startswith("saves 14 / 15 / 16 / 17 / 17") for line in lines)
 
 
@@ -185,7 +183,7 @@ def test_one_that_leaves_the_map_keeps_its_last_square(battle):
     gone = next(c for c in after.combatants if c.index == 8)
     assert gone.square == (30, 13) and not gone.on_map and gone.dimmed
     # ...but never invented: with nothing remembered there is nothing to draw.
-    assert [c.index for c in combat.read_battle(machine).combatants] == [5]
+    assert [c.index for c in combat.read_battle(machine).combatants] == [0]
 
 
 # --- geometry ---------------------------------------------------------------
@@ -206,7 +204,7 @@ def test_the_battlefield_draws_ground_and_combatants(battle):
     assert kinds.count("camera") == 1
     assert "block" in kinds                       # the arena has walls in view
     hp = [p for p in prims if isinstance(p, Label)]
-    assert sorted(p.text for p in hp) == ["6", "6"]
+    assert sorted(p.text for p in hp) == ["11", "5"]
 
 
 def test_whoever_may_still_act_is_outlined(battle):
@@ -275,6 +273,6 @@ def test_the_canvas_answers_a_tooltip(app, tmp_path, monkeypatch, battle):
     cell = canvas.cell
     px = combat.MARGIN + (30 - x0) * cell + cell / 2
     py = combat.MARGIN + (13 - y0) * cell + cell / 2
-    assert canvas.tooltip_at(px, py).startswith("8. ROLF")
+    assert canvas.tooltip_at(px, py).startswith("8. ORC")
     assert canvas.tooltip_at(combat.MARGIN + cell / 2,
                              combat.MARGIN + cell / 2) is None

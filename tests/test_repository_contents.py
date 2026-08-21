@@ -31,7 +31,9 @@ FORBIDDEN_SUFFIXES = {
 #: The only binaries allowed in `tests/fixtures/`, and why.
 #:
 #: Every one is **the player's own saved game**, produced by playing, not
-#: content SSI shipped. Several capture states no disk still holds, so they
+#: content SSI shipped. A capture of live machine memory is not a saved game --
+#: it carries whatever code was resident at the time -- so `combat-arena.bin`
+#: was moved to `work/captures/` and the combat tests build an arena instead. Several capture states no disk still holds, so they
 #: cannot be regenerated. Anything the publisher shipped -- a GEO, an overlay,
 #: the party on POOL1 -- is read from the player's disks at run time instead;
 #: `tests/gamedata.py` does that.
@@ -43,7 +45,6 @@ ALLOWED_FIXTURES = {
     "savedgame1.bin",
     "party6_savedgame0.bin",
     "party6_after_combat.bin",
-    "combat-arena.bin",
     "brutus.chr",
     "lady_katherine.chr",
     "malcyon.chr",
