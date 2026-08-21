@@ -29,8 +29,8 @@ from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
 
-from .about import install as install_help
 from . import debuglog
+from .about import install as install_help
 from .session import BUSY, CONNECTED, Session
 
 # The map is what a player has open while playing; the editor is the
