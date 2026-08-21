@@ -17,13 +17,15 @@ import pathlib
 import shutil
 
 import pytest
+from gamedata import disk_dir
 
 from por.d64 import D64
 from por.record import FieldNotStored
 from por.savegame import ROSTER_STRIDE, SaveGame0, SaveGame1
 from por.yaml_io import export_save, import_into
 
-DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 SAVE = f"{DISKS}/PORSAVE4.D64"
 GAME = "work/POOL1.D64.orig"
 

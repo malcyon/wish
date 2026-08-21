@@ -9,14 +9,15 @@ import os
 import pathlib
 
 import pytest
-from gamedata import disk_path
+from gamedata import disk_dir, disk_path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.target import Fix, MemoryTarget, NotConnected, party_fix, read_fix
 from wish import backends as bk
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists(),
                                 reason="needs the save disks")
 

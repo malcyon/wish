@@ -111,11 +111,15 @@ def curse_dir():
     return None
 
 
-def curse_disks():
+def curse_disks(engine_only: bool = True):
     """Every readable Curse side, skipping when there are none.
 
     One of the three published rips carries error bytes and is 175531 bytes,
     which `por.d64` refuses; that side is simply skipped rather than failed.
+
+    `engine_only` keeps the default to game sides, because a save disk matches
+    the glob too and carries its own `SAVEAZURE`. Pass False to reach the save
+    disks -- the player's exported characters live only there.
     """
     where = curse_dir()
     if where is None:
@@ -126,35 +130,69 @@ def curse_disks():
             disk = D64.open(path)
         except Exception:
             continue
-        # A save disk matches the glob too, and holds nothing but a save and
-        # some character files. Take only images that carry engine data.
-        if any(e.name.startswith(b"GEO") or e.name == b"ITEMNAMES"
-               for e in disk.directory()):
-            out.append(disk)
+        if engine_only and not any(
+                e.name.startswith(b"GEO") or e.name == b"ITEMNAMES"
+                for e in disk.directory()):
+            continue
+        out.append(disk)
     if not out:
         pytest.skip("no readable Curse game disk here")
     return out
 
 
-def curse_file(name: str) -> bytes:
+def curse_file(name: str, engine_only: bool = True) -> bytes:
     """One file off whichever Curse side carries it, longest copy first.
 
     The sides disagree, and not only by duplication: `SAVEAZURE` is the full
     7424-byte pre-generated party on side B3 and a 2030-byte truncated demo
     party of the same name on side A2. Taking the first match gets the wrong
     one, so take the biggest.
+
+    **Size comes from following the sector chain, never from the directory's
+    block count.** This skipped any entry whose count was zero, and Curse writes
+    exactly that for a character it exports: `\x02BRUTUS` on the save disk
+    reports 0 blocks and reads back 582 bytes from an intact chain. The same
+    defect hides a whole title -- every file on all six Death Knights of Krynn
+    sides reports 0, because that release's directory was rewritten by the
+    cracker (`work/reports/goldbox-inventory.md`). The chain is the file; the
+    count is a claim about it.
     """
     encoded = name.encode() if isinstance(name, str) else name
     best = None
-    for disk in curse_disks():
+    for disk in curse_disks(engine_only=engine_only):
         entry = disk.find(encoded)
-        if entry is None or not entry.block_count:
+        if entry is None:
             continue
-        if best is None or entry.block_count > best[0]:
-            best = (entry.block_count, disk, entry)
+        try:
+            data = disk.read_file(entry)
+        except Exception:
+            continue                      # a broken chain is not a candidate
+        if best is None or len(data) > len(best):
+            best = data
     if best is None:
         pytest.skip(f"no Curse disk here carries {name}")
-    return best[1].read_file(best[2])
+    return best
+
+
+def curse_exports():
+    """Every exported Curse character on the player's disks, by file name.
+
+    Curse marks an export with a leading `\x02` where Pool of Radiance uses
+    `\x01`, and writes a 582-byte PRG: the 580-byte record behind its `$7C00`
+    load address. These live on save disks, so this looks at every side.
+    """
+    out = {}
+    for disk in curse_disks(engine_only=False):
+        for entry in disk.directory():
+            if not bytes(entry.name).startswith(b"\x02"):
+                continue
+            try:
+                data = disk.read_file(entry)
+            except Exception:
+                continue
+            if len(data) == 582:
+                out[bytes(entry.name)] = data
+    return out
 
 
 needs_curse_disks = pytest.mark.skipif(curse_dir() is None,

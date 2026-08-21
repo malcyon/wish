@@ -8,7 +8,7 @@ whole-corpus checks, which skip when they are not mounted.
 import pathlib
 
 import pytest
-from gamedata import game_file, synthetic_geo
+from gamedata import disk_dir, game_file, synthetic_geo
 
 from por.geo import (
     EAST,
@@ -25,7 +25,8 @@ from por.geo import (
     load_geo_files,
 )
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL5.D64").exists(),
                                 reason="needs the game disks")

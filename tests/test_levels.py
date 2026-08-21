@@ -7,13 +7,15 @@ import glob
 import pathlib
 
 import pytest
+from gamedata import disk_dir
 
 from por.d64 import D64
 from por.levels import TABLES, at_level, next_threshold, progress
 from por.record import CharacterRecord
 from por.savegame import SaveGame0
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists(),
                                 reason="needs the save disks")

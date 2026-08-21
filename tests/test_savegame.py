@@ -9,6 +9,7 @@ indistinguishable, which is how the wrong one survived.
 import pathlib
 
 import pytest
+from gamedata import disk_dir
 
 from por.record import CharacterRecord
 from por.savegame import (
@@ -272,7 +273,7 @@ class TestStagingPage:
     """$5500 holds one record in the character layout -- whatever the game last
     loaded there. See docs/50-experiments.md, "the orc left behind at $5500"."""
 
-    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    DISKS = str(disk_dir() or "no-disks-here")
 
     @staticmethod
     def _page(save: SaveGame0) -> bytes:
@@ -324,7 +325,7 @@ class TestRosterSpellCounts:
     See docs/50-experiments.md, "the spell counts, and how thin the retraction
     was"."""
 
-    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    DISKS = str(disk_dir() or "no-disks-here")
 
     def _pair(self, path):
         import pathlib as _p
@@ -380,7 +381,7 @@ class TestShippedNpcRecords:
     "NPC marker" is $FF in the shipped file. See docs/50-experiments.md,
     "PRINCESS FATIMA was never impossible"."""
 
-    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    DISKS = str(disk_dir() or "no-disks-here")
     SHIPPED = {
         "GENHEERIS": ("POOL5.D64", b"MON58"),
         "MAD MAN": ("POOL2.D64", b"MON19"),
@@ -463,7 +464,7 @@ class TestTheCacheRefreshed:
     See docs/50-experiments.md, "the spell counts, and how thin the retraction
     was"."""
 
-    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    DISKS = str(disk_dir() or "no-disks-here")
 
     def _save(self, name):
         import pathlib as _p
@@ -504,7 +505,7 @@ class TestPartyPosition:
     directions. Three steps north moved y by exactly 3 and left x alone; three
     steps west did the reverse; turning on the spot moved only facing."""
 
-    DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+    DISKS = str(disk_dir() or "no-disks-here")
 
     def _save(self, name):
         import pathlib

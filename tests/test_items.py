@@ -3,12 +3,14 @@
 import pathlib
 
 import pytest
+from gamedata import disk_dir
 
 from por.d64 import D64
 from por.items import ITEM_AREA_BASE, ITEM_SIZE, items_for_slot, load_item_names
 from por.savegame import SaveGame0
 
-DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 POOL1_ORIG = "work/POOL1.D64.orig"
 
 # Needs a specimen under `work/`, which is gitignored: a checkout without
@@ -129,7 +131,6 @@ def test_silver_appeared_from_looting(save):
     assert all(s.record.silver >= 25 for s in save.characters)
 
 
-DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL2.D64").exists(),
                                 reason="needs the full set of game disks")
 
