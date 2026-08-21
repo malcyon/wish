@@ -33,7 +33,9 @@ from .about import install as install_help
 from . import debuglog
 from .session import BUSY, CONNECTED, Session
 
-EDITOR_TAB, MAP_TAB = 0, 1
+# The map is what a player has open while playing; the editor is the
+# occasional visit. Index order is tab order, so the map is first.
+MAP_TAB, EDITOR_TAB = 0, 1
 
 
 def load_maps(disks: str | None = None) -> dict:
@@ -56,7 +58,7 @@ class WishWindow(QMainWindow):
                  maps: dict | None = None, area: str | None = None,
                  settings: Settings | None = None,
                  session: Session | None = None,
-                 tab: int = EDITOR_TAB):
+                 tab: int = MAP_TAB):
         super().__init__()
         self.settings = settings or Settings()
 
@@ -72,8 +74,8 @@ class WishWindow(QMainWindow):
                                  drive=False)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.editor, "Character Editor")
         self.tabs.addTab(self.map, "Automapper")
+        self.tabs.addTab(self.editor, "Character Editor")
         self.setCentralWidget(self.tabs)
 
         # One status bar for the window. The pages keep their own -- they are
@@ -125,7 +127,7 @@ class WishWindow(QMainWindow):
         menu.addAction(quit_)
 
         view = self.menuBar().addMenu("&View")
-        for i, name in ((EDITOR_TAB, "&Character Editor"), (MAP_TAB, "&Automapper")):
+        for i, name in ((MAP_TAB, "&Automapper"), (EDITOR_TAB, "&Character Editor")):
             action = QAction(name, self)
             action.setShortcut(QKeySequence(f"Ctrl+{i + 1}"))
             action.triggered.connect(lambda _c=False, at=i:
