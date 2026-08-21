@@ -20,14 +20,16 @@ file path works with no emulator anywhere.
 
 from __future__ import annotations
 
-from PyQt6.QtGui import QAction, QKeySequence
-from PyQt6.QtWidgets import QMainWindow, QStatusBar, QTabWidget
+from PyQt6.QtCore import QUrl
+from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
 
 from automap.config import Settings
 from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
 
+from . import debuglog
 from .session import BUSY, CONNECTED, Session
 
 EDITOR_TAB, MAP_TAB = 0, 1
@@ -57,6 +59,11 @@ class WishWindow(QMainWindow):
         super().__init__()
         self.settings = settings or Settings()
 
+        # What the log has already said, so a title change or a poll does not
+        # write the same line again.
+        self._logged_save: str | None = None
+        self._logged_area: str | None = None
+
         self.editor = EditorWindow(save, game_disk)
         self.mapper = Automapper(None, maps if maps is not None else load_maps(),
                                  area=area)
@@ -79,6 +86,7 @@ class WishWindow(QMainWindow):
         self.editor.statusBar().messageChanged.connect(self._editor_said)
         self.map.statusChanged.connect(self._map_said)
         self.editor.windowTitleChanged.connect(self.setWindowTitle)
+        self.editor.windowTitleChanged.connect(lambda _t: self._log_save())
         self.setWindowTitle(self.editor.windowTitle())
 
         self.session = session or Session(
@@ -123,6 +131,82 @@ class WishWindow(QMainWindow):
                                      self.tabs.setCurrentIndex(at))
             view.addAction(action)
 
+        # Off at every start, and deliberately not remembered: a logging
+        # setting that survives a restart is one you forget is on.
+        view.addSeparator()
+        self.debug_action = QAction("&Debug log", self, checkable=True)
+        self.debug_action.setChecked(False)
+        self.debug_action.toggled.connect(self._debug_log)
+        view.addAction(self.debug_action)
+        self.show_log_action = QAction("Sho&w log", self)
+        self.show_log_action.setEnabled(False)
+        self.show_log_action.triggered.connect(self.show_log)
+        view.addAction(self.show_log_action)
+
+    # -- the debug log ---------------------------------------------------
+
+    def _debug_log(self, on: bool) -> None:
+        """Start or stop writing, at once, and say where the file is."""
+        if not on:
+            debuglog.stop()
+            self.show_log_action.setEnabled(False)
+            self.statusBar().showMessage("debug log off")
+            return
+        path = debuglog.start()
+        if path is None:
+            self.debug_action.setChecked(False)
+            self.announce("Debug log",
+                          "The log file could not be opened. Check that the "
+                          "settings directory is writable.")
+            return
+        self.show_log_action.setEnabled(True)
+        self._log_the_state()
+        self.statusBar().showMessage(f"debug log: {path}")
+        self.announce(
+            "Debug log",
+            f"Writing to:\n\n{path}\n\n"
+            "It records versions, which backend attached, the tab in view, "
+            "errors with their tracebacks, and the shape of an open save -- "
+            "not file paths, character names or any bytes from a save. "
+            "Nothing is sent anywhere: read it before you attach it to a "
+            "report. View > Show log opens it.")
+
+    def announce(self, title: str, text: str) -> None:
+        """A modal note. A method so a test can silence it."""
+        QMessageBox.information(self, title, text)
+
+    def show_log(self) -> None:
+        """Open the log in whatever the desktop uses for a text file."""
+        path = debuglog.path()
+        if path is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _log_the_state(self) -> None:
+        """What was already true when the log was turned on."""
+        debuglog.note("tab: %s", self.tabs.tabText(self.tabs.currentIndex()))
+        debuglog.note("session: %s, polling every %d ms",
+                      self.session.note, self.session.interval_ms)
+        self._log_save()
+        self._log_area()
+
+    def _log_save(self) -> None:
+        """The shape of the open file: size, blocks, characters, area."""
+        if not debuglog.is_on() or self.editor.party is None:
+            return
+        shape = debuglog.save_shape(self.editor.party, self.editor.path)
+        if shape != self._logged_save:
+            self._logged_save = shape
+            debuglog.note("save file: %s", shape)
+
+    def _log_area(self) -> None:
+        """Which map is being drawn, and how sure the fingerprint is."""
+        if not debuglog.is_on():
+            return
+        shape = debuglog.area_shape(self.mapper.state)
+        if shape != self._logged_area:
+            self._logged_area = shape
+            debuglog.note("map area: %s", shape)
+
     def _editor_said(self, text: str) -> None:
         if self.tabs.currentIndex() == EDITOR_TAB and text:
             self.statusBar().showMessage(text)
@@ -155,10 +239,13 @@ class WishWindow(QMainWindow):
         else:
             self.session.set_reader(None)
             self.statusBar().showMessage(self._file_note())
+        debuglog.note("tab: %s, polling every %d ms", self.tabs.tabText(index),
+                      self.session.interval_ms)
 
     def _read_map(self, target) -> None:
         self.mapper.target = target
         self.map.tick()
+        self._log_area()
 
     def _file_note(self) -> str:
         if self.editor.party is None:
@@ -179,6 +266,7 @@ class WishWindow(QMainWindow):
             return
         self.session.close()
         self.map.shutdown()
+        debuglog.stop()
         super().closeEvent(event)
 
 
