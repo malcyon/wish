@@ -97,17 +97,39 @@ and never instead of it -- the text is what a screen reader gets, and what
 someone who does not recognise the icon gets. Multi-class characters show one
 icon per class.
 
-| class | candidate |
-|---|---|
-| fighter | crossed swords |
-| magic-user | wand, or a hat |
-| cleric | a holy symbol |
-| thief | a mask, or a dagger |
+| class | icon | code point |
+|---|---|---|
+| magic-user | `hat-wizard` | U+F6E8 |
+| cleric | `cross`, or `hands-praying` | U+F654 |
+| thief | `mask` | U+F6FA |
+| fighter | **nothing suitable** | — |
 
-Font Awesome Free's set is small and has no wizard hat, so expect to compromise
-or draw four small glyphs by hand -- four 16x16 shapes we own outright is not
-much work, and sidesteps attribution entirely. **Worth pricing both before
-adding a dependency.**
+**Font Awesome Free has no sword.** `sword` and `swords` are Pro only, and
+`khanda` is a Sikh religious emblem — wrong in meaning and illegible at 12
+pixels. So the fighter's icon, and the "encounter" note type in
+`docs/98-automap-notes.md`, have to be drawn by us. Free *does* carry a
+tabletop set added in 5.4.0 — `hat-wizard`, `dragon`, `dungeon`, `scroll`,
+`dice-d20`, `ring`, `ghost` — so the earlier note here that it "has no wizard
+hat" was wrong.
+
+Reckon on **four to six small glyphs of our own**: crossed swords, a chest,
+poison, paralysis, a note dog-ear. `automap/render.py`'s existing `Line`,
+`Poly` and `Rect` primitives already express that kind of shape, and anything
+we draw ourselves carries no attribution and no licence question.
+
+## Two licence traps
+
+Confirmed against the package's own `LICENSE.txt`, not from memory:
+
+* **Brands must not ship.** The licence forbids using the brand logos except to
+  represent the company in question, and the set includes
+  `wizards-of-the-coast`. Bundle Solid only.
+* **Subsetting the font makes an OFL "Modified Version"**, which may not keep
+  the reserved name "Font Awesome". If we subset to save space, it has to be
+  renamed.
+
+Otherwise there is no conflict with GPL-3.0. Ship `LICENSE.txt` beside the
+font, and carry an attribution line in the README and the About box.
 
 ## Verification
 
