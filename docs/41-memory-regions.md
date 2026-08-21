@@ -35,14 +35,14 @@ says only while the overlay that owns it is resident.
 | `$49C0` | **party x** | SAVEDGAME0 | CONFIRMED | lags a move; the game's own status line is authoritative |
 | `$49C1` | **party y** | SAVEDGAME0 | CONFIRMED |  |
 | `$49C2` | **party facing** | SAVEDGAME0 | CONFIRMED | 0 north, 1 east, 2 south, 3 west |
-| `$49C7`–`$49C9` | **clock** | SAVEDGAME0 | CONFIRMED | units of a minute, tens, then the HOUR. DUNGEON $09F7 prints $49C9 : $49C8 $49C7. Read as 'minutes' for a while, which made PORSAVE11 come out at 27:27 |
+| `$49C6`–`$49CB` | **clock** | SAVEDGAME0 | CONFIRMED | six digits, not three: limits 0A 0A 06 18 1E 0C at $A83C. $49C7 minutes, $49C8 tens of minutes, $49C9 the HOUR -- DUNGEON $09F7 prints those three -- then $49CA and $49CB carry the day and the month. Read as plain 'minutes' for a while, which made PORSAVE11 come out at 27:27 |
 | `$49E7`–`$49E9` | **wall slot pinned** | SAVEDGAME0 | PROBABLE | one flag per wall slot: do not relocate its screen codes |
 | `$49F0`–`$49F1` | **previous square** | SAVEDGAME0 | PROBABLE | the square occupied before the last move; tracked from the walk saves, never confirmed against the game's own use |
 | `$49FC` | **party count** | SAVEDGAME0 | PROBABLE | CAMP increments and decrements it |
 | `$49FD`–`$49FE` | **wall colour by roofed bit** | SAVEDGAME0 | PROBABLE | a two-entry table indexed by the roofed bit of the square you stand on; every ECL writes both |
 | `$4A00`–`$4A1F` | **per-script scratch** | SAVEDGAME0 | PROBABLE | zeroed by DUNGEON $202A whenever the resident ECL changes, so nothing here survives leaving an area. $4A07 is 'staying at the inn' in ECL00 and something else in seven other scripts |
 | `$4A20`–`$4B7F` | **persistent flags** | SAVEDGAME0 | UNKNOWN | survives an area change, unlike $4A00-$4A1F. Largely unread |
-| `$4B80`–`$4BBF` | **effect magnitude** | SAVEDGAME0 | PROBABLE | the fourth of the four parallel effect arrays; how much, for whatever the id means. Zero in every save we hold, because none was taken mid-effect |
+| `$4B80`–`$4BBF` | **effect magnitude** | SAVEDGAME0 | CONFIRMED | the fourth of the four parallel effect arrays: how much, for whatever the id means. ENLARGE on a character with strength 18/98 wrote $E2, which is $80 \| 98 -- the strength to put back. Not zero in every save after all: PORSAVE13 carries 1 in six slots that nobody had looked at |
 | `$4BC0`–`$4BD8` | **loaded-files cache** | SAVEDGAME0 | CONFIRMED | one entry per data-file type, mirroring $6E13 in a running game. Bit 7 is a reload marker, not data -- mask it |
 | `$4BC2` | **current GEO** | SAVEDGAME0 | CONFIRMED | the map the party is on, and the answer to the question that stood open longest. All ten New Phlan saves read $00; PORSAVE13, in the slums, reads $14 |
 | `$4BE0`–`$4CFF` | **combat icon table** | SAVEDGAME0 | CONFIRMED | 8 entries of 36 bytes, ending exactly at $4D00. Record offset 0x220 for each character |

@@ -70,10 +70,12 @@ MAP: tuple[Region, ...] = (
     Region(0x49C1, 1, "party y", OK, saved_in="SAVEDGAME0"),
     Region(0x49C2, 1, "party facing", OK, saved_in="SAVEDGAME0",
            note="0 north, 1 east, 2 south, 3 west"),
-    Region(0x49C7, 3, "clock", OK, saved_in="SAVEDGAME0",
-           note="units of a minute, tens, then the HOUR. DUNGEON $09F7 prints "
-                "$49C9 : $49C8 $49C7. Read as 'minutes' for a while, which "
-                "made PORSAVE11 come out at 27:27"),
+    Region(0x49C6, 6, "clock", OK, saved_in="SAVEDGAME0",
+           note="six digits, not three: limits 0A 0A 06 18 1E 0C at $A83C. "
+                "$49C7 minutes, $49C8 tens of minutes, $49C9 the HOUR -- "
+                "DUNGEON $09F7 prints those three -- then $49CA and $49CB "
+                "carry the day and the month. Read as plain 'minutes' for a "
+                "while, which made PORSAVE11 come out at 27:27"),
     Region(0x49E7, 3, "wall slot pinned", MAYBE, saved_in="SAVEDGAME0",
            note="one flag per wall slot: do not relocate its screen codes"),
     Region(0x49F0, 2, "previous square", MAYBE, saved_in="SAVEDGAME0",
@@ -90,10 +92,12 @@ MAP: tuple[Region, ...] = (
                 "the inn' in ECL00 and something else in seven other scripts"),
     Region(0x4A20, 0x160, "persistent flags", UNKNOWN, saved_in="SAVEDGAME0",
            note="survives an area change, unlike $4A00-$4A1F. Largely unread"),
-    Region(0x4B80, 0x40, "effect magnitude", MAYBE, saved_in="SAVEDGAME0",
-           note="the fourth of the four parallel effect arrays; how much, "
-                "for whatever the id means. Zero in every save we hold, "
-                "because none was taken mid-effect"),
+    Region(0x4B80, 0x40, "effect magnitude", OK, saved_in="SAVEDGAME0",
+           note="the fourth of the four parallel effect arrays: how much, for "
+                "whatever the id means. ENLARGE on a character with strength "
+                "18/98 wrote $E2, which is $80 | 98 -- the strength to put "
+                "back. Not zero in every save after all: PORSAVE13 carries 1 "
+                "in six slots that nobody had looked at"),
     Region(0x4BC0, 25, "loaded-files cache", OK, saved_in="SAVEDGAME0",
            note="one entry per data-file type, mirroring $6E13 in a running "
                 "game. Bit 7 is a reload marker, not data -- mask it"),
