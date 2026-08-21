@@ -10,6 +10,8 @@ import pathlib
 
 import pytest
 
+from gamedata import disk_path
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QLabel, QWidget
@@ -31,9 +33,17 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exist
 
 @pytest.fixture
 def save(tmp_path):
-    """A throwaway copy. Never test against the player's real disks."""
+    """A throwaway copy. Never test against the player's real disks.
+
+    Skips rather than raising when there are none. A fixture that raises turns
+    every test using it into an ERROR on a machine without the game, which is
+    what CI is; skipping is the same signal the rest of the suite gives.
+    """
+    src = disk_path("PORSAVE11")
+    if src is None:
+        pytest.skip("needs the save disks")
     out = tmp_path / "PORSAVE11.D64"
-    out.write_bytes(pathlib.Path(f"{DISKS}/PORSAVE11.D64").read_bytes())
+    out.write_bytes(src.read_bytes())
     return out
 
 

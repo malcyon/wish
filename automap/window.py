@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from por import strength as strengthmod
 from por.geo import GRID
+from ui.iconpaint import draw_icon
 
 from . import combat, live
 from . import notes as notemod
@@ -37,7 +38,6 @@ from .actionbar import ActionBar
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
 from .config import Settings
-from ui.iconpaint import draw_icon
 from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (

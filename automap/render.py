@@ -36,7 +36,6 @@ from por.geo import (
     WIZARD_LOCKED,
     Geo,
 )
-
 from ui import icons
 
 CELL = 34

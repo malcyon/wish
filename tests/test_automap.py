@@ -901,8 +901,8 @@ def test_the_session_does_not_attach_until_a_tab_wants_live_data(monkeypatch):
 
 from PyQt6.QtWidgets import QPushButton  # noqa: E402
 
-from ui import icons  # noqa: E402
 from automap import notes as notemod  # noqa: E402
+from ui import icons  # noqa: E402
 
 
 def _area(tmp_path, monkeypatch, area="GEO14") -> AutomapState:

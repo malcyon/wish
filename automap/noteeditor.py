@@ -30,8 +30,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from . import notes as notemod
 from ui.iconpaint import icon_pixmap
+
+from . import notes as notemod
 from .notes import Note
 from .panel import CARD, INK, LATTICE, MUTED, NOTE
 

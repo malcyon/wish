@@ -53,3 +53,20 @@ def _collect_between_tests():
     """
     yield
     gc.collect()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(tmp_path, monkeypatch):
+    """No test writes to the real config directory, on any platform.
+
+    `automap/paths.py` reads the XDG variables on Linux and `APPDATA` on
+    Windows. Ten test helpers set only the XDG pair, which is correct here and
+    silently wrong on a Windows runner: notes and settings land in the runner's
+    real profile and leak from one test into the next. That is what made
+    `test_an_empty_untyped_popover_adds_nothing` fail on Windows and pass
+    everywhere else.
+
+    Setting all four here means no individual test can forget a platform.
+    """
+    for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(var, str(tmp_path))

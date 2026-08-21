@@ -10,6 +10,8 @@ import pathlib
 
 import pytest
 
+from gamedata import disk_path
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.target import Fix, MemoryTarget, NotConnected, party_fix, read_fix
@@ -297,9 +299,17 @@ def test_a_busy_monitor_is_said_in_red_on_the_map(app, tmp_path, monkeypatch):
 
 @pytest.fixture
 def save(tmp_path):
-    """A throwaway copy. Never test against the player's real disks."""
+    """A throwaway copy. Never test against the player's real disks.
+
+    Skips rather than raising when there are none. A fixture that raises turns
+    every test using it into an ERROR on a machine without the game, which is
+    what CI is; skipping is the same signal the rest of the suite gives.
+    """
+    src = disk_path("PORSAVE11")
+    if src is None:
+        pytest.skip("needs the save disks")
     out = tmp_path / "PORSAVE11.D64"
-    out.write_bytes(pathlib.Path(f"{DISKS}/PORSAVE11.D64").read_bytes())
+    out.write_bytes(src.read_bytes())
     return out
 
 
