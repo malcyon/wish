@@ -155,6 +155,48 @@ The window attaches on its own and waits if there is nothing to attach to;
 only the tab you are looking at reads the machine.
 
 
+### Enabling Commodore 64 Ultimate mode
+
+The automapper can read a real **Commodore 64 Ultimate** instead of an emulator,
+over the REST API the firmware serves from **3.11** onwards. Reads are done by
+DMA on the cartridge bus, so unlike VICE's monitor it does not stop the machine.
+
+**Nobody on this project has one.** This backend is written from the vendor
+documentation and has only ever been exercised against a stub server. It reports
+itself as unverified, and it may be wrong in ways only the hardware can show. A
+report either way is welcome.
+
+**1. Say where the device is.** There is no discovery: until you name a host,
+this backend is never probed, so a network with no Ultimate on it costs nothing.
+
+```sh
+export POR_ULTIMATE=ultimate64.local      # or an address, or host:port
+export POR_ULTIMATE=192.168.1.64:80       # the port defaults to 80
+```
+
+`WISH_ULTIMATE` works as an alias if you prefer that spelling.
+
+**2. Firmware 3.12 and later may require a password.**
+
+```sh
+export POR_ULTIMATE_PASSWORD=secret       # or WISH_ULTIMATE_PASSWORD
+```
+
+**3. Start the game on the device and run `wish --tab map`** as usual. The
+window attaches on its own and the status line names the backend it found.
+
+**If both are answering**, VICE wins by default. Set `backend` in the settings
+file to settle it the other way — it is matched case-insensitively and ignored
+if that backend is not there:
+
+```json
+{ "backend": "Ultimate" }
+```
+
+The Ultimate polls every 500 ms rather than VICE's 200 ms, because each read is
+a network round trip rather than a loopback socket. `interval_ms` in the same
+file overrides it.
+
 ### Wish Config Files
 | | Windows | macOS | Linux |
 |---|---|---|---|
