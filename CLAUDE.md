@@ -11,6 +11,36 @@ exact error strings, the reason a choice was made.
 If a sentence would survive deletion without the reader losing anything, delete
 it.
 
+## Delegating to subagents
+
+**The default is to delegate.** Reading a lot of files, running a long
+experiment, disassembling, driving the emulator, writing something up -- all of
+it goes to a subagent. The main window coordinates and answers questions.
+
+The reason is context, and context is the scarce resource. A subagent's tool
+output never enters the main window: a long grep out there costs nothing that a
+long grep in here does.
+
+**Give each agent its own files.** Several agents in one working tree will
+collide. Assign non-overlapping areas, and say which in the brief.
+
+**Subagents do not commit.** As things stand the main window makes the commits,
+so nothing races the index.
+
+**Emulator work is single-threaded.** VICE serves exactly one binary-monitor
+connection and silently ignores a second, so at most one agent drives it. That
+agent checks `ss -tnp | grep 6502` before connecting, and never kills a process
+holding the monitor -- that has happened once, and what it killed was Donald's
+own window.
+
+**The brief carries the standing constraints**, because a subagent starts cold:
+never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the
+game's code, art or data ("What must never enter this repository"), and
+leave the VICE configs alone.
+
+Stays in the main window: Donald's questions, short edits, and anything where
+writing the brief costs more than doing the work.
+
 ## Commits
 
 **Keep a commit message to one sentence.** That is the whole rule, and it
