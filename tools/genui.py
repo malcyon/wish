@@ -43,11 +43,25 @@ def ensure_current(ui: pathlib.Path = UI, py: pathlib.Path = PY) -> bool:
     return True
 
 
+def body(source: str) -> str:
+    """The generated code without pyuic6's header.
+
+    The header carries the absolute path of the `.ui` and the PyQt6 version, so
+    a byte comparison fails on any machine but the one that last generated the
+    file. CI is exactly that machine, and the drift worth catching is in the
+    widgets, not in the banner.
+    """
+    lines = source.splitlines(keepends=True)
+    while lines and (lines[0].startswith("#") or not lines[0].strip()):
+        lines.pop(0)
+    return "".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     source = compile_ui()
     if "--check" in argv:
-        if not PY.exists() or PY.read_text() != source:
+        if not PY.exists() or body(PY.read_text()) != body(source):
             print(f"{PY.name} is stale; run tools/genui.py", file=sys.stderr)
             return 1
         print(f"{PY.name} is up to date")
