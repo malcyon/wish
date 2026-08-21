@@ -1,25 +1,20 @@
 """Which of the 29 GEO maps is the party standing on?
 
-This is the project's open question -- `docs/50-experiments.md`, "The area id
-must exist, and the search for it was invalid". The save file does not obviously
-say, and the scan that once reported no such field had no negative example to
-work against.
+Answered twice over, and the module carries both answers.
 
-A *live* mapper has a route a save reader does not: the map the game is drawing
-must be resident in RAM. So there are three strategies, tried in order of how
-much they would settle:
+A *save* says outright: `$4BC2` is the `GEO` file number -- see
+`docs/50-experiments.md`, "The area id: `$4BC2`, and it was in the header all
+along", and `por.savegame.AREA`.
 
-1. `ResidentGeo` -- find the loaded 1024-byte block in memory and read it
-   directly. Needs no game disks and works in areas nobody has matched.
-2. `FilenameDigits` -- `LIBRARY` holds the stem table with `GEO00` at `$24B4`,
-   so the two patched digits sit at `$24B7`/`$24B8`. Cheap if the relocation is
-   what we think.
-3. `Fingerprint` -- narrow the 29 candidates by what the party can and cannot
-   do. Always available, needs the game disks, and converges in a few steps.
+A *live* game says it even more directly, because the map it is drawing is
+resident: `ResidentGeo` reads the 1024 bytes at `$0400` and matches them against
+the disk copies, which is an exact identification and follows the game into a
+new area as soon as the load finishes.
 
-`Fingerprint` is the fallback that makes the feature ship regardless, and it
-doubles as a running check on the other two: if a strategy names a map the
-party's own movements contradict, the strategy is wrong.
+`Fingerprint` narrows the 29 candidates by what the party can and cannot do. It
+needs no addresses at all, so it stays wired up underneath `ResidentGeo` as the
+contradiction check: if a strategy names a map the party's own movements
+contradict, the strategy is wrong.
 """
 
 from __future__ import annotations
@@ -27,13 +22,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from por.geo import DIRECTIONS, GEO_SIZE, STEP, Geo
-
-# LIBRARY's data-file stem table: "GDRIVE00 SQRPACI00 GEO00 SECSET00 ...".
-# GEO00 occupies $24B4-$24B8, so the digits are the last two bytes.
-# UNVERIFIED against a running game: reports put LIBRARY's resident base at
-# $2C48 or $2CFA, both *above* $24B4, so the relocation is not yet pinned down.
-GEO_STEM = 0x24B4
-GEO_DIGITS = 0x24B7
 
 # Where a loaded GEO block sits: **$0400**, and the game does not relocate it at
 # all. The file is a PRG loading at $0400, which is screen memory at boot -- but
@@ -141,37 +129,14 @@ class Fingerprint:
         return Candidates(list(self.names), "fingerprint")
 
 
-class FilenameDigits:
-    """Read the two digits the loader patches into the `GEO00` stem.
-
-    If this works it is the whole answer in one two-byte read. It is unproven,
-    so it must be corroborated by `Fingerprint` before being trusted -- a wrong
-    relocation would return two plausible-looking digits from unrelated memory.
-    """
-
-    def __init__(self, target, address: int = GEO_DIGITS):
-        self.target = target
-        self.address = address
-
-    def read(self) -> str | None:
-        raw = self.target.read(self.address, 2)
-        try:
-            text = bytes(b & 0x7F for b in raw).decode("ascii")
-        except UnicodeDecodeError:
-            return None
-        if len(text) == 2 and all(c in "0123456789ABCDEFabcdef" for c in text):
-            return f"GEO{text.upper()}"
-        return None
-
-
 class ResidentGeo:
-    """Find the loaded map block in RAM, and thereafter read it from there.
+    """Read the loaded map block out of RAM, at `RESIDENT_GEO`.
 
-    Once the address is known this is the best of the three: no disks, no
-    filename, no inference, and it tracks the game the instant it loads a new
-    area. Finding it is a one-off experiment -- stand somewhere known, sweep
-    memory for a block that decodes as a plausible GEO, and check it against the
-    map we already believe we are on.
+    The best strategy available live: no disks, no inference, and it tracks the
+    game the instant it loads a new area. `search` remains for the case where
+    the address is wrong for some title or version -- sweep memory for a block
+    that decodes as a plausible GEO, and check it against the map we already
+    believe we are on.
     """
 
     def __init__(self, target, address: int | None = RESIDENT_GEO):
