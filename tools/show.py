@@ -9,17 +9,18 @@ Fields are annotated with how much we trust them:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from por import layout
-from por.d64 import D64, split_load_address
-from por.layout import Confidence
-from por.record import CharacterRecord, RECORD_SIZE
+from por.d64 import D64
 from por.items import items_for_slot, load_item_names
-from por.savegame import SAVE0_LOAD_ADDRESS, SaveGame0
+from por.layout import Confidence
+from por.record import RECORD_SIZE, CharacterRecord
+from por.savegame import SaveGame0
 
 RACES = {1: "dwarf", 2: "elf", 3: "gnome", 4: "half-elf",
          5: "halfling", 6: "half-orc", 7: "human", 8: "monster"}
@@ -62,7 +63,7 @@ def show_record(rec: CharacterRecord, where: str) -> None:
     race = RACES.get(rec.race, f"?{rec.race}")
     # class_bits is authoritative and handles multi-class; char_class is the
     # single-class code and cannot express combinations.
-    cls = "/".join(l for bit, l in CLASS_BITS if rec.class_bits & bit) \
+    cls = "/".join(name for bit, name in CLASS_BITS if rec.class_bits & bit) \
           or CLASSES.get(rec.char_class, f"code {rec.char_class}")
     align = ALIGNMENTS[rec.alignment] if rec.alignment < 9 else f"?{rec.alignment}"
     sex = "female" if rec.sex else "male"
@@ -103,7 +104,11 @@ def main() -> int:
     args = ap.parse_args()
 
     names = None
-    for candidate in (GAME_DISK, "work/POOL1.D64.orig"):
+    # GAME_DISK was a name that never existed, so this loop had always raised
+    # NameError before it could find anything.
+    for candidate in (os.environ.get("POR_GAME_DISK"), "work/POOL1.D64.orig"):
+        if not candidate:
+            continue
         try:
             names = load_item_names(candidate)
             break
