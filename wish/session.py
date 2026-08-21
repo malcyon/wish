@@ -26,7 +26,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from automap.target import MonitorBusy, NotConnected, Target
 
-from . import backends
+from . import backends, debuglog
 
 # While there is nothing to attach to, probe on a slower timer than the poll:
 # an absent emulator is the common case and a TCP connect per 200 ms to a port
@@ -85,6 +85,11 @@ class Session(QObject):
     def _say(self, note: str) -> None:
         if note != self.note:
             self.note = note
+            # Logged here rather than at each call site: every state change
+            # passes through, and a note that has not changed -- an absent
+            # emulator probed once a second -- says nothing new and is not
+            # written again.
+            debuglog.note("session: %s", note)
             self.changed.emit(note)
 
     # -- the connection --------------------------------------------------
@@ -105,6 +110,7 @@ class Session(QObject):
             self.target = backend.connect()
         except MonitorBusy as exc:
             self.busy = True
+            debuglog.note("%s: monitor busy (%s)", backend.name, exc)
             self._say(str(exc))
             return False
         except NotConnected as exc:
@@ -114,6 +120,8 @@ class Session(QObject):
         self.busy = False
         self.backend = backend
         self._say(f"{backend.name}: connected")
+        debuglog.note("attached to %s, polling every %d ms",
+                      backend.name, self.interval_ms)
         self._retime()
         return True
 
@@ -163,11 +171,20 @@ class Session(QObject):
             if not self.attach():
                 return
         try:
-            self.reader(self.target)
+            with debuglog.timed("a poll"):
+                self.reader(self.target)
         except NotConnected:
             self.detach("the emulator went away - waiting for it to come back")
         except Exception as exc:                    # keep the window alive
-            self._say(f"trouble reading the machine: {exc}")
+            note = f"trouble reading the machine: {exc}"
+            fresh = note != self.note
+            self._say(note)
+            # The traceback used to die here, and it is the most useful thing
+            # in a report about a window that stayed up. Once per distinct
+            # failure: a poll that fails every tick would otherwise write five
+            # tracebacks a second.
+            if fresh:
+                debuglog.exception("the poll raised, and was swallowed")
 
     def close(self) -> None:
         self.stop()
