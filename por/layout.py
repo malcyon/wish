@@ -221,7 +221,18 @@ _DECLARED: Sequence[Field] = (
            "is how AD&D 1st edition works. No cleric has a magic-user id set "
            "and no magic-user has a cleric one. MALCYON, a starting mage, "
            "knows detect magic, read magic, shield and sleep. Distinct from "
-           "spells_memorised at 0x020, which is what is currently prepared"),
+           "spells_memorised at 0x020, which is what is currently prepared. "
+           "**Seven bytes is Pool of Radiance's width, not the engine's.** No "
+           "character in any Pool of Radiance save sets 0x07D, 0x07E or 0x07F, "
+           "but Silver Blades and Death Knights casters set all three, and four "
+           "of them hold 0x07F = 0x04 -- bit 2, spell id 58 on this indexing. "
+           "So the mask is **at least eight bytes** in the later titles "
+           "(PROBABLE; work/reports/goldbox-inventory.md), and nothing proves "
+           "it stops at eight. The declared width stays 7 because that is what "
+           "this game uses and what por/spells.py encodes; 0x07F still reads "
+           "zero in every specimen we hold. Bit 0 of 0x078 is deliberately "
+           "unused: the QUANTUM LEAPER trainer's LEARN ALL SPELLS writes $FE "
+           "here and $FF to the other six, i.e. spell id 0 does not exist"),
     _field(0x071, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _MAYBE,
            "base THAC0, stored as 60 - THAC0, the same encoding the SAVEDGAME1 "
            "roster uses for the current value at +0x0E. Matches the AD&D 1st "
@@ -356,14 +367,24 @@ _DECLARED: Sequence[Field] = (
            "the visible difference is the head: a small character's body is "
            "the same size and its head is smaller, which is why the icon looks "
            "small without being smaller"),
-    _field(0x0A0, 1, _U8, "level", "Level", _MAYBE,
-           "character level. Two independent lines of evidence: the 1989 "
-           "BASIC editor on poolce.d64 reads and pokes exactly this byte as "
-           "LEVEL, and across the eight characters of npc_party.d64 it equals "
-           "the character's per-class level at four distinct values (4, 6, 7, "
-           "8). Every earlier specimen was level 1, which is why it long read "
-           "as a constant 01. Not yet distinguishable from 'the single class's "
-           "level' -- no multi-class specimen above level 1 has been seen"),
+    _field(0x0A0, 1, _U8, "level", "Level", _OK,
+           "character level. Promoted from PROBABLE on the game's own data: "
+           "**twenty-one shipped MON* records state their level in their "
+           "name**, and 0x0A0 agrees with the name in nineteen of them -- 1ST "
+           "LVL THIEF 1, 2ND LVL CLERIC 2, LEVEL 3 MU 3, 4TH LVL FIGHTER 4, "
+           "LEVEL 5 CLERIC 5, 6TH LVL FIGHTER 6, 7TH LVL DW FIGHTER 7, 8TH LVL "
+           "FIGHTER 8. The two that differ are both 6TH LVL THIEF (MON33, "
+           "MON5D), where the byte reads 7 **and so does the per-class array**, "
+           "so the disagreement is between the designer's label and his data "
+           "rather than between two fields. Corroborated three further ways: "
+           "the 1989 BASIC editor on poolce.d64 and the QUANTUM LEAPER machine-"
+           "code trainer both poke exactly this byte as LEVEL; across the eight "
+           "characters of npc_party.d64 it equals the per-class level at four "
+           "distinct values; and docs/80 reads the drain routine writing it "
+           "down from the per-class array. Every early specimen was level 1, "
+           "which is why it long read as a constant 01. Still not "
+           "distinguishable from 'the single class's level' -- no multi-class "
+           "specimen above level 1 has been seen"),
     _field(0x0A1, 1, _U8, "levels_drained", "Levels drained", _OK,
            "how many levels undead have drained, not a second copy of the "
            "level. The pair is current-plus-delta, which is why no 'true "
@@ -376,10 +397,30 @@ _DECLARED: Sequence[Field] = (
            "hit points removed by level drain, restored alongside 0x0A1"),
     _field(0x0A3, 1, _U8, "turn_class", "Undead turning class", _OK,
            "which row of the AD&D 1e turning table a creature answers to. "
-           "Non-zero in exactly 13 specimens, every one undead, and it matches "
-           "the published table on all of them: skeleton 1, zombie 2, ghoul 3, "
-           "wight 5, wraith 7, mummy 8, spectre 9, vampire 10, with giant "
-           "skeleton 8 and juju zombie 9"),
+           "Non-zero in exactly twelve of the 121 distinct MON* records, every "
+           "one undead, and it matches the published table on all of them: "
+           "skeleton 1, zombie 2, ghoul 3, wight 5, wraith 7, mummy 8, "
+           "spectre 9, vampire 10, with giant skeleton 8 and juju zombie 9. "
+           "Eleven are named creatures; the twelfth is FERRAN MARTINEZ "
+           "(MON13), an NPC carrying 9, the spectre row. **This offset was "
+           "challenged and it survived.** "
+           "docs/116 read the neighbouring 0x0A4 as the turning field because "
+           "0x0A3 is zero in every *player* specimen of either game -- which it "
+           "is, because no player character is undead. Across the monster "
+           "records the two are disjoint: 0x0A3 is non-zero only on undead and "
+           "0x0A4 only on clerics, and no record sets both. They are two "
+           "fields, one per side of the same rule"),
+    _field(0x0A4, 1, _U8, "turn_power", "Turn undead (caster side)", _MAYBE,
+           "the caster's half of turning, sitting beside the undead's half at "
+           "0x0A3. Non-zero in eight of the eleven records carrying the cleric "
+           "class bit and in nothing else -- ACOLYTE and 1ST LVL CLERIC 1, 2ND "
+           "LVL CLERIC 2, MACE 4, CURATE and WILLIAM D'OR and DIRTEN 6 -- plus "
+           "the player cleric ROLAND at 1. docs/116 sees the same population in "
+           "Curse: 6 for its level-5 cleric, 3 for its level-5 paladin, zero "
+           "for everyone else. What the *number* means is not settled and is "
+           "not the cleric's level: three level-5 clerics read 1, 4 and 6, and "
+           "7TH LVL CLERIC reads 0. The population is PROBABLE, the reading of "
+           "the value is a guess"),
     _field(0x0AD, 10, _RAW, "item_effects", "Active effects", _MAYBE,
            "ten slots holding active effect codes. It shares storage with "
            "item byte +14 -- SPELLE04 $ADD4 copies a readied passive item's +14 "
@@ -422,6 +463,30 @@ _DECLARED: Sequence[Field] = (
            "level array (the per-class levels). Previously guessed to be an "
            "exceptional-strength flag, because the only fighters seen then "
            "were the only characters with exceptional strength"),
+    # The array is eight slots, not four: 0x0C9-0x0D0, indexed by the bit
+    # number in class_bits. Pool of Radiance uses slots 0-3 and leaves the rest
+    # zero in every specimen, which is why they read as a gap for so long.
+    _field(0x0CD, 1, _U8, "level_knight", "Knight level", _MAYBE,
+           "slot 4 of the per-class level array, i.e. class_bits bit 4 (16). "
+           "Named KNIGHT by the Death Knights of Krynn editor, which cycles "
+           "nine class names over the eight-byte array at 0x0C9 as MAGE, "
+           "CLERIC, THIEF, FIGHTER, KNIGHT, -, PALADIN, RANGER, and whose "
+           "RESET action bounds the array with CPY #$08. Knights of Solamnia "
+           "are a Krynn class; the shipped Champions and Death Knights parties "
+           "carry class_bits 0x10 with the whole array zero, so nothing yet "
+           "shows a value in this byte. PROBABLE, and PROBABLE is where a "
+           "third-party tool's offset stops: no record has agreed with it yet"),
+    _field(0x0CF, 1, _U8, "level_paladin", "Paladin level", _OK,
+           "slot 6 of the per-class level array, class_bits bit 6 (64). "
+           "CONFIRMED on SSI's own pre-generated Curse party, whose paladin "
+           "holds 0x0CF = 5 with class_bits = 64 (docs/116 sec 2.3). Zero in "
+           "every Pool of Radiance specimen -- the game names PALADIN in its "
+           "class table and never instantiates one"),
+    _field(0x0D0, 1, _U8, "level_ranger", "Ranger level", _OK,
+           "slot 7 of the per-class level array, class_bits bit 7 (128). "
+           "CONFIRMED on Curse's pre-generated ranger, 0x0D0 = 5 with "
+           "class_bits = 128. Silver Blades and Death Knights use both this "
+           "slot and the paladin one; Pool of Radiance leaves both zero"),
     _field(0x0D5, 1, _U8, "infravision", "Infravision (tens of feet)", _OK,
            "6 for every dwarf/elf/half-elf, 0 for every human, across 12 "
            "specimens -- i.e. 60 feet"),
@@ -433,10 +498,26 @@ _DECLARED: Sequence[Field] = (
            "LAWFUL NEUTRAL=1 LAWFUL EVIL=2 NEUTRAL GOOD=3 TRUE NEUTRAL=4 "
            "NEUTRAL EVIL=5 CHAOTIC GOOD=6 CHAOTIC NEUTRAL=7 CHAOTIC EVIL=8. "
            "All six of Donald's characters decode to the alignment he chose"),
-    _field(0x0D9, 8, _RAW, "region_0d9", "unknown @0x0D9", _NOPE,
-           "03 02 00 01 00 02 00 00 - byte/zero alternation suggests 16-bit LE "
-           "words. Shortened by one when 0x0E1 turned out to be the base "
-           "armour class", candidate=True),
+    _field(0x0D9, 8, _RAW, "attack_forms", "Attack forms", _OK,
+           "the two attack forms, as four parallel two-entry arrays: attacks "
+           "per round **doubled** at 0x0D9, damage dice at 0x0DB, die at "
+           "0x0DD, signed modifier at 0x0DF, each holding form 0 then form 1. "
+           "COMBAT $0CAD rolls damage through LDA $6C13,Y / LDX $6C15,Y with a "
+           "stride of 2, which is what proves there are exactly two forms, and "
+           "twenty creatures match the Monster Manual: GHOUL 04 02 / 01 01 / "
+           "03 06 is two 1d3 claws and a 1d6 bite, TROLL 04 02 / 01 02 / 04 06 "
+           "/ 04 00 is two 1d4+4 claws and a 2d6 bite. A form with no damage "
+           "dice is not an attack. Decoded in por/monster.py; kept as one raw "
+           "block here because the character sheet has no use for eight "
+           "separate monster fields.\n"
+           "This region read UNKNOWN for a long while on a note recording the "
+           "specimen as '03 02 00 01 00 02 00 00', which was said to contradict "
+           "the attacks reading because BRUTUS, a one-attack level-1 fighter, "
+           "appeared to hold 3. **That note was off by one**: it was a dump of "
+           "0x0D8-0x0E0, and the leading 03 is the alignment byte at 0x0D8. "
+           "BRUTUS reads 02 00 01 00 02 00 00 00 -- one attack per round for "
+           "1d2 unarmed, exactly what GEN $0BBE writes and what the reading "
+           "predicts. The contradiction never existed"),
     _field(0x0EB, 1, _U8, "class_bits", "Class bitmask", _OK,
            "magic-user=1 cleric=2 thief=4 fighter=8, OR-ed together. This is "
            "how multi-class is really represented: LADY KATHERINE is 5 "
@@ -472,7 +553,16 @@ _DECLARED: Sequence[Field] = (
            "saves by name. So a record is four blocks the game saves "
            "separately: 256 + 32 + 256 + 36 = 580.\n"
            "This byte is roster +0x00, and the combat research saw it go $01 "
-           "-> $84 when a monster died"),
+           "-> $84 when a monster died.\n"
+           "All three of 'the sir' editors -- for Curse, Silver Blades and "
+           "Death Knights -- make this byte their first field and call it "
+           "**STATUS**, cycling 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, "
+           "6 RUNNING, 7 STONED. Every specimen of either game reads 01, which "
+           "is consistent, and the enumeration gives the combat observation a "
+           "reading at last: $84 & 0x0F = 4 = DYING, with bit 7 as a separate "
+           "flag. The name here stays roster_in_use until a specimen reads "
+           "something other than 1 or the game is watched writing one, because "
+           "three tools sharing one author's table is one source, not three"),
     _field(0x0EC, 1, _U8, "region_0ec", "unknown @0x0EC", _NOPE,
            "0 -> 1 after combat for MALCYON and LADY KATHERINE and nobody else "
            "-- exactly the two spellcasters, so probably spell state rather "
@@ -513,6 +603,34 @@ _DECLARED: Sequence[Field] = (
            "roster +0x10 to +0x18: armour bonus, encumbrance, equipment and "
            "damage bonus, all already decoded in por/savegame.py. Kept RAW "
            "here because the roster is the place to read them"),
+    # --- Declared from the later games, zero throughout this one -----------
+    _field(0x065, 7, _RAW, "abilities_second", "Abilities (second copy)", _OK,
+           "a second copy of the seven ability scores -- STR, INT, WIS, DEX, "
+           "CON, CHA, exceptional STR -- mirroring 0x014-0x01A. CONFIRMED in "
+           "Curse: all six of SSI's pre-generated characters carry it and the "
+           "import routine writes it (docs/116 sec 2.2). Death Knights moved "
+           "its editor's ability fields here rather than to 0x014. Seven zeroes "
+           "in every Pool of Radiance specimen. **Which of the two arrays the "
+           "game treats as current is not established** -- they are equal in "
+           "every specimen, and MacGyver's Curse trainer writes both because he "
+           "did not know either"),
+    _field(0x098, 1, _U8, "attack_level", "Fighting level", _OK,
+           "the level the attack tables are indexed by, which is not always "
+           "the character level: 5 for Curse's level-5 paladin and ranger, 4 "
+           "for its level-5 fighter/thief, 0 for pure casters, 1 for an "
+           "imported level-1 fighter. CONFIRMED in docs/116 sec 2.2, and it "
+           "matches the DOS record's attackLevel at the same place in the "
+           "cluster. Zero in every Pool of Radiance specimen"),
+    _field(0x120, 256, _RAW, "inventory", "Items carried", _OK,
+           "sixteen item slots of sixteen bytes, which is por/items.py's "
+           "ITEM_SIZE and ITEMS_PER_CHARACTER and the same 16 x 16 page the "
+           "save file gives each character at $5900 + slot * $100. The "
+           "shopping trip decoded the slot format field by field; slot +0 zero "
+           "means empty, +4 is the plus and +10 the quantity. Pinning the "
+           "extent here matters because it leaves 0x11C-0x11F **outside** the "
+           "item area and outside the roster block, which ends at 0x11B -- four "
+           "bytes still unaccounted for. Kept RAW because por/items.py is where "
+           "an item is read"),
     _field(0x220, 36, _RAW, "region_220", "unknown @0x220 (record tail)", _NOPE,
            "E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E"
            " 0E 08 0E 0E 0E 0E 0F 08 0E 0E 00 0E 0E 0E - densest region in the"

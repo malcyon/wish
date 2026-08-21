@@ -168,7 +168,7 @@ def test_out_of_range_field_value_rejected(brutus: CharacterRecord) -> None:
     with pytest.raises(ValueError):
         brutus.strength = -1
     with pytest.raises(ValueError):
-        brutus.set_raw("region_0d9", b"\x00\x00")
+        brutus.set_raw("attack_forms", b"\x00\x00")
 
 
 # ---------------------------------------------------------------------------

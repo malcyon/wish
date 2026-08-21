@@ -96,6 +96,15 @@ def describe(spell_id: int, names: dict[int, str] | None = None) -> str:
 SPELLBOOK_OFFSET = 0x078
 SPELLBOOK_SIZE = 7
 
+# Bit 0 of 0x078 is deliberately unused -- spell id 0 does not exist. The
+# QUANTUM LEAPER trainer's LEARN ALL SPELLS writes $FE to 0x078 and $FF to the
+# other six, which is that fact in someone else's hand.
+#
+# Seven bytes is *this game's* width. Silver Blades and Death Knights casters
+# set 0x07D-0x07F, four of them holding 0x07F = 0x04, so on the later engine the
+# mask is at least eight bytes -- see work/reports/goldbox-inventory.md. No Pool
+# of Radiance character sets any of the three.
+#
 # The spellbook is seven bytes, so it holds ids 1-55 and stops. Id 56 --
 # RESTORATION -- is a **clerical scroll** spell, not one a character learns, and
 # bit 56 would land in byte 7, one past the field. Reading to LAST_SPELL here
@@ -137,9 +146,19 @@ def spellbook_bytes(ids) -> bytes:
 def capacity(class_bits: int, level: int, wisdom: int) -> dict[str, tuple[int, ...]]:
     """How many spells of each level the character may memorise.
 
-    Derived from the AD&D 1st edition tables rather than read from the save --
-    no field holding it has been found. Returned per class, because a
-    multi-class character memorises from each list separately.
+    Derived from the AD&D 1st edition tables. **The record does carry this
+    number** -- `spells_castable` at `0x0EE`-`0x0F0`, nibble-packed magic-user
+    low / cleric high, one byte per spell level -- so what this function
+    computes can be checked against the save rather than trusted. Two
+    independent readings agree on the packing: the project's own (ROLAND, a
+    level-1 cleric with WIS 16, reads `$30`) and the QUANTUM LEAPER trainer,
+    which prints `AND #$0F` under MAGIC-USER SPELLS and four `LSR`s under
+    CLERIC SPELLS on those same three bytes, clamps each nibble to 14 and
+    labels the field `LEVELS (0-14)`. It exposes three spell levels where the
+    layout reserves six, which is Pool of Radiance's real ceiling.
+
+    Returned per class, because a multi-class character memorises from each
+    list separately.
     """
     level = max(1, min(int(level or 1), 10))
     out: dict[str, tuple[int, ...]] = {}

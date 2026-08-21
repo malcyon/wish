@@ -86,8 +86,18 @@ zeroes it. `class_bits` is the field to read, which is what
 
 | Offset | Observation | Confidence |
 |---|---|---|
-| `0x0A4` | non-zero only for characters who turn undead — 6 for Curse's level-5 cleric, 3 for its level-5 paladin, 1 for Pool of Radiance's level-1 cleric ROLAND, 0 for everyone else in both games. `por/layout.py` currently names `0x0A3` `turn_class`, and `0x0A3` is zero in every specimen of either game | PROBABLE |
+| `0x0A4` | the **caster's** half of turning: non-zero only for characters who turn undead — 6 for Curse's level-5 cleric, 3 for its level-5 paladin, 1 for Pool of Radiance's level-1 cleric ROLAND, 0 for everyone else in both games. The *value* is not the cleric's level: three of Pool of Radiance's level-5 clerics read 1, 4 and 6, and its 7TH LVL CLERIC reads 0 | PROBABLE for the population; the value is a guess |
 | `0x0B6` | non-zero **only** for Curse's paladin (45) and ranger (134); zero in every Pool of Radiance specimen held and in Curse's other four. A class-specific counter of some kind | GUESS |
+
+**An earlier version of this table said `0x0A4` displaced `por/layout.py`'s
+`turn_class` at `0x0A3`, because `0x0A3` is zero in every specimen of either
+game. It is — every *player* specimen, and no player character is undead.**
+Across Pool of Radiance's 121 distinct `MON*` records the two bytes are
+disjoint: `0x0A3` is non-zero on twelve records, every one undead, matching the
+AD&D 1e turning table (skeleton 1, zombie 2, ghoul 3, wight 5, wraith 7, mummy
+8, spectre 9, vampire 10); `0x0A4` is non-zero on eight records, every one a
+cleric; nothing sets both. They are the two sides of the same rule, not two
+readings of one field, and `0x0A3` keeps its CONFIRMED.
 
 ## 3. The save game
 
@@ -192,8 +202,8 @@ C64 build does the same is NOT FOUND.
 | **Levels** | `por/levels.py` already carries paladin, ranger and monk rows "because the tables list them". Curse makes two of them real and raises the caps. Table data; the shape of `Level` does not change. Not measured this pass |
 | **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `por/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
 | **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `por/items.py` reads it |
-| **Spells** | 100 ids where Pool of Radiance has 56, and the **first 56 are unchanged**. Curse has no `SPELLN` file: the names live in `COMBAT2` and again in `ECL65`, and the pointer table that resolves an id to a name has not been located. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so whether it is 7 bytes or 13 is unproven |
-| **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum; that enum disagrees with the DOS one and nothing observed supports it. Treat the label as a lead |
+| **Spells** | 100 ids where Pool of Radiance has 56, and the **first 56 are unchanged**. Curse has **no `SPELLN00`** — it does ship `SPELLN64`, on side A, and so does Pool of Radiance, but that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The spell names live in `COMBAT2` and again in `ECL65`, and the pointer table that resolves an id to a name has not been located. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (`work/reports/goldbox-inventory.md`) |
+| **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING` |
 
 ## 6. Still unknown
 
@@ -201,7 +211,7 @@ C64 build does the same is NOT FOUND.
 |---|---|
 | Where the item area really is, and whether the 16-byte item record changed | PROBABLE `$5B00`; no Curse item record has been seen |
 | How wide the memorised-spell list at `0x020` is | NOT FOUND |
-| How wide the spellbook bitmask at `0x078` is | NOT FOUND — `0x078`–`0x07D` observed, 13 bytes predicted |
+| How wide the spellbook bitmask at `0x078` is | NOT FOUND in Curse — `0x078`–`0x07D` observed, 13 bytes predicted. **At least 8 bytes** on the later engine: Silver Blades and Death Knights casters set `0x07D`–`0x07F`, four of them holding `0x07F = 0x04` |
 | Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was refused |
 | Where the azure-bond state lives | NOT FOUND. It is not in the character record on DOS either |
 | Which of `0x014` and `0x065` is "current" and which "original" | NOT FOUND — equal in every specimen |

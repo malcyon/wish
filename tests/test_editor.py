@@ -9,7 +9,7 @@ import os
 import pathlib
 
 import pytest
-from gamedata import disk_path
+from gamedata import disk_dir, disk_path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -25,7 +25,8 @@ from editor.files import back_up, prune
 from editor.roster import Party
 from por.layout import LAYOUT, Confidence
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists(),
                                 reason="needs the save disks")
 
@@ -133,13 +134,39 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
+#: Fields `por/layout.py` declares that the sheet deliberately has no box for.
+#: Every one is a field **this game never writes** -- they were named from
+#: Curse, the Krynn titles and the monster records, and read zero in every Pool
+#: of Radiance character -- or one that already has a purpose-built editor.
+#: Listing them here rather than dropping the count check keeps the check's
+#: point: a field added tomorrow still has to get a widget or say why not.
+#: This belongs in `editor/binding.NOT_ON_THE_SHEET` next time that file is
+#: open; it lives here only because the layout was corrected first.
+NOT_YET_ON_THE_SHEET = {
+    "attack_forms",       # a monster's two attack forms; not a player field
+    "turn_power",         # the caster's half of turning, zero in this game
+    "attack_level",       # Curse's fighting level, zero in this game
+    "level_knight",       # Krynn class slots of the per-class level array
+    "level_paladin",
+    "level_ranger",
+    "abilities_second",   # Curse's second ability block, zero in this game
+    "inventory",          # editor/inventory.py edits the item slots
+}
+
+
+def expected_sheet_fields():
+    """The fields `editor/character.ui` is expected to carry a widget for."""
+    return [f for f in shown_fields(editable_fields())
+            if f.name not in NOT_YET_ON_THE_SHEET]
+
+
 @game_disks
 def test_the_window_binds_every_field_widget(app, save):
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     assert w.model.rowCount() == 6
     # every non-placeholder field has a widget, plus the promoted icon
-    assert len(w._widgets) == len(shown_fields(editable_fields())) + 1
+    assert len(w._widgets) == len(expected_sheet_fields()) + 1
 
 
 @game_disks
@@ -548,7 +575,7 @@ def test_every_field_still_binds_after_the_conversion(app, save):
     """The count is the point: a field left behind in a deleted tab is silent."""
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
-    assert len(w._widgets) == len(shown_fields(editable_fields())) + 1
+    assert len(w._widgets) == len(expected_sheet_fields()) + 1
     assert w._widgets["thief_open_locks"].parent().objectName() == "box_thief_skills"
 
 
@@ -591,7 +618,7 @@ def test_moving_a_box_in_designer_needs_no_code_change(app, tmp_path):
     from PyQt6 import uic
     from PyQt6.QtWidgets import QMainWindow, QWidget
 
-    from editor.binding import field_name, shown_fields
+    from editor.binding import field_name
 
     tree = ET.parse(_p.Path("editor/character.ui"))
     # Any two columns: naming them would make this test fail whenever the
@@ -615,7 +642,7 @@ def test_moving_a_box_in_designer_needs_no_code_change(app, tmp_path):
     found = {field_name(w.objectName()) for w in form.findChildren(QWidget)
              if field_name(w.objectName())}
     assert "thief_open_locks" in found
-    assert len(found) == len(shown_fields(editable_fields())) + 1
+    assert len(found) == len(expected_sheet_fields()) + 1
 
 
 @game_disks
