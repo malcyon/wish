@@ -517,3 +517,40 @@ about that character, and the editor's job is to show facts.
 Note the pair should be taken with a character whose class does not muddy the
 diff: a single-classed fighter changes fewer derived fields than a
 multi-classed magic-user/thief.
+
+---
+
+## Two saves that would finish the quickfight story — FOR DONALD
+
+The mechanism is found and closed (`docs/50-experiments.md`): roster `+0x0C`
+bit 7, set by QUICK, read by `COMBAT` when a fight starts, never cleared by the
+game. `PORSAVE14` proved it survives a fight and is honoured by the next one.
+
+Two specimens would settle the last of it. Neither is urgent.
+
+| save | what to do first | MALCYON's quickfight |
+|---|---|---|
+| **PORSAVE15** | finish a fight, change nothing | leave it **on** |
+| **PORSAVE16** | turn it **off**, then save | **off** |
+
+**Why each matters.**
+
+`PORSAVE15` shows the bit surviving a *second* fight, and that a scripted
+encounter does not clear it where a random one might. It costs nothing — end a
+fight and save.
+
+`PORSAVE16` is the state **no disk we hold has ever contained**. Across fifteen
+saves the byte is either `80` or already `00`; we have never once seen the game
+clear it. Turning quickfight off needs the space bar at the exact start of the
+character's turn, so it has to happen during combat.
+
+* If it then reads `00`, the game writes the byte in both directions and only
+  *reads* it at the start of a fight — a slightly different model from the one
+  written up, and the experiment log needs correcting.
+* If it still reads `80` while the character is plainly back under the player's
+  control, then the space-bar escape does not touch this byte at all and there
+  is a second mechanism nobody has found.
+
+Worth noting **when** during the fight it is turned off, if that is easy: a bit
+that clears at once means the game writes it live, one that clears only when the
+fight resolves means `COMBAT` writes its state back at the end.
