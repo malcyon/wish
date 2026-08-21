@@ -767,10 +767,43 @@ def test_a_socket_that_accepts_and_never_answers_is_busy_not_absent(monkeypatch)
     finally:
         listener.close()
 
-    # Nothing listening at all: refused, and that is the ordinary case.
+    # Nothing listening at all. Refused on Linux, and on Windows the SYN is
+    # dropped so it times out instead -- neither is somebody else holding it.
     with pytest.raises(NotConnected) as gone:
         ViceTarget(host="127.0.0.1", port=port, timeout=0.5)
     assert not isinstance(gone.value, MonitorBusy)
+
+
+def test_a_connect_that_times_out_is_absent_not_busy(monkeypatch):
+    """The half of the distinction the platform gets a vote on.
+
+    Reading *any* timeout as busy assumes that with nothing listening the
+    connect is refused at once. That is true on Linux and false on Windows,
+    where a filtered port is silently dropped and the connect times out -- so
+    wish told a Windows user with no emulator running that something else was
+    attached to it. Only the unanswered ping means busy.
+    """
+    from automap.target import MonitorBusy, NotConnected, ViceTarget
+    from automap.vice import Monitor
+
+    def never_answers(self):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(Monitor, "__enter__", never_answers)
+    with pytest.raises(NotConnected) as gone:
+        ViceTarget(host="127.0.0.1", port=6502, timeout=0.1)
+    assert not isinstance(gone.value, MonitorBusy)
+
+
+def test_the_busy_message_names_a_command_this_platform_has(monkeypatch):
+    """`ss` is Linux-only, and it was in the message a Windows user is most
+    likely to see."""
+    import automap.target as target
+
+    monkeypatch.setattr(target.sys, "platform", "win32")
+    assert target.who_holds_hint() == "`netstat -ano | findstr 6502` names it"
+    monkeypatch.setattr(target.sys, "platform", "linux")
+    assert target.who_holds_hint() == "`ss -tnp | grep 6502` names it"
 
 
 # --- the tab ----------------------------------------------------------------
@@ -946,12 +979,72 @@ def test_forgetting_squares_keeps_the_notes(tmp_path, monkeypatch):
 
 # --- drawing them -----------------------------------------------------------
 
+def test_every_icon_parses():
+    """The icons are path data, not a font, so a typo fails here rather than as
+    a blank square on somebody's map."""
+    for name in icons.ICONS:
+        assert icons.commands(name), name
+
+
 def test_every_note_type_and_class_icon_draws():
-    """The icons are path data, not a font, so a bad one fails here rather
-    than as a blank square on somebody's map."""
+    """Every name the program asks for by string is a name the table has."""
     from automap.panel import CLASS_ICON
     for name in [t.icon for t in notemod.TYPES] + list(CLASS_ICON.values()):
         assert icons.commands(name), name
+
+
+def test_no_icon_leaves_the_640_box():
+    """`render.py` places a note by its box, not by its ink: an icon that
+    overhangs lands on a wall. See `test_a_note_never_lands_on_a_wall`."""
+    for name in icons.ICONS:
+        x0, y0, x1, y1 = icons.extent(name)
+        assert 0 <= x0 and 0 <= y0 and x1 <= icons.BOX and y1 <= icons.BOX, \
+            f"{name} is {x0},{y0}..{x1},{y1}"
+
+
+def test_ours_and_font_awesome_do_not_share_a_name():
+    """`ICONS` merges the two dicts, so a repeated name would silently replace
+    what the map draws -- and the licence line differs between them."""
+    assert not set(icons.OURS) & set(icons.FONT_AWESOME)
+
+
+def test_the_hood_keeps_its_face(app):
+    """The thief's hood is `location-dot`'s argument applied deliberately: one
+    solid silhouette, one hole. Drawn at 13px the face must still be paper --
+    odd-even fill, or a subpath wound the same way as the cowl, fills it in and
+    leaves a bell. See `docs/109-icon-choices.md`."""
+    from PyQt6.QtGui import QColor, QImage, QPainter
+
+    from automap.iconpaint import draw_icon
+
+    image = QImage(13, 13, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(QColor("white"))
+    p = QPainter(image)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    draw_icon(p, "hood", 0, 0, 13, QColor("black"))
+    p.end()
+
+    # The face sits a little above the middle; the shoulders below it are ink.
+    face = QColor(image.pixel(6, 5)).lightness()
+    shoulder = QColor(image.pixel(6, 10)).lightness()
+    assert face > 200, f"the face filled in: lightness {face}"
+    assert shoulder < 80, f"the shoulders are not ink: lightness {shoulder}"
+
+
+def test_the_sheet_only_names_icons_that_exist():
+    """`tools/iconsheet.py` is how a drawing gets judged; a renamed icon must
+    break the build rather than the sheet."""
+    import importlib.util
+
+    path = pathlib.Path(__file__).resolve().parent.parent / "tools" \
+        / "iconsheet.py"
+    spec = importlib.util.spec_from_file_location("iconsheet", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    named = [name for _, items in module.SHEET for name, _, _ in items]
+    assert named, "the sheet lists nothing"
+    for name in named:
+        assert name in icons.ICONS, name
 
 
 def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
@@ -1082,13 +1175,13 @@ def test_without_a_game_disk_the_readied_line_is_blank_not_numbered():
 
 def test_the_class_icons_stand_beside_the_class_text_never_instead_of_it(app):
     """The text is what a screen reader gets, and what somebody who does not
-    recognise a domino mask gets."""
+    recognise a hooded figure gets."""
     from automap.panel import CharacterCard
     card = CharacterCard()
     two = (live.ClassProgress("magic-user", 1, 0, 0.0, 2500),
            live.ClassProgress("thief", 1, 0, 0.0, 1250))
     card.show_character(_character(classes=two))
-    assert card.class_icons.names == ("hat-wizard", "mask")
+    assert card.class_icons.names == ("wizard-hat", "hood")
     assert card.klass.text().startswith("magic-user/thief")
 
 

@@ -69,10 +69,10 @@ NOTE = QColor("#b8601f")
 
 # The class icons, beside the class text and never instead of it: the text is
 # what a screen reader gets, and what somebody who does not recognise the icon
-# gets. Font Awesome Free has no sword, so the fighter's is one of ours -- see
-# `automap/icons.py`.
-CLASS_ICON = {"magic-user": "hat-wizard", "cleric": "cross",
-              "thief": "mask", "fighter": "sword"}
+# gets. Three of the four are ours, because Font Awesome Free has no sword and
+# its `hat-wizard` and `mask` failed at 13px -- see `docs/109-icon-choices.md`.
+CLASS_ICON = {"magic-user": "wizard-hat", "cleric": "cross",
+              "thief": "hood", "fighter": "sword"}
 ICON_SIZE = 13
 
 

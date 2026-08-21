@@ -39,8 +39,8 @@ class NoteType:
     key: str = ""       #: a letter that selects it in the picker
 
 
-#: The set, in picker order. Eight is enough to be scannable and few enough to
-#: fit one row of buttons.
+#: The set, in picker order. Nine is still scannable and still fits one row of
+#: buttons.
 TYPES: tuple[NoteType, ...] = (
     NoteType("encounter", "Encounter", "swords",
              "a fight, set or remembered", "E"),
@@ -52,6 +52,8 @@ TYPES: tuple[NoteType, ...] = (
              "where this map joins another", "X"),
     NoteType("locked", "Locked", "lock",
              "a door that beat you", "L"),
+    NoteType("stairs", "Stairs", "stairs",
+             "up, down, or wherever the level changes", "S"),
     NoteType("danger", "Danger", "triangle-exclamation",
              "traps, drains, whatever you want to avoid", "D"),
     NoteType("note", "Note", "location-dot",

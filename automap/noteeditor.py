@@ -3,7 +3,7 @@
 The dialog this replaces was wrong in one specific way: it made adding a note a
 modal interruption, and notes are made *while playing*, with the game in the
 other window and a fight probably waiting. So this is a popover at the square --
-eight icons, one line of text, Enter to keep, Escape to cancel -- and it goes
+nine icons, one line of text, Enter to keep, Escape to cancel -- and it goes
 away by itself when it loses focus.
 
 **Clicking a square that already has a note opens that note**, with its type

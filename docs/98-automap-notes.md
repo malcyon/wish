@@ -23,6 +23,7 @@ type is one line.
 | Person | `user` | Font Awesome | trainer, shop, quest-giver |
 | Exit | `door-open` | Font Awesome | where this map joins another |
 | Locked | `lock` | Font Awesome | a door that beat you |
+| Stairs | `stairs` | Font Awesome | up, down, or wherever the level changes |
 | Danger | `triangle-exclamation` | Font Awesome | traps, drains, whatever you avoid |
 | Note | `location-dot` | Font Awesome | anything that does not fit the others |
 | Done | `check` | Font Awesome | cleared, nothing left here |
@@ -66,7 +67,7 @@ with several notes draws the first one's icon and a count.
 
 ## Interaction
 
-* **Click an empty square** — a popover at that square: eight icons, a one-line
+* **Click an empty square** — a popover at that square: nine icons, a one-line
   text field, Enter to keep, Escape to drop. No modal dialog. A type's initial
   letter picks it while the text field does not have focus.
 * **Click a square that already has a note** — the same popover, **opened on

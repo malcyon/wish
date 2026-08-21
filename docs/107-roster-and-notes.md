@@ -69,15 +69,21 @@ it is that the map draws with `QPainter`, the SVG export gets the icons free,
 and nothing ships that the release build has to be told about.
 
 **Class icons stand beside the class text and never instead of it** — the text
-is what a screen reader gets, and what somebody who does not recognise a domino
-mask gets. Multi-class shows one icon per class, in the card's own class order.
+is what a screen reader gets, and what somebody who does not recognise a hooded
+figure gets. Multi-class shows one icon per class, in the card's own class
+order.
 
 | class | icon | source |
 |---|---|---|
-| magic-user | `hat-wizard` U+F6E8 | Font Awesome Free |
+| magic-user | a pointed hat | **ours** |
 | cleric | `cross` U+F654 | Font Awesome Free |
-| thief | `mask` U+F6FA | Font Awesome Free |
+| thief | a hooded figure | **ours** |
 | fighter | a sword | **ours** |
+
+Three of the four are drawn here. Font Awesome's `hat-wizard` comes apart at
+13px — its brim is a separate subpath and reads as a fin below the cone — and
+its `mask` stays perfectly legible while reading as goggles. The verdicts and
+the whole menu they were picked from are in `docs/109-icon-choices.md`.
 
 **Font Awesome Free has no sword.** `sword` and `swords` are Pro only, and
 `khanda` is a Sikh religious emblem — wrong in meaning and illegible at twelve

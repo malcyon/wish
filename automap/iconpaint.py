@@ -6,7 +6,7 @@ way. One `QPainterPath` is built per icon and cached: the paths are static, and
 building one per paint would parse twelve of them sixty times a second.
 
 **Winding fill, not the Qt default.** `QPainterPath` fills odd-even; SVG fills
-non-zero. `location-dot`'s counter and `mask`'s eyes are subpaths wound the
+non-zero. `location-dot`'s counter and `hood`'s face are subpaths wound the
 other way, and under odd-even they come out solid -- which is exactly the blob
 the icon was chosen to avoid.
 """

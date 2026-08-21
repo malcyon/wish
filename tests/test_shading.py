@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 
+import pytest
 from gamedata import synthetic_arena
 
 from automap import combat
@@ -181,3 +182,92 @@ def test_a_dimmed_combatant_still_reads_against_the_pattern():
     dead = dataclasses.replace(b.combatants[-1], hp=0)
     b = dataclasses.replace(b, combatants=b.combatants[:-1] + (dead,))
     assert "enemy-dim" in kinds(combat.battlefield(b, shading=combat.CROSS))
+
+
+# --- and what the canvas paints ---------------------------------------------
+
+@pytest.fixture
+def app():
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def drawn(cell=None):
+    """The combat canvas, painted offscreen. Returns the image and the canvas.
+
+    Colours are counted rather than compared to a reference image: the pen is
+    antialiased along a 45-degree stroke, so almost no pixel lands on the pen's
+    exact value and only "darker than the fill" is a stable question.
+    """
+    from automap.window import CombatCanvas
+
+    canvas = CombatCanvas()
+    canvas.show_battle(battle())
+    if cell is not None:
+        canvas.cell = cell
+        canvas._resize()
+    canvas.resize(canvas.minimumSize())
+    return canvas.grab().toImage(), canvas
+
+
+def inside_the_rock(image, canvas, inset: int = 3):
+    """Every pixel well inside the rock mass, clear of its inked boundary."""
+    x0, y0, _, _ = canvas.box
+    cell = canvas.cell
+    left = combat.MARGIN + (min(ROCK[0]) - x0) * cell + inset
+    top = combat.MARGIN + (min(ROCK[1]) - y0) * cell + inset
+    # Stop at the camera rectangle: it is dashed over the rock in this arena,
+    # and its blue is neither the fill nor a stroke.
+    right = combat.MARGIN + (min(canvas.battle.camera[0],
+                                 max(ROCK[0]) + 1) - x0) * cell - inset
+    bottom = combat.MARGIN + (max(ROCK[1]) + 1 - y0) * cell - inset
+    return [image.pixelColor(x, y)
+            for y in range(top, bottom) for x in range(left, right)]
+
+
+def test_the_canvas_paints_the_strokes_over_the_fill(app):
+    """The branch the geometry was waiting for: `Hatch` before `Rect`, because
+    a `Hatch` *is* a `Rect` and the older branch would swallow it."""
+    from automap import window as win
+
+    image, canvas = drawn()
+    pixels = inside_the_rock(image, canvas)
+    fill = win.BLOCK.lightnessF()
+    assert sum(1 for c in pixels if c.name() == win.BLOCK.name()) > 100
+    assert sum(1 for c in pixels if c.lightnessF() < fill - 0.02) > 100
+
+
+def test_a_small_cell_degrades_to_a_plain_fill(app):
+    """Below the stroke floor `hatch_lines` yields nothing, and the square is
+    the fill alone -- which is honest about what it has become."""
+    from automap import window as win
+
+    image, canvas = drawn(cell=combat.CELL_MIN)
+    pixels = inside_the_rock(image, canvas)
+    fill = win.BLOCK.lightnessF()
+    assert pixels and all(c.name() == win.BLOCK.name() for c in pixels)
+    assert not any(c.lightnessF() < fill - 0.02 for c in pixels)
+
+
+def test_the_boundary_is_inked_even_when_the_strokes_are_gone(app):
+    """`Line` was ignored by this canvas: without it a mass of rock at the
+    smallest cell is a flat tint with no edge at all."""
+    from automap import window as win
+
+    for cell in (combat.CELL_MAX, combat.CELL_MIN):
+        image, canvas = drawn(cell=cell)
+        x0, y0, _, _ = canvas.box
+        # A point on the rock's left edge, midway down it.
+        x = combat.MARGIN + (min(ROCK[0]) - x0) * cell
+        y = combat.MARGIN + (min(ROCK[1]) - y0) * cell + 2 * cell
+        edge = [image.pixelColor(x + dx, y).lightnessF() for dx in (-1, 0, 1)]
+        assert min(edge) < win.INK.lightnessF() + 0.25
+
+
+def test_the_fill_is_a_step_off_the_paper_rather_than_the_roof_tint():
+    """`#e7ecf2` was the tint a roofed square carries on the area map, which
+    against `#fbfcfd` paper reads as more paper."""
+    from automap import window as win
+
+    assert (win.BLOCK.name(), win.HATCH_PEN.name()) == ("#c3d0dd", "#68809a")
+    assert win.BLOCK.name() != win.ROOF.name()

@@ -1,12 +1,15 @@
-"""Render every icon candidate at the sizes it will actually be seen at.
+"""Render every icon the program ships at the sizes it is actually seen at.
 
-`docs/109-icon-choices.md` is a table of names. A table of names is how
+`docs/109-icon-choices.md` was once a table of names. A table of names is how
 `hat-wizard` got chosen and how it turned out to read as a shark's fin at
-13 pixels. This draws the menu instead, through `automap.iconpaint` -- the same
+13 pixels. This draws the icons instead, through `automap.iconpaint` -- the same
 code the map and the roster paint with -- so what comes out is what the program
 would do, not an approximation of it.
 
-Each row is one candidate, shown three ways:
+The candidates are gone; what is left is the set that won, kept renderable so
+the next change to a drawing is judged the same way the first one was.
+
+Each row is one icon, shown three ways:
 
 * **in a map cell**, at `render.py`'s `NOTE_SIZE` of 13 and at 16 and 20, in
   `NOTE` ink on graph paper with a wall against it, in the top-right corner
@@ -14,8 +17,9 @@ Each row is one candidate, shown three ways:
 * **on a roster card**, at the same three sizes, in `MUTED` beside the class
   text, which is where `panel.py`'s `IconRow` puts it;
 * **magnified**, 13px at 8x and 20px at 4x with nearest-neighbour scaling, so
-  the pixels are visible. This column is the one that decides: a glyph that is
-  mush is mush here and merely small everywhere else.
+  the pixels are visible. This column is the one that decided, and the one a
+  replacement has to survive: a glyph that is mush is mush here and merely
+  small everywhere else.
 
     .venv/bin/python tools/iconsheet.py work/reports/icon-sheet.png
 """
@@ -64,52 +68,38 @@ ROW_H = 13 * BIG13 + 12
 GAP = 10
 
 
-#: The menu. `(section, [(name, source, note), ...])`, in the order of
-#: `docs/109-icon-choices.md`. "in use" marks what the program draws today, so
-#: every candidate is judged against the thing it would replace.
+#: What ships. `(section, [(name, source, note), ...])`.
+#: `test_the_sheet_only_names_icons_that_exist` fails the build if a name here
+#: is not in `automap.icons`, so a renamed drawing breaks the build rather than
+#: the sheet.
 SHEET = [
-    ("Magic-user", [
-        ("hat-wizard", "FA Free", "in use -- the shark's fin"),
-        ("wand-sparkles", "FA Free", "bar plus three stars"),
-        ("wand-magic", "FA Free", "bar plus a tip"),
-        ("wizard-hat", "ours", "cone and brim as one silhouette"),
-        ("wand", "ours", "bar with the star grown onto it"),
-        ("scroll", "FA Free", "curled both ends"),
-        ("parchment", "ours", "sheet with a roll top and bottom"),
+    ("Class icons", [
+        ("wizard-hat", "ours", "magic-user: cone and brim, one silhouette"),
+        ("hood", "ours", "thief: one filled curve, one large hole"),
+        ("cross", "FA Free", "cleric: clean at every size"),
+        ("sword", "ours", "fighter: FA Free has no sword"),
     ]),
-    ("Thief", [
-        ("mask", "FA Free", "in use -- two counters"),
-        ("user-ninja", "FA Free", "head, shoulders, band"),
-        ("user-secret", "FA Free", "hat, coat, eyes"),
-        ("key", "FA Free", "one bow, one bit"),
-        ("dagger", "ours", "pairs with the fighter's sword"),
-        ("hood", "ours", "one filled curve, one hole"),
+    ("Note types", [
+        ("swords", "ours", "encounter"),
+        ("chest", "ours", "treasure"),
+        ("user", "FA Free", "person"),
+        ("door-open", "FA Free", "exit"),
+        ("lock", "FA Free", "locked"),
+        ("stairs", "FA Free", "stairs -- the level changes here"),
+        ("triangle-exclamation", "FA Free", "danger"),
+        ("location-dot", "FA Free", "a plain note, and the 64-unit counter "
+                                    "the size floor is measured against"),
+        ("check", "FA Free", "done"),
     ]),
-    ("Cleric", [
-        ("cross", "FA Free", "in use -- two bars"),
-        ("hands-praying", "FA Free", "two hands"),
-        ("book-bible", "FA Free", "book with a cross on it"),
-        ("mace", "ours", "haft and a spiked head"),
-    ]),
-    ("Fighter", [
-        ("sword", "ours", "in use"),
-        ("swords", "ours", "in use for encounters"),
-        ("dagger", "ours", "for contrast -- the thief's, at the same size"),
-        ("shield", "FA Free", "no counters at all"),
-        ("shield-halved", "FA Free", "a seam down the middle"),
-    ]),
-    ("Map -- the stairs the map has no glyph for", [
-        ("stairs", "FA Free", "one subpath, a staircase in profile"),
-        ("location-dot", "FA Free", "in use for a plain note, for scale"),
-    ]),
-    ("Toolbar -- open, save, save as, preview", [
+    ("Toolbar -- 16px beside the button text", [
         ("folder-open", "FA Free", "open"),
-        ("floppy-disk", "FA Free", "save"),
-        ("file-export", "FA Free", "save as"),
-        ("file-pen", "FA Free", "save as, alternative"),
+        ("floppy-disk", "FA Free", "save, and save as"),
         ("eye", "FA Free", "preview changes"),
-        ("magnifying-glass", "FA Free", "preview, alternative"),
-        ("code-compare", "FA Free", "preview, as a diff"),
+    ]),
+    ("Roster and popover", [
+        ("skull", "FA Free", "dead"),
+        ("arrow-down-long", "FA Free", "level-drained"),
+        ("trash-can", "FA Free", "delete this note"),
     ]),
 ]
 
@@ -177,17 +167,17 @@ def build() -> QImage:
     title.setBold(True)
     p.setFont(title)
     p.setPen(QPen(INK))
-    p.drawText(GAP, 26, "Icon candidates -- docs/109-icon-choices.md")
+    p.drawText(GAP, 26, "Icons in use -- docs/109-icon-choices.md")
     small = QFont()
     small.setPointSize(8)
     p.setFont(small)
     p.setPen(QPen(MUTED))
-    p.drawText(GAP, 44, "At 13 pixels in one ink colour a glyph survives only "
-                        "if it is a solid silhouette with at most one hole. "
-                        "Judge the magnified column.")
+    p.drawText(GAP, 44, "At 13 pixels a glyph survives if it is one connected "
+                        "silhouette and every feature is at least about 64 "
+                        "units in the 640 box. Judge the magnified column.")
     p.drawText(GAP, 58, "Map cells are NOTE ink on graph paper with a wall "
                         "against them; cards are MUTED beside the class text. "
-                        "Nothing here is chosen.")
+                        "This is the chosen set.")
 
     x0 = GAP
     map_x = x0 + LABEL_W
@@ -199,7 +189,7 @@ def build() -> QImage:
     head.setBold(True)
     p.setFont(head)
     p.setPen(QPen(INK))
-    p.drawText(x0, 82, "candidate")
+    p.drawText(x0, 82, "icon")
     for i, size in enumerate(SIZES):
         p.drawText(map_x + i * MAP_W, 82, f"map {size}")
         p.drawText(card_x + i * CARD_W, 82, f"card {size}")
