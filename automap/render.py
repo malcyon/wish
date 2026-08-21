@@ -36,6 +36,8 @@ from por.geo import (
     Geo,
 )
 
+from . import icons
+
 CELL = 34
 MARGIN = 26
 
@@ -77,13 +79,35 @@ class Poly:
 
 @dataclass(frozen=True)
 class Label:
-    """A short piece of text at a point. The combat view puts hit points in a
-    square with it; the area map has nothing to write."""
+    """A short piece of text at a point.
+
+    The combat view puts hit points in a square with it, where `(x, y)` is the
+    centre. A `note-count` puts the number of notes on a square beside its
+    marker, where `(x, y)` is the **bottom right** of the text -- the marker is
+    already against the cell's right edge and the count grows leftwards from it.
+    """
 
     x: float
     y: float
     text: str
     kind: str = "hp"
+
+
+@dataclass(frozen=True)
+class Glyph:
+    """One icon from `automap.icons`, filled into a square box.
+
+    `(x, y)` is the box's top-left corner and `size` its side, because that is
+    what both painters want: `QPainter` translates and scales, and SVG writes
+    the same as a `transform`. No font metrics anywhere -- see `icons.py` for
+    why the icons are paths and not a bundled font.
+    """
+
+    x: float
+    y: float
+    size: float
+    name: str
+    kind: str = "note"
 
 
 @dataclass(frozen=True)
@@ -193,6 +217,35 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
     return Poly(pts, "party")
 
 
+# Notes sit in the square's top-right corner, clear of the party marker in the
+# middle and of every wall. `NOTE_INSET` is measured against the 3px wall
+# stroke: half of that stroke lies inside the cell, so anything at 2 or more
+# never touches one. See `test_a_note_never_lands_on_a_wall`.
+NOTE_SIZE = 13
+NOTE_INSET = 3
+COUNT_SIZE = 9
+
+
+def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
+    """The marker for every square that carries notes.
+
+    **Drawn whatever the fog says.** A note is something you know; hiding it
+    because the square is currently fogged would be perverse.
+
+    A square with several notes draws the first one's icon and a count, rather
+    than trying to fit four icons into a 34px cell.
+    """
+    for (x, y), items in sorted(notes.items()):
+        if not items:
+            continue
+        left = margin + x * cell + cell - NOTE_INSET - NOTE_SIZE
+        top = margin + y * cell + NOTE_INSET
+        yield Glyph(left, top, NOTE_SIZE, items[0].icon, "note")
+        if len(items) > 1:
+            yield Label(left + NOTE_SIZE, top + NOTE_SIZE + COUNT_SIZE - 2,
+                        str(len(items)), "note-count")
+
+
 def map_primitives(geo: Geo, visible=None, cell: int = CELL,
                    margin: int = MARGIN):
     """Every primitive for one map.
@@ -236,12 +289,19 @@ SVG_STYLE = {
     "door-locked": 'fill="#ffffff" stroke="#16202b" stroke-width="2"',
     "door-wizard": 'fill="#ffffff" stroke="#9e2b9e" stroke-width="2"',
     "party": 'fill="#0067c7" stroke="none"',
+    "note": 'fill="#b8601f" stroke="none"',
+    "note-count": 'fill="#b8601f" font-family="sans-serif" font-size="9" '
+                  'text-anchor="end"',
 }
 
 
 def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
-           margin: int = MARGIN) -> str:
-    """Render one map to standalone SVG, for checking it by eye."""
+           margin: int = MARGIN, notes=None) -> str:
+    """Render one map to standalone SVG, for checking it by eye.
+
+    `notes` is the state's square-to-notes mapping; pass it and the markers
+    come out too, because they are the same primitives the window paints.
+    """
     size = GRID * cell + margin * 2
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" '
            f'height="{size}" viewBox="0 0 {size} {size}">',
@@ -256,6 +316,8 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
     prims = list(map_primitives(geo, visible, cell, margin))
     if party:
         prims.append(party_marker(*party, cell, margin))
+    if notes:
+        prims.extend(note_primitives(notes, cell, margin))
     for p in prims:
         style = SVG_STYLE.get(p.kind, "")
         if isinstance(p, Line):
@@ -264,6 +326,13 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
         elif isinstance(p, Rect):
             out.append(f'<rect x="{p.x}" y="{p.y}" width="{p.w}" '
                        f'height="{p.h}" {style}/>')
+        elif isinstance(p, Glyph):
+            scale = p.size / icons.BOX
+            out.append(f'<path transform="translate({p.x},{p.y}) '
+                       f'scale({scale:.5f})" d="{icons.path_data(p.name)}" '
+                       f'{style}/>')
+        elif isinstance(p, Label):
+            out.append(f'<text x="{p.x}" y="{p.y}" {style}>{p.text}</text>')
         else:
             pts = " ".join(f"{a},{b}" for a, b in p.points)
             out.append(f'<polygon points="{pts}" {style}/>')
