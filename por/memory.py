@@ -165,6 +165,27 @@ MAP: tuple[Region, ...] = (
     Region(0x0400, 1024, "the resident GEO", OK,
            note="the map the game is drawing, unrelocated -- the file loads at "
                 "$0400 and in the world the screen has moved to $CC00"),
+    Region(0x8C00, 0x5B0, "the combat map", OK,
+           note="one byte per square at $8C00 + y*stride + x, 56 x 26 with "
+                "stride 56 in the fights seen. Bit 7 means a combatant stands "
+                "there; mask & $7F for the terrain, 0 = floor. Outside combat "
+                "this is LIBRARY's file staging buffer and holds graphics, so "
+                "gate on MODE. Read the shape from $0607/$0612/$0613, not from "
+                "constants"),
+    Region(0x0400, 0x400, "SQRPACI<nn>", OK,
+           note="the combat-map descriptor page: $0580 tile remap, the "
+                "parameter block below, and code from $0680. Not a map itself, "
+                "which is why scoring it as a GEO gave chance"),
+    Region(0x0600, 0x14, "combat-view parameters", OK,
+           note="$0600 glyph table (18 bytes a tile: 9 screen codes, 9 "
+                "colours), $0602 the map, $0604 the position table, $0606 "
+                "combatant count, $0607 row stride, $0610/$0611 maximum camera "
+                "origin, $0612/$0613 maximum square x and y. COM.PREP $08C6 "
+                "derives the clamps as $0612 - 6, the view being 7 squares "
+                "($061A)"),
+    Region(0x037E, 2, "camera origin", OK,
+           note="top-left square of the 7 x 7 combat window; centred on the "
+                "acting combatant"),
     Region(0x8B00, 64 * 4, "combatant positions", MAYBE,
            note="x, y, index*4|pose, 0 per combatant; $FF $FF means off the "
                 "map. Reads all ZERO outside combat, not $FF, so gate on MODE "

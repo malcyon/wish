@@ -14,8 +14,11 @@ says only while the overlay that owns it is resident.
 
 | where | what | saved in | confidence | notes |
 |---|---|---|---|---|
+| `$037E`–`$037F` | **camera origin** | — | CONFIRMED | top-left square of the 7 x 7 combat window; centred on the acting combatant |
 | `$03DE`–`$03E0` | **SETNAM arguments** | — | CONFIRMED | length, then the filename's address in $03DF/$03E0 |
 | `$0400`–`$07FF` | **the resident GEO** | — | CONFIRMED | the map the game is drawing, unrelocated -- the file loads at $0400 and in the world the screen has moved to $CC00 |
+| `$0400`–`$07FF` | **SQRPACI<nn>** | — | CONFIRMED | the combat-map descriptor page: $0580 tile remap, the parameter block below, and code from $0680. Not a map itself, which is why scoring it as a GEO gave chance |
+| `$0600`–`$0613` | **combat-view parameters** | — | CONFIRMED | $0600 glyph table (18 bytes a tile: 9 screen codes, 9 colours), $0602 the map, $0604 the position table, $0606 combatant count, $0607 row stride, $0610/$0611 maximum camera origin, $0612/$0613 maximum square x and y. COM.PREP $08C6 derives the clamps as $0612 - 6, the view being 7 squares ($061A) |
 | `$2B80`–`$2C07` | **LINKER** | — | CONFIRMED | the outer loop: read $6E11, load that overlay at $0800, call it, repeat |
 | `$2C48` | **LIBRARY** | — | CONFIRMED | resident base. Its declared $1000 is a lie, as every overlay's is; the rest load at $0800 |
 | `$3243`–`$327B` | **race names** | — | CONFIRMED | NUL-separated, 1-based: DWARF=1 ... HUMAN=7 MONSTER=8. Reasoning in docs/40-memory-map.md |
@@ -53,9 +56,6 @@ says only while the overlay that owns it is resident.
 | `$8300`–`$83FF` | **party roster** | SAVEDGAME1 | CONFIRMED | eight 32-byte blocks of derived combat values. These same bytes are record offsets 0x100-0x11F -- an export and the roster agree in 31 of 32, differing only at 0x10D |
 | `$8400`–`$8AFF` | **ANIMATE00 and a bitmap buffer** | SAVEDGAME1 | CONFIRMED | not save data at all: resident code and graphics scratch that happened to be in memory when the range was dumped |
 | `$8B00`–`$8BFF` | **combatant positions** | — | PROBABLE | x, y, index*4\|pose, 0 per combatant; $FF $FF means off the map. Reads all ZERO outside combat, not $FF, so gate on MODE or you will draw 64 combatants at (0,0) |
-| `$8C00`–`$91AF` | **the combat map** | — | CONFIRMED | one byte per square at `$8C00 + y*stride + x`, 56 x 26 with stride 56 in the fights seen. Bit 7 means a combatant stands there; mask `& $7F` for the terrain, 0 = floor. Outside combat this is LIBRARY's file staging buffer and holds graphics, so gate on MODE. Read the shape from `$0607`/`$0612`/`$0613`, not from constants |
-| `$0400`–`$07FF` | **`SQRPACI<nn>`** | — | CONFIRMED | the combat-map descriptor page: `$0580` tile remap, the parameter block below, and code from `$0680`. Not a map itself, which is why scoring it as a `GEO` gave chance |
-| `$0600`–`$0613` | **combat-view parameters** | — | CONFIRMED | `$0600` glyph table (18 bytes a tile: 9 screen codes, 9 colours), **`$0602` the map**, `$0604` the position table, `$0606` combatant count, **`$0607` row stride**, `$0610`/`$0611` maximum camera origin, **`$0612`/`$0613` maximum square x and y**. `COM.PREP $08C6` derives the clamps as `$0612 - 6`, the view being 7 squares (`$061A`) |
-| `$037E` / `$037F` | **camera origin** | — | CONFIRMED | top-left square of the 7 x 7 combat window; centred on the acting combatant |
+| `$8C00`–`$91AF` | **the combat map** | — | CONFIRMED | one byte per square at $8C00 + y*stride + x, 56 x 26 with stride 56 in the fights seen. Bit 7 means a combatant stands there; mask & $7F for the terrain, 0 = floor. Outside combat this is LIBRARY's file staging buffer and holds graphics, so gate on MODE. Read the shape from $0607/$0612/$0613, not from constants |
 | `$A380`–`$A3BF` | **initiative** | — | PROBABLE | scanned for the maximum with ties broken randomly; the round ends when all 64 are zero |
 | `$CC00`–`$CFE7` | **screen** | — | CONFIRMED | in the world. Recompute it from $D018 and $DD00 every read -- it is $0400 at boot |
