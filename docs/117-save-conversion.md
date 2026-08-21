@@ -1,11 +1,29 @@
 # Converting between the DOS and C64 versions — plan
 
-**Status: planned, not started. The goal is a full DOS-to-C64 save
-conversion.** Characters are the easy part and are described below; the rest of
-a save is the work, and every obstacle to it is listed honestly further down.
-Nothing here is written off — several are hard and one is genuinely unsolved on
-our own side of the fence, and those are said plainly so they can be attacked
-rather than discovered late.
+**Status: planned, not started. The goal is one thing: turn a DOS save into a
+C64 save.** One direction only.
+
+That narrowing is worth more than it looks. It means **no DOS encoder** — we
+never have to write a DOS save, so the DOS format only has to be decoded far
+enough to source what the C64 needs, and any DOS field with no C64 counterpart
+can simply be ignored. It also retires the whole round-trip question: there is
+no round trip.
+
+What it does demand is absolute: **we must be able to produce every byte of a
+C64 save.** All 9216 of them. Not most, not the interesting ones — a save is a
+verbatim memory image and the game reads all of it.
+
+So the goal has a number, and the number is checkable:
+
+| | named | of which meaning is UNKNOWN |
+|---|---|---|
+| `SAVEDGAME0` (7168 bytes) | **99.2%** | 352 bytes |
+| `SAVEDGAME1` (2048 bytes) | **100%** | 0 |
+
+Being able to *name* a region is not the same as being able to *fill* it, which
+is what the obstacle list below is about. But it says where the edges are, and
+`por/memory.py` already generates it — so progress is measurable rather than
+felt.
 
 Donald asked whether the editor could turn a DOSBox save into a C64 save and
 back. The short answer is **yes for characters, probably not for saves**, and
@@ -89,17 +107,17 @@ the editor already uses.
 ## Losslessness, which is the project's whole promise
 
 `wish` never modifies a save it was given, and a no-op save is byte-identical.
-**Conversion cannot honour that in both directions**, because the target format
-has fields the source does not carry.
+Conversion is a different act — it *creates* a save — so the promise takes a
+different form:
 
-So the rule has to be explicit:
-
-* conversion **always writes a new file** and never touches the source;
-* every field that could not be carried is **reported**, not silently defaulted
-  — the same discipline as `--dry-run` in the CLI;
-* a round trip (C64 to DOS to C64) is **not** expected to be byte-identical,
-  and a test should assert what it *is* expected to preserve, so the losses are
-  a fixed known list rather than a surprise.
+* the DOS save is **read only**, always; the C64 save is a new file;
+* **every byte written must be justified.** Either it came from the DOS save,
+  or it was computed, or it is a documented constant. "Copied from a template
+  and probably fine" is a category that should not exist by the end.
+* every DOS field with no C64 home is **reported**, not silently dropped;
+* the finished converter should be able to say, for any offset in its output,
+  *where that byte came from*. That is the test, and it is stricter than a
+  round trip would have been.
 
 ---
 
@@ -126,6 +144,9 @@ from somewhere.** This is the whole list.
 | the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed |
 
 ## The obstacles, worst first
+
+One direction removes two of these outright: nothing below requires writing a
+DOS file, and nothing requires a C64 field to survive a trip back.
 
 **1. The quest flags, and we do not understand our own side.**
 `$4A20`-`$4B7F` is 352 bytes and its confidence in `por/memory.py` is
