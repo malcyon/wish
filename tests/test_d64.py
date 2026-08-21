@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from por.d64 import (
+    D64,
     IMAGE_SIZE,
     BlockCountMismatch,
-    D64,
     FileNotFoundInImage,
     InvalidImageError,
     attach_load_address,

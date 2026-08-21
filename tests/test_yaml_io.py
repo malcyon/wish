@@ -13,8 +13,7 @@ import yaml
 
 from por.d64 import D64
 from por.savegame import SaveGame0
-from por.yaml_io import (export_save, import_into, strip_annotations,
-                         to_yaml)
+from por.yaml_io import export_save, import_into, strip_annotations, to_yaml
 
 DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
 SAVE = f"{DISKS}/PORSAVE2.D64"
@@ -684,6 +683,7 @@ def _disagreeing_save(tmp_path):
     """A save where a character has a fighter's bits and a cleric's code --
     the shape DWARVEN FIGHTER has in the shipped game data."""
     import shutil
+
     from por.savegame import SaveGame0 as SG
     src = tmp_path / "npcish.d64"
     shutil.copy(SAVE, src)

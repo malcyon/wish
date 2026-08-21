@@ -7,11 +7,9 @@ still reverse engineering, because a silent misparse looks exactly like a
 discovery.
 """
 
-import glob
 import pathlib
 
 import pytest
-
 from gamedata import game_file
 
 from por.d64 import D64, load_payload, split_load_address

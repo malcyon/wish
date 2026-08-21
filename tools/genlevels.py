@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from por.levels import TABLES                                   # noqa: E402
+from por.levels import TABLES  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "89-level-tables.md"
 

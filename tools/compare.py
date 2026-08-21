@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from por import layout
 from por.d64 import D64
 from por.layout import Confidence
-from por.record import CharacterRecord, RECORD_SIZE
+from por.record import RECORD_SIZE, CharacterRecord
 
 DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
 

@@ -10,8 +10,15 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from por.geo import (DIRECTIONS, GRID, LOCKED, SOLID, WIZARD_LOCKED,  # noqa: E402
-                     Geo, load_geo_files)
+from por.geo import (  # noqa: E402
+    DIRECTIONS,
+    GRID,
+    LOCKED,
+    SOLID,
+    WIZARD_LOCKED,
+    Geo,
+    load_geo_files,
+)
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "docs", "88-map-files.md")
 

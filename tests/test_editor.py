@@ -14,9 +14,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QLabel, QWidget
 
-from editor.binding import (binding_for, bindings, editable_fields, shown_fields,
-                            widget_name)
-from editor.files import back_up, prune, save_disk
+from editor.binding import (
+    binding_for,
+    bindings,
+    editable_fields,
+    shown_fields,
+)
+from editor.files import back_up, prune
 from editor.roster import Party
 from por.layout import LAYOUT, Confidence
 
@@ -227,6 +231,7 @@ def test_without_a_game_disk_the_tab_says_why_items_are_numbers(app, save):
 @game_disks
 def test_editing_quantity_and_readied_reaches_the_disk(editor, save):
     from PyQt6.QtCore import Qt
+
     from editor.window import EditorWindow
     editor.ui.roster.selectRow(0)                    # MALCYON, six darts
     model = editor.items
@@ -520,6 +525,7 @@ def test_the_sheet_is_one_scrolling_page_of_group_boxes(app, save):
     """Nine tabs answered "is this the wounded one" in nine clicks. One page
     with titled borders answers it in none."""
     from PyQt6.QtWidgets import QGroupBox, QScrollArea, QTabWidget
+
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     assert w.findChild(QTabWidget) is None
@@ -680,8 +686,8 @@ def test_the_whole_sheet_scrolls_as_one_page(app, save):
 # --- field widths come from the layout --------------------------------------
 
 def test_the_widest_value_comes_from_the_kind_and_the_byte_width():
-    from por.layout import FIELDS_BY_NAME
     from editor.binding import value_range, widest_text
+    from por.layout import FIELDS_BY_NAME
     assert widest_text(FIELDS_BY_NAME["strength"]) == "255"
     assert widest_text(FIELDS_BY_NAME["gold"]) == "65535"
     assert widest_text(FIELDS_BY_NAME["name"]) == "W" * 20
@@ -706,6 +712,7 @@ def test_a_name_box_is_wider_than_an_ability_box(app, save):
 @game_disks
 def test_the_identity_box_is_called_character(app, save):
     from PyQt6.QtWidgets import QGroupBox
+
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     assert w.findChild(QGroupBox, "box_identity").title() == "Character"
@@ -745,8 +752,8 @@ def test_a_free_slot_has_no_traits(editor):
 
 @game_disks
 def test_a_scroll_shows_its_spells_and_a_wand_its_charges(editor):
-    from por.items import Item
     from editor.inventory import ItemTraitsModel
+    from por.items import Item
     m = ItemTraitsModel()
     m.set_tables(editor.item_types, editor.spell_names)
     m.set_item(Item(editor.templates["MU SCROLL WITH 1 SPELL"], editor.item_names))

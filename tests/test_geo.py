@@ -8,11 +8,22 @@ whole-corpus checks, which skip when they are not mounted.
 import pathlib
 
 import pytest
-
 from gamedata import game_file, synthetic_geo
 
-from por.geo import (GEO_SIZE, GRID, LOCKED, NORTH, EAST, SOUTH, WEST, SOLID,
-                     WIZARD_LOCKED, Geo, GeoError, load_geo_files)
+from por.geo import (
+    EAST,
+    GEO_SIZE,
+    GRID,
+    LOCKED,
+    NORTH,
+    SOLID,
+    SOUTH,
+    WEST,
+    WIZARD_LOCKED,
+    Geo,
+    GeoError,
+    load_geo_files,
+)
 
 DISKS = "/home/donald/c64/Pool of Radiance Disks"
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"

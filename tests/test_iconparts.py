@@ -3,12 +3,11 @@
 import pathlib
 
 import pytest
-
 from gamedata import game_file
 
+from por.iconparts import CELLS_PER_POSE, SPACE, IconParts
 from por.icons import ICON_COUNT, icon_for_slot
 from por.savegame import SaveGame0
-from por.iconparts import CELLS_PER_POSE, SPACE, IconParts
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -145,7 +144,6 @@ def test_the_editor_offers_only_icons_the_game_can_make(parts, legal, tmp_path):
     from PyQt6.QtWidgets import QApplication
 
     from editor.partspicker import PartsPicker
-    from por.icons import load_icon_charset
 
     app = QApplication.instance() or QApplication([])
     charset = bytes(2048)               # shape is what matters, not the art

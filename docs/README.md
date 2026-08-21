@@ -26,15 +26,15 @@ library in `por/` and the `wish` editor in `tools/`.
 | [101-combat-view.md](101-combat-view.md) | the combat map, inside the automapper — **built**, on the automapper tab |
 | [100-live-view.md](100-live-view.md) | a live read-only view of the running game — **built**, on the automapper tab |
 | [99-one-window.md](99-one-window.md) | the `wish` window: the editor and the automapper in two tabs, one live connection, and the backend registry |
-| [98-automap-notes.md](98-automap-notes.md) | note-taking on the automap — **planned**, for review |
+| [98-automap-notes.md](98-automap-notes.md) | typed note-taking on the automap — built |
 | [97-editor.md](97-editor.md) | the PyQt6 character editor: the `.ui` form, the read-only rules, and the icon editor |
 | [96-live-memory-automapper.md](96-live-memory-automapper.md) | the live automapper in `automap/`: how it reads a running game, draws the map and shows the party |
-| [102-live-actions.md](102-live-actions.md) | buttons that change the running game — planned |
-| [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — planned |
+| [102-live-actions.md](102-live-actions.md) | buttons that change the running game — built |
+| [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — built |
 | [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — planned |
 | [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and what still does |
 | [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — planned |
-| [107-roster-and-notes.md](107-roster-and-notes.md) | the automapper's roster cards, note tooltips and icon fonts — planned |
+| [107-roster-and-notes.md](107-roster-and-notes.md) | the automapper's roster cards, note tooltips and the icons — built |
 | [108-purge-history.md](108-purge-history.md) | removing the game's files from the git history — planned |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after

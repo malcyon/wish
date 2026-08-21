@@ -10,9 +10,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from por import d64                                       # noqa: E402
-from por.spells import (LAST_SPELL, SPELL_GROUPS,          # noqa: E402
-                        SPELL_RESTORATION, load_spell_names, spell_group)
+from por import d64  # noqa: E402
+from por.spells import (  # noqa: E402
+    LAST_SPELL,
+    SPELL_GROUPS,
+    SPELL_RESTORATION,
+    load_spell_names,
+)
 
 DEFAULT_DISK = "work/POOL1.D64.orig"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "86-spell-table.md"
@@ -49,7 +53,7 @@ def main() -> int:
             if i in names:
                 w(f"| {i} | {names[i]} |")
         w("")
-    w(f"## Outside the player's list")
+    w("## Outside the player's list")
     w("")
     w(f"`{SPELL_RESTORATION}` is **{names.get(SPELL_RESTORATION, '?')}**, a")
     w("cleric spell of far higher level than Pool of Radiance grants a player,")

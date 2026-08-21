@@ -1,6 +1,5 @@
 """The memory map is descriptive, so the tests check it stays honest."""
 
-import pytest
 
 from por import savegame
 from por.layout import Confidence

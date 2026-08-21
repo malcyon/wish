@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from por import d64                                    # noqa: E402
-from por.items import load_item_names                  # noqa: E402
+from por import d64  # noqa: E402
+from por.items import load_item_names  # noqa: E402
 
 DEFAULT_DISK = "work/POOL1.D64.orig"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "85-item-tables.md"

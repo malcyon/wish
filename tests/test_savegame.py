@@ -10,7 +10,7 @@ import pathlib
 
 import pytest
 
-from por.record import CharacterRecord, RECORD_SIZE
+from por.record import CharacterRecord
 from por.savegame import (
     HEADER_SIZE,
     ICON_SIZE,
@@ -222,8 +222,12 @@ class TestRosterBlocks:
         return SaveGame1.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME1"))
 
     def test_the_roster_is_exactly_one_page(self):
-        from por.savegame import (ROSTER_AREA_END, ROSTER_COUNT, ROSTER_STRIDE,
-                                  SAVE1_LOAD_ADDRESS)
+        from por.savegame import (
+            ROSTER_AREA_END,
+            ROSTER_COUNT,
+            ROSTER_STRIDE,
+            SAVE1_LOAD_ADDRESS,
+        )
         assert ROSTER_COUNT * ROSTER_STRIDE == 0x100
         assert SAVE1_LOAD_ADDRESS == 0x8300 and ROSTER_AREA_END == 0x8400
 
@@ -335,6 +339,7 @@ class TestRosterSpellCounts:
     @staticmethod
     def _by_level(record):
         from collections import Counter
+
         from por.spells import spell_group
         ids = [b for b in record.get_raw("spells_memorised") if b]
         per = Counter(spell_group(i)[1] for i in ids)
@@ -435,6 +440,7 @@ class TestShippedNpcRecords:
     def test_no_record_anywhere_uses_race_8(self):
         """MONSTER=8 is enumerated and never instantiated, like PALADIN."""
         import pathlib as _p
+
         from por.d64 import D64, split_load_address
         races = set()
         for n in range(1, 9):

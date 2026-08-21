@@ -11,15 +11,14 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-import struct
 
 import pytest
+from gamedata import synthetic_arena
 
 from automap import combat
 from automap.render import Label
-from automap.target import MemoryTarget
 from automap.state import Automapper
-from gamedata import synthetic_arena
+from automap.target import MemoryTarget
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

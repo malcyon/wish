@@ -4,9 +4,7 @@ import pathlib
 
 import pytest
 
-from por.d64 import D64
-from por.icons import (CELLS, ICON_COUNT, ICON_SIZE, ICON_TABLE_BASE,
-                       icon_for_slot)
+from por.icons import CELLS, ICON_COUNT, ICON_SIZE, ICON_TABLE_BASE, icon_for_slot
 from por.savegame import SLOT_AREA_BASE, SaveGame0
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"

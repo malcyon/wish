@@ -17,8 +17,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from por import layout
 from por.d64 import D64, split_load_address
-from por.record import CharacterRecord, RECORD_SIZE
-from por.savegame import SAVE0_LOAD_ADDRESS, SaveGame0
+from por.record import RECORD_SIZE, CharacterRecord
+from por.savegame import SaveGame0
 
 
 def hexdump(data: bytes, base: int = 0, width: int = 16) -> str:

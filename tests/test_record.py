@@ -362,8 +362,13 @@ def test_the_spellbook_stops_at_55_not_56():
     0x07F and `spellbook_bytes([56])` used to raise IndexError."""
     import pytest
 
-    from por.spells import (LAST_SPELLBOOK_SPELL, SPELLBOOK_OFFSET,
-                            SPELLBOOK_SIZE, spellbook_bytes, spells_known)
+    from por.spells import (
+        LAST_SPELLBOOK_SPELL,
+        SPELLBOOK_OFFSET,
+        SPELLBOOK_SIZE,
+        spellbook_bytes,
+        spells_known,
+    )
 
     assert LAST_SPELLBOOK_SPELL == SPELLBOOK_SIZE * 8 - 1 == 55
     book = spellbook_bytes([1, 55])
@@ -390,7 +395,7 @@ def test_a_slot_record_refuses_the_fields_it_does_not_carry():
     to answer 0, which through the roster's `60 - value` bias decodes as AC 60 --
     a plausible number and completely wrong. The record stores the biased byte,
     so 0 is not even a legal reading of it."""
-    from por.record import CharacterRecord, FieldNotStored, RECORD_SIZE
+    from por.record import RECORD_SIZE, CharacterRecord, FieldNotStored
 
     full = CharacterRecord(bytes(RECORD_SIZE))
     assert full.stored_size == RECORD_SIZE
@@ -408,7 +413,7 @@ def test_a_slot_record_refuses_the_fields_it_does_not_carry():
 def test_is_stored_is_decided_by_the_end_of_the_field_not_its_start():
     """A field straddling the boundary is not stored either."""
     from por.layout import field_by_name
-    from por.record import CharacterRecord, RECORD_SIZE
+    from por.record import RECORD_SIZE, CharacterRecord
 
     hp = field_by_name("hp_current")                # 0x119, two bytes
     rec = CharacterRecord(bytes(RECORD_SIZE), stored_size=hp.offset + 1)
@@ -420,8 +425,13 @@ def test_the_biased_encodings_round_trip_and_refuse_nonsense():
     ordinary byte -- so the encoders raise instead."""
     import pytest
 
-    from por.encoding import (armour_bonus_byte, armour_bonus_value,
-                              combat_byte, combat_value, item_protection_ac)
+    from por.encoding import (
+        armour_bonus_byte,
+        armour_bonus_value,
+        combat_byte,
+        combat_value,
+        item_protection_ac,
+    )
 
     for thac0 in (13, 20, 21):
         assert combat_value(combat_byte(thac0)) == thac0

@@ -7,6 +7,7 @@ ranges the live view reads, so the fixtures under `tests/fixtures` serve as
 recorded machines.
 """
 
+import json
 import os
 import pathlib
 
@@ -16,14 +17,19 @@ from gamedata import game_file
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.area import Fingerprint
+from automap.notes import Note
 from automap.render import (
     CELL,
+    MARGIN,
+    Glyph,
+    Label,
     Line,
     Poly,
     Rect,
     edge_primitives,
     map_primitives,
     merged_edge,
+    note_primitives,
     party_marker,
     to_svg,
 )
@@ -397,11 +403,12 @@ def test_notes_survive_a_round_trip(new_phlan, tmp_path, monkeypatch):
     mapper = Automapper(ReplayTarget([Fix(1, 1, 0, "status")]),
                         {"GEO00": new_phlan}, area="GEO00")
     mapper.poll()
-    mapper.state.notes[(4, 4)] = "fortune teller"
+    mapper.state.add_note(4, 4, Note("fortune teller", "person"))
     mapper.state.save_notes()
 
     again = Automapper(ReplayTarget([]), {"GEO00": new_phlan}, area="GEO00")
-    assert again.state.notes[(4, 4)] == "fortune teller"
+    kept = again.state.notes_at(4, 4)
+    assert [(n.text, n.type) for n in kept] == [("fortune teller", "person")]
     assert (1, 1) in again.state.exploration
 
 
@@ -793,13 +800,22 @@ def test_the_tab_shows_the_party_beside_the_map(app, tmp_path, monkeypatch):
     assert window.snapshot is not None
     assert window.roster.cards[0].name.text() == "BRUTUS"
     assert window.strip.clock.text() == "0:01"
-    # Left of the map, and the map no longer centred in the frame. The map is
-    # the stack of two canvases now -- the area map and the combat map.
+    # Roster left, map centre, the reading panels right, the actions under the
+    # map, the strip along the bottom. The map is the stack of two canvases --
+    # the area map and the combat map.
     grid = window.centralWidget().layout()
-    assert grid.indexOf(window.roster) < grid.indexOf(window.stack)
     assert grid.getItemPosition(grid.indexOf(window.roster))[:2] == (0, 0)
-    assert grid.getItemPosition(grid.indexOf(window.stack))[:2] == (0, 1)
+    assert grid.getItemPosition(grid.indexOf(window.map_column))[:2] == (0, 1)
+    assert grid.getItemPosition(grid.indexOf(window.side))[:2] == (0, 2)
     assert grid.getItemPosition(grid.indexOf(window.strip))[0] == 1
+    # The actions are under the map, in its column, not in a row of their own.
+    column = window.map_column.layout()
+    assert column.indexOf(window.stack) < column.indexOf(window.actions_bar)
+    # The panels' column is capped, and what the cap leaves over goes to the
+    # map's column, which centres the map in it rather than leaving the slack
+    # against one edge.
+    assert window.side.maximumWidth() == window.SIDE_WIDTH
+    assert grid.columnStretch(2) and grid.columnStretch(1)
     assert window.stack.currentWidget() is window.canvas
 
 
@@ -842,3 +858,595 @@ def test_the_session_does_not_attach_until_a_tab_wants_live_data(monkeypatch):
     s.target = object()
     s.poll()
     assert attempts == [], "already attached; should not attach again"
+
+
+# --- notes ------------------------------------------------------------------
+
+from PyQt6.QtWidgets import QPushButton  # noqa: E402
+
+from automap import icons  # noqa: E402
+from automap import notes as notemod  # noqa: E402
+
+
+def _area(tmp_path, monkeypatch, area="GEO14") -> AutomapState:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    state = AutomapState()
+    state.area = area
+    return state
+
+
+def test_an_old_format_note_loads_as_one_note_and_is_rewritten(tmp_path,
+                                                               monkeypatch):
+    """`"6,2": "some text"` was the whole format once. Nobody's notes get eaten
+    by an upgrade."""
+    state = _area(tmp_path, monkeypatch)
+    path = state.notes_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"notes": {"6,2": "arena master"},
+                                "seen": ["6,2"]}))
+    state.load_notes()
+    kept = state.notes_at(6, 2)
+    assert [(n.text, n.type) for n in kept] == [("arena master", "note")]
+
+    state.save_notes()
+    payload = json.loads(path.read_text())
+    assert payload["notes"]["6,2"] == [{"type": "note", "text": "arena master"}]
+
+
+def test_a_square_holds_more_than_one_note(tmp_path, monkeypatch):
+    """A fight and the treasure it guards are two notes, not one string."""
+    state = _area(tmp_path, monkeypatch)
+    state.add_note(6, 2, Note("dueling pairs", "encounter", "2026-08-20T12:00:00"))
+    state.add_note(6, 2, Note("needs a thief", "treasure"))
+    state.save_notes()
+
+    again = _area(tmp_path, monkeypatch)
+    again.load_notes()
+    assert [(n.type, n.text) for n in again.notes_at(6, 2)] == [
+        ("encounter", "dueling pairs"), ("treasure", "needs a thief")]
+    assert again.notes_at(6, 2)[0].at == "2026-08-20T12:00:00"
+
+
+def test_an_unknown_type_keeps_its_name_and_draws_the_neutral_marker():
+    """A removed or renamed type must not quietly become a different one."""
+    kind = notemod.type_for("wyvern")
+    assert kind.name == "wyvern" and kind.icon == "location-dot"
+    assert Note("here", "wyvern").icon == "location-dot"
+
+
+def test_junk_in_a_notes_file_costs_only_the_junk(tmp_path, monkeypatch):
+    """The file is hand-editable by design, so half of one beats none."""
+    state = _area(tmp_path, monkeypatch)
+    path = state.notes_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"notes": {"1,1": 42, "nowhere": ["x"],
+                                          "2,2": [{"type": "locked"}]}}))
+    state.load_notes()
+    assert list(state.notes) == [(2, 2)]
+
+
+def test_forgetting_squares_keeps_the_notes(tmp_path, monkeypatch):
+    """`--forget ALL` clears exploration and leaves every note untouched."""
+    from automap.__main__ import forget
+    state = _area(tmp_path, monkeypatch)
+    state.exploration.visit(3, 3)
+    state.add_note(6, 2, Note("arena master", "person"))
+    state.save_notes()
+
+    forget("ALL")
+    again = _area(tmp_path, monkeypatch)
+    again.load_notes()
+    assert len(again.exploration) == 0
+    assert [n.text for n in again.notes_at(6, 2)] == ["arena master"]
+
+
+# --- drawing them -----------------------------------------------------------
+
+def test_every_note_type_and_class_icon_draws():
+    """The icons are path data, not a font, so a bad one fails here rather
+    than as a blank square on somebody's map."""
+    from automap.panel import CLASS_ICON
+    for name in [t.icon for t in notemod.TYPES] + list(CLASS_ICON.values()):
+        assert icons.commands(name), name
+
+
+def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
+    """`location-dot` was chosen over `location-pin` because it is a solid
+    silhouette with one hole, and the hole is what survives 12px. That needs
+    two subpaths and winding fill -- odd-even would fill the hole in."""
+    from PyQt6.QtCore import Qt as _Qt
+
+    from automap.iconpaint import painter_path
+    assert sum(1 for c in icons.commands("location-dot") if c[0] == "M") == 2
+    assert painter_path("location-dot").fillRule() == _Qt.FillRule.WindingFill
+
+
+def test_a_square_with_three_notes_draws_one_icon_and_a_count():
+    prims = list(note_primitives({(2, 3): [Note("a", "encounter"),
+                                           Note("b", "treasure"),
+                                           Note("c")]}))
+    glyphs = [p for p in prims if isinstance(p, Glyph)]
+    labels = [p for p in prims if isinstance(p, Label)]
+    assert [g.name for g in glyphs] == ["swords"]        # the first one only
+    assert [(lab.text, lab.kind) for lab in labels] == [("3", "note-count")]
+
+
+@game_disks
+def test_a_note_never_lands_on_a_wall():
+    """Checked on GEO14, the densest map we have: a note that hides a wall has
+    made the map worse, and the map's job is the walls."""
+    slums = Geo.from_bytes(game_file("GEO14"))
+    walls = [p for p in map_primitives(slums) if isinstance(p, Line)]
+    every = {(x, y): [Note("x", "danger")]
+             for y in range(GRID) for x in range(GRID)}
+    for glyph in note_primitives(every):
+        x0, y0, x1, y1 = icons.extent(glyph.name)
+        scale = glyph.size / icons.BOX
+        box = (glyph.x + x0 * scale, glyph.y + y0 * scale,
+               glyph.x + x1 * scale, glyph.y + y1 * scale)
+        for wall in walls:
+            # Every wall is axis-aligned, and 3px wide, so half of it lies
+            # inside the cell. Grow the segment by that half before testing.
+            lo_x, hi_x = sorted((wall.x1, wall.x2))
+            lo_y, hi_y = sorted((wall.y1, wall.y2))
+            overlaps = (box[0] < hi_x + 1.5 and box[2] > lo_x - 1.5
+                        and box[1] < hi_y + 1.5 and box[3] > lo_y - 1.5)
+            assert not overlaps, f"{glyph} over {wall}"
+
+
+def test_a_note_is_drawn_through_the_fog(new_phlan):
+    """A note is something you know. Hiding it because the square is fogged
+    would be perverse."""
+    marked = {(9, 9): [Note("locked, come back", "locked")]}
+    svg = to_svg(new_phlan, visible=lambda x, y: False, notes=marked)
+    assert icons.path_data("lock") in svg
+
+
+def test_the_svg_export_carries_the_notes(new_phlan):
+    svg = to_svg(new_phlan, notes={(1, 1): [Note("a", "person"),
+                                            Note("b", "done")]})
+    assert icons.path_data("user") in svg
+    assert 'text-anchor="end"' in svg and ">2<" in svg
+
+
+# --- the roster's new lines -------------------------------------------------
+
+def _character(**kw):
+    fields = dict(slot=0, name="BRUTUS", classes=(), level=1, armour_class=9,
+                  thac0=18, hp=11, hp_max=11, experience=0)
+    fields.update(kw)
+    return live.Character(**fields)
+
+
+def test_a_card_shows_what_is_readied_and_nothing_else(app):
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    card.show_character(_character(readied=("BANDED MAIL", "SHIELD",
+                                            "LONG SWORD")))
+    assert card.readied_items == ("BANDED MAIL", "SHIELD", "LONG SWORD")
+    assert "BANDED MAIL" in card.readied.text()
+    assert card.readied.toolTip().splitlines()[-1] == "LONG SWORD"
+
+
+def test_a_character_with_nothing_readied_gets_a_blank_line(app):
+    """The absence is the information, and the word "none" is not. The line
+    stays, so the cards below it do not shift when a sword is put away."""
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    card.show_character(_character(readied=("LONG SWORD",)))
+    tall = card.sizeHint().height()
+    card.show_character(_character())
+    assert card.readied.text() == ""
+    assert card.sizeHint().height() == tall
+
+
+def test_a_long_readied_list_is_elided_and_kept_whole_in_the_tooltip(app):
+    from automap.panel import CARD_WIDTH, CharacterCard
+    card = CharacterCard()
+    items = tuple(f"BANDED MAIL +{n}" for n in range(6))
+    card.show_character(_character(readied=items))
+    assert card.readied.text().endswith("…")
+    assert len(card.readied.toolTip().splitlines()) == 6
+    from PyQt6.QtGui import QFontMetrics
+    assert QFontMetrics(card.readied.font()).horizontalAdvance(
+        card.readied.text()) <= CARD_WIDTH
+
+
+@game_disks
+def test_readied_items_are_read_from_the_item_block():
+    """The editor's inventory table shows exactly this; the card shows the
+    readied half of it."""
+    from por.savegame import SaveGame0
+    save = SaveGame0.from_prg((FIXTURES / "party6_after_combat.bin").read_bytes())
+    names = live.item_names()
+    payload = save.to_bytes()
+    assert live.readied(payload, 5, names) == ("BANDED MAIL", "SHIELD",
+                                               "LONG SWORD")
+    # MAGNUS carries a bow and arrows that are not in hand, and they are not
+    # on the card.
+    assert live.readied(payload, 4, names) == ("BANDED MAIL", "SHIELD",
+                                               "LONG SWORD")
+
+
+def test_without_a_game_disk_the_readied_line_is_blank_not_numbered():
+    """Item names come off the disk. Word indices on a card would be worse
+    than nothing."""
+    from por.savegame import SaveGame0
+    save = SaveGame0.from_prg((FIXTURES / "party6_after_combat.bin").read_bytes())
+    assert live.readied(save.to_bytes(), 5, None) == ()
+
+
+def test_the_class_icons_stand_beside_the_class_text_never_instead_of_it(app):
+    """The text is what a screen reader gets, and what somebody who does not
+    recognise a domino mask gets."""
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    two = (live.ClassProgress("magic-user", 1, 0, 0.0, 2500),
+           live.ClassProgress("thief", 1, 0, 0.0, 1250))
+    card.show_character(_character(classes=two))
+    assert card.class_icons.names == ("hat-wizard", "mask")
+    assert card.klass.text().startswith("magic-user/thief")
+
+
+def test_the_fighter_icon_is_one_of_ours(app):
+    """Font Awesome Free has no sword: `sword` and `swords` are Pro, and
+    `khanda` is a Sikh religious emblem."""
+    from automap.panel import CLASS_ICON
+    assert CLASS_ICON["fighter"] == "sword"
+    assert "sword" in icons.OURS and "sword" not in icons.FONT_AWESOME
+
+
+# --- the notes panel and the popover ----------------------------------------
+
+def test_the_notes_panel_lists_every_note_and_points_at_the_square(app):
+    from automap.panel import NotesPanel
+    panel = NotesPanel()
+    panel.show_notes({(6, 2): [Note("arena master", "person"),
+                               Note("dueling pairs", "encounter")],
+                      (1, 1): [Note("exit to Kuto's Well", "exit")]})
+    rows = [panel.list.item(i).text() for i in range(panel.list.count())]
+    assert rows[0].startswith("(1,1)") and "exit to Kuto's Well" in rows[0]
+    assert len(rows) == 3 and "(3)" in panel.heading.text()
+
+    seen = []
+    panel.chosen.connect(lambda x, y: seen.append((x, y)))
+    panel.list.itemClicked.emit(panel.list.item(2))
+    assert seen == [(6, 2)]
+
+
+def test_a_note_made_in_the_popover_is_saved_and_drawn(app, tmp_path,
+                                                       monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    pop = window._popover
+    pop.choose("encounter")
+    pop.field.setText("dueling pairs")
+    pop.accept()
+
+    assert [n.type for n in window.state.notes_at(6, 2)] == ["encounter"]
+    assert window.state.notes_at(6, 2)[0].at            # stamped when made
+    payload = json.loads(window.state.notes_path().read_text())
+    assert payload["notes"]["6,2"][0]["text"] == "dueling pairs"
+    rows = [window.notes_panel.list.item(i).text()
+            for i in range(window.notes_panel.list.count())]
+    assert rows == ["(6,2)  Encounter - dueling pairs"]
+
+
+def test_an_empty_untyped_popover_adds_nothing(app, tmp_path, monkeypatch):
+    """A note with no type and no words would draw a marker that says
+    nothing."""
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    window._popover.accept()
+    assert window.state.notes == {}
+
+
+def test_hovering_a_note_shows_every_note_on_the_square(app, tmp_path,
+                                                        monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(3, 4, Note("dueling pairs", "encounter"))
+    window.state.add_note(3, 4, Note("", "locked"))
+    px = MARGIN + 3 * CELL + 2
+    py = MARGIN + 4 * CELL + 2
+    assert window.canvas.tooltip_at(px, py) == (
+        "Encounter - dueling pairs\nLocked")
+    assert window.canvas.tooltip_at(MARGIN + 8 * CELL, py) is None
+
+
+def test_right_clicking_a_square_offers_edit_and_delete(app, tmp_path,
+                                                        monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(3, 4, Note("locked, come back", "locked"))
+    window.state.add_note(3, 4, Note("cleared", "done"))
+    entries = window.note_menu_entries(3, 4)
+    assert [text for text, _ in entries] == [
+        "Edit  Locked - locked, come back",
+        "Delete  Locked - locked, come back",
+        "Edit  Done - cleared",
+        "Delete  Done - cleared",
+        "Add another note"]
+    entries[1][1]()                                   # delete the first
+    assert [n.type for n in window.state.notes_at(3, 4)] == ["done"]
+
+
+def test_n_puts_a_note_on_the_partys_own_square(app, tmp_path, monkeypatch):
+    """The common case while playing, with the game in the other window."""
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.source, window.state.x, window.state.y = "status", 7, 11
+    assert window._note_action.shortcut().toString() == "N"
+    window._note_action.trigger()
+    assert window._popover.square == (7, 11)
+
+
+def test_a_notes_row_flashes_its_square(app, tmp_path, monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.point_at(9, 3)
+    assert window.canvas.flash == (9, 3)
+
+
+# --- the commissions panel, wired -------------------------------------------
+
+def test_the_tab_shows_the_commissions(app, tmp_path, monkeypatch):
+    save0, save1 = captured()
+    window = make_window(app, tmp_path, monkeypatch,
+                         MemoryTarget({0x4900: save0, 0x8300: save1}))
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.commissions.completed.text().startswith(
+        "Commissions completed:")
+    assert window.commissions.heading.text() == "Commissions"
+
+
+def test_a_poll_that_reads_nothing_leaves_the_commissions_alone(app, tmp_path,
+                                                                monkeypatch):
+    """Plot flags do not change while the game is in a menu, and a blanked
+    quest log every time somebody opens one would be a flicker."""
+    save0, save1 = captured()
+    machine = MemoryTarget({0x4900: save0, 0x8300: save1})
+    window = make_window(app, tmp_path, monkeypatch, machine)
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    before = window.commissions.completed.text()
+    machine.memory[0x4900] = bytes(0x1C00)
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.commissions.completed.text() == before
+
+
+# --- the action buttons -----------------------------------------------------
+
+def test_with_nothing_attached_the_buttons_are_disabled_not_inert(app):
+    from automap.actionbar import ActionBar
+    bar = ActionBar()
+    bar.attach(None)
+    assert not any(b.isEnabled() for b in bar.buttons.values())
+    assert bar.buttons["heal"].toolTip() == "no emulator attached"
+
+
+def test_a_fight_disables_what_a_fight_forbids(app):
+    from automap.actionbar import ActionBar
+    bar = ActionBar()
+    bar.attach(MemoryTarget({0x6E11: b"\x02"}))
+    assert bar.buttons["heal"].isEnabled()            # legal mid-fight
+    assert not bar.buttons["identify"].isEnabled()
+    assert "$6E11 is 2" in bar.buttons["identify"].toolTip()
+
+
+def test_the_whole_row_costs_one_read_of_the_mode_flag(app):
+    """Six actions asking `legality` is six round trips otherwise, and each
+    hands the emulation ~14.3 ms of extra emulated time."""
+    from automap.actionbar import ActionBar
+    machine = MemoryTarget({0x6E11: b"\x00"})
+    bar = ActionBar()
+    bar.attach(machine)
+    assert [r for r in machine.reads if r[0] == 0x6E11] == [(0x6E11, 1)]
+
+
+def test_an_action_that_carries_a_confirm_asks_first(app):
+    from automap.actionbar import ActionBar
+    machine = MemoryTarget({0x6E11: b"\x00"})
+    said = []
+    bar = ActionBar(say=lambda text, detail="", alarm=False: said.append(text))
+    asked = []
+    bar.ask = lambda question: asked.append(question) or False
+    bar.attach(machine)
+    identify = next(a for a in bar.actions if a.name == "identify")
+    assert bar.run(identify) is None
+    assert asked and "no way to undo" in asked[0]
+    assert said == []                       # refused before anything was read
+
+    bar.ask = lambda question: True
+    outcome = bar.run(identify)
+    # The result is a line in the messages panel, not a pop-up to dismiss.
+    assert outcome is not None
+    assert said == [f"identify all items: {outcome.message}"]
+    assert "identify all items:" in bar.note.text()
+
+
+def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
+    """It writes to a running machine on an edge nobody asked for, so it has
+    to be turned on deliberately."""
+    from automap.actionbar import ActionBar
+    save0, save1 = captured()
+    machine = MemoryTarget({0x4900: save0, 0x8300: save1, 0x6E11: b"\x02"})
+    bar = ActionBar()
+    assert not bar.watch_box.isChecked() and not bar.watcher.enabled
+    assert bar.watch(machine) is None                  # in a fight
+
+    bar.watch_box.setChecked(True)
+    assert bar.watcher.enabled
+    assert bar.watch(machine) is None                  # still in the fight
+    machine.memory[0x6E11] = b"\x00"
+    outcome = bar.watch(machine)                       # the 2-to-not-2 edge
+    assert outcome is not None and outcome.ok
+    assert "quickfight" in bar.note.text()
+    machine.memory[0x6E11] = b"\x00"
+    assert bar.watch(machine) is None                  # edge only, not level
+
+
+def test_the_tab_polls_the_buttons_with_the_party(app, tmp_path, monkeypatch):
+    save0, save1 = captured()
+    window = make_window(app, tmp_path, monkeypatch,
+                         MemoryTarget({0x4900: save0, 0x8300: save1}))
+    assert not window.actions_bar.buttons["heal"].isEnabled()
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.actions_bar.target is window.mapper.target
+    assert window.actions_bar.buttons["heal"].isEnabled()
+
+
+def test_the_font_awesome_attribution_travels_with_the_icons():
+    """CC BY 4.0's one obligation. The paths are lifted from `svgs-full`, so
+    the notice has to be carried by us -- copying a path out of the `.svg`
+    leaves its inline comment behind."""
+    from wish.about import TEXT
+    root = pathlib.Path(__file__).resolve().parent.parent
+    assert "Font Awesome" in TEXT and "CC BY 4.0" in TEXT
+    assert "Font Awesome" in (root / "README.md").read_text()
+    assert (root / "docs/licences/fontawesome-LICENSE.txt").exists()
+    assert "Font Awesome" in icons.__doc__
+
+
+# --- what Donald found while playing ----------------------------------------
+
+def test_clicking_a_note_opens_it_with_its_words_in_the_field(app, tmp_path,
+                                                              monkeypatch):
+    """It opened blank, which made an existing note look lost."""
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(6, 2, Note("locked, come back", "locked"))
+    window.edit_note(6, 2)
+    pop = window._popover
+    assert pop.index == 0
+    assert pop.field.text() == "locked, come back"
+    assert pop.chosen == "locked" and pop.buttons["locked"].isChecked()
+    assert not pop.remove.isHidden()          # and it can be got rid of
+
+
+def test_a_new_note_has_nothing_to_delete(app, tmp_path, monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    assert window._popover.index is None
+    assert window._popover.remove.isHidden()
+
+
+def test_the_delete_button_removes_the_note(app, tmp_path, monkeypatch):
+    """The bug that mattered: a note could be made and not unmade."""
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(6, 2, Note("kobold ambush", "danger"))
+    window.notes_changed()
+    window.edit_note(6, 2)
+    window._popover.remove.click()
+    assert window.state.notes_at(6, 2) == []
+    assert json.loads(window.state.notes_path().read_text())["notes"] == {}
+    assert window.notes_panel.list.count() == 0
+
+
+def test_a_second_note_on_the_square_is_listed_with_its_own_delete(
+        app, tmp_path, monkeypatch):
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(6, 2, Note("dueling pairs", "encounter"))
+    window.state.add_note(6, 2, Note("needs a thief", "treasure"))
+    window.edit_note(6, 2)
+    pop = window._popover
+    assert pop.field.text() == "dueling pairs"          # the first is open
+    others = [b.text() for b in pop.findChildren(QPushButton)]
+    assert "Treasure - needs a thief" in others         # the second is listed
+    pop.delete(1)
+    assert [n.type for n in window.state.notes_at(6, 2)] == ["encounter"]
+
+
+def test_an_action_reports_into_the_messages_panel_not_a_pop_up(app, tmp_path,
+                                                                monkeypatch):
+    save0, save1 = captured()
+    window = make_window(app, tmp_path, monkeypatch,
+                         MemoryTarget({0x4900: save0, 0x8300: save1}))
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    heal = next(a for a in window.actions_bar.actions if a.name == "heal")
+    outcome = window.actions_bar.run(heal)
+    assert outcome is not None
+    assert window.messages.lines()[-1].endswith(
+        f"heal the party: {outcome.message}")
+
+
+def test_the_messages_panel_drops_repeats_and_keeps_the_alarm(app, tmp_path,
+                                                              monkeypatch):
+    """The connection says the same thing on every tick while it waits."""
+    window = make_window(app, tmp_path, monkeypatch, None)
+    window.waiting("something else is attached to the emulator", alarm=True)
+    window.waiting("something else is attached to the emulator", alarm=True)
+    lines = [ln for ln in window.messages.lines() if "attached" in ln]
+    assert len(lines) == 1
+    row = window.messages.list.item(window.messages.list.count() - 1)
+    from automap.panel import DANGER
+    assert row.foreground().color().name() == DANGER.name()
+
+
+def test_a_character_at_zero_and_a_drained_one_are_marked(app):
+    """The two conditions the record actually tells us, and no others: the
+    effect ids at $4900 are a code space nothing in the project names."""
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    card.show_character(_character(hp=0))
+    assert card.conditions.names == ("skull",)
+    assert "dead or dying" in card.conditions.toolTip()
+    card.show_character(_character(hp=4, levels_drained=2))
+    assert card.conditions.names == ("arrow-down-long",)
+    assert "drained 2 levels" in card.conditions.toolTip()
+    card.show_character(_character())
+    assert card.conditions.names == ()
+
+
+def test_the_effect_table_is_still_shown_by_number():
+    """`por/traits.py` names the trait codes at record `0x0AD`, which is a
+    different table from the effect ids at `$4900`. Nothing maps one to the
+    other, so an effect keeps its number rather than borrowing a trait's
+    name."""
+    effect = live.Effect(slot=0, id=64, owner=0, duration=3, magnitude=0)
+    assert effect.label == "effect 64"
+    from por import traits
+    assert traits.describe(64) == "poison"        # a trait code, not this
+
+
+def test_the_commissions_panel_does_not_show_one_flag_as_two_commissions(app):
+    """`ECL08` gates "clear the slums" on the same byte the ledger row is, so
+    the row says it is on the board rather than reading as a second job."""
+    from automap.commissions import CommissionsPanel
+    flags = bytearray(book_flags())
+    flags[0x4AA6 - 0x4A20 + 21] = 3              # the slums, part cleared
+    panel = CommissionsPanel()
+    panel.update_from(bytes(flags))
+    progress = panel.groups["progress"]
+    assert progress.heading.text() == "Working towards"
+    row = progress._rows[0]
+    assert row.what.text() == "slums cleared"
+    assert "marker 3" in row.state.text() and "on the board" in row.state.text()
+    assert "one commission in one state, not two" in row.toolTip()
+    offer = panel.groups["available"]._rows[0]
+    assert offer.what.text() == "clear the slums"
+    assert "settles ledger 21" in offer.toolTip()
+
+
+def book_flags() -> bytes:
+    """The flag block from the shipped unplayed save, as bytes."""
+    from por import commissions as book
+    save0 = (FIXTURES / "savedgame0.bin").read_bytes()[2:]
+    return book.flags(save0).to_bytes()
+
+
+def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
+                                                     monkeypatch):
+    """`N` opens a note and `E`, `T`, `P`... pick its type, so both could take
+    a letter out of the words being typed. Neither does: the popover holds the
+    keyboard, and the type letters are ignored while the field has focus."""
+    from PyQt6.QtTest import QTest
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.show()
+    window.edit_note(3, 3)
+    pop = window._popover
+    pop.field.setFocus()
+    QTest.keyClicks(pop.field, "north gate")
+    assert pop.field.text() == "north gate"
+    assert window._popover is pop            # no second popover opened
+    assert pop.chosen == "note"              # and no type was picked by "e"
+    window.close()

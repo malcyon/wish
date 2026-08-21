@@ -24,9 +24,15 @@ import pytest
 
 from automap.paths import find_disks
 from por.d64 import load_payload
-from por.geo import (ATTRIBUTES, BARRIERS, GRID, PASSABLE, SOLID,
-                     WALLS_NORTH_EAST, WALLS_SOUTH_WEST)
-
+from por.geo import (
+    ATTRIBUTES,
+    BARRIERS,
+    GRID,
+    PASSABLE,
+    SOLID,
+    WALLS_NORTH_EAST,
+    WALLS_SOUTH_WEST,
+)
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -164,9 +170,15 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     `savedgame1.bin` holds one, at 0 -- or it has no record and is skipped.
     """
     from por.encoding import COMBAT_BIAS
-    from por.savegame import (ROSTER_ARMOUR_CLASS, ROSTER_HP_CURRENT,
-                              ROSTER_MOVEMENT, ROSTER_STRIDE, ROSTER_THAC0,
-                              SAVE0_LOAD_ADDRESS, SAVE1_LOAD_ADDRESS)
+    from por.savegame import (
+        ROSTER_ARMOUR_CLASS,
+        ROSTER_HP_CURRENT,
+        ROSTER_MOVEMENT,
+        ROSTER_STRIDE,
+        ROSTER_THAC0,
+        SAVE0_LOAD_ADDRESS,
+        SAVE1_LOAD_ADDRESS,
+    )
     ROSTER_RECORD_SLOT = 0x0D
 
     save0 = (FIXTURES / "savedgame0.bin").read_bytes()[2:]

@@ -16,11 +16,10 @@ ones a save can actually hold.
 import pathlib
 import shutil
 
-from por.record import FieldNotStored
-
 import pytest
 
 from por.d64 import D64
+from por.record import FieldNotStored
 from por.savegame import ROSTER_STRIDE, SaveGame0, SaveGame1
 from por.yaml_io import export_save, import_into
 

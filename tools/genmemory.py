@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from por.memory import MAP                                     # noqa: E402
+from por.memory import MAP  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "41-memory-regions.md"
 
