@@ -214,7 +214,7 @@ on the party's own square, and hovering a marker shows what it says.
 
 Some icons are from **Font Awesome Free 7.3.1** by Fonticons, Inc.
 (<https://fontawesome.com>) — icons licensed **CC BY 4.0**. Their path data is
-in `automap/icons.py`; the licence is in
+in `ui/icons.py`; the licence is in
 [`docs/licences/fontawesome-LICENSE.txt`](docs/licences/fontawesome-LICENSE.txt).
 The rest of the icons — the sword, the crossed swords, the chest — are this
 project's own.
