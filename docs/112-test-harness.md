@@ -1,63 +1,99 @@
-# Two test-harness faults — task
+# Two test-harness faults
 
-**Status: open. Neither affects `wish` itself; both affect anyone running the
-suite.**
+**Status: both fixed, 2026-08-20.** Neither ever affected `wish` itself; both
+affected anyone running the suite.
 
-## 1. The suite opens real windows
+## 1. The suite opened real windows
 
-Running `pytest` without `QT_QPA_PLATFORM=offscreen` puts real windows on
-whoever is logged in. Many tests edit a character, so those windows are dirty,
-and closing one asks **"Save before closing?"** — which is how Donald ended up
-with a queue of dialogs he could not dismiss, one after another, on 2026-08-20.
+Running `pytest` without `QT_QPA_PLATFORM=offscreen` put real windows on
+whoever was logged in. Many tests edit a character, so those windows were
+dirty, and closing one asks **"Save before closing?"** -- which is how Donald
+ended up with a queue of dialogs he could not dismiss, one after another.
 
-**Fix:** set it in `tests/conftest.py` at import time, before anything imports
-Qt:
+**Fixed** by setting it in `tests/conftest.py` at import time, before anything
+imports Qt:
 
 ```python
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ```
 
-In `conftest.py` rather than a Makefile or a CI variable, so it protects every
-way of invoking pytest, including a bare `pytest` typed by hand.
+In `conftest.py` rather than in a Makefile or a CI variable, so it protects
+every way of invoking pytest, including a bare `pytest` typed by hand.
 
-**Also:** never call `widget.close()` on a test's windows in a fixture. It runs
-`closeEvent`, which is application logic — the save prompt is exactly that. A
-teardown that wants widgets gone should drop references, not close them.
+**The standing rule:** never call `widget.close()` on a test's windows in a
+fixture. It runs `closeEvent`, which is application logic -- the save prompt is
+exactly that. A teardown that wants widgets gone should drop references, not
+close them.
 
-## 2. An intermittent segfault in `findChild`
+## 2. The intermittent segfault in `findChild`
 
-About **one run in three to one in four** dumps core, always with the same
-signature: `EditorWindow.__init__` calling `_child`, which calls `findChild`.
-The suite passes 641 when it completes; nothing is wrong with the code under
-test.
+About one run in three dumped core, always with the same signature:
+`EditorWindow.__init__` calling `_child`, which calls `findChild`.
 
-Measured, so nobody repeats the dead ends:
+**The cause was the QApplication, not `findChild`.** PyQt owns the
+QApplication from Python: when the last Python reference to it goes, the C++
+object is destroyed, and `~QApplication` deletes every widget still standing.
+Every test module declares its own **function-scoped** `app` fixture returning
+`QApplication.instance() or QApplication([])`, so the application was destroyed
+at the end of whichever test held it last and the next test built a fresh one.
 
-| approach | result |
+Reduced to a REPL:
+
+```
+>>> a = QApplication([]); w = QLabel("keep me")
+>>> del a; gc.collect()
+>>> QApplication.instance()
+None
+>>> w.text()
+RuntimeError: wrapped C/C++ object of type QLabel has been deleted
+```
+
+A plugin logging `id(QApplication.instance())` at each test's teardown counted
+**125 distinct QApplication objects in one session**, with stretches of `None`
+between them. Every Qt object that outlived one of those teardowns -- anything
+sitting in a reference cycle, anything a wider fixture held -- was pointing at
+freed memory afterwards. `findChild` was simply the first thing to walk the
+wreckage: it is the widest tree walk the suite performs, and `EditorWindow`
+does it in its constructor.
+
+That also explains the result nobody could account for. "Keep every top-level
+widget alive for the session" crashed **6 runs out of 6** because those are
+precisely the widgets `~QApplication` deletes underneath you: keeping the
+Python wrappers alive guaranteed the dangling pointers instead of merely
+risking them.
+
+**Fixed** with a session-scoped autouse fixture in `tests/conftest.py` holding
+one QApplication from the first test to the last. Each module's own `app`
+fixture then gets that same object from `QApplication.instance()`, and nothing
+destroys it. Re-probed after the fix: **1 distinct QApplication per session**.
+The per-module `app` fixtures need no change -- they are harmless once
+something else is holding the object.
+
+### Measured
+
+Full suite, this machine, Python 3.12.3, PyQt6 6.11.0 / Qt 6.11.1.
+
+| approach | runs | crashes |
+|---|---|---|
+| nothing | -- | ~1 in 3 (reported) |
+| drain `DeferredDelete` in the teardown | -- | no change (combat-view work) |
+| keep every top-level widget alive for the session | 6 | **6** |
+| `gc.collect()` after each test (the state before this) | 10 | 3 |
+| one QApplication held for the session | 12 | **0** |
+
+Two negative results worth keeping:
+
+| probe | result |
 |---|---|
-| nothing | ~1 run in 3 crashes |
-| `gc.collect()` after each test (**current**) | ~1 in 4 — better, not a cure |
-| keep every top-level widget alive for the session | **6 runs of 6 crashed** |
-| drain `DeferredDelete` in the teardown | no change (tried by the combat-view work) |
+| `pytest tests/test_editor.py` alone | 8 runs, 0 crashes -- the fault needs the modules that run before it |
+| the whole suite under `gdb` | 6 runs, 0 crashes -- a debugger hides it, so no C-level trace was ever obtained, and none is needed now |
 
-The third result is the informative one. If the fault were only about *when*
-destruction happens, never destroying anything would fix it; instead it made it
-certain. So the whole "just do not destroy" family is ruled out, and the cause
-is something about the number of live Qt objects rather than the timing alone.
+### Not done, and why
 
-**Untried, in rough order of promise:**
-
-1. Cut the number of windows the suite builds — `tests/test_editor.py` builds one
-   per test, and a module-scoped window would remove most of them at a stroke.
-2. Find what `findChild` is actually walking into: run under a debugger, or
-   `PYTHONMALLOC=malloc` with valgrind, and get a real C-level trace instead of
-   the Python frame.
-3. Check whether it survives a newer PyQt6, and whether it reproduces on any
-   machine but this one.
-4. Stop `_child` using `findChild` at all — cache the lookups once per window.
-   That is a change to `editor/window.py` rather than the tests, and it would be
-   worth doing on its own merits if `findChild` turns out to be hot.
-
-**Do not paper over it.** A retry wrapper or a `-p no:randomly` incantation
-would hide a real memory fault, and the same fault could bite a user with a
-long-lived window.
+* **Cut the number of windows the suite builds.** Unnecessary: the count was
+  never the mechanism, only a way of raising the odds. Reworking sixty tests
+  onto a shared window would risk real coverage for no measured gain.
+* **A newer PyQt6.** Already on 6.11.0, and it reproduced there.
+* **Stop `_child` using `findChild`.** `findChild` was the messenger. Caching
+  the lookups would have hidden the fault rather than fixed it, and with 55
+  windows a run it is not hot enough to be worth doing on its own merits.
