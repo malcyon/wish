@@ -31,6 +31,9 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ...except ours: release.yml runs `pyinstaller wish.spec`, so it has to be
+# committed. Add it with `git add -f` the first time.
+!wish.spec
 
 # Installer logs
 pip-log.txt
