@@ -1,4 +1,4 @@
-"""Which of the 29 GEO maps is the party standing on?
+"""Which of the game's GEO maps is the party standing on?
 
 Answered twice over, and the module carries both answers.
 
@@ -11,10 +11,20 @@ resident: `ResidentGeo` reads the 1024 bytes at `$0400` and matches them against
 the disk copies, which is an exact identification and follows the game into a
 new area as soon as the load finishes.
 
-`Fingerprint` narrows the 29 candidates by what the party can and cannot do. It
+`Fingerprint` narrows the candidates by what the party can and cannot do. It
 needs no addresses at all, so it stays wired up underneath `ResidentGeo` as the
 contradiction check: if a strategy names a map the party's own movements
 contradict, the strategy is wrong.
+
+**Both take the candidate set as a dict and never enumerate one.** Pool of
+Radiance has 29 maps numbered `$00`-`$20`, but Curse's ids are sparse and
+chapter-grouped and Silver Blades, Champions and Death Knights have no `GEO00`
+at all -- their lowest id is `$10` or `$20` (`work/reports/goldbox-inventory.md`).
+Anything that counted maps, or walked a range, would be wrong for four of the
+six titles on the shelf.
+
+`por.areas` carries the names and the area-to-map relation; nothing here
+duplicates it.
 """
 
 from __future__ import annotations

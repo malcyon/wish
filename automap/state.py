@@ -12,6 +12,8 @@ import json
 import pathlib
 from dataclasses import dataclass, field
 
+from por import areas
+from por.areas import POOL_OF_RADIANCE
 from por.geo import GRID, STEP, Geo
 
 from . import notes as notemod
@@ -20,17 +22,13 @@ from .notes import Note
 from .paths import data_dir as _data_dir
 from .target import Fix, read_fix
 
-AREA_NAMES = {
-    "GEO14": "Slums",
-    "GEO09": "Stojanow Gate",
-    "GEO12": "Podol Plaza",
-    "GEO15": "Sokol Keep",
-    "GEO20": "Kuto's Well Catacombs",
-    "GEO02": "Cadorna Textile House",
-    "GEO0F": "Mendor's Library",
-    "GEO1D": "Kuto's Well",
-    "GEO00": "New Phlan",
-}
+#: A read-only view over `por/areas.py`, keyed **by game title first**. This
+#: used to be a flat `GEO -> name` dictionary, which was a Pool of Radiance
+#: table with nothing saying so: `GEO15` exists in Curse of the Azure Bonds too
+#: (`docs/120-curse-testing.md`), and a Curse party standing in it was labelled
+#: "Sokol Keep". Use `por.areas.area_name`, which degrades an unknown title to
+#: "area 21" instead of guessing.
+AREA_NAMES = areas.GEO_NAMES
 
 
 def data_dir() -> pathlib.Path:
@@ -118,6 +116,11 @@ class AutomapState:
 
     geo: Geo | None = None
     area: str | None = None
+    #: Which game's map names to use. A plain string, deliberately: the
+    #: per-game descriptor lives in `por/games.py` and this module only needs
+    #: its title. An unrecognised one is not an error -- `area_label` falls
+    #: back to "area 21" rather than naming a Pool of Radiance place.
+    title: str | None = POOL_OF_RADIANCE
     x: int = 0
     y: int = 0
     facing: int = 0
@@ -133,7 +136,11 @@ class AutomapState:
     def area_label(self) -> str:
         if not self.area:
             return str(self.candidates) if self.candidates else "identifying..."
-        name = AREA_NAMES.get(self.area)
+        # `geo_name`, not `area_name`: the label already shows "GEO15", so
+        # appending its fallback "area 21" would say the same thing twice. The
+        # point of the title key is that Curse's `GEO15` reads as plain
+        # "GEO15" here and never as "Sokol Keep".
+        name = areas.geo_name(self.area, self.title)
         return f"{self.area} - {name}" if name else self.area
 
     @property
@@ -216,9 +223,9 @@ class Automapper:
     RESIDENT_EVERY = 10
 
     def __init__(self, target, maps: dict[str, Geo] | None = None,
-                 area: str | None = None):
+                 area: str | None = None, title: str | None = POOL_OF_RADIANCE):
         self.target = target
-        self.state = AutomapState()
+        self.state = AutomapState(title=title)
         self.fingerprint = Fingerprint(maps) if maps else None
         self._maps = maps or {}
         self.resident = ResidentGeo(target) if maps else None
