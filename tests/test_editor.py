@@ -9,7 +9,6 @@ import os
 import pathlib
 
 import pytest
-
 from gamedata import disk_path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
