@@ -1,13 +1,13 @@
-# The automapper's roster and notes — plan
+# The automapper's roster and notes
 
-**Status: 1 is done; 2 to 4 are planned.** Four changes to the live panel and
-the map notes.
+**Status: built.** The bar colours, the readied items, the note tooltip, the
+icons, and the two status icons the record can actually justify.
+`automap/panel.py` is the roster, `automap/icons.py` the icons, and
+`docs/98-automap-notes.md` covers the notes.
 
 ---
 
 ## 1. Hit point bar colours
-
-**Done.** `automap/panel.py`:
 
 | remaining | colour | |
 |---|---|---|
@@ -24,118 +24,129 @@ enough (relative luminance 0.26) to read as brown next to the green. The new
 yellow sits at 0.56 and carries 9.5:1 against the black numbers drawn across it.
 
 **Themes.** The card is `#ffffff` and the bar's empty track `#fbfcfd`, both
-literal, so a bar is on a light ground whichever theme the system is in. The
-cards are light islands in a window that follows the theme; only the fill colour
-had to be chosen, and it needed no dark variant.
+literal, so a bar is on a light ground whichever theme the system is in.
 
 **Colour blindness.** Green and red are the pair that fails, not the yellow:
-simulated deuteranopia puts them 1.12:1 apart, which is nothing, while the
-yellow stands 3.1:1 from the green and 2.8:1 from the red. Nothing was added to
-separate green from red, because **the fill length already does it** -- under
-these thresholds the colour is a function of how full the bar is, so a red bar
-is at most a quarter full and a green one more than three quarters -- and the
-numbers are written across the bar besides. A stripe or an icon would be a
-fourth encoding of the same fact.
+simulated deuteranopia puts them 1.12:1 apart, while the yellow stands 3.1:1
+from the green and 2.8:1 from the red. Nothing was added to separate green from
+red, because **the fill length already does it** — under these thresholds a red
+bar is at most a quarter full and a green one more than three quarters — and the
+numbers are written across the bar besides.
 
-Worth keeping: three states, not a gradient. A gradient looks better and tells
-you less at a glance, which is the wrong trade in a panel you glance at.
+Three states, not a gradient. A gradient looks better and tells you less at a
+glance.
 
-## 2. Readied items under the experience bar
+## 2. Readied items, under the bars
 
-Show each character's **readied** items on their roster card, under the bars.
-
-Everything needed is decoded: `por/items.py` reads the sixteen item slots and
-the readied bit, and the editor's inventory table already shows exactly this.
-Item names come from the game disk, so a card without a game disk should show
-nothing rather than numbers.
-
-Design notes:
+Each card carries one line of what that character has **in hand**, decoded by
+`por/items.py` from the item block the poll already reads —
+`live.readied(payload, slot, names)`.
 
 * **Readied only.** The whole inventory would swamp the card; what matters
   mid-crawl is what is in hand.
-* One line, comma separated, elided at the card's width, with the full list in
+* One line, comma separated, elided to the card's 248px, with the full list in
   the tooltip.
-* A character with nothing readied gets a blank line, not the word "none" --
-  the absence is the information.
+* A character with nothing readied gets a **blank line, not the word "none"** —
+  the absence is the information — and the line stays, so the cards below do not
+  shift when a sword is put away.
+* An unidentified item shows the shorter name the game shows.
+* Item names come from a game disk's `ITEMNAMES`, read once and cached. With no
+  disk the line is blank rather than a row of word indices.
 
-## 3. Notes should show their text on hover
+## 3. Notes show their text on hover
 
-A note currently draws a marker and nothing else, so finding what one says
-means opening it. **Hovering the marker should show the note's text in a
-tooltip.** The map already tracks notes per square, so this is a tooltip on the
-canvas, keyed by the square under the pointer -- the combat view's
-`tooltip_at` does the same job and is the pattern to follow.
+`MapCanvas.tooltip_at` answers with every note on the square under the pointer,
+one per line, in the pattern the combat view's `tooltip_at` set. See
+`docs/98-automap-notes.md`.
 
-## 4. A better marker than an asterisk, and class icons
+## 4. The icons
 
-**Font Awesome Free is usable.** It is triple-licensed: the icons **CC BY 4.0**,
-the fonts **SIL OFL 1.1**, the code **MIT**. All three are compatible with this
-project's GPL-3.0, and the only obligation is attribution for the icons -- a
-line in the README and in the About box.
+**Path data, not a font.** `automap/icons.py` holds each icon's SVG path in a
+uniform 640×640 box; `automap/iconpaint.py` fills it into a `QPainterPath` at
+whatever size the caller wants. The weighing against `qtawesome` and against
+bundling the 405 KB Solid `.otf` is in `docs/98-automap-notes.md`; the short of
+it is that the map draws with `QPainter`, the SVG export gets the icons free,
+and nothing ships that the release build has to be told about.
 
-`qtawesome` (MIT) packages Font Awesome for Qt and is the least effort. Bundling
-the `.otf` and loading it with `QFontDatabase.addApplicationFont` is the other
-way, and keeps the dependency list shorter.
+**Class icons stand beside the class text and never instead of it** — the text
+is what a screen reader gets, and what somebody who does not recognise a domino
+mask gets. Multi-class shows one icon per class, in the card's own class order.
 
-**Do not rely on system fonts.** Measured on this machine:
-
-| glyph | comes from |
-|---|---|
-| crossed swords, cross, hammer, star | DejaVu Sans -- everywhere |
-| shield, dagger, note page | Noto Sans Symbols2 only |
-| scroll, bow, pin, book, gem | a colour emoji font only |
-
-Windows ships a different set again, so the same code would draw a different
-map on every machine, and some glyphs would be colour emoji in a line-art map.
-Shipping the font is what makes it predictable.
-
-**For notes**, a pin or a note-page glyph, in the map's own ink so it reads as
-part of the drawing rather than as an emoji dropped on top.
-
-**For the roster**, an icon beside each class, **in addition to the text label**
-and never instead of it -- the text is what a screen reader gets, and what
-someone who does not recognise the icon gets. Multi-class characters show one
-icon per class.
-
-| class | icon | code point |
+| class | icon | source |
 |---|---|---|
-| magic-user | `hat-wizard` | U+F6E8 |
-| cleric | `cross`, or `hands-praying` | U+F654 |
-| thief | `mask` | U+F6FA |
-| fighter | **nothing suitable** | — |
+| magic-user | `hat-wizard` U+F6E8 | Font Awesome Free |
+| cleric | `cross` U+F654 | Font Awesome Free |
+| thief | `mask` U+F6FA | Font Awesome Free |
+| fighter | a sword | **ours** |
 
 **Font Awesome Free has no sword.** `sword` and `swords` are Pro only, and
-`khanda` is a Sikh religious emblem — wrong in meaning and illegible at 12
-pixels. So the fighter's icon, and the "encounter" note type in
-`docs/98-automap-notes.md`, have to be drawn by us. Free *does* carry a
-tabletop set added in 5.4.0 — `hat-wizard`, `dragon`, `dungeon`, `scroll`,
-`dice-d20`, `ring`, `ghost` — so the earlier note here that it "has no wizard
-hat" was wrong.
+`khanda` is a Sikh religious emblem — wrong in meaning and illegible at twelve
+pixels. So the fighter's blade, the crossed swords of the Encounter note and the
+treasure chest are drawn here, from straight lines in the same 640 box, thick
+enough not to read as a scratch beside 3px walls.
 
-Reckon on **four to six small glyphs of our own**: crossed swords, a chest,
-poison, paralysis, a note dog-ear. `automap/render.py`'s existing `Line`,
-`Poly` and `Rect` primitives already express that kind of shape, and anything
-we draw ourselves carries no attribution and no licence question.
+**Do not rely on system fonts** for any of this. Measured on this machine,
+crossed swords and a cross come from DejaVu Sans, a shield and a dagger only
+from Noto Sans Symbols2, and a scroll or a pin only from a colour emoji font.
+Windows ships a different set again, so the same code would draw a different map
+on every machine.
 
-## Two licence traps
+## 5. Status icons — two, and only two
 
-Confirmed against the package's own `LICENSE.txt`, not from memory:
+The card marks the conditions the **record actually tells us**, beside the name
+and in the danger red:
+
+| condition | where it comes from | icon |
+|---|---|---|
+| at 0 hit points | the roster block's current hit points | `skull` |
+| levels drained | `levels_drained`, record `0x0A1`, CONFIRMED | `arrow-down-long` |
+
+The tooltip says what each means, and the skull's says the thing the record does
+not: 0 is dead **or** dying and nothing decoded distinguishes them. That is the
+same reason `automap/actions.py` refuses to heal a character at 0.
+
+**Poisoned and paralysed are still blocked, and `por/traits.py` does not unblock
+them.** That module names the **trait** codes in the ten slots at record `0x0AD`
+— racial abilities and monster specials — and its own docstring warns that item
+byte `+14` shares those slots without sharing their meaning. The effect table
+the live view reads is a different structure: four parallel 64-slot arrays at
+`$4900`, whose id byte is written by whatever applied the effect. Nothing in the
+project maps one code space onto the other, and **no save we hold carries a
+single active effect**, so there is nothing to check a mapping against. Naming
+`effect 64` "poison" because trait 64 is poison would be inventing the table.
+
+So the effects keep their numbers, and the way to unblock this is to capture a
+save with a poisoned character in it and read the id — not to borrow a name from
+a table that answers a different question.
+
+## The licence, and its two traps
+
+Confirmed against the package's own `LICENSE.txt`, which is committed at
+`docs/licences/fontawesome-LICENSE.txt`. Font Awesome Free is triple-licensed —
+icons **CC BY 4.0**, fonts **SIL OFL 1.1**, code **MIT** — and all three are
+compatible with GPL-3.0. The obligation we carry is attribution: a line in the
+README and a line in the About box, both naming the work, the author and the
+licence.
 
 * **Brands must not ship.** The licence forbids using the brand logos except to
   represent the company in question, and the set includes
-  `wizards-of-the-coast`. Bundle Solid only.
-* **Subsetting the font makes an OFL "Modified Version"**, which may not keep
-  the reserved name "Font Awesome". If we subset to save space, it has to be
-  renamed.
+  `wizards-of-the-coast`. None is used.
+* **Subsetting the font would make an OFL "Modified Version"** which may not
+  keep the reserved name "Font Awesome". Moot: no font ships.
 
-Otherwise there is no conflict with GPL-3.0. Ship `LICENSE.txt` beside the
-font, and carry an attribution line in the README and the About box.
+## Verification — in `tests/test_automap.py`
 
-## Verification
-
-* A character with nothing readied shows a blank line, not a placeholder.
-* Hovering a note shows its whole text, and a very long note does not stretch
-  the tooltip off the screen.
+* A character with nothing readied shows a blank line, not a placeholder, and
+  the card does not change height.
+* A long readied list is elided to the card's width and kept whole in the
+  tooltip.
+* `live.readied` returns the readied items and not the rest — checked against
+  the player's own equipped party, and empty with no disk.
 * Class icons appear beside the class name, never instead of it.
-* If Font Awesome ships, its attribution appears in the README and the About
-  box, and the licence files are in the repository.
+* The fighter's icon is one of ours, not a Font Awesome name.
+* The attribution is in the README and the About box, and the licence file is in
+  the repository.
+* A character at 0 hit points shows the skull and a drained one the arrow;
+  a whole character shows neither.
+* An effect is still labelled by its number, and the trait table is not
+  borrowed to name it.

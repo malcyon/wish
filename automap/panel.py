@@ -14,18 +14,24 @@ Qt in it and is tested against captured bytes.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from datetime import datetime
+
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QScrollArea,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
+
+from .iconpaint import draw_icon, icon_pixmap
 
 PAPER = QColor("#fbfcfd")
 CARD = QColor("#ffffff")
@@ -58,6 +64,45 @@ EXPERIENCE = QColor("#5a6ea8")
 
 CARD_WIDTH = 248
 BAR_HEIGHT = 15
+
+NOTE = QColor("#b8601f")
+
+# The class icons, beside the class text and never instead of it: the text is
+# what a screen reader gets, and what somebody who does not recognise the icon
+# gets. Font Awesome Free has no sword, so the fighter's is one of ours -- see
+# `automap/icons.py`.
+CLASS_ICON = {"magic-user": "hat-wizard", "cleric": "cross",
+              "thief": "mask", "fighter": "sword"}
+ICON_SIZE = 13
+
+
+class IconRow(QWidget):
+    """A few icons in a line, painted from `automap.icons`.
+
+    Painted rather than assembled from `QLabel` pixmaps so the row costs one
+    widget however many icons it holds, and so a multi-class card does not
+    rebuild its layout when the classes change.
+    """
+
+    def __init__(self, size: int = ICON_SIZE, colour: QColor = MUTED,
+                 parent=None):
+        super().__init__(parent)
+        self.size = size
+        self.colour = colour
+        self.names: tuple[str, ...] = ()
+        self.setFixedHeight(size)
+        self.setFixedWidth(0)
+
+    def set_icons(self, names) -> None:
+        self.names = tuple(n for n in names if n)
+        self.setFixedWidth(len(self.names) * (self.size + 3))
+        self.update()
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for i, name in enumerate(self.names):
+            draw_icon(p, name, i * (self.size + 3), 0, self.size, self.colour)
 
 
 def hp_colour(fraction: float) -> QColor:
@@ -124,7 +169,8 @@ def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
 
 
 class CharacterCard(QFrame):
-    """One character: name, class and level, AC and THAC0, two bars, effects."""
+    """One character: name, class and level, AC and THAC0, bars, what is in
+    hand, and what is on them."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -138,14 +184,24 @@ class CharacterCard(QFrame):
 
         top = QHBoxLayout()
         self.name = _label(bold=True)
+        # Only the conditions the record really tells us: at 0 hit points, and
+        # levels drained. Nothing else on a character is decoded.
+        self.conditions = IconRow(colour=DANGER)
         self.combat = _label(muted=True, size=8)
         top.addWidget(self.name)
+        top.addWidget(self.conditions)
         top.addStretch(1)
         top.addWidget(self.combat)
         box.addLayout(top)
 
+        klass_row = QHBoxLayout()
+        klass_row.setSpacing(4)
+        self.class_icons = IconRow()
         self.klass = _label(muted=True, size=8)
-        box.addWidget(self.klass)
+        klass_row.addWidget(self.class_icons)
+        klass_row.addWidget(self.klass)
+        klass_row.addStretch(1)
+        box.addLayout(klass_row)
 
         self.hp = Bar()
         box.addWidget(self.hp)
@@ -157,6 +213,14 @@ class CharacterCard(QFrame):
         self.xp = [Bar() for _ in range(3)]
         for bar in self.xp:
             box.addWidget(bar)
+
+        # What is in hand, under the bars. Readied only -- the whole inventory
+        # would swamp the card -- one elided line with the full list in the
+        # tooltip, and a **blank line** for a character carrying nothing
+        # readied: the absence is the information, and the word "none" is not.
+        self.readied = _label(size=8, muted=True)
+        self.readied.setMinimumHeight(14)
+        box.addWidget(self.readied)
 
         # Always present, even when empty: a strip that appears and disappears
         # would shift every card below it each time a spell expires.
@@ -171,6 +235,11 @@ class CharacterCard(QFrame):
         thac0 = "--" if who.thac0 is None else who.thac0
         self.combat.setText(f"AC {ac}   THAC0 {thac0}")
         self.klass.setText(f"{who.class_text}  {who.level_text}")
+        self.class_icons.set_icons(CLASS_ICON.get(c.name) for c in who.classes)
+        self.class_icons.setToolTip(who.class_text)
+        conditions = who.conditions
+        self.conditions.set_icons(icon for icon, _ in conditions)
+        self.conditions.setToolTip("\n".join(why for _, why in conditions))
 
         hp = "--" if who.hp is None else who.hp
         self.hp.set(who.hp_fraction, f"{hp} / {who.hp_max} hp",
@@ -195,8 +264,24 @@ class CharacterCard(QFrame):
         for bar in self.xp[len(who.classes):]:
             bar.hide()
 
+        self.show_readied(who.readied)
+
         self.effects.setText("   ".join(e.label for e in who.effects))
         self.effects.setToolTip("\n".join(e.detail for e in who.effects))
+
+    def show_readied(self, items) -> None:
+        """One line of what is in hand, elided to the card's width.
+
+        Elided here rather than by `QLabel`, because a label that elides is a
+        label that has already claimed the width -- and the card is 248px wide
+        by design.
+        """
+        self.readied_items = tuple(items)
+        text = ", ".join(self.readied_items)
+        metrics = QFontMetrics(self.readied.font())
+        self.readied.setText(metrics.elidedText(
+            text, Qt.TextElideMode.ElideRight, CARD_WIDTH - 20))
+        self.readied.setToolTip("\n".join(self.readied_items))
 
 
 class RosterPanel(QWidget):
@@ -329,3 +414,135 @@ class BottomStrip(QWidget):
         self.effects.setToolTip("\n".join(e.detail for e in party + monsters))
         self.loaded.setText("loaded files: " + " ".join(
             f"{b:02X}" for b in snap.loaded_files))
+
+
+class NotesPanel(QWidget):
+    """Every note in this area, with its square.
+
+    This is what makes notes useful for *finding* something again, which the
+    icons on the map alone do not solve: the map answers "what is here", the
+    list answers "where was that trainer".
+
+    Clicking a row emits `chosen`; the window flashes the square. The list is
+    rebuilt only when the notes actually change, so a poll does not throw away
+    the row you were about to click.
+    """
+
+    chosen = pyqtSignal(int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+        self.heading = _label("Notes", bold=True)
+        outer.addWidget(self.heading)
+
+        self.list = QListWidget()
+        self.list.setFrameShape(QFrame.Shape.StyledPanel)
+        self.list.setStyleSheet(
+            f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
+            f"{LATTICE.name()}; border-radius: 4px; }}")
+        self.list.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
+        self.list.setWordWrap(True)
+        self.list.itemClicked.connect(self._clicked)
+        outer.addWidget(self.list, 1)
+        self._shown: tuple = ()
+
+    def _clicked(self, item: QListWidgetItem) -> None:
+        square = item.data(Qt.ItemDataRole.UserRole)
+        if square:
+            self.chosen.emit(*square)
+
+    @staticmethod
+    def _signature(notes) -> tuple:
+        return tuple((square, tuple((n.type, n.text) for n in items))
+                     for square, items in sorted(notes.items()))
+
+    def show_notes(self, notes) -> None:
+        signature = self._signature(notes)
+        if signature == self._shown:
+            return
+        self._shown = signature
+        self.list.clear()
+        count = 0
+        for square, items in sorted(notes.items()):
+            for note in items:
+                row = QListWidgetItem(QIcon(icon_pixmap(note.icon, ICON_SIZE,
+                                                        NOTE)),
+                                      f"({square[0]},{square[1]})  "
+                                      f"{note.label}")
+                row.setData(Qt.ItemDataRole.UserRole, square)
+                row.setToolTip(note.at and f"{note.label}\nmade {note.at}"
+                               or note.label)
+                font = row.font()
+                font.setPointSize(9)
+                row.setFont(font)
+                self.list.addItem(row)
+                count += 1
+        self.heading.setText(f"Notes ({count})" if count else "Notes")
+
+
+class MessagesPanel(QWidget):
+    """What the tab has done, and what it is waiting for.
+
+    **Not a pop-up.** An action's result is something you asked for; putting it
+    behind a modal box interrupts the game in the other window to tell you what
+    you already wanted to know, and has to be dismissed before the map is usable
+    again. It belongs on the page. Only a genuinely irreversible action still
+    asks first, and that question is a dialog because it needs an answer.
+
+    The connection's own state feeds the same panel, so "something else is
+    attached to the emulator" is one more line here rather than a second
+    mechanism in the status bar.
+    """
+
+    #: Kept lines. Long enough for a session's worth of actions, short enough
+    #: that the panel never becomes the reason the window is slow.
+    LIMIT = 200
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+        self.heading = _label("Messages", bold=True)
+        outer.addWidget(self.heading)
+
+        self.list = QListWidget()
+        self.list.setFrameShape(QFrame.Shape.StyledPanel)
+        self.list.setStyleSheet(
+            f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
+            f"{LATTICE.name()}; border-radius: 4px; }}")
+        self.list.setWordWrap(True)
+        self.list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        outer.addWidget(self.list, 1)
+        self._last = ""
+
+    def say(self, text: str, detail: str = "", alarm: bool = False) -> None:
+        """One line, timestamped. Repeats of the last line are dropped.
+
+        The connection says the same thing on every tick while it waits, and a
+        panel that wrote "waiting for the game" five times a second would bury
+        the line you wanted.
+        """
+        text = (text or "").strip()
+        if not text or text == self._last:
+            return
+        self._last = text
+        row = QListWidgetItem(f"{datetime.now():%H:%M:%S}  {text}")
+        font = row.font()
+        font.setPointSize(9)
+        row.setFont(font)
+        if alarm:
+            row.setForeground(DANGER)
+        if detail:
+            row.setToolTip(detail)
+        self.list.addItem(row)
+        while self.list.count() > self.LIMIT:
+            self.list.takeItem(0)
+        self.list.scrollToBottom()
+
+    def lines(self) -> list[str]:
+        """Every line, oldest first. What a test reads."""
+        return [self.list.item(i).text() for i in range(self.list.count())]
