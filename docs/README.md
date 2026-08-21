@@ -36,6 +36,9 @@ library in `por/` and the `wish` editor in `tools/`.
 | [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — planned |
 | [107-roster-and-notes.md](107-roster-and-notes.md) | the automapper's roster cards, note tooltips and the icons — built |
 | [108-purge-history.md](108-purge-history.md) | removing the game's files from the git history — planned |
+| [109-icon-choices.md](109-icon-choices.md) | icon candidates to choose between, and where icons earn their place |
+| [110-combat-log.md](110-combat-log.md) | capturing the game's combat messages before it paints over them |
+| [111-map-shading.md](111-map-shading.md) | darker walls and Dyson-style hatching |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
