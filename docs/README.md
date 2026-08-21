@@ -33,6 +33,9 @@ library in `por/` and the `wish` editor in `tools/`.
 | [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — planned |
 | [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — planned |
 | [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and what still does |
+| [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — planned |
+| [107-roster-and-notes.md](107-roster-and-notes.md) | the automapper's roster cards, note tooltips and icon fonts — planned |
+| [108-purge-history.md](108-purge-history.md) | removing the game's files from the git history — planned |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
