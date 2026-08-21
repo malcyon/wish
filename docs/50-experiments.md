@@ -3355,6 +3355,84 @@ overlay for the two addresses splits them cleanly: `$6BEB` is only ever `AND`ed
 ever an index (`POST.COM $123F`/`$15E3` `LDX`; `LIBRARY $31E1`-`$320D` `LDY`
 into three parallel class-name tables joined with `/`).
 
+## The quickfight bit is roster `+0x0C`, and the live writes work
+
+Two questions in one session: does a live write reach the game at all, and
+where is the bit the combat menu's QUICK sets.
+
+### The setup
+
+`work/drive/SLUMS.D64`, six characters at (15,4) in the slums. VICE launched
+into its own Xephyr on `:8` — **not** `tools/porlaunch.sh`, which `pkill`s
+unconditionally — and shut down through `CMD_QUIT` and the two process ids it
+started, so nothing else on the machine was touched.
+
+### Healing, live
+
+`HealParty` wrote roster `+0x19` for the four wounded characters at the party
+menu. The game's own list, redrawn by stepping into `VIEW CHARACTER` and back,
+then read **11 9 9 7 5 4** against maxima of 11 9 9 7 5 4 — every hit point
+back, and the numbers came from the game, not from our own decode. Repeated
+mid-fight at `$6E11 = 2`: SILAS 8 → 9, no complaint from the game. That is the
+"legal anywhere" claim exercised where it matters.
+
+### The bit
+
+Four steps out of (15,4) walked into an orc ambush. With the game sitting on
+MALCYON's command bar, `$4D00`–`$58FF`, `$8300`–`$8AFF`, `$8B00`–`$8BFF` and
+COMBAT at `$0800`–`$27FF` were captured **twice** — 13568 bytes, and **zero of
+them differ**. A machine waiting for input is perfectly still, which is what
+made a one-byte diff readable.
+
+Then QUICK, from the bar `MOVE VIEW AIM USE QUICK DONE`, and capture again:
+
+| address | before | after | what |
+|---|---|---|---|
+| `$830C` | `00` | `80` | **roster block 0, `+0x0C`, bit 7** — MALCYON |
+| `$0A97`–`$0A98` | `08 0E` | `37 14` | COMBAT's own scratch |
+
+Three bytes in 13568. Repeated on MAGNUS, slot 4: `$838C` went to `$80` and
+block 0 stayed set — two characters, two blocks, one bit each.
+
+### It survives the fight, and the player's own disks say so
+
+The roster page is saved in `SAVEDGAME1`, which is why thirteen *record* diffs
+never found it: step 1 of the search order in `docs/80-fields-wanted.md` was
+right, and the answer was one file over.
+
+| disks | `+0x0C` across the eight blocks |
+|---|---|
+| `PORSAVE2`–`PORSAVE9` | `80 00 00 00 00 00 00 00` — **MALCYON alone** |
+| `PORSAVE`, `PORSAVE11`, `12`, `13` | all zero |
+
+Eight save disks, taken out of combat in ordinary play, carry the bit set for
+exactly one character. Nothing clears it when combat ends.
+
+### What it is not, yet
+
+The complaint the field was wanted for is that quickfight *sticks* — that the
+character is still not yours in the next fight. This bit does not behave that
+way in the two tests that bear on it:
+
+* Driving QUICK repeatedly, the bit **sets while the computer plays the action
+  and clears when the action resolves**, and the same character's command bar
+  comes straight back. It is not held for the rest of the fight.
+* **Setting it out of band did nothing.** `$834C` was poked to `$80` for ROLAND
+  mid-fight; the game cleared it and asked ROLAND for orders anyway.
+
+So on the evidence the bit reads as "the computer is playing this character's
+action" — written by QUICK, left behind when a fight ends while it is set, and
+not consulted to decide whether to ask for orders. What is still untested is
+whether **COMBAT reads it at the start of a fight**, which is the one place a
+leftover could do the harm the complaint describes; the fight in hand never
+ended, so that experiment is still open and is written up in
+`docs/80-fields-wanted.md`.
+
+`automap/actions.py` clears it all the same. Clearing restores the byte every
+clean save has, so the write cannot hurt; the action says plainly that its
+effect on the next fight is unproven.
+
+
 ## Planned, not yet run
 
 

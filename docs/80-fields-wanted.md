@@ -453,39 +453,38 @@ References Donald supplied:
 
 ---
 
-## The quickfight flag — WANTED
+## The quickfight bit — FOUND, and half answered
 
-**In combat a character can be handed to the computer.** The menu calls it
-quickfight, and it does what it says for that character for the rest of the
-fight. The complaint is what happens next: **the flag survives the fight.** Walk
-out, stumble into a second encounter, and that character is still not yours. The
-only way back is to hit space at the moment their turn begins, which is a
-reflex test rather than a control.
+**Roster block `+0x0C`, bit 7.** Selecting QUICK from the combat menu moved
+exactly that bit for exactly the character quickfought, and nothing else in
+13568 captured bytes but two of COMBAT's own scratch. Confirmed on a second
+character in the same fight. See "The quickfight bit is roster `+0x0C`" in
+[the experiments log](50-experiments.md).
 
-So there is a per-character bit, set by the combat menu, that nothing clears
-when combat ends.
+**It survives a fight and reaches the disk.** The roster page is saved in
+`SAVEDGAME1` — which is why thirteen *record* diffs never found it — and
+`PORSAVE2` through `PORSAVE9` all carry `80 00 00 00 00 00 00 00`, the bit set
+for MALCYON alone. `PORSAVE`, `PORSAVE11`, `12` and `13` are zero throughout.
 
-**Where to look, in order:**
+**Still wanted: is it read back?** Two tests say the bit is *not* a sticky
+quickfight — it sets while the computer plays a character's action and clears
+when the action resolves, and setting it out of band mid-fight did not stop the
+game asking that character for orders. What has not been tested is the one case
+where a leftover could do harm:
 
-1. **Not in the stored 256 bytes.** Thirteen saves and none of them differ in a
-   way that would show it, so it is either live-only or in a region we do not
-   compare. Rule this in or out first, because it decides everything after.
-2. **The roster block**, `$8300 + i*32`. It already carries the derived combat
-   values, it is per combatant, and `+0x0D` is known to name the record slot —
-   so unattributed bytes there are the best candidates.
-3. **The combatant table** at `$8B00 + i*4`. Byte `+2` is `slot*4 | pose` and
-   `+3` is unaccounted for.
-4. **`COMBAT` itself.** The overlay is resident at `$0800` during a fight;
-   whatever the menu writes, it writes from there.
+1. Out of combat, clear `+0x0C` for everybody and set bit 7 for **one**
+   character.
+2. Walk into a fight.
+3. Watch whether that character's command bar is skipped.
 
-**The experiment.** Enter a fight, note the whole of `$8300`-`$8AFF` and
-`$8B00`-`$8BFF`, turn quickfight on for exactly one character, and diff. One
-byte, one bit, one character apart. Then leave combat and read the same bytes
-again — the finding is not just where the bit is but that it is *still set*,
-which is the whole point.
+If it is skipped, the bit is the flag the complaint describes and
+`automap/actions.py`'s `ClearQuickfight` is a fix. If it is not, the sticky
+quickfight lives somewhere else and the leftover byte is inert — and the next
+place to look is what `COMBAT` reads out of the roster block when it builds the
+turn order.
 
-Once found it earns two things: a display in the character editor, and the
-"turn quickfight off after a fight" action in `docs/102-live-actions.md`.
+The action already clears it: the write restores the byte every clean save has,
+so it cannot hurt, and it says plainly that its effect is unproven.
 
 ---
 
