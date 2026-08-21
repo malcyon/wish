@@ -79,6 +79,7 @@ TABLE_ROW_HEIGHT = 20
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 ROSTER_SLACK = 4
 ICON_MAX_WIDTH = 300
+STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
 # so a roster sized to this never scrolls and never leaves a fifth of the
 # window empty.
@@ -300,10 +301,17 @@ class EditorWindow(QMainWindow):
                                         box.minimumSizeHint().width()))
         # A box narrower than its column would otherwise sit in the middle of
         # it, which trades whitespace on the right for whitespace on both sides.
-        for layout in self.findChildren(QLayout):
-            if (layout.objectName() or "").startswith(("column_", "roster_strip")):
-                layout.setAlignment(Qt.AlignmentFlag.AlignLeft
-                                    | Qt.AlignmentFlag.AlignTop)
+        # Top, and only top. The columns already end in a spacer, so this is
+        # just the strip, where a height-capped table would otherwise float in
+        # the middle of the row. Adding AlignLeft here also stops the widgets
+        # expanding sideways, which shrinks the roster to a scrollbar.
+        strip = self._child("roster_strip")
+        if strip is not None and strip.layout() is not None:
+            layout = strip.layout()
+            for i in range(layout.count()):
+                widget = layout.itemAt(i).widget()
+                if widget is not None:
+                    layout.setAlignment(widget, Qt.AlignmentFlag.AlignTop)
         for table in self.findChildren(QAbstractItemView):
             head = getattr(table, "verticalHeader", lambda: None)()
             if head is not None:
@@ -425,6 +433,14 @@ class EditorWindow(QMainWindow):
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
                   + 2 * view.frameWidth())
+        # The table stops at its rows rather than stretching, or a six-character
+        # party leaves 300 pixels of empty grid at the top of the window.
+        #
+        # Height only, and no scroll-bar accessor. Capping a table's size and
+        # reaching for its scroll bar in the same breath segfaults PyQt inside a
+        # later `findChild` -- the editor work hit this once already with
+        # `setMaximumWidth`, and it reproduces about two runs in three.
+        view.setMaximumHeight(height + ROSTER_SLACK)
         strip = self._child("roster_strip")
         if strip is not None:
             # The appearance box shares the strip, and it is the taller of the

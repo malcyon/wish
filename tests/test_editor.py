@@ -510,7 +510,7 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
 
 # --- the sheet is boxes, not tabs -------------------------------------------
 
-BOXES = ("box_identity", "box_abilities", "box_combat", "box_levels",
+BOXES = ("box_identity", "box_abilities", "box_saves", "box_levels",
          "box_thief_skills", "box_money", "box_appearance", "box_inventory",
          "box_spells", "box_traits", "box_effects")
 
@@ -661,8 +661,10 @@ def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
     strip = w._child("roster_strip")
     assert w.ui.split.sizes()[0] == max(_content_height(w.ui.roster),
                                         strip.sizeHint().height())
-    assert w.ui.split.sizes()[0] < 300
-    assert w.ui.split.sizes()[1] > 500
+    # The table itself is still only its rows; the strip is taller because the
+    # icon and the levels box share it, which is deliberate.
+    assert _content_height(w.ui.roster) < 300
+    assert w.ui.split.sizes()[0] < w.height() * 2 // 3
 
 
 # --- field widths come from the layout --------------------------------------

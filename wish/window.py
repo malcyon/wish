@@ -192,6 +192,6 @@ def run(save: str | None = None, game_disk: str | None = None,
                       interval_ms=interval_ms)
     win = WishWindow(save, game_disk, maps=maps, area=area, settings=settings,
                      session=session, tab=tab)
-    win.resize(max(settings.window_width, 1180), max(settings.window_height, 800))
+    win.resize(max(settings.window_width, 1500), max(settings.window_height, 1000))
     win.show()
     return app.exec()

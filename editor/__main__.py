@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication(sys.argv[:1])
     win = EditorWindow(args.save, args.game_disk)
-    win.resize(1100, 720)
+    win.resize(1500, 1000)
     win.show()
     return app.exec()
 
