@@ -1,8 +1,7 @@
 # Darker walls, and hatching
 
-**Status: the geometry is built; the window still has to paint it.** Three
-shadings for solid rock on the combat map, chosen by one constant. Screenshots
-of each were made offscreen and Donald picks.
+**Status: done.** Three shadings for solid rock on the combat map, chosen by one
+constant; Donald picked `HATCH`, and `automap/window.py` paints it.
 
 ## The three, and the constant
 
@@ -53,33 +52,27 @@ Tested in `tests/test_shading.py`, including the crowded fight: thirteen
 combatants over cross-hatching, every one of them emitted after the last rock
 primitive and each holding a whole square.
 
-## What the window still needs
+## What the window paints
 
-`CombatCanvas._draw` in `automap/window.py` — the one file this work was not
-allowed to touch. Two branches and one constant:
+**Landed.** `CombatCanvas._draw` in `automap/window.py` has two more branches
+and the fill moved:
 
-```python
-BLOCK = QColor("#c3d0dd")       # was #e7ecf2
-HATCH_PEN = QColor("#68809a")   # render.ROCK_HATCH
+* `BLOCK` is `#c3d0dd`, `HATCH_PEN` is `#68809a` (`render.ROCK_FILL` and
+  `ROCK_HATCH`).
+* **`Hatch` is tested before `Rect`**, because a `Hatch` *is* a `Rect` and the
+  older branch would swallow it. It fills with no pen, then strokes `lines` at
+  1px. Empty `lines` — the small-cell fallback — is therefore a plain fill and
+  needs no separate branch.
+* **`Line`**, which this canvas ignored entirely: 2.5px in `INK` for
+  `rock-edge`, 1px otherwise. Without it the inked outline round a mass of rock
+  was invisible, and at the smallest cell the rock had no edge at all.
 
-    def _draw(self, p, prim):
-        if isinstance(prim, Hatch):         # before the Rect branch
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(BLOCK)
-            p.drawRect(QRectF(prim.x, prim.y, prim.w, prim.h))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(HATCH_PEN, 1))
-            for x1, y1, x2, y2 in prim.lines:
-                p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
-            return
-        ...
-        elif isinstance(prim, Line):        # the canvas ignores Line today
-            p.setPen(QPen(INK, 2.5 if prim.kind == "rock-edge" else 1))
-            p.drawLine(QPointF(prim.x1, prim.y1), QPointF(prim.x2, prim.y2))
-```
+The area map's `_draw` is untouched: `map_primitives` yields no `Hatch`, and a
+branch for a primitive that cannot arrive is a lie about what the code does.
 
-Until that lands the canvas paints a `Hatch` through its existing `Rect` branch
-and the map looks exactly as it does today.
+Painted offscreen and counted in `tests/test_shading.py`: strokes darker than
+the fill inside the rock at a full cell, none at `CELL_MIN`, and the boundary
+inked at both.
 
 ## Both themes
 

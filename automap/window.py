@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from por import strength as strengthmod
 from por.geo import GRID
 
 from . import combat, live
@@ -44,6 +45,7 @@ from .render import (
     COUNT_SIZE,
     MARGIN,
     Glyph,
+    Hatch,
     Label,
     Line,
     Poly,
@@ -69,7 +71,10 @@ ALARM = QColor("#c0392b")       # something is wrong and it is not our doing
 FRIEND = QColor("#2f7d4f")
 FOE = QColor("#c0392b")
 FADED = QColor("#a9b4bf")
-BLOCK = QColor("#e7ecf2")
+# Solid rock. The old fill was ROOF's tint, which against paper reads as more
+# paper; the pen is ink thinned, never the wall ink. See render.ROCK_FILL.
+BLOCK = QColor("#c3d0dd")
+HATCH_PEN = QColor("#68809a")
 
 
 class MapCanvas(QWidget):
@@ -284,6 +289,18 @@ class CombatCanvas(QWidget):
             self._draw(p, prim)
 
     def _draw(self, p: QPainter, prim) -> None:
+        # Hatch first: it is a Rect, and the Rect branch would swallow it. When
+        # the cell is too small `lines` is empty and this is a plain fill --
+        # the heavy rock-edge below still carries the shape.
+        if isinstance(prim, Hatch):
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(BLOCK)
+            p.drawRect(QRectF(prim.x, prim.y, prim.w, prim.h))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(HATCH_PEN, 1))
+            for x1, y1, x2, y2 in prim.lines:
+                p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+            return
         if isinstance(prim, Rect):
             rect = QRectF(prim.x, prim.y, prim.w, prim.h)
             if prim.kind == "block":
@@ -311,6 +328,9 @@ class CombatCanvas(QWidget):
                 p.setBrush(colour)
                 p.drawRect(rect)
             p.setBrush(Qt.BrushStyle.NoBrush)
+        elif isinstance(prim, Line):
+            p.setPen(QPen(INK, 2.5 if prim.kind == "rock-edge" else 1))
+            p.drawLine(QPointF(prim.x1, prim.y1), QPointF(prim.x2, prim.y2))
         elif isinstance(prim, Label):
             p.setPen(QPen(FADED if prim.kind == "hp-dim" else PAPER))
             font = QFont("sans", max(7, int(self.cell * 0.36)),
@@ -394,6 +414,19 @@ class AutomapWindow(QMainWindow):
         self.commissions.setMaximumWidth(QWIDGETSIZE_MAX)
         self.messages = MessagesPanel()
         self.combat_log = CombatLog()
+        # Party strength, live. Nothing stores it -- `PARTYSTRENGTH` recomputes
+        # it from the roster every time an area script asks -- so it is
+        # recomputed here too, from the two blocks the poll already reads, and
+        # it moves the moment somebody readies a weapon. It sits under the strip
+        # rather than in the status bar because the one-window host hides that
+        # status bar, and this is a fact about the party, not about the app.
+        self.strength_label = QLabel("party strength --")
+        self.strength_label.setStyleSheet("color: #5c6b7a")
+        _font = self.strength_label.font()
+        _font.setPointSize(8)
+        self.strength_label.setFont(_font)
+        self.strength_label.setToolTip(
+            "How big a random encounter is. Not readable yet.")
         self.actions_bar = ActionBar(say=self.messages.say)
 
         # Roster left, map centre, the two reading panels right, the actions
@@ -438,6 +471,7 @@ class AutomapWindow(QMainWindow):
         grid.addWidget(middle, 0, 1, Qt.AlignmentFlag.AlignTop)
         grid.addWidget(side, 0, 2)
         grid.addWidget(self.strip, 1, 0, 1, 3)
+        grid.addWidget(self.strength_label, 2, 0, 1, 3)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 1)
         grid.setRowStretch(0, 1)
@@ -632,6 +666,30 @@ class AutomapWindow(QMainWindow):
         self.roster.show_snapshot(snap)
         self.strip.show_state(self.state, snap)
         self.commissions.update_from(save0_bytes)
+        self.show_strength(save0_bytes, roster_bytes)
+
+    def show_strength(self, save0_bytes: bytes, roster_bytes: bytes) -> None:
+        """Recompute party strength and show it under the strip.
+
+        Live data only, and deliberately: the number is what the *running*
+        game would compute, so a save file on disk would be the wrong answer
+        the moment anybody readied anything. Same two blocks as the poll.
+
+        The slums count comes with it because it is the one scaled encounter
+        watched end to end -- `(strength / 3) * 2`, `ECL14 $B1B0` -- and a bare
+        13 says nothing about what it costs. See `docs/114-party-strength.md`.
+        """
+        try:
+            party = strengthmod.from_bytes(save0_bytes, roster_bytes)
+        except ValueError:
+            return
+        self.strength_label.setText(
+            f"party strength {party.value}   "
+            f"slums encounter {party.slums_count} monsters")
+        self.strength_label.setToolTip(
+            party.detail
+            + f"\n\nA slums random encounter is ({party.value} / 3) * 2 = "
+              f"{party.slums_count} monsters.")
 
     def _try_connect(self) -> None:
         """Attach when a monitor appears. Cheap enough to run on the tick."""

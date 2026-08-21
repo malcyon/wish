@@ -3558,10 +3558,22 @@ effect on the next fight is unproven.
   **Checked against Donald's own disks, and re-implemented twice
   independently.** `PORSAVE` sums to 115, strength 11; `PORSAVE11` to 130,
   strength 13 — MALCYON 27, LADY KATHERINE 13, ROLAND 16, SILAS 24, MAGNUS 24,
-  BRUTUS 26. The slums count is `(strength / 3) * 2`, so **buying banded mail
-  and shields took every later random slums encounter from six monsters to
-  eight**, with nobody gaining a level or a point of experience. Armour makes
-  the game harder.
+  BRUTUS 26. The slums count is `(strength / 3) * 2`, so **buying kit took
+  every later random slums encounter from six monsters to eight**, with nobody
+  gaining a level or a point of experience.
+
+  **Correction: it was not the armour.** An earlier version of this entry said
+  "armour makes the game harder". The AC term needs the field at 60 or more,
+  which means **AC 0 or better** — and the best anyone in the party reaches is
+  2. Measured across the shopping trip, ROLAND went AC 10 to 4, SILAS 10 to 3,
+  MAGNUS and BRUTUS 9 to 2, and all four contributed the *same* number before
+  and after: 12, 24, 24, 26. The whole `+5` was MALCYON readying a dart —
+  THAC0 21 to 20. The later `+10` was MALCYON again, dexterity edited to 18 for
+  the missile bonus, THAC0 down to 18.
+
+  So the observation stands and the mechanism was wrong: **weapons and THAC0
+  drive it, not armour.** A low-level party can only move this number by
+  arming, by gaining hit points, or by levelling a cleric or magic-user.
 
   **Rate and size are separate systems.** Four scripts honour the per-square
   `NO_ENCOUNTER` and `HALF_ENCOUNTER_RATE` bits *and* do not scale: their
