@@ -294,8 +294,9 @@ def test_turning_it_off_disables_showing_it(live):
 def test_the_tab_in_view_and_the_poll_interval_are_recorded(live, logs):
     from wish.window import EDITOR_TAB, MAP_TAB
     live.debug_action.setChecked(True)
-    live.tabs.setCurrentIndex(MAP_TAB)
+    # Away and back, so both lines appear whichever tab the window opens on.
     live.tabs.setCurrentIndex(EDITOR_TAB)
+    live.tabs.setCurrentIndex(MAP_TAB)
     text = only_log(logs).read_text()
     assert "tab: Automapper, polling every" in text
     assert "tab: Character Editor, polling every" in text
