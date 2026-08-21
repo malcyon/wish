@@ -36,7 +36,7 @@ from por.savegame import (
 )
 from por.traits import traits
 
-from .render import Label, Rect
+from .render import Hatch, Label, Line, Rect, hatch_lines
 
 # Which overlay is running. LINKER's own dispatch byte.
 MODE = 0x6E11
@@ -80,6 +80,13 @@ TARGET_WIDTH = 560
 MARGIN = 20
 PAD = 3                   # squares of ground kept around the action
 LEAST = 12                # ...and never a view smaller than this
+
+# How solid rock is drawn. `FILL` is the old flat tint, only darker; `HATCH`
+# and `CROSS` are the pen, one set of 45-degree strokes or two, with the heavy
+# outline an ink-and-pen cartographer puts round a mass of rock and no line
+# between one rock square and the next.
+FILL, HATCH, CROSS = "fill", "hatch", "cross"
+SHADING = HATCH
 
 
 @dataclass(frozen=True)
@@ -400,8 +407,48 @@ def cell_for(width: int) -> int:
     return max(CELL_MIN, min(CELL_MAX, TARGET_WIDTH // max(1, width)))
 
 
+def _rock(battle: Battle, box, cell: int, margin: int, shading: str):
+    """Solid rock: the fill for every impassable square, then its outline.
+
+    Fills first and outlines afterwards, because a stroke sits astride the line
+    it is drawn on and the next square's fill would paint over half of it.
+
+    The outline is drawn only where rock meets ground, so a mass of rock is one
+    heavy shape rather than a grid of squares -- which is the difference between
+    a map somebody inked and a map something tiled.
+    """
+    x0, y0, w, h = box
+    at = lambda x, y: (margin + (x - x0) * cell,           # noqa: E731
+                       margin + (y - y0) * cell)
+    rock = [(x, y) for y in range(y0, y0 + h) for x in range(x0, x0 + w)
+            if battle.square(x, y)]
+
+    for x, y in rock:
+        left, top = at(x, y)
+        if shading == FILL:
+            yield Rect(left, top, cell, cell, "block")
+        else:
+            yield Hatch(left, top, cell, cell, "block",
+                        hatch_lines(left, top, cell, cell,
+                                    cross=shading == CROSS))
+    if shading == FILL:
+        return
+
+    for x, y in rock:
+        left, top = at(x, y)
+        right, bottom = left + cell, top + cell
+        if not battle.square(x, y - 1):
+            yield Line(left, top, right, top, "rock-edge")
+        if not battle.square(x, y + 1):
+            yield Line(left, bottom, right, bottom, "rock-edge")
+        if not battle.square(x - 1, y):
+            yield Line(left, top, left, bottom, "rock-edge")
+        if not battle.square(x + 1, y):
+            yield Line(right, top, right, bottom, "rock-edge")
+
+
 def battlefield(battle: Battle, box=None, cell: int | None = None,
-                margin: int = MARGIN):
+                margin: int = MARGIN, shading: str = SHADING):
     """Every primitive for one fight: ground, then combatants.
 
     Terrain is drawn as **wall or not wall** and nothing finer. The glyphs at
@@ -411,11 +458,7 @@ def battlefield(battle: Battle, box=None, cell: int | None = None,
     """
     x0, y0, w, h = box or extent(battle)
     cell = cell or cell_for(w)
-    for y in range(y0, y0 + h):
-        for x in range(x0, x0 + w):
-            if battle.square(x, y):
-                yield Rect(margin + (x - x0) * cell, margin + (y - y0) * cell,
-                           cell, cell, "block")
+    yield from _rock(battle, (x0, y0, w, h), cell, margin, shading)
 
     cx, cy = battle.camera
     yield Rect(margin + (cx - x0) * cell, margin + (cy - y0) * cell,

@@ -18,6 +18,7 @@ whichever side's barrier is easier to get through.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from por.geo import (
@@ -69,6 +70,39 @@ class Rect:
     w: float
     h: float
     kind: str = "door"
+
+
+#: Solid rock, in the shades a painter inks it. The old fill was `#e7ecf2`,
+#: the same tint a roofed square carries on the area map, which against paper
+#: reads as more paper. Stated here because the hatching is geometry's business
+#: and the two halves have to agree: the fill is the ground the pen crosses.
+ROCK_FILL = "#c3d0dd"
+ROCK_HATCH = "#68809a"    # the hatching pen: ink thinned, never the wall ink
+
+#: Hatch lines per cell, and the closest they may come in pixels measured
+#: **across** the lines. Below the floor the pattern fills in and the square is
+#: drawn as a plain fill instead, which is honest about what it has become.
+#: Cross-hatching lays down two sets and so is spaced wider: at the single
+#: pattern's spacing it stops reading as strokes and becomes a grey.
+HATCH_STEPS = 3
+CROSS_STEPS = 2
+HATCH_MIN = 4.0
+
+
+@dataclass(frozen=True)
+class Hatch(Rect):
+    """A square of solid rock: a fill, with pen strokes laid over it.
+
+    **A `Hatch` is a `Rect`**, so a painter that has never heard of hatching
+    still fills the square and loses only the strokes. That is the whole reason
+    for the subclass -- the two painters can learn about it separately.
+
+    `lines` are absolute `(x1, y1, x2, y2)`, already clipped to the square, so
+    no painter needs a clip region. Empty when the cell is too small to carry
+    them; see `hatch_lines`.
+    """
+
+    lines: tuple[tuple[float, float, float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -280,8 +314,47 @@ def map_primitives(geo: Geo, visible=None, cell: int = CELL,
                     yield from edge_primitives(edge, cell, margin)
 
 
+# -- solid rock --------------------------------------------------------------
+
+def hatch_lines(x: float, y: float, w: float, h: float,
+                steps: int | None = None, cross: bool = False,
+                least: float = HATCH_MIN):
+    """Parallel 45-degree strokes across one square, clipped to its own edges.
+
+    **Anchored at `(x, y)`**, the square's own top-left, so the pattern cannot
+    crawl when the camera moves it -- a pattern anchored to the canvas keeps its
+    origin while the square slides over it, and every stroke walks a pixel a
+    step. The spacing divides the cell exactly, so neighbouring squares still
+    join up into one run of hatching across a mass of rock.
+
+    Returns `()` when the strokes would come closer than `least` pixels: at that
+    point they merge, and a plain fill says the same thing without pretending.
+    """
+    step = min(w, h) / (steps or (CROSS_STEPS if cross else HATCH_STEPS))
+    if step / math.sqrt(2) < least:
+        return ()
+    out = []
+    for down in (True, False) if cross else (True,):
+        # Offsets are multiples of the spacing measured from the corner, over
+        # the range where a 45-degree line still crosses the square at all.
+        for k in range(-int(h // step), int(w // step) + 1):
+            off = k * step
+            t0, t1 = max(0.0, -off / h), min(1.0, (w - off) / h)
+            if t1 - t0 < 1e-9:
+                continue
+            xa, xb = off + t0 * h, off + t1 * h
+            ya, yb = (t0 * h, t1 * h) if down else (h - t0 * h, h - t1 * h)
+            out.append((x + xa, y + ya, x + xb, y + yb))
+    return tuple(out)
+
+
 SVG_STYLE = {
     "roofed": 'fill="#e7ecf2" stroke="none"',
+    # Solid rock on the combat map: fill, pen, and the heavy line Dyson Logos
+    # draws around a mass of it.
+    "block": f'fill="{ROCK_FILL}" stroke="none"',
+    "hatch": f'stroke="{ROCK_HATCH}" stroke-width="1"',
+    "rock-edge": 'stroke="#16202b" stroke-width="2.5" stroke-linecap="round"',
     "wall": 'stroke="#16202b" stroke-width="3" stroke-linecap="square"',
     "bar": 'stroke="#16202b" stroke-width="2"',
     "star": 'stroke="#9e2b9e" stroke-width="1.6"',
@@ -320,7 +393,13 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
         prims.extend(note_primitives(notes, cell, margin))
     for p in prims:
         style = SVG_STYLE.get(p.kind, "")
-        if isinstance(p, Line):
+        if isinstance(p, Hatch):
+            out.append(f'<rect x="{p.x}" y="{p.y}" width="{p.w}" '
+                       f'height="{p.h}" {style}/>')
+            for x1, y1, x2, y2 in p.lines:
+                out.append(f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" '
+                           f'y2="{y2:.2f}" {SVG_STYLE["hatch"]}/>')
+        elif isinstance(p, Line):
             out.append(f'<line x1="{p.x1}" y1="{p.y1}" x2="{p.x2}" '
                        f'y2="{p.y2}" {style}/>')
         elif isinstance(p, Rect):
