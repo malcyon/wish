@@ -3563,10 +3563,16 @@ effect on the next fight is unproven.
   eight**, with nobody gaining a level or a point of experience. Armour makes
   the game harder.
 
-  **Rate and size are separate systems.** The four scripts that honour the
-  per-square `NO_ENCOUNTER` and `HALF_ENCOUNTER_RATE` bits are exactly the four
-  that do *not* scale: their wandering monster is a fixed patrol, identical at
-  level 1 and level 8. Dungeon rate is 1 in 21, halved on a bit-5 square; the
+  **Rate and size are separate systems.** Four scripts honour the per-square
+  `NO_ENCOUNTER` and `HALF_ENCOUNTER_RATE` bits *and* do not scale: their
+  wandering monster is a fixed patrol, identical at level 1 and level 8.
+
+  **Two accounts disagree on the count and it is not yet settled.** The
+  encounter work found four such scripts; the full ECL decode, which reaches
+  100% of every script, finds the bit-6 test in **six** — `ECL05` at `$9BE2`
+  and `ECL0F` at `$99F8` as well. Both can be true if those two honour the bit
+  *and* scale, which would mean the two systems are not as cleanly split as the
+  first account suggests. **Check before relying on either.** Dungeon rate is 1 in 21, halved on a bit-5 square; the
   slums 1 in 14; the wilderness 1 in 20.
 
   **There is no encounter-table file.** Each `ECL` carries its own parallel byte
@@ -3603,3 +3609,43 @@ effect on the next fight is unproven.
   and a test pinned it. `SQRPACI00` has `$0607` = 20 against a true 18, and
   18 x 36 = 648 is exactly the grid in front of the glyph table in a `SQRDATA`.
   Reading `$0607` outdoors would shear every row two squares along.
+
+- ~~**The ECL instruction set.**~~ **Decoded whole: 62 opcodes, and every byte
+  of every script accounted for.** The VM is in `DUNGEON`, entry `$1581`,
+  dispatch at `$1590`, with three 62-entry tables end to end — handler low
+  `$15A9`, handler high `$15E7`, operand-set count `$1625` — and the operand
+  evaluator at `$1663`. `DUNGEON` is byte-identical on all eight disks and is
+  the only file of 983 carrying the count table.
+
+  **178,035 bytes across all 30 scripts, 0 derails, 0 unresolved.** Everything
+  is either reached by traversal, referenced by an operand, a well-formed dead
+  island (182 bytes in total, each parsing cleanly), or one trailing `$00`.
+
+  Three opcodes we had — `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` —
+  **do not exist in this game.** They came from *Curse of the Azure Bonds*. No
+  script uses one, so nothing was corrupted by carrying them.
+
+  **One of our operand counts was wrong and two of the game's own are:**
+
+  | opcode | we said | `$1625` says | the handler fetches |
+  |---|---|---|---|
+  | `$36 ADDNPC` | 1 | 1 | **2** — ours was the bug; `ECL1E` decoded at 7% |
+  | `$0C SETUPMON` | 3 | **2** | 3 |
+  | `$29 ENCMENU` | 14 | **13** | 14 |
+
+  `$1625` is read at exactly one place, the false-`IF` skip at `$1BB5`. So an
+  `IF` immediately before one of those three would desync the VM and everything
+  after it would be garbage — **a latent engine bug in the shipped game.** A
+  sweep of all 16,233 instructions finds no script that does it, so it never
+  fires. SSI got away with it.
+
+  The evaluator also validates nothing: operand codes `$04`-`$7F` fall through
+  to the `03` path and `$82`-`$FF` to `$81`. A decoder that raises on those
+  derails where the game does not, which is what sank `ECL0B`, `ECL0F` and
+  `ECL10` in the previous attempt.
+
+  Memory: 374 distinct addresses. `$6E79`-`$6E82` are a script's private
+  registers, referenced by no overlay. `$9800`-`$98FF` is a string workspace
+  where monster-group names are composed. `$49F2` is the current ECL id, read
+  by 14 scripts. And `ECL01` and `ECL11` test attribute **bit 7**, which nobody
+  had noticed.
