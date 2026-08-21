@@ -264,3 +264,53 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
         COMBAT_MAP: bytes(field),
         COMBAT_INITIATIVE: bytes(initiative),
     }
+
+
+def disk_path(stem: str):
+    """The path to a named disk, or None. Never skips.
+
+    Safe at module level, which `game_disk` is not: `pytest.skip` outside a test
+    needs `allow_module_level`. Pair this with the `needs_disks` marker so the
+    module skips as a whole when there are no disks.
+    """
+    where = disk_dir()
+    if where is None:
+        return None
+    for name in (f"{stem}.D64", f"{stem}.d64", f"{stem}.D64.orig"):
+        candidate = where / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def game_disk(stem: str = "POOL1"):
+    """The path to one of the player's game disks, or skip.
+
+    Some readers want a disk to open rather than a payload -- `load_item_names`
+    and `load_item_templates` take a path. Prefer `game_file` where a payload
+    will do; this is for the rest.
+
+    Several tests used to hardcode `work/POOL1.D64.orig` or an absolute path on
+    somebody's machine. Both are invisible on CI, and one of them named a
+    directory that no longer exists anywhere.
+    """
+    where = disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    for name in (f"{stem}.D64", f"{stem}.d64", f"{stem}.D64.orig"):
+        candidate = where / name
+        if candidate.exists():
+            return candidate
+    pytest.skip(f"no {stem} disk where the game disks are")
+
+
+def save_disk(stem: str = "PORSAVE"):
+    """The path to one of the player's save disks, or skip."""
+    where = disk_dir()
+    if where is None:
+        pytest.skip("needs the save disks; set POR_DISKS to where they are")
+    for name in (f"{stem}.D64", f"{stem}.d64"):
+        candidate = where / name
+        if candidate.exists():
+            return candidate
+    pytest.skip(f"no {stem} where the disks are")

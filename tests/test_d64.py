@@ -24,6 +24,13 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 PORSAVE = WORK / "PORSAVE.D64"
 POOL1 = WORK / "POOL1.D64.orig"
+# These need specimens under `work/`, which is gitignored, so a checkout
+# without them -- CI, or anyone who does not own the game -- skips rather
+# than fails. `tests/gamedata.py` is the pattern; these predate it.
+pytestmark = pytest.mark.skipif(
+    not (PORSAVE.exists() and POOL1.exists()),
+    reason="needs the disks under work/")
+
 
 BRUTUS = b"\x01BRUTUS"
 

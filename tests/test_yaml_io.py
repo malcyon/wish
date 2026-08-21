@@ -19,6 +19,13 @@ DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
 SAVE = f"{DISKS}/PORSAVE2.D64"
 GAME = "work/POOL1.D64.orig"
 
+# Needs a specimen under `work/`, which is gitignored: a checkout without
+# it skips rather than fails.
+pytestmark = pytest.mark.skipif(
+    not pathlib.Path(GAME).exists(),
+    reason="needs the disks under work/")
+
+
 live = pytest.mark.skipif(not pathlib.Path(SAVE).exists(),
                           reason="needs a real save disk")
 

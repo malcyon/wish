@@ -12,7 +12,7 @@ import os
 import pathlib
 
 import pytest
-from gamedata import game_file
+from gamedata import disk_dir, game_file
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -49,7 +49,8 @@ from por.geo import (
     load_geo_files,
 )
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
+# Wherever the player keeps them, not wherever one machine did.
+DISKS = str(disk_dir() or "no-disks-here")
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL3.D64").exists(),
                                 reason="needs the game disks")
@@ -62,6 +63,9 @@ def geo():
 
 @pytest.fixture
 def new_phlan():
+    """GEO00 off the player's disk, skipping when there is none."""
+    if disk_dir() is None:
+        pytest.skip("needs the game disks")
     return load_geo_files(f"{DISKS}/POOL3.D64")["GEO00"]
 
 

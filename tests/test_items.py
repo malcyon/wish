@@ -9,6 +9,14 @@ from por.items import ITEM_AREA_BASE, ITEM_SIZE, items_for_slot, load_item_names
 from por.savegame import SaveGame0
 
 DISKS = "/mnt/media/roms/c64/Pool of Radiance Disks"
+POOL1_ORIG = "work/POOL1.D64.orig"
+
+# Needs a specimen under `work/`, which is gitignored: a checkout without
+# it skips rather than fails.
+pytestmark = pytest.mark.skipif(
+    not pathlib.Path(POOL1_ORIG).exists(),
+    reason="needs the disks under work/")
+
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 # Read the committed fixture, never the live disk -- an earlier version read
 # PORSAVE2.D64 directly and broke the moment Donald saved over it.
