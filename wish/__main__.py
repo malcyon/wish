@@ -21,6 +21,8 @@ import argparse
 import pathlib
 import sys
 
+from . import __version__
+
 
 def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
@@ -40,6 +42,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--forget", metavar="AREA",
                     help="clear remembered squares for one area (or ALL), then "
                          "exit. Notes are kept")
+    ap.add_argument("--version", action="version",
+                    version=f"wish {__version__}")
     return ap
 
 
@@ -50,9 +54,13 @@ def main(argv: list[str] | None = None, tab: str = "editor") -> int:
     # The Designer loop: edit character.ui, restart, and the running window is
     # already the new layout. No build step to forget.
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-    from tools.genui import ensure_current
-    if ensure_current():
-        print("character.ui changed; recompiled the form")
+    try:
+        from tools.genui import ensure_current
+    except ImportError:
+        pass  # A frozen build has no .ui and no pyuic6; the form is compiled in.
+    else:
+        if ensure_current():
+            print("character.ui changed; recompiled the form")
 
     from automap.__main__ import forget, load_maps
 

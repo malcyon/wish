@@ -27,6 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import yaml
 
 from por.yaml_io import ValueError_, export_save, import_into, to_yaml
+from wish import __version__
 
 GAME_DISK_ENV = "POR_GAME_DISK"
 
@@ -150,6 +151,8 @@ def main() -> int:
                          f"only to turn item words into indices when you build "
                          f"a new item. Otherwise ${GAME_DISK_ENV} or a "
                          f"POOL*.D64 beside the save")
+    ap.add_argument("--version", action="version",
+                    version=f"wish-cli {__version__}")
     ap.add_argument("--dry-run", "-n", action="store_true",
                     help="--import only: report the changes without writing")
 

@@ -225,3 +225,5 @@ work/
 .agents/
 .claude/
 skills-lock.json
+# Written by hatch-vcs at build time; the tag is the source of truth.
+wish/_version.py

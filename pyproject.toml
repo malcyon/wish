@@ -1,6 +1,6 @@
 [project]
 name = "por-tools"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Reverse engineering tools and character editor for Pool of Radiance (Commodore 64)"
 requires-python = ">=3.12"
 # GPL-3.0: PyQt6 is GPL, and linking against it makes this GPL too.
@@ -25,15 +25,46 @@ wish-editor = "wish.__main__:editor_main"
 wish-automap = "wish.__main__:automap_main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+# The version is the git tag: `v0.2.0` becomes 0.2.0, and an untagged
+# commit gets a development version rather than claiming to be a release.
+[tool.hatch.version]
+source = "vcs"
+# Only `v*` tags name a release. Without the match the backup tags in this
+# repository's history ("purge-backup-2026") get read as versions.
+raw-options = { tag_regex = "^v(?P<version>[0-9].*)$", git_describe_command = [
+    "git", "describe", "--dirty", "--tags", "--long", "--match", "v[0-9]*"] }
+fallback-version = "0.0.0"
+
+[tool.hatch.build.hooks.vcs]
+# Written at build time so a frozen build knows its version with no git
+# and no installed metadata to ask.
+version-file = "wish/_version.py"
 
 [tool.hatch.build.targets.wheel]
 # The library, the editor, the automapper and the window that hosts them both
-# ship. tools/ is discovery scaffolding. The automapper stays its own package
-# because the editor is a file tool with no emulator dependency and must stay
-# that way -- `wish` may import both, `editor` imports neither.
-packages = ["por", "editor", "automap", "wish"]
+# ship. The automapper stays its own package because the editor is a file tool
+# with no emulator dependency and must stay that way -- `wish` may import both,
+# `editor` imports neither.
+#
+# tools/ is discovery scaffolding but ships anyway, because two declared entry
+# points live in it: `wish-cli` is tools.wish:main, and the window imports
+# tools.genui at startup. Without it both were broken in an installed wheel.
+packages = ["por", "editor", "automap", "wish", "tools"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+# pyuic6 writes it; ruff's opinion of the result is nobody's business.
+extend-exclude = ["editor/ui_character.py"]
+
+[tool.ruff.lint]
+# Pyflakes and the import rules, which are the two that catch real mistakes
+# here -- an undefined name, an import that no longer resolves, a block that
+# has drifted out of order. Deliberately NOT E501: `por/layout.py` is the field
+# documentation and its notes are meant to be read, not wrapped to 88 columns.
+select = ["E4", "E7", "E9", "F", "I"]
