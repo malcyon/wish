@@ -33,6 +33,7 @@ from por.geo import GRID
 from . import combat, live
 from . import notes as notemod
 from .actionbar import ActionBar
+from .combatlog import CombatLog
 from .commissions import CommissionsPanel
 from .config import Settings
 from .iconpaint import draw_icon
@@ -335,6 +336,17 @@ class AutomapWindow(QMainWindow):
     #: How many map ticks per read of the live party. See `poll_live`.
     LIVE_EVERY = 5
 
+    #: Keep the combat messages the game paints over. One extra burst per tick
+    #: while a fight is running and nothing at all outside one.
+    COMBAT_LOG = True
+    #: How many combat ticks per read of the message panel. **One is a starting
+    #: point, not an answer**: a message lives about a second of emulated time
+    #: (`COMBAT $28C3`, delay `$49FC`, default 2), so there is room to poll less
+    #: often if the extra ~14.3 ms a tick turns out to stutter the fight. Left
+    #: here rather than in `Settings` so it can be raised without a release;
+    #: it belongs in the settings file once the measurement says what it costs.
+    COMBAT_LOG_EVERY = 1
+
     #: The widest the notes, commissions and messages column may get. The
     #: panels hold short rows; past this they are mostly paper.
     SIDE_WIDTH = 460
@@ -381,6 +393,7 @@ class AutomapWindow(QMainWindow):
         # window gains lands as blank paper beside a fixed 270px panel.
         self.commissions.setMaximumWidth(QWIDGETSIZE_MAX)
         self.messages = MessagesPanel()
+        self.combat_log = CombatLog()
         self.actions_bar = ActionBar(say=self.messages.say)
 
         # Roster left, map centre, the two reading panels right, the actions
@@ -534,14 +547,44 @@ class AutomapWindow(QMainWindow):
                                                            self.battle)
         if self.battle is None:
             if was is not None:
+                # The last message of a fight is never painted over -- COMBAT
+                # returns to LINKER with it still on screen -- so without this
+                # it would be the one message the log lost.
+                self.log_combat(self.combat_log.flush())
                 self.stack.setCurrentWidget(self.canvas)
                 self._refresh()
             return False
         self.battle_canvas.show_battle(self.battle)
         self.stack.setCurrentWidget(self.battle_canvas)
         self.poll_live()
+        self.poll_combat_log()
         self._say(self._battle_note(self.battle))
         return True
+
+    def poll_combat_log(self) -> None:
+        """Read the message panel and keep whatever it finished saying."""
+        if not self.COMBAT_LOG or self.battle is None:
+            return
+        if self._live_ticks % self.COMBAT_LOG_EVERY:
+            return
+        self.combat_log.note_round([c.initiative
+                                    for c in self.battle.combatants])
+        self.log_combat(self.combat_log.poll(self.mapper.target))
+
+    def log_combat(self, messages) -> None:
+        """Combat lines into the Messages panel.
+
+        **The panel's own repeat-dropping has to be defeated here**, and that
+        is the whole point of the feature: `MessagesPanel.say` drops a line
+        identical to the one before it, which is right for "waiting for the
+        game" on every tick and wrong for two "MAGNUS MISSES." in a row. The
+        log has already deduplicated, on consecutive identical *frames*, which
+        is the only rule that can tell the two apart.
+        """
+        for msg in messages:
+            self.messages._last = ""
+            tag = f"round {msg.round}   " if msg.round else ""
+            self.messages.say(f"{tag}{msg.text}", detail="\n".join(msg.lines))
 
     @staticmethod
     def _battle_note(battle) -> str:

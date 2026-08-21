@@ -64,6 +64,18 @@ def codes_to_text(codes: bytes) -> str:
     return "".join(_SCREEN_TO_ASCII[c] for c in codes)
 
 
+def band(codes: bytes, left: int, right: int) -> list[str]:
+    """A column band, out of a block read as whole screen rows.
+
+    The game draws in windows -- combat's messages are columns 23 to 38 of rows
+    10 to 22 -- and a window is not contiguous in memory, so it is read as whole
+    rows and sliced here. `right` is one past the last column, which is how the
+    game itself holds it at `$03F3`.
+    """
+    return [codes_to_text(codes[at:at + SCREEN_COLS])[left:right]
+            for at in range(0, len(codes) - SCREEN_COLS + 1, SCREEN_COLS)]
+
+
 class Screen:
     """One snapshot: 1000 screen codes and 1000 colour nybbles."""
 
