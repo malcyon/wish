@@ -3539,3 +3539,67 @@ effect on the next fight is unproven.
   So the complaint that started this is exactly right — the game never clears it,
   and the next fight can be a dangerous one. `automap/actions.py` clears the bit,
   which restores the byte every clean save has.
+
+- ~~**Does the game scale random encounters to the party?**~~ **It does, and
+  the routine has a name.** `PARTYSTRENGTH`, ECL opcode `$1D`, implemented at
+  `DUNGEON $1BE8`. Twelve of the thirty area scripts call it, and in every one
+  the result becomes the **count operand of `LOADMON`** — literally how many
+  monsters are placed.
+
+  Per living roster slot, summed and then divided by ten:
+
+  * `5 * (THAC0 field - 39)`, the field being stored as `60 - THAC0`
+  * hit points **maximum**
+  * `5 * (AC field - 60)` when the AC field is at least 60
+  * `4 * level` for a cleric, `8 * level` for a magic-user
+
+  Slots that are empty, or have bit 7 of `0x100` set, are skipped.
+
+  **Checked against Donald's own disks, and re-implemented twice
+  independently.** `PORSAVE` sums to 115, strength 11; `PORSAVE11` to 130,
+  strength 13 — MALCYON 27, LADY KATHERINE 13, ROLAND 16, SILAS 24, MAGNUS 24,
+  BRUTUS 26. The slums count is `(strength / 3) * 2`, so **buying banded mail
+  and shields took every later random slums encounter from six monsters to
+  eight**, with nobody gaining a level or a point of experience. Armour makes
+  the game harder.
+
+  **Rate and size are separate systems.** The four scripts that honour the
+  per-square `NO_ENCOUNTER` and `HALF_ENCOUNTER_RATE` bits are exactly the four
+  that do *not* scale: their wandering monster is a fixed patrol, identical at
+  level 1 and level 8. Dungeon rate is 1 in 21, halved on a bit-5 square; the
+  slums 1 in 14; the wilderness 1 in 20.
+
+  **There is no encounter-table file.** Each `ECL` carries its own parallel byte
+  tables read with `GETTABLE`. `ECL00` scales the monster *type* rather than the
+  count, shifting an index at two strength thresholds.
+
+  Negatives worth keeping: no party-strength byte is stored anywhere, which
+  closes that open question; nothing in the encounter path reads experience, an
+  ability score, the clock or the commissions completed. Party size counts only
+  as the number of terms in the sum.
+
+- ~~**Where the overland map lives.**~~ **Not a `GEO` at all — it is the combat
+  square engine pointed at other data.** `SQRPACI00` describes it, `SQRDATA04`,
+  `05` and `06` hold the terrain as **18 x 36, one byte a square**, followed by
+  120 tile glyphs; `SECSET04`-`06` are the charset. `ECL19`, `ECL1A` and `ECL1B`
+  drive them, and `LOADFILES` dispatches on `$49E6` to pick a `GEO` or a
+  `SQRDATA`.
+
+  The three files are **overlapping windows on one world, thirteen columns
+  apart**, west to east: the data agrees at 179 of 180 squares in the overlap
+  and the edge-crossing arithmetic closes exactly. The playable world is
+  **40 x 32**. Travel position is `$49C3`/`$49C4`, a **separate pair** from
+  `$49C0`/`$49C1`, which is why walking into a site and out again puts you back
+  on the square you left. Travel is eight-way.
+
+  **Sites are hidden by painting plain terrain over them**, so the travel map is
+  never saved: it is rebuilt from the file plus a handful of flag bytes. And
+  clearing the Stojanow pollution swaps `ECL1A`'s impassable-terrain table,
+  dropping the twelve river tiles — the river opens to travel.
+
+- ~~**The combat map's row stride.**~~ **`$0612 + 1`, not `$0607`.**
+  `GDRIVE00 $C3AF` is `LDX $0612 / INX / STX $4B`. In a fight the two agree at
+  56 and the difference never shows, which is why the wrong one was written down
+  and a test pinned it. `SQRPACI00` has `$0607` = 20 against a true 18, and
+  18 x 36 = 648 is exactly the grid in front of the glyph table in a `SQRDATA`.
+  Reading `$0607` outdoors would shear every row two squares along.
