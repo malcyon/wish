@@ -134,30 +134,13 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-#: Fields `por/layout.py` declares that the sheet deliberately has no box for.
-#: Every one is a field **this game never writes** -- they were named from
-#: Curse, the Krynn titles and the monster records, and read zero in every Pool
-#: of Radiance character -- or one that already has a purpose-built editor.
-#: Listing them here rather than dropping the count check keeps the check's
-#: point: a field added tomorrow still has to get a widget or say why not.
-#: This belongs in `editor/binding.NOT_ON_THE_SHEET` next time that file is
-#: open; it lives here only because the layout was corrected first.
-NOT_YET_ON_THE_SHEET = {
-    "attack_forms",       # a monster's two attack forms; not a player field
-    "turn_power",         # the caster's half of turning, zero in this game
-    "attack_level",       # Curse's fighting level, zero in this game
-    "level_knight",       # Krynn class slots of the per-class level array
-    "level_paladin",
-    "level_ranger",
-    "abilities_second",   # Curse's second ability block, zero in this game
-    "inventory",          # editor/inventory.py edits the item slots
-}
-
-
 def expected_sheet_fields():
-    """The fields `editor/character.ui` is expected to carry a widget for."""
-    return [f for f in shown_fields(editable_fields())
-            if f.name not in NOT_YET_ON_THE_SHEET]
+    """The fields `editor/character.ui` is expected to carry a widget for.
+
+    The exclusions live in `editor/binding.NOT_ON_THE_SHEET`, beside the code
+    that acts on them, so the sheet and the test cannot drift apart.
+    """
+    return shown_fields(editable_fields())
 
 
 @game_disks

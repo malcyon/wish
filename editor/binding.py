@@ -133,7 +133,23 @@ def field_name(widget_name: str) -> str | None:
 #: Fields the CLI carries but the sheet does not show. `wish-cli` prints and
 #: `yaml_io` round-trips them; the GUI has no widget for them, so a save leaves
 #: their bytes exactly as it found them.
-NOT_ON_THE_SHEET = ("portrait_head", "portrait_body")
+#:
+#: Most of the second group were named from Curse, the Krynn titles and the
+#: monster records, and read zero in every Pool of Radiance character -- there
+#: is nothing for a player to edit. Keeping them listed rather than dropping
+#: the count check in `tests/test_editor.py` keeps that check's point: a field
+#: added tomorrow still has to get a widget or say here why not.
+NOT_ON_THE_SHEET = (
+    "portrait_head", "portrait_body",
+    "attack_forms",       # a monster's two attack forms; not a player field
+    "turn_power",         # the caster's half of turning, zero in this game
+    "attack_level",       # Curse's fighting level, zero in this game
+    "level_knight",       # Krynn class slots of the per-class level array
+    "level_paladin",
+    "level_ranger",
+    "abilities_second",   # Curse's second ability block, zero in this game
+    "inventory",          # editor/inventory.py edits the item slots
+)
 
 
 def shown_fields(fields):
