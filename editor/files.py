@@ -16,12 +16,33 @@ already hold the damage.
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import pathlib
 import shutil
+import sys
 
 BACKUP_DIR = "backups"
 KEEP_BACKUPS = 20
-FALLBACK = pathlib.Path.home() / ".local/share/wish/backups"
+
+
+def fallback_dir() -> pathlib.Path:
+    """The user's data directory, wherever this platform keeps one.
+
+    This was `~/.local/share/wish/backups` everywhere, which on Windows puts a
+    Unix path in the profile root that no Windows user would think to look in.
+
+    Spelled out here rather than imported from the project's platform table,
+    because `editor` may import nothing that could reach an emulator and
+    `tests/test_wish.py` enforces that by grepping this package. Three lines of
+    duplication is the price of that rule; keep the two in step.
+    """
+    if sys.platform == "win32":
+        root = os.environ.get("LOCALAPPDATA") or pathlib.Path.home() / "AppData/Local"
+    elif sys.platform == "darwin":
+        root = pathlib.Path.home() / "Library/Application Support"
+    else:
+        root = os.environ.get("XDG_DATA_HOME") or pathlib.Path.home() / ".local/share"
+    return pathlib.Path(root) / "wish" / BACKUP_DIR
 
 
 def backup_dir_for(target: pathlib.Path) -> pathlib.Path:
@@ -34,8 +55,9 @@ def backup_dir_for(target: pathlib.Path) -> pathlib.Path:
         probe.unlink()
         return beside
     except OSError:
-        FALLBACK.mkdir(parents=True, exist_ok=True)
-        return FALLBACK
+        fallback = fallback_dir()
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 def back_up(target: str | pathlib.Path) -> pathlib.Path | None:

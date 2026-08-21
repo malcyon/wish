@@ -67,12 +67,12 @@ def forget(area: str) -> int:
             return 1
     for path in files:
         try:
-            payload = json.loads(path.read_text())
+            payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         dropped = len(payload.get("seen", []))
         payload["seen"] = []
-        path.write_text(json.dumps(payload, indent=1))
+        path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
         kept = len(payload.get("notes", {}))
         print(f"{path.stem}: forgot {dropped} squares"
               + (f", kept {kept} note(s)" if kept else ""))
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         if name.upper() not in maps:
             print(f"no map named {name}", file=sys.stderr)
             return 1
-        with open(out, "w") as fh:
+        with open(out, "w", encoding="utf-8") as fh:
             fh.write(to_svg(maps[name.upper()]))
         print(f"{name.upper()} -> {out}")
         return 0

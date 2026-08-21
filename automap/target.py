@@ -30,6 +30,7 @@ Two hazards from `docs/70-driving-the-game.md` shape what is *not* here:
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -142,16 +143,36 @@ class NotConnected(RuntimeError):
     """No emulator to talk to. Expected, and recoverable -- wait and retry."""
 
 
+def who_holds_hint(port: int = 6502) -> str:
+    """The command that names the process holding a port, on this platform.
+
+    `ss` is Linux-only, and it was in the message a Windows user is most
+    likely to see -- the one about another client already having the monitor.
+    """
+    if sys.platform == "win32":
+        return f"`netstat -ano | findstr {port}` names it"
+    if sys.platform == "darwin":
+        return f"`lsof -nP -iTCP:{port}` names it"
+    return f"`ss -tnp | grep {port}` names it"
+
+
 class MonitorBusy(NotConnected):
-    """The port answered, but something else is already holding the monitor.
+    """The connection was made and then never served: somebody else has it.
 
     **VICE serves exactly one binary-monitor connection and silently ignores a
     second.** The two cases look identical from the outside unless they are
-    separated here: with nothing running the TCP connect is *refused*, and with
-    another client attached the connect *succeeds* and the connection is then
-    never served. `ViceTarget` pings on attach to tell them apart, because
-    "waiting for a game" is the wrong thing to say about a game that is
-    running.
+    separated here: with another client attached the connect *succeeds* and the
+    connection is then never answered. `ViceTarget` pings on attach to tell
+    them apart, because "waiting for a game" is the wrong thing to say about a
+    game that is running.
+
+    **What separates them is the ping, not the connect.** An earlier version
+    read any timeout as busy, on the assumption that with nothing listening the
+    connect is *refused* at once. That holds on Linux and does not hold on
+    Windows, where a packet filter drops the SYN rather than answering it and
+    the connect times out instead -- so wish told a Windows user with no
+    emulator running that something else was attached to it. Only a timeout on
+    the greeting means busy now; a timeout on the connect means absent.
 
     A subclass of `NotConnected` so every caller that already retries keeps
     doing so -- when the other client goes away the next retry attaches.
@@ -160,7 +181,7 @@ class MonitorBusy(NotConnected):
     def __init__(self, message: str = ""):
         super().__init__(message or (
             "something else is attached to the emulator's monitor - VICE "
-            "serves one connection at a time. `ss -tnp | grep 6502` names it"))
+            f"serves one connection at a time. {who_holds_hint()}"))
 
 
 def monitor_listening(host: str = "127.0.0.1", port: int = 6502,
@@ -196,9 +217,17 @@ class ViceTarget:
             kw["host"] = host
         if port is not None:
             kw["port"] = port
+        # Two stages, and they mean different things. Nothing there at all is a
+        # failure to *connect*, however the platform spells it -- refused on
+        # Linux, usually a timed-out SYN behind the Windows firewall. Only a
+        # connection that is made and then not answered is a busy monitor.
         try:
             self._mon = Monitor(timeout=timeout, **kw)
             self._mon.__enter__()      # connecting stops the machine...
+        except OSError as exc:
+            self._shut()
+            raise NotConnected(str(exc)) from exc
+        try:
             self._greet()              # ...and this proves it is ours...
             self._mon.resume()         # ...and this lets it run again
         except TimeoutError as exc:

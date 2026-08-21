@@ -37,7 +37,7 @@ class Settings:
     def load(cls) -> "Settings":
         path = config_dir() / FILE
         try:
-            raw = json.loads(path.read_text())
+            raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return cls()
         known = {f.name for f in fields(cls)}
@@ -47,6 +47,7 @@ class Settings:
         path = config_dir() / FILE
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(asdict(self), indent=1) + "\n")
+            path.write_text(json.dumps(asdict(self), indent=1) + "\n",
+                            encoding="utf-8")
         except OSError:
             pass            # a read-only home should not take the window down

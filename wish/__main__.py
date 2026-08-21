@@ -74,7 +74,8 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
         if name.upper() not in maps:
             print(f"no map named {name}", file=sys.stderr)
             return 1
-        pathlib.Path(out).write_text(to_svg(maps[name.upper()]))
+        pathlib.Path(out).write_text(to_svg(maps[name.upper()]),
+                                     encoding="utf-8")
         print(f"{name.upper()} -> {out}")
         return 0
     if not maps:

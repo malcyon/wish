@@ -3,6 +3,8 @@ name: test
 on:
   push:
   pull_request:
+  # So the Windows leg can be re-run on demand without an empty commit.
+  workflow_dispatch:
 
 jobs:
   pytest:

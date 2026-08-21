@@ -333,7 +333,7 @@ class SpellStore:
 
     def _load(self) -> dict:
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
@@ -341,7 +341,8 @@ class SpellStore:
     def _save(self, data: dict) -> None:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n")
+            self.path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n",
+                                 encoding="utf-8")
         except OSError:
             pass                 # a read-only home should not take the tab down
 

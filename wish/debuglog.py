@@ -123,7 +123,7 @@ def start() -> pathlib.Path | None:
     target = log_dir() / f"wish-{stamp}.log"
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(HEADER)
+        target.write_text(HEADER, encoding="utf-8")
         handler = logging.FileHandler(target, encoding="utf-8")
     except OSError:
         return None

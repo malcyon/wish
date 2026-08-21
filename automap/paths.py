@@ -52,6 +52,13 @@ def disk_candidates() -> list[pathlib.Path]:
     names = ("Pool of Radiance Disks", "Pool of Radiance", "PoR")
     roots = [pathlib.Path.cwd(), here, here / "Documents", here / "Games",
              here / "c64", here / "roms", here / "Downloads"]
+    # On Windows, Documents and Downloads are commonly redirected into
+    # OneDrive, and then `~/Documents` does not exist at all. $OneDrive is set
+    # by the client; the literal is for a profile where it is not running.
+    if sys.platform == "win32":
+        drive = os.environ.get("OneDrive")
+        for base in ([pathlib.Path(drive)] if drive else []) + [here / "OneDrive"]:
+            roots += [base, base / "Documents", base / "Downloads"]
     out = [r / n for r in roots for n in names]
     out += [pathlib.Path.cwd(), here]
     return out

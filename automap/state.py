@@ -155,14 +155,14 @@ class AutomapState:
             "notes": notemod.dump_notes(self.notes),
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
-        path.write_text(json.dumps(payload, indent=1))
+        path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
 
     def load_notes(self) -> None:
         path = self.notes_path()
         if not path.exists():
             return
         try:
-            payload = json.loads(path.read_text())
+            payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return
 

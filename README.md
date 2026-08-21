@@ -160,6 +160,7 @@ only the tab you are looking at reads the machine.
 |---|---|---|---|
 | settings | `%APPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.config/wish/` |
 | notes, explored squares | `%LOCALAPPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.local/share/wish/` |
+| save backups, when the disk's own folder is read-only | `%LOCALAPPDATA%\wish\backups\` | `~/Library/Application Support/wish/backups/` | `~/.local/share/wish/backups/` |
 
 Settings are one small JSON file you can read and edit. Notes are kept per
 area, typed — encounter, treasure, person, exit, locked, danger, note, done —

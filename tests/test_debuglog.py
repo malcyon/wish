@@ -11,6 +11,7 @@ import pathlib
 import re
 
 import pytest
+from gamedata import disk_path, save_disk
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -18,8 +19,7 @@ from automap.target import MemoryTarget
 from wish import backends as bk
 from wish import debuglog
 
-DISKS = "/home/donald/c64/Pool of Radiance Disks"
-game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/PORSAVE11.D64").exists(),
+game_disks = pytest.mark.skipif(disk_path("PORSAVE11") is None,
                                 reason="needs the save disks")
 
 # Any absolute path, on either platform. Nothing in a log may match it.
@@ -28,9 +28,16 @@ ABSOLUTE = re.compile(r"(?<!\.\.)/(?:[^/\s'\"]+/)+|[A-Za-z]:\\")
 
 @pytest.fixture
 def logs(tmp_path, monkeypatch):
-    """A throwaway config directory, and logging off again afterwards."""
+    """A throwaway config directory, and logging off again afterwards.
+
+    All four variables, because `config_dir()` reads a different one per
+    platform: setting only the XDG pair left every one of these tests writing
+    into the Windows runner's real profile and then looking for the file here.
+    """
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     debuglog.stop()
     yield tmp_path / "wish" / "logs"
     debuglog.stop()
@@ -361,7 +368,7 @@ def test_an_open_save_is_logged_as_a_shape_and_nothing_else(app, logs, tmp_path)
     Its own window, because it is the one that must have a save open."""
     from wish.window import MAP_TAB
     disk = tmp_path / "PORSAVE11.D64"
-    disk.write_bytes(pathlib.Path(f"{DISKS}/PORSAVE11.D64").read_bytes())
+    disk.write_bytes(save_disk("PORSAVE11").read_bytes())
 
     w = window(save=str(disk), target=MemoryTarget(), present=True)
     w.debug_action.setChecked(True)

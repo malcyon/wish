@@ -67,6 +67,19 @@ jobs:
 
       - run: pyinstaller --noconfirm wish.spec
 
+      # The artefact used to ship having never been started. `--version` exits
+      # inside argparse, before Qt is imported, so this needs no display -- and
+      # it is the exact path that a windowed Windows build with no stdout used
+      # to die on. See packaging/wish_main.py.
+      - name: it starts
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            dist/wish/wish.exe --version
+          else
+            dist/wish/wish --version
+          fi
+
       - name: name it after the tag
         shell: bash
         run: echo "NAME=wish-${GITHUB_REF_NAME#v}-${{ matrix.label }}-x86_64" >> "$GITHUB_ENV"
