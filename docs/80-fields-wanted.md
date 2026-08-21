@@ -450,3 +450,71 @@ References Donald supplied:
 * <https://gbc.zorbus.net/graphics/screen08.jpg> — GBC's combat-sprite editor,
   showing which attributes are exposed.
 
+
+---
+
+## The quickfight flag — WANTED
+
+**In combat a character can be handed to the computer.** The menu calls it
+quickfight, and it does what it says for that character for the rest of the
+fight. The complaint is what happens next: **the flag survives the fight.** Walk
+out, stumble into a second encounter, and that character is still not yours. The
+only way back is to hit space at the moment their turn begins, which is a
+reflex test rather than a control.
+
+So there is a per-character bit, set by the combat menu, that nothing clears
+when combat ends.
+
+**Where to look, in order:**
+
+1. **Not in the stored 256 bytes.** Thirteen saves and none of them differ in a
+   way that would show it, so it is either live-only or in a region we do not
+   compare. Rule this in or out first, because it decides everything after.
+2. **The roster block**, `$8300 + i*32`. It already carries the derived combat
+   values, it is per combatant, and `+0x0D` is known to name the record slot —
+   so unattributed bytes there are the best candidates.
+3. **The combatant table** at `$8B00 + i*4`. Byte `+2` is `slot*4 | pose` and
+   `+3` is unaccounted for.
+4. **`COMBAT` itself.** The overlay is resident at `$0800` during a fight;
+   whatever the menu writes, it writes from there.
+
+**The experiment.** Enter a fight, note the whole of `$8300`-`$8AFF` and
+`$8B00`-`$8BFF`, turn quickfight on for exactly one character, and diff. One
+byte, one bit, one character apart. Then leave combat and read the same bytes
+again — the finding is not just where the bit is but that it is *still set*,
+which is the whole point.
+
+Once found it earns two things: a display in the character editor, and the
+"turn quickfight off after a fight" action in `docs/102-live-actions.md`.
+
+---
+
+## What the trainer changes when an ability score is altered — WANTED
+
+`0x0B8` bit 0 is currently read as "score altered at the trainer", and
+`docs/50-experiments.md` records that **nothing reads it back**, which is why
+the rumour of a penalty has nowhere to live. That conclusion rests on a code
+search, not on a controlled observation, and it should rest on both.
+
+**The experiment, which needs two saves and nothing else:**
+
+1. Save at the trainer, immediately before altering an ability score.
+2. Alter one score — one, so the diff is unambiguous.
+3. Save again, to a different disk.
+
+Then diff the two `SAVEDGAME0` images byte for byte. What we expect: the ability
+byte itself, the derived combat numbers that depend on it, and `0x0B8` bit 0.
+What matters is **everything else that moves** — any byte that changes and is
+not one of those is the answer to a question we have not asked yet.
+
+Worth capturing in the same pair: whether the exceptional-strength byte
+(`0x074`) is touched for a fighter, and whether `0x0E2`, effective strength,
+moves independently of the score.
+
+**If a flag does record that a score was altered, the character editor should
+show it** — a character whose scores are not the ones they rolled is a fact
+about that character, and the editor's job is to show facts.
+
+Note the pair should be taken with a character whose class does not muddy the
+diff: a single-classed fighter changes fewer derived fields than a
+multi-classed magic-user/thief.

@@ -29,6 +29,10 @@ library in `por/` and the `wish` editor in `tools/`.
 | [98-automap-notes.md](98-automap-notes.md) | note-taking on the automap — **planned**, for review |
 | [97-editor.md](97-editor.md) | the PyQt6 character editor: the `.ui` form, the read-only rules, and the icon editor |
 | [96-live-memory-automapper.md](96-live-memory-automapper.md) | the live automapper in `automap/`: how it reads a running game, draws the map and shows the party |
+| [102-live-actions.md](102-live-actions.md) | buttons that change the running game — planned |
+| [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — planned |
+| [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — planned |
+| [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and what still does |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
