@@ -14,7 +14,9 @@ from dataclasses import dataclass, field
 
 from por.geo import GRID, STEP, Geo
 
+from . import notes as notemod
 from .area import Candidates, Fingerprint, ResidentGeo
+from .notes import Note
 from .paths import data_dir as _data_dir
 from .target import Fix, read_fix
 
@@ -123,7 +125,9 @@ class AutomapState:
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
-    notes: dict[tuple[int, int], str] = field(default_factory=dict)
+    #: Square -> the notes on it, in the order they were made. A list because
+    #: squares genuinely hold two things -- a fight and the treasure it guards.
+    notes: dict[tuple[int, int], list[Note]] = field(default_factory=dict)
 
     @property
     def area_label(self) -> str:
@@ -148,7 +152,7 @@ class AutomapState:
         path = self.notes_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "notes": {f"{x},{y}": t for (x, y), t in self.notes.items() if t},
+            "notes": notemod.dump_notes(self.notes),
             "seen": sorted(f"{x},{y}" for x, y in self.exploration.seen),
         }
         path.write_text(json.dumps(payload, indent=1))
@@ -166,8 +170,24 @@ class AutomapState:
             a, b = key.split(",")
             return int(a), int(b)
 
-        self.notes = {square(k): v for k, v in payload.get("notes", {}).items()}
+        self.notes = notemod.load_notes(payload.get("notes", {}))
         self.exploration.seen |= {square(k) for k in payload.get("seen", [])}
+
+    # -- editing them ----------------------------------------------------
+
+    def notes_at(self, x: int, y: int) -> list[Note]:
+        return self.notes.get((x, y), [])
+
+    def add_note(self, x: int, y: int, note: Note) -> None:
+        self.notes.setdefault((x, y), []).append(note)
+
+    def set_notes(self, x: int, y: int, items) -> None:
+        """Replace a square's notes. An empty list removes the square."""
+        items = [n for n in items if n.text or n.type != notemod.DEFAULT]
+        if items:
+            self.notes[(x, y)] = list(items)
+        else:
+            self.notes.pop((x, y), None)
 
 
 class Automapper:

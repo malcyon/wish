@@ -8,21 +8,49 @@ way is what lets the map be developed and tested without a display -- see
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QEvent, QPointF, QRectF, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (QAction, QColor, QFont, QKeySequence, QPainter, QPen,
-                         QPolygonF)
-from PyQt6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QInputDialog,
-                             QLabel, QMainWindow, QStackedWidget, QStatusBar,
-                             QToolTip, QWidget)
+from functools import partial
+
+from PyQt6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter, QPen, QPolygonF
+from PyQt6.QtWidgets import (
+    QWIDGETSIZE_MAX,
+    QApplication,
+    QCheckBox,
+    QGridLayout,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QSplitter,
+    QStackedWidget,
+    QStatusBar,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
+)
 
 from por.geo import GRID
 
-from . import combat
-from .render import (CELL, MARGIN, Label, Line, Poly, Rect, map_primitives,
-                     party_marker)
+from . import combat, live
+from . import notes as notemod
+from .actionbar import ActionBar
+from .commissions import CommissionsPanel
 from .config import Settings
-from .live import read_snapshot
-from .panel import BottomStrip, RosterPanel
+from .iconpaint import draw_icon
+from .noteeditor import NotePopover
+from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
+from .render import (
+    CELL,
+    COUNT_SIZE,
+    MARGIN,
+    Glyph,
+    Label,
+    Line,
+    Poly,
+    Rect,
+    map_primitives,
+    note_primitives,
+    party_marker,
+)
 from .target import MonitorBusy, NotConnected, monitor_listening
 
 PAPER = QColor("#fbfcfd")
@@ -52,6 +80,9 @@ class MapCanvas(QWidget):
         # Held rather than asked for: the canvas is centred inside a container
         # widget, so `parent()` is that container and not the window.
         self.host = host
+        #: The square a notes-panel row asked to be pointed at, until the next
+        #: click anywhere. Not a selection -- nothing here is selectable.
+        self.flash: tuple[int, int] | None = None
         self.setMinimumSize(GRID * CELL + MARGIN * 2, GRID * CELL + MARGIN * 2)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -60,9 +91,40 @@ class MapCanvas(QWidget):
         y = int((py - MARGIN) // CELL)
         return (x, y) if 0 <= x < GRID and 0 <= y < GRID else None
 
+    def tooltip_at(self, px: float, py: float) -> str | None:
+        """Every note on the square under this point, one per line.
+
+        Split out of `event` so the tooltip can be tested without a display --
+        the combat canvas does the same, and for the same reason.
+        """
+        square = self.square_at(px, py)
+        if square is None:
+            return None
+        items = self.state.notes_at(*square)
+        return notemod.summary(items) if items else None
+
+    def event(self, e):
+        if e.type() == QEvent.Type.ToolTip:
+            pos = e.pos()
+            text = self.tooltip_at(pos.x(), pos.y())
+            if text:
+                QToolTip.showText(e.globalPos(), text, self)
+            else:
+                QToolTip.hideText()
+                e.ignore()
+            return True
+        return super().event(e)
+
     def mousePressEvent(self, event):
         square = self.square_at(event.position().x(), event.position().y())
-        if square:
+        self.flash = None
+        if square is None:
+            return
+        at = event.globalPosition().toPoint()
+        if event.button() == Qt.MouseButton.RightButton and \
+                self.state.notes_at(*square):
+            self.host.note_menu(*square, at)
+        else:
             self.host.edit_note(*square)
 
     def paintEvent(self, _event):
@@ -92,13 +154,19 @@ class MapCanvas(QWidget):
             self._draw(p, prim)
         self._draw(p, party_marker(st.x, st.y, st.facing))
 
-        p.setPen(QPen(NOTE))
-        p.setFont(QFont("sans", 13, QFont.Weight.Bold))
-        for (x, y), text in st.notes.items():
-            if text and (visible is None or visible(x, y)):
-                p.drawText(QRectF(MARGIN + x * CELL, MARGIN + y * CELL,
-                                  CELL, CELL),
-                           Qt.AlignmentFlag.AlignCenter, "*")
+        # Notes are drawn **regardless of fog**: a note is something you know,
+        # and hiding it because the square is currently fogged would be
+        # perverse. They sit in the corner, clear of the party marker and of
+        # every wall -- the map's job is the walls.
+        for prim in note_primitives(st.notes):
+            self._draw(p, prim)
+
+        if self.flash is not None:
+            x, y = self.flash
+            p.setPen(QPen(NOTE, 2))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRect(QRectF(MARGIN + x * CELL + 1, MARGIN + y * CELL + 1,
+                              CELL - 2, CELL - 2))
 
     def _draw(self, p: QPainter, prim) -> None:
         if isinstance(prim, Rect):
@@ -122,6 +190,15 @@ class MapCanvas(QWidget):
             p.setBrush(PARTY)
             p.drawPolygon(QPolygonF([QPointF(a, b) for a, b in prim.points]))
             p.setBrush(Qt.BrushStyle.NoBrush)
+        elif isinstance(prim, Glyph):
+            draw_icon(p, prim.name, prim.x, prim.y, prim.size, NOTE)
+        elif isinstance(prim, Label):
+            # The note count, whose point is its bottom right corner.
+            p.setPen(QPen(NOTE))
+            p.setFont(QFont("sans", COUNT_SIZE - 2, QFont.Weight.Bold))
+            p.drawText(QRectF(prim.x - 20, prim.y - COUNT_SIZE, 20, COUNT_SIZE),
+                       Qt.AlignmentFlag.AlignRight
+                       | Qt.AlignmentFlag.AlignBottom, prim.text)
 
 
 class CombatCanvas(QWidget):
@@ -258,6 +335,10 @@ class AutomapWindow(QMainWindow):
     #: How many map ticks per read of the live party. See `poll_live`.
     LIVE_EVERY = 5
 
+    #: The widest the notes, commissions and messages column may get. The
+    #: panels hold short rows; past this they are mostly paper.
+    SIDE_WIDTH = 460
+
     def __init__(self, mapper, interval_ms: int = 200, connect=None,
                  settings: Settings | None = None, drive: bool = True):
         """`drive=False` hands the connection and the clock to a host window.
@@ -291,17 +372,61 @@ class AutomapWindow(QMainWindow):
         self.battle = None
         self.roster = RosterPanel()
         self.strip = BottomStrip()
-        # Roster left, map right, one strip along the bottom for what is
-        # neither. The map used to be centred in the frame because it was alone
-        # in the window; with the party beside it, centring only pushes the two
-        # apart. The map and the party's state are looked at together.
+        self.notes_panel = NotesPanel()
+        self.notes_panel.chosen.connect(self.point_at)
+        self.commissions = CommissionsPanel()
+        # `CommissionsPanel` fixes its own width for a window where it is the
+        # only thing beside the map. Here it shares a column with the notes, so
+        # the cap comes off and the column decides -- otherwise every pixel the
+        # window gains lands as blank paper beside a fixed 270px panel.
+        self.commissions.setMaximumWidth(QWIDGETSIZE_MAX)
+        self.messages = MessagesPanel()
+        self.actions_bar = ActionBar(say=self.messages.say)
+
+        # Roster left, map centre, the two reading panels right, the actions
+        # under the map and one strip along the bottom for what is none of
+        # those. The map is a fixed 596px square, so the stretch goes to the
+        # right-hand column: it is the one thing here that is worth more with
+        # more room, and giving it to the map's column only makes whitespace.
+        side = QWidget()
+        column = QVBoxLayout(side)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(6)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.addWidget(self.notes_panel)
+        splitter.addWidget(self.commissions)
+        splitter.addWidget(self.messages)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
+        splitter.setStretchFactor(2, 2)
+        column.addWidget(splitter)
+        # Capped, because a quest log a quarter of the window wide is a quarter
+        # of the window spent on two-word rows. What the cap leaves over goes
+        # to the map's column, which centres the map in it.
+        side.setMaximumWidth(self.SIDE_WIDTH)
+        self.side = side
+
+        # The actions live in the map's own column, directly under the map,
+        # rather than in a row of their own: they act on what is drawn above
+        # them, and a grid row of their own left 180px of blank paper between
+        # the two.
+        middle = QWidget()
+        under = QVBoxLayout(middle)
+        under.setContentsMargins(0, 0, 0, 0)
+        under.setSpacing(4)
+        under.addWidget(self.stack, 0, Qt.AlignmentFlag.AlignHCenter)
+        under.addWidget(self.actions_bar, 0, Qt.AlignmentFlag.AlignHCenter)
+        under.addStretch(1)
+        self.map_column = middle
+
         centre = QWidget()
         grid = QGridLayout(centre)
         grid.addWidget(self.roster, 0, 0)
-        grid.addWidget(self.stack, 0, 1,
-                       Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        grid.addWidget(self.strip, 1, 0, 1, 2)
+        grid.addWidget(middle, 0, 1, Qt.AlignmentFlag.AlignTop)
+        grid.addWidget(side, 0, 2)
+        grid.addWidget(self.strip, 1, 0, 1, 3)
         grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 1)
         grid.setRowStretch(0, 1)
         self.setCentralWidget(centre)
         self.setStatusBar(QStatusBar())
@@ -319,6 +444,14 @@ class AutomapWindow(QMainWindow):
         self.addAction(reveal)
         self._reveal_action = reveal
 
+        # A note on the square the party is standing in, without the mouse:
+        # the common case while playing, with the game in the other window.
+        here = QAction("Note here", self, shortcut=QKeySequence("N"))
+        here.setToolTip("Put a note on the party's square (N)")
+        here.triggered.connect(self.note_here)
+        self.addAction(here)
+        self._note_action = here
+
         self.fog_box = QCheckBox("Fog of war")
         self.fog_box.setToolTip(reveal.toolTip())
         self.fog_box.setChecked(self.settings.reveal)
@@ -326,6 +459,10 @@ class AutomapWindow(QMainWindow):
         self.fog_box.toggled.connect(self._toggle_reveal)
         self.statusBar().addPermanentWidget(self.fog_box)
 
+        # Read once: the item names come off a game disk, and a card without
+        # one shows nothing rather than word indices.
+        self.item_names = live.item_names()
+        self._popover: NotePopover | None = None
         self._waiting = "" if mapper.target is not None else "looking for the game"
         self.alarm = False
         self._live_ticks = 0
@@ -374,6 +511,8 @@ class AutomapWindow(QMainWindow):
             if not self._drive:
                 raise
             self._status.setText(f"trouble reading the emulator: {exc}")
+            self.messages.say(f"trouble reading the emulator: {exc}",
+                              alarm=True)
             return
         self._waiting = ""
         if changed:
@@ -427,17 +566,29 @@ class AutomapWindow(QMainWindow):
         """
         if self._live_ticks % self.LIVE_EVERY:
             return
-        snap = read_snapshot(self.mapper.target)
+        target = self.mapper.target
+        # The buttons follow the mode flag, and the watcher gets its tick here
+        # rather than from a timer of its own -- the edge it fires on is the
+        # same `$6E11` this poll already reads.
+        self.actions_bar.attach(target)
+        self.actions_bar.watch(target)
+
+        save0_bytes, roster_bytes = live.read_blocks(target)
+        snap = live.snapshot_from_bytes(save0_bytes, roster_bytes,
+                                        self.item_names)
         if snap is None:
             # In camp, in a menu, mid-load or at the title screen. Hold the
             # last good snapshot and say it is stale rather than blank the
             # cards, which would flicker every time the game opened a menu.
+            # The commissions panel is left alone for the same reason, and a
+            # better one: plot flags do not move while the game is in a menu.
             self.roster.set_stale(True)
             self.strip.show_state(self.state, self.snapshot)
             return
         self.snapshot = snap
         self.roster.show_snapshot(snap)
         self.strip.show_state(self.state, snap)
+        self.commissions.update_from(save0_bytes)
 
     def _try_connect(self) -> None:
         """Attach when a monitor appears. Cheap enough to run on the tick."""
@@ -475,11 +626,17 @@ class AutomapWindow(QMainWindow):
         """
         self._waiting = text
         self.alarm = alarm
+        # The busy-monitor line is the one that matters, and it is the one that
+        # used to be red text in a status bar and nothing else. It is a message
+        # like any other now, and repeats are dropped by the panel.
+        self.messages.say(text, alarm=alarm)
         self._refresh()
 
     def _refresh(self) -> None:
         st = self.state
         self.strip.show_state(st, self.snapshot)
+        # Cheap: the panel compares the notes to what it drew and returns.
+        self.notes_panel.show_notes(st.notes)
         if self._waiting:
             self._say(self._waiting)
             self.roster.set_message(self._waiting)
@@ -501,17 +658,75 @@ class AutomapWindow(QMainWindow):
         self._status.setText(text)
         self.statusChanged.emit(text)
 
-    def edit_note(self, x: int, y: int) -> None:
-        current = self.state.notes.get((x, y), "")
-        text, ok = QInputDialog.getText(self, f"Note for ({x},{y})",
-                                        "Note:", text=current)
-        if ok:
-            if text:
-                self.state.notes[(x, y)] = text
-            else:
-                self.state.notes.pop((x, y), None)
-            self.state.save_notes()
-            self._refresh()
+    # -- notes -----------------------------------------------------------
+
+    def edit_note(self, x: int, y: int, index: int | None = None) -> None:
+        """Open the popover on a square. `index` edits an existing note.
+
+        A popover and not a dialog: notes are made while playing, and a modal
+        box in front of the map is an interruption for something that should
+        cost one keystroke.
+        """
+        pop = NotePopover(self.state, x, y, index, self)
+        pop.changed.connect(self.notes_changed)
+        corner = self.canvas.mapToGlobal(
+            QPoint(MARGIN + x * CELL, MARGIN + (y + 1) * CELL))
+        pop.move(corner)
+        pop.show()
+        pop.field.setFocus()
+        # A popup with no reference is collected; the reference goes when the
+        # popover destroys itself, so a closed one is not kept alive here.
+        pop.destroyed.connect(self._popover_gone)
+        self._popover = pop
+
+    def _popover_gone(self, _obj=None) -> None:
+        self._popover = None
+
+    def note_here(self) -> None:
+        """`N`: a note on the party's own square, if we know where that is."""
+        if self.state.source or self.snapshot is not None:
+            self.edit_note(self.state.x, self.state.y)
+
+    def note_menu_entries(self, x: int, y: int):
+        """What a right-click on a square with notes offers, as data.
+
+        Data rather than a `QMenu` so the offer can be tested without a display
+        -- `note_menu` is four lines on top of this.
+        """
+        entries = []
+        for i, note in enumerate(self.state.notes_at(x, y)):
+            entries.append((f"Edit  {note.label}",
+                            partial(self.edit_note, x, y, i)))
+            entries.append((f"Delete  {note.label}",
+                            partial(self.delete_note, x, y, i)))
+        entries.append(("Add another note", partial(self.edit_note, x, y)))
+        return entries
+
+    def note_menu(self, x: int, y: int, at: QPoint) -> None:
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        for text, call in self.note_menu_entries(x, y):
+            action = menu.addAction(text)
+            action.triggered.connect(lambda _checked=False, f=call: f())
+        menu.exec(at)
+
+    def delete_note(self, x: int, y: int, index: int) -> None:
+        items = list(self.state.notes_at(x, y))
+        if 0 <= index < len(items):
+            items.pop(index)
+            self.state.set_notes(x, y, items)
+            self.notes_changed(x, y)
+
+    def notes_changed(self, x: int = -1, y: int = -1) -> None:
+        """Persist and redraw. Every edit goes through here."""
+        self.state.save_notes()
+        self.notes_panel.show_notes(self.state.notes)
+        self.canvas.update()
+
+    def point_at(self, x: int, y: int) -> None:
+        """Flash a square, because a row in the notes list was clicked."""
+        self.canvas.flash = (x, y)
+        self.canvas.update()
 
     def shutdown(self) -> None:
         """Save what must survive. Idempotent, and safe with no connection.

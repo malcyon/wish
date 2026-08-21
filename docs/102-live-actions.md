@@ -1,8 +1,8 @@
 # Acting on the running game
 
-**Status: the engine half is built** — `automap/actions.py`, driven by
-`tests/test_actions.py` against `MemoryTarget`. No buttons yet; the window
-half is still to wire.
+**Status: built and wired.** `automap/actions.py` is the engine, driven by
+`tests/test_actions.py` against `MemoryTarget`; `automap/actionbar.py` is the
+row of buttons under the map on the automapper tab.
 
 Everything here writes to a running machine. Reading is safe and reversible;
 writing is neither, so each action states **when it is legal** as well as what
@@ -129,21 +129,12 @@ CONFIRMED rather than by editing the action.
 
 ---
 
-## Wiring the buttons
+## The buttons
 
-Nothing in `automap/actions.py` imports Qt, and it is not wired to the window.
-For a row of buttons under the map:
-
-```python
-from automap import actions
-
-self._actions = actions.actions()          # one SpellStore, shared
-for action in self._actions:
-    button = QPushButton(action.label)
-    button.clicked.connect(partial(self._run, action))
-```
-
-and on each poll, against `self.mapper.target`:
+Nothing in `automap/actions.py` imports Qt. `automap/actionbar.py` is the Qt
+half: `ActionBar` builds one button per action, in three columns so the block is
+no wider than the map above it, with the watcher's checkbox beneath. The window
+calls `attach(target)` on each live poll, which is
 
 ```python
 verdict = action.legality(target)
@@ -151,12 +142,28 @@ button.setEnabled(verdict.ok)
 button.setToolTip(verdict.reason or action.description)
 ```
 
-`_run` asks `action.confirm` first where it is non-empty, calls
-`action.apply(target)` — passing `disk=` for the two spell actions — and shows
-`outcome.message`, with `outcome.notes` beneath it.
+`run` asks `action.confirm` first where it is non-empty — identify and level-up
+are the two that carry one — calls `action.apply(target, disk=...)`, and reports
+`outcome.message` **into the messages panel**, with `outcome.notes` as its
+tooltip and the same line under the buttons.
+
+**No pop-up for a result.** What an action did is what the player asked for; a
+modal box in front of the map interrupts the game in the other window and has to
+be dismissed before the map is usable again. The only dialog left is the
+confirmation an irreversible action asks first, because that one needs an
+answer.
 
 With no target attached every `legality` is False with a reason, so the buttons
 are disabled rather than merely inert.
+
+**One read, not six.** Every `legality` asks the machine for `$6E11`, and six
+round trips is six times ~14.3 ms of extra emulated time, so `refresh` hands the
+actions a wrapper that reads each address once —
+`test_the_whole_row_costs_one_read_of_the_mode_flag`.
+
+`QuickfightWatcher` is a checkbox on the same row, off by default and fed from
+the same poll: it writes to a running machine on an edge nobody asked for
+otherwise.
 
 ---
 

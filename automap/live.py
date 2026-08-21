@@ -24,10 +24,13 @@ a party of six dead characters. The caller holds its last good snapshot.
 
 from __future__ import annotations
 
+import functools
+import pathlib
 from dataclasses import dataclass
 
 from por import levels
 from por.derive import CLASS_BITS
+from por.items import items_for_slot, load_item_names
 from por.record import FieldNotStored
 from por.savegame import (
     ROSTER_COUNT,
@@ -161,6 +164,42 @@ class Character:
     hp_max: int
     experience: int
     effects: tuple[Effect, ...] = ()
+    #: What this character has in hand, by the name the game would print.
+    #: Empty with no game disk to read `ITEMNAMES` from -- a card is better
+    #: blank than showing the word indices.
+    readied: tuple[str, ...] = ()
+    #: `0x0A1`, CONFIRMED: how many levels undead have drained. One of the two
+    #: conditions the record actually tells us; the other is hit points at 0.
+    levels_drained: int = 0
+
+    @property
+    def down(self) -> bool:
+        """At zero hit points: dead or dying, and **which is not decoded**.
+
+        `automap/actions.py` refuses to heal one for the same reason. The card
+        marks it and says no more than that.
+        """
+        return self.hp == 0
+
+    @property
+    def conditions(self) -> tuple[tuple[str, str], ...]:
+        """`(icon, what it means)` for every condition we can actually read.
+
+        Deliberately two. The effect table at `$4900` carries ids nothing in
+        the project names -- `por/traits.py` is the *trait* table at `0x0AD`,
+        a different code space -- so a poisoned or paralysed icon would be an
+        invented mapping. See `docs/107-roster-and-notes.md`.
+        """
+        out = []
+        if self.down:
+            out.append(("skull", "at 0 hit points: dead or dying, and the "
+                                 "record does not say which"))
+        if self.levels_drained:
+            out.append(("arrow-down-long",
+                        f"drained {self.levels_drained} level"
+                        f"{'s' if self.levels_drained != 1 else ''} "
+                        f"(record 0x0A1)"))
+        return tuple(out)
 
     @property
     def class_text(self) -> str:
@@ -252,8 +291,54 @@ def _classes(record) -> tuple[ClassProgress, ...]:
     return tuple(out)
 
 
+def readied(payload: bytes, slot: int,
+            names: dict[int, str] | None) -> tuple[str, ...]:
+    """What one character has in hand, named.
+
+    **Readied only.** The whole inventory would swamp a roster card; what
+    matters mid-crawl is what is in hand. An unidentified item is shown the way
+    the game shows it, which is a shorter name and not a different item.
+
+    With no `names` table -- no game disk to read `ITEMNAMES` from -- this is
+    empty rather than a list of word indices.
+    """
+    if names is None:
+        return ()
+    out = []
+    for item in items_for_slot(payload, slot, names):
+        if not item.readied:
+            continue
+        label = item.name if item.is_identified else item.unidentified_name
+        out.append(label or "unidentified item")
+    return tuple(out)
+
+
+@functools.lru_cache(maxsize=4)
+def item_names(disks=None) -> dict[int, str] | None:
+    """The item-name table off any game disk, or None if there is none.
+
+    Not an error: the map runs without the disks, and the roster simply leaves
+    the readied line blank. Cached, because every window that opens would
+    otherwise re-read a D64 for a table that does not change.
+    """
+    from .paths import find_disks
+
+    root = pathlib.Path(disks) if disks else find_disks()
+    if root is None:
+        return None
+    for pattern in ("POOL*.D64", "POOL*.d64"):
+        for path in sorted(root.glob(pattern)):
+            try:
+                return load_item_names(str(path))
+            except Exception:
+                continue
+    return None
+
+
 def characters(save0: SaveGame0, save1: SaveGame1,
-               effects: tuple[Effect, ...] = ()) -> tuple[Character, ...]:
+               effects: tuple[Effect, ...] = (),
+               names: dict[int, str] | None = None) -> tuple[Character, ...]:
+    payload = save0.to_bytes()
     out = []
     for slot in save0.characters:
         record = slot.record
@@ -270,12 +355,14 @@ def characters(save0: SaveGame0, save1: SaveGame1,
             hp_max=record.get("hp_max"),
             experience=record.get("experience"),
             effects=tuple(e for e in effects if e.owner == slot.index),
+            readied=readied(payload, slot.index, names),
+            levels_drained=record.get("levels_drained") or 0,
         ))
     return tuple(out)
 
 
-def snapshot_from_bytes(save0_bytes: bytes,
-                        roster_bytes: bytes) -> Snapshot | None:
+def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
+                        names: dict[int, str] | None = None) -> Snapshot | None:
     """Decode one snapshot, or None if these bytes are not a live party.
 
     The checks are the ones `docs/100-live-view.md` asks for: a position inside
@@ -296,7 +383,7 @@ def snapshot_from_bytes(save0_bytes: bytes,
                 and 0 <= position.facing < 4):
             return None
         effects = active_effects(bytes(save0_bytes))
-        people = characters(save0, save1, effects)
+        people = characters(save0, save1, effects, names)
     except (ValueError, KeyError, IndexError, FieldNotStored):
         return None
     if not people:
@@ -327,9 +414,9 @@ def read_blocks(target, blocks=BLOCKS) -> list[bytes]:
     return [target.read(addr, length) for addr, length in blocks]
 
 
-def read_snapshot(target) -> Snapshot | None:
+def read_snapshot(target, names: dict[int, str] | None = None) -> Snapshot | None:
     """Two reads, whole tab. None when there is nothing sane to show."""
     if target is None:
         return None
     save0_bytes, roster_bytes = read_blocks(target)
-    return snapshot_from_bytes(save0_bytes, roster_bytes)
+    return snapshot_from_bytes(save0_bytes, roster_bytes, names)
