@@ -67,9 +67,10 @@ This is a reverse-engineering project. It documents a game it does not ship.
   transcribed or retyped;
 * the game's **executable code**, whole or in part -- overlays, PRG files, boot
   images, or any extract of them;
-* **disassembly of that code** as a listing. Naming an address and the two or
-  three instructions at it, as evidence for a finding, is commentary and is
-  fine. A dump of a routine is not.
+* **disassembly of that code** as a listing. Quoting as much of it as a finding
+  actually needs -- an address, a handful of instructions, the shape of a
+  handler with its operands left as placeholders -- is commentary and is fine.
+  A dump of a routine is not.
 * the game's **data files** -- maps, tables, scripts, character records -- as
   committed bytes, including as test fixtures.
 
@@ -89,9 +90,11 @@ fails the build if anything else appears there or if a disk image, executable,
 image or audio file is committed anywhere. **Do not add to that allowlist** --
 if a test needs game data, read it from the disks or generate it.
 
-**Citing is not copying.** Naming an address and the two or three instructions
-at it, as evidence for a finding, is exactly what `docs/50-experiments.md` is
-for and is encouraged. A dump of a routine is not.
+**Citing is not copying.** Quoting the code a finding rests on is exactly what
+`docs/50-experiments.md` is for and is encouraged. It does not have to be two
+or three instructions: Donald has ruled that a short block is fine, so do not
+agonise over the length of a citation that carries evidence. A dump of a
+routine is not.
 
 Describe, cite, measure, and generate. Do not copy.
 
