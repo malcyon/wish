@@ -519,15 +519,20 @@ class MessagesPanel(QWidget):
         outer.addWidget(self.list, 1)
         self._last = ""
 
-    def say(self, text: str, detail: str = "", alarm: bool = False) -> None:
+    def say(self, text: str, detail: str = "", alarm: bool = False,
+            dedup: bool = True) -> None:
         """One line, timestamped. Repeats of the last line are dropped.
 
         The connection says the same thing on every tick while it waits, and a
         panel that wrote "waiting for the game" five times a second would bury
         the line you wanted.
+
+        **The combat log passes `dedup=False`**, because there the repeat is the
+        point: "MAGNUS MISSES." twice running is two misses, and swallowing the
+        second would defeat the feature that exists to catch them.
         """
         text = (text or "").strip()
-        if not text or text == self._last:
+        if not text or (dedup and text == self._last):
             return
         self._last = text
         row = QListWidgetItem(f"{datetime.now():%H:%M:%S}  {text}")

@@ -574,17 +574,17 @@ class AutomapWindow(QMainWindow):
     def log_combat(self, messages) -> None:
         """Combat lines into the Messages panel.
 
-        **The panel's own repeat-dropping has to be defeated here**, and that
-        is the whole point of the feature: `MessagesPanel.say` drops a line
-        identical to the one before it, which is right for "waiting for the
-        game" on every tick and wrong for two "MAGNUS MISSES." in a row. The
-        log has already deduplicated, on consecutive identical *frames*, which
-        is the only rule that can tell the two apart.
+        **Passes `dedup=False`**, and that is the whole point of the feature:
+        `MessagesPanel.say` drops a line identical to the one before it, which
+        is right for "waiting for the game" on every tick and wrong for two
+        "MAGNUS MISSES." in a row. The log has already deduplicated, on
+        consecutive identical *frames*, which is the only rule that can tell
+        the two apart.
         """
         for msg in messages:
-            self.messages._last = ""
             tag = f"round {msg.round}   " if msg.round else ""
-            self.messages.say(f"{tag}{msg.text}", detail="\n".join(msg.lines))
+            self.messages.say(f"{tag}{msg.text}", detail="\n".join(msg.lines),
+                              dedup=False)
 
     @staticmethod
     def _battle_note(battle) -> str:
