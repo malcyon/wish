@@ -36,6 +36,7 @@ CMD_CHECKPOINT_SET = 0x12
 CMD_CHECKPOINT_DELETE = 0x13
 CMD_CHECKPOINT_LIST = 0x14
 CMD_REGISTERS_GET = 0x31
+CMD_REGISTERS_SET = 0x32
 CMD_DUMP = 0x41
 CMD_UNDUMP = 0x42
 CMD_BANKS_AVAILABLE = 0x82
@@ -244,6 +245,21 @@ class Monitor:
             out[rid_] = val
             off += size + 1
         return out
+
+    def set_registers(self, values: dict[int, int]) -> None:
+        """Write CPU registers, keyed by the ids `registers()` returns.
+
+        The body needs the same leading memspace byte as `REGISTERS_GET`,
+        which the protocol document does not say: without it VICE answers
+        error `0x80` (invalid parameter) and changes nothing. And the ids
+        cannot be assumed -- `CMD_REGISTERS_AVAILABLE` (`0x83`) is
+        unsupported in this VICE build, so read `registers()` once and match
+        by the ids it hands back.
+        """
+        body = struct.pack("<BH", 0, len(values))
+        for rid_, val in values.items():
+            body += struct.pack("<BBH", 3, rid_, val & 0xFFFF)
+        self.command(CMD_REGISTERS_SET, body)
 
 
 # -- screen -----------------------------------------------------------------

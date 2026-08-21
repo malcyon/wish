@@ -43,6 +43,7 @@ library in `por/` and the `wish` editor in `tools/`.
 | [114-party-strength.md](114-party-strength.md) | what makes a random encounter bigger, term by term |
 | [113-world-map.md](113-world-map.md) | the overland travel map, which is the combat engine on other data |
 | [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
+| [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
 | [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — planned |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after

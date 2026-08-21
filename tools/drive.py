@@ -48,6 +48,7 @@ from automap.vice import (  # noqa: E402,F401
     CMD_PING,
     CMD_QUIT,
     CMD_REGISTERS_GET,
+    CMD_REGISTERS_SET,
     CMD_RESET,
     CMD_UNDUMP,
     COLOUR_RAM,

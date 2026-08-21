@@ -18,12 +18,13 @@ still holds.
 from __future__ import annotations
 
 import functools
+import os
 import pathlib
 
 import pytest
 
 from automap.paths import find_disks
-from por.d64 import load_payload
+from por.d64 import D64, load_payload
 from por.geo import (
     ATTRIBUTES,
     BARRIERS,
@@ -70,6 +71,94 @@ def game_file(name: str) -> bytes:
 
 needs_disks = pytest.mark.skipif(disk_dir() is None,
                                  reason="needs the game disks")
+
+
+# --- the second game ---------------------------------------------------------
+# Curse of the Azure Bonds shares this project's decoders (docs/116). The tests
+# that check it must not break when the disks are absent, and must not read
+# anything out of the repository, so they look for the disks the same way the
+# Pool of Radiance ones are found -- with `work/` added, because `CLAUDE.md`
+# already names that as where disk images belong.
+
+CURSE_ENV = "COAB_DISKS"
+_REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _curse_candidates():
+    env = os.environ.get(CURSE_ENV)
+    if env:
+        return [pathlib.Path(env)]
+    home = pathlib.Path.home()
+    names = ("Curse of the Azure Bonds Disks", "Curse of the Azure Bonds",
+             "CoAB", "Azure Bonds")
+    roots = [pathlib.Path.cwd(), home, home / "Documents", home / "Games",
+             home / "c64", home / "roms", home / "Downloads"]
+    out = [r / n for r in roots for n in names]
+    out += [_REPO / "work" / "curse", _REPO / "work" / "coab-research" / "disks"]
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def curse_dir():
+    """Where the player keeps their Curse of the Azure Bonds disks, or None."""
+    for path in _curse_candidates():
+        try:
+            if path.is_dir() and (any(path.glob("CURSE*.D64"))
+                                  or any(path.glob("CURSE*.d64"))):
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def curse_disks():
+    """Every readable Curse side, skipping when there are none.
+
+    One of the three published rips carries error bytes and is 175531 bytes,
+    which `por.d64` refuses; that side is simply skipped rather than failed.
+    """
+    where = curse_dir()
+    if where is None:
+        pytest.skip(f"needs the Curse disks; set {CURSE_ENV} to where they are")
+    out = []
+    for path in sorted(where.glob("CURSE*.[dD]64")):
+        try:
+            disk = D64.open(path)
+        except Exception:
+            continue
+        # A save disk matches the glob too, and holds nothing but a save and
+        # some character files. Take only images that carry engine data.
+        if any(e.name.startswith(b"GEO") or e.name == b"ITEMNAMES"
+               for e in disk.directory()):
+            out.append(disk)
+    if not out:
+        pytest.skip("no readable Curse game disk here")
+    return out
+
+
+def curse_file(name: str) -> bytes:
+    """One file off whichever Curse side carries it, longest copy first.
+
+    The sides disagree, and not only by duplication: `SAVEAZURE` is the full
+    7424-byte pre-generated party on side B3 and a 2030-byte truncated demo
+    party of the same name on side A2. Taking the first match gets the wrong
+    one, so take the biggest.
+    """
+    encoded = name.encode() if isinstance(name, str) else name
+    best = None
+    for disk in curse_disks():
+        entry = disk.find(encoded)
+        if entry is None or not entry.block_count:
+            continue
+        if best is None or entry.block_count > best[0]:
+            best = (entry.block_count, disk, entry)
+    if best is None:
+        pytest.skip(f"no Curse disk here carries {name}")
+    return best[1].read_file(best[2])
+
+
+needs_curse_disks = pytest.mark.skipif(curse_dir() is None,
+                                       reason="needs the Curse disks")
 
 
 def synthetic_geo() -> bytes:
