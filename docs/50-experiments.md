@@ -3649,3 +3649,58 @@ effect on the next fight is unproven.
   where monster-group names are composed. `$49F2` is the current ECL id, read
   by 14 scripts. And `ECL01` and `ECL11` test attribute **bit 7**, which nobody
   had noticed.
+
+- ~~**The `WALLDEF` slice geometry, and the 3D renderer.**~~ **Both found. The
+  geometry was never a rectangle, which is why every attempt to find its width
+  failed.**
+
+  A 156-byte slice is **nine sub-pictures packed end to end**, one per distance
+  and side:
+
+  | offset | w x h | piece |
+  |---|---|---|
+  | 0 | 1x2 | distance 2, facing |
+  | 2 / 6 | 1x4 | distance 2, left / right |
+  | 10 | 3x4 | distance 1, facing |
+  | 22 / 38 | 2x8 | distance 1, left / right |
+  | 54 | 7x8 | **distance 0, facing** |
+  | 110 / 132 | 2x11 | distance 0, left / right |
+  | 154 | 1x2 | far-wall filler column |
+
+  2+4+4+12+16+16+56+22+22+2 = 156 exactly.
+
+  **This retro-explains the evidence that made 13x12 look right.** The earlier
+  pass found runs of seven identical bytes at absolute offset 54-60 in 49 of 90
+  slices and read them as a row artefact. They are the **7-wide distance-0
+  facing wall**, which begins at offset 54. The anomaly was the answer.
+
+  **The renderer is `GDRIVE01`**, resident at `$C000`-`$CA00`, loaded into
+  `LIBRARY` slot 0 by `DUNGEON $134F`; `$C003` draws the view into an 11 x 11
+  cell viewport at `$CC7B`. `$C48A` computes a slice base as `(nibble - 1) *
+  156`, and 23 draw steps walk tables at `$C215`/`$C22C`/`$C243` and
+  `$C586`-`$C5E2`, back to front.
+
+  **`$7A00` is not the renderer** — it is the general RLE expander, and its
+  encoding is **count-then-value**. The earlier `WALLDEF` colour decode had it
+  the other way round: 548 of 780 bytes wrong.
+
+  **The boot images unpack, and that is worth more than this task.**
+  `POOLRB`/`POOLRC` are sparse memory images: a table of 5-byte records
+  `(word A, fill byte, word B)` naming runs that are *not* stored, with literal
+  data following in address order. It closes exactly for both — 20395 + 10325
+  and 10507 + 20213, each 30720. `POOLRB` is the resident code, and `LIBRARY`
+  sits inside it at `$2C48`, which independently confirms the container. Every
+  resident routine is now reachable.
+
+  **Verified by rendering.** `work/analysis8/view.py` reimplements the view and
+  draws `GEO00` at (4,2) facing east — the square a VICE capture was taken on,
+  its status line reading `E 16:47 4,2`, matching `PORSAVE11`. **The geometry
+  agrees cell for cell**: the same wall, the same two windows in the same
+  places, the same ground plane and left-edge wedge.
+
+  **What does not agree is colour.** Ours draws the pattern without the palette
+  the game applies, and `$D022`/`$D023` during the 3D view are unexplained:
+  static analysis finds exactly two writers, `GDRIVE01`'s init and
+  `DUNGEON $0A7B`, and neither accounts for the brick red on screen. **Open**,
+  and one breakpoint after `LIBRARY $407B` reading `$D020`-`$D023`,
+  `$49FD`-`$49FE` and `$6DDB` would settle it.
