@@ -29,6 +29,7 @@ from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
 
+from .about import install as install_help
 from . import debuglog
 from .session import BUSY, CONNECTED, Session
 
@@ -142,6 +143,8 @@ class WishWindow(QMainWindow):
         self.show_log_action.setEnabled(False)
         self.show_log_action.triggered.connect(self.show_log)
         view.addAction(self.show_log_action)
+
+        install_help(self)
 
     # -- the debug log ---------------------------------------------------
 
