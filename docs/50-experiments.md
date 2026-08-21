@@ -3515,3 +3515,27 @@ effect on the next fight is unproven.
 
   `HEAD*`/`BODY*` are the **portrait**, a different overlay writing `0x0FE` and
   `0x0FF`; `GEN` offers 14 heads and 12 bodies there. Unrelated to the icon.
+
+- ~~**The quickfight flag.**~~ **Found, and now fully closed: roster `+0x0C`,
+  bit 7.** The live diff found it — `$830C` went `00` to `80` when QUICK was
+  chosen for MALCYON, the only byte to move in 13568 captured across the record
+  slots, the roster, the combatant table and COMBAT's own page. What that
+  experiment could not settle was whether the bit does anything after the fight
+  it was set in, because the fight never ended.
+
+  `PORSAVE14` settles it. Donald enabled quickfight on MALCYON during a random
+  orc encounter, finished the fight, saved, and walked into a second and
+  unrelated fight — where MALCYON was **still** under computer control. The save
+  reads `+0x0C = 80` for MALCYON and `00` for the other five.
+
+  That also explains the result that looked like a refutation. Poking the bit on
+  for ROLAND mid-fight did not stop the game asking him for orders, and driving
+  QUICK repeatedly showed the bit setting and clearing around each action. Both
+  follow if **`COMBAT` reads the flag when the fight starts** and works from its
+  own copy for the rest of it: a mid-fight write is simply too late, in either
+  direction. It is why the only escape the player found was pressing space at
+  the exact moment a turn begins.
+
+  So the complaint that started this is exactly right — the game never clears it,
+  and the next fight can be a dangerous one. `automap/actions.py` clears the bit,
+  which restores the byte every clean save has.
