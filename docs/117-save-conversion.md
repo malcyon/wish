@@ -1,7 +1,12 @@
 # Converting between the DOS and C64 versions — plan
 
-**Status: planned, not started. The goal is one thing: turn a DOS save into a
-C64 save.** One direction only.
+**Status: parked, waiting on a DOS save.** Donald has one and will supply it
+later; until then obstacles 2, 3, 4 and 7 below cannot be worked at all. The
+goal is one thing: turn a DOS save into a C64 save. One direction only.
+
+**Obstacle 1 is the exception, and it is also the worst one.** Correlating the
+quest flags needs both games' scripts, not a save, so it can be picked up at
+any time.
 
 That narrowing is worth more than it looks. It means **no DOS encoder** — we
 never have to write a DOS save, so the DOS format only has to be decoded far
