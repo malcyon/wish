@@ -1,7 +1,7 @@
 """The `wish` command: the character editor and the live map in one window.
 
-    wish [SAVE.D64]              open the editor on a save disk
-    wish --tab map               open on the automapper
+    wish [SAVE.D64]              open the map, loading a save disk if given
+    wish --tab editor            open on the character sheet instead
     wish-editor / wish-automap   the same window, on the tab that name implies
 
 The emulator is never launched from here. Start it with the usual wrapper (with
@@ -47,7 +47,7 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
-def main(argv: list[str] | None = None, tab: str = "editor") -> int:
+def main(argv: list[str] | None = None, tab: str = "map") -> int:
     args = _parser().parse_args(argv)
     tab = args.tab or tab
 
