@@ -6,11 +6,11 @@ A save disk holds two files, and the split between them is not arbitrary. It is
 also not quite "characters here, everything else there" — `SAVEDGAME0` holds
 three distinct things:
 
-**`SAVEDGAME0`, the character slots** (`$4D00`–`$54FF`). Eight slots of `$100`,
-each holding what a character *is* in their own right: name, race, class,
-ability scores, hit point maximum, money, experience, thief skills, saving
-throws, the spellbook, and the spells currently memorised. Nothing here depends
-on who else is in the party.
+**`SAVEDGAME0`, the character slots** (`$4D00`–`$58FF`). Twelve slots of `$100`
+— 0-7 the party, 8-11 used only in combat — each holding what a character *is*
+in their own right: name, race, class, ability scores, hit point maximum, money,
+experience, thief skills, saving throws, the spellbook, and the spells currently
+memorised. Nothing here depends on who else is in the party.
 
 **`SAVEDGAME0`, the header** (`$4900`–`$4CFF`). The party and its place in the
 world: where it is standing (`$49C0`, `$49C1`), which way it faces (`$49C2`), a
@@ -103,7 +103,7 @@ $5500: 41   $5600:  0   ... slots 8-11, used only in combat
 
 The name `BRUTUS` appears at `$4D00` and `$5500`.
 
-### Slot layout — 8 slots of `$100`
+### Slot layout — 12 slots of `$100`
 
 ```
 $4900–$4BDF   header / party globals

@@ -60,16 +60,17 @@ written by hand.
 
 * D64 container read/write, including byte-exact in-place rewrites.
 * `SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`: a party header, a
-  combat-icon table at `$4BE0`, **8 character slots of `$100`** at `$4D00`, and
-  an item area from `$5900`. **Eight** slots exist structurally, the roster
-  confirms the same count, and the game itself refuses a seventh *player*
-  character — so the rule is at most six player characters and at most eight
-  in total, the remaining two being NPC-only.
+  combat-icon table at `$4BE0`, **12 character slots of `$100`** at `$4D00`, and
+  an item area from `$5900`. Slots 0–7 are the party and 8–11 are used only in
+  combat; the roster and the icon table both count **eight**, and the game
+  itself refuses a seventh *player* character — so the rule is at most six
+  player characters and at most eight in total, the remaining two being
+  NPC-only.
 * `SAVEDGAME1` opens with **eight 32-byte roster blocks** filling `$8300`–`$83FF`
   exactly. They hold the derived combat numbers the character record does not:
   armour class, THAC0, current hit points, movement and the damage bonus.
   Three bytes at `+0x03`–`+0x05` are still unread.
-* **The two files divide three ways, not two:** `SAVEDGAME0` holds the eight
+* **The two files divide three ways, not two:** `SAVEDGAME0` holds the twelve
   character slots *and* a header carrying the party's place in the world;
   `SAVEDGAME1` opens with the roster of derived combat values. Base values live
   in the record, current ones in the roster — THAC0, movement, hit points and
@@ -77,12 +78,16 @@ written by hand.
   [30-savegame-layout.md](30-savegame-layout.md).
 * **The party's position** — x, y and facing in the `SAVEDGAME0` header, with
   the previous square and the game clock beside them.
-* **The page at `$5500`** — one record in the character layout, holding whatever
-  the game loaded there last. After a fight it is the monster, byte-identical to
-  its `MON*` file bar two derived bytes.
+* **The page at `$5500`** — **slot 8**, the first of the four slots combat uses.
+  After a fight it holds the monster, byte-identical to its `MON*` file bar two
+  derived bytes. It was long read as a scratch "staging page"; it is not
+  scratch.
 * **Spells** — the spellbook at `0x078`–`0x07E` (what a character knows) and the
   memorised list at `0x020` (what is prepared), both readable by name.
-* **105 of 580 record bytes known** — name, six abilities,
+* **Most of the record is still unread.** The current count lives in
+  [20-character-record.md](20-character-record.md), which is generated from
+  `por/layout.py` — a number retyped here goes stale the moment a field is
+  named, and has. Name, six abilities,
   exceptional strength, race, class, class bitmask, sex, alignment, age, five
   saving throws, movement, infravision, thief skills, hit points, all seven
   money types, experience, character level, per-class levels, the portrait
@@ -135,8 +140,10 @@ having been written back and confirmed in game.
   understood turned out to be base-versus-current rather than a duplicate.
 * What `0x0AD` is — non-zero only for elves and half-elves, and not the racial
   trait mask it looked like.
-* ~82% of each record remains unidentified, as does everything in
-  `SAVEDGAME1` past its first page.
+* Most of each record remains unidentified; see
+  [20-character-record.md](20-character-record.md) for how much.
+  `SAVEDGAME1` past its first page is not open at all — it is resident code
+  and a graphics buffer, not save data.
 
 **No longer abandoned**
 

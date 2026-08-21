@@ -6,7 +6,9 @@ not a full disassembly.
 
 ## Disks on this machine
 
-`/mnt/media/roms/c64/Pool of Radiance Disks/`
+`/home/donald/c64/Pool of Radiance Disks/` — which is the spelling the code and
+`CLAUDE.md` use. `/home/donald/c64` is a symlink to `/mnt/media/roms/c64`, so
+VICE's file picker shows the other path; they are the same directory.
 
 | Image | Role |
 |---|---|
@@ -18,7 +20,9 @@ not a full disassembly.
 | `PORSAVE4.D64` | MALCYON with DEX edited 16 → 18; the save that proved AC is cached, not recomputed |
 | `PORSAVE5.D64` … `PORSAVE9.D64` | leaving the inn, then the controlled walk that located the party's position |
 | `PORSAVE10.D64` | eight full 580-byte exports and no `SAVEDGAME0` — the roster disk that gave the size flag |
-| `PORSAVE11.D64` | the latest state: wounded characters, a full inventory, and the only roster page of ours that differs from the shopping trip's |
+| `PORSAVE11.D64` | wounded characters, a full inventory, and the only roster page of ours that differs from the shopping trip's |
+| `PORSAVE12.D64`, `PORSAVE13.D64` | one step apart at the New Phlan/slums boundary — the pair that gave the area id `$4BC2` its negative example, and settled the clock as HH:MM |
+| `PORSAVE14.D64` | saved during a random encounter with quickfight enabled on MALCYON; the specimen that proved the quickfight bit survives a fight |
 | `POOL1.D64.orig` | pristine copy of side 1 |
 | `Pool of Radiance.vfl` | VICE fliplist covering all sides |
 

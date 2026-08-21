@@ -2221,6 +2221,12 @@ by two routes that share no evidence.
   byte constant across the six New Phlan saves and different elsewhere. There is
   none. The game does not record which `GEO` is loaded, so a save-file
   automapper has to infer the area from the walls around the party.
+
+  *Superseded, and withdrawn. The scan had no negative example — every save it
+  looked at was in New Phlan, so "constant here" proved nothing. See "The area
+  id must exist, and the search for it was invalid" for why, and "The area id:
+  `$4BC2`, and it was in the header all along" for the answer: `$4BC2`, inside
+  the very range this scan swept.*
 * **`$49C7`–`$49C9` is the clock, and it reads HH:MM**: units of a minute, tens
   of a minute, then the **hour**. `DUNGEON $09F7` prints `$49C9`, a colon,
   `$49C8`, `$49C7`. It advances a minute per step and per turn in place.
@@ -2542,7 +2548,9 @@ the fact.
 
 ## The area id must exist, and the search for it was invalid
 
-**Status: OPEN. This is the highest-priority unsolved question in the project.**
+**Status: SOLVED — see "The area id: `$4BC2`, and it was in the header all
+along" below.** It stood open as the highest-priority unsolved question in the
+project, and the reasoning below is what reopened it.
 
 ### Why the negative was wrong
 

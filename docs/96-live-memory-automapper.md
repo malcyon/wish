@@ -116,19 +116,20 @@ one.
 
 ## The actual first task is not the transport
 
-**We do not know where the party's map coordinates are.** Nothing in the
-character record looks like an x/y pair. **This is now answered**: the party's
-position is in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and `$49C2`
-(facing), established by walking known distances and diffing. `SAVEDGAME1` was
-the standing candidate and is ruled out — walking leaves it byte-identical.
+**The party's map coordinates are in the `SAVEDGAME0` header**, not the
+character record: `$49C0` (x), `$49C1` (y) and `$49C2` (facing), established by
+walking known distances and diffing. `SAVEDGAME1` was the standing candidate and
+is ruled out — walking leaves it byte-identical.
 
 A save-file automapper could be built today: export a position from every save
 and plot it. Drawing the *walls* around that position needs the `GEO*` files,
 and **those are decoded** — four 256-byte planes over a 16×16 grid, with wall
 art as a nibble per edge and passability as two bits per edge. See
 [GEO is solved](50-experiments.md). **Which `GEO` file a given *save* is on is
-still unlocated** — but a *live* mapper no longer needs to know, because the
-running game keeps the whole map at `$0400` (below).
+`$4BC2`**, the loader's "currently loaded" cache copied into the header — see
+[the area id](50-experiments.md) and `docs/41-memory-regions.md`. A *live*
+mapper does not even need that, because the running game keeps the whole map at
+`$0400` (below).
 
 The live-memory version needs the same addresses read out of a running game
 rather than off a disk, and `SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`,
@@ -143,9 +144,11 @@ both the `cpu` and `ram` banks found no second copy. `ResidentGeo` reads it and
 `Automapper.poll()` names the area outright every tenth poll, with `Fingerprint`
 left running underneath as the contradiction check.
 
-`FilenameDigits` is dead: `$24B4`–`$24B9` in the running game reads
-`50 55 5a 5f 20 87`, not `GEO00`, so `LIBRARY`'s stem table is not resident
-there.
+A `FilenameDigits` strategy — read the two digits the loader patches into the
+`GEO00` stem — was tried and is dead, and the code is gone. `$24B4`–`$24B9` in
+the running game reads `50 55 5a 5f 20 87`, not `GEO00`; the resident stem is at
+`$40FB`, and nothing writes to its digits, so the filename is assembled in a
+scratch buffer elsewhere.
 
 `Fingerprint` on its own cannot finish on positive evidence: squares occupied
 and steps completed need **111 steps** to get New Phlan down to one candidate.
