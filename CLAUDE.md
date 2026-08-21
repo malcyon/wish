@@ -13,17 +13,13 @@ it.
 
 ## Commits
 
-**One sentence. No body, ever.** The whole message is the subject line.
-Reasoning belongs in `docs/50-experiments.md`, which exists for exactly that.
+**Keep a commit message to one sentence.** That is the whole rule, and it
+exists to stop the assistant writing an essay in every message. Reasoning
+belongs in `docs/50-experiments.md`, which exists for exactly that.
 
-* Imperative, sentence case, no type prefix, <= 65 characters, no trailing
-  period. Match the existing history's voice -- "Find the size flag, and settle
-  the party limit".
-* Never: a body, "This commit does X", AI attribution, emoji, restating the
-  diff.
-
-One commit per finding. Three findings in one commit is worse for future
-archaeology than three commits, even when the files overlap.
+One commit per finding, where that is practical. Three findings in one commit
+is worse for future archaeology than three commits, even when the files
+overlap -- but do not spend longer splitting a commit than the split is worth.
 
 ```
 Find the staging page at $5500
