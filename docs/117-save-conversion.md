@@ -1,7 +1,11 @@
 # Converting between the DOS and C64 versions — plan
 
-**Status: planned, not started. Feasible at the character level; a whole-save
-conversion is a different and much larger question.**
+**Status: planned, not started. The goal is a full DOS-to-C64 save
+conversion.** Characters are the easy part and are described below; the rest of
+a save is the work, and every obstacle to it is listed honestly further down.
+Nothing here is written off — several are hard and one is genuinely unsolved on
+our own side of the fence, and those are said plainly so they can be attacked
+rather than discovered late.
 
 Donald asked whether the editor could turn a DOSBox save into a C64 save and
 back. The short answer is **yes for characters, probably not for saves**, and
@@ -40,21 +44,14 @@ Treat it as PROBABLE until checked against a real DOS save.
 
 ---
 
-## Convert characters, not saves
+## Characters first, because they are the tractable half
 
-The natural unit is the **character file**, and that is not a workaround — it
-is what the games themselves move. Pool of Radiance exports characters, and
-Curse of the Azure Bonds imports a party from Pool of Radiance. The format
-exists to be moved.
+The **character file** is what the games themselves move: Pool of Radiance
+exports characters and Curse of the Azure Bonds imports a party. Getting that
+working is step one and is worth having on its own.
 
-A whole save carries far more: the party's position, the clock, the twelve
-record slots, the item area, the loaded-file cache, the quest flags at
-`$4A20`-`$4AFF`, the exploration the game does not store. Much of that is
-addresses and file indices specific to one port. **Converting a save means
-claiming those correspond, and mostly nobody has shown that they do.**
-
-So: characters convert. A party converts, one character at a time. A save
-does not, and the plan should say so plainly rather than half-doing it.
+But the goal is the whole save, so the rest of this plan is about what stands
+in the way.
 
 ---
 
@@ -105,6 +102,84 @@ So the rule has to be explicit:
   a fixed known list rather than a surprise.
 
 ---
+
+## Everything a C64 save contains, and whether we can produce it
+
+`SAVEDGAME0` is a verbatim image of `$4900`-`$64FF` (7168 bytes) and
+`SAVEDGAME1` of `$8300`-`$8AFF` (2048). To write one, **every byte has to come
+from somewhere.** This is the whole list.
+
+| region | size | what it is | can we produce it from a DOS save? |
+|---|---|---|---|
+| `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `por/dos_layout.py` |
+| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **probably** — needs the DOS item encoding and a check that item numbering agrees |
+| `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
+| `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — **not save data at all** | **yes** — copy from any existing C64 save; the game overwrites it |
+| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `por/iconparts.py` composes a legal icon |
+| `$49C0`-`$49C2` | 3 | party x, y, facing | **only if area numbering and map geometry correspond** — unproven |
+| `$4BC2` | 1 | current `GEO` | **same question**, and it is the same answer or the party lands in the wrong place |
+| `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
+| `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes** — port-specific indices; zero it and let the loader refill |
+| `$4900`-`$49BF`, `$4B80`-`$4BBF` | 256 | four effect arrays | **yes, by dropping them** — zero means no active effects, which is a legal state |
+| `$4A00`-`$4A1F` | 32 | per-script scratch | **yes** — `DUNGEON $202A` zeroes it on every area change anyway |
+| `$4A20`-`$4B7F` | **352** | **persistent quest flags** | **this is the blocker.** See below |
+| the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed |
+
+## The obstacles, worst first
+
+**1. The quest flags, and we do not understand our own side.**
+`$4A20`-`$4B7F` is 352 bytes and its confidence in `por/memory.py` is
+**UNKNOWN**. We have named the 26-entry commission ledger at `$4AA6`, the
+counter at `$4AC1`, eight appointment flags and a handful of others. **The rest
+is unattributed even on the C64.** Converting a save means writing bytes whose
+meaning we do not know, from a format we have not decoded, and being wrong here
+does not crash anything — it silently gives the party the wrong quest state.
+That is the worst kind of bug.
+
+*What would resolve it:* the correspondence is discoverable, and we are better
+placed than anyone. **The C64 ECL bytecode is now fully decoded** — 62 opcodes,
+all thirty scripts, every byte reached — and the DOS scripts are decoded by the
+public `simeonpilgrim/coab` project. Both write their flags by absolute address
+from scripts that implement *the same events*. Correlating "the script that
+prints the Sokal Keep speech writes flag X" on both sides gives a mapping that
+is argued, not guessed. Laborious, not blocked.
+
+**2. Area numbering and coordinates.** `$4BC2` names the current map and
+`$49C0`/`$49C1` the square. The C64 `GEO` files are a 16x16 grid per area. If
+the DOS maps are numbered differently, or laid out differently, the party
+arrives somewhere else — possibly inside a wall.
+
+*What would resolve it:* compare a known position. Stand somewhere identifiable
+in both ports and read the bytes. This needs a DOS save and half an hour.
+
+**3. Item encoding and numbering.** The C64 item area is 16 bytes per item and
+`por/items.py` decodes it. The DOS layout is not decoded, and even once it is,
+**item ids must be shown to mean the same thing** in both ports. The spell list
+is the same game and probably agrees; nobody has checked.
+
+**4. We have no DOS save.** Everything above is unverifiable until there is
+one. This is not a difficulty, only a dependency, and Donald has one on a
+Windows laptop.
+
+**5. The DOS layout we have is community documentation, not our own decode.**
+`work/coab-research/formats/` is where the record table came from. It has been
+right about everything checkable so far, which is encouraging and is not proof.
+
+**6. The undocumented gaps.** About 54 bytes of `SAVEDGAME0` have no name.
+They are almost all zero in the saves we hold, so writing zero is very probably
+right — but "very probably" is doing work in that sentence.
+
+**7. Does the game validate the save?** Nothing suggests a checksum, and
+`wish` already writes saves the game loads happily. Listed because it has not
+been *looked for*, and a checksum would be discovered fastest by writing one
+save and watching it fail.
+
+## What is not an obstacle
+
+Worth stating, so effort does not go here: **byte order** (both little-endian),
+**text encoding** (the record is ASCII on both, no PETSCII), **the D64
+container** (`por/d64.py` writes valid images with correct block counts today),
+and **party size** (six on both).
 
 ## What has to be found out first
 
