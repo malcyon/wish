@@ -76,8 +76,11 @@ FORM_HORIZONTAL_SPACING = 6
 FORM_MARGINS = (8, 6, 8, 6)
 TABLE_ROW_HEIGHT = 20
 # The tables and the spell lists want the width; the field forms do not.
-WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
-ROSTER_SLACK = 4
+WIDE_BOXES = ("box_inventory", "box_traits", "box_effects")
+# Left to right: roster and character, the icon and the ability forms, then the
+# two columns carrying tables, which are the ones that benefit from width.
+COLUMN_STRETCH = (0, 0, 2, 1)
+ROSTER_SLACK = 6
 ICON_MAX_WIDTH = 300
 STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
@@ -220,6 +223,7 @@ class EditorWindow(QMainWindow):
         self._fill_combos()
         self._size_fields()
         self._compact()
+        self._weight_columns()
         self._wire_dirty()
         if path:
             self.load(path)
@@ -301,22 +305,27 @@ class EditorWindow(QMainWindow):
                                         box.minimumSizeHint().width()))
         # A box narrower than its column would otherwise sit in the middle of
         # it, which trades whitespace on the right for whitespace on both sides.
-        # Top, and only top. The columns already end in a spacer, so this is
-        # just the strip, where a height-capped table would otherwise float in
-        # the middle of the row. Adding AlignLeft here also stops the widgets
-        # expanding sideways, which shrinks the roster to a scrollbar.
-        strip = self._child("roster_strip")
-        if strip is not None and strip.layout() is not None:
-            layout = strip.layout()
-            for i in range(layout.count()):
-                widget = layout.itemAt(i).widget()
-                if widget is not None:
-                    layout.setAlignment(widget, Qt.AlignmentFlag.AlignTop)
+
         for table in self.findChildren(QAbstractItemView):
             head = getattr(table, "verticalHeader", lambda: None)()
             if head is not None:
                 head.setDefaultSectionSize(TABLE_ROW_HEIGHT)
                 head.setMinimumSectionSize(TABLE_ROW_HEIGHT)
+
+    def _weight_columns(self) -> None:
+        """Spare width goes to the columns holding tables.
+
+        The field columns are capped to their contents and cannot use it; the
+        inventory, the traits and the spell lists can always take more.
+        """
+        # A layout is not a QWidget, so `_child` cannot find it.
+        from PyQt6.QtWidgets import QHBoxLayout
+        columns = self.findChild(QHBoxLayout, "sheet_columns")
+        if columns is None:
+            return
+        for i in range(columns.count()):
+            columns.setStretch(i, COLUMN_STRETCH[i] if i < len(COLUMN_STRETCH)
+                               else 0)
 
     def _size_fields(self) -> None:
         """Give every box the width of the widest value its bytes can hold.
@@ -407,11 +416,12 @@ class EditorWindow(QMainWindow):
         self._retitle()
 
     def _size_roster(self) -> None:
-        """Give the roster the height its rows need, and the rest to the sheet.
+        """Give the roster exactly the width and height its rows need.
 
-        Six characters used to fill a quarter of the window with five-sixths of
-        that empty. The splitter is still a splitter -- this sets where it
-        starts, not where it may go.
+        There is no splitter any more. The roster, the icon and the sheet are
+        all one scrolling page, because a fixed top over a scrolling bottom
+        squeezed the fields into a sixty-pixel strip whenever the window was
+        anything short of enormous.
         """
         view = self.ui.roster
         view.resizeColumnsToContents()
@@ -422,13 +432,9 @@ class EditorWindow(QMainWindow):
         for column in range(self.model.columnCount()):
             header.setSectionResizeMode(column,
                                         header.ResizeMode.ResizeToContents)
-        # Sized to its contents the table is about 500 pixels; stretched to the
-        # window it gave a fifteen-character name 950. Cap it and let the icon
-        # beside it have the rest of the strip.
-        view.setMaximumWidth(sum(view.columnWidth(c)
-                                 for c in range(self.model.columnCount()))
-                             + view.verticalHeader().width()
-                             + 2 * view.frameWidth() + ROSTER_SLACK)
+        # No width cap: the table lives in a column now, and the column
+        # already constrains it. Capping as well produced a horizontal scroll
+        # bar inside the table, which then ate a row off the bottom.
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
@@ -441,18 +447,7 @@ class EditorWindow(QMainWindow):
         # later `findChild` -- the editor work hit this once already with
         # `setMaximumWidth`, and it reproduces about two runs in three.
         view.setMaximumHeight(height + ROSTER_SLACK)
-        strip = self._child("roster_strip")
-        if strip is not None:
-            # The appearance box shares the strip, and it is the taller of the
-            # two once the icon is in it, so the strip is sized to whichever
-            # needs more rather than to the table alone.
-            height = max(height, strip.sizeHint().height())
-        split = self._child("split")
-        if split is None or split.count() < 2:
-            return
-        split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
-        split.setSizes([height, max(split.height() - height, 1)])
+
 
     def _disk_candidates(self) -> list[str]:
         """`--game-disk`, then $POR_GAME_DISK, then any POOL*.D64 beside the
@@ -904,7 +899,7 @@ class EditorWindow(QMainWindow):
     def showEvent(self, event) -> None:
         """Size the roster once the window has a height to divide.
 
-        A splitter asked to divide nothing keeps nothing, so doing this only at
+        A table asked for its row heights before it has been shown gives the
         load time -- before the window is on screen -- left the roster its old
         quarter of the window. Once only: after that the divider is the user's.
         """

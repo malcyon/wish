@@ -654,17 +654,27 @@ def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
     from editor.window import EditorWindow, _content_height
     w = EditorWindow(str(save))
     w.resize(1200, 900)
-    w.show()                       # the splitter has nothing to divide until now
-    # The strip holds the appearance box beside the table, and that box is the
-    # taller of the two, so the roster's own rows are a floor and not the whole
-    # answer. What the test is really about is that neither is the window.
-    strip = w._child("roster_strip")
-    assert w.ui.split.sizes()[0] == max(_content_height(w.ui.roster),
-                                        strip.sizeHint().height())
-    # The table itself is still only its rows; the strip is taller because the
-    # icon and the levels box share it, which is deliberate.
+    w.show()                       # heights are wrong until the table is shown
+    # No splitter: the roster, the icon and the sheet are one scrolling page.
+    # The table is capped at its own rows and never stretches to the window.
+    assert w.ui.roster.maximumHeight() <= _content_height(w.ui.roster) + 8
     assert _content_height(w.ui.roster) < 300
-    assert w.ui.split.sizes()[0] < w.height() * 2 // 3
+
+
+def test_the_whole_sheet_scrolls_as_one_page(app, save):
+    """A fixed top over a scrolling bottom squeezed the fields into a sixty
+    pixel strip on any window short of enormous. Everything scrolls together."""
+    from PyQt6.QtWidgets import QScrollArea, QSplitter
+
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    w.resize(1200, 700)
+    w.show()
+    assert w.findChild(QSplitter) is None, "the splitter is what caused this"
+    scroll = w.findChild(QScrollArea, "sheet_scroll")
+    assert scroll is not None
+    # The roster is inside the scrolled page, not above it.
+    assert w.ui.roster.isVisibleTo(scroll)
 
 
 # --- field widths come from the layout --------------------------------------
