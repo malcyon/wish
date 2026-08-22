@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from por import areas
 from por.areas import POOL_OF_RADIANCE
-from por.geo import GRID, STEP, Geo
+from por.geo import DIRECTIONS, GRID, STEP, Geo
 
 from . import notes as notemod
 from .area import Candidates, Fingerprint, ResidentGeo
@@ -222,12 +222,16 @@ class Automapper:
     candidate and impassable edges are rare. See `_refused`.
     """
 
-    # How often to re-read the resident map block. The block is only 1024 bytes
-    # and reading costs nothing measurable -- the whole cost of a monitor round
-    # trip is the resume, not the bytes -- but each read is its own resume, so
-    # doing it every tick would double the poller's disturbance. Every tenth
-    # poll is two seconds at the default interval, which is well inside the
-    # time it takes the game to load a new area off disk.
+    # How often to re-read the resident map block *when nothing suggests it
+    # changed*. The block is only 1024 bytes and reading costs nothing
+    # measurable -- the whole cost of a monitor round trip is the resume, not
+    # the bytes -- but each read is its own resume, so doing it every tick would
+    # double the poller's disturbance.
+    #
+    # **This is a floor, not the only time the block is read.** It used to be
+    # the only time, including on the paths that exist precisely because the
+    # area may just have changed, and that is what put slums squares on New
+    # Phlan: see `_area_may_have_changed`.
     RESIDENT_EVERY = 10
 
     def __init__(self, target, maps: dict[str, Geo] | None = None,
@@ -251,7 +255,10 @@ class Automapper:
             self.state.save_notes()
         self.state.area = name
         self.state.geo = self._maps.get(name)
-        self.state.exploration = Exploration()
+        # The sight radius is a setting, not a property of the area: building a
+        # plain `Exploration()` here quietly put it back to `SIGHT` the first
+        # time the party crossed a boundary.
+        self.state.exploration = Exploration(sight=self.state.exploration.sight)
         self.state.notes = {}
         self.state.load_notes()
 
@@ -274,6 +281,12 @@ class Automapper:
         change the fix is accepted into the new one. Otherwise the fix is held
         until a second poll agrees with it -- a garbled read never survives
         that, and a genuine long move inside one area costs one extra tick.
+
+        **The area is named before the fix is recorded, never after.** That
+        ordering is the whole of the fix for the bug above, and the check that
+        settles it has to actually run: it used to be rate-limited even on the
+        jump path, so nine crossings in ten fell through to the ordinary
+        every-tenth-poll check and leaked squares for up to two seconds.
         """
         if self.target is None:
             return False
@@ -283,21 +296,19 @@ class Automapper:
         if fix is None:
             return False
 
+        self._ticks += 1
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
+        jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
         changed_area = False
-        if moved and self._started and not self._adjacent(fix.x, fix.y):
+        if (jumped or self._ticks % self.RESIDENT_EVERY == 0
+                or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
-            if not changed_area:
-                if self._pending != (fix.x, fix.y):
-                    self._pending = (fix.x, fix.y)
-                    return False            # wait for a second opinion
-                # confirmed twice: believe it after all
-            self._pending = None
-        else:
-            self._pending = None
-            self._ticks += 1
-            if self._ticks % self.RESIDENT_EVERY == 0:
-                changed_area = self._check_resident()
+        if jumped and not changed_area:
+            if self._pending != (fix.x, fix.y):
+                self._pending = (fix.x, fix.y)
+                return False                # wait for a second opinion
+            # confirmed twice: believe it after all
+        self._pending = None
 
         changed = moved or fix.facing != self.state.facing or changed_area
 
@@ -372,11 +383,14 @@ class Automapper:
         as the load finishes. `Fingerprint` stays wired up underneath as the
         check on this: if the party walks through an edge the named map says is
         solid, the two disagree and the name is wrong.
+
+        **Rate-limiting belongs to the caller.** This used to carry its own
+        `% RESIDENT_EVERY` guard, so `poll`'s deliberate immediate check --
+        the one that exists because the party may just have crossed a boundary
+        -- did nothing nine times in ten and the crossing was noticed by the
+        ordinary periodic check instead, up to two seconds late.
         """
         if self.resident is None:
-            return False
-        self._ticks += 1
-        if self._ticks % self.RESIDENT_EVERY != 1:
             return False
         name = self.resident.identify(self._maps)
         if name is None:
@@ -385,4 +399,38 @@ class Automapper:
         if name != self.state.area:
             self.set_area(name)
             return True
+        return False
+
+    def _area_may_have_changed(self, fix: Fix) -> bool:
+        """Does this fix contradict the map we believe we are on?
+
+        The other half of the crossing guard, and it costs no monitor traffic
+        at all -- two questions the loaded `Geo` answers, both of them ones
+        `Fingerprint._fits` already asks of every observation:
+
+        * **an impossible square.** No passable edge at all means the square
+          cannot be occupied, so a party reported on it is on another map.
+        * **a step through a wall.** The party appearing next door across an
+          edge this map calls solid is the same proof.
+
+        Between them they cover the crossing that lands the party *beside*
+        where it left, which has no jump to notice it by and would otherwise
+        wait for the every-tenth-poll check -- two seconds during which the new
+        area's squares are drawn on the old area's map, which is the bug this
+        whole guard exists for.
+
+        A false positive costs one extra read of `$0400` and names the area we
+        already had.
+        """
+        geo = self.state.geo
+        if geo is None:
+            return False
+        if not any(geo.is_passable(fix.x, fix.y, d) for d in DIRECTIONS):
+            return True
+        if not self._started or not self._adjacent(fix.x, fix.y):
+            return False
+        delta = (fix.x - self.state.x, fix.y - self.state.y)
+        for direction, step in STEP.items():
+            if step == delta:
+                return not geo.is_passable(self.state.x, self.state.y, direction)
         return False

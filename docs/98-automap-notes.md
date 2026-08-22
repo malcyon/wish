@@ -118,6 +118,51 @@ The existing per-area JSON, extended:
 
 `--forget` still clears squares and keeps notes.
 
+## The file a square goes in, and the bug that got it wrong
+
+**Fixed.** Reported from Windows: start in the Slums, walk back into town, and
+the map switches to New Phlan with the Slums' top-right corner still revealed.
+It survived a restart, because it was on disk.
+
+**The cause was one line in the wrong place.** `Automapper.poll` re-reads the
+resident map block at `$0400` every tenth poll, and does so *immediately* when
+the party's square jumps -- that second check exists precisely because a jump
+is what crossing a boundary looks like. But `_check_resident` carried its own
+`% RESIDENT_EVERY` guard, so the immediate check did nothing nine times in ten
+and the crossing was noticed by the ordinary periodic check instead, up to ten
+polls -- two seconds at the default interval -- later. Everything the party did
+in that window was recorded against the area it had left, and `set_area` then
+wrote it into *that* area's file, where `load_notes` brought it back on the
+next visit and it never went away.
+
+**Reproduced live**, before the fix, in a pooled VICE instance
+(`tools/instance.py`): `PORSAVE13` in the Slums at `(15,4)`, warp to New Phlan,
+one step, and the mapper -- still saying `GEO14` -- recorded New Phlan's
+`(14,0)`, `(14,1)`, `(14,2)`, `(14,3)` and `(15,1)` into the Slums' own
+`GEO14.json`. The lag between `$0400` becoming `GEO00` and the mapper saying so
+was measured at five polls; at start-up it was nine.
+
+The same defect the `--forget` help text describes, then, and not a new one:
+what was fixed at the time was the *jump* path, and the rate limit inside
+`_check_resident` meant that fix never ran.
+
+Three changes, in `automap/state.py`:
+
+* rate-limiting belongs to `poll`, which knows why it is asking.
+  `_check_resident` now always reads.
+* a crossing that lands the party *next door* has no jump to notice it by, so
+  `_area_may_have_changed` also forces a read on either tell that the map is
+  the wrong one: the party on a square this map seals, or a step across an edge
+  this map calls solid. Both are tests `Fingerprint` already makes of every
+  observation, and both cost no monitor traffic.
+* the area is named **before** the fix is recorded, never after.
+
+**Notes were never misfiled on their own** -- nothing writes one -- but a note
+made by hand inside that window went to the departing area's file, and the
+remembered squares went there every time. A map that still shows a blot from
+another area is a file written before the fix: `python -m automap --forget
+GEO00` clears one area's squares and keeps its notes.
+
 ## What this does not do, on purpose
 
 * **No note types with mechanics.** A note does not track quest state. The game
@@ -139,3 +184,9 @@ The existing per-area JSON, extended:
   fill.
 * Clicking an existing note opens it populated, with a Delete that removes it
   from the square and from the file; a new note has no Delete to press.
+* A boundary crossing puts no square of the new area into the old area's set or
+  its file -- driven with a target whose `$0400` block changes partway through,
+  which is the whole of what a crossing looks like from outside. All three
+  shapes: the party lands far away, it lands on a square this map seals, and it
+  lands across an edge this map calls solid.
+* The sight radius is a setting and survives an area change.

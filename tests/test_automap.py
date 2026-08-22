@@ -12,11 +12,11 @@ import os
 import pathlib
 
 import pytest
-from gamedata import disk_dir, game_file
+from gamedata import disk_dir, game_file, synthetic_geo
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from automap.area import Fingerprint
+from automap.area import RESIDENT_GEO, Fingerprint
 from automap.notes import Note
 from automap.render import (
     CELL,
@@ -34,15 +34,19 @@ from automap.render import (
     to_svg,
 )
 from automap.state import Automapper, AutomapState, Exploration
+from automap.state import data_dir as state_data_dir
 from automap.target import Fix, ReplayTarget
 from por.geo import (
     EAST,
+    GEO_SIZE,
     GRID,
     LOCKED,
     NORTH,
     PASSABLE,
     SOLID,
     SOUTH,
+    WALLS_NORTH_EAST,
+    WALLS_SOUTH_WEST,
     WEST,
     WIZARD_LOCKED,
     Geo,
@@ -507,6 +511,126 @@ def test_the_first_fix_is_believed_wherever_it_is(new_phlan, tmp_path,
                         {"GEO00": new_phlan}, area="GEO00")
     mapper.poll()
     assert (mapper.state.x, mapper.state.y) == (11, 6)
+
+
+# --- crossing a boundary ----------------------------------------------------
+
+
+class CrossingTarget(ReplayTarget):
+    """A target that crosses an area boundary partway through its fixes.
+
+    That is all a crossing is from outside the game: the fixes start naming
+    squares on another map, and the 1024 bytes at `$0400` -- where the loader
+    leaves the `GEO` and never moves it -- become that other map.
+    """
+
+    def __init__(self, fixes, before, after, cross_at):
+        super().__init__(fixes)
+        self.before, self.after = before, after
+        self.cross_at = cross_at
+
+    def read(self, addr, length):
+        geo = self.after if self._i > self.cross_at else self.before
+        if (addr, length) == (RESIDENT_GEO, GEO_SIZE):
+            return geo.to_bytes()
+        return bytes(length)
+
+
+def sealed_at(x: int, y: int) -> Geo:
+    """An otherwise open map with one square that cannot be occupied.
+
+    Wall art on all four edges with the barrier left `SOLID`, which is what
+    `Geo.is_passable` reads. Generated, not copied: see `tests/gamedata.py`.
+    """
+    raw = bytearray(GEO_SIZE)
+    at = y * GRID + x
+    raw[WALLS_NORTH_EAST + at] = 0x11           # north, east
+    raw[WALLS_SOUTH_WEST + at] = 0x11           # south, west
+    return Geo(bytes(raw))
+
+
+def test_a_crossing_does_not_record_the_new_areas_squares_on_the_old_map(
+        tmp_path, monkeypatch):
+    """Donald's bug, on Windows: squares seen in the Slums stayed revealed on
+    New Phlan after walking back into town.
+
+    The immediate area check on a jump was itself rate-limited, so nine
+    crossings in ten fell through to the ordinary every-tenth-poll check and
+    the party's *new* square was recorded against the *old* area for up to two
+    seconds -- and `set_area` then wrote it into that area's file, where it
+    came back on the next visit and never went away.
+
+    Reproduced live before it was fixed (`docs/98-automap-notes.md`): the party
+    warped from the Slums to New Phlan, stepped to New Phlan's (14,1), and five
+    New Phlan squares were saved into the Slums' own `GEO14.json`.
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    phlan, slums = Geo(bytes(GEO_SIZE)), Geo(synthetic_geo())
+    fixes = [Fix(3, 14, 0, "status", 1000), Fix(3, 13, 0, "status", 1001)]
+    crossing = len(fixes)
+    fixes += [Fix(14, 1, 0, "status", 1002)] * 6        # the Slums' top right
+    mapper = Automapper(CrossingTarget(fixes, phlan, slums, crossing),
+                        {"GEO00": phlan, "GEO14": slums}, area="GEO00")
+    for _ in fixes:
+        mapper.poll()
+
+    assert mapper.state.area == "GEO14"
+    assert (14, 1) in mapper.state.exploration
+    kept = json.loads((state_data_dir() / "GEO00.json").read_text())["seen"]
+    assert "14,1" not in kept
+    # nor anything the sight lines drew around it, on the wrong map: New
+    # Phlan's own squares here run from x=0 to the sight limit at x=7.
+    assert not [s for s in kept if int(s.split(",")[0]) > 9]
+
+
+def walled_south_of(x: int, y: int) -> Geo:
+    """An otherwise open map with one edge that cannot be stepped through."""
+    raw = bytearray(GEO_SIZE)
+    raw[WALLS_SOUTH_WEST + y * GRID + x] = 0x10          # south art, no barrier
+    return Geo(bytes(raw))
+
+
+def test_a_step_through_a_wall_says_the_map_is_wrong(tmp_path, monkeypatch):
+    """The other tell of a crossing that moved the party only one square: the
+    step it implies crosses an edge this map calls solid."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    phlan, slums = walled_south_of(5, 4), Geo(synthetic_geo())
+    fixes = [Fix(5, 4, 0, "status", 1000)]
+    crossing = len(fixes)
+    fixes += [Fix(5, 5, 0, "status", 1001)] * 2
+    mapper = Automapper(CrossingTarget(fixes, phlan, slums, crossing),
+                        {"GEO00": phlan, "GEO14": slums}, area="GEO00")
+    mapper.poll()
+    mapper.poll()
+    assert mapper.state.area == "GEO14"
+
+
+def test_a_crossing_that_lands_next_door_is_caught_too(tmp_path, monkeypatch):
+    """A crossing need not move the party far, and then there is no jump to
+    notice it by -- but a square the current map seals cannot be occupied, so
+    the map named is not the map being run."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    phlan, slums = sealed_at(5, 5), Geo(synthetic_geo())
+    fixes = [Fix(5, 4, 0, "status", 1000)]
+    crossing = len(fixes)
+    fixes += [Fix(5, 5, 0, "status", 1001)] * 2
+    mapper = Automapper(CrossingTarget(fixes, phlan, slums, crossing),
+                        {"GEO00": phlan, "GEO14": slums}, area="GEO00")
+    mapper.poll()
+    mapper.poll()
+    assert mapper.state.area == "GEO14"
+    assert (5, 5) in mapper.state.exploration    # on the Slums, where it is
+
+
+def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
+    """It is a setting, not a property of the area. Building a plain
+    `Exploration` on every area change quietly put it back to `SIGHT`."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    mapper = Automapper(ReplayTarget([]), {"GEO00": Geo(bytes(GEO_SIZE))},
+                        area="GEO00")
+    mapper.state.exploration.sight = 1
+    mapper.set_area("GEO14")
+    assert mapper.state.exploration.sight == 1
 
 
 # --- the live party ---------------------------------------------------------
