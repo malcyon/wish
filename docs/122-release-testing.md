@@ -16,20 +16,27 @@ it points at the README section by name.
 
 ## Read this first — three things that are already known
 
-**1. The frozen builds ship one executable, not two.** `wish.spec` builds a
-single `EXE(name="wish")` from `packaging/wish_main.py`. There is no `wish-cli`
-in the `.tar.gz` or the `.zip`. So the CLI round trip can only be tested from
-the wheel, and the frozen builds are tested through the window. That is
-consistent with the README ("unpack and run `wish`") but worth knowing before
-you go looking for a binary that is not there.
+**1. The two platforms ship different things.** The Linux `.tar.gz` carries
+`wish` **and** `wish-cli`; the Windows `.zip` carries `wish.exe` alone. Donald:
+"Windows users don't need a cli. They're point and click heroes." `wish.spec`
+spells it as `SHIP_CLI = sys.platform != "win32"`. So the CLI steps below are
+Linux-only, and on Windows a missing `wish-cli.exe` is the intended result, not
+a broken archive.
 
-**2. `wish.exe --version` will print nothing on Windows.** The spec sets
-`console=False`, so the Windows build has no console and
-`packaging/wish_main.py` points `sys.stdout` at `os.devnull` to stop argparse
-dying on it. Exit code 0, no output. That is the *fix* working, not a failure.
-Get the version from **Help > About wish** instead. Every message the program
-writes to stdout or stderr — including "no `POOL*.D64` game disks found" — is
-invisible on Windows for the same reason.
+**2. `wish.exe --version` should now print, and nobody has watched it.** The
+spec still builds the window `console=False`, so the process starts with no
+console of its own; `packaging/wish_main.py` repairs the streams before
+anything writes — an inherited handle first (a redirect, a pipe), else the
+console that launched us, borrowed with `AttachConsole(ATTACH_PARENT_PROCESS)`
+and written through `CONOUT$`, else `os.devnull`.
+Started from **cmd or PowerShell you should see the version**; started by
+**double-click from Explorer there is no console to borrow and every message,
+the "no game disks … so the map tab will be empty" line included, is still
+swallowed**. The window's **Help > About wish** is the version either way.
+*Unverified on Windows: nobody on the project has a Windows machine.* The
+fallback chain is unit-tested on Linux (`tests/test_packaging.py`) and
+`release.yml` now asserts on the output of `wish.exe --version`, so a
+regression fails the tag rather than shipping.
 
 **3. The Commodore 64 Ultimate backend cannot be tested.** Nobody on the
 project has the hardware. It is written from vendor documentation and exercised
@@ -37,9 +44,9 @@ only against a stub. Leave `POR_ULTIMATE` unset and it is never probed, so it
 costs nothing; there are no steps for it below because there is no honest way
 to write them.
 
-Also: `release.yml` does not run the test suite. A red `test.yml` does not block
-a tag, and the two known failures in `106-releases.md` §Verification are not
-about packaging.
+`release.yml` runs the whole test suite before it builds anything — a red
+`test.yml` now stops a tag. The two known failures in `106-releases.md`
+§Verification are not about packaging.
 
 ---
 
@@ -120,12 +127,14 @@ cp "/home/donald/c64/Pool of Radiance Disks/PORSAVE11.D64" ./TESTSAVE.D64
 ```sh
 tar xzf ~/Downloads/wish-release/wish-<version>-linux-x86_64.tar.gz
 cd wish-<version>-linux-x86_64
-ls wish
+ls
 ```
 
-*Expect:* an executable `wish` beside a large pile of shared libraries (~156 MB
-unpacked, three quarters of it Qt). *If `wish` is not there:* the archive was
-built wrong — check what `tar tzf` lists at the top level.
+*Expect:* the executables `wish` and `wish-cli` beside `_internal/`, a large
+pile of shared libraries (~157 MB unpacked, three quarters of it Qt). Both come
+out of one `COLLECT`, so `wish-cli` costs 1.8 MB and not a second copy of Qt.
+*If either is not there:* the archive was built wrong — check what `tar tzf`
+lists at the top level.
 
 **L3.** Version.
 
@@ -139,12 +148,17 @@ exits inside argparse before Qt is imported, so this works with no display.
 — `wish/_version.py` was not written by the editable install in `release.yml`,
 and the artefact is mislabelled. That is a release blocker.
 
-There is **no `wish-cli` here** — see the note at the top. Confirm that by
-looking, so you are not surprised later:
+**L3a.** The CLI ships here too, on Linux:
 
 ```sh
-ls | grep -i cli    # expect: nothing
+./wish-cli --version
 ```
+
+*Expect:* `wish-cli <version>`, the same number. *If it is missing:* `SHIP_CLI`
+in `wish.spec`, or the archive was built on the wrong platform. The frozen
+`wish-cli` takes the same arguments as the wheel's — steps L10 and L11 work
+against `./wish-cli` as well, and running them here exercises the frozen build
+rather than the installed one, which is the interesting half.
 
 **L4.** Start the window on a save disk.
 
@@ -154,16 +168,17 @@ ls | grep -i cli    # expect: nothing
 
 *Expect:* the window opens on the Character Editor tab with the party loaded, a
 roster down the left, and the title bar naming the file. On stderr you may see
-"no `POOL*.D64` game disks found" if the disks are not where `automap/paths.py`
-looks — harmless for the editor, and step L7 fixes it.
+a "no game disks … so the map tab will be empty" line if the disks are not
+where `automap/paths.py` looks — harmless for the editor, and step L7 fixes
+it.
 
 *If it does not start at all,* run it from a terminal and keep the traceback:
 a frozen Qt build failing on a distribution other than Ubuntu usually names a
 missing system library (`libEGL`, `libxkbcommon-x11`, `libGL`).
 
 **L5.** Check the version the window reports: **Help > About wish**. It must
-match step L3. This is the only route to the version on Windows, so confirm it
-agrees here where you can check both.
+match step L3. It is the only route to the version after a double-click on
+Windows, so confirm it agrees here where you can check both.
 
 **L6.** The round trip, through the window.
 
@@ -336,7 +351,8 @@ standing somewhere in a map.
 2. Extract to a short path: `C:\wish`. Same 260-character reason as VICE, and
    the Qt tree inside is deeper.
 3. *Expect:* `C:\wish\wish-<version>-windows-x86_64\wish.exe` and several
-   hundred files beside it.
+   hundred files beside it. **No `wish-cli.exe`** — that is the decision in note
+   1, not a truncated download.
 4. First extraction may be slow — Defender scans ~156 MB of fresh binaries.
    Minutes, not seconds, is normal.
 
@@ -353,18 +369,36 @@ quarantined it as a PyInstaller false positive — check Windows Security >
 Protection history. **Unverified**: this happens to some PyInstaller builds and
 not others, and nobody has run this one on Windows.
 
-**Version:** `wish.exe --version` prints nothing here (see the note at the top).
-Use **Help > About wish**. If you want the exit code:
+**Version — the step to watch.** From a terminal, not from Explorer:
 
 ```powershell
-(Start-Process -FilePath C:\wish\wish-<version>-windows-x86_64\wish.exe `
-  -ArgumentList '--version' -Wait -PassThru).ExitCode
+cd C:\wish\wish-<version>-windows-x86_64
+.\wish.exe --version
 ```
 
-*Expect:* `0`, and no printed version. *Unverified* — this is the exact path
-that used to die in `AttributeError: 'NoneType' has no attribute 'write'`, so
-if you get a PyInstaller traceback box instead, that is a real regression in
-`packaging/wish_main.py` and worth a screenshot.
+*Expect:* `wish <version>`, the same number as L3. **Unverified** — this is the
+whole of P29 and no one has watched it happen. Two things to note rather than
+report as failures: the shell prints its next prompt before the program writes,
+because a windowed process does not hold the terminal, so **the version may
+appear under the prompt**; and `--version` from Explorer, or from a shortcut,
+has no console to borrow and prints nowhere. Use **Help > About wish** for that.
+
+*If nothing prints at all,* `AttachConsole` did not do what
+`packaging/wish_main.py` expects on your Windows — note the shell (cmd,
+PowerShell, Windows Terminal, an SSH session) because that is exactly what
+decides it. *If you get a PyInstaller traceback box,* that is a real regression:
+the same path used to die in `AttributeError: 'NoneType' object has no attribute
+'write'`. Screenshot it.
+
+Redirection is a second route, and the one CI uses:
+
+```powershell
+.\wish.exe --version > version.txt ; Get-Content version.txt
+```
+
+*Unverified.* An inherited handle is the *first* link in the chain in
+`packaging/wish_main.py`, and the one that does not depend on a console
+existing.
 
 ### W6. The round trip on Windows
 
@@ -429,9 +463,11 @@ the second. Close the other client.
 you cross fill in, and the area is named in the panel. Latency of a couple of
 polls (200 ms each) is normal.
 
-*If the map is empty but the connection is up:* no `POOL*.D64` were found and
-there is no `GEO` to draw. Point `--disks` or `POR_DISKS` at them. On Windows
-the warning that says so is invisible, so this is the symptom to recognise.
+*If the map is empty but the connection is up:* no game disks were found and
+there is no `GEO` to draw. Point `--disks` or `POR_DISKS` at them. The warning
+that says so goes to stderr, so on Windows you only see it if you started
+`wish.exe` from a terminal — after a double-click this empty map is the only
+symptom.
 
 **M4.** Press **N** to put a note on the party's square. Type something into
 it. Press **R** to toggle fog of war and back.
@@ -464,7 +500,9 @@ Tick as you go. `n/a` where a row does not apply to that platform.
 |---|---|---|---|
 | 2 | `SHA256SUMS` verifies | ☐ | ☐ |
 | L2 | frozen archive unpacks, `wish` present | ☐ | ☐ (W4) |
-| L3 | `wish --version` prints the tag | ☐ | n/a — no console |
+| L3 | `wish --version` prints the tag | ☐ | ☐ (W5, from a terminal) |
+| L3a | `wish-cli --version` prints the tag | ☐ | n/a — not shipped |
+| W5 | `wish.exe --version > file` catches it when redirected | n/a | ☐ |
 | L5 | Help > About shows the same version | ☐ | ☐ (W5) |
 | L4 | window opens on a save disk | ☐ | ☐ (W6) |
 | L6 | edit, Save As, reopen — value stuck | ☐ | ☐ (W6) |
@@ -472,6 +510,7 @@ Tick as you go. `n/a` where a row does not apply to that platform.
 | L7 | the game loads the edited disk and shows the edit | ☐ | ☐ (W6) |
 | L8 | wheel installs into a clean venv | ☐ | n/a |
 | L9 | `wish` and `wish-cli` both report the version | ☐ | n/a |
+| W4 | no `wish-cli.exe` in the zip — the intended result | n/a | ☐ |
 | L10 | CLI export / dry-run / import round trip | ☐ | n/a |
 | L10 | `--output` over the original is refused | ☐ | n/a |
 | L11 | unedited round trip is byte-identical | ☐ | n/a |
@@ -492,8 +531,8 @@ Tick as you go. `n/a` where a row does not apply to that platform.
 Capture these four things before you change anything. A failure you cannot
 reproduce is a failure you cannot fix.
 
-**1. The version.** `wish --version`, or Help > About on Windows. Without it
-nobody knows which build you had.
+**1. The version.** `wish --version` — from a terminal on Windows too — or
+Help > About. Without it nobody knows which build you had.
 
 **2. The debug log.** Off at every start, deliberately — it is not remembered
 between runs.
@@ -515,10 +554,11 @@ file paths, character names or any bytes from a save
 *If the menu item turns itself back off,* the settings directory is not
 writable. That is itself the bug.
 
-**3. The terminal, on Linux.** Start the frozen build from a shell, not from a
-file manager. A crash before Qt is up prints there and nowhere else. On
-Windows there is no console, so the equivalent evidence is the PyInstaller
-traceback box — screenshot it whole, including the scrollback.
+**3. The terminal.** Start the frozen build from a shell, not from a file
+manager, on either platform: a crash before Qt is up prints there and nowhere
+else, and on Windows a shell is the only thing that gives the process a console
+to print to at all. After a double-click the evidence is PyInstaller's traceback
+box instead — screenshot it whole, including the scrollback.
 
 **4. The files, kept.** A save disk that fails to round-trip *is* the bug
 report. Keep `EDITED.D64` / `EDITED-WIN.D64` and the `party.yaml` that produced
@@ -545,7 +585,10 @@ know:
 | W2 | whether Windows Defender Firewall prompts when VICE binds `127.0.0.1:6502` |
 | W5 | that SmartScreen shows "Windows protected your PC" and not something else |
 | W5 | whether Defender quarantines this PyInstaller build as a false positive |
-| W5 | `Start-Process -Wait -PassThru … .ExitCode` returning 0 with no output |
+| W5 | that `AttachConsole(ATTACH_PARENT_PROCESS)` gives `wish.exe --version` the terminal it was typed into — the P29 fix, reasoned and unit-tested on Linux, never watched on Windows |
+| W5 | that the version lands *after* the shell's next prompt, a windowed process not holding the terminal |
+| W5 | that `wish.exe --version > file` catches the output through an inherited handle |
+| W4 | that the Windows zip contains no `wish-cli.exe` — the spec's platform split is unit-tested, but no Windows build has been made |
 | W4 | that the 260-character path limit is actually reachable here |
 | M2 | `Test-NetConnection`'s exact output for a closed port |
 | — | the Windows zip running on a machine with no Python at all (`106-releases.md` records this as unverified too) |

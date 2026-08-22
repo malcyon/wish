@@ -21,10 +21,8 @@ by the hatch-vcs build hook and `.gitignore`d, which is what a frozen build
 reads; the installed metadata; and `0.0.0+unknown` for a source checkout that
 was never built. `wish --version` and `wish-cli --version` print it.
 
-**Not done:** the About box. `wish/about.py` holds the dialog and an
-`install(window)` that adds Help > About, but nothing calls it — wiring it needs
-two lines in `wish/window.py`, which was being edited by another agent at the
-time.
+The window says the same number under **Help > About wish** — `wish/about.py`,
+installed from `wish/window.py`.
 
 ## 2. What a release contains
 
@@ -39,7 +37,17 @@ exe: a certificate costs money and SmartScreen warns anyway, so the zip is
 honest about what it is. macOS is "run it from source" until somebody with a Mac
 wants to own an unsigned `.app`.
 
-The Linux folder is about 156 MB before compression, three quarters of it Qt.
+**The Linux tarball carries `wish-cli` beside `wish`; the Windows zip carries
+`wish.exe` alone** — Donald: "Windows users don't need a cli. They're point and
+click heroes." `wish.spec` spells that as `SHIP_CLI = sys.platform != "win32"`.
+
+The Linux folder is about 157 MB before compression, three quarters of it Qt.
+`wish-cli` costs 1.8 MB of that: both executables come out of one `COLLECT`, so
+the folder holds one copy of Qt and one of libpython, and the console build
+imports no Qt at all — `por`, PyYAML and `automap.paths`, and `ldd` on it names
+no Qt library. `wish.spec` checks that rather than excluding `PyQt6`: an
+exclude would turn a stray GUI import into a `ModuleNotFoundError` on a user's
+machine, where the check stops the build.
 
 `SHA256SUMS` covers everything on the release page.
 
@@ -86,12 +94,22 @@ what vulture flags.
 
 **`release.yml`** — on a `v*` tag.
 
-1. `dist`: `python -m build`, then a check that the wheel's version is the tag
+1. `tests`: `uses: ./.github/workflows/test.yml`, the whole suite on both
+   platforms, and everything below `needs` it. A red `test.yml` used not to
+   stop a tag. `test.yml` gained `workflow_call:` for this rather than a second
+   copy of the matrix.
+2. `dist`: `python -m build`, then a check that the wheel's version is the tag
    with the `v` stripped.
-2. `frozen`: Ubuntu and Windows, each building `wish.spec` on its own runner
+3. `frozen`: Ubuntu and Windows, each building `wish.spec` on its own runner
    because PyInstaller does not cross-compile. `pip install -e .` first, because
-   that is what writes `wish/_version.py` from the tag.
-3. `publish`: gathers both, writes `SHA256SUMS`, and hands the lot to
+   that is what writes `wish/_version.py` from the tag. Three smoke checks on
+   the artefact, all asserting on **output** rather than an exit code, because
+   the Windows build exits 0 in silence when its streams are broken:
+   `--version` prints exactly `wish <tag>`; a mistyped option puts argparse's
+   "unrecognized arguments" on stderr, which is the same path every diagnostic
+   travels and needs no display; and `wish-cli` reports the same version on
+   Linux while `wish-cli.exe` is absent on Windows.
+4. `publish`: gathers both, writes `SHA256SUMS`, and hands the lot to
    `softprops/action-gh-release` with `generate_release_notes`.
 
 ## 4. The PyInstaller spec
@@ -102,7 +120,27 @@ pause and buys nothing a `.tar.gz` does not.
 
 `packaging/wish_main.py` is the entry script, because a frozen build starts from
 a script and the relative imports in `wish/__main__.py` only work inside the
-package.
+package. `packaging/wish_cli_main.py` is the same indirection for `wish-cli`,
+whose `Analysis` excludes `PyQt6`, `editor` and `automap` so the build fails
+loudly if the CLI ever grows a GUI import. Both `EXE`s go into the one
+`COLLECT`; two `COLLECT`s would mean two copies of Qt.
+
+**Stdout on Windows.** The window is built `console=False`, and since
+PyInstaller 5.7 that means `sys.stdout` and `sys.stderr` are `None` rather than
+sinks, to match `pythonw.exe` — so `wish.exe --version` printed nothing and
+every diagnostic, the "no game disks … so the map tab will be empty" line
+included, was swallowed.
+`packaging/wish_main.py` now repairs the streams before anything writes, in
+this order: the handle the shell inherited to us, which is a redirect or a CI
+pipe and means that file and nothing else; then
+`AttachConsole(ATTACH_PARENT_PROCESS)` and `CONOUT$`, the terminal the user
+typed into; then `os.devnull`, which is silence but not the `AttributeError`
+inside argparse that used to be a traceback box. The order matters: borrowing
+the console first would send a redirected run to the terminal and leave the
+file empty. A double-click from Explorer still gets devnull — there is no
+console to borrow and nothing inherited.
+`tests/test_packaging.py` covers the choice; the Windows half of it is
+**unverified**, because nothing here runs Windows.
 
 **No data files.** `editor/character.ui` is compiled ahead of time into
 `editor/ui_character.py`, and `wish/__main__.py` now skips the Designer
@@ -122,6 +160,10 @@ it both entry points were broken in an installed wheel.
 | a tagged build reports the tag | verified — a throwaway clone tagged `v0.1.0` built `por_tools-0.1.0` |
 | an untagged build does not claim to be a release | verified — `0.0.1.dev49+g…` |
 | the Linux frozen build runs | verified — `wish --version` and the window both start from `dist/wish/wish` |
+| the Linux tarball carries both executables | verified — `wish` 2.2 MB and `wish-cli` 1.7 MB beside one `_internal/`. The folder went 162.8 → 164.7 MB and the `.tar.gz` 61.2 → 62.9 MB: +1.1%, not the +100% a second Qt would have cost |
+| the frozen `wish-cli` round-trips a save disk | verified — export and re-import of a `PORSAVE*.D64` came back byte-identical |
+| the Windows zip ships no `wish-cli.exe` | **unverified as a build**; the spec's platform split is unit-tested in `tests/test_packaging.py` |
+| `wish.exe --version` reaches a Windows terminal | **unverified.** `AttachConsole`/`CONOUT$` is standard practice and the fallbacks are tested on Linux, but nothing here runs Windows. A GUI-subsystem process returns the prompt before it prints, so the version may land under it |
 | the Windows zip runs with no Python | **unverified.** There is no Windows machine here |
 | the Linux build runs on another distribution | **unverified** |
 | CI is green on a checkout with no game disks | **unverified as a whole**; locally, disks hidden, 539 pass and 30 skip |

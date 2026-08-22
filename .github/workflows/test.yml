@@ -5,6 +5,10 @@ on:
   pull_request:
   # So the Windows leg can be re-run on demand without an empty commit.
   workflow_dispatch:
+  # release.yml calls this before it builds anything: a red suite must stop a
+  # tag, and duplicating the matrix there would be a second thing to keep in
+  # step with this one.
+  workflow_call:
 
 jobs:
   pytest:

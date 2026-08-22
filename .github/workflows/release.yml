@@ -9,8 +9,14 @@ permissions:
   contents: write
 
 jobs:
+  # The whole suite, on both platforms, before a tag builds anything. Until
+  # this was here a red test.yml did not stop a release.
+  tests:
+    uses: ./.github/workflows/test.yml
+
   dist:
     name: wheel and sdist
+    needs: [tests]
     runs-on: ubuntu-latest
 
     steps:
@@ -35,6 +41,7 @@ jobs:
 
   frozen:
     name: ${{ matrix.label }} build
+    needs: [tests]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -67,17 +74,54 @@ jobs:
 
       - run: pyinstaller --noconfirm wish.spec
 
-      # The artefact used to ship having never been started. `--version` exits
-      # inside argparse, before Qt is imported, so this needs no display -- and
-      # it is the exact path that a windowed Windows build with no stdout used
-      # to die on. See packaging/wish_main.py.
-      - name: it starts
+      # The artefact used to ship having never been started, and then to ship
+      # having printed nothing: an exit code of 0 was all this asserted, and a
+      # windowed Windows build with no stdout exits 0 in silence. Assert the
+      # output. `--version` exits inside argparse, before Qt is imported, so
+      # none of this needs a display. See packaging/wish_main.py.
+      - name: it starts, and says which version it is
         shell: bash
         run: |
+          set -euo pipefail
+          [ "$RUNNER_OS" = Windows ] && exe=dist/wish/wish.exe || exe=dist/wish/wish
+          want="wish ${GITHUB_REF_NAME#v}"
+          got=$("$exe" --version 2>&1 | tr -d '\r')
+          echo "$exe --version -> ${got:-(nothing)}"
+          [ "$got" = "$want" ] || { echo "expected: $want"; exit 1; }
+
+      # The same silence swallowed every diagnostic, including the "no game
+      # disks ... so the map tab will be empty" line, which is the one message
+      # a first-time user with the disks in the wrong place needs. argparse's
+      # own error is the cheapest thing that travels the identical path and
+      # does not open a window.
+      - name: and its errors reach the terminal
+        shell: bash
+        run: |
+          set -uo pipefail
+          [ "$RUNNER_OS" = Windows ] && exe=dist/wish/wish.exe || exe=dist/wish/wish
+          got=$("$exe" --no-such-option 2>&1 | tr -d '\r')
+          echo "$exe --no-such-option -> ${got:-(nothing)}"
+          case "$got" in
+            *"unrecognized arguments"*) ;;
+            *) echo "argparse's error never reached us"; exit 1 ;;
+          esac
+
+      # Linux gets the CLI, Windows does not: wish.spec, SHIP_CLI. Donald --
+      # "Windows users don't need a cli. They're point and click heroes."
+      - name: the CLI ships on Linux and only on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then
-            dist/wish/wish.exe --version
+            for f in dist/wish/wish-cli dist/wish/wish-cli.exe; do
+              if [ -e "$f" ]; then echo "$f should not be in the zip"; exit 1; fi
+            done
+            echo "no wish-cli in the Windows build, as intended"
           else
-            dist/wish/wish --version
+            want="wish-cli ${GITHUB_REF_NAME#v}"
+            got=$(dist/wish/wish-cli --version)
+            echo "wish-cli --version -> ${got:-(nothing)}"
+            [ "$got" = "$want" ] || { echo "expected: $want"; exit 1; }
           fi
 
       - name: name it after the tag
