@@ -76,8 +76,19 @@ three in a straight line into `$6DD0`, `$6DC1`, `$6DDA` — and the data, since
 the counts the handlers use are the only ones that decode all thirty scripts
 with no derailment anywhere.
 
+**A second derivation, from the DOS side.** Stephen S. Lee's guide lists six
+opcodes a false `IF` fails to skip: `SETUPMON`, `VERTMENU`, `ONGOTO`, `ONGOSUB`,
+`HORIZMENU` and `ADDNPC`. Ours and his overlap on `SETUPMON` and `ADDNPC`; his
+four extras are the **variable-length** opcodes, whose length the skip routine
+cannot know at all, and ours adds `ENCMENU`. **The union is seven**:
+`SETUPMON`, `ENCMENU`, `ADDNPC`, `VERTMENU`, `ONGOTO`, `ONGOSUB`, `HORIZMENU`.
+Two people, two ports, two methods, one defect.
+(`docs/128-guide-and-scripting.md` says "eight"; naming the members gives
+seven, and the members are what matters.)
+
 **What the player sees.** Nothing. A sweep of all 16,233 decoded instructions
-finds no `IF*` whose next command is one of the three. SSI got away with it.
+finds no `IF*` whose next command is one of the three — and the guide reports
+that no DOS script fires its four either. SSI got away with it.
 
 **Version.** Pool of Radiance, Commodore 64; `DUNGEON` is byte-identical on all
 eight disk sides. CONFIRMED, latent.
@@ -448,8 +459,57 @@ Five of those — R23, R25, R26, R29 and R32 — are the same defect as our own 
 "already done" flag is not latched on every path out. **The forums never report
 the Sokol Keep elf itself.** What they establish is that we found a habitual
 Gold Box fault rather than a freak one, which is corroboration of the pattern
-and not of the entry, and it stays worded that way.
+and not of the entry, and it stays worded that way. The DOS guide, added below,
+*does* name Sokol Keep's dead elf guard — a second sighting of the entry itself
+rather than of the pattern. By then we had already driven it in the emulator, so
+it changes nothing; it is recorded because a corroboration that arrives after
+the fact is still corroboration.
 
-Everything else from the same pass — the playtester mode, the DOS area tables,
-the item record, the tooling — is in
-[`126-forum-findings.md`](126-forum-findings.md).
+---
+
+## Rumours from the DOS guide
+
+Second source, same rules: **none of these may be promoted into
+`../goldbox-bugs.md`** without our own reproduction. They come from Stephen
+S. Lee's *Pool of Radiance: Exhaustive Game Information* v2.00, written for
+**PC v1.3**, and are set out with their evidence in
+[`128-guide-and-scripting.md`](128-guide-and-scripting.md).
+
+These are worth more than the forum rumours for one specific reason: **the ECL
+bytecode is one artefact shared by every port**, so a defect the guide locates
+in a *script* or in the *VM* is almost certainly in our bytes too, and most of
+them are checkable statically against our own exhaustive decode with no
+emulator at all.
+
+| # | claim | kind | to confirm |
+|---|---|---|---|
+| R40 | `$23 SURPRISE` applies its four modifiers to the wrong sides. Harmless while the modifiers are zero, which is the usual case | engine | Read `DUNGEON`'s `$23` handler and check which side each modifier lands on. Static, no emulator |
+| R41 | `$22 PARTYSURPRISE` does nothing special for a ranger and mis-sets one of its two variables | engine | Same handler pass |
+| R42 | `$28 ROB` never restores the item-loss chance while walking one character's inventory, so putting heavy items first sharply reduces theft — and it steals **equipped** items | engine | Same. The exploit half is testable in play: order a character's inventory and get robbed |
+| R43 | `$34 ECLCLOCK` advances the clock by an uninitialised byte rather than by its operand; fixed in *Curse*. Used once in the whole game | engine | Read the handler; the one call site is in our decode. A watchpoint on the clock digits at `$49C6`-`$49CB` would settle it in a minute |
+| R44 | `$3B SPELL` never does anything; fixed in *Curse*. Used once | engine | Same shape as R43 |
+| R45 | Podol Plaza's buccaneer can be looted twice; the Cadorna family treasure can be opened twice; Valhingen Graveyard's treasures at locations 12 and 24 are transposed; Stojanow Gate's alarm starts nothing | script | All four are static checks against `ECL12`, `ECL02`, `ECL0A` and `ECL09`. The Cadorna one is R1 from the forums arriving by a second route, which raises it above the rest |
+| R46 | Going south from the Wealthy Area at (4,15) crashes; fleeing the bugbear patrol after the tower guards crashes | script | Two warps and two steps. Worth trying on the C64 precisely because a crash is port-sensitive |
+| R47 | **Exploit.** A targeted damage spell can raise the dead: a dead character has 0 hit points, and a spell doing under 10 leaves them dying rather than dead. Still present in *Curse*, gone in *Silver Blades* | engine | Read the damage handler's death threshold. `$2E DAMAGE` is in our decode |
+| R48 | **Exploit.** Items can be duplicated by saving and reloading in the training hall | engine | Area 11, which a warp cannot enter — so this one needs a walked session |
+| R49 | **Exploit.** Constitution 22, or 0, gives out-of-range hit points per level | engine | `wish` can write either score; one train and one look at the sheet |
+| R50 | The `bec de corbin` is flagged **slashing** in `ITEMS` (`+7` = 0) where AD&D makes it bashing or piercing; the `military fork`, `ranseur` and `trident` are flagged slashing too | data | **Half done.** We read the bytes ourselves: item types 4, 13, 29 and 39 all hold `+7` = 0, and the only values the whole table takes are 0, 1 and 128. What is third-party is the AD&D categorisation, and it is not only those four — `partisan` (25) and `spetum` (32) read 0 as well, and both are piercing weapons in the book. Somebody who knows the 1e weapon table should say how many of the 98 zero entries are actually wrong |
+| R51 | **DOS defect, and the C64 is the better of the two: the DOS dagger cannot be thrown.** | data | **Confirmed by measurement, both files.** DOS `ITEMS` and C64 `ITEMS` are **126 of 128 16-byte records byte-identical**, and the DOS file even carries the same `$7600` load address. The two that differ are exactly the thrown weapons: item type 8 (dagger) reads rate of fire 2, range 4 and the thrown flag on the C64 against 0, 1 and no thrown flag on DOS, and item type 9 (dart) is multi-fire ranged on the C64 and thrown-only on DOS. The guide's author noticed the DOS dagger independently. Nothing to reproduce; what is left is deciding whether a defect in a port we do not own belongs on the front-door list at all |
+
+**A clean negative, and it is worth as much as the positives.** The DOS build
+has a cheat mode started with the command-line argument `STING` — Ctrl-C to
+quit, Alt-X to win a combat, `J` for free training, copy protection bypassed.
+**There is no C64 counterpart.** The literal `STING` appears on all eight `POOL`
+disks and **every occurrence is inside the word `CASTING`**. Checked, and
+recorded so nobody searches for it twice.
+
+**One free find while checking R50.** The `bec de corbin` — a ten-pound polearm
+— carries `+14` = 20, the **thrown** flag with the strength-bonus bit, the same
+value as the dagger, hand axe and spear. Nobody has flagged that, on either
+port, and it is one `wish` edit and one throw away from being settled.
+
+Everything else from the two passes — the playtester mode, the DOS area tables,
+the item record, the tooling, the format spreadsheets and the ECL semantics — is
+in [`126-forum-findings.md`](126-forum-findings.md),
+[`127-community-formats.md`](127-community-formats.md) and
+[`128-guide-and-scripting.md`](128-guide-and-scripting.md).

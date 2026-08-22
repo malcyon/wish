@@ -1,8 +1,10 @@
-# A debug mode, and Warp To — plan
+# A debug mode, and Warp To
 
-**Status: researched, nothing built.** The research question — what the game
-does when the party walks through an area exit — is answered, and the answer is
-small enough to reproduce from outside.
+**Status: built, and driven.** `wish/debugmode.py` gates it, `automap/actions.py`
+implements `Warp` and `Warp Back` on `newecl_writes()`, and the sequence below
+has been run against the running game — see `docs/50-experiments.md`, P15 through
+P43. What follows is the mechanism and the evidence, not a proposal; where a
+section still reads as a plan it is describing UI that was built as described.
 
 ---
 
@@ -16,7 +18,7 @@ filename; it is bytecode reached through the square-attribute dispatch that
 The shape, in every one of the eleven scripts that leave a map:
 
 ```
-COMPARE [$6DD5], 0 / IF= / EXIT     ; only on a real step
+COMPARE [$6DD5], 0 / IF= / EXIT     ; gate of unknown meaning -- see below
 CALL [$C01E]                        ; GDRIVE00 entry 10
 SAVE 255, [$6DC9]                   ; cancel the move the party was making
 [ SAVE <x>, mapX / <y>, mapY / <d>, mapDir ]   ; where you land, sometimes
@@ -69,8 +71,9 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 | `$6E12` is the `POOL` disk the target area lives on | **CONFIRMED** — 32 of 33 static `SAVE n, [$6E12]` / `NEWECL t` pairs match the disk that carries `ECLt`; the one exception sets it in a `GOSUB` |
 | The arriving script loads its own `GEO`, not the departing one | **CONFIRMED** — every script's `LOADFILES` first operand is its own id (see the exceptions below) |
 | `$C04B`/`$C04C`/`$C04D` are the party square and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
-| A warp can be performed from outside by making those writes and setting PC to `$2034` | **GUESS** — the writes are the game's own, the entry point is not one the game uses from where we would use it |
-| The loader prompts for a disk when `$6E12` names one that is not in the drive | **PROBABLE** — `LIBRARY $43A4` reads `$6E12`; nobody has watched it happen |
+| A warp can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
+| The loader prompts for a disk when `$6E12` names one that is not in the drive | **CONFIRMED** — P17: POOL2 in the drive, `$6E12` = 3, and the game printed `INSERT SIDE # 3, AND PRESS ANY KEY.` and waited |
+| `$6DD5` is "a step was taken" | **GUESS**, demoted — see open question 5 |
 
 **A table of exit squares per area does not exist**, and neither does a patched
 filename stem: `automap/area.py`'s `FilenameDigits` was already retired for the
@@ -94,40 +97,67 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 | 0 | `00` | `00` | POOL3 | New Phlan | 15,1 W | CONFIRMED |
 | 1 | `01` | `01` | POOL6 | Buccaneer Base | 8,0 S | CONFIRMED |
 | 2 | `02` | `02` | POOL4 | Cadorna Textile House | 0,4 W | CONFIRMED |
-| 3 | `03` | `03` | POOL5 | Valjevo Castle, a floor | — | PROBABLE |
-| 4 | `04` | `04` | POOL5 | Valjevo Castle, a floor | — | PROBABLE |
-| 5 | `05` | `05` | POOL5 | Valjevo Castle, a floor | — | PROBABLE |
-| 6 | `06` | `06` | POOL5 | Valjevo Castle, a floor | 4,15 N | PROBABLE |
-| 7 | `07` | `07` | POOL5 | Valjevo Castle, the pool | 5,7 | PROBABLE |
+| 3 | `03` | `03` | POOL5 | Valjevo Castle, north-west and south-east | — | PROBABLE |
+| 4 | `04` | `04` | POOL5 | Valjevo Castle, north-east | — | PROBABLE |
+| 5 | `05` | `05` | POOL5 | Valjevo Castle, the hedge maze | — | PROBABLE |
+| 6 | `06` | `06` | POOL5 | Valjevo Castle, south-west | 4,15 N | PROBABLE |
+| 7 | `07` | `07` | POOL5 | Valjevo Castle, the inner tower | 5,7 | PROBABLE |
 | 8 | `08` | — | POOL3 | Phlan City Hall | — | CONFIRMED |
 | 9 | `09` | `09` | POOL2 | Stojanow Gate | — | CONFIRMED |
 | 10 | `0A` | `0A` | POOL4 | Valhingen Graveyard | 0,4 W | CONFIRMED |
-| 11 | `0B` | — | POOL3 | the arena | — | CONFIRMED |
+| 11 | `0B` | — | POOL3 | the training hall | — | CONFIRMED |
 | 13 | `0D` | `0D` | POOL8 | the kobold caves | 6,15 N | CONFIRMED |
 | 14 | `0E` | `0E` | POOL3 | Kovel Mansion | 4,0 S | CONFIRMED |
 | 15 | `0F` | `0F` | POOL2 | Mendor's Library | — | CONFIRMED |
 | 16 | `10` | `10`, `1E` | POOL8 | the lizardman keep | 8,14 N | CONFIRMED |
 | 17 | `11` | `11` | POOL7 | the nomad camp | 1,14 E | CONFIRMED |
 | 18 | `12` | `12` | POOL1 | Podol Plaza | 0,4 W | CONFIRMED |
-| 19 | `13` | — | POOL6 | Cave of Diogenes | — | CONFIRMED |
+| 19 | `13` | — | POOL6 | Cave of Diogenes (the silver dragon's lair) | — | CONFIRMED |
 | 20 | `14` | `14` | POOL2 | the Slums | — | CONFIRMED |
 | 21 | `15` | `15` | POOL4 | Sokol Keep | — | CONFIRMED |
 | 22 | `16` | `16` | POOL7 | Yarash's pyramid | 15,7 E | CONFIRMED |
 | 23 | `17` | `17` | POOL7 | Yarash's pyramid, lower | 15,0 S | PROBABLE |
-| 24 | `18` | `18`, `1F` | POOL1 | Temple of Bane | 15,4 W | CONFIRMED |
+| 24 | `18` | `18`, `1F` | POOL1 | the Wealthy Area (`GEO1F` is the Temple of Bane) | 15,4 W | CONFIRMED |
 | 25 | `19` | `19` + `SQRDATA04` | POOL6 | wilderness, west window | — | CONFIRMED |
 | 26 | `1A` | `1A` + `SQRDATA05` | POOL7 | wilderness, middle window | — | CONFIRMED |
 | 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | wilderness, east window | — | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | — | POOL1 | unidentified | — | UNKNOWN |
+| 30 | `1E` | — | POOL1 | the attract-mode demo | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
-geometry), `work/reports/world-map.md` (the wilderness site list) and
-`work/reports/quest-flags.md`. The five POOL5 floors are a castle because
-`ECL07` writes ledger flag 20 and prints the party leaving one; **which floor is
-which is not known**, and reading them is exactly the job
-`docs/115-review-the-scripts.md` is waiting on a human for.
+geometry), `work/reports/world-map.md` (the wilderness site list),
+`work/reports/quest-flags.md`, and — for the nine rows the first three could not
+name — the DOS area tables in `docs/128-guide-and-scripting.md` and
+`docs/126-forum-findings.md`.
+
+**The five POOL5 areas are named, at PROBABLE.** The DOS guide's script list
+gives 3 north-west and south-east, 4 north-east, 5 the hedge maze, 6 south-west
+and 7 the inner tower; a forum area list built from `GEO` record numbers gives
+3 north-west, 4 north-east, 5 south-east, 6 south-west and 7 upper level. The
+two disagree at 5 and 7 and the likeliest reason is that they index different
+things — one scripts, one maps — but nobody has checked. They are PROBABLE
+until warping to each in turn matches `$0400` against the disk `GEO`
+(`ResidentGeo`) and the floor plan is read against the compass names.
+
+`GEO05` being the hedge maze is corroborated from our side:
+[`../goldbox-bugs.md`](../goldbox-bugs.md) bug 4 identified it as a hedge maze
+from 126 half-encounter-rate squares laid out along corridors and courtyards,
+before any outside source was consulted.
+
+**Area 11 is the training hall, not the arena.** Three independent lines: our
+own `ECL0B` prints `THE ROOM IS FILLED WITH DUELING PAIRS.` and
+`WE TRAIN ONLY <class> HERE. DO YOU WANT TO TRAIN?` at `$A0DD`, the DOS guide
+names script 11 *Civilized Area (Training Hall)*, and a forum area list names
+`ECL3` record 11 *Training Hall*. `por/areas.py` still calls it "the arena" and
+needs the same correction.
+
+**The doubled maps belong to their neighbours.** DOS numbers maps and scripts in
+one space and three maps have no script of their own: `GEO1E` (30) is the
+lizardman keep's catacombs, `GEO1F` (31) the Temple of Bane inside the Wealthy
+Area, and `GEO20` (32) Kuto's Well's catacombs. That is also why there is no DOS
+script 30 — and the C64 put its attract-mode demo in the slot the original
+numbering left free (`docs/50-experiments.md`, P20).
 
 Fifteen areas have no known arrival square. For those the warp supplies one
 itself — see below — and the dropdown says so.
@@ -200,7 +230,7 @@ Preconditions, all read first, one round trip:
 | `$6E11` | `1` — `DUNGEON` is the resident overlay |
 | `$6E1B & $7F` | not the target; `NEWECL` skips a same-area transition and so would we |
 | `$49E6` | non-zero for a `GEO` area, zero for the overland map |
-| PC | inside `DUNGEON`'s world key-wait loop at `$10C2` — not mid-script, not mid-load |
+| PC | inside `DUNGEON`'s world key-wait loop, `$10C2`-`$10EB`, **or** inside the key fetcher it calls, `$2E4E`-`$2E6A` — not mid-script, not mid-load. Both bounds are measured, from 400 PC samples of an idle party (P36) |
 
 Then, in this order, and this is the game's own sequence with the operand
 evaluation removed:
@@ -221,17 +251,30 @@ otherwise have to guess at. `$203A` reloads the stack pointer from `$03BF`, so
 the call depth we interrupt does not matter and the `JSR` at `$2034` costs
 nothing.
 
-**Copied from observed behaviour:** writes 1, 3, 4, 5 and the entry at `$2034`.
-**Guesses to be tested:** that the key-wait loop is a safe place to hijack the
-PC from, and that `$C04B` survives the overlay restart — it is in `GDRIVE00`,
-which is resident and not reloaded, so it should, but nothing has watched it.
+**All of it is now observed.** P15 warped from the key-wait loop twice and from
+`$2E4E`, the key *fetcher* the loop calls, once; both worked, because `$203A`'s
+`LDX $03BF / TXS` discards the interrupted call depth either way. Half the idle
+PC samples fall in the fetcher, so a harness that refuses it fails about half
+the times it is asked (P36). P16 wrote `07 07 01` to `$C04B` before a warp and
+read it back unchanged afterwards, with `$49C0` flushed to match — so the
+arrival square is written **before** the load and no second stop is needed.
+
+**`$49E6` must be right before `$2034`.** Warping out of an overland area with
+`$49E6` still 0 wedges the loader in an unrecoverable `INSERT SIDE # 3` loop:
+re-attaching, attaching another image and poking `$49E6` after the load had
+started all failed. The same warp from indoors worked first time.
 
 ### Where the party lands
 
 Three cases, in order:
 
 1. **The arriving script sets it** (areas 1, 16, 17, 22, 23, 28) — write nothing
-   and let entry 4 do its job.
+   and let entry 4 do its job. This works under a warp: `$49F2` holds the
+   departing id right through the load, so entry 4's
+   `COMPARE [$49F2], <own id>` behaves as it does in play (P43). Where a script
+   places the party unconditionally, the way `ECL15` does off the scratch byte
+   `$4A02`, writing that byte after the zero fill suppresses the placement and
+   the warp's own square is kept.
 2. **We know a square another script uses** (the arrival column above) — write
    that. It is the game's own answer for that door.
 3. **Neither** — pick a square from the target `GEO` read off the player's disk:
@@ -248,9 +291,9 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 
 | failure | what it looks like | guard |
 |---|---|---|
-| wrong disk in drive 8 | `LIBRARY` prompts and the game sits there | read `$6E12`'s disk and say so before warping; time the warp out and report |
+| wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits for ever | read `$6E12`'s disk and say so before warping; time the warp out and report. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
 | `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
-| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop |
+| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made Warp To fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
 | arrival square is a wall or off-map | not a crash — the party stands inside a wall and cannot move | choose the square from the map, never carry one over |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it in the tooltip: a warp is not the same as playing there |
@@ -289,16 +332,19 @@ to reach.
   refused step identifies New Phlan instantly where 111 positive steps are
   needed. A warp plus a scripted walk into a known wall produces that step on
   demand.
-* **The overland map.** `docs/113-world-map.md` is blocked on W1 — "the first
-  step onto the travel grid" — and on 648 live bytes at `$8C00`. Warping to area
-  26 gets a party outdoors in a second, and it is the single largest thing this
-  unblocks.
+* ~~**The overland map.**~~ **Done.** A warp from area 23 to area 26 came up
+  outdoors with `$6E1B` = `$1A`, `$49E6` going 1 → 0 by itself, the status line
+  reading `OUTDOORS 21:35 0,0` and the command bar `1-8, RETURN OR BUTTON`. No
+  arrival square is needed or wanted: outdoors `GDRIVE00` is not resident and
+  the travel position is `$49C3`/`$49C4`, so writing `$C04B` overwrites somebody
+  else's code.
 * **Combat and the combat view**, by warping to a floor with a fixed patrol
   rather than waiting on a wandering-monster roll.
 * **The commissions panel**, against `ECL08` (City Hall), where the ledger the
   panel reads is actually written.
 * **`GEO1E`, `GEO1F`, `GEO20`** — the three maps that share a script with
-  another and that no fingerprint has ever seen.
+  another and that no fingerprint has ever seen. They are now *named* —
+  lizardman catacombs, Temple of Bane, Kuto's Well catacombs — but still unseen.
 
 ---
 
@@ -332,32 +378,33 @@ asserted against `MemoryTarget` and a recording stub for the PC. That is how
 
 ---
 
-## Open questions only a live session can settle
+## Open questions
 
-Each of these is one experiment, and none of them needs more than a few minutes
-at the monitor.
+Six of the seven questions this section carried have been run; what they found
+is in `docs/50-experiments.md` under P15, P16, P17, P20 and P43, and is folded
+into the sections above. Two remain, and one area has turned out to be closed to
+a warp entirely.
 
-1. **Is `$2034` safe to enter from the key-wait loop?** Stand in New Phlan, make
-   the five writes, set PC to `$2034`, resume. Watch for the drive light, then
-   for `$0400` to change. This is the experiment the whole plan rests on.
-2. **Does `$C04B` survive the restart?** Write a square that is not the current
-   one, warp, and read `$C04B` and the status line afterwards. If it does not,
-   the arrival square has to be written after the load instead, which means a
-   second stop on a checkpoint at the end of entry 4.
-3. **What does the loader do with the wrong disk in the drive?** Warp from a
-   POOL3 area to a POOL7 one with POOL3 attached and photograph the screen. If
-   it prompts, the harness needs a disk-attach step — and `automap/vice.py`
-   implements no attach command, so that is a second question: whether VICE's
-   binary monitor can attach an image, or whether the harness must relaunch.
-4. **Does a warp to an area with no known arrival square land somewhere legal?**
-   Try areas 3, 4, 5, 9, 15, 20, 21, 29 with a square chosen from the `GEO` and
-   see whether the party can walk.
-5. **Is `$6DD5` really "a step was taken"?** Every exit handler gates on it and
-   nothing has confirmed what sets it to zero. It is read by 18 scripts and
-   written by `DUNGEON $0B05`/`$10EE`, which is a five-minute watchpoint.
-6. **What is `ECL1E`?** No script contains a static `NEWECL 30`, it has no
-   `LOADFILES`, and it is the one area with no name at all. Warping to it is the
-   cheapest way to find out, and is a good first use of the button.
-7. **Does the overland map warp the same way?** Areas 25-27 go through the
-   `$49E6 == 0` branch of `LOADFILES` and load a `SQRDATA`, not a `GEO`.
-   Everything above assumes the indoor branch.
+1. **Is `$6DD5` really "a step was taken"?** **GUESS**, demoted. A store
+   watchpoint caught exactly one write per keypress and always the same one:
+   `$10EE`, `STA $6DD5` with A = 0 — the flag being *cleared* as the key is
+   fetched. The other writer, `$0B05` (`LDA $B0 / STA $6DD5`, sitting between
+   `JSR $C027` and `JSR $19CA` in the resident `DUNGEON`), **did not execute** on
+   an ordinary forward step or on a step that fired a square script. **The two
+   writers are not symmetrical** and the old wording — "written by `$0B05`/`$10EE`"
+   — hid that: `$0B05` sets it from zero page `$B0`, `$10EE` clears it. So either
+   `$0AF0`'s dispatch block belongs to a mover nobody has exercised, or the
+   eighteen scripts that open with `COMPARE [$6DD5], 0 / IF= / EXIT` always take
+   that `EXIT`. Finding the mover settles it.
+2. **Does a warp to an area with no known arrival square land somewhere legal?**
+   Areas 3, 4, 5, 9, 15, 20, 21 and 29 have never been tried with a square
+   chosen from the `GEO`.
+
+**One area a warp cannot enter: 11, the training hall.** `ECL0B`'s entry reads
+`$6E82` — set from the *departing* square's attribute byte by
+`AND 127, ATTR, [$6E82]` — and walks `$9800` from 10 to 18 against it to choose a
+school. Warped in three times, once with `$6E82` forced to 10: every time `$6E1B`
+went `$8B` → `$0B` → `$00` within eight seconds and the party was back in New
+Phlan. The target reads state the departure was supposed to leave behind, which
+is exactly the class of assumption `Warp`'s standing warning is about, and it is
+what blocked the test-party work in `docs/119-test-party.md`.

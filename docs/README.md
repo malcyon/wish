@@ -45,6 +45,17 @@ library in `por/` and the `wish` editor in `tools/`.
 | [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
 | [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
 | [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — planned |
+| [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Warp To, and what an area change actually is — built |
+| [119-test-party.md](119-test-party.md) | getting a levelled, varied party for the specimens still wanted |
+| [120-curse-testing.md](120-curse-testing.md) | testing the second game |
+| [121-silver-blades.md](121-silver-blades.md) | Secret of the Silver Blades, the third title |
+| [122-release-testing.md](122-release-testing.md) | what a release has to pass before it goes out |
+| [123-parallel-sessions.md](123-parallel-sessions.md) | running several agents in one tree without collisions |
+| [124-amiga-port.md](124-amiga-port.md) | the Amiga build, and what it shares with the C64 |
+| [125-bug-notes.md](125-bug-notes.md) | the bugs no player sees, our own misreadings, and the community rumours |
+| [126-forum-findings.md](126-forum-findings.md) | what the Gold Box forums have that we do not — playtester mode, DOS area tables, tooling |
+| [127-community-formats.md](127-community-formats.md) | the community format spreadsheets: saving throws solved, the DOS record against ours |
+| [128-guide-and-scripting.md](128-guide-and-scripting.md) | the DOS guide and the Unlimited Adventures files: the GBVM address list, the area names, the ECL semantics |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -126,24 +137,45 @@ having been written back and confirmed in game.
 
 **Open**
 
-* **The level-drain pair**, now testable at last: specimens above level 1 exist.
-* **Racial traits** — known to exist from the Gold Box Companion on the DOS
-  version. No candidate left in the record.
-* **Item byte `+5`** — the last unread byte of the 16, and the rest of the
-  effect bytes are only as good as the 1989 editor's synthesised records.
+* **The level-drain pair as a specimen** — `0x0A1`/`0x0A2` are read and named
+  from the drain and restoration routines, but no character of ours has been
+  drained in play.
 * **Roster `+0x03`–`+0x05`** — read as per-level spell counts, retracted when
   one save contradicted it, and since found to agree with two saves *level by
   level* while the contradicting page turns out to be a stale cache. Still
   unknown, but for a better reason than before.
-* **Whether `0x0A0` is "level" or "highest level attained"**, and whether
-  `0x073` and `0x0EB` really say the same thing. Every pair of fields we have
-  understood turned out to be base-versus-current rather than a duplicate.
-* What `0x0AD` is — non-zero only for elves and half-elves, and not the racial
-  trait mask it looked like.
+* **How the C64 applies racial modifiers to thief skills.** The progression
+  table is the DOS one and a dwarf thief matches base plus the published dwarf
+  row in all eight columns; a gnome, a halfling and a half-elf do not, and no
+  dexterity adjustment reconciles them. The C64's own modifier table, wherever
+  it is on the disks, would settle it in one read.
+  See [127-community-formats.md](127-community-formats.md).
+* **Whether `spells_memorised` is 21 bytes rather than 16.** DOS allots 21 and
+  21 is the C64 ceiling; the most anybody has used is 13, so nothing we hold
+  contradicts either width.
+* **Whether `0x100` is a status enum.** Four sources now disagree about it and
+  the newest weakens rather than strengthens the case; `roster_in_use` stays
+  PROBABLE. One specimen reading other than 1 settles it.
 * Most of each record remains unidentified; see
   [20-character-record.md](20-character-record.md) for how much.
   `SAVEDGAME1` past its first page is not open at all — it is resident code
   and a graphics buffer, not save data.
+
+**Closed since this list was written**
+
+* **Racial traits** are `0x0AD`–`0x0B6`, a ten-slot list of active effect codes
+  seeded per race — which is also what `0x0AD` is.
+* **Item byte `+5`** is a signed saving-throw bonus. Every byte of the 16 is
+  read.
+* **`0x0A0` is the current level**, with drain state in its own pair at
+  `0x0A1`/`0x0A2`; there is no "highest level attained".
+* **`0x073` and `0x0EB` are different fields**, proved by building a save where
+  they disagree: `0x073` is what the sheet prints, `0x0EB` is what the game ANDs
+  against an item's class-usage byte.
+* **The saving throws are derived by a known rule** — the class table row for
+  the character's level, best number in each column across every class held,
+  minus the constitution bonus for a dwarf, gnome or halfling. 78 of 79 records
+  satisfy it exactly.
 
 **No longer abandoned**
 
@@ -169,9 +201,12 @@ Both of these were written off and both now work; see
 Neither is one of our own controlled experiments, and both earned their place:
 
 * **`npc_party.d64`** — a save found online with three PCs and five NPCs at
-  levels 4 to 8. Hacked, so its values are worthless; its *structure* bounded
-  the roster at one page and settled character level. See
-  [90-specimens.md](90-specimens.md).
+  levels 4 to 8. Better described as genuine play with one edited field than as
+  "hacked": five of its eight records are the game's own `MON*` files and the
+  one value that cannot have come from play is MAD MAN's saturated `$FFFFFF`
+  experience. It bounded the roster at one page, settled character level, and
+  seven of its eight records satisfy a saving-throw rule derived without them.
+  See [90-specimens.md](90-specimens.md).
 * **`poolce.d64`** — a listable 1989 BASIC character editor. Every offset it
   pokes matches ours, it carries the item name table and 162 complete item
   records, and the things its author could *not* find corroborate our layout.

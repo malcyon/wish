@@ -122,6 +122,10 @@ so it never suppresses the encounter even inside a single visit.
 **Version.** Pool of Radiance, Commodore 64. `$4A25` is referenced in the Amiga
 scripts too, so the Amiga has it as well. CONFIRMED.
 
+A DOS guide published since lists "Sokal Keep's dead elf guard" among its own
+script defects, which is a third port reporting the same encounter. It arrived
+after the emulator run and changes nothing about the entry.
+
 ---
 
 ## 3. QUICK is never cleared when a fight ends
@@ -194,6 +198,12 @@ finds it in `ECL03`, `ECL04`, `ECL06` and `ECL09` and nowhere else, and
 **What the player sees.** Twice as many wandering monsters as intended in the
 hedge maze.
 
+**That `GEO05` is the hedge maze was independent of this finding and is now
+corroborated.** It was read here off the map — 126 half-rate squares laid out
+along corridors and courtyards — before any outside source was consulted; a DOS
+script list published since names area 5 *Valjevo Castle Hedge Maze*. See
+`docs/118-debug-mode.md`.
+
 **Version.** Pool of Radiance, Commodore 64. The absence is CONFIRMED; that the
 map layer is authoring residue rather than a repurposed bit is PROBABLE, resting
 on the pattern matching its four working siblings in density, shape and
@@ -224,14 +234,16 @@ between the designer's label and his data, not between two of our readings.
 ## 6. Four monster records carry a class code that contradicts their class bits
 
 **What the game does.** A character record says its class twice: `char_class` at
-`0x073` names it, `class_bits` at `0x0EB` decides what it may use. Across 105
-records they agree everywhere except four monster records:
+`0x073` names it, `class_bits` at `0x0EB` decides what it may use. Across the
+**115 distinct `MON*` records** on the eight disks they agree everywhere except
+four:
 
-| record | `char_class` | `class_bits` |
-|---|---|---|
-| `DWARVEN FIGHTER` | 0 — cleric | fighter |
-| `ENVOY` | 9 | magic-user, fighter |
-| `DRIDER` | 15 | magic-user, fighter |
+| record | file | `char_class` | `class_bits` |
+|---|---|---|---|
+| `DWARVEN FIGHTER` | `MON30` | 0 — cleric | fighter |
+| `QUICKLINGS` | `MON0A` | 2 — fighter | cleric, fighter |
+| `ENVOY` | `MON57` | 9 — cleric/fighter/magic-user | magic-user, fighter |
+| `DRIDER` | `MON45` | 15 — fighter/magic-user/thief | magic-user, fighter |
 
 `DWARVEN FIGHTER` is the telling one: its name says fighter, its bits say
 fighter, and its code says cleric. Where they part company the bits match

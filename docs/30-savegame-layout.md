@@ -177,19 +177,18 @@ The last `$120` bytes are a table of **8 entries of 36 bytes**, ending exactly a
 `$4D00` where slot 0 begins (`$4BE0 + 8 × $24 = $4D00`). Each entry is C64 screen
 codes plus colour values — the character's **combat icon**.
 
-The same 36 bytes also appear inside the character record itself, at record
-offset `0x220–0x243` (its final bytes). That is what accounts for most of the
-44-byte difference between an exported `.chr` file and the same character's
-in-party copy: the icon is present in the export and zero in the slot, because
-the party keeps icons in this shared table instead.
+The same 36 bytes are the character record's own final bytes, `0x220–0x243`.
+They are absent from a slot for the simple reason that a slot is only 256 bytes
+long: the icon is one of the four blocks a save splits the record into, and this
+table is where it goes.
 
 The table has **8** entries, one per character slot.
 
-### Where world and quest state must live
+### Where world and quest state lives
 
-**One region, not two.** The header at `$4900`–`$4BDF` — `$2E0` bytes — is the
-only place left. `SAVEDGAME1` past the roster page is ruled out: it is code and
-graphics scratch, not state.
+**One region, not two, and it is now read.** The header at `$4900`–`$4BDF` —
+`$2E0` bytes — carries all of it. `SAVEDGAME1` past the roster page was ruled
+out early: it is code and graphics scratch, not state.
 
 The change in `SAVEDGAME1` above `$86B4` that this section once pointed at is
 the animator **modifying its own operands**, not the game recording anything.
@@ -202,7 +201,14 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$49C1` | y — rises going south |
 | `$49C2` | facing: 0 north, 1 east, 2 south, 3 west |
 | `$49F0`, `$49F1` | the square occupied before the last move |
-| `$49C7`–`$49C9` | **the clock, HH:MM**: units of a minute, tens of a minute, then the hour. `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7`. Rises by a minute per step and per turn in place |
+| `$49C6`–`$49CB` | **the clock, six digits**, limits `0A 0A 06 18 1E 0C` from `$A83C`. `$49C7`–`$49C9` are units of a minute, tens of a minute and the hour — `DUNGEON $09F7` prints `$49C9 : $49C8 $49C7` — and `$49CA`/`$49CB` are the day and the month. Rises by a minute per step and per turn in place |
+| `$49C3`, `$49C4` | the party's square on the **overland** map, a separate pair from `$49C0`/`$49C1` — which is why walking into a site and out again puts you back where you left |
+| `$49E6` | non-zero indoors, zero on the overland map; it picks which file `LOADFILES` asks for |
+| `$49F2` | the current area id — set on the `$0809` restart path at `$19E1`, and holding the *departing* id right through a load |
+| `$4A00`–`$4A1F` | per-script scratch, zeroed by `DUNGEON $202A` on every area change |
+| `$4A20`–`$4AF8` | the persistent quest flags, including the commission ledger at `$4AA6` |
+| `$4BC0`–`$4BD8` | the loader's "what is currently loaded" cache; `$4BC2` is the `GEO` number and `$4BC4` the `SQRDATA` |
+| `$4900`–`$497F`, `$4B80`–`$4BBF` | the active-effect arrays — effect code, owner, magnitude and a fourth parallel array |
 
 Established by walking three steps north and three steps west and diffing: each
 leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`
@@ -214,23 +220,24 @@ leaving the inn, `$4A07` and `$4BC6`, are still unexplained.
 bytes **194**, **195** and **196** of the file — useful if you want to read them
 without the library.
 
-The cheapest way in is a **flag experiment**: save, do exactly one thing in the
-game that the game must remember, save again, diff. A guide reports that talking
-to the fortune teller in the slums raises the difficulty of random encounters
-there — true or not, if the game changes its behaviour it has to record that it
-happened, and one conversation is about as isolated an action as this game
-offers. See `docs/50-experiments.md`.
+**Quest state is found, and the region above is where it lives.** The split at
+`$4A20` is the game's own: `DUNGEON $282E` zeroes `$4A00`-`$4A1F` on every area
+change and everything from `$4A20` to `$4AF8` survives. `work/reports/quest-flags.md`
+attributes 172 of those addresses to the scripts that write them, and a DOS guide
+published since names 229 of them in English —
+see [`128-guide-and-scripting.md`](128-guide-and-scripting.md), where merging the
+two is named as a cheap job for whoever next touches `por/commissions.py`.
 
 ### Other header bytes
 
-Sparse and mostly unidentified. One candidate worth testing:
+| address | offset | PORSAVE | note |
+|---|---|---|---|
+| `$49FC` | `+$0FC` | 2 | read 2 for a whole driven fight, set by `INIT $09AC`. The "party count" reading is a **GUESS** and nothing supports it |
+| `$4A07`, `$4BC6` | | | moved only on leaving the inn, and `$4A07` is inside the per-script scratch page, so it is whatever `ECL00` was using that byte for |
 
-| address | offset | PORSAVE | POOL1 sample | note |
-|---|---|---|---|---|
-| `$49FC` | `+$0FC` | 2 | — | matches PORSAVE's two character records; plausible **party count** |
-
-Everything else in `$4900–$4BDF` is a scatter of single bytes with no established
-meaning. The editor preserves the whole header verbatim.
+What is left in `$4900`–`$4BDF` after the table above is a scatter of single
+bytes with no established meaning. The editor preserves the whole header
+verbatim.
 
 ## SAVEDGAME1 past the roster: `ANIMATE00` and a bitmap buffer
 
@@ -250,17 +257,27 @@ Ruled out by [SAVEDGAME1 past the roster is code](50-experiments.md).
 
 ## Character export vs in-party copy
 
-The standalone `\x01BRUTUS` file and the same character's record at `$4D00` agree
-in **536 of 580 bytes**. The 44 differing bytes are now largely accounted for:
+**There is no export delta.** A 580-byte record is four blocks the game saves in
+four different places, and an export matches a save in **579 of 580 bytes**:
 
-* the **combat icon** at record offset `0x220–0x243` (36 bytes) is populated in
-  the exported file and zero in the in-party record, because the party stores
-  icons in the shared table at `$4BE0` instead;
-* the remainder fall in the item area around `0x100` and `0x10D–0x11B`.
+| record offsets | where a save keeps them |
+|---|---|
+| `0x000`-`0x0FF` | the character slot at `$4D00 + n * $100` |
+| `0x100`-`0x11F` | the roster block at `$8300 + n * $20`, in `SAVEDGAME1` |
+| `0x120`-`0x21F` | the item area at `$5900 + n * $100` |
+| `0x220`-`0x243` | the combat-icon table at `$4BE0 + n * $24` |
 
-So an exported `.chr` is close to self-contained, while an in-party record leans
-on the header for its icon. An editor writing a record into a slot should leave
-the icon bytes as it finds them rather than copying them from an export.
+The one real difference is `0x10D`: marching order in an export, record slot in
+a roster block.
+
+**The "44 differing bytes" this section used to describe were an artefact of the
+comparison**, not of the format — they came from reading 580 contiguous bytes
+from `$4D00` and running off the end of a `$100` slot into its zeroed
+neighbours. The claim is withdrawn wherever it appears; `docs/60` and
+`docs/PLAN.md` carried it too.
+
+The practical consequence is unchanged and now has a reason: an editor writing a
+record into a slot must **split it four ways**, not copy 580 bytes anywhere.
 
 ## SAVEDGAME1: the party roster blocks
 
@@ -276,19 +293,24 @@ is no ninth block. This was originally written up as six blocks, because every
 save then to hand held a six-character party; `npc_party.d64` fills all eight and
 its index bytes run 0..7.
 
+**The block is record bytes `0x100`-`0x11F`.** Roster `+N` is record `0x100 + N`
+throughout, which is worth holding because it makes every offset below
+self-checking against `docs/20-character-record.md`.
+
 | Offset | Field | Confidence | Notes |
 |---|---|---|---|
+| `+0x00` | in use | PROBABLE | `roster_in_use` in `por/layout.py`. 1 in every occupied block; a fourth source calls the DOS field at the aligned offset a status enum, which weakens rather than strengthens the case. One specimen reading other than 1 settles it |
 | `+0x03` | spells memorised, **1st level** | PROBABLE | see below |
 | `+0x04` | spells memorised, **2nd level** | PROBABLE | |
 | `+0x05` | spells memorised, **3rd level** | PROBABLE | |
-| `+0x0C` | unknown; `$80` on some characters | GUESS | see below |
-| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot |
+| `+0x0C` | **quickfight**, bit 7 | CONFIRMED | set by QUICK, read by `COMBAT` at the start of the next fight, never cleared. See [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3 |
+| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot. Marching order in an export |
 | `+0x0E` | **THAC0**, stored as `60 - THAC0` | PROBABLE | see below |
 | `+0x0F` | **armour class**, stored as `60 - AC` | CONFIRMED | AC 8 -> 52, AC 2 -> 58 |
-| `+0x10` | armour bonus (shield excluded), stored as `48 + bonus` | PROBABLE | none 48, leather 50, banded mail 54 |
-| `+0x11` | unknown; **not** a flag | GUESS | 1 for banded mail and 0 for leather across six characters, which read as "armour has cut the movement rate" until MALCYON turned up reading 3, unarmoured, at full movement |
-| `+0x15` | tracks readied equipment | GUESS | 2 with nothing readied; +1 per weapon, +2 per shield, +3 per body armour |
-| `+0x17` | **damage bonus** | PROBABLE | strength bonus plus the readied weapon's own |
+| `+0x10` | armour bonus (shield excluded), stored as `48 + bonus` | PROBABLE | none 48, leather 50, banded mail 54 — measured by putting armour on. Two outside sources read the same byte as **armour class from behind**, `60 - AC`; see below |
+| `+0x11`-`+0x18` | the two attack forms, current | PROBABLE | eight bytes mirroring the record's `attack_forms` at `0x0D9`: attacks remaining doubled, dice, sides and damage bonus for the primary and secondary form. Two independent readings, both third-party, both landing on the same eight bytes |
+| `+0x15` | primary attack **die sides** | PROBABLE | which is why it rises with what is readied: 2 with nothing, more with a weapon. It was read here as an equipment counter and that reading is withdrawn |
+| `+0x17` | **damage bonus** | PROBABLE | strength bonus plus the readied weapon's own. Agrees with the attack-form reading above, which puts the damage bonus at exactly this byte |
 | `+0x19` | **current hit points** | CONFIRMED | |
 | `+0x1B` | **movement rate** | CONFIRMED | 12 normally, 9 in banded mail |
 
@@ -391,12 +413,31 @@ the unarmoured/armoured pair, and the one character whose value changed --
 ROLAND, 0 to 1 -- did so because he readied a mace, which does 1d6**+1**. The
 byte is the *total*: strength bonus plus the weapon's own.
 
+### The armour byte at `+0x10`: two names, one arithmetic
+
+`docs/127-community-formats.md` reads it as ours does — `48 + the armour's own
+bonus`, measured by putting armour on: none 48, leather 50, banded mail 54,
+which are the AD&D bonuses 0, 2 and 6 exactly.
+`docs/128-guide-and-scripting.md` reads the same byte on the `MON*` records as
+`60 - armour class from behind`: TROLL 54 → AC 6, against 56 → AC 4 from the
+front.
+
+**Neither is refutable on anything we hold, because the two are the same
+function.** Rear armour class in this engine is front armour class with the
+dexterity bonus and the shield taken away and the two-point rear-attack penalty
+added, and `60 - (10 - bonus + 2)` is `48 + bonus` identically. Every specimen
+satisfies both readings, and the DOS record's `AC_Back` sits at the aligned
+offset, which is an alignment and not a measurement.
+
+What separates them: **a non-armour source of armour class** — a ring or bracers
+of protection readied on a character. "The armour's own bonus" predicts the byte
+does not move; "armour class from behind" predicts it does. Nobody has tried it,
+and `por/savegame.py` keeps the name it measured.
+
 ### What the rest of the block is not
 
-Six bytes carry something we cannot name: `+0x00`, `+0x03`–`+0x05`, `+0x13`,
-`+0x1C` and `+0x1E`. (`+0x11`, `+0x15` and `+0x17` have readings in the table
-above.) Everything else in the 32 is zero in every specimen. Ruled out along
-the way:
+Five bytes carry something we cannot name: `+0x03`–`+0x05`, `+0x1C` and `+0x1E`.
+Everything else in the 32 is zero in every specimen. Ruled out along the way:
 
 * **Encumbrance is not in the block** as a number: no byte holds the carried
   weight, which is computable from the inventory. The movement rate at `+0x1B`
@@ -404,22 +445,32 @@ the way:
   saves on loot alone, with no change of armour.
 * **Status is not in the block** -- no specimen has a wounded-to-unconscious or
   dead character to move one, but nothing plausible varies.
-* `+0x00` and `+0x13` are `1` in every occupied block on every disk. Structural
-  markers rather than data.
+* `+0x00` and `+0x13` are `1` in every occupied block on every disk. `+0x00` is
+  `roster_in_use`; `+0x13` falls inside the attack-form block above, where 1 is
+  what one 1d2 unarmed attack should read.
 * `+0x0A` and `+0x0B` were zero in every specimen until `PORSAVE11`, where they
   read 21 and 8 on ROLAND — the one character whose `+0x03` moved at the same
-  time. Unexplained.
+  time. Unexplained. Worth noting only that the DOS record's status byte aligns
+  to `+0x0A`, and 21 and 8 are not a status enum.
 * `+0x1C` and `+0x1E` are zero in all of Donald's saves and non-zero only on the
   editor-hacked `npc_party.d64`, so nothing can be concluded from them.
 
-### `+0x0C`: a near-miss worth recording
+### `+0x0C` is the quickfight bit, and the near-miss is worth recording
 
-In `npc_party.d64` byte `+0x0C` is `$80` for all five NPCs and `$00` for all
-three player characters, which looks exactly like an NPC flag. It is not one:
-MALCYON is a player character and his `+0x0C` is `$00` in `PORSAVE.D64` and
-`$80` in `PORSAVE2.D64`, having changed over a shopping trip. Whatever the bit
-means, it is something a player character can acquire. The real NPC
-discriminator is in the character record instead.
+**Bit 7, set by choosing QUICK from the combat bar.** A live diff of 13,568
+bytes moved exactly that bit for exactly the character quickfought, and
+`PORSAVE14` — quickfight enabled during one fight, saved, then a second and
+unrelated fight — shows it surviving and being honoured. `COMBAT` reads it when
+a fight *starts* and works from its own copy afterwards, which is why poking it
+mid-fight does nothing and why driving QUICK repeatedly shows it setting and
+clearing around each action. The game never clears it, which is
+[`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3.
+
+The near miss: in `npc_party.d64` `+0x0C` is `$80` for all five NPCs and `$00`
+for all three player characters, which looks exactly like an NPC flag. It is not
+one — MALCYON is a player character and his `+0x0C` went `$00` to `$80` over a
+shopping trip, because he quickfought somewhere in it. The real NPC
+discriminator is `0x0B8` bit 7, in the character record.
 
 ### This is where armour class lives -- and why it goes stale
 

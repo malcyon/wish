@@ -47,8 +47,10 @@ host display.
 The game polls the **CIA keyboard matrix** directly rather than using KERNAL
 input. Consequences:
 
-* Writing to the KERNAL keyboard buffer (`$0277`, count at `$C6`) does
-  **nothing**.
+* Writing to the KERNAL keyboard buffer (`$0277`, count at `$C6`) reaches the
+  game at **text prompts and in the world**, but was never shown to reach a
+  menu. See "The KERNAL keyboard buffer *does* work" below; the blanket "does
+  nothing" that stood here was wrong.
 * A press/release pair sent faster than the game's poll interval is missed
   entirely. `xdotool key` types `WYVERN` as `WRN`.
 
@@ -58,6 +60,7 @@ Send every key as **keydown, hold, keyup, gap**:
 |---|---|---|
 | menus (Up/Down/Return) | 0.10s | 0.14s |
 | text entry generally | 0.15s | 0.28s |
+| a `press any key` prompt | **0.25s** | — |
 
 When a screen has just changed, the first burst is often swallowed — the game is
 not reading input yet. Verify by effect and retry rather than trusting a single
@@ -81,6 +84,9 @@ send.
 | a stray **`wish` GUI** left running | the same failure wearing a different hat: it holds `6502` open, so every later `Monitor()` times out and the game looks frozen. `ss -tnp \| grep 6502` names the process holding it; nothing recovers but closing that client |
 | `select_bar` on the **combat** and **items** command bars | their highlight is colour **7**, not 1, so `highlight_span` finds nothing and the call returns `False` after silently sending nothing. Read row 24's colour RAM and step the highlight yourself |
 | `EXIT` out of `VIEW:ITEMS` → `READY` | the item list re-arms itself: choosing its `EXIT` returns to the bar, and the next `Return` drops straight back into the list. Rebooting the session was faster than escaping it |
+| **XTEST keys while a binary-monitor client holds the socket** | thirty `Right` presses moved nothing; the first press after the client closed moved the highlight. A driver that both watches and types must **connect, read, close** for every poll, the way `tools/session.py` does — which is also why `automap` and a driving script cannot be one process |
+| **entering area 11 (the training hall) by warping** | `ECL0B` reads `$6E82`, which the *departing* square's attribute byte sets, so a warp arrives with nothing to dispatch on and the game drops the party back into New Phlan within eight seconds. Walk in; do not warp in |
+| loading `work/drive/SLUMS.D64` | the party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the loader then asks for side 3 for ever, requesting **`WALLSET00`** — a file on none of the eight sides. Use the player's own saves for driving work |
 
 `Alt+N` genuinely *is* the right binding (VICE's own
 `share/vice/hotkeys/hotkeys-fliplist.vhk` maps `fliplist-next-8` to `<Alt>n`).
@@ -101,6 +107,9 @@ Three rules, each learned by wedging the emulator:
 2. **Open the text socket once and never close it.** VICE serves one such
    connection per run; closing it kills the binary monitor as well.
 3. **Never send `x` on the text socket.** Resuming is the binary monitor's job.
+4. **Re-attach even when the image is already in the drive.** The 1541 only
+   notices a disk *change*, so answering `INSERT SIDE # n` with the same image
+   already attached leaves the game asking for ever.
 
 `tools/session.py` implements this as `Session.attach(path)`, and
 `tools/walkrun.py` runs whole batches on it. Only copies under `work/drive/`
@@ -115,7 +124,7 @@ The order of operations, all of it in `tools/session.py`:
 | `DISABLE FASTLOADER (Y/N)?` | `Y` (VICE runs JiffyDOS here) |
 | credits screen | row 24 is `PLAY GAME  DEMO`; take it at once — **left alone the screen starts the demo by itself** |
 | `INPUT THE CODE WORD:` | patch `$12D9` `D0 04` → `EA EA` (check the bytes first), type six letters, then inject `Return` through the KERNAL buffer |
-| `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3` / `INSERT GAME DISK #3` | attach that side, press a key. Three wordings, on row 24 **or** row 18 — match the text, not the row |
+| `INSERT SIDE # 3` / `INSERT YOUR GAME DISK #3` / `INSERT GAME DISK #3` | attach that side, press a key with a 0.25 s hold — and re-attach even if that image is already in the drive. Three wordings, on row 24 **or** row 18 — match the text, not the row |
 | `INSERT YOUR SAVE GAME DISK` | attach the save disk, press a key |
 | main menu | `LOAD SAVED GAME`, then `Return` on the already-white `YES` |
 | party menu | `BEGIN ADVENTURING` |
@@ -135,7 +144,17 @@ input burst after a save is reliably swallowed. Verify every action by effect.
 east from `6,2` into `7,2` prints `THE ROOM IS FILLED WITH DUELING PAIRS.` and
 row 24 becomes **`PRESS <RETURN> OR BUTTON TO CONTINUE`**. Press Return, wait
 ~25 seconds for the scene to load, and answer the two `YES NO` questions the
-arena master asks; the party then stands at `7,2` in the ordinary move mode.
+trainer asks; the party then stands at `7,2` in the ordinary move mode.
+
+**What is being loaded is area 11, `ECL0B`, the training hall** — square `(6,2)`
+in `GEO00` carries script id 10, and `ECL00`'s `ONGOTO` sends id 10 to a handler
+ending in `NEWECL 11`. It was long labelled "the arena" here and in
+`por/areas.py`; `ECL0B` also prints `WE TRAIN ONLY <class> HERE. DO YOU WANT TO
+TRAIN?` at `$A0DD`, and both DOS sources name script 11 the training hall.
+`7,2` itself carries script id 14, which `ECL00` sends to a handler that does
+nothing — so a driver told to "go to `7,2`" and press keys there will wait for
+ever. Drive to `(6,2)` and step east.
+
 Three things made this look like a wedge:
 
 * **The square is `7,2`, not `6,2`.** The status line keeps showing `6,2` for
@@ -156,9 +175,12 @@ Do not conclude "wedged" because row 24 lacks the label you wanted. Match
 The blanket claim that it does not is wrong. The game's key fetcher at `$2E4E`
 reads `$0277` with the count at `$C6` — writing those two delivers a keystroke,
 and it is the only thing that submits the code-word prompt. It is also the
-reliable way to send `Return` anywhere. The menus are a different matter: they
-were never shown to read the buffer, so treat XTEST as the default and the
-buffer as the escape hatch.
+reliable way to send `Return` anywhere, and a **move** key injected this way
+stepped the party while a binary-monitor connection was held open, which XTEST
+cannot do (`docs/50-experiments.md`, P20). The menus are a different matter:
+they were never shown to read the buffer, so treat XTEST as the default and the
+buffer as the escape hatch — except while a monitor client is connected, when
+the buffer is the only thing that works at all.
 
 ## Reading the screen
 
@@ -207,6 +229,13 @@ time out. Use `import` unless you need the MCP for another reason.
   `rid=0xFFFFFFFF`). A client that reads one response per request silently
   desyncs and returns the *previous* request's data. Match responses by request
   id.
+* **`CMD_REGISTERS_AVAILABLE` (`0x83`) is served by this build**, whatever the
+  comments in `automap/` used to say. It answers `A`=0, `X`=1, `Y`=2, **`PC`=3**
+  (16 bits), `SP`=4, `FL`=5, plus `LIN`, `CYC`, `00` and `01`. Ask it rather
+  than hard-coding the register numbers.
+* **Watchpoints work**, and a store watchpoint settled what writes `$6DD5`.
+  What made them look broken was leaving them armed across a socket close, and
+  the `resume()`-rather-than-close rule above.
 * `CHECKPOINT_SET` (`0x12`) answers with `CHECKPOINT_RESPONSE` (`0x11`), not
   with its own command type.
 * **Always delete checkpoints when an experiment ends.** A stop-on-hit

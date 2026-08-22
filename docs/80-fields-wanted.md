@@ -22,7 +22,7 @@ written back and confirmed in game.
 | race | `0x072` | CONFIRMED |
 | class (single code) | `0x073` | CONFIRMED — but prefer the bitmask |
 | age | `0x074` (16-bit) | CONFIRMED |
-| five saving throws | `0x09A`–`0x09E` | CONFIRMED |
+| five saving throws | `0x09A`–`0x09E` | CONFIRMED — **and the rule is known**: the class table row for the character's level, taking the best number in each column across every class held, minus the AD&D constitution bonus for a dwarf, gnome or halfling. 78 of 79 records satisfy it exactly; the miss is MAD MAN, a level-8 NPC carrying the level-1 fighter row |
 | movement | `0x09F` | CONFIRMED |
 | **character level** | `0x0A0` | CONFIRMED — the drain routine writes it down from the per-class array |
 | **levels drained** | `0x0A1` | CONFIRMED — current-plus-delta, not a second copy of the level |
@@ -38,6 +38,10 @@ written back and confirmed in game.
 | effective strength | `0x0E2` | PROBABLE |
 | **experience** (24-bit) | `0x0E8` | CONFIRMED |
 | **class bitmask** | `0x0EB` | CONFIRMED |
+| **spells castable per level** | `0x0EE`–`0x0F0` | CONFIRMED — one byte per spell level, **cleric in the high nibble, magic-user in the low**. Settled by multi-class specimens setting both nibbles at once: TANARAKIS, cleric 1 / magic-user 1 on SSI's own shipped party, reads `$31`. `0x0F1`–`0x0F3` are zero in all 79 records, as they must be in a game that stops at third-level spells |
+| **creature type** | `0x0D7` | CONFIRMED — humanoid, undead, giant, regenerating and so on. 116 `MON*` records take 13 distinct values and every one is inside the DOS enumeration; TROLL reads 10, MUMMY 4. Zero in every player character, which is what it was mistaken for |
+| **experience awarded, and per hit point** | `0x0F7`–`0x0F8`, `0x0F9` | CONFIRMED — GOBLIN GUARD 10, HOBGOBLIN 20, OGRE 90, with 1, 2 and 5 per hit point: the published AD&D 1e values exactly. Zero in every player export |
+| **combat behaviour** | `0x10C` | CONFIRMED — 0 allied and controlled, 128 allied and uncontrolled, 129 hostile. 115 of 116 `MON*` records read 129 |
 | hp max / hp rolled | `0x076` (**16-bit**) / `0x0ED` | CONFIRMED |
 | **active effect list**, ten slots | `0x0AD`–`0x0B6` | PROBABLE — same namespace as item `+14`; seeded per race |
 | **NPC flag** (bit 7) and **score altered at the trainer** (bit 0) | `0x0B8` | CONFIRMED — the byte the game itself tests |
@@ -55,6 +59,8 @@ page, and it is the only part of `SAVEDGAME1` it touches. See
 | field | offset | confidence |
 |---|---|---|
 | three bytes, meaning unknown | `+0x03`–`+0x05` | **retracted** — were read as spell counts; contradicted |
+| **quickfight**, bit 7 | `+0x0C` | CONFIRMED — set by QUICK, read at the start of the next fight, never cleared |
+| the two attack forms, current | `+0x11`–`+0x18` | PROBABLE — eight bytes mirroring `attack_forms` at `0x0D9`; `+0x15` is the primary die sides and `+0x17` the damage bonus |
 | **damage bonus** | `+0x17` | PROBABLE — strength plus the readied weapon's own |
 | slot index | `+0x0D` | CONFIRMED |
 | **THAC0**, as `60 - THAC0` | `+0x0E` | PROBABLE |
@@ -72,17 +78,27 @@ change, never on an ability change.
 `60 - THAC0`, while the 20 on screen is the *current* value in the roster block
 at `+0x0E`. 39 is `60 - 21`, MALCYON's base as a level-1 magic-user.
 
-### Everything above `0x0FF` exists only in an export
+### Above `0x0FF` the record is somewhere else, not nowhere
 
-A save slot is **256 bytes**. A record is 580. So `0x100` and above — including
-`0x10D`, `0x10E` (current THAC0), `0x10F` (current armour class), `0x119`, the
-item area and the combat icon — are present in a standalone `.chr` and **absent
-from a save**. `wish` will accept an edit to them and the write is silently
-dropped, because the slot has nowhere to put it.
+A save **slot** is 256 bytes and a record is 580, but a save keeps all four
+blocks of the record — it simply keeps them apart:
 
-This is why the THAC0, armour-class and hit-point "triples" are really **pairs**
-in a save: the record's base value, and the roster's current one. The third copy
-is an export-only artefact.
+| record offsets | in a save |
+|---|---|
+| `0x000`-`0x0FF` | the slot at `$4D00 + n * $100` |
+| `0x100`-`0x11F` | the roster block at `$8300 + n * $20`, in `SAVEDGAME1` |
+| `0x120`-`0x21F` | the item area at `$5900 + n * $100` |
+| `0x220`-`0x243` | the combat-icon table at `$4BE0 + n * $24` |
+
+So `0x10E` (current THAC0), `0x10F` (current armour class) and `0x119` (current
+hit points) are roster `+0x0E`, `+0x0F` and `+0x19` under another name, and
+`wish` edits them there. An export matches a save in 579 of 580 bytes; the one
+genuine difference is `0x10D`, marching order in an export and record slot in a
+roster block.
+
+This is why the THAC0, armour-class and hit-point "triples" are really **pairs**:
+the record's base value and the roster's current one, which an export happens to
+carry in one file.
 
 ### Hit points are 16-bit, in three places
 
@@ -253,18 +269,14 @@ a way it did not before: he was editing an exported `.chr`, which carries the
 base but not the current value, and the number the sheet shows is the current
 one.
 
-**What decides which items a character may wield** — Gold Box Companion shows
-four checkboxes per character (fighter, cleric, magic-user, thief) that govern
-what the character can wield, independently of what they *are*. There is a strong
-candidate already decoded: `class_bits` at `0x0EB` is a four-bit mask in exactly
-those four classes, and item-type byte `+13` in the `ITEMS` table is a usage mask
-in **the same bit order**. The obvious mechanism is that the game tests
-`character class_bits AND item usage mask`.
-
-What we cannot yet say is whether `class_bits` is *only* an item-usage mask or
-genuinely the character's class, because `0x073` and `0x0EB` are redundant in all
-twenty specimens — every one encodes the same classes twice, and none disagrees.
-The experiment that separates them is cheap and is described below.
+~~**What decides which items a character may wield**~~ — **found, and the two
+class fields are separated.** `class_bits` at `0x0EB` is what the game ANDs
+against the item type's class-usage byte; `0x073` is what the sheet prints.
+Proved by building a save where they disagree — SILAS with `0x073` = 5
+(MAGIC-USER) and `0x0EB` = 8 (fighter) — and by the disassembly at
+`LIBRARY $465D` and `CAMP $167D`. The section "The two class fields" above has
+the whole thing. Four monster records ship with the two disagreeing, so an
+editor must keep offering both.
 
 ~~**Whatever records that an ability score was altered at the trainer**~~ —
 **found, and it closes the rumour.** `0x0B8` **bit 0** is set by `GEN $155D`
@@ -373,13 +385,13 @@ seen the circumstance that separates them.
 | strength | `0x014` plus `0x01A` percentile | `0x0E2` effective | **Understood.** The second collapses the exceptional bands to one number |
 | armour class | roster `+0x0F` total | roster `+0x10` armour only | **Understood.** The second excludes the shield |
 | armour class again | `0x0E1` base | `0x10F` current (export only) | **Understood.** Base is 10 for every character; monsters carry a real one |
-| **class** | `0x073` single code | `0x0EB` bitmask | **ASSUMED.** Agree in all 20 specimens; nothing has been seen that separates them |
+| **class** | `0x073` single code | `0x0EB` bitmask | **Understood.** Separated by a constructed save and by the code: `0x073` is printed, `0x0EB` is enforced. Four shipped `MON*` records disagree on their own |
 | **level** | `0x0A0` | `0x0C9`–`0x0CC` per class | **Understood.** `0x0A0` is the *current* level. Drain state is a separate pair at `0x0A1`/`0x0A2`, so there is no hidden 'level highest' |
 
 The pattern is instructive: every pair we *understand* turned out to be **base
-versus current**, or **potential versus actual**. Not one of them was a
-redundant copy. That is a reason to doubt the row still marked ASSUMED rather
-than to trust it.
+versus current**, **potential versus actual**, or **printed versus enforced**.
+Not one of them was a redundant copy, and the last row on the list — class —
+held out longest and then fell the same way.
 
 **The worry about `0x0A0` is settled, and the answer was neither option.** The
 Gold Box DOS field catalogue has a field called *level highest*, which records
@@ -395,13 +407,6 @@ that edited nothing rewrote `0x0A0` from the per-class array, so a record that
 arrived already disagreeing was silently "corrected". Now gated behind an actual
 edit, and covered by constructed-state tests in `tests/test_pairs.py`.
 
-**The specific worry about `0x073`.** `class_bits` shares its bit order with the
-item-type table's class-usage mask, which makes it a good candidate for "what may
-this character wield". If `0x073` is what the game *displays* and `0x0EB` what it
-*enforces*, they would agree in every ordinary character and diverge only in one
-built deliberately — which is exactly what Gold Box Companion's four "can wield"
-checkboxes appear to do.
-
 ### Leads not yet pinned down
 
 * ~~`0x078`–`0x07A`~~ — **resolved.** This was always the best spell lead and it
@@ -412,17 +417,18 @@ checkboxes appear to do.
 * `0x0E6`–`0x0E7` — two high-entropy bytes, different for every character. A
   per-character seed or identifier; not a checksum, since the game accepts
   edited saves without complaint ([the thirteen-field edit](50-experiments.md)).
+  They sit immediately before experience, where the DOS record puts a one-byte
+  per-monster index; the C64 spends two.
 * `0x0EC` — went 0 → 1 after combat for MALCYON and LADY KATHERINE and nobody
   else. Those are exactly the two spellcasters, so it is more likely spell state
   than damage.
-* `0x0B8` — BRUTUS is the only character whose copy changed (0 → 1) when the
-  party equipped, and he is also the only one whose armour class comes out a
-  point better than the AD&D tables predict. Probably one thing, not two.
-* `0x117` — 5, 0, 1 across the three exports; unexplained.
-* **Item byte `+5`** — 0 on 162 of the 163 items on the game disks and 251 on
-  CURSED NECKLACE alone.
 
-Four entries previously listed here have since been resolved: `0x0C9`–`0x0CC`
+Those two are the only leads left here. Six entries previously listed have since
+been resolved. `0x117` is roster
+`+0x17`, the damage bonus — its 5, 0, 1 across three exports is three different
+strength-and-weapon totals, not an anomaly. Item byte `+5` is a signed
+saving-throw bonus, and `0x0B8` is the NPC flag in bit 7 with the trainer flag
+in bit 0 (see the caution below). The other three: `0x0C9`–`0x0CC`
 turned out to be the per-class levels, and `0x0CC` alone was wrongly read as an
 exceptional-strength flag because the only fighters in the specimen set at the
 time happened to be the only characters with exceptional strength; `0x0FE`–`0x0FF`
@@ -440,8 +446,16 @@ Two techniques have carried the project, in this order of preference:
    round of icon edits gave the icon structure ([the combat-icon edits](50-experiments.md)).
 
 What the specimen set still lacks, and what each would unlock, is listed in
-`90-specimens.md` — most usefully a **levelled-up character** and one whose
-**armour class has changed**.
+`90-specimens.md`. The two named here — a levelled-up character and one whose
+armour class has changed — have both been found; what is left is a character
+exported while wounded, one drained a level, and a multi-class character above
+level 1.
+
+A third technique has since joined the two above and is now the cheapest of all
+where it applies: **find the game's own table and check the field against it.**
+The saving throws, the thief-skill progression and the spell-group boundaries
+were all settled that way, by locating an eight-by-nine or nine-by-eight table
+in a binary and matching every row, rather than by any diff.
 
 References Donald supplied:
 
@@ -453,38 +467,31 @@ References Donald supplied:
 
 ---
 
-## The quickfight bit — FOUND, and half answered
+## The quickfight bit — FOUND, and closed
 
 **Roster block `+0x0C`, bit 7.** Selecting QUICK from the combat menu moved
 exactly that bit for exactly the character quickfought, and nothing else in
 13568 captured bytes but two of COMBAT's own scratch. Confirmed on a second
-character in the same fight. See "The quickfight bit is roster `+0x0C`" in
-[the experiments log](50-experiments.md).
+character in the same fight.
 
-**It survives a fight and reaches the disk.** The roster page is saved in
-`SAVEDGAME1` — which is why thirteen *record* diffs never found it — and
-`PORSAVE2` through `PORSAVE9` all carry `80 00 00 00 00 00 00 00`, the bit set
-for MALCYON alone. `PORSAVE`, `PORSAVE11`, `12` and `13` are zero throughout.
+**It survives a fight, reaches the disk, and is honoured by the next fight.**
+`PORSAVE14` settles it: quickfight enabled on MALCYON during a random orc
+encounter, the fight finished, saved, then a second and unrelated fight walked
+into — where MALCYON was still under computer control, and the save reads
+`+0x0C = 80` for him and `00` for the other five. `PORSAVE2` through `PORSAVE9`
+carry the same bit set for MALCYON alone; `PORSAVE`, `PORSAVE11`, `12` and `13`
+are zero throughout.
 
-**Still wanted: is it read back?** Two tests say the bit is *not* a sticky
-quickfight — it sets while the computer plays a character's action and clears
-when the action resolves, and setting it out of band mid-fight did not stop the
-game asking that character for orders. What has not been tested is the one case
-where a leftover could do harm:
+**The two results that looked like refutations both follow from one rule:**
+`COMBAT` reads the flag when the fight *starts* and works from its own copy for
+the rest of it. So poking the bit mid-fight is too late in either direction, and
+the setting and clearing seen around each action is COMBAT's own bookkeeping.
+It is also why the only escape players found was pressing space at the exact
+moment a turn begins.
 
-1. Out of combat, clear `+0x0C` for everybody and set bit 7 for **one**
-   character.
-2. Walk into a fight.
-3. Watch whether that character's command bar is skipped.
-
-If it is skipped, the bit is the flag the complaint describes and
-`automap/actions.py`'s `ClearQuickfight` is a fix. If it is not, the sticky
-quickfight lives somewhere else and the leftover byte is inert — and the next
-place to look is what `COMBAT` reads out of the roster block when it builds the
-turn order.
-
-The action already clears it: the write restores the byte every clean save has,
-so it cannot hurt, and it says plainly that its effect is unproven.
+The game never clears it, which is
+[`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3, and
+`automap/actions.py`'s `ClearQuickfight` is the fix.
 
 ---
 
