@@ -2,14 +2,18 @@
 
 **Status: unblocked.** The DOS save arrived — Donald's Steam copy of
 *Forgotten Realms: The Archives* carries a played DOS Pool of Radiance party in
-three slots. **Obstacle 4 is closed**, and with it the remainder of obstacle 1:
-the 217 quest-flag bytes are located inside a DOS saved game. Obstacles 2, 3
-and 7 are now workable and each says below what it would take. The goal is one
-thing: turn a DOS save into a C64 save. One direction only.
+three slots — and DOS can now be driven. **Obstacles 1, 2 and 4 are closed**:
+the quest flags, the party's square and the current area are all located inside
+a DOS saved game, and **the two ports number their areas the same way**.
+Obstacles 3 and 7 remain and each says below what it would take. The goal is
+one thing: turn a DOS save into a C64 save. One direction only.
 
 The decode, with its evidence: `work/reports/dos-saves.md`. The measurements
-are asserted in `tests/test_dossave.py`, which reads the archives from
-Donald's machine and skips where there are none.
+are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`, which read
+the archives from Donald's machine and skip where there are none.
+`tools/dosbox.py` is the harness that drives the game: an isolated DOSBox on
+its own X display, keystrokes through `xdotool`, and the save file as ground
+truth.
 
 **Obstacle 1 is closed.** The quest-flag region is read — 179 of its 352 bytes
 named from the bytecode, 135 more provably not flag storage, 38 unattributed
@@ -44,9 +48,10 @@ is what the obstacle list below is about. But it says where the edges are, and
 felt.
 
 Donald asked whether the editor could turn a DOSBox save into a C64 save.
-The answer has improved: **yes for characters, and now plausibly for whole
-saves** — the character record is decoded and checked, the quest flags are
-located, and what is left is the party's position and the items' binary tail.
+The answer has improved again: **yes for characters, and now plausibly for
+whole saves** — the character record is decoded and checked, the quest flags
+are located, the party's square and area are located, and what is left is the
+items' binary tail.
 
 ---
 
@@ -142,7 +147,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 | `<stem>.ITM` | that character's items, **63 bytes each**, no header |
 | `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none |
 | `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
-| `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1 |
+| `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
 
 Slots are letters, not numbers; the engine's own format strings (visible in
 Gold Box Companion's `Game.dat`) are `CHRDAT%s%d.SAV` and `SAVGAM%s.DAT`.
@@ -237,15 +242,15 @@ from somewhere.** This is the whole list.
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — **not save data at all** | **yes** — copy from any existing C64 save; the game overwrites it |
 | `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `por/iconparts.py` composes a legal icon |
-| `$49C0`-`$49C2` | 3 | party x, y, facing | **only if area numbering and map geometry correspond** — unproven |
-| `$4BC2` | 1 | current `GEO` | **same question**, and it is the same answer or the party lands in the wrong place |
+| `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
+| `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
 | `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes** — port-specific indices; zero it and let the loader refill |
 | `$4900`-`$49BF`, `$4B80`-`$4BBF` | 256 | four effect arrays | **yes, by dropping them** — zero means no active effects, which is a legal state |
 | `$4A00`-`$4A1F` | 32 | per-script scratch | **yes** — `DUNGEON $202A` zeroes it on every area change anyway |
 | `$4A20`-`$4AF8` | 217 | **persistent quest flags** | **yes.** Located: `SAVGAM?.DAT` offsets 577-1009, one `u16le` per C64 byte. See obstacle 1 |
 | `$4AF9`-`$4B7F` | 135 | **not flag storage at all** — no ECL operand and no engine reference names anything in it | **yes** — zero, in all 21 specimens and by construction |
-| the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed |
+| the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed. Do not fill any of it from the DOS save: DOS keeps its *own* current area at the `$49C5` and `$49F2` entries, which is a DOS fact about a DOS engine and says nothing about what the C64 puts there |
 
 ## The obstacles, worst first
 
@@ -322,24 +327,47 @@ bit-cruncher transcribed from the routine at `program` hunk27`+$7346`. All 843
 blocks of all 23 `.dax` files decompress to their stated size with a zero
 checksum. There is no `DAxF` magic and no `POOLDATA` volume; that was invented.
 
-**2. Area numbering and coordinates — now workable, and harder than it looked.**
-`$4BC2` names the current map and `$49C0`/`$49C1` the square. The C64 `GEO`
-files are a 16x16 grid per area. If the DOS maps are numbered differently, or
-laid out differently, the party arrives somewhere else — possibly inside a
-wall.
+**2. Area numbering and coordinates — CLOSED, and the numbering agrees.**
+The position is not in the variable array — `$49C0`, `$49C1`, `$49C2` and
+`$4BC2` read 0 in every save — so it was found the way the C64 side found
+everything: by driving the game and diffing saves one action apart.
 
-The DOS save is here, and it says the position is *not* in the variable array:
-`$49C0`, `$49C1`, `$49C2` and `$4BC2` all read 0 in all three saves, including
-two of parties standing in different places. So DOS keeps the square, the
-facing and the current map somewhere else — one of `vm_GetMemoryValueType`'s
-other ranges, or the 8016-byte tail of `SAVGAM?.DAT`.
+| what | in `SAVGAM<slot>.DAT` | |
+|---|---|---|
+| party x | byte **12801** | CONFIRMED |
+| party y | byte **12802** | CONFIRMED |
+| facing | byte **12803**, `0` N `2` E `4` S `6` W — **the C64's value doubled** | CONFIRMED |
+| current area | `u16le` at **395**, the array entry for `$49C5`; **the same numbering `por/areas.py` uses** | CONFIRMED |
+| — the same id again | `u16le` at **485**, the entry for `$49F2` | CONFIRMED |
+| which `GEO`/`ECL` `.DAX` file holds that area, 1–8 | byte **0**, the file's header byte; and again at **3621**, the entry for `$5012` | CONFIRMED |
 
-*What would resolve it:* **two DOS saves one step apart.** Save, take one step,
-save, diff — the same method that carried the whole C64 side of this project.
-The changed bytes are the position; a second pair across an area boundary gives
-the map id. Half an hour of play once a DOSBox harness exists.
-`docs/123-parallel-sessions.md` plans instances; there is no DOSBox harness
-yet, and that is what this obstacle is really waiting on.
+**Byte 0 is not the map.** It is the container: `GEO3.DAX` holds areas 0 and
+14, `GEO4.DAX` holds 2, 10 and 21, and so on, so the header narrows the area to
+two to six candidates and no further. That distinction is the whole reason this
+obstacle needed the array entry as well.
+
+The evidence, all from driven runs:
+
+* **Four turns on one square.** The status line read `5,2 E`, `5,2 S`,
+  `5,2 W`, `5,2 N` while byte 12803 read 2, 4, 6, 0 — and 12801/12802 held at
+  5, 2 throughout. A step then moved 12802 alone, 2 to 1.
+* **One area crossing inside one session.** Taking the boat from Sokal Keep
+  back to Phlan moved the area id 21 → 0, the header byte 4 → 3, and the square
+  from (8, 14) to (15, 1); the 7429-byte area blob in the tail changed with it.
+* **The ids are the game's own.** Area 0 sits in `GEO3.DAX`, area 21 in
+  `GEO4.DAX`, area 20 in `GEO2.DAX` — read straight out of the container
+  indexes — and the header byte of a save in each is 3, 4 and 2. Donald's three
+  saves decode as New Phlan, Sokal Keep and the Slums, which is where those
+  parties are.
+* **A cross-port check nobody arranged.** `por/areas.py` records New Phlan's
+  arrival square as (15, 1) facing west, measured on the C64. The DOS boat
+  lands the party on DOS (15, 1) facing 6. Same square, same direction, two
+  ports.
+
+*What is left of it*: the geometry is checked at one square in one area. Two
+ports agreeing on the arrival square is good evidence that a coordinate means
+the same square, but it is one specimen; a converted save landing the party
+where it should is the test that settles it, and that is obstacle 7.
 
 **3. Item encoding — reframed, and easier than feared.** The C64 item area is
 16 bytes per item with the name as an index into `ITEMNAMES`, and
@@ -405,15 +433,13 @@ and **party size** (six on both).
 
 ## What has to be found out first
 
-1. **Where DOS keeps the party square, the facing and the current map.** Two
-   saves one step apart. This is obstacle 2 and is now the only thing between
-   here and a whole converted save.
-2. **The binary tail of the 63-byte item record** — plus, charges,
-   restrictions. Obstacle 3.
-3. **Do the spell tables agree** between ports? The DOS spellbook is one byte
+1. **The binary tail of the 63-byte item record** — plus, charges,
+   restrictions. Obstacle 3. `tools/dosbox.py` can now arrange the character
+   that needs it.
+2. **Do the spell tables agree** between ports? The DOS spellbook is one byte
    per spell in a level-interleaved order; the C64's is 56 bits. The ordering
    has to be matched before the transpose can be trusted.
-4. **Does DOS store anything the C64 does not?** Two things already: an
+3. **Does DOS store anything the C64 does not?** Two things already: an
    encumbrance field and a per-item weight. Both are derived and can be
    dropped going to the C64.
 
@@ -426,7 +452,7 @@ and **party size** (six on both).
 3. Write a C64 record from that YAML.
 4. The items, by name lookup against `ITEMNAMES`.
 5. The quest flags, which are now a copy with a stride change.
-6. Obstacle 2: two DOS saves one step apart, for the position and the map.
+6. The party's square and area, which are now four reads and a doubling.
 7. An editor menu item, once the CLI path is trustworthy.
 
 ## Verification

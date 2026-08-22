@@ -2,37 +2,41 @@
 """A driven DOS Gold Box session: DOSBox on a private X display, unattended.
 
 The C64 side of this project drives VICE through its binary monitor.  DOS has
-no such thing -- stock DOSBox 0.74 exposes no debugger and no scripting -- so
-the three primitives here are the ones a headless X session gives you:
+no such thing -- DOSBox 0.74-3, which is what is installed here, ships no
+debugger and no scripting -- so the three primitives are the ones a headless X
+session gives you:
 
 1. **Input** is XTEST through `xdotool`, aimed at a display nobody else owns.
+   `xdotool key --window <id>`, not `windowactivate`: there is no window
+   manager under a bare `Xvfb`, so activation fails with "your windowmanager
+   claims not to support _NET_ACTIVE_WINDOW" and the keystroke is lost.
 2. **Output** is a 320x200 window capture.  `output=surface` with `scaler=none`
-   and `windowresolution=original` makes the window exactly the emulated
-   framebuffer, so a capture is the VGA image pixel for pixel with no scaling
-   to undo.
+   makes the DOSBox window exactly the emulated framebuffer, so a capture is
+   the VGA image pixel for pixel with no scaling to undo.
 3. **Ground truth is the save file.**  DOS writes plain files into the game's
    `SAVE` directory, so "did that keystroke do anything" is answered by reading
    `SAVGAM<slot>.DAT` back off the host filesystem.  Nothing here has to read
    the screen to know what happened, and that is deliberate: an OCR that is
    wrong once is worse than no OCR at all.
 
-Where the screen *is* needed -- "are we in camp or in the world" -- it is used
-as an opaque digest of a strip of pixels, never as text.  A digest cannot be
-misread.
+Where the screen *is* needed -- "are we in camp or on the map" -- it is used as
+an opaque digest of a strip of pixels, never as text.  A digest cannot be
+misread, only unequal.
 
-**Determinism.** `settle()` waits for two identical consecutive frames rather
-than sleeping a guessed interval, and every action that matters is verified by
-its effect: `save_game()` waits for the file to change on disk, `leave_camp()`
-waits for the command bar to match the digest it recorded on the way in.  The
-one thing DOSBox will not give us is a frame counter, so a run is reproducible
-in what it produces, not cycle-exact in how long it takes.
+**Determinism.** `settle()` waits for consecutive identical frames rather than
+sleeping a guessed interval, and every action that matters is verified by its
+effect: `save_game()` waits for the file to change on disk, and each menu step
+checks that the screen it wanted arrived before pressing the next key.  The one
+thing DOSBox will not give us is a frame counter, so a run is reproducible in
+what it produces, not cycle-exact in how long it takes.
 
 **Isolation.** Every instance owns its X display, its game tree, its DOSBox
 config and its capture directory, all under `work/dosbox/inst/<n>/`, and the
-slot is held by an `fcntl.flock` so a crashed run frees it with no cleanup.
-The player's archives are copied, never opened for writing, and nothing here
-reads or writes a user-level DOSBox configuration.  Teardown kills the process
-groups this instance started and nothing else -- **never a process by name**.
+slot is held by an `fcntl.flock` so a crashed run frees it with no cleanup --
+the lease pattern `docs/123-parallel-sessions.md` chose for the VICE pool.  The
+player's archives are copied, never opened for writing, and nothing here reads
+or writes a user-level DOSBox configuration.  Teardown kills the process groups
+this instance started and nothing else: **never a process by name.**
 
 Run time it needs: `dosbox`, `Xvfb`, `xdotool`, and ImageMagick's `import`.
 Everything skips cleanly when they are absent.
@@ -40,6 +44,7 @@ Everything skips cleanly when they are absent.
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import hashlib
 import json
@@ -47,6 +52,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,13 +66,10 @@ INST = WORK / "inst"
 DISPLAY_BASE = 30
 SLOTS = 8
 
-# Where Donald's Steam copy of Forgotten Realms: The Archives is unpacked.
+# Where the player's copy of Forgotten Realms: The Archives is unpacked.
 # Read only, always: a game tree is copied into `work/` before DOSBox sees it.
 ARCHIVES = Path(
-    os.environ.get(
-        "FR_ARCHIVES",
-        Path.home() / "Downloads" / "fr-archives",
-    )
+    os.environ.get("FR_ARCHIVES", Path.home() / "Downloads" / "fr-archives")
 )
 
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
@@ -98,9 +101,9 @@ def require_tools() -> None:
 def find_game(stem: str = "POOLRAD") -> Path:
     """The DOS game directory for `stem`, inside the player's archives.
 
-    Returns the directory that holds `START.EXE` -- for Pool of Radiance that
-    is `.../games/POOLRAD/GAME/POOLRAD`.  Raises `FileNotFoundError` when the
-    archives are not on this machine, which is how the tests skip.
+    Returns the directory holding `START.EXE` -- for Pool of Radiance that is
+    `<collection>/games/POOLRAD/GAME/POOLRAD`.  Raises `FileNotFoundError` when
+    the archives are not on this machine, which is how the tests skip.
     """
     if not ARCHIVES.is_dir():
         raise FileNotFoundError(f"no archives at {ARCHIVES}")
@@ -126,8 +129,7 @@ class Slot:
 
     The lease is an `fcntl.flock` held by this process.  The kernel drops it
     when the process dies however it dies, so there is no stale-lock policy to
-    get wrong -- the same reason `docs/123-parallel-sessions.md` chose flock
-    for the VICE pool.
+    get wrong.
     """
 
     n: int
@@ -211,78 +213,36 @@ class Screen:
             raise ValueError(f"expected 8-bit PPM, got maxval {maxval}")
         return cls(w, h, data[i : i + w * h * 3])
 
-    def digest(self, x: int = 0, y: int = 0, w: int = 0, h: int = 0) -> str:
+    def rows(self, rect: tuple[int, int, int, int] | None = None) -> bytes:
+        x, y, w, h = rect or (0, 0, self.width, self.height)
+        return b"".join(
+            self.px[((y + dy) * self.width + x) * 3 : ((y + dy) * self.width + x + w) * 3]
+            for dy in range(h)
+        )
+
+    def digest(self, rect: tuple[int, int, int, int] | None = None) -> str:
         """A short hash of a rectangle -- the way this module compares screens.
 
         Comparing pixels rather than reading them is the point: a digest is
         never *misread*, only unequal, so a wait can be driven by it safely
         where an OCR result could not be.
         """
-        w = w or self.width
-        h = h or self.height
-        rows = [
-            self.px[((y + dy) * self.width + x) * 3 : ((y + dy) * self.width + x + w) * 3]
-            for dy in range(h)
-        ]
-        return hashlib.sha1(b"".join(rows)).hexdigest()[:16]
+        return hashlib.sha1(self.rows(rect)).hexdigest()[:16]
 
-    def cells(self, row: int, col0: int = 0, ncols: int = 0) -> list[tuple[int, ...]]:
-        """The 8x8 character cells of one text row, as ink bitmaps.
+    def ink(self, rect: tuple[int, int, int, int] | None = None) -> str:
+        """A digest of the same rectangle's *shape*, ignoring colour.
 
-        Gold Box DOS draws 40x25 cells of 8x8 pixels into a 320x200 frame, on
-        the pixel grid, so a cell is a slice and not a search.  Ink is any
-        pixel that is not near-black; the games recolour text freely and the
-        glyph is the same shape in every colour.
+        The game recolours the command bar without changing a glyph -- it is
+        white for one frame after the party arrives somewhere and green
+        thereafter -- so `digest` says "different screen" about two screens
+        that carry the same 169 lit pixels in the same places.  Thresholding to
+        ink and paper first is what makes "am I back on the map" answerable.
         """
-        ncols = ncols or (self.width // 8 - col0)
-        out = []
-        for c in range(col0, col0 + ncols):
-            bits = []
-            for dy in range(8):
-                v = 0
-                for dx in range(8):
-                    o = ((row * 8 + dy) * self.width + c * 8 + dx) * 3
-                    lit = self.px[o] + self.px[o + 1] + self.px[o + 2] > 120
-                    v = (v << 1) | int(lit)
-                bits.append(v)
-            out.append(tuple(bits))
-        return out
-
-
-class Glyphs:
-    """A bitmap-to-character table **learned at run time**, never shipped.
-
-    The game's font is the game's art.  It does not enter this repository, so
-    the table is built by showing the reader a row whose text is already known
-    -- a menu the driver just opened -- and is cached under `work/`, which is
-    gitignored.  Generate, do not copy.
-    """
-
-    def __init__(self, cache: Path | None = None):
-        self.cache = cache
-        self.table: dict[tuple[int, ...], str] = {}
-        if cache and cache.is_file():
-            for k, v in json.loads(cache.read_text()).items():
-                self.table[tuple(int(p) for p in k.split(","))] = v
-
-    def learn(self, cells: list[tuple[int, ...]], text: str) -> None:
-        for cell, ch in zip(cells, text):
-            if any(cell):
-                self.table[cell] = ch
-        if self.cache:
-            self.cache.parent.mkdir(parents=True, exist_ok=True)
-            self.cache.write_text(
-                json.dumps({",".join(str(p) for p in k): v for k, v in self.table.items()})
-            )
-
-    def read(self, cells: list[tuple[int, ...]]) -> str:
-        out = []
-        for cell in cells:
-            if not any(cell):
-                out.append(" ")
-            else:
-                out.append(self.table.get(cell, "?"))
-        return "".join(out).rstrip()
+        px = self.rows(rect)
+        bits = bytes(
+            1 if px[i] + px[i + 1] + px[i + 2] > 120 else 0 for i in range(0, len(px), 3)
+        )
+        return hashlib.sha1(bits).hexdigest()[:16]
 
 
 # --------------------------------------------------------------------------
@@ -313,8 +273,6 @@ scaler=none
 core=auto
 cputype=auto
 cycles=fixed {cycles}
-cycleup=10
-cycledown=20
 
 [mixer]
 nosound=true
@@ -342,8 +300,8 @@ cd {stem}
 class Session:
     """A booted DOSBox with one DOS game in it.
 
-    Use it as a context manager; `close()` is what kills the processes, and it
-    kills only the two groups this instance started.
+    Use it as a context manager; `close()` kills the processes, and only the
+    two groups this instance started.
     """
 
     def __init__(
@@ -367,7 +325,6 @@ class Session:
         self.xvfb: subprocess.Popen[bytes] | None = None
         self.dosbox: subprocess.Popen[bytes] | None = None
         self.window: str | None = None
-        self.glyphs = Glyphs(WORK / "glyphs.json")
 
     # -- staging ---------------------------------------------------------
 
@@ -389,19 +346,27 @@ class Session:
         (self.dir / "capture").mkdir(exist_ok=True)
         (self.dir / "shots").mkdir(exist_ok=True)
         (self.dir / "dosbox.conf").write_text(
-            CONFIG.format(
-                dir=self.dir, stem=self.stem, exe=self.exe, cycles=self.cycles
-            )
+            CONFIG.format(dir=self.dir, stem=self.stem, exe=self.exe, cycles=self.cycles)
         )
 
     @property
     def save_dir(self) -> Path:
         return self.game_dir / "SAVE"
 
+    def save_file(self, letter: str) -> Path:
+        return self.save_dir / f"SAVGAM{letter.upper()}.DAT"
+
     # -- lifecycle -------------------------------------------------------
 
-    def boot(self, timeout: float = 30.0) -> None:
-        self.stage()
+    def boot(self, timeout: float = 60.0, fresh: bool = True) -> None:
+        """Stage the game and start Xvfb and DOSBox.
+
+        `fresh=False` keeps the staged tree, and with it the `SAVE` directory,
+        which is how a run gets back to the main menu: quitting the game ends
+        the autoexec, so restarting the emulator is cheaper and far more
+        deterministic than typing at a DOS prompt.
+        """
+        self.stage(fresh=fresh)
         env = dict(os.environ, DISPLAY=self.display, SDL_AUDIODRIVER="dummy")
         env.pop("XAUTHORITY", None)
         self.xvfb = subprocess.Popen(
@@ -412,11 +377,10 @@ class Session:
         )
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if subprocess.run(
-                ["xdotool", "search", "--name", "."],
-                env=env,
-                capture_output=True,
-            ).returncode in (0, 1):
+            probe = subprocess.run(
+                ["xdotool", "search", "--name", "."], env=env, capture_output=True
+            )
+            if probe.returncode in (0, 1):
                 break
             time.sleep(0.2)
         self.dosbox = subprocess.Popen(
@@ -427,10 +391,9 @@ class Session:
             start_new_session=True,
         )
         while time.time() < deadline:
-            r = subprocess.run(
+            ids = subprocess.run(
                 ["xdotool", "search", "--name", "DOSBox"], env=env, capture_output=True
-            )
-            ids = r.stdout.split()
+            ).stdout.split()
             if ids:
                 self.window = ids[0].decode()
                 break
@@ -438,14 +401,6 @@ class Session:
         else:
             self.close()
             raise TimeoutError("DOSBox window never appeared")
-        subprocess.run(
-            ["xdotool", "windowactivate", "--sync", self.window],
-            env=env,
-            capture_output=True,
-        )
-        subprocess.run(
-            ["xdotool", "windowfocus", self.window], env=env, capture_output=True
-        )
         self.settle()
 
     def close(self) -> None:
@@ -462,6 +417,11 @@ class Session:
                 os.killpg(os.getpgid(p.pid), signal.SIGKILL)
         self.dosbox = self.xvfb = None
 
+    def restart(self) -> None:
+        """Stop and start again, keeping the staged game and its saves."""
+        self.close()
+        self.boot(fresh=False)
+
     def __enter__(self) -> Session:
         self.boot()
         return self
@@ -474,11 +434,11 @@ class Session:
     def _env(self) -> dict[str, str]:
         return dict(os.environ, DISPLAY=self.display)
 
-    def key(self, *keys: str, gap: float = 0.25) -> None:
-        """Press keys, one at a time, as X keysyms (`a`, `Up`, `Escape`)."""
+    def key(self, *keys: str, gap: float = 0.35) -> None:
+        """Press keys one at a time, as X keysyms (`a`, `Up`, `Escape`)."""
         for k in keys:
             subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", k],
+                ["xdotool", "key", "--clearmodifiers", "--window", self.window, k],
                 env=self._env(),
                 check=True,
                 capture_output=True,
@@ -505,11 +465,11 @@ class Session:
         )
         return out
 
-    def settle(self, quiet: float = 0.6, timeout: float = 20.0) -> Screen:
-        """Wait until two consecutive captures are identical, and return one.
+    def settle(self, quiet: float = 0.6, timeout: float = 30.0) -> Screen:
+        """Wait until consecutive captures stop differing, and return one.
 
-        Cheaper and far more reliable than sleeping: a screen that is still
-        being drawn differs from itself, and one that is finished does not.
+        Cheaper and far more reliable than sleeping: a screen still being drawn
+        differs from itself, and a finished one does not.
         """
         deadline = time.time() + timeout
         last = self.capture()
@@ -524,7 +484,7 @@ class Session:
                 last, stable_since = now, time.time()
         return last
 
-    def wait_for(self, pred, timeout: float = 20.0) -> bool:
+    def wait_for(self, pred, timeout: float = 30.0) -> bool:
         """Poll `pred(Screen)` until true.  Returns whether it became true."""
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -533,111 +493,180 @@ class Session:
             time.sleep(0.25)
         return False
 
+    def wait_until_ink(
+        self, rect: tuple[int, int, int, int], want: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.ink(rect) == want, timeout)
+
+    def wait_while_ink(
+        self, rect: tuple[int, int, int, int], same: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.ink(rect) != same, timeout)
+
 
 # --------------------------------------------------------------------------
 # Pool of Radiance, driven
 # --------------------------------------------------------------------------
 
-# Rows of the 25-row text grid, fixed by the game's screen layout.
-STATUS_ROW = 15  # `4,3 N 10:02` and, in camp, `CAMPING`
-BAR_ROW = 24  # `AREA CAST VIEW ENCAMP SEARCH LOOK`, or the camp menu
+# Rectangles of the 320x200 frame, measured off captures rather than guessed.
+# The command bar is the bottom text row, `AREA CAST VIEW ENCAMP SEARCH LOOK`;
+# the status line is the one under the viewport, `5,2 E 10:04`.
+#
+# Both stop short of the ornate rope border -- rows 190 and 191 below the bar,
+# and the frame around the viewport.  The border recolours as the game changes
+# state, and near the ink threshold that flips pixels, so a rectangle that
+# includes any of it compares unequal to itself.
+BAR = (0, 192, 320, 7)
+STATUS = (128, 120, 128, 8)
 
-# Offsets into `SAVGAM<slot>.DAT`.  See `docs/117-save-conversion.md`.
+# Where the party's square and its area live in `SAVGAM<slot>.DAT`.
+# Established by driving the game; see `docs/117-save-conversion.md`.
 POS_X = 12801
 POS_Y = 12802
 POS_FACING = 12803
+
+# The area id, as a `u16le` in the engine's variable array, at the array entry
+# for `$49C5`.  `$49F2` (offset 485) carries the same value.  Byte 0 of the
+# file -- the "header byte" -- is only the *file* number of the `GEO`/`ECL`
+# `.DAX` pair that holds this area, 1 to 8, and several areas share one.
+AREA_ID = 395
+AREA_FILE = 0
+
+# The DOS facing byte is the C64's doubled: C64 `$49C2` is 0 N, 1 E, 2 S, 3 W.
+FACINGS = {0: "N", 2: "E", 4: "S", 6: "W"}
+
+
+def position(save: bytes) -> tuple[int, int, int]:
+    """`(x, y, facing)` out of a `SAVGAM<slot>.DAT`."""
+    return save[POS_X], save[POS_Y], save[POS_FACING]
+
+
+def area_id(save: bytes) -> int:
+    """The current area, in the numbering `por/areas.py` uses."""
+    return save[AREA_ID] | save[AREA_ID + 1] << 8
 
 
 class PoolOfRadiance:
     """The keystroke protocol of DOS Pool of Radiance, verified by effect.
 
-    Two things about the menus that cost an hour to learn and are worth
-    writing down:
+    Three things about the menus that are worth writing down:
 
-    * **The camp menu's EXIT is exit to DOS**, not exit to the map.  `Escape`
-      is what leaves camp; `EXIT` asks `QUIT TO DOS YES NO` and `N` backs out
-      of it.
-    * **The first keystroke after a screen change is swallowed**, exactly as
-      the C64 side of this project found.  Every step here therefore checks
-      that the screen it wanted actually arrived and presses again if not.
+    * **Saving is a camp command.** `ENCAMP` (`e`) from the map, `SAVE` (`s`)
+      in camp, then the slot letter at `SAVE WHICH GAME: A B C ... J`.
+    * **The game offers to quit right after it saves.** `QUIT TO DOS YES NO`
+      appears with the file already written; `n` declines and leaves you in
+      camp, and `Escape` returns to the map.
+    * **The camp menu's EXIT is exit to DOS**, not exit to the map.
     """
 
     def __init__(self, session: Session):
         self.s = session
+        self.world_bar: str | None = None
 
     # -- screen predicates, as digests rather than text ------------------
 
     def bar(self) -> str:
-        return self.s.capture().digest(0, BAR_ROW * 8, 320, 8)
+        """The command bar, by shape.  See `Screen.ink` for why not by colour."""
+        return self.s.capture().ink(BAR)
 
-    def status_text(self) -> str:
-        """The status line, if the glyph table has been taught its letters."""
-        scr = self.s.settle()
-        return self.s.glyphs.read(scr.cells(STATUS_ROW, 16, 24))
+    def status(self) -> str:
+        return self.s.capture().ink(STATUS)
 
     # -- getting into the game -------------------------------------------
 
-    def to_main_menu(self, timeout: float = 60.0) -> None:
-        """Press Return past the title screens until the menu stops changing."""
+    def to_main_menu(self, timeout: float = 120.0) -> None:
+        """Press past the title screens until the bottom bar stops changing.
+
+        The title sequence is several full-screen pictures, each dismissed by
+        a keypress, ending at `CREATE NEW CHARACTER  ...  LOAD SAVED GAME`.
+        Pressing until two consecutive settled screens agree is what tells us
+        we have arrived without reading a word of it.
+        """
         deadline = time.time() + timeout
-        seen: set[str] = set()
+        last = None
+        stable = 0
         while time.time() < deadline:
             self.s.key("Return")
-            scr = self.s.settle()
-            d = scr.digest(0, BAR_ROW * 8, 320, 8)
-            if d in seen:
-                return
-            seen.add(d)
+            d = self.s.settle().digest()
+            if d == last:
+                stable += 1
+                if stable >= 2:
+                    return
+            else:
+                stable = 0
+            last = d
         raise TimeoutError("never reached the main menu")
 
-    def load_game(self, letter: str) -> None:
-        """`LOAD SAVED GAME` -> a slot letter.  Waits for the world to appear."""
-        before = self.bar()
+    def load_game(self, letter: str, timeout: float = 90.0) -> None:
+        """`LOAD SAVED GAME` -> a slot letter.  Waits for the map to appear.
+
+        The menu lists only the slots that exist -- `LOAD WHICH GAME: A B J` --
+        so asking for a letter with no file leaves the menu up and the wait
+        times out rather than silently continuing.
+        """
+        before = self.s.settle().digest()
         self.s.key("l")
         self.s.settle()
         self.s.key(letter.lower())
-        if not self.s.wait_for(
-            lambda scr: scr.digest(0, BAR_ROW * 8, 320, 8) != before, timeout=40
-        ):
+        if not self.s.wait_for(lambda s: s.digest() != before, timeout=timeout):
             raise TimeoutError(f"slot {letter} never loaded")
         self.s.settle()
         self.world_bar = self.bar()
 
-    # -- the world --------------------------------------------------------
+    # -- the map ----------------------------------------------------------
 
-    def step(self) -> None:
-        self.s.key("Up")
-        self.s.settle()
+    def _move(self, key: str, timeout: float = 20.0) -> bool:
+        """Press a movement key and wait for the map's command bar to return.
 
-    def turn_left(self) -> None:
-        self.s.key("Left")
-        self.s.settle()
+        A step is not over when the frame stops changing.  **The game blanks the
+        command bar while the party moves** and redraws it a beat later, and
+        the frame is perfectly still in between -- so `settle()` returns on a
+        screen with no bar at all, and a `world` reference taken there is a bar
+        that will never be seen again.  That is what made the second save of a
+        two-save run fail to find its way out of camp.  Waiting for the bar
+        recorded at load time is what makes an action *complete*.
 
-    def turn_right(self) -> None:
-        self.s.key("Right")
+        Returns False when it never came back, which is how a prompt the step
+        walked into -- "DO YOU WANT TO TAKE A BOAT BACK TO PHLAN?" -- is
+        noticed rather than pressed through blindly.
+        """
+        self.s.key(key)
         self.s.settle()
+        if self.world_bar is None:
+            self.world_bar = self.bar()
+            return True
+        return self.s.wait_until_ink(BAR, self.world_bar, timeout)
+
+    def step(self) -> bool:
+        return self._move("Up")
+
+    def turn_left(self) -> bool:
+        return self._move("Left")
+
+    def turn_right(self) -> bool:
+        return self._move("Right")
 
     # -- saving, which is the whole point ---------------------------------
 
-    def save_game(self, letter: str, timeout: float = 40.0) -> bytes:
-        """Encamp, save to `letter`, leave camp, and return the file's bytes.
+    def save_game(self, letter: str, timeout: float = 60.0) -> bytes:
+        """Encamp, save to `letter`, decline the quit, leave camp; return bytes.
 
         Verified by effect at both ends: the save is not believed until
         `SAVGAM<letter>.DAT` changes on disk, and camp is not believed to be
         over until the command bar is the one that was there before encamping.
         """
-        path = self.s.save_dir / f"SAVGAM{letter.upper()}.DAT"
+        path = self.s.save_file(letter)
         was = path.read_bytes() if path.is_file() else None
 
-        world = self.bar()
+        world = self.world_bar or self.bar()
         self.s.key("e")
-        if not self.s.wait_for(
-            lambda scr: scr.digest(0, BAR_ROW * 8, 320, 8) != world, timeout=timeout
-        ):
+        if not self.s.wait_while_ink(BAR, world, timeout):
             raise TimeoutError("ENCAMP did not open the camp menu")
-        camp = self.s.settle().digest(0, BAR_ROW * 8, 320, 8)
+        camp = self.s.settle().ink(BAR)
 
         self.s.key("s")
+        if not self.s.wait_while_ink(BAR, camp, timeout):
+            raise TimeoutError("SAVE did not open the slot list")
         self.s.settle()
         self.s.key(letter.lower())
 
@@ -650,54 +679,92 @@ class PoolOfRadiance:
             raise TimeoutError(f"{path.name} never changed")
         data = path.read_bytes()
 
-        self.leave_camp(world, camp)
+        self.leave_camp(world)
         return data
 
-    def leave_camp(self, world: str, camp: str, timeout: float = 30.0) -> None:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            now = self.bar()
-            if now == world:
+    def leave_camp(self, world: str, tries: int = 12) -> None:
+        """Get back to the map from wherever in camp we are.
+
+        Two screens can be in the way -- the camp menu, which `Escape` leaves,
+        and `QUIT TO DOS YES NO`, which `n` declines -- and telling them apart
+        by digest turned out to be brittle, because the camp bar is captured
+        while "THE PARTY MAKES CAMP..." is still being drawn.  Alternating the
+        two keys needs no such knowledge: `n` is not a command on the map or in
+        the camp menu, and `Escape` backs out of the quit prompt as well.
+        """
+        for _ in range(tries):
+            if self.bar() == world:
                 return
-            if now == camp:
-                self.s.key("Escape")
-            else:
-                # Anything else at this point is `QUIT TO DOS YES NO`.
-                self.s.key("n")
+            was = self.bar()
+            self.s.key("Escape")
             self.s.settle()
+            if self.bar() == was:
+                self.s.key("n")
+                self.s.settle()
+        self.s.shot("leave_camp_stuck")
         raise TimeoutError("could not get back to the map from camp")
 
-    # -- reading the party out of a save ----------------------------------
 
-    @staticmethod
-    def position(save: bytes) -> tuple[int, int, int]:
-        """`(x, y, facing)` out of a `SAVGAM?.DAT`."""
-        return save[POS_X], save[POS_Y], save[POS_FACING]
+# --------------------------------------------------------------------------
+# The obstacle-2 experiment
+# --------------------------------------------------------------------------
 
 
-def one_step(letter_before: str = "C", letter_after: str = "D") -> dict:
-    """The obstacle-2 experiment: save, take one step, save, and diff.
+def one_step(
+    load: str = "A", before: str = "C", after: str = "D", turns: int = 0
+) -> dict:
+    """Save, act, save again, and diff -- the whole evidence for obstacle 2.
 
-    Returns the two positions and the byte offsets that changed, which is the
-    whole evidence the DOS position hunt needs.
+    `turns` right turns before the step, so the party is aimed somewhere it can
+    actually go.  Returns the two squares, the two areas, and the byte offsets
+    that moved in the parts of the file where an answer can live.
     """
     with claim("one_step") as slot:
         with Session(slot, find_game()) as s:
             por = PoolOfRadiance(s)
             por.to_main_menu()
-            por.load_game("A")
-            before = por.save_game(letter_before)
+            por.load_game(load)
+            a = por.save_game(before)
+            for _ in range(turns):
+                por.turn_right()
             por.step()
-            after = por.save_game(letter_after)
-    changed = [i for i in range(len(before)) if before[i] != after[i]]
+            b = por.save_game(after)
+    changed = [i for i in range(len(a)) if a[i] != b[i]]
+    # The dense tail from 5121 on is the loaded area's ECL text and scratch:
+    # hundreds of bytes move on any action and none of it is party state.  The
+    # word array and the state struct after it are where an answer can live.
     return {
-        "before": PoolOfRadiance.position(before),
-        "after": PoolOfRadiance.position(after),
-        "changed": changed,
+        "before": position(a),
+        "after": position(b),
+        "area_file": (a[0], b[0]),
+        "area_id": (area_id(a), area_id(b)),
+        "changed_in_array": [i for i in changed if i < 5121],
+        "changed_in_struct": [i for i in changed if i >= 12550],
+        "changed_total": len(changed),
     }
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument(
+        "command", choices=("check", "one-step"), help="check tools, or run the diff"
+    )
+    ap.add_argument("--load", default="A")
+    ap.add_argument("--turns", type=int, default=0)
+    args = ap.parse_args(argv)
+    if args.command == "check":
+        absent = missing_tools()
+        print("tools missing:", ", ".join(absent) if absent else "none")
+        try:
+            print("game:", find_game())
+        except FileNotFoundError as e:
+            print("game:", e)
+        return 1 if absent else 0
     import pprint
 
-    pprint.pprint(one_step())
+    pprint.pprint(one_step(load=args.load, turns=args.turns))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
