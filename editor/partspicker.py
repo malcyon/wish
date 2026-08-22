@@ -37,6 +37,11 @@ from por.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
 from .palette import colour
 
 PREVIEW_ZOOM = 3
+# The rows were drawn at the preview's own zoom and came out half the height of
+# the thing being chosen: a pose is 24 source rows, so zoom 2 is a 48-pixel
+# figure, and picking a helmet out of one is guesswork. The list is where the
+# choosing happens, so it gets the larger zoom.
+LIST_ZOOM = 4
 # Source pixels, not screen pixels: one pose is 12 across, two poses 24. The
 # multicolour doubling happens in the scale at the end. Conflating the two put
 # each pose in the left half of a 48-wide image and left the rest black.
@@ -120,7 +125,7 @@ class PartsPicker(QDialog):
 
     def _list(self) -> QListWidget:
         view = QListWidget(self)
-        view.setIconSize(QSize(FRAME_WIDE * 2, FRAME_HIGH * 2))
+        view.setIconSize(QSize(FRAME_WIDE * LIST_ZOOM, FRAME_HIGH * LIST_ZOOM))
         view.setUniformItemSizes(True)
         return view
 
@@ -133,7 +138,7 @@ class PartsPicker(QDialog):
                 made = self.parts.apply(self.shape, self.size, kind, option)
                 row = QListWidgetItem(str(option))
                 row.setIcon(QIcon(QPixmap.fromImage(
-                    preview(made, self.colours, self.charset, 2))))
+                    preview(made, self.colours, self.charset, LIST_ZOOM))))
                 view.addItem(row)
             view.blockSignals(blocked)
         self._show()
