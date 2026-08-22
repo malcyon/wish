@@ -77,6 +77,27 @@ overlap -- but do not spend longer splitting a commit than the split is worth.
 Find the staging page at $5500
 ```
 
+**After a push, check that CI passed.** Not optional and not "later": a red
+`main` is the state everything else is built on, and a failure found an hour
+later has other people's work stacked on top of it.
+
+```sh
+until [ "$(gh run list --limit 1 --json status -q '.[0].status')" = completed ]
+do sleep 15; done
+gh run list --limit 2
+```
+
+Give it a minute or two -- the suite takes about 90 seconds on each of four
+jobs. If it failed, `gh run view <id> --log-failed` says why, and **the fix goes
+to a subagent**: the failure is usually platform-specific, the diagnosis is
+reading, and neither belongs in the main window.
+
+**Two failures happen here and neither reproduces on Linux**, so expect them:
+something Windows cannot do (`chmod` does not make a directory unwritable
+there, `fcntl` does not exist, paths are not split on `/`), and something that
+is not byte-identical on another machine (a rendered image, anything with a
+font or a timestamp in it).
+
 ## What must never enter this repository
 
 This is a reverse-engineering project. It documents a game it does not ship.
