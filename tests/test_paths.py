@@ -11,6 +11,8 @@ all a glob can see, and that is the whole of what is under test.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from automap import paths
@@ -117,7 +119,7 @@ def test_load_maps_reads_only_the_named_title_s_disks(tmp_path, monkeypatch):
     _no_geo_reading(monkeypatch, seen)
     from automap.__main__ import load_maps_titled
     _, game = load_maps_titled(str(tmp_path), CURSE)
-    assert [p.rsplit("/", 1)[-1] for p in seen] == ["CURSE1.D64"]
+    assert [os.path.basename(p) for p in seen] == ["CURSE1.D64"]
     assert game is CURSE
 
 
@@ -130,6 +132,23 @@ def test_load_maps_without_a_title_takes_what_the_directory_holds(tmp_path,
     _, game = load_maps_titled(str(tmp_path))
     assert game is games.SECRET_OF_THE_SILVER_BLADES
     assert len(seen) == 1
+
+
+def test_a_disk_matched_by_both_patterns_is_read_once(tmp_path, monkeypatch):
+    """`disk_globs` returns an upper- and a lower-cased pattern.
+
+    On a case-insensitive filesystem -- Windows, or a Mac -- both match the
+    same file, and every image was being opened twice. Linux cannot reproduce
+    that with real files, so the double match is staged directly.
+    """
+    disks(tmp_path, "POOL1.D64")
+    seen: list[str] = []
+    _no_geo_reading(monkeypatch, seen)
+    from automap import __main__ as automain
+    hit = str(tmp_path / "POOL1.D64")
+    monkeypatch.setattr(automain.glob, "glob", lambda _pattern: [hit])
+    automain.load_maps_titled(str(tmp_path))
+    assert seen == [hit]
 
 
 def test_load_maps_for_a_title_that_is_not_there_reads_nothing(tmp_path,

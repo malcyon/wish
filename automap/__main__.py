@@ -66,11 +66,18 @@ def load_maps_titled(disks: str | None = None, game: Game | None = None
             game = present[0] if present else None
     if game is None:
         return {}, None
-    found: dict = {}
+    # One disk, one read. `disk_globs` returns an upper- and a lower-cased
+    # pattern for archives that lower-cased the names, and on a case-insensitive
+    # filesystem -- Windows, or a Mac -- both match the same file, so without
+    # this every image is opened twice.
+    paths: dict[str, str] = {}
     for pattern in disk_globs(game):
-        for path in sorted(glob.glob(os.path.join(str(where), pattern))):
-            for name, geo in load_geo_files(path).items():
-                found.setdefault(name, geo)
+        for path in glob.glob(os.path.join(str(where), pattern)):
+            paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
+    found: dict = {}
+    for path in sorted(paths.values()):
+        for name, geo in load_geo_files(path).items():
+            found.setdefault(name, geo)
     return found, game
 
 

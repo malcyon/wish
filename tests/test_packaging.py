@@ -229,6 +229,9 @@ def test_with_neither_it_is_silence_and_not_a_crash(entry, monkeypatch):
     assert sys.stdout.write("swallowed") == 9
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="on Windows it really does borrow a console, "
+                           "which is the whole point of the function")
 def test_no_console_is_borrowed_off_windows(entry):
     """The ctypes call is guarded by the platform check and nothing else."""
     assert entry._attach_windows_console() is False
