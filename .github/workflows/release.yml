@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  # Build the artefacts without cutting a release. PyInstaller cannot
+  # cross-compile -- it bundles the interpreter it is running on -- so a
+  # Windows build has to happen on Windows, and this is the cheapest Windows
+  # this project has. Run it from the Actions tab, then download the
+  # `frozen-windows` artefact and copy it to the laptop.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -32,6 +38,7 @@ jobs:
       - run: python -m build
 
       - name: the version is the tag
+        if: startsWith(github.ref, 'refs/tags/v')
         run: python -c "import glob,sys; v='${{ github.ref_name }}'[1:]; f=glob.glob('dist/*.whl')[0]; sys.exit(0 if f.split('-')[1] == v else f'{f} is not version {v}')"
 
       # The wheel only. `python -m build` makes an sdist too and it is worth
@@ -84,12 +91,19 @@ jobs:
       # windowed Windows build with no stdout exits 0 in silence. Assert the
       # output. `--version` exits inside argparse, before Qt is imported, so
       # none of this needs a display. See packaging/wish_main.py.
+      # On a tag the version is the tag; on a manual run hatch-vcs makes a dev
+      # version, and the check is still worth making -- it is the executable
+      # printing anything at all that has broken before now.
+      - name: the version to expect
+        shell: bash
+        run: echo "VERSION=$(python -c 'from wish import __version__; print(__version__)')" >> "$GITHUB_ENV"
+
       - name: it starts, and says which version it is
         shell: bash
         run: |
           set -euo pipefail
           [ "$RUNNER_OS" = Windows ] && exe=dist/wish/wish.exe || exe=dist/wish/wish
-          want="wish ${GITHUB_REF_NAME#v}"
+          want="wish $VERSION"
           got=$("$exe" --version 2>&1 | tr -d '\r')
           echo "$exe --version -> ${got:-(nothing)}"
           [ "$got" = "$want" ] || { echo "expected: $want"; exit 1; }
@@ -123,15 +137,15 @@ jobs:
             done
             echo "no wish-cli in the Windows build, as intended"
           else
-            want="wish-cli ${GITHUB_REF_NAME#v}"
+            want="wish-cli $VERSION"
             got=$(dist/wish/wish-cli --version)
             echo "wish-cli --version -> ${got:-(nothing)}"
             [ "$got" = "$want" ] || { echo "expected: $want"; exit 1; }
           fi
 
-      - name: name it after the tag
+      - name: name it after the version
         shell: bash
-        run: echo "NAME=wish-${GITHUB_REF_NAME#v}-${{ matrix.label }}-x86_64" >> "$GITHUB_ENV"
+        run: echo "NAME=wish-$VERSION-${{ matrix.label }}-x86_64" >> "$GITHUB_ENV"
 
       - name: tar.gz
         if: runner.os == 'Linux'
@@ -155,6 +169,8 @@ jobs:
 
   publish:
     name: the release page
+    # A manual run builds and stops. Only a tag makes a release page.
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [dist, frozen]
     runs-on: ubuntu-latest
 
