@@ -29,19 +29,18 @@ The second argument, and the one that started this: `wish --help` does not
 mention `export`, because `export` is in another program. Somebody looking for
 it looks in the obvious place first and does not find it.
 
-## The one consequence worth deciding first
+## Windows stays windowed
 
-Merging gives **Windows a CLI it does not have today**, and its output travels
-the `AttachConsole(ATTACH_PARENT_PROCESS)` path in `packaging/wish_main.py`.
-That path is **unverified** — CI exercises `--version` through a pipe, which
-tests the inherited-handle branch and not the console branch, and nobody has
-run it in a real `cmd` window.
+Settled, and not in tension with anything: **the Windows build never opens a
+console.** Donald — *"the Windows build should not open a console."*
 
-The alternative is worse: a single console build would open a console window
-behind the map for every Windows user who double-clicks it. So the merged
-binary stays windowed, and Windows gains a CLI that works exactly as well as
-that console-borrowing trick does. **`122`'s Windows run is what tells us**, and that is a
-reason to keep this plan behind that run rather than in front of it.
+The merge does mean Windows carries the `export` and `import` subcommands where
+today it carries no CLI at all. Whether their output reaches a `cmd` window
+depends on the console-borrowing trick in `packaging/wish_main.py`, which is
+still unproven. That is a **limitation, not a blocker**: nobody is expected to
+use the CLI on Windows, and the version is in Help > About either way. If it
+turns out not to work, the subcommands are simply quiet there and everything
+else is unaffected.
 
 ## The interface
 
@@ -85,7 +84,7 @@ file genuinely named `export` is reachable as `./export`.
   platform gets what.
 * A smaller Linux tarball — `wish-cli` is 1.66 MB of a 63 MB archive, and its
   share of `_internal` goes too.
-* The Windows CLI, as a side effect, if `AttachConsole` holds up.
+* The Windows CLI, as a side effect, where its output reaches a terminal.
 * One fewer place for `wish.spec` to be platform-conditional, which is where
   the last packaging bug lived.
 
@@ -97,6 +96,7 @@ file genuinely named `export` is reachable as `./export`.
    `wish export` round-trips a save disk byte-identically — the same assertion
    `122` §3 already makes of `wish-cli`.
 3. CI asserts the single executable on both platforms.
-4. On Windows, from a real `cmd` window: `wish --version` and
-   `wish export --help` both print. **This is the step that decides whether the
-   Windows CLI is real**, and only Donald can run it.
+4. On Windows, double-clicking `wish.exe` opens the window and **no console**.
+   That is the one that matters. Whether `wish --version` also prints in a
+   `cmd` window is worth noting when Donald is there anyway, but nothing
+   depends on it.
