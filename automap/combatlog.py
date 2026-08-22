@@ -31,7 +31,8 @@ $29AB  JMP $0962        ; print it
 bytes from the address in A/X to `$03F2`-`$03F5`. `COMBAT $0970` holds
 `17 27 01 17`, so the combat text window is **columns 23-38, rows 1-22**, and
 `$2989` moves the top to **row 10** for messages. Rows 1-9 of the same band are
-the party panel, which is why the top matters and the band alone would not do.
+the *acting combatant's* panel -- name, `HIT POINTS n`, `AC n`, weapon, read off
+a live fight -- which is why the top matters and the band alone would not do.
 
 | where | what |
 |---|---|
@@ -52,9 +53,11 @@ below the cursor so a follow-up ("GOES DOWN", "IS KILLED") lands under what is
 already there. Only when a block runs past row 22 does `LIBRARY $2D28` call
 `$2CA5`, which scrolls the window up by one line.
 
-So the three shapes a frame-to-frame change can take are: **grew** (more rows,
-or more characters on the last row), **scrolled** (everything moved up one),
-and **replaced** (anything else). Each gets its own rule below.
+So the four shapes a frame-to-frame change can take are: **grew** (more rows,
+or more characters on the last row), **shrank** (the same rows with the bottom
+ones cleared, which `$29B7` does when a follow-up's delay runs out),
+**scrolled** (everything moved up one), and **replaced** (anything else). Each
+gets its own rule below.
 
 ## Whether the game waits for a key
 
@@ -74,6 +77,14 @@ Two "MAGNUS MISSES." in a row are both real, and the clear between them shows
 up as a frame that no longer extends the last one. Where the clear itself falls
 between two polls there is a second, independent edge: `$03F4` going back to 10
 means `$2983` ran, which is a new block whatever the text says.
+
+## What a live fight changed
+
+Two rules here were wrong, and both turn on bytes only a running game writes —
+see `docs/50-experiments.md`, "The combat log's two defects, found in a slums
+fight", and `message_window` and `_shrank` below. In short: `$03F2`-`$03F5`
+are the *command bar's* window a fifth of the time, and a block shrinks as
+well as grows.
 """
 
 from __future__ import annotations
@@ -100,7 +111,8 @@ DELAY = 0x49FC
 
 #: `COMBAT $0970`, the block `$0969` hands to `LIBRARY $485A`.
 COMBAT_WINDOW = (23, 39, 1, 23)
-#: `COMBAT $2989 LDA #$0A`. Rows 1-9 are the party panel, not messages.
+#: `COMBAT $2989 LDA #$0A`. Rows 1-9 are the acting combatant's panel, not
+#: messages.
 MESSAGE_TOP = 0x0A
 
 
@@ -116,6 +128,43 @@ def plausible_window(block: bytes) -> tuple[int, int, int, int] | None:
     if not (left < right <= SCREEN_COLS and top < bottom <= 25):
         return None
     return left, right, top, bottom
+
+
+def message_window(block: bytes) -> tuple[int, int, int | None, int]:
+    """The region to read, and `$03F4` **only when it is ours**.
+
+    `$03F2`-`$03F5` describe whichever window the game printed into last, and
+    in a fight that is often not the message panel: the command bar sets
+    `00 28 18 19` -- columns 0 to 39, row 24 -- every time it prints
+    `GUARDING`, `MOVE VIEW` or `YOUR TEAMMATE IS DYING`. Believing those four
+    bytes then slices whole rows 10 to 24 out of the screen, which is the
+    combat map, the border and the command bar; the map is drawn in the game's
+    own glyphs, so it decodes as `&'( )*+ ,-.` and lands in the log as a
+    message. That is the "readable data mixed with a lot of garbage" this
+    reader was reported for, and it is reproducible: 29 of 649 frames of one
+    slums fight carried `00 28 18 19`, and four of them were logged.
+
+    The columns are not in doubt -- `COMBAT $0970` is `17 27 01 17` on all
+    eight disk sides -- so they are taken from `COMBAT_WINDOW` whenever the
+    live bytes describe some other window, and `top` comes back as None
+    because `$03F4` then belongs to that other window: reading it would put a
+    false row into `_heads` and fire the restart edge on a command-bar print.
+    The bottom is clamped either way, which keeps rows 23 and 24 -- the border
+    and the command bar -- out of a message.
+    """
+    window = plausible_window(block)
+    if window is None or window[:2] != COMBAT_WINDOW[:2]:
+        left, right, _, bottom = COMBAT_WINDOW
+        return left, right, None, bottom
+    left, right, top, bottom = window
+    if top < MESSAGE_TOP:
+        # `$2983` sets the top to 10 and `$29BA` only ever moves it down, so a
+        # top above row 10 is the whole text window -- `$0970`'s own `01` --
+        # which the game restores when it repaints the party panel at the end
+        # of a turn. Read as a message top it looks like `$2983` ran and fires
+        # the restart edge, which logged the last message of a turn twice.
+        top = None
+    return left, right, top, min(bottom, COMBAT_WINDOW[3])
 
 
 @dataclass(frozen=True)
@@ -242,6 +291,20 @@ def _extends(old: tuple[str, ...], new: tuple[str, ...]) -> bool:
     return new[len(old) - 1].startswith(old[-1])
 
 
+def _shrank(old: tuple[str, ...], new: tuple[str, ...]) -> bool:
+    """Is `new` the same block with its bottom rows cleared?
+
+    `$29BA` puts a follow-up under what is already showing and `$29B7` clears
+    from that follow-up's own top when its delay runs out, so an eight-row
+    block can go back to being the five rows it grew from. Without this rule
+    that shorter frame is "anything else" -- the block is committed, the
+    residue becomes the new pending block, and the next clear commits its first
+    message a **second** time. Seen four times in one slums fight: every
+    "X ATTACKS AND HITS FOR n" that killed something was logged twice.
+    """
+    return bool(old) and len(new) < len(old) and list(old[:len(new)]) == list(new)
+
+
 def _scrolled(old: tuple[str, ...], new: tuple[str, ...], height: int) -> bool:
     """Did the window scroll up by one line?
 
@@ -313,6 +376,8 @@ class CombatLog:
         if restarted:
             done += self._commit()
             self._heads = {top} if top is not None else set()
+        elif _shrank(self._pending, frame):
+            return done                 # a partial clear, not a new block
         elif _scrolled(self._pending, frame, self._height):
             self._pending = self._pending + (frame[-1],)
             return done
@@ -395,8 +460,8 @@ class CombatLog:
         if here != self._address:
             self._address = here        # the screen moved; this frame is stale
             return []
-        left, right, top, bottom = plausible_window(win) or COMBAT_WINDOW
-        self._height = max(1, min(bottom, 25) - MESSAGE_TOP)
+        left, right, top, bottom = message_window(win)
+        self._height = max(1, bottom - MESSAGE_TOP)
         self._width = right - left
         return self.observe(band(codes, left, right)[:self._height], top)
 

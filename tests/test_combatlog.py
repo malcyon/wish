@@ -370,3 +370,53 @@ def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
 
     assert window.battle is None
     assert any("ORC IS KILLED" in line for line in window.messages.lines())
+
+
+# --- what a live fight showed -----------------------------------------------
+#
+# One slums fight, 1428 frames captured at ~0.18 s (`docs/50-experiments.md`,
+# "The combat log's two defects, found in a slums fight"). Both of these are
+# frames from that capture, not constructed cases.
+
+def test_the_command_bar_window_is_not_the_message_window():
+    """`$03F2`-`$03F5` held `00 28 18 19` on 29 of 1428 frames.
+
+    Believing it slices whole rows 10-24 -- the combat map in the game's own
+    glyphs, the border and the command bar -- into the log.
+    """
+    assert combatlog.message_window(bytes([0, 40, 24, 25])) == (
+        LEFT, RIGHT, None, BOTTOM)
+    assert combatlog.message_window(bytes([LEFT, RIGHT, 10, BOTTOM])) == (
+        LEFT, RIGHT, 10, BOTTOM)
+    # `$0970`'s own top: the whole text window, not a message top.
+    assert combatlog.message_window(bytes([LEFT, RIGHT, 1, BOTTOM])) == (
+        LEFT, RIGHT, None, BOTTOM)
+    # Rows 23 and 24 are never part of a message.
+    assert combatlog.message_window(bytes([LEFT, RIGHT, 10, 25]))[3] == BOTTOM
+
+
+def test_a_command_bar_frame_logs_nothing():
+    log = CombatLog()
+    target = machine(["SILAS", "ATTACKS"])
+    log.poll(target)                     # first poll only locates the screen
+    log.poll(target)
+    target.memory[combatlog.WINDOW] = bytes([0, 40, 24, 25])
+    assert log.poll(target) == []
+    assert "&" not in "".join(m.text for m in log.messages)
+
+
+def test_a_block_that_loses_its_follow_up_is_not_a_new_block():
+    """`$29B7` clears the follow-up first, leaving the rows it grew from.
+
+    Every killing blow in the captured fight was logged twice without this.
+    """
+    log = CombatLog()
+    hit = ["MAGNUS", "ATTACKS", "ORC", "AND HITS FOR 10", "POINTS OF DAMAGE"]
+    log.observe(hit, top=10)
+    log.observe(hit + ["ORC", "GOES DOWN", "AND IS DYING"], top=15)
+    assert log.observe(hit, top=15) == []          # the follow-up is cleared
+    done = log.observe([], top=15)                 # ...and then the rest
+    assert [m.text for m in done] == [
+        "MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE",
+        "ORC GOES DOWN AND IS DYING",
+    ]

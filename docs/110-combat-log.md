@@ -1,10 +1,11 @@
 # A combat log
 
-**Status: built and tested offline; not yet run against a live fight.** The
-three questions the plan said had to be found first were answered by
-disassembling `COMBAT` and `LIBRARY` rather than by watching a screen, which is
-better evidence. What is left is timing, and timing needs the emulator — the
-numbered list at the end is a single sitting's work.
+**Status: run against a live fight, and it was wrong twice.** 1428 frames of a
+slums fight — six characters against orcs — settled the region, the timing and
+the shape of the messages, and found two defects that offline tests could not
+see, because both turn on bytes only a running game writes. Both are fixed; see
+`docs/50-experiments.md`, "The combat log's two defects, found in a slums
+fight", and the two rules below marked **live**.
 
 The game prints who hit whom for how much, holds it for a **software delay
 loop**, and paints over it. Nothing saves it. On an emulator running faster than
@@ -37,8 +38,18 @@ $29AB  JMP $0962        ; print it
 bytes from the address in `A`/`X` to `$03F2`-`$03F5`. `COMBAT $0970` holds
 `17 27 01 17` — identical on all eight disk sides — so the combat text window is
 **columns 23 to 38, rows 1 to 22**, and `$2989` moves its top to **row 10** for
-messages. Rows 1–9 of the same band are the party panel, which is why the top
-row matters and the whole band would not do.
+messages. Rows 1–9 of the same band are the **acting combatant's** panel — the
+name, `HIT POINTS n`, `AC n` and the readied weapon, all confirmed on screen —
+which is why the top row matters and the whole band would not do.
+
+**Live: the four bytes are often some other window.** `00 28 18 19` — the whole
+of row 24 — is what the command bar leaves there whenever it prints `GUARDING`,
+`MOVE VIEW` or `YOUR TEAMMATE IS DYING`, and it was in 29 of those 1428 frames.
+Believed, it slices whole rows 10–24 out of the screen: the combat map in the
+game's own glyphs, the border, and the command bar. So the *columns* come from
+`$0970` and never from the live bytes, the bottom is clamped to row 22, and
+`$03F4` is read only when the live bytes really are the message window and its
+top is row 10 or below. `combatlog.message_window` is that rule.
 
 | address | what |
 |---|---|
@@ -52,9 +63,9 @@ row matters and the whole band would not do.
 | `$6B00` | the current combatant's name, as a string |
 | `$AF00`/`$AF80` | `SPELLN00`'s pointer table, lo and hi, 128 entries |
 
-The four window bytes are read live every poll and validated before use — they
-are ordinary RAM and hold whatever the last overlay left there — with `$0970`'s
-values as the fallback.
+The four window bytes are read live every poll and **validated against
+`$0970`'s columns** before use — they are ordinary RAM and hold whatever the
+last overlay left there, which in a fight is usually the command bar.
 
 ## Whether it scrolls or overwrites
 
@@ -68,8 +79,13 @@ values as the fallback.
 * Only when a block runs past row 22 does `LIBRARY $2D28` call `$2CA5`, which
   **scrolls the window up by one line**.
 
-So a frame-to-frame change is one of three things — *grew*, *scrolled*,
-*replaced* — and each gets its own rule in `automap/combatlog.py`.
+**Live: a block also *shrinks*.** `$29B7` clears from the follow-up's own top,
+so an eight-row block goes back to being the five rows it grew from before the
+window is cleared for good. Counted as *replaced*, that committed the block and
+made its own residue the next one, and every killing blow in the captured fight
+was logged twice. So a frame-to-frame change is one of **four** things —
+*grew*, *shrank*, *scrolled*, *replaced* — and each gets its own rule in
+`automap/combatlog.py`.
 
 ## Whether the game pauses for input
 
@@ -82,6 +98,13 @@ That is the whole risk, and the whole reason the feature is worth having: a
 message lives about **a second of emulated time**. At the default 200 ms poll
 that is five frames, which is plenty of margin — but it is the first number to
 check if messages start going missing.
+
+**Measured, and the estimate was right.** `$49FC` read 2 for the whole fight.
+Timing the window from first text to clear against the jiffy clock at
+`$A0`-`$A2`, over 49 messages: **60–62 jiffies** — one second exactly — for a
+block with no follow-up, 72–74 where a follow-up was added, and 156–169 or 336
+for a block whose follow-ups came in sequence. One second is the number to
+poll against.
 
 ## What the messages are made of
 
@@ -115,6 +138,9 @@ consecutive messages can be genuinely identical**. So:
 * A frame that **extends** the pending block — more rows, or more characters on
   the last row — replaces it. One block is one message however many polls saw
   it being built.
+* A frame that **shrank** — the same rows with the bottom ones cleared — is
+  the follow-up's delay expiring, not a new block. The longer version stays
+  pending. Without this rule every kill was logged twice.
 * A frame that **scrolled** (the window was full and everything moved up one)
   appends the new bottom row instead of starting over.
 * Anything else **replaces** the block, and the one before it is committed.
@@ -122,7 +148,10 @@ consecutive messages can be genuinely identical**. So:
 * And there is a second, independent edge: **`$03F4` going back to 10 means
   `$2983` ran**, so it is a new block whatever the text says. That is what
   saves the second "MAGNUS MISSES." when the blank frame between them falls
-  between two polls.
+  between two polls. It is read **only** when the live window bytes are the
+  message window's own and the top is row 10 or below: `$03F4` = 1 is `$0970`
+  restoring the whole text window at the end of a turn, and taken as a message
+  top it logged the turn's last message twice.
 
 Splitting one frame into two messages uses the same byte: every value `$03F4`
 took while the block was building is a row a name was printed on, so the splits
@@ -158,8 +187,9 @@ that costs at most one frame a fight.
 
 `AutomapWindow.COMBAT_LOG` turns it off and `COMBAT_LOG_EVERY` polls less often.
 They are class attributes rather than settings because `automap/config.py` was
-another agent's file this session; they belong in `Settings` once the
-measurement below says what the interval should be.
+another agent's file this session; they belong in `Settings` now that the
+measurement is in — **200 ms**, five polls to the shortest message's one
+second.
 
 ## Where the code is
 
@@ -168,44 +198,36 @@ measurement below says what the interval should be.
 | `automap/combatlog.py` | the region, the diff, the dedup, the parse. No Qt |
 | `automap/screen.py` | `band`, which slices a window out of whole rows |
 | `automap/window.py` | `poll_combat_log`, `log_combat`, and the flush |
-| `tests/test_combatlog.py` | every rule, against constructed screens |
+| `tests/test_combatlog.py` | every rule, against constructed screens and two frames from the captured fight |
+| `work/combatlog/fight.py` | drives a fight and records every poll (scratch, not shipped) |
+| `work/combatlog/replay.py` | re-runs a recording through the reader (scratch) |
 
 `log_combat` **defeats `MessagesPanel`'s own repeat-dropping**, and that is the
 point of the feature: the panel drops a line identical to the one before it,
 which is right for "waiting for the game" on every tick and wrong for two
-"MAGNUS MISSES." in a row. It does that by clearing the panel's `_last` before
-each line; `MessagesPanel` should grow an explicit `dedup=False` argument when
-`automap/panel.py` is free to edit.
+"MAGNUS MISSES." in a row. It does that by passing `MessagesPanel.say`'s
+`dedup=False`, which that panel now takes.
 
 ---
 
-## Still to verify on a live machine
+## Verified on a live machine
 
-In order, one sitting, one fight in the New Phlan training hall:
+One fight, 1428 frames at ~0.18 s, six characters against orcs at (14,0) in the
+Slums. `work/combatlog/fight.py` drove it and recorded every poll; the raw
+frames replay through the reader with `work/combatlog/replay.py`, so any later
+change to `combatlog.py` can be checked against the same fight without a
+second one.
 
-1. **The region.** Enter combat, dump the screen, confirm the messages are in
-   columns 23–38 of rows 10–22 and that rows 1–9 hold the party panel. Read
-   `$03F2`-`$03F5` at the same moment and confirm `17 27 0A 17`.
-2. **The delay.** Read `$49FC` (expected 2), then take the jiffy clock at
-   `$A0`-`$A2` when a message appears and again when it clears. Expected about
-   60 jiffies. This is the number that decides the poll interval.
-3. **The stall.** Same jiffy technique as `docs/70-driving-the-game.md`: run a
-   fight with `COMBAT_LOG = False` and again with it on, and record the
-   difference in jiffies per wall-clock second. Write the measurement into this
-   file. A log that stutters the fight is worse than no log.
-4. **A whole fight, end to end.** Compare the panel's lines against a video of
-   the same fight: nothing missed, nothing doubled, in order.
-5. **Two identical consecutive messages.** A character with two attacks a round
-   missing twice is the natural case; a low-level fighter against a high-AC
-   target will produce it soon enough. Both must appear.
-6. **The split.** Confirm that a kill — "X ATTACKS AND HITS FOR n POINTS OF
-   DAMAGE" followed by "Y GOES DOWN" and "Y IS KILLED" in the same frame —
-   comes out as separate messages, which is the `$03F4` rule doing its job.
-7. **The scroll.** Only fires when a block passes row 22, which needs a long
-   block — a spell that affects several combatants is the likely one. Confirm
-   nothing is repeated across the scroll.
-8. **After the fight.** Return to the world and confirm the log is still there
-   and still readable, including the last message.
+| # | what | result |
+|---|---|---|
+| 1 | the region | **CONFIRMED.** Messages in columns 23–38 of rows 10–22; `$03F2`-`$03F5` = `17 27 0A 17` for a fresh block, `17 27 0F 17` for a follow-up. Rows 1–9 are the *acting combatant's* panel, not the party's — this file was wrong |
+| 2 | the delay | **CONFIRMED.** `$49FC` = 2; 60–62 jiffies for a plain message, 72–74 with a follow-up, over 49 of them |
+| 3 | the stall | **No stall — the opposite.** Polling at 0.178 s ran the machine at **1.121× real time** (17471 jiffies in 259.8 s), which is the 14.3 ms per resume of `docs/70` plus the connect. Not measured against a `COMBAT_LOG = False` run, because the cost is per resume and the combat view already spends two |
+| 4 | a whole fight | **CONFIRMED after two fixes.** 58 messages from 1428 frames, nothing garbled, nothing doubled, in order. Before the fixes: four garbage blocks and every killing blow twice |
+| 5 | two consecutive messages | **CONFIRMED.** `MALCYON ATTACKS ORC AND HITS FOR 1 POINTS OF DAMAGE` and `... FOR 3 ...`, one blank frame apart, both kept |
+| 6 | the split | **CONFIRMED.** `MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE` and `ORC GOES DOWN AND IS DYING` came out of one eight-row frame as two messages, split on the `$03F4` = 15 the follow-up set |
+| 7 | the scroll | **UNKNOWN.** No block in this fight passed row 22; the longest was eight rows. Needs a spell that hits several combatants |
+| 8 | after the fight | **not reached** — the fight was ended from the emulator, not through the panel |
 
-Then write the run up in `docs/50-experiments.md` and prune whatever this file
-claims that the run contradicts.
+Left to do: item 7, and the same run through the real `AutomapWindow` rather
+than through `CombatLog` alone.

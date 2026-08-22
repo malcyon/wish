@@ -3770,3 +3770,134 @@ effect on the next fight is unproven.
 
   Still unnamed: ids 49, 54, 58, 59, 60, 95 and 102, all combat-only, set by
   literals in `SPELLE00`/`SPELLE01` with no name anywhere in the data.
+
+- **The combat log's two defects, found in a slums fight.** Donald reported
+  "readable data, but also a lot of garbage" and suspected he had opened the
+  editor while another task was rewriting it. He had not: both defects are in
+  `automap/combatlog.py` and both reproduce off a captured fight.
+
+  **The instrument.** `work/combatlog/fight.py` drives one fight and records
+  every poll — the four window bytes, the cursor, `$49FC`, the jiffy clock and
+  all 1000 screen codes — and folds each frame through `CombatLog` at the same
+  instant, so the log's output can be set against the screen it came from.
+  1428 frames at ~0.18 s, six characters against a pack of orcs at (14,0) in
+  the Slums. `work/combatlog/replay.py` re-runs the file through the reader,
+  which is how both fixes were checked without a second fight.
+
+  **Defect one: `$03F2`-`$03F5` are not always the message window.** The
+  command bar sets them to `00 28 18 19` — columns 0 to 39, row 24 — every
+  time it prints `GUARDING`, `MOVE VIEW` or `YOUR TEAMMATE IS DYING`, and
+  `plausible_window` accepted that as readily as the real thing. `band` then
+  sliced **whole rows 10 to 24**: the combat map, drawn in the game's own
+  glyphs, plus the border and the command bar. 29 of the 1428 frames carried
+  `00 28 18 19` and four of them reached the log, each as one "message" that
+  begins `$   &'(   /01         $                $$   )*+   234` and runs for
+  520 characters. That is the garbage, and it is character for character what
+  the screen's lower left holds.
+
+  The columns were never in doubt — `COMBAT $0970` is `17 27 01 17` on all
+  eight sides — so `message_window` now takes them from `COMBAT_WINDOW`
+  whenever the live bytes describe some other window, clamps the bottom to row
+  22, and returns `top` as **None**, because `$03F4` then belongs to that other
+  window and reading it would put a false row into the split and fire the
+  restart edge on a command-bar print.
+
+  **Defect two, two ways.** Every killing blow was logged twice. `$29BA` puts
+  a follow-up under what is already showing and `$29B7` clears from the
+  follow-up's own top, so an eight-row block goes back to being the five rows
+  it grew from; that shorter frame was "anything else", which committed the
+  block and made the residue a new one, and the next clear committed its first
+  message again. `_shrank` now recognises a block losing its bottom rows as
+  the same block. The second way is `$03F4` = 1 — `$0970`'s own top, restored
+  when the game repaints the acting character's panel at the end of a turn —
+  which looked like `$2983` running and fired the restart edge; `top` below
+  row 10 is now discarded.
+
+  With both fixed the same 1428 frames yield **58 messages, no garbage and no
+  duplicates**, against 24 messages and four garbage blocks in the first 649.
+
+  **The decisive comparison.** Frame 1408, `$03F2`-`$03F5` = `17 27 0F 17`:
+  screen rows 10-14 of columns 23-38 read `SILAS` / `ATTACKS` / `ORC` / `AND
+  HITS FOR 8` / `POINTS OF DAMAGE`, and the log line is `SILAS ATTACKS ORC AND
+  HITS FOR 8 POINTS OF DAMAGE`. Identical.
+
+  **And one correction to `docs/110`.** Rows 1-9 of the same band are not the
+  party panel; they are the **acting combatant's** panel — name, `HIT POINTS
+  n`, `AC n`, the readied weapon. The party panel is the world screen's.
+
+- **How long a combat message lives: 60 jiffies, measured.** `$49FC` read 2
+  for the whole fight, as `INIT $09AC` sets it. Timing the window from first
+  text to clear against the KERNAL jiffy clock over 49 messages: **60-62
+  jiffies** for a block with no follow-up (exactly the second the delay loop
+  predicts), 72-74 where a follow-up was added, and 156-169 or 336 for a block
+  whose follow-ups came in sequence. So the minimum a poller has to catch is
+  **one second of emulated time**, and at 200 ms that is five frames.
+
+  The log does not stall the fight; it speeds it up. Polling at 0.178 s
+  through a short-lived monitor connection ran the machine at **1.121× real
+  time** — 17471 emulated jiffies in 259.8 s — which is the 14.3 ms per resume
+  of "The binary monitor", plus the connect.
+
+- **Keys do not reach the game while a binary-monitor client holds the
+  socket.** Thirty XTEST `Right` presses through a `ViceTarget` moved nothing;
+  the first press after it closed moved the highlight. So a driver that both
+  watches and types must **connect, read, close** for every poll, the way
+  `tools/session.py` does — which is also why `automap` and a driving script
+  cannot be the same process. Two smaller ones, both of which cost an hour:
+  a `press any key` prompt needs a **0.25 s hold**, not the 0.10 s the menus
+  take; and answering `INSERT SIDE # n` needs the image **re-attached even
+  when it is already in the drive**, because the 1541 only notices a disk
+  *change*. Without the re-attach the game asks again for ever.
+
+- **`work/drive/SLUMS.D64` cannot be loaded.** Not a game fact, a warning: the
+  party comes up, `BEGIN ADVENTURING` prints `OUTWARD BOUND ...`, and the
+  loader then asks for side 3 in a loop, requesting **`WALLSET00`** — a file
+  that exists on none of the eight sides. `PORSAVE14` in the same area loads
+  in one go. Use the player's own saves for driving work.
+
+- **P15: entering `NEWECL`'s tail at `$2034` is safe. CONFIRMED.** The
+  experiment `docs/118-debug-mode.md` says the whole Warp To plan rests on.
+  From the Slums at (14,0), the five writes of section 3 and `PC = $2034`:
+  the game loaded, asked for the disk, and came up in **New Phlan**.
+  `ResidentGeo.identify()` returned **`GEO00`** — an exact 1024-byte match
+  against the disk copy — with `$6E1B` = 0 and `$6E15` = 0. The party then
+  walked (7,7) → (8,7), so the arrival is a real square and not a wall.
+
+  Done twice. The PC when the writes were made was `$2E4E` the first time —
+  the key fetcher, called *from* the key-wait loop — and `$10CA` the second,
+  the loop itself. Both worked, which is `$203A`'s `LDX $03BF / TXS` doing
+  exactly what the plan predicted: the call depth being interrupted does not
+  matter.
+
+- **P16: `$C04B` survives the overlay restart. CONFIRMED.** `07 07 01` was
+  written before the warp and read back unchanged afterwards, with `$49C0`
+  flushed to match by the `JSR $1A3C` at `$2034` and the status line reading
+  `E 21:41 7,7`. So the arrival square is written **before** the load, as
+  section 3 has it, and no second stop on a checkpoint is needed.
+
+  **But `$49F2` does not survive.** Write 3 put the departing area (20) there;
+  after the warp it read **0**, the *target*. Whatever sets it runs after
+  `$2034` — `$2011`-`$2016` is skipped by construction, so it is something on
+  the `$0809` restart path. The consequence is worth having: entry 4's
+  `COMPARE [$49F2], <own id> / IF= / EXIT` will always compare **equal**, so
+  the arriving script takes its "re-entry from itself" branch and never writes
+  its own arrival square. Case 1 of "Where the party lands" — *the arriving
+  script sets it, write nothing* — therefore does not apply to a warp:
+  **the warp must always supply the square.** PROBABLE, on one observation
+  and the script shape.
+
+- **P17: the loader prompts. CONFIRMED**, where `docs/118` had it PROBABLE.
+  With POOL2 in drive 8 and `$6E12` = 3, the warp printed **`INSERT SIDE # 3,
+  AND PRESS ANY KEY.`** on row 24 and waited there indefinitely. So a warp
+  harness needs a disk step, and it can be a plain text-monitor `attach` — but
+  see the re-attach rule above.
+
+- **P20: `ECL1E` is the demo.** Area 30, POOL1, no map, no name, and no static
+  `NEWECL 30` anywhere — because nothing in the game warps to it. Warping to
+  it was, as `docs/118` guessed, the cheapest way to find out: the screen came
+  up with two extra characters in the roster (`RESTAL` and `TARRAN`, AC 2, 30
+  hp), a picture, and marketing copy in the message area — `SEE EVERY CITY,
+  CASTLE, CAMP, AND DUNGEON IN BEAUTIFUL 3D POINT OF VIEW.` It then walked
+  itself into `GEO12` and started a fight. It is the attract mode the credits
+  screen starts when it is left alone, and it runs on the same ECL VM and the
+  same area machinery as the game. CONFIRMED.
