@@ -58,22 +58,22 @@ to write them.
 | a game disk | `POOLBOOT.D64` and `POOL1.D64`–`POOL8.D64` | the same set, copied over |
 | VICE | already installed (Flatpak `net.sf.VICE`) | **not installed** — step W1 |
 | Python | 3.12+, for the wheel test only | not needed at all |
-| the artefacts | all four, plus `SHA256SUMS` | all four, plus `SHA256SUMS` |
+| the artefacts | all three, plus `SHA256SUMS` | all three, plus `SHA256SUMS` |
 
-The release page carries four files plus checksums:
+The release page carries three files we build, plus checksums:
 
 | file | what it is |
 |---|---|
 | `wish-<version>-py3-none-any.whl` | the wheel |
-| `wish-<version>.tar.gz` | the sdist |
 | `wish-<version>-linux-x86_64.tar.gz` | the frozen Linux build |
 | `wish-<version>-windows-x86_64.zip` | the frozen Windows build |
 | `SHA256SUMS` | one line per file above |
 
-**Two of them are `.tar.gz`**, and they are not interchangeable: the sdist is
-source you build, the other is a program you run. The frozen one carries a
-platform in its name and the sdist does not, which is the only thing to look
-for.
+Above them GitHub adds **Source code (zip)** and **Source code (tar.gz)** on
+its own, for every tag. They are archives of the repository at that commit,
+they are not built by us, and they cannot be renamed or removed -- which is why
+we do not ship an sdist as well. Three things called some variation of "source"
+on one page is worse than none.
 
 **Nothing in this walkthrough may touch your real save disks.** Step L1 makes a
 working copy and everything afterwards operates on that copy or on files

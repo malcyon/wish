@@ -28,7 +28,7 @@ installed from `wish/window.py`.
 
 | audience | artefact |
 |---|---|
-| people with Python | the wheel, or `pip install` from the sdist |
+| people with Python | the wheel |
 | everyone else | a one-folder PyInstaller build |
 
 Linux gets `wish-<version>-linux-x86_64.tar.gz`, Windows
