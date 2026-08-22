@@ -125,6 +125,25 @@ is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
 say so and wait to be asked.
 
+**A confirmed bug in the original game goes in `goldbox-bugs.md`.** That file is
+the register of defects in SSI's own code and data, and it is the reason to keep
+one: a bug found twice is a bug found once too often. Log it when it is
+**CONFIRMED** -- reproduced in the running game, or proven from the bytecode
+beyond argument. A suspicion goes in `docs/50-experiments.md` until it earns
+promotion.
+
+Two rules about that file, both learned the hard way:
+
+* **Ours is not theirs.** Most things that looked like a game bug were our own
+  misreading -- a wrong stride, an off-by-one dump, an array read half its
+  width. Those belong in the "not their bugs" section as our errors, never in
+  the list.
+* **Describe the defect, not the bypass.** Copy-protection *research* stays in
+  the separate private repository, but a protection routine that computes the
+  wrong answer is a bug like any other and is logged. Say what the code does
+  wrong and what a player sees; do not publish the tables, the arithmetic or
+  anything else that amounts to defeating the check.
+
 ## Code comments
 
 Comment the *why*, and only when it is not obvious. A field note that carries
