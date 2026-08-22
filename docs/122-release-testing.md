@@ -1,11 +1,16 @@
 # Testing the release packages by hand
 
-**Status: the Linux half was run on 2026-08-22, the Windows half never.** No tag
-has been pushed, so none of it has been done against a real release page — the
-Linux run used artefacts built locally by `§0b`, at version
-`0.0.1.dev165+g24a77e835.d20260822`. `§7` says which rows that covered, and each
-Linux section carries a note saying what was actually watched. Anything without
-such a note is still expectation.
+**Status: the Linux half was run on 2026-08-22, and the first Windows run
+followed the same day.** No tag has been pushed, so none of it has been done
+against a real release page — the Linux run used artefacts built locally by
+`§0b`, at version `0.0.1.dev165+g24a77e835.d20260822`. `§7` says which rows each
+run covered, and each Linux section carries a note saying what was actually
+watched. Anything without such a note is still expectation.
+
+**The Windows run answered the console questions and found four real defects.**
+`wish.exe` from Explorer opens the window with no console anywhere behind it,
+and `wish --help` and `wish --version` typed into a Command Prompt print
+normally — the console-borrowing path in note 2 works. The defects are in `§7`.
 
 This is for you, at a keyboard, before the first `v*` tag is cut — or straight
 after it, against the artefacts the tag produced. It covers what
@@ -23,25 +28,30 @@ it points at the README section by name.
 **1. Both platforms ship one executable, and it is the same one.** `wish-cli`
 shipped beside `wish` on Linux until [129-one-binary.md](129-one-binary.md)
 folded it in as `wish export` and `wish import`. Every command-line step below
-is therefore a step against `wish` itself, on either platform — though on
-Windows the build is windowed, so whether the subcommands' output reaches a
-`cmd` window is the console-borrowing path in note 2 and **nothing depends on
-it**.
+is therefore a step against `wish` itself, on either platform — and on Windows
+the subcommands' output does reach a `cmd` window, see note 2.
 
-**2. `wish.exe --version` should now print, and nobody has watched it.** The
-spec still builds the window `console=False`, so the process starts with no
-console of its own; `packaging/wish_main.py` repairs the streams before
-anything writes — an inherited handle first (a redirect, a pipe), else the
-console that launched us, borrowed with `AttachConsole(ATTACH_PARENT_PROCESS)`
-and written through `CONOUT$`, else `os.devnull`.
-Started from **cmd or PowerShell you should see the version**; started by
-**double-click from Explorer there is no console to borrow and every message,
-the "no game disks … so the map tab will be empty" line included, is still
-swallowed**. The window's **Help > About wish** is the version either way.
-*Unverified on Windows: nobody on the project has a Windows machine.* The
-fallback chain is unit-tested on Linux (`tests/test_packaging.py`) and
-`release.yml` now asserts on the output of `wish.exe --version`, so a
-regression fails the tag rather than shipping.
+**2. `wish.exe --version` prints, and this has now been watched.** The spec
+builds the window `console=False`, so the process starts with no console of its
+own; `packaging/wish_main.py` repairs the streams before anything writes — an
+inherited handle first (a redirect, a pipe), else the console that launched us,
+borrowed with `AttachConsole(ATTACH_PARENT_PROCESS)` and written through
+`CONOUT$`, else `os.devnull`.
+
+*Verified 2026-08-22, on Donald's Windows machine:* `wish --help` and
+`wish --version` typed into a Command Prompt both print their output there,
+ordinarily — "the CLI works perfectly fine in windows". Double-clicked from
+Explorer the window opens and **there is no console window anywhere**, which
+is both halves of the assertion: the borrow works where there is something to
+borrow, and the windowed build never conjures a console where there is not.
+
+Started by double-click there is still no console to borrow, so messages
+written before the window is up — the "no game disks … so the map tab will be
+empty" line included — go to `os.devnull` and are lost. The window's
+**Help > About wish** is the version either way. The fallback chain is also
+unit-tested on Linux (`tests/test_packaging.py`) and `release.yml` asserts on
+the output of `wish.exe --version`, so a regression fails the tag rather than
+shipping.
 
 **3. The Commodore 64 Ultimate backend cannot be tested.** Nobody on the
 project has the hardware. It is written from vendor documentation and exercised
@@ -580,26 +590,26 @@ on new signatures anyway. Click **More info**, then **Run anyway**.
 
 *Expect then:* **the wish window, and no console window behind it.** That is
 the assertion — a windowed build that opens a black console box alongside the
-map is a packaging mistake, and nobody has seen this one run.
+map is a packaging mistake. *Confirmed 2026-08-22:* the GUI launched from
+Explorer and there was no console window anywhere.
 
 *If instead the file vanishes,* Defender quarantined it as a PyInstaller false
 positive — check Windows Security > Protection history. **Unverified**: this
 happens to some PyInstaller builds and not others.
 
-**Two things to note while you are there.** Neither is a pass/fail step; you
-already know the version, since you built it.
+**The command line, which now works.**
 
 ```powershell
 cd C:\wish\wish-<version>-windows-x86_64
 .\wish.exe --version
+.\wish.exe --help
 ```
 
-A windowed program does not hold the terminal, so the shell prints its next
-prompt first and **the version may appear underneath it**. If nothing prints at
-all, note which shell you used — cmd, PowerShell, Windows Terminal, an SSH
-session — because that is what decides it. Either way it changes nothing: the
-version is in **Help > About wish**, and nobody is expected to use the command
-line on Windows.
+*Expect:* both print, in the window you typed them in. *Confirmed 2026-08-22*
+from a Command Prompt: the version printed, the help text printed, and the
+output was ordinary — no interleaving with the shell's next prompt worth
+noting. Nobody is expected to use the command line on Windows, and the version
+is in **Help > About wish** too, but it is no longer an open question.
 
 *If you get a PyInstaller traceback box, that is a real regression* and worth a
 screenshot: this path used to die in `AttributeError: 'NoneType' object has no
@@ -736,18 +746,20 @@ Tick as you go. `n/a` where a row does not apply to that platform.
 
 **The Linux column is filled in.** Every ✅ was watched by the assistant on
 **2026-08-22**, at version **`0.0.1.dev165+g24a77e835.d20260822`**, against
-artefacts built by `§0b` from this working tree. The Windows column is still
-empty and is yours.
+artefacts built by `§0b` from this working tree.
+
+**The Windows column is half filled in**, by Donald on **2026-08-22**, on his
+own Windows machine. Eleven rows ✅ ⁵. The rest are still his to do.
 
 | # | check | Linux | Windows |
 |---|---|---|---|
 | 2 | `SHA256SUMS` verifies | ✅ | ☐ |
-| L2 | frozen archive unpacks, `wish` present | ✅ | ☐ (W4) |
-| L3 | `wish --version` prints the version | ✅ ¹ | n/a — noted at W5, nothing depends on it |
-| L3a | `wish export --help` prints its usage | ✅ | ☐ |
-| W5 | **the window opens and no console appears** | n/a | ☐ |
-| L5 | Help > About shows the same version | ✅ | ☐ (W5) |
-| L4 | window opens on a save disk | ✅ | ☐ (W6) |
+| L2 | frozen archive unpacks, `wish` present | ✅ | ✅ ⁵ |
+| L3 | `wish --version` prints the version | ✅ ¹ | ✅ ⁵ |
+| L3a | `wish export --help` prints its usage | ✅ | ✅ ⁵ |
+| W5 | **the window opens and no console appears** | n/a | ✅ ⁵ |
+| L5 | Help > About shows the same version | ✅ | ✅ ⁵ |
+| L4 | window opens on a save disk | ✅ | ✅ ⁵ |
 | L6 | edit, Save As, reopen — value stuck | ✅ | ☐ (W6) |
 | L6 | the original save disk is byte-identical afterwards | ✅ | ☐ |
 | L7 | the game loads the edited disk and shows the edit | ✅ | ☐ (W6) |
@@ -763,11 +775,11 @@ empty and is yours.
 | W2 | binary monitor enabled and survives a restart | n/a | ☐ |
 | W5 | SmartScreen warning cleared, program runs | n/a | ☐ |
 | W7 | settings and notes land in the user directories, not beside the exe | ✅ | ☐ |
-| M2 | automapper attaches | ✅ | ☐ |
-| M3 | the map tracks the party | ✅ | ☐ |
-| M5 | notes and explored squares survive a restart | ✅ ² | ☐ |
-| M6 | starts cleanly with no emulator running | ✅ | ☐ |
-| 8 | debug log writes, and names no paths | ✅ ³ | ☐ |
+| M2 | automapper attaches | ✅ | ✅ ⁵ ⁶ |
+| M3 | the map tracks the party | ✅ | ✅ ⁵ |
+| M5 | notes and explored squares survive a restart | ✅ ² | ✅ ⁵ |
+| M6 | starts cleanly with no emulator running | ✅ | ✅ ⁵ |
+| 8 | debug log writes, and names no paths | ✅ ³ | ✅ ⁵ |
 
 ¹ **No `v*` tag has been cut, so what is proven is the pipe, not the tag.** The
 version built, printed and reported was `hatch-vcs`'s development string, and it
@@ -796,6 +808,22 @@ at all. The metadata lookup that remains, in `wish/__init__.py`, names
 `wish-goldbox` and is checked against `pyproject.toml` by
 `tests/test_packaging.py`. **Unverified since the fix** — no build has been
 re-run against it.
+
+⁵ **Watched by Donald on 2026-08-22**, on Windows, on the first run of this
+half. The three that mattered most, in his words: *"Running wish.exe from the
+Windows Explorer launches the GUI. Running wish --help from the Windows Command
+displays the help text. Running --version prints the version. The CLI works
+perfectly fine in windows. When run from Windows Explorer, the gui launches and
+there is no console window anywhere."*
+
+⁶ **M1** — starting on the map tab — has no row of its own; it is what M2
+attaches from, and it was run.
+
+**The run found four real defects**, which is what a first run on a new platform
+is for. An oversized window on his display, unreadable spin boxes in the editor,
+the roster selection, and a fog-of-war fault in the automapper. All four are
+being fixed elsewhere and none of them is a packaging fault, so none of them
+un-ticks a row above.
 
 ---
 
@@ -849,8 +877,13 @@ monitor at the time.
 ## Marked unverified
 
 The Linux steps were run on 2026-08-22 and their sections now say what was
-watched. Everything here is what is *still* expectation rather than observation,
-and worth correcting in this file once you know:
+watched; the first Windows run followed the same day and retired four rows that
+used to be here — that `wish.exe --version` reaches a terminal, that its output
+lands after the shell's prompt, whether a windowed build opens a stray console,
+and whether the frozen build starts at all on Windows. All four are now
+observed and their sections say so. Everything below is what is *still*
+expectation rather than observation, and worth correcting in this file once you
+know:
 
 | where | claim |
 |---|---|
@@ -863,13 +896,9 @@ and worth correcting in this file once you know:
 | W2 | whether Windows Defender Firewall prompts when VICE binds `127.0.0.1:6502` |
 | W5 | that SmartScreen shows "Windows protected your PC" and not something else |
 | W5 | whether Defender quarantines this PyInstaller build as a false positive |
-| W5 | whether `wish.exe --version` reaches a terminal at all — the P29 fix, unit-tested on Linux, never watched on Windows. A curiosity, not a requirement: nobody is expected to use the command line on Windows |
-| W5 | that if it does print, the version lands *after* the shell's next prompt, a windowed process not holding the terminal |
-
-
-| W4 | that the Windows zip holds one executable and no more — asserted in CI on both platforms and unit-tested, but no Windows build has been made |
+| W4 | that the Windows zip holds one executable and no more — asserted in CI on both platforms and unit-tested; the zip has now been unpacked and run, but nobody counted what was in it |
 | W4 | that the 260-character path limit is actually reachable here |
 | M2 | `Test-NetConnection`'s exact output for a closed port |
-| — | the Windows zip running on a machine with no Python at all (`106-releases.md` records this as unverified too) |
+| — | the Windows zip running on a machine with **no Python at all** — it ran on Donald's Windows machine on 2026-08-22, which is not known to be bare (`106-releases.md` records this as unverified too) |
 | — | the Linux frozen build on any distribution other than the one it was built on |
 | — | the Commodore 64 Ultimate backend, which cannot be tested at all |
