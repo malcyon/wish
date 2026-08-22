@@ -11,13 +11,15 @@ the tile to read in monochrome -- rather than merely produced.
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
 the path data that nobody regenerated fails the build instead of shipping an
-executable whose icon is the old drawing.
+executable whose icon is the old drawing. The comparison is the *pixels*: a
+PNG's bytes belong to libpng and zlib, which Qt links from the host on Linux
+and bundles on Windows, and two machines encoded the same drawing into
+different files -- see `test_the_committed_assets_are_todays_drawing`.
 """
 
 from __future__ import annotations
 
 import pathlib
-import struct
 
 import pytest
 
@@ -168,18 +170,8 @@ def test_the_about_box_shows_the_icon(app):
 
 
 def _entries() -> list[dict]:
-    """`wish.ico`'s directory, parsed. Twelve lines beats a dependency."""
-    data = ICO.read_bytes()
-    reserved, kind, count = struct.unpack("<HHH", data[:6])
-    assert (reserved, kind) == (0, 1), "not an icon file"
-    out = []
-    for i in range(count):
-        w, h, colours, _, planes, bpp, length, offset = struct.unpack(
-            "<BBBBHHII", data[6 + 16 * i:22 + 16 * i])
-        out.append({"size": w or 256, "height": h or 256, "bpp": bpp,
-                    "planes": planes, "colours": colours,
-                    "payload": data[offset:offset + length]})
-    return out
+    """`wish.ico`'s directory, as the generator's own parser reads it."""
+    return genicons.ico_entries(ICO.read_bytes())
 
 
 def test_the_ico_holds_the_sizes_windows_asks_for():
@@ -219,12 +211,29 @@ def test_the_16_is_drawn_and_not_a_squeezed_256(app):
             assert (r, g, b, a) == fresh[y][x], (x, y)
 
 
-def test_assets_are_what_the_generator_would_write_today():
+def test_the_committed_assets_are_todays_drawing(app):
     """`assets/` is committed, so it can go stale. Regenerate it with
-    `python3 tools/genicons.py` when this fails."""
-    stale = [str(path.relative_to(ROOT))
-             for path, data in genicons.artefacts(ASSETS).items()
-             if not path.exists() or path.read_bytes() != data]
+    `python3 tools/genicons.py` when this fails.
+
+    **Pixels, not bytes.** This compared the files byte for byte until CI
+    turned red on three of four runners with the same six names: `wish.ico`,
+    `wish.png` and the 22, 48, 64 and 256 hicolor PNGs. The other four hicolor
+    PNGs -- 16, 24, 32, 128 -- were byte-identical on every one of them, and
+    that is the whole diagnosis. A rasterising difference cannot be that
+    selective: the smallest edit worth catching moves pixels at *every* size
+    (one path point by 1/640 moves 10 px at 16 and 218 at 256), and an
+    arithmetic wobble a thousand times smaller than that -- one ulp on the
+    scale factor -- moves none anywhere. A compressor's output, on the other
+    hand, differs exactly where the data leads it to.
+
+    And the compressor is not ours. `ldd libQt6Gui.so.6` on Linux resolves
+    `libpng16.so.16` and `libz.so.1` to the *host's* copies; the Windows wheel
+    carries its own. Qt hands the encoder the pixels and the encoder writes
+    whatever file it likes -- so the pixels are what is asserted here, and the
+    committed bytes only have to decode to them.
+    """
+    stale = {str(path.relative_to(ROOT)): why
+             for path, why in genicons.differences(ASSETS).items()}
     assert not stale, f"run tools/genicons.py: {stale}"
 
 

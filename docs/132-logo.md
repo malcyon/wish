@@ -206,6 +206,20 @@ committing it keeps the release a single command. `tests/test_appicon.py`
 re-renders every artefact and compares, so a change to the path data that
 nobody regenerated fails the build instead of shipping the old drawing.
 
+**The comparison is pixels, not bytes**, and it is worth saying why. It was
+bytes, and CI went red on every runner with the same six names — `wish.ico`,
+`wish.png`, and the 22, 48, 64 and 256 hicolor PNGs — while 16, 24, 32 and 128
+came back byte-identical on all of them. That split is the diagnosis. A
+rasterising difference cannot be selective: the smallest edit worth catching
+moves pixels at *every* size (one path point by 1/640 moves 10 px at 16 and
+218 at 256), and one ulp on the scale factor moves none anywhere. A
+compressor's output differs exactly where the data leads it to — and the
+compressor is not ours. `ldd libQt6Gui.so.6` resolves `libpng16.so.16` and
+`libz.so.1` to the *host's* copies on Linux; the Windows wheel bundles its own.
+Qt promises the pixels, so the pixels are what is asserted, and the committed
+bytes only have to decode to them. `tools/genicons.py --check` uses the same
+`differences()` and says how many pixels moved and by how much.
+
 **The tests measure the drawing, not the file list.** The 16 is rasterised and
 flood-filled to prove it is one connected piece — the failure that killed
 `hat-wizard` — its widest row is checked to be the bottom one and at least 8 px

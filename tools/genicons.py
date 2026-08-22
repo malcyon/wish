@@ -26,6 +26,10 @@ before `pyinstaller`, and PyInstaller wants the `.ico` to exist when it reads
 `wish.spec`; committing it keeps the release a single command.
 `tests/test_appicon.py` re-renders and compares, so a committed file that no
 longer matches the drawing fails the build rather than shipping.
+
+**The comparison is pixels, not bytes** -- `differences`, and the note above it.
+Qt does not promise a byte-identical PNG on two machines and did not deliver
+one; it does promise the pixels, and the pixels are the drawing.
 """
 
 from __future__ import annotations
@@ -135,6 +139,104 @@ def artefacts(assets: pathlib.Path = ASSETS) -> dict[pathlib.Path, bytes]:
     return out
 
 
+# --- comparing a committed artefact with today's drawing -----------------
+#
+# Not by its bytes. A PNG's bytes are libpng's and zlib's, and on Linux Qt
+# links the *host's* copies of both (`ldd libQt6Gui.so.6` finds
+# `libpng16.so.16` and `libz.so.1`) while the Windows wheel bundles its own.
+# Qt promises the pixels, not the file, and on CI four of the eight hicolor
+# PNGs came back byte-identical and four did not -- which no rasterising
+# difference could produce, because a change to the drawing moves pixels at
+# every size at once (measured: the smallest useful path edit moves 10 px at
+# 16 and 218 at 256, and a 1-ulp change to the scale factor moves none).
+# So the pixels are compared and the encoding is left to the machine.
+
+
+def png_pixels(data: bytes) -> tuple[int, int, bytes]:
+    """An encoded PNG as (width, height, RGBA8888 rows)."""
+    image = QImage.fromData(data, "PNG")
+    if image.isNull():
+        raise ValueError("not a PNG this Qt can read")
+    image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    return (image.width(), image.height(),
+            bytes(image.constBits().asstring(image.sizeInBytes())))
+
+
+def ico_entries(data: bytes) -> list[dict]:
+    """`wish.ico`'s directory, parsed. Twelve lines beats a dependency."""
+    reserved, kind, count = struct.unpack("<HHH", data[:6])
+    if (reserved, kind) != (0, 1):
+        raise ValueError("not an icon file")
+    out = []
+    for i in range(count):
+        w, h, colours, _, planes, bpp, length, offset = struct.unpack(
+            "<BBBBHHII", data[6 + 16 * i:22 + 16 * i])
+        out.append({"size": w or 256, "height": h or 256, "bpp": bpp,
+                    "planes": planes, "colours": colours,
+                    "payload": data[offset:offset + length]})
+    return out
+
+
+def drawing(name: str, data: bytes) -> dict[str, tuple[int, int, bytes]]:
+    """Every square an artefact holds, as label -> (width, height, pixels).
+
+    A DIB is already pixels and is taken as it stands, header and AND mask
+    left off; a PNG -- the whole of a `.png`, and the 256 inside the `.ico` --
+    is decoded. The label carries the entry's shape, so an `.ico` that lost a
+    size or turned an entry 24-bit compares unequal rather than silently
+    matching on the sizes it still has.
+    """
+    if not name.endswith(".ico"):
+        return {"": png_pixels(data)}
+    out = {}
+    for entry in ico_entries(data):
+        size, payload = entry["size"], entry["payload"]
+        label = (f"{size}x{entry['height']} {entry['bpp']}-bit "
+                 f"{entry['planes']}-plane")
+        out[label] = (png_pixels(payload)
+                      if payload[:8] == b"\x89PNG\r\n\x1a\n"
+                      else (size, size, payload[40:40 + 4 * size * size]))
+    return out
+
+
+def _difference(was, now) -> str:
+    """Why two squares are not the same square, or "" when they are."""
+    if was is None or now is None:
+        return "only one of the two has it"
+    (width, height, before), (wide, high, after) = was, now
+    if (width, height) != (wide, high):
+        return f"{width}x{height} against {wide}x{high}"
+    if before == after:
+        return ""
+    pixels = sum(1 for i in range(0, len(before), 4)
+                 if before[i:i + 4] != after[i:i + 4])
+    worst = max(abs(a - b) for a, b in zip(before, after))
+    return (f"{pixels} of {width * height} pixels differ, "
+            f"by up to {worst} of 255")
+
+
+def differences(assets: pathlib.Path = ASSETS) -> dict[pathlib.Path, str]:
+    """The committed artefacts that are not today's drawing, and why."""
+    out = {}
+    for path, data in artefacts(assets).items():
+        if not path.exists():
+            out[path] = "missing"
+            continue
+        was, now = drawing(path.name, path.read_bytes()), drawing(path.name,
+                                                                 data)
+        notes = [f"{label}: {note}" if label else note
+                 for label in sorted(set(was) | set(now))
+                 if (note := _difference(was.get(label), now.get(label)))]
+        if notes:
+            out[path] = "; ".join(notes)
+    return out
+
+
+def _name(path: pathlib.Path) -> str:
+    """Short where it can be -- `--into` may point anywhere."""
+    return str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
@@ -146,20 +248,20 @@ def main(argv: list[str]) -> int:
     app = QGuiApplication(["genicons"])     # a QImage still wants one
     assert app is not None                  # and wants it kept alive
 
-    stale = []
-    for path, data in artefacts(pathlib.Path(args.into)).items():
-        if args.check:
-            if not path.exists() or path.read_bytes() != data:
-                stale.append(path)
-            continue
+    into = pathlib.Path(args.into)
+    if args.check:
+        stale = differences(into)
+        if stale:
+            print("out of date -- run tools/genicons.py:", file=sys.stderr)
+            for path, why in stale.items():
+                print(f"  {_name(path)}: {why}", file=sys.stderr)
+            return 1
+        return 0
+
+    for path, data in artefacts(into).items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-        print(f"{path.relative_to(ROOT)}  {len(data)} bytes")
-    if stale:
-        print("out of date -- run tools/genicons.py:", file=sys.stderr)
-        for path in stale:
-            print(f"  {path}", file=sys.stderr)
-        return 1
+        print(f"{_name(path)}  {len(data)} bytes")
     return 0
 
 
