@@ -1,22 +1,25 @@
-# Testing Curse of the Azure Bonds against this tooling — plan
+# Testing Curse of the Azure Bonds against this tooling
 
-**Status: planned, not started.** The goal is a **base-level check**, not
-coverage: enough evidence to say "the tooling reads the second game" or "here
-is exactly where it stops", and to keep that answer from silently rotting.
+**Status: tiers 1, 2 and 5.1 are done and automated in `tests/test_curse.py`.
+Tiers 3, 4 and 5.2 need the emulator and are not started.** The goal is a
+**base-level check**, not coverage: enough evidence to say "the tooling reads
+the second game" or "here is exactly where it stops", and to keep that answer
+from silently rotting.
 
 `docs/116-second-game.md` already established the important half — Curse uses
 the same 580-byte character record, the same `GEO` format, the same roster
 block, and a save image that is Pool of Radiance's constants plus `$200` — and
-`tests/test_second_game.py` pins it. This plan is about the gap between *the
-decoders read Curse's bytes* and *the program works on Curse*, which is wider
-than it looks, because everything above `por/` names Pool of Radiance's files
-by hand.
+`tests/test_second_game.py` pins it. This document is about the gap between
+*the decoders read Curse's bytes* and *the program works on Curse* — a gap that
+was wide because everything above `por/` named Pool of Radiance's files by
+hand, and that `por/games.py` closed.
 
 The single most useful check in this document is **tier 5.1: export a Curse
 save disk to YAML and re-import it byte-identically.** It exercises the whole
 path — D64, PRG, save geometry, slots, roster, items, icons, YAML — and asserts
 nothing about meaning, so it can pass before any Curse field is understood. It
-is also the one that cannot run today, for a reason named below.
+passes, on `CURSESAVE2.D64` and `CURSE_C.D64`, with Pool of Radiance's
+`PORSAVE11.D64` as the control.
 
 ---
 
@@ -38,35 +41,37 @@ Everything below is what that suite does **not** touch.
 
 ## The tiers
 
-| tier | what it proves | cost | emulator | blocked today |
-|---|---|---|---|---|
-| 1 static inventory and parse | the disks are what we think, and records come out sane | hours | no | no |
-| 2 map files | the `GEO` decoder is right about Curse, not merely quiet | hours | no | no |
-| 3 live memory | whether any resident address transfers | a day, iterative | **yes** | the game's start-up check |
-| 4 automapper | position, facing, area id | half a day after tier 3 | **yes** | depends on tier 3 |
-| 5 editor round trip | the whole read/write path is lossless on Curse | half a day + a game parameter | 5.1 no, 5.2 yes | **yes — see 5.0** |
+| tier | what it proves | emulator | state |
+|---|---|---|---|
+| 1 static inventory and parse | the disks are what we think, and records come out sane | no | **done** — `tests/test_curse.py` |
+| 2 map files | the `GEO` decoder is right about Curse, not merely quiet | no | **done** — same |
+| 3 live memory | whether any resident address transfers | **yes** | blocked on the game's start-up check |
+| 4 automapper | position, facing, area id | **yes** | depends on tier 3 |
+| 5 editor round trip | the whole read/write path is lossless on Curse | 5.1 no, 5.2 yes | **5.1 done**; 5.2 needs the emulator |
 
 Tiers 1, 2 and 5.1 are the ones worth having whatever else happens. They are
-cheap, they are automatable, and they fail loudly.
+cheap, they are automatable, and they fail loudly. All three now run on every
+`pytest` and skip when the player has no Curse disk.
 
 ---
 
 ## Tier 1 — static: inventory and parse
 
-**No emulator. Automate as tests that skip when no Curse disk is present,
-exactly as `tests/gamedata.py` already does.** Add to
-`tests/test_second_game.py`; do not add fixtures.
+**Done, in `tests/test_curse.py`.** No emulator, no fixtures; every test skips
+when the player has no Curse disk, and every assertion runs over Pool of
+Radiance too.
 
 ### 1.1 Disk directory inventory
 
 **Proves:** that the two games' file sets correspond where we assume they do,
-and names every place they do not. **Cost:** an hour, and most of it is already
-done below. **Failure means:** an assumption about a file's existence — not its
-contents — is wrong, which is the cheapest kind of bug to find and the most
-annoying to find late.
+and names every place they do not. **Asserted by**
+`test_curse_speaks_pool_of_radiances_file_vocabulary`,
+`test_curse_ships_spelln64_and_no_spelln00` and
+`test_curse_map_ids_are_sparse_so_nothing_may_enumerate_by_count`, each with
+the Pool of Radiance side of the comparison in the same test.
 
-Measured while writing this, over the six `CURSE_?.D64` sides in `work/curse/`
-against the nine `POOL*.D64`:
+Measured over the six `CURSE_?.D64` sides in `work/curse/` against the nine
+`POOL*.D64`:
 
 | | Pool of Radiance | Curse |
 |---|---|---|
@@ -79,7 +84,7 @@ Five differences matter, and all five are new information:
 | observation | consequence | Confidence |
 |---|---|---|
 | **Curse's `GEO` ids are sparse and grouped by chapter**: `01 03 04` / `10 11 15` / `20 21 25` / `32 33 35` / `40 42 43 45`. Pool of Radiance runs `GEO00`–`GEO1F` dense | anything that *enumerates* maps by counting must enumerate by directory instead | CONFIRMED |
-| **`GEO15` exists in both games and means different places.** `automap/state.py` maps `GEO15` → "Sokol Keep" | a Curse party in `GEO15` would be labelled Sokol Keep. The area-name table is per-title and is not marked as such | CONFIRMED |
+| **`GEO15` exists in both games and means different places.** | `por/areas.py:GEO_NAMES` is now keyed by game title first and `area_name` degrades an unknown title to `"area 15"`, so the collision no longer mislabels | CONFIRMED, and cleared |
 | **No `SQRPACI*`, `SQRDATA*` or `WALLS*` on any Curse side.** Curse has `WALLDEF00`–`WALLDEF0F` and `WALLSET00`–`WALLSET0F` only | the combat square renderer, which `docs/50-experiments.md` places at `$0400` from `SQRPACI01`, has no counterpart of that name | CONFIRMED |
 | **No `LOAD/SAVE` file.** Pool of Radiance carries one | save/load is not the same overlay, so nothing about its addresses transfers | CONFIRMED |
 | **`SPELLN64` exists on `CURSE_A.D64` (8 blocks); `SPELLN00` does not.** Pool of Radiance carries both | `docs/116` §5 says "Curse has no `SPELLN` file". That is too strong and should be corrected to "no `SPELLN00`" | CONFIRMED |
@@ -89,90 +94,88 @@ Curse-only stems worth a line each, unexplained: `FSDEF`, `STOP`, `FASTL.O`
 
 ### 1.2 Save-disk shape
 
-**Proves:** that a save disk written by Curse is a container `por/d64.py` reads.
-**Cost:** minutes. **Failure means:** the D64 reader has a gap, which would
-block every later tier.
-
-Observed on `work/curse/CURSESAVE2.D64`:
-
-| entry | block count in the directory | actually reads |
-|---|---|---|
-| `SAVEAZURE` | 30 | 7426 bytes, load `$4B00` |
-| `\x02BRUTUS` | **0** | 582 bytes, load `$7C00` |
+**Asserted by** `test_the_curse_save_is_one_file_where_pool_of_radiance_writes_two`:
+`SAVEAZURE` is one 7426-byte PRG loading at `$4B00`, against Pool of Radiance's
+`SAVEDGAME0` + `SAVEDGAME1` pair.
 
 **A Curse character export has a directory block count of zero and a valid
-sector chain.** PROBABLE — one specimen, but the file is exactly what `docs/116`
-§4 describes the export routine producing, so the game wrote it.
-
-This is a live defect, not a curiosity: `tests/gamedata.py:curse_file()` does
-
-```python
-if entry is None or not entry.block_count:
-    continue
-```
-
-so it would **silently skip every Curse-written character file**. The `not
-entry.block_count` guard exists to reject the empty-entry case; it needs to be
-"the file has no sector chain", not "the count field is zero". Fix and add a
-test that reads a Curse export by name.
+sector chain** — `\x02BRUTUS` on `CURSESAVE2.D64` reports 0 blocks and reads
+back 582 bytes at `$7C00`. `tests/gamedata.py:curse_file()` used to skip any
+zero-block entry and so hid every Curse-written character file; it now follows
+the sector chain and ignores the count. The same defect hid all six Death
+Knights of Krynn sides, whose cracked directory reports 0 for every file.
 
 ### 1.3 Records out of a Curse save parse sane
 
-**Proves:** the record decoder is not merely round-tripping bytes but producing
-values a person would recognise. **Cost:** an hour. **Failure means:** an
-offset that happens to be inert in Pool of Radiance is live in Curse.
+**Asserted by** `test_every_curse_character_parses_with_fields_a_person_would_recognise`,
+over every whole Curse save on the player's disks — SSI's six pregens on
+`CURSE_C.D64` *and* the player's own three-character `CURSESAVE`/`CURSESAVE2` —
+with `test_pool_of_radiance_characters_satisfy_the_same_invariants` as the
+control on `PORSAVE11.D64`.
 
-`tests/test_second_game.py:_sane_record` already checks race, hit points,
-level, saving throws and movement over SSI's six pre-generated characters.
-Extend it, over **the player's own Curse save** as well as SSI's:
+What it checks, and what came of it:
 
-| check | expected | Confidence |
-|---|---|---|
-| name is printable ASCII, NUL-padded, non-empty | yes | CONFIRMED |
-| the seven scores at `0x014` are 3–18, exceptional strength 0–100 | yes | CONFIRMED |
-| `0x065`–`0x06B` equals `0x014`–`0x01A` | yes | CONFIRMED (§2.2 of `docs/116`) |
-| `char_class` at `0x073` is zero; `class_bits` at `0x0EB` is the field to read | yes | CONFIRMED |
-| hit points ≤ the level tables allow for the class and level | probably | PROBABLE — `por/levels.py` carries paladin and ranger rows but Curse's caps are **not measured** |
-| the spellbook at `0x078` has no bit set above the highest known spell id | unknown | UNKNOWN — Curse has 100 ids and no Curse specimen writes past `0x07D` |
-| money fields are 16-bit and in range | yes | PROBABLE |
+| check | outcome |
+|---|---|
+| name reads to its NUL and is printable PETSCII | holds. `F/T` is a real name, so punctuation is in |
+| name is NUL-*padded* | **false, and dropped.** The game terminates at the first NUL and leaves the rest: `MALCYON\x00N` and `SILAS\x00S` are characters renamed shorter, and `PALADIN` carries `\x01\x01` in the field's last two bytes |
+| six scores 3–18, exceptional strength 0–100 | holds; Curse's own range is 11–18 |
+| race 1–7, level 1–40, hp 1–999, `hp_rolled ≤ hp_max` | holds |
+| five saving throws 1–20, movement 1–24 | holds |
+| `armour_class_base` decodes to 10 | holds for every player character in both games — the `60 - value` encoding intact |
+| `class_bits` is one bit per non-zero slot of the **eight-wide** array at `0x0C9`, and no slot exceeds `level` | holds, including `0x40` paladin in slot 6 and `0x80` ranger in slot 7 |
 
-The last three are where a base-level check earns its keep: they will either
-pass quietly or hand us a real question.
+Left undone, and deliberately: hit points against `por/levels.py`'s caps, which
+are Pool of Radiance's and unmeasured for Curse; and the spellbook's width,
+which no Curse specimen settles — Silver Blades does, see `docs/121`.
 
 ### 1.4 The control
 
-Every assertion added must run over Pool of Radiance too, in the same test, as
-`test_second_game.py` already does. An invariant that only ever runs on one
-game is an invariant that will be quietly broken for the other.
+Every assertion runs over Pool of Radiance too, in the same test. An invariant
+that only ever runs on one game is an invariant that will be quietly broken for
+the other.
 
 ---
 
 ## Tier 2 — map files
 
-**No emulator. Cost: hours.** The decoder already runs; what is untested is
-whether it is *right* rather than *not obviously wrong*.
+**Done, in `tests/test_curse.py`.** No emulator. The decoder already ran; what
+was untested was whether it is *right* rather than *not obviously wrong*.
 
-| check | what it proves | expectation | Confidence |
-|---|---|---|---|
-| all 16 `GEO` files are 1024 bytes, four planes | plane structure identical | pass | CONFIRMED |
-| reciprocity > 92% on each | planes are not swapped or shifted | pass, worst 93.5% | CONFIRMED |
-| wall-art nibble order — north/east high/low at `$000`, south/west at `$100` | the art planes are not transposed | pass | PROBABLE — reciprocity would survive a *consistent* transposition of art, because it only reads barriers |
-| the barrier field is two bits per direction, `N=0-1 E=2-3 S=4-5 W=6-7` | passability decodes | pass | PROBABLE |
-| `$200` bit 7 is roofed/indoor | attribute plane means the same | pass | GUESS — never checked in Curse |
-| `$200` low bits are a per-square script id, and the area's own ECL masks them | the script-id reading transfers | unknown | UNKNOWN — Curse's ECL scripts have not been decoded here |
+| check | outcome | Confidence |
+|---|---|---|
+| all 16 `GEO` files are 1024 bytes, four planes | pass | CONFIRMED |
+| barrier reciprocity > 92% on each | pass — mean **0.984**, worst `GEO15` **0.935** | CONFIRMED |
+| wall-art nibble order — north/east high/low at `$000`, south/west at `$100` | pass — art-presence reciprocity mean **0.994**, worst `GEO33` **0.919** | **CONFIRMED**, was PROBABLE |
+| the barrier field is two bits per direction, `N=0-1 E=2-3 S=4-5 W=6-7` | pass | CONFIRMED |
+| `$200` bit 7 is roofed/indoor | not checked | GUESS — unchanged |
+| `$200` low bits are a per-square script id, and the area's own ECL masks them | not checked | UNKNOWN — Curse's ECL scripts have not been decoded here |
 
-**The one worth adding a test for is the art transposition.** Reciprocity is
-computed from barriers only, so it cannot catch it. The cheap discriminator:
-in a corridor, an edge with wall art on one side has wall art on the other, and
-the *counts* of each art value should be near-symmetric between the two planes.
-Compute the north/south and east/west art histograms across all sixteen files
-and compare them with Pool of Radiance's. Wildly different shapes mean the
-planes are not what we think.
+**The art transposition is settled, and by a better discriminator than the
+histogram this plan proposed.** `Geo.reciprocity` reads barriers only, so it
+survives any consistent transposition of the art. A second measure does not:
+whether an edge carries wall art *at all* must agree read from both of the
+squares it divides. Curse scores 0.994 on it. Deliberately re-parse the same
+sixteen files wrong and it collapses:
 
-**A mismatch would mean** Curse uses different wall art indices into a different
-`WALLDEF`/`WALLSET` pair — which its file list already suggests it does, since
-Curse ships `WALLDEF00`–`WALLDEF0F` where Pool of Radiance ships `WALLS*`. Art
+| reading | barrier reciprocity | art reciprocity |
+|---|---|---|
+| as decoded | 0.984 | **0.994** |
+| art planes `$000` and `$100` exchanged | 0.984 (blind to it) | **0.540** |
+| high and low nibble exchanged in both art planes | 0.984 (blind) | **0.429** |
+| barrier directions read `W S E N` | **0.797** | 0.994 |
+
+Both mangles are asserted, so the floors are evidence rather than decoration:
+a wrong parse has to fall through them. Presence and not *value* is the right
+comparison — the art index differs across a one-way wall, and Curse indexes a
+different `WALLDEF`/`WALLSET` pair than Pool of Radiance's `WALLS*` anyway. Art
 *indices* differing is expected and harmless; art *planes* differing is not.
+
+**The per-file art floor is Curse's alone.** Pool of Radiance scores 0.960 mean
+and 0.646 on `GEO1E`, because it draws genuinely one-sided walls; Curse's worst
+is 0.919 and Silver Blades has no one-sided edge at all. So Pool of Radiance is
+asserted on the corpus mean only, and that difference is itself a test rather
+than folklore.
 
 **Deliberately not tested:** what the art indices draw. That needs the charsets
 and the renderer, and it is not a base-level question.
@@ -250,7 +253,7 @@ an address is known.
 | `ResidentGeo` strategy — find the loaded map in RAM and match it | probably | where Curse leaves it; `$0400` is a Pool of Radiance fact | GUESS |
 | `FilenameDigits` strategy — read the two digits patched into the `GEO00` stem | probably not as written | `$2714` instead of `$24B4`, **and the digit format**: Curse's ids are sparse (`GEO45`), so the two bytes are still two bytes but the candidate set is not `00`–`1F` | PROBABLE |
 | `Fingerprint` strategy — narrow candidates by what the party can and cannot do | yes | the candidate list must come from the Curse disks' directory, not a count | PROBABLE |
-| `AREA_NAMES` in `automap/state.py` | **no** | every name. It is a Pool of Radiance table with no title key, and `GEO15` collides | CONFIRMED |
+| area names | **structure done, content not** | `por/areas.py:GEO_NAMES` is keyed by game title and `area_name` degrades an unknown map to `"area 15"` rather than lying, so the `GEO15` collision is gone. Curse's own names are still nobody's — naming a map needs the game | CONFIRMED for the table, UNKNOWN for the names |
 | one step costs one minute (`automap/state.py`) | unknown | measure | UNKNOWN |
 
 **What a failure would tell us.** If `ResidentGeo` cannot find the map anywhere
@@ -267,56 +270,37 @@ base-level check. Full exploration tracking, notes and the world map are not.
 
 ## Tier 5 — the editor
 
-### 5.0 The blocker, first
+### 5.0 The blocker, cleared
 
-**A Curse save cannot be opened by `wish` or `wish-cli` today, and it is not a
-one-line fix.** The whole upper stack names Pool of Radiance's files and base
-literally:
+**`por/games.py` is the game parameter this section asked for**: a frozen
+`Game` descriptor per title carrying the save file name, the load address, the
+payload size and the roster's place, threaded through `por/savegame.py`,
+`por/yaml_io.py` and `editor/`. `games.detect(disk)` names the title from the
+disk's own directory, so a Curse save opens with no argument, and
+`por/items.py`, `por/icons.py` and `editor/inventory.py` needed no change at
+all because they already worked in payload offsets. All six titles are in the
+table.
 
-| where | hardcoded |
-|---|---|
-| `editor/roster.py` | `SAVE0`/`SAVE1` = `SAVEDGAME0`/`SAVEDGAME1`; "is this a save disk" is `SAVE0 in names` |
-| `editor/window.py` | writes back to `b"SAVEDGAME0"` / `b"SAVEDGAME1"` |
-| `por/yaml_io.py` | reads and writes both files by name; `SAVE0_LOAD_ADDRESS` throughout |
-| `por/savegame.py` | `SAVE0_LOAD_ADDRESS = 0x4900`, `SAVE1_LOAD_ADDRESS = 0x8300`, `ITEM_AREA_BASE = 0x5900`, `ICON_TABLE_BASE = 0x4BE0` |
-| `por/items.py` | `NAMES_LOAD_ADDRESS`; `tests/test_second_game.py` monkeypatches it to `$9E00` |
-| `automap/paths.py`, `automap/__main__.py`, `editor/window.py`, `wish/__main__.py` | glob `POOL*.D64` |
-| `tests/test_binary_roundtrip.py` | an absolute path to one machine's disk directory |
-
-Curse has **one** save file, `SAVEAZURE`, at `$4B00`, with the roster inside it
-at `$6700` — so this is not "the same two files at a different address", it is a
-different container shape.
-
-**The smallest honest change is a game parameter**: a `Game` value carrying the
-save filenames, the load addresses, the roster base, the item base, the item
-name base and the disk glob, threaded from `Party.__init__` and the YAML entry
-points down into `savegame.py`. Not a second copy of the code, and not a second
-layout table — `docs/116` is unambiguous that the record offsets are identical,
-so a second `layout.py` would be wrong.
-
-Estimate: a day, most of it threading rather than thinking. **Do this before
-tier 5.1, because tier 5.1 is the check worth having.**
+Nothing about the record layout was duplicated, which was the risk this section
+named: `docs/116` is unambiguous that the offsets are identical, so a second
+`layout.py` would have been wrong.
 
 ### 5.1 The byte-identical round trip — the strongest single check
 
-**Proves:** that every byte of a Curse save survives read → decode → encode →
-write, through the same code the editor uses. It asserts nothing about what any
-byte *means*, which is why it can pass while half of `docs/116` §6 is still
-NOT FOUND. **Cost:** minutes to run, once 5.0 is done. **No emulator.**
-**Failure means:** a region is being decoded and re-encoded lossily — the exact
-failure a reverse-engineering tool must never have, because a silent misparse
-looks like a discovery.
+**Done. All three round trips pass**, in `tests/test_curse.py`, with Pool of
+Radiance's two-file save as the control. Every byte of a Curse save survives
+read → decode → encode → write through the same code the editor uses, and none
+of it asserts what any byte *means* — which is why it passes while half of
+`docs/116` §6 is still NOT FOUND.
 
-Three round trips, each stricter than the last:
-
-| # | round trip | expected |
+| # | round trip | result |
 |---|---|---|
-| a | `SAVEAZURE` payload → `SaveGame0`-equivalent → bytes | byte-identical |
-| b | Curse save disk → YAML → new disk | the two D64 images identical outside the directory timestamps |
-| c | a Curse `\x02NAME` export → `CharacterRecord` → bytes | byte-identical (already passes for save slots; **not** for exports, see 1.2) |
+| a | `SAVEAZURE` payload → `SaveGame0` → bytes | byte-identical |
+| b | Curse save disk → YAML → new disk | byte-identical D64 images, on `CURSESAVE2.D64` and `CURSE_C.D64` |
+| c | a Curse `\x02NAME` export → `CharacterRecord` → bytes | byte-identical: `\x02BRUTUS`, 582 bytes, marker `$02`, load `$7C00` |
 
-(c) is nearly free and should be added to `tests/test_second_game.py` **now**,
-before 5.0, since it needs no editor at all — only the `curse_file` fix.
+One edited field is checked too: setting gold moves at most two bytes of the
+whole image.
 
 ### 5.2 An edited field takes effect in game
 
@@ -342,15 +326,18 @@ evidence.
 
 ## Blockers, honestly
 
+Four of the seven blockers this section listed are cleared: `wish` opens a
+Curse save, `curse_file()` follows the sector chain instead of trusting the
+block count, `por/areas.py:GEO_NAMES` is keyed by title, and the `PIS` rip
+supplies six clean sides. What is left:
+
 | blocker | severity | what would clear it |
 |---|---|---|
-| **`wish` cannot open a Curse save at all** (5.0) | blocks tier 5 entirely | a game parameter; a day's work, no research needed |
-| **live testing needs past the game's start-up check** | blocks tiers 3 and 4 | out of scope for this repository; tiers 1, 2 and 5.1 are arranged not to need it |
-| `tests/gamedata.py:curse_file()` skips zero-block entries | blocks reading Curse character exports in tests | change the guard to test for a sector chain; hours |
-| `por/d64.py` refuses `CURSE4.D64` (175531 bytes, 35 tracks plus error bytes) | one side of one rip unreadable | the `PIS` rip in `Curse_of_the_Azure_Bonds.SSI.PIS.zip` is all six sides at 174848 and is the set to use |
+| **live testing needs past the game's start-up check** | blocks tiers 3, 4 and 5.2 | out of scope for this repository; tiers 1, 2 and 5.1 are arranged not to need it |
 | no Curse save from a *played* party with inventory | the item area at `$5B00` stays PROBABLE and no Curse item record has ever been seen | play far enough to pick something up, then save. Needs the emulator |
-| Curse's level caps and spell tables are not measured | tier 1.3's "hit points in range" check cannot be strict | table data; a day of reading the disks, no emulator |
-| `automap/state.py:AREA_NAMES` has no title key and `GEO15` collides | tier 4 would confidently mislabel | key the table by title when 5.0's game parameter lands |
+| Curse's level caps and spell tables are not measured | tier 1.3's "hit points in range" check cannot be strict, and is not asserted | table data; a day of reading the disks, no emulator |
+| the spellbook's width in Curse | no Curse specimen writes past `0x07C`, so `docs/116`'s NOT FOUND stands *for Curse* | already settled for the family by Silver Blades — `docs/121` |
+| Curse's `$200` attribute plane — indoor bit and script id | GUESS and UNKNOWN, tier 2 | needs Curse's ECL decoded, which nothing else depends on |
 
 **On the archives.** The disks are under `/home/donald/c64/All Games/`. Use
 `Curse_of_the_Azure_Bonds.SSI.PIS.zip` — six clean sides. The two archives

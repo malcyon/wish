@@ -18,13 +18,15 @@ committed fixture.
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
+import statistics
 
 import pytest
 import yaml
 
-from por import games
-from por.d64 import D64
+from por import games, geo
+from por.d64 import D64, split_load_address
 from por.savegame import SaveGameError, load_save
 from por.yaml_io import ValueError_, export_save, import_into, to_yaml
 from tests import gamedata
@@ -270,3 +272,360 @@ def test_the_editor_shows_which_game_is_open(tmp_path):
     assert window._game_label.text() == "Curse of the Azure Bonds"
     window.load(_copy(gamedata.save_disk("PORSAVE11"), tmp_path))
     assert window._game_label.text() == "Pool of Radiance"
+
+
+# --- tier 1: the static inventory, as assertions -----------------------------
+# `docs/120-curse-testing.md` tier 1 was measured by hand while the plan was
+# written. Everything it established is here as a test, so that a rip with a
+# different file set, or a decoder that stops reading Curse's records, fails
+# instead of quietly disagreeing with the document.
+
+def _stem(name: bytes) -> str:
+    """A filename up to its first digit: `GEO45` and `GEO01` are both `GEO`."""
+    text = bytes(name).decode("latin1")
+    cut = re.search(r"[0-9]", text)
+    return text[:cut.start()] if cut else text
+
+
+def _stems(disks) -> set[str]:
+    return {_stem(entry.name) for disk in disks for entry in disk.directory()}
+
+
+def _names(disks) -> set[bytes]:
+    return {bytes(entry.name) for disk in disks for entry in disk.directory()}
+
+
+def _pool_disks():
+    """Every readable Pool of Radiance game side, as the inventory control."""
+    where = gamedata.disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    out = []
+    for path in sorted(where.glob("POOL*.[dD]64")):
+        try:
+            out.append(D64.open(str(path)))
+        except Exception:
+            continue
+    if not out:
+        pytest.skip("no readable Pool of Radiance disk here")
+    return out
+
+
+def test_curse_speaks_pool_of_radiances_file_vocabulary():
+    """Same engine, same stems -- and the four places that is not true."""
+    curse, pool = _stems(gamedata.curse_disks()), _stems(_pool_disks())
+    assert len(curse & pool) >= 30, f"only {len(curse & pool)} stems shared"
+    assert {"GEO", "ECL", "ITEMS", "ITEMNAMES", "ITEMFILE", "LIBRARY", "MON",
+            "SPELLE", "WALLDEF", "WALLSET", "CHARSET", "COMBAT"} <= curse & pool
+
+    # Pool of Radiance's wilderness and city-block data, and its save overlay,
+    # have no Curse counterpart of that name. `docs/120` §1.1.
+    assert {"SQRDATA", "SQRPACI", "WALLS", "LOAD/SAVE"}.isdisjoint(curse)
+    assert {"SQRDATA", "SQRPACI", "WALLS", "LOAD/SAVE"} <= pool
+
+    # And the stems that are Curse's own.
+    assert {"FSDEF", "STOP", "FASTL.O"} <= curse - pool
+
+
+def test_curse_ships_spelln64_and_no_spelln00():
+    """`docs/116` said "Curse has no SPELLN"; it has one of the two."""
+    curse, pool = _names(gamedata.curse_disks()), _names(_pool_disks())
+    assert b"SPELLN64" in curse and b"SPELLN00" not in curse
+    assert {b"SPELLN00", b"SPELLN64"} <= pool
+
+
+def test_the_curse_save_is_one_file_where_pool_of_radiance_writes_two():
+    disk = D64.open(_curse_save_disk())
+    prg = disk.read_file(CURSE.save_file)
+    assert len(prg) == 7426 == CURSE.save_prg_size
+    assert split_load_address(prg)[0] == 0x4B00 == CURSE.save_load_address
+    assert CURSE.files == (b"SAVEAZURE",)
+    assert POOL.files == (b"SAVEDGAME0", b"SAVEDGAME1")
+
+
+def _geo_ids(disks) -> list[int]:
+    """Every `GEOnn` id on a set of sides, as numbers, sorted and unique."""
+    out = set()
+    for disk in disks:
+        for entry in disk.directory():
+            name = bytes(entry.name)
+            if len(name) == 5 and name.startswith(b"GEO"):
+                try:
+                    out.add(int(name[3:], 16))
+                except ValueError:
+                    continue
+    return sorted(out)
+
+
+def test_curse_map_ids_are_sparse_so_nothing_may_enumerate_by_count():
+    """`GEO01 03 04 / 10 11 15 / 20 21 25 / 32 33 35 / 40 42 43 45`.
+
+    Pool of Radiance runs `$00`-`$20` nearly dense, so a loop over `range(n)`
+    works there and finds three quarters of nothing in Curse. Anything that
+    enumerates maps must read the directory.
+    """
+    curse, pool = _geo_ids(gamedata.curse_disks()), _geo_ids(_pool_disks())
+    assert len(curse) >= 16
+    assert 0x00 not in curse, "Curse has no GEO00"
+    span = curse[-1] - curse[0] + 1
+    assert span > 2 * len(curse), f"{curse} is dense, not sparse"
+    # The control: the same measure on Pool of Radiance says dense.
+    assert pool[-1] - pool[0] + 1 < 1.5 * len(pool)
+
+
+# --- tier 1.3: the records come out sane -------------------------------------
+
+#: PETSCII as a name may use it: space through `_`, upper case only. `F/T` is a
+#: real Curse character name, so punctuation is in and lower case is out.
+_NAME_BYTES = frozenset(range(0x20, 0x60))
+
+
+def _sane_name(raw: bytes) -> None:
+    """The name reads to its NUL, and every byte of it is printable PETSCII.
+
+    **Not NUL-padded, and asserting that it is fails on real specimens.** The
+    field is 20 bytes and the game terminates at the first NUL without clearing
+    what follows: `MALCYON\\x00N` and `SILAS\\x00S` in Pool of Radiance are
+    characters renamed shorter, and Curse's `PALADIN` carries `\\x01\\x01` in
+    its last two bytes where Silver Blades' `GUY DE VALOIS` carries
+    `\\x02\\x01`. The residue is stale, not name.
+    """
+    text = raw.split(b"\x00")[0]
+    assert text, "a character with no name"
+    assert set(text) <= _NAME_BYTES, f"{raw!r} is not printable PETSCII"
+    assert len(raw) == 20
+
+
+def _sane_character(rec) -> None:
+    """Things a person would recognise, not merely bytes that parsed."""
+    _sane_name(rec.get_raw("name"))
+    for score in (rec.strength, rec.intelligence, rec.wisdom, rec.dexterity,
+                  rec.constitution, rec.charisma):
+        assert 3 <= score <= 18, f"ability score {score} is not 3-18"
+    assert 0 <= rec.exceptional_strength <= 100
+    assert 1 <= rec.race <= 7
+    assert 1 <= rec.level <= 40
+    assert 0 < rec.hp_max <= 999
+    assert rec.hp_rolled <= rec.hp_max
+    for save in (rec.save_paralysis, rec.save_petrification, rec.save_wands,
+                 rec.save_breath, rec.save_spell):
+        assert 1 <= save <= 20, f"saving throw {save} out of range"
+    assert 1 <= rec.movement <= 24
+    # 10 for every player character: the `60 - value` encoding intact.
+    assert rec.armour_class_base_value == 10
+
+    # `class_bits` is the field to read, and it is one bit per non-zero slot of
+    # the eight-wide level array at `0x0C9`. Curse fills slots 6 and 7 --
+    # paladin and ranger -- which is why the array is eight and not four.
+    levels = rec.slice(0x0C9, 8)
+    assert rec.get("class_bits") == sum(
+        1 << i for i, lv in enumerate(levels) if lv), (
+        f"class_bits {rec.get('class_bits'):#04x} against {list(levels)}")
+    assert max(levels) <= rec.level
+
+
+def _curse_parties():
+    """Every whole Curse save on the player's disks, as `(name, SaveGame0)`."""
+    where = gamedata.curse_dir()
+    if where is None:
+        pytest.skip(f"needs the Curse disks; set {gamedata.CURSE_ENV}")
+    out = []
+    for path in sorted(where.glob("CURSE*.[dD]64")):
+        try:
+            game, sg0, _ = load_save(D64.open(path))
+        except Exception:
+            continue                      # no save, or the truncated demo one
+        if game is CURSE:
+            out.append((path.name, sg0))
+    if not out:
+        pytest.skip("no whole Curse save on these disks")
+    return out
+
+
+def test_every_curse_character_parses_with_fields_a_person_would_recognise():
+    seen = 0
+    for name, sg0 in _curse_parties():
+        assert sg0.characters, f"{name} decoded no characters"
+        for slot in sg0.characters:
+            _sane_character(slot.record)
+            seen += 1
+    assert seen >= 6, f"only {seen} Curse characters checked"
+
+
+def test_pool_of_radiance_characters_satisfy_the_same_invariants():
+    """The control. If this fails the invariants are wrong, not Curse."""
+    _, sg0, _ = load_save(D64.open(str(gamedata.save_disk("PORSAVE11"))))
+    assert sg0.characters
+    for slot in sg0.characters:
+        _sane_character(slot.record)
+
+
+# --- tier 2: the map files ---------------------------------------------------
+# Two reciprocity measures, because they fail at different things. The barrier
+# field catches a wrong plane order or a wrong direction order; it is blind to
+# the two art planes, which is exactly the transposition `docs/120` tier 2
+# flagged as PROBABLE and untested. Wall art catches that, and the mangled
+# controls below are what make either floor worth asserting.
+
+#: Measured over Curse's sixteen maps: barrier mean 0.984, worst 0.935; art
+#: mean 0.994, worst 0.919. Pool of Radiance is barrier 0.991/0.940 and art
+#: 0.960/0.646. A wrong parse scores about 0.3-0.5.
+BARRIER_FLOOR = 0.92
+ART_FLOOR = 0.90
+MEAN_FLOOR = 0.97
+MANGLED_ART_CEILING = 0.70
+MANGLED_BARRIER_CEILING = 0.90
+
+
+def _geo_payloads(disks) -> dict[str, bytes]:
+    out = {}
+    for disk in disks:
+        for entry in disk.directory():
+            if not entry.name.startswith(b"GEO"):
+                continue
+            data = disk.read_file(entry)
+            load, payload = split_load_address(data)
+            assert len(payload) == geo.GEO_SIZE, (
+                f"{entry.name!r} is {len(payload)} bytes, not a GEO")
+            out[bytes(entry.name).decode("latin1")] = payload
+    return out
+
+
+def _barrier_reciprocity(payload: bytes) -> float:
+    agree, total = geo.Geo(payload).reciprocity()
+    return agree / total
+
+
+def _art_reciprocity(payload: bytes) -> float:
+    """Does an edge carry wall art read from both of the squares it divides?
+
+    Deliberately presence, not value: the art *index* differs between the two
+    sides of a one-way wall, and Curse indexes a different `WALLDEF` set than
+    Pool of Radiance does. What must agree is that a wall is drawn at all.
+    """
+    grid = geo.Geo(payload)
+    ok = total = 0
+    for y in range(geo.GRID):
+        for x in range(geo.GRID):
+            for direction in (geo.EAST, geo.SOUTH):
+                dx, dy = geo.STEP[direction]
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < geo.GRID and 0 <= ny < geo.GRID):
+                    continue
+                total += 1
+                ok += bool(grid.wall(x, y, direction)) == bool(
+                    grid.wall(nx, ny, geo.OPPOSITE[direction]))
+    return ok / total
+
+
+def _swap_art_planes(payload: bytes) -> bytes:
+    """`$000` and `$100` exchanged: north/east art read as south/west."""
+    out = bytearray(payload)
+    out[0x000:0x100], out[0x100:0x200] = out[0x100:0x200], out[0x000:0x100]
+    return bytes(out)
+
+
+def _swap_art_nibbles(payload: bytes) -> bytes:
+    """High and low nibble exchanged in both art planes."""
+    out = bytearray(payload)
+    for i in range(0x200):
+        out[i] = ((out[i] & 0x0F) << 4) | (out[i] >> 4)
+    return bytes(out)
+
+
+def _reverse_barrier_directions(payload: bytes) -> bytes:
+    """`N E S W` read as `W S E N`: the two-bit field in the wrong order."""
+    out = bytearray(payload)
+    for i in range(geo.BARRIERS, geo.BARRIERS + 0x100):
+        b = out[i]
+        out[i] = ((b & 3) << 6) | (((b >> 2) & 3) << 4) | \
+                 (((b >> 4) & 3) << 2) | ((b >> 6) & 3)
+    return bytes(out)
+
+
+def test_every_curse_map_decodes_through_the_unmodified_decoder():
+    maps = _geo_payloads(gamedata.curse_disks())
+    assert len(maps) >= 16, f"expected at least 16 Curse maps, found {len(maps)}"
+    scores = {n: _barrier_reciprocity(p) for n, p in maps.items()}
+    worst = min(scores, key=scores.get)
+    assert scores[worst] > BARRIER_FLOOR, (
+        f"{worst} barrier reciprocity {scores[worst]:.3f}")
+    assert statistics.mean(scores.values()) > MEAN_FLOOR
+
+
+def test_curse_wall_art_is_reciprocal_which_the_barrier_field_cannot_show():
+    """The art planes are not transposed, which reciprocity alone never says.
+
+    `docs/120` tier 2 lists the nibble order as PROBABLE precisely because
+    `Geo.reciprocity` reads barriers only and would survive a consistent
+    transposition of the art. This is the check that would not.
+    """
+    maps = _geo_payloads(gamedata.curse_disks())
+    scores = {n: _art_reciprocity(p) for n, p in maps.items()}
+    worst = min(scores, key=scores.get)
+    assert scores[worst] > ART_FLOOR, (
+        f"{worst} wall-art reciprocity {scores[worst]:.3f}")
+    assert statistics.mean(scores.values()) > MEAN_FLOOR
+
+
+@pytest.mark.parametrize("mangle", [_swap_art_planes, _swap_art_nibbles])
+def test_a_transposed_art_parse_fails_the_floor_the_real_one_clears(mangle):
+    """The floor is only evidence if a wrong reading falls through it."""
+    maps = _geo_payloads(gamedata.curse_disks())
+    scores = [_art_reciprocity(mangle(p)) for p in maps.values()]
+    assert statistics.mean(scores) < MANGLED_ART_CEILING
+
+
+def test_reading_the_barrier_directions_backwards_fails_too():
+    maps = _geo_payloads(gamedata.curse_disks())
+    scores = [_barrier_reciprocity(_reverse_barrier_directions(p))
+              for p in maps.values()]
+    assert statistics.mean(scores) < MANGLED_BARRIER_CEILING
+
+
+def test_pool_of_radiance_maps_clear_the_same_barrier_floor():
+    """The control for the barrier floor, on the corpus it was derived from."""
+    maps = _geo_payloads(_pool_disks())
+    assert len(maps) >= 29
+    scores = {n: _barrier_reciprocity(p) for n, p in maps.items()}
+    worst = min(scores, key=scores.get)
+    assert scores[worst] > BARRIER_FLOOR, (
+        f"{worst} barrier reciprocity {scores[worst]:.3f}")
+    assert statistics.mean(scores.values()) > MEAN_FLOOR
+
+
+def test_pool_of_radiance_wall_art_is_less_reciprocal_than_curses():
+    """Not a defect: Pool of Radiance draws genuinely one-sided walls.
+
+    Its worst file scores 0.646 where Curse's worst is 0.919, which is why the
+    per-file art floor is asserted on Curse and only the corpus mean on Pool of
+    Radiance. Stated as a test so the difference stays a measurement rather
+    than folklore.
+    """
+    scores = [_art_reciprocity(p) for p in _geo_payloads(_pool_disks()).values()]
+    assert 0.95 < statistics.mean(scores) < MEAN_FLOOR
+    assert min(scores) < ART_FLOOR
+
+
+# --- tier 5.1(c): a Curse character export round-trips -----------------------
+
+def test_a_curse_character_export_round_trips_byte_for_byte():
+    """The export path, which the save round trip never touches.
+
+    Curse marks an export with a leading `\\x02` where Pool of Radiance uses
+    `\\x01`, and writes 582 bytes at `$7C00` -- a different marker and a
+    different load address, but the same 580-byte record. It is also the file
+    the directory reports as **zero blocks**, which is why finding it at all
+    took a fix to `tests/gamedata.py:curse_file`.
+    """
+    from por.record import CharacterRecord
+    exports = gamedata.curse_exports()
+    if not exports:
+        pytest.skip("no Curse character export on the player's disks")
+    for name, prg in exports.items():
+        assert name.startswith(b"\x02"), f"{name!r} is not a Curse export"
+        assert len(prg) == 582
+        assert split_load_address(prg)[0] == 0x7C00
+        record = CharacterRecord.from_prg(prg, 0x7C00)
+        _sane_character(record)
+        assert record.to_prg(0x7C00) == prg

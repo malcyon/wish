@@ -1,132 +1,169 @@
-# Secrets of the Silver Blades — plan for running the Gold Box skill
+# Secret of the Silver Blades — running the Gold Box skill
 
-**Status: blocked at phase 0. The disks are not on this machine.** Everything
-past phase 0 is written, costed and ready, and none of it can start.
+**Status: phases 0, 1 and 2 are done, and phase 3's geometry with them.
+Phases 3-5 need the emulator and have not started.** Everything done so far
+was a cold read of the disks with `por/geo.py`, `por/record.py` and
+`por/savegame.py` **unmodified**.
 
-## 1. The blocker
+The title is *Secret* of the Silver Blades, singular, which is what the disks
+say.
 
-```
-$ ls "/home/donald/c64/All Games" | grep -iE 'silver|secret|ssb'
-```
+## 1. The disks
 
-Seventeen hits out of 6002 archives, and **not one is Secrets of the Silver
-Blades**. They are the publisher Silverbird (`Scuba_Kidz`, `Combat_Crazy`),
-Silverrock, `Legend_of_Blacksilver`, `Quicksilver`, `Black_Lamp` ("Secret
-Society"), `marble_madness_secret_level`, `secret.zip`, `secretms.zip`, and
-`ssbasebl` / `ssbsktbl` — Street Sports Baseball and Basketball. A wider sweep
-of `/home/donald/c64`, `~/Downloads` and `work/` for `*silver*`, `*blades*` and
-`*ssb*` returns nothing at all.
+`SILVER-1.D64` ... `SILVER-6.D64` — three double-sided disks, sides 1 to 6,
+with no gap and no error-byte rip among them. `por/d64.py` opens all six.
+`work/reports/goldbox-inventory.md` has the full inventory.
 
-The title is simply not here. No amount of planning gets past that.
-
-### What Donald has to supply
-
-| | |
-|---|---|
-| **What** | A `.d64` set of the C64 release — every side. How many sides the C64 version shipped on is not known here; take whatever the rip has |
-| **Also wanted, and nearly as important** | a **save disk written by the game**, with a real party on it. Phases 3–5 are all diffing saves, and a game disk alone cannot start them |
-| **Best of all** | a Curse of the Azure Bonds party **imported into Silver Blades and exported again**. That single artefact is phase 4, and phase 4 is where the strongest evidence in this project has always come from |
-| **Where** | `work/silverblades/` — `work/` is gitignored, which is where `CLAUDE.md` says disk images belong. `work/curse/` is the precedent |
-| **How the tests find it** | a `SSB_DISKS` environment variable plus a candidate list, mirroring `COAB_DISKS` in `tests/gamedata.py:83` exactly. Skip when absent, never fail |
+**How the tests find them.** `tests/test_silverblades.py` looks behind an
+`SSB_DISKS` environment variable and then at a candidate list, in the same
+shape as `COAB_DISKS` in `tests/gamedata.py` — but *in the test module*, not in
+`gamedata.py`, because that module was another agent's while this was written.
+If a fourth title needs the same lookup it should move into `gamedata.py`
+rather than be copied a second time.
 
 Nothing about the disks may be committed. `tests/test_repository_contents.py`
 enforces that and **its allowlist must not grow**.
+
+**Still missing, and it is what phases 3-5 need:** a save disk written by the
+game, with a real party on it, and best of all a Curse of the Azure Bonds party
+imported into Silver Blades and exported again. `SAVEDBASH` on side 6 is the
+shipped demo party, not a save disk. No exported character file exists on any
+of the six sides, so the export load address and marker byte are still UNKNOWN.
 
 ### A note on the skill
 
 `skills/goldbox/SKILL.md` did **not exist** when this was written. The phases
 below are derived from `docs/60-goldbox-field-checklist.md` and
-`docs/116-second-game.md`, which is what the skill is being distilled from, so
-they should align; whoever runs this should read the skill first and reorder to
+`docs/116-second-game.md`, which is what the skill was distilled from, so they
+should align; whoever runs the rest should read the skill first and reorder to
 match it rather than the other way round.
 
-## 2. Ordering — do not wait for these disks
+## 2. Ordering
 
-The argument for Silver Blades is real: it is the direct sequel, it shares the
-most with Pool of Radiance and Curse, and **it is the only remaining title that
-imports a Curse party**, which is the lever that produced the 15-bytes-of-580
-result in `docs/116-second-game.md`. Gateway and the Krynn titles start fresh
-parties and cannot offer it.
+Silver Blades is the direct sequel, shares the most with Pool of Radiance and
+Curse, and **is the only remaining title that imports a Curse party** — the
+lever that produced the 15-bytes-of-580 result in `docs/116-second-game.md`.
+Gateway and the Krynn titles start fresh parties and cannot offer it. That
+argument is why it was worth waiting for the disks, and they are here.
 
-The counter-argument is that it costs an unbounded wait, and three Gold Box
-titles are sitting on this machine already.
+What remains, in order:
 
-**Recommended order:**
+1. **Finish Curse** — `docs/120-curse-testing.md`. Tiers 1, 2 and 5.1 are done;
+   what is left needs the emulator.
+2. **Phases 3-5 here**, which all need the emulator and a save disk written by
+   the game. Phase 4, the Curse-to-Silver-Blades import diff, is the single
+   strongest experiment available in this project and nothing else on this
+   machine can substitute for it.
+3. Gateway to the Savage Frontier and the two Krynn titles are on disk and are
+   read statically in `work/reports/goldbox-inventory.md`. They are a fourth
+   target, not a third.
 
-1. **Finish Curse** — `docs/120-curse-testing.md`. On disk, partly done, and it
-   still has named unknowns (the item area at `$5B00`, the spellbook bitmask
-   width, the combat slots). Closing those makes every later title cheaper.
-2. **Ask for the Silver Blades disks now**, in parallel. Phase 0 is latency, not
-   work; it costs nothing to start it today.
-3. **If the disks do not arrive, run the skill against Gateway to the Savage
-   Frontier** (`Gateway_to_the_Savage_Frontier_with_docs.SSI.Mirage.zip`). Same
-   rules set, same Forgotten Realms class list, on disk, untouched — the closest
-   substitute available, and its failures improve the skill just as well.
-
-Champions of Krynn, Death Knights of Krynn and Buck Rogers are all present and
-are all further away: Dragonlance and 25th-century rules mean different classes,
-different caps and a record that is expected to diverge more. They are a fourth
-target, not a third.
-
-## 3. What is expected to transfer, and what is not
+## 3. What was expected to transfer, and what did
 
 Curse shares the 580-byte record with Pool of Radiance *at every offset*, and
 that is not a diff of two specimens — it is the game's own import arithmetic.
-Two of three titles holding a structure stable is real evidence the family does.
-Everything below inherits its confidence from that.
+The predictions below inherited their confidence from that. The outcome column
+is the cold read of the disks (`tests/test_silverblades.py`,
+`work/reports/goldbox-inventory.md`); rows still marked "not settled" need the
+emulator.
 
-| | Prediction for Silver Blades | Confidence |
+| | Prediction | Outcome |
 |---|---|---|
-| character record size 580 bytes | same | **LIKELY** |
-| every field in `por/layout.py`, same offset, same width | same | **LIKELY** |
-| save slot = first 256 bytes of the record, `$100` stride | same | **LIKELY** |
-| roster block = record `0x100`–`0x11F` | same | **LIKELY** |
-| `60 - value` encoding for THAC0, AC, damage bonus | same | **LIKELY** |
-| `GEO`: 1024 bytes, four 16×16 planes, `por/geo.py` unmodified | same | **LIKELY** |
-| `ITEMS` 128 × 16; `ITEMNAMES` 256 low + 256 high + strings | same shape | **LIKELY** |
-| D64 container, PRG load address, `\x01`-style marker prefix on exports | same mechanism | **CONFIRMED** for the container; the marker *byte* differs |
-| second ability array at `0x065`, fighting level at `0x098` | present, as in Curse | **PROBABLE** |
-| spell ids 1–56 unchanged, more added above | as Curse did | **PROBABLE** |
-| resident `GEO` left at `$0400` | plausible, **must be re-verified** — it holds only because the screen has moved to `$CC00` | **UNKNOWN** |
-| save file **count and names** | Pool of Radiance has two (`SAVEDGAME0`/`SAVEDGAME1`), Curse one (`SAVEAZURE`). Assume neither | **EXPECTED TO DIFFER** |
-| save load addresses and header base | `$4900` / `$4B00` respectively; a third value is expected | **EXPECTED TO DIFFER** |
-| export load address and marker byte | `$6B00`/`$01`, `$7C00`/`$02`; a third pair expected | **EXPECTED TO DIFFER** |
-| `ITEMNAMES` resident base | `$6F00`/`$9E00`; a third | **EXPECTED TO DIFFER** |
-| `LIBRARY` `GEO` stem table address | `$24B4`/`$2714`; a third | **EXPECTED TO DIFFER** |
-| live party x/y/facing address | `$49C0`–`$49C2` / `$4BC0`–`$4BC2`; a third | **EXPECTED TO DIFFER** |
-| file stems (`GEO`, `ECL`, `ITEMS`, …) | may be renamed wholesale | **UNKNOWN** |
-| status-line row and format on screen | row 14, `E 16:48 5,2` in Pool of Radiance. Unverified anywhere else | **UNKNOWN** |
+| character record size 580 bytes | same | **held** |
+| every field in `por/layout.py`, same offset, same width | same | **held** — six shipped characters decode and round-trip byte-identically |
+| save slot = first 256 bytes of the record, `$100` stride | same | **held** |
+| roster block = record `0x100`–`0x11F`, last page of the payload | same | **held**, at `$6700` |
+| `60 - value` encoding for THAC0, AC, damage bonus | same | **held** — `armour_class_base` decodes to 10 for all six |
+| `GEO`: 1024 bytes, four 16×16 planes, `por/geo.py` unmodified | same | **held** — 17 files, barrier reciprocity mean 0.982, worst `GEO40` 0.923; wall-art reciprocity **1.000 on every file** |
+| `ITEMS` 128 × 16; `ITEMNAMES` 256 low + 256 high + strings | same shape | **held** — `ITEMS` 2048 bytes |
+| second ability array at `0x065`, fighting level at `0x098` | present, as in Curse | **held** |
+| spell ids 1–56 unchanged, more added above | as Curse did | **held**, and it is the strongest new result — see below |
+| save file **count and names** | assume neither game's | **name differs** (`SAVEDBASH`), count does not: one file, like every title after Pool of Radiance |
+| save load address and header base | a third value expected | **contradicted, in our favour.** `$4B00`, slots `$4F00`, items `$5B00`, roster `$6700` — byte for byte Curse's |
+| file stems (`GEO`, `ECL`, `ITEMS`, …) | may be renamed wholesale | **contradicted, in our favour.** 30 of 34 stems are Pool of Radiance's; the one real rename is `ITEMFILE` → `ITEM` |
+| fewer `GEO` files, no wilderness | fewer expected | 17, against Curse's 16 and Pool of Radiance's 29. No `SQRDATA`/`SQRPACI`/`WALLS` on any side |
+| export load address and marker byte | a third pair expected | **not settled** — no exported character file exists on any of the six sides |
+| `ITEMNAMES` resident base | a third | **not settled** |
+| `LIBRARY` `GEO` stem table address | a third | **not settled** |
+| live party x/y/facing address | a third | **not settled** — needs the emulator |
+| resident `GEO` left at `$0400` | must be re-verified | **not settled** |
+| status-line row and format on screen | unverified anywhere else | **not settled** |
 
-**The rule the table encodes:** *structure* transfers, *addresses* do not. Every
-absolute number in `por/` and `automap/` is a Pool of Radiance constant and must
-be re-measured, not assumed.
+**The rule the table encodes still stands, with one correction:** *structure*
+transfers, *addresses* do not — except that the **save container's** addresses
+did, exactly. Silver Blades and Gateway both reuse Curse's `$4B00`; the two
+Krynn titles moved the block down `$B00` to `$4000`. So the save geometry is a
+per-title constant with only three values across six games, and `por/games.py`
+is where they live. Every *other* absolute number is still a Pool of Radiance
+constant that must be re-measured.
 
-### What being a sequel changes
+**A new regularity, worth more than any single address.** Silver Blades' `GEO`
+ids are sparse — `$10` to `$62`, no `GEO00` — and **the high nibble is the disk
+side the file sits on**, without exception: `GEO2x` on side 2, `GEO3x` on side
+3. Champions and Death Knights do the same. That is a free area-to-side index,
+and it is asserted in `tests/test_silverblades.py`.
 
-| Difference | What it implies |
+### What being a sequel changed
+
+| Difference | What came of it |
 |---|---|
-| **Party is imported from Curse, not rolled** | The import routine is the experiment. It writes the target record from a source we already decode byte for byte, so phase 4 gives a field-by-field answer with no disassembly at all — exactly how Curse was settled |
-| **Higher level range** | `por/levels.py` is table data, not shape; caps rise, the eight-byte per-class array at `0x0C9` does not move. Watch the 24-bit experience field for saturation, and the two-byte max-HP field at `0x076` for headroom (the C64 already has two bytes; DOS has one) |
-| **Higher spell levels than Curse** | This is a **gift**. `docs/116-second-game.md` lists "how wide the spellbook bitmask at `0x078` is" as NOT FOUND, because no Curse specimen writes past `0x07D`. A Silver Blades caster should, and the first one that does settles a question two games could not |
-| **Dual- and multi-classed characters are common at this level** | The dual-class array is NOT FOUND in Curse. Silver Blades parties will carry real values in it |
-| **No city-block/wilderness structure** | Fewer `GEO` files expected, and the wilderness travel bytes (`$49C3`/`$49C4` in Pool of Radiance) may be dead. Do not read their absence as a layout change |
+| **Party is imported from Curse, not rolled** | Still the experiment worth doing, and still undone: it needs the game running. Phase 4 |
+| **Higher level range** | The shipped party is level 8-9 with 100000-200000 experience. `por/levels.py`'s caps are Pool of Radiance's and are still unmeasured for this title |
+| **Higher spell levels than Curse** | **The gift arrived.** `docs/116` lists the spellbook bitmask's width at `0x078` as NOT FOUND because no Curse specimen writes past `0x07C`. MORGAINE sets `0x07D` and `0x07E`; DOMINIC sets all three, and `0x07F = 0x04` — bit 2, spell id 58. So `spells_known` is **at least eight bytes** in the later titles (PROBABLE), and `por/layout.py` records it. Nothing proves it stops at eight |
+| **Dual- and multi-classed characters common at this level** | Weakly held: one of six, MALACHITE, thief 8 / fighter 7 |
+| **No city-block/wilderness structure** | Held at the file level — no `SQRDATA`, `SQRPACI` or `WALLS` on any side, in this or any title after Pool of Radiance. Whether the save's wilderness travel bytes are dead is not answerable statically |
+| **A different race table** | Not predicted at all, and real. Silver Blades drops half-orc and re-orders the rest, so **human is 6, not 7**. `por/games.py` now carries a per-title race table for exactly this |
 
 ## 4. The phases
 
-| # | Phase | Produces | Cost | Emulator | Pass/fail |
-|---|---|---|---|---|---|
-| 0 | **Obtain and place the disks** | `work/silverblades/*.d64`, an `SSB_DISKS` hook in `tests/gamedata.py` | Donald's, not ours | no | `por/d64.py` opens every side and lists a directory. A 175531-byte rip with error bytes is refused, as one Curse side is — skip it, do not fail |
-| 1 | **Cold read** | file-stem inventory across sides; every `GEO` decoded; `ITEMS`/`ITEMNAMES` shape; the constants table above filled in for load addresses | hours, offline | no | every `GEO` clears **92% reciprocity** through `por/geo.py` *unmodified* (Curse's worst is 93.5%); `ITEMS` length divisible by 16 |
-| 2 | **A character record** | one 580-byte specimen — from a shipped pre-generated party if the disks carry one (Curse ships `SAVEAZURE` on two sides, at two different lengths, and a reader taking the first match gets the wrong one), otherwise from play | hours | only to produce a save | `CharacterRecord.from_bytes` decodes and round-trips **byte-identically**; `class_bits` is exactly one bit per non-zero slot of the array at `0x0C9` |
-| 3 | **Save geometry** | file name(s), load address, header base, party x/y/facing, area byte, roster and item-area locations | a day | yes, to produce two saves | two saves taken one known step apart differ at **exactly** the position triple and the clock. Anything else moving means the header is not where we placed it |
-| 4 | **The import diff** | the transferable/not table, decided by the game's own arithmetic | a day | yes | fewer than ~30 of 580 bytes differ, and **every** difference is named. Curse's answer was 15, all explained |
-| 5 | **Live addresses and the automapper run** | live party triple, resident `GEO` location, a validated `Fix` | the expensive one | yes, exclusively | §5 |
-| 6 | **Tests** | `tests/test_third_game.py` beside `test_second_game.py` — same invariants, third game | half a day | no | the Pool of Radiance control still passes; the Silver Blades half **skips** cleanly when the disks are absent, which is how CI will see it |
-| 7 | **Constants become a table** | per-game constants in one place instead of a third set of module-level literals | half a day | no | `por/savegame.py`, `por/items.py`, `automap/target.py`, `automap/area.py` and `automap/paths.py` stop hardcoding Pool of Radiance and take a game parameter |
+| # | Phase | Emulator | State |
+|---|---|---|---|
+| 0 | **Obtain and place the disks** | no | **done** — six sides, all readable, found behind `SSB_DISKS` |
+| 1 | **Cold read** — stem inventory, every `GEO` decoded, `ITEMS` shape | no | **done** — `tests/test_silverblades.py` |
+| 2 | **A character record** | no | **done** — the shipped `SAVEDBASH` party, six characters, decoded and byte-identical on round trip |
+| 3 | **Save geometry** | yes, for the header fields | **geometry done, header fields not.** File name, load address, slot, item and roster bases all measured from the shipped save. Party x/y/facing, the clock and the area byte need two saves one known step apart |
+| 4 | **The import diff** | yes | not started. The strongest experiment available; needs a Curse party imported and exported |
+| 5 | **Live addresses and the automapper run** | yes, exclusively | not started. §5 |
+| 6 | **Tests** | no | **done** — `tests/test_silverblades.py`, with Pool of Radiance as the control in every check and a clean skip when the disks are absent |
+| 7 | **Constants become a table** | no | **done** — `por/games.py`, all six titles, threaded through `por/savegame.py`, `por/yaml_io.py` and `editor/` |
 
-Phase 7 is deliberately last. Two games can share code by accident; three cannot,
-and the third is the one that shows where the seams belong. Doing it earlier
-means guessing at the seams from Curse alone.
+Phase 7 was planned last on the argument that two games can share code by
+accident and three cannot. That held: it was the six-title inventory that
+showed the seam is the save container's base address and nothing else, and
+`por/games.py` is three numbers wide because of it.
+
+### What phase 2 corrected in its own pass criterion
+
+Phase 2's criterion was "`class_bits` is exactly one bit per non-zero slot of
+the array at `0x0C9`". `work/reports/goldbox-inventory.md` §3.3(a) reports it
+**failing** on PAINE (`0x80`) and GUY DE VALOIS (`0x40`), and concludes the
+criterion covers only the low four bits.
+
+**That is wrong, and the criterion holds unchanged.** The report read the array
+at `0x0C9` as four bytes. It is eight — `por/layout.py` names them
+`level_magic_user`, `level_cleric`, `level_thief`, `level_fighter`,
+`level_knight`, a gap, `level_paladin`, `level_ranger`. PAINE's level 8 sits in
+slot 7 and GUY DE VALOIS's in slot 6, which is exactly what bits `0x80` and
+`0x40` claim. Checked over every shipped party this machine holds, the
+invariant `class_bits == sum(1 << i for non-zero slot i)` holds for **all six
+titles**, the Krynn knights included: Champions' STRONGSWORD and Death Knights'
+SIR DRYDEN carry `0x10` with slot 4 set. `tests/test_silverblades.py` asserts
+it for Silver Blades and `tests/test_curse.py` for Curse.
+
+### What is left, and what blocks it
+
+| left | blocked on |
+|---|---|
+| the save header's fields — party x/y/facing, clock, area byte (phase 3) | two saves taken one known step apart, which needs the game running |
+| the Curse → Silver Blades import diff (phase 4) | the game running, plus a Curse party to import |
+| live addresses and the automapper run (phase 5) | the emulator, exclusively one agent, and the game's start-up check |
+| export load address and marker byte | no exported character file exists on any of the six sides; one export settles it |
+| `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
+| whether `spells_known` stops at eight bytes | a caster with a spell id above 63; none of the 24 shipped characters in the four new titles has one |
+| `por/levels.py`'s caps for this title | table data on the disks; no emulator needed |
+
+Nothing in phases 1, 2 or 6 is blocked, and none of it needed the emulator —
+which is the whole reason they were ordered first.
 
 ## 5. The automapper validation run
 
@@ -211,6 +248,21 @@ differently, or has been deliberately left alone with a line in
 `docs/116-second-game.md` §7 is the model: it ends by listing every place the
 earlier plan was wrong, *including where it was wrong in our favour*. Do the same
 here, against the skill.
+
+**What the cold read has already fed back.** Three edits the skill and its
+references now carry, all from phases 1 and 2:
+
+* **Enumerate maps by directory scan, never by range.** Silver Blades,
+  Champions and Death Knights have no `GEO00` and start at `$10` or `$20`.
+  `por/areas.py` says so at the top of its module docstring.
+* **The save container's geometry is a per-title constant with three values,
+  not six.** `por/games.py` is the table.
+* **`spells_known` is at least eight bytes in the later titles.** Recorded in
+  `por/layout.py` against the field itself, where anyone reading the record
+  will see it.
+
+Still owed to the skill: the whole of phases 3-5, which is where its claims
+about live memory and driving the game would actually be tested.
 
 ## 7. Out of scope
 
