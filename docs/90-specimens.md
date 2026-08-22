@@ -151,6 +151,140 @@ ours, it settles level, it completes the multi-class enumeration, and it carries
 255 item names and 162 complete item records as `DATA`. See
 [the 1989 BASIC editor](50-experiments.md).
 
+## The saves we made ourselves
+
+Twelve disks driven out of the game on 2026-08-22, the first specimens in the set
+that were *ordered* rather than found. They are the game's own writes: every one
+was produced by the game's `SAVE GAME`, from a state reached by playing, warping
+or poking, and every one has a recipe. They are game data, so they live in
+`work/p3/` and never in the repository. The recipes, byte for byte, are
+[`work/reports/p3-saves.md`](../work/reports/p3-saves.md); the party throughout
+is Donald's six off `work/drive/LVBEFORE.D64`.
+
+| specimen | file | what it is |
+|---|---|---|
+| mid-effect | `P3-EFFECTS.D64` | 23 live effect slots carrying 13 distinct ids |
+| trainer, before | `P3-TRAINBEF.D64` | the party before an ability score is altered |
+| trainer, after | `P3-TRAINAFT.D64` | MAGNUS's constitution 13 → 14 |
+| quickfight, before | `P3-QFBEFORE.D64` | roster `+0x0C` zero for all six |
+| quickfight, after | `P3-QFAFTER.D64` | `$80` for all six, one orc fight later |
+
+**The mid-effect save moved the carrier, not just the codes.** A spell effect is
+**not** written into the ten trait slots at `0x0AD`: twenty-six spells were cast
+and every character's block came out exactly as it went in, elf seed 107 and
+half-elf 124 included. Effects live in four 64-entry arrays — id `$4900`, owner
+`$4940`, duration `$4980`, magnitude `$4B80` — which are inside `SAVEDGAME0` and
+so are on the disk. It is one namespace with `0x0AD` (`LIBRARY $4028` reads the
+arrays first and falls back to the character's own slots), so an id seen in the
+array is evidence about the same table.
+
+**Seventeen `por/traits.py` codes are promoted PROBABLE → CONFIRMED** by it,
+each named by the spell that produced it: 1 Bless, 5 Detect Magic, 8 Protection
+from Evil, 9 Protection from Good, 10 Resist Cold, 12 Enlarge, 14 Friends, 16
+Read Magic, 17 Shield, 19 Find Traps, 20 Resist Fire, 24 sees invisible
+creatures, 25 invisible, 28 Mirror Image, 35 under an allied Prayer, 39 hasted,
+41 Protection from Normal Missiles. Two already-CONFIRMED codes gained a second
+independent carrier: 37 blinking and 38 extra strength. Thirteen of the
+nineteen are on the disk itself — 1, 8, 9, 10, 12, 17, 19, 20, 24, 25, 38, 39,
+41; the other six expired before the save and rest on the run's own readings.
+
+Three things the same run settled and one it did not:
+
+* **Two spell ids, one effect.** Cleric PROTECTION FROM EVIL (spell 6) and
+  magic-user PROTECTION FROM EVIL (spell 16) both write effect **8**.
+* **A party-wide spell is not always owner `$FF`.** DETECT MAGIC and PRAYER take
+  one slot with owner `$FF`; BLESS and INVISIBILITY 10' RADIUS take **six**, one
+  per character. A reader must handle both shapes.
+* **PRAYER writes 35, not 49.** So 49 "Prayer" is something else — most likely
+  the enemy-cast side — and nothing here promotes it.
+* **Five spells were consumed and wrote nothing**: CURSE, SILENCE 15' RADIUS,
+  SLOW POISON, CURE DISEASE, BESTOW CURSE. The first two are the game's own
+  `IS A COMBAT ONLY SPELL`; the rest are unexplained.
+
+**The trainer pair confirms `0x0B8` bit 0** — "an ability score was altered at
+the trainer", read off `GEN $155D`. The whole `SAVEDGAME0` diff is two record
+bytes plus the loaded-files cache: `+0x018` constitution 13 → 14 and `+0x0B8`
+`00` → `01`. And one byte of `SAVEDGAME1`: block 4 `+0x19`, current hit points,
+**2 → 9**. Raising constitution recomputes hit points (`GEN $1541` calls
+`$16AC` for ability index 4) and MAGNUS, wounded since Donald's own play, came
+out at full — which is why *training heals* and a wounded character can never
+come from the trainer. The screen is reachable without walking to the training
+hall at all: `MODIFY CHARACTER` on the pre-adventure party menu is the same
+code, two rows below `SAVE CURRENT GAME`.
+
+**The quickfight pair proves roster `+0x0C` bit 7 and corrects the log.**
+`docs/50-experiments.md` had the bit setting while the computer plays the action
+and clearing when it resolves. It does not: polled every three seconds through
+one complete fight, each character's byte went `00` → `$80` the first time QUICK
+was chosen for them and never went back — not on resolution, not on the next
+round, not through the four post-combat menus, and not in the save written after.
+That is [`goldbox-bugs.md`](../goldbox-bugs.md) bug 3 seen from the front, and it
+is why the player's own `PORSAVE2`–`PORSAVE9` all carry it. The "before" half
+needed one poke, `$830C` to `00`, because MALCYON has carried the bit in every
+disk this party descends from.
+
+**A save disk copied straight after the game's own write can be caught
+unclosed** — directory type `$02`, block count 0 — and the game then says
+`SAVED GAME NOT FOUND!`. `P3-TRAINAFT.D64` was caught that way. The payload
+chain is intact; the repair is the two directory bytes, `$82` and the block
+count. Copy after a clean teardown, or check and repair.
+
+### The wilderness set — `W1.D64` to `W7.D64`
+
+**No save in this project had ever been outdoors.** Seven now are, in
+`work/p3/`, all on the middle and east travel windows:
+
+| file | window | square | why it exists |
+|---|---|---|---|
+| `W1.D64` | `1A` | (5,2) | the baseline, at rest on the grid |
+| `W2.D64` | `1A` | (6,2) | one step east of W1 |
+| `W3.D64` | `1A` | (6,2) | **the same square**, arrived heading west |
+| `W4.D64` | `1A` | (15,2) | on the east-edge column, where the edge test did *not* fire |
+| `W5.D64` | `1B` | (3,8) | the first square of the next window, one step across the seam |
+| `W6.D64` | `1B` | (2,8) | on `1B`'s west-edge column |
+| `W7.D64` | `1A` | (14,8) | back across the seam the other way |
+
+They are made by warping to area 26 on POOL7 with `$49E6` set to 0 first —
+`LOADFILES` dispatches on that byte and fetches a `GEO` instead of a `SQRDATA`
+if it is still 1 — and then walking. The warp lands at (0,0), outside the
+walkable band, so the first legal square has to be walked to.
+
+What they close, against [113-world-map.md](113-world-map.md)'s list of open
+questions:
+
+* **`$8C00` is `SQRDATA0n`.** 648 bytes read live matched `SQRDATA05` in 647 of
+  648 standing on map `1A`, and `SQRDATA06` in 645 of 648 standing on map `1B` —
+  and **every byte that differs is one the site-hiding paint predicts, with the
+  value it predicts**: `1A` (12,11) the nomad camp `$39`, `1B` (11,8) the
+  lizardman keep `$22`, (6,15) the kobold caves `$30`, (7,23) the site that was
+  cut `$11`. The index is `y * 18 + x`, so the stride really is 18.
+* **`$4BC0` reads `00` on the travel grid**, against `01` in all fourteen indoor
+  saves. That was a falsifiable prediction and it held.
+* **`$49FB` gates the word `OUTDOORS`**, which replaces the facing letter in the
+  status line: `OUTDOORS 21:32 5,2`.
+* **The travel facing is not in the save.** W2 and W3 are the same square
+  reached heading east and heading west, and their whole `SAVEDGAME0` difference
+  is four counter bytes — `$49C7`, `$49CA`, `$49EC`, `$49F0`. `$49C2` is
+  identical in both, so it does not shadow `$033D`.
+* **A travel step costs 12 hours and 1 minute**, hour mod 24, which is why the
+  clock looks like it flips between 9 and 21 on alternate steps. A step that
+  crosses a seam costs one minute and no hours — one observation, PROBABLE.
+* **Both seams cross on the arithmetic read off the bytecode**: east off `1A` at
+  `x` 15 lands on `1B` at `$49C3` = 3, west off `1B` at `x` 2 lands on `1A` at
+  `$49C3` = 14.
+
+And one correction they force: **the east edge is a set of squares, not a
+column.** At `y` 2 the party walked from (15,2) out to (17,2), two columns past
+the documented ceiling, with no transition and no block; at `y` 8 the same step
+transitioned. `W4.D64` is the party standing where the edge test should have
+fired and did not.
+
+Two things the wilderness still owes: a save inside the random "small dark
+cave" (`$4A9E` = 255), which is one outcome of one encounter in twenty steps and
+did not come up in thirty; and a save taken *during* a wilderness encounter,
+which turns out to be impossible — its command bar is `COMBAT WAIT FLEE PARLAY`
+with no `ENCAMP`.
+
 ## What this set still lacks
 
 Every specimen *of Donald's own* is *level 1*. All three of the gaps listed
