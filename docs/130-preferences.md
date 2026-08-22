@@ -17,10 +17,9 @@ the preferences dialog."*
   automapper's map disks are the same box of `.D64`s in practice, and the
   editor already expands a named disk into its whole directory. One folder,
   one row in the dialog, both searches fed from it.
-* **Precedence, in one sentence: a flag wins for this run, the preference wins
-  after that, and an environment variable only speaks where the preference is
-  empty.** Today `$POR_DISKS` short-circuits everything, which is exactly the
-  order that makes a saved preference look broken.
+* **Precedence, in one sentence: the Game directory setting is the answer**, and
+  a command-line option beats it for one run. The environment variables stay
+  for the tests and the tools and leave the user documentation.
 * **Half the value is the report, not the form.** The dialog says which folder
   is in use, who named it, which titles are in it, how many maps came out, and
   which image the item names came from. A user who types nothing still learns
@@ -130,20 +129,34 @@ that it did and where from.
 
 ## 4. Precedence
 
-> **A flag wins for this run, the preference wins after that, and an
-> environment variable only speaks where the preference is empty.**
+> **The setting in Preferences is the answer.** A command-line option beats it
+> for one run; nothing else does.
 
-| rank | source | scope | note |
-|---|---|---|---|
-| 1 | `--disks` / `--game-disk` | this run | deliberate, typed a moment ago; the dialog says it is being overridden and by what |
-| 2 | the saved preference | until changed | **new position.** A preference that loses to something the user did not set this decade is the failure mode Donald is describing |
-| 3 | `$POR_DISKS` / `$POR_GAME_DISK` / `$POR_ULTIMATE` | this shell | keeps every existing script, test and habit working; loses only to a preference somebody deliberately set |
-| 4 | beside the open save | — | editor only. The usual case and worth keeping first among the automatic ones |
-| 5 | the candidate-directory search | — | `disk_candidates`, unchanged |
+There is one thing to configure — **Game directory** — and it is saved in the
+config file. That is the whole user-facing rule.
+
+| rank | source | who uses it |
+|---|---|---|
+| 1 | `--disks` / `--game-disk` on the command line | scripts, and anyone testing two sets of disks without changing a setting. A person using the window never types it |
+| 2 | **the Game directory setting** | everyone. This is the one that matters |
+| 3 | beside the open save | automatic, editor only, and usually right |
+| 4 | the candidate-directory search | automatic, `disk_candidates`, unchanged |
+
+**`$POR_DISKS` and `$POR_GAME_DISK` are not user settings and should stop
+being documented as though they were.** Of twenty references in the tree,
+almost all are the test suite and the developer tools -- `tests/gamedata.py`
+uses `$POR_DISKS` to find Donald's disks without hardcoding a path, and
+`tools/geomap.py` and `tools/genmaps.py` do the same. Exactly one runtime line
+reads it (`automap/paths.py:71`). They predate there being any interface, and
+then the README described them as a user's third option.
+
+So: **keep them working, for the tests and the tools, and take them out of the
+user-facing documentation.** They sit below the setting, above the automatic
+searches, and nobody who uses the window ever meets them.
 
 **What changes today's behaviour:** `$POR_DISKS` currently short-circuits the
-entire search (`automap/paths.py:71-73`). It keeps that power over ranks 4 and
-5 and loses it to rank 2 only. **This does not disturb the suite**:
+entire search (`automap/paths.py:71-73`). It keeps that power over the two
+automatic searches and loses it to the setting only. **This does not disturb the suite**:
 `tests/conftest.py::_isolate_config` points all four config variables at a
 `tmp_path`, so no test ever sees a saved preference, and `tests/gamedata.py`
 keeps reading `$POR_DISKS` exactly as it does now. **CONFIRMED** — read
