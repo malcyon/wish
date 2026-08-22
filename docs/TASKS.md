@@ -49,14 +49,6 @@ files, the standing constraints in full, and no commits.
 | **P20** | The 15 areas with no harvested arrival square | do they land somewhere legal? |
 | **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
 
-## Waiting on the community sweep
-
-| | task |
-|---|---|
-| **P65** | Fold `work/reports/forum-sweep.md` into [`126`](126-forum-findings.md) — 296 threads read, 455 external URLs probed |
-| **P66** | `github.com/simeonpilgrim/coab` is a primary source: the DOS record, and the import routine that sets money to 300 platinum and erases Animate Dead. Two candidates for our fifteen changed bytes |
-| **P67** | The DOS builds ship a second cheat mode, `start.exe STING`. Grep the C64 overlays for the literal |
-
 ---
 
 ## Retired
@@ -114,3 +106,6 @@ A code retires with its task and is never reused.
 | **P59** | the guide's rumours filed as `R40`-`R51` |
 | **P61** | area 11 is the training hall, and the names are title-cased |
 | **P64** | the skill says the square, not the clock |
+| **P65** | the whole board folded into `docs/126` |
+| **P66** | the game's own import routine read, 12 of our 15 bytes explained |
+| **P67** | `STING` has no C64 counterpart — a clean negative |

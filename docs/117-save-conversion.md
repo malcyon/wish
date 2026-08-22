@@ -135,6 +135,139 @@ title.
 
 ---
 
+## The one converter that already exists: the game's own
+
+Curse of the Azure Bonds imports a Pool of Radiance character, and
+**`simeonpilgrim/coab` carries that routine as source**, recovered from the
+shipped DOS overlays. It is the best outside evidence this project has for the
+conversion, because it is not somebody's reading of a file format — it is the
+arithmetic the engine runs.
+
+The files, read from `work/forums/ext/` (fetched, `.gitignore`d, not committed):
+
+| file | what it is |
+|---|---|
+| `Classes/PoolRadPlayer.cs` | the DOS **Pool of Radiance** record, `StructSize = 0x11D` (285), fields named where Simeon identified them |
+| `Classes/Player.cs` | the DOS **Curse** record, `StructSize = 0x1A6` (422), with **81 machine-readable `[DataOffset]` attributes** |
+| `engine/ovr017.cs` | `ConvertPoolRadPlayer` (`import_char01`'s Pool branch) — the import itself |
+| `engine/ovr025.cs`, `ovr026.cs` | `reclac_player_values` (`sub_66C20`) and `ReclacClassBonuses` (`sub_6A3C6`), which run over the result |
+
+*Confidence: PROBABLE throughout this section.* Nothing here has been checked
+against a DOS file on this machine; it is read off someone else's decompilation.
+But it derives from the shipped overlays and it agrees with our own offsets
+wherever both name the same field.
+
+### What the import does, field by field
+
+`ConvertPoolRadPlayer` starts from a **zeroed** `Player`, so every field it does
+not write is left at zero — and **106 of the 285 DOS Pool bytes are never even
+read**, in seven runs: `0x17`–`0x2C` (22), `0x7F`–`0x82` (4), `0x88`–`0x95`
+(**the seven money words**, 14), `0xBF` (party order), `0xC8`–`0xFF` (56,
+containing the item pointer block at `0xCC`), `0x104`–`0x10B` (8) and `0x10F`.
+What the routine
+declines to carry is as informative as what it copies.
+
+| what happens | source | lands on |
+|---|---|---|
+| **name** copied | Pool `0x00` | Curse `0x00` |
+| **six abilities and exceptional strength**, each `Load`ed then `EnforceRaceSexLimits(race, sex)` | Pool `0x10`–`0x16` | Curse `0x10`–`0x1D` — and `Load` writes **both halves of the (base, current) pair**, which is why one Pool byte fills two Curse bytes |
+| **THAC0, race, class, age, hit points maximum** copied | Pool `0x2D`, `0x2E`, `0x2F`, `0x30`, `0x32` | Curse `0x73`, `0x74`, `0x75`, `0x76`, `0x78` |
+| **spellbook**: 56 bytes copied into a 100-byte array, then `spellBook[animate_dead − 1] = 0` | Pool `0x33`–`0x6A` | Curse `0x79`; spells 57–100 stay zero. `coab`'s enum gives `animate_dead = 0x24` — **spell id 36, exactly `docs/86`'s** |
+| **attack level, `field_6C`, five saving throws, base movement, hit dice, levels lost, hit points lost, `field_76`, eight thief skills** copied | Pool `0x6B`–`0x7E` | Curse `0xDD`–`0xF1`. `multiclassLevel` (Curse `0xE6`) is set from hit dice, not from the source |
+| `field_83`–`field_87` copied | Pool `0x83`–`0x87` | Curse `0xF6`–`0xFA` |
+| **money: `Money.SetCoins(Money.Platinum, 300)`** | *nothing* | Curse `0xFB`. Pool's own money block at `0x88`–`0x95` is **not read by the loader at all** — `PoolRadPlayer` has no field there |
+| **per-class levels, sex, monster type, alignment, the eight attack-form bytes, base armour class, experience, class flags, hit points rolled, spells-cast counts, the icon bytes and six icon colours** copied | Pool `0x96`–`0xC6` | Curse `0x109`–`0x14A` |
+| **items** come from the separate `<name>.swg` file, not the record. The item *count* at Pool `0xC7` is commented out in the reimplementation; the assembly quoted beside it copies **0x34 = 52 bytes** of item pointers from Pool `0xCC` to Curse `0x151` | | |
+| **the combat-state tail** — hands used, weight, health status, in-combat, team, hit bonus, armour class, attacks left, dice, damage bonuses, current hit points, movement | Pool `0x100`–`0x11C` | Curse `0x185`–`0x1A5` |
+| **active effects are filtered.** From the Pool `.spc` file only seven effect ids survive: `18, 26, 47, 48, 97, 107, 124` | | `coab`'s `Affects` enum names them **gnome vs man-sized giant, dwarf vs orc, dwarf and gnome vs giants, `affect_30`, constitution saving bonus, elf sleep resistance, half-elf resistance** — every one an **innate racial or constitutional bonus**. Every temporary spell effect is dropped |
+
+Then `reclac_player_values` and `ReclacClassBonuses` run over the result and
+**recompute** armour class from base plus dexterity plus readied items; hit
+bonus; movement; encumbrance; attacks per round; base THAC0, from a class × level
+table, taking the maximum over the eight class slots; hit dice; the class-flags
+bitmask, from the class-level array; the five saving throws; the thief skills,
+**but only when thief level > 0**; and `attackLevel`, which is set to the fighter
+class level or to 1 when there is none. A **cleric's entire spellbook is
+regenerated** by level from the spell-casting table — and that loop excludes
+`animate_dead` too, so the spell is erased twice over.
+
+Two side observations worth keeping. `reclac_player_values` computes
+encumbrance as `Σ (item weight × count) + Σ all seven money counts`, which is
+**the identity above, confirmed from code** — and it means the field is derived,
+not stored, so a converter never has to source it. And `docs/116`'s open
+question about where Curse keeps its dual-class array has a lead: DOS Curse
+`0xE6` is `multiclassLevel`, and it has no C64 counterpart under the alignment
+below.
+
+### Against our own measurement: 12 of the fifteen bytes
+
+`docs/116` imported three Pool of Radiance characters into C64 Curse, exported
+one again, and found **15 of 580 bytes changed**. The DOS routine accounts for
+twelve of them.
+
+| our change (`docs/116`) | the DOS routine | |
+|---|---|---|
+| `0x065`–`0x06B`, the second ability array, written from `0x014`–`0x01A` (7 bytes) | `stats2.X.Load(pool.stat_X)` — Curse stores every ability as a (base, current) pair and `Load` writes both halves from Pool's single byte | **explained** |
+| `0x0C1` gold zeroed (1 byte) and `0x0C3` platinum set to 300 (2 bytes) | Pool's money is never read; a fresh `MoneySet` is all zero and `SetCoins(Platinum, 300)` is the only write | **explained, and sharper than we measured** — see the prediction below |
+| `0x098` fighting level set (1 byte) | `reclac_player_values`: `attackLevel = SkillLevel(Fighter)`, else 1 | **explained** |
+| `0x10F` roster armour class recomputed (1 byte) | `reclac_player_values`: `ac = base_ac`, then dexterity and readied-item bonuses | **explained** |
+| `0x073` `char_class` zeroed (1 byte) | the DOS routine *copies* the class byte straight across | **not explained** |
+| `0x0FE`, `0x0FF` portrait head and body zeroed (2 bytes) | the DOS routine copies `head_icon` and `weapon_icon` straight across | **not explained** — but they are probably not the same field. The C64's 36-byte combat icon at `0x220` passes through untouched, so `0x0FE`/`0x0FF` are the C64's own indices into `CHARPIC00`, which Curse does not share |
+
+`docs/116` also saw saving throws change where an item bonus had been baked in,
+and **thief skills re-derived rather than copied**. Both are `ReclacClassBonuses`
+exactly: `reclac_saving_throws` unconditionally, `reclac_thief_skills` only for a
+thief. And what passed through byte for byte — experience, level, the per-class
+level array, class bits, hit points, the spellbook, race, age, alignment, sex —
+is what the routine copies verbatim, or recomputes to the same value it started
+from.
+
+**Four predictions the C64 experiment can now test**, none of which the party
+used could have shown:
+
+1. **All seven money words are discarded**, not just gold. We saw gold zeroed
+   because the character carried gold; import one carrying copper, gems and
+   jewelry and every word should come out zero except platinum = 300.
+2. **ANIMATE DEAD is erased.** Spell id 36, which is bit 4 of `0x07C` in the
+   C64's spellbook bitmask at `0x078` — the mask indexes by spell id, not by
+   id − 1. No character imported so far knew the spell.
+3. **A cleric's spellbook is regenerated from his level**, not copied — which is
+   invisible for a Pool cleric, who already knows every spell he can cast, but
+   would show on a cleric whose book had been edited.
+4. **Only innate racial effects survive.** Import a character under a lasting
+   spell effect and it should be gone.
+
+### Where the C64 record sits against DOS Curse
+
+The 81 `[DataOffset]` attributes make the DOS Curse record machine-readable, and
+laid against `por/layout.py` the two run **the same fields in the same order**
+at three displacements:
+
+| zone | DOS Curse → C64 | why it shifts |
+|---|---|---|
+| name and abilities | +4 on the early fields | the C64 name field is 20 bytes to DOS's 16 |
+| THAC0 `0x73` → `0x071`, race `0x74` → `0x072`, class `0x75` → `0x073`, age `0x76` → `0x074`, hit points `0x78` → `0x076` | **−0x02** | |
+| attack level `0xDD` → `0x098`, saving throws `0xDF` → `0x09A`, movement `0xE4` → `0x09F`, thief skills `0xEA` → `0x0A5` | **−0x45** | **the spellbook**: DOS spends one byte per spell (56 in Pool, 100 in Curse), the C64 one *bit* — 7 bytes at `0x078` |
+| money `0xFB` → `0x0BB`, per-class levels `0x109` → `0x0C9`, class flags `0x12B` → `0x0EB` | **−0x40** | the C64 gains five bytes: DOS spends 9 bytes on a 4-byte far pointer to the affect list plus five flag bytes (`0xF2`–`0xFA`), the C64 spends 14 (`0x0AD`–`0x0BA`) holding the item effects **inline** |
+
+**The one field that is not a re-offset of the same data is the spellbook.** Any
+DOS→C64 converter has to expand or pack that field and can copy almost
+everything else.
+
+One place the alignment is ambiguous by a byte, and it is worth saying so rather
+than papering over it: `0x0A0`–`0x0A5`. DOS Curse runs hit dice, multiclass
+level, levels lost, hit points lost, `field_E9`, thief skills; the C64 runs
+level, levels drained, hit points lost to drain, turn class, turn power, thief
+skills. DOS Pool has no `multiclassLevel` — the importer sets it from hit dice —
+and `docs/117`'s own DOS Pool table has level at `0x073` → `0x0A0` (CONFIRMED)
+and thief skills at `0x077` → `0x0A5` (PROBABLE), a one-byte gain in between.
+The reading that fits everything is that **`multiclassLevel` is Curse-only and
+the C64's `turn_class` at `0x0A3` has no DOS counterpart**, the two cancelling so
+that −0x45 resumes at `0xE9` → `0x0A4`. PROBABLE, and one Curse specimen with a
+turn-undead class settles it.
+
+---
+
 ## What a DOS save actually is, as files
 
 No container and no checksum: DOS writes plain files into its save directory.
