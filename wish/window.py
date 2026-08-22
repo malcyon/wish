@@ -20,6 +20,8 @@ file path works with no emulator anywhere.
 
 from __future__ import annotations
 
+import sys
+
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
 from PyQt6.QtWidgets import (
@@ -41,6 +43,7 @@ from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
 from por import games
+from ui.appicon import app_icon
 
 from . import backends, debuglog, debugmode
 from .about import install as install_help
@@ -533,12 +536,47 @@ class WishWindow(QMainWindow):
 FIRST_RUN = (1875, 1030)
 
 
+def dress(app) -> None:
+    """The application's name and its icon, before the first window exists.
+
+    Three separate mechanisms, one drawing:
+
+    * **`setWindowIcon`** is the title bar, Alt-Tab and the taskbar button of a
+      running window. It is a `QIcon` carrying a pixmap per size, painted from
+      `ui/icons.py`, so Qt picks rather than scales. What a *pinned* shortcut
+      and Explorer show is the `.ico` in the executable's resource instead --
+      `wish.spec` -- and the two have to be the same drawing, which they are
+      because both come from the same path data.
+    * **`setDesktopFileName`** is how GNOME and KDE match a window to its
+      `.desktop` entry, and without it a Wayland window gets the toolkit's
+      generic icon whatever `setWindowIcon` said. `wish` is the id the
+      freedesktop icons under `assets/icons/hicolor` are named for.
+    * **the app user model id** is Windows' key for taskbar grouping and
+      pinning. Left unset, a Python-hosted window can be grouped under the
+      interpreter rather than under itself, and a pin can attach to the wrong
+      thing.
+    """
+    app.setApplicationName("Wish")
+    # Not `setApplicationDisplayName`: Qt appends it to every window title, and
+    # the title already starts with "Wish".
+    app.setDesktopFileName(paths.APP)
+    app.setWindowIcon(app_icon())
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "net.donaldmorton.wish")
+        except Exception:                    # noqa: BLE001 -- cosmetic only
+            pass
+
+
 def run(save: str | None = None, game_disk: str | None = None,
         maps: dict | None = None, area: str | None = None,
         tab: int = EDITOR_TAB, interval_ms: int | None = None,
         title: str | None = None, disks: str | None = None) -> int:
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
+    dress(app)
     settings = Settings.load()
     session = Session(preferred=getattr(settings, "backend", "") or None,
                       interval_ms=interval_ms or settings.interval_ms or None)

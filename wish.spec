@@ -48,12 +48,21 @@ window = Analysis(
     noarchive=False,
 )
 
+# Windows takes the taskbar icon of a *pinned* shortcut, and the icon Explorer
+# draws on the file, from the executable's own resource -- not from Qt. The
+# running window's icon is `QApplication.setWindowIcon` in `wish/window.py`,
+# from the same drawing; both are needed and neither substitutes for the other.
+# PyInstaller ignores this on Linux. `tools/genicons.py` writes the file and
+# `tests/test_appicon.py` fails the build if it has drifted from the glyph.
+ICON = "assets/wish.ico"
+
 exe = EXE(
     PYZ(window.pure),
     window.scripts,
     [],
     exclude_binaries=True,
     name="wish",
+    icon=ICON,
     console=False,
     disable_windowed_traceback=False,
     strip=False,
