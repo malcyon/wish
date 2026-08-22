@@ -1055,6 +1055,12 @@ class Warp(Action):
         if here is not None and here == getattr(area, "id", None):
             return Verdict(False, "the party is already in that area, and "
                                   "NEWECL skips a same-area transition")
+        try:
+            indoors = target.read(WARP_INDOORS, 1)[0]
+        except Exception:
+            indoors = None
+        if indoors == 0 and not getattr(area, "outdoors", False):
+            return Verdict(False, self.OUTDOORS_TRAP)
         return Verdict(True)
 
     def apply(self, target, area=None, arrival=None, **kwargs) -> Outcome:
@@ -1109,13 +1115,17 @@ class Warp(Action):
                "warp is not the same as having played there"]
         if arrival is None:
             out.append("no arrival square is known for this area, so the party "
-                       "lands wherever the arriving script leaves it")
+                       "lands wherever the arriving script leaves it -- which "
+                       "it does: $49F2 survives the restart, so the arriving "
+                       "script's entry takes its came-from-elsewhere branch")
         if not getattr(area, "has_map", True):
             out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
                        "its own")
         if getattr(area, "outdoors", False):
             out.append("this is an overland area and loads a SQRDATA rather "
-                       "than a GEO; nothing here has been tried outdoors")
+                       "than a GEO; an arrival square is pointless there, "
+                       "because outdoors the party's position is $49C3/$49C4 "
+                       "and $C04B is not even GDRIVE00's any more")
         try:
             indoors = target.read(WARP_INDOORS, 1)[0]
         except Exception:
@@ -1126,6 +1136,16 @@ class Warp(Action):
                 out.append(f"$49E6 is {indoors}, so LOADFILES will ask for a "
                            f"{'SQRDATA' if outdoors_now else 'GEO'}")
         return tuple(out)
+
+    #: Warping out of an overland area into an indoors one hangs the loader:
+    #: it asks for the target's side and goes on asking, and re-attaching,
+    #: attaching something else first and poking `$49E6` afterwards all fail.
+    #: The other direction is fine -- area 23 to 26 worked, and the arriving
+    #: script sets `$49E6` itself. See `docs/50-experiments.md`.
+    OUTDOORS_TRAP = ("the party is on the overland map ($49E6 is 0) and this "
+                     "area is indoors: warping that way hangs the loader "
+                     "asking for the disk for ever. Walk off the overland map "
+                     "first")
 
     # -- and back again ---------------------------------------------------
 

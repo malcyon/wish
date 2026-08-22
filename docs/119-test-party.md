@@ -325,3 +325,53 @@ the superseded text is how contradictions got in before.
 Steps 1 and 2 need the emulator and are single-threaded: one agent, and it
 checks `ss -tnp | grep 6502` before connecting. Steps 4 and 5 do not touch VICE
 at all and can run beside them.
+
+---
+
+## 6. First live attempt — where it got to, and the wall it hit
+
+**Status after the session of 2026-08-21: XP written, party positioned, no
+level-up.** Everything up to the trainer works; the trainer itself is not where
+this document assumed.
+
+What worked, and is repeatable:
+
+| step | how |
+|---|---|
+| a level-1 party in New Phlan | `PORSAVE14` (the Slums) copied to `work/drive/LVBEFORE.D64`, then **warped** to area 0 — `docs/50-experiments.md`, P43 |
+| XP written past the thresholds | `$4D00 + slot*$100 + 0x0E8`, three bytes little-endian, straight into the running machine. Read back through `automap.actions.read_party` in the same connection |
+| a save that captures it | `Session.save_game` onto the copy. `SAVEDGAME0` on the disk carries the new experience, so `0x0E8` is writable live *and* survives the game's own save. CONFIRMED |
+| the party put on any square | poke `$C04B`-`$C04D` and take one step. Used to cross New Phlan in one move instead of the nineteen a walk needs |
+
+The party used was Donald's own, and it is better than the plan hoped:
+MALCYON magic-user 1, ROLAND cleric 1, SILAS / MAGNUS / BRUTUS fighter 1 —
+MAGNUS wounded, 2 of 9 — and **LADY KATHERINE, `class_bits` 5, a live
+magic-user/thief with two non-zero entries in `0x0C9`-`0x0CC`**. That is the
+multi-class specimen `docs/90-specimens.md` lists as missing, already in hand;
+it only needs a level.
+
+**The wall: the training hall is not a square in New Phlan, it is area 11.**
+`ECL0B` — `docs/118`'s "the arena", one of the four mapless areas — holds both
+the duelling arena and every training school: `'WE TRAIN ONLY <class> HERE. DO
+YOU WANT TO TRAIN?'` is at `$A0DD`. New Phlan reaches it from `GEO00` script
+ids **10** (squares `(6,1)` and `(6,2)`) and **17** (square `(9,0)`), both of
+which end in `NEWECL 11` at `$A22D`/`$A230`.
+
+And `ECL0B` **dispatches on `$6E82`**, not on the area it came from: its entry
+does `AND 127, ATTR, [$6E82]` — the departing square's attribute byte — then
+walks `$9800` from 10 to 18 comparing against it. So:
+
+* **warping into area 11 bounces straight back out.** Observed three times:
+  `$6E1B` goes `$8B` → `$0B` → `$00` within about eight seconds, no disk
+  activity worth the name, and the party is in New Phlan again on whatever
+  square the warp supplied. With `$6E82` forced to 10 it bounced the same way.
+* so the route in is either **the real door** — stand on `(7,2)` facing west and
+  step onto `(6,2)` — or a warp that also reproduces whatever `$6E82` and the
+  entry expect. Stepping onto `(6,2)` under `Session.walk` did *not* fire it
+  either, which is the next thing to chase: the walk crossed `(6,2)` and
+  finished at `(5,2)` with no message.
+
+**So the next session starts here**, not from scratch: `work/drive/LVBEFORE.D64`
+is a save with six characters carrying 2000-5002 experience, one of them
+multi-class, sitting in New Phlan. Get one of them through `ECL0B`'s training
+menu and the diff is one `save_game` away.

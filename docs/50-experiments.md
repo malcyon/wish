@@ -4063,3 +4063,46 @@ effect on the next fight is unproven.
   a `PARLAY`, or a death-and-experience sequence — rather than simply a long
   one. This one stalled into `GUARDING` and produced 16 messages in 1050
   frames.
+
+- **P18: experience is writable live and survives the game's own save.
+  CONFIRMED. The level-up diff is not taken — the trainer is somewhere else.**
+
+  `0x0E8` written into the running machine at `$4D00 + slot*$100 + 0x0E8`,
+  three bytes little-endian, for all six of Donald's characters (2000 to 5002,
+  each past its class's level-2 threshold in `por/levels.py`). `ENCAMP → SAVE →
+  SAVE GAME` onto a copy of the save disk, and `SAVEDGAME0` read back off that
+  disk carries the new values. So the half of route (b) that this project
+  controls works end to end.
+
+  **The trainer does not.** `docs/119-test-party.md` says "drive to the training
+  hall, `7,2` in New Phlan"; `7,2` carries script id 14 and `ECL00`'s `ONGOTO`
+  sends 14 to `$AE6A`, which does nothing. The training schools are inside
+  **area 11, `ECL0B`**, one of the four mapless areas, along with the duelling
+  arena — `'WE TRAIN ONLY <class> HERE. DO YOU WANT TO TRAIN?'` at `$A0DD`.
+  `GEO00` reaches it from script id 10 at `(6,1)` and `(6,2)` and from id 17 at
+  `(9,0)`, both ending in `NEWECL 11`.
+
+  **And a warp cannot get in.** `ECL0B`'s entry reads `$6E82` — set from the
+  departing square's attribute byte by `AND 127, ATTR, [$6E82]` — and walks
+  `$9800` from 10 to 18 against it to choose a school. Warped in three times,
+  once with `$6E82` forced to 10: every time `$6E1B` went `$8B` → `$0B` → `$00`
+  inside eight seconds and the party was back in New Phlan. This is the first
+  area found that a warp cannot enter, and the reason is instructive — the
+  target reads state the *departure* was supposed to leave behind, which is
+  exactly the class of assumption `Warp`'s standing warning is about.
+
+  A save with the boosted party is at `work/drive/LVBEFORE.D64`, in New Phlan,
+  including a live **magic-user/thief** (LADY KATHERINE, `class_bits` 5, two
+  non-zero entries in `0x0C9`-`0x0CC`) — the multi-class specimen
+  `docs/90-specimens.md` wants. Next session needs only to get one character
+  through `ECL0B`'s menu.
+
+- **A warp out of an overland area into an indoors one wedges the loader.**
+  Area 26 → area 0 with `$49E6` left at 0: the game asked `INSERT SIDE # 3` and
+  went on asking for ever, `PC` in the KERNAL serial routines at `$EEAx`, no
+  KERNAL filename to read because the loader is the game's own. Re-attaching,
+  attaching a different image first, and poking `$49E6` back to 1 after the
+  load had started all failed. The same warp made from an indoors area (20 →
+  0) worked first time. So `$49E6` has to be right **before** `$2034`, and
+  `Warp`'s existing "`$49E6` is 0, so LOADFILES will ask for a SQRDATA" warning
+  is describing a hang rather than an inconvenience.
