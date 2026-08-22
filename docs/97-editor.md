@@ -177,8 +177,12 @@ Two rules that keep the backups meaningful:
 * **Save As to a new filename makes no backup**, because there is nothing yet to
   lose.
 
-If the directory holding the save is not writable, fall back to
-`~/.local/share/wish/backups/` rather than failing the save. Worth being aware
+If the directory holding the save is not writable, fall back to the user's data
+directory (`~/.local/share/wish/backups/`, `%LOCALAPPDATA%\wish\backups\` on
+Windows) rather than failing the save. **File > Preferences names whichever of
+the two the open save uses**, because Donald asked where that path came from and
+observed that nobody would think to look there — see
+[`130-preferences.md`](130-preferences.md) §5c. Worth being aware
 that this project's own working rule is never to write to
 `/home/donald/c64/Pool of Radiance Disks/` -- that rule governs scripts and
 agents, not a person deliberately editing their own save through the editor, but

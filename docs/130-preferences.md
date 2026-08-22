@@ -203,6 +203,45 @@ one. The folder scan is `lru_cache`d on the folder, and typing is debounced by
 The stderr line in `wish/__main__.py` stays for the terminal user, and now
 names the folder it tried and who named it. It is not the only channel any more.
 
+### 5c. Where the backups go
+
+Donald, on the first Windows build: *"where does `~/.local/share/wish/backups/`
+come from? No user is ever going to think to look there."*
+
+Both halves are answered by saying it in a line that is always on screen rather
+than in a status message already dismissed:
+
+```
+┌─ Backups ────────────────────────────────────────────────────┐
+│  Folder  /home/donald/c64/saves/backups — beside the save    │
+│          disk.  Only when something changed; the newest 20    │
+│          are kept.                                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+* **The user data directory is only the fallback.** The copy normally lands in
+  `backups/` beside the save disk, which is the folder somebody was already
+  looking at; the data directory is where it goes when that folder cannot be
+  written.
+* **The answer depends on the open save**, not on a preference, so the line is
+  read-only and is re-read on every `refresh()`. With nothing open there is no
+  per-file answer, so it names the fallback *and says that is what it is*.
+* **The two standing facts are on the same line**: a backup is made only when
+  the bytes changed, and the newest `editor.files.KEEP_BACKUPS` are kept. Both
+  are behaviours somebody would otherwise have to guess at.
+* **It asks read-only.** `editor.files.backup_dir_for` is the authority and is
+  what runs at save time, but it answers "may I write here" by *making* the
+  folder and touching a probe file in it — and a dialog that only reports must
+  not write to the folder somebody keeps their disks in, least of all this
+  project's own `Pool of Radiance Disks/`. `preferences.backup_folder` asks the
+  same question with `os.access`, creates nothing, and is a plain function over
+  a path so it is tested without opening a dialog. The two can disagree only on
+  a filesystem that lies about access, and there the status line after a save
+  names the real path from the real chooser.
+* **This is the one place `editor.files` is imported.** The rule the project
+  keeps is one-way — `editor/` imports nothing from `automap/` — and `wish/` is
+  the layer allowed to know about both.
+
 ---
 
 ## 6. The backend section

@@ -25,7 +25,7 @@ Install the app via pip.
 pip install wish-goldbox
 ```
 
-Run the gui wit:
+Run the gui with:
 
 ```sh
 wish
@@ -44,7 +44,7 @@ As you play the game, the automapper will reveal the map to you, making navigati
 ## Character Editor
 
 
-In the Character Editor tabe, you can load up a save disk and modify your party.
+In the Character Editor tab, you can load up a save disk and modify your party.
 
 <a href="images/character_editor1.png">
   <img src="images/character_editor1.png" alt="Character Editor" title="Character Editor" width="700">

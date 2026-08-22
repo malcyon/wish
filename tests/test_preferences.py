@@ -195,6 +195,74 @@ def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
     assert "Pool of Radiance (1 disk)" in rows["Titles"]
 
 
+# --- where the backups go ----------------------------------------------------
+
+def test_a_backup_goes_beside_the_save_disk(tmp_path):
+    """Donald: "no user is ever going to think to look there" -- and mostly
+    they do not have to, because the copy lands beside the disk."""
+    from wish.preferences import backup_folder
+    save = tmp_path / "PORSAVE14.D64"
+    save.write_bytes(b"")
+    where, fallback = backup_folder(save)
+    assert (where, fallback) == (tmp_path / "backups", False)
+
+
+def test_an_unwritable_folder_falls_back_to_the_user_data_directory(tmp_path):
+    from editor import files
+    from wish.preferences import backup_folder
+    shelf = tmp_path / "read only"
+    shelf.mkdir()
+    save = shelf / "PORSAVE14.D64"
+    save.write_bytes(b"")
+    shelf.chmod(0o555)
+    try:
+        where, fallback = backup_folder(save)
+    finally:
+        shelf.chmod(0o755)
+    assert (where, fallback) == (files.fallback_dir(), True)
+
+
+def test_with_nothing_open_the_fallback_is_named_and_called_one(tmp_path):
+    from editor import files
+    from wish.preferences import backup_folder
+    assert backup_folder(None) == (files.fallback_dir(), True)
+
+
+def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
+                                                     monkeypatch):
+    """`editor.files.backup_dir_for` answers by *making* the folder and
+    touching a probe file in it. A dialog that only reports must not write to
+    the folder somebody keeps their disks in."""
+    from wish.preferences import backup_folder
+    nowhere(tmp_path, monkeypatch)
+    shelf = tmp_path / "disks"
+    shelf.mkdir()
+    save = shelf / "PORSAVE14.D64"
+    save.write_bytes(b"")
+    backup_folder(save)
+    win = window(app)
+    try:
+        PreferencesDialog(win)
+    finally:
+        win.close()
+    assert list(shelf.iterdir()) == [save]
+
+
+def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
+        app, tmp_path, monkeypatch):
+    from editor import files
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        said = PreferencesDialog(win).backups.text()
+    finally:
+        win.close()
+    assert str(files.fallback_dir()) in said
+    assert "fallback" in said
+    assert "only when something changed" in said.lower()
+    assert str(files.KEEP_BACKUPS) in said
+
+
 # --- the dialog --------------------------------------------------------------
 
 def test_the_dialog_is_on_the_file_menu_with_a_shortcut_a_keyboard_has(
