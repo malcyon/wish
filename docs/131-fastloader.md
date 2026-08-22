@@ -1,8 +1,7 @@
-# Does the fastloader answer make any difference? — plan
+# Does the fastloader answer make any difference?
 
-**Status: nothing measured. This is the plan for a measurement, plus three
-config facts found while writing it that may settle the question before the
-emulator is started at all.**
+**Status: measured.** 24 boots, five per cell. `work/reports/p69-fastloader.md`
+is the run sheet, `work/p69/` holds the harness and the raw JSON.
 
 Donald: *"You have guidance on whether we should answer Y/N to the fastloader
 question, but in my experience, either option makes no difference at all. It
@@ -10,366 +9,225 @@ still takes a long time to load."*
 
 ---
 
-## The verdict, in advance
+## The answer
 
-**No document in this project cites a measurement.** Every statement of the
-guidance traces back to one assertion — "leaving the game's loader on conflicts
-with [JiffyDOS]" — repeated in five places and timed in none. Donald is
-challenging an assumption, not a finding.
+**On this machine, Donald is right.** `Y` reaches the main menu in 167.8 s and
+`N` in 168.8 s — a 1.0 s margin against a within-cell spread of up to 1.1 s.
+The two answers are not distinguishable by waiting.
 
-And the assumption looks shaky for a reason nobody has written down:
+**On a stock kernal the answer is worth 39 s, and `N` is the faster one.** So
+the advice is real but it is *kernal-dependent*, and exactly one document in
+the project already said so.
 
-> **JiffyDOS is PROBABLY only half-installed here.** `vicerc` sets
-> `DosName1541ii`, which VICE applies only to a drive of type **1542** (its
-> number for the 1541-**II**). `Drive8Type` does not appear in `vicerc` at all,
-> and that file is rewritten on exit (`SaveResourcesOnExit=1`), so drive 8 is at
-> VICE's default — a plain **1541**, whose ROM comes from `DosName1541`, which
-> is unset and therefore stock.
+| kernal + drive ROM | answer | answer key → main menu | spread over 5 runs |
+|---|---|---|---|
+| JiffyDOS both halves (Donald's) | `Y` | **167.8 s** | 0.3 |
+| JiffyDOS both halves | `N` | 168.8 s | 1.1 |
+| stock 901227-03 + 251968-03 | `Y` | 238.6 s | 0.2 |
+| stock both halves | **`N`** | **199.6 s** | 1.0 |
 
-JiffyDOS is a protocol between a patched kernal and a patched *drive*. With only
-the C64 half installed, the kernal detects a stock drive and falls back to
-ordinary serial. That makes **`Y` the slowest possible path**, not the fastest —
-and it makes the guidance not merely unmeasured but backwards.
-
-That is the leading hypothesis, it is check #1 below, and it costs one monitor
-command.
+**And it is not because there is nothing behind the prompt.** The two answers
+leave visibly different code in the drive; the difference is real and it is
+JiffyDOS that erases it. See "the drive-RAM read" below.
 
 ---
 
-## 1. Where the guidance lives, and what it rests on
+## Polarity, stated once, because half the confusion is here
 
-| where | what it says | evidence offered |
-|---|---|---|
-| `docs/00-overview.md:59-67` | answer **Y**; "JiffyDOS does the fast loading; leaving the game's loader on conflicts with it, and the failure mode looks like a bad disk image" | none |
-| `docs/70-driving-the-game.md:124` | table row: `DISABLE FASTLOADER (Y/N)?` → `Y` (VICE runs JiffyDOS here) | none |
-| `docs/122-release-testing.md:379` | release walkthrough step L7: "Answer **Y**" | none |
-| `docs/122-release-testing.md:549-550` | Windows walkthrough: "**Y** if this VICE has JiffyDOS; a stock Windows VICE will not, in which case **N**" | none — and this is the one that could mislead a stranger |
-| `docs/123-parallel-sessions.md:110,521` | a pooled `vicerc` must keep the JiffyDOS paths *because* the fastloader answer depends on them | none; it cites `00-overview` |
-| `tools/session.py:302-306` | `Session.boot()` answers `y` unconditionally | none |
-| memory `vice-jiffydos-fastloader-prompt.md` | states the conflict as fact | none |
-| `skills/goldbox/references/driving.md:101` | "answer per the emulator's own fast-loading setup" | the only one already agnostic; it survives whatever we find |
-
-Two of those describe a *failure* ("looks like a bad disk image"), which is a
-different claim from *slower* and is not what Donald is reporting. Both claims
-need separating, and the plan below separates them: a cell either boots or it
-does not, and if it boots it has a time.
-
-**Polarity, stated once, because half the confusion is here.** The prompt is
-`DISABLE FASTLOADER (Y/N)?`.
+The prompt is `DISABLE FASTLOADER (Y/N)?`.
 
 * **`Y` = disable the game's own loader** → loading goes through the KERNAL,
-  where JiffyDOS (if fully installed) accelerates it.
-* **`N` = keep the game's own loader** → the game uploads its own code to the
-  drive and neither KERNAL nor JiffyDOS is involved.
+  where JiffyDOS accelerates it.
+* **`N` = keep the game's own loader** → the game uploads its own code into the
+  drive and runs a private transfer protocol.
 
 ---
 
-## 2. Pre-flight — three checks before any timing run
+## What the machine actually is
 
-All three are cheap, none needs the game running, and #1 may end the
-investigation.
+Three pre-flight facts, each of which killed a hypothesis before any timing.
 
-| # | check | how | what it would mean |
-|---|---|---|---|
-| 1 | **`Drive8Type`** | `resourceget Drive8Type` on the text monitor (`127.0.0.1:6510`), the socket `tools/session.py` already opens | `1541` → the JiffyDOS drive ROM is **not loaded** and the `Y` path is plain serial. `1542` → JiffyDOS is fully installed and hypothesis H1 dies |
-| 2 | **`AutostartHandleTrueDriveEmulation=1`** (`vicerc`, present) | already read; confirm with `resourceget` | VICE turns true drive emulation **off** for the autostart and puts it back afterwards — the binary carries `Restoring true drive state of drive %d:%d`. Part of every boot therefore loads through VICE's trap at host speed, under *neither* loader. A real confound; pin it to `0` for the runs |
-| 3 | **which kernal is actually live** | read `$E000-$FFFF` through the monitor and `cmp` against `JiffyDOS_C64_6.01.bin` and `kernal-901227-03.bin` | proves what is in the machine rather than what the rc names. Do this for the stock-kernal row too, or that row proves nothing |
-
-Also worth recording once, since they set the units: `MachineVideoStandard=2`
-(NTSC) and `MachinePowerFrequency=60`. The jiffy clock ticks 60/s here, which
-matches the 62-jiffies-in-1.03 s already in `docs/50-experiments.md`.
-
----
-
-## 3. What is timed
-
-### The window
-
-Donald asked for "load the game to the title screen". A script needs both ends
-nailed down, and the boot has more than one interesting segment, so record a
-**timeline of milestones** and report the segments as well as the total.
-
-| marker | detected by | why |
+| check | value | consequence |
 |---|---|---|
-| **T0** launch | the moment `porlaunch.sh` execs `x64sc` | includes Xephyr and VICE startup — reported, never compared |
-| **M1** `DISABLE FASTLOADER (Y/N)?` on screen | text on the screen | everything before this is the autostart of `BOOT`, which happens under `AutostartWarp` and with TDE flipped off — it is *not* the thing being measured |
-| **M2** the answer key delivered | the `xdotool` call returns | **the start of the timed window** |
-| **M3** the title / credits screen | see below | **the headline end condition** |
-| **M4** `INPUT THE CODE WORD` | text | |
-| **M5** main menu, `LOAD SAVED GAME` | text | |
-| **M6** `BEGIN ADVENTURING` | text | the party is loaded |
-| **M7** `ENCAMP` | text | in the world |
+| `resourceget "Drive8Type"` | **1542** — the 1541-**II** | **JiffyDOS is fully installed.** `DosName1541ii` is the resource that governs a 1542, and it names the JiffyDOS drive ROM |
+| drive 8 ROM at `$E780` | `60 AD 0C 1C 29 1F …` | the JiffyDOS 1541-II 6.00 image. Stock 1541-II reads `EA` there and stock 1541 reads `60 EA` — three-way separable in sixteen bytes |
+| md5 of the live `$E000-$FFFF` | `be09394f…` on the default flags, `39065497…` under cell C and D's | byte-identical to `JiffyDOS_C64_6.01.bin` and to `kernal-901227-03.bin` respectively, so `-kernal` does take |
 
-**M2 → M3 is the number Donald asked for.** M3 → M7 is reported too, because
-the fastloader affects every overlay load and the game is heavily overlaid: if
-the loader matters at all, it matters more over the whole boot than over the
-first segment. If a difference exists anywhere it will show up in the segment
-table.
+**`Drive8Type` is absent from `vicerc`, and VICE's default here is 1542, not
+1541.** The plan this document replaces reasoned from a default of 1541 and
+built its leading hypothesis on it. That reasoning was wrong and one monitor
+command settled it.
 
-### Detecting M3 without a human watching
+**Do not identify the kernal from a short window at `$E000`.** JiffyDOS 6.01
+and `901227-03` share their opening bytes; the per-run 16-byte probe that did
+so proved nothing, and the md5 of the whole 8 KB is what the row above rests
+on. The drive ROM needs no such care — `$E780` separates all three candidates.
 
-`automap/screen.py` will not do it directly: `is_bitmap()` exists precisely
-because "title and credit screens are bitmaps and cannot be read as text", yet
-`Session.boot()` finds `PLAY GAME` as *text*. So there are at least two screens
-here and their order is not documented.
+`-config <file>` **does** exist in this `x64sc`; the earlier draft could not
+find it in the option strings. The runs use it, through the instance pool's
+per-slot `vicerc`.
 
-**Do not guess the marker — derive it.** First run of the experiment is a
-**trace run**: one boot, sampled every 0.25 s, recording `$D011` bit 5 (bitmap
-mode), the VIC screen address, row 24 as text, and a frame capture. Read the
-trace, choose M3 from it, and write the chosen predicate into the harness. Then
-every timed run uses that predicate and nothing else.
+---
 
-Expect M3 to end up as *"`$D011` bit 5 sets and the frame stops changing"*, with
-`PLAY GAME` on row 24 as the secondary marker — but that is a **GUESS** until
-the trace says so.
+## The matrix
+
+Constants, all on the command line so no config file is touched: `+saveres`,
+`+warp`, `+autostart-warp`, `+autostart-handle-tde`, `-speed 100`, a cold
+`x64sc` and a fresh copy of side 1 per run, `POR_HEADLESS=1`, one pool slot per
+worker.
+
+| cell | kernal + drive ROM | answer | runs |
+|---|---|---|---|
+| **A** | JiffyDOS both halves | `Y` | 5 + 1 serial control |
+| **B** | JiffyDOS both halves | `N` | 5 |
+| **C** | stock `kernal-901227-03` + `dos1541ii-251968-03` | `Y` | 5 |
+| **D** | stock both halves | `N` | 5 |
+| **G** | as found, VICE's own autostart warp and TDE handling | `Y` | 2 |
+| **F** | as found, true drive emulation **off** | `N` | 1 probe |
+
+Cell **E** — "force `Drive8Type=1542` and see whether JiffyDOS starts
+working" — was never run, because pre-flight #1 showed it is already 1542.
+
+### Milestones
+
+| marker | detected by |
+|---|---|
+| **T0** | `porlaunch.sh` execs `x64sc` |
+| **M1** | `DISABLE FASTLOADER (Y/N)?` on screen |
+| **M2** | the answer key delivered — **the timed window opens here** |
+| **M3** | the title picture: `$D011` bit 5 sets |
+| **M4** | the credits screen, `PLAY GAME` readable |
+| **M5** | `INPUT THE CODE WORD` |
+
+**M3 is a soft marker and its numbers should not be leaned on.** M2→M3 and
+M3→M4 are exactly anti-correlated in every cell — 31.9 + 131.4 and 40.1 + 123.2
+both make 163.3 — so the screen-mode edge is being caught at one of two places
+about 8.3 s apart while M4 stays fixed to a tenth. M2→M4 and M2→M5 are the
+numbers with a claim behind them.
 
 ### Which clock
 
-**The headline number is wall clock**, because that is what Donald experiences
-and what the complaint is about. Emulated time is the cross-check.
+**Wall clock, `time.monotonic()` on the host**, because that is what a person
+waits.
 
-| clock | use it? | why |
-|---|---|---|
-| host `time.monotonic()` | **yes — the answer is in this** | it is what a person waits |
-| **CIA #1 TOD**, `$DC08-$DC0B` | **yes — the cross-check** | driven by the power-frequency input, so it keeps counting whatever the CPU is doing |
-| KERNAL jiffy clock, `$A0-$A2` | **no** | it is ticked by the KERNAL IRQ, and **a fastloader disables interrupts**. It would under-count exactly the interval in question and would bias the `N` cell low — the one clock guaranteed to give a wrong answer to this particular question. `docs/70:239` recommends it for elapsed emulated time in general; that recommendation does not extend here, and this document is the exception |
+The KERNAL jiffy clock at `$A0-$A2` is not used and must not be: it is ticked
+by the KERNAL IRQ and a fastloader disables interrupts, so it would under-count
+exactly the interval in question and bias the `N` cells low.
 
-Validate the TOD before trusting it: read it twice across a 30 s idle at the
-title screen and check it advanced 30.0 ± 0.2 s. If the game writes the TOD
-registers, or sets CRB bit 7, this fails and the cross-check is dropped rather
-than fudged. Reading through the monitor with `side_effects=0` bypasses the
-latch/unlatch pair, so read all four bytes in one burst — **PROBABLE**, confirm
-in the idle test.
+**The CIA #1 TOD cross-check was dropped, not fudged.** `$DC08-$DC0B` read one
+o'clock and zero tenths at every sample of every run — it does not advance in
+this configuration and measures nothing. What replaces it: `resourceget`
+confirms `AutostartWarp=0` and `Speed=100` per run, and the VICE status bar
+reads `101% cpu / 60.3 fps` with the warp indicator dark in every capture.
 
-At `-speed 100` with warp off the two clocks should agree within 1-2 %. **If
-they disagree, report both**, and the disagreement is itself the finding: warp
-was on, or the host could not keep up.
+### On polling the monitor
 
-### Do not measure through the monitor
+The plan forbade it, on the grounds that each `resume()` hands the emulation
+~14.3 ms and 0.25 s polling would distort a 90 s boot by seconds. The runs poll
+at **1.0 s** instead, identically in every cell, and the distortion is bounded
+by the result rather than by the argument: **four of the five timed cells
+reproduce M2→M5 within 0.3 s over five cold processes.** A systematic error
+that repeats to a tenth of a second cannot be what a 39 s gap is made of.
 
-Polling the binary monitor hands the emulation ~14.3 ms of extra emulated time
-*per `resume()`* (`docs/50-experiments.md`, "Polling does not stall the
-emulator"). At 0.25 s that is 5.7 % — on a 90 s boot, five seconds, quite
-possibly larger than the effect being hunted.
-
-So **poll the X server, not the emulator**:
-
-```
-ffmpeg -f x11grab -framerate 4 -video_size 1400x1050 -i :7 \
-       -vf scale=350:-1 -y work/drive/timing/<cell>-<run>.mkv
-```
-
-Frame timestamps come out of the container, the emulator is not touched, and
-each run leaves a re-examinable artefact. Two monitor connections per run —
-one TOD read just before M2, one just after M3 — cost ~28 ms of distortion
-between them and are the only monitor traffic in the window.
-
-`x11grab` costs host CPU, which could in principle slow the emulator. Control:
-record **every** cell so the cost is a constant, and run one extra
-unrecorded cell timed by TOD alone to bound it.
-
-Fallback if `ffmpeg -f x11grab` will not attach to Xephyr: `import -window root
-ppm:-` in a loop, hashing each frame and keeping only the first frame of each
-new hash. `Keyboard.screenshot()` in `tools/drive.py:112` already shells to
-`import`. PPM rather than PNG because PNG metadata defeats hashing.
+Three sessions ran in parallel on three pool slots. The serial control boot of
+cell A came out at 167.6 s against the parallel runs' 167.7–167.9 s, so
+contention on a 12-core host is worth 0.3 s.
 
 ---
 
-## 4. The matrix
+## What died
 
-**Constants for every cell**, set on the command line so no config file is
-touched:
-
-| setting | value | why |
+| # | hypothesis | verdict |
 |---|---|---|
-| warp | `+warp +autostart-warp` | **warp must be off.** `InitialWarpMode` defaults off but `AutostartWarp` does not obviously; pass both explicitly and verify by wall-vs-TOD agreement |
-| `-speed 100` | already in `porlaunch.sh` | pins emulated to real time |
-| `AutostartHandleTrueDriveEmulation` | `0` | otherwise VICE flips TDE off and back mid-boot (pre-flight #2) |
-| `+saveres` | **mandatory** | `SaveResourcesOnExit=1` in Donald's rc. Without `+saveres`, a run that overrides `-kernal` writes the *stock* kernal path into his config on exit. This is the single most dangerous line in the experiment |
-| disk images | one fixed copy set under `work/drive/` | `Session.attach` refuses anything else, and the game writes to its disks |
-| process | cold `x64sc` per run | no state carried between runs |
+| **H1** | JiffyDOS is half-installed, so `Y` is plain serial | **dead.** `Drive8Type=1542` and the drive ROM at `$E780` is the JiffyDOS image |
+| **H2** | the answer never reaches the game | **dead.** Drive 8's RAM after the first load differs between `Y` and `N` in 976 of 1280 bytes |
+| **H3** | the game's loader is absent — a cracker removed it, leaving a vestigial prompt | **dead.** Under `N` a kilobyte of drive RAM matches no sector on the disk |
+| **H4** | JiffyDOS masks the difference; both paths are fast and comparable | **survives, and is the answer.** It predicted C ≫ A, which holds by 70.8 s. Its second clause, B ≈ D, fails by 30.8 s |
+| **H5** | transfer is not the bottleneck; the gap appears in no segment and G ≠ A | **dead.** The gap is squarely in the loading segments, and G ≡ A inside the timed window |
 
-The cells:
+**H4's second clause failing is a finding in itself.** `N` means the game's own
+loader, so B and D should have loaded at the same speed whatever kernal was
+underneath — and they differ by 30.8 s. A large part of what is loaded between
+the answer and the main menu therefore goes through the KERNAL *whichever way
+the prompt is answered*, and that is why JiffyDOS helps both cells and why the
+answer changes so little on this machine.
 
-| cell | kernal + drive ROM | answer | `Drive8Type` | runs | what it is for |
+### The drive-RAM read, and what it settled
+
+Drive 8's RAM `$0300-$07FF` was read on the text monitor (`m 8:0300 07ff`)
+immediately after the first game load, and every populated page compared
+against the sectors of `POOL1.D64`.
+
+| answer | `$0300` | `$0400` | `$0500` | `$0600` | `$0700` |
 |---|---|---|---|---|---|
-| **A** | JiffyDOS both halves | **Y** | as found | 5 | today's guidance, as actually configured |
-| **B** | JiffyDOS both halves | **N** | as found | 5 | Donald's claim |
-| **C** | stock (`kernal-901227-03.bin` + `dos1541-325302-01+901229-05.bin`) | **Y** | as found | 5 | **the diagnostic cell.** If A ≈ C, JiffyDOS is doing nothing on the Y path |
-| **D** | stock both halves | **N** | as found | 5 | the game's own loader with no JiffyDOS anywhere; should equal B if the loader is real |
-| **E** | JiffyDOS both halves | **Y** | forced **1542** | 3 | only if pre-flight #1 says `1541`. This is the "make JiffyDOS actually work" cell, and it may be the entire answer |
-| **F** | as found | **N** | as found, TDE **off** (`+drive8truedrive`) | 1 | a probe, not a timing cell. A custom drive loader cannot work without a real drive; expect a hang or a corrupt load, which is the "looks like a bad disk image" symptom `00-overview` describes — attached to the wrong cause |
-| **G** | as found | **Y** | as found, `AutostartHandleTrueDriveEmulation=1`, autostart warp default | 3 | the control: how much were the two VICE defaults distorting the numbers everyone has been looking at? |
+| **`Y`** | on disk | on disk | on disk | empty | on disk |
+| **`N`** | **not on disk** | **not on disk** | **not on disk** | **not on disk** | on disk |
 
-The stock-kernal rows need **both** ROMs swapped —
-`-kernal <stock> -dos1541II <stock>` — because swapping one leaves a
-half-installed JiffyDOS, which is the very state under suspicion. Both stock
-ROMs ship inside the flatpak at
-`~/.local/share/flatpak/app/net.sf.VICE/current/active/files/share/vice/{C64,DRIVES}/`.
+Under `Y` every non-empty page of drive RAM is a verbatim sector off the disk —
+ordinary DOS buffers, nothing uploaded. Under `N` a kilobyte of drive RAM
+matches **no sector on the disk at all**: it arrived over the serial bus. That
+is the game's fastloader, present and running, in a cracked release. Both
+dumps are byte-identical run to run, and the pattern is the same under a stock
+kernal as under JiffyDOS.
 
-`-config <file>` would be tidier than command-line overrides, and
-`docs/123-parallel-sessions.md` §2 claims `x64sc` 3.10 has it. **I could not find
-the literal `-config` in this binary's option strings** (the help text "Specify
-config file" is there; the flag is not). Check `x64sc -help | grep -i config`
-before relying on it; `+saveres` plus command-line overrides needs no such
-check and is what this plan uses.
+### Cell F: the "bad disk image" symptom, and its real cause
 
-### Why five runs
+With true drive emulation off, the boot **never reaches the fastloader prompt
+at all**. It stops at `SEARCHING FOR *` under the JiffyDOS banner and stays
+there; the run was abandoned at 909 s with drive RAM completely empty.
 
-Not for the average — for the **spread**. Emulated 1541 loading is nearly
-deterministic; the host is not. Five runs give a range, and **the range is what
-makes the Y-vs-N difference interpretable**: if the within-cell range exceeds
-the between-cell gap, there is no gap. One measurement of a loading time is
-worth almost nothing, and two is worth only slightly more.
+`docs/00-overview.md` attributes a failure that "looks like a bad disk image"
+to answering the prompt wrongly. That failure is reproducible from true drive
+emulation, and it happens **before the question is asked** — so it cannot be
+what the answer causes. No answer failed a boot in this experiment: all 23
+timed runs reached the code-word prompt, ten of them on the answer the
+guidance calls wrong for their kernal.
 
-Discard run 1 of each cell as host-page-cache warm-up, report **median and full
-range** of runs 2-5, and publish every individual number. Five runs × seven
-cells × ~3 minutes ≈ **75 minutes of serialised emulator time**, plus the trace
-run and the probes.
+### Cell G: what VICE's own defaults were doing
+
+`AutostartWarp` and `AutostartHandleTrueDriveEmulation` left at VICE's defaults
+give M2→M5 = 167.7 s against cell A's 167.8 — identical. The whole of their
+effect, 3.1 s, is in T0→M2, the autostart of `BOOT` before the prompt appears.
+They were never distorting the loading; they were distorting the launch.
 
 ---
 
-## 5. Running it unattended
+## The segment table
 
-`tools/session.py` does most of it already. What it needs:
+| cell | | M2→M3 title | M3→M4 credits | M4→M5 code word | M2→M5 | T0→M5 |
+|---|---|---|---|---|---|---|
+| **A** | JiffyDOS `Y` | 31.9 | 131.4 | 4.4 | **167.8** | 182.5 |
+| **B** | JiffyDOS `N` | 43.2 | 121.2 | 4.4 | **168.8** | 183.6 |
+| **C** | stock `Y` | 69.9 | 160.2 | 8.5 | **238.6** | 256.4 |
+| **D** | stock `N` | 75.0 | 121.1 | 4.4 | **199.6** | 217.4 |
+| **G** | defaults `Y` | 31.9 | 131.4 | 4.4 | **167.7** | 179.4 |
 
-| # | change | where |
-|---|---|---|
-| 1 | the fastloader answer becomes a parameter | `Session.__init__`, used at `session.py:305`; default from `POR_FASTLOADER`, falling back to today's `y` |
-| 2 | extra launch flags pass through | `porlaunch.sh` already forwards `$MONFLAGS`; add a `$PORFLAGS` alongside it rather than widening `MONFLAGS` |
-| 3 | milestone timestamps recorded | one `(name, monotonic, tod)` row per marker, written as JSON per run |
-| 4 | the boot is **not** aborted at M3 | run through to M7 so the segment table is complete |
+Medians of five runs; the per-run numbers and ranges are in the run sheet.
+Read M2→M3 and M3→M4 together, for the reason under "Milestones".
 
-### Hazards, all of them already known here
+**M3→M4 has a floor of about 121 s**, hit by both `N` cells and by neither `Y`
+cell. The title picture is displayed for a fixed time and the credits load
+happens behind it: when the load fits, the segment is the timer; when it does
+not, the segment is the load. Cell C is 39 s over the floor, and that is
+precisely the 39 s by which it loses to cell D.
 
-* **`tools/session.py:69-70` and `:105-106` run `pkill -x x64sc` on every launch
-  and every close.** For 25 sequential launches that is 25 chances to kill
-  somebody else's emulator or Donald's own game. Check `ss -tnp | grep 6502`
-  before starting, **announce the run**, and do not start it while another agent
-  holds VICE. `docs/123-parallel-sessions.md` §1 item 2 calls removing those four
-  calls the single most important change in that plan; if `tools/instance.py`
-  (**P46**) lands first, run this on the pool instead and the hazard goes away.
-* **Never leave a checkpoint armed when the socket closes.** This experiment
-  needs no checkpoints at all. Do not add any.
-* **One binary-monitor connection per VICE process.** Two monitor touches per
-  run, both connect-read-close.
-* **XTEST keys do not reach the game while a monitor client holds the socket.**
-  Never type with a monitor connection open. The fastloader prompt itself is
-  answered by XTEST today and that works (`session.py:305`); `Return` at the
-  code-word prompt does not, and goes through `press_kernal()` — the KERNAL
-  buffer at `$0277`/`$C6`. If any cell's answer key is swallowed, the KERNAL
-  buffer is the reliable route for `Y`/`N` too.
-* **The first input burst after a screen change is reliably swallowed.** Verify
-  the answer landed by effect — the prompt clears — not by having sent it.
-* **`+saveres` on every launch.** Repeated because forgetting it once
-  permanently changes Donald's kernal.
+So on a stock kernal the answer is worth 39 s of waiting, and on this one the
+title sequence has already absorbed everything there was to absorb.
 
 ---
 
-## 6. What each outcome means
+## What follows
 
-### If A and B differ by more than the within-cell range
-
-The guidance stands and now has a number. Write it into `docs/00-overview.md`,
-replace "conflicts with it" with the measured margin, and stop.
-
-### If A ≈ B — the interesting case
-
-Five hypotheses, each with the cell or probe that kills it. **They are not
-alternatives to be argued between; the matrix tests all five in the same 25
-runs.**
-
-| # | hypothesis | predicts | killed by |
-|---|---|---|---|
-| **H1** | **JiffyDOS is half-installed** (kernal patched, drive ROM stock), so `Y` is plain serial | **A ≈ C**, and **E ≪ A** | pre-flight #1 (`Drive8Type`), cell C, cell E |
-| **H2** | The answer never reaches the game | drive-8 RAM and the game's flag byte identical after `Y` and after `N` | the drive-RAM read below |
-| **H3** | The game's loader is **absent** — these are cracked releases and a cracker removed it, leaving a vestigial prompt | **no drive code uploaded under either answer**; B ≈ D ≈ A | the drive-RAM read below |
-| **H4** | JiffyDOS masks the difference; both paths are genuinely fast and comparable | **C ≫ A** (stock kernal makes `Y` much slower) while B ≈ D | cell C |
-| **H5** | Transfer is not the bottleneck — seek, decompression, and VICE's TDE-off autostart dominate | the gap appears in no segment; **G ≠ A** by a lot | the segment table, cell G |
-
-H1 and H4 are mutually exclusive and **cell C separates them in five runs**.
-That is the highest-value cell in the matrix after A and B.
-
-### The drive-RAM read — the decisive diagnostic for H2 and H3
-
-A C64 fastloader works by **uploading 6502 code into the 1541's own RAM**
-(`$0300-$07FF`) and running a private transfer protocol. So:
-
-> Read drive 8's RAM immediately after the first game load. If `N` leaves code
-> there and `Y` leaves it stock, the answer reaches the game and the two loaders
-> are genuinely different. If **neither** answer puts code there, the game's
-> loader is not being used at all — H2 or H3 — and no amount of timing will
-> distinguish Y from N because there is nothing behind the prompt.
-
-Mechanically: VICE's `MEM_GET` body is `side_effects, start, end, **memspace**,
-bank`, and `automap/vice.py:170` hard-codes that memspace byte to `0` (main
-CPU). Drive 8 is memspace `1`. Either add the parameter — a one-line change to
-`Monitor.read`, worth making permanently — or use the text monitor's
-device-prefixed form (`m 8:0300 07ff`, syntax **PROBABLE**, confirm with
-`help m` on the text socket).
-
-Distinguishing H2 from H3 once drive RAM comes back empty for both: find the
-byte the prompt handler writes and watch it change between a `Y` boot and an
-`N` boot. If it changes, the answer arrived and the code behind it does nothing
-(H3, the cracker). If it does not change, the keystroke never landed (H2), and
-the fix is `press_kernal()` rather than XTEST.
-
-### If cell F hangs or corrupts
-
-That is the "**failure mode looks like a bad disk image**" that
-`docs/00-overview.md:61` blames on the fastloader answer — reproduced, with true
-drive emulation as the actual cause. Worth confirming precisely because the
-overview's advice may be right about the *symptom* and wrong about the *cause*,
-and a stranger following `122` §W3 on Windows is being told to fix it with the
-wrong knob.
-
----
-
-## 7. What to do with the answer
-
-### Documents that would need correcting
-
-| file | what changes |
-|---|---|
-| `docs/00-overview.md:59-67` | the whole paragraph. It asserts a conflict and a failure mode with no evidence; replace with the measured segment table and a one-line recommendation |
-| `docs/70-driving-the-game.md:124` | the row keeps an answer; the parenthetical reason changes or goes |
-| `docs/122-release-testing.md:379,549-550` | **the Windows instruction is the priority** — it tells a stranger with a stock VICE to answer `N` on the strength of this same untested assumption |
-| `docs/123-parallel-sessions.md:110,521` | check 4's stated reason ("the fastloader answer depends on it") may evaporate. The check itself survives on reproducibility grounds; rewrite the justification, do not delete the row |
-| memory `vice-jiffydos-fastloader-prompt.md` | Donald's file. **Flag it, do not edit it** |
-| `skills/goldbox/references/driving.md:101` | already agnostic; expect no change |
-| `docs/50-experiments.md` | gains the experiment: hypothesis, matrix, every individual run, and the hypotheses that died. That is the actual product |
-| `docs/TASKS.md` | a row under "Needs an emulator". Next free code is **P69** |
-
-### `tools/session.py`
-
-Whichever way it lands:
-
-1. **Make the answer a parameter** (`POR_FASTLOADER`, default the winner).
-   Today it is a constant `y` at `session.py:305` with no way to override it,
-   which is why nobody has ever A/B'd it.
-2. **Keep answering *something*.** The prompt blocks the boot; the failure mode
-   of not answering is a 120 s timeout at `session.py:302`.
-3. **Do not make it conditional on the kernal in code.** Runtime inference about
-   which ROM VICE loaded is fragile and invisible. If the right answer really
-   does depend on the kernal, that belongs with the launch flags, which the
-   instance pool (**P46**) already owns.
-4. **Change the default only if the margin exceeds the within-cell range**, and
-   put the measured numbers in the docstring in one line.
-
-If H1 is confirmed, there is a fifth action worth more than any of them:
-**recommend Donald set `Drive8Type=1542`** so the JiffyDOS drive ROM he
-installed is actually loaded. That is a suggestion to a human about his own
-config, not a change to make — nothing in this project writes his `vicerc`.
-
----
-
-## 8. Verification
-
-| # | check | how |
-|---|---|---|
-| 1 | `python3 -m pytest tests/ -q` unchanged | this document changes no code |
-| 2 | `~/.var/app/net.sf.VICE/config/vice/vicerc` byte-identical after every run | `cmp` before and after. **The most important check in the list**, given `SaveResourcesOnExit=1` and a `-kernal` override |
-| 3 | nothing under `/mnt/media/roms/c64/Pool of Radiance Disks/` changed | `find … -newermt` after the run |
-| 4 | no checkpoints survive any run | `checkpoints_clear()` returns 0 at close |
-| 5 | warp really was off | wall clock and CIA TOD agree within 2 % in every cell |
-| 6 | the stock-kernal cells really ran a stock kernal | pre-flight #3, per cell, not once |
+* **`tools/session.py` keeps `y` as its default.** The margin on this machine,
+  1.0 s, does not exceed the within-cell range, 1.1 s, so there is no
+  measurement here that argues for changing it — and `Y` is the right answer
+  by 39 s on the stock-kernal configuration's mirror image. The docstring
+  carries the numbers.
+* **A stock VICE should answer `N`** — 199.6 s against 238.6 s.
+  `docs/122-release-testing.md` §W3 already says this, and is the only place in
+  the project that had it right.
+* **Nothing needs `Drive8Type` set.** VICE defaults it to 1542 here and the
+  JiffyDOS drive ROM loads.
+* **The failure mode `docs/00-overview.md` describes belongs to true drive
+  emulation, not to the answer.** Cell F reproduces it; no mis-answered boot
+  reproduces anything.
