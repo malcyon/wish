@@ -1,6 +1,22 @@
 # A high-level party for automated testing — plan
 
-**Status: planned, not started.** The deliverable is **a generator, not a
+**Status: the route in is solved and one level-up has been driven end to end
+(P18, `docs/50-experiments.md`).** The training hall is **area 11**, which has
+no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
+squares under a second script — `(5,0)` clerics, `(7,0)` magic users,
+`(8,0)` fighters, `(9,0)` thieves, `(7,1)`/`(7,2)`/`(8,2)`/`(9,2)` the arena.
+Only script ids **10** (at `(6,1)`, `(6,2)`) and **17** (at `(9,0)`) reach it,
+because `ECL00`'s table sends only those to `NEWECL 11` — and a **warp cannot
+be used**, because `ECL0B` dispatches on the departing square's attribute byte.
+Walk in; `(9,0)` is both the shortest way in and the thieves' school.
+
+Two practical notes the run paid for. `LOW EXPERIENCE OR WRONG CLASS` is
+usually the class half: the school's filter is `$6DA8 = 0x70 | class_bit` and
+the bits are `por.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
+**8 fighter**. And training costs gold, 1000 gp for the first level, so a
+generated party needs money as well as experience.
+
+**The generator is still not written.** The deliverable is **a generator, not a
 disk** — `por/testparty.py` plus a test-time disk builder. A disk is game data
 and cannot be committed; a party we can rebuild from code at any moment can.
 

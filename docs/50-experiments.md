@@ -4106,3 +4106,226 @@ effect on the next fight is unproven.
   0) worked first time. So `$49E6` has to be right **before** `$2034`, and
   `Warp`'s existing "`$49E6` is 0, so LOADFILES will ask for a SQRDATA" warning
   is describing a hang rather than an inconvenience.
+
+- **P51: Amiga Pools of Darkness accepts a C64 Pool of Radiance export as a
+  character file. CONFIRMED, and it deletes the premise of
+  `docs/124-amiga-port.md` §2.2.**
+
+  Method, one FS-UAE session on the untagged three-disk rip, Kickstart 1.3.
+  `work/amiga/adfedit.py` replaced the contents of two of disk 3's twelve
+  `Save/*.pc` files in place — `KILLKILL.pc` = `tests/fixtures/brutus.chr`
+  verbatim (582 bytes, `$6B00` load address included), `INRANGE.pc` = the same
+  with the load address stripped (580) — leaving the other ten genuine.
+  `PLAY → ADD CHARACTER → POOLS`.
+
+  **The picker listed all twelve**, the two C64 files as blank names, and
+  `ADD` put one of them in the party: `NAME` empty, `AC 60`, `HP 0`, and a full
+  character sheet — `MALE`, `0 YEARS`, `LAWFUL GOOD`, `ELF`, `CLERIC`,
+  `LEVEL 15/16/17/17/12/1`, `HIT POINTS 0/0`, `STR 0 INT 40 WIS 2 DEX 0 CON 0
+  CHA 0`, `ARMOR CLASS 60`, `THAC0 4`, `DAMAGE 0D0`. So there is **no length
+  check and no signature check** on the `Pools` import path. The control (a
+  genuine `.pc`, TROND) added normally in the same session, so the picker was
+  working.
+
+  **Which of the two loaded is decidable from the sheet.** `INT 40 WIS 2` are
+  `brutus.chr` file offsets `0x73` and `0x75`; the 580-byte variant would put
+  `40` in STR. So the party member is the **582-byte** file, and the six
+  abilities are read as base/current pairs at `.pc` offset `0x70` with the
+  *second* byte of each pair displayed — `docs/124` §1.5's reading, now
+  confirmed against a controlled input rather than twelve maxed specimens.
+
+  Two more offsets fall out of the same sheet, both from `brutus.chr`, both
+  PROBABLE: **name is 15 characters at `0x60`, NUL-terminated at `0x6F`**, and
+  **per-class levels are six or more bytes from `0x9D`** (`0f 10 11 11 0c 01` =
+  the displayed 15/16/17/17/12/1). The name was re-confirmed by a second probe
+  whose `0x60`-`0x6E` were `` ` `` through `n`: the list drew
+  `` `ABCDEFGHIJKLMN ``.
+
+  **That probe also found the one check the loader does make.** Its bytes from
+  `0x70` to the end were the ascending sequence `i & 0xFF`; the picker read the
+  name off it happily and `ADD` then failed with **`DISK READ ERROR`**. Putting
+  the genuine `TROND.pc` back — written by the same `adfedit.replace()` — made
+  it load again, so the failure is the file's content, not the media and not
+  our writer. The likeliest cause is a count inside the record driving a read
+  of appended variable-length data past end-of-file, which is also why the C64
+  export works: its counts are zero.
+
+  What this does **not** show is a usable import. The sheet is garbage and
+  `HP 0/0` is a corpse. The value is that `docs/124`'s blockers 3 and 4 are
+  largely gone: the loader tolerates a 582-byte file where the real ones are
+  484-524, and it tolerates C64 record bytes sitting where the twelve genuine
+  specimens keep Amiga heap addresses (`0x00`-`0x5F`), so **those longwords are
+  don't-care on load**. And the whole of phase 4 can now be done by *writing*
+  `.pc` files and reading the sheet, which is far cheaper than differential
+  saves.
+
+  Session notes for whoever repeats it: FS-UAE's arrow keys never reach the
+  Amiga, so the picker's cursor cannot be moved — put the payload in the entry
+  the `*` starts on, which is the first row. `*` in that list marks a name that
+  matches a party member, not the cursor. The `INSERT INTO DF0` submenu opens
+  with the *current* image highlighted, which is what `work/amiga/pod/swap.sh`
+  now assumes. Editing the ADF while it is inserted is fine as long as the
+  eject-and-reinsert happens afterwards.
+
+- **P18: the level-up diff, taken. CONFIRMED, live and on disk.** The blocker
+  was never the trainer; it was the route. Area 11 is entered by *walking* onto
+  a square whose `GEO00` script id is 10 or 17 — `ECL00`'s table sends only
+  those two to `NEWECL 11` — and the fastest of them is **`(9,0)`**, which is
+  also the thieves' school, so one square both enters the area and opens the
+  trainer.
+
+  **The map of area 11**, from `ECL0B`'s `AND 127, ATTR, [$6E82]` and its
+  `ONGOTO [$9800], 9` after `SUB 10`. Area 11 has no `GEO` of its own: it reuses
+  `GEO00`, so these are New Phlan's own squares wearing a second script.
+
+  | attr | `GEO00` square(s) | what it is |
+  |---|---|---|
+  | 10 | (6,1), (6,2) | the lobby: "…MAGIC USERS AND CLERICS TO GO NORTH AND FIGHTERS AND 'ROGUES' TO GO EAST." |
+  | 11 | (6,0) | sign: magic users east, clerics west |
+  | 12 | (5,0) | **clerics' school** |
+  | 13 | (7,0) | **magic users' school** |
+  | 14 | (7,1), (7,2), (8,2), (9,2) | the duelling arena, and the NPC-for-hire offer |
+  | 15 | (8,1) | sign: 'FIGHTERS' |
+  | 16 | (8,0) | **fighters' school** |
+  | 17 | (9,0) | **thieves' school** |
+  | 18 | (9,1) | sign: 'ROGUES' |
+
+  Each school writes a class filter into `$6DA8` — `0x71` magic users, `0x72`
+  clerics, `0x74` thieves, `0x78` fighters. The low nibble is exactly
+  `por.games.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
+  and of the fact that the trainer tests `class_bits` at `0x0EB`.
+
+  **The run.** `work/drive/LVBEFORE.D64`, party at (15,1) in New Phlan.
+  Route `(15,1) (14,1) (13,1) (12,1) (11,1) (11,2) (10,2) (10,1) (10,0) (9,0)`
+  — a Dijkstra over `GEO00` that costs a scripted square ten steps, so it takes
+  the two harmless ones (id 2 fires only facing north, id 3 only prints the
+  passenger-dock line) and avoids every other. Stepping onto `(9,0)` runs
+  `NEWECL 11`; stepping off and back on opens
+  `'WE TRAIN ONLY THIEVES HERE. DO YOU WANT TO TRAIN?'`.
+
+  `LOW EXPERIENCE OR WRONG CLASS` is the *class* refusal — the boosted
+  "thieves" in this party carry `class_bits` 8, which is **fighter**. The one
+  who qualifies is LADY KATHERINE, `class_bits` 5 = magic-user + thief. Then
+  `YOU NEED 1000 GP TO TRAIN`; gold was poked to 5000 at `$4EC1` (slot 1 of the
+  `$4D00 + slot*$100` staging area) and at `$6BC1` (the loaded record).
+  `LADY KATHERINE WILL BE A 2ND LEVEL THIEF` → TRAIN.
+
+  **The diff, 580 bytes read at `$6B00` immediately before and after.**
+  Nineteen bytes, sixteen fields:
+
+  | offset | field | before | after |
+  |---|---|---|---|
+  | `0x076` | hp_max | 5 | 6 |
+  | `0x0A0` | level | 1 | 2 |
+  | `0x0A5` | thief pick pockets | 30 | 35 |
+  | `0x0A6` | thief open locks | 25 | 29 |
+  | `0x0A7` | thief find/remove traps | 20 | 25 |
+  | `0x0A8` | thief move silently | 20 | 26 |
+  | `0x0A9` | thief hide in shadows | 10 | 15 |
+  | `0x0AA` | thief hear noise | 10 | **10** |
+  | `0x0AB` | thief climb walls | 85 | 86 |
+  | `0x0AC` | thief read languages | 5 | **5** |
+  | `0x0BD` | silver | 137 | 0 |
+  | `0x0C1` | gold | 5000 | 0 |
+  | `0x0C3` | platinum | 15 | 816 |
+  | `0x0CB` | level_thief | 1 | 2 |
+  | `0x0E8` | experience | 5002 | 2500 |
+  | `0x0ED` | hp_rolled | 5 | 6 |
+  | `0x119` | hp_current (roster) | 5 | 6 |
+  | `0x11B` | movement (roster) | 6 | 3 |
+
+  Five things worth carrying away.
+
+  * **`0x0A0` follows the class being trained, not a total.** She is
+    magic-user 1 / thief 1 and both `0x0A0` and `0x0CB` went to 2 while
+    `0x0C9` stayed at 1.
+  * **The per-class array is in class-bit order.** `0x0C9` magic-user,
+    `0x0CA` cleric, `0x0CB` thief, `0x0CC` fighter — the trainer moved
+    `0x0CB` for a thief level, which is the first *behavioural* evidence for
+    that ordering rather than an inference from one specimen.
+  * **Two thief skills do not improve at level 2**: hear noise and read
+    languages. That matches the AD&D table and is a check on the field names.
+  * **Experience is spent, not accumulated.** 5002 → 2500, a drop of **2502**,
+    which is exactly twice the thief's level-2 threshold of 1251 — the price of
+    one level for a **two**-class character. PROBABLE on one specimen; a
+    single-class trainee would settle it in one more visit.
+  * **`0x11B` movement is an artefact of the money edit, not of the level.**
+    She went from 153 coins to 816, and the roster's movement is recomputed
+    from encumbrance. Read the money rows the same way: the fee is 1000 gp, but
+    4999 of the gold was poked in.
+
+  The same sixteen slot-block bytes appear on `work/drive/LVAFTER.D64`, and
+  **no other character's record changed at all**; `0x119`/`0x11B` live in the
+  roster block and so are live-only here.
+
+  One more fact fell out of the save: the header says **area 0, position (9,0)**
+  — area 11 does not change the save's area byte, because it is `GEO00` with a
+  different script — and the status line read `10,0` for the whole encounter
+  while the party was really on `(9,0)`. Same lag as the arena note in
+  `docs/70-driving-the-game.md`, now measured against the disk.
+
+  **XTEST stopped reaching the game partway through this session** with no
+  monitor client connected — `key Return` did nothing, `kernal 0D` worked
+  immediately. Everything after the fifth step was driven through the KERNAL
+  buffer: `$49`/`$4A`/`$4B`/`$4D` for I/J/K/M, `$11` for cursor-down in a
+  vertical menu, `$0D` to select, `$20` for a `press any key`. That is a
+  complete driving vocabulary that does not need XTEST at all, and it is worth
+  preferring — it is the only thing that works while a monitor client is held
+  open, and here it was the only thing that worked at all.
+
+- **P53: Sokol Keep's dead elf cannot be farmed. The SEARCH branch grants no
+  item. CONFIRMED from the bytecode.** `ECL15`'s menu dispatches
+  `ONGOTO [$6E79], 4, [$AE0A], [$9B90], [$9C7B], [$9C56]`, so SEARCH is
+  `$9B90`, and `$9B90`-`$9C13` is `PRINTCLEAR` of the pouch text, three
+  `PROTECTION` calls against `$AF20`/`$AF27`/`$AF36`, "...THE LAST PART IS
+  EATEN AWAY", and a `LOADPIECES`. **There is no `TREASURE`, no `FINDITEM` and
+  no `ADDNPC` anywhere in it** — the three `TREASURE` opcodes in `ECL15` are at
+  `$A19A`, `$A597` and `$A937` and belong to other encounters. The scroll is
+  read, not taken; what it carries is the keep's password, which the script
+  later compares against at `$9E8D`. So the repeat is text, and only text.
+
+- **P44: nothing in the code limits `spells_known` to seven bytes. The spell id
+  is a full byte and the bitmap is indexed `id >> 3`. CONFIRMED, from the
+  game's own code.** Scanning every file on the eight sides for the absolute
+  operand `$6B78` finds code in exactly one place — `CAMP` — and three sites in
+  it, all index-generic:
+
+  ```
+  $162B  LDA $29BF        ; the spell id, a whole byte
+  $162F  AND #$07         ; Y = id & 7
+  $1633  LSR A ×3         ; X = id >> 3
+  $1637  LDA $6B78,X
+  $163A  AND $165A,Y      ; test
+  ...
+  $1E9C  LDA $6B78,X
+  $1E9F  ORA $165A,Y
+  $1EA2  STA $6B78,X      ; set
+  ```
+
+  and an enumerator that is the decisive one:
+
+  ```
+  $29C5  LDX #$20
+  $29C7  ROR $6B78,X
+  $29CA  DEX
+  $29CB  BPL $29C7        ; 33 bytes, $6B78-$6B98
+  $29CD  BCC ...          ; the bit that fell out
+  $29CF  LDA $29BC        ; its index
+  $29D2  STA $9700,Y      ; emitted as a spell id
+  $29D6  INC $29BC
+  $29D9  BNE $29C5        ; ids 0..255
+  ```
+
+  So the reader sweeps **33 bytes and 256 ids**, not seven and fifty-six. Seven
+  is simply what Pool of Radiance *uses*: its highest spell id is 56, which is
+  bit 55, which is byte 6. `$6B7F` — the candidate eighth byte — has **no
+  absolute operand anywhere on the disks**; the only way anything reaches it is
+  through this indexing, which is why save-diffing never moved it.
+
+  Two consequences. **Do not widen the field in `por/layout.py`** — 7 is
+  correct for this title and the width is a property of the id space, not of
+  the record. And `gap_07f`, the unallocated 25 bytes at `0x07F`-`0x097`, is
+  **exactly the rest of the region the enumerator sweeps**, which makes it very
+  likely to be spellbook storage held in reserve for a larger id space rather
+  than a gap. PROBABLE, and worth checking first on Curse and Silver Blades,
+  whose id spaces do run past 56.

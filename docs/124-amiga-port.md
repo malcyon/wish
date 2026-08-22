@@ -1,6 +1,13 @@
 # Porting a C64 party into Amiga Pools of Darkness — plan
 
-**Status: nothing built. This is a costing and a first experiment.** It exists
+**Status: phase 2 is run and it changed the plan.** Amiga Pools of Darkness
+**accepts a C64 Pool of Radiance export** as a `SAVE/NAME.pc` and puts it in
+the party — no length check, no signature check, and the `0x00`-`0x5F`
+heap-address block is don't-care. It reads the wrong fields off it, so this is
+not a rename-and-ship; but blockers 3 and 4 are gone and phase 4 is now a
+write-a-file-and-read-the-sheet loop instead of a differential-save grind.
+See §2.2 and the P51 entry in `docs/50-experiments.md`. Everything else below
+is still a costing. It exists
 because the four-game run ends on a title the C64 never got: Pool of Radiance,
 Curse and Silver Blades on the C64, then **Pools of Darkness on the Amiga**,
 which is where 1992 actually was. One direction only, C64 → Amiga.
@@ -26,11 +33,10 @@ confidence label.
   `0x00098FA0` and friends *(read today)*. Until we know the game re-links
   those on load, we cannot say which bytes are don't-care. That is the
   difference between "write six files" and "write six files the game believes".
-* **The first experiment is the refutation, and it costs one FS-UAE session.**
-  Put a genuine `.pc` on a disk we built ourselves and see PoD list it; then
-  put a C64 character export on the same disk under both `.pc` and `.sav` and
-  see PoD refuse it. If it does not refuse it, this document is over and that
-  is the best possible outcome.
+* **The first experiment ran, and PoD did not refuse it.** A genuine `.pc` on
+  a disk we edited lists and adds; a C64 export's 582 bytes under the same name
+  *also* lists and adds. The document is not over — the sheet it draws is
+  garbage — but the two blockers that made the writer expensive are.
 
 ---
 
@@ -178,34 +184,63 @@ and FS-UAE takes ADF images. **An Amiga cannot read a C64 disk at all** — not
 construction; there is nothing to test. So "port the save disk" always means
 "author a new Amiga disk", never "make the Amiga read the old one".
 
-### 2.2 The format question — worth one session, because a yes ends the project
+### 2.2 The format question — RUN, and the answer is yes-but
 
 Could the *bytes* of a C64 export be accepted if we hand them over on an
 Amiga-format disk? The C64 export is `\x01NAME`, 582 bytes: a 2-byte `$6B00`
 load address plus the 580-byte record, little-endian, C64 field order
 (`docs/30-savegame-layout.md`).
 
-**The experiment** — one FS-UAE session, no code beyond a disk builder:
+**The experiment, as run** (P51 in `docs/50-experiments.md`, one FS-UAE
+session, Kickstart 1.3, the untagged three-disk rip). `work/amiga/adfedit.py`
+replaces a file's contents in place on a real disk 3 — no ADF writer needed,
+because a 484-524-byte `.pc` already owns two 488-byte OFS data blocks and 582
+fits. Two of the twelve were overwritten, ten left genuine.
 
-| # | disk contains | expected | what a surprise means |
+| # | disk contains | expected | **observed** |
 |---|---|---|---|
-| A | `SAVE/` with a genuine `.pc` copied verbatim off disk 3, on an ADF **we built** | PoD lists the character and adds it | if this fails, our ADF writer is wrong, not the format — fix that before believing B or C |
-| B | `SAVE/GARWAN.pc` = the C64 export's 582 bytes verbatim | refused, or garbage on the sheet | **if it loads and reads correctly, stop — the whole plan collapses to a rename** |
-| C | `SAVE/GARWAN.pc` = the same 580 bytes with the load address stripped | refused | as B |
-| D | the same two files as `SAVE/GARWAN.sav`, offered through `Secret` | refused | as B, and it would also tell us the `Secret` reader is length-tolerant |
+| A | ten genuine `.pc` files, one of them rewritten byte-identically by our own writer | lists and adds | **lists and adds.** TROND joined at AC −7, HP 138. Our write path is sound. |
+| B | `KILLKILL.pc` = `brutus.chr`'s 582 bytes verbatim, `$6B00` load address included | refused | **listed with a blank name and added to the party** — AC 60, HP 0, a full sheet |
+| C | `INRANGE.pc` = the same 580 bytes, load address stripped | refused | listed with a blank name; not the one that reached the party this session |
+| D | the same offered through `Secret` | refused | **not run** — the route wants `*.sav` and `adfedit.py` cannot create a new directory entry, only rewrite an existing one |
 
-Prediction, PROBABLE and close to CONFIRMED: **all of B, C and D fail.** The
-`.pc` reader is looking at a 484–524-byte struct whose name lives at `0x60`
-and whose abilities are big-endian pairs; a C64 export has ASCII at offset
-`0x02` and 18-decimal singles at `0x016`. There is no reading under which
-those coincide. A is the control that makes B/C/D mean anything.
+The sheet PoD drew for B: `MALE`, `0 YEARS`, `LAWFUL GOOD`, `ELF`, `CLERIC`,
+`LEVEL 15/16/17/17/12/1`, `HIT POINTS 0/0`, `EXPERIENCE 0`, `STR 0 INT 40
+WIS 2 DEX 0 CON 0 CHA 0`, `ARMOR CLASS 60`, `THAC0 4`, `DAMAGE 0D0`.
 
-**A cheaper pre-test that needs no emulator**: disassemble the `.pc` reader.
-The literal `pc\0` at `0x255B2` sits in the load path (`who`,
-`No characters to load.`); `work/amiga/m68dis.py` already disassembles this
-binary. If the reader checks a length or a signature before parsing, that
-answers 2.2 statically for the cost of an afternoon. Do this first — it is
-free and it may make the FS-UAE session unnecessary.
+Three things follow, and they are the reason this section is now the most
+useful one in the document.
+
+* **There is no length check and no signature check.** 582 bytes where the
+  genuine files are 484-524, and C64 record bytes where the genuine files keep
+  Amiga heap addresses, and it loaded. Blocker 3 is answered: the
+  `0x00`-`0x5F` longwords are **don't-care on load**. Blocker 4 is answered for
+  reading, though a writer still wants to know what length PoD itself emits.
+* **The one check it does make is implicit.** A second probe — the same
+  `TROND.pc` with every byte from `0x70` up set to `i & 0xFF` — listed its name
+  correctly and then failed `ADD` with `DISK READ ERROR`; restoring the genuine
+  bytes through the same writer made it load again. So something inside the
+  record drives a read of appended data, and garbage there asks for more bytes
+  than the file has. PROBABLE, one trial.
+* **Phase 4 just got cheap.** We can write a `.pc`, add it, and read the sheet.
+  `INT 40 WIS 2` are `brutus.chr`'s file offsets `0x73` and `0x75`, which both
+  identifies B rather than C as the one that loaded and confirms
+  §1.5's `0x70` base/current pairs with the **second** byte displayed. Two more
+  offsets came out of the same single sheet: **name, 15 chars at `0x60`,
+  NUL-terminated at `0x6F`** (re-confirmed by a probe that drew
+  `` `ABCDEFGHIJKLMN ``), and **per-class levels, six bytes from `0x9D`**.
+
+What it is **not** is a usable import. `HP 0/0` is a corpse and every field is
+read from the wrong place. §6 phase 6 still has to write a PoD-legal record;
+what changed is that finding out what "legal" means no longer needs
+differential saves.
+
+Practical notes for the next session, all learned the hard way: FS-UAE's arrow
+keys never reach the Amiga, so the picker's cursor cannot be moved — **put the
+payload in the first row's file**. The `*` in that list marks a name matching a
+party member, not the cursor. The `INSERT INTO DF0` submenu opens with the
+image currently in the drive highlighted; `work/amiga/pod/swap.sh` assumes that.
+`PLEASE INSERT DISK 3.` is answered with `o` then Return.
 
 ---
 
@@ -301,7 +336,7 @@ Ordered so the cheapest thing that could kill the approach runs first.
 |---|---|---|---|---|---|
 | 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script under `work/` | no | an hour | the numbers in §1 come out again |
 | 1 | **Read the `.pc` loader.** Disassemble around `0x255B2` / `0x25802` with `work/amiga/m68dis.py`; find the `Open`/`Read` pair and any length or signature check. | a written account of what the reader validates | no | a day | we can name the number of bytes it reads and say whether it checks anything |
-| 2 | **The assumption test (§2.2), cases A–D.** | a yes/no on "can PoD eat a C64 export" | **yes** | a session | A loads and B/C/D are refused. **If B or C loads, stop and celebrate.** |
+| 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `por/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
 | 4 | **Decode the `.pc` record.** Method, in the project's own order: (a) align against DOS PoD's 510-byte `.SAV` using the three confirmed landmarks; (b) the twelve specimens for structure; (c) **differential saves** — in FS-UAE, save, change exactly one thing, save again, diff. This is the method that carried the whole project and it needs no live memory, only the emulator to *make* the files. | `por/amiga_pod_layout.py`, declarative, confidence per field, asserting at import that it tiles all its bytes | yes, repeatedly | the bulk of the work | the table tiles every byte of a real `.pc` and every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
@@ -390,10 +425,9 @@ Stated out loud, so nobody is surprised and nobody tries.
    automapper) is a separate project and is out of scope here. Kickstart ROMs
    are present at `/home/donald/FS-UAE/Kickstarts` (1.3 and 3.1), so booting is
    not itself a blocker.
-8. **Nothing here has been run against a real emulator yet.** Every claim in
-   this document is a static read of files. The first time PoD is actually
-   asked to load something we wrote is phase 2, and that is where the
-   assumptions get their first real test.
+8. ~~**Nothing here has been run against a real emulator yet.**~~ Phase 2 has
+   run (P51). What has **not** been checked is blocker 6's cross-rip repeat —
+   everything observed is on the single untagged rip.
 
 ---
 
