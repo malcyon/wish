@@ -40,18 +40,17 @@ section is a list of those, and it is nearly as long as the rest.
 | 8 | The icon editor's SIZE choice is never written back | Pool of Radiance | engine | PROBABLE | yes |
 | 9 | Two monster records state a level in their name that their data contradicts | Pool of Radiance | data | CONFIRMED | yes |
 | 10 | Four monster records carry a class code that contradicts their class bits | Pool of Radiance | data | CONFIRMED | yes |
-| 11 | The class-name table has no string for paladin or ranger | Pool of Radiance | label | CONFIRMED | no |
-| 12 | The race-name table points two codes at `HUMAN` | Curse of the Azure Bonds | label | CONFIRMED | no |
-| 13 | `INTERECEPTED` | Pool of Radiance | text | CONFIRMED | yes |
-| 14 | `SAPHIRE` | Pool of Radiance | text | CONFIRMED | yes |
-| 15 | `UNCONSIOUS` | Pool of Radiance | text | CONFIRMED | no |
-| 16 | The training routine subtracts the prime-requisite bonus from the racial cap | Curse of the Azure Bonds | engine | GUESS | maybe |
-| 17 | A character export gets a directory block count of zero | Curse of the Azure Bonds | engine | PROBABLE | yes |
-| 18 | `CHARPIC00` stops two bytes into its last glyph | Pool of Radiance | data | CONFIRMED | no |
-| 19 | The overland map's two windows disagree on one square | Pool of Radiance | data | PROBABLE | no |
-| 20 | Effect expiry clears one array of four | Pool of Radiance | engine | CONFIRMED | no |
-| 21 | A dead read guards a site that was cut | Pool of Radiance | script | GUESS | no |
-| 22 | Three flags are written and never read | Pool of Radiance | script | CONFIRMED | no |
+| 11 | The race-name table points two codes at `HUMAN` | Curse of the Azure Bonds | label | CONFIRMED | no |
+| 12 | `INTERECEPTED` | Pool of Radiance | text | CONFIRMED | yes |
+| 13 | `SAPHIRE` | Pool of Radiance | text | CONFIRMED | yes |
+| 14 | `UNCONSIOUS` | Pool of Radiance | text | CONFIRMED | no |
+| 15 | The training routine subtracts the prime-requisite bonus from the racial cap | Curse of the Azure Bonds | engine | GUESS | maybe |
+| 16 | A character export gets a directory block count of zero | Curse of the Azure Bonds | engine | PROBABLE | yes |
+| 17 | `CHARPIC00` stops two bytes into its last glyph | Pool of Radiance | data | CONFIRMED | no |
+| 18 | The overland map's two windows disagree on one square | Pool of Radiance | data | PROBABLE | no |
+| 19 | Effect expiry clears one array of four | Pool of Radiance | engine | CONFIRMED | no |
+| 20 | A dead read guards a site that was cut | Pool of Radiance | script | GUESS | no |
+| 21 | Three flags are written and never read | Pool of Radiance | script | CONFIRMED | no |
 
 ---
 
@@ -369,25 +368,7 @@ an import that edited nothing.
 
 ---
 
-## 11. The class-name table has no string for paladin or ranger
-
-**What the game does.** The class enumeration runs `CLERIC=0 DRUID=1 FIGHTER=2
-PALADIN=3 RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7`. The string list at `$3288`
-holds six names and omits PALADIN and RANGER. The pointer table papers over the
-gap the cheapest way available: **entries 13, 14 and 15 all hold `$329D`**, the
-address of `MAGIC-USER`.
-
-**What the player sees.** Nothing in ordinary play — Pool of Radiance's creation
-menu offers neither class and no record in the game uses either code. A record
-imported or edited to be one displays as `MAGIC-USER`.
-
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED, and it exonerates a
-third-party tool: the 1989 BASIC editor was long blamed for listing codes 3, 4
-and 5 as `MAGIC-USER`. Its author was copying the game.
-
----
-
-## 12. Curse's race table points two codes at `HUMAN`
+## 11. Curse's race table points two codes at `HUMAN`
 
 **What the game does.** Curse of the Azure Bonds drops half-orc from character
 generation but leaves human at code 7, and its label table names **both 6 and 7
@@ -405,7 +386,7 @@ game's own label table.
 
 ---
 
-## 13–15. Three spelling mistakes
+## 12–14. Three spelling mistakes
 
 | where | shipped | should be | seen by the player |
 |---|---|---|---|
@@ -430,7 +411,7 @@ All three CONFIRMED, Pool of Radiance, Commodore 64.
 
 ---
 
-## 16. Curse subtracts the prime-requisite bonus from the racial level cap
+## 15. Curse subtracts the prime-requisite bonus from the racial level cap
 
 **What the game does.** Curse's training routine checks two ceilings: a per-class
 cap read as `LDA $7CC9,X / CMP $15A1,X`, and a racial cap indexed
@@ -454,7 +435,7 @@ list precisely because it is the weakest claim here.
 
 ---
 
-## 17. A Curse character export gets a directory block count of zero
+## 16. A Curse character export gets a directory block count of zero
 
 **What the game does.** `\x02BRUTUS` on the player's own `CURSESAVE2.D64`, a
 disk Curse wrote, reports **0 blocks** in its directory entry and has a
@@ -472,7 +453,7 @@ count could in principle have been zeroed after the game wrote it.
 
 ---
 
-## 18. `CHARPIC00` stops two bytes into its last glyph
+## 17. `CHARPIC00` stops two bytes into its last glyph
 
 **What the game does.** The icon character set is eight bytes a glyph with no
 header. Its payload is 2030 bytes — six past the end of glyph 252 — so the file
@@ -491,7 +472,7 @@ all eight sides. CONFIRMED, harmless.
 
 ---
 
-## 19. The overland map's two windows disagree on one square
+## 18. The overland map's two windows disagree on one square
 
 **What the game does.** The wilderness is not a `GEO` at all: `SQRDATA04`, `05`
 and `06` are three overlapping windows on one world, thirteen columns apart, 18
@@ -512,7 +493,7 @@ from the other 359 squares.
 
 ---
 
-## 20. Effect expiry clears one array of four
+## 19. Effect expiry clears one array of four
 
 **What the game does.** An active spell effect occupies four parallel arrays:
 `$4900`–`$493F` the effect code, `$4940`–`$497F` the owner (bit 7 = whole
@@ -529,7 +510,7 @@ refutation of the whole decode.
 
 ---
 
-## 21. A dead read guards a site that was cut
+## 20. A dead read guards a site that was cut
 
 **What the game does.** Sites on the overland map are hidden by painting plain
 terrain over them until their flag is set. `ECL1B` paints three of them, each
@@ -548,7 +529,7 @@ residue; CONFIRMED that the read is dead.
 
 ---
 
-## 22. Three flags are written and never read
+## 21. Three flags are written and never read
 
 Small change, recorded because each is a loose end somebody wired up halfway.
 
@@ -565,6 +546,34 @@ destination, does all the work.
 
 **Version.** Pool of Radiance, Commodore 64. CONFIRMED as dead writes; that
 `$4A59` was meant to be read is PROBABLE.
+
+---
+
+## Unfinished, not broken
+
+**Pool of Radiance has no paladin and no ranger, and that is a feature they did
+not finish rather than a defect.** It shipped in the next game.
+
+The class enumeration already runs `CLERIC=0 DRUID=1 FIGHTER=2 PALADIN=3
+RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7` — the full AD&D list, in the rulebook's
+order. What is missing is everything downstream of it. The string list at
+`$3288` holds six names and omits PALADIN and RANGER, so pointer entries 13, 14
+and 15 all hold `$329D`, the address of `MAGIC-USER`. The creation menu offers
+neither class, no record in the game uses either code, and the per-class level
+array leaves their slots empty.
+
+Curse of the Azure Bonds fills all of it in: paladin and ranger are offered at
+creation, they take the `0x40` and `0x80` class bits, and their levels live in
+the array slots Pool of Radiance left at zero. The enumeration did not change —
+Pool of Radiance was built on the same table and simply stopped short of the
+last two entries.
+
+So this is scaffolding for work that came later, not a mistake, and it does not
+belong on the list above. It is worth recording because it **exonerates a
+third-party tool**: the 1989 BASIC editor was long blamed for listing class
+codes 3, 4 and 5 as `MAGIC-USER`. Its author was reading the game's own table.
+
+*Pool of Radiance, Commodore 64. CONFIRMED.*
 
 ---
 
@@ -593,7 +602,7 @@ damning than the evidence supports, and because the failure modes repeat.
 | `0x0D9` cannot be attacks-per-round-doubled, because BRUTUS reads `03` | Ours. The `03` came from a dump that started at `0x0D8`, one byte early. `0x0D9`–`0x0E0` is `attack_forms`, and twenty creatures match the *Monster Manual* |
 | `npc_party.d64` has garbled item names, so it has been through an editor | Half ours. The disk *has* been edited, but the garbling was our own: `ITEMNAMES` has **no name at indices 62, 63 and 168**, and our sequential reader closed the gaps, shifting every later name by one or three. Index 66 read `STAVE` instead of `RING` — plausible, and therefore the worst kind of wrong |
 | PRINCESS FATIMA's race byte is 0, which is outside the enumeration and proves tampering | Ours. **Race 0 is the commonest race in the game** — 75 of 135 monster records carry it — and `LIBRARY $3508` deliberately underflows it to print `MONSTER`. Nothing was tampered with |
-| The 1989 BASIC editor wrongly lists class codes 3, 4 and 5 as `MAGIC-USER` | The game's, not the editor's. See bug 11 |
+| The 1989 BASIC editor wrongly lists class codes 3, 4 and 5 as `MAGIC-USER` | The game's, not the editor's — and not a bug either. See *Unfinished, not broken* |
 | `WALLDEF`'s colours decode wrongly, so the format is not understood | Ours. `$7A00` is a general RLE expander and its encoding is **count-then-value**; we had it the other way round, and 548 of 780 bytes came out wrong |
 | Roster bytes `+0x03`–`+0x05` are memorised-spell counts | Ours. They matched for all four casters on one disk. A controlled test — memorise five spells across three characters, rest, save — produced a byte-identical roster page still reading `0/0/0` |
 | The combat log picks up garbage because something else is rewriting the file | Ours, twice, both in `automap/combatlog.py`, and both only visible against a running fight |
@@ -615,11 +624,11 @@ does. Two things are worth saying about the sample it comes from:
 
 * **The ECL decode is exhaustive.** All thirty scripts, 178,035 bytes, 16,233
   instructions, zero derailments and zero bytes that neither decode nor are
-  pointed at by an operand. So the script-level findings — bugs 2, 4, 5, 21, 22
+  pointed at by an operand. So the script-level findings — bugs 2, 4, 5, 20, 21
   — are drawn from the whole population and not a sample of it. What remains
   unfound there would have to be a *semantic* error in code that reads correctly.
 * **The engine is not.** The overlays have been read where a question demanded
-  it. Nobody has swept them for defects, and bugs 3, 6, 7, 8 and 20 were all
+  it. Nobody has swept them for defects, and bugs 3, 6, 7, 8 and 19 were all
   found while looking for something else.
 
 There are also 182 bytes of well-formed bytecode across the thirty scripts that
