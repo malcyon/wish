@@ -98,11 +98,21 @@ def test_the_flag_is_an_alias_and_is_taken_off_the_command_line(monkeypatch):
     assert argv == ["wish"]
 
 
-def test_debug_mode_is_not_a_setting(monkeypatch):
-    """A logging setting that survives a restart is one you forget is on, and
-    this one writes to the running machine."""
-    from automap.config import Settings
-    assert not hasattr(Settings(), "debug")
+def test_the_debug_log_is_the_switch_a_user_gets(monkeypatch, tmp_path):
+    """Retired: `test_debug_mode_is_not_a_setting`, which asserted the mode was
+    unreachable from `Settings`. It is reachable now, through the log, and the
+    one thing worth pinning is that the two move together --
+    `docs/118-debug-mode.md` §1."""
+    monkeypatch.delenv(debugmode.ENV, raising=False)
+    for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "APPDATA", "LOCALAPPDATA"):
+        monkeypatch.setenv(var, str(tmp_path))
+    from wish import debuglog
+    debuglog.stop()
+    assert not debugmode.enabled()
+    debuglog.start()
+    assert debugmode.enabled()
+    debuglog.stop()
+    assert not debugmode.enabled()
 
 
 # --- the write sequence ------------------------------------------------------

@@ -1,9 +1,9 @@
 """An opt-in debug log, so a bug report can carry evidence.
 
-**Only our own process, only on request, only to a local file.** Off at every
-start, turned on from View > Debug log, written where you can read it before
-you send it, and never transmitted anywhere. There is no telemetry, no upload
-and no counting of anything -- `docs/104-debug-log.md`.
+**Only our own process, only on request, only to a local file.** Turned on from
+File > Preferences, written where you can read it before you send it, and never
+transmitted anywhere. There is no telemetry, no upload and no counting of
+anything -- `docs/104-debug-log.md`.
 
 Three things make the claim checkable rather than a promise:
 
@@ -12,6 +12,15 @@ Three things make the claim checkable rather than a promise:
 * every line goes through `Scrubbed`, which rewrites absolute paths to their
   last component -- a path carries a username, and tracebacks are full of them;
 * nothing is written at all while `is_on()` is false, including the file.
+
+**The file has no preamble.** It opens on the version line, which is the field
+a bug report needs; what is and is not recorded is `docs/104-debug-log.md`'s
+job, not a comment block the reader has to scroll past every time.
+
+**The log is debug mode.** `start()` turns `wish/debugmode.py` on and `stop()`
+turns it off, so a user asked for a log does not also have to be told to export
+a variable -- see `docs/118-debug-mode.md` for what that does and does not
+reach.
 """
 
 from __future__ import annotations
@@ -27,6 +36,8 @@ import time
 
 from automap.paths import config_dir
 
+from . import debugmode
+
 NAME = "wish"
 
 # One file per session, and the last few kept. Enough to compare "it worked
@@ -37,20 +48,6 @@ KEEP = 5
 # monitor holds the CPU for the whole round trip, and the poll interval is
 # 200 ms, so anything above it is visible as a stutter in the game.
 SLOW_MS = 250
-
-HEADER = """\
-# wish debug log. This file is local; nothing sends it anywhere.
-#
-# Recorded: wish, Python and Qt versions, the platform and OS release; which
-# backend attached and what it reported; the visible tab and the poll interval;
-# exceptions with tracebacks; the shape of an open save file -- its size, block
-# count, character count and area id; the fingerprinted area and how sure it
-# is; and how long a read took when it stalled the emulator.
-#
-# Not recorded: file paths (absolute paths are rewritten to .../basename,
-# tracebacks included), character names, any bytes from a save, the
-# environment, and anything at all about any process but this one.
-"""
 
 _logger = logging.getLogger(NAME)
 _logger.propagate = False       # nothing of ours leaks into a root handler
@@ -123,7 +120,7 @@ def start() -> pathlib.Path | None:
     target = log_dir() / f"wish-{stamp}.log"
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(HEADER, encoding="utf-8")
+        target.write_text("", encoding="utf-8")   # and prove it can be written
         handler = logging.FileHandler(target, encoding="utf-8")
     except OSError:
         return None
@@ -132,6 +129,7 @@ def start() -> pathlib.Path | None:
     _handler, _path = handler, target
     _logger.setLevel(logging.DEBUG)
     _logger.addHandler(handler)
+    debugmode.enable()
     _prune()
     note("logging on: %s", versions())
     return target
@@ -143,6 +141,7 @@ def stop() -> None:
     if _handler is None:
         return
     note("logging off")
+    debugmode.disable()
     _logger.removeHandler(_handler)
     _logger.setLevel(logging.CRITICAL + 1)
     with contextlib.suppress(Exception):

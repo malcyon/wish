@@ -171,27 +171,43 @@ itself — see below — and the dropdown says so.
 
 ## 1. Where debug mode lives
 
-**Recommendation: an environment variable, `WISH_DEBUG=1`, with `--debug` as an
-alias that sets it. No `Settings` field, no persistence.**
+**An environment variable, `WISH_DEBUG=1`, with `--debug` as an alias that sets
+it — and the debug log turns it on.** `wish/debugmode.py` owns the flag:
+`enabled()` reads the variable, `enable()` and `disable()` set and clear it, and
+nothing else in the application touches `os.environ` for this.
 
-`wish/window.py` already makes the argument for the debug log: *"Off at every
-start, and deliberately not remembered: a logging setting that survives a
-restart is one you forget is on."* A mode that **writes to the running game**
-earns that rule twice over. A `Settings` flag is the one option to reject
-outright.
+The variable is the storage because one consumer is an unattended harness that
+cannot click, and because `wish`, `wish-editor` and `wish-automap` are three
+entry points launched from a desktop file; one variable covers all of them.
 
-An env var over a menu item alone, because the consumer is an unattended test
-harness that cannot click. An env var over a bare flag, because `wish`,
-`wish-editor` and `wish-automap` are three entry points and the packaged build
-is launched from a desktop file; one variable covers all of them.
+**The debug log is the switch a user gets.** `debuglog.start()` calls
+`enable()` and `debuglog.stop()` calls `disable()`, so ticking Debug log in
+File > Preferences is the whole of it and nobody is told to export anything.
+This section used to argue the opposite — *"a logging setting that survives a
+restart is one you forget is on"* — and that argument lost twice over: the log
+is a remembered `Settings` field now, mitigated by `[logging]` in the title bar
+and a red marker in the status bar, and Donald asked for one switch rather than
+two.
 
-New module `wish/debugmode.py`, about fifteen lines: `enabled()` reads the
-variable once, `enable()` for `--debug` and for tests. Nothing else imports
-`os.environ`.
+**The Warp row is still a launch-time decision, and that is the point.**
+`AutomapWindow` reads the flag once, when it is built. Ticking a checkbox
+mid-session therefore does not put a control that writes a program counter and
+five memory locations onto the screen of a running window; and in the `wish`
+window the map is built before the remembered setting is applied, so the row
+wants `WISH_DEBUG=1` or `--debug` on the command line. That is the intended
+split: **a checkbox buys the log, the writes want the launch.** A user who
+wanted evidence for a bug report gets the file, the marker and the debug-mode
+line in the log, and not the Warp row.
 
-What it gates, and only this:
+That split currently rests on the order of two statements in
+`wish/window.py.__init__` rather than on anything that says so out loud. If it
+is ever to be locked, the way to lock it is to pass the map its `debug=`
+explicitly instead of letting it read the flag.
 
-* the Warp row on the automapper screen;
+What debug mode gates, and only this:
+
+* the Warp row on the automapper screen (`automap/actionbar.py:WarpBar`,
+  `automap/actions.py:Warp`);
 * a line in the debug log each time a warp is attempted, with the addresses
   written — the log's privacy claims are unaffected, these are our own writes;
 * later, if wanted: a raw-poke box and a "run script entry" control, which the

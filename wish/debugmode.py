@@ -1,17 +1,13 @@
 """Debug mode: the controls that write to a running machine, off by default.
 
-**An environment variable, `WISH_DEBUG=1`, and deliberately not a `Settings`
-field.** `wish/window.py` already makes the argument for the debug log: *"Off
-at every start, and deliberately not remembered: a logging setting that
-survives a restart is one you forget is on."* A mode that pokes the running
-game earns that rule twice over.
-
-An environment variable rather than a menu item alone because the consumer is
-an unattended harness that cannot click, and rather than a bare flag because
-`wish`, `wish-editor` and `wish-automap` are three entry points and the
-packaged build is launched from a desktop file -- one variable covers all of
-them. `--debug` is an alias: `enable_from_argv` strips it and sets the
-variable, so the two spellings cannot disagree.
+**An environment variable, `WISH_DEBUG=1`, and the debug log turns it on.**
+`debuglog.start()` calls `enable()` and `debuglog.stop()` calls `disable()`, so
+a user who ticks Debug log for a bug report has debug mode too and is not asked
+to export anything. The variable stays the storage because the other consumer
+is an unattended harness that cannot click, and because `wish`, `wish-editor`
+and `wish-automap` are three entry points launched from a desktop file -- one
+variable covers all of them. `--debug` is an alias: `enable_from_argv` strips
+it and sets the variable, so the two spellings cannot disagree.
 
 **Nothing else in the application reads `os.environ` for this.** `enable()`
 sets the variable rather than a private flag, so a debug session that spawns a
@@ -20,6 +16,13 @@ subprocess passes the mode on.
 What it gates, and only this: the Warp row under the map
 (`automap/actionbar.py:WarpBar`, `automap/actions.py:Warp`). The editor, the
 save-file path and the log's privacy claims are untouched.
+
+**The Warp row is still a launch-time decision, and that is deliberate.**
+`AutomapWindow` reads this flag once, when it is built, so ticking Debug log
+mid-session does not put a control that pokes the running game on the screen;
+in the `wish` window the map is built before the remembered setting is applied,
+so the row wants `WISH_DEBUG=1` or `--debug` on the command line. A checkbox
+buys the log; the writes want the launch -- `docs/118-debug-mode.md` §1.
 """
 
 from __future__ import annotations

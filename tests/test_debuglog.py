@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from automap.target import MemoryTarget
 from wish import backends as bk
-from wish import debuglog
+from wish import debuglog, debugmode
 
 game_disks = pytest.mark.skipif(disk_path("PORSAVE11") is None,
                                 reason="needs the save disks")
@@ -38,6 +38,9 @@ def logs(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    # The log turns debug mode on, so it has to be turned off again with it;
+    # `delenv` is how `monkeypatch` is told to put the variable back.
+    monkeypatch.delenv(debugmode.ENV, raising=False)
     debuglog.stop()
     yield tmp_path / "wish" / "logs"
     debuglog.stop()
@@ -70,21 +73,38 @@ def test_nothing_is_written_while_it_is_off(logs):
 
 # --- on ----------------------------------------------------------------------
 
-def test_turning_it_on_writes_one_file_headed_by_the_claim(logs):
+def test_the_file_opens_on_the_versions_and_not_on_a_preamble(logs):
+    """No header, no title line, no explanation of what is recorded: the first
+    line is the field a bug report needs. `docs/104-debug-log.md` says the rest,
+    where it can be read once instead of scrolled past every time."""
     path = debuglog.start()
     assert path == only_log(logs)
-    text = path.read_text()
-    assert text.startswith("# wish debug log")
-    assert "Not recorded" in text
-    assert "character names" in text and "file paths" in text
-    assert "nothing sends it anywhere" in text
+    first = path.read_text().splitlines()[0]
+    assert "logging on: wish " in first
+    assert "Python" in first and "Qt" in first
+    assert not [ln for ln in path.read_text().splitlines() if ln.startswith("#")]
 
 
-def test_the_first_line_is_what_the_versions_are(logs):
+def test_the_log_turns_debug_mode_on_and_off_with_it(logs):
+    """One switch. A user asked for a log is not also asked to export a
+    variable -- `docs/118-debug-mode.md` §1."""
+    assert debugmode.enabled() is False
     debuglog.start()
-    text = only_log(logs).read_text()
-    assert "logging on: wish " in text
-    assert "Python" in text and "Qt" in text
+    assert debugmode.enabled() is True
+    debuglog.stop()
+    assert debugmode.enabled() is False
+
+
+def test_a_log_that_could_not_be_opened_does_not_turn_debug_mode_on(logs,
+                                                                   monkeypatch,
+                                                                   tmp_path):
+    """A read-only home is not a reason to take the window down -- and not a
+    reason to leave debug mode on either."""
+    wall = tmp_path / "not-a-directory"
+    wall.write_text("")
+    monkeypatch.setattr(debuglog, "log_dir", lambda: wall / "logs")
+    assert debuglog.start() is None
+    assert debugmode.enabled() is False
 
 
 def test_turning_it_off_stops_writing_at_once(logs):
@@ -263,15 +283,6 @@ def live(shared, logs):
     shared.debug_action.setChecked(False)
 
 
-def test_the_menu_item_is_off_at_every_start(live):
-    """Deliberately not remembered: a logging setting that survives a restart
-    is one you forget is on -- so it is not in `Settings` at all."""
-    from dataclasses import fields
-    assert live.debug_action.isChecked() is False
-    assert debuglog.is_on() is False
-    assert not [f for f in fields(live.settings) if "log" in f.name]
-
-
 def test_closing_the_window_stops_the_log(app, logs):
     """Its own window, because closing one is what is being tested."""
     w = window()
@@ -281,13 +292,11 @@ def test_closing_the_window_stops_the_log(app, logs):
     assert debuglog.is_on() is False
 
 
-def test_turning_it_on_says_where_the_file_is(live, logs):
+def test_turning_it_on_opens_the_file_and_enables_showing_it(live, logs):
+    """What the user is *told* is the preferences dialog's business, not this
+    module's; what is asserted here is that there is a file to show."""
     live.debug_action.setChecked(True)
-    path = debuglog.path()
-    assert path == only_log(logs)
-    _title, text = live._said[-1]
-    assert str(path) in text
-    assert "Nothing is sent anywhere" in text
+    assert debuglog.path() == only_log(logs)
     assert live.show_log_action.isEnabled()
 
 
