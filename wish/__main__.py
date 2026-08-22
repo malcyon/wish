@@ -34,8 +34,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--tab", choices=("editor", "map"),
                     help="which tab to open on")
     ap.add_argument("--area", help="force a GEO name instead of identifying it")
-    ap.add_argument("--disks", help="where the game disks live "
-                    "(default: $POR_DISKS, else searched for)")
+    ap.add_argument("--disks", help="where the game disks live, for this run "
+                    "(default: the Game directory in File > Preferences)")
     ap.add_argument("--interval", type=int,
                     help="poll interval in ms (default: the backend's own)")
     ap.add_argument("--svg", nargs=2, metavar=("GEO", "OUT"),
@@ -92,7 +92,13 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
         return forget(args.forget)
 
     game = game_of(args.save)
-    maps, game = load_maps_titled(args.disks, game)
+    # One precedence, resolved once: `--disks` for this run, else the Game
+    # directory setting, else beside the save, else the usual folders. The
+    # window resolves the same way from the same three inputs, so the maps it
+    # is handed and the folder it reports cannot disagree.
+    from automap.paths import resolve_disks
+    where, source = resolve_disks(flag=args.disks, beside=args.save, game=game)
+    maps, game = load_maps_titled(str(where) if where else None, game)
     if args.svg:
         from automap.render import to_svg
         name, out = args.svg
@@ -109,15 +115,16 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
         # Naming the title matters when the save is one game and the disks in
         # the directory are another: "no game disks found" beside a shelf full
         # of Pool of Radiance disks reads as a bug.
-        print(f"no game disks{f' for {game.title}' if game else ''} found, "
+        print(f"no game disks{f' for {game.title}' if game else ''} found"
+              f"{f' under {where} ({source})' if where else ''}, "
               "so the map tab will be empty.\n"
-              "Point --disks or $POR_DISKS at the directory holding them.",
-              file=sys.stderr)
+              "File > Preferences… in the window says where to look, and "
+              "reports what it found there.", file=sys.stderr)
 
     from .window import EDITOR_TAB, MAP_TAB, run
     return run(args.save, args.game_disk, maps=maps, area=args.area,
                tab=MAP_TAB if tab == "map" else EDITOR_TAB,
-               interval_ms=args.interval,
+               interval_ms=args.interval, disks=args.disks,
                title=game.title if game else None)
 
 

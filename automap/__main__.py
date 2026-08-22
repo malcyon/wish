@@ -22,20 +22,22 @@ import sys
 from por.games import Game
 from por.geo import load_geo_files
 
-from .paths import disk_globs, locate_disks, titles_in, vice_settings_hint
+from .paths import disk_globs, resolve_disks, titles_in, vice_settings_hint
 from .state import Automapper
 from .target import NotConnected, ViceTarget, monitor_listening
 
 
 def default_disks(game: Game | None = None) -> str:
-    """Where the game disks are. $POR_DISKS wins; otherwise go looking.
+    """Where the game disks are, by the application's one precedence rule.
 
-    There is deliberately no absolute default -- this used to hard-code one
-    developer's home directory, which is no use to anybody else and does not
-    exist on Windows at all.
+    The Game directory setting is the answer; `--disks` beats it for one run;
+    `$POR_DISKS` is used only when the setting is empty. There is deliberately
+    no absolute default -- this used to hard-code one developer's home
+    directory, which is no use to anybody else and does not exist on Windows
+    at all.
     """
-    found = locate_disks(game)
-    return str(found[0]) if found else str(pathlib.Path.cwd())
+    where, _source = resolve_disks(game=game)
+    return str(where) if where is not None else str(pathlib.Path.cwd())
 
 
 def load_maps(disks: str | None = None,
@@ -55,15 +57,14 @@ def load_maps_titled(disks: str | None = None, game: Game | None = None
     titles' disks falls back to the first found rather than guessing.
     """
     if disks is None:
-        hit = locate_disks(game)
-        if hit is None:
+        where, _source = resolve_disks(game=game)
+        if where is None:
             return {}, game
-        where, game = hit
     else:
         where = pathlib.Path(disks)
-        if game is None:
-            present = titles_in(where)
-            game = present[0] if present else None
+    if game is None:
+        present = titles_in(where)
+        game = present[0] if present else None
     if game is None:
         return {}, None
     # One disk, one read. `disk_globs` returns an upper- and a lower-cased
@@ -120,8 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--area", help="force a GEO name instead of identifying it")
-    ap.add_argument("--disks", help="where the game disks live "
-                    "(default: $POR_DISKS, else searched for)")
+    ap.add_argument("--disks", help="where the game disks live, for this run "
+                    "(default: the Game directory in wish's preferences, else "
+                    "searched for)")
     ap.add_argument("--interval", type=int,
                     help="poll interval in ms (default: remembered, else 200)")
     ap.add_argument("--forget", metavar="AREA",
@@ -135,8 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     maps, game = load_maps_titled(disks)
     if not maps:
         print(f"no game disks under {disks}.\n"
-              "Point --disks or $POR_DISKS at the directory holding them.",
-              file=sys.stderr)
+              "Say where they are in wish's File > Preferences, or pass "
+              "--disks for one run.", file=sys.stderr)
         return 1
 
     if args.forget:
@@ -174,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
                         title=game.title if game else None)
 
     from .window import run
-    return run(mapper, args.interval, connect=ViceTarget)
+    return run(mapper, args.interval, connect=ViceTarget, disks=disks)
 
 
 if __name__ == "__main__":

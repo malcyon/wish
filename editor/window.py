@@ -187,7 +187,15 @@ class RosterModel(QAbstractTableModel):
 
 
 class EditorWindow(QMainWindow):
-    def __init__(self, path: str | None = None, game_disk: str | None = None):
+    def __init__(self, path: str | None = None, game_disk: str | None = None,
+                 disks: str | None = None):
+        """`disks` is the Game directory, already resolved by the caller.
+
+        Handed in rather than looked up, exactly as `game_disk` is: this
+        package may not import the live half of the application, and the
+        setting lives over there. `tests/test_wish.py` greps this directory for
+        the fact.
+        """
         super().__init__()
         from .ui_character import Ui_CharacterWindow
         self.ui = Ui_CharacterWindow()
@@ -196,6 +204,11 @@ class EditorWindow(QMainWindow):
         self.party: Party | None = None
         self.path: pathlib.Path | None = None
         self.game_disk = game_disk
+        self.disks = disks
+        #: Which image each thing was actually read off, for a report that can
+        #: say so. They are not always the same disk.
+        self.game_disk_found: str | None = None
+        self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
         self.item_names: dict[int, str] = {}
         self.templates: dict[str, bytes] = {}
@@ -509,21 +522,30 @@ class EditorWindow(QMainWindow):
 
 
     def _disk_candidates(self) -> list[str]:
-        """`--game-disk`, then $POR_GAME_DISK, then any game disk of the open
-        title beside the save -- `POOL*.D64` for Pool of Radiance, `CURSE*.D64`
-        for Curse. Everything the save cannot name itself comes from one of
-        these."""
+        """`--game-disk`, then the Game directory setting, then
+        $POR_GAME_DISK, then any game disk of the open title beside the save --
+        `POOL*.D64` for Pool of Radiance, `CURSE*.D64` for Curse. Everything
+        the save cannot name itself comes from one of these.
+
+        The order is the application's one rule: a command-line option beats
+        the setting for one run, the setting beats everything else, and the
+        environment variable is left working for the tests and the tools
+        without being anybody's interface.
+        """
         import glob
         import os
         import pathlib
+        pattern = (self.party.game.disk_glob if self.party is not None
+                   else por_games.DEFAULT.disk_glob)
         candidates = []
         if self.game_disk:
             candidates.append(self.game_disk)
+        if self.disks:
+            candidates += sorted(glob.glob(str(pathlib.Path(self.disks)
+                                               / pattern)))
         env = os.environ.get("POR_GAME_DISK")
         if env:
             candidates.append(env)
-        pattern = (self.party.game.disk_glob if self.party is not None
-                   else por_games.DEFAULT.disk_glob)
         if self.path:
             candidates += sorted(glob.glob(str(self.path.parent / pattern)))
         # The disks come as a set. Being told POOL1.D64 says where the other
@@ -563,6 +585,7 @@ class EditorWindow(QMainWindow):
         self.spell_names, self.item_types = {}, {}
         self._load_icon_parts()
         found = self._find_game_disk()
+        self.game_disk_found = found
         if found is None:
             self.traits.set_tables({}, {})
             return
@@ -591,6 +614,24 @@ class EditorWindow(QMainWindow):
             if isinstance(w, SpellEditor):
                 w.set_names(self.spell_names)
 
+    def set_disks(self, disks: str | None) -> None:
+        """The Game directory changed. Re-read, and redraw what it feeds.
+
+        Item names, the icon charset, the icon option tables and the traits
+        table all come off a game disk, so the open character has to be drawn
+        again -- otherwise the preference appears to have done nothing until
+        the next time a row is clicked.
+        """
+        if (disks or None) == (self.disks or None):
+            return
+        self.disks = disks
+        self._load_game_disk()
+        self._populate()
+        if self.party is not None:
+            self.status(f"{self.party.describe()}"
+                        + ("" if self.charset else
+                           "  -- no game disk, so no item names and no icons"))
+
     def _load_icon_parts(self) -> None:
         """The icon editor's option tables, from whichever disk carries them.
 
@@ -599,6 +640,7 @@ class EditorWindow(QMainWindow):
         ability to *change* an icon, not to draw one.
         """
         self.icon_parts = None
+        self.icon_parts_disk = None
         disk = self._find_disk(IconParts.load)
         if disk is None:
             return
@@ -606,6 +648,8 @@ class EditorWindow(QMainWindow):
             self.icon_parts = IconParts.load(disk)
         except Exception:
             self.icon_parts = None
+        else:
+            self.icon_parts_disk = disk
 
     def save(self, interactive: bool = True) -> str:
         """Write the disk back. Returns what happened, for the status bar.
@@ -891,9 +935,8 @@ class EditorWindow(QMainWindow):
                     "only")
         elif not self.item_names:
             text = (f"{member.inventory.used} of 16 slots used. No game disk "
-                    f"found, so items show as name-table indices: pass "
-                    f"--game-disk, set $POR_GAME_DISK, or put a game disk "
-                    f"beside the save")
+                    f"found, so items show as name-table indices: "
+                    f"File > Preferences… to say where the disks are")
         else:
             text = f"{member.inventory.used} of 16 slots used"
         label = self.findChild(QLabel, "label_inventory")
@@ -907,7 +950,8 @@ class EditorWindow(QMainWindow):
         if add is not None and not self.templates:
             add.setEnabled(False)
             add.setToolTip("adding an item copies one of the game disks' own "
-                           "163 records; without a game disk there are none")
+                           "163 records; without a game disk there are none. "
+                           "File > Preferences… to say where they are")
         return text
 
     def add_item(self, name: str | None = None) -> str:

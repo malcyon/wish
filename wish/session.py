@@ -139,6 +139,16 @@ class Session(QObject):
                 and self.backend.name.lower() != self._preferred.lower()):
             self.detach(f"switching to {name}")
 
+    def set_interval(self, interval_ms: int | None) -> None:
+        """Poll this often instead of the backend's own. 0 gives it back.
+
+        The preference and `--interval` land here; the backend's own number is
+        the default because it is a fact about the transport -- 200 ms for a
+        loopback monitor, 500 for a device on a network cable.
+        """
+        self._interval_override = interval_ms or None
+        self._retime()
+
     def detach(self, note: str = "disconnected") -> None:
         """Drop the connection and go back to waiting. Never raises."""
         target, self.target = self.target, None

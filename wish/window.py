@@ -22,9 +22,16 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QAction, QActionGroup, QDesktopServices, QKeySequence
-from PyQt6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
+from PyQt6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QStatusBar,
+    QTabWidget,
+)
 
-from automap.config import Settings
+from automap import paths
+from automap.config import Settings, remember_geometry, restore_geometry
 from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
@@ -32,6 +39,7 @@ from por import games
 
 from . import backends, debuglog, debugmode
 from .about import install as install_help
+from .preferences import SHORTCUT, PreferencesDialog, apply_ultimate_host, game_named
 from .session import BUSY, CONNECTED, Session
 
 # The map is what a player has open while playing; the editor is the
@@ -44,16 +52,24 @@ ANY_BACKEND = ""
 
 
 def load_maps(disks: str | None = None) -> dict:
-    """Every GEO off the game disks, or nothing if they cannot be found.
+    """Every GEO off the game disks, or nothing if they cannot be found."""
+    return load_maps_titled(disks)[0]
+
+
+def load_maps_titled(disks: str | None = None, game=None) -> tuple[dict, object]:
+    """The maps and their title, or nothing at all.
 
     Nothing here is fatal: with no disks the map tab draws an empty grid and
-    says so, and the editor tab does not care at all.
+    says so, and the editor tab does not care at all. A truncated download
+    sitting in the folder is the same -- a reason to draw no map, not a reason
+    to take the window down when somebody points the preference at it.
     """
     try:
-        from automap.__main__ import load_maps as _load
-        return _load(disks)
+        from automap.__main__ import load_maps_titled as _load
+        return _load(disks, game)
     except Exception:
-        return {}
+        debuglog.exception("could not read the maps under %s", disks)
+        return {}, None
 
 
 class WishWindow(QMainWindow):
@@ -63,7 +79,8 @@ class WishWindow(QMainWindow):
                  maps: dict | None = None, area: str | None = None,
                  settings: Settings | None = None,
                  session: Session | None = None,
-                 tab: int = MAP_TAB, title: str | None = None):
+                 tab: int = MAP_TAB, title: str | None = None,
+                 disks: str | None = None):
         super().__init__()
         self.settings = settings or Settings()
 
@@ -72,15 +89,26 @@ class WishWindow(QMainWindow):
         self._logged_save: str | None = None
         self._logged_area: str | None = None
 
-        self.editor = EditorWindow(save, game_disk)
+        # `--disks`, kept so every re-resolution knows a flag was given: it
+        # beats the preference for this run and the dialog says so rather than
+        # letting the setting look ignored.
+        self.disks_flag = disks
+        self._title = title
+        self.disks, self.disks_source = paths.resolve_disks(
+            flag=disks, beside=save, game=game_named(title),
+            settings=self.settings)
+        apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
+
+        self.editor = EditorWindow(save, game_disk, disks=self.disks_text())
         # Whose area names to print. `GEO15` is Sokol Keep in Pool of Radiance
         # and somewhere else in Curse, so the caller that loaded the maps says
         # which title they are. Failing that the open save says, and only with
         # nothing open at all is this the title it has always been.
-        self.mapper = Automapper(None, maps if maps is not None else load_maps(),
-                                 area=area, title=title or self._open_title())
+        self.mapper = Automapper(
+            None, maps if maps is not None else load_maps(self.disks_text()),
+            area=area, title=title or self._open_title())
         self.map = AutomapWindow(self.mapper, settings=self.settings,
-                                 drive=False)
+                                 drive=False, disks=self.disks_text())
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.map, "Automapper")
@@ -95,14 +123,21 @@ class WishWindow(QMainWindow):
         for page in (self.editor, self.map):
             page.statusBar().hide()
         self.statusBar().addPermanentWidget(self.map.fog_box)
+        # A log that survives a restart is one you forget is on, so while it is
+        # on the window says so without being asked -- here, and in the title.
+        self.log_flag = QLabel("● debug log on")
+        self.log_flag.setStyleSheet("color: #b00")
+        self.log_flag.setVisible(False)
+        self.statusBar().addPermanentWidget(self.log_flag)
         self.editor.statusBar().messageChanged.connect(self._editor_said)
         self.map.statusChanged.connect(self._map_said)
-        self.editor.windowTitleChanged.connect(self.setWindowTitle)
+        self.editor.windowTitleChanged.connect(self._retitle)
         self.editor.windowTitleChanged.connect(lambda _t: self._log_save())
-        self.setWindowTitle(self.editor.windowTitle())
+        self._retitle(self.editor.windowTitle())
 
         self.session = session or Session(
-            preferred=getattr(self.settings, "backend", "") or None)
+            preferred=getattr(self.settings, "backend", "") or None,
+            interval_ms=getattr(self.settings, "interval_ms", 0) or None)
         self.session.changed.connect(self._session_said)
 
         self._menu()
@@ -136,6 +171,13 @@ class WishWindow(QMainWindow):
             action.triggered.connect(lambda _checked=False, s=slot: s())
             menu.addAction(action)
         menu.addSeparator()
+        prefs = QAction("&Preferences…", self)
+        prefs.setShortcut(QKeySequence(SHORTCUT))
+        prefs.triggered.connect(lambda _checked=False: self.preferences())
+        menu.addAction(prefs)
+        self.preferences_action = prefs
+
+        menu.addSeparator()
         quit_ = QAction("&Quit", self)
         quit_.setShortcut(QKeySequence.StandardKey.Quit)
         quit_.triggered.connect(self.close)
@@ -149,35 +191,40 @@ class WishWindow(QMainWindow):
                                      self.tabs.setCurrentIndex(at))
             view.addAction(action)
 
-        # Off at every start, and deliberately not remembered: a logging
-        # setting that survives a restart is one you forget is on.
-        view.addSeparator()
+        # The switch is in File > Preferences now, and it is remembered. The
+        # action stays because it is the model the dialog's checkbox is a view
+        # of -- and because the log has to be turned back on at startup by
+        # something, without the modal note that a click gets.
         self.debug_action = QAction("&Debug log", self, checkable=True)
-        self.debug_action.setChecked(False)
         self.debug_action.toggled.connect(self._debug_log)
-        view.addAction(self.debug_action)
+        view.addSeparator()
         self.show_log_action = QAction("Sho&w log", self)
         self.show_log_action.setEnabled(False)
         self.show_log_action.triggered.connect(self.show_log)
         view.addAction(self.show_log_action)
 
-        self._backend_menu(view)
+        self._make_backend_actions()
         install_help(self)
+        if getattr(self.settings, "diagnostics", False):
+            self.debug_action.blockSignals(True)
+            self.debug_action.setChecked(True)
+            self.debug_action.blockSignals(False)
+            self._debug_log(True, announce=False)
 
     # -- which backend ---------------------------------------------------
 
-    def _backend_menu(self, view) -> None:
+    def _make_backend_actions(self) -> None:
         """Prefer one backend over another, without editing the JSON.
 
         It only ever breaks a tie: with one thing answering, `backends.find`
-        needs no help and this menu changes nothing. The labels say which are
+        needs no help and this changes nothing. The labels say which are
         answering and which are unverified, because one of them is written from
         a vendor document and nobody on this project has the hardware.
+
+        These are actions in no menu: File > Preferences draws them as radio
+        buttons. One model, so the preference, the session and the dialog
+        cannot get out of step.
         """
-        view.addSeparator()
-        menu = view.addMenu("&Backend")
-        menu.setToolTipsVisible(True)
-        self.backend_menu = menu
         group = QActionGroup(self)
         group.setExclusive(True)
         self.backend_actions: dict[str, QAction] = {}
@@ -191,15 +238,13 @@ class WishWindow(QMainWindow):
             action.triggered.connect(
                 lambda _checked=False, n=name: self._prefer_backend(n))
             group.addAction(action)
-            menu.addAction(action)
             self.backend_actions[name] = action
         if not any(a.isChecked() for a in self.backend_actions.values()):
             # A remembered name for a backend this build no longer offers.
             self.backend_actions[ANY_BACKEND].setChecked(True)
-        menu.aboutToShow.connect(self.label_backends)
 
     def label_backends(self) -> None:
-        """Say which are answering, when the menu is opened and not before.
+        """Say which are answering, when the dialog asks and not before.
 
         `probe()` is a TCP connect with a short timeout; doing it on the poll
         timer would be noise, and doing it once at startup would be stale by
@@ -226,6 +271,70 @@ class WishWindow(QMainWindow):
         self.statusBar().showMessage(
             f"backend: {name}" if name else "backend: whichever answers")
 
+    # -- preferences -----------------------------------------------------
+
+    def preferences(self) -> PreferencesDialog:
+        """File > Preferences. Returns the dialog, which is what a test wants."""
+        dialog = PreferencesDialog(self)
+        self.show_dialog(dialog)
+        return dialog
+
+    def show_dialog(self, dialog) -> None:
+        """Put a dialog up. A method so a test can open one without blocking."""
+        dialog.exec()
+
+    def disks_text(self) -> str | None:
+        """The resolved Game directory as a plain path, for the two tabs."""
+        return str(self.disks) if self.disks is not None else None
+
+    def game(self):
+        """Which title is open, as a `Game`, or None if nothing says."""
+        return (getattr(getattr(self.editor, "party", None), "game", None)
+                or game_named(self._title))
+
+    def set_disks(self, folder: str) -> None:
+        """The Game directory changed: remember it, and act on it now.
+
+        Both tabs are fed from the one answer -- the editor's item names and
+        icons, and the map's GEOs and roster names -- so a folder typed here
+        works without a restart. That is the acceptance test for the whole
+        dialog: set one folder, get names and a map.
+        """
+        folder = (folder or "").strip()
+        if folder == (getattr(self.settings, "disks", "") or ""):
+            return
+        self.settings.disks = folder
+        self.settings.save()
+        self.reload_disks()
+
+    def reload_disks(self) -> None:
+        """Re-resolve where the disks are and hand the answer to both tabs."""
+        self.disks, self.disks_source = paths.resolve_disks(
+            flag=self.disks_flag, beside=self.editor.path, game=self.game(),
+            settings=self.settings)
+        where = self.disks_text()
+        debuglog.note("game disks: %s (%s)", where or "nothing found",
+                      self.disks_source)
+        self.editor.set_disks(where)
+        maps, game = load_maps_titled(where, self.game())
+        self.map.set_maps(maps, title=game.title if game else None,
+                          disks=where)
+        self.statusBar().showMessage(
+            f"game disks: {where} - {len(maps)} maps" if where
+            else "no game disks found")
+
+    def set_ultimate_host(self, host: str) -> None:
+        """Where the Commodore 64 Ultimate is. Empty means "no device"."""
+        self.settings.ultimate_host = host
+        self.settings.save()
+        apply_ultimate_host(host)
+
+    def set_interval(self, interval_ms: int) -> None:
+        """How often to poll, or 0 for the backend's own."""
+        self.settings.interval_ms = interval_ms
+        self.settings.save()
+        self.session.set_interval(interval_ms)
+
     # -- the warp row ----------------------------------------------------
 
     def _log_warps(self) -> None:
@@ -251,23 +360,38 @@ class WishWindow(QMainWindow):
 
     # -- the debug log ---------------------------------------------------
 
-    def _debug_log(self, on: bool) -> None:
-        """Start or stop writing, at once, and say where the file is."""
+    def _debug_log(self, on: bool, announce: bool = True) -> None:
+        """Start or stop writing, at once, and say where the file is.
+
+        Remembered between sessions since 2026-08, at Donald's request. The
+        reason it was not has not gone away -- a log you forget is on grows for
+        months and is worth nothing when you finally read it -- so `_flag_log`
+        says it is on wherever you are looking. `announce=False` is the restart
+        at startup: a modal box before the window is even up would be worse
+        than the setting it is reporting.
+        """
+        self.settings.diagnostics = bool(on)
+        self.settings.save()
         if not on:
             debuglog.stop()
             self.show_log_action.setEnabled(False)
+            self._flag_log()
             self.statusBar().showMessage("debug log off")
             return
         path = debuglog.start()
         if path is None:
             self.debug_action.setChecked(False)
-            self.announce("Debug log",
-                          "The log file could not be opened. Check that the "
-                          "settings directory is writable.")
+            if announce:
+                self.announce("Debug log",
+                              "The log file could not be opened. Check that "
+                              "the settings directory is writable.")
             return
         self.show_log_action.setEnabled(True)
+        self._flag_log()
         self._log_the_state()
         self.statusBar().showMessage(f"debug log: {path}")
+        if not announce:
+            return
         self.announce(
             "Debug log",
             f"Writing to:\n\n{path}\n\n"
@@ -276,6 +400,21 @@ class WishWindow(QMainWindow):
             "not file paths, character names or any bytes from a save. "
             "Nothing is sent anywhere: read it before you attach it to a "
             "report. View > Show log opens it.")
+
+    def _flag_log(self) -> None:
+        """Say the log is on, in two places nobody has to go looking for.
+
+        The status bar because it is on screen whatever the window is doing,
+        and the title because that is what a screenshot in a bug report shows.
+        """
+        self.log_flag.setVisible(debuglog.is_on())
+        self._retitle()
+
+    def _retitle(self, base: str | None = None) -> None:
+        if base is not None:
+            self._editor_title = base
+        self.setWindowTitle(getattr(self, "_editor_title", "wish")
+                            + (" [logging]" if debuglog.is_on() else ""))
 
     def announce(self, title: str, text: str) -> None:
         """A modal note. A method so a test can silence it."""
@@ -371,23 +510,34 @@ class WishWindow(QMainWindow):
         if not self.editor.close():
             event.ignore()
             return
+        remember_geometry(self, self.settings)
+        self.settings.save()
         self.session.close()
         self.map.shutdown()
         debuglog.stop()
         super().closeEvent(event)
 
 
+#: The first run's size, when nothing has been remembered yet. Wide enough for
+#: the map, the roster cards and the notes column side by side; clamped to the
+#: screen, so a smaller display gets its own size rather than this one.
+FIRST_RUN = (1875, 1030)
+
+
 def run(save: str | None = None, game_disk: str | None = None,
         maps: dict | None = None, area: str | None = None,
         tab: int = EDITOR_TAB, interval_ms: int | None = None,
-        title: str | None = None) -> int:
+        title: str | None = None, disks: str | None = None) -> int:
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     settings = Settings.load()
     session = Session(preferred=getattr(settings, "backend", "") or None,
-                      interval_ms=interval_ms)
+                      interval_ms=interval_ms or settings.interval_ms or None)
     win = WishWindow(save, game_disk, maps=maps, area=area, settings=settings,
-                     session=session, tab=tab, title=title)
-    win.resize(max(settings.window_width, 1875), max(settings.window_height, 1030))
+                     session=session, tab=tab, title=title, disks=disks)
+    # Qt's own geometry, not a width and a height: it carries the position and
+    # the screen too, so a window last closed on a monitor that is no longer
+    # attached comes back on one that is.
+    restore_geometry(win, settings, floor=FIRST_RUN)
     win.show()
     return app.exec()

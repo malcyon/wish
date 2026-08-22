@@ -129,6 +129,63 @@ def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
     return hit[0] if hit is not None else None
 
 
+# -- one precedence, in one place --------------------------------------------
+#
+# There used to be three orders: the editor's, the map's, and the roster's.
+# `resolve_disks` is all of them. The rule, in one sentence: **the Game
+# directory setting is the answer; a command-line option beats it for one run;
+# nothing else does.**
+#
+# `$POR_DISKS` keeps working -- the test suite and `tools/` find the player's
+# disks with it -- but it sits below the setting and is out of the user-facing
+# documentation. Nobody who uses the window ever meets it.
+
+FLAG = "--disks"
+PREFERENCE = "preferences"
+ENVIRONMENT = "$POR_DISKS"
+BESIDE = "beside the save"
+SEARCHED = "searched"
+NOWHERE = "nothing found"
+
+
+def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
+                  settings=None) -> tuple[pathlib.Path | None, str]:
+    """Where to look for the game disks, and who said so.
+
+    The second half of the answer is the point: the preferences dialog reports
+    it, so "why is it ignoring what I typed?" has a printed answer instead of a
+    guess. A folder named by the flag or by the setting is returned whether or
+    not it holds any disks -- reporting an empty folder as empty is more use
+    than silently searching somewhere else.
+
+    `beside` is the open save, as a file or its directory, and is only taken
+    when disks are actually there. `settings` lets a window pass the copy it
+    holds; without one the file is read, which is a few hundred bytes.
+    """
+    # Imported here, not at module scope: `config` imports this module, and the
+    # reverse at the top of the file is a cycle. `live.py` does the same.
+    from .config import Settings
+    if flag:
+        return pathlib.Path(flag), FLAG
+    if settings is None:
+        settings = Settings.load()
+    chosen = (getattr(settings, "disks", "") or "").strip()
+    if chosen:
+        return pathlib.Path(chosen), PREFERENCE
+    env = os.environ.get("POR_DISKS")
+    if env:
+        return pathlib.Path(env), ENVIRONMENT
+    if beside:
+        where = pathlib.Path(beside)
+        where = where if where.is_dir() else where.parent
+        if has_disks(where, game):
+            return where, BESIDE
+    found = locate_disks(game)
+    if found is not None:
+        return found[0], SEARCHED
+    return None, NOWHERE
+
+
 def vice_settings_hint() -> str:
     """Where this platform keeps VICE's settings, for an error message."""
     if sys.platform == "win32":

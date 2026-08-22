@@ -37,7 +37,7 @@ from . import notes as notemod
 from .actionbar import ActionBar, WarpBar
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
-from .config import Settings
+from .config import Settings, remember_geometry, restore_geometry
 from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (
@@ -92,6 +92,18 @@ FADED = QColor("#a9b4bf")
 # paper; the pen is ink thinned, never the wall ink. See render.ROCK_FILL.
 BLOCK = QColor("#c3d0dd")
 HATCH_PEN = QColor("#68809a")
+
+
+#: Said on the grid when there are no maps at all. The one failure that used
+#: to go to stderr and nowhere else.
+NO_MAPS = ("No game disks found, so there are no maps. "
+           "File > Preferences… to say where they are.")
+
+
+def game_named(title: str | None):
+    """The `Game` this title is, for the readers that need one."""
+    from por import games
+    return next((g for g in games.GAMES if g.title == title), None)
 
 
 class MapCanvas(QWidget):
@@ -168,8 +180,12 @@ class MapCanvas(QWidget):
             # map we cannot name. An empty grid and a line of text beats an
             # error dialog -- the game may simply not have started.
             p.setPen(QPen(ALARM if self.host.alarm else INK))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       self.host._waiting or st.area_label)
+            # Wrapped: "no game disks, open File > Preferences" is a sentence,
+            # not a word, and an unwrapped one is clipped by the grid.
+            p.drawText(self.rect(),
+                       int(Qt.AlignmentFlag.AlignCenter
+                           | Qt.TextFlag.TextWordWrap),
+                       self.host.waiting_text() or st.area_label)
             return
 
         visible = None if not st.reveal else st.is_visible
@@ -390,7 +406,7 @@ class AutomapWindow(QMainWindow):
 
     def __init__(self, mapper, interval_ms: int = 200, connect=None,
                  settings: Settings | None = None, drive: bool = True,
-                 debug: bool | None = None):
+                 debug: bool | None = None, disks: str | None = None):
         """`drive=False` hands the connection and the clock to a host window.
 
         The merged `wish` window owns one `Target` for every tab, because VICE
@@ -537,8 +553,15 @@ class AutomapWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.fog_box)
 
         # Read once: the item names come off a game disk, and a card without
-        # one shows nothing rather than word indices.
-        self.item_names = live.item_names()
+        # one shows nothing rather than word indices. `disks` is the resolved
+        # Game directory -- the roster used to run its own search here, which
+        # was the third of the three orders this application had.
+        self.disks = disks
+        self.item_names = live.item_names(disks, game_named(self.state.title))
+        #: No maps at all is its own state, and not the same as no emulator:
+        #: an emulator will not fill the grid either. Said on the grid, where
+        #: the map would be, because that is where somebody is looking.
+        self.no_maps = not getattr(mapper, "_maps", None)
         self._popover: NotePopover | None = None
         self._waiting = "" if mapper.target is not None else "looking for the game"
         self.alarm = False
@@ -548,6 +571,30 @@ class AutomapWindow(QMainWindow):
         self.timer.timeout.connect(self.tick)
         if drive:
             self.timer.start(interval_ms)
+        self._refresh()
+
+    def set_maps(self, maps: dict, title: str | None = None,
+                 disks: str | None = None) -> None:
+        """New game disks: draw their maps instead, without a restart.
+
+        Reaching into the mapper's fields rather than building a new one keeps
+        the explored squares, the notes and the connection -- everything the
+        window is holding open -- and the four attributes below are the whole
+        of what a map set is to it.
+        """
+        from .state import Fingerprint, ResidentGeo
+        self.mapper._maps = maps
+        self.mapper.fingerprint = Fingerprint(maps) if maps else None
+        self.mapper.resident = (ResidentGeo(self.mapper.target)
+                                if maps and self.mapper.target is not None
+                                else None)
+        if title:
+            self.state.title = title
+        if self.state.area:
+            self.state.geo = maps.get(self.state.area)
+        self.no_maps = not maps
+        self.disks = disks
+        self.item_names = live.item_names(disks, game_named(self.state.title))
         self._refresh()
 
     def _toggle_reveal(self, checked: bool) -> None:
@@ -765,6 +812,20 @@ class AutomapWindow(QMainWindow):
         self.messages.say(text, alarm=alarm)
         self._refresh()
 
+    def waiting_text(self) -> str:
+        """What the empty grid says: what is being waited for, and why.
+
+        With no maps loaded that comes first, because the emulator is beside
+        the point while there is nothing to draw -- and because this is the one
+        failure that used to be reported only to a stderr that a desktop
+        launcher throws away. It is said on the grid rather than in the status
+        bar: the grid is where somebody looking for a map is looking, and the
+        status line still belongs to the connection.
+        """
+        if not self.no_maps:
+            return self._waiting
+        return NO_MAPS + (f"  ({self._waiting})" if self._waiting else "")
+
     def _refresh(self) -> None:
         st = self.state
         self.strip.show_state(st, self.snapshot)
@@ -868,8 +929,11 @@ class AutomapWindow(QMainWindow):
         its own -- the host closes, and the notes still have to be written.
         The connection is only ours to close when we opened it.
         """
-        self.settings.window_width = self.width()
-        self.settings.window_height = self.height()
+        # Only when this window is the window. Hosted, it is a page inside a
+        # tab and its size is the tab's, not anything worth remembering -- and
+        # writing it here is what used to overwrite the real one.
+        if self._drive:
+            remember_geometry(self, self.settings)
         self.settings.save()
         self.state.save_notes()
         if self._drive:
@@ -883,11 +947,12 @@ class AutomapWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def run(mapper, interval_ms: int | None = None, connect=None) -> int:
+def run(mapper, interval_ms: int | None = None, connect=None,
+        disks: str | None = None) -> int:
     app = QApplication([])
     settings = Settings.load()
-    win = AutomapWindow(mapper, interval_ms or settings.interval_ms, connect,
-                        settings)
-    win.resize(settings.window_width, settings.window_height)
+    win = AutomapWindow(mapper, interval_ms or settings.interval_ms or 200,
+                        connect, settings, disks=disks)
+    restore_geometry(win, settings)
     win.show()
     return app.exec()

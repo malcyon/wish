@@ -281,7 +281,7 @@ def test_the_map_says_where_the_party_is_not_which_file_it_came_from():
         win.mapper.state.area = "GEO00"
         assert win.mapper.state.area_label == "New Phlan"
         win.mapper.state.area = "GEO14"
-        assert win.mapper.state.area_label == "the Slums"
+        assert win.mapper.state.area_label == "The Slums"
     finally:
         win.session.close()
 
