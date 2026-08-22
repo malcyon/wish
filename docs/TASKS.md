@@ -33,9 +33,7 @@ files, the standing constraints in full, and no commits.
 | **P46** | The VICE instance pool — [`123`](123-parallel-sessions.md) | `tools/instance.py`, and **remove the four `pkill -x` calls** that would kill a running game. Do it when nothing is driving the emulator |
 | **P48** | `docs/117` obstacle 3 — the item record's binary tail | the DOSBox harness can now arrange the character that exposes it |
 | **P50** | Implement the C64→Amiga port — [`124`](124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
-| **P55** | Verify the trait and effect names against records | 129 named, 44 CONFIRMED and 84 PROBABLE |
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
-| **P61** | `por/areas.py` still calls area 11 "the arena" | it is the training hall. Area 24's name is contested — leave it until the warp experiment runs |
 | **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
 | **P68** | A preferences dialog — [`130`](130-preferences.md) | where wish looks for disks, and the backend. Replaces the View > Backend menu |
 
@@ -50,18 +48,6 @@ files, the standing constraints in full, and no commits.
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
 | **P20** | The 15 areas with no harvested arrival square | do they land somewhere legal? |
 | **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
-
-## Corrections outstanding
-
-| | task |
-|---|---|
-| **P49** | `docs/119` calls the level ceiling PROBABLE; the routine is `GEN $1E20` |
-| **P54** | `docs/118` open question 5 — `$6DD5` is demoted to GUESS |
-| **P56** | `por/savegame.py`'s roster field names look wrong — `+0x15` is the primary attack die sides |
-| **P57** | Demote `$1F` from `ADDRESSOF`; the guide says unimplemented and our sweep counts zero uses |
-| **P58** | The armour rule is a special case of `60 - (byte & 0x7F)` and diverges at AC 13 |
-| **P59** | File the guide's candidate rumours in [`125`](125-bug-notes.md) |
-| **P64** | `skills/goldbox/SKILL.md` asserts "a bump advances the clock" as fact; nobody has watched the clock during a bump |
 
 ## Waiting on the community sweep
 
@@ -119,3 +105,12 @@ A code retires with its task and is never reused.
 | **P51** | Amiga Pools of Darkness loads a C64 export |
 | **P52** | the protection spreadsheet routed to the private repo |
 | **P53** | no duplication in Sokol Keep — the scroll is read, not taken |
+| **P49** | the ceilings are the game's: `GEN $1E21` clamps against `$1E5C` |
+| **P54** | `$6DD5` demoted to GUESS, and the answered questions dropped |
+| **P55** | 49 of 129 names CONFIRMED; the other 77 codes have no C64 carrier |
+| **P56** | roster `+0x15` is the die size, and `+0x10` stays the armour bonus |
+| **P57** | `$1F` left unnamed |
+| **P58** | `60 - (byte & 0x7F)` everywhere; AC 13 pinned |
+| **P59** | the guide's rumours filed as `R40`-`R51` |
+| **P61** | area 11 is the training hall, and the names are title-cased |
+| **P64** | the skill says the square, not the clock |

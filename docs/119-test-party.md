@@ -240,24 +240,24 @@ us.
 | constraint | what we believe | confidence |
 |---|---|---|
 | six player characters per party | the code tests `CMP #$06` against a count of bit 7 at `0x0B8` | **CONFIRMED** — the limit is in code, not anecdote |
-| class ceilings: cleric 6, fighter 8, magic-user 6, thief 9 | `docs/89-level-tables.md` stops there | **PROBABLE** — the tables end at those rows; no routine enforcing them has been cited |
+| class ceilings: cleric 6, fighter 8, magic-user 6, thief 9 | `GEN` `$1E5C`, eight bytes in class-bit order, read by the level-up routine at `GEN` `$1E21` | **CONFIRMED** — P49. The routine takes the class index from `$2B58`, raises `$2B50,X`, `CMP $1E5C,X`, and on a value above the table clamps to it and bumps `$2B74`. The table reads `06 06 09 08 00 00 00 00` — magic-user 6, cleric 6, thief 9, fighter 8 |
 | experience thresholds | the tables | **PROBABLE** — transcribed. Only the THAC0 column has been checked against the game, and checking it found two errors |
 | experience field width | 24-bit LE at `0x0E8` | **CONFIRMED** |
-| race level limits (dwarf, halfling, elf) | not investigated **at all** | **UNKNOWN** — AD&D 1e assumption only, and the game may not implement them |
+| race level limits (dwarf, halfling, elf) | the 28 bytes at `GEN` `$1E64`, seven races of four classes | **CONFIRMED** — P49, same read. `$1E3D`-`$1E49` takes the race from `$6B72`, forms `race * 4 + class`, and the check at `$1E4A` clamps against it exactly as the class ceiling does. All 28 bytes match `por/levels.py`'s `racial_limits`, 99 for unlimited |
 | which classes a race may take | the creation menu offers HUMAN only CLERIC / FIGHTER / MAGIC-USER / THIEF | **CONFIRMED for human**; the other five races' menus are undocumented here |
 | ability-score minimums per class | nothing in the project | **UNKNOWN** |
 | hit points the game will accept | `hp_max` is 16-bit; no character has exceeded 255 | field width CONFIRMED; any **validation** is UNKNOWN |
 | whether a loaded save is validated | nothing suggests a checksum, and `wish` writes saves the game loads happily | **GUESS** — see `docs/117-save-conversion.md`, obstacle 7. It has never been *looked for* |
 
-**What happens if we exceed one is the interesting question, and it is cheap.**
-The hypothesis is that a cap is enforced *at the trainer* — the trainer refuses
-to advance past it — and that a loaded save is not re-validated, so an over-cap
-character loads, displays its level, and simply cannot train. Build a cleric 7
-and read the sheet. One boot, one answer, and it tells us whether the ceilings
-in `docs/89-level-tables.md` are the game's or the table's.
+**The ceilings are the game's, not the table's.** `GEN $1E21` is the routine
+that was missing when this section was written: it clamps rather than refuses,
+so an over-cap character does not fail to train — the game writes the ceiling
+back over the level. What a *loaded* over-cap save does is still open, because
+the clamp is on the training path and nothing has been seen re-validating a
+save on load.
 
-Until that is answered, **build to the documented ceilings and no higher.** An
-illegal party that misbehaves would poison every experiment run on it.
+**Build to the documented ceilings and no higher.** An illegal party that
+misbehaves would poison every experiment run on it.
 
 ---
 
@@ -326,7 +326,8 @@ the superseded text is how contradictions got in before.
 
 1. **Answer the validation question first**, because it is one boot and it
    decides how ambitious the party may be: build a cleric 7 (one past the
-   documented ceiling), load it, read the sheet.
+   ceiling `GEN $1E5C` holds), load it, read the sheet. The clamp at `$1E21`
+   is on the training path only; whether a *load* re-validates is untested.
 2. **The trainer diff.** Grant experience, train one level, diff 580 bytes.
    Once per class; fighter first, because it moves the most.
 3. **Write the level-up table from the diff**, and empty the entries of
@@ -367,7 +368,7 @@ multi-class specimen `docs/90-specimens.md` lists as missing, already in hand;
 it only needs a level.
 
 **The wall: the training hall is not a square in New Phlan, it is area 11.**
-`ECL0B` — `docs/118`'s "the arena", one of the four mapless areas — holds both
+`ECL0B` — long mislabelled "the arena", one of the four mapless areas — holds both
 the duelling arena and every training school: `'WE TRAIN ONLY <class> HERE. DO
 YOU WANT TO TRAIN?'` is at `$A0DD`. New Phlan reaches it from `GEO00` script
 ids **10** (squares `(6,1)` and `(6,2)`) and **17** (square `(9,0)`), both of

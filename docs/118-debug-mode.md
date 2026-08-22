@@ -73,7 +73,7 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 | `$C04B`/`$C04C`/`$C04D` are the party square and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
 | A warp can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
 | The loader prompts for a disk when `$6E12` names one that is not in the drive | **CONFIRMED** — P17: POOL2 in the drive, `$6E12` = 3, and the game printed `INSERT SIDE # 3, AND PRESS ANY KEY.` and waited |
-| `$6DD5` is "a step was taken" | **GUESS**, demoted — see open question 5 |
+| `$6DD5` is "a step was taken" | **GUESS**, demoted — see open question 1 |
 
 **A table of exit squares per area does not exist**, and neither does a patched
 filename stem: `automap/area.py`'s `FilenameDigits` was already retired for the
@@ -97,33 +97,33 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 | 0 | `00` | `00` | POOL3 | New Phlan | 15,1 W | CONFIRMED |
 | 1 | `01` | `01` | POOL6 | Buccaneer Base | 8,0 S | CONFIRMED |
 | 2 | `02` | `02` | POOL4 | Cadorna Textile House | 0,4 W | CONFIRMED |
-| 3 | `03` | `03` | POOL5 | Valjevo Castle, north-west and south-east | — | PROBABLE |
-| 4 | `04` | `04` | POOL5 | Valjevo Castle, north-east | — | PROBABLE |
-| 5 | `05` | `05` | POOL5 | Valjevo Castle, the hedge maze | — | PROBABLE |
-| 6 | `06` | `06` | POOL5 | Valjevo Castle, south-west | 4,15 N | PROBABLE |
-| 7 | `07` | `07` | POOL5 | Valjevo Castle, the inner tower | 5,7 | PROBABLE |
+| 3 | `03` | `03` | POOL5 | Valjevo Castle, North-West and South-East | — | PROBABLE |
+| 4 | `04` | `04` | POOL5 | Valjevo Castle, North-East | — | PROBABLE |
+| 5 | `05` | `05` | POOL5 | Valjevo Castle, the Hedge Maze | — | PROBABLE |
+| 6 | `06` | `06` | POOL5 | Valjevo Castle, South-West | 4,15 N | PROBABLE |
+| 7 | `07` | `07` | POOL5 | Valjevo Castle, the Inner Tower | 5,7 | PROBABLE |
 | 8 | `08` | — | POOL3 | Phlan City Hall | — | CONFIRMED |
 | 9 | `09` | `09` | POOL2 | Stojanow Gate | — | CONFIRMED |
 | 10 | `0A` | `0A` | POOL4 | Valhingen Graveyard | 0,4 W | CONFIRMED |
-| 11 | `0B` | — | POOL3 | the training hall | — | CONFIRMED |
-| 13 | `0D` | `0D` | POOL8 | the kobold caves | 6,15 N | CONFIRMED |
+| 11 | `0B` | — | POOL3 | The Training Hall | — | CONFIRMED |
+| 13 | `0D` | `0D` | POOL8 | The Kobold Caves | 6,15 N | CONFIRMED |
 | 14 | `0E` | `0E` | POOL3 | Kovel Mansion | 4,0 S | CONFIRMED |
 | 15 | `0F` | `0F` | POOL2 | Mendor's Library | — | CONFIRMED |
-| 16 | `10` | `10`, `1E` | POOL8 | the lizardman keep | 8,14 N | CONFIRMED |
-| 17 | `11` | `11` | POOL7 | the nomad camp | 1,14 E | CONFIRMED |
+| 16 | `10` | `10`, `1E` | POOL8 | The Lizardman Keep | 8,14 N | CONFIRMED |
+| 17 | `11` | `11` | POOL7 | The Nomad Camp | 1,14 E | CONFIRMED |
 | 18 | `12` | `12` | POOL1 | Podol Plaza | 0,4 W | CONFIRMED |
 | 19 | `13` | — | POOL6 | Cave of Diogenes (the silver dragon's lair) | — | CONFIRMED |
-| 20 | `14` | `14` | POOL2 | the Slums | — | CONFIRMED |
+| 20 | `14` | `14` | POOL2 | The Slums | — | CONFIRMED |
 | 21 | `15` | `15` | POOL4 | Sokol Keep | — | CONFIRMED |
-| 22 | `16` | `16` | POOL7 | Yarash's pyramid | 15,7 E | CONFIRMED |
-| 23 | `17` | `17` | POOL7 | Yarash's pyramid, lower | 15,0 S | PROBABLE |
+| 22 | `16` | `16` | POOL7 | Yarash's Pyramid | 15,7 E | CONFIRMED |
+| 23 | `17` | `17` | POOL7 | Yarash's Pyramid, Lower | 15,0 S | PROBABLE |
 | 24 | `18` | `18`, `1F` | POOL1 | the Wealthy Area (`GEO1F` is the Temple of Bane) | 15,4 W | CONFIRMED |
-| 25 | `19` | `19` + `SQRDATA04` | POOL6 | wilderness, west window | — | CONFIRMED |
-| 26 | `1A` | `1A` + `SQRDATA05` | POOL7 | wilderness, middle window | — | CONFIRMED |
-| 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | wilderness, east window | — | CONFIRMED |
-| 28 | `1C` | `1C` | POOL6 | Zhentil Keep outpost | 7,0 S | CONFIRMED |
+| 25 | `19` | `19` + `SQRDATA04` | POOL6 | Wilderness, West Window | — | CONFIRMED |
+| 26 | `1A` | `1A` + `SQRDATA05` | POOL7 | Wilderness, Middle Window | — | CONFIRMED |
+| 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — | CONFIRMED |
+| 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | — | POOL1 | the attract-mode demo | — | CONFIRMED |
+| 30 | `1E` | — | POOL1 | The Attract-Mode Demo | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), `work/reports/world-map.md` (the wilderness site list),
@@ -140,6 +140,10 @@ things — one scripts, one maps — but nobody has checked. They are PROBABLE
 until warping to each in turn matches `$0400` against the disk `GEO`
 (`ResidentGeo`) and the floor plan is read against the compass names.
 
+**Names are title-cased, leading article included**, because they are titles
+in a dropdown: "The Slums", not "the Slums". The table used to write proper
+names in capitals and descriptions in lower case, and the seam showed.
+
 `GEO05` being the hedge maze is corroborated from our side:
 [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 4 identified it as a hedge maze
 from 126 half-encounter-rate squares laid out along corridors and courtyards,
@@ -149,8 +153,9 @@ before any outside source was consulted.
 own `ECL0B` prints `THE ROOM IS FILLED WITH DUELING PAIRS.` and
 `WE TRAIN ONLY <class> HERE. DO YOU WANT TO TRAIN?` at `$A0DD`, the DOS guide
 names script 11 *Civilized Area (Training Hall)*, and a forum area list names
-`ECL3` record 11 *Training Hall*. `por/areas.py` still calls it "the arena" and
-needs the same correction.
+`ECL3` record 11 *Training Hall*. It has no map of its own -- the schools are
+New Phlan's own squares, so `ECL0B` reuses `GEO00`. `por/areas.py` was
+corrected to match.
 
 **The doubled maps belong to their neighbours.** DOS numbers maps and scripts in
 one space and three maps have no script of their own: `GEO1E` (30) is the

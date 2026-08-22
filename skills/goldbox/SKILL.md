@@ -246,8 +246,12 @@ last non-empty candidate set and count the contradiction.
 `automap.area.Fingerprint._narrow` does this, and a rising contradiction count
 is your signal that an address is wrong.
 
-**A bump advances the clock**, so "the clock changed" is not evidence of
-movement. The map fact is that the *square* did not change on a forward step.
+**The map fact is that the *square* did not change on a forward step**, and
+that is the only thing to assert. Whether a bump advances the clock is
+**unmeasured** — nobody has watched the clock during one — so "the clock
+changed" is evidence of neither movement nor a refusal. `automap.state`'s
+`_refused` infers a one-minute cost and says in its own docstring that it is
+inferred; if the cost turns out to be zero it simply never fires.
 
 ### Hazards — read these before connecting
 

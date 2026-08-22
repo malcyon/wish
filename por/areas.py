@@ -11,9 +11,9 @@ not the other way round, and the relation is not a bijection:
 
 * **thirty scripts, twenty-nine maps.** `ECL0C` does not exist at all, so id 12
   is absent from the table;
-* **four areas have no map.** `ECL08` (Phlan City Hall), `ECL0B` (the arena),
-  `ECL13` (Cave of Diogenes) and `ECL1E` issue no `LOADFILES` and never put a
-  `GEO` on the screen;
+* **four areas have no map.** `ECL08` (Phlan City Hall), `ECL0B` (the training
+  hall), `ECL13` (Cave of Diogenes) and `ECL1E` issue no `LOADFILES` and never
+  put a `GEO` on the screen;
 * **three areas carry two maps each.** `ECL10`, `ECL18` and `ECL1D` each load
   two `GEO`s from the one script;
 * **three areas are outdoors.** Areas 25-27 load a `SQRDATA` as well as a
@@ -28,6 +28,12 @@ Names come from `docs/88-map-files.md`, `work/reports/world-map.md` and
 `work/reports/quest-flags.md`; arrival squares were harvested from the
 departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fifteen
 areas have no known arrival square and say so with `arrival = None`.
+
+**A name is a title, so it is title-cased**, leading article included: "The
+Slums", not "the Slums". The table used to mix the two -- proper names in
+capitals, descriptions in lower case -- and the seam showed in the dropdown,
+which is a list of titles and nothing else. Short function words inside a name
+stay down ("Valjevo Castle, a Floor", "Temple of Bane").
 
 ## Titles
 
@@ -191,34 +197,34 @@ AREAS: tuple[Area, ...] = (
     _a(0, "New Phlan", 3, ("GEO00",), Arrival(15, 1, 3), C),
     _a(1, "Buccaneer Base", 6, ("GEO01",), Arrival(8, 0, 2), C),
     _a(2, "Cadorna Textile House", 4, ("GEO02",), Arrival(0, 4, 3), C),
-    _a(3, "Valjevo Castle, a floor", 5, ("GEO03",), None, P, dynamic_geo=True),
-    _a(4, "Valjevo Castle, a floor", 5, ("GEO04",), None, P),
-    _a(5, "Valjevo Castle, a floor", 5, ("GEO05",), None, P, dynamic_geo=True),
-    _a(6, "Valjevo Castle, a floor", 5, ("GEO06",), Arrival(4, 15, 0), P),
-    _a(7, "Valjevo Castle, the pool", 5, ("GEO07",), Arrival(5, 7), P),
+    _a(3, "Valjevo Castle, a Floor", 5, ("GEO03",), None, P, dynamic_geo=True),
+    _a(4, "Valjevo Castle, a Floor", 5, ("GEO04",), None, P),
+    _a(5, "Valjevo Castle, a Floor", 5, ("GEO05",), None, P, dynamic_geo=True),
+    _a(6, "Valjevo Castle, a Floor", 5, ("GEO06",), Arrival(4, 15, 0), P),
+    _a(7, "Valjevo Castle, the Pool", 5, ("GEO07",), Arrival(5, 7), P),
     _a(8, "Phlan City Hall", 3, (), None, C),
     _a(9, "Stojanow Gate", 2, ("GEO09",), None, C),
     _a(10, "Valhingen Graveyard", 4, ("GEO0A",), Arrival(0, 4, 3), C),
-    _a(11, "the arena", 3, (), None, C),
-    _a(13, "the kobold caves", 8, ("GEO0D",), Arrival(6, 15, 0), C),
+    _a(11, "The Training Hall", 3, (), None, C),
+    _a(13, "The Kobold Caves", 8, ("GEO0D",), Arrival(6, 15, 0), C),
     _a(14, "Kovel Mansion", 3, ("GEO0E",), Arrival(4, 0, 2), C),
     _a(15, "Mendor's Library", 2, ("GEO0F",), None, C),
-    _a(16, "the lizardman keep", 8, ("GEO10", "GEO1E"), Arrival(8, 14, 0), C),
-    _a(17, "the nomad camp", 7, ("GEO11",), Arrival(1, 14, 1), C),
+    _a(16, "The Lizardman Keep", 8, ("GEO10", "GEO1E"), Arrival(8, 14, 0), C),
+    _a(17, "The Nomad Camp", 7, ("GEO11",), Arrival(1, 14, 1), C),
     _a(18, "Podol Plaza", 1, ("GEO12",), Arrival(0, 4, 3), C),
     _a(19, "Cave of Diogenes", 6, (), None, C),
-    _a(20, "the Slums", 2, ("GEO14",), None, C),
+    _a(20, "The Slums", 2, ("GEO14",), None, C),
     _a(21, "Sokol Keep", 4, ("GEO15",), None, C),
-    _a(22, "Yarash's pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
-    _a(23, "Yarash's pyramid, lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
+    _a(22, "Yarash's Pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
+    _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
     _a(24, "Temple of Bane", 1, ("GEO18", "GEO1F"), Arrival(15, 4, 3), C),
-    _a(25, "wilderness, west window", 6, ("GEO19",), None, C,
+    _a(25, "Wilderness, West Window", 6, ("GEO19",), None, C,
        sqrdata="SQRDATA04"),
-    _a(26, "wilderness, middle window", 7, ("GEO1A",), None, C,
+    _a(26, "Wilderness, Middle Window", 7, ("GEO1A",), None, C,
        sqrdata="SQRDATA05"),
-    _a(27, "wilderness, east window", 8, ("GEO1B",), None, C,
+    _a(27, "Wilderness, East Window", 8, ("GEO1B",), None, C,
        sqrdata="SQRDATA06"),
-    _a(28, "Zhentil Keep outpost", 6, ("GEO1C",), Arrival(7, 0, 2), C),
+    _a(28, "Zhentil Keep Outpost", 6, ("GEO1C",), Arrival(7, 0, 2), C),
     _a(29, "Kuto's Well", 8, ("GEO1D", "GEO20"), None, C,
        geo_names=MappingProxyType({"GEO20": "Kuto's Well Catacombs"})),
     _a(30, None, 1, (), None, U),

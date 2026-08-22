@@ -8,7 +8,7 @@ rises:
 |---|---|
 | `60 - value` | THAC0, armour class -- record `0x071`, `0x10E`, `0x10F`, roster `+0x0E`, `+0x0F` |
 | `48 + value` | the armour bonus at roster `+0x10` |
-| `12 - AC` | an item's protection nibble in the `ITEMS` type table |
+| `60 - value` | an item's protection byte in the `ITEMS` type table, bit 7 masked off |
 
 `RosterBlock` applies the first two for you. **The record does not**: `get` hands
 back the byte as stored, so `record.get("thac0_base")` is `39` for a THAC0 of
@@ -20,7 +20,8 @@ from __future__ import annotations
 
 COMBAT_BIAS = 60
 ARMOUR_BONUS_BIAS = 48
-ITEM_PROTECTION_BIAS = 12
+#: `ITEMS` type byte +6, bit 7: the item affects armour class at all.
+ITEM_PROTECTION_GRANTS = 0x80
 
 
 def combat_value(stored: int) -> int:
@@ -50,6 +51,14 @@ def armour_bonus_byte(value: int) -> int:
     return stored
 
 
-def item_protection_ac(low_nibble: int) -> int:
-    """An `ITEMS` protection nibble as the armour class it grants."""
-    return ITEM_PROTECTION_BIAS - (low_nibble & 0x0F)
+def item_protection_ac(protection: int) -> int:
+    """An `ITEMS` protection byte as the armour class it grants.
+
+    This was long read as `12 - (byte & 0x0F)` under a `$B0` mask, which is the
+    same arithmetic in disguise -- `60 - (0x30 + n)` is `12 - n` -- and agrees
+    with the general rule on every armour the disks carry. **They diverge at
+    armour class 13**: `$AF` is 13 here and -3 under the nibble rule, and the
+    general form is the one the rest of the format uses. `por/items.py` reads
+    the byte with the same rule and decides bonus-versus-class by magnitude.
+    """
+    return COMBAT_BIAS - (protection & 0x7F)

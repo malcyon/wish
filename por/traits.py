@@ -8,19 +8,40 @@ creature that id's meaning demands. `docs/128-guide-and-scripting.md` is the
 write-up.
 
 **The names below are transcribed from a third-party document and then checked
-against the player's own disks.** 44 are CONFIRMED, because a `MON*` record or
-a saved item carries the code on exactly the creature or item the meaning
+against the player's own disks.** 49 are CONFIRMED, because a `MON*` record or
+an item template carries the code on exactly the creature or item the meaning
 requires -- the anhkheg carries 121 "anhkheg acid squirt", the troll carries
 100 and 101, the ghoul carries the paralysis that spares elves, the wight
 carries "silver or magic" and the wraith the "silver does half" variant, which
-is the *Monster Manual* distinction between them. The rest are PROBABLE: the
-guide names them, nothing on the C64 exercises them, and a third-party document
-on its own is never CONFIRMED.
+is the *Monster Manual* distinction between them. 79 are PROBABLE: the guide
+names them, nothing on the C64 exercises them, and a third-party document on
+its own is never CONFIRMED.
+
+The census is 108 `MON*` records across the eight `POOL` disks and the 163
+item templates in the `ITEMFILE*` lists. **52 of the 129 codes are carried by
+something**; the other 77 have no C64 carrier at all and cannot be promoted by
+any amount of looking. Only four item templates carry a passive power, and all
+four were already confirmed -- the item side of this table is exhausted.
+
+**Four were promoted on the vampire's block** (P55): 103 gaseous form, 114 and
+118 the half damage from electricity and cold, 126 the avoidable gaze. The
+vampire is the only creature on the disks carrying any of them, and together
+with the four the census had already confirmed on it the block reads as the
+*Monster Manual*'s vampire entry line for line.
+
+**Two that look promotable are not.** 117 lands on all nine undead and nothing
+else -- but so would "undead, and therefore turnable", which is what this table
+used to call it, and the population cannot separate the two readings. 120 lands
+on both giants and nothing else -- but so would "hurls boulders", and hurling
+is an attack form at `0x0D9`. Both stay PROBABLE until something other than the
+carrier set decides them.
 
 Three codes are ours rather than theirs. **139** is past the end of their table
-and PHASE SPIDER carries it. **92** they call unused and TYRANITHRAXUS carries
-it. **255** is the byte after the last used slot in a `MON*` record, not a code
-at all.
+and PHASE SPIDER carries it -- which is why it stays PROBABLE, since the carrier
+is also where the name came from and one observation cannot corroborate itself.
+**92** they call unused and TYRANITHRAXUS carries it. **255** is a fill byte in
+the last slot: 38 of the 108 records carry it, every one of them in slot 9, and
+no record has a real code after one.
 
 `GEN $0BF3` seeds the list per race from `[1, 0, 107, 0, 124, 0, 0, 0]`,
 **indexed by the race byte itself**, which is 1-based: elf is race 2 and is born
@@ -31,10 +52,13 @@ as a dwarf's seed -- MAGNUS, a dwarf, carries an empty trait block.
 Not to be confused with item byte `+14`, which shares these slots and only
 sometimes shares their meaning. **Item byte `+15` bit 7 is the discriminator**:
 a passive item's `+14` is an effect id and `SPELLE04 $ADD4` copies it verbatim
-into a free slot, while a consumable's `+14` is a spell id. In the player's own
-saves CLOAK OF DISPLACEMENT reads `+14` 89 / `+15` $85 and TWO-HANDED SWORD +1
-+3 VS UNDEAD reads 3 / $88 -- displaced and undead-slaying, the guide's names
-for both. POTION OF HEALING reads 85 / $00 and is a potion, not a level drain.
+into a free slot, while a consumable's `+14` is a spell id. Four item templates
+on the disks set bit 7 and only four: CLOAK OF DISPLACEMENT reads `+14` 89 /
+`+15` $85 and TWO-HANDED SWORD +1 +3 VS UNDEAD reads 3 / $88 -- displaced and
+undead-slaying, the guide's names for both. GAUNTLETS OF OGRE POWER reads 38 /
+$83. The fourth, LONG SWORD +3 at $84, is **not** evidence about any code:
+`$84` is the alignment-locked sword and its `+14` is two nibbles, not an id.
+POTION OF HEALING reads 85 / $00 and is a potion, not a level drain.
 
 Lives in `por/` rather than in the editor because the combat view names the same
 codes on a monster's tooltip, and one table cannot be allowed to become two.
@@ -183,7 +207,16 @@ NAMES: dict[int, tuple[str, str]] = {
           "CONFIRMED"),                                            # TROLL
     101: ("troll: regeneration", "CONFIRMED"),                     # TROLL
     102: ("troll: getting back up", "PROBABLE"),
-    103: ("can assume gaseous form", "PROBABLE"),
+    # 103, 114, 118 and 126 are the vampire's, and the vampire is the only
+    # creature on the disks that carries any of them. Read together with the
+    # six the census had already confirmed on it -- 86, 98, 119, 125 -- the
+    # block is the Monster Manual's vampire entry line for line: two levels
+    # drained, 3 hit points a round regenerated, hit only by magic, immune to
+    # sleep/charm/paralysis/poison, **half damage from cold and electrical
+    # attacks**, a charming gaze, and gaseous form. A coincidence would have
+    # to put both halves of one Monster Manual sentence on the one creature
+    # the sentence is about.
+    103: ("can assume gaseous form", "CONFIRMED"),                 # VAMPIRE
     104: ("missile evasion, 60%", "CONFIRMED"),                    # THRI-KREEN
     105: ("50% magic resistance (unused)", "PROBABLE"),
     106: ("85% magic resistance", "PROBABLE"),             # TYRANITHRAXUS
@@ -196,14 +229,14 @@ NAMES: dict[int, tuple[str, str]] = {
     111: ("immune to paralysis and poison", "PROBABLE"),
     112: ("immune to fire", "CONFIRMED"),                  # FIRE GIANT
     113: ("efreeti fire resistance, -1 a damage die", "CONFIRMED"),  # EFREETI
-    114: ("half damage from electricity", "PROBABLE"),
+    114: ("half damage from electricity", "CONFIRMED"),            # VAMPIRE
     115: ("half damage from piercing or slashing weapons", "CONFIRMED"),
     116: ("half damage from magical weapons", "CONFIRMED"),          # MUMMY
     # Every undead in the game carries 117 -- which is equally what "undead,
     # and so turnable" predicted, the reading this table used to give it. The
     # population cannot separate the two; the guide's decode is the tiebreak.
     117: ("vulnerable to holy water", "PROBABLE"),
-    118: ("half damage from cold", "PROBABLE"),
+    118: ("half damage from cold", "CONFIRMED"),                   # VAMPIRE
     119: ("immune to non-magical weapons", "CONFIRMED"),
     # Carried by FIRE GIANT and HILL GIANT, which is also what the old reading
     # "hurls boulders" predicted. Hurling is an attack form and lives at
@@ -214,16 +247,24 @@ NAMES: dict[int, tuple[str, str]] = {
     123: ("hit only by magical weapons; silver does half", "CONFIRMED"),
     124: ("half-elf: 30% resistance to sleep and charm", "CONFIRMED"),
     125: ("immune to sleep, charm, paralysis and poison", "CONFIRMED"),
-    126: ("gaze attack, avoidable", "PROBABLE"),           # VAMPIRE
+    # The pair splits the way the Monster Manual splits it: a basilisk's and
+    # a medusa's gaze are turned back by a mirror, a vampire's charm gaze is
+    # only avoided by not meeting its eyes. 127 is on both gorgons and
+    # neither of them carries 126.
+    126: ("gaze attack, avoidable", "CONFIRMED"),          # VAMPIRE
     127: ("gaze attack, reflectable", "CONFIRMED"),        # BASILISK, MEDUSA
     # Past the end of the guide's table, so this one is entirely ours.
     139: ("phasing", "PROBABLE"),                          # PHASE SPIDER
-    # 255 is the byte after the last used slot in a MON* record, not a code.
-    255: ("fill, not a code", "PROBABLE"),
+    # Measured, not assumed: across the 108 `MON*` records on the eight disks
+    # 255 occurs 38 times and **every one of them is slot 9**, the last of
+    # the ten. Slot 9 is 0 in the other 70 and no record has a code after a
+    # 255. So it is a fill byte in the last slot, not an effect.
+    255: ("fill, not a code", "CONFIRMED"),
 }
 
-# The byte after the last used slot in a MON* record. Not a trait, and a live
-# ORC carries it, so the combat tooltip drops it rather than printing "fill".
+# Fill in the last slot of a `MON*` trait block -- 38 of 108 records, slot 9
+# every time. Not a trait, and a live ORC carries it, so the combat tooltip
+# drops it rather than printing "fill".
 FILL = 255
 
 # The highest id the guide's table reaches. Anything above it is this project's

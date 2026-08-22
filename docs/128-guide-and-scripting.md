@@ -120,7 +120,7 @@ had not derived:
 | `$06 DIV` | dividend first; the remainder is discarded (kept in *Curse*); no division-by-zero trap |
 | `$08 RANDOM` | 0 to `var` **inclusive**, capped at 255 |
 | `$0A LOADCHAR` | index ≥ 128 puts monster `index - 128` on the party's side; zeroing `$6B00` and `$6C00` afterwards removes it. Pool of Radiance has no `DUMP`, which is how it manages without one |
-| `$1F` | **unimplemented.** Our table calls it `ADDRESSOF`, a name inherited from the `coab` table. No Pool of Radiance script uses it — our own sweep counts 0 references — so the name is a guess and should be demoted |
+| `$1F` | **unimplemented.** Our table called it `ADDRESSOF`, a name inherited from the `coab` table. No Pool of Radiance script uses it — our own sweep counts 0 references — so the name was a guess and is withdrawn (P57); `work/reports/ecl-opcodes.md` now leaves `$1F` unnamed |
 | `$24 COMBAT` | the whole side-channel: `$6DC6` morale, `$6DC7` result (0 won, 128 lost, 129 ran), `$6DC8` kills, `$6DE2` temple instead, `$6E6C` shop instead, `$6E70`-`$6E72` THAC0 and movement modifiers |
 | `$27 TREASURE` | last operand: 0-127 a treasure list, 128-254 that many minus 128 random magic items, 255 none |
 | `$2D CALL` | the five recognised targets, all no-ops otherwise: `$2C90` redraw, `$8000` clone duel, `$8001` monster fight, `$BA03` sound, `$C018` refresh wall, `$C01E` step forward ignoring barriers |
@@ -148,8 +148,10 @@ entries and are otherwise complementary: the guide's four extras are the
 variable-length opcodes, whose length the skip routine cannot know at all.
 
 Neither list fires: no shipped script puts an `IF*` immediately before any of
-them. **The union is eight opcodes, and it belongs in `docs/125-bug-notes.md`**
-as a latent engine defect with two independent derivations.
+them. **The union is seven opcodes** -- `SETUPMON`, `ENCMENU`, `ADDNPC`,
+`VERTMENU`, `ONGOTO`, `ONGOSUB`, `HORIZMENU` -- and it is filed as `N2` in
+`docs/125-bug-notes.md`, a latent engine defect with two independent
+derivations.
 
 ---
 
@@ -194,7 +196,7 @@ Guide §12.3.1 lists every script by number. Against `por/areas.py`:
 | 5 | Valjevo Castle, a floor | **Valjevo Castle Hedge Maze** | name it |
 | 6 | Valjevo Castle, a floor | Valjevo Castle (Southwest) | name it |
 | 7 | Valjevo Castle, the pool | Valjevo Castle (Inner Tower) | both fine |
-| 11 | the arena | **Civilized Area (Training Hall)** | ours is wrong. `ECL0B` prints "the room is filled with duelling pairs" — that is the training hall's practice floor, not Podol Plaza's arena |
+| 11 | the arena | **Civilized Area (Training Hall)** | ours was wrong, and is fixed (P61). `ECL0B` prints "the room is filled with duelling pairs" — that is the training hall's practice floor, not Podol Plaza's arena |
 | 19 | Cave of Diogenes | Silver Dragon Lair | same place; Diogenes is the dragon |
 | 24 | Temple of Bane | **Wealthy Area** (with the Temple of Bane as its second map) | ours names the wrong one of its two maps |
 | 30 (`ECL1E`) | unnamed; we found it is the attract-mode demo | **script 30 does not exist on DOS** | see below |
@@ -313,8 +315,10 @@ list is checkable mechanically — a good self-contained job.
 
 ## Candidate rumours for `docs/125-bug-notes.md`
 
-Not filed here; another agent owns that file. All are DOS reports and none has
-been reproduced on the C64 unless noted.
+**Filed** as `R40`-`R51` in [`125-bug-notes.md`](125-bug-notes.md) (P59),
+together with the `STING` negative. All are DOS reports, none has been
+reproduced on the C64 unless noted, and **none may be promoted into
+`goldbox-bugs.md`** without our own reproduction.
 
 **Confirmed present on our disks already:**
 

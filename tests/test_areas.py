@@ -132,7 +132,7 @@ def test_a_label_names_both_maps_and_the_disk():
     assert areas.area(0).label == "New Phlan - GEO00, POOL3"
     assert areas.area(29).label == "Kuto's Well - GEO1D, GEO20, POOL8"
     assert areas.area(25).label == \
-        "wilderness, west window - GEO19, SQRDATA04, POOL6"
+        "Wilderness, West Window - GEO19, SQRDATA04, POOL6"
     assert areas.area(8).label == "Phlan City Hall - no map, POOL3"
 
 
@@ -185,7 +185,7 @@ def test_the_name_table_is_derived_from_the_areas_and_not_a_second_copy():
     assert set(pool) == {g for a in areas.AREAS for g in a.geos if a.name}
     # `GEO1E` and `GEO1F` belong to named areas, so they inherit those names;
     # only a mapless or nameless area contributes nothing.
-    assert pool["GEO1E"] == "the lizardman keep"
+    assert pool["GEO1E"] == "The Lizardman Keep"
     assert "GEO0C" not in pool
 
 
@@ -209,7 +209,8 @@ def test_area_names_is_a_view_over_por_areas_and_is_keyed_by_title():
 
 def test_the_old_hand_written_names_all_survived_the_move():
     """The nine names `automap/state.py` used to carry, unchanged except the
-    Slums, which takes the article `docs/118-debug-mode.md` gives it."""
+    Slums, which takes the article `docs/118-debug-mode.md` gives it -- and
+    which is title-cased with the rest of the table."""
     was = {
         "GEO09": "Stojanow Gate",
         "GEO12": "Podol Plaza",
@@ -222,7 +223,7 @@ def test_the_old_hand_written_names_all_survived_the_move():
     }
     for geo, name in was.items():
         assert areas.geo_name(geo) == name
-    assert areas.geo_name("GEO14") == "the Slums"
+    assert areas.geo_name("GEO14") == "The Slums"
 
 
 def test_the_label_names_a_pool_of_radiance_area():
@@ -332,3 +333,32 @@ def test_the_title_strings_match_the_per_game_descriptor():
             pytest.skip(f"por.games has no {attr}.title yet")
         assert game.title == title
         assert game.title in areas.GEO_NAMES
+
+
+def test_every_area_name_is_a_title_and_starts_with_a_capital():
+    """Donald read "the Slums" off the dropdown and it was the odd one out.
+
+    The table used to write proper names in capitals and descriptions in lower
+    case, so "New Phlan" sat next to "the kobold caves". A dropdown is a list
+    of titles; every one of them starts with a capital.
+    """
+    for a in areas.AREAS:
+        if a.name is None:
+            continue
+        assert a.name[0].isupper(), a.name
+    for name in areas.GEO_NAMES[POOL_OF_RADIANCE].values():
+        assert name[0].isupper(), name
+    assert areas.area(20).name == "The Slums"
+
+
+def test_area_eleven_is_the_training_hall_not_the_arena():
+    """Three ways: `ECL0B` prints THE ROOM IS FILLED WITH DUELING PAIRS. and
+    WE TRAIN ONLY <class> HERE., the DOS guide names script 11 *Civilized Area
+    (Training Hall)*, and a forum area list names `ECL3` record 11 *Training
+    Hall*. It has no map of its own -- the schools are New Phlan's own
+    squares, so `ECL0B` reuses `GEO00`."""
+    a = areas.area(11)
+    assert a.name == "The Training Hall"
+    assert "arena" not in (a.name or "").lower()
+    assert a.geos == ()
+    assert a.disk == 3

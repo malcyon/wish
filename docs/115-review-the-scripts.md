@@ -70,9 +70,10 @@ complementary. Logged in `docs/125-bug-notes.md`.
 
 Two other things worth knowing before reading a listing:
 
-* **`$1F` is unimplemented.** Our table calls it `ADDRESSOF`, a name inherited
+* **`$1F` is unimplemented.** Our table called it `ADDRESSOF`, a name inherited
   from the `coab` opcode table. No Pool of Radiance script references it — our
-  own sweep counts zero — so the name is a guess and should be read as one.
+  own sweep counts zero — so the name was a guess and is withdrawn (P57).
+  `work/reports/ecl-opcodes.md` leaves `$1F` unnamed.
 * **`ECL1E` is not an area script.** It is the attract-mode demo, in a slot DOS
   left free: DOS numbers maps and scripts in one space and has no script 30 at
   all, so the C64 port put one there. Thirty files, twenty-nine of them areas.

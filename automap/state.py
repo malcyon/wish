@@ -136,7 +136,7 @@ class AutomapState:
     def area_label(self) -> str:
         """Where the party is, in the words the game itself uses.
 
-        The name, and only the name: "New Phlan", "the Slums", "Kuto's Well".
+        The name, and only the name: "New Phlan", "The Slums", "Kuto's Well".
         The map's file stem is an implementation detail, it used to lead this
         label, and 29 of Pool of Radiance's 30 areas have a real name to show
         instead. `area` still carries the stem for anything that wants it.

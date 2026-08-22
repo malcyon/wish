@@ -443,8 +443,11 @@ def test_the_biased_encodings_round_trip_and_refuse_nonsense():
     with pytest.raises(ValueError):
         armour_bonus_byte(300)
 
-    assert item_protection_ac(0x04) == 8      # leather
-    assert item_protection_ac(0x09) == 3      # plate
+    assert item_protection_ac(0xB4) == 8      # leather
+    assert item_protection_ac(0xB9) == 3      # plate
+    # The nibble rule and the general one diverge here: $AF is AC 13 under
+    # `60 - (byte & 0x7F)` and -3 under `12 - (byte & 0x0F)`.
+    assert item_protection_ac(0xAF) == 13
 
 
 # ---------------------------------------------------------------------------
