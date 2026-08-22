@@ -18,7 +18,7 @@ head. HOGARTH's does.
 from __future__ import annotations
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QIcon, QImage, QPixmap
+from PyQt6.QtGui import QGuiApplication, QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -42,6 +42,9 @@ PREVIEW_ZOOM = 3
 # figure, and picking a helmet out of one is guesswork. The list is where the
 # choosing happens, so it gets the larger zoom.
 LIST_ZOOM = 4
+
+#: Choices visible without scrolling. The lists are the dialog.
+VISIBLE_ROWS = 5
 # Source pixels, not screen pixels: one pose is 12 across, two poses 24. The
 # multicolour doubling happens in the scale at the end. Conflating the two put
 # each pose in the left half of a 48-wide image and left the rest black.
@@ -120,6 +123,31 @@ class PartsPicker(QDialog):
         outer.addLayout(lists)
         outer.addWidget(buttons)
         self._fill()
+        self._open_tall()
+
+    def _open_tall(self) -> None:
+        """Open showing several choices, not one.
+
+        The dialog had no size of its own, so the layout asked for the minimum
+        that fits -- about a row and a half once the rows grew to the size of
+        the icon being chosen. Height is what matters here: the lists are the
+        dialog, and a picker you have to scroll to see two options in is the
+        thing being complained about.
+
+        Clamped to the screen with `QGuiApplication` rather than the
+        project's own `clamp_to_screen`: that helper lives in the live-map
+        package, and `tests/test_wish.py` greps this one for its name to keep
+        the editor free of anything that could reach an emulator.
+        """
+        rows = self.weapons.sizeHintForRow(0) if self.weapons.count() else 104
+        wanted = QSize(max(self.sizeHint().width(), FRAME_WIDE * LIST_ZOOM * 2 + 140),
+                       rows * VISIBLE_ROWS + 190)
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            room = screen.availableGeometry()
+            wanted = QSize(min(wanted.width(), room.width() - 80),
+                           min(wanted.height(), room.height() - 80))
+        self.resize(wanted)
 
     # -- building --------------------------------------------------------
 
