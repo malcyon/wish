@@ -194,9 +194,13 @@ def timed(what: str, slow_ms: int = SLOW_MS):
 def versions() -> str:
     """Us, Python, Qt, and the platform. No environment, no hostname."""
     try:
-        from importlib.metadata import version
-        ours = version("por-tools")
-    except Exception:
+        # `wish.__version__`, not a metadata lookup by distribution name: the
+        # distribution was once called "por-tools" and renaming it left this
+        # reading "wish unknown" in every debug log, which is the one field the
+        # log exists to carry. This spelling cannot go stale that way, and it
+        # works in a frozen build, where there is no metadata to look up.
+        from . import __version__ as ours
+    except Exception:                       # pragma: no cover - defensive
         ours = "unknown"
     try:
         from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR

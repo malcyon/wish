@@ -219,12 +219,6 @@ jobs:
             code-signing certificate costs money and SmartScreen warns on new
             signatures anyway, so this is not going away.
 
-            To avoid the warning entirely, **right-click the zip →
-            Properties → tick Unblock → OK, before extracting it.** Windows
-            marks anything downloaded from the internet, and for a zip that
-            mark spreads to every file inside — clearing it on the zip first
-            clears it for all of them.
-
             The Windows build is the window only. The command-line tool ships
             on Linux.
 

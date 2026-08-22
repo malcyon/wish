@@ -488,12 +488,9 @@ need `POR_DISKS`.
    <https://vice-emu.sourceforge.io/> — the "windows" download, a **zip**, not
    an installer. *(Unverified: VICE has shipped Windows builds as zips through
    3.7–3.9; check the page rather than trusting this line.)*
-2. Right-click the zip > **Properties** > tick **Unblock** > OK. Do this before
-   extracting: Windows stamps a downloaded zip with the mark of the web and
-   File Explorer copies that stamp onto every file it extracts.
-3. Extract to a **short path** — `C:\vice`. Deep Qt/VICE paths under a nested
+2. Extract to a **short path** — `C:\vice`. Deep Qt/VICE paths under a nested
    Downloads folder can run into the 260-character limit.
-4. Run `C:\vice\bin\x64sc.exe` once, confirm you get a C64 screen, and quit.
+3. Run `C:\vice\bin\x64sc.exe` once, confirm you get a C64 screen, and quit.
 
 ### W2. Enable the binary monitor
 
@@ -543,19 +540,16 @@ standing somewhere in a map.
 
 ### W4. Unpack wish
 
-1. Right-click `wish-<version>-windows-x86_64.zip` > **Properties** >
-   **Unblock** > OK. Or, in PowerShell:
-   ```powershell
-   Unblock-File .\wish-<version>-windows-x86_64.zip
-   ```
-   Skipping this is what makes step W5's warning appear on *every* file rather
-   than once.
-2. Extract to a short path: `C:\wish`. Same 260-character reason as VICE, and
+**Do exactly what a user would do — do not unblock anything.** A user who
+downloads a zip and double-clicks it meets whatever Windows does next, and that
+is the thing being tested.
+
+1. Extract to a short path: `C:\wish`. Same 260-character reason as VICE, and
    the Qt tree inside is deeper.
-3. *Expect:* `C:\wish\wish-<version>-windows-x86_64\wish.exe` and several
+2. *Expect:* `C:\wish\wish-<version>-windows-x86_64\wish.exe` and several
    hundred files beside it. **No `wish-cli.exe`** — that is the decision in note
    1, not a truncated download.
-4. First extraction may be slow — Defender scans ~156 MB of fresh binaries.
+3. First extraction may be slow — Defender scans ~156 MB of fresh binaries.
    Minutes, not seconds, is normal.
 
 ### W5. Run it, past the warning
