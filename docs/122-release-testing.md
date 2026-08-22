@@ -50,6 +50,88 @@ to write them.
 
 ---
 
+## 0. Building the packages yourself
+
+You cannot test artefacts you do not have. A real release is built by
+`.github/workflows/release.yml` when a `v*` tag is pushed, but every step of it
+runs locally, and the commands below are the same ones CI uses. **Do this
+first** unless a release page already exists.
+
+Everything lands in `dist/`. Start from a clean checkout of what you mean to
+test.
+
+**B1. The environment.** The editable install is what writes `wish/_version.py`,
+and that file is how a frozen build knows what it is.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[gui]" pyinstaller build
+```
+
+**B2. What version will it claim?** The version comes from the nearest git tag
+via `hatch-vcs`. With no tag you get something like
+`0.0.1.dev158+gae28e8dcb`, which is fine for exercising the machinery but is
+not what a release looks like. To rehearse the real thing, tag first — locally,
+and delete it afterwards:
+
+```sh
+git tag v0.1.0
+python3 -c "from wish import __version__; print(__version__)"   # 0.1.0
+```
+
+**B3. The wheel.**
+
+```sh
+python3 -m build --wheel        # dist/wish-<version>-py3-none-any.whl
+```
+
+`python3 -m build` with no flag also makes an sdist. Harmless, and not shipped —
+see §1.
+
+**B4. The frozen build.** About ten seconds, and roughly 158 MB unpacked.
+
+```sh
+pyinstaller --noconfirm wish.spec
+dist/wish/wish --version        # wish <version>
+dist/wish/wish-cli --version    # Linux only, by design
+```
+
+**B5. Name and pack it the way CI does.** The platform in the name is the only
+thing distinguishing this `.tar.gz` from a source archive, so do not skip it.
+
+```sh
+V=$(python3 -c "from wish import __version__; print(__version__)")
+NAME="wish-$V-linux-x86_64"
+mv dist/wish "dist/$NAME"
+tar -C dist -czf "$NAME.tar.gz" "$NAME"
+```
+
+**B6. Checksums.**
+
+```sh
+sha256sum dist/*.whl *.tar.gz > SHA256SUMS
+```
+
+**B7. Windows.** The same steps on the Windows machine, with two differences:
+`pyinstaller` produces `dist/wish/wish.exe` and **no `wish-cli`**, and the
+packing step is PowerShell rather than `tar`:
+
+```powershell
+Move-Item dist/wish "dist/wish-<version>-windows-x86_64"
+Compress-Archive -Path "dist/wish-<version>-windows-x86_64" `
+                 -DestinationPath "wish-<version>-windows-x86_64.zip"
+```
+
+**Tidy up.** If you tagged in B2, `git tag -d v0.1.0` before you forget — a
+stray local tag will change the version of the next thing you build.
+
+*Verified on Linux: B1–B6 were run and both binaries printed their version.
+B7 is CI's own Windows recipe, and is unverified by hand — you are the first
+person to run it.*
+
+---
+
 ## 1. Before you start
 
 | | Linux | Windows |
@@ -58,7 +140,7 @@ to write them.
 | a game disk | `POOLBOOT.D64` and `POOL1.D64`–`POOL8.D64` | the same set, copied over |
 | VICE | already installed (Flatpak `net.sf.VICE`) | **not installed** — step W1 |
 | Python | 3.12+, for the wheel test only | not needed at all |
-| the artefacts | all three, plus `SHA256SUMS` | all three, plus `SHA256SUMS` |
+| the artefacts | all three, plus `SHA256SUMS` — from a release page, or built yourself in §0 | the same |
 
 The release page carries three files we build, plus checksums:
 
