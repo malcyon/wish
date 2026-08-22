@@ -37,6 +37,12 @@ meaning and illegible at twelve pixels; `hat-wizard`'s brim is a separate
 subpath that stops touching the cone at 13px and reads as a shark's fin; and
 `mask` stays perfectly legible while reading as goggles.
 
+**`hat-wizard` is in the table anyway**, because the *application* icon is
+drawn from it -- `ui/appicon.py`, at 16 px and up on a tile, where the sizes
+that matter are 32 and above and the two that are not are handled there. It is
+not the magic-user's glyph on the map and must not be used as one: at 13px the
+finding above still stands.
+
 **The 13px rule these were drawn to.** One connected silhouette, with at most
 one hole and that hole no smaller than about 64 units in the 640 box. Hole
 *count* is not what matters -- a large second counter survives -- and the
@@ -170,6 +176,25 @@ FONT_AWESOME = {
         "396 293.6 426.4 344.8 412.7C396 399 426.4 346.3 412.7 "
         "295.1C400.5 249.4 357.2 220.3 311.6 224.3C316.9 233.6 320 244.4 "
         "320 256z",
+    "hat-wizard":
+        "M128 464L213.7 255.8C230.7 214.5 261.5 180.5 300.9 "
+        "159.5L447.8 81.2C460.1 74.6 474.3 85.9 470.8 99.4L433.6 "
+        "241.8C432.5 245.9 432 250.1 432 254.4C432 260.7 433.2 267 "
+        "435.6 272.9L512 464L304.9 464L316.7 428.6L357.1 415.1C363.6 "
+        "412.9 368 406.8 368 399.9C368 393 363.6 386.9 357.1 "
+        "384.7L316.7 371.2L303.2 330.8C301 324.4 294.9 320 288 "
+        "320C281.1 320 275 324.4 272.8 330.9L259.3 371.3L218.9 "
+        "384.8C212.4 387 208 393.1 208 400C208 406.9 212.4 413 218.9 "
+        "415.2L259.3 428.7L271.1 464.1L128 464.1zM343.6 205.5C342.5 "
+        "202.2 339.5 200 336 200C332.5 200 329.5 202.2 328.4 "
+        "205.5L321.7 225.7L301.5 232.4C298.2 233.5 296 236.5 296 "
+        "240C296 243.5 298.2 246.5 301.5 247.6L321.7 254.3L328.4 "
+        "274.5C329.5 277.8 332.5 280 336 280C339.5 280 342.5 277.8 "
+        "343.6 274.5L350.3 254.3L370.5 247.6C373.8 246.5 376 243.5 376 "
+        "240C376 236.5 373.8 233.5 370.5 232.4L350.3 225.7L343.6 "
+        "205.5zM96 512L544 512C561.7 512 576 526.3 576 544C576 561.7 "
+        "561.7 576 544 576L96 576C78.3 576 64 561.7 64 544C64 526.3 "
+        "78.3 512 96 512z",
 }
 
 
@@ -247,7 +272,8 @@ OURS = {
     # A wizard's hat for the magic-user, drawn because Font Awesome's
     # `hat-wizard` comes apart at 13px: its brim is a separate subpath and
     # reads as a fin below the cone. Here the brim is part of the cone, and one
-    # silhouette cannot come apart into two.
+    # silhouette cannot come apart into two. This is still the map's glyph;
+    # `hat-wizard` is the application icon, which is never drawn below 16.
     "wizard-hat": _poly(((372, 50), (440, 460), (560, 460), (560, 560),
                          (80, 560), (80, 460), (185, 460))),
     # A hooded figure for the thief, drawn because Font Awesome's `mask` stays

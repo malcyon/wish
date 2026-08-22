@@ -4,32 +4,37 @@
 app that Windows will show in the task bar. Until I can hire an artist, we can
 use something from Font Awesome."*
 
-The interim mark is our own `wizard-hat` on an indigo tile. It is generated
-from `ui/icons.py`, so it cannot drift from the glyph the map and the roster
-paint, and there is no artist to wait for. §5 is what shipped; §1 and §2 are
-the brief for the artist, when there is one.
+The mark is Font Awesome's `hat-wizard` on an indigo tile. Donald, 2026-08:
+*"Change the logo icon used to the wizard hat from the font awesome set."* It
+is generated from `ui/icons.py`, so it cannot drift from the glyph the program
+paints, and there is no artist to wait for. §5 is what shipped, §6 is the
+small-size problem it brought with it, and §1 and §2 are the brief for the
+artist, when there is one.
 
 ---
 
 ## The verdict
 
-* **The interim glyph is `wizard-hat`, and it is *ours*, not Font Awesome's.**
-  It already ships in `ui/icons.py`, it already passes the 13-pixel sheet that
-  [`109-icon-choices.md`](109-icon-choices.md) judges every glyph on, and being
-  ours it carries no licence obligation at all. Wish is a spell; the hat is the
-  spellcaster.
-* **Font Awesome as an app icon is legal today and still the wrong choice.**
-  CC BY 4.0 is satisfied by the credit already in the README and in
-  Help > About — the attribution does not have to be *on* the icon. But CC BY
-  grants no exclusivity, so a logo built on it is a logo anyone else may also
-  ship. §3.
-* **What it looks like at 16 px, honestly.** A white triangle standing on a
-  short bar, inside a rounded indigo square. It is one solid silhouette, it
-  never comes apart and it never turns to mush — the bar `109` sets — and it is
-  easy to pick out of a row of taskbar buttons. It is *not* self-evidently a
-  wizard's hat at that size: read cold it could as easily be a tent, a sail or
-  a mountain on a plinth. The hat is unmistakable from 32 up. That is the trade
-  §2 predicted and it is what an interim mark costs.
+* **The glyph is Font Awesome's `hat-wizard`**, path data verbatim from
+  `svgs-full/solid/`, in `ui/icons.py` under `FONT_AWESOME`. A leaning cone
+  with two sparkles cut out of it, over a rounded bar. Wish is a spell; the hat
+  is the spellcaster.
+* **Font Awesome as an app icon is legal.** CC BY 4.0 is satisfied by the
+  credit in the README and in Help > About — the attribution does not have to
+  be *on* the icon, which is as well, because an `.ico` has nowhere to carry
+  one. The About box also says the drawing was changed, which the licence
+  requires and §6 is the change. What CC BY does not grant is exclusivity:
+  this is a mark anyone else may also ship. §3.
+* **The brim never touches the cone, at any size.** That is Fonticons'
+  drawing, not a fault — from 22 px up the gap reads as a gap and the icon is
+  a hat resting on a table. It is a fault at 16 and 20, where both edges land
+  on part-covered pixels and the icon is a fin over a grey smear, so those two
+  sizes slide the bar up until it meets the cone. §6.
+* **What it looks like at 16 px, honestly.** A white leaning cone with two
+  dark nicks in it, flaring into a bar, inside a rounded indigo square. One
+  connected mass — the bar `109` sets. The sparkles are what make it a hat
+  rather than a fin, and they are two dark pixels each at that size, so it is
+  legible without being self-evident. It is unmistakable from 32 up.
 
 ---
 
@@ -80,7 +85,8 @@ artist asked for a scene will deliver one.
 sheet: **one connected silhouette, every feature at least about 64 units in the
 640 box** — a tenth of the width, which is 1.6 px at 16. The failure that kills
 a glyph is *separation*, not mush: `hat-wizard`'s brim stops touching its cone
-and the icon reads as a shark's fin.
+and the icon reads as a shark's fin. That is the app icon's own glyph, and §6
+is what had to be done about it at 16 and 20.
 
 | reads at 16 | does not |
 |---|---|
@@ -104,7 +110,7 @@ sides of every edge, and it still reads greyscale.
 
 ---
 
-## 3. The Font Awesome interim, and the attribution question
+## 3. The attribution question
 
 This project already carries Font Awesome Free 7.3.1 path data in `ui/icons.py`
 under **CC BY 4.0**, licence text in
@@ -116,10 +122,11 @@ distributed: name the creator (Fonticons, Inc.), name the licence, link to it,
 link to the source, and say if you changed it. It does **not** have to appear on
 the icon or in the icon file — "any reasonable manner for the medium" is the
 licence's own wording, and a credit in an About box is the accepted form for
-software. **wish already discharges this**, in two places. Shipping a Font
-Awesome glyph as `wish.exe`'s icon would be compliant with no further work.
+software. **wish already discharges this**, in two places, and the About box
+now also says the drawing was changed — §6 — which is the clause a recoloured,
+part-rearranged glyph brings into play.
 
-Two reasons to use our own drawing anyway:
+Two costs, accepted rather than avoided:
 
 1. **CC BY grants no exclusivity.** Anyone may ship the identical mark under the
    identical terms. A logo is the one asset where that is the point.
@@ -133,26 +140,29 @@ And note the set's own trap, already recorded in `ui/icons.py`: **the brands are
 off limits** — the licence forbids brand-logo use and the set ships
 `wizards-of-the-coast`.
 
-### Why `wizard-hat`
+### Why `hat-wizard`
 
-Ours, drawn here, in `ui/icons.py` under `OURS`. Cone joined to brim, one
-silhouette, so it cannot come apart; it survives 13 px on the sheet and is
-already painted by `ui/iconpaint.py` at every size the program uses.
+Donald asked for it by name. It suits the program: Wish is the ninth-level
+spell, and a wizard's hat is the one thing that says *magic* without saying
+*combat* — and the program is a character editor first.
 
-It suits the name. Wish is the ninth-level spell, and the hat is the only glyph
-in the set that says *magic* without saying *combat* — and the program is a
-character editor first.
+It is the glyph [`109-icon-choices.md`](109-icon-choices.md) rejected, and that
+rejection stands where it was made: **the map's magic-user icon is still ours**,
+because at 13 px in a map cell the brim comes away and the glyph is a fin. An
+app icon is a different job — 16 is the smallest it is ever drawn, it sits on
+its own tile rather than beside a wall, and the sizes that matter most are 32
+and up. §6 is what the two smallest sizes cost.
 
 Everything already available, judged as a logo:
 
 | candidate | source | as an app icon |
 |---|---|---|
-| **`wizard-hat`** | ours | **chosen** — distinctive, one mass, no licence |
+| **`hat-wizard`** | Font Awesome | **chosen** — Donald's call; §6 for the two smallest sizes |
+| `wizard-hat` | ours | the previous mark, and still the map's magic-user glyph |
 | `sword` | ours | says combat; the program does not do combat |
 | `swords` | ours | reads as a starburst at small sizes, and already means "encounter" on the map |
 | `chest`, `hood` | ours | fine glyphs, poor identities — a chest is a file manager, a hood is a VPN |
-| `location-dot` | Font Awesome | the best FA pick if Donald wants FA specifically: it says *map*, and its counter is the 64-unit floor the whole rule was set from |
-| `hat-wizard` | Font Awesome | **do not** — this is the glyph 109 rejected; its brim separates at 13 px |
+| `location-dot` | Font Awesome | the other FA pick: it says *map*, and its counter is the 64-unit floor the whole rule was set from |
 
 **When the artist is hired**, the brief is §1 plus §2, and the one thing to buy
 that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
@@ -177,7 +187,7 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 ## 5. What was built
 
 **The drawing** is `ui/appicon.py`, beside `iconpaint.py` because it is the same
-job: `icons.py` path data turned into pixels. `wizard-hat` on a rounded tile,
+job: `icons.py` path data turned into pixels. `hat-wizard` on a rounded tile,
 `#2b3a67` behind `#f7f9fb`, the glyph inset 10 % of the side and centred on its
 own ink rather than on the 640 box, which sits high in it. Indigo rather than
 the interface's near-black `#16202b`: a near-black tile is invisible on
@@ -222,9 +232,12 @@ bytes only have to decode to them. `tools/genicons.py --check` uses the same
 
 **The tests measure the drawing, not the file list.** The 16 is rasterised and
 flood-filled to prove it is one connected piece — the failure that killed
-`hat-wizard` — its widest row is checked to be the bottom one and at least 8 px
-across, so the brim is still there, and the 16 stored in the `.ico` is compared
-pixel for pixel against a fresh 16 to prove it is not a squeezed 256.
+`hat-wizard` on the map — its widest row is checked to be the bottom one and at
+least 8 px across, so the brim is still there, and the 16 stored in the `.ico`
+is compared pixel for pixel against a fresh 16 to prove it is not a squeezed
+256. `test_the_brim_is_slid_up_below_22_and_left_where_it_was_above` is §6 as
+an assertion: one piece at 16 and 20, two pieces with a whole row of tile
+between them at 22, 24, 32 and 48.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
@@ -241,3 +254,48 @@ executables, audio and PDFs, which is the part that was ever about the game.
 * **Nobody has seen it on a Windows taskbar.** That is a row for
   [`122-release-testing.md`](122-release-testing.md)'s Windows column, and it
   now has somebody who can tick it.
+
+---
+
+## 6. The brim, and the two sizes it does not survive
+
+Font Awesome draw `hat-wizard` as three subpaths: the cone, with a four-point
+sparkle notched out of its foot; a second sparkle; and the brim, a rounded bar.
+**The bar never touches the cone.** The cone's last point is `y=464.1` and the
+bar starts at `y=512`, so there are 48 units of nothing between them — 7.5 % of
+the drawing's height, at every size. That is the drawing, not a defect: it is a
+hat resting on a table.
+
+Rasterised on the tile, with the glyph inset 10 %, the gap is `0.077 × size`
+pixels. Measured:
+
+| size | what the gap does | what the bar does |
+|---|---|---|
+| **16** | 1.2 px — no row is pure tile; cone and bar smear together | never reaches full paper: a grey band |
+| **20** | 1.5 px — two part-covered rows, no clean one | solid, but the gap under it is a smudge |
+| **22** | 1.7 px — **one whole row of tile** | solid, two rows |
+| **24** | 1.8 px — one whole row | solid, two rows |
+| **32** and up | 2.5 px and rising | solid, and the gap reads as deliberate |
+
+So `ui/appicon.py` carries `CLOSE_BELOW = 22`. At 16 and 20 the bar is cut off
+the path and translated up by the 47.9 units of the gap, so it meets the cone's
+foot and the silhouette is one connected mass; the glyph is then centred on its
+own (now 48 units shorter) ink, so it does not ride high. At 22 and above the
+path is drawn exactly as Fonticons wrote it.
+
+**Three treatments were rendered and looked at before this one was picked.**
+
+| treatment | verdict |
+|---|---|
+| leave it verbatim everywhere | 16 is a fin over a grey smear. No. |
+| slide the bar up **below 22** | **chosen.** Fixes the two that fail, changes nothing that works |
+| fill the sparkles in as well, for a clean small silhouette | **actively worse** — the sparkles are what make it a hat. Without them it is precisely the shark's fin `109` named |
+| keep `wizard-hat` at 16 and 22 and the FA hat above | two different marks a size apart, for one size that needed help |
+
+The third row is the finding worth keeping: the notch in the cone's foot is not
+decoration. Fill it and the glyph loses the only feature that distinguishes a
+wizard's hat from a dorsal fin.
+
+`tests/test_appicon.py::test_the_brim_is_slid_up_below_22_and_left_where_it_was_above`
+asserts all of it: one piece at 16 and 20; two pieces with at least one whole
+row of tile between them at 22, 24, 32 and 48.

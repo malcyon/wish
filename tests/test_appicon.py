@@ -2,11 +2,14 @@
 
 Two different things are checked here and they fail for different reasons.
 
-**The drawing.** `ui/appicon.py` puts `wizard-hat` on a tile, and the whole
-question `docs/109-icon-choices.md` asks of a glyph is whether it survives at
-the smallest size somebody sees it. So the 16 is rendered and *measured* -- one
-connected silhouette, a brim wide enough to count, and enough contrast against
-the tile to read in monochrome -- rather than merely produced.
+**The drawing.** `ui/appicon.py` puts Font Awesome's `hat-wizard` on a tile,
+and the whole question `docs/109-icon-choices.md` asks of a glyph is whether it
+survives at the smallest size somebody sees it. This one does not, unaided: its
+brim is a bar that never touches the cone, so below `appicon.CLOSE_BELOW` the
+bar is slid up. So the 16 is rendered and *measured* -- one connected
+silhouette, a brim wide enough to count, and enough contrast against the tile
+to read in monochrome -- rather than merely produced, and 22 is measured too,
+because that is where the gap is claimed to start reading as a gap.
 
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
@@ -63,32 +66,66 @@ def _glyph_mask(size: int) -> set[tuple[int, int]]:
             if grid[y][x][3] > 128 and grid[y][x][0] > edge}
 
 
+def _pieces(mask: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
+    """The mask's four-connected pieces, largest first."""
+    seen: set[tuple[int, int]] = set()
+    out = []
+    for start in mask:
+        if start in seen:
+            continue
+        seen.add(start)
+        queue, piece = [start], set()
+        while queue:
+            x, y = queue.pop()
+            piece.add((x, y))
+            for step in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                near = (x + step[0], y + step[1])
+                if near in mask and near not in seen:
+                    seen.add(near)
+                    queue.append(near)
+        out.append(piece)
+    return sorted(out, key=len, reverse=True)
+
+
 def test_the_hat_is_one_connected_silhouette_at_16(app):
     """The failure `109` says kills a glyph is separation, not mush.
 
-    Font Awesome's `hat-wizard` was rejected for exactly this: its brim stops
-    touching the cone at 13 px and the icon reads as a shark's fin. Ours is one
-    polygon, and this is what proves it stays one after rasterising.
+    `hat-wizard` was rejected for the map at 13 px for exactly this: its brim
+    is a separate bar and the icon reads as a shark's fin. The app icon slides
+    the bar up below `CLOSE_BELOW`, and this is what proves the result is one
+    piece after rasterising rather than merely in the vector.
     """
     mask = _glyph_mask(16)
     assert mask, "nothing was drawn"
-    seen = {next(iter(mask))}
-    queue = list(seen)
-    while queue:
-        x, y = queue.pop()
-        for step in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            near = (x + step[0], y + step[1])
-            if near in mask and near not in seen:
-                seen.add(near)
-                queue.append(near)
-    assert seen == mask, f"{len(mask) - len(seen)} pixels are a separate piece"
+    assert len(_pieces(mask)) == 1, "the brim came away from the cone"
+
+
+def test_the_brim_is_slid_up_below_22_and_left_where_it_was_above(app):
+    """`CLOSE_BELOW` is a measurement, so it is measured here.
+
+    Fonticons draw the brim as a bar that never touches the cone, and that is
+    the drawing rather than a fault: from 22 px up a whole row of tile pixels
+    survives between the two and the icon reads as a hat resting on a table.
+    At 20 and 16 nothing survives -- the cone's foot and the bar's top both
+    land on part-covered pixels and it is a fin over a grey smear -- so those
+    two sizes get the bar slid up instead.
+    """
+    for size in (16, 20):
+        assert size < appicon.CLOSE_BELOW
+        assert len(_pieces(_glyph_mask(size))) == 1, size
+    for size in (22, 24, 32, 48):
+        assert size >= appicon.CLOSE_BELOW
+        pieces = _pieces(_glyph_mask(size))
+        assert len(pieces) == 2, f"{size}: {[len(p) for p in pieces]}"
+        cone, bar = pieces
+        assert max(y for _, y in cone) + 1 < min(y for _, y in bar), size
 
 
 def test_the_brim_is_the_widest_row_and_the_apex_the_narrowest(app):
     """A hat, not a triangle: the silhouette has to flare at the bottom.
 
-    Measured because the brim is the feature most at risk -- 100 units in the
-    640 box, which is two pixels at 16 -- and losing it leaves a cone.
+    Measured because the brim is the feature most at risk -- 64 units thick in
+    the 640 box, which is 1.6 px at 16 -- and losing it leaves the fin.
     """
     mask = _glyph_mask(16)
     rows = {y: sum(1 for x, yy in mask if yy == y) for _, y in mask}

@@ -13,6 +13,11 @@ what is left is what ships.
 | toolbar, open | `folder-open` | Font Awesome Free |
 | toolbar, save and save as | `floppy-disk` | Font Awesome Free |
 | toolbar, preview changes | `eye` | Font Awesome Free |
+| application icon | `hat-wizard` | Font Awesome Free |
+
+The last row is not one of these. It is the *app* icon, judged in
+[`132-logo.md`](132-logo.md) against a different bar — 16 px and up, on its own
+tile — and it is the one glyph the sheet below rejected.
 
 The sheet is still buildable and now shows the chosen set:
 
@@ -48,7 +53,7 @@ Cone joined to its brim, one silhouette, so it cannot come apart.
 
 | rejected | why |
 |---|---|
-| `hat-wizard` (FA, was in use) | the fin — brim separates from the cone at 13 |
+| `hat-wizard` (FA, was in use) | the fin — brim separates from the cone at 13. **It is now the application icon**, which is never drawn below 16 and sits on its own tile; below 22 px `ui/appicon.py` slides the brim up against the cone. See [`132-logo.md`](132-logo.md) §6. That does not readmit it here |
 | `wand-sparkles` | a bar and three square dots that have nothing to do with it |
 | `wand-magic` | survives, but a bare diagonal bar says nothing about magic |
 | `wand`, ours | survives; the hat is the more legible of the two |
@@ -142,7 +147,9 @@ four buttons stay text-only, which is what they are today.
 
 Font Awesome Free paths are verbatim from `svgs-full/solid/`, licensed CC BY
 4.0, attributed in the README and the About box with the text in
-`docs/licences/`. **Nothing comes from `brands/`** — the licence forbids
+`docs/licences/`. The app icon is the one place a glyph is **changed**: it is
+recoloured, and below 22 px `hat-wizard`'s brim is moved. CC BY wants that said,
+and Help > About says it. **Nothing comes from `brands/`** — the licence forbids
 brand-logo use and the set carries `wizards-of-the-coast`. The font itself is
 not shipped and not subset: subsetting makes an OFL "Modified Version" and may
 not keep the reserved name. Anything under `OURS` is ours outright.
