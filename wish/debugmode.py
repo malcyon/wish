@@ -1,4 +1,4 @@
-"""Debug mode: the controls that write to a running machine, off by default.
+"""Debug mode: a flag, off by default, that the debug log carries with it.
 
 **An environment variable, `WISH_DEBUG=1`, and the debug log turns it on.**
 `debuglog.start()` calls `enable()` and `debuglog.stop()` calls `disable()`, so
@@ -13,16 +13,17 @@ it and sets the variable, so the two spellings cannot disagree.
 sets the variable rather than a private flag, so a debug session that spawns a
 subprocess passes the mode on.
 
-What it gates, and only this: the Warp row under the map
-(`automap/actionbar.py:WarpBar`, `automap/actions.py:Warp`). The editor, the
-save-file path and the log's privacy claims are untouched.
+**It currently gates nothing.** The one control it ever gated was the Warp row
+under the map, and that row is now Fast Travel and is shown to everybody: P20
+warped into every area whose arrival square was unknown and measured where the
+party landed, which is what the gate was waiting for
+(`work/reports/p20-arrivals.md`, `docs/118-debug-mode.md`). What is left is the
+flag itself -- `--debug`, the variable, and the line `note()` puts in the debug
+log and the About box -- kept because the log turns it on and off and because
+the next control that needs a gate will want one that is already wired.
 
-**The Warp row is still a launch-time decision, and that is deliberate.**
-`AutomapWindow` reads this flag once, when it is built, so ticking Debug log
-mid-session does not put a control that pokes the running game on the screen;
-in the `wish` window the map is built before the remembered setting is applied,
-so the row wants `WISH_DEBUG=1` or `--debug` on the command line. A checkbox
-buys the log; the writes want the launch -- `docs/118-debug-mode.md` §1.
+Nothing else is affected either way: the editor, the save-file path and the
+log's privacy claims never read this.
 """
 
 from __future__ import annotations

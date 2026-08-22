@@ -15,9 +15,9 @@ game in the other window and has to be dismissed before the map is usable
 again. The only dialog left is the confirmation an irreversible action asks
 first, because that one needs an answer.
 
-`WarpBar` is the same shape for the one action that is not in that row: it is
-gated on debug mode, it says in the row itself what the warp does not
-guarantee, and it asks before it writes.
+`WarpBar` is the same shape for the one action that is not in that row: the
+Fast Travel row. It says in the row itself what travelling does not guarantee,
+and it asks before it writes.
 
 The quickfight watcher is a checkbox and off by default: it writes to a running
 machine on an edge nobody asked for otherwise, and a setting that acts on its
@@ -187,19 +187,30 @@ VERIFY_SECONDS = 30.0
 
 
 class WarpBar(QWidget):
-    """The Warp row: pick an area, and enter it the way the game's exits do.
+    """The Fast Travel row: pick an area, and enter it the way the exits do.
 
-    **Debug mode only** (`wish/debugmode.py`), because it writes to a running
-    machine on a control one click from the map, and because a feature nobody
-    in normal play needs should not be on the screen at all.
+    **`Warp` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's
+    own name for the mechanism and the classes keep it; the label is what a
+    player is being offered.
 
-    **The warp is proven; the arrival is not.** The writes are `NEWECL`'s own
-    and entering its handler at `$2034` from the key-wait loop was made twice
-    in the game, the party walking afterwards (`docs/118-debug-mode.md`, P15).
-    What no run has settled is where a warp *lands* -- fifteen areas have no
-    harvested arrival square, and every area's script assumes quest flags the
-    party never set. The row says so where it can be read without hovering
-    anything, and the button asks before it goes.
+    **Shown to everybody**, no longer only in debug mode: P20 warped into every
+    area that had no arrival square and recorded where the party landed
+    (`work/reports/p20-arrivals.md`), which is what the gate was waiting for.
+    The one area that turned out not to be a place is not offered at all.
+
+    **The writes are proven; the arrival is chosen.** The writes are `NEWECL`'s
+    own and entering its handler at `$2034` from the key-wait loop was made
+    twice in the game, the party walking afterwards (`docs/118-debug-mode.md`,
+    P15). Fourteen areas have no arrival square of their own, so one is chosen
+    off the map, and every area's script assumes quest flags the party never
+    set. The row says so where it can be read without hovering anything, and
+    the button asks before it goes.
+
+    **Area 30 is not listed.** `ECL1E` is the attract-mode demo: a warp there
+    leaves the world and no later warp can be started, so the session is over
+    (P20). `Warp.legality` refuses it as well, for a caller that does not come
+    through this dropdown; a control that offers a session-ending choice and
+    then argues about it is worse than one that does not offer it.
     Everything the row refuses, it refuses with the reason -- the same rule
     `ActionBar` follows, and here the reasons are the whole diagnostic.
 
@@ -214,7 +225,9 @@ class WarpBar(QWidget):
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
-        self.rows = self._sorted(engine.area_rows() if areas is None else areas)
+        rows = engine.area_rows() if areas is None else areas
+        self.rows = self._sorted(r for r in rows
+                                 if getattr(r, "warpable", True))
         self.target = None
         self.last: engine.Outcome | None = None
         #: `(GEO names to watch for, when to give up)`, while a warp is in
@@ -227,17 +240,23 @@ class WarpBar(QWidget):
         grid.setSpacing(4)
 
         self.combo = QComboBox()
-        for row in self.rows:
+        # Names only. The map files and the disk are what this row is built on
+        # and neither is anything to ask a player to read past: the disk that
+        # matters is on the line under the row, and the whole `New Phlan -
+        # GEO00, POOL3` string is the item's tooltip for whoever wants it.
+        for i, row in enumerate(self.rows):
             self.combo.addItem(self._label(row))
+            self.combo.setItemData(i, self._detail(row),
+                                   Qt.ItemDataRole.ToolTipRole)
         self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
         grid.addWidget(self.combo, 0, 0, 1, 2)
 
-        self.button = QPushButton("Warp To")
+        self.button = QPushButton("Fast Travel")
         self.button.setEnabled(False)
         self.button.clicked.connect(lambda _checked=False: self.run())
         grid.addWidget(self.button, 0, 2)
 
-        self.back_button = QPushButton("Warp Back")
+        self.back_button = QPushButton("Travel Back")
         self.back_button.setEnabled(False)
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
         grid.addWidget(self.back_button, 0, 3)
@@ -245,9 +264,11 @@ class WarpBar(QWidget):
         self.disk = self._small(QLabel(""))
         grid.addWidget(self.disk, 1, 0, 1, 4)
         self.note = self._small(QLabel(
-            "Debug mode. No warp has ever been tried on a running game: this "
-            "may crash it, and the area you arrive in will assume quest flags "
-            "your party never set. Use a copy of your save disk."))
+            "The area you arrive in assumes you got there by playing: its "
+            "script can expect quest flags your party never set. Where the "
+            "game does not place the party itself, wish picks a square in the "
+            "largest open part of the map. Use a copy of your save disk, "
+            "never the original."))
         grid.addWidget(self.note, 2, 0, 1, 4)
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
@@ -261,6 +282,15 @@ class WarpBar(QWidget):
 
     @staticmethod
     def _label(row) -> str:
+        """What the dropdown shows: the area's name, and nothing else."""
+        name = getattr(row, "name", None)
+        if name:
+            return name
+        return getattr(row, "ecl", None) or str(row)
+
+    @staticmethod
+    def _detail(row) -> str:
+        """The maps and the disk, for the item's tooltip."""
         own = getattr(row, "label", None)
         return own if isinstance(own, str) else str(row)
 
@@ -285,9 +315,20 @@ class WarpBar(QWidget):
     def arrival(self):
         """Where to put the party: the area's own square, else one off its map.
 
-        Three cases in the order `docs/118-debug-mode.md` sets them out. The
-        third needs the map, which is read from the player's own disks and is
-        why this asks the window for them rather than for the emulator.
+        The cases `docs/118-debug-mode.md` sets out, in order. The last needs
+        the map, which is read from the player's own disks and is why this asks
+        the window for them rather than for the emulator.
+
+        **Two kinds of area get no square at all**, and both are P20's findings
+        (`work/reports/p20-arrivals.md`):
+
+        * **overland** -- outdoors the party's position is `$49C3`/`$49C4` and
+          every script entering one writes `[$4A18]`/`[$4A19]`, the world-map
+          cell. A `GEO` square in `$C04B` there is meaningless;
+        * **`dynamic_geo`** -- areas 3 and 5 choose their map at run time and
+          the run caught them loading `GEO05` and `GEO04`, neither of which is
+          the map `geos` names, so any square off `geos[0]` is off the wrong
+          map. The arriving script places the party in any case.
         """
         area = self.area()
         if area is None:
@@ -295,8 +336,11 @@ class WarpBar(QWidget):
         own = self.warp.arrival_of(area)
         if own is not None:
             return own
+        if getattr(area, "outdoors", False) or getattr(area, "dynamic_geo",
+                                                       False):
+            return None
         geo = getattr(area, "geo", None)
-        return engine.walkable_square(self.maps.get(geo)) if geo else None
+        return engine.landing_square(self.maps.get(geo)) if geo else None
 
     # -- the poll ----------------------------------------------------------
 
@@ -348,7 +392,7 @@ class WarpBar(QWidget):
         back = self.warp.back_verdict(self.target)
         self.back_button.setEnabled(back.ok)
         self.back_button.setToolTip(
-            back.reason or "return to the area the last warp started in")
+            back.reason or "return to the area the last trip started in")
         self.disk.setText(self.warp.disk_note(self.target, area))
 
     # -- running one -------------------------------------------------------
@@ -376,13 +420,14 @@ class WarpBar(QWidget):
         area = self.area()
         if area is None:
             return None
-        if self.warp.confirm and not self.ask(self.warp.confirm):
+        question = self.warp.question(self.target, area)
+        if question and not self.ask(question):
             return None
         outcome = self.warp.apply(self.target, area=area,
                                   arrival=self.arrival())
         if outcome.ok:
             self._expect(area)
-        self._report("warp", outcome)
+        self._report("fast travel", outcome)
         return outcome
 
     def run_back(self) -> engine.Outcome | None:
@@ -391,5 +436,5 @@ class WarpBar(QWidget):
         outcome = self.warp.apply_back(self.target)
         if outcome.ok and going is not None:
             self._expect(going)
-        self._report("warp back", outcome)
+        self._report("travel back", outcome)
         return outcome

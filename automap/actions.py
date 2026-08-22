@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 
 from por import items as por_items
-from por.geo import GRID as GEO_GRID
 from por.layout import Confidence, field_by_name
 from por.record import CharacterRecord
 from por.savegame import (
@@ -712,8 +711,11 @@ def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
 
 # --- warping between areas ---------------------------------------------------
 #
-# Debug mode only (`wish/debugmode.py`), and the one thing in this file that
-# does more than poke a byte: it hands the CPU a new program counter.
+# "Fast Travel" on the screen; `Warp` in here, because `NEWECL` is what the
+# game calls it and the names in this file are the game's. The one thing in
+# this file that does more than poke a byte: it hands the CPU a new program
+# counter. Shown to every user since P20 -- it was debug-mode-only while where
+# it landed was unmeasured.
 #
 # `docs/118-debug-mode.md` is the plan and the evidence. In short: an area exit
 # is a script ending in `NEWECL`, whose handler at `DUNGEON $2011` writes five
@@ -791,22 +793,25 @@ def area_rows() -> tuple:
     return tuple(AREAS)
 
 
-def walkable_square(geo) -> tuple[int, int, int] | None:
-    """A square of this map with at least one passable edge, and a way to face.
+def landing_square(geo) -> tuple[int, int, int] | None:
+    """Where to put a party arriving in an area whose square nobody harvested.
 
-    The fallback for the fifteen areas whose arrival square nobody has
-    harvested. Carrying the party's *current* square over is the one option to
-    avoid: the maps do not line up, and (13,13) in the Slums is a wall in Sokol
-    Keep.
+    `por.areas.landing_square` does the work; this is the seam, imported the
+    same guarded way as the table for the same reason. It replaces a rule that
+    took the first square with any passable edge, which came to `(0, 0)` on all
+    twenty-nine maps and left a party walled into a pocket on four of them --
+    P20, `work/reports/p20-arrivals.md`.
+
+    Carrying the party's *current* square over remains the one option to avoid:
+    the maps do not line up, and (13,13) in the Slums is a wall in Sokol Keep.
     """
     if geo is None:
         return None
-    for y in range(GEO_GRID):
-        for x in range(GEO_GRID):
-            for facing in range(4):
-                if geo.is_passable(x, y, facing):
-                    return (x, y, facing)
-    return None
+    try:
+        from por.areas import landing_square as pick
+    except ImportError:                     # pragma: no cover - defensive
+        return None
+    return pick(geo)
 
 
 @dataclass(frozen=True)
@@ -946,11 +951,14 @@ def jump(target, address: int) -> bool:
 class Warp(Action):
     """Put the party in another area, the way the game's own exits do.
 
-    **Unproven.** The writes are `NEWECL`'s (`docs/118-debug-mode.md`), but
-    nothing has yet entered its handler from outside, and the first thing to
-    try it may find that the key-wait loop is the wrong place to do it from.
-    Treat a refusal as information and a crash as the answer to open question 1
-    in that document.
+    **"Fast Travel" is what the user calls it.** `Warp` is the game's own
+    name for the mechanism -- `NEWECL` -- and stays the name in the code.
+
+    **The writes are proven; the arrival is measured.** Entering `NEWECL`'s
+    handler at `$2034` from the key-wait loop has been done in the game and the
+    party walked afterwards (P15, `docs/118-debug-mode.md`), and P20 warped
+    into all fifteen areas that then had no arrival square and recorded where
+    each landed. Fourteen still have none and get a square off the map instead.
 
     Two guards that are not optional, both re-checked at `apply` time:
 
@@ -960,23 +968,35 @@ class Warp(Action):
       the stack reload at `$203A` throws away work in flight. This doubles as
       the check that `PC_REGISTER` is the register we think it is.
 
-    What it cannot guard: the quest flags. A warp is not the same as having
-    played there, the arriving script assumes things the party never did, and
-    the honest answer is to say so rather than to pretend otherwise.
+    What it cannot guard: the quest flags. Arriving this way is not the same
+    as having played there, the arriving script assumes things the party never
+    did, and the honest answer is to say so rather than to pretend otherwise.
+    That is what `confirm` is for, and it is shown before every trip.
     """
 
     name = "warp"
-    label = "Warp To"
-    description = ("enter another area the way the game's own exits do -- "
-                   "it writes to the running machine")
+    label = "Fast Travel"
+    description = ("travel to another area the way the game's own exits do -- "
+                   "it writes to the running game")
     combat_legal = False
-    confirm = ("Warp writes five things into the running game and then hands "
-               "the CPU a new program counter.\n\nThe warp itself is proven -- "
-               "it has been made in the game and the party walked afterwards. "
-               "What is not proven is the arrival: the area's script will "
-               "assume quest flags the party never set, and fifteen areas have "
-               "no harvested arrival square. Use a copy of your save disk, "
-               "never the original.\n\nWarp anyway?")
+    #: Shown before every trip. Deliberately not a list of what could go wrong
+    #: in the machine -- that half has been made in the game and the party
+    #: walked afterwards (P15) -- but of what the *game* assumes about a party
+    #: that arrives somewhere it never played to.
+    #: The body and the closing question are separate so that `question` can
+    #: put the disk line between them, where it is read rather than skipped.
+    CONFIRM_BODY = (
+        "Fast travel puts the party in another area the way the game's own "
+        "exits do.\n\nThe area you arrive in assumes you got there by "
+        "playing: its script can expect quest flags your party never set, "
+        "people already spoken to and fights already won. In the fourteen "
+        "areas where the game does not place the party itself, wish picks a "
+        "square in the largest open part of the map, which need not be where "
+        "a player would normally walk in.\n\nNothing here can be undone from "
+        "inside the game, so point the emulator at a copy of your save disk, "
+        "never the original.")
+    CONFIRM_TAIL = "Travel anyway?"
+    confirm = f"{CONFIRM_BODY}\n\n{CONFIRM_TAIL}"
 
     def __init__(self):
         #: Where the last warp came from. `Warp Back` reads it; None until a
@@ -1028,9 +1048,31 @@ class Warp(Action):
             return f"needs POOL{want} in drive 8"
         if now == want:
             return f"needs POOL{want}, which is what the game last asked for"
-        return (f"needs POOL{want}; the game last asked for POOL{now} "
-                "($6E12) -- swap the disk first or the loader will stop and "
-                "ask")
+        return (f"needs POOL{want}; the game last asked for POOL{now}, so put "
+                f"POOL{want} in drive 8 first or the game will stop and ask "
+                "for it")
+
+    def question(self, target, area) -> str:
+        """The confirmation, with the disk this area is on named in it.
+
+        **The disk hazard is real but it is not a trap**, so this warns rather
+        than refuses. Each area's script lives on one of the eight sides
+        (`por/areas.py`), and if that side is not in the drive the loader stops
+        and prints `INSERT SIDE # n, AND PRESS ANY KEY.` -- exactly what the
+        game does when a player walks through the same door. Putting the disk
+        in and pressing a key carries on.
+
+        Refusing instead is not open to us: **what is in the drive cannot be
+        read.** `$6E12` is what the game last *asked* for, not what is mounted,
+        and the monitor has no command that says. A refusal keyed on `$6E12`
+        would block a player who had already swapped, which is worse than a
+        sentence they can read.
+        """
+        note = self.disk_note(target, area)
+        if not note:
+            return self.confirm
+        return f"{self.CONFIRM_BODY}\n\n{note[0].upper()}{note[1:]}." \
+               f"\n\n{self.CONFIRM_TAIL}"
 
     # -- may we -----------------------------------------------------------
 
@@ -1043,8 +1085,8 @@ class Warp(Action):
                                   "resident overlay and $2034 is not NEWECL")
         pc = program_counter(target)
         if pc is None:
-            return Verdict(False, "this backend cannot read the CPU, and a "
-                                  "warp has to set the program counter")
+            return Verdict(False, "this backend cannot read the CPU, and "
+                                  "fast travel has to set the program counter")
         if not any(lo <= pc < hi for lo, hi in (KEY_WAIT, KEY_FETCH)):
             return Verdict(False, f"the PC is ${pc:04X}, outside DUNGEON's "
                                   f"key-wait loop (${KEY_WAIT[0]:04X}-"
@@ -1053,6 +1095,8 @@ class Warp(Action):
                                   f"${KEY_FETCH[1] - 1:04X}): the game is busy")
         if area is None:
             return Verdict(False, "choose an area")
+        if not getattr(area, "warpable", True):
+            return Verdict(False, self.ATTRACT_TRAP)
         here = self.current_area(target)
         if here is not None and here == getattr(area, "id", None):
             return Verdict(False, "the party is already in that area, and "
@@ -1096,7 +1140,7 @@ class Warp(Action):
                            writes, tuple(notes))
         self.back = was
         name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
-        return Outcome(True, f"warped to {name} - watch for the drive light",
+        return Outcome(True, f"travelling to {name} - watch for the drive light",
                        writes, tuple(notes))
 
     @staticmethod
@@ -1113,8 +1157,8 @@ class Warp(Action):
 
     def warnings(self, target, area, arrival) -> tuple[str, ...]:
         """Everything true about this warp that the caller should know first."""
-        out = ["the arriving script assumes quest flags the party never set; a "
-               "warp is not the same as having played there"]
+        out = ["the arriving script assumes quest flags the party never set; "
+               "arriving this way is not the same as having played there"]
         if arrival is None:
             out.append("no arrival square is known for this area, so the party "
                        "lands wherever the arriving script leaves it -- which "
@@ -1139,13 +1183,24 @@ class Warp(Action):
                            f"{'SQRDATA' if outdoors_now else 'GEO'}")
         return tuple(out)
 
+    #: `ECL1E` is the attract-mode demo and warping into it ends the session:
+    #: P20 read `$C04B`-`$C04D` as `254, 127, 16` with no `GEO` resident, no
+    #: status line and no command bar, and the PC never came back to the
+    #: key-wait loop, so nothing could be warped out again. `WarpBar` does not
+    #: offer it; this refuses it for a caller that did not come through the
+    #: dropdown. `work/reports/p20-arrivals.md`.
+    ATTRACT_TRAP = ("this is the attract-mode demo, not a place: travelling "
+                    "there leaves the world -- no map, no status line, and the "
+                    "program counter never returns to DUNGEON's key-wait loop, "
+                    "so there is no way back out of it")
+
     #: Warping out of an overland area into an indoors one hangs the loader:
     #: it asks for the target's side and goes on asking, and re-attaching,
     #: attaching something else first and poking `$49E6` afterwards all fail.
     #: The other direction is fine -- area 23 to 26 worked, and the arriving
     #: script sets `$49E6` itself. See `docs/50-experiments.md`.
     OUTDOORS_TRAP = ("the party is on the overland map ($49E6 is 0) and this "
-                     "area is indoors: warping that way hangs the loader "
+                     "area is indoors: travelling that way hangs the loader "
                      "asking for the disk for ever. Walk off the overland map "
                      "first")
 
@@ -1153,8 +1208,8 @@ class Warp(Action):
 
     def back_verdict(self, target) -> Verdict:
         if self.back is None:
-            return Verdict(False, "nothing to go back to: no warp has been "
-                                  "made this session")
+            return Verdict(False, "nothing to go back to: the party has not "
+                                  "travelled anywhere this session")
         area = area_by_id(self.back.area)
         return self.legality(target, area or self.back)
 
@@ -1171,7 +1226,7 @@ class Warp(Action):
             self.back = was
             return Outcome(False, "the writes were made but the program "
                                   "counter could not be set", writes)
-        return Outcome(True, f"warped back to area {was.area}", writes)
+        return Outcome(True, f"travelled back to area {was.area}", writes)
 
 
 def area_by_id(id: int):

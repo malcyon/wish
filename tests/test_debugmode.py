@@ -7,9 +7,10 @@ order, are the part that has to be right.
 
 **What these tests cannot show.** That entering `NEWECL`'s handler at `$2034`
 from `DUNGEON`'s key-wait loop does what the game does when it reaches that
-address itself. Nothing has ever tried it; see `docs/118-debug-mode.md`, open
-question 1. These tests pin the sequence so that a live correction is one
-edit in one function.
+address itself. P15 did it in the game and the party walked afterwards; where a
+warp *lands* is the half still being measured (`docs/118-debug-mode.md`, P20).
+These tests pin the sequence so that a live correction is one edit in one
+function.
 """
 
 from __future__ import annotations
@@ -225,6 +226,21 @@ def test_warp_back_returns_to_the_square_the_warp_started_on():
     assert warp.back is None                              # and no further back
 
 
+def test_the_confirmation_names_the_disk_the_area_is_on():
+    """A warning and not a refusal, because **what is in the drive cannot be
+    read**: `$6E12` is what the game last asked for, and a refusal keyed on it
+    would block a player who had already swapped. A wrong disk is not a trap
+    either -- the loader stops and asks, exactly as it does when a player walks
+    through the same door."""
+    warp = actions.Warp()
+    question = warp.question(machine(area=0, disk=3), area(13))  # POOL8
+    assert "POOL8" in question and "POOL3" in question
+    assert "copy of your save disk" in question
+    assert question.endswith(warp.CONFIRM_TAIL)
+    assert warp.question(None, area(13)).startswith("Fast travel")
+    assert warp.question(None, None) == warp.confirm
+
+
 # --- the area table ----------------------------------------------------------
 
 def test_the_areas_come_from_por_areas_and_are_not_copied_here():
@@ -241,16 +257,19 @@ def test_an_arrival_square_is_taken_from_the_table():
 
 
 def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
-    """The fallback for the fifteen areas nobody has harvested: never the
-    party's current square, which is a wall in the next area along."""
+    """The fallback for the fourteen areas nobody has harvested: never the
+    party's current square, which is a wall in the next area along.
+
+    `por.areas.landing_square` picks it -- P20 measured what the old rule came
+    to and it was `(0, 0)` on every map (`work/reports/p20-arrivals.md`)."""
     from por.geo import Geo
     from tests.gamedata import synthetic_geo
     geo = Geo(synthetic_geo())
-    square = actions.walkable_square(geo)
+    square = actions.landing_square(geo)
     assert square is not None
     x, y, facing = square
     assert geo.is_passable(x, y, facing)
-    assert actions.walkable_square(None) is None
+    assert actions.landing_square(None) is None
 
 
 # --- the row under the map ---------------------------------------------------
@@ -270,44 +289,49 @@ def bar(app, target=None, **kw):
     return row
 
 
-def _window(app, debug):
+def _window(app):
     from automap.state import Automapper
     from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False,
-                         debug=debug)
+    return AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
 
 
-def test_the_warp_row_is_absent_from_the_window_outside_debug_mode(app):
-    """Absent, not disabled.
-
-    The row exists for our own troubleshooting and writes to a running
-    machine. A greyed-out `Warp To` a player can see is an invitation to ask
-    what it does; a row that was never built is not there to be found.
-    """
-    from PyQt6.QtWidgets import QAbstractButton, QComboBox
+def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
+        app, monkeypatch):
+    """It was debug-mode-only while nobody knew where a trip landed. P20
+    measured that (`work/reports/p20-arrivals.md`) and the gate came off, so
+    the flag no longer decides whether the row is built."""
+    from PyQt6.QtWidgets import QAbstractButton
 
     from automap.actionbar import WarpBar
 
-    plain = _window(app, debug=False)
-    assert plain.warp_bar is None
-    assert plain.findChildren(WarpBar) == []
-    assert plain.findChildren(QComboBox) == []
-    assert not [b for b in plain.findChildren(QAbstractButton)
-                if "arp" in b.text()]
+    for flag in (False, True):
+        if flag:
+            monkeypatch.setenv(debugmode.ENV, "1")
+        else:
+            monkeypatch.delenv(debugmode.ENV, raising=False)
+        win = _window(app)
+        assert win.warp_bar is not None
+        assert len(win.findChildren(WarpBar)) == 1
+        assert sorted(b.text() for b in win.findChildren(QAbstractButton)
+                      if "Travel" in b.text()) == ["Fast Travel",
+                                                   "Travel Back"]
 
-    debugging = _window(app, debug=True)
-    assert debugging.warp_bar is not None
-    assert sorted(b.text() for b in debugging.findChildren(QAbstractButton)
-                  if "arp" in b.text()) == ["Warp Back", "Warp To"]
 
-
-def test_the_row_lists_every_area_by_name_with_the_unnamed_last(app):
+def test_the_row_lists_every_warpable_area_by_name(app):
+    """Every area but 30, which is the attract-mode demo and is not a place a
+    party can be put -- `work/reports/p20-arrivals.md`."""
     row = bar(app)
-    assert row.combo.count() == len(actions.area_rows())
+    warpable = [r for r in actions.area_rows() if r.warpable]
+    assert row.combo.count() == len(warpable) == len(actions.area_rows()) - 1
+    assert 30 not in [r.id for r in row.rows]
     names = [r.name for r in row.rows]
-    assert names[0] is not None and names[-1] is None
-    assert row.combo.itemText(0).startswith(names[0])
-    assert ", POOL" in row.combo.itemText(0)
+    assert all(n is not None for n in names)
+    assert row.combo.itemText(0) == names[0]
+    # The maps and the disk are a tooltip, not list text.
+    assert ", POOL" not in row.combo.itemText(0)
+    from PyQt6.QtCore import Qt
+    detail = row.combo.itemData(0, Qt.ItemDataRole.ToolTipRole)
+    assert names[0] in detail and ", POOL" in detail
 
 
 def test_the_button_carries_its_refusal_in_its_tooltip(app):
@@ -330,10 +354,37 @@ def test_the_disk_line_names_the_disk_the_area_is_on(app):
     assert "POOL8" in row.disk.text() and "POOL3" in row.disk.text()
 
 
-def test_the_row_says_it_is_unproven_before_anything_is_clicked(app):
+def test_the_row_says_what_it_cannot_promise_before_anything_is_clicked(app):
+    """Plain language, and no "debug" or "unproven": ordinary players see this
+    row now, so the honesty bar went up rather than down."""
     row = bar(app)
-    assert "No warp has ever been tried" in row.note.text()
-    assert "copy of your save disk" in row.note.text()
+    said = row.note.text()
+    assert "quest flags your party never set" in said
+    assert "copy of your save disk" in said
+    assert "debug" not in said.lower() and "unproven" not in said.lower()
+
+
+def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):
+    """The three cases of `docs/118-debug-mode.md`, and the two P20 added.
+
+    An overland area gets no square because outdoors the position is
+    `$49C3`/`$49C4`, and a `dynamic_geo` area gets none because it loads a map
+    `geos` does not name -- area 3 loaded `GEO05` and area 5 `GEO04`
+    (`work/reports/p20-arrivals.md`).
+    """
+    from por.geo import Geo
+    from tests.gamedata import synthetic_geo
+    g = Geo(synthetic_geo())
+    row = bar(app, maps={"GEO14": g, "GEO19": g, "GEO03": g})
+
+    def chosen(id):
+        row.combo.setCurrentIndex(row.rows.index(area(id)))
+        return row.arrival()
+
+    assert chosen(20) == actions.landing_square(g)   # a map and no known square
+    assert chosen(21) == (8, 14, 0)                  # ECL15 places the party
+    assert chosen(25) is None                        # overland
+    assert chosen(3) is None                         # picks its map at run time
 
 
 def test_the_row_warps_what_the_combo_box_is_showing(app):
@@ -367,29 +418,26 @@ def test_a_refused_warp_is_reported_as_an_alarm(app):
 
 # --- the map window ----------------------------------------------------------
 
-def window(app, tmp_path, monkeypatch, target=None, debug=True):
+def window(app, tmp_path, monkeypatch, target=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from automap.state import Automapper
     from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(target, {}), drive=False, debug=debug)
+    return AutomapWindow(Automapper(target, {}), drive=False)
 
 
-def test_the_warp_row_is_absent_unless_debug_mode_is_on(app, tmp_path,
-                                                        monkeypatch):
-    assert window(app, tmp_path, monkeypatch, debug=False).warp_bar is None
-    assert window(app, tmp_path, monkeypatch, debug=True).warp_bar is not None
-
-
-def test_the_window_reads_the_flag_when_none_is_passed(app, tmp_path,
-                                                       monkeypatch):
+def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
+                                                             monkeypatch):
+    """`AutomapWindow` used to read `WISH_DEBUG` once at build time. It does
+    not read it at all now, which is what makes the row's launch-time timing
+    problem go away: there is no flag left to be applied too late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
-    assert window(app, tmp_path, monkeypatch, debug=None).warp_bar is None
+    assert window(app, tmp_path, monkeypatch).warp_bar is not None
     monkeypatch.setenv(debugmode.ENV, "1")
-    assert window(app, tmp_path, monkeypatch, debug=None).warp_bar is not None
+    assert window(app, tmp_path, monkeypatch).warp_bar is not None
 
 
-def test_the_warp_row_follows_the_poll(app, tmp_path, monkeypatch):
+def test_the_fast_travel_row_follows_the_poll(app, tmp_path, monkeypatch):
     target = machine(area=0)
     win = window(app, tmp_path, monkeypatch, target)
     for _ in range(win.LIVE_EVERY):
@@ -410,6 +458,18 @@ def wish_window(app, tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from wish.window import WishWindow
     return WishWindow(maps={}, session=fake_session(app))
+
+
+def test_the_hosted_window_has_the_fast_travel_row_too(app, tmp_path,
+                                                       monkeypatch):
+    """Both entry points: `wish-automap` builds `AutomapWindow` itself, the
+    `wish` window hosts one. The row used to want `WISH_DEBUG` on the command
+    line here, because the map is built before the remembered settings are
+    applied; with no flag to read there is nothing left to be applied late."""
+    monkeypatch.delenv(debugmode.ENV, raising=False)
+    win = wish_window(app, tmp_path, monkeypatch)
+    assert win.map.warp_bar is not None
+    assert win.map.warp_bar.button.text() == "Fast Travel"
 
 
 def test_the_backend_menu_offers_every_backend_and_no_preference(app, tmp_path,

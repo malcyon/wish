@@ -72,8 +72,9 @@ write five tracebacks a second.
   the desktop uses for a text file.
 * **Turning it on turns debug mode on, and turning it off turns it off** --
   `debuglog.start()` calls `debugmode.enable()`, `stop()` calls `disable()`.
-  One switch, not two. What debug mode reaches, and why the Warp row still
-  wants `--debug` at launch, is `docs/118-debug-mode.md` §1.
+  One switch, not two. Debug mode reaches nothing else now -- the Fast Travel
+  row it used to gate is shown to everybody -- and `docs/118-debug-mode.md` §1
+  says why the flag is kept anyway.
 * One file per session, `wish-YYYYMMDD-HHMMSS.log` under
   `config_dir()/logs` -- beside the existing settings, on every platform
   `automap/paths.py` knows about. The last `KEEP` (5) are kept and the rest are

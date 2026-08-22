@@ -44,7 +44,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
 | [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
 | [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — planned |
-| [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Warp To, and what an area change actually is — built |
+| [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Fast Travel, and what an area change actually is — built |
 | [119-test-party.md](119-test-party.md) | getting a levelled, varied party for the specimens still wanted |
 | [120-curse-testing.md](120-curse-testing.md) | testing the second game |
 | [121-silver-blades.md](121-silver-blades.md) | Secret of the Silver Blades, the third title |

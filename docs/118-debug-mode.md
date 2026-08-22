@@ -1,10 +1,15 @@
-# A debug mode, and Warp To
+# A debug mode, and Fast Travel
 
-**Status: built, and driven.** `wish/debugmode.py` gates it, `automap/actions.py`
-implements `Warp` and `Warp Back` on `newecl_writes()`, and the sequence below
-has been run against the running game — see `docs/50-experiments.md`, P15 through
-P43. What follows is the mechanism and the evidence, not a proposal; where a
-section still reads as a plan it is describing UI that was built as described.
+**Status: built, driven, and no longer a debug feature.**
+`automap/actions.py` implements `Warp` and `Warp Back` on `newecl_writes()`, the
+sequence below has been run against the running game (`docs/50-experiments.md`,
+P15 through P43), and P20 measured where a trip lands in every area that had no
+arrival square. That measurement is what the debug gate was waiting for, so the
+row is now shown to every user and is labelled **Fast Travel**.
+
+**`Warp` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's own
+name for the mechanism and the classes, the action id and the settings keys keep
+it; only the labels changed. This document keeps both names for the same reason.
 
 ---
 
@@ -91,7 +96,10 @@ map of their own; three scripts carry two maps each.
 
 Arrival is the square the game itself puts you on, harvested from the departing
 scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
-`0 N, 1 E, 2 S, 3 W`.
+`0 N, 1 E, 2 S, 3 W`. Sokol Keep's is the one that came from an arriving script
+rather than a departing one: `ECL15 $9A92` writes `mapDir` 0, `mapX` 8, `mapY`
+14 behind the scratch flag `$4A02` and then prints the boat message, and P20
+watched it place a warped-in party. Fourteen areas still have none.
 
 | id | `ECL` | `GEO` | disk | name | arrival | confidence |
 |---|---|---|---|---|---|---|
@@ -115,7 +123,7 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 | 18 | `12` | `12` | POOL1 | Podol Plaza | 0,4 W | CONFIRMED |
 | 19 | `13` | — | POOL6 | Cave of Diogenes (the silver dragon's lair) | — | CONFIRMED |
 | 20 | `14` | `14` | POOL2 | The Slums | — | CONFIRMED |
-| 21 | `15` | `15` | POOL4 | Sokol Keep | — | CONFIRMED |
+| 21 | `15` | `15` | POOL4 | Sokol Keep | 8,14 N | CONFIRMED |
 | 22 | `16` | `16` | POOL7 | Yarash's Pyramid | 15,7 E | CONFIRMED |
 | 23 | `17` | `17` | POOL7 | Yarash's Pyramid, Lower | 15,0 S | PROBABLE |
 | 24 | `18` | `18`, `1F` | POOL1 | the Wealthy Area (`GEO1F` is the Temple of Bane) | 15,4 W | CONFIRMED |
@@ -124,7 +132,7 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 | 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | — | POOL1 | The Attract-Mode Demo | — | CONFIRMED |
+| 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not warpable**) | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), `work/reports/world-map.md` (the wilderness site list),
@@ -190,50 +198,62 @@ is a remembered `Settings` field now, mitigated by `[logging]` in the title bar
 and a red marker in the status bar, and Donald asked for one switch rather than
 two.
 
-**The Warp row is still a launch-time decision, and that is the point.**
-`AutomapWindow` reads the flag once, when it is built. Ticking a checkbox
-mid-session therefore does not put a control that writes a program counter and
-five memory locations onto the screen of a running window; and in the `wish`
-window the map is built before the remembered setting is applied, so the row
-wants `WISH_DEBUG=1` or `--debug` on the command line. That is the intended
-split: **a checkbox buys the log, the writes want the launch.** A user who
-wanted evidence for a bug report gets the file, the marker and the debug-mode
-line in the log, and not the Warp row.
+**The row is no longer a launch-time decision, because it is no longer a
+decision.** `AutomapWindow` used to read the flag once when it was built, which
+meant the row wanted `WISH_DEBUG=1` or `--debug` on the command line: in the
+`wish` window the map is built before the remembered settings are applied, so a
+checkbox ticked mid-session came too late. It is built unconditionally now, in
+both entry points, and there is no flag left to be applied late.
 
-That split currently rests on the order of two statements in
-`wish/window.py.__init__` rather than on anything that says so out loud. If it
-is ever to be locked, the way to lock it is to pass the map its `debug=`
-explicitly instead of letting it read the flag.
+**What debug mode gates today: nothing.** The Warp row was the only thing it
+ever gated. What remains of it is the flag itself — `--debug`, the variable, and
+the line `note()` puts in the debug log and the About box — and the debug log
+still turns it on and off. It is kept wired for the next control that needs a
+gate: a raw-poke box and a "run script entry" control are the candidates, and
+the same research makes them almost free (`$6E47`/`$6E48` is the VM's PC and
+`$1581` is its fetch loop).
 
-What debug mode gates, and only this:
-
-* the Warp row on the automapper screen (`automap/actionbar.py:WarpBar`,
-  `automap/actions.py:Warp`);
-* a line in the debug log each time a warp is attempted, with the addresses
-  written — the log's privacy claims are unaffected, these are our own writes;
-* later, if wanted: a raw-poke box and a "run script entry" control, which the
-  same research makes almost free (`$6E47`/`$6E48` is the VM's PC and `$1581` is
-  its fetch loop).
+A line still goes in the debug log for each trip attempted, with the addresses
+written — the log's privacy claims are unaffected, these are our own writes —
+but that is the log's doing and not the flag's.
 
 Nothing about the editor changes. Nothing about the save-file path changes.
 
 ---
 
-## 2. The Warp To control
+## 2. The Fast Travel control
 
 A row under the map, beside `ActionBar`, in the map's own column — the same
 argument that put the actions there: it acts on what is drawn above it.
 
-* **`QComboBox`**, thirty entries, sorted by name with the unidentified last.
-  Each row reads `New Phlan — GEO00, POOL3`. An area with no name reads
-  `ECL1E — no map, POOL1`, which is honest and still selectable.
-* **`Warp To` button**, disabled with the reason in its tooltip, exactly as
+* **`QComboBox`**, twenty-nine entries, sorted by name. Each row is the area's
+  **name and nothing else** — `New Phlan`, not `New Phlan — GEO00, POOL3`. The
+  map files and the disk are the item's tooltip, where a curious reader still
+  reaches them and nobody else has to read past them. **Area 30 is not one of
+  the entries**: `ECL1E` is the attract-mode demo, travelling there ends the
+  session (§4), and a control that lists a session-ending choice and then
+  argues about it is worse than one that does not list it. `Warp.legality`
+  refuses it as well, which is what protects a caller that did not come through
+  the dropdown.
+* **`Fast Travel` button**, disabled with the reason in its tooltip, exactly as
   `ActionBar` does it: no emulator, not `ViceTarget`, `$6E11 != 1`, or the
   selected area is the current one.
-* **A disk line** under the row: `needs POOL7 — POOL3 is in drive 8`. This is
-  the same free win `docs/113-world-map.md` identified for the overland map.
-* **`Warp Back`**, which restores the id and square captured before the last
-  warp. One button, and it turns a warp from a one-way trip into a probe.
+* **A disk line** under the row: `needs POOL7; the game last asked for POOL3, so
+  put POOL7 in drive 8 first or the game will stop and ask for it`. The same
+  sentence goes into the confirmation, between the warning and the question.
+  **It warns rather than refuses, and that is on purpose**: what is in drive 8
+  cannot be read — `$6E12` is what the game last *asked* for and the monitor has
+  no command that says — so a refusal keyed on it would block a player who had
+  already swapped. A wrong disk is not a trap either: the loader stops and
+  prints `INSERT SIDE # n, AND PRESS ANY KEY.`, exactly as it does when a player
+  walks through the same door, and putting the disk in carries on.
+* **`Travel Back`**, which restores the id and square captured before the last
+  trip. One button, and it turns a trip from a one-way journey into a probe.
+* **A confirmation before every trip**, in plain language and with no "debug" or
+  "unproven" in it: what the arriving script assumes about a party that never
+  played its way there, that wish picks the square in the fourteen areas the
+  game does not place the party itself, and to point the emulator at a copy of
+  the save disk.
 
 The area table is data, not UI: **`por/areas.py`**, a frozen dataclass per area
 carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square, generated
@@ -288,7 +308,7 @@ started all failed. The same warp from indoors worked first time.
 
 ### Where the party lands
 
-Three cases, in order:
+Four cases, in order:
 
 1. **The arriving script sets it** (areas 1, 16, 17, 22, 23, 28) — write nothing
    and let entry 4 do its job. This works under a warp: `$49F2` holds the
@@ -299,31 +319,48 @@ Three cases, in order:
    the warp's own square is kept.
 2. **We know a square another script uses** (the arrival column above) — write
    that. It is the game's own answer for that door.
-3. **Neither** — pick a square from the target `GEO` read off the player's disk.
-   What ships is "the first square with at least one passable edge", and P20
-   measured what that comes to: **`(0, 0)`, on every map in the game**, because
-   the corner always has an edge. Nothing landed off-map or in solid rock, but
-   on four maps `(0, 0)` is a walled-off pocket — 16 squares in `GEO1A`, 30 in
-   `GEO19`, 32 in `GEO05`, 48 in `GEO1B` — and a party put there can walk
-   without being able to leave. `por.areas.landing_square` is the proposed
-   replacement: the largest connected component, off the outer ring, facing an
-   open edge. `work/reports/p20-arrivals.md`.
+3. **Neither** — pick a square from the target `GEO` read off the player's disk,
+   with **`por.areas.landing_square`**: the map's largest connected component,
+   a square off the outer ring within it, facing an open edge.
+
+   That rule replaced "the first square with at least one passable edge", and
+   P20 is why. Measured, the old rule came to **`(0, 0)`, on every map in the
+   game**, because the corner always has an edge. Nothing landed off-map or in
+   solid rock, but on four maps `(0, 0)` is a walled-off pocket — 16 squares in
+   `GEO1A`, 30 in `GEO19`, 32 in `GEO05`, 48 in `GEO1B` — and a party put there
+   can walk without being able to leave. Staying off the rim matters for its own
+   reason: the edge squares are where the game's own exits live, so a party that
+   starts on one is a keypress from leaving the area it was just warped into.
+   `work/reports/p20-arrivals.md`.
+4. **Two kinds of area get no square even though they have a `GEO`**, both P20's:
+
+   * the **three overland** areas (25-27). Outdoors the position is
+     `$49C3`/`$49C4`, and every script entering one writes `[$4A18]`/`[$4A19]`,
+     the world-map cell, and no static square anywhere;
+   * the **two `dynamic_geo`** areas (3 and 5), which choose their map at run
+     time with `GETTABLE ..., mapDir`. Warped into, area 3 loaded `GEO05` and
+     area 5 loaded `GEO04` — neither the map the table names — so a square off
+     `Area.geos[0]` is a square off a map the game was never going to show.
+     Write none and let the arriving script place the party, which it does.
+     Until somebody reads what `mapDir` picks, there is nothing better to do.
 
 Keeping the party's current square is the one option to avoid: the maps do not
 line up and (13,13) in the Slums is a wall in Sokol Keep.
 
 ---
 
-## 4. Failure modes, and why it is off by default
+## 4. Failure modes, and what each one is guarded by
 
 | failure | what it looks like | guard |
 |---|---|---|
-| wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits for ever | read `$6E12`'s disk and say so before warping; time the warp out and report. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
+| wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits — the same prompt a player gets walking through the door, and it carries on once the disk is there | name the area's disk in the row *and* in the confirmation, warn rather than refuse (§2), and time the trip out and report. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
 | `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
-| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made Warp To fail five times in seven |
+| PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
 | arrival square is a wall or off-map | **has never happened.** Fifteen warps put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
-| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | choose from the map's **largest connected component** — `por.areas.landing_square`, `work/reports/p20-arrivals.md` |
+| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `por.areas.landing_square`, `work/reports/p20-arrivals.md` |
+| **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be warped out again — the session is over | **fixed**: not offered in the dropdown, and refused by `Warp.legality` for a caller that did not come through it |
+| a script's own **menu** is up | the next warp is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then warp. Anything that warps repeatedly has to clear the arriving script's **menus**, not only its messages |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it in the tooltip: a warp is not the same as playing there |
 | the player saves after a warp | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
 
@@ -332,9 +369,14 @@ warping does not change that: every byte here goes to RAM. The rule that matters
 is the one above it — **attach a copy to the emulator**, because the game's own
 save command will happily write a warped party out.
 
-Off by default because it writes to a running machine on a control that is one
-click from the map, and because a feature nobody in normal play needs should not
-be on the screen at all.
+It was off by default for as long as nobody had measured where a trip lands.
+P20 did (`work/reports/p20-arrivals.md`): nothing landed off the map, inside a
+wall or in a crash, the one area that was not a place is now unreachable, and
+the pocket the old rule could drop a party into is gone. What is left is a
+consequence the user is told about before every trip and cannot be guarded
+against at all — the arriving script assumes quest flags the party never set —
+and the answer to that is the confirmation and a copy of the save disk, not a
+hidden control.
 
 ### One hazard that is no longer a hazard
 
@@ -454,7 +496,7 @@ the sections above. Both entries below are answers rather than questions, and
    `work/reports/p20-arrivals.md` has the table. Nothing landed off the map or
    inside a wall and nothing crashed. Three findings came out of it:
 
-   * the fallback picks **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,
+   * the fallback picked **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,
      `GEO1A` and `GEO1B` that corner is a walled-off pocket;
    * **area 30 should not be warpable at all.** `ECL1E` is the attract-mode
      demo: the party square reads `254, 127, 16`, no map is resident, and the
@@ -468,6 +510,11 @@ the sections above. Both entries below are answers rather than questions, and
    `GEO04` respectively, not the maps the table names, and a warp cannot be
    started while a script's own menu is up — the Cave of Diogenes' parlay cost
    four probes.
+
+   **All five recommendations are now in the code.** Area 30 is out of the
+   dropdown and refused by `Warp.legality`; the fallback is
+   `por.areas.landing_square`; the overland and `dynamic_geo` areas get no
+   square; area 21 carries `Arrival(8, 14, 0)`. §3 above is the current rule.
 
 **One area a warp cannot enter: 11, the training hall.** `ECL0B`'s entry reads
 `$6E82` — set from the *departing* square's attribute byte by

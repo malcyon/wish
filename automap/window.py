@@ -56,23 +56,6 @@ from .render import (
 )
 from .target import MonitorBusy, NotConnected, monitor_listening
 
-
-def debug_mode() -> bool:
-    """Whether the Warp row is offered at all. Off unless `WISH_DEBUG` says so.
-
-    `wish/debugmode.py` owns the flag, and the import runs the wrong way round
-    on purpose in this one place: `wish` is the application and `automap` a
-    library of widgets, but the alternative is a second reader of
-    `os.environ`, and `docs/118-debug-mode.md` asks for exactly one. Lazy and
-    optional, so `python -m automap` in a checkout without `wish` still opens.
-    """
-    try:
-        from wish.debugmode import enabled
-    except ImportError:                     # pragma: no cover - defensive
-        return False
-    return enabled()
-
-
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
 INK = QColor("#16202b")
@@ -406,7 +389,7 @@ class AutomapWindow(QMainWindow):
 
     def __init__(self, mapper, interval_ms: int = 200, connect=None,
                  settings: Settings | None = None, drive: bool = True,
-                 debug: bool | None = None, disks: str | None = None):
+                 disks: str | None = None):
         """`drive=False` hands the connection and the clock to a host window.
 
         The merged `wish` window owns one `Target` for every tab, because VICE
@@ -417,10 +400,6 @@ class AutomapWindow(QMainWindow):
         """
         super().__init__()
         self._drive = drive
-        #: Debug mode is read once, at build time: the Warp row either exists
-        #: for this run or it does not, and a control that writes to the game
-        #: appearing halfway through a session would be worse than either.
-        self.debug = debug_mode() if debug is None else debug
         self.mapper = mapper
         self.connect_target = connect
         self.state = mapper.state
@@ -467,11 +446,12 @@ class AutomapWindow(QMainWindow):
             "How big a random encounter is. Not readable yet.")
         self.actions_bar = ActionBar(say=self.messages.say)
         # `_maps` is what the automapper loaded off the player's disks; the
-        # warp row needs them to pick a landing square for the fifteen areas
-        # whose arrival square nobody has harvested.
+        # Fast Travel row needs them to pick a landing square for the fourteen
+        # areas whose arrival square nobody has harvested. Built for every
+        # session since P20 measured where those landings put the party: it
+        # was behind `WISH_DEBUG` for as long as that was unknown.
         self.warp_bar = WarpBar(say=self.messages.say,
-                                maps=getattr(self.mapper, "_maps", {})) \
-            if self.debug else None
+                                maps=getattr(self.mapper, "_maps", {}))
 
         # Roster left, map centre, the two reading panels right, the actions
         # under the map and one strip along the bottom for what is none of
@@ -506,8 +486,7 @@ class AutomapWindow(QMainWindow):
         under.setSpacing(4)
         under.addWidget(self.stack, 0, Qt.AlignmentFlag.AlignHCenter)
         under.addWidget(self.actions_bar, 0, Qt.AlignmentFlag.AlignHCenter)
-        if self.warp_bar is not None:
-            under.addWidget(self.warp_bar, 0, Qt.AlignmentFlag.AlignHCenter)
+        under.addWidget(self.warp_bar, 0, Qt.AlignmentFlag.AlignHCenter)
         under.addStretch(1)
         self.map_column = middle
 
@@ -726,8 +705,7 @@ class AutomapWindow(QMainWindow):
         # same `$6E11` this poll already reads.
         self.actions_bar.attach(target)
         self.actions_bar.watch(target)
-        if self.warp_bar is not None:
-            self.warp_bar.attach(target)
+        self.warp_bar.attach(target)
 
         save0_bytes, roster_bytes = live.read_blocks(target)
         snap = live.snapshot_from_bytes(save0_bytes, roster_bytes,
