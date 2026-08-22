@@ -3901,3 +3901,165 @@ effect on the next fight is unproven.
   itself into `GEO12` and started a fight. It is the attract mode the credits
   screen starts when it is left alone, and it runs on the same ECL VM and the
   same area machinery as the game. CONFIRMED.
+
+- **P43: `$49F2` *does* survive the overlay restart. REFUTED, and the reason
+  the first reading said otherwise is worth more than the answer.**
+
+  The claim was that the warp writes the departing area to `$49F2` and the
+  arriving script reads back the *target*, so entry 4's
+  `COMPARE [$49F2], <own id>` always compares equal and Warp To must always
+  supply an arrival square. Four warps across three areas say it does not.
+
+  | warp | `$49F2` written | read during the load | read once the area settled |
+  |---|---|---|---|
+  | 20 → 21 Sokol Keep | `$14` | `$14` | `$15` |
+  | 21 → 20 the Slums | `$15` | `$15` | `$14` |
+  | 20 → 21 again | `$14` | `$14` | `$15` |
+  | 23 → 26 wilderness | `$17` | — | `$1A` |
+
+  So it holds the departing id right through the load and turns into the
+  arriving id afterwards. **Nothing in the bytecode writes it** — 16
+  references across all thirty scripts and every one is a `COMPARE`. Scanning
+  the resident `DUNGEON` window for `F2 49` finds exactly two stores, and the
+  second is the culprit: `$19E1` is `LDX #$03 / JSR $19FC / LDA $6E1B /
+  AND #$7F / STA $49F2 / RTS` — the same three instructions as `$2011`-`$2016`
+  but run *after* `$6E1B` has been updated. A snapshot taken when the party is
+  standing in the new area therefore always reads the current id, whatever the
+  warp wrote, which is precisely the observation P43 was built on.
+
+  **The decisive test was `ECL16`.** Area 22's entry reads
+  `COMPARE [$49F2], 22 / IF= / EXIT` then `LOADFILES 22` then
+  `COMPARE [$49F2], 23 / IF= / EXIT` then `SAVE 15, mapX / SAVE 0, mapY /
+  SAVE 2, mapDir` — that is, "came from myself, do nothing", "came up from the
+  lower pyramid, keep the square", "came from anywhere else, stand at the
+  entrance". Warped into area 22 with `$49F2` forced to 23 and the arrival
+  square set to (3,3) facing south, the party stood at **(3,3) facing south**.
+  The 23 branch fired. The arriving script read the value the warp wrote.
+  CONFIRMED.
+
+  Consequences, all the other way round from the prediction: entry 4 works as
+  designed under a warp, an arriving script *will* place the party if it has a
+  rule for it, and `newecl_writes()` needs no change. `automap/actions.py`'s
+  note on `WARP_FROM` now carries the story.
+
+- **P43 corollary: the arriving script's placement can be suppressed, and that
+  is how to warp onto a chosen square.** `ECL15`'s entry gates on `$4A02`, not
+  on `$49F2`: `COMPARE [$4A02], 0 / IF<> / EXIT`, then `SAVE 1, [$4A02]` and
+  `SAVE 8, mapX / SAVE 14, mapY`. `$4A02` is inside the `$4A00`-`$4A1F` scratch
+  page the warp zeroes, so it is always 0 on arrival and the party is always
+  put on (8,14). Writing `$4A02 = 1` *after* the zero fill and before the jump
+  left the party on the square the warp asked for — twice, at (7,13) — and the
+  square's own script fired on arrival. So a warp harness that wants a specific
+  square needs one extra byte per area, not a general mechanism.
+
+- **P41: the Sokol Keep dead elf is a shipped bug. CONFIRMED, in game.**
+
+  `ECL15` guards the elf on two flags: `$4A25`, which **no instruction in the
+  game writes**, and `$4A00`, which `$9C92` sets to 255 when you choose ATTACK
+  and which `DUNGEON $202A` zeroes on every area change. Predicted: the
+  encounter comes back every time you re-enter the keep.
+
+  Driven, at (6,13) in `GEO15` — the one square in that map whose script id is
+  1, and `$99E6`'s `ONGOTO` sends id 1 to `$9ADF`:
+
+  | step | what the game printed | `$4A00` |
+  |---|---|---|
+  | first entry, step onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` then `WHAT DO YOU DO? LEAVE SEARCH ATTACK TALK` | `00` |
+  | chose ATTACK | `YOU HACK THE BODY TO BITS.` | `FF` |
+  | stepped off and back on | `YOU SEE THE PITIFUL REMAINS OF A DEAD ELF.` | `FF` |
+  | warped out to the Slums and back in, stepped onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` again | `00` |
+
+  So the quest-flag split is exactly as `docs/41` has it, and SSI put this
+  guard on the wrong side of it. Note that SEARCH — taking the scroll — writes
+  no flag at all, so it never suppresses the encounter even within one visit.
+  This is a clean end-to-end confirmation of the scratch-versus-persistent
+  work: the flag that survives is the one in `$4A20`-`$4AF8`, and `$4A25` is in
+  that range but dead.
+
+- **P36: both constants pinned, and one of them was wrong. CONFIRMED.**
+
+  `CMD_REGISTERS_AVAILABLE` (`0x83`) **is** served by this VICE build. The
+  claim that it is not has been in `automap/actions.py` and `automap/vice.py`
+  for months and is simply false. It answers with `A`=0, `X`=1, `Y`=2,
+  **`PC`=3** (16 bits), `SP`=4, `FL`=5, plus `LIN`, `CYC`, `00` and `01`. So
+  `PC_REGISTER = 3` was right, and `pc_register()` now asks instead of
+  believing.
+
+  `KEY_WAIT`'s upper bound was a guess taken from `$10EE`. 400 PC samples of an
+  idle party in the world land on nine addresses in the loop and nothing above
+  them:
+
+  | address | share | | address | share |
+  |---|---|---|---|---|
+  | `$10C2` | 5.8% | | `$2E4E` | 9.0% |
+  | `$10C5` | 8.8% | | `$2E51` | 6.0% |
+  | `$10C8` | 7.2% | | `$2E53` | 4.5% |
+  | `$10CA` | 4.0% | | `$2E56` | 4.5% |
+  | `$10CC` | 5.8% | | `$2E58` | 4.8% |
+  | `$10CF` | 5.2% | | `$2E65` | 5.8% |
+  | `$10D1` | 5.5% | | `$2E67` | 4.8% |
+  | `$10D3` | 2.2% | | `$2E6A` | 5.5% |
+  | `$10D6` | 7.5% | | KERNAL IRQ | 2.2% |
+
+  The code agrees. `$10E0` is the `JMP $10C2` that closes the loop,
+  `$10E3`-`$10EB` is its own exit tail (`LDA #$01 / STA $2B79 / LDA $03CB /
+  RTS`), and `$10EC` starts a different routine — `LDA #$00 / STA $6DD5`. So
+  the window is `$10C2`-`$10EB`, written `(0x10C2, 0x10EC)`.
+
+  **And the fetcher needed adding.** `$2E4E`-`$2E6A` is the key reader the loop
+  calls: `LDA $DC00 / AND #$1F / STA $03F0` for the CIA row, then `LDA $C6` and
+  the KERNAL buffer at `$0277` into `$03CB`, `RTS`; `$2E65` is the no-key path
+  writing `$FF`. Half the idle samples are in it, so refusing it made Warp To
+  fail about half the times it was pressed — measured, five refusals across
+  seven attempts in this session. It is called *from* the loop, so `$203A`'s
+  `LDX $03BF / TXS` discards exactly the same nothing, and P15 had already
+  warped successfully from `$2E4E`. `KEY_FETCH = (0x2E4E, 0x2E6B)` is now
+  accepted alongside `KEY_WAIT`.
+
+- **P20: the overland map warps like everything else. CONFIRMED.** Warped from
+  area 23 to area 26 with no arrival square at all. The load ran, `$6E1B` came
+  up `$1A`, **`$49E6` went 1 → 0 by itself** — the arriving script sets it, the
+  warp does not — the status line read `OUTDOORS 21:35 0,0` and the command bar
+  `1-8, RETURN OR BUTTON`. `$C04B` afterwards held `4C 2F C5`, i.e. not a
+  square at all: outdoors `GDRIVE00` is not the resident overlay and the travel
+  position is `$49C3`/`$49C4`. So writing an arrival square for areas 25-27 is
+  not merely unnecessary, it writes over somebody else's code.
+
+- **P20: `$6DD5` is not "a step was taken", or not only that. Demoted to
+  GUESS.** A store watchpoint on `$6DD5`, with the move key injected through
+  the KERNAL buffer so the held monitor connection could not swallow it, caught
+  **one** write per keypress and always the same one: `$10EE`, `STA $6DD5` with
+  A = 0, i.e. the flag being *cleared* as the key is fetched. The write at
+  `$0B05` — which is real, `A5 B0 / 8D D5 6D` sitting between `JSR $C027` and
+  `JSR $19CA` in the resident `DUNGEON` — **did not execute**, on either
+
+  * an ordinary forward step, (3,3) → (2,3) in `GEO16`, script id 0, or
+  * a step that fired a square script, (7,1) → (6,1), script id 17, which
+    printed `AS YOU MOVE THROUGH THE ROOM THERE IS A FLASH, AND YOU SUDDENLY
+    FIND YOURSELVES ELSEWHERE.` and moved the party to area 23.
+
+  and `$6DD5` read `00` before and after both. Fifteen seconds of emulated
+  running were allowed after each hit. So either `$0AF0`'s dispatch block
+  belongs to a mover we did not exercise, or the eighteen scripts that open
+  with `COMPARE [$6DD5], 0 / IF= / EXIT` always take that `EXIT`. The second
+  reading is not absurd — `ECL15`'s `$9918` gate is the "do you want to take a
+  boat back to Phlan?" prompt, and it did not appear on any of the three
+  arrivals in Sokol Keep — but it is a large claim on one area's evidence and
+  it stays a guess until the mover is found. The two writers are not
+  symmetrical and the old note that "`$0B05`/`$10EE` write it" hides that:
+  `$0B05` sets it from zero page `$B0`, `$10EE` clears it.
+
+- **P19 item 7: a second fight, and still no block past row 22. Still
+  UNKNOWN.** 1050 frames at 0.18 s over a six-character fight in Sokol Keep,
+  logged the way `work/combatlog/watch.py` does it. `$03F2`-`$03F5` held
+  `17 27 01 17` (the acting combatant's panel) for 661 frames, `17 27 0A 17`
+  for 135, `17 27 0F 17` for 48 and the command bar's `00 28 18 19` for 206 —
+  the last of which is defect one still being caught correctly. The deepest row
+  any message block reached was **17**; the cursor row after a message was 13,
+  14 or 17 and never more. Three frames showed non-blank text as far as row 22
+  and all three were the combat map's own glyphs under a stale window, not a
+  message. So whether the region scrolls or overwrites is still open, and the
+  fight to settle it needs to be one with long messages — spell descriptions,
+  a `PARLAY`, or a death-and-experience sequence — rather than simply a long
+  one. This one stalled into `GUARDING` and produced 16 messages in 1050
+  frames.

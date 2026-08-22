@@ -29,7 +29,9 @@ Two facts from `docs/50-experiments.md` bound what is safe to write:
 
 from __future__ import annotations
 
+import contextlib
 import json
+import struct
 import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
@@ -733,6 +735,15 @@ WARP_DISK = 0x6E12
 WARP_X, WARP_Y, WARP_FACING = 0xC04B, 0xC04C, 0xC04D
 #: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
 #: script's entry 4 compares it against its own id.
+#:
+#: **It survives the overlay restart, and the arriving script does read it.**
+#: P43 measured the opposite once and was wrong about why: `$19E1` --
+#: `LDX #3 / JSR $19FC / LDA $6E1B / AND #$7F / STA $49F2` -- rewrites it to
+#: the *arriving* id once the entry has run, so a snapshot taken after the
+#: area settles always shows the current area whatever was written here.
+#: Proved by warping into area 22 with `$49F2` = 23: `ECL16`'s
+#: `COMPARE [$49F2], 23 / IF= / EXIT` fired, the script left the square alone,
+#: and the party stood where the warp had put it.
 WARP_FROM = 0x49F2
 #: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
 WARP_SLOT = 0x6E1B
@@ -749,11 +760,22 @@ NEWECL_TAIL = 0x2034
 DUNGEON = 1
 #: `DUNGEON`'s key-wait loop in the world, the one place it is safe to take the
 #: PC from -- mid-script or mid-load the stack reset would discard work in
-#: flight. `$10C2` is the loop; **the end of this window is a guess**, taken
-#: from `$10EE`, the next address in `DUNGEON` anything has been read at. A
-#: warp refused with a PC just past the window is this constant being wrong,
-#: not the machine being busy.
-KEY_WAIT = (0x10C2, 0x10EE)
+#: flight.
+#:
+#: **Measured, not guessed.** 400 PC samples of an idle party landed on exactly
+#: `$10C2 $10C5 $10C8 $10CA $10CC $10CF $10D1 $10D3 $10D6` in the loop and
+#: nothing above it, and the code agrees: `$10E0` is the `JMP $10C2` that
+#: closes it, `$10E3`-`$10EB` is its own exit tail, and `$10EC` starts a
+#: different routine (`LDA #$00 / STA $6DD5`). So the window ends at `$10EC`.
+KEY_WAIT = (0x10C2, 0x10EC)
+#: The key fetcher the loop calls, `$2E4E`-`$2E6A` inclusive: `LDA $DC00` for
+#: the CIA row, then the KERNAL buffer, then `RTS`. Warping from inside it is
+#: safe for the same reason as the loop -- it is called *from* the loop, so
+#: `$203A`'s stack reload discards the same nothing -- and P15 warped
+#: successfully from `$2E4E` before this was written down. Nine idle samples
+#: in ten land in one window or the other, so refusing the fetcher made the
+#: button fail about half the times it was pressed.
+KEY_FETCH = (0x2E4E, 0x2E6B)
 
 
 def area_rows() -> tuple:
@@ -827,8 +849,43 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     return tuple(writes)
 
 
-#: VICE's `e_PC`, taken on faith. See `program_counter`.
+#: VICE's `e_PC`. The fallback, and no longer a guess: `CMD_REGISTERS_AVAILABLE`
+#: **is** served by this build and names id 3 `PC`, 16 bits wide, beside `A`,
+#: `X`, `Y`, `SP` and `FL` at 0, 1, 2, 4 and 5. `pc_register` asks anyway,
+#: because the id is a property of the emulator and not of the game.
 PC_REGISTER = 3
+#: `CMD_REGISTERS_AVAILABLE`. Not in `automap/vice.py`'s command table because
+#: nothing else needs it.
+CMD_REGISTERS_AVAILABLE = 0x83
+
+
+def pc_register(mon, default: int = PC_REGISTER) -> int:
+    """Which register id this VICE calls `PC`, asked rather than assumed.
+
+    One round trip, and only ever one: the answer cannot change under a running
+    emulator, so it is cached on the monitor object. A build that does not
+    serve `0x83` -- which is what this code believed for months, wrongly --
+    falls back to `PC_REGISTER`.
+    """
+    got = getattr(mon, "_pc_register", None)
+    if got is not None:
+        return got
+    got = default
+    try:
+        resp = mon.command(CMD_REGISTERS_AVAILABLE, struct.pack("<B", 0))
+        count = struct.unpack("<H", resp[:2])[0]
+        off = 2
+        for _ in range(count):
+            size, rid, _bits, length = resp[off:off + 4]
+            if resp[off + 4:off + 4 + length] == b"PC":
+                got = rid
+                break
+            off += size + 1
+    except Exception:                       # pragma: no cover - build-specific
+        got = default
+    with contextlib.suppress(Exception):
+        mon._pc_register = got
+    return got
 
 
 def program_counter(target):
@@ -839,11 +896,9 @@ def program_counter(target):
     of its own (a test's, and whatever a second backend grows), or the VICE
     monitor a `ViceTarget` is holding.
 
-    **The register id is not discoverable.** `CMD_REGISTERS_AVAILABLE` is
-    unsupported in this VICE build, so `PC_REGISTER` is VICE's own `e_PC` taken
-    on faith -- which is why the value is sanity-checked before anything is
-    written to it: a 6502's other registers are eight bits wide, so an id that
-    is not the PC cannot hold an address in `DUNGEON`.
+    The value is still sanity-checked before anything is written to it: a
+    6502's other registers are eight bits wide, so an id that is not the PC
+    cannot hold an address in `DUNGEON`.
     """
     own = getattr(target, "pc", None)
     if callable(own):
@@ -860,7 +915,7 @@ def program_counter(target):
             mon.resume()
         except Exception:
             pass
-    return regs.get(PC_REGISTER)
+    return regs.get(pc_register(mon))
 
 
 def jump(target, address: int) -> bool:
@@ -877,7 +932,7 @@ def jump(target, address: int) -> bool:
     if mon is None:
         return False
     try:
-        mon.set_registers({PC_REGISTER: address})
+        mon.set_registers({pc_register(mon): address})
     except Exception:
         return False
     finally:
@@ -988,11 +1043,12 @@ class Warp(Action):
         if pc is None:
             return Verdict(False, "this backend cannot read the CPU, and a "
                                   "warp has to set the program counter")
-        lo, hi = KEY_WAIT
-        if not lo <= pc < hi:
+        if not any(lo <= pc < hi for lo, hi in (KEY_WAIT, KEY_FETCH)):
             return Verdict(False, f"the PC is ${pc:04X}, outside DUNGEON's "
-                                  f"key-wait loop (${lo:04X}-${hi - 1:04X}): "
-                                  f"the game is busy, or that window is wrong")
+                                  f"key-wait loop (${KEY_WAIT[0]:04X}-"
+                                  f"${KEY_WAIT[1] - 1:04X}) and the key "
+                                  f"fetcher it calls (${KEY_FETCH[0]:04X}-"
+                                  f"${KEY_FETCH[1] - 1:04X}): the game is busy")
         if area is None:
             return Verdict(False, "choose an area")
         here = self.current_area(target)

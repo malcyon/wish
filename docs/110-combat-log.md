@@ -226,7 +226,7 @@ second one.
 | 4 | a whole fight | **CONFIRMED after two fixes.** 58 messages from 1428 frames, nothing garbled, nothing doubled, in order. Before the fixes: four garbage blocks and every killing blow twice |
 | 5 | two consecutive messages | **CONFIRMED.** `MALCYON ATTACKS ORC AND HITS FOR 1 POINTS OF DAMAGE` and `... FOR 3 ...`, one blank frame apart, both kept |
 | 6 | the split | **CONFIRMED.** `MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE` and `ORC GOES DOWN AND IS DYING` came out of one eight-row frame as two messages, split on the `$03F4` = 15 the follow-up set |
-| 7 | the scroll | **UNKNOWN.** No block in this fight passed row 22; the longest was eight rows. Needs a spell that hits several combatants |
+| 7 | the scroll | **UNKNOWN**, after two fights. The second (1050 frames, Sokol Keep, six characters) reached row 17 at its deepest and produced 16 messages; the three frames with text as far as row 22 were the combat map's glyphs under a stale window, not a block. Length is not what is needed -- a spell that hits several combatants, a `PARLAY`, or a death-and-experience sequence is. See `docs/50-experiments.md`, P19 item 7 |
 | 8 | after the fight | **not reached** — the fight was ended from the emulator, not through the panel |
 
 Left to do: item 7, and the same run through the real `AutomapWindow` rather
