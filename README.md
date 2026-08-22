@@ -82,7 +82,6 @@ flatpak override --user --share=network net.sf.VICE
 |---|---|---|---|
 | settings | `%APPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.config/wish/` |
 | notes, explored squares | `%LOCALAPPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.local/share/wish/` |
-| save backups, when the disk's own folder is read-only | `%LOCALAPPDATA%\wish\backups\` | `~/Library/Application Support/wish/backups/` | `~/.local/share/wish/backups/` |
 
 
 
