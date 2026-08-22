@@ -4,9 +4,10 @@
 later; until then obstacles 2, 3, 4 and 7 below cannot be worked at all. The
 goal is one thing: turn a DOS save into a C64 save. One direction only.
 
-**Obstacle 1 is the exception, and it is also the worst one.** Correlating the
-quest flags needs both games' scripts, not a save, so it can be picked up at
-any time.
+**Obstacle 1 was the worst one and its C64 half is now done.** The quest-flag
+region is read: 179 of its 352 bytes are named from the bytecode, 135 more are
+provably not flag storage, and 38 are unattributed padding. The DOS half is
+still open, and needs the Amiga disks rather than a DOS save — see obstacle 1.
 
 That narrowing is worth more than it looks. It means **no DOS encoder** — we
 never have to write a DOS save, so the DOS format only has to be decoded far
@@ -22,8 +23,12 @@ So the goal has a number, and the number is checkable:
 
 | | named | of which meaning is UNKNOWN |
 |---|---|---|
-| `SAVEDGAME0` (7168 bytes) | **99.2%** | 352 bytes |
+| `SAVEDGAME0` (7168 bytes) | **99.2%** | 38 bytes |
 | `SAVEDGAME1` (2048 bytes) | **100%** | 0 |
+
+The UNKNOWN figure was 352 until the quest-flag pass; what is left of it is
+38 scattered bytes inside `$4A20`-`$4AF8` that no script names and that are
+zero in every save we hold.
 
 Being able to *name* a region is not the same as being able to *fill* it, which
 is what the obstacle list below is about. But it says where the edges are, and
@@ -145,7 +150,8 @@ from somewhere.** This is the whole list.
 | `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes** — port-specific indices; zero it and let the loader refill |
 | `$4900`-`$49BF`, `$4B80`-`$4BBF` | 256 | four effect arrays | **yes, by dropping them** — zero means no active effects, which is a legal state |
 | `$4A00`-`$4A1F` | 32 | per-script scratch | **yes** — `DUNGEON $202A` zeroes it on every area change anyway |
-| `$4A20`-`$4B7F` | **352** | **persistent quest flags** | **this is the blocker.** See below |
+| `$4A20`-`$4AF8` | 217 | **persistent quest flags** | **only with the DOS correspondence.** 179 bytes named; see below |
+| `$4AF9`-`$4B7F` | 135 | **not flag storage at all** — no ECL operand and no engine reference names anything in it | **yes** — zero, in all 21 specimens and by construction |
 | the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed |
 
 ## The obstacles, worst first
@@ -153,22 +159,30 @@ from somewhere.** This is the whole list.
 One direction removes two of these outright: nothing below requires writing a
 DOS file, and nothing requires a C64 field to survive a trip back.
 
-**1. The quest flags, and we do not understand our own side.**
-`$4A20`-`$4B7F` is 352 bytes and its confidence in `por/memory.py` is
-**UNKNOWN**. We have named the 26-entry commission ledger at `$4AA6`, the
-counter at `$4AC1`, eight appointment flags and a handful of others. **The rest
-is unattributed even on the C64.** Converting a save means writing bytes whose
-meaning we do not know, from a format we have not decoded, and being wrong here
-does not crash anything — it silently gives the party the wrong quest state.
-That is the worst kind of bug.
+**1. The quest flags. Our own side is read; the DOS side is not.**
+`$4A20`-`$4B7F` is 352 bytes. Every one of them now has a disposition
+(`work/reports/quest-flags.md`): **179 named** from an ECL instruction that
+writes them, **135** (`$4AF9`-`$4B7F`) shown not to be flag storage at all, and
+**38** unreferenced padding between the per-area blocks. The region is one
+private block per area script plus the City Hall's books; the naming argument is
+behavioural throughout — the instruction that sets a flag sits inside the text
+of the event that earns it.
 
-*What would resolve it:* the correspondence is discoverable, and we are better
-placed than anyone. **The C64 ECL bytecode is now fully decoded** — 62 opcodes,
-all thirty scripts, every byte reached — and the DOS scripts are decoded by the
-public `simeonpilgrim/coab` project. Both write their flags by absolute address
-from scripts that implement *the same events*. Correlating "the script that
-prints the Sokal Keep speech writes flag X" on both sides gives a mapping that
-is argued, not guessed. Laborious, not blocked.
+What remains is the correspondence. Converting a save still means deciding what
+each DOS byte means, and being wrong does not crash anything — it silently gives
+the party the wrong quest state.
+
+*What would resolve it:* **not `simeonpilgrim/coab`, which is Curse of the Azure
+Bonds** and carries only Pool of Radiance's character-import routine — that is
+where this document's record table came from, and it says nothing about scripts.
+There is no DOS copy of the game on this machine either. What there is:
+`/mnt/media/roms/amiga/` holds three rips of **Amiga Pool of Radiance**, and the
+Amiga port is DOS-lineage — disk 2 carries `ecl.dax`, `geo.dax`, `pic.dax` and
+the `DAxF` container magic on a `POOLDATA` volume. Read the ADF, unpack the
+`DAxF` chunks, decode the scripts, and find the flag base **by shape**: the
+26-entry ledger under a `COMPARE idx, 25`, the ten `ADD 1` sites on the
+commissions counter, the eight-entry lock table. No other structure in the game
+has that fingerprint. Laborious, not blocked, and no longer waiting on Donald.
 
 **2. Area numbering and coordinates.** `$4BC2` names the current map and
 `$49C0`/`$49C1` the square. The C64 `GEO` files are a 16x16 grid per area. If

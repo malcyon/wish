@@ -90,8 +90,20 @@ MAP: tuple[Region, ...] = (
            note="zeroed by DUNGEON $202A whenever the resident ECL changes, so "
                 "nothing here survives leaving an area. $4A07 is 'staying at "
                 "the inn' in ECL00 and something else in seven other scripts"),
-    Region(0x4A20, 0x160, "persistent flags", UNKNOWN, saved_in="SAVEDGAME0",
-           note="survives an area change, unlike $4A00-$4A1F. Largely unread"),
+    Region(0x4A20, 0xD9, "persistent quest flags", MAYBE,
+           saved_in="SAVEDGAME0",
+           note="survives an area change, unlike $4A00-$4A1F. 179 of these "
+                "217 bytes are named from the bytecode itself -- 1415 ECL "
+                "operand references across all thirty scripts, 158 of them "
+                "with a printed string at the write site naming the event. "
+                "The remaining 38 are gaps between per-area blocks that no "
+                "script touches. See work/reports/quest-flags.md"),
+    Region(0x4AF9, 0x87, "unused", OK, saved_in="SAVEDGAME0",
+           note="not flag storage, on four independent grounds: no ECL "
+                "operand anywhere above $4AF8, no engine binary references "
+                "the range, and it is zero in all 21 specimens. The old "
+                "$4A20-$4B7F region was one block only because $4B80 was the "
+                "next thing that had a name"),
     Region(0x4B80, 0x40, "effect magnitude", OK, saved_in="SAVEDGAME0",
            note="the fourth of the four parallel effect arrays: how much, for "
                 "whatever the id means. ENLARGE on a character with strength "
