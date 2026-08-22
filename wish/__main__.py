@@ -1,8 +1,9 @@
-"""The `wish` command: the character editor and the live map in one window.
+"""The `wish` command: the window, and the two subcommands beside it.
 
     wish [SAVE.D64]              open the map, loading a save disk if given
     wish --tab editor            open on the character sheet instead
-    wish-editor / wish-automap   the same window, on the tab that name implies
+    wish export SAVE.D64 -o party.yaml    the save editor, reading
+    wish import party.yaml -o NEW.D64     the save editor, writing
 
 The emulator is never launched from here. Start it with the usual wrapper (with
 `POR_DEBUG=1`, so the binary monitor is listening) and this attaches to it; with
@@ -23,6 +24,13 @@ import sys
 
 from . import __version__
 from .debugmode import enable_from_argv
+
+#: The subcommands, and the whole of the rule for spotting one: the first
+#: argument is a subcommand when it is *exactly* one of these names, and a save
+#: disk otherwise. No prefix matching, no guessing -- a save file genuinely
+#: called `export` is still openable, as `./export`. `tools/wish.py` is their
+#: body; see docs/129-one-binary.md for why there is one binary and not two.
+SUBCOMMANDS = ("export", "import")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -67,17 +75,28 @@ def game_of(save: str | None):
         return None
 
 
-def main(argv: list[str] | None = None, tab: str = "map") -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:]) if argv is None else argv
     # Before the parser sees them: `--debug` is not an option the window takes,
     # it is a mode the whole process is in, and it has to be set before
     # anything reads it.
     enable_from_argv(argv)
+
+    # `tools` sits beside this package in the source tree, and both the
+    # subcommands and the Designer loop below live in it.
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
+    # Imported here rather than at the top: opening the window should not cost
+    # PyYAML, the item tables and a D64 parse.
+    if argv and argv[0] in SUBCOMMANDS:
+        from tools.wish import subcommand
+        return subcommand(argv[0], argv[1:])
+
     args = _parser().parse_args(argv)
-    tab = args.tab or tab
+    tab = args.tab or "map"
 
     # The Designer loop: edit character.ui, restart, and the running window is
     # already the new layout. No build step to forget.
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
     try:
         from tools.genui import ensure_current
     except ImportError:
@@ -126,20 +145,6 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
                tab=MAP_TAB if tab == "map" else EDITOR_TAB,
                interval_ms=args.interval, disks=args.disks,
                title=game.title if game else None)
-
-
-def editor_main(argv: list[str] | None = None) -> int:
-    """`wish-editor`: the same window, opened on the character sheet."""
-    return main(argv, tab="editor")
-
-
-def automap_main(argv: list[str] | None = None) -> int:
-    """`wish-automap`: the same window, opened on the map.
-
-    Kept because that is how the map is actually used -- a single-purpose
-    window beside the game -- and because nobody's habit should break.
-    """
-    return main(argv, tab="map")
 
 
 if __name__ == "__main__":

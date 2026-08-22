@@ -538,7 +538,7 @@ def to_yaml(data: dict[str, Any]) -> str:
         f"# {title} character export -- {name}",
         "#",
         "# Edit any field below, then write it to a NEW disk with:",
-        "#     wish-cli --import <this file> --output NEW.D64",
+        "#     wish import <this file> -o NEW.D64",
         "#",
         "# The original disk is never modified. Unknown bytes and the party",
         "# header are carried through untouched.",

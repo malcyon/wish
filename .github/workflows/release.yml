@@ -128,23 +128,46 @@ jobs:
             *) echo "argparse's error never reached us"; exit 1 ;;
           esac
 
-      # Linux gets the CLI, Windows does not: wish.spec, SHIP_CLI. Donald --
-      # "Windows users don't need a cli. They're point and click heroes."
-      - name: the CLI ships on Linux and only on Linux
+      # One executable on both platforms since 129-one-binary.md, where
+      # `wish-cli` became `wish export` and `wish import`. This used to be the
+      # platform split -- "the CLI ships on Linux and only on Linux" -- and the
+      # split is what the last packaging bug lived in. Asserted by counting,
+      # not by name, so a second EXE creeping back into wish.spec under any
+      # name is caught. Pure bash: Git Bash on the Windows runner has `find`,
+      # but a glob needs nothing at all.
+      - name: there is exactly one executable
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$RUNNER_OS" = Windows ]; then
-            for f in dist/wish/wish-cli dist/wish/wish-cli.exe; do
-              if [ -e "$f" ]; then echo "$f should not be in the zip"; exit 1; fi
-            done
-            echo "no wish-cli in the Windows build, as intended"
-          else
-            want="wish-cli $VERSION"
-            got=$(dist/wish/wish-cli --version)
-            echo "wish-cli --version -> ${got:-(nothing)}"
-            [ "$got" = "$want" ] || { echo "expected: $want"; exit 1; }
-          fi
+          shopt -s nullglob
+          files=()
+          for f in dist/wish/*; do [ -f "$f" ] && files+=("$f"); done
+          printf '%s\n' "${files[@]}"
+          [ "${#files[@]}" = 1 ] || {
+            echo "expected one executable beside _internal/, got ${#files[@]}"
+            exit 1; }
+
+      # The subcommands are the half of the merge a `--version` cannot see:
+      # `tools.wish` is reached by an import inside main() that PyInstaller
+      # cannot follow, so it is a hiddenimport in wish.spec and a missing one
+      # is a ModuleNotFoundError on a user's machine. `--help` exits inside
+      # argparse, opens no window and needs no save disk.
+      #
+      # On Windows the build is windowed, so this only prints at all through
+      # the console-borrowing path in packaging/wish_main.py -- which the
+      # runner's redirect exercises. Nobody is expected to use the command line
+      # on Windows; the assertion is that the code is there and runs.
+      - name: and it carries the subcommands
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ "$RUNNER_OS" = Windows ] && exe=dist/wish/wish.exe || exe=dist/wish/wish
+          got=$("$exe" export --help 2>&1 | tr -d '\r')
+          echo "$got"
+          case "$got" in
+            *"usage: wish export"*) ;;
+            *) echo "wish export --help printed nothing useful"; exit 1 ;;
+          esac
 
       - name: name it after the version
         shell: bash
@@ -219,8 +242,13 @@ jobs:
             code-signing certificate costs money and SmartScreen warns on new
             signatures anyway, so this is not going away.
 
-            The Windows build is the window only. The command-line tool ships
-            on Linux.
+            ### One command
+
+            `wish` opens the window. `wish export SAVE.D64 -o party.yaml` and
+            `wish import party.yaml -o NEW.D64` are the save editor, in the
+            same executable. On Windows the build is windowed and never opens
+            a console, so the subcommands print only where a terminal
+            redirects them.
 
             ### Checksums
 

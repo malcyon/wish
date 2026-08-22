@@ -20,12 +20,13 @@ it points at the README section by name.
 
 ## Read this first — three things that are already known
 
-**1. The two platforms ship different things.** The Linux `.tar.gz` carries
-`wish` **and** `wish-cli`; the Windows `.zip` carries `wish.exe` alone. Donald:
-"Windows users don't need a cli." `wish.spec`
-spells it as `SHIP_CLI = sys.platform != "win32"`. So the CLI steps below are
-Linux-only, and on Windows a missing `wish-cli.exe` is the intended result, not
-a broken archive.
+**1. Both platforms ship one executable, and it is the same one.** `wish-cli`
+shipped beside `wish` on Linux until [129-one-binary.md](129-one-binary.md)
+folded it in as `wish export` and `wish import`. Every command-line step below
+is therefore a step against `wish` itself, on either platform — though on
+Windows the build is windowed, so whether the subcommands' output reaches a
+`cmd` window is the console-borrowing path in note 2 and **nothing depends on
+it**.
 
 **2. `wish.exe --version` should now print, and nobody has watched it.** The
 spec still builds the window `console=False`, so the process starts with no
@@ -129,13 +130,17 @@ The distribution is `wish-goldbox`, because `wish` is taken on PyPI by an
 unrelated package; setuptools spells the hyphen as an underscore in file names.
 The command is still `wish`.
 
-**B4. The frozen build.** About ten seconds, and roughly 158 MB unpacked.
+**B4. The frozen build.** About ten seconds, and roughly 157 MB unpacked.
 
 ```sh
 pyinstaller --noconfirm wish.spec
+ls dist/wish                    # wish and _internal/, nothing else
 dist/wish/wish --version        # wish <version>
-dist/wish/wish-cli --version    # Linux only, by design
+dist/wish/wish export --help    # usage: wish export ...
 ```
+
+The second of those is the only check that reaches `tools.wish`, which the
+subcommands import from inside `main()` and PyInstaller's scan cannot see.
 
 **B5. Name and pack it the way CI does.** The platform in the name is the only
 thing distinguishing this `.tar.gz` from a source archive, so do not skip it.
@@ -164,9 +169,9 @@ cp dist/*.whl "$NAME.tar.gz" release/
 `dist/*.whl` and not `dist/*`: the sdist is in `dist/` too and does not belong
 on a release page, and `$NAME.tar.gz` is the frozen build, which does.
 
-**B7. Windows.** The same steps on the Windows machine, with two differences:
-`pyinstaller` produces `dist/wish/wish.exe` and **no `wish-cli`**, and the
-packing step is PowerShell rather than `tar`:
+**B7. Windows.** The same steps on the Windows machine, with one difference:
+the packing step is PowerShell rather than `tar`. `pyinstaller` produces
+`dist/wish/wish.exe` and nothing else beside `_internal/`, the same as Linux.
 
 ```powershell
 Move-Item dist/wish "dist/wish-<version>-windows-x86_64"
@@ -293,12 +298,11 @@ cd wish-<version>-linux-x86_64
 ls
 ```
 
-*Expect:* three entries and no more — `wish`, `wish-cli` and `_internal/`.
-158 MB unpacked, 154 MB of it `_internal/`, three quarters of that Qt; the
-tarball itself is 60 MB. Both executables come out of one `COLLECT`, so
-`wish-cli` costs 1.7 MB and not a second copy of Qt.
-*If either is not there:* the archive was built wrong — check what `tar tzf`
-lists at the top level.
+*Expect:* two entries and no more — `wish` and `_internal/`. 157 MB unpacked,
+155 MB of it `_internal/`, three quarters of that Qt; the tarball itself is
+59 MB. *If there is a second executable:* `wish.spec` grew one back, and
+`tests/test_packaging.py` and CI's "there is exactly one executable" step should
+both have caught it first.
 
 **L3.** Version.
 
@@ -312,17 +316,17 @@ exits inside argparse before Qt is imported, so this works with no display.
 — `wish/_version.py` was not written by the editable install in `release.yml`,
 and the artefact is mislabelled. That is a release blocker.
 
-**L3a.** The CLI ships here too, on Linux:
+**L3a.** The subcommands are in the same executable:
 
 ```sh
-./wish-cli --version
+./wish export --help
 ```
 
-*Expect:* `wish-cli <version>`, the same number. *If it is missing:* `SHIP_CLI`
-in `wish.spec`, or the archive was built on the wrong platform. The frozen
-`wish-cli` takes the same arguments as the wheel's — steps L10 and L11 work
-against `./wish-cli` as well, and running them here exercises the frozen build
-rather than the installed one, which is the interesting half.
+*Expect:* `usage: wish export [-h] [--output FILE] ... SAVE.D64`. *If it dies in
+`ModuleNotFoundError: tools`:* the `tools.wish` hidden import fell out of
+`wish.spec`. Steps L10 and L11 work against `./wish` as well, and running them
+here exercises the frozen build rather than the installed one, which is the
+interesting half.
 
 **L4.** Start the window on a save disk.
 
@@ -418,37 +422,38 @@ command's — with no build step and no compiler.
 *If pip refuses the extras syntax,* quote the whole argument — the brackets are
 the shell's otherwise.
 
-**L9.** Both commands report the version.
+**L9.** The one command reports the version, and carries the subcommands.
 
 ```sh
 wish --version        # wish <version>
-wish-cli --version    # wish-cli <version>
+wish export --help    # usage: wish export ...
+ls .venv-release/bin | grep wish   # exactly one name
 ```
 
-Both must print the same number as L3. `wish-cli` is `tools.wish:main`, and
-`tools` only ships because `pyproject.toml` lists it in the wheel's packages —
-if `wish-cli` dies in `ModuleNotFoundError: tools`, that list regressed.
+The version must be the same number as L3. `tools` only ships because
+`pyproject.toml` lists it in the wheel's packages — if `wish export` dies in
+`ModuleNotFoundError: tools`, that list regressed.
 
-The wheel also installs `wish-editor` and `wish-automap`, aliases that open the
-same window on one tab. They are not worth a step of their own; seeing four
-names in `.venv-release/bin` is the check.
+**Exactly one name.** `wish-cli`, `wish-editor` and `wish-automap` were dropped
+in [129-one-binary.md](129-one-binary.md); any of them reappearing means
+`[project.scripts]` grew an entry back.
 
 **L10.** The CLI round trip.
 
 ```sh
 cd ~/wish-test
-wish-cli --export TESTSAVE.D64 --output party.yaml
+wish export TESTSAVE.D64 -o party.yaml
 sed -i 's/^\( *gold: \).*/\14321/' party.yaml      # or edit it by hand
-wish-cli --import party.yaml --dry-run
-wish-cli --import party.yaml --output CLI-EDITED.D64
+wish import party.yaml --dry-run
+wish import party.yaml -o CLI-EDITED.D64
 ```
 
 *Expect:* the dry run lists **one line per character** — that `sed` rewrites
 every `gold:` in the file, so a six-strong party gives
 `slot 0 MALCYON: gold 2 -> 4321` down to `slot 5 BRUTUS: gold 0 -> 4321` and
 `6 change(s) (dry run, nothing written)` — and writes nothing; the import writes
-`CLI-EDITED.D64`. *Expect also:* `wish-cli --import party.yaml --output
-TESTSAVE.D64` is **refused**, exit 2, on
+`CLI-EDITED.D64`. *Expect also:* `wish import party.yaml -o TESTSAVE.D64` is
+**refused**, exit 2, on
 `--output must differ from the original save; refusing to overwrite it`.
 Try it; a release where that guard is gone is a release that eats saves.
 
@@ -456,8 +461,8 @@ Try it; a release where that guard is gone is a release that eats saves.
 must come back byte for byte:
 
 ```sh
-wish-cli --export TESTSAVE.D64 --output plain.yaml
-wish-cli --import plain.yaml --output ROUNDTRIP.D64
+wish export TESTSAVE.D64 -o plain.yaml
+wish import plain.yaml -o ROUNDTRIP.D64
 cmp TESTSAVE.D64 ROUNDTRIP.D64      # expect: no output
 ```
 
@@ -559,9 +564,9 @@ is the thing being tested.
 
 1. Extract to a short path: `C:\wish`. Same 260-character reason as VICE, and
    the Qt tree inside is deeper.
-2. *Expect:* `C:\wish\wish-<version>-windows-x86_64\wish.exe` and several
-   hundred files beside it. **No `wish-cli.exe`** — that is the decision in note
-   1, not a truncated download.
+2. *Expect:* `C:\wish\wish-<version>-windows-x86_64\wish.exe`, `_internal\`
+   and nothing else at the top level. One executable, the same as Linux — note
+   1.
 3. First extraction may be slow — Defender scans ~156 MB of fresh binaries.
    Minutes, not seconds, is normal.
 
@@ -739,7 +744,7 @@ empty and is yours.
 | 2 | `SHA256SUMS` verifies | ✅ | ☐ |
 | L2 | frozen archive unpacks, `wish` present | ✅ | ☐ (W4) |
 | L3 | `wish --version` prints the version | ✅ ¹ | n/a — noted at W5, nothing depends on it |
-| L3a | `wish-cli --version` prints the version | ✅ ¹ | n/a — not shipped |
+| L3a | `wish export --help` prints its usage | ✅ | ☐ |
 | W5 | **the window opens and no console appears** | n/a | ☐ |
 | L5 | Help > About shows the same version | ✅ | ☐ (W5) |
 | L4 | window opens on a save disk | ✅ | ☐ (W6) |
@@ -747,13 +752,13 @@ empty and is yours.
 | L6 | the original save disk is byte-identical afterwards | ✅ | ☐ |
 | L7 | the game loads the edited disk and shows the edit | ✅ | ☐ (W6) |
 | L8 | wheel installs into a clean venv | ✅ | n/a |
-| L9 | `wish` and `wish-cli` both report the version | ✅ | n/a |
-| W4 | no `wish-cli.exe` in the zip — the intended result | n/a | ☐ |
-| L10 | CLI export / dry-run / import round trip | ✅ | n/a |
-| L10 | `--output` over the original is refused | ✅ | n/a |
-| L11 | unedited round trip is byte-identical | ✅ | n/a |
+| L9 | `wish --version`, and exactly one name in `bin` | ✅ | n/a |
+| W4 | one executable in the zip, beside `_internal/` | n/a | ☐ |
+| L10 | `wish export` / dry-run / `wish import` round trip | ✅ ⁴ | ☐ |
+| L10 | `-o` over the original is refused | ✅ ⁴ | ☐ |
+| L11 | unedited round trip is byte-identical | ✅ ⁴ | ☐ |
 | L11a | the same, on a Curse or Silver Blades save | ✅ (Curse) | n/a |
-| L12 | the game loads the **CLI**-edited disk and shows the edit | ✅ | n/a |
+| L12 | the game loads the **CLI**-edited disk and shows the edit | ✅ | ☐ |
 | W1 | VICE installs and starts | n/a | ☐ |
 | W2 | binary monitor enabled and survives a restart | n/a | ☐ |
 | W5 | SmartScreen warning cleared, program runs | n/a | ☐ |
@@ -766,9 +771,16 @@ empty and is yours.
 
 ¹ **No `v*` tag has been cut, so what is proven is the pipe, not the tag.** The
 version built, printed and reported was `hatch-vcs`'s development string, and it
-was identical in the wheel, in `dist/wish/wish`, in `dist/wish/wish-cli` and in
-Help > About. Whether a real tag comes through clean is `release.yml`'s "the
+was identical in the wheel, in `dist/wish/wish` and in Help > About. Whether a real tag comes through clean is `release.yml`'s "the
 version is the tag" step, which has also never run.
+
+⁴ **Re-run on 2026-08-22 under the new spelling**, `wish export` / `wish import`
+rather than `wish-cli`, after [129-one-binary.md](129-one-binary.md) merged the
+two binaries: the same six `gold 2 -> 4321` lines, the same refusal on exit 2,
+and `cmp` silent on the unedited round trip. Verified both in a wheel installed
+into a throwaway venv and in `dist/wish/wish` from a local `pyinstaller` run.
+The Windows column is no longer `n/a` for these — the subcommands ship there
+now — but it is untested, and nobody is expected to use them there.
 
 ² The note, the explored squares and the saved geometry in `automap.json` all
 survived. **The window did not come back at the size it was left** — but the
@@ -855,7 +867,7 @@ and worth correcting in this file once you know:
 | W5 | that if it does print, the version lands *after* the shell's next prompt, a windowed process not holding the terminal |
 
 
-| W4 | that the Windows zip contains no `wish-cli.exe` — the spec's platform split is unit-tested, but no Windows build has been made |
+| W4 | that the Windows zip holds one executable and no more — asserted in CI on both platforms and unit-tested, but no Windows build has been made |
 | W4 | that the 260-character path limit is actually reachable here |
 | M2 | `Test-NetConnection`'s exact output for a closed port |
 | — | the Windows zip running on a machine with no Python at all (`106-releases.md` records this as unverified too) |

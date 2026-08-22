@@ -1,7 +1,11 @@
-# `wish` — the save editor
+# `wish export` and `wish import` — the save editor
 
 A command-line character editor for **C64 Gold Box** save disks. Exports a party
 to YAML, and imports an edited YAML back onto a **new** disk.
+
+**These were `wish-cli` until [129-one-binary.md](129-one-binary.md)**, which
+folded that program into `wish` as two subcommands. The file name here is kept
+so the links to it keep working; nothing else about the tool changed.
 
 Pool of Radiance is the reference title. `por/games.py` carries save geometry,
 race, class and item-name tables for six titles, and the title is detected from
@@ -11,12 +15,13 @@ code path. Everything below is written in Pool of Radiance's terms because that
 is where the offsets were earned; the record is the same 580 bytes in all of them.
 
 ```
-wish-cli --export PORSAVE.D64 --output party.yaml
+wish export PORSAVE.D64 -o party.yaml
 vi party.yaml
-wish-cli --import party.yaml  --output PORSAVE-EDITED.D64
+wish import party.yaml  -o PORSAVE-EDITED.D64
 ```
 
-The mode flag carries the file being read; `--output` is what gets written.
+The subcommand names the direction; `-o` is what gets written. Each takes its
+own `--help`.
 
 ## Safety
 
@@ -33,17 +38,27 @@ The mode flag carries the file being read; `--output` is what gets written.
 
 ## Options
 
+`wish export SAVE.D64`:
+
 | flag | meaning |
 |---|---|
-| `--export SAVE.D64` | read this save disk and write YAML |
-| `--import PARTY.YAML` | read this YAML and write a new save disk |
-| `--output`, `-o` | the file to write |
-| `--original-save`, `-s` | `--import` only: the disk to build on. Defaults to the one recorded in the YAML at export, so it is rarely needed |
+| `--output`, `-o` | the YAML to write. Defaults to beside the disk |
 | `--game-disk` | a game disk, used **only** to turn item indices into names |
-| `--dry-run`, `-n` | `--import` only: report changes without writing |
 
-`--export` and `--import` are mutually exclusive and one is required. Flags that
-apply to only one mode are rejected with an explanation rather than ignored.
+`wish import PARTY.YAML`:
+
+| flag | meaning |
+|---|---|
+| `--output`, `-o` | the new save disk to write. Required unless `--dry-run` |
+| `--original-save`, `-s` | the disk to build on. Defaults to the one recorded in the YAML at export, so it is rarely needed |
+| `--game-disk` | needed only to turn item words into indices when you build a new item |
+| `--dry-run`, `-n` | report changes without writing |
+
+A flag that applies to one subcommand is simply not on the other, so there is
+nothing left to reject with an explanation: `wish export --dry-run` is an
+unrecognised argument. The first argument to `wish` is a subcommand only when it
+is *exactly* `export` or `import`; a save disk genuinely called `export` is
+reachable as `./export`.
 
 ## Finding a game disk
 
@@ -67,7 +82,7 @@ usually no configuration is needed.
 The file opens with a comment explaining what it is and how to put it back —
 guidance belongs in comments, not in a field someone might try to edit. The only
 non-party key is `source_path`, which is real data: it records the disk the
-export came from so `--import` can default to it.
+export came from so `wish import` can default to it.
 
 Fields appear in the order the game's own character sheet uses — identity
 first, then class and level, then abilities, then money from jewelry down to

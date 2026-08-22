@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-"""wish-cli — read and edit Pool of Radiance (C64) save disks via YAML.
+"""`wish export` and `wish import` — read and edit Gold Box save disks via YAML.
 
-    wish-cli --export PORSAVE.D64 --output party.yaml
+    wish export PORSAVE.D64 -o party.yaml
     vi party.yaml
-    wish-cli --import party.yaml  --output PORSAVE-EDITED.D64
+    wish import party.yaml  -o PORSAVE-EDITED.D64
 
-The mode flag carries the file being read; --output is what gets written.
+The subcommand names the direction; `-o` is what gets written.
 
 An existing save disk is never modified. `import` always writes a **new** disk,
 so a mistake costs nothing.
@@ -13,6 +12,9 @@ so a mistake costs nothing.
 Only fields we understand are written back. Everything else — the party header,
 everything in SAVEDGAME1 past its first page, and the majority of each character
 record that is still unidentified — is carried through untouched.
+
+This module is no longer a program of its own. `wish/__main__.py` dispatches on
+the first argument and calls `subcommand()`; see docs/129-one-binary.md.
 """
 from __future__ import annotations
 
@@ -30,7 +32,6 @@ from automap.paths import disk_globs
 from por.d64 import D64
 from por.games import detect
 from por.yaml_io import ValueError_, export_save, import_into, to_yaml
-from wish import __version__
 
 GAME_DISK_ENV = "POR_GAME_DISK"
 
@@ -68,12 +69,12 @@ def game_of(save: str):
 
 
 def cmd_export(args: argparse.Namespace) -> int:
-    if not pathlib.Path(args.export).exists():
-        print(f"no such save disk: {args.export}", file=sys.stderr)
+    if not pathlib.Path(args.save).exists():
+        print(f"no such save disk: {args.save}", file=sys.stderr)
         return 2
-    game = find_game_disk(args.game_disk, args.export)
-    data = export_save(args.export, game)
-    out = args.output or str(pathlib.Path(args.export).with_suffix(".yaml"))
+    game = find_game_disk(args.game_disk, args.save)
+    data = export_save(args.save, game)
+    out = args.output or str(pathlib.Path(args.save).with_suffix(".yaml"))
     pathlib.Path(out).write_text(to_yaml(data))
     print(f"exported {len(data['party'])} characters -> {out}")
     if game is None:
@@ -141,47 +142,59 @@ def _do_import(args, data, original) -> int:
     return 0
 
 
-def main() -> int:
+#: `--game-disk` is worth the same sentence in both subcommands, and it drifted
+#: between them once already.
+_GAME_DISK = (f"a game disk, for item names. Otherwise ${GAME_DISK_ENV} or one "
+              "of the title's own disks beside the save")
+
+
+def _export_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        prog="wish-cli",
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-
-    mode = ap.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--export", metavar="SAVE.D64",
-                      help="read this save disk and write YAML")
-    # `import` is a keyword, hence the explicit dest
-    mode.add_argument("--import", dest="import_file", metavar="PARTY.YAML",
-                      help="read this YAML and write a new save disk")
-
+        prog="wish export",
+        description="Read a save disk and write the party as YAML.",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("save", metavar="SAVE.D64", help="the save disk to read")
     ap.add_argument("--output", "-o", metavar="FILE",
-                    help="with --export, the YAML to write (default: beside "
-                         "the disk); with --import, the new save disk")
-    ap.add_argument("--original-save", "-s", metavar="DISK.D64",
-                    help="--import only: the disk to build on; defaults to the "
-                         "one recorded in the YAML when it was exported")
+                    help="the YAML to write (default: beside the disk)")
     ap.add_argument("--game-disk", metavar="POOL1.D64",
-                    help=f"a game disk. With --export it names items and "
-                         f"describes their type; with --import it is needed "
-                         f"only to turn item words into indices when you build "
-                         f"a new item. Otherwise ${GAME_DISK_ENV} or one of "
-                         f"the title's own disks beside the save")
-    ap.add_argument("--version", action="version",
-                    version=f"wish-cli {__version__}")
+                    help=f"{_GAME_DISK}. It names items and describes their "
+                         f"type; without one items are listed unnamed")
+    return ap
+
+
+def _import_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="wish import",
+        description="Read an edited YAML and write a NEW save disk. The "
+                    "original is never modified.",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("import_file", metavar="PARTY.YAML",
+                    help="the YAML to read")
+    ap.add_argument("--output", "-o", metavar="NEW.D64",
+                    help="the new save disk to write")
+    ap.add_argument("--original-save", "-s", metavar="DISK.D64",
+                    help="the disk to build on; defaults to the one recorded "
+                         "in the YAML when it was exported")
+    ap.add_argument("--game-disk", metavar="POOL1.D64",
+                    help=f"{_GAME_DISK}. Needed only to turn item words into "
+                         f"indices when you build a new item")
     ap.add_argument("--dry-run", "-n", action="store_true",
-                    help="--import only: report the changes without writing")
+                    help="report the changes without writing anything")
+    return ap
 
-    args = ap.parse_args()
-    if args.export:
-        for attr, flag in (("original_save", "--original-save"),
-                           ("dry_run", "--dry-run")):
-            if getattr(args, attr):
-                ap.error(f"{flag} only applies to --import")
-        return cmd_export(args)
 
+def subcommand(name: str, argv: list[str]) -> int:
+    """Run `wish export` or `wish import`; *name* says which.
+
+    Called from `wish/__main__.py`, which owns the decision that the first
+    argument is a subcommand at all. There is no `--version` here: the one
+    binary has one version and `wish --version` prints it.
+    """
+    if name == "export":
+        return cmd_export(_export_parser().parse_args(argv))
+    ap = _import_parser()
+    args = ap.parse_args(argv)
     if not args.dry_run and not args.output:
-        ap.error("--import needs --output (or --dry-run to just see the changes)")
+        ap.error("import needs -o/--output (or --dry-run to just see the "
+                 "changes)")
     return cmd_import(args)
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

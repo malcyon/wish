@@ -17,14 +17,12 @@ gui = ["PyQt6>=6.6"]
 # The live automapper reads a running VICE; it needs the GUI extra.
 automap = ["PyQt6>=6.6"]
 
+# One command, and only one. The window, `wish export` and `wish import` are
+# all reached through it -- docs/129-one-binary.md. `wish-cli`, `wish-editor`
+# and `wish-automap` were dropped there; `wish --tab editor` is what the last
+# two did.
 [project.scripts]
 wish = "wish.__main__:main"
-wish-cli = "tools.wish:main"
-# Thin aliases: the same window, opened on the tab the name implies. Nobody's
-# habit breaks, and the map stays usable as a single-purpose window beside the
-# game, which is how it is actually used.
-wish-editor = "wish.__main__:editor_main"
-wish-automap = "wish.__main__:automap_main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -51,9 +49,10 @@ version-file = "wish/_version.py"
 # with no emulator dependency and must stay that way -- `wish` may import both,
 # `editor` imports neither.
 #
-# tools/ is discovery scaffolding but ships anyway, because two declared entry
-# points live in it: `wish-cli` is tools.wish:main, and the window imports
-# tools.genui at startup. Without it both were broken in an installed wheel.
+# tools/ is discovery scaffolding but ships anyway, because `wish` reaches into
+# it twice: `tools.wish` is the body of the `export` and `import` subcommands,
+# and the window imports `tools.genui` at startup. Without it both were broken
+# in an installed wheel.
 packages = ["por", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]

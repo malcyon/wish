@@ -20,7 +20,7 @@ backup tags, and without a match pattern setuptools-scm read that one as version
 by the hatch-vcs build hook and `.gitignore`d, which is what a frozen build
 reads; the installed metadata, asked for by the **distribution** name
 `wish-goldbox`; and `0.0.0+unknown` for a source checkout that was never built.
-`wish --version` and `wish-cli --version` print it.
+`wish --version` prints it.
 
 That metadata lookup has been stale twice — a leftover `por-tools` after the
 first rename put `wish unknown` at the top of every debug log. `wish/debuglog.py`
@@ -49,17 +49,14 @@ exe: a certificate costs money and SmartScreen warns anyway, so the zip is
 honest about what it is. macOS is "run it from source" until somebody with a Mac
 wants to own an unsigned `.app`.
 
-**The Linux tarball carries `wish-cli` beside `wish`; the Windows zip carries
-`wish.exe` alone** — Donald: "Windows users don't need a cli. They're point and
-click heroes." `wish.spec` spells that as `SHIP_CLI = sys.platform != "win32"`.
+**Both archives carry one executable, and it is the same one.** `wish-cli`
+shipped beside `wish` on Linux until [129-one-binary.md](129-one-binary.md)
+folded it in as `wish export` and `wish import`; there is no platform
+conditional left in `wish.spec` and nothing for a build to lose or to gain.
 
 The Linux folder is about 157 MB before compression, three quarters of it Qt.
-`wish-cli` costs 1.8 MB of that: both executables come out of one `COLLECT`, so
-the folder holds one copy of Qt and one of libpython, and the console build
-imports no Qt at all — `por`, PyYAML and `automap.paths`, and `ldd` on it names
-no Qt library. `wish.spec` checks that rather than excluding `PyQt6`: an
-exclude would turn a stray GUI import into a `ModuleNotFoundError` on a user's
-machine, where the check stops the build.
+Dropping the second executable took it from 164.7 to 163.1 MB and the `.tar.gz`
+from 62.9 to 61.3 MB.
 
 `SHA256SUMS` covers everything on the release page.
 
@@ -121,8 +118,10 @@ what vulture flags.
    the Windows build exits 0 in silence when its streams are broken:
    `--version` prints exactly `wish <tag>`; a mistyped option puts argparse's
    "unrecognized arguments" on stderr, which is the same path every diagnostic
-   travels and needs no display; and `wish-cli` reports the same version on
-   Linux while `wish-cli.exe` is absent on Windows.
+   travels and needs no display; and, on both platforms, `dist/wish/` holds
+   exactly one file beside `_internal/` and `wish export --help` prints its
+   usage — which is the only check that reaches `tools.wish`, a hidden import
+   PyInstaller's scan cannot find on its own.
 4. `publish`: gathers the three shipped files, writes `SHA256SUMS`, and hands
    the lot to `softprops/action-gh-release` with `generate_release_notes`.
 5. `pypi`: after `publish`, uploads the wheel and the sdist. §5.
@@ -135,10 +134,12 @@ pause and buys nothing a `.tar.gz` does not.
 
 `packaging/wish_main.py` is the entry script, because a frozen build starts from
 a script and the relative imports in `wish/__main__.py` only work inside the
-package. `packaging/wish_cli_main.py` is the same indirection for `wish-cli`,
-whose `Analysis` excludes `PyQt6`, `editor` and `automap` so the build fails
-loudly if the CLI ever grows a GUI import. Both `EXE`s go into the one
-`COLLECT`; two `COLLECT`s would mean two copies of Qt.
+package. It is the only one: `packaging/wish_cli_main.py` went with `wish-cli`.
+
+One `Analysis`, one `EXE`, one `COLLECT`. `tools.wish` is named as a hidden
+import because the subcommands reach it through an import inside `main()` that
+no static scan follows, and `collect_submodules("tools")` is deliberately not
+used — the rest of that directory is discovery scaffolding.
 
 **Stdout on Windows.** The window is built `console=False`, and since
 PyInstaller 5.7 that means `sys.stdout` and `sys.stderr` are `None` rather than
@@ -164,16 +165,17 @@ build, and which used to be an unconditional `ImportError` in an installed wheel
 too. Settings and map notes live in the user's own directories
 (`automap/paths.py`), never beside the executable.
 
-`pyproject.toml` also gained `tools` to the wheel's package list: `wish-cli` is
-declared as `tools.wish:main` and the window imports `tools.genui`, so without
-it both entry points were broken in an installed wheel.
+`pyproject.toml` also gained `tools` to the wheel's package list: `tools.wish`
+is the body of the subcommands and the window imports `tools.genui`, so without
+it both were broken in an installed wheel.
 
 ## 5. PyPI
 
 **`pip install wish-goldbox` installs a command called `wish`.** The
 distribution is `wish-goldbox` because `wish` on PyPI belongs to an unrelated
-package from 2013; nothing a user types changes, and the entry points are still
-`wish`, `wish-cli`, `wish-editor` and `wish-automap`.
+package from 2013. There is exactly one entry point, `wish`; `wish-cli`,
+`wish-editor` and `wish-automap` were dropped in
+[129-one-binary.md](129-one-binary.md).
 
 Both the wheel and the sdist go to PyPI. The release page carries the wheel and
 the two frozen builds and **no sdist of ours**: GitHub attaches its own "Source
@@ -199,9 +201,10 @@ leave a half-made release page behind it.
 | a tagged build reports the tag | verified — a throwaway clone tagged `v0.1.0` built `wish-0.1.0` |
 | an untagged build does not claim to be a release | verified — `0.0.1.dev49+g…` |
 | the Linux frozen build runs | verified — `wish --version` and the window both start from `dist/wish/wish` |
-| the Linux tarball carries both executables | verified — `wish` 2.2 MB and `wish-cli` 1.7 MB beside one `_internal/`. The folder went 162.8 → 164.7 MB and the `.tar.gz` 61.2 → 62.9 MB: +1.1%, not the +100% a second Qt would have cost |
-| the frozen `wish-cli` round-trips a save disk | verified — export and re-import of a `PORSAVE*.D64` came back byte-identical |
-| the Windows zip ships no `wish-cli.exe` | **unverified as a build**; the spec's platform split is unit-tested in `tests/test_packaging.py` |
+| the Linux tarball carries exactly one executable | verified — `wish`, 2.29 MB, beside one `_internal/`. The folder is 163.1 MB and the `.tar.gz` 61.3 MB, back to what they were before `wish-cli` was added |
+| the frozen `wish export` round-trips a save disk | verified — export and re-import of a `PORSAVE*.D64` came back byte-identical, `dist/wish/wish` on 2026-08-22 |
+| the Windows zip carries the same one executable | **unverified as a build**; asserted in CI on both platforms and unit-tested in `tests/test_packaging.py` |
+| `wish export` prints on Windows | **unverified, and nothing depends on it.** The build is windowed, so the subcommands' output goes through the console-borrowing path below — see [129-one-binary.md](129-one-binary.md) |
 | `wish.exe --version` reaches a Windows terminal | **unverified.** `AttachConsole`/`CONOUT$` is standard practice and the fallbacks are tested on Linux, but nothing here runs Windows. A GUI-subsystem process returns the prompt before it prints, so the version may land under it |
 | the Windows zip runs with no Python | **unverified.** There is no Windows machine here |
 | the Linux build runs on another distribution | **unverified** |

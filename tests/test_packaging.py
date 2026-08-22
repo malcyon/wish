@@ -1,10 +1,11 @@
-"""The frozen build: what each platform ships, and its entry scripts.
+"""The frozen build: what each platform ships, and its entry script.
 
 Nothing here runs PyInstaller. `wish.spec` is a Python script whose `Analysis`,
 `EXE`, `PYZ` and `COLLECT` names PyInstaller injects at exec time, so the spec
 can be executed against stand-ins and asked what it built -- which is enough to
-catch the regression that matters: the Linux tarball quietly losing `wish-cli`,
-or the Windows zip quietly gaining it.
+catch the regression that matters, now that docs/129-one-binary.md has made it
+one executable: a second one creeping back, on either platform, or the
+subcommands' module falling out of the bundle.
 """
 from __future__ import annotations
 
@@ -40,20 +41,14 @@ class _Fake:
         self.datas = []
 
 
-def _run_spec(platform: str, pure=()) -> dict[str, list[_Fake]]:
-    """Execute wish.spec as PyInstaller would, on the platform named.
-
-    `pure` is what every `Analysis` reports having imported, for the spec's own
-    check that the CLI dragged in no Qt.
-    """
+def _run_spec(platform: str) -> dict[str, list[_Fake]]:
+    """Execute wish.spec as PyInstaller would, on the platform named."""
     built: dict[str, list[_Fake]] = {}
 
     def maker(kind):
         def make(*args, **kwargs):
-            f = _Fake(kind, args, kwargs)
-            f.pure = [(name, "somewhere.py", "PYMODULE") for name in pure]
-            built.setdefault(kind, []).append(f)
-            return f
+            built.setdefault(kind, []).append(_Fake(kind, args, kwargs))
+            return built[kind][-1]
         return make
 
     hooks = types.ModuleType("PyInstaller.utils.hooks")
@@ -80,45 +75,116 @@ def _run_spec(platform: str, pure=()) -> dict[str, list[_Fake]]:
     return built
 
 
-def test_linux_ships_the_window_and_the_cli():
-    built = _run_spec("linux")
-    assert [e.name for e in built["EXE"]] == ["wish", "wish-cli"]
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_there_is_exactly_one_executable(platform):
+    """One binary, and the same one on both platforms -- docs/129.
 
-
-def test_windows_ships_the_window_alone():
-    # Donald: "Windows users don't need a cli. They're point and click heroes."
-    built = _run_spec("win32")
+    This is the assertion the old platform split used to make in two halves:
+    the Linux tarball quietly losing `wish-cli`, or the Windows zip quietly
+    gaining it. There is nothing to lose or gain now, so what is left to catch
+    is a second `EXE` coming back.
+    """
+    built = _run_spec(platform)
     assert [e.name for e in built["EXE"]] == ["wish"]
-    # And does not pay for analysing one it will not ship.
     assert len(built["Analysis"]) == 1
 
 
-def test_one_collect_holds_both_executables():
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_one_collect_holds_it(platform):
     """Two COLLECTs would mean two copies of Qt, ~150 MB of it."""
-    built = _run_spec("linux")
+    built = _run_spec(platform)
     assert len(built["COLLECT"]) == 1
     collected = [a for a in built["COLLECT"][0].args if isinstance(a, _Fake)]
-    assert [e.name for e in collected] == ["wish", "wish-cli"]
+    assert [e.name for e in collected] == ["wish"]
 
 
-def test_the_cli_is_its_own_entry_script():
-    cli = _run_spec("linux")["Analysis"][1]
-    assert cli.args[0] == ["packaging/wish_cli_main.py"]
+def test_the_subcommands_module_is_bundled():
+    """`wish export` reaches `tools.wish` through an import inside `main()`.
+
+    PyInstaller's scan cannot see it, so it is a hidden import; without it the
+    frozen `wish export` dies in `ModuleNotFoundError: tools` on a user's
+    machine and the window is none the wiser.
+    """
+    analysis = _run_spec("linux")["Analysis"][0]
+    assert "tools.wish" in analysis.kwargs["hiddenimports"]
 
 
-def test_a_cli_that_imports_qt_fails_the_build():
-    """Asserted, not excluded: an exclude defers the failure to a user's machine."""
-    with pytest.raises(SystemExit, match="must not import Qt"):
-        _run_spec("linux", pure=["por.d64", "PyQt6.QtWidgets"])
-    # And the window, which is all Qt, is not caught by it.
-    assert _run_spec("win32", pure=["PyQt6.QtWidgets"])["EXE"]
+def test_it_is_the_window_entry_script():
+    assert _run_spec("linux")["Analysis"][0].args[0] == ["packaging/wish_main.py"]
 
 
-def test_the_window_is_windowed():
-    """console=False is what makes the Windows build silent; it is deliberate."""
-    window, cli = _run_spec("linux")["EXE"]
-    assert window.kwargs["console"] is False
-    assert cli.kwargs["console"] is True
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_the_window_is_windowed(platform):
+    """console=False is what keeps Windows from opening one; it is deliberate.
+
+    It costs the subcommands a terminal on Windows, which is the trade
+    docs/129 makes explicitly: nobody is expected to use them there.
+    """
+    exe, = _run_spec(platform)["EXE"]
+    assert exe.kwargs["console"] is False
+
+
+# --- the one command surface ----------------------------------------------
+#
+# `wish --help` not mentioning `export` is half of why docs/129 merged the two
+# programs at all: somebody looking for the save editor looks in the obvious
+# place. These are the assertions that the obvious place keeps answering.
+
+def test_the_two_subcommands_are_the_two_subcommands():
+    from wish.__main__ import SUBCOMMANDS
+    assert SUBCOMMANDS == ("export", "import")
+
+
+def test_the_top_level_help_mentions_them(capsys):
+    from wish.__main__ import main
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert "wish export" in out and "wish import" in out
+
+
+def test_export_wants_a_save_disk(capsys):
+    from wish.__main__ import main
+    with pytest.raises(SystemExit) as exc:
+        main(["export"])
+    assert exc.value.code == 2
+    assert "usage: wish export" in capsys.readouterr().err
+
+
+def test_export_says_so_when_the_disk_is_not_there(tmp_path, capsys):
+    from wish.__main__ import main
+    assert main(["export", str(tmp_path / "nope.d64")]) == 2
+    assert "no such save disk" in capsys.readouterr().err
+
+
+def test_import_wants_somewhere_to_write(capsys):
+    """`--dry-run` is the other way to satisfy it, and says nothing is written."""
+    from wish.__main__ import main
+    with pytest.raises(SystemExit) as exc:
+        main(["import", "party.yaml"])
+    assert exc.value.code == 2
+    assert "-o/--output" in capsys.readouterr().err
+
+
+def test_a_save_disk_called_export_is_still_openable(tmp_path, monkeypatch):
+    """The whole of the resolution rule: exact match, or it is a file.
+
+    `./export` is how docs/129 says to reach one, and it has to actually work
+    -- a prefix match or a `startswith` here would swallow it.
+    """
+    import tools.genui
+    import wish.window
+    from wish.__main__ import main
+
+    opened = []
+    monkeypatch.setattr(tools.genui, "ensure_current", lambda: False)
+    monkeypatch.setattr(wish.window, "run",
+                        lambda save, *a, **k: (opened.append(save), 0)[1])
+    (tmp_path / "export").write_bytes(b"")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["./export", "--disks", str(tmp_path)]) == 0
+    assert opened == ["./export"]
 
 
 # --- the distribution name ------------------------------------------------
@@ -139,11 +205,15 @@ def test_the_metadata_lookup_uses_the_distribution_name():
 
 
 def test_the_command_is_still_wish():
-    """Renaming the distribution must not rename what a user types."""
+    """Renaming the distribution must not rename what a user types.
+
+    And there is exactly one name: `wish-cli`, `wish-editor` and `wish-automap`
+    were dropped in docs/129, so an entry point reappearing here is a merge
+    that only half happened.
+    """
     with (ROOT / "pyproject.toml").open("rb") as f:
         scripts = tomllib.load(f)["project"]["scripts"]
-    assert scripts["wish"] == "wish.__main__:main"
-    assert scripts["wish-cli"] == "tools.wish:main"
+    assert scripts == {"wish": "wish.__main__:main"}
 
 
 # --- the entry scripts ----------------------------------------------------
@@ -159,11 +229,6 @@ def _entry(name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def test_cli_entry_script_resolves():
-    from tools.wish import main
-    assert _entry("wish_cli_main").main is main
 
 
 def test_window_entry_script_resolves():
