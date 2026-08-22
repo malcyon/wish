@@ -1,38 +1,80 @@
 """Level progression: what each class needs, and what it gets.
 
-The table is AD&D 1st edition as Pool of Radiance implements it, and the
-implementation matters -- the game caps levels well below the rulebook (a
-fighter stops at 8, a cleric at 6) because it was written to hand its party on
-to *Curse of the Azure Bonds*.
+Two titles, one shape. Pool of Radiance caps a fighter at 8 and a cleric at 6
+because it was written to hand its party on to *Curse of the Azure Bonds*;
+Curse raises every ceiling, adds paladin and ranger, and carries thirteen
+experience rows where Pool of Radiance carries nine. Nothing about that is a
+different *kind* of table, so this module is data per title -- the same choice
+`por/games.py` made -- and every entry point takes an optional `game`.
 
-**Checked against the game's own data, not merely transcribed** -- and the check
-caught two errors in the source table, which is why it was worth doing. The
-record stores base THAC0 at `0x071` as `60 - THAC0`, so every character we hold
-votes on its own row.
+**Every number here is either read off the player's own disks or transcribed
+from AD&D 1st edition and then checked against them.** The tables the game
+carries, and where:
 
-* **Magic-user and thief level 1 are THAC0 21, not 20.** The published table
-  said 20 for both; every specimen says 21, and 21 is what AD&D 1st edition
-  gives (magic-users 1-5 and thieves 1-4 all need 21 to hit AC 0). Corrected
-  here, and the levels the game confirms are marked below.
-* **The saving-throw column is a *base* table and cannot be compared to a
-  record.** Stored saves vary between characters of the same class and level --
-  a level-1 fighter reads `(14,15,16,17,17)` in one specimen and
-  `(11,12,13,14,14)` in another -- so the record carries modifiers on top,
-  presumably racial and constitution-based. Those columns are transcribed, not
-  verified, and nothing should assert them against a record until the modifiers
-  are understood.
+| table | Pool of Radiance | Curse |
+|---|---|---|
+| experience | `GEN` `$1DB5`, parallel low/mid/high arrays, 9 wide | `GEN` `$136E`, 6 rows x 13 entries x 3 bytes **big-endian** |
+| class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same shape |
+| racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race |
+| THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead |
+| hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount |
+| spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` payload `0x88D`, magic-user 11 rows then cleric 10, x 5 |
 
-One loose end: two different level-4 fighters store THAC0 17 and 18. Unexplained.
+`GEN` is resident at `$0800` in both games whatever its PRG header claims.
 
-Paladin, ranger and monk are here because the tables list them and Gold Box
-Companion can create them, but **Pool of Radiance's own creation menu offers
-none of the three** -- and the game displays all three as `MAGIC-USER`, because
-class-name pointer entries 13, 14 and 15 all hold the same string address.
+**THAC0 is the game's, not a transcription**, and reading it caught an error
+that had been in this file since it was written: **a thief is THAC0 19 at
+levels 5-8 and 16 at 9, not 18/18/18/16/16.** The rows are
+`LDA $1F1F,X` away from the instruction that uses them, they are AD&D 1st
+edition exactly, and no specimen held a thief past level 4 to contradict the
+old numbers. Magic-user and thief level 1 are 21, not the 20 the published
+table this file came from gave -- that correction is older and is what the
+record's own `60 - THAC0` at `0x071` first caught.
+
+**Curse computes the fighter group's THAC0 rather than tabulating it**:
+`LDA $7C98 / CLC / ADC #$27 / STA $7C71` is `THAC0 = 21 - fighting level`,
+where `0x098` is the fighting level Curse fills and Pool of Radiance leaves at
+zero. That reproduces Pool of Radiance's own fighter row and extends it, so a
+level-12 fighter needs 9. It is also why a paladin and a ranger need no THAC0
+table of their own.
+
+**The saving-throw rule is solved** -- `saving_throws` below implements it, and
+it is no longer merely transcribed:
+
+> A character's five stored saves are the class-table row for its level, taking
+> the best number in each column across every class it holds, less the AD&D
+> constitution bonus when the character is a dwarf, gnome or halfling.
+
+78 of 79 distinct Pool of Radiance records satisfy that (`docs/127`), and every
+Curse record on the player's disks does too. **The two games disagree on one
+detail**, which is why the columns are a per-title field: Pool of Radiance
+subtracts the bonus from all five columns, Curse from poison, wands and spells
+only -- the three the *Players Handbook* actually names. MAGNUS, a dwarf
+fighter with constitution 13, reads `11 12 13 14 14` in Pool of Radiance and
+`11 15 13 17 14` in Curse, off the same character.
+
+Curse's paladin saves are the fighter row less 2 and its ranger saves are the
+fighter row unchanged, both AD&D and both confirmed against SSI's own
+pre-generated party at level 5.
+
+Monk is gone from this file. It was here because the published tables list it,
+but no C64 title in the family implements one, and a table nothing can produce
+is a trap rather than documentation. Pool of Radiance offers no paladin or
+ranger either and displays all three as `MAGIC-USER`, because class-name
+pointer entries 13, 14 and 15 hold one string address -- so those two rows live
+under Curse, which does implement them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+#: What the racial-limit tables write for "no limit".
+UNLIMITED = 99
+
+#: The five columns, in stored order at record offset `0x09A`.
+SAVE_COLUMNS = ("paralysis/poison/death", "petrification/polymorph",
+                "rod/staff/wand", "breath weapon", "spell")
 
 
 @dataclass(frozen=True)
@@ -41,53 +83,72 @@ class Level:
 
     level: int
     experience: int              # the threshold to reach it
-    hit_dice: str
-    hp_max: int
+    hit_dice: str                # "9d10+3" -- dice rolled, then the flat tail
     thac0: int
     attacks: float               # 1.5 is AD&D's 3/2, stored doubled at 0x0D9
     saves: tuple[int, int, int, int, int]   # para, petrify, wand, breath, spell
     spells: tuple[int, ...] = ()            # slots per spell level, if any
 
+    @property
+    def hp_max(self) -> int:
+        """The most hit points the dice can give.
+
+        Derived rather than stored. The column used to hold 10 a level for a
+        cleric, 14 for a fighter and 6 for a magic-user and a thief, which
+        matches no rule this project could name and which nothing checked; a
+        number computed from `hit_dice` cannot drift away from it.
+        """
+        dice, _, die = self.hit_dice.partition("d")
+        die, _, flat = die.partition("+")
+        return int(dice) * int(die) + int(flat or 0)
+
+
+# --- Pool of Radiance --------------------------------------------------------
+# Written out row by row because each row carries its own provenance: `✓`
+# marks a THAC0 the stored `60 - value` at `0x071` votes for directly.
 
 CLERIC = (
-    Level(1, 0, "1d8", 10, 20, 1, (10, 13, 14, 16, 15), (1,)),   # 20 confirmed
-    Level(2, 1501, "2d8", 20, 20, 1, (10, 13, 14, 16, 15), (2,)),
-    Level(3, 3001, "3d8", 30, 20, 1, (10, 13, 14, 16, 15), (2, 1)),
-    Level(4, 6001, "4d8", 40, 18, 1, (9, 12, 13, 15, 14), (3, 2)),
-    Level(5, 13001, "5d8", 50, 18, 1, (9, 12, 13, 15, 14), (3, 3, 1)),
-    Level(6, 27501, "6d8", 60, 18, 1, (9, 12, 13, 15, 14), (3, 3, 2)),  # 18 confirmed
+    Level(1, 0, "1d8", 20, 1, (10, 13, 14, 16, 15), (1,)),   # 20 confirmed
+    Level(2, 1501, "2d8", 20, 1, (10, 13, 14, 16, 15), (2,)),
+    Level(3, 3001, "3d8", 20, 1, (10, 13, 14, 16, 15), (2, 1)),
+    Level(4, 6001, "4d8", 18, 1, (9, 12, 13, 15, 14), (3, 2)),
+    Level(5, 13001, "5d8", 18, 1, (9, 12, 13, 15, 14), (3, 3, 1)),
+    Level(6, 27501, "6d8", 18, 1, (9, 12, 13, 15, 14), (3, 3, 2)),  # 18 confirmed
 )
 
 FIGHTER = (
-    Level(1, 0, "1d10", 14, 20, 1, (14, 15, 16, 17, 17)),        # 20 confirmed
-    Level(2, 2001, "2d10", 28, 19, 1, (14, 15, 16, 17, 17)),
-    Level(3, 4001, "3d10", 42, 18, 1, (13, 14, 15, 16, 16)),
-    Level(4, 8001, "4d10", 56, 17, 1, (13, 14, 15, 16, 16)),
-    Level(5, 18001, "5d10", 70, 16, 1, (11, 12, 13, 13, 14)),
-    Level(6, 35001, "6d10", 84, 15, 1, (11, 12, 13, 13, 14)),
-    Level(7, 70001, "7d10", 98, 14, 1.5, (10, 11, 12, 12, 13)),  # 14 confirmed
-    Level(8, 125001, "8d10", 112, 13, 1.5, (10, 11, 12, 12, 13)),  # 13 confirmed
+    Level(1, 0, "1d10", 20, 1, (14, 15, 16, 17, 17)),        # 20 confirmed
+    Level(2, 2001, "2d10", 19, 1, (14, 15, 16, 17, 17)),
+    Level(3, 4001, "3d10", 18, 1, (13, 14, 15, 16, 16)),
+    Level(4, 8001, "4d10", 17, 1, (13, 14, 15, 16, 16)),
+    Level(5, 18001, "5d10", 16, 1, (11, 12, 13, 13, 14)),
+    Level(6, 35001, "6d10", 15, 1, (11, 12, 13, 13, 14)),
+    Level(7, 70001, "7d10", 14, 1.5, (10, 11, 12, 12, 13)),  # 14 confirmed
+    Level(8, 125001, "8d10", 13, 1.5, (10, 11, 12, 12, 13)),  # 13 confirmed
 )
 
 MAGIC_USER = (
-    Level(1, 0, "1d4", 6, 21, 1, (14, 13, 11, 15, 12), (1,)),      # 21 confirmed
-    Level(2, 2501, "2d4", 12, 21, 1, (14, 13, 11, 15, 12), (2,)),
-    Level(3, 5001, "3d4", 18, 21, 1, (14, 13, 11, 15, 12), (2, 1)),
-    Level(4, 10001, "4d4", 24, 21, 1, (14, 13, 11, 15, 12), (3, 2)),
-    Level(5, 22501, "5d4", 30, 21, 1, (14, 13, 11, 15, 12), (4, 2, 1)),
-    Level(6, 40001, "6d4", 36, 19, 1, (13, 11, 9, 13, 10), (4, 2, 2)),  # 19 confirmed
+    Level(1, 0, "1d4", 21, 1, (14, 13, 11, 15, 12), (1,)),      # 21 confirmed
+    Level(2, 2501, "2d4", 21, 1, (14, 13, 11, 15, 12), (2,)),
+    Level(3, 5001, "3d4", 21, 1, (14, 13, 11, 15, 12), (2, 1)),
+    Level(4, 10001, "4d4", 21, 1, (14, 13, 11, 15, 12), (3, 2)),
+    Level(5, 22501, "5d4", 21, 1, (14, 13, 11, 15, 12), (4, 2, 1)),
+    Level(6, 40001, "6d4", 19, 1, (13, 11, 9, 13, 10), (4, 2, 2)),  # 19 confirmed
 )
 
+# Levels 5-9 read 19/19/19/19/16 in the game's own table at $1F32, not the
+# 18/18/18/16/16 this file used to carry. Nothing contradicted the old numbers
+# because no specimen holds a thief past level 4.
 THIEF = (
-    Level(1, 0, "1d6", 6, 21, 1, (13, 12, 14, 16, 15)),            # 21 confirmed
-    Level(2, 1251, "2d6", 12, 21, 1, (13, 12, 14, 16, 15)),
-    Level(3, 2501, "3d6", 18, 21, 1, (13, 12, 14, 16, 15)),
-    Level(4, 5001, "4d6", 24, 21, 1, (13, 12, 14, 16, 15)),
-    Level(5, 10001, "5d6", 30, 18, 1, (12, 11, 12, 15, 13)),
-    Level(6, 20001, "6d6", 36, 18, 1, (12, 11, 12, 15, 13)),
-    Level(7, 42501, "7d6", 42, 18, 1, (12, 11, 12, 15, 13)),
-    Level(8, 70001, "8d6", 48, 16, 1, (12, 11, 12, 15, 13)),
-    Level(9, 110001, "9d6", 54, 16, 1, (11, 10, 10, 14, 11)),
+    Level(1, 0, "1d6", 21, 1, (13, 12, 14, 16, 15)),            # 21 confirmed
+    Level(2, 1251, "2d6", 21, 1, (13, 12, 14, 16, 15)),
+    Level(3, 2501, "3d6", 21, 1, (13, 12, 14, 16, 15)),
+    Level(4, 5001, "4d6", 21, 1, (13, 12, 14, 16, 15)),
+    Level(5, 10001, "5d6", 19, 1, (12, 11, 12, 15, 13)),
+    Level(6, 20001, "6d6", 19, 1, (12, 11, 12, 15, 13)),
+    Level(7, 42501, "7d6", 19, 1, (12, 11, 12, 15, 13)),
+    Level(8, 70001, "8d6", 19, 1, (12, 11, 12, 15, 13)),
+    Level(9, 110001, "9d6", 16, 1, (11, 10, 10, 14, 11)),
 )
 
 TABLES = {
@@ -98,32 +159,327 @@ TABLES = {
 }
 
 
-def table(class_name: str) -> tuple[Level, ...]:
-    return TABLES[class_name]
+# --- Curse of the Azure Bonds ------------------------------------------------
+# Built from bands rather than written out row by row, because a band *is* the
+# AD&D table -- a thief is THAC0 19 for four levels running -- and sixty-six
+# hand-typed rows are sixty-six chances to mistype one.
 
 
-def at_level(class_name: str, level: int) -> Level | None:
-    for row in TABLES.get(class_name, ()):
-        if row.level == level:
-            return row
-    return None
+def _band(bands: tuple[tuple[int, object], ...], level: int):
+    for top, value in bands:
+        if level <= top:
+            return value
+    return bands[-1][1]
 
 
-def next_threshold(class_name: str, level: int) -> int | None:
+def _progression(*, ceiling, experience, thac0, saves, die, roll_to, flat,
+                 attacks=((99, 1),), spells=()) -> tuple[Level, ...]:
+    """One class's rows.
+
+    `roll_to` is the last level that rolls a hit die; past it the class adds a
+    flat `flat` hit points a level, which is the rule `GEN`'s `$1626`/`$162E`
+    pair encodes and which Pool of Radiance stops short of ever needing.
+    """
+    rows = []
+    for level in range(1, ceiling + 1):
+        dice = min(level, roll_to)
+        extra = (level - roll_to) * flat if level > roll_to else 0
+        rows.append(Level(
+            level=level,
+            experience=experience[level - 1],
+            hit_dice=f"{dice}d{die}" + (f"+{extra}" if extra else ""),
+            thac0=_band(thac0, level),
+            attacks=_band(attacks, level),
+            saves=_band(saves, level),
+            spells=spells[level - 1] if level <= len(spells) else (),
+        ))
+    return tuple(rows)
+
+
+# AD&D 1st edition saving throws, by the last level of each band. Checked
+# against the game where the game has a row: Curse keeps only the level-1 rows
+# on disk (`GEN` `$0F49`, four classes of five bytes) and derives the rest.
+_SAVES_MAGIC_USER = ((5, (14, 13, 11, 15, 12)), (10, (13, 11, 9, 13, 10)),
+                     (15, (11, 9, 7, 11, 8)))
+_SAVES_CLERIC = ((3, (10, 13, 14, 16, 15)), (6, (9, 12, 13, 15, 14)),
+                 (9, (7, 10, 11, 13, 12)), (12, (6, 9, 10, 12, 11)))
+_SAVES_THIEF = ((4, (13, 12, 14, 16, 15)), (8, (12, 11, 12, 15, 13)),
+                (12, (11, 10, 10, 14, 11)))
+_SAVES_FIGHTER = ((2, (14, 15, 16, 17, 17)), (4, (13, 14, 15, 16, 16)),
+                  (6, (11, 12, 13, 13, 14)), (8, (10, 11, 12, 12, 13)),
+                  (10, (8, 9, 10, 9, 11)), (12, (7, 8, 9, 8, 10)))
+#: A paladin saves two better than a fighter at every level. SSI's own PALADIN,
+#: level 5, stores `9 10 11 11 12` against the fighter row's `11 12 13 13 14`.
+_SAVES_PALADIN = tuple((top, tuple(v - 2 for v in row))
+                       for top, row in _SAVES_FIGHTER)
+#: A ranger saves exactly as a fighter. SSI's RANGER, level 5, stores the
+#: fighter row unchanged.
+_SAVES_RANGER = _SAVES_FIGHTER
+
+#: `$0E2C`, `$0E39`, `$0E46`, indexed by level. The fighter group is
+#: `21 - fighting level`, computed at `$0E08`, so its band is written as one.
+_THAC0_MAGIC_USER = ((5, 21), (10, 19), (15, 16))
+_THAC0_CLERIC = ((3, 20), (6, 18), (9, 16), (12, 14))
+_THAC0_THIEF = ((4, 21), (8, 19), (12, 16))
+_THAC0_FIGHTER = tuple((level, 21 - level) for level in range(1, 13))
+
+#: A fighter, paladin or ranger reaches two attacks in three rounds at 7.
+_ATTACKS_FIGHTER = ((6, 1), (99, 1.5))
+
+#: `ECL65` payload `0x88D`: eleven magic-user rows of five, then ten cleric
+#: rows of five. Trailing zeroes are dropped so a row reads the way a character
+#: sheet does.
+_SLOTS_MAGIC_USER = ((1,), (2,), (2, 1), (3, 2), (4, 2, 1), (4, 2, 2),
+                     (4, 3, 2, 1), (4, 3, 3, 2), (4, 3, 3, 2, 1),
+                     (4, 4, 3, 2, 2), (4, 4, 4, 3, 3))
+_SLOTS_CLERIC = ((1,), (2,), (2, 1), (3, 2), (3, 3, 1), (3, 3, 2),
+                 (3, 3, 2, 1), (3, 3, 3, 2), (4, 4, 3, 2, 1), (4, 4, 3, 3, 2))
+
+#: `GEN` `$136E`, measured. Every value is the AD&D 1st edition number plus one
+#: -- 2001 to leave fighter 1 -- with two exceptions the disk is emphatic
+#: about: the ranger's first threshold is a bare 2250, and the fighter's
+#: eleventh reads 749937 where 750001 is expected. That is one bit (`$40`) in
+#: the middle byte of `0B 71 B1`, and only one of the player's Curse rips
+#: carries `GEN`, so a damaged image cannot be ruled out. The number the disk
+#: holds is the number kept here; a second rip would settle it.
+_XP_MAGIC_USER = (0, 2501, 5001, 10001, 22501, 40001, 60001, 90001, 135001,
+                  250001, 375001)
+_XP_CLERIC = (0, 1501, 3001, 6001, 13001, 27501, 55001, 110001, 225001, 450001)
+_XP_THIEF = (0, 1251, 2501, 5001, 10001, 20001, 42501, 70001, 110001, 160001,
+             220001, 440001)
+_XP_FIGHTER = (0, 2001, 4001, 8001, 18001, 35001, 70001, 125001, 250001,
+               500001, 749937, 1000001)
+_XP_PALADIN = (0, 2751, 5501, 12001, 24001, 45001, 95001, 175001, 350001,
+               700001, 1050001)
+_XP_RANGER = (0, 2250, 4501, 10001, 20001, 40001, 90001, 150001, 225001,
+              325001, 650001)
+
+CURSE_MAGIC_USER = _progression(
+    ceiling=11, experience=_XP_MAGIC_USER, thac0=_THAC0_MAGIC_USER,
+    saves=_SAVES_MAGIC_USER, die=4, roll_to=11, flat=1,
+    spells=_SLOTS_MAGIC_USER)
+CURSE_CLERIC = _progression(
+    ceiling=10, experience=_XP_CLERIC, thac0=_THAC0_CLERIC,
+    saves=_SAVES_CLERIC, die=8, roll_to=9, flat=2, spells=_SLOTS_CLERIC)
+CURSE_THIEF = _progression(
+    ceiling=12, experience=_XP_THIEF, thac0=_THAC0_THIEF,
+    saves=_SAVES_THIEF, die=6, roll_to=10, flat=2)
+CURSE_FIGHTER = _progression(
+    ceiling=12, experience=_XP_FIGHTER, thac0=_THAC0_FIGHTER,
+    saves=_SAVES_FIGHTER, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER)
+# No spell table has been found for either. Curse does carry the ranger's
+# druid list -- spell ids 77-80 -- so the slots exist somewhere; they are not
+# in `ECL65` beside the other two, and an empty tuple is the honest answer.
+CURSE_PALADIN = _progression(
+    ceiling=11, experience=_XP_PALADIN, thac0=_THAC0_FIGHTER,
+    saves=_SAVES_PALADIN, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER)
+CURSE_RANGER = _progression(
+    ceiling=11, experience=_XP_RANGER, thac0=_THAC0_FIGHTER,
+    saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_FIGHTER)
+
+
+# --- the per-title descriptor ------------------------------------------------
+
+@dataclass(frozen=True)
+class LevelTables:
+    """One title's progression, as data.
+
+    Pairs rather than dicts so the descriptor stays hashable and frozen, which
+    is the shape `por/games.py` settled on for the same reason.
+
+    `class_order` is **class-bit order** -- index `n` is bit `n` of
+    `class_bits` at `0x0EB` and slot `n` of the per-class level array at
+    `0x0C9` -- so it is the index the game's own tables use, and `None` marks a
+    bit this title has no class for. `racial_limits` rows are in that order.
+    """
+
+    key: str
+    title: str
+    class_order: tuple[str | None, ...]
+    classes: tuple[tuple[str, tuple[Level, ...]], ...]
+    ceilings: tuple[tuple[str, int], ...]
+    racial_limits: tuple[tuple[int, tuple[int, ...]], ...]
+    #: Which of the five save columns the racial constitution bonus reaches.
+    constitution_save_columns: tuple[int, ...]
+    #: Race codes that take it at all: dwarf, gnome, halfling. Derivable from
+    #: `games.Game.races` and would live better there; it is here because
+    #: nothing else needs it yet and this module does not import that one.
+    sturdy_races: tuple[int, ...] = (1, 3, 5)
+
+    @property
+    def tables(self) -> dict[str, tuple[Level, ...]]:
+        return dict(self.classes)
+
+    @property
+    def class_names(self) -> tuple[str, ...]:
+        return tuple(name for name, _ in self.classes)
+
+    def table(self, class_name: str) -> tuple[Level, ...]:
+        return self.tables[class_name]
+
+    def at_level(self, class_name: str, level: int) -> Level | None:
+        for row in self.tables.get(class_name, ()):
+            if row.level == level:
+                return row
+        return None
+
+    def ceiling(self, class_name: str) -> int | None:
+        """The last level this title lets the class reach, or None if unknown."""
+        return dict(self.ceilings).get(class_name)
+
+    def racial_limit(self, race: int, class_name: str) -> int | None:
+        """How far a race of that class may go. `UNLIMITED` is 99.
+
+        None means the title says nothing -- race 7 and above skip the check in
+        both games, and so does a class this title does not implement. Zero
+        means the race may not take the class at all.
+        """
+        row = dict(self.racial_limits).get(race)
+        if row is None or class_name not in self.class_order:
+            return None
+        index = self.class_order.index(class_name)
+        return row[index] if index < len(row) else None
+
+    def saving_throws(self, class_levels, race: int = 0,
+                      constitution: int = 0) -> tuple[int, ...] | None:
+        """The five saves a record should store, or None for no known class.
+
+        `class_levels` maps a class name to its level -- the per-class array at
+        `0x0C9`, not the single level byte at `0x0A0`, because a multi-class
+        character takes the best column from each of its classes.
+        """
+        rows = [row.saves for row in
+                (self.at_level(name, max(int(level), 1))
+                 for name, level in dict(class_levels).items())
+                if row is not None]
+        if not rows:
+            return None
+        best = [min(row[column] for row in rows) for column in range(5)]
+        if race in self.sturdy_races:
+            bonus = constitution_save_bonus(constitution)
+            for column in self.constitution_save_columns:
+                best[column] -= bonus
+        return tuple(best)
+
+
+#: Pool of Radiance offers four classes and no paladin or ranger, so bits 6 and
+#: 7 name nothing. Its racial rows are four bytes wide, which is why they stop
+#: at fighter.
+POOL_OF_RADIANCE = LevelTables(
+    key="pool-of-radiance",
+    title="Pool of Radiance",
+    class_order=("magic-user", "cleric", "thief", "fighter",
+                 None, None, None, None),
+    classes=(("magic-user", MAGIC_USER), ("cleric", CLERIC),
+             ("thief", THIEF), ("fighter", FIGHTER)),
+    ceilings=(("magic-user", 6), ("cleric", 6), ("thief", 9), ("fighter", 8)),
+    racial_limits=((1, (0, 8, UNLIMITED, 9)), (2, (11, 7, UNLIMITED, 7)),
+                   (3, (0, 7, UNLIMITED, 6)), (4, (8, 5, UNLIMITED, 8)),
+                   (5, (0, 0, UNLIMITED, 6)), (6, (0, 4, 8, 10)),
+                   (7, (UNLIMITED,) * 4)),
+    constitution_save_columns=(0, 1, 2, 3, 4),
+)
+
+#: Curse zeroes the cleric column for dwarf, elf and gnome where Pool of
+#: Radiance carried 8, 7 and 7 -- those three are the *Dungeon Master's Guide*
+#: NPC limits and the *Players Handbook* has no such player clerics, so Curse
+#: is the stricter reading of the same rule rather than a different one.
+CURSE_OF_THE_AZURE_BONDS = LevelTables(
+    key="curse-of-the-azure-bonds",
+    title="Curse of the Azure Bonds",
+    class_order=("magic-user", "cleric", "thief", "fighter",
+                 None, None, "paladin", "ranger"),
+    classes=(("magic-user", CURSE_MAGIC_USER), ("cleric", CURSE_CLERIC),
+             ("thief", CURSE_THIEF), ("fighter", CURSE_FIGHTER),
+             ("paladin", CURSE_PALADIN), ("ranger", CURSE_RANGER)),
+    ceilings=(("magic-user", 11), ("cleric", 10), ("thief", 12),
+              ("fighter", 12), ("paladin", 11), ("ranger", 11)),
+    racial_limits=(
+        (1, (0, 0, UNLIMITED, 9, 0, 0, 0, 0)),
+        (2, (11, 0, UNLIMITED, 7, 0, 0, 0, 0)),
+        (3, (0, 0, UNLIMITED, 6, 0, 0, 0, 0)),
+        (4, (8, 5, UNLIMITED, 8, 0, 0, 0, 8)),
+        (5, (0, 0, UNLIMITED, 6, 0, 0, 0, 0)),
+        (6, (0, 4, 8, 10, 0, 0, 0, 0)),
+        (7, (UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, 0, 0,
+             UNLIMITED, UNLIMITED)),
+    ),
+    constitution_save_columns=(0, 2, 4),
+)
+
+TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)
+BY_KEY = {t.key: t for t in TITLES}
+
+#: What a caller gets when it says nothing. Every caller predates the second
+#: game and means this one.
+DEFAULT = POOL_OF_RADIANCE
+
+
+def for_game(game=None) -> LevelTables:
+    """The tables for a title.
+
+    Takes a `por.games.Game`, a game key, a `LevelTables`, or None. Deliberately
+    duck-typed on `.key` rather than importing `por.games`: this module needs
+    one string from that one, and a title it has no tables for falls back to
+    Pool of Radiance rather than raising, because every geometry-only title in
+    `por/games.py` runs an engine whose progression has not been read.
+    """
+    if isinstance(game, LevelTables):
+        return game
+    key = getattr(game, "key", game)
+    return BY_KEY.get(key, DEFAULT)
+
+
+def constitution_save_bonus(constitution: int) -> int:
+    """AD&D 1st edition: +1 saving throw per 3.5 points of constitution.
+
+    Only dwarves, gnomes and halflings take it. The `+1` and `+2` bands are
+    PROBABLE -- no specimen has a constitution under 11 -- and `+3`/`+4`/`+5`
+    are exercised by MAGNUS, HOGARTH, GRON, NYX and DAX.
+    """
+    for floor, bonus in ((18, 5), (14, 4), (11, 3), (7, 2), (4, 1)):
+        if int(constitution or 0) >= floor:
+            return bonus
+    return 0
+
+
+def table(class_name: str, game=None) -> tuple[Level, ...]:
+    return for_game(game).table(class_name)
+
+
+def at_level(class_name: str, level: int, game=None) -> Level | None:
+    return for_game(game).at_level(class_name, level)
+
+
+def ceiling(class_name: str, game=None) -> int | None:
+    return for_game(game).ceiling(class_name)
+
+
+def racial_limit(race: int, class_name: str, game=None) -> int | None:
+    return for_game(game).racial_limit(race, class_name)
+
+
+def saving_throws(class_levels, race: int = 0, constitution: int = 0,
+                  game=None) -> tuple[int, ...] | None:
+    return for_game(game).saving_throws(class_levels, race, constitution)
+
+
+def next_threshold(class_name: str, level: int, game=None) -> int | None:
     """Experience needed for the level after this one.
 
     None at the class's ceiling -- Pool of Radiance stops a fighter at 8 and a
     cleric at 6, so there genuinely is no next threshold, and an experience bar
     should say "maximum" rather than draw an empty one.
     """
-    row = at_level(class_name, level + 1)
+    row = at_level(class_name, level + 1, game)
     return row.experience if row else None
 
 
-def progress(class_name: str, level: int, experience: int) -> float | None:
+def progress(class_name: str, level: int, experience: int,
+             game=None) -> float | None:
     """How far through the current level, 0.0 to 1.0. None at the ceiling."""
-    here = at_level(class_name, level)
-    there = next_threshold(class_name, level)
+    here = at_level(class_name, level, game)
+    there = next_threshold(class_name, level, game)
     if here is None or there is None:
         return None
     span = there - here.experience
