@@ -1,7 +1,9 @@
-# Running more than one thing at once — plan
+# Running more than one thing at once
 
-**Status: nothing built. This is a costing, and the answer to two different
-questions that arrived in one sentence.**
+**Status: §§1-3 are BUILT and verified (P46, 2026-08-22). §§4-8 are still the
+costing they always were.** What changed when it was built is in §0; the rest
+of this document is the design, corrected in place where building it proved a
+claim wrong.
 
 Donald asked whether Proxmox VMs, each with its own VICE and the game inside,
 would let tests run in parallel, and separately asked for "Windows VMs for
@@ -33,6 +35,56 @@ imports `ViceTarget`, and it stubs it. Making that faster is
 not what the rest of this document is about. What is serialised here is the
 **driven live sessions** — `tools/session.py`, `tools/walkrun.py`, the
 automapper against a running game.
+
+---
+
+## 0. What was built, and what the building corrected
+
+`tools/instance.py` is the pool; `tests/test_instance.py` is 26 tests of it and
+none of them needs an emulator.  `tools/session.py` takes a `Slot` and is
+otherwise unchanged, so `tools/walkrun.py` and `tools/porcmd` still work on the
+human's numbers.  `pytest tests/ -q` is green.
+
+**`x64sc -config <file>` works. CONFIRMED**, and it is the one claim in §2 that
+was only PROBABLE.  Launched with `-config` and *no* monitor flags at all, VICE
+bound 127.0.0.1:6527 and :6547 from the file alone.  `docs/131-fastloader.md`
+reports it could not find the literal `-config` in the binary's option strings;
+`x64sc -help` prints `-config <filename>` and the flag is honoured, so that
+caveat can go.
+
+**Two instances coexist.** Slots 0 and 1, launched through `porlaunch.sh`, each
+answered its own greeting while the other ran, and a byte written at `$0340`
+through 6520 was absent through 6521 — two machines, not two views of one.
+Tearing down slot 0's process group left slot 1 answering.  Throughout, 6502
+and 6510 were never bound and Donald's `vicerc` was byte-identical afterwards.
+
+**A decoy `x64sc` the pool did not launch survived a full claim / launch /
+teardown cycle**, which is the whole point of removing the four `pkill -x`
+calls.
+
+Three things the plan had wrong, found by building it:
+
+1. **§3.4's reap table killed on the wrong condition.** It kills only on the two
+   rows where the port answers.  But `porlaunch.sh` now passes
+   `--die-with-parent`, so a crashed holder's *VICE* dies with it and the port
+   falls silent — while the `Xvfb` or `Xephyr` it started has no such link and
+   survives.  Under the table as written nothing ever collected it.  The port
+   decides which row this is; the **lease** decides whether anything may be
+   killed, and a free flock has already decided.  `_reap_held` therefore kills
+   the recorded pgid on every row.
+2. **`--die-with-parent` makes the orphan row rare**, which is a good outcome
+   and not the one §3.4 expected.  It still happens — an emulator started
+   outside the pool, or one whose parent `exec`d away — so the row stays, and it
+   is proven on a real process.
+3. **A reaped slot can still be unusable.** If the lease named no pgid, or the
+   kill did not take, the port stays bound.  `claim()` steps over such a slot
+   rather than launching into a port that is already in use — emphatically
+   rather than going hunting for the process by name.
+
+Still not done, because they are other agents' files: `wish/backends.py`'s
+`setup_hint` and `automap/__main__.py`'s two message lines still name `6502` as
+a literal.  They are strings in a message, not a probe, so nothing misbehaves —
+but they will tell a pooled user the wrong port.
 
 ---
 
@@ -88,15 +140,19 @@ of them are the actual work:
 | 5 | disk copies | the game **writes** to the disks it is given | `HERE` → `work/inst/<n>/` |
 | 6 | `vicerc` | rewritten on exit; instances would race it | `-config <file>` |
 
+`Slot.env()` is the whole interface: `POR_SLOT`, `POR_DISPLAY`, `POR_VICERC`,
+`POR_MONITOR` and `MONFLAGS`, which `porlaunch.sh` reads and passes on.
+`POR_HEADLESS=1` swaps `Xephyr` for `Xvfb`, which is what keeps eight game
+windows off Donald's desktop.
+
 Six, not four, because the text monitor and the command server are ports too
 and neither is currently parameterised.
 
 ### The `vicerc` per instance
 
-`x64sc` 3.10 carries `-config <filename>` "Specify config file" in its option
-table (present in the flatpak binary at
-`~/.local/share/flatpak/app/net.sf.VICE/current/active/files/bin/x64sc`).
-**PROBABLE** that it does what it says — it has not been exercised here.
+`x64sc` 3.10 carries `-config <filename>` "Specify config file", and it does
+what it says: **CONFIRMED** 2026-08-22 by launching with `-config` and no
+monitor flags and watching VICE bind the file's two monitor addresses.
 
 Each slot gets `work/inst/<n>/vicerc`, **seeded by copying Donald's** and then
 overriding four lines. Copying rather than writing from scratch is not
@@ -155,10 +211,16 @@ that made the old `ss -tnp | grep 6502` rule work, instead of destroying it.
 A new module, `tools/instance.py`.
 
 ```
-slot = instance.claim(game="por")     # blocks or raises if the pool is full
-slot.port, slot.text_port, slot.display, slot.dir, slot.vicerc
+slot = instance.claim(game="por")     # raises PoolFull if every slot is leased
+slot.port, slot.text_port, slot.cmd_port, slot.display, slot.dir, slot.vicerc
+slot.seed_vicerc(); instance.copy_disks(slot, [...])
+Session(disk, slot=slot).launch()     # records the pgid in the lease
 slot.release()                        # or just exit
 ```
+
+`tools/instance.py status` prints every slot and which row of §3.4 it is on;
+`tools/instance.py reap [n]` frees the ones that are nobody's;
+`python3 tools/session.py --pool` claims a slot and serves on its command port.
 
 **The lease is an `fcntl.flock` on `work/inst/<n>/lease`, held by the claiming
 process.** Allocation is: try `LOCK_EX | LOCK_NB` on each slot in turn, first
@@ -206,9 +268,15 @@ identical, and `automap/target.py` says so in its own docstring.
 | free | yes | yes | orphan — a healthy VICE nobody owns. Kill the pid in the lease file, then claim |
 | free | yes | no | wreckage — frozen or half-attached. Same: kill the recorded pid |
 
-`instance.reap()` does exactly that table, and it kills **the pid recorded in
+`instance.reap()` does exactly that table, and it kills **the pgid recorded in
 that slot's lease file** and nothing else. A slot whose flock is held is
 somebody's however dead it looks; that is the whole discipline in one line.
+
+**Corrected when built:** the port decides which row this is, but it must not
+decide whether to kill. `--die-with-parent` means a crashed holder's VICE dies
+with it and the port falls silent, while the `Xvfb` it started survives — so the
+`clean` row has to kill the recorded pgid too, or nothing ever collects the X
+server. A free flock is the only permission needed, and it is the only one used.
 
 ### 3.5 The code change
 
@@ -218,12 +286,12 @@ Small, as the premise claimed. Six existing files, one new one.
 |---|---|---|
 | `automap/vice.py` | `MON_HOST`/`MON_PORT` read once from `$POR_MONITOR` (`host:port`), defaulting to today's values — the `wish/ultimate.py:_env()` pattern | ~10 lines |
 | `automap/target.py` | `monitor_listening()` and `who_holds_hint()` default from `MON_HOST`/`MON_PORT` instead of the literal `6502` | 3 lines |
-| `wish/backends.py` | the `setup_hint` string interpolates the port | 1 line |
-| `automap/__main__.py` | two message lines, same | 2 lines |
+| `wish/backends.py` | the `setup_hint` string interpolates the port | 1 line — **not done**, another agent's file |
+| `automap/__main__.py` | two message lines, same | 2 lines — **not done**, same |
 | `tools/session.py` | `HERE`, `TEXT_PORT`, `CMD_PORT`, `display`, `MONFLAGS` become instance attributes taken from a slot; the four `pkill` calls become a process-group kill | ~35 lines changed |
 | `tools/porlaunch.sh` | drop the two `pkill` lines; take `POR_SLOT`; pass `-config` and `--die-with-parent` | ~8 lines |
 | `tools/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
-| `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | ~120 lines |
+| `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 
 Roughly **270 new lines and 50 changed**, and nothing in `por/`, `editor/`,
 `ui/` or `designer/` is touched. `wish/backends.py` needs no structural change
@@ -513,16 +581,19 @@ provisioning.
 None of the first four need a second instance, so they can be checked in an
 ordinary session.
 
-| # | check | how |
+All eight passed on 2026-08-22.
+
+| # | check | result |
 |---|---|---|
-| 1 | `pytest tests/ -q` still passes, 1178 and 1 skipped | unchanged by the whole plan; the override defaults to today's values |
-| 2 | `tests/test_instance.py` passes with no emulator | allocation, contention between two processes, reap's table, `vicerc` seeding — all files and flocks |
-| 3 | `POR_MONITOR=127.0.0.1:6523` makes `monitor_listening()` probe 6523 | the latent bug in `automap/target.py:187`; assert it, because the bug is invisible while the two numbers agree |
-| 4 | A seeded `vicerc` still carries the JiffyDOS kernal paths | a diff against the template; the fastloader answer depends on it |
-| 5 | Donald's `~/.var/app/net.sf.VICE/config/vice/vicerc` is byte-identical after a pooled run | `cmp` before and after. **This is the most important single check in the list** |
-| 6 | Two instances on 6520 and 6521 each answer their own greeting | one `ViceTarget` per port, both alive at once |
-| 7 | Killing slot 0's process group leaves slot 1 running | the pkill regression, asserted directly |
-| 8 | `instance.reap()` refuses a slot whose flock is held | hold the lock from a second process and watch it decline |
+| 1 | `pytest tests/ -q` still passes | green; 2 skipped |
+| 2 | `tests/test_instance.py` passes with no emulator | 26 tests, ~5 s |
+| 3 | `POR_MONITOR=127.0.0.1:6523` makes `monitor_listening()` probe 6523 | yes — and it is resolved *per call*, not at import, so a running window can be repointed |
+| 4 | A seeded `vicerc` still carries the JiffyDOS kernal paths | yes; the diff against the template is exactly six lines |
+| 5 | Donald's `vicerc` is byte-identical after a pooled run | yes, md5 unchanged across every run here. **The most important single check in the list** |
+| 6 | Two instances on 6520 and 6521 each answer their own greeting | yes, and a byte written through one was absent through the other |
+| 7 | Killing slot 0's process group leaves slot 1 running | yes |
+| 8 | `instance.reap()` refuses a slot whose flock is held | yes, from a second process |
+| 9 | a decoy `x64sc` the pool did not launch survives a full cycle | yes — the check the whole task was for |
 
 ### 9.2 The first parallel run
 

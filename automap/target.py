@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
-from .vice import Monitor
+from .vice import Monitor, monitor_address
 
 # SAVEDGAME0 is a verbatim image of $4900-$64FF, so a live read of this range
 # decodes with por.savegame and no new code at all.
@@ -143,12 +143,19 @@ class NotConnected(RuntimeError):
     """No emulator to talk to. Expected, and recoverable -- wait and retry."""
 
 
-def who_holds_hint(port: int = 6502) -> str:
+def who_holds_hint(port: int | None = None) -> str:
     """The command that names the process holding a port, on this platform.
 
     `ss` is Linux-only, and it was in the message a Windows user is most
     likely to see -- the one about another client already having the monitor.
+
+    Defaults to `$POR_MONITOR`'s port rather than the literal `6502`: with `$POR_MONITOR`
+    set, naming 6502 would send the reader after the wrong process -- and under
+    the instance pool 6502 is a *human's* game, which is the one thing nobody
+    should be told to go and look at.
     """
+    if port is None:
+        port = monitor_address()[1]
     if sys.platform == "win32":
         return f"`netstat -ano | findstr {port}` names it"
     if sys.platform == "darwin":
@@ -184,13 +191,24 @@ class MonitorBusy(NotConnected):
             f"serves one connection at a time. {who_holds_hint()}"))
 
 
-def monitor_listening(host: str = "127.0.0.1", port: int = 6502,
+def monitor_listening(host: str | None = None, port: int | None = None,
                       timeout: float = 0.25) -> bool:
     """Is a binary monitor accepting connections?
 
     Cheap enough to call on a timer, so the map can sit waiting for the game to
     start rather than refusing to open without it.
+
+    Defaults to the same address `Monitor` connects to, resolved at call
+    time so pointing a running window at a pooled instance works.
+    They were the literals `"127.0.0.1"` and `6502` until `$POR_MONITOR`
+    existed, at which point the probe would have tested one port and the
+    connect used another.
     """
+    default_host, default_port = monitor_address()
+    if host is None:
+        host = default_host
+    if port is None:
+        port = default_port
     import socket
     try:
         socket.create_connection((host, port), timeout).close()

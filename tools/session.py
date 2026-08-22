@@ -31,16 +31,22 @@ import sys
 import time
 
 sys.path.insert(0, "/home/donald/src/wish/tools")
+import instance  # noqa: E402
 from drive import Keyboard, Monitor, MonitorError, is_bitmap, read_screen  # noqa: E402
 
 TOOLS = "/home/donald/src/wish/tools"
 # Disk images and logs live in scratch; the code does not.
 HERE = "/home/donald/src/wish/work/drive"
+# The human's numbers, and the defaults when no slot is passed.  The pool never
+# allocates these: `tools/instance.py` starts at 6520, so anything still on 6502
+# is a game a human started from the desktop menu.
+MON_PORT = 6502
 TEXT_PORT = 6510
 CMD_PORT = 6600
+DISPLAY = ":7"
 MONFLAGS = (
-    "-binarymonitor -binarymonitoraddress 127.0.0.1:6502 "
-    "-remotemonitor -remotemonitoraddress 127.0.0.1:6510"
+    f"-binarymonitor -binarymonitoraddress 127.0.0.1:{MON_PORT} "
+    f"-remotemonitor -remotemonitoraddress 127.0.0.1:{TEXT_PORT}"
 )
 
 # The game asks for a disk in three different wordings, on two different rows.
@@ -52,47 +58,82 @@ FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
 
 
 class Session:
-    def __init__(self, disk: str = f"{HERE}/SIDE1.D64", display: str = ":7"):
-        self.disk = disk
-        self.kbd = Keyboard(display)
+    """One driven game.
+
+    With no `slot` this is what it always was: `work/drive/`, ports 6502, 6510
+    and 6600, display `:7` -- the human's numbers, kept so `tools/walkrun.py`
+    and `tools/porcmd` need no change.  Pass a `tools.instance.Slot` and every
+    one of those six becomes that slot's own, which is the whole of what makes
+    two sessions able to run at once.
+    """
+
+    def __init__(self, disk: str | None = None, display: str | None = None,
+                 slot=None):
+        self.slot = slot
+        self.here = str(slot.dir) if slot is not None else HERE
+        self.mon_port = slot.port if slot is not None else MON_PORT
+        self.text_port = slot.text_port if slot is not None else TEXT_PORT
+        self.cmd_port = slot.cmd_port if slot is not None else CMD_PORT
+        self.monflags = slot.monflags() if slot is not None else MONFLAGS
+        self.display = display or (slot.display if slot is not None else DISPLAY)
+        self.disk = disk or f"{self.here}/SIDE1.D64"
+        self.kbd = Keyboard(self.display)
         self.text: socket.socket | None = None
-        self.attached = disk
+        self.attached = self.disk
         # which image answers "insert your save game disk"; swappable so a run
         # can read one save and write another
-        self.save_disk = f"{HERE}/SIDE0.D64"
+        self.save_disk = f"{self.here}/SIDE0.D64"
         self.side_prompts = 0
         self._last_prompt = 0.0
+        # The process group `launch()` started.  Teardown kills this and nothing
+        # else -- never a process by name.
+        self.pgid: int | None = None
+
+    def mon(self, timeout: float = 5.0) -> Monitor:
+        """A monitor connection to *this* instance."""
+        return Monitor(port=self.mon_port, timeout=timeout)
 
     # -- lifecycle --------------------------------------------------------
 
     def launch(self) -> None:
-        subprocess.run(["pkill", "-x", "x64sc"], capture_output=True)
-        subprocess.run(["pkill", "-x", "Xephyr"], capture_output=True)
-        time.sleep(1)
-        subprocess.Popen(
+        """Start Xephyr and VICE in their own process group.
+
+        **It kills nothing first.**  This used to `pkill -x x64sc` and
+        `pkill -x Xephyr`, which under the instance pool would kill every other
+        agent's emulator and Donald's own game -- the same failure mode as the
+        incident behind `CLAUDE.md`'s rule, generalised.
+        """
+        env = dict(os.environ, MONFLAGS=self.monflags, POR_DISPLAY=self.display)
+        if self.slot is not None:
+            env.update(self.slot.env())
+        os.makedirs(self.here, exist_ok=True)
+        proc = subprocess.Popen(
             [f"{TOOLS}/porlaunch.sh", self.disk],
-            env=dict(os.environ, MONFLAGS=MONFLAGS),
-            stdout=open(f"{HERE}/vice.log", "wb"),
+            env=env,
+            stdout=open(f"{self.here}/vice.log", "wb"),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        self.pgid = os.getpgid(proc.pid)
+        if self.slot is not None:
+            self.slot.record(pgid=self.pgid, launched=time.time())
         for _ in range(60):
             time.sleep(1)
             try:
-                with Monitor(timeout=3):
+                with self.mon(3):
                     break
             except (OSError, MonitorError):
                 continue
         else:
             raise RuntimeError("VICE never came up")
-        self.text = socket.create_connection(("127.0.0.1", TEXT_PORT), timeout=5)
+        self.text = socket.create_connection(("127.0.0.1", self.text_port), timeout=5)
         self.text.settimeout(3)
         self.attached = self.disk
         self.log("VICE up; text monitor connected")
 
     def close(self, kill: bool = True) -> None:
         try:
-            with Monitor(timeout=3) as m:
+            with self.mon(3) as m:
                 n = m.checkpoints_clear()
                 if n:
                     self.log(f"deleted {n} checkpoints")
@@ -102,8 +143,23 @@ class Session:
             self.text.close()
             self.text = None
         if kill:
-            subprocess.run(["pkill", "-x", "x64sc"], capture_output=True)
-            subprocess.run(["pkill", "-x", "Xephyr"], capture_output=True)
+            self.terminate()
+
+    def terminate(self, timeout: float = 8.0) -> bool:
+        """Kill the process group `launch()` started -- Xephyr and VICE together.
+
+        Nothing else on the machine, and nothing by name.  A session that never
+        launched anything tears down to a no-op rather than guessing at what to
+        kill, which is the entire difference from the `pkill -x x64sc` this
+        replaced.
+        """
+        if self.pgid is None:
+            return False
+        killed = instance._killpg(self.pgid, timeout)
+        self.pgid = None
+        if self.slot is not None:
+            self.slot.record(pgid=None)
+        return killed
 
     @staticmethod
     def log(*a) -> None:
@@ -113,10 +169,11 @@ class Session:
 
     def attach(self, path: str, unit: int = 8) -> None:
         if str(path).isdigit():
-            path = f"{HERE}/SIDE{path}.D64"
+            path = f"{self.here}/SIDE{path}.D64"
         path = os.path.abspath(path)
-        assert path.startswith(HERE), f"refusing to attach outside {HERE}: {path}"
-        with Monitor(timeout=5):  # stopping is what makes the text monitor answer
+        assert path.startswith(self.here), \
+            f"refusing to attach outside {self.here}: {path}"
+        with self.mon(5):  # stopping is what makes the text monitor answer
             self.text.sendall(f'attach "{path}" {unit}\n'.encode())
             time.sleep(0.5)
             with contextlib.suppress(TimeoutError, socket.timeout):
@@ -128,7 +185,7 @@ class Session:
 
     def screen(self):
         try:
-            with Monitor(timeout=3) as m:
+            with self.mon(3) as m:
                 if is_bitmap(m):
                     return None
                 return read_screen(m)
@@ -147,7 +204,7 @@ class Session:
                 print(f"{r:2d} {s.row_colour(r):2d} |{line}|")
 
     def colours(self, row: int) -> bytes:
-        with Monitor(timeout=5) as m:
+        with self.mon(5) as m:
             return bytes(c & 0x0F for c in m.read(0xD800 + row * 40, 40))
 
     def highlight_span(self, row: int) -> tuple[int, int] | None:
@@ -177,7 +234,7 @@ class Session:
         else:
             m = RE_GAME_SIDE.search(text)
             if m:
-                want = f"{HERE}/SIDE{m.group(1)}.D64"
+                want = f"{self.here}/SIDE{m.group(1)}.D64"
         if want is None:
             return False
         self._last_prompt = time.time()
@@ -272,7 +329,7 @@ class Session:
         keyboard buffer**, because XTEST `Return` never arrives at this prompt
         while XTEST letters do.
         """
-        with Monitor(timeout=5) as m:
+        with self.mon(5) as m:
             cur = m.read(0x12D9, 2)
             if cur != bytes([0xD0, 0x04]):
                 self.log(f"$12D9 is {cur.hex()}, not D0 04 -- not patching")
@@ -284,17 +341,16 @@ class Session:
         self.press_kernal(0x0D)
         return True
 
-    @staticmethod
-    def press_kernal(code: int) -> None:
+    def press_kernal(self, code: int) -> None:
         """Deliver one PETSCII code through the KERNAL keyboard buffer.
 
         The game's key fetcher at `$2E4E` reads `$0277` with the count at
         `$C6`, so this works where XTEST does not.  `$0277` is written first
         so the game can never see a count without a character behind it.
         """
-        with Monitor(timeout=5) as m:
+        with self.mon(5) as m:
             m.write(0x0277, bytes([code]))
-        with Monitor(timeout=5) as m:
+        with self.mon(5) as m:
             m.write(0xC6, bytes([1]))
 
     def boot(self) -> bool:
@@ -348,7 +404,7 @@ class Session:
                 if m:
                     return int(m.group(4)), int(m.group(5)), FACING[m.group(1)]
             time.sleep(0.3)
-        with Monitor(timeout=5) as mon:  # fallback: the lagging memory copy
+        with self.mon(5) as mon:  # fallback: the lagging memory copy
             x, y, f = mon.read(0x49C0, 3)
         return x, y, f
 
@@ -468,12 +524,12 @@ def handle(sess: Session, line: str) -> bool:
         sess.save_disk = os.path.abspath(args[0])
         print(sess.save_disk)
     elif cmd == "peek":
-        with Monitor(timeout=5) as m:
+        with sess.mon(5) as m:
             print(m.read(int(args[0], 16), int(args[1]) if len(args) > 1 else 16).hex(" "))
     elif cmd == "poke":
         addr = int(args[0], 16)
         data = bytes.fromhex("".join(args[1:]))
-        with Monitor(timeout=5) as m:
+        with sess.mon(5) as m:
             print("was", m.read(addr, len(data)).hex(" "))
             m.write(addr, data)
     elif cmd == "colours":
@@ -500,13 +556,15 @@ def handle(sess: Session, line: str) -> bool:
         print(sess.save_game(args[0] if args else None))
         print(sess.position())
     elif cmd == "shot":
-        print("ok" if sess.kbd.screenshot(args[0] if args else f"{HERE}/shot.png") else "failed")
+        print("ok" if sess.kbd.screenshot(
+            args[0] if args else f"{sess.here}/shot.png") else "failed")
     else:
         print("unknown command", cmd)
     return True
 
 
-def serve(sess: Session, port: int = CMD_PORT) -> None:
+def serve(sess: Session, port: int | None = None) -> None:
+    port = sess.cmd_port if port is None else port
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", port))
@@ -534,9 +592,21 @@ def serve(sess: Session, port: int = CMD_PORT) -> None:
 
 
 if __name__ == "__main__":
-    sess = Session(sys.argv[1] if len(sys.argv) > 1 else f"{HERE}/SIDE1.D64")
-    if len(sys.argv) > 2:
-        sess.save_disk = os.path.abspath(sys.argv[2])
+    # `--pool` claims an instance slot and holds its lease for as long as this
+    # process lives; without it the session is the legacy one on 6502/6510/6600
+    # and `work/drive/`, which is what `tools/porcmd` still talks to.
+    argv = sys.argv[1:]
+    slot = None
+    if argv and argv[0] == "--pool":
+        argv = argv[1:]
+        slot = instance.claim(game="por", note=os.environ.get("POR_AGENT", ""))
+        slot.seed_vicerc()
+        print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
+              f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
+              flush=True)
+    sess = Session(argv[0] if argv else None, slot=slot)
+    if len(argv) > 1:
+        sess.save_disk = os.path.abspath(argv[1])
     if not sess.boot():
         print("boot failed")
     serve(sess)

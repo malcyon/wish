@@ -21,12 +21,39 @@ Monitor-shaped spelling `tools/` uses.
 
 from __future__ import annotations
 
+import os
 import socket
 import struct
 import time
 
-MON_HOST = "127.0.0.1"
-MON_PORT = 6502
+DEFAULT_MON_HOST = "127.0.0.1"
+DEFAULT_MON_PORT = 6502
+
+
+def monitor_address(value: str | None = None) -> tuple[str, int]:
+    """Where the binary monitor is, from `$POR_MONITOR` (`host:port` or `port`).
+
+    The *host* is in the override and not just the port, so moving the pool to
+    another machine is configuration rather than a rewrite --
+    `docs/123-parallel-sessions.md` §8. An unparseable value falls back to the
+    defaults rather than raising: this runs at import time, and a typo in an
+    env var must not stop `wish` from starting.
+    """
+    if value is None:
+        value = os.environ.get("POR_MONITOR", "")
+    if not value:
+        return DEFAULT_MON_HOST, DEFAULT_MON_PORT
+    host, _, port = value.rpartition(":")
+    try:
+        return host or DEFAULT_MON_HOST, int(port)
+    except ValueError:
+        return DEFAULT_MON_HOST, DEFAULT_MON_PORT
+
+
+# The import-time snapshot, kept because `tools/drive.py` re-exports it. Code
+# that wants the *current* answer calls `monitor_address()`: a long-lived GUI
+# can be pointed at a pooled instance after it has already imported this.
+MON_HOST, MON_PORT = monitor_address()
 
 # Command types
 CMD_MEM_GET = 0x01
@@ -61,8 +88,12 @@ class Monitor:
     short and do the waiting outside it.
     """
 
-    def __init__(self, host: str = MON_HOST, port: int = MON_PORT, timeout: float = 5.0):
-        self.host, self.port, self.timeout = host, port, timeout
+    def __init__(self, host: str | None = None, port: int | None = None,
+                 timeout: float = 5.0):
+        default_host, default_port = monitor_address()
+        self.host = default_host if host is None else host
+        self.port = default_port if port is None else port
+        self.timeout = timeout
         self.sock: socket.socket | None = None
         self._rid = 0
 

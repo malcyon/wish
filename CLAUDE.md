@@ -29,22 +29,31 @@ so nothing races the index.
 
 **Emulator work goes through the instance pool.** VICE serves exactly one
 binary-monitor connection *per process*, so running two things at once means
-two emulators, not two connections. `docs/123-parallel-sessions.md` plans the
-pool; **until `tools/instance.py` exists, it is still one agent at a time**,
-and the brief says which.
+two emulators, not two connections. `tools/instance.py claim` hands back a
+binary-monitor port, a text-monitor port, a command port, an X display, a work
+directory and a `vicerc`, and holds the lease for as long as your process
+lives. `Session(disk, slot=slot)` takes it from there; `POR_HEADLESS=1` keeps
+the window off Donald's desktop. Say in the brief which slot the agent has.
+Two instances have been proven to coexist -- `docs/123-parallel-sessions.md` §0.
 
 **Port 6502 is Donald's.** The pool allocates 6520 and upwards and never
-touches 6502 or 6510. Anything on those is a game a human started from the
-desktop menu -- do not attach to it, do not probe it, do not kill it.
+touches 6502, 6510 or 6600. Anything on those is a game a human started from
+the desktop menu -- do not attach to it, do not probe it, do not kill it.
 
 **Never kill a process by name.** Not `pkill -x x64sc`, not `pkill -x Xephyr`.
-Kill only the process group your own slot launched. A slot that looks dead may
-be somebody's. The one time this rule was broken, what died was Donald's own
-window.
+Kill only the process group your own slot launched -- `Session.terminate()`, or
+`slot.teardown()`. Reclaim another slot only when `tools/instance.py reap` says
+its lease is unheld; a slot whose lease is held is somebody's, however dead it
+looks. The one time this rule was broken, what died was Donald's own window.
 
-**Never point VICE at Donald's config.** A pooled instance gets its own
+**The pool owns the lifecycle.** Allocate, launch, tear down. Do not attach to
+an emulator you did not launch, and do not launch one outside the pool -- an
+instance nobody leased cannot be told from a human's.
+
+**Never point VICE at Donald's config.** Every pooled instance gets its own
 `vicerc` seeded from his, with `SaveResourcesOnExit=0`, so nothing an agent
-runs can write settings back.
+runs can write settings back. His file is read as a template and never opened
+for writing.
 
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the
