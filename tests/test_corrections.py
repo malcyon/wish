@@ -189,10 +189,11 @@ def test_the_fill_byte_is_only_ever_the_last_slot(carriers):
 
 def test_the_census_is_the_only_thing_that_promotes_a_name():
     """44 of the 129 names had a carrier when the guide was transcribed; the
-    P55 pass took it to 49. The rest cannot be promoted by more looking --
-    nothing on the C64 exercises them."""
+    P55 pass took it to 49, and P3's mid-effect save to 66 -- seventeen codes
+    named by the spell that produced them, `docs/90-specimens.md`. The rest
+    cannot be promoted by more looking; nothing on the C64 exercises them."""
     counts = collections.Counter(sure for _, sure in traits.NAMES.values())
-    assert counts["CONFIRMED"] == 49
+    assert counts["CONFIRMED"] == 66
     assert counts["UNKNOWN"] == 1                 # 92, which the guide has unused
     assert sum(counts.values()) == 129
 
