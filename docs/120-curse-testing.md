@@ -1,10 +1,17 @@
 # Testing Curse of the Azure Bonds against this tooling
 
-**Status: tiers 1, 2 and 5.1 are done and automated in `tests/test_curse.py`.
-Tiers 3, 4 and 5.2 need the emulator and are not started.** The goal is a
-**base-level check**, not coverage: enough evidence to say "the tooling reads
-the second game" or "here is exactly where it stops", and to keep that answer
-from silently rotting.
+**Status: all five tiers are done.** Tiers 1, 2 and 5.1 are automated in
+`tests/test_curse.py`; tiers 3, 4 and 5.2 were done under VICE and what survives
+without an emulator is pinned in `tests/test_curselive.py`. The evidence for the
+live tiers is `work/reports/p8-curse-live.md`. The goal was a **base-level
+check**, not coverage: enough evidence to say "the tooling reads the second
+game" or "here is exactly where it stops", and to keep that answer from silently
+rotting.
+
+**The one-line answer: it works.** A Curse save round-trips byte-identically,
+an edited field appears on the game's own character sheet, and the automapper
+names the right map and follows the party — with exactly one address to
+re-derive, the party position, which in Curse is not in the save image at all.
 
 `docs/116-second-game.md` already established the important half — Curse uses
 the same 580-byte character record, the same `GEO` format, the same roster
@@ -45,13 +52,16 @@ Everything below is what that suite does **not** touch.
 |---|---|---|---|
 | 1 static inventory and parse | the disks are what we think, and records come out sane | no | **done** — `tests/test_curse.py` |
 | 2 map files | the `GEO` decoder is right about Curse, not merely quiet | no | **done** — same |
-| 3 live memory | whether any resident address transfers | **yes** | blocked on the game's start-up check |
-| 4 automapper | position, facing, area id | **yes** | depends on tier 3 |
-| 5 editor round trip | the whole read/write path is lossless on Curse | 5.1 no, 5.2 yes | **5.1 done**; 5.2 needs the emulator |
+| 3 live memory | whether any resident address transfers | **yes** | **done** — one does, `$0400`; the rest moved |
+| 4 automapper | position, facing, area id | **yes** | **done** — works, with one address to re-derive |
+| 5 editor round trip | the whole read/write path is lossless on Curse | 5.1 no, 5.2 yes | **done** — three edited fields appear in game |
 
 Tiers 1, 2 and 5.1 are the ones worth having whatever else happens. They are
 cheap, they are automatable, and they fail loudly. All three now run on every
-`pytest` and skip when the player has no Curse disk.
+`pytest` and skip when the player has no Curse disk. What tiers 3, 4 and 5.2
+left behind that can run without an emulator — the constants, the code paths
+against a hand-built machine, and the route the party actually walked — is in
+`tests/test_curselive.py`.
 
 ---
 
@@ -184,87 +194,82 @@ and the renderer, and it is not a base-level question.
 
 ## Tier 3 — live memory under VICE
 
-**This tier needs the emulator, and only one agent may drive it.** Check
-`ss -tnp | grep 6502` before connecting; never kill a process holding the
-monitor.
+**Done.** `work/reports/p8-curse-live.md` carries the evidence for every line
+below; `tests/test_curselive.py` pins the constants and the code paths.
 
-**The honest expectation: overlay bases and absolute addresses do not transfer
-between titles.** `docs/116` already measured five constants that moved
-(`$6B00`→`$7C00`, `$4900`→`$4B00`, `$6F00`→`$9E00`, `$24B4`→`$2714`,
-marker `$01`→`$02`), and it found no address that stayed. So this is a
-**discovery procedure, not a verification**. Anything written as "check that
-`$49C0` is the party x" is the wrong shape of task.
+**One resident address transfers between the two titles, and it is the one the
+automapper most needs: the loaded map block at `$0400`.** Everything else moved,
+and one thing moved further than "plus `$200`": Curse's *live* party position is
+not in the save image at all.
 
-### The recipe
+| value | Pool of Radiance | Curse, live | Confidence |
+|---|---|---|---|
+| whole save image, resident at its own load address | `$4900` | **`$4B00`, all 7424 bytes byte-identical to the file** | CONFIRMED |
+| character slots | `$4D00 + n·$100` | **`$4F00 + n·$100`** | CONFIRMED |
+| roster block | `SAVEDGAME1` | **`$6700`** | CONFIRMED |
+| record staging page | `$6B00` | **`$7C00`** | CONFIRMED |
+| **live** party x, y, facing | `$49C0`–`$49C2` | **`$C04B`–`$C04D`** | CONFIRMED |
+| the save image's own x, y, facing | the same bytes | `$4BC0`–`$4BC2`, **written only when the game saves** | CONFIRMED |
+| game clock | `$49C7` | **`$4BC7`**, live and ticking | CONFIRMED |
+| area byte | `$4BC2` | **`$4DC2`** (payload `+$2C2`), read `$81` | PROBABLE |
+| resident `GEO` block | `$0400` | **`$0400` — unchanged** | CONFIRMED |
+| `LIBRARY`'s `GEO` stem digits at `$2714` | — | **not there**; `$2710` is code. The `docs/116` figure came from the file and does not hold live. Nothing depends on it | — |
+| combat mode flag | `$6E11` | not looked for | UNKNOWN |
 
-For each wanted value, in this order:
+**How `$C04B` was earned**, because it is the one that a "check `$4BC0`" task
+would have got wrong in both directions. `$4BC0`–`$4BC2` *is* the position
+triple and *is* resident — but walk the party and it does not move: the status
+line read `5,13` facing west while `$4BC0` still read `07 0d 02`. Diffing two
+64K dumps either side of those steps left exactly one candidate, `$C04B`
+(`07 0d 02` → `05 0d 03`), and three bytes away sits the engine's own
+self-modified `LDA #$05 / STA $C04B / LDA #$0D / STA $C04C` at `$C1F5`. Three
+lines of evidence: the only pair in the machine that changed the way a westward
+step must, agreement with the status line at every later reading, and the
+instruction that writes it.
 
-1. **Know it from a save.** Save in Curse at a known square. `SAVEAZURE` is a
-   verbatim image of `$4B00`–`$67FF`, so the save *is* the memory — read x, y,
-   facing at `$4BC0`–`$4BC2` from the file, offline, with no emulator at all.
-2. **Search RAM for it live.** With the game running at that square, sweep for
-   the byte triple. The save-image range is the first place to look and should
-   hit; the interesting result is any *second* copy, which is where the live
-   engine keeps its working value.
-3. **Corroborate with a second value.** One byte matching is a coincidence
-   factory. Take a value with more entropy — the game clock, or a character's
-   16-bit experience — and require both to land at the offsets the save
-   predicts.
-4. **Change it in game and re-read.** Walk one square north. The candidate must
-   change by exactly what walking one square north changes, and nothing else in
-   the header may move except the clock and the previous-position pair.
+**The clock advances one minute per *completed* forward step**, and by nothing
+at all on a turn or on a step the game refused. Measured over four turns and one
+refusal at an unchanged clock. Consequence in tier 4.
 
-Only after step 4 is an address CONFIRMED. Steps 1–3 give PROBABLE at best.
+**The area byte stays PROBABLE**: `$4DC2` read `$81` — area 1 with the `$80`
+bit, and `GEO01` was what was resident — but **no boundary crossing was
+observed**, and this document's own rule is that a negative needs a negative
+example.
 
-### What to look for, and what it would tell us
-
-| value | offline from `SAVEAZURE` | live address | Confidence now | if step 4 fails |
-|---|---|---|---|---|
-| party x, y, facing | `$4BC0`–`$4BC2` | expect `$4BC0`, unproven | PROBABLE — confirmed from two save diffs, never live | the engine keeps a working copy elsewhere and the save is written from it; find the copy |
-| area id | `$4DC2`, dirty bit `$80` | expect `$4DC2` | PROBABLE | same |
-| game clock | `$4BC7` | expect `$4BC7` | PROBABLE | the clock is derived, not stored live |
-| loaded-file cache | `$4DC0`, 25 entries | expect `$4DC0` | PROBABLE | harmless; it is a cache |
-| character slots | `$4F00 + n*$100` | expect `$4F00` | CONFIRMED in the file, UNKNOWN live | the game relocates records into a work area, which would matter for tier 5.2 |
-| resident `GEO` | — | Pool of Radiance leaves it at `$0400` | UNKNOWN | Curse relocates the map; find it by searching for a known `GEO` payload |
-| `LIBRARY` `GEO` stem digits | — | `$2714` per `docs/116` | PROBABLE — derived from the file, never read live | the overlay relocates differently; fall back to the resident-`GEO` search |
-| combat mode flag | — | Pool of Radiance `$6E11` | UNKNOWN | expected; Curse has no `SQRPACI` and its combat overlay is a different build |
-
-**Blocker, stated plainly:** getting to a live Curse world requires passing the
-game's start-up check, exactly as Pool of Radiance does. That is out of scope
-for this repository and is not planned around here. Everything in tiers 1, 2
-and 5.1 is deliberately arranged to need no emulator, so the plan degrades to
-"most of it still runs" rather than "none of it runs".
-
-**Second blocker:** a live session must not write to
-`/home/donald/c64/Pool of Radiance Disks/`. Curse work uses `work/curse/`,
-which is gitignored.
+**The start-up check did not block the rip used here**, which is why this tier
+ran at all. Nothing further about it belongs in this repository. A live session
+still writes only to `work/`, never to the player's own disks.
 
 ---
 
 ## Tier 4 — the automapper
 
-**Needs the emulator, and needs tier 3 first.** There is nothing to test until
-an address is known.
+**Done.** Driven against a live Curse session with `automap/` **unmodified**;
+`work/reports/p8-curse-live.md` has the run, `tests/test_curselive.py` pins what
+can be checked without an emulator.
 
-| component | transfers? | what has to be re-derived | Confidence |
-|---|---|---|---|
-| `Geo` rendering and shading | yes, unchanged | nothing | CONFIRMED |
-| party position and facing | probably | the three addresses (tier 3) | PROBABLE |
-| `ResidentGeo` strategy — find the loaded map in RAM and match it | probably | where Curse leaves it; `$0400` is a Pool of Radiance fact | GUESS |
-| `FilenameDigits` strategy — read the two digits patched into the `GEO00` stem | probably not as written | `$2714` instead of `$24B4`, **and the digit format**: Curse's ids are sparse (`GEO45`), so the two bytes are still two bytes but the candidate set is not `00`–`1F` | PROBABLE |
-| `Fingerprint` strategy — narrow candidates by what the party can and cannot do | yes | the candidate list must come from the Curse disks' directory, not a count | PROBABLE |
-| area names | **structure done, content not** | `por/areas.py:GEO_NAMES` is keyed by game title and `area_name` degrades an unknown map to `"area 15"` rather than lying, so the `GEO15` collision is gone. Curse's own names are still nobody's — naming a map needs the game | CONFIRMED for the table, UNKNOWN for the names |
-| one step costs one minute (`automap/state.py`) | unknown | measure | UNKNOWN |
+| component | verdict | evidence |
+|---|---|---|
+| `Geo` decode and rendering | transfers unchanged | every step the game allowed crosses an edge `GEO01` calls passable; the one it refused is an edge `GEO01` calls solid |
+| `ResidentGeo` at `$0400` | **transfers unchanged** | `identify()` returned `GEO01` — an exact 1024-byte match against the disk copy. The `$0400` in `automap/area.py` is not a Pool of Radiance fact after all |
+| `party_fix`, status-line path | **transfers unchanged** | Curse draws `S 0:03  5,13` on the same row 14 of the same `$CC00` screen and `RE_STATUS` matches it as written |
+| `party_fix`, memory fallback | **does not transfer** | `$49C0` in a running Curse is engine code. Curse's live triple is `$C04B`, which is *outside* the save image, so a per-title base cannot simply be a payload offset |
+| `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one refusal, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
+| `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a refusal from clock+1 with the square unchanged, and Curse's clock does not advance on a refused step. Its docstring already allows this; a driver that wants refusals must compare squares |
+| one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a refusal | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one refusal |
+| area names | structure done, content not | `por/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
+| `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |
 
-**What a failure would tell us.** If `ResidentGeo` cannot find the map anywhere
-in the 64K, Curse either relocates it into a bank the monitor's `cpu` view does
-not show, or decompresses it — and the second would be a genuinely new fact
-about the engine, worth more than the automapper is.
+**What is left to make this work in the product**, as against in the experiment:
+a per-title party base for the memory fallback. It is a `por.games`-shaped
+change — `automap/target.py` and `automap/area.py` both hold their addresses as
+module constants — and the value for Curse is `$C04B`.
 
-**The minimum that counts as "the automapper works on Curse":** stand in a
-known Curse area, and have the live view name the right `GEO`, draw the right
-walls, and move the marker correctly for four steps and four turns. That is a
-base-level check. Full exploration tracking, notes and the world map are not.
+**What a failure would have told us**, kept because it is the reasoning: if
+`ResidentGeo` had found the map nowhere in the 64K, Curse would either relocate
+it into a bank the monitor's `cpu` view does not show or decompress it, and the
+second would have been a genuinely new fact about the engine. It found it at
+`$0400` on the first look.
 
 ---
 
@@ -304,19 +309,26 @@ whole image.
 
 ### 5.2 An edited field takes effect in game
 
-**Needs the emulator, and only after 5.1 passes.** **Proves:** that the write
-path targets bytes the game actually reads. **Cost:** an hour per field.
-**Failure means:** the field is cached somewhere else — the roster block is the
-known example, and `editor/binding.py` already notes that editing the record's
-copy of AC achieves nothing.
+**Done, on all three fields, first attempt.** `wish export` → edit → `wish
+import` → load the new disk in the game and read the answer off the game's own
+screens. This is the strongest single claim the editor can make about a second
+title.
 
-Three fields, chosen because each fails differently:
+| field | where it lives | edit | what the game showed |
+|---|---|---|---|
+| character name | record `0x000` | `BRUTUS` → `CAESAR` | party list `CAESAR 10 7` |
+| gold | record `0x0C1` | `0` → `777` | character sheet `GOLD 777` |
+| current hit points | **roster block `+$19`**, not the record | `11` → `7` | party list and sheet, `HP 7` |
 
-| field | why this one |
-|---|---|
-| character name at `0x000` | visible immediately, no derivation, no cache |
-| gold at `0x0C1` | Curse's import zeroes it and sets platinum to 300, so the game demonstrably writes here |
-| current hit points | lives in the **roster block**, not the record — the case that catches a tool editing the wrong copy |
+The third is the one that mattered: it was chosen because it catches a tool
+editing the record's copy instead of the roster's — `editor/binding.py` already
+notes that editing the record's copy of AC achieves nothing — and `wish` edited
+the right one.
+
+The same sheet corroborated the read side in one screen: `STR 18(98)`,
+`PLATINUM 300`, `AC 10`, `THACO 18`, `DAMAGE 1D2+5`, `MOVEMENT 12`,
+`MALE HUMAN AGE 21`, `NEUTRAL GOOD`, `FIGHTER` — every one of them what
+`por.record` reads out of the same bytes.
 
 Do not attempt an edited-field test before the round trip passes. An edit that
 appears not to take effect, on a path that is silently lossy, is unreadable
@@ -326,14 +338,16 @@ evidence.
 
 ## Blockers, honestly
 
-Four of the seven blockers this section listed are cleared: `wish` opens a
+Five of the seven blockers this section listed are cleared: `wish` opens a
 Curse save, `curse_file()` follows the sector chain instead of trusting the
-block count, `por/areas.py:GEO_NAMES` is keyed by title, and the `PIS` rip
-supplies six clean sides. What is left:
+block count, `por/areas.py:GEO_NAMES` is keyed by title, the `PIS` rip supplies
+six clean sides, and **the game's start-up check did not block the live tiers on
+that rip**. What is left:
 
 | blocker | severity | what would clear it |
 |---|---|---|
-| **live testing needs past the game's start-up check** | blocks tiers 3, 4 and 5.2 | out of scope for this repository; tiers 1, 2 and 5.1 are arranged not to need it |
+| the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
+| the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `por/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
 | no Curse save from a *played* party with inventory | the item area at `$5B00` stays PROBABLE and no Curse item record has ever been seen | play far enough to pick something up, then save. Needs the emulator |
 | Curse's level caps and spell tables are not measured | tier 1.3's "hit points in range" check cannot be strict, and is not asserted | table data; a day of reading the disks, no emulator |
 | the spellbook's width in Curse | no Curse specimen writes past `0x07C`, so `docs/116`'s NOT FOUND stands *for Curse* | already settled for the family by Silver Blades — `docs/121` |
