@@ -26,11 +26,12 @@ and `ECL07` already loads `GEO03` on its way into area 5.
 
 Names come from `docs/88-map-files.md`, `work/reports/world-map.md` and
 `work/reports/quest-flags.md`; arrival squares were harvested from the
-departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fifteen
+departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fourteen
 areas have no known arrival square and say so with `arrival = None`. Warping
-into all fifteen and watching where the party ends up is
-`work/reports/p20-arrivals.md`, and `landing_square` at the foot of this module
-is what that measurement says the fallback should be.
+into all fifteen that had none at the time and watching where the party ends up
+is `work/reports/p20-arrivals.md`: it found area 21's square in `ECL15`'s own
+bytecode, and `landing_square` at the foot of this module is the fallback that
+measurement put in place of "the first square with a passable edge".
 
 **A name is a title, so it is title-cased**, leading article included: "The
 Slums", not "the Slums". The table used to mix the two -- proper names in
@@ -77,6 +78,8 @@ __all__ = [
     "geo_name",
     "GEO_NAMES",
     "area_name",
+    "components",
+    "landing_square",
 ]
 
 
@@ -145,7 +148,21 @@ class Area:
     #: so `geos` may be incomplete. True for areas 3 and 5, whose scripts issue
     #: no static `LOADFILES` at all; their `geos` entry is the doc's inference
     #: from the id, not something the bytecode says.
+    #:
+    #: **And the inference is wrong for both.** Warped into, area 3 loaded
+    #: `GEO05` and area 5 loaded `GEO04` -- `$6E15` and the bytes at `$0400`
+    #: agreeing (`work/reports/p20-arrivals.md`). So a square chosen off
+    #: `geos[0]` is a square off a map the game was never going to show, and a
+    #: caller with no arrival square should write none for these two and let
+    #: the arriving script place the party, which is what it does.
     dynamic_geo: bool = False
+    #: Whether a debug warp may enter this area at all. False for `ECL1E`
+    #: alone: it is the attract-mode demo, and warping there ends the session.
+    #: `$C04B`-`$C04D` read `254, 127, 16`, no `GEO` is resident, no status
+    #: line and no command bar appear, and the program counter never returns
+    #: to `DUNGEON`'s key-wait loop, so **no later warp can be started**
+    #: (`work/reports/p20-arrivals.md`).
+    warpable: bool = True
 
     @property
     def ecl(self) -> str:
@@ -217,7 +234,11 @@ AREAS: tuple[Area, ...] = (
     _a(18, "Podol Plaza", 1, ("GEO12",), Arrival(0, 4, 3), C),
     _a(19, "Cave of Diogenes", 6, (), None, C),
     _a(20, "The Slums", 2, ("GEO14",), None, C),
-    _a(21, "Sokol Keep", 4, ("GEO15",), None, C),
+    # `ECL15 $9A92` reads `SAVE 1, [$4A02] / SAVE 0, mapDir / SAVE 8, mapX /
+    # SAVE 14, mapY`, immediately before the boat message, so the square is
+    # the script's own and is gated on the scratch flag `$4A02` being zero.
+    # Watched placing a warped-in party (`work/reports/p20-arrivals.md`).
+    _a(21, "Sokol Keep", 4, ("GEO15",), Arrival(8, 14, 0), C),
     _a(22, "Yarash's Pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
     _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
     _a(24, "Temple of Bane", 1, ("GEO18", "GEO1F"), Arrival(15, 4, 3), C),
@@ -230,7 +251,7 @@ AREAS: tuple[Area, ...] = (
     _a(28, "Zhentil Keep Outpost", 6, ("GEO1C",), Arrival(7, 0, 2), C),
     _a(29, "Kuto's Well", 8, ("GEO1D", "GEO20"), None, C,
        geo_names=MappingProxyType({"GEO20": "Kuto's Well Catacombs"})),
-    _a(30, None, 1, (), None, U),
+    _a(30, None, 1, (), None, U, warpable=False),
 )
 
 AREAS_BY_ID: Mapping[int, Area] = MappingProxyType({a.id: a for a in AREAS})
@@ -361,20 +382,23 @@ def components(geo) -> list[set[tuple[int, int]]]:
 def landing_square(geo) -> tuple[int, int, int] | None:
     """Where to drop a party on a map that has no arrival square of its own.
 
-    **The proposed replacement for `automap.actions.walkable_square`**, which
-    takes the first square with any passable edge at all and therefore takes
-    `(0, 0)` on every one of the twenty-nine maps -- see
-    `work/reports/p20-arrivals.md`. That is legal in the narrow sense on most
+    **What `Warp` uses**, in place of the old rule -- the first square with any
+    passable edge at all, which therefore took `(0, 0)` on every one of the
+    twenty-nine maps (`work/reports/p20-arrivals.md`). That was legal in the
+    narrow sense on most
     maps and wrong on four: `(0, 0)` is in a pocket of 32 squares in `GEO05`,
     30 in `GEO19`, 16 in `GEO1A` and 48 in `GEO1B`, cut off from the rest of
     the map, and a party warped there can walk but cannot get out.
 
     So: the largest connected component, and within it a square off the outer
     ring where one exists, facing a passable edge. Returns None for a map with
-    no passable edge anywhere, which is also what an area with no map gets --
-    and for the three overland areas the caller should pass no square at all,
-    because outdoors the position is `$49C3`/`$49C4` and the departing scripts
-    write `[$4A18]`/`[$4A19]`, the world-map cell, not a `GEO` square.
+    no passable edge anywhere, which is also what an area with no map gets.
+
+    Two kinds of area the caller must not call this for at all, because the
+    answer would be meaningless rather than merely imperfect: the **three
+    overland** areas, where the position is `$49C3`/`$49C4` and the departing
+    scripts write `[$4A18]`/`[$4A19]`, the world-map cell, not a `GEO` square;
+    and the two **`dynamic_geo`** areas, which load a map `geos` does not name.
     """
     from por.geo import GRID
 

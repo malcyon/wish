@@ -1,10 +1,11 @@
 """P20: where a warp lands a party in an area with no arrival square.
 
-Fifteen of the thirty areas have no arrival square harvested from the scripts,
-and for those `Warp` picks one off the `GEO` with
-`automap.actions.walkable_square`. Driving the game found what that rule
-actually does (`work/reports/p20-arrivals.md`); what is testable without an
-emulator is the geometry underneath it, and that is what is asserted here.
+Fourteen of the thirty areas have no arrival square harvested from the scripts,
+and for those `Warp` picks one off the `GEO` with `por.areas.landing_square`.
+The rule that used to ship took the first square with any passable edge;
+driving the game found what that came to (`work/reports/p20-arrivals.md`), and
+what is testable without an emulator is the geometry underneath it, which is
+what is asserted here.
 
 The maps come off the player's own disks and these skip without them.
 """
@@ -14,19 +15,18 @@ from __future__ import annotations
 import pytest
 from gamedata import game_file
 
-from automap.actions import walkable_square
 from por import areas
 from por.geo import GRID, Geo
 
 #: Every map on the disks, once, with the area that loads it.
 MAPS = sorted({g for a in areas.AREAS for g in a.geos})
 
-#: The fifteen with no harvested arrival square. Eleven have a map; four do not
+#: The fourteen with no harvested arrival square. Ten have a map; four do not
 #: and get no square at all, which is what the game itself has to cope with.
 NO_ARRIVAL = tuple(a.id for a in areas.AREAS if a.arrival is None)
 
-#: Maps where the corner square `walkable_square` picks is walled off from the
-#: bulk of the map. Measured, and the reason `landing_square` exists.
+#: Maps where the corner the retired rule picked is walled off from the bulk of
+#: the map. Measured, and the reason `landing_square` exists.
 POCKETS = {"GEO01": 15, "GEO05": 32, "GEO17": 40, "GEO19": 30, "GEO1A": 16,
            "GEO1B": 48}
 
@@ -39,8 +39,22 @@ def largest(g: Geo) -> set[tuple[int, int]]:
     return max(areas.components(g), key=len)
 
 
-def test_fifteen_areas_have_no_arrival_square():
-    assert NO_ARRIVAL == (3, 4, 5, 8, 9, 11, 15, 19, 20, 21, 25, 26, 27, 29, 30)
+def first_passable(g: Geo) -> tuple[int, int, int] | None:
+    """The retired rule, kept here because P20 measured it and nothing else
+    runs it: the first square, scanning y then x, with any passable edge."""
+    for y in range(GRID):
+        for x in range(GRID):
+            for facing in range(4):
+                if g.is_passable(x, y, facing):
+                    return (x, y, facing)
+    return None
+
+
+def test_fourteen_areas_have_no_arrival_square():
+    """Area 21 used to be the fifteenth: P20 found Sokol Keep's square in
+    `ECL15`'s own bytecode and `por/areas.py` carries it now."""
+    assert NO_ARRIVAL == (3, 4, 5, 8, 9, 11, 15, 19, 20, 25, 26, 27, 29, 30)
+    assert areas.AREAS_BY_ID[21].arrival == areas.Arrival(8, 14, 0)
 
 
 def test_four_of_them_have_no_map_either():
@@ -50,13 +64,14 @@ def test_four_of_them_have_no_map_either():
 
 
 @pytest.mark.parametrize("name", MAPS)
-def test_the_shipped_fallback_always_picks_the_corner(name):
-    """`walkable_square` scans from (0,0) and (0,0) is never fully walled in.
+def test_the_retired_fallback_always_picked_the_corner(name):
+    """It scanned from (0,0), and (0,0) is never fully walled in.
 
-    So the rule is not "a walkable square" in any useful sense: it is "(0,0)",
-    on all twenty-nine maps. Pinned because it is the thing P20 measured.
+    So the rule was not "a walkable square" in any useful sense: it was
+    "(0,0)", on all twenty-nine maps. Pinned because it is the thing P20
+    measured and the reason the rule was replaced.
     """
-    picked = walkable_square(geo(name))
+    picked = first_passable(geo(name))
     assert picked is not None
     assert picked[:2] == (0, 0)
 
@@ -94,3 +109,33 @@ def test_components_partition_the_grid():
         comps = areas.components(geo(name))
         seen = [p for c in comps for p in c]
         assert len(seen) == GRID * GRID == len(set(seen))
+
+
+def test_only_area_30_is_closed_to_a_warp():
+    """`ECL1E` is the attract-mode demo. Warped into, `$C04B`-`$C04D` read
+    254,127,16, no map was resident and the PC never came back to the key-wait
+    loop, so no later warp could be started -- the session was over."""
+    assert [a.id for a in areas.AREAS if not a.warpable] == [30]
+
+
+def test_the_warp_action_refuses_the_attract_mode_demo():
+    """Refused in the engine as well as absent from the dropdown, because the
+    refusal is what protects a caller that did not come through the row."""
+    from test_debugmode import IN_THE_LOOP, machine
+
+    from automap.actions import Warp
+
+    target = machine(area=0)
+    target._pc = IN_THE_LOOP
+    verdict = Warp().legality(target, areas.AREAS_BY_ID[30])
+    assert not verdict
+    assert "attract-mode demo" in verdict.reason
+    assert not Warp().apply(target, area=areas.AREAS_BY_ID[30]).ok
+
+
+def test_the_engine_picks_its_landing_square_from_por_areas():
+    """One rule, not two: `automap.actions` is a seam onto this module."""
+    from automap import actions
+    g = geo(MAPS[0])
+    assert actions.landing_square(g) == areas.landing_square(g)
+    assert actions.landing_square(None) is None

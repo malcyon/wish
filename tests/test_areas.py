@@ -114,7 +114,10 @@ def test_every_row_carries_a_confidence():
 
 def test_arrival_squares_where_they_are_known():
     known = {a.id: a.arrival for a in areas.AREAS if a.arrival}
-    assert len(known) == 15
+    # Sixteen: fifteen harvested from the scripts, and Sokol Keep's, which P20
+    # found in `ECL15`'s own bytecode -- `work/reports/p20-arrivals.md`.
+    assert len(known) == 16
+    assert known[21] == Arrival(8, 14, 0)
     assert known[0] == Arrival(15, 1, 3)
     assert str(known[0]) == "15,1 W"
     # Area 7 is the one square with no facing recorded.
