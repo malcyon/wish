@@ -360,3 +360,96 @@ survived because four casters agreed. The four-byte level array survived because
 Pool of Radiance never fills the other four slots.
 
 ---
+
+## Rumours from the community forums
+
+**None of these is ours and none of them may be promoted into
+`../goldbox-bugs.md`.** That file is CONFIRMED-only, and CONFIRMED there means
+*we* reproduced it — in the running game on this machine, or proved it from the
+bytecode beyond argument. An unverified report by a stranger about a port we do
+not own is the opposite of that. A rumour leaves this section only by being
+independently reproduced here, and then it is logged as our own finding with
+our own evidence, not as a citation.
+
+Read them as leads. Most are cheap to test, several are about **the DOS or
+Amiga build and not the C64**, and the distinction matters: three of the bugs
+already in the front-door file are port-specific, and the one C64-specific
+report below (`R8`, `R9`) comes from somebody who says so explicitly because
+the rest of his thread had not been.
+
+Source unless stated: [Gold Box games bugs](https://forums.goldbox.games/index.php?topic=2772.0),
+posters Gwindor, Null Null, Amarande, PetrusOctavianus and Kirben, 2014–2015.
+Raw capture in `work/forums/p2772.txt`. Summarised in our own words.
+
+### Pool of Radiance
+
+| # | claim | platform stated | to confirm |
+|---|---|---|---|
+| R1 | Using the thief Restal in the Cadorna Textile House to open **and re-seal** the treasure lock lets the loot be taken again: leave the Cadorna block, re-enter, revisit Restal, and the money and Gauntlets of Ogre Power are there again, indefinitely | none | Cheapest of the lot from the bytecode alone. `ECL02` is Cadorna; look for the treasure branch and whether its flag in `$4A00`-`$4AF8` is written before or after the re-seal path, and whether entry 4's re-entry compare skips the clear. No emulator needed. |
+| R2 | Animate Dead can be cast on a **dead NPC**, who then joins the party as a zombie | none, video cited | Needs a live session: get an NPC killed, cast it. `SPELLE*` is where the target filter would be. |
+| R3 | Animate Dead cast **in combat** may animate enemy combatants, who come back at full hit points and keep attacking you | none | Same session; read the target loop in the Animate Dead handler for a missing side check. |
+| R4 | Podol Plaza cannot be cleared by camping and having rests interrupted — it needs **ten random encounters** | none | Directly checkable. `ECL12` is Podol Plaza; we already read the identical mechanism in the Slums, where `$4ABB` counts to **25** and latches 254. Find Podol's counterpart flag and read its threshold. If it is 10, the claim is exact. |
+| R5 | The Buccaneer's Base captain can be fought — and looted — **twice**, "in some versions" | "some versions" | `ECL01`. Same shape as our bug 2: a cleared-flag that is written on one path and not another. |
+| R6 | After Tyranthraxus, resting in some New Phlan areas (the training hall named) can still be stopped by the city watch; **if you fight them the shops stop giving commissions** | none | Two halves. The watch check is in `ECL00`/`ECL0B`; the commission ledger is the one `docs/103` reads. The second half — a permanent loss of the commission clerk — would be a real player-visible bug and is worth the work. |
+| R7 | Tyranthraxus can be fought again if you return to his lair after killing him | none | `ECL07`. Our own note says `ECL07` writes ledger flag 20; check whether the encounter branch tests it. |
+| R8 | **C64 only:** an infinite loop in combat if an enemy casts an offensive spell while the party is using **dust of disappearance** | **C64**, stated | The only C64-specific report on the forum, and therefore the most valuable one here. Reproducible in VICE: acquire the dust, ready it, and fight something that casts. If it hangs, it is ours to log properly. |
+| R9 | **C64 only:** items get corrupted when using **gauntlets**, producing strange items | **C64**, stated | Same session. "Strange items" reads like an item-slot index running off the end of `ITEMNAMES` — the same failure mode as our own indices 62/63 gap. Testable from a save plus `por/items.py` without the emulator if a corrupted specimen can be produced. |
+| R10 | Paladins and rangers (only reachable by editing) get **no sweep attack**; level drain followed by restoration cycles the gender byte and awards 10,000,000 experience | DOS, via Gold Box Companion, [topic 1913](https://forums.goldbox.games/index.php?topic=1913.0) | Consistent with what we already hold — `docs/20` records that those two classes are named in the table and instantiated nowhere. Confirming it on the C64 needs `wish` to write a paladin and a restoration scroll; the drain path is `SPELLE02`/`SPELLE04`, which we have read. |
+
+Kirben's framing is worth keeping: *"It would be worth mentioning which port(s)
+that bugs occur in, as some bugs were often specific to one port."* Every row
+above without a stated platform is most likely DOS or Apple II, because that is
+what the thread's regulars played.
+
+### Curse of the Azure Bonds
+
+| # | claim | platform stated | to confirm |
+|---|---|---|---|
+| R11 | A programming error at the **Teshwave Ruins** traps the party in a couple of rooms; LOOK or SEARCH may get you out | none | Curse area **69** is one of three ids the forum says holds *shared* dungeon blocks — Hillsfar and Teshwave are built from one map plus party-movement events ([topic 1048](https://forums.goldbox.games/index.php?topic=1048.0)). A movement event with a wrong destination is exactly what would strand a party. Readable from Curse's `ECL` once we decode it. |
+| R12 | A scroll of protection from dragon breath stayed active for the rest of the game | none | `docs/125` N7 already has effect expiry clearing one array of four. Same neighbourhood; check whether the scroll writes an effect slot the expiry loop does not cover. |
+| R13 | A THAC0 of −1 prints as **255** on the character sheet, while combat behaves correctly | none | Almost certainly true and almost certainly the same on the C64: our THAC0 is stored biased as `60 - value` and the sheet prints the unbiased byte unsigned. One `wish` edit to a THAC0 past 60 and one screenshot settles it. Cosmetic — this belongs here even if confirmed. |
+| R14 | SHARE hands out absurd jewelry totals inside the Shadowdale side dungeon, repeatably, surviving a restart, and not outside that dungeon | none, screenshots | Odd and specific. The poster's own guess is overflow from an over-encumbered character. Our `0x0C7` jewelry word is `u16le`; a signed/unsigned mix in the divide would do it. |
+| R15 | The Wand of Magic Missiles in Zhentil Keep costs **14,464 gp**, apparently a 16-bit truncation of 80,000 | none | 80000 − 65536 = 14464 exactly. Arithmetically certain, and checkable from the Curse item tables on disk with `por/items.py` and no emulator at all. **The cheapest confirmable claim in this section.** |
+| R16 | Buying with more than 65,535 gp worth of platinum makes money evaporate | none | Same overflow, other side. Testable with an edited party. |
+| R17 | Importing a character with exceptional strength from Pool of Radiance: the first time strength is magically modified in Curse, the **score itself becomes the exceptional number** | none | We have the import routine (`docs/116` §2.2) and both fields — `0x014` strength, `0x01A` exceptional. Readable from the bytecode. |
+| R18 | The Girdle of the Dwarves on an imported fighter with a Manual-raised constitution of 19 produced "weird ability numbers" instead of 20 | none | Vague. Log it, do not chase it. |
+| R19 | Re-entering the caves under Hap re-fights the salamanders | none | Same class as our bug 2. |
+
+### Later titles
+
+Kept because they are the same engine and the failure modes repeat, not because
+we intend to test them. Platform is stated only where the poster stated it.
+
+| # | game | claim |
+|---|---|---|
+| R20 | Silver Blades ← Curse | a character imported wearing strength-boosting items never has strength reset when they come off — a permanent 24. Fixed in Pools of Darkness, where a non-fighter can still end up at 18(00) |
+| R21 | Silver Blades, **Amiga** | Cloaks of Displacement grant outright immunity to physical attacks |
+| R22 | Silver Blades | resting always succeeds beside the large black-and-blue doors in the crevasses, which the cluebook says is impossible |
+| R23 | Champions of Krynn | the front-gate troops at Gargath Keep must be fought again on every approach |
+| R24 | Pools of Darkness | declining Vala, then meeting her again, puts **two** Valas in the party |
+| R25 | Pools of Darkness | random encounters continue in Kalistes' Parlor after she is dead |
+| R26 | Pools of Darkness | hidden loot in the beholder-attacked village regenerates on re-entry — unlimited arrows |
+| R27 | Pools of Darkness | REPAIR sometimes decreases (rarely increases) **permanent** hit points |
+| R28 | Pools of Darkness | Manshoon exists as a monster record and cannot be fought by normal means |
+| R29 | Pools of Darkness | refusing to see Arcam after qualifying leaves you unable to leave the arena by the front door, re-triggering the fight every two steps |
+| R30 | Pools of Darkness | Hold Monster works on dracoliches |
+| R31 | Pools of Darkness | countermanding Gothmenes' summons *increases* the number of Pets of Kalistes while decreasing the other three types |
+| R32 | Pools of Darkness | in the Palace of Gothmenes without the Crystal Ring, an encounter frightened off with the Horn or Talisman never clears while you stand on the square — repeatable experience |
+| R33 | Pools of Darkness, **DOS** | the Ring of Lightning Immunity does not work; it does on the Amiga |
+| R34 | Pools of Darkness | a freeze shortly after defeating Kalistes |
+| R35 | Dark Queen of Krynn | falling down certain Tower of Flame shafts strands the party in a sealed room with no game-over; LOOK reports "You are on level 255" |
+| R36 | Dark Queen of Krynn | a save state in which every step triggers the same black-dragon battle and no other event ever fires. Diagnosed live with ECL-Monitor: one flag checked at script address `$AE20` was 1 and the script wanted 0; clearing it restored the game ([topic 4581](https://forums.goldbox.games/index.php?topic=4581.0)) |
+| R37 | Death Knights of Krynn | being hit by a Spectral Dragon in the final battle of Dave's Challenge can freeze the game |
+| R38 | Death Knights of Krynn | Knights gain 3 hit points per level after name level where the manual says 2 — offered as the *cause* of R27 rather than a bug of its own |
+| R39 | Krynn and Savage Frontier titles | Dispel Magic cures paralytic toxins (Kapak draconians, driders, snakes). Probably a design limitation rather than a defect |
+
+Five of those — R23, R25, R26, R29 and R32 — are the same defect as our own bug
+2, *Sokol Keep's dead elf comes back every time*: an encounter or a pickup whose
+"already done" flag is not latched on every path out. **The forums never report
+the Sokol Keep elf itself.** What they establish is that we found a habitual
+Gold Box fault rather than a freak one, which is corroboration of the pattern
+and not of the entry, and it stays worded that way.
+
+Everything else from the same pass — the playtester mode, the DOS area tables,
+the item record, the tooling — is in
+[`126-forum-findings.md`](126-forum-findings.md).
