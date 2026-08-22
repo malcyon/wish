@@ -32,6 +32,7 @@ and add one when the work is agreed rather than when it starts.
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
 | **P61** | `por/areas.py` still calls area 11 "the arena" | it is the training hall. Area 24's name is contested — leave it until the warp experiment runs |
 | **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
+| **P68** | A preferences dialog — [`130`](130-preferences.md) | where wish looks for disks, and the backend. Replaces the View > Backend menu |
 
 ## Needs an emulator
 
