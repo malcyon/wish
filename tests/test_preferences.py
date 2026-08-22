@@ -435,14 +435,20 @@ def test_a_window_placed_off_the_edge_is_brought_back_on(app, tmp_path,
 def test_settings_from_before_this_still_give_a_size(app, tmp_path,
                                                      monkeypatch):
     """Nobody loses their window: with no `geometry` the remembered width and
-    height are used, and a floor raises a small one for the merged window."""
+    height are used, and a floor raises a small one for the merged window.
+
+    The sizes are deliberately small. `restore_geometry` clamps to the screen,
+    and the offscreen platform's screen is 800x800 here and on CI -- asserting
+    a 900-wide window measured 800 and failed everywhere but the machine it was
+    written on.
+    """
     nowhere(tmp_path, monkeypatch)
-    old = Settings(window_width=900, window_height=700)
+    old = Settings(window_width=420, window_height=300)
     win = window(app)
     assert restore_geometry(win, old) is False
-    assert (win.width(), win.height()) == (900, 700)
-    restore_geometry(win, old, floor=(1000, 800))
-    assert (win.width(), win.height()) == (1000, 800)
+    assert (win.width(), win.height()) == (420, 300)
+    restore_geometry(win, old, floor=(500, 380))
+    assert (win.width(), win.height()) == (500, 380)
     win.close()
 
 
