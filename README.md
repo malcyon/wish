@@ -78,10 +78,10 @@ flatpak override --user --share=network net.sf.VICE
 
 
 ### Wish Config Files
-| | Windows | macOS | Linux |
-|---|---|---|---|
-| settings | `%APPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.config/wish/` |
-| notes, explored squares | `%LOCALAPPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.local/share/wish/` |
+| Windows | macOS | Linux |
+|---|---|---|
+| `%APPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.config/wish/` |
+| `%LOCALAPPDATA%\wish\` | `~/Library/Application Support/wish/` | `~/.local/share/wish/` |
 
 
 
