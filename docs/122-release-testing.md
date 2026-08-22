@@ -18,7 +18,7 @@ it points at the README section by name.
 
 **1. The two platforms ship different things.** The Linux `.tar.gz` carries
 `wish` **and** `wish-cli`; the Windows `.zip` carries `wish.exe` alone. Donald:
-"Windows users don't need a cli. They're point and click heroes." `wish.spec`
+"Windows users don't need a cli." `wish.spec`
 spells it as `SHIP_CLI = sys.platform != "win32"`. So the CLI steps below are
 Linux-only, and on Windows a missing `wish-cli.exe` is the intended result, not
 a broken archive.
