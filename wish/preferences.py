@@ -41,7 +41,7 @@ import os
 import pathlib
 import re
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -55,6 +55,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QStyle,
+    QStyleOptionFrame,
     QVBoxLayout,
 )
 
@@ -76,6 +78,11 @@ HINT = ("Leave it empty to search: beside the open save disk first, then the "
 
 PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 
+#: Qt keeps two pixels each side of the text inside a line edit for the cursor,
+#: on top of the frame and the text margins, and `CT_LineEdit` does not add
+#: them. Without it the last letter of the placeholder is a pixel short.
+CARET = 4
+
 #: A backend's state is a badge, not more words in its label. Both colours are
 #: named on every one of them: a badge that set only its ink would be dark on
 #: dark under a dark desktop theme, and the whole point is that it reads.
@@ -89,6 +96,28 @@ UNVERIFIED = _BADGE.format(edge="#d8c48a", ground="#fbf4e2", ink="#6b5510")
 #: the box gives the user's own value back rather than nothing.
 _UNREAD = object()
 _ENV_HOST: object | str | None = _UNREAD
+
+
+def room_for(edit: QLineEdit, text: str) -> int:
+    """How wide the box has to be for `text` to fit inside it, on this style.
+
+    Measured, not written down. The dialog opened 397 px wide and gave the
+    folder box 137 of them, which is 66 px short of its own placeholder --
+    Donald: "you can't read the helptext written in the Folder edit box". A
+    constant would have been right on the font and style it was measured on and
+    wrong on his Windows build, which is the mistake `_spin_width` was already
+    made to fix once.
+    """
+    option = QStyleOptionFrame()
+    option.initFrom(edit)
+    option.lineWidth = edit.style().pixelMetric(
+        QStyle.PixelMetric.PM_DefaultFrameWidth, option, edit)
+    margins = edit.textMargins()
+    inner = QSize(edit.fontMetrics().horizontalAdvance(text)
+                  + margins.left() + margins.right() + CARET,
+                  edit.sizeHint().height())
+    return edit.style().sizeFromContents(
+        QStyle.ContentsType.CT_LineEdit, option, inner, edit).width()
 
 
 def _pretty(glob: str) -> str:
@@ -279,6 +308,12 @@ class PreferencesDialog(QDialog):
         row = QHBoxLayout()
         self.folder = QLineEdit(getattr(self.win.settings, "disks", "") or "")
         self.folder.setPlaceholderText("the folder holding your .D64 images")
+        # Wide enough to read what it says. This is what sets the width of the
+        # whole dialog, and it is measured off the placeholder rather than
+        # chosen, so a longer sentence or a wider font widens the dialog with
+        # it instead of losing the end of the line.
+        self.folder.setMinimumWidth(room_for(self.folder,
+                                             self.folder.placeholderText()))
         self.folder.textEdited.connect(lambda _t: self._settle.start(SETTLE_MS))
         self.folder.editingFinished.connect(self._folder_settled)
         browse = QPushButton("Browse…")
@@ -322,41 +357,62 @@ class PreferencesDialog(QDialog):
 
         Its own group, titled with the word somebody would look for. Read-only:
         which of the two it is depends on the save, not on a preference.
+
+        Laid out like a backend: the path, then which of the two folders it is
+        as a badge beside it, then the standing facts underneath. It was one
+        sentence with all three run together until Donald asked for "the same
+        effect" the backend states got -- and the answer to *which folder is
+        this* is a state, exactly as "answering" is.
         """
         box = QGroupBox("Backups")
         outer = QVBoxLayout(box)
+        row = QHBoxLayout()
         self.backups = QLabel("")
         self.backups.setWordWrap(True)
         self.backups.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
-        form = QFormLayout()
-        form.addRow("Folder", self.backups)
-        outer.addLayout(form)
+        self.backups_badge = QLabel("")
+        row.addWidget(QLabel("Folder"))
+        row.addWidget(self.backups, 1)
+        row.addWidget(self.backups_badge)
+        outer.addLayout(row)
+        self.backups_note = QLabel("")
+        self.backups_note.setWordWrap(True)
+        outer.addWidget(self.backups_note)
         return box
 
     def _say_backups(self) -> None:
-        """The line itself, re-read whenever the dialog refreshes.
+        """The path, the badge and the note, re-read whenever it refreshes.
 
-        The two standing facts go on it as well, because both are behaviours
-        somebody would otherwise have to guess at: a backup is made only when
-        the bytes changed, and the newest few are kept rather than all of them.
+        The standing facts are said here because both are behaviours somebody
+        would otherwise have to guess at: a backup is made only when the bytes
+        changed, and the newest few are kept rather than all of them.
         """
         from editor import files
 
         save = getattr(self.win.editor, "path", None)
         where, fallback = backup_folder(save)
-        kept = (f"Only when something changed; the newest "
-                f"{files.KEEP_BACKUPS} are kept.")
         if save is None:
-            where_line = (f"{where} — the fallback, for a save whose own "
-                          "folder cannot be written. Open a save and this "
-                          "names where that save's backups go.")
+            # Nothing open, so there is no per-save answer yet. Grey, not
+            # amber: this is the ordinary state of a window nobody has opened
+            # a save in, and nothing is wrong.
+            state, badge, why = (
+                "fallback", SILENT,
+                "For a save whose own folder cannot be written. Open a save "
+                "and this names where that save's backups go.")
         elif fallback:
-            where_line = (f"{where} — the folder beside the save disk cannot "
-                          "be written, so they go here instead.")
+            state, badge, why = (
+                "fallback", UNVERIFIED,
+                "The folder beside the save disk cannot be written, so they "
+                "go here instead.")
         else:
-            where_line = f"{where} — beside the save disk."
-        self.backups.setText(f"{where_line}  {kept}")
+            state, badge, why = ("beside the save disk", ANSWERING, "")
+        self.backups.setText(str(where))
+        self.backups_badge.setText(state)
+        self.backups_badge.setStyleSheet(badge)
+        self.backups_note.setText(
+            f"{why}  Only when something changed; the newest "
+            f"{files.KEEP_BACKUPS} are kept.".strip())
 
     def browse(self) -> None:
         """The folder picker. A method so a test can replace it."""

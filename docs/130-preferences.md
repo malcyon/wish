@@ -213,11 +213,18 @@ than in a status message already dismissed:
 
 ```
 ┌─ Backups ────────────────────────────────────────────────────┐
-│  Folder  /home/donald/c64/saves/backups — beside the save    │
-│          disk.  Only when something changed; the newest 20    │
-│          are kept.                                            │
+│  Folder  /home/donald/c64/saves/backups  (beside the save disk)│
+│  Only when something changed; the newest 20 are kept.         │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+Laid out like a backend row, because Donald asked for it: *"The backend
+informational boxes look good. We need the same effect for the Backup folder
+help text."* The path is the value, **which of the two folders it is is a
+badge** beside it — green for *beside the save disk*, grey for the fallback
+with nothing open, amber for the fallback because the save's own folder cannot
+be written — and the standing facts sit underneath. The three were one
+sentence, and the middle of a sentence is the one place a state cannot be seen.
 
 * **The user data directory is only the fallback.** The copy normally lands in
   `backups/` beside the save disk, which is the folder somebody was already
@@ -226,9 +233,9 @@ than in a status message already dismissed:
 * **The answer depends on the open save**, not on a preference, so the line is
   read-only and is re-read on every `refresh()`. With nothing open there is no
   per-file answer, so it names the fallback *and says that is what it is*.
-* **The two standing facts are on the same line**: a backup is made only when
-  the bytes changed, and the newest `editor.files.KEEP_BACKUPS` are kept. Both
-  are behaviours somebody would otherwise have to guess at.
+* **The two standing facts are on the line underneath**: a backup is made only
+  when the bytes changed, and the newest `editor.files.KEEP_BACKUPS` are kept.
+  Both are behaviours somebody would otherwise have to guess at.
 * **It asks read-only.** `editor.files.backup_dir_for` is the authority and is
   what runs at save time, but it answers "may I write here" by *making* the
   folder and touching a probe file in it — and a dialog that only reports must
@@ -375,7 +382,7 @@ re-runs a directory search as you type, which is code either way.
 | `wish/window.py` | `File > Preferences…`; the backend actions live in no menu; `preferences()`/`show_dialog()`; `set_disks`/`reload_disks`/`set_ultimate_host`/`set_interval`; the debug-log indicator; geometry on close |
 | `wish/session.py` | `set_interval`, so the dialog can retime a running poll |
 | `wish/__main__.py` | resolves once with `resolve_disks` and passes `--disks` down; the stderr text names the folder, the source, and File > Preferences |
-| `automap/config.py` | `disks`, `ultimate_host`, `geometry`, `diagnostics`; `interval_ms` default 200 → 0; `remember_geometry`/`restore_geometry`/`clamp_to_screen` |
+| `automap/config.py` | `disks`, `ultimate_host`, `geometry`, `diagnostics`; `interval_ms` default 200 → 0; `remember_geometry`/`restore_geometry`/`clamp_to_screen`/`hold_geometry` |
 | `automap/paths.py` | `resolve_disks` and its six source constants |
 | `automap/__main__.py` | `default_disks` and `load_maps_titled` call `resolve_disks`; the stderr text |
 | `automap/window.py` | `disks=` parameter, `set_maps()`, `no_maps`, `waiting_text()`, the wrapped grid text, geometry only when it is the window |
@@ -384,6 +391,17 @@ re-runs a directory search as you type, which is code either way.
 **No OK/Cancel — a single `Close`.** Every control here applies at once (the
 backend menu it replaces already did), and a Cancel would need an undo path
 back through `Session.prefer`, a map reload and the editor's item tables.
+
+**The dialog is as wide as its own placeholder.** It opened 397 px wide and
+gave the folder box 137 of them, with 203 px of *"the folder holding your .D64
+images"* in it — Donald: *"you can't read the helptext written in the Folder
+edit box"*. `preferences.room_for(edit, text)` asks the style what a box has to
+measure for that text to fit (`CT_LineEdit` over the font's advance, plus the
+text margins and the four pixels Qt keeps for the caret) and that becomes the
+box's minimum width, which is what sets the width of the dialog: 469 px here.
+Measured rather than chosen, so a longer sentence or a wider font widens the
+dialog instead of losing the end of the line — the same mistake `_spin_width`
+was made to fix, one dialog over.
 
 `QKeySequence.StandardKey.Preferences` resolves on this Linux/Qt 6 build to the
 **`XF86Settings` multimedia key** — `QKeySequence(StandardKey.Preferences).toString()`
@@ -406,7 +424,7 @@ there are none).
 | the report | names the folder, the source, the titles with disk counts; states each failure in its own slot; says when `$POR_DISKS` is set and overridden; a flag says "this run only" and names the preference it beat |
 | the dialog | the report updates with no OK pressed; clearing goes back to searching; the radios are the window's actions and still write `settings.backend` and call `session.prefer`; "unverified" still said; `&Backend` is gone from View |
 | the Ultimate | the host round-trips to the JSON and reaches `configured()`; **no password key in `asdict(Settings)` and no password in the written file** |
-| geometry | a resize is remembered and restored; bigger than the screen is cut down; off the edge is brought back; settings from before this still give a size |
+| geometry | a resize is remembered and restored; bigger than the screen is cut down; off the edge is brought back; settings from before this still give a size; **a size the compositor forces after `show()` is asked for again and is not what closing remembers** |
 | the debug log | remembered across a restart, restored without a modal, and said in the title and the status bar |
 | the acceptance case | one folder set in the dialog, item names and maps arrive **without a restart**, and survive a restart |
 
@@ -559,6 +577,23 @@ What it does now:
   onwards uses whatever he resized to.
 * **Only the window that *is* a window remembers.** `AutomapWindow.shutdown()`
   writes geometry only when `drive=True`; hosted, `WishWindow.closeEvent` does.
+* **And the compositor is stood up to, once.** Donald: *"On Linux, the window
+  doesn't remember its size if you close and reopen it."* It was remembering
+  perfectly: cosmic-comp, the compositor on his desktop, answers the first
+  `show()` with a size of its own and Qt takes it. **Measured with a bare
+  `QMainWindow` and none of our code in it**: it asks for 1875 × 1030 and is
+  1280 × 662 one frame later. That is a cap and not a negotiation — 1279 × 661
+  passes untouched, 1300 × 700 and 1920 × 1080 both come back at exactly
+  1280 × 662 — and `QScreen::availableGeometry()` reports 1920 × 1080 the whole
+  time, so no clamp of ours could have seen it coming. The restored size lived about 50 ms,
+  and then `closeEvent` wrote the compositor's number back over it, which is
+  why the same 1280 × 841 came back every time. The same size asked for *after*
+  that first configure is honoured, so `config.hold_geometry` watches for the
+  first resize the program did not ask for, undoes it, clamps, and stands down
+  — every later one is somebody dragging an edge, and a window that snapped
+  back from that would be unusable. Nothing arrives on X11 or Windows and
+  nothing happens there. It predates the geometry work: 145817b, the build
+  before any of this, shrinks to the same 1280 × 841.
 
 ---
 

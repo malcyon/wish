@@ -250,17 +250,52 @@ def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
 
 def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
         app, tmp_path, monkeypatch):
+    """The path, which of the two folders it is as a badge, and the facts.
+
+    Donald asked for "the same effect" the backend states got, so the answer to
+    *which folder is this* is a badge beside the path rather than a clause in
+    the middle of a sentence with two other things in it.
+    """
     from editor import files
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
-        said = PreferencesDialog(win).backups.text()
+        dialog = PreferencesDialog(win)
+        said, badge = dialog.backups.text(), dialog.backups_badge
+        note = dialog.backups_note.text()
     finally:
         win.close()
-    assert str(files.fallback_dir()) in said
-    assert "fallback" in said
-    assert "only when something changed" in said.lower()
-    assert str(files.KEEP_BACKUPS) in said
+    assert said == str(files.fallback_dir())
+    assert badge.text() == "fallback"
+    assert "border" in badge.styleSheet()      # framed, like the backends
+    assert "only when something changed" in note.lower()
+    assert str(files.KEEP_BACKUPS) in note
+
+
+def test_the_folder_box_is_wide_enough_to_read_its_own_placeholder(
+        app, tmp_path, monkeypatch):
+    """Donald: you can't read the helptext written in the Folder edit box.
+
+    It was 137 px wide with 203 px of placeholder in it. The width is measured
+    off the text, so this asserts the rule and not the number -- a longer
+    sentence or a wider font moves both sides of it.
+    """
+    from wish.preferences import room_for
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        box = dialog.folder
+        placeholder = box.placeholderText()
+        assert box.minimumWidth() >= box.fontMetrics().horizontalAdvance(
+            placeholder)
+        # And the dialog is at least that wide, since it is what widened it.
+        assert dialog.sizeHint().width() >= box.minimumWidth()
+        # Measured, not chosen: more text needs more room.
+        assert room_for(box, placeholder + " and then some") > room_for(
+            box, placeholder)
+    finally:
+        win.close()
 
 
 # --- the dialog --------------------------------------------------------------
@@ -482,6 +517,45 @@ def test_the_window_remembers_its_size_and_opens_at_it(app, tmp_path,
     restore_geometry(again, saved)
     assert (again.width(), again.height()) == (701, 503)
     again.close()
+
+
+def test_the_size_the_compositor_forces_does_not_become_the_memory(
+        app, tmp_path, monkeypatch):
+    """The loop Donald walks: size it, close it, open it again.
+
+    On his desktop cosmic-comp answers the first `show()` with a size of its
+    own -- a bare `QMainWindow` asking for 1875x1030 comes up 1280x662 -- and
+    Qt takes it. So what closing wrote back was the compositor's idea and the
+    size he had chosen was gone, every time. The compositor is played here by a
+    plain `resize`, because the offscreen platform never sends one, and the
+    window is laid out without going on anybody's screen.
+    """
+    from PyQt6.QtCore import QRect, Qt
+
+    from automap.config import hold_geometry
+
+    nowhere(tmp_path, monkeypatch)
+    space = QRect(0, 0, 1920, 1032)
+    win = window(app)
+    win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    win.show()
+    # Measured off the window, not written down: the layout will not go under
+    # its own minimum, and that minimum is a different number under every
+    # theme and font.
+    floor = win.minimumSizeHint()
+    wanted = (floor.width() + 200, floor.height() + 100)
+    win.resize(*wanted)
+    hold_geometry(win, space=space)
+    win.resize(floor.width() + 20, floor.height() + 10)     # the configure
+    win.close()                       # closeEvent is what remembers
+
+    # What the next run opens at. Reading it back through `restore_geometry`
+    # is the test above; the offscreen screen is 800x800 and Qt's own
+    # `restoreGeometry` cuts a shown window's size down to it, which is why
+    # this one stops at what was written.
+    saved = Settings.load()
+    assert (saved.window_width, saved.window_height) == wanted
+    assert saved.geometry
 
 
 def test_a_geometry_bigger_than_the_screen_is_cut_down_to_it(app, tmp_path,
