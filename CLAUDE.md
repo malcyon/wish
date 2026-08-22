@@ -125,7 +125,7 @@ is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
 say so and wait to be asked.
 
-**`TASKS.md` is the open task list, and it is kept current.** Close a task in
+**`docs/TASKS.md` is the open task list, and it is kept current.** Close a task in
 the same commit that finishes it; add one when the work is agreed, not when it
 starts. Every task has a code, and **a code belongs to one task for life** --
 when a task closes its code retires with it and new work takes the next free

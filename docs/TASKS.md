@@ -16,30 +16,30 @@ and add one when the work is agreed rather than when it starts.
 
 | | task | what is needed |
 |---|---|---|
-| **P1** | Read the ECL scripts | a person has to read them — [`115`](docs/115-review-the-scripts.md) |
+| **P1** | Read the ECL scripts | a person has to read them — [`115`](115-review-the-scripts.md) |
 | **P3** | Saves still wanted | two quickfight saves, the trainer ability-score pair, wilderness W1–W12, one taken mid-effect |
 | **P12** | Cut the first `v*` tag | after the Windows run below. The tag also publishes to PyPI, and **PyPI never allows re-uploading a version** |
-| **P62** | Run the Windows half of [`122`](docs/122-release-testing.md) | the Linux half is done and passing; the Windows package builds from Actions → release → Run workflow |
+| **P62** | Run the Windows half of [`122`](122-release-testing.md) | the Linux half is done and passing; the Windows package builds from Actions → release → Run workflow |
 
 ## Ready to build
 
 | | task | notes |
 |---|---|---|
-| **P46** | The VICE instance pool — [`123`](docs/123-parallel-sessions.md) | `tools/instance.py`, and **remove the four `pkill -x` calls** that would kill a running game. Do it when nothing is driving the emulator |
+| **P46** | The VICE instance pool — [`123`](123-parallel-sessions.md) | `tools/instance.py`, and **remove the four `pkill -x` calls** that would kill a running game. Do it when nothing is driving the emulator |
 | **P48** | `docs/117` obstacle 3 — the item record's binary tail | the DOSBox harness can now arrange the character that exposes it |
-| **P50** | Implement the C64→Amiga port — [`124`](docs/124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
+| **P50** | Implement the C64→Amiga port — [`124`](124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
 | **P55** | Verify the trait and effect names against records | 129 named, 44 CONFIRMED and 84 PROBABLE |
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
 | **P61** | `por/areas.py` still calls area 11 "the arena" | it is the training hall. Area 24's name is contested — leave it until the warp experiment runs |
-| **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](docs/129-one-binary.md) | agreed; do it before the first tag |
+| **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
 
 ## Needs an emulator
 
 | | task | notes |
 |---|---|---|
-| **P8** | Curse tiers 3, 4, 5.2 — [`120`](docs/120-curse-testing.md) | tier 3 is discovery: expect no resident address to transfer |
-| **P9** | Silver Blades phases 3–5 — [`121`](docs/121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
-| **P18** | Finish the high-level test party — [`119`](docs/119-test-party.md) | one class-level diff taken; the rest remain |
+| **P8** | Curse tiers 3, 4, 5.2 — [`120`](120-curse-testing.md) | tier 3 is discovery: expect no resident address to transfer |
+| **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
+| **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
 | **P20** | The 15 areas with no harvested arrival square | do they land somewhere legal? |
 | **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
@@ -53,14 +53,14 @@ and add one when the work is agreed rather than when it starts.
 | **P56** | `por/savegame.py`'s roster field names look wrong — `+0x15` is the primary attack die sides |
 | **P57** | Demote `$1F` from `ADDRESSOF`; the guide says unimplemented and our sweep counts zero uses |
 | **P58** | The armour rule is a special case of `60 - (byte & 0x7F)` and diverges at AC 13 |
-| **P59** | File the guide's candidate rumours in [`125`](docs/125-bug-notes.md) |
+| **P59** | File the guide's candidate rumours in [`125`](125-bug-notes.md) |
 | **P64** | `skills/goldbox/SKILL.md` asserts "a bump advances the clock" as fact; nobody has watched the clock during a bump |
 
 ## Waiting on the community sweep
 
 | | task |
 |---|---|
-| **P65** | Fold `work/reports/forum-sweep.md` into [`126`](docs/126-forum-findings.md) — 296 threads read, 455 external URLs probed |
+| **P65** | Fold `work/reports/forum-sweep.md` into [`126`](126-forum-findings.md) — 296 threads read, 455 external URLs probed |
 | **P66** | `github.com/simeonpilgrim/coab` is a primary source: the DOS record, and the import routine that sets money to 300 platinum and erases Animate Dead. Two candidates for our fifteen changed bytes |
 | **P67** | The DOS builds ship a second cheat mode, `start.exe STING`. Grep the C64 overlays for the literal |
 
