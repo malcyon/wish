@@ -35,7 +35,6 @@ files, the standing constraints in full, and no commits.
 | **P50** | Implement the C64→Amiga port — [`124`](124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
 | **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
-| **P68** | A preferences dialog — [`130`](130-preferences.md) | where wish looks for disks, and the backend. Replaces the View > Backend menu |
 
 ## Needs an emulator
 
@@ -109,3 +108,4 @@ A code retires with its task and is never reused.
 | **P65** | the whole board folded into `docs/126` |
 | **P66** | the game's own import routine read, 12 of our 15 bytes explained |
 | **P67** | `STING` has no C64 counterpart — a clean negative |
+| **P68** | the preferences dialog, and it reports what it found |
