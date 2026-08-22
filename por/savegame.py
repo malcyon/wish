@@ -89,9 +89,26 @@ ROSTER_SLOT_INDEX = 0x0D
 ROSTER_THAC0 = 0x0E
 ROSTER_ARMOUR_CLASS = 0x0F
 ROSTER_ARMOUR_BONUS = 0x10
-ROSTER_UNKNOWN_11 = 0x11      # not a flag: MALCYON reads 3, unarmoured
-ROSTER_EQUIPMENT = 0x15       # rises with what is readied; see docs
+
+# +0x11 to +0x18 are the **current attack form**: the running copy of the
+# record's attack_forms block at 0x0D9, in the engine's own order -- two attack
+# counts, two dice counts, two die sizes, two damage bonuses, primary first in
+# each pair. The DOS record spells the same eight bytes out at 0x113-0x11A as
+# ATK_1/2_Count/Rolls/Dice/Modifier_Current, and a DOS Pool of Radiance party
+# on this machine reads `00 00 01 00 02 00 03 00` for an unarmed character,
+# which is the same shape a C64 roster block holds.
+#
+# The die size at +0x15 was called EQUIPMENT here, because it "rises with what
+# is readied". It does, and this is why: across thirteen of Donald's save disks
+# it reads 3 for MALCYON's dart, 6 for LADY KATHERINE's short sword, 6 for
+# ROLAND's mace, 8 for three long swords and 2 for everyone with nothing
+# readied -- 1d3, 1d6, 1d6+1, 1d8 and the unarmed 1d2, each matching the ITEMS
+# entry for the item that character had equipped.
+ROSTER_ATTACKS = 0x11         # primary; +0x12 is the secondary form
+ROSTER_DAMAGE_DICE = 0x13     # how many dice
+ROSTER_DAMAGE_DIE = 0x15      # how many sides -- was ROSTER_EQUIPMENT
 ROSTER_DAMAGE_BONUS = 0x17
+ROSTER_ATTACK_FORMS = 2       # the pairs are primary, secondary
 ROSTER_HP_CURRENT = 0x19
 ROSTER_MOVEMENT = 0x1B
 
@@ -466,7 +483,7 @@ class RosterBlock:
     """One 32-byte party-roster entry, seen as a live view on its save.
 
     Writes go straight through to the parent `SaveGame1`, so bytes this class
-    does not understand -- nineteen of the thirty-two -- are never disturbed.
+    does not understand -- fourteen of the thirty-two -- are never disturbed.
 
     This is where the game caches what it *derives*. Armour class and THAC0 are
     recomputed when equipment changes and never when an ability score changes,
@@ -546,12 +563,22 @@ class RosterBlock:
     @property
     def armour_bonus(self) -> int:
         """Armour's own contribution, shield excluded. Read only -- the game
-        derives it from equipment and nothing is known about writing it."""
+        derives it from equipment and nothing is known about writing it.
+
+        The DOS record spends the byte at this offset on armour class from
+        behind, and the alignment between the two ports is otherwise exact, so
+        the temptation to rename this is real. Resist it: 48/50/54 for
+        nothing/leather/banded mail are the AD&D armour bonuses 0/2/6 exactly,
+        they were measured by putting the armour on, and a shield does not move
+        them. Read the same bytes as 60 - AC and they give 12, 10 and 6, two
+        worse than each armour's real class and meaning nothing. An alignment
+        is a hypothesis; a measurement is evidence.
+        """
         return _enc.armour_bonus_value(self._get(ROSTER_ARMOUR_BONUS))
 
     @property
     def damage_bonus(self) -> int:
-        """Strength damage bonus plus the readied weapon's own bonus.
+        """The primary attack form's damage bonus: strength plus the weapon's.
 
         Matches the AD&D 1st edition table on all twelve characters of the
         unarmoured/armoured pair -- including ROLAND, whose single change from
@@ -564,14 +591,44 @@ class RosterBlock:
         self._set(ROSTER_DAMAGE_BONUS, value)
 
     @property
-    def unknown_11(self) -> int:
-        """+0x11, meaning unknown.
+    def damage_dice(self) -> int:
+        """How many dice the primary attack rolls. 1 for every weapon here."""
+        return self._get(ROSTER_DAMAGE_DICE)
 
-        Read as "armour has cut the movement rate" on six characters, where it
-        was 1 for banded mail and 0 for leather. MALCYON reads 3 in PORSAVE11
-        wearing nothing, at full movement, so it is not that flag.
+    @property
+    def damage_die(self) -> int:
+        """How many sides the primary attack's damage die has.
+
+        3 for a dart, 6 for a short sword or a mace, 8 for a long sword, 2 for
+        an empty hand -- the readied weapon's ITEMS entry, on thirteen save
+        disks. This is the byte that used to be called EQUIPMENT.
         """
-        return self._get(ROSTER_UNKNOWN_11)
+        return self._get(ROSTER_DAMAGE_DIE)
+
+    @property
+    def damage(self) -> str:
+        """The primary attack's damage, as `1d8+5`."""
+        bonus = self.damage_bonus
+        return (f"{self.damage_dice}d{self.damage_die}"
+                + (f"+{bonus}" if bonus else ""))
+
+    @property
+    def attacks(self) -> int:
+        """+0x11, the primary form's attack count. PROBABLE.
+
+        DOS calls it `ATK_1_Count_Current`. MALCYON reads 3 with a dart
+        readied, whose ITEMS rate of fire is 6 in halves -- three throws a
+        round -- and every character with a melee weapon reads 1. But the same
+        characters read 0 in the earlier saves and every DOS record on this
+        machine reads 0 for a character holding a two-handed weapon, so
+        whether the byte is the rate or what is left of it this round is not
+        settled.
+
+        It was read once as "armour has cut the movement rate", because it was
+        1 on the six banded-mail wearers and 0 on the leather. It is not that:
+        LADY KATHERINE reads 1 in PORSAVE11 in the same leather she read 0 in.
+        """
+        return self._get(ROSTER_ATTACKS)
 
     @property
     def hit_points(self) -> int:

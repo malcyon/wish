@@ -160,11 +160,11 @@ def test_a_trait_code_nobody_has_named_shows_its_number(battle):
     gets noticed."""
     who = battle.enemies[0]
     raw = bytearray(who.record.to_bytes())
-    raw[0x0AD], raw[0x0AE] = 83, 37       # one named, one not
+    raw[0x0AD], raw[0x0AE] = 83, 200      # one named, one not
     who.record.set_raw("item_effects", bytes(raw[0x0AD:0x0B7]))
     lines = who.lines()
     assert "petrifying gaze" in lines
-    assert "trait 37" in lines
+    assert "trait 200" in lines
 
 
 def test_the_fill_byte_is_not_a_trait(battle):

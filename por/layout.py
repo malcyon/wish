@@ -493,20 +493,30 @@ _DECLARED: Sequence[Field] = (
            "7TH LVL CLERIC reads 0. The population is PROBABLE, the reading of "
            "the value is a guess"),
     _field(0x0AD, 10, _RAW, "item_effects", "Active effects", _MAYBE,
-           "ten slots holding active effect codes. It shares storage with "
-           "item byte +14 -- SPELLE04 $ADD4 copies a readied passive item's +14 "
-           "verbatim into a free slot -- but NOT its meaning: 85 is POTION OF "
-           "HEALING as an item and 'drains one level' on a wight. Three "
-           "overlays loop LDX #$09 "
+           "ten slots holding active effect codes. **The namespace is named**: "
+           "the DOS guide enumerates ids 1-127 and por/traits.py carries the "
+           "whole table, 44 of them CONFIRMED because a MON* record or a saved "
+           "item carries the id on exactly the creature or item its meaning "
+           "demands -- AHNKHEG 121 'anhkheg acid squirt', TROLL 100 and 101, "
+           "WIGHT 96 'silver or magic' against WRAITH 123 'silver does half', "
+           "which is the Monster Manual distinction between them. The rest are "
+           "PROBABLE: the guide names them and no C64 record exercises them. "
+           "Three overlays loop LDX #$09 "
            "over it, and XAVIER carrying 107 in the first slot and 89 in the "
            "tenth proves the extent. GEN $0BF3 seeds it per race from the "
-           "table [1, 0, 107, 0, 124, 0, 0, 0], so an elf is born with 107 and "
-           "a half-elf with 124. Those sit immediately below 108 and 125, "
-           "which are full immunity to sleep and charm, and the table grades "
-           "other families the same way (64/65/66 are poison by save "
-           "modifier) -- so 107 and 124 are read as elf and half-elf partial "
-           "resistance to sleep and charm. PROBABLE. The percentage is not in "
-           "the byte and could not be: it is a table index"),
+           "table [1, 0, 107, 0, 124, 0, 0, 0], **indexed by the race byte "
+           "itself**: race is 1-based, so elf (2) is born with 107 and half-elf "
+           "(4) with 124, and the leading 1 sits at index 0 where no created "
+           "character reaches it. That retires the old reading of the 1 as a "
+           "dwarf's seed -- MAGNUS, a dwarf, has an empty trait block.\n"
+           "It shares storage with item byte +14 -- SPELLE04 $ADD4 copies a "
+           "readied passive item's +14 verbatim into a free slot -- and shares "
+           "its meaning only for **passive** items, which item byte +15 bit 7 "
+           "marks. CLOAK OF DISPLACEMENT reads +14 89 / +15 $85 and 89 is "
+           "'displaced'; TWO-HANDED SWORD +1 +3 VS UNDEAD reads 3 / $88 and 3 "
+           "is 'wielding an undead-slaying weapon'. A consumable's +14 is a "
+           "spell id instead: POTION OF HEALING reads 85 / $00 and 85 is a "
+           "level drain only in the effect table"),
     # A four-entry level array, indexed in the same order as the class bits at
     # 0x0EB (magic-user, cleric, thief, fighter). Across all twelve specimens a
     # byte here is non-zero exactly when the corresponding class bit is set --
@@ -520,7 +530,18 @@ _DECLARED: Sequence[Field] = (
     _field(0x0C9, 1, _U8, "level_magic_user", "Magic-user level", _MAYBE,
            "1 for every magic-user, 0 otherwise. One entry of the per-class "
            "level array -- how dual-classing keeps an old class frozen "
-           "while a new one advances (the per-class levels)"),
+           "while a new one advances (the per-class levels).\n"
+           "**The array is permuted between the ports and a save converter "
+           "must permute it back.** The C64 indexes 0x0C9-0x0D0 by the bit "
+           "number in class_bits -- magic-user, cleric, thief, fighter, druid, "
+           "monk, paladin, ranger -- and DOS indexes the same eight bytes by "
+           "the class number at 0x073: cleric, druid, fighter, paladin, "
+           "ranger, magic-user, thief, monk. Six specimens settle the C64 "
+           "side: MALCYON (class 5, magic-user) fills slot 0, ROLAND (class 0, "
+           "cleric) slot 1, BRUTUS (class 2, fighter) slot 3, and LADY "
+           "KATHERINE (class 16, magic-user/thief) slots 0 and 2. A converter "
+           "that copies the array straight across turns every cleric into a "
+           "druid"),
     _field(0x0CA, 1, _U8, "level_cleric", "Cleric level", _MAYBE,
            "1 for every cleric, 0 otherwise. One entry of the per-class "
            "level array -- how dual-classing keeps an old class frozen "
@@ -537,22 +558,27 @@ _DECLARED: Sequence[Field] = (
     # The array is eight slots, not four: 0x0C9-0x0D0, indexed by the bit
     # number in class_bits. Pool of Radiance uses slots 0-3 and leaves the rest
     # zero in every specimen, which is why they read as a gap for so long.
-    _field(0x0CD, 1, _U8, "level_knight", "Knight level", _MAYBE,
+    _field(0x0CD, 1, _U8, "level_knight",
+           "Class-level slot 4 (druid; knight in the Krynn titles)", _MAYBE,
            "slot 4 of the per-class level array, i.e. class_bits bit 4 (16). "
-           "Named KNIGHT by the Death Knights of Krynn editor, which cycles "
-           "nine class names over the eight-byte array at 0x0C9 as MAGE, "
-           "CLERIC, THIEF, FIGHTER, KNIGHT, -, PALADIN, RANGER, and whose "
-           "RESET action bounds the array with CPY #$08. Knights of Solamnia "
-           "are a Krynn class; the shipped Champions and Death Knights parties "
-           "carry class_bits 0x10 with the whole array zero, so nothing yet "
-           "shows a value in this byte. PROBABLE, and PROBABLE is where a "
-           "third-party tool's offset stops: no record has agreed with it yet.\n"
-           "A second name for the same slot: the DOS engine's item-restriction "
-           "bit array reads 0 magic-user, 1 cleric, 2 thief, 3 fighter, 4 "
-           "**druid**, 5 monk, 6 paladin, 7 ranger. Bits 0-3 and 6-7 are this "
-           "array's own order, six of eight positions agreeing, so slot 4 is "
-           "very likely the druid slot in the Realms titles and KNIGHT is the "
-           "Krynn games reusing it in a world with no druids"),
+           "**In the Realms titles this is the druid slot.** The engine's own "
+           "item-restriction bit array -- the same bit order this array is "
+           "indexed by -- reads 0 magic-user, 1 cleric, 2 thief, 3 fighter, 4 "
+           "druid, 5 monk, 6 paladin, 7 ranger. Bits 0-3 are CONFIRMED here "
+           "from six specimens and bits 6-7 from Curse's pre-generated paladin "
+           "and ranger, so six of the eight positions are checked and the two "
+           "left over are druid and monk in that order. Pool of Radiance never "
+           "instantiates a druid, so the byte is zero in every specimen we "
+           "hold; the name of the slot is PROBABLE and the *ordering* that "
+           "puts druid in it is CONFIRMED.\n"
+           "The field keeps the name `level_knight` because the Death Knights "
+           "of Krynn editor calls it that -- it cycles nine class names over "
+           "the eight-byte array at 0x0C9 as MAGE, CLERIC, THIEF, FIGHTER, "
+           "KNIGHT, -, PALADIN, RANGER, and bounds the array with CPY #$08. "
+           "Knights of Solamnia are a Krynn class in a world with no druids, "
+           "so the Krynn games reuse the slot. The shipped Champions and Death "
+           "Knights parties carry class_bits 0x10 with the whole array zero, "
+           "so no record has yet shown a value in this byte on any title"),
     _field(0x0CF, 1, _U8, "level_paladin", "Paladin level", _OK,
            "slot 6 of the per-class level array, class_bits bit 6 (64). "
            "CONFIRMED on SSI's own pre-generated Curse party, whose paladin "
@@ -707,19 +733,25 @@ _DECLARED: Sequence[Field] = (
            "knowing given the 1989 editor's author reported he could never "
            "find either"),
     _field(0x110, 9, _RAW, "roster_tail", "Roster +0x10..+0x18", _MAYBE,
-           "roster +0x10 to +0x18: armour bonus, encumbrance, equipment and "
-           "damage bonus, all already decoded in por/savegame.py. Kept RAW "
-           "here because the roster is the place to read them.\n"
-           "The eight bytes after the first line up with the DOS record's "
-           "eight current attack-form bytes -- the running copy of "
-           "attack_forms at 0x0D9 -- which is worth knowing before anyone "
-           "reads them as something else. The first byte does NOT line up: "
-           "DOS spends it on armour class from behind and the C64 on the "
-           "armour bonus, 48 + bonus, which por/savegame.py established by "
-           "putting armour on (none 48, leather 50, banded 54, the AD&D "
-           "bonuses exactly). Read the C64 byte the DOS way and those become "
-           "12, 10 and 6, two worse than each armour's real class and meaning "
-           "nothing. docs/127-community-formats.md"),
+           "roster +0x10 the armour bonus, then +0x11 to +0x18 the **current "
+           "attack form** -- the running copy of attack_forms at 0x0D9, in the "
+           "engine's own order: two attack counts, two dice counts, two die "
+           "sizes, two damage bonuses. All decoded in por/savegame.py, and "
+           "kept RAW here because the roster is the place to read them.\n"
+           "The die-size byte is +0x15, which this project called EQUIPMENT "
+           "for a long time because it 'rises with what is readied'. It does: "
+           "across thirteen of Donald's save disks it reads 3 for MALCYON's "
+           "dart, 6 for LADY KATHERINE's short sword, 6 for ROLAND's mace, 8 "
+           "for three long swords and 2 for every character with nothing "
+           "readied -- 1d3, 1d6, 1d6+1, 1d8 and the unarmed 1d2, matched to "
+           "the ITEMS table entry of the item each of them had equipped.\n"
+           "The first byte does NOT line up with DOS: DOS spends it on armour "
+           "class from behind and the C64 on the armour bonus, 48 + bonus, "
+           "which por/savegame.py established by putting armour on (none 48, "
+           "leather 50, banded 54, the AD&D bonuses exactly, and unmoved by a "
+           "shield). Read the C64 byte the DOS way and those become 12, 10 and "
+           "6, two worse than each armour's real class and meaning nothing. "
+           "docs/127-community-formats.md"),
     # --- Declared from the later games, zero throughout this one -----------
     _field(0x065, 7, _RAW, "abilities_second", "Abilities (second copy)", _OK,
            "a second copy of the seven ability scores -- STR, INT, WIS, DEX, "

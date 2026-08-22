@@ -115,11 +115,29 @@ TYPE_DAMAGE_MEDIUM = 9       # three bytes: dice, sides, bonus
 TYPE_RANGE = 12
 TYPE_CLASS_USAGE = 13
 
-# Protection: body armour reads $B0 in the high nibble with (12 - AC) in the
-# low one; a shield reads $80 with its AC bonus in the low nibble.
-PROTECTION_ARMOUR = 0xB0
-PROTECTION_SHIELD = 0x80
-PROTECTION_AC_BASE = 12
+# Protection, type byte +6. **Bit 7 means the item affects armour class**, and
+# the low seven bits carry the family's standard `60 - value` bias -- the same
+# one THAC0 and armour class use everywhere else in this format. Body armour
+# stores a class ($B4 = 52 = AC 8, leather; $B9 = 57 = AC 3, plate); a shield
+# and the magical protective items store a flat bonus instead ($81 = +1).
+#
+# This was read for a long time as `12 - (byte & 0x0F)` under a $B0 mask, which
+# is the same rule in disguise: 60 - (0x30 + n) is 12 - n. The two agree on
+# every armour the disks carry and diverge below AC 12 -- $AF is AC 13 under
+# the general rule and -3 under the nibble one. The general form is the one to
+# keep; see docs/128-guide-and-scripting.md.
+PROTECTION_GRANTS = 0x80     # bit 7: this item affects armour class
+PROTECTION_BIAS = 60         # the family's 60 - value encoding
+PROTECTION_VALUE = 0x7F      # the seven bits that carry it
+# Which of the two the low seven bits are is decided by magnitude: a flat bonus
+# is small and a biased class is 48 or more (AC 12). Every value the game ships
+# is either 0-1 or 52-60, so nothing on the disks is near the line.
+#
+# The line cannot be drawn to satisfy both ends at once -- a bonus of 47 and an
+# armour class of 13 are the same byte, $AF -- and no item in Pool of Radiance
+# reaches either. It is drawn at 15 because armour class is what this byte is
+# for and a bonus above 15 would be a +16 shield.
+PROTECTION_BONUS_MAX = 0x0F
 
 # Same bit order as the character record's class_bits at 0x0EB.
 CLASS_USAGE_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
@@ -186,15 +204,18 @@ class ItemType:
         distinguishes them and the value is then a bonus, not a class.
         """
         p = self.raw[TYPE_PROTECTION]
-        if not p:
+        if not p & PROTECTION_GRANTS:
             return None
-        if p & 0xF0 == PROTECTION_SHIELD:
-            return p & 0x0F
-        return PROTECTION_AC_BASE - (p & 0x0F)
+        if self.is_shield:
+            return p & PROTECTION_VALUE
+        return PROTECTION_BIAS - (p & PROTECTION_VALUE)
 
     @property
     def is_shield(self) -> bool:
-        return self.raw[TYPE_PROTECTION] & 0xF0 == PROTECTION_SHIELD
+        """True when +6 holds a bonus rather than a class -- a shield, or one
+        of the magical protective items that improve an armour class."""
+        p = self.raw[TYPE_PROTECTION]
+        return bool(p & PROTECTION_GRANTS) and (p & PROTECTION_VALUE) <= PROTECTION_BONUS_MAX
 
     @property
     def hands(self) -> int:

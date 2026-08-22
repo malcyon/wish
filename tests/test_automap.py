@@ -1502,7 +1502,7 @@ def test_the_effect_table_is_still_shown_by_number():
     effect = live.Effect(slot=0, id=64, owner=0, duration=3, magnitude=0)
     assert effect.label == "effect 64"
     from por import traits
-    assert traits.describe(64) == "poison"        # a trait code, not this
+    assert traits.describe(64).startswith("melee poison")   # a trait, not this
 
 
 def test_the_commissions_panel_does_not_show_one_flag_as_two_commissions(app):

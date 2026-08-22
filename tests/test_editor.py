@@ -798,7 +798,7 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
     editor.ui.roster.selectRow(0)                     # MALCYON, an elf
     assert view.codes()[0] == 107
     assert view.model_.data(view.model_.index(0, 2)) == \
-        "partial resistance to sleep and charm (elf)"
+        "elf: 90% resistance to sleep and charm"
     assert view.model_.rowCount() == effects.SLOTS
     editor.ui.roster.selectRow(2)                     # ROLAND, a human
     assert not any(view.codes())
@@ -806,11 +806,16 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
 
 
 def test_a_code_nobody_has_named_is_shown_as_a_number():
-    """Silently dropping it would read as "this character has nothing"."""
+    """Silently dropping it would read as "this character has nothing".
+
+    The DOS guide's effect table named most of these, so the code picked here
+    is one it does not reach -- and the point of the test is the fallback, not
+    which code happens to be unnamed today.
+    """
     from editor.effects import EffectsModel
-    from por.traits import UNNAMED, describe
-    assert describe(107).startswith("partial resistance")
-    assert describe(37) == UNNAMED
-    m = EffectsModel(bytes([37]))
-    assert m.data(m.index(0, 1)) == "37"
-    assert m.data(m.index(0, 2)) == UNNAMED
+    from por.traits import describe
+    assert describe(107) == "elf: 90% resistance to sleep and charm"
+    assert describe(200) == "trait 200"
+    m = EffectsModel(bytes([200]))
+    assert m.data(m.index(0, 1)) == "200"
+    assert m.data(m.index(0, 2)) == "trait 200"
