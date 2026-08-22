@@ -1,11 +1,10 @@
 # Knowledge base
 
 Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
-library in `por/` and the `wish` editor in `tools/`.
+`por/` library, the `wish` editor and the automapper.
 
 | document | contents |
 |---|---|
-| [PLAN.md](PLAN.md) | the project plan; kept current as phases land |
 | [00-overview.md](00-overview.md) | the game's disks, how a session boots, overlay structure |
 | [10-disk-format.md](10-disk-format.md) | 1541 D64 container: geometry, directory, sector chains, safe in-place writes |
 | [20-character-record.md](20-character-record.md) | **generated** field table for the 580-byte record, with confidence levels |
@@ -56,6 +55,7 @@ library in `por/` and the `wish` editor in `tools/`.
 | [126-forum-findings.md](126-forum-findings.md) | what the Gold Box forums have that we do not — playtester mode, DOS area tables, tooling |
 | [127-community-formats.md](127-community-formats.md) | the community format spreadsheets: saving throws solved, the DOS record against ours |
 | [128-guide-and-scripting.md](128-guide-and-scripting.md) | the DOS guide and the Unlimited Adventures files: the GBVM address list, the area names, the ECL semantics |
+| [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — planned |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -64,6 +64,46 @@ changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are genera
 game disk. Everything else is
 written by hand.
 
+
+## How the code is laid out
+
+Split along the **packaging** boundary, so a build takes the app without
+dragging in throwaway discovery scripts.
+
+| package | what it is |
+|---|---|
+| `por/` | the file formats: D64, the 580-byte character record, the save games, the item and spell tables. **Transport-free** — no sockets, nothing that knows a machine is running |
+| `editor/` | the PyQt6 character editor, over `por/` alone |
+| `automap/` | everything that reads a *running* machine, quarantined here so the first decision below is structural rather than a convention |
+| `wish/` | the one window: two tabs, the single shared live connection, the backend registry. See [99-one-window.md](99-one-window.md) |
+| `ui/` | drawing code both the editor and the map need, owned by neither |
+| `designer/` | the Qt Designer `.ui` forms, loaded at runtime |
+| `packaging/` | the PyInstaller entry points and the Windows console-stream repair |
+| `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. Two entry points live here, `wish-cli` (`tools/wish.py`) and `tools.genui`, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) plans to fold the CLI into `wish` itself |
+| `skills/goldbox/` | the transferable method, for a cold agent starting on a new title |
+| `work/` | scratch disk copies — `.gitignore`d, and where every disk image belongs |
+
+**Two decisions shape all of it, and both still hold.**
+
+1. **The editor is a file tool with zero emulator dependency.** It opens a
+   `.D64`, edits the save, writes it back, and never talks to VICE. `editor/`
+   imports nothing from `automap/`, `por/` stays transport-free, and the whole
+   file path works on a machine with no emulator on it.
+   `tests/test_wish.py` asserts both halves: the editor tab is never handed the
+   live target, and no file under `editor/` mentions `automap`.
+2. **Live memory is a discovery technique, not something the editor promises.**
+   A watchpoint on "whatever stores to the strength byte" beats reading
+   disassembly, so the project reads the running game heavily while reverse
+   engineering. That grew into the automapper, which *is* a shipped feature —
+   and it lives in `automap/` precisely so the first decision survives it.
+
+`por/layout.py` is the single source of truth for the record: a declarative
+table, every field carrying `CONFIRMED` / `PROBABLE` / `GUESS`, asserting at
+import that all 580 bytes belong to exactly one entry.
+[20-character-record.md](20-character-record.md) is generated from it, so the
+documentation cannot drift from the code — and it has **exactly one owner at a
+time**, because several agents appending to it independently would fragment the
+schema and reintroduce the drift it exists to prevent.
 
 ## Where things stand
 
@@ -156,6 +196,10 @@ having been written back and confirmed in game.
 * **Whether `0x100` is a status enum.** Four sources now disagree about it and
   the newest weakens rather than strengthens the case; `roster_in_use` stays
   PROBABLE. One specimen reading other than 1 settles it.
+* **The save path itself has never been disassembled.** `LOAD/SAVE` is on the
+  disk and the tooling for reading it is proven; nothing has ever needed it,
+  because a save is a verbatim memory image and diffing two of them answers
+  more than the routine would.
 * Most of each record remains unidentified; see
   [20-character-record.md](20-character-record.md) for how much.
   `SAVEDGAME1` past its first page is not open at all — it is resident code

@@ -273,8 +273,8 @@ a roster block.
 **The "44 differing bytes" this section used to describe were an artefact of the
 comparison**, not of the format — they came from reading 580 contiguous bytes
 from `$4D00` and running off the end of a `$100` slot into its zeroed
-neighbours. The claim is withdrawn wherever it appears; `docs/60` and
-`docs/PLAN.md` carried it too.
+neighbours. The claim is withdrawn wherever it appears; `docs/60`
+carried it too.
 
 The practical consequence is unchanged and now has a reason: an editor writing a
 record into a slot must **split it four ways**, not copy 580 bytes anywhere.

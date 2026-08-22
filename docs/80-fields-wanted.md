@@ -457,6 +457,15 @@ The saving throws, the thief-skill progression and the spell-group boundaries
 were all settled that way, by locating an eight-by-nine or nine-by-eight table
 in a binary and matching every row, rather than by any diff.
 
+And a fourth, which turned out to be the cheapest of all and was expected to be
+the most expensive: **read the code that touches the byte.** The record answers
+to a fixed `$6B00`, so `LDA $6BA0` *is* offset `0x0A0`, and scanning every
+absolute operand in `$6B00`-`$6D44` across every file on the disks says which
+offsets the game itself reads and writes. That is what named the level-drain
+pair, the NPC flag, the effect list at `0x0AD` and the class ceilings — all four
+after months of save-diffing had failed on them. Try it before planning an
+experiment, not after one fails.
+
 References Donald supplied:
 
 * <https://nerdlypleasures.blogspot.com/2015/11/goofy-things-in-pool-of-radiance-gold.html>

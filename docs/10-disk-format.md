@@ -98,6 +98,13 @@ leftover garbage from whatever previously occupied those sectors. A rewrite must
 content back" fails to be byte-identical. A same-block-count-but-shorter write therefore leaves
 stale bytes in the tail, which is correct 1541 behaviour and not a bug.
 
+## A second opinion on a disk
+
+`por/d64.py` is the reader this project uses, but VICE ships the reference tool and the
+Flatpak will run it: `flatpak run --command=c1541 net.sf.VICE`. It reaches `/mnt/media` and
+`$HOME` (the Flatpak grants `filesystems=home`), so a `list`, `extract` or `validate` on any
+image here is one command away when a parse looks wrong.
+
 ## Observations across both images
 
 - Directory `block_count` equalled the true chain length and `ceil(len/254)` for all 106 files

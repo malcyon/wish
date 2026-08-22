@@ -3,10 +3,10 @@
 **Status: built.** The code is the `automap/` package; this note is kept because
 it records why the design is shaped the way it is.
 
-It lives outside the character editor on purpose, and outside `por/` too:
-`PLAN.md` promises the editor is a file tool with **zero emulator dependency**,
-so everything that reads a running machine is in `automap/` and neither `por/`
-nor `editor/` imports it.
+It lives outside the character editor on purpose, and outside `por/` too: the
+editor is a file tool with **zero emulator dependency** ([README.md](README.md)
+§"How the code is laid out"), so everything that reads a running machine is in
+`automap/` and neither `por/` nor `editor/` imports it.
 
 | module | what it is |
 |---|---|

@@ -210,6 +210,28 @@ counting rows.
 `vice_screenshot` takes several seconds — enough to lose races against menus that
 time out. Use `import` unless you need the MCP for another reason.
 
+## Which client talks to the monitor
+
+Two exist, and only **one may be attached at a time** — VICE accepts a second
+binary-monitor connection and then never answers it.
+
+* `automap/vice.py` is the project's own client and the one to use for anything
+  that walks: it holds the connection open across a session and `resume()`s,
+  which is what watchpoints and the automapper both need.
+* The **MCP server** (`axewater/mcp-vice-emu`, registered in `.mcp.json`) is for
+  one-off probes. It is a **local fork** at `~/src/mcp-vice-emu`: upstream
+  unconditionally spawns `${emulator}.exe` and has no attach-to-running mode, so
+  it was patched with an `isMonitorListening()` probe that attaches when the port
+  already answers, and the `.exe` suffix dropped off Windows. `cleanup()` only
+  kills `this.process`, which stays null when attaching, so it will not kill an
+  emulator it did not start. **Re-apply the patch if it is ever re-cloned or
+  updated.** Its `vice_memory_read` takes `start`, not `address`.
+
+**RetroDebugger is deliberately not installed.** It has no Linux AppImage or
+`.deb` — a CMake source build means maintaining a second VICE — and its
+real-time memory view is covered by a monitor read plus watchpoints. Revisit
+only for something those cannot show.
+
 ## The binary monitor
 
 * **Connecting stops the machine.** Nothing advances while a socket is open.

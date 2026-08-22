@@ -139,8 +139,9 @@ The single most useful mechanic we have: **`REMOVE` a character from the party w
 `$4D00` slot inside `SAVEDGAME0` differ in exactly 44 bytes, and **all 44 are in two regions
 that are populated in the exported file and zero in the in-save slot** — the item area
 (`0x100`, `0x10D`–`0x11B`) and a 36-byte icon block (`0x220`–`0x243`). Everything else is
-byte-identical. (`INFERENCE` from one specimen, but a very clean one — this resolves the
-"44-byte delta" open question in PLAN.md §Phase 2.2.)
+byte-identical. (`INFERENCE` from one specimen — and **since withdrawn**: the 44 bytes were
+an artefact of reading 580 contiguous bytes out of a `$100` slot and running off its end. See
+[30-savegame-layout.md](30-savegame-layout.md).)
 
 ### 1.1 Identity
 
@@ -365,8 +366,8 @@ experiment on the list.
 
 1. **Platinum (or any one coin type).** Already located to a specific byte pair by a C64 tool, and
    the gold counter is corroborated by our specimen. Pure integer, no derived stats, no
-   recomputation on load, and the character sheet prints it. This is PLAN.md's first edit to prove, and it is
-   the right choice. Verification is visual and total.
+   recomputation on load, and the character sheet prints it. This was the first edit to prove,
+   and it was the right one. Verification is visual and total.
 2. **HP current, via one point of damage.** One byte, one action, and it distinguishes current from
    max — which is the pattern (`base`/`current` twins) that will bite us everywhere else if we get
    it wrong. Do this before touching anything derived.
@@ -390,7 +391,7 @@ experiment on the list.
 9. **Ability scores.** Already located; deliberately *not* first, because the interesting question
    is not where STR is but whether the game caches STR-derived hit/damage bonuses elsewhere. Answer
    that with a Potion of Giant Strength diff before writing to STR.
-10. **Checksum probe.** PLAN.md is right to schedule this before trusting any write. Corrupt one
+10. **Checksum probe.** Worth doing before trusting any write. Corrupt one
     byte inside the 36-byte icon block at `0x220` — it is demonstrably per-character, demonstrably
     cosmetic, and if the game loads and renders a wrong-coloured icon we have both "no checksum"
     and a confirmed field in one experiment.
@@ -399,9 +400,10 @@ experiment on the list.
 
 ## 5. Known unreliable — do not chase these
 
-- **Published Gold Box hex-editing offsets (STR at 0x70, class at 0x75, etc.).** DOS only. Already
-  flagged in PLAN.md; restating because it is the single most common way to waste a day. The name
-  field alone differs structurally (§2.12).
+- **Published Gold Box hex-editing offsets (STR at 0x70, class at 0x75, etc.).** DOS only, and
+  the C64 layout is its own thing — the DOS documents are a checklist of *which fields exist*,
+  never of where they are. Restating because it is the single most common way to waste a day.
+  The name field alone differs structurally (§2.12).
 - **`Offsets compared.txt` as a "Gold Box layout".** It is twelve *different* layouts side by side.
   PoR, CotAB and SotSB share almost no offset. Read it as a field *catalogue*.
 - **The C64 editor's class table is wrong *in part*.** Its `DATA` lists classes 3, 4 and 5 all as
@@ -502,7 +504,7 @@ DOS field catalogue, (b) one 1989 C64 BASIC editor whose author documented rough
 and admitted he could not work out several more, and (c) our own disk. Everything beyond that has
 to come from controlled experiment. The good news is that (b) plus our specimen already agree on
 every field they overlap on, which is the strongest possible signal that the differential approach
-in PLAN.md will work — and that the DOS field *ordering* is a usable prior for guessing where to
+will work — and that the DOS field *ordering* is a usable prior for guessing where to
 look next.
 
 **That last sentence is the one to keep, and it came in.** Three further DOS

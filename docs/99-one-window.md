@@ -80,8 +80,8 @@ wish/
   backends.py      which live backends exist, how to find one
 ```
 
-That keeps `docs/PLAN.md`'s first decision intact: **the editor never talks to a
-live machine.** `editor/` gains no import of `automap`, `por/` stays
+That keeps the project's first decision intact: **the editor never talks to a
+live machine** ([README.md](README.md) §"How the code is laid out"). `editor/` gains no import of `automap`, `por/` stays
 transport-free, and the file path — open, edit, save — works with no emulator
 present, which is how most people will use it.
 

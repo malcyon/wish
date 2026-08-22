@@ -109,8 +109,8 @@ DosName1541ii=".../JiffyDOS_1541-II_6.00.bin"
 
 and `Session.boot()` answers the fastloader prompt `Y` unconditionally
 (`tools/session.py:300`). A stock kernal makes `Y` the wrong answer and the
-symptom looks like a corrupt disk image, which is the trap
-[`PLAN.md`](PLAN.md) already records.
+symptom looks like a corrupt disk image — the trap
+[`00-overview.md`](00-overview.md) records under "How a session runs".
 
 The overrides:
 
@@ -353,6 +353,18 @@ Reported here, not applied — three other agents are in this tree.**
 The existing lines about copying disks into `work/`, never writing to
 `/home/donald/c64/Pool of Radiance Disks/`, and never committing game data are
 unaffected and stay exactly as they are.
+
+### Two things stay serial whatever the pool does
+
+Neither is about the emulator, and no number of instances helps:
+
+* **Differential experiments.** "Change exactly one thing, then diff" *is* the
+  method. Two experiments running at once destroy the attribution that makes
+  either result mean anything, however many emulators they have.
+* **`por/layout.py` has exactly one owner at a time.** It is the single source
+  of truth for every field offset, and it asserts that all 580 bytes are
+  accounted for; several agents appending to it independently fragment the
+  schema and reintroduce the drift the table exists to prevent.
 
 ---
 

@@ -13,8 +13,8 @@ What the outer window adds is the three things a merged application owes you:
   tab, the connection and the party's square on the map tab.
 * **one title**, carrying the open save and a dirty marker whichever tab shows.
 
-The editor tab is never handed the target. That is `docs/PLAN.md`'s first
-decision made structural: `editor/` imports nothing from `automap/`, and the
+The editor tab is never handed the target. That is the project's first decision
+made structural (`docs/README.md`): `editor/` imports nothing from `automap/`, and the
 file path works with no emulator anywhere.
 """
 

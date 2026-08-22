@@ -4329,3 +4329,60 @@ effect on the next fight is unproven.
   likely to be spellbook storage held in reserve for a larger id space rather
   than a gap. PROBABLE, and worth checking first on Curse and Silver Blades,
   whose id spaces do run past 56.
+
+---
+
+## Retiring the plan
+
+**What it was.** The project opened with a plan document: five phases — tools,
+the library and the knowledge base, discovery by diffing, a CLI editor, a GUI —
+written before a single byte of the record was confirmed. All five landed, the
+scope grew well past it, and the file was deleted once everything still true in
+it had moved to the document that owns the subject. Recorded here is what it got
+wrong, because the plan kept its own errors on purpose and they are the part
+worth carrying.
+
+**Two decisions survived unchanged** and are now in [README.md](README.md): the
+editor is a file tool with zero emulator dependency, and live memory is a
+discovery technique rather than something the editor promises. The second is the
+one that bent — live memory became a shipped feature, the automapper — and it
+held anyway, because the plan had quarantined everything that talks to VICE in
+its own package before there was anything to put in it. A boundary drawn early
+cost nothing and survived a feature nobody had planned.
+
+**What it got wrong:**
+
+1. **The slot stride.** Both candidates — `$400` × 6 and `$800` × 3 — were
+   wrong: it is `$100`, twelve slots, eight of them the party. Every specimen at
+   the time held at most two characters, so the zeros between them fitted either
+   model. *A hypothesis that sparse data agrees with has not been tested.*
+2. **The 44-byte delta** between the exported character and the same character
+   inside a save, which the plan called a high-value early target. There was no
+   delta: it was an artefact of reading 580 contiguous bytes out of a 256-byte
+   slot and running off the end into a zeroed neighbour. A "finding" that is a
+   property of how you read the file, not of the file.
+3. **Watchpoints, written off as "they never worked".** They work. The fault was
+   closing the monitor socket instead of holding it open and `resume()`ing;
+   held open, they settled the character-creation question in one run.
+4. **"No whole-game disassembly — the overlay data is out of scope."** Right
+   about the editor and wrong about the project. Reading the code turned out to
+   be the *cheapest* technique here rather than the most expensive: thirty `ECL`
+   scripts decoded to the byte, and the level-drain pair, the NPC flag, the
+   effect list at `0x0AD` and the class ceilings all named from static scans
+   after months of save-diffing had failed on them.
+5. **How big a party is** — two wrong answers before the right one. Six player
+   characters, eight slots, the last two NPC-only, and the limit is a `CMP #$06`
+   in the code rather than a message.
+6. **Two field readings.** `0x0B8` was "an unexplained equipment-linked byte"
+   and is the NPC flag in bit 7 with the trainer's score-altered marker in bit 0;
+   `0x0AD` was "a racial trait mask" and is ten slots of active effect codes,
+   seeded per race by `GEN $0BF3`.
+
+**What it got right, and would be worth repeating on a new title:** staging the
+work so nothing was built on an unproven layout; making `por/layout.py` a
+declarative table with a confidence level per field and generating the
+documentation from it; splitting the packages along the packaging boundary
+before it cost anything to do; and the one method that carried everything —
+save, change exactly one thing, save again, diff. That was later beaten, for
+every field that does not need a character to *change*, by comparing six
+different characters against each other at once.

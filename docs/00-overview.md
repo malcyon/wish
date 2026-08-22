@@ -4,6 +4,13 @@ SSI, 1988. Eight disk sides plus a boot disk and a user-created save disk. This 
 reverse engineers the game to build a **character editor and a live automapper**; it is not
 a port and not a full disassembly.
 
+**Why it had to be done from scratch.** Gold Box Companion gives the DOS releases a
+character editor and a live HUD by scanning DOSBox's memory for the DOS character records.
+Nothing equivalent exists for the C64 release and no layout of its record has ever been
+published (`60-goldbox-field-checklist.md` §5), so every offset in these notes was
+established by experiment. The model is `s-macke/weltendaemmerung`: reverse engineer to
+*understand*, and produce documentation plus an assistant app rather than a port.
+
 Pool of Radiance is the reference title, not the only one. `por/games.py` carries save
 geometry, race, class and item-name tables for **six** Gold Box titles, and a Curse of the
 Azure Bonds or Secret of the Silver Blades save opens and round-trips byte-identically
@@ -52,6 +59,13 @@ fliplist preloaded and autostarts `POOL1.D64`.
 **JiffyDOS:** this VICE install has JiffyDOS. The game asks at launch whether to disable its
 own fastloader — answer **`Y`**. JiffyDOS does the fast loading; leaving the game's loader on
 conflicts with it, and the failure mode looks like a bad disk image rather than a loader clash.
+
+Every scripted launch and every written repro step has to answer that prompt.
+`tools/session.py` answers `Y` unconditionally, which is right on this machine and would be
+**wrong under a stock kernal** — where the game's own fastloader is the only one there is,
+and the same corrupt-looking symptom appears for the opposite reason. Any VICE configured
+for this project keeps the JiffyDOS ROMs; see
+[123-parallel-sessions.md](123-parallel-sessions.md) §2.
 
 `POR_DEBUG=1` additionally enables VICE's binary monitor on `127.0.0.1:6502` and grants the
 Flatpak network access. See `docs/40-memory-map.md`.

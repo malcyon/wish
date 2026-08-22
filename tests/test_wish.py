@@ -338,7 +338,7 @@ def test_the_window_opens_with_no_emulator_and_no_file(window):
 
 
 def test_the_editor_tab_is_never_given_the_machine(window):
-    """docs/PLAN.md decision 1, as code: the editor gets no reader at all."""
+    """docs/README.md decision 1, as code: the editor gets no reader at all."""
     from wish.window import EDITOR_TAB, MAP_TAB
     window.tabs.setCurrentIndex(MAP_TAB)
     assert window.session.reader is not None

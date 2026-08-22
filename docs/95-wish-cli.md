@@ -351,3 +351,34 @@ neither has been proven in game: a memorised spell ought to be one the character
 knows, and the number memorised at each level ought to be within the capacity
 their class, level and Wisdom allow. The export prints that capacity beside the
 spellbook so you can check it yourself.
+
+## What has been confirmed in the game, and what has not
+
+Being able to *read* a field is not evidence that the game will accept it
+written. Four things have been written back, booted and seen on screen:
+
+* the **thirteen-field edit** — all six ability scores and all seven money types
+  at once, every one of them shown on the character sheet, and no checksum or
+  rejection anywhere ([the thirteen-field edit](50-experiments.md));
+* **armour class** and **current hit points** in the `SAVEDGAME1` roster —
+  MALCYON at `AC 1` and `HITPOINTS 11`, and the game wrote the same page back
+  when it saved;
+* a **constructed item** — a `LONG SWORD +4` that ships on no disk, with THAC0
+  and the damage expression both moving to match
+  ([a constructed item is accepted by the game](50-experiments.md));
+* **character creation under script**, which is how `\x01WYVERN` exists.
+
+Everything else `wish` can write has been located by diffing or by reading the
+game's code and has **never been written back and confirmed in play**. Each is
+one edit and one look at the character sheet, and the bar is that the change
+also survives a save-and-reload unchanged:
+
+| what | the question it also answers |
+|---|---|
+| **experience** | whether the game re-derives level from it on load |
+| **character level** (`0x0A0`) | the same question from the other side — change level without touching experience and see which wins |
+| **class, race, alignment, sex** | whether the game rejects or corrupts them. Most likely of the lot to go wrong, so prove them on a throwaway party |
+| **a memorised spell** (`0x020`) and a **spellbook** bit (`0x078`) | whether the game accepts a spell memorised by a character who does not know it |
+| **movement** (roster `+0x1B`) | nothing else; it is simply the one roster field never written |
+| **the combat icons** at `$4BE0` | whether an edited icon reaches the combat screen |
+| **the NPC bit** (`0x0B8` bit 7) | what the game actually permits — a written marker is not the same as a party the game will run |
