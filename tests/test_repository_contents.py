@@ -24,9 +24,16 @@ FORBIDDEN_SUFFIXES = {
     ".d64", ".d71", ".d81", ".g64", ".t64", ".tap",     # disk and tape images
     ".prg", ".p00", ".crt", ".rom",                     # executables
     ".sid", ".psid", ".mod", ".wav", ".mp3", ".ogg",    # music and sound
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",   # art and scans
     ".pdf",                                             # manuals and cluebooks
 }
+
+# Images are **not** on that list. The rule is about the game's content, and a
+# blanket ban on `.png` caught our own screenshots and would have caught the
+# application icon -- neither of which is SSI's. Donald: "You need to remove
+# that test that blocks all pngs. We don't need that."
+#
+# What still applies is judgement rather than a suffix: a scan of a manual or a
+# cluebook map is the game's, whatever it is saved as, and does not belong here.
 
 #: The only binaries allowed in `tests/fixtures/`, and why.
 #:
