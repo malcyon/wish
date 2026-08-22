@@ -1,56 +1,43 @@
 # Bugs in the Gold Box games
 
-A catalogue of defects in SSI's own shipped code and data, found by decoding
-the games rather than by playing them.
+Defects in SSI's own shipped code and data that a player can actually run into,
+found by decoding the games rather than by playing them.
 
-Everything here comes from one of three places: the games' own ECL bytecode,
-decoded whole — 178,035 bytes across thirty scripts, no derailments; the 6502
-in their overlays; or their data files, read off the player's disks. A number
-of predictions were then carried to a running Commodore 64 under emulation and
-either confirmed or refuted. Each entry says which, and carries a label:
+Everything here comes from the games' own bytecode, the 6502 in their overlays,
+or their data files. Several were predicted from the code first and then carried
+to a running Commodore 64 under emulation; each entry says which, and carries a
+label:
 
 | label | means |
 |---|---|
-| **CONFIRMED** | corroborated a second, independent way — usually the game's own behaviour, its own printed output, or a second decode that could have disagreed and did not |
+| **CONFIRMED** | corroborated a second, independent way -- usually the game's own behaviour, its own printed output, or a second decode that could have disagreed and did not |
 | **PROBABLE** | consistent with all the evidence held, not independently verified |
 | **GUESS** | a plausible reading that something about the data argues against |
 
-Two things to hold on to while reading. **The ECL bytecode is one artefact
-shared by every port**: the Amiga's `ecl.dax` unpacks to the Commodore 64's own
-scripts, load address and all, and 171 of the 172 flag addresses the C64 scripts
-name appear in the Amiga's unchanged. So a script bug found on the C64 is
-almost always in the other ports too, and where a port fixed one, that is said.
-And **this is a short list for two games of this size.** Most of what looked
-like a bug on first reading turned out to be our own misreading; the last
-section is a list of those, and it is nearly as long as the rest.
+**The ECL bytecode is one artefact shared by every port** -- the Amiga's
+`ecl.dax` unpacks to the Commodore 64's own scripts, load address and all -- so
+a script bug found on the C64 is almost always in the other ports too, and where
+a port fixed one, that is said.
+
+Findings that no player would ever notice are kept out of this file. They are in
+[`docs/125-bug-notes.md`](docs/125-bug-notes.md), along with the longer list of
+things that looked like bugs and turned out to be our own misreadings.
 
 ---
 
 ## The list
 
-| # | bug | game | kind | confidence | player sees it |
-|---|---|---|---|---|---|
-| 1 | The C64 verification check negates an index the DOS build corrects cyclically | Curse of the Azure Bonds | engine | CONFIRMED | yes |
-| 2 | Sokol Keep's dead elf is guarded on an address nothing writes | Pool of Radiance | script | CONFIRMED, in game | yes |
-| 3 | QUICK is never cleared when a fight ends | Pool of Radiance | engine | CONFIRMED | yes |
-| 4 | The hedge maze's half-encounter-rate squares run at full rate | Pool of Radiance | script | CONFIRMED | yes |
-| 5 | `ECL07` writes an `OR` to the wrong destination | Pool of Radiance | script | CONFIRMED | no |
-| 6 | The VM's operand-count table disagrees with three of its own handlers | Pool of Radiance | engine | CONFIRMED | no (latent) |
-| 7 | The opcode dispatch table has no bounds check | Pool of Radiance | engine | CONFIRMED | no (latent) |
-| 8 | The icon editor's SIZE choice is never written back | Pool of Radiance | engine | PROBABLE | yes |
-| 9 | Two monster records state a level in their name that their data contradicts | Pool of Radiance | data | CONFIRMED | yes |
-| 10 | Four monster records carry a class code that contradicts their class bits | Pool of Radiance | data | CONFIRMED | yes |
-| 11 | The race-name table points two codes at `HUMAN` | Curse of the Azure Bonds | label | CONFIRMED | no |
-| 12 | `INTERECEPTED` | Pool of Radiance | text | CONFIRMED | yes |
-| 13 | `SAPHIRE` | Pool of Radiance | text | CONFIRMED | yes |
-| 14 | `UNCONSIOUS` | Pool of Radiance | text | CONFIRMED | no |
-| 15 | The training routine subtracts the prime-requisite bonus from the racial cap | Curse of the Azure Bonds | engine | GUESS | maybe |
-| 16 | A character export gets a directory block count of zero | Curse of the Azure Bonds | engine | PROBABLE | yes |
-| 17 | `CHARPIC00` stops two bytes into its last glyph | Pool of Radiance | data | CONFIRMED | no |
-| 18 | The overland map's two windows disagree on one square | Pool of Radiance | data | PROBABLE | no |
-| 19 | Effect expiry clears one array of four | Pool of Radiance | engine | CONFIRMED | no |
-| 20 | A dead read guards a site that was cut | Pool of Radiance | script | GUESS | no |
-| 21 | Three flags are written and never read | Pool of Radiance | script | CONFIRMED | no |
+| # | bug | game | kind | confidence |
+|---|---|---|---|---|
+| 1 | The C64 verification check negates an index the DOS build corrects cyclically | Curse of the Azure Bonds | engine | CONFIRMED |
+| 2 | Sokol Keep's dead elf is guarded on an address nothing writes | Pool of Radiance | script | CONFIRMED, in game |
+| 3 | QUICK is never cleared when a fight ends | Pool of Radiance | engine | CONFIRMED |
+| 4 | The hedge maze's half-encounter-rate squares run at full rate | Pool of Radiance | script | CONFIRMED |
+| 5 | The icon editor's SIZE choice is never written back | Pool of Radiance | engine | PROBABLE |
+| 6 | Two monster records state a level in their name that their data contradicts | Pool of Radiance | data | CONFIRMED |
+| 7 | Four monster records carry a class code that contradicts their class bits | Pool of Radiance | data | CONFIRMED |
+| 8 | The training routine subtracts the prime-requisite bonus from the racial cap | Curse of the Azure Bonds | engine | GUESS |
+| 9 | A character export gets a directory block count of zero | Curse of the Azure Bonds | engine | PROBABLE |
 
 ---
 
@@ -221,84 +208,7 @@ correlation with script id 0.
 
 ---
 
-## 5. `ECL07` writes an `OR` to the wrong destination
-
-**What the game does.** `ECL07 $A81C` is `OR [$4A6D], 16, [$4A72]` — read
-`$4A6D`, set bit 4, store the result **somewhere else**. Every other `OR` on
-`$4A6D` in that script writes back to `$4A6D`: `$A326 OR 1`, `$A350 OR 2`,
-`$A3BA OR 2`, `$A3F5 OR 2`, `$A551 OR 8`, `$A622 OR 4`.
-
-**What it should do.** Write `$4A6D`. It is a single mistyped operand.
-
-**The evidence.** Bit 4 of `$4A6D` is *tested* three times, and nothing else in
-the game sets it, so it can never be set. `$4A72` exists in the address space
-for no other reason: it is written once, by this instruction, and read by
-nothing.
-
-**What the player sees.** Nothing, by luck. The bit suppresses the
-dagger-playing man, the robed merchant and the bronze dragon's speech once
-Tyranthraxus is dead — and `PROGRAM 8`, the endgame, runs nine instructions
-later. A typo made permanent with no consequence.
-
-**Version.** Pool of Radiance, Commodore 64; `$4A72` is referenced in the Amiga
-scripts too. CONFIRMED.
-
----
-
-## 6. The VM's operand-count table disagrees with three of its own handlers
-
-**What the game does.** The ECL interpreter lives in `DUNGEON`: entry `$1581`,
-dispatch `$1590`, and three 62-entry tables end to end at `$15A9` (handler low),
-`$15E7` (handler high) and `$1625` (operand-set count). For three opcodes,
-`$1625` does not match what the handler actually fetches:
-
-| opcode | `$1625` says | the handler consumes |
-|---|---|---|
-| `$0C SETUPMON` | 2 | 3 |
-| `$29 ENCMENU` | 13 | 14 |
-| `$36 ADDNPC` | 1 | 2 |
-
-**What it should do. `$1625` is read at exactly one site** — `$1BB9`, inside
-the skip-a-command routine `$1BB5` that a false `IF` uses to step over the
-instruction it did not take. So an `IF` immediately in front of any of the
-three would leave one operand set unconsumed, and the VM would resume executing
-operand bytes as opcodes: everything after it becomes garbage.
-
-**The evidence.** The handlers, read directly — `SETUPMON` at `$1F0A` fetches
-three in a straight line into `$6DD0`, `$6DC1`, `$6DDA` — and the data, since
-the counts the handlers use are the only ones that decode all thirty scripts
-with no derailment anywhere.
-
-**What the player sees.** Nothing. A sweep of all 16,233 decoded instructions
-finds no `IF*` whose next command is one of the three. SSI got away with it.
-
-**Version.** Pool of Radiance, Commodore 64; `DUNGEON` is byte-identical on all
-eight disk sides. CONFIRMED, latent.
-
----
-
-## 7. The opcode dispatch table has no bounds check
-
-**What the game does.** There are 62 opcodes, `$00`–`$3D`, and the dispatch
-tables are 62 entries long. Nothing validates the fetched opcode, so `$3E` would
-index one past the end of the low table — into the high table — and jump to
-nonsense.
-
-The operand evaluator at `$1663` is equally trusting: codes `$04`–`$7F` fall
-through to the `03` path (word at absolute address) and `$82`–`$FF` to the `81`
-path (string at absolute address). It cannot reject a malformed operand; it can
-only misread one.
-
-**What the player sees.** Nothing. No script uses an opcode above `$3D`. This
-matters mainly to anyone writing tools: a decoder that raises on those codes
-derails where the game does not, which is what sank three of our own script
-decodes.
-
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED, latent.
-
----
-
-## 8. The icon editor's SIZE choice is never written back
+## 5. The icon editor's SIZE choice is never written back
 
 **What the game does.** `SPELLN64` is the combat-icon editor, reached through
 ENCAMP → ALTER → ICON and during character creation. Its menu is `ICON: PARTS
@@ -322,7 +232,7 @@ menu's existence.
 
 ---
 
-## 9. Two monster records disagree with their own names
+## 6. Two monster records disagree with their own names
 
 **What the game does.** Twenty-one of the shipped `MON*` records state their
 level in their name. `0x0A0`, the level byte, agrees with the name in nineteen
@@ -342,7 +252,7 @@ between the designer's label and his data, not between two of our readings.
 
 ---
 
-## 10. Four monster records carry a class code that contradicts their class bits
+## 7. Four monster records carry a class code that contradicts their class bits
 
 **What the game does.** A character record says its class twice: `char_class` at
 `0x073` names it, `class_bits` at `0x0EB` decides what it may use. Across 105
@@ -368,50 +278,7 @@ an import that edited nothing.
 
 ---
 
-## 11. Curse's race table points two codes at `HUMAN`
-
-**What the game does.** Curse of the Azure Bonds drops half-orc from character
-generation but leaves human at code 7, and its label table names **both 6 and 7
-`HUMAN`**.
-
-**What the player sees.** Nothing directly. It matters to anything importing a
-Pool of Radiance character: a half-orc arrives as code 6, prints as HUMAN, and
-there is no way to tell it apart from a real human without looking at the byte.
-`por/games.py` deliberately leaves 6 unnamed for that reason — naming it
-"half-orc" would contradict what the game prints and naming it "human" would let
-an import silently rewrite a 7 as a 6.
-
-**Version.** Curse of the Azure Bonds, Commodore 64. CONFIRMED, read off the
-game's own label table.
-
----
-
-## 12–14. Three spelling mistakes
-
-| where | shipped | should be | seen by the player |
-|---|---|---|---|
-| `ECL08`, one packed string | `INTERECEPTED` | `INTERCEPTED` | yes — it is printed |
-| `ITEMNAMES` index 248 | `SAPHIRE` | `SAPPHIRE` | yes — it is a gem you can carry |
-| `LIBRARY` string 46 | `UNCONSIOUS` | `UNCONSCIOUS` | no |
-
-**`INTERECEPTED` was fixed in a later port.** `ECL08`'s 77 packed strings on the
-Commodore 64 are 76 shared with the Amiga release plus this one correction —
-which is a useful datum in itself, because it shows the differences between the
-two ports' scripts are release revisions of one artefact rather than a
-re-authoring.
-
-**`UNCONSIOUS` is never printed.** It sits in the run `OK GONE DEAD DYING
-UNCONSIOUS RUNNING STONED` at `LIBRARY` string indices 42–48, and **nothing on
-any of the nine disks references indices 42–48** — all 64 call sites into the
-string printer were checked. The Commodore 64 party list prints name, armour
-class and hit points only; status is derived, not stored. The typo is preserved
-in the later titles' editors, which copied the enumeration.
-
-All three CONFIRMED, Pool of Radiance, Commodore 64.
-
----
-
-## 15. Curse subtracts the prime-requisite bonus from the racial level cap
+## 8. Curse subtracts the prime-requisite bonus from the racial level cap
 
 **What the game does.** Curse's training routine checks two ceilings: a per-class
 cap read as `LDA $7CC9,X / CMP $15A1,X`, and a racial cap indexed
@@ -435,7 +302,7 @@ list precisely because it is the weakest claim here.
 
 ---
 
-## 16. A Curse character export gets a directory block count of zero
+## 9. A Curse character export gets a directory block count of zero
 
 **What the game does.** `\x02BRUTUS` on the player's own `CURSESAVE2.D64`, a
 disk Curse wrote, reports **0 blocks** in its directory entry and has a
@@ -452,186 +319,3 @@ observation is certain, but this disk has been handled by other tools and the
 count could in principle have been zeroed after the game wrote it.
 
 ---
-
-## 17. `CHARPIC00` stops two bytes into its last glyph
-
-**What the game does.** The icon character set is eight bytes a glyph with no
-header. Its payload is 2030 bytes — six past the end of glyph 252 — so the file
-**stops two bytes into glyph 253**. `2032 = 8 × 254` is the most an eight-block
-PRG can carry, and a full 2048-byte set would need a ninth block.
-
-**What the player sees.** Nothing, and this is a build artefact rather than a
-design error. The highest shape code across thirteen sources is 243, ending 72
-bytes clear of the truncation, and glyphs 244–252 are non-blank, so the file is
-not merely blank-padded. Glyph 253's surviving bytes are `00 00 00 00 3C F4`,
-and glyphs 81 and 251 are the only ones matching those six, so the lost tail was
-`D4 D4`.
-
-**Version.** Pool of Radiance, Commodore 64; one `CHARPIC`, byte-identical on
-all eight sides. CONFIRMED, harmless.
-
----
-
-## 18. The overland map's two windows disagree on one square
-
-**What the game does.** The wilderness is not a `GEO` at all: `SQRDATA04`, `05`
-and `06` are three overlapping windows on one world, thirteen columns apart, 18
-× 36 squares each. Where two windows cover the same ground they should hold the
-same terrain.
-
-`SQRDATA05` → `SQRDATA06` agrees at **180 of 180** squares. `SQRDATA04` →
-`SQRDATA05` agrees at **179 of 180**.
-
-**What the player sees.** At most one square of terrain that changes appearance
-when the party crosses between map 25 and map 26. The edge-crossing arithmetic
-itself closes exactly on both boundaries, so it is a data discrepancy and not a
-geometry error.
-
-**Version.** Pool of Radiance, Commodore 64. **PROBABLE** as a defect — the
-measurement is certain; that SSI did not intend the difference is an inference
-from the other 359 squares.
-
----
-
-## 19. Effect expiry clears one array of four
-
-**What the game does.** An active spell effect occupies four parallel arrays:
-`$4900`–`$493F` the effect code, `$4940`–`$497F` the owner (bit 7 = whole
-party), a magnitude, and `$4B80`–`$4BBF` a third parallel array. `CAMP $131F`
-expires an effect by clearing `$4900,X` **and nothing else**. Owner, duration
-and magnitude keep the dead effect's values.
-
-**What the player sees.** Nothing — the effect code is what everything tests.
-The residue is real, though: `PORSAVE13` carries six slots with magnitude 1 that
-belong to effects that had already lapsed, and for a while that looked like a
-refutation of the whole decode.
-
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED, harmless.
-
----
-
-## 20. A dead read guards a site that was cut
-
-**What the game does.** Sites on the overland map are hidden by painting plain
-terrain over them until their flag is set. `ECL1B` paints three of them, each
-`SAVE x, [$00FB] / SAVE y, [$00FC] / SAVE tile, [$00B1] / CALL [$C018]`, gated
-on the bits of `$4AA0`: bit 0 the lizardman keep, bit 1 the kobold caves, and
-**bit 2 a square at (7,23) that has no entry in the site table**. Bit 2 is read
-there and written nowhere.
-
-**What the player sees.** A square of plain terrain, permanently. This is cut
-content rather than a malfunction, and it is on the list because the shape —
-a read with no matching write — is exactly the shape of bugs 2 and 5, and
-telling the three apart took work.
-
-**Version.** Pool of Radiance, Commodore 64. **GUESS** that it is authoring
-residue; CONFIRMED that the read is dead.
-
----
-
-## 21. Three flags are written and never read
-
-Small change, recorded because each is a loose end somebody wired up halfway.
-
-| flag | written by | when | read by |
-|---|---|---|---|
-| `$4A59` | `ECL1C $9CC6` | the Zhentil Keep commandant welcomes the party | nothing |
-| `$4A72` | `ECL07 $A81C` | the endgame — see bug 5 | nothing |
-| `$4AC6` | `ECL00 $9BD6` | you board a boat | nothing |
-
-`$4A59` is the interesting one: `$4A5A`, set when the commandant is *killed*, is
-tested twice. The pair reads as an intended "welcomed / murdered" distinction of
-which only half was wired up. `$4AC6` is redundant — `$4AC4`, the boat
-destination, does all the work.
-
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED as dead writes; that
-`$4A59` was meant to be read is PROBABLE.
-
----
-
-## Unfinished, not broken
-
-**Pool of Radiance has no paladin and no ranger, and that is a feature they did
-not finish rather than a defect.** It shipped in the next game.
-
-The class enumeration already runs `CLERIC=0 DRUID=1 FIGHTER=2 PALADIN=3
-RANGER=4 MAGIC-USER=5 THIEF=6 MONK=7` — the full AD&D list, in the rulebook's
-order. What is missing is everything downstream of it. The string list at
-`$3288` holds six names and omits PALADIN and RANGER, so pointer entries 13, 14
-and 15 all hold `$329D`, the address of `MAGIC-USER`. The creation menu offers
-neither class, no record in the game uses either code, and the per-class level
-array leaves their slots empty.
-
-Curse of the Azure Bonds fills all of it in: paladin and ranger are offered at
-creation, they take the `0x40` and `0x80` class bits, and their levels live in
-the array slots Pool of Radiance left at zero. The enumeration did not change —
-Pool of Radiance was built on the same table and simply stopped short of the
-last two entries.
-
-So this is scaffolding for work that came later, not a mistake, and it does not
-belong on the list above. It is worth recording because it **exonerates a
-third-party tool**: the 1989 BASIC editor was long blamed for listing class
-codes 3, 4 and 5 as `MAGIC-USER`. Its author was reading the game's own table.
-
-*Pool of Radiance, Commodore 64. CONFIRMED.*
-
----
-
-## Attribution we are not sure of
-
-One find that may not be SSI's. **Gateway to the Savage Frontier's `GATE8` side
-carries a directory entry `GE031` — a one-off misspelling of `GEO31`.** Both
-files exist and both decode. The only rip available has a hand-rewritten
-directory (it also carries PETSCII art entries and a `WALLDEF1F\x01`), so the
-misspelling may be the rewriter's rather than the publisher's. Recorded, not
-claimed.
-
----
-
-## Things that look like bugs and are not
-
-Every item below spent time on a list like this one before turning out to be
-**our** mistake. They are here because a bug list read without them looks more
-damning than the evidence supports, and because the failure modes repeat.
-
-| we said | it was actually |
-|---|---|
-| The combat map's row stride is `$0607` | Ours. The renderer takes it from `$0612 + 1`. The two agree at 56 in a fight and the difference never shows, which is why the wrong one was written down; outdoors, `$0607` reads 20 against a true 18 and would shear every row two squares along |
-| `ADDNPC` takes one operand set, and `ECL1E` is corrupt | Ours. The handler at `$2724` evaluates a second set on both arms of the `BMI` at `$2733`, so it is always 2. With 1 our decode of `ECL1E` collapsed from 89% to 7%, and we read the collapse as the game's fault |
-| Characters with the `0x10`, `0x40` and `0x80` class bits have no levels, which breaks the class-bits invariant | Ours. **The per-class level array at `0x0C9` is eight bytes wide, not four.** The levels were there in the slots we were not reading. The invariant holds across all thirty-six shipped characters in six titles |
-| `0x0D9` cannot be attacks-per-round-doubled, because BRUTUS reads `03` | Ours. The `03` came from a dump that started at `0x0D8`, one byte early. `0x0D9`–`0x0E0` is `attack_forms`, and twenty creatures match the *Monster Manual* |
-| `npc_party.d64` has garbled item names, so it has been through an editor | Half ours. The disk *has* been edited, but the garbling was our own: `ITEMNAMES` has **no name at indices 62, 63 and 168**, and our sequential reader closed the gaps, shifting every later name by one or three. Index 66 read `STAVE` instead of `RING` — plausible, and therefore the worst kind of wrong |
-| PRINCESS FATIMA's race byte is 0, which is outside the enumeration and proves tampering | Ours. **Race 0 is the commonest race in the game** — 75 of 135 monster records carry it — and `LIBRARY $3508` deliberately underflows it to print `MONSTER`. Nothing was tampered with |
-| The 1989 BASIC editor wrongly lists class codes 3, 4 and 5 as `MAGIC-USER` | The game's, not the editor's — and not a bug either. See *Unfinished, not broken* |
-| `WALLDEF`'s colours decode wrongly, so the format is not understood | Ours. `$7A00` is a general RLE expander and its encoding is **count-then-value**; we had it the other way round, and 548 of 780 bytes came out wrong |
-| Roster bytes `+0x03`–`+0x05` are memorised-spell counts | Ours. They matched for all four casters on one disk. A controlled test — memorise five spells across three characters, rest, save — produced a byte-identical roster page still reading `0/0/0` |
-| The combat log picks up garbage because something else is rewriting the file | Ours, twice, both in `automap/combatlog.py`, and both only visible against a running fight |
-| Driving the game wedges at the training hall, four runs running | Ours. Four runs of one wrong assumption is not four pieces of evidence; the training schools are not on that square and not in that area at all |
-
-The pattern worth carrying away is in three of those rows: **a hypothesis that
-sparse data agrees with has not been tested.** The `$400` slot stride survived
-because every specimen then held at most two characters. The spell counts
-survived because four casters agreed. The four-byte level array survived because
-Pool of Radiance never fills the other four slots.
-
----
-
-## What this is not
-
-A completeness claim. It is a list of what has been *found*, from a project that
-was decoding formats rather than hunting bugs, and it stops where the evidence
-does. Two things are worth saying about the sample it comes from:
-
-* **The ECL decode is exhaustive.** All thirty scripts, 178,035 bytes, 16,233
-  instructions, zero derailments and zero bytes that neither decode nor are
-  pointed at by an operand. So the script-level findings — bugs 2, 4, 5, 20, 21
-  — are drawn from the whole population and not a sample of it. What remains
-  unfound there would have to be a *semantic* error in code that reads correctly.
-* **The engine is not.** The overlays have been read where a question demanded
-  it. Nobody has swept them for defects, and bugs 3, 6, 7, 8 and 19 were all
-  found while looking for something else.
-
-There are also 182 bytes of well-formed bytecode across the thirty scripts that
-nothing ever branches to — cut code, each island parsing cleanly from its first
-byte to its last. That is the ordinary residue of a game shipped on floppies in
-1988, and it is not on the list.

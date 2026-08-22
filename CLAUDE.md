@@ -125,24 +125,37 @@ is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
 say so and wait to be asked.
 
-**A confirmed bug in the original game goes in `goldbox-bugs.md`.** That file is
-the register of defects in SSI's own code and data, and it is the reason to keep
-one: a bug found twice is a bug found once too often. Log it when it is
-**CONFIRMED** -- reproduced in the running game, or proven from the bytecode
-beyond argument. A suspicion goes in `docs/50-experiments.md` until it earns
-promotion.
+**A confirmed bug in the original game goes in `goldbox-bugs.md`** -- but only
+if a player can run into it. That file is written for a human who wants to read
+something interesting, not for completeness, and it is the shortest document in
+the project on purpose.
 
-Two rules about that file, both learned the hard way:
+The test is one question: **what does the player see?** If the honest answer is
+"nothing", it is not going in the front-door file. Latent defects, cosmetic
+faults, duplicated labels, flags written and never read -- all real, none
+interesting -- go in `docs/125-bug-notes.md` instead, numbered `N1` upwards so
+the two lists cannot be confused.
 
+Four rules about the front-door file, all learned the hard way:
+
+* **It is for bugs.** Not for unfinished features, not for cut content, not for
+  spelling mistakes, and not for the record of our own errors. Those are
+  interesting in their own way and they all live in `docs/125-bug-notes.md`.
 * **Ours is not theirs.** Most things that looked like a game bug were our own
   misreading -- a wrong stride, an off-by-one dump, an array read half its
-  width. Those belong in the "not their bugs" section as our errors, never in
-  the list.
+  width. They go in the notes file, as ours, never in the list.
+* **Log it when it is CONFIRMED** -- reproduced in the running game, or proven
+  from the bytecode beyond argument. A suspicion stays in
+  `docs/50-experiments.md` until it earns promotion.
 * **Describe the defect, not the bypass.** Copy-protection *research* stays in
   the separate private repository, but a protection routine that computes the
   wrong answer is a bug like any other and is logged. Say what the code does
   wrong and what a player sees; do not publish the tables, the arithmetic or
   anything else that amounts to defeating the check.
+
+Each entry says what the game does, what it should do, the evidence, and what
+the player sees. Keep the addresses to what carries the evidence -- the entry
+has to make sense to somebody who has never read a disassembly.
 
 ## Code comments
 
