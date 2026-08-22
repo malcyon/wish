@@ -196,5 +196,39 @@ jobs:
         with:
           files: release/*
           # The tag's own annotation is the release notes; GitHub fills in the
-          # rest from the commits since the last tag.
+          # rest from the commits since the last tag. `body` goes above both,
+          # and it is the only place a Windows user is told about SmartScreen
+          # before they meet it.
           generate_release_notes: true
+          body: |
+            ### Which file do I want?
+
+            | you have | download |
+            |---|---|
+            | Windows, and you just want to run it | `wish-*-windows-x86_64.zip` |
+            | Linux, and you just want to run it | `wish-*-linux-x86_64.tar.gz` |
+            | Python 3.12+ and you would rather `pip install` | the `.whl` |
+
+            The two **Source code** archives are GitHub's own and are not
+            builds — you do not need them to run wish.
+
+            ### Windows: the warning is expected
+
+            The executable is unsigned, so Windows will show **"Windows
+            protected your PC"**. Click **More info**, then **Run anyway**. A
+            code-signing certificate costs money and SmartScreen warns on new
+            signatures anyway, so this is not going away.
+
+            To avoid the warning entirely, **right-click the zip →
+            Properties → tick Unblock → OK, before extracting it.** Windows
+            marks anything downloaded from the internet, and for a zip that
+            mark spreads to every file inside — clearing it on the zip first
+            clears it for all of them.
+
+            The Windows build is the window only. The command-line tool ships
+            on Linux.
+
+            ### Checksums
+
+            `SHA256SUMS` covers every file above. `sha256sum -c SHA256SUMS` on
+            Linux, `Get-FileHash` on Windows.
