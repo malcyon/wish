@@ -36,6 +36,13 @@ files, the standing constraints in full, and no commits.
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
 | **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
 
+| **P70** | Windows GUI: the window opens bigger than the screen, spin boxes hide their values, the roster selection reads as stray highlight | found on Windows, none reproduces on Linux |
+| **P71** | Preferences: drop Maps/Names/Icons, box the backend status, drop the debug-log blurb and its popup | |
+| **P72** | The debug log: strip the header comments, and couple it to debug mode | |
+| **P73** | **Bug** — the automapper keeps one area's revealed squares after moving to another | reproduced by Donald: slums, then New Phlan |
+| **P74** | A logo and icons — [`132`](132-logo.md) | blocked behind the no-images rule, which also blocks the README screenshots |
+| **P75** | Capitalise **Wish** in the title bar and Help ▸ About | |
+
 ## Needs an emulator
 
 | | task | notes |
