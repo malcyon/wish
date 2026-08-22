@@ -116,7 +116,11 @@ jobs:
       - name: and its errors reach the terminal
         shell: bash
         run: |
-          set -uo pipefail
+          # `set +e` and not `set -uo pipefail`: GitHub already runs bash with
+          # `-e`, so dropping it from `set` here does nothing and the step dies
+          # on argparse's exit 2 before it can look at what was printed --
+          # which is the whole assertion.
+          set +e
           [ "$RUNNER_OS" = Windows ] && exe=dist/wish/wish.exe || exe=dist/wish/wish
           got=$("$exe" --no-such-option 2>&1 | tr -d '\r')
           echo "$exe --no-such-option -> ${got:-(nothing)}"
