@@ -102,6 +102,40 @@ def test_a_roster_disk_has_no_savedgame_and_still_lists_characters():
 
 # --- backups ----------------------------------------------------------------
 
+def test_the_message_spells_out_a_backup_that_went_somewhere_odd(tmp_path,
+                                                                 monkeypatch):
+    """Beside the disk, `backups/NAME` is enough. In the fallback it is not.
+
+    The one time the location surprises a user -- a read-only folder sends the
+    copy to `~/.local/share/wish/backups`, or `%LOCALAPPDATA%` on Windows -- is
+    the one time the short form names a directory they have never heard of.
+    """
+    from editor import files
+
+    class FakeDisk:
+        def __init__(self, data):
+            self.data = data
+
+        def to_bytes(self):
+            return self.data
+
+        def save(self, path):
+            pathlib.Path(path).write_bytes(self.data)
+
+    beside = tmp_path / "PORSAVE11.D64"
+    beside.write_bytes(b"old")
+    said = files.save_disk(FakeDisk(b"new"), beside)
+    assert said.startswith("wrote PORSAVE11.D64, backup backups/")
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setattr(files, "backup_dir_for", lambda _t: elsewhere)
+    other = tmp_path / "PORSAVE12.D64"
+    other.write_bytes(b"old")
+    said = files.save_disk(FakeDisk(b"new"), other)
+    assert str(elsewhere) in said          # the whole path, not just the leaf
+
+
 def test_a_backup_is_made_and_the_original_is_unchanged(tmp_path):
     f = tmp_path / "x.d64"
     f.write_bytes(b"before")

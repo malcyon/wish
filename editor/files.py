@@ -102,4 +102,10 @@ def save_disk(disk, target: str | pathlib.Path) -> str:
     disk.save(target)
     if copy is None:
         return f"wrote {target.name}"
-    return f"wrote {target.name}, backup {copy.parent.name}/{copy.name}"
+    # Beside the disk, `backups/NAME` is enough -- it is the folder the user
+    # was already looking at. When it went to the fallback instead, the same
+    # short form names a `backups/` the user has no reason to think exists, on
+    # a path they have never heard of, so say the whole thing.
+    if copy.parent == target.parent / BACKUP_DIR:
+        return f"wrote {target.name}, backup {copy.parent.name}/{copy.name}"
+    return f"wrote {target.name}, backup {copy}"
