@@ -162,36 +162,36 @@ Preferences                                                   [x]
 │  Set by   this preference                                    │
 │  Titles   Pool of Radiance (8 disks) · Curse of the          │
 │           Azure Bonds (6 disks)                              │
-│  Maps     29 GEO files                                       │
-│  Names    POOL1.D64 — 252 item names, 56 spells                   │
-│  Icons    POOL1.D64 · icon parts POOL3.D64                   │
 │                                                              │
 │  Leave it empty to search: beside the open save disk first,  │
 │  then the usual folders.                                     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Six report lines, each answering a question somebody has actually had:
+Three report lines, each answering a question somebody has actually had:
 
 | line | answers | source |
 |---|---|---|
 | **In use** | "is it even looking where I put them?" | `resolve_disks(...)[0]` |
 | **Set by** | "why is it ignoring what I typed?" | `resolve_disks(...)[1]`, plus a note when `$POR_DISKS` or a saved preference was overridden |
 | **Titles** | "are these the right disks?" | `paths.titles_in` + a count per `disk_globs` |
-| **Maps** | "why is the map tab blank?" | `len(load_maps_titled(where, game)[0])` |
-| **Names** | "why are my items numbers?" | the editor's own `game_disk_found` and `item_names`, falling back to a scan of the folder |
-| **Icons** | "why can't I edit the combat icon?" | the charset disk and the icon-parts disk — they are different disks and that surprises people |
+
+It printed three more — **Maps**, **Names** and **Icons**, counting the GEOs
+and naming the disks the item names and the icon charset came off. Donald had
+them out after the first Windows build ("remove Maps, Names, and Icons"): they
+answer questions nobody is asking at the moment of opening this dialog, and the
+map tab and the item column answer them where somebody is already looking. The
+scan that fed them is gone with them, so the dialog no longer opens every
+`D64` in the folder to draw itself.
 
 Failure states are stated as failures, in the same slots: *Titles — none; no
-`POOL*.D64` or `CURSE*.D64` here*. *Maps — none, so the map tab is empty.*
-*Names — not found, so items show as name-table indices.* The empty answer is
-more informative than a missing row.
+`POOL*.D64` or `CURSE*.D64` here*. The empty answer is more informative than a
+missing row.
 
-`report(settings, flag, beside, game, editor)` is a **plain function returning
+`report(settings, flag, beside, game)` is a **plain function returning
 `(label, value)` pairs**, so what the dialog claims is tested without opening
-one. The folder scan is `lru_cache`d on `(folder, title)` because it opens
-every `D64` in the folder, and typing is debounced by `SETTLE_MS` (400 ms);
-Browse and Clear apply at once. No OK button — see §8.
+one. The folder scan is `lru_cache`d on the folder, and typing is debounced by
+`SETTLE_MS` (400 ms); Browse and Clear apply at once. No OK button — see §8.
 
 ### 5b. Two changes outside the dialog, which are the actual fix
 
@@ -213,9 +213,8 @@ behaviours:
 ```
 ┌─ Live backend ───────────────────────────────────────────────┐
 │  (•) Whichever answers                                       │
-│  ( ) VICE — answering                                        │
-│  ( ) Ultimate — not answering, unverified: nobody here        │
-│      has the hardware                                        │
+│  ( ) VICE      [answering]                                   │
+│  ( ) Ultimate  [not answering] [unverified]                  │
 │                                                              │
 │  Ultimate host  [ ultimate64.local            ]              │
 │  Password       from $POR_ULTIMATE_PASSWORD — not set        │
@@ -233,7 +232,15 @@ behaviours:
   `label_backends()` runs on the dialog's `showEvent` and on every `refresh`,
   not on a timer: `probe()` is a TCP connect, wrong on a poll timer and stale
   if done once at startup.
-* **Unverified stays said in words**, from `Backend.verified`.
+* **The state is a badge, not more label text.** On Windows the two ran
+  together — the style draws a radio button's text tight against its circle,
+  and "Ultimate not answering, unverified…" read as one sentence. The label is
+  the name; the state and the unverified mark are `QLabel`s with a frame, a
+  ground and an ink of their own (`preferences.ANSWERING`, `SILENT`,
+  `UNVERIFIED`). Both colours are named on every badge, so a dark desktop theme
+  cannot leave dark ink on a dark ground.
+* **Unverified stays said**, from `Backend.verified` — in its own badge, whose
+  tooltip is still "nobody on this project has the hardware".
 
 ### The Ultimate host
 
@@ -375,17 +382,17 @@ has never opened a terminal.** Rows 1–4 are the acceptance test, covered by
 | # | do | expect |
 |---|---|---|
 | 1 | `unset POR_DISKS POR_GAME_DISK`; put the disks in `~/Desktop/porgame/`; launch `wish` from the desktop; open a save | items read `word 8`; map tab empty — **and both say "File > Preferences…"** |
-| 2 | File > Preferences, Browse to `~/Desktop/porgame` | report fills in: *Set by — this preference*, *Titles — Pool of Radiance (8 disks)*, *Maps — 29*, *Names — POOL1.D64* |
+| 2 | File > Preferences, Browse to `~/Desktop/porgame` | report fills in: *Set by — this preference*, *Titles — Pool of Radiance (8 disks)* |
 | 3 | Close | items are named **without a restart**; the map tab draws |
 | 4 | quit, relaunch from the desktop | still works. Nothing was typed in a terminal at any point |
 | 5 | `export POR_DISKS=/somewhere/else`, relaunch | the preference still wins; *Set by — this preference ($POR_DISKS is set and overridden)* |
 | 6 | clear the preference, relaunch | *Set by — `$POR_DISKS`*. Donald's own machine, unchanged |
 | 7 | `wish --disks /third/place` with a preference set | *Set by — --disks, this run only*; the saved preference is shown and marked unused |
 | 8 | point the folder at an empty directory | *Titles — none; no `POOL*.D64` or `CURSE*.D64` here.* No crash, no exception dialog |
-| 9 | point it at a directory holding both titles' disks, with a Curse save open | *Titles* lists both; maps and names come from **Curse** — the `game` argument is threaded through, not defaulted |
+| 9 | point it at a directory holding both titles' disks, with a Curse save open | *Titles* lists both; the maps and item names loaded come from **Curse** — the `game` argument is threaded through, not defaulted |
 | 10 | `chmod a-w` the config directory, change a preference | dialog works, the change applies for this run, nothing raises (`Settings.save` swallows `OSError`) |
-| 11 | point it at a folder of truncated downloads | *Maps — none*. The window stays up: `wish/window.py::load_maps_titled` swallows and logs |
-| 12 | set the Ultimate host, no device on the network | *Ultimate — not answering, unverified*. No timeout stall on the poll timer, no error dialog |
+| 11 | point it at a folder of truncated downloads | the map tab says it has no maps. The window stays up: `wish/window.py::load_maps_titled` swallows and logs |
+| 12 | set the Ultimate host, no device on the network | *Ultimate* carries a **not answering** badge and an **unverified** one. No timeout stall on the poll timer, no error dialog |
 | 13 | `grep -rn automap editor/` | **empty**, and `test_editor_imports_nothing_live` passes |
 | 14 | `grep -rn 'password' ~/.config/wish/automap.json` | **empty**, after a session with the dialog open and a password set in the environment |
 
@@ -456,9 +463,13 @@ because that is how you get to the file.
 
 Two implementation notes:
 
-* **Restoring at startup must not announce.** `_debug_log(on, announce=False)`
-  is the startup path: the modal note naming the log file is right when you
-  click the toggle and wrong before the window is even up.
+* **Nothing is announced any more.** Turning it on used to put up a modal note
+  saying where the file was and what it recorded; Donald had both that and the
+  paragraph under the checkbox out after the first Windows build — *"debug logs
+  don't need an explanation"*. The path goes to the status bar, `[logging]`
+  goes to the title, and `announce` survives for the one thing worth
+  interrupting for: a log file that would not open. `_debug_log(on,
+  announce=False)` is still the startup path, where even that is wrong.
 * **The field is `diagnostics`, not `debug_log`.** `tests/test_debuglog.py`
   asserts `not [f for f in fields(settings) if "log" in f.name]` — it still
   encodes the superseded decision, and it was outside this task's scope to
@@ -490,6 +501,17 @@ What it does now:
   larger than the screen it lands on, and 1875 px is wider than plenty of
   laptops. The frame is what is clamped, not the client area, so a window sized
   to the whole work area and then given a title bar still fits.
+* **And again after `show()`.** The first Windows build opened taller than the
+  screen with the status bar off the bottom, and the clamp had not fired at
+  all: before `show()` there is no frame, `frameGeometry()` equals
+  `geometry()`, the chrome measures zero, and 1030 px "fits" a 1032 px work
+  area right up until the title bar arrives. So the clamp now assumes
+  `config.UNSHOWN_CHROME` (16 × 48) while there is no frame to measure, and
+  `run()` clamps a second time once the window is up, when the numbers are
+  real and the answer can only get smaller. It also leaves a **maximised**
+  window alone — resizing one un-maximises it, and maximising was Donald's own
+  workaround. `tests/test_windowslayout.py` fakes a 1920 × 1032 screen and a
+  frame, because the offscreen platform draws neither.
 * **`window_width` and `window_height` are still written**, kept current, for an
   older build reading the same file — and they are the fallback on the first
   run after this change, so **nobody loses their window**. Donald's saved 940 ×

@@ -72,6 +72,23 @@ Consequences worth stating, because they are what make this work:
   `-128` for a thief skill, twenty characters for the name -- and the box is
   sized to that, so a field added to the form later is right without anybody
   sizing it. `editor/binding.py::widest_text`.
+* **The chrome around that value is measured, not assumed**, and it is a
+  minimum as well as a maximum. The first Windows build showed Donald spin
+  boxes that were two arrows and no number: the widths were the text plus a
+  constant 36 px, which is what Fusion and Breeze spend on their arrows and not
+  what Windows does. `_spin_chrome` and `_combo_chrome` ask the style
+  (`subControlRect(CC_SpinBox, SC_SpinBoxEditField, …)`) how much of a box is
+  not the value, the old constants are floors under the answer, and the width
+  is set as `setMinimumWidth` too so the layout cannot squeeze the value back
+  out. `tests/test_windowslayout.py` proves it against a proxy style whose
+  arrows eat 60 px.
+* **A selected row is styled, not left to the platform.** The Windows style
+  highlights the *text* of each cell rather than the cell and draws a focus
+  rectangle around the current one, which reads as a stray highlighted space
+  before every cell in the row. `editor/window.py::TABLE_SELECTION` states a
+  full-cell highlight with both colours named, `outline: none` for the focus
+  rectangle and `:!active` so the row stays visible when the table has not got
+  the focus.
 
 Qt Designer is installed: `/usr/lib/qt6/bin/designer` (there is no `designer6`
 on the PATH, and `designer -v` opens the GUI rather than printing a version).

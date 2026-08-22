@@ -31,7 +31,12 @@ from PyQt6.QtWidgets import (
 )
 
 from automap import paths
-from automap.config import Settings, remember_geometry, restore_geometry
+from automap.config import (
+    Settings,
+    clamp_to_screen,
+    remember_geometry,
+    restore_geometry,
+)
 from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
@@ -228,6 +233,9 @@ class WishWindow(QMainWindow):
         group = QActionGroup(self)
         group.setExclusive(True)
         self.backend_actions: dict[str, QAction] = {}
+        #: name -> (state, verified), filled by `label_backends`. The dialog
+        #: draws the state as a badge, so it needs it apart from the label.
+        self.backend_status: dict[str, tuple[str, bool]] = {}
         rows = [(ANY_BACKEND, "&Whichever answers", "")]
         rows += [(b.name, b.name, b.setup_hint) for b in backends.backends()]
         for name, text, hint in rows:
@@ -249,12 +257,17 @@ class WishWindow(QMainWindow):
         `probe()` is a TCP connect with a short timeout; doing it on the poll
         timer would be noise, and doing it once at startup would be stale by
         the time anybody looked.
+
+        The state is also kept in `backend_status`, apart from the label: the
+        dialog draws it as a badge, because on Windows "Ultimate not
+        answering, unverified…" ran into its own label as one sentence.
         """
         for backend in backends.backends():
             action = self.backend_actions.get(backend.name)
             if action is None:
                 continue
             state = "answering" if backend.present() else "not answering"
+            self.backend_status[backend.name] = (state, backend.verified)
             if not backend.verified:
                 state += ", unverified: nobody here has the hardware"
             action.setText(f"{backend.name} - {state}")
@@ -366,9 +379,15 @@ class WishWindow(QMainWindow):
         Remembered between sessions since 2026-08, at Donald's request. The
         reason it was not has not gone away -- a log you forget is on grows for
         months and is worth nothing when you finally read it -- so `_flag_log`
-        says it is on wherever you are looking. `announce=False` is the restart
-        at startup: a modal box before the window is even up would be worse
-        than the setting it is reporting.
+        says it is on wherever you are looking.
+
+        **Turning it on puts no box on the screen.** It used to explain what
+        the log records and where; a debug log needs no explanation, and a
+        modal note for a checkbox is a poor trade. The path goes to the status
+        bar instead, and View > Show log opens it. `announce` survives for the
+        one thing worth interrupting for -- a log file that would not open --
+        and is False at startup, where a box before the window is even up is
+        worse than the setting it reports.
         """
         self.settings.diagnostics = bool(on)
         self.settings.save()
@@ -390,16 +409,6 @@ class WishWindow(QMainWindow):
         self._flag_log()
         self._log_the_state()
         self.statusBar().showMessage(f"debug log: {path}")
-        if not announce:
-            return
-        self.announce(
-            "Debug log",
-            f"Writing to:\n\n{path}\n\n"
-            "It records versions, which backend attached, the tab in view, "
-            "errors with their tracebacks, and the shape of an open save -- "
-            "not file paths, character names or any bytes from a save. "
-            "Nothing is sent anywhere: read it before you attach it to a "
-            "report. View > Show log opens it.")
 
     def _flag_log(self) -> None:
         """Say the log is on, in two places nobody has to go looking for.
@@ -413,7 +422,7 @@ class WishWindow(QMainWindow):
     def _retitle(self, base: str | None = None) -> None:
         if base is not None:
             self._editor_title = base
-        self.setWindowTitle(getattr(self, "_editor_title", "wish")
+        self.setWindowTitle(getattr(self, "_editor_title", "Wish")
                             + (" [logging]" if debuglog.is_on() else ""))
 
     def announce(self, title: str, text: str) -> None:
@@ -540,4 +549,11 @@ def run(save: str | None = None, game_disk: str | None = None,
     # attached comes back on one that is.
     restore_geometry(win, settings, floor=FIRST_RUN)
     win.show()
+    # Again, now that there is a frame to measure. Before `show()` the title
+    # bar and the border do not exist yet, so the first clamp works off an
+    # estimate (`config.UNSHOWN_CHROME`); this one works off the real numbers
+    # and can only ever shrink the window further. A 1030 px window on a
+    # 1920x1080 Windows desktop passed the first clamp and still opened with
+    # its status bar below the bottom of the screen.
+    clamp_to_screen(win)
     return app.exec()

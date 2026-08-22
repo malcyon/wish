@@ -2,7 +2,7 @@
 <ui version="4.0">
  <class>CharacterWindow</class>
  <widget class="QMainWindow" name="CharacterWindow">
-  <property name="windowTitle"><string>wish</string></property>
+  <property name="windowTitle"><string>Wish</string></property>
   <widget class="QWidget" name="centre">
    <layout class="QVBoxLayout" name="outer">
     <item><layout class="QHBoxLayout" name="buttons">

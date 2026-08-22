@@ -3,9 +3,11 @@
 **Half of this is the report, not the form.** The failure it exists to fix is
 silent -- items rendered as `word 8`, an empty map tab, and the one diagnostic
 that says why printed to a stderr a desktop launcher throws away. So the dialog
-says what was *found*: which folder is in use, who named it, which titles are
-in it, how many maps came out, and which image the item names came off. A user
-who types nothing still learns what went wrong.
+says what was *found*: which folder is in use, who named it, and which titles
+are in it. A user who types nothing still learns what went wrong. It said three
+things more -- maps, item names, icons -- until Donald called that too chatty
+in 2026-08; what those three answered is visible on the map tab and in the
+item column, where you are already looking.
 
 Three things about the shape of it:
 
@@ -19,6 +21,12 @@ Three things about the shape of it:
 * **`report()` is a plain function over a folder.** It takes settings and a
   path, not a window, so what the dialog claims can be tested without opening
   one.
+
+**`editor.files` is imported here, and only here.** The dialog reports where a
+backup of the open save would go, which is that module's decision to make. The
+one-way rule the project keeps is that `editor/` imports nothing from
+`automap/`; `wish/` is the layer that is allowed to know about both, and this
+is it.
 
 The password is deliberately absent. `$POR_ULTIMATE_PASSWORD` is the only way
 to give one, and all this shows is whether it is set: the settings file is
@@ -68,6 +76,15 @@ HINT = ("Leave it empty to search: beside the open save disk first, then the "
 
 PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 
+#: A backend's state is a badge, not more words in its label. Both colours are
+#: named on every one of them: a badge that set only its ink would be dark on
+#: dark under a dark desktop theme, and the whole point is that it reads.
+_BADGE = ("border: 1px solid {edge}; border-radius: 7px; padding: 0px 7px;"
+          " background: {ground}; color: {ink};")
+ANSWERING = _BADGE.format(edge="#8fbf9c", ground="#eaf5ed", ink="#1d5b34")
+SILENT = _BADGE.format(edge="#c3c8cf", ground="#f1f3f5", ink="#4a5b6d")
+UNVERIFIED = _BADGE.format(edge="#d8c48a", ground="#fbf4e2", ink="#6b5510")
+
 #: The `$POR_ULTIMATE` this process started with, read once, so that emptying
 #: the box gives the user's own value back rather than nothing.
 _UNREAD = object()
@@ -101,52 +118,50 @@ def _images(where: pathlib.Path, game: games.Game | None) -> list[pathlib.Path]:
 
 
 @functools.lru_cache(maxsize=8)
-def _scan(where: str, key: str | None) -> dict:
-    """What is in this folder: titles, maps, and which disk holds what.
+def _scan(where: str) -> dict:
+    """Which titles are in this folder, and how many disks of each.
 
     Cached because the dialog re-reports as you type and this opens D64s. The
-    key is the folder and the title, which is everything the answer depends on.
-    """
-    from automap.__main__ import load_maps_titled
-    from por.iconparts import IconParts
-    from por.icons import load_icon_charset
-    from por.items import load_item_names
+    key is the folder, which is everything the answer depends on.
 
+    It used to count the maps and open every image looking for item names and
+    an icon charset as well. Donald had those three lines out of the dialog in
+    2026-08 -- "Game disks is too chatty" -- and an unprinted line is not worth
+    reading eight disk images for.
+    """
     root = pathlib.Path(where)
-    found: dict = {"titles": [], "maps": 0, "names": None, "items": 0,
-                   "charset": None, "parts": None}
+    found: dict = {"titles": []}
     if not root.is_dir():
         return found
     found["titles"] = [(g, len(_images(root, g))) for g in paths.titles_in(root)]
-    game = games.BY_KEY.get(key) if key else None
-    if game is None and found["titles"]:
-        game = found["titles"][0][0]
-    if game is None:
-        return found
-    try:
-        found["maps"] = len(load_maps_titled(str(root), game)[0])
-    except Exception:
-        # A folder of the right names holding something that is not a D64.
-        # "none" is the honest report, and an exception here would take down
-        # the one dialog somebody opened to find out what was wrong.
-        found["maps"] = 0
-    for path in _images(root, game):
-        if found["names"] is None:
-            try:
-                names = load_item_names(str(path), game)
-            except Exception:
-                names = None
-            if names:
-                found["names"], found["items"] = path.name, len(names)
-        for slot, read in (("charset", load_icon_charset),
-                           ("parts", IconParts.load)):
-            if found[slot] is None:
-                try:
-                    read(str(path))
-                except Exception:
-                    continue
-                found[slot] = path.name
     return found
+
+
+def backup_folder(save) -> tuple[pathlib.Path, bool]:
+    """Where a backup of `save` would go, and whether that is the fallback.
+
+    `editor.files.backup_dir_for` is the authority and is what runs at save
+    time -- but it answers "may I write here" by *making* the folder and
+    touching a probe file in it, and a dialog that only reports must not write
+    to the folder somebody keeps their disks in. So this asks the same question
+    read-only. The two can disagree only on a filesystem that lies about
+    access, and there the status line after a save names the real path, from
+    the real chooser.
+
+    With nothing open there is no per-file answer, so the fallback is named and
+    said to be the fallback.
+    """
+    from editor import files
+
+    if save is None:
+        return files.fallback_dir(), True
+    beside = pathlib.Path(save).parent / files.BACKUP_DIR
+    # The folder itself once it exists, its parent while it does not: making
+    # it is the first thing `backup_dir_for` would have to do.
+    probe = beside if beside.is_dir() else beside.parent
+    if os.access(probe, os.W_OK):
+        return beside, False
+    return files.fallback_dir(), True
 
 
 def _set_by(source: str, settings) -> str:
@@ -169,73 +184,37 @@ def _set_by(source: str, settings) -> str:
     return text + (f"  ({'; '.join(extra)})" if extra else "")
 
 
-def report(settings, flag=None, beside=None, game: games.Game | None = None,
-           editor=None) -> list[tuple[str, str]]:
-    """The six lines the dialog prints, as (label, value) pairs.
+def report(settings, flag=None, beside=None,
+           game: games.Game | None = None) -> list[tuple[str, str]]:
+    """The three lines the dialog prints, as (label, value) pairs.
 
     Each answers a question somebody has actually had: is it even looking where
-    I put them, why is it ignoring what I typed, are these the right disks, why
-    is the map tab blank, why are my items numbers, and why can I not edit the
-    combat icon. A failure is stated in the same slot -- an empty answer is
-    more informative than a missing row.
+    I put them, why is it ignoring what I typed, and are these the right disks.
+    A failure is stated in the same slot -- an empty answer is more informative
+    than a missing row.
 
-    `editor` is the character editor, when there is one: its item names and
-    icons are already loaded and may have come off a disk named by
-    `--game-disk`, so what it actually used beats anything re-derived here.
+    It printed three more -- the map count, the disk the item names came off
+    and the icon charset. Donald had them out in 2026-08: they answered
+    questions nobody was asking at the moment of opening this dialog, and the
+    map tab and the item column say the same thing where you are looking.
     """
     where, source = paths.resolve_disks(flag=flag, beside=beside, game=game,
                                         settings=settings)
     rows = [("In use", str(where) if where is not None else "nothing found"),
             ("Set by", _set_by(source, settings))]
+    wanted = [game] if game else list(games.GAMES)[:2]
+    patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
     if where is None:
-        wanted = [game] if game else list(games.GAMES)[:2]
-        patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
-        return rows + [
-            ("Titles", f"none; nowhere with {patterns} in it was found"),
-            ("Maps", "none, so the map tab is empty"),
-            ("Names", "not found, so items show as name-table indices"),
-            ("Icons", "not found, so the combat icon cannot be edited")]
+        return rows + [("Titles",
+                        f"none; nowhere with {patterns} in it was found")]
 
-    found = _scan(str(where), game.key if game else None)
-    titles = found["titles"]
+    titles = _scan(str(where))["titles"]
     if titles:
         titles_line = " · ".join(f"{g.title} ({n} disk{'' if n == 1 else 's'})"
                                       for g, n in titles)
     else:
-        wanted = [game] if game else list(games.GAMES)[:2]
-        patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
         titles_line = f"none; no {patterns} here"
-    rows.append(("Titles", titles_line))
-    rows.append(("Maps", f"{found['maps']} GEO files" if found["maps"]
-                 else "none, so the map tab is empty"))
-
-    names_disk, items = found["names"], found["items"]
-    spells = 0
-    if editor is not None and getattr(editor, "item_names", None):
-        named = getattr(editor, "game_disk_found", None)
-        names_disk = pathlib.Path(named).name if named else names_disk
-        items = len(editor.item_names)
-        spells = len(getattr(editor, "spell_names", {}) or {})
-    if names_disk:
-        names_line = f"{names_disk} — {items} item names"
-        if spells:
-            names_line += f", {spells} spells"
-    else:
-        names_line = "not found, so items show as name-table indices"
-    rows.append(("Names", names_line))
-
-    charset, parts = found["charset"], found["parts"]
-    if editor is not None and getattr(editor, "icon_parts_disk", None):
-        parts = pathlib.Path(editor.icon_parts_disk).name
-    if charset and parts:
-        icons = f"{charset} · icon parts {parts}"
-    elif charset:
-        icons = f"{charset} · no icon parts here, so an icon can be drawn " \
-                "but not changed"
-    else:
-        icons = "not found, so the combat icon cannot be edited"
-    rows.append(("Icons", icons))
-    return rows
+    return rows + [("Titles", titles_line)]
 
 
 def apply_ultimate_host(host: str) -> None:
@@ -277,6 +256,7 @@ class PreferencesDialog(QDialog):
         self.setModal(True)
         outer = QVBoxLayout(self)
         outer.addWidget(self._disks_group())
+        outer.addWidget(self._backups_group())
         outer.addWidget(self._backend_group())
         outer.addWidget(self._log_group())
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -313,7 +293,7 @@ class PreferencesDialog(QDialog):
 
         self.report_rows: dict[str, QLabel] = {}
         form = QFormLayout()
-        for name in ("In use", "Set by", "Titles", "Maps", "Names", "Icons"):
+        for name in ("In use", "Set by", "Titles"):
             value = QLabel("")
             value.setWordWrap(True)
             # Selectable: the first thing anybody does with a path in a
@@ -327,6 +307,56 @@ class PreferencesDialog(QDialog):
         hint.setWordWrap(True)
         outer.addWidget(hint)
         return box
+
+    # -- where the backups go ---------------------------------------------
+
+    def _backups_group(self) -> QGroupBox:
+        """Where a copy of the save goes before it is overwritten.
+
+        Donald asked where `~/.local/share/wish/backups` came from and said no
+        user would ever think to look there. He is right, and that folder is
+        only the *fallback*: the copy normally lands in `backups/` beside the
+        save disk, which is the folder somebody was already looking at. Saying
+        so in a line that is always here beats saying it in a status message
+        already dismissed.
+
+        Its own group, titled with the word somebody would look for. Read-only:
+        which of the two it is depends on the save, not on a preference.
+        """
+        box = QGroupBox("Backups")
+        outer = QVBoxLayout(box)
+        self.backups = QLabel("")
+        self.backups.setWordWrap(True)
+        self.backups.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        form = QFormLayout()
+        form.addRow("Folder", self.backups)
+        outer.addLayout(form)
+        return box
+
+    def _say_backups(self) -> None:
+        """The line itself, re-read whenever the dialog refreshes.
+
+        The two standing facts go on it as well, because both are behaviours
+        somebody would otherwise have to guess at: a backup is made only when
+        the bytes changed, and the newest few are kept rather than all of them.
+        """
+        from editor import files
+
+        save = getattr(self.win.editor, "path", None)
+        where, fallback = backup_folder(save)
+        kept = (f"Only when something changed; the newest "
+                f"{files.KEEP_BACKUPS} are kept.")
+        if save is None:
+            where_line = (f"{where} — the fallback, for a save whose own "
+                          "folder cannot be written. Open a save and this "
+                          "names where that save's backups go.")
+        elif fallback:
+            where_line = (f"{where} — the folder beside the save disk cannot "
+                          "be written, so they go here instead.")
+        else:
+            where_line = f"{where} — beside the save disk."
+        self.backups.setText(f"{where_line}  {kept}")
 
     def browse(self) -> None:
         """The folder picker. A method so a test can replace it."""
@@ -358,14 +388,30 @@ class PreferencesDialog(QDialog):
         box = QGroupBox("Live backend")
         outer = QVBoxLayout(box)
         self.radios: dict[str, QRadioButton] = {}
+        self.badges: dict[str, QLabel] = {}
+        self.unverified: dict[str, QLabel] = {}
         for name, action in self.win.backend_actions.items():
-            button = QRadioButton(action.text())
+            row = QHBoxLayout()
+            button = QRadioButton(name or action.text())
             button.setToolTip(action.toolTip())
             button.setChecked(action.isChecked())
             button.clicked.connect(
                 lambda _checked=False, n=name: self._prefer(n))
-            outer.addWidget(button)
+            row.addWidget(button)
+            badge = QLabel("")
+            badge.setVisible(False)
+            row.addWidget(badge)
+            flag = QLabel("unverified")
+            flag.setStyleSheet(UNVERIFIED)
+            flag.setToolTip("Written from the vendor's documentation. Nobody "
+                            "on this project has the hardware.")
+            flag.setVisible(False)
+            row.addWidget(flag)
+            row.addStretch(1)
+            outer.addLayout(row)
             self.radios[name] = button
+            self.badges[name] = badge
+            self.unverified[name] = flag
 
         form = QFormLayout()
         self.host = QLineEdit(getattr(self.win.settings, "ultimate_host", "")
@@ -413,12 +459,10 @@ class PreferencesDialog(QDialog):
         self.logging.toggled.connect(self.win.debug_action.setChecked)
         self.win.debug_action.toggled.connect(self.logging.setChecked)
         outer.addWidget(self.logging)
-        note = QLabel(
-            "Remembered between sessions. While it is on the window title says "
-            "[logging] and the status bar shows it, so a log left running is "
-            "not a silent one. View > Show log opens the file.")
-        note.setWordWrap(True)
-        outer.addWidget(note)
+        # No paragraph under it. A debug log does not need explaining, and the
+        # two things that were worth saying are said where they matter: the
+        # title bar and the status bar show [logging] while it is on, and the
+        # status bar names the file the moment it opens.
         return box
 
     # -- what was found --------------------------------------------------
@@ -428,14 +472,23 @@ class PreferencesDialog(QDialog):
         for name, value in report(self.win.settings,
                                   flag=self.win.disks_flag,
                                   beside=self.win.editor.path,
-                                  game=self.win.game(),
-                                  editor=self.win.editor):
+                                  game=self.win.game()):
             self.report_rows[name].setText(value)
+        self._say_backups()
         self.win.label_backends()
         for name, button in self.radios.items():
             action = self.win.backend_actions[name]
-            button.setText(action.text())
+            state, verified = self.win.backend_status.get(name, ("", True))
+            # The name is the label and the state is a badge beside it. One
+            # string carrying both ran together under the Windows style, which
+            # draws a radio button's text tight against its circle.
+            button.setText(name or action.text())
             button.setChecked(action.isChecked())
+            badge = self.badges[name]
+            badge.setText(state)
+            badge.setStyleSheet(ANSWERING if state == "answering" else SILENT)
+            badge.setVisible(bool(state))
+            self.unverified[name].setVisible(not verified)
         self.password.setText(
             f"from ${PASSWORD_ENV} — "
             + ("set" if os.environ.get(PASSWORD_ENV) else "not set"))

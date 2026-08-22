@@ -656,7 +656,7 @@ class Ui_CharacterWindow(object):
 
     def retranslateUi(self, CharacterWindow):
         _translate = QtCore.QCoreApplication.translate
-        CharacterWindow.setWindowTitle(_translate("CharacterWindow", "wish"))
+        CharacterWindow.setWindowTitle(_translate("CharacterWindow", "Wish"))
         self.button_open.setText(_translate("CharacterWindow", "&Open…"))
         self.button_save.setText(_translate("CharacterWindow", "&Save"))
         self.button_save_as.setText(_translate("CharacterWindow", "Save &As…"))

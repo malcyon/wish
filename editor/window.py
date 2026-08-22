@@ -56,8 +56,9 @@ def _size_combo(combo: QComboBox) -> None:
     # A floor as well as a ceiling. With only a maximum, a box capped to its
     # own size hint squeezed the combo below its text and `magic-user/thief`
     # came out as `magic-user`.
-    combo.setMinimumWidth(widest + COMBO_CHROME)
-    combo.setMaximumWidth(widest + COMBO_CHROME)
+    width = widest + _combo_chrome(combo) + CARET
+    combo.setMinimumWidth(width)
+    combo.setMaximumWidth(width)
 
 
 def _select(combo: QComboBox, value) -> None:
@@ -104,15 +105,105 @@ STRIP_TABLE_HEIGHT = 150
 # window empty.
 MAX_ROSTER_ROWS = 8
 
-# Room for the frame and, on a spin box, the two arrows. Measured from the
-# style rather than guessed would be better; these are the widths Fusion and
-# Breeze both need, and a few pixels spare costs nothing.
+# Room for the frame and, on a spin box, the two arrows. A guess at this was
+# the bug: 36 px is what Fusion and Breeze want, and Windows draws its up/down
+# buttons wider, so a box sized to fit "255" plus 36 came out as two arrows and
+# no number. `_spin_width` and `_line_width` below ask the style instead and
+# these are floors under the answer.
 SPINBOX_CHROME = 36
 LINE_CHROME = 14
 COMBO_CHROME = 30
+# Space for the caret and a little air, on top of the widest value. Without it
+# a box exactly as wide as its text hides the last digit while you type.
+CARET = 6
+# Any width answers: the chrome a style spends is a constant, so it falls out
+# of one measurement at whatever size.
+PROBE_WIDTH = 400
 
 # Cell margins either side of an item name.
 ITEM_NAME_PADDING = 16
+
+#: How a selected row looks, stated rather than left to the platform. The
+#: Windows style highlights only the text of each cell and then draws a dotted
+#: focus rectangle around the current one, which Donald read -- correctly -- as
+#: "a highlighted space before the contents of every cell". `::item:selected`
+#: fills the whole cell on every style, `outline: none` takes the focus
+#: rectangle away, and `:!active` keeps the row visible when the table has not
+#: got the focus. Both colours are given: a rule that set only the ink would be
+#: dark on dark under a dark desktop theme.
+TABLE_SELECTION = (
+    "QTableView { outline: none; }"
+    " QTableView::item:selected,"
+    " QTableView::item:selected:!active"
+    " { background: #cddff5; color: #10243a; }"
+)
+
+
+def _combo_chrome(combo) -> int:
+    """The arrow and the frame, as this style draws them, not as Fusion does."""
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtWidgets import QStyle, QStyleOptionComboBox
+
+    option = QStyleOptionComboBox()
+    option.initFrom(combo)
+    option.frame = combo.hasFrame()
+    option.editable = combo.isEditable()
+    option.rect = QRect(0, 0, PROBE_WIDTH, combo.sizeHint().height())
+    field = combo.style().subControlRect(
+        QStyle.ComplexControl.CC_ComboBox, option,
+        QStyle.SubControl.SC_ComboBoxEditField, combo)
+    return max(PROBE_WIDTH - field.width(), COMBO_CHROME)
+
+
+def _spin_chrome(box) -> int:
+    """How much of a spin box this style spends on what is not the value.
+
+    Measured from the style, not guessed. Windows draws its up/down buttons
+    about half as wide again as Fusion does, which is why the ability and
+    experience boxes showed Donald arrows and no number on the Windows build
+    and were fine on Linux. `subControlRect` is linear in the rect it is given,
+    so one probe answers for every width.
+    """
+    from PyQt6.QtCore import QRect
+    from PyQt6.QtWidgets import QStyle, QStyleOptionSpinBox
+
+    option = QStyleOptionSpinBox()
+    option.initFrom(box)
+    option.subControls = (QStyle.SubControl.SC_SpinBoxUp
+                          | QStyle.SubControl.SC_SpinBoxDown
+                          | QStyle.SubControl.SC_SpinBoxFrame
+                          | QStyle.SubControl.SC_SpinBoxEditField)
+    option.buttonSymbols = box.buttonSymbols()
+    option.frame = box.hasFrame()
+    option.rect = QRect(0, 0, PROBE_WIDTH, box.sizeHint().height())
+    field = box.style().subControlRect(
+        QStyle.ComplexControl.CC_SpinBox, option,
+        QStyle.SubControl.SC_SpinBoxEditField, box)
+    return max(PROBE_WIDTH - field.width(), SPINBOX_CHROME)
+
+
+def _spin_width(box, text: str) -> int:
+    """Wide enough for `text` beside whatever arrows this style draws."""
+    return max(box.fontMetrics().horizontalAdvance(text) + _spin_chrome(box)
+               + CARET,
+               box.sizeHint().width())
+
+
+def _line_width(edit, text: str) -> int:
+    """The same for a line edit, where the chrome is the frame and margins."""
+    from PyQt6.QtCore import QSize
+    from PyQt6.QtWidgets import QStyle, QStyleOptionFrame
+
+    wanted = edit.fontMetrics().horizontalAdvance(text) + CARET
+    option = QStyleOptionFrame()
+    option.initFrom(edit)
+    option.lineWidth = (edit.style().pixelMetric(
+        QStyle.PixelMetric.PM_DefaultFrameWidth, option, edit)
+        if edit.hasFrame() else 0)
+    full = edit.style().sizeFromContents(
+        QStyle.ContentsType.CT_LineEdit, option,
+        QSize(wanted, edit.sizeHint().height()), edit).width()
+    return max(full, wanted + LINE_CHROME)
 
 
 def _content_height(view) -> int:
@@ -223,6 +314,7 @@ class EditorWindow(QMainWindow):
         self.ui.roster.setModel(self.model)
         self.ui.roster.setSelectionBehavior(
             self.ui.roster.SelectionBehavior.SelectRows)
+        self.ui.roster.setStyleSheet(TABLE_SELECTION)
         sel = self.ui.roster.selectionModel()
         sel.currentRowChanged.connect(self._row_changed)
 
@@ -238,6 +330,7 @@ class EditorWindow(QMainWindow):
         if table is not None:
             table.setModel(self.items)
             table.setSelectionBehavior(table.SelectionBehavior.SelectRows)
+            table.setStyleSheet(TABLE_SELECTION)
             table.selectionModel().currentRowChanged.connect(self._show_traits)
         self._preview: QDialog | None = None
         self._connect("button_preview", self.preview)
@@ -411,9 +504,15 @@ class EditorWindow(QMainWindow):
                 # invites a value `record.set` would refuse.
                 w.setRange(*span)
             if isinstance(w, (QSpinBox, QLineEdit)):
-                chrome = SPINBOX_CHROME if isinstance(w, QSpinBox) else LINE_CHROME
-                w.setMaximumWidth(
-                    w.fontMetrics().horizontalAdvance(widest_text(field)) + chrome)
+                text = widest_text(field)
+                width = (_spin_width(w, text) if isinstance(w, QSpinBox)
+                         else _line_width(w, text))
+                # A floor as well as a ceiling. With only a maximum the layout
+                # is free to squeeze the box below its own text, and a spin box
+                # squeezed that far is two arrows and nothing else -- which is
+                # exactly what the Windows build showed.
+                w.setMinimumWidth(width)
+                w.setMaximumWidth(width)
 
     def _wire_dirty(self) -> None:
         for name, w in self._widgets.items():
@@ -1005,7 +1104,9 @@ class EditorWindow(QMainWindow):
     def _retitle(self) -> None:
         name = self.path.name if self.path else "no file"
         mark = " *" if self.dirty else ""
-        self.setWindowTitle(f"wish - {name}{mark}")
+        # "Wish" capitalised: the product name in prose and in a title
+        # bar, as against the command `wish`, which stays lower case.
+        self.setWindowTitle(f"Wish - {name}{mark}")
 
     def showEvent(self, event) -> None:
         """Size the roster once the window has a height to divide.

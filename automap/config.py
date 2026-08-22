@@ -88,6 +88,16 @@ class Settings:
 # window larger than the screen it lands on, and the automapper is 1875 px wide
 # by default, which is wider than plenty of laptops.
 
+#: What to assume a title bar and a resize border cost while the window has
+#: never been shown. Before `show()` there is no frame, so `frameGeometry()`
+#: equals `geometry()` and the chrome measures as nothing -- which is how a
+#: 1030 px window passed a clamp against a 1032 px work area on Windows and
+#: then opened 39 px taller than the screen, with the status bar off the
+#: bottom. Windows 11 draws a 32 px caption, GNOME about 37; 48 is above both
+#: and is only ever a first-run estimate, because `clamp_to_screen` runs again
+#: after `show()` with the real numbers.
+UNSHOWN_CHROME = (16, 48)
+
 
 def remember_geometry(window, settings: Settings) -> None:
     """Note where and how big this window is, for the next run."""
@@ -97,12 +107,18 @@ def remember_geometry(window, settings: Settings) -> None:
 
 
 def restore_geometry(window, settings: Settings,
-                     floor: tuple[int, int] | None = None) -> bool:
+                     floor: tuple[int, int] | None = None,
+                     space=None) -> bool:
     """Put a window back where it was. True if a saved geometry was used.
 
     With nothing saved -- a first run, or a settings file from before this --
     the remembered width and height are used instead, raised to `floor` if the
-    caller has one. Either way the result is clamped to the screen.
+    caller has one. Either way the result is clamped to the screen: **the floor
+    never wins over the display**, or a laptop gets a window it cannot see the
+    bottom of.
+
+    `space` is the available work area, for a test that has to fake a screen
+    the offscreen platform will not give it.
     """
     from PyQt6.QtCore import QByteArray
 
@@ -118,24 +134,37 @@ def restore_geometry(window, settings: Settings,
         if floor:
             w, h = max(w, floor[0]), max(h, floor[1])
         window.resize(w, h)
-    clamp_to_screen(window)
+    clamp_to_screen(window, space)
     return done
 
 
-def clamp_to_screen(window) -> None:
-    """Never bigger than the display, never off the edge of it."""
+def clamp_to_screen(window, space=None) -> None:
+    """Never bigger than the display, never off the edge of it.
+
+    `space` overrides the screen's work area, which is how a test fakes a
+    display smaller than the one it is running on.
+    """
     from PyQt6.QtGui import QGuiApplication
 
-    screen = window.screen() or QGuiApplication.primaryScreen()
-    if screen is None:                  # no display at all; nothing to clamp to
+    if window.isMaximized() or window.isFullScreen():
+        # The window manager owns the size; resizing it here un-maximises it.
         return
-    space = screen.availableGeometry()
+    if space is None:
+        screen = window.screen() or QGuiApplication.primaryScreen()
+        if screen is None:              # no display at all; nothing to clamp to
+            return
+        space = screen.availableGeometry()
     # The frame is what has to fit: a window sized to the whole work area and
     # then given a title bar is taller than the screen by the height of it.
     frame = window.frameGeometry()
     inner = window.geometry()
     chrome_w = frame.width() - inner.width()
     chrome_h = frame.height() - inner.height()
+    if not window.isVisible() and (chrome_w, chrome_h) == (0, 0):
+        # Never shown, so there is no frame to measure yet and the chrome
+        # reads as nothing. Assume some, or the first run sizes itself to the
+        # whole work area and the title bar pushes the bottom off the screen.
+        chrome_w, chrome_h = UNSHOWN_CHROME
     w = min(inner.width(), max(space.width() - chrome_w, 1))
     h = min(inner.height(), max(space.height() - chrome_h, 1))
     if (w, h) != (inner.width(), inner.height()):

@@ -142,9 +142,17 @@ def test_the_report_states_each_failure_in_its_own_slot(tmp_path, monkeypatch):
     empty.mkdir()
     rows = dict(report(Settings(disks=str(empty))))
     assert "POOL*.D64" in rows["Titles"] and rows["Titles"].startswith("none")
-    assert rows["Maps"].startswith("none")
-    assert "name-table indices" in rows["Names"]
-    assert rows["Icons"].startswith("not found")
+    assert rows["In use"] == str(empty)
+
+
+def test_the_report_prints_three_lines_and_not_six(tmp_path, monkeypatch):
+    """Donald, 2026-08: "remove Maps, Names, and Icons". The map tab and the
+    item column already answer those where somebody is looking."""
+    nowhere(tmp_path, monkeypatch)
+    shelf = disks(tmp_path / "porgame", "POOL1.D64")
+    for settings in (Settings(disks=str(shelf)), Settings()):
+        assert [name for name, _ in report(settings)] == [
+            "In use", "Set by", "Titles"]
 
 
 def test_the_report_says_when_por_disks_is_set_and_overridden(tmp_path,
@@ -168,12 +176,12 @@ def test_a_flag_says_this_run_only_and_names_the_preference_it_beat(
     assert str(saved) in rows["Set by"]
 
 
-def test_the_report_of_nowhere_is_six_stated_failures(tmp_path, monkeypatch):
+def test_the_report_of_nowhere_is_three_stated_failures(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     rows = dict(report(Settings()))
     assert rows["In use"] == "nothing found"
     assert rows["Set by"] == "nothing found"
-    assert len(rows) == 6
+    assert len(rows) == 3
 
 
 def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
@@ -270,8 +278,11 @@ def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
     win = window(app)
     dialog = PreferencesDialog(win)
     dialog.refresh()
-    assert "unverified" in dialog.radios["Ultimate"].text()
-    assert "not answering" in dialog.radios["Ultimate"].text()
+    # In the badges beside the label now, not run into the label itself.
+    assert dialog.radios["Ultimate"].text() == "Ultimate"
+    assert dialog.badges["Ultimate"].text() == "not answering"
+    assert dialog.unverified["Ultimate"].isVisibleTo(dialog)
+    assert dialog.unverified["VICE"].isVisibleTo(dialog) is False
 
 
 def test_the_view_menu_no_longer_carries_a_backend_submenu(app, tmp_path,
@@ -494,8 +505,6 @@ def test_one_folder_gets_item_names_and_a_map_without_a_restart(
         printed = dict(rows(dialog))
         assert printed["Set by"] == "this preference"
         assert "Pool of Radiance" in printed["Titles"]
-        assert printed["Maps"].endswith("GEO files")
-        assert printed["Names"].startswith("POOL")
         assert win.editor.item_names, "item names arrive without a restart"
         assert win.map.no_maps is False
         assert win.mapper._maps

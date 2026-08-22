@@ -28,7 +28,7 @@ now takes `wish.__version__` rather than asking metadata itself, and
 `tests/test_packaging.py` checks the one remaining lookup against
 `pyproject.toml`.
 
-The window says the same number under **Help > About wish** — `wish/about.py`,
+The window says the same number under **Help > About Wish** — `wish/about.py`,
 installed from `wish/window.py`.
 
 ## 2. What a release contains
