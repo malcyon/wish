@@ -1523,7 +1523,9 @@ def test_the_font_awesome_attribution_travels_with_the_icons():
     from wish.about import TEXT
     root = pathlib.Path(__file__).resolve().parent.parent
     assert "Font Awesome" in TEXT and "CC BY 4.0" in TEXT
-    assert "Font Awesome" in (root / "README.md").read_text()
+    # `encoding=` is not optional: the default is the locale codec, which is
+    # cp1252 on the Windows runners, and the README has an em dash in it.
+    assert "Font Awesome" in (root / "README.md").read_text(encoding="utf-8")
     assert (root / "docs/licences/fontawesome-LICENSE.txt").exists()
     assert "Font Awesome" in icons.__doc__
 
