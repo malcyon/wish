@@ -39,8 +39,7 @@ files, the standing constraints in full, and no commits.
 | **P70** | Windows GUI: the window opens bigger than the screen, spin boxes hide their values, the roster selection reads as stray highlight | found on Windows, none reproduces on Linux |
 | **P71** | Preferences: drop Maps/Names/Icons, box the backend status, drop the debug-log blurb and its popup | |
 | **P72** | The debug log: strip the header comments, and couple it to debug mode | |
-| **P73** | **Bug** — the automapper keeps one area's revealed squares after moving to another | reproduced by Donald: slums, then New Phlan |
-| **P74** | A logo and icons — [`132`](132-logo.md) | blocked behind the no-images rule, which also blocks the README screenshots |
+| **P74** | A logo and icons — [`132`](132-logo.md) | the app icon is built and wired; still open: a `.desktop` file, an `.icns`, a README lockup, and a real artist |
 | **P75** | Capitalise **Wish** in the title bar and Help ▸ About | |
 
 ## Needs an emulator
@@ -116,3 +115,4 @@ A code retires with its task and is never reused.
 | **P66** | the game's own import routine read, 12 of our 15 bytes explained |
 | **P67** | `STING` has no C64 counterpart — a clean negative |
 | **P68** | the preferences dialog, and it reports what it found |
+| **P73** | the fog leak: the resident map is read on every jump, not one time in ten |
