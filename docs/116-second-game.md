@@ -50,9 +50,22 @@ byte-identically today, with no code change.
 | exported character, filename marker byte | `$01` | `$02` |
 | save image, load address | `$4900` | `$4B00` |
 | `ITEMNAMES` resident base | `$6F00` | `$9E00` |
+| `LIBRARY` resident base | `$2C48` | `$2DC8` |
 | `LIBRARY` `GEO` stem table | `$24B4` | `$2714` |
+| `GEN` resident base | `$0800` | `$0800` |
+| class-level ceiling table | `$1E5C` | `$15A1` |
+| racial class-limit table | `$1E60`, 4 wide | `$15A9`, 8 wide |
+| experience thresholds | `$1DB5`, split low/mid/high | `$136E`, 3-byte big-endian |
+| spell names | `SPELLN00` at `$B000` | `COMBAT2` at `$E000` |
 
 Nothing else in the record moves.
+
+**Both `ITEMNAMES` bases are the literal operand of an instruction**, not a
+fit: `LIBRARY` reads the name table with `LDA $6F00,X / STA $07` in Pool of
+Radiance and `LDA $9E00,X / STA $07` in Curse. `tests/test_titletables.py`
+asserts both, and the same test re-fits `LIBRARY`'s own base — `$2C48` wins
+215 to 66 in Pool of Radiance and `$2DC8` wins 228 to 57 in Curse, scoring how
+many `JSR`/`JMP` targets land on the byte after an `RTS`, an `RTI` or a `JMP`.
 
 ### 2.2 Two fields Curse uses that Pool of Radiance leaves at zero
 
@@ -199,10 +212,10 @@ C64 build does the same is NOT FOUND.
 | | |
 |---|---|
 | **Classes** | Two more: paladin at array index 6 / bit 6, ranger at index 7 / bit 7. No new offsets, no new widths. The class-name table entries 13/14/15 are fighter/mage, fighter/thief, fighter/mage/thief in both games — not paladin and ranger |
-| **Levels** | `por/levels.py` already carries paladin, ranger and monk rows "because the tables list them". Curse makes two of them real and raises the caps. Table data; the shape of `Level` does not change. Not measured this pass |
+| **Levels** | Measured — §9. The ceiling is **11 / 10 / 12 / 12 / 11 / 11** for magic-user, cleric, thief, fighter, paladin, ranger, against Pool of Radiance's 6 / 6 / 9 / 8, and the experience table is the full AD&D 1st edition progression to level 13. `por/levels.py`'s existing rows are Curse's rows exactly where the two overlap; what it needs is the missing levels and two more classes, not a different `Level` |
 | **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `por/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
 | **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `por/items.py` reads it |
-| **Spells** | 100 ids where Pool of Radiance has 56, and the **first 56 are unchanged**. Curse has **no `SPELLN00`** — it does ship `SPELLN64`, on side A, and so does Pool of Radiance, but that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The spell names live in `COMBAT2` and again in `ECL65`, and the pointer table that resolves an id to a name has not been located. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (`work/reports/goldbox-inventory.md`) |
+| **Spells** | 169 named ids where Pool of Radiance has 120, and the **first 56 are the same spell in the same order** — §10. Curse has **no `SPELLN00`**; it ships `SPELLN64`, and so does Pool of Radiance, and that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The names and their pointer table are in `COMBAT2`, resident at `$E000`. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (`work/reports/goldbox-inventory.md`) |
 | **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING` |
 
 ## 6. Still unknown
@@ -215,8 +228,9 @@ C64 build does the same is NOT FOUND.
 | Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was refused |
 | Where the azure-bond state lives | NOT FOUND. It is not in the character record on DOS either |
 | Which of `0x014` and `0x065` is "current" and which "original" | NOT FOUND — equal in every specimen |
-| The spell-name pointer table | NOT FOUND |
 | How many combat slots Curse keeps, and where | NOT FOUND — `$5800`–`$5AFF` zero in both saves |
+| Which class and level each new spell id 57–100 belongs to | PROBABLE from AD&D — §10 — but no code assigns them here |
+| Why the racial limit subtracts the prime-requisite bonus rather than adding it | NOT UNDERSTOOD — §9 |
 
 ## 7. Corrections to `work/reports/coab-plan.md`
 
@@ -261,3 +275,134 @@ absent, like every other test that needs game data.
 Curse disks are found the same way Pool of Radiance's are: `$COAB_DISKS` first,
 then the usual home-directory names, then `work/` — which `CLAUDE.md` already
 names as where disk images belong.
+
+## 9. Levels, ceilings and experience
+
+All four tables are in `GEN` — the overlay that carries both character
+generation and the training hall — and `GEN` is **resident at `$0800`**, not at
+the `$1220` its PRG header claims. The base is fixed by a decimal-place table
+(`1, 10, 100, 200, 1000`) landing exactly on its own file offset there, and
+corroborated by the instructions three bytes away that index it. Pool of
+Radiance's `GEN` declares `$1000` and also runs at `$0800`.
+
+### 9.1 The class ceiling — CONFIRMED
+
+Eight bytes in **class-bit order**, so the index is the same number as the bit
+in `0x0EB` and the slot in the per-class level array at `0x0C9`.
+
+| | magic-user | cleric | thief | fighter | 4 | 5 | paladin | ranger |
+|---|---|---|---|---|---|---|---|---|
+| Pool of Radiance, `$1E5C` | 6 | 6 | 9 | 8 | 0 | 0 | 0 | 0 |
+| Curse, `$15A1` | 11 | 10 | 12 | 12 | 0 | 0 | 11 | 11 |
+
+CONFIRMED, and the confirmation is the instruction rather than the shape of the
+numbers: Curse's training routine reads `LDA $7CC9,X / CMP $15A1,X` — the
+character record's own per-class level array against this table — and Pool of
+Radiance's does the same at `$1E5C`. That promotes what
+`docs/119-test-party.md` calls a PROBABLE ceiling ("the tables end at those
+rows; no routine enforcing them has been cited"); the routine is now cited.
+
+Bits 4 and 5 are zero in both. Curse has no knight; the Krynn titles do, at bit
+4, and that is where their ceiling would appear.
+
+### 9.2 The racial limit — CONFIRMED against AD&D
+
+A second ceiling, indexed `race * 4` in Pool of Radiance and `(race - 1) * 8`
+in Curse, taking the same class number as the column. `99` means no limit.
+Races 7 (human) and above skip the check entirely.
+
+| race | Pool of Radiance mu/cl/th/fi | Curse mu/cl/th/fi + pal/rng |
+|---|---|---|
+| 1 dwarf | 0 / 8 / 99 / 9 | 0 / **0** / 99 / 9 |
+| 2 elf | 11 / 7 / 99 / 7 | 11 / **0** / 99 / 7 |
+| 3 gnome | 0 / 7 / 99 / 6 | 0 / **0** / 99 / 6 |
+| 4 half-elf | 8 / 5 / 99 / 8 | 8 / 5 / 99 / 8, ranger 8 |
+| 5 halfling | 0 / 0 / 99 / 6 | 0 / 0 / 99 / 6 |
+| 6 half-orc | 0 / 4 / 8 / 10 | 0 / 4 / 8 / 10 |
+| 7 human | 99 / 99 / 99 / 99 | 99 all six |
+
+Half-orc `0/4/8/10` and half-elf `8/5/99/8` are AD&D 1st edition exactly, and
+they are the two rows no other reading of the table would produce, which is
+what makes this CONFIRMED rather than a plausible parse.
+
+**The one real change is the cleric column.** Curse zeroes it for dwarf, elf
+and gnome where Pool of Radiance carried 8, 7 and 7. Those three numbers are
+the *Dungeon Master's Guide* NPC limits; the *Players Handbook* does not let a
+player be a dwarf, elf or gnome cleric at all. So Curse is the stricter reading
+of the same rule. PROBABLE that the effect in play is "cannot advance as a
+cleric" — the byte is 0 and the comparison is `level >= limit`, but no dwarf
+cleric has been trained in the emulator to watch it refuse.
+
+One thing is **not understood**: the routine looks up the prime-requisite
+bonus (+1 at 17, +2 at 18, read from the *second* ability array at `0x065`,
+which is the one Curse fills) and then **subtracts** it from the racial limit
+rather than adding it. Written out, a strong fighter would be capped lower.
+Either the sign is a bug, or `$B0` is being accumulated in a way this reading
+misses.
+
+### 9.3 Experience — CONFIRMED
+
+Curse's thresholds are six rows of thirteen, 39 bytes a row, at `$136E`, in
+class order magic-user, cleric, thief, fighter, paladin, ranger — class bits 6
+and 7 fold down to rows 4 and 5, because bits 4 and 5 have no class. Each entry
+is **three bytes big-endian**, which is the one place in this family a
+multi-byte number is not little-endian; the reader walks the entry backwards
+from `level * 3 + 2`, which is what puts the high byte last.
+
+Entry `n` is the total needed to leave level `n`, so entry 0 is 0 and entry 12
+is the last threshold the table holds.
+
+Every value is the AD&D 1st edition number **plus one** — 2001 to reach fighter
+2, 125001 to reach fighter 8 — with exactly one exception: the ranger's first
+threshold is a bare 2250. Pool of Radiance's own table, at `$1DB5` and split
+into parallel low, mid and high arrays nine entries wide, holds the same
+numbers with the same +1, so `por/levels.py` already agrees with Curse for
+every level the two share. `tests/test_titletables.py` asserts that agreement
+row by row.
+
+The hit-dice tables sit beside it, three more eight-byte arrays in class-bit
+order: the die (`$161E`: d4, d8, d6, d10, —, —, d10, d8), the level after which
+hit dice stop being rolled (`$1626`), and the flat hit points a level adds from
+then on (`$162E`: 1, 2, 2, 3, —, —, 3, 2). Pool of Radiance needs no such rule
+because it stops before any class reaches it.
+
+## 10. The spell table
+
+**Curse's spell names are the first 2011 bytes of `COMBAT2`, resident at
+`$E000`, followed by their own pointer table**: 170 high bytes at payload
+`0x7DB`, then 170 low bytes at `0x885`. Spell id *n* is table index *n - 1*.
+
+The base needs no fitting — the pointer for index 0 is `$E000` and the text is
+`$E000`–`$E7DA`, which is exactly the range of high bytes the array holds.
+
+**The pointers are not optional.** The strings overlap the same way Pool of
+Radiance's do, and more of them: `SHIELD` is the last six bytes of
+`FIRE SHIELD`, `INVISIBILITY` the tail of `DETECT INVISIBILITY`, and the
+magic-user `DETECT MAGIC`, `HOLD PERSON` and `DISPEL MAGIC` share one copy each
+with their cleric namesakes. Splitting the block on NULs yields 150 strings
+where the table has 169 names, and every id above 10 comes out wrong.
+
+**Ids 1–56 are Pool of Radiance's, spell for spell.** That is now read off
+Curse's own table rather than inferred from the item tables, and it is what
+makes an imported spellbook mean what it said: bit 20 is `SHOCKING GRASP` in
+both games.
+
+Ids 57–100 are Curse's new spells, with a handful of combat messages mixed in
+among them (57 `IS DISTRACTED BY VERMIN. SPELL ABORTED`, 59 `IS BERSERKING`,
+61 and 62 both `THROWS A LIGHTNING BOLT`), and 63–65 and 95–97 unused — an
+unused slot points at `$E000`, so it reads back as `BLESS`. From 101 the table
+is the combat-message tail Pool of Radiance starts at 57.
+
+The grouping below is PROBABLE: it is AD&D's spell levels, not a table in the
+game.
+
+| ids | probably |
+|---|---|
+| 58, 66–70 | cleric 4 — cure/cause serious wounds, neutralize poison and its reverse, protection from evil 10' radius, sticks to snakes |
+| 71–76 | cleric 5 — cure/cause critical wounds, dispel evil, flame strike, raise dead, slay living |
+| 77–80 | druid 1 — detect magic, entangle, faerie fire, invisibility to animals; the ranger's list |
+| 81–90 | magic-user 4 — charm monsters through animate dead |
+| 91–94 | magic-user 5 — cloud kill, cone of cold, feeblemind, hold monsters |
+
+`ECL65` carries a second copy of the strings. Whether it carries a second
+pointer table has not been checked, and nothing needs it to.
