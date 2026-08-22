@@ -22,8 +22,13 @@ Confidence levels
 ``GUESS``      Hypothesis worth testing; treat as unknown for any real purpose.
 ``UNKNOWN``    Explicitly not understood.  Bytes are preserved verbatim.
 
-Nothing in this table is derived from published Gold Box hex-editing guides;
-those describe the DOS record, which has a different layout.
+No offset in this table comes from a published Gold Box hex-editing guide.
+Those describe the DOS record, which is a different record -- 285 bytes for
+Pool of Radiance against the C64's 580, growing to 510 by *Pools of Darkness*.
+Where a note below cites the DOS layout it is as **corroboration of a reading
+we measured ourselves**, never as the source of an offset:
+`docs/127-community-formats.md` works out where the two records line up and
+where they do not, and says which claims the community documentation earned.
 """
 
 from __future__ import annotations
@@ -212,7 +217,19 @@ _DECLARED: Sequence[Field] = (
            "it for all eight characters of npc_party.d64. That reading is "
            "RETRACTED: in PORSAVE4 they read 0/0/0 while this list is set, on "
            "a save taken after resting. Length is unproven: the most seen in "
-           "use is 13 bytes, and 0x02D-0x070 is zero in every specimen"),
+           "use is 13 bytes, and 0x02D-0x070 is zero in every specimen.\n"
+           "**Sixteen is probably five short.** The DOS record allots 21 "
+           "slots for the same list, and 21 is also this game's ceiling: a "
+           "cleric 6 with wisdom 18 has 13 and a magic-user 6 has 8, and one "
+           "character can be both. The C64 packs the list **forward** from "
+           "0x020 in descending spell id where DOS fills its 21 in reverse. "
+           "SIMON (cleric 6, slots 5/5/3) fills 0x020-0x02C with three "
+           "third-level ids, five second and five first, every one in a "
+           "cleric range; XAVIER (magic-user 6, 4/2/2) fills eight bytes with "
+           "magic-user ids only. Nothing we hold contradicts 16 and nothing "
+           "supports stopping there -- PROBABLE at 21. Settle it with a "
+           "cleric/magic-user carrying more than sixteen memorised spells. "
+           "docs/127-community-formats.md"),
     _field(0x078, 7, _RAW, "spells_known", "Spellbook", _OK,
            "a bitmask of the spells the character KNOWS, indexed by spell id: "
            "bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster "
@@ -232,7 +249,17 @@ _DECLARED: Sequence[Field] = (
            "this game uses and what por/spells.py encodes; 0x07F still reads "
            "zero in every specimen we hold. Bit 0 of 0x078 is deliberately "
            "unused: the QUANTUM LEAPER trainer's LEARN ALL SPELLS writes $FE "
-           "here and $FF to the other six, i.e. spell id 0 does not exist"),
+           "here and $FF to the other six, i.e. spell id 0 does not exist.\n"
+           "How much more than eight, for the later titles: the DOS records "
+           "hold one byte per spell and their counts are Pool of Radiance 56, "
+           "Curse 100, Champions of Krynn 107, Silver Blades 117, Pools of "
+           "Darkness 126. Seven bytes is 56 bits, which is exactly this game "
+           "and is why nothing here has ever set 0x07F. If a title's C64 spell "
+           "list matches its DOS one the mask needs ceil(N/8) bytes -- Curse "
+           "13, Silver Blades 15 -- which predicts the 0x07F = 0x04 already "
+           "observed and says how far the field really runs. PROBABLE, because "
+           "a C64 port may cut spells; one Curse caster's book read against "
+           "COMBAT2's name table settles it. docs/127-community-formats.md"),
     _field(0x071, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _MAYBE,
            "base THAC0, stored as 60 - THAC0, the same encoding the SAVEDGAME1 "
            "roster uses for the current value at +0x0E. Matches the AD&D 1st "
@@ -282,13 +309,41 @@ _DECLARED: Sequence[Field] = (
     _field(0x076, 2, _U16, "hp_max", "HP max", _OK,
            "16-bit LE. 11 = 9 rolled + 2 CON. The high byte was long read as filler because no character has yet exceeded 255 hit points; the drain routine in SPELLE02 decrements the pair, which is what settles the width"),
     _field(0x09A, 1, _U8, "save_paralysis", "Save vs para/poison/death", _OK,
-           "fighter 14, cleric 10 -- both match the AD&D 1e L1 tables"),
+           "fighter 14, cleric 10 -- both match the AD&D 1e L1 tables.\n"
+           "All five saves at 0x09A-0x09E are now **derivable**, which "
+           "por/levels.py's docstring says they were not: the stored number is "
+           "the class table row for the character's level in that class, taking "
+           "the **best number in each column** across every class it holds, "
+           "minus the AD&D constitution bonus (+1 per 3.5 points) when the "
+           "character is a **dwarf, gnome or halfling**. 78 of the 79 distinct "
+           "records on this machine satisfy that exactly; the one miss is MAD "
+           "MAN, a level-8 NPC carrying the level-1 fighter row. The multi-class "
+           "rule shows on its own: LADY KATHERINE (magic-user 1 / thief 1) reads "
+           "13 12 11 15 12, which is neither class's row but the column-wise "
+           "minimum of the two. The racial adjustment shows as a uniform shift "
+           "-- MAGNUS the dwarf (CON 13) is 3 lower than an identical human "
+           "fighter in Donald's own party, and HOGARTH and TANARAKIS on "
+           "SSI's shipped demo party agree with no adjustment at all. Only "
+           "the +3/+4/+5 bands are exercised and the high-level cases all "
+           "come from npc_party.d64, whose values this project treats as "
+           "worthless (docs/90), so tests/test_communityformats.py asserts "
+           "the rule on the fixtures alone, which are clean. "
+           "docs/127-community-formats.md"),
     _field(0x09B, 1, _U8, "save_petrification", "Save vs petrify/polymorph", _OK, "fighter 15, cleric 13"),
     _field(0x09C, 1, _U8, "save_wands", "Save vs rod/staff/wand", _OK, "fighter 16, cleric 14"),
     _field(0x09D, 1, _U8, "save_breath", "Save vs breath weapon", _OK, "fighter 17, cleric 16"),
     _field(0x09E, 1, _U8, "save_spell", "Save vs spell", _OK, "fighter 17, cleric 15"),
     _field(0x09F, 1, _U8, "movement", "Movement", _OK, "12 in all three specimens"),
-    _field(0x0A5, 1, _I8, "thief_pick_pockets", "Pick pockets %", _OK, "30 at L1"),
+    _field(0x0A5, 1, _I8, "thief_pick_pockets", "Pick pockets %", _OK,
+           "30 at L1. The eight percentages at 0x0A5-0x0AC come from a "
+           "nine-level table of eight columns in the engine, in this order, "
+           "plus a racial row: HOGARTH, a dwarf thief 1, matches the base row "
+           "plus the AD&D dwarf adjustments in all eight columns, including "
+           "read languages -5 stored as $FB, and takes no dexterity adjustment "
+           "at dexterity 17. The half-elf, gnome and halfling specimens do not "
+           "match their published racial rows, so **how the C64 applies the "
+           "racial modifier is UNKNOWN**; the per-level progression is not. "
+           "docs/127-community-formats.md"),
     _field(0x0A6, 1, _I8, "thief_open_locks", "Open locks %", _OK, "25 at L1"),
     _field(0x0A7, 1, _I8, "thief_find_traps", "Find/remove traps %", _OK, "20 at L1"),
     _field(0x0A8, 1, _I8, "thief_move_silently", "Move silently %", _OK, "20 at L1"),
@@ -328,7 +383,11 @@ _DECLARED: Sequence[Field] = (
            "dexterity -- which is why it looked like a constant. Monsters use "
            "the same record layout and put their real armour class here: "
            "kobold 7, orc 6, troll 4, zombie 8, matching the Monster Manual on "
-           "all eight creatures checked"),
+           "all eight creatures checked. The DOS record names AC_Base at the "
+           "offset this one aligns to, between the eight attack-form bytes and "
+           "the per-character value that precedes experience -- corroboration, "
+           "not proof, and the Monster Manual check is the stronger of the "
+           "two"),
     _field(0x0E3, 5, _RAW, "region_0e3", "unknown @0x0E3", _NOPE,
            "between strength_index and experience. 0x0E4-0x0E7 is $FF FF FF "
            "FF in every NPC. Its first two bytes, 0x0E4-0x0E5, are $00 in "
@@ -338,13 +397,19 @@ _DECLARED: Sequence[Field] = (
            "twenty known player characters. 0x0E6-0x0E7 are NOT part of it "
            "and were briefly miscounted as such: they hold a non-zero, "
            "high-entropy per-character value in every single player character, "
-           "so they are not a 0/$FF pair. Whether one marker byte is the flag "
+           "so they are not a 0/$FF pair. The DOS record has a single "
+           "high-entropy per-character byte in the same place, immediately "
+           "before experience, which its community documentation calls "
+           "MON_Index -- so whatever the pair is, both ports carry it. Whether one marker byte is the flag "
            "and the rest follow, or all eight are separate 'not applicable' "
            "sentinels, is unproven",
            candidate=True),
     _field(0x0E2, 1, _U8, "strength_index", "Effective STR", _MAYBE,
            "equals STR below 18; 18/80 and 18/81 give 21, 18/98 gives 22 -- the "
-           "AD&D exceptional-strength bands collapsed to one number"),
+           "AD&D exceptional-strength bands collapsed to one number. The DOS "
+           "record has a boolean STR_Bonus at the aligned offset, reading 1 in "
+           "all 66 DOS specimens; this byte holds 15-22 across ours, so they "
+           "are two different fields and this reading stands"),
     _field(0x0E8, 3, _UINT, "experience", "XP", _OK,
            "24-bit LE. After one orc fight the party holds 17 each and LADY "
            "KATHERINE 8 -- non-zero and differing, which is what confirms it"),
@@ -366,7 +431,13 @@ _DECLARED: Sequence[Field] = (
            "Donald confirmed MAGNUS, a dwarf, shows as small in game, and that "
            "the visible difference is the head: a small character's body is "
            "the same size and its head is smaller, which is why the icon looks "
-           "small without being smaller"),
+           "small without being smaller. 0 for every dwarf, gnome and halfling "
+           "and 1 for every elf, half-elf and human in all 79 records we hold. "
+           "The DOS record splits this in two -- an icon *dimension* (1 = one "
+           "square) at the offset this one aligns to and an icon *size* "
+           "(1 small, 2 medium) much later -- and the C64 byte sits at the "
+           "first offset carrying the second meaning, one lower. Which is why "
+           "the DOS documentation cannot be transcribed onto this byte"),
     _field(0x0A0, 1, _U8, "level", "Level", _OK,
            "character level. Promoted from PROBABLE on the game's own data: "
            "**twenty-one shipped MON* records state their level in their "
@@ -475,7 +546,13 @@ _DECLARED: Sequence[Field] = (
            "are a Krynn class; the shipped Champions and Death Knights parties "
            "carry class_bits 0x10 with the whole array zero, so nothing yet "
            "shows a value in this byte. PROBABLE, and PROBABLE is where a "
-           "third-party tool's offset stops: no record has agreed with it yet"),
+           "third-party tool's offset stops: no record has agreed with it yet.\n"
+           "A second name for the same slot: the DOS engine's item-restriction "
+           "bit array reads 0 magic-user, 1 cleric, 2 thief, 3 fighter, 4 "
+           "**druid**, 5 monk, 6 paladin, 7 ranger. Bits 0-3 and 6-7 are this "
+           "array's own order, six of eight positions agreeing, so slot 4 is "
+           "very likely the druid slot in the Realms titles and KNIGHT is the "
+           "Krynn games reusing it in a world with no druids"),
     _field(0x0CF, 1, _U8, "level_paladin", "Paladin level", _OK,
            "slot 6 of the per-class level array, class_bits bit 6 (64). "
            "CONFIRMED on SSI's own pre-generated Curse party, whose paladin "
@@ -517,14 +594,19 @@ _DECLARED: Sequence[Field] = (
            "0x0D8-0x0E0, and the leading 03 is the alignment byte at 0x0D8. "
            "BRUTUS reads 02 00 01 00 02 00 00 00 -- one attack per round for "
            "1d2 unarmed, exactly what GEN $0BBE writes and what the reading "
-           "predicts. The contradiction never existed"),
+           "predicts. The contradiction never existed.\n"
+           "Independently corroborated: the DOS record spells the same eight "
+           "bytes out in the same order at the offset this one aligns to -- "
+           "attack count, dice count, die, modifier, each as a two-entry array "
+           "of form 0 then form 1 -- and every C64 player character reads "
+           "02 00 01 00 02 00 00 00"),
     _field(0x0EB, 1, _U8, "class_bits", "Class bitmask", _OK,
            "magic-user=1 cleric=2 thief=4 fighter=8, OR-ed together. This is "
            "how multi-class is really represented: LADY KATHERINE is 5 "
            "(magic-user/thief, confirmed by Donald) and LARA SPELLSWORD is 9 "
            "(magic-user/fighter -- her name says so). Far more usable than the "
            "single char_class code at 0x073"),
-    _field(0x0EE, 6, _RAW, "spells_castable", "Spells castable", _MAYBE,
+    _field(0x0EE, 6, _RAW, "spells_castable", "Spells castable", _OK,
            "how many spells of each level the character may memorise, one byte "
            "per spell level, **nibble-packed**: cleric in the high nibble, "
            "magic-user in the low. ROLAND, a level-1 cleric with wisdom 16, "
@@ -533,7 +615,24 @@ _DECLARED: Sequence[Field] = (
            "KATHERINE, both level-1 magic-users, read $01. The three fighters "
            "read zero throughout. Found while surveying Curse of the Azure "
            "Bonds, which uses the same offsets; the docs had this down as not "
-           "stored anywhere"),
+           "stored anywhere.\n"
+           "Promoted from PROBABLE on three further lines (docs/127). "
+           "**Multi-class specimens set both nibbles at once**, which no "
+           "single-class specimen can distinguish from two separate bytes: "
+           "TANARAKIS (cleric 1 / magic-user 1) and DELILIA (cleric 1 / "
+           "fighter 1 / magic-user 1) both read $31. The wisdom bonus is exact "
+           "at level 6, where the base row is no longer 1: DIRTEN, cleric 6 "
+           "with wisdom 16, reads 5/5/2 -- AD&D's 3/3/2 plus +2/+2/+0 -- and "
+           "SIMON, cleric 6 with wisdom 18, reads 5/5/3. Fifteen casters "
+           "across nine parties agree; the one exception is DELILIA, wisdom 13 "
+           "with three first-level slots where the rule gives two, which is "
+           "what a cache not recomputed on an ability change looks like. And "
+           "the DOS record carries the same six quantities as six separate "
+           "bytes -- SPL_Count_CL_1..3 then SPL_Count_MU_1..3 at DOS 0x0B2 -- "
+           "in the position this offset aligns to; 66 real DOS records agree. "
+           "0x0F1-0x0F3 are spell levels 4-6 and are zero in all 79 C64 "
+           "records, which is what a game that stops at third-level spells "
+           "should look like"),
     _field(0x0FE, 1, _U8, "portrait_head", "Portrait head", _OK,
            "index into the HEAD* files on the game disks, in hex: 0x2D is "
            "HEAD2D. All eleven values across our exports name a file that "
@@ -562,7 +661,15 @@ _DECLARED: Sequence[Field] = (
            "reading at last: $84 & 0x0F = 4 = DYING, with bit 7 as a separate "
            "flag. The name here stays roster_in_use until a specimen reads "
            "something other than 1 or the game is watched writing one, because "
-           "three tools sharing one author's table is one source, not three"),
+           "three tools sharing one author's table is one source, not three.\n"
+           "A fourth source **weakens** the case rather than strengthening it. "
+           "The community format documentation for the DOS games carries a "
+           "CharacterStatus enumeration -- 0 Okay, 1 Animated, 2 tempgone, "
+           "3 Running, 4 Unconscious, 5 Dying, 6 Dead, 7 Stoned, 8 Gone -- "
+           "and puts it at DOS 0x10C, which is roster +0x0A, not +0x00. Its "
+           "numbering is 0-based where the sir editors' cycle is 1-based, and "
+           "the two orders differ. So the enum is real and its position on the "
+           "C64 is not settled by anything outside. Still PROBABLE"),
     _field(0x0EC, 1, _U8, "region_0ec", "unknown @0x0EC", _NOPE,
            "0 -> 1 after combat for MALCYON and LADY KATHERINE and nobody else "
            "-- exactly the two spellcasters, so probably spell state rather "
@@ -602,7 +709,17 @@ _DECLARED: Sequence[Field] = (
     _field(0x110, 9, _RAW, "roster_tail", "Roster +0x10..+0x18", _MAYBE,
            "roster +0x10 to +0x18: armour bonus, encumbrance, equipment and "
            "damage bonus, all already decoded in por/savegame.py. Kept RAW "
-           "here because the roster is the place to read them"),
+           "here because the roster is the place to read them.\n"
+           "The eight bytes after the first line up with the DOS record's "
+           "eight current attack-form bytes -- the running copy of "
+           "attack_forms at 0x0D9 -- which is worth knowing before anyone "
+           "reads them as something else. The first byte does NOT line up: "
+           "DOS spends it on armour class from behind and the C64 on the "
+           "armour bonus, 48 + bonus, which por/savegame.py established by "
+           "putting armour on (none 48, leather 50, banded 54, the AD&D "
+           "bonuses exactly). Read the C64 byte the DOS way and those become "
+           "12, 10 and 6, two worse than each armour's real class and meaning "
+           "nothing. docs/127-community-formats.md"),
     # --- Declared from the later games, zero throughout this one -----------
     _field(0x065, 7, _RAW, "abilities_second", "Abilities (second copy)", _OK,
            "a second copy of the seven ability scores -- STR, INT, WIS, DEX, "
@@ -620,7 +737,13 @@ _DECLARED: Sequence[Field] = (
            "for its level-5 fighter/thief, 0 for pure casters, 1 for an "
            "imported level-1 fighter. CONFIRMED in docs/116 sec 2.2, and it "
            "matches the DOS record's attackLevel at the same place in the "
-           "cluster. Zero in every Pool of Radiance specimen"),
+           "cluster, where the community documentation calls it LVL_Sweep -- "
+           "the AD&D rule that lets a fighter make one attack per level "
+           "against creatures under one hit die, which is what a separate "
+           "'level the attack tables are indexed by' is for. It reads the "
+           "fighter level on every high-level fighter we hold (MAD MAN 8, GRON "
+           "7, two others 4) and zero on every level-1 one. Zero in every "
+           "Pool of Radiance player specimen"),
     _field(0x120, 256, _RAW, "inventory", "Items carried", _OK,
            "sixteen item slots of sixteen bytes, which is por/items.py's "
            "ITEM_SIZE and ITEMS_PER_CHARACTER and the same 16 x 16 page the "
