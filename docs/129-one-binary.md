@@ -8,13 +8,26 @@ cli. It is just me right now."*
 
 ## Why there were two
 
-Not for any reason that survives inspection. On **Windows** a GUI built
-`console=False` has no stdout and a CLI built `console=True` pops a console
-window, so those genuinely are two different builds. But
+Not for any reason that survives inspection.
+
+Windows makes a program declare which of two kinds it is, and PyInstaller has
+to pick one per executable:
+
+| kind | what Windows does |
+|---|---|
+| **console** | a terminal program. Printed output reaches the terminal it was started from — but double-clicking it opens a console window |
+| **windowed** | a GUI program. No console window ever appears, and it has nowhere to print to |
+
+On Linux and macOS the distinction does not exist. So on Windows a GUI and a
+CLI genuinely are two different builds — but
 [`122-release-testing.md`](122-release-testing.md) records the decision that
-**Windows ships no CLI at all** — so the two executables only ever coexist on
-Linux, where `console=` means nothing. The split there is inherited from a
-constraint that does not apply.
+**Windows ships no CLI at all**, so the two executables only ever coexist on
+Linux, where the setting means nothing. The split there is inherited from a
+constraint that does not apply to it.
+
+The second argument, and the one that started this: `wish --help` does not
+mention `export`, because `export` is in another program. Somebody looking for
+it looks in the obvious place first and does not find it.
 
 ## The one consequence worth deciding first
 
@@ -24,10 +37,10 @@ That path is **unverified** — CI exercises `--version` through a pipe, which
 tests the inherited-handle branch and not the console branch, and nobody has
 run it in a real `cmd` window.
 
-The alternative is worse: a single `console=True` build would put a console
-window behind the map for every Windows user who double-clicks it. So the merge
-takes `console=False`, and Windows gains a CLI that works as well as
-`AttachConsole` does. **`122`'s Windows run is what tells us**, and that is a
+The alternative is worse: a single console build would open a console window
+behind the map for every Windows user who double-clicks it. So the merged
+binary stays windowed, and Windows gains a CLI that works exactly as well as
+that console-borrowing trick does. **`122`'s Windows run is what tells us**, and that is a
 reason to keep this plan behind that run rather than in front of it.
 
 ## The interface
