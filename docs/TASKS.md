@@ -49,7 +49,6 @@ files, the standing constraints in full, and no commits.
 | **P8** | Curse tiers 3, 4, 5.2 — [`120`](120-curse-testing.md) | tier 3 is discovery: expect no resident address to transfer |
 | **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
 | **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
-| **P3** | Make the wanted saves ourselves | quickfight pair, the trainer ability-score pair, wilderness W1–W12, one taken mid-effect. **Was blocked on Donald playing to those states**; the warp and the trainer runs proved we can drive to them |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
 | **P20** | The 15 areas with no harvested arrival square | do they land somewhere legal? |
 | **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
@@ -115,4 +114,6 @@ A code retires with its task and is never reused.
 | **P66** | the game's own import routine read, 12 of our 15 bytes explained |
 | **P67** | `STING` has no C64 counterpart — a clean negative |
 | **P68** | the preferences dialog, and it reports what it found |
+| **P3** | twelve specimen disks driven and taken, including one mid-effect |
+| **P69** | the fastloader answer is worth 1.0 s inside a 1.1 s spread — no guidance needed |
 | **P73** | the fog leak: the resident map is read on every jump, not one time in ten |
