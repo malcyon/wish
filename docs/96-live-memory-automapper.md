@@ -257,13 +257,22 @@ keeps the last set that fitted, and counts the contradiction instead.
 
 ## Still open
 
-* **Effect ids have no names.** The four arrays decode; the id namespace does
-  not. Effects show as `effect 27`, and the two unit bits of the duration byte
-  are shown as a number rather than guessed at.
 * **The multi-class experience split.** A card draws one bar per class, each
   against the single stored 24-bit number. Whether the game stores a total or a
   per-class share is not established -- LADY KATHERINE, the only multi-class
   specimen we hold, is level 1 in both classes and cannot tell them apart.
-* **During combat the map half should become the combat view**
-  ([101-combat-view.md](101-combat-view.md)), with the roster staying put --
-  which is exactly when it is most wanted. Not started.
+* **The two unit bits of the effect duration byte** are still shown as a number
+  rather than guessed at.
+
+### Closed
+
+* ~~**Effect ids have no names.**~~ **They do.** 129 codes are named in
+  `por/traits.py` -- 44 CONFIRMED, because a `MON*` record or a saved item
+  carries the code on exactly the creature the meaning demands, and 84 PROBABLE
+  from the DOS guide's 127-entry effect table. An effect on a roster card or a
+  monster tooltip reads `petrifying gaze`, not `effect 27`; a code outside the
+  table still falls back to `trait <n>`.
+* ~~**During combat the map half should become the combat view.**~~ **Built.**
+  The Automapper tab holds a `QStackedWidget` of two canvases and swaps them when
+  the game enters and leaves combat, with the roster staying put. See
+  [101-combat-view.md](101-combat-view.md).

@@ -23,10 +23,18 @@ that clearing the pollution swaps an impassable-terrain table.
 * **Anything that reads or writes a byte we have not named.** 374 distinct
   addresses are touched; far fewer are understood. `work/reports/ecl-opcodes.md`
   has the cross-reference.
-* **The `$4A20`-`$4AFF` flags nobody has attributed.** The commission ledger and
-  eight appointment flags are named; the rest of the region is not.
-* **Anything that contradicts a doc.** Two corrections already came from a
-  careful read, and there are likely more.
+* ~~**The `$4A20`-`$4AFF` flags nobody has attributed.**~~ **Largely done, and
+  by machine rather than by reading.** `work/reports/quest-flags.md` gives every
+  one of the 352 bytes a disposition: 172 named by a direct ECL operand, 7 more
+  as the interior of a proven table, and **135 shown not to be flag storage at
+  all** — the region ends at `$4AF8`, not `$4AFF`, and `$4A00`-`$4A1F` is
+  per-script scratch that `DUNGEON $282E` wipes on every area change. What is
+  left for a human is the *meanings*: the DOS guide names 229 of these addresses
+  in English (`docs/128` §"The script-flag map"), and merging its names onto our
+  addresses is a cheap, high-value job for whoever next touches
+  `por/commissions.py` or the quest panel.
+* **Anything that contradicts a doc.** Several corrections have already come
+  from a careful read, and there are likely more.
 * **Encounters that are not what they look like** — `ECL00` shifts the monster
   *type* on party strength rather than the count, and nothing suggests it is the
   only script doing something like that.
@@ -47,7 +55,24 @@ in `CLAUDE.md`.
 
 ## A caution when reading
 
-The operand-count table in the game disagrees with two of its own handlers
-(`SETUPMON`, `ENCMENU`). No script triggers it, but if a listing ever looks like
+**A false `IF` fails to skip eight opcodes**, so if a listing ever looks like
 nonsense after a conditional, that is the first thing to suspect rather than a
-decoder bug.
+decoder bug. No shipped script triggers it — nothing puts an `IF*` immediately
+before any of the eight.
+
+The eight are the union of two independent derivations. Ours came from `$1625`,
+the VM's own operand-count table, which disagrees with its own handlers for
+`SETUPMON`, `ENCMENU` and `ADDNPC`. The DOS guide's came from the other side and
+lists `SETUPMON`, `VERTMENU`, `ONGOTO`, `ONGOSUB`, `HORIZMENU` and `ADDNPC` — its
+four extras being the variable-length opcodes, whose length the skip routine
+cannot know at all. The lists overlap on two entries and are otherwise
+complementary. Logged in `docs/125-bug-notes.md`.
+
+Two other things worth knowing before reading a listing:
+
+* **`$1F` is unimplemented.** Our table calls it `ADDRESSOF`, a name inherited
+  from the `coab` opcode table. No Pool of Radiance script references it — our
+  own sweep counts zero — so the name is a guess and should be read as one.
+* **`ECL1E` is not an area script.** It is the attract-mode demo, in a slot DOS
+  left free: DOS numbers maps and scripts in one space and has no script 30 at
+  all, so the C64 port put one there. Thirty files, twenty-nine of them areas.

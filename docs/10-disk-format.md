@@ -12,8 +12,36 @@ Tracks are numbered from 1. Sectors per track:
 | 18–24 | 19 |
 | 25–30 | 18 |
 | 31–35 | 17 |
+| 36–42 | 17 |
 
 Byte offset of (track, sector) = `(sum of sector counts for tracks 1..track-1 + sector) * 256`.
+
+## Six variants, and only one of them writable
+
+`por/d64.py` accepts **six** sizes and refuses anything else — a size we cannot name is a
+file we cannot claim to understand. Tracks 1–35 sit at the same offsets in every variant,
+which is why a 40-track image is readable by code that only knows about 35.
+
+| Size | Tracks | Error bytes | Seen here |
+|---|---|---|---|
+| 174848 | 35 | no | every save disk this project writes |
+| 175531 | 35 | yes | Curse side 4 |
+| 196608 | 40 | no | — |
+| 197376 | 40 | yes | Champions of Krynn side A |
+| 205312 | 42 | no | unseen |
+| 206114 | 42 | yes | unseen |
+
+**Error bytes are advisory and the reader does not act on them.** One byte per sector
+appended after the sector data, `1` meaning "read cleanly". On the specimens held they mark
+*padding*, not damage: all 85 sectors on Champions of Krynn side A's tracks 36–40 carry
+code 3 (no header found) and no sector chain on that disk leaves track 35. They are exposed
+through `D64.error_code` and nothing else consults them.
+
+**Only the plain 174848-byte image is writable**, enforced by `ReadOnlyImageError` on
+`write_sector`, `write_file_inplace` and `save`. The other variants are rips of other
+people's disks rather than save disks, and their directories are not always the drive's own
+work — Death Knights of Krynn's carries PETSCII art in the entries and a zero block count
+against every real file, which a rewrite that trusts the directory would corrupt.
 
 ## Directory
 

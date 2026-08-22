@@ -94,19 +94,35 @@ from the bitmask at `0x0EB`: 8 cleric/fighter, 9 cleric/fighter/magic-user,
 | `$4487` | menu verbs (`VIEW ITEMS SPELLS TRADE DROP EXIT`) |
 | `$4549` | item menu verbs (`READY TRADE DROP HALVE JOIN SELL EXIT`) |
 | `$46A6` | error strings (`CURSED`, `WRONG CLASS`, `TOO MANY…`) |
-| `$7101` | weapon names (`BARDICHE`, `BILL-GUISARME`, `CLUB`, `DAGGER`, …) |
-| `$7800` | item adjectives and magic-item names |
-| `$7926` | gem names (`DIAMOND EMERALD OPAL SAPHIRE`) |
-| `$794D` | deity names (`TEMPUS`, `SUNE`, …) |
 
-The item/weapon/gem lists will matter for inventory editing later; they are
-noted now only so we do not have to rediscover them.
+## `$7101`, `$7800`, `$7926`, `$794D` are one table — CONFIRMED
 
-**A likely connection, not yet verified.** An item's printed name is built from
-*three* indices into a single 255-entry word table — noun, qualifier, suffix — and
-that table is on disk as `ITEMNAMES`, which `por/items.py` already parses. The
-weapon names at `$7101` and the adjectives and magic-item words at `$7800` are
-almost certainly the resident copy of that one table rather than two separate
-lists. Worth confirming by reading `$7101` onward in a running game and comparing
-against the parsed file; nothing depends on it, since the disk copy is what the
-tool uses.
+They were listed here for a while as four separate string lists — weapon names,
+item adjectives, gem names, deity names. They are not four lists. They are four
+windows onto the **resident `ITEMNAMES`**, and the arithmetic is exact:
+
+`ITEMNAMES` loads at **`$6F00`** and opens with 256 low bytes and 256 high bytes
+of a pointer table, so its string block begins at `$6F00 + 512 = $7100`. Reading
+the file at each of those addresses gives:
+
+| address | file offset | reads |
+|---|---|---|
+| `$7101` | 0x201 | `BATTLE AXE`, `HAND AXE`, `BARDICHE`, `BEC DE CORB…` — word-table entry **1** onward |
+| `$7800` | 0x900 | `HUGE`, `BONE`, `BRASS`, `KEY`, `AC2`, `AC6`… |
+| `$7926` | 0xA26 | `DIAMOND`, `EMERALD`, `OPAL`, `SAPHIRE`… |
+| `$794D` | 0xA4D | `TEMPUS`, `OF SUNE`, `WOODEN`, `+3 VS UNDEAD`… |
+
+`$7101` landing exactly on entry 1 is the check that could have failed and did
+not. All four are `docs/85-item-tables.md`'s single 252-entry word table, and
+an item's printed name is three indices into it — noun, qualifier, suffix.
+
+**The base is the game's own operand, not a fit.** `LIBRARY` reads the table with
+`LDA $6F00,X / STA $07`, and the same instruction in the later titles reads
+`$9E00`. `tests/test_titletables.py` asserts it per title. The race labels are the
+same pool: `LDA $9E8C,X` is `$9E00 + 140`, so a race name is word-table entry
+`140 + race`, read straight out of `ITEMNAMES`. See
+`work/reports/p40-title-tables.md`.
+
+Nothing in the tool depends on the resident copy — `por/items.py` reads the disk
+file — but the identity is worth having, because it means one table explains every
+name the game prints for an item.

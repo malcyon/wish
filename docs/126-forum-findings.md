@@ -128,7 +128,7 @@ disks. An outside report agreeing is real evidence.
 | `ITEMNAMES` has **no name at indices 62 and 63** (`docs/125`, "things that look like bugs and are not") | marainein's DOS name-component list has two empty strings in exactly that position, between `Arrow` and `Potion` | **strong** — and it is the same table in both ports |
 | Monsters use the character record (`por/record.py` parses `MON*`) | Nol Drek: "The monsters use the same data structure as the characters"; and "every monster has maximum HP, current HP, and pre-drain HP" — our `0x076` / `0x119` / the drain pair at `0x0A1`–`0x0A2` | moderate |
 | Paladin, ranger, druid and monk are named and never instantiated in Pool of Radiance (`docs/20`, `0x073`) | GBC users who forced those classes report **no sweep attack**, and that level drain followed by restoration cycles the gender byte and awards 10,000,000 XP ([topic 1913](https://forums.goldbox.games/index.php?topic=1913.0)) | moderate — behavioural, DOS |
-| `ECL0B` is the **training hall**, not the arena (`work/reports/analysis-batch.md`: `$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall" | **strong**, and it means `docs/118`'s area table has the wrong name on id 11 |
+| `ECL0B` is the **training hall**, not the arena (`work/reports/analysis-batch.md`: `$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall", and Stephen S. Lee's guide independently: "Civilized Area (Training Hall)" | **strong**, three ways. `docs/118` has been corrected; **`por/areas.py` has not** and still says "the arena" |
 
 On our bug 2 — Sokol Keep's dead elf returning on every re-entry — **the forums
 do not report that specific bug**. What they do report, four times over, is the
@@ -146,8 +146,8 @@ of the pattern, not of the entry.
 | claim | our position |
 |---|---|
 | Caldor, [topic 4138](https://forums.goldbox.games/index.php?topic=4138.0): "So that must make the C64 use Big Endian I guess" | **Wrong.** The 6502 is little-endian and every multi-byte field we decode is LE — age at `0x074`, hit points at `0x076`, the seven money words at `0x0BB`, experience as `u24le` at `0x0E8`. He was reasoning from the Mac's 68000 and got the wrong machine. Anyone using his `GoldBoxEditor` mapping tables for C64 work should check this. |
-| Ishad Nha, [topic 1912](https://forums.goldbox.games/index.php?topic=1912.0): `GEO6.DAX` record **19** is the "Silver Dragon Den" | We have area 19 as `ECL13`, POOL6, no map of its own, and `work/reports/world-map.md` calls it the Cave of Diogenes. Both are wilderness sites on the same disk. Unresolved; the forum entry is a `GEO` record and ours is an `ECL` script, so they may not even be the same thing. |
-| The same list gives area **30** as "Lizard Man Catacombs" and **31** as "Wealthy Area" | Consistent with us once you notice his list numbers **`GEO` records**, not scripts. `docs/118` has `ECL10` (lizardman keep) loading `GEO10` **and `GEO1E`**, and `ECL18` (Temple of Bane) loading `GEO18` **and `GEO1F`** — so `GEO1E` = the catacombs and `GEO1F` = the Wealthy Area, and his "I suspect Temple of Bane and the Wealthy Area are found in the same Ecl" is confirmed by our decode. Our *script* 30 (`ECL1E`) is a different thing entirely: the demo. |
+| Ishad Nha, [topic 1912](https://forums.goldbox.games/index.php?topic=1912.0): `GEO6.DAX` record **19** is the "Silver Dragon Den" | ~~Unresolved.~~ **Resolved: the same place.** Stephen S. Lee's guide lists script 19 as *Silver Dragon Lair*, and Diogenes **is** the silver dragon. Two names for one site, and `work/reports/world-map.md`'s "Cave of Diogenes" is not in conflict with it. |
+| The same list gives `GEO` record **30** as "Lizard Man Catacombs" and **31** as "Wealthy Area" | Record 30 is agreed by everyone: `GEO1E` is Lizardman Keep's catacombs, and our *script* 30 (`ECL1E`) is a different thing entirely — the attract-mode demo, in a slot DOS's one-numbering-space scheme left free. **Record 31 is an open conflict between two third-party DOS sources**, see below. |
 | Simeon Pilgrim, 2013: the Pool of Radiance ECL "command offset is `0x6700` compared to `0x8000` used in Curse" — while marainein's listings of the same game print addresses from `0x9800` up | The two are irreconcilable as stated and neither is ours: the C64 `ECL` block is at **`$9900`** and its flag page at `$4A00`, which is what the addresses in the listings actually behave like. Take the *addresses in the listings*, not the prose. |
 | The `coab` opcode table's `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` | **Do not exist in Pool of Radiance.** The dispatch tables at `$15A9`/`$15E7`/`$1625` are 62 entries, `$00`–`$3D` (`work/reports/ecl-opcodes.md`, CONFIRMED). Curse's DOS build having three more is a difference between titles, not an error in either. |
 | Nol Drek: FRUA's combat limits are memory partitioning — 50 monsters, 3 items each, 100 events, 24×24 maps | About FRUA, a later DOS product. Nothing here constrains the C64 engine and none of those numbers should be carried over. Draxinusom's 2026 measurements ([topic 4677](https://forums.goldbox.games/index.php?topic=4677.0)) put FRUA's real ceiling at ~480 items live at combat start, sharing storage with the party's memorised spells. Interesting engineering, wrong engine. |
@@ -178,11 +178,32 @@ Numbers are `GEO` record ids. Only the rows that add something to `docs/118`:
 | 30 | Lizard Man Catacombs | `GEO1E`, shared with `ECL10` |
 | 31 | Wealthy Area | `GEO1F`, shared with `ECL18` |
 | 32 | Kuto's Well Catacombs | `GEO20`, shared with `ECL1D` |
-| — | `ECL3` record 8 City Hall, record **11 Training Hall** | id 11 is labelled "the arena" — ours is wrong |
+| — | `ECL3` record 8 City Hall, record **11 Training Hall** | `docs/118` now says training hall. **`por/areas.py` still calls id 11 "the arena"** and is the last place the wrong name survives |
 
-Confidence on the castle floors: **PROBABLE**, and cheap to promote. Warp to
-each of 3–7 in turn and match `$0400` against the disk `GEO` (`ResidentGeo`),
-then read the floor plan against the compass names.
+### Two DOS sources, two different castles — unsettled
+
+Stephen S. Lee's guide (`docs/128` §"The area table") names the same ids from the
+other end, and **it and Ishad Nha's list disagree on three rows**. Both are
+third-party and DOS; neither is ours; nothing here settles it.
+
+| id | Ishad Nha | Stephen S. Lee | verdict |
+|---|---|---|---|
+| 3 | Valjevo Castle, **North West** | Valjevo Castle (**Northwest and Southeast**) | partial — the guide has one script covering two quadrants |
+| 5 | Valjevo Castle, **South East** | Valjevo Castle **Hedge Maze** | **flat contradiction** |
+| 7 | Valjevo Castle, Upper Level | Valjevo Castle Inner Tower | no conflict; two names for the same floor, and `por/areas.py`'s "the pool" is a third |
+| 31 (`GEO1F`) | **Wealthy Area** | script 24's second map, and script 24 **is** the Wealthy Area — so `GEO1F` is the **Temple of Bane** | **flat contradiction**, and it is exactly the pair `por/areas.py` holds as `("GEO18", "GEO1F")` under the name *Temple of Bane* |
+
+They agree on 4 (Northeast) and 6 (Southwest). **`docs/128` states the guide's
+side as settled** — "ours names the wrong one of its two maps" of id 24 — without
+recording that a second third-party DOS list says the opposite. Nothing here
+settles which is right, and the note belongs on that page too.
+
+**The experiment that decides it**, and it is cheap: warp to each of 3–7 in turn,
+match `$0400` against the disk `GEO` with `ResidentGeo`, and read the floor plan.
+A hedge maze is not a castle quadrant and will not be mistaken for one, so id 5
+falls out in one look. The same run settles `GEO1F` by warping to 24 and stepping
+onto its second map. Until then both readings are PROBABLE and `por/areas.py`
+should not be changed to either.
 
 ### Curse of the Azure Bonds — Ishad Nha and manikus, [topic 1048](https://forums.goldbox.games/index.php?topic=1048.0)
 
@@ -235,8 +256,8 @@ carrying the detail. The first 56 effect numbers are the spell ids.
 at `+4` and the quantity at `+10` in `por/items.py` line up with his `0x31`
 bonus and `0x38` stack size. Two things transfer:
 
-* **"save bonus" is signed.** Our `docs/85`/`por/items.py` should read `0xFF` as
-  −1 rather than 255 wherever that field appears. Worth a check.
+* **"save bonus" is signed.** ✅ **Done** — item byte `+5` is a signed
+  saving-throw bonus in `por/items.py`, and every byte of the 16 is read.
 * **Spell ids 1–56 double as effect ids** — which matches the skill card's
   "spell ids 1-56" transfer row, and matches `0x0AD`'s note in `docs/20` that
   the effect slots share storage with item byte `+14` but not its meaning.
@@ -307,10 +328,14 @@ The ones most likely to repay a second visit, in order:
 
 ## 8. What needed a browser, and what a browser would buy
 
+**Both of the "High" rows have since been obtained**, by Donald rather than by a
+fetch, and both are written up. This table is kept for the record of what the
+block was.
+
 | source | state | worth |
 |---|---|---|
-| `gamefaqs.gamespot.com` — Stephen S. Lee's Pool of Radiance and Curse guides ([73869](https://gamefaqs.gamespot.com/pc/564785-pool-of-radiance/faqs/73869), [78365](https://gamefaqs.gamespot.com/pc/564786-curse-of-the-azure-bonds/faqs/78365)) | **403, anti-bot.** Not retried. | **High.** Cited by both Joonas Hirvonen (as the source of ECL-Monitor's parser) and Blackthorn (as the guide he is now revising from a disassembly). It is the closest thing to a published DOS engine reference. |
-| `1drv.ms` — Draxinusom's format documentation, ImHex patterns, executable-table offsets | **redirects to a Microsoft login wall.** Not retried. | **High and current** (2026). The only normalised ten-game format catalogue, and the `GEO` and character patterns overlap directly with `por/geo.py` and `por/layout.py`. |
+| `gamefaqs.gamespot.com` — Stephen S. Lee's Pool of Radiance and Curse guides ([73869](https://gamefaqs.gamespot.com/pc/564785-pool-of-radiance/faqs/73869), [78365](https://gamefaqs.gamespot.com/pc/564786-curse-of-the-azure-bonds/faqs/78365)) | ~~403, anti-bot~~ **obtained** | **High, and it delivered.** Its §12.3.3 lists the same 62 ECL opcodes we derived from the VM's own dispatch tables, with semantics we had not; §12.4.1 names 229 script flags in English against our 172 addresses; §12.2.3 enumerates 127 effect ids, which is the namespace `por/traits.py` now carries. Write-up: [128-guide-and-scripting.md](128-guide-and-scripting.md) |
+| `1drv.ms` — Draxinusom's format documentation, ImHex patterns, executable-table offsets | ~~Microsoft login wall~~ **obtained** | **High, and it delivered.** The ImHex patterns confirmed our four-plane `GEO` decode outright; `GB_FileFormat.xlsx`'s `CHR_01` covers all 285 DOS bytes and named `gap_0d7`; `EXE_Offset` pointed at the two executable tables that closed the saving-throw question. Write-ups: [127-community-formats.md](127-community-formats.md) and [128](128-guide-and-scripting.md) |
 | SMF's own search | needs a POST and a session; not attempted | Low. The board index is only 16 pages and reading it was cheaper. |
 | Attachments on `forums.goldbox.games` (Ishad Nha's spreadsheets, the two ready-made playtester saves, the Gold Box password list) | `action=dlattach` links; not fetched — they are binaries, several are game data, and none is needed for anything above | Low, and two of them are things we must not commit anyway. |
 

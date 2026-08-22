@@ -1,8 +1,14 @@
 # Pool of Radiance (C64) — Overview
 
 SSI, 1988. Eight disk sides plus a boot disk and a user-created save disk. This project
-reverse engineers enough of the game to build a **character editor**; it is not a port and
-not a full disassembly.
+reverse engineers the game to build a **character editor and a live automapper**; it is not
+a port and not a full disassembly.
+
+Pool of Radiance is the reference title, not the only one. `por/games.py` carries save
+geometry, race, class and item-name tables for **six** Gold Box titles, and a Curse of the
+Azure Bonds or Secret of the Silver Blades save opens and round-trips byte-identically
+through the same code. See [116-second-game.md](116-second-game.md) and
+[121-silver-blades.md](121-silver-blades.md).
 
 ## Disks on this machine
 
@@ -61,7 +67,9 @@ demand rather than holding everything resident. Relevant groupings:
   `SPRITE*`, `COMPIC*`, `WALLSET*`/`WALLDEF*` (graphics), `MON*` (monsters),
   `ITEMFILE*` / `ITEMS` / `ITEMNAMES`, `SPELLE*` / `SPELLN*` (spells), `CHARSET`, `MUSIC`
 
-Only `LOAD/SAVE`, `CAMP` and `INIT` matter for a character editor. The rest is out of scope.
+**The `SPELLN*` stem is misleading.** `SPELLN00` is the spell-name table; `SPELLN64` is
+**not a spell-name table in either Pool of Radiance or Curse**. Its payload is the
+`ALTER`/combat-icon editor's menu strings, and `por/iconparts.py` reads it as such.
 
 Note: the *game data* files are reported elsewhere to be ByteKiller-compressed. The **save
 data is not** — it is stored uncompressed, which is why this project is tractable.

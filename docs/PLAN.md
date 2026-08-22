@@ -12,6 +12,15 @@ The work is staged deliberately: tools → discovery → one small proven change
 (eventually) a PyQt editor. Nothing about the editor gets built until the record layout is
 proven by controlled experiment.
 
+**All five phases below have landed, and the scope has grown past what this plan
+scoped.** The editor and the automapper are one PyQt6 window; the CLI is a
+separate command; `por/games.py` carries six titles rather than one; the `GEO`
+maps, the `ECL` bytecode VM and the persistent quest flags are all decoded,
+none of which a character editor needs. This document is kept as the plan it
+was — the reasoning, and the errors it records on purpose — but
+**[README.md](README.md) is the current statement of where things stand**, and
+the per-topic docs 96 through 128 are where live work is written up.
+
 **Two decisions that shape everything below:**
 
 1. The shipped editor is a **file tool with zero emulator dependency** — it opens a `.D64`,
@@ -69,9 +78,11 @@ checklist of *which fields exist*.
 ### Environment facts that shape the plan
 
 - VICE 3.10 Flatpak **does** have `-binarymonitor` / `-binarymonitoraddress` compiled in.
-- But `flatpak info --show-permissions net.sf.VICE` shows **no `shared=network`** — the sandbox
-  has its own network namespace, so a host-side client cannot reach `127.0.0.1:6502`.
-  Fix: add `--share=network` to the `flatpak run` line in `~/.local/bin/pool-of-radiance`.
+- The sandbox once had **no `shared=network`**, so a host-side client could not reach
+  `127.0.0.1:6502`; the fix was `--share=network` on the `flatpak run` line in
+  `~/.local/bin/pool-of-radiance`. **`shared=network` is now granted to the app**, so that
+  gotcha is history. The flatpak also grants `filesystems=home`, which is why a config or a
+  disk copy under `/home/donald/src/wish/work/` is visible inside it.
 - `c1541` works from the Flatpak (`flatpak run --command=c1541 net.sf.VICE`) and reaches
   `/mnt/media` (it is in the Flatpak's filesystem grants).
 - `/home/donald/src/wish` is an empty repo already seeded with the standard Python `.gitignore`.
@@ -82,7 +93,9 @@ checklist of *which fields exist*.
   looks like a corrupt disk image rather than a loader conflict.
 
 **Safety rule for the whole project:** never write to
-`/mnt/media/roms/c64/Pool of Radiance Disks/*`. Copy disks into `work/` first. `POOL1.D64.orig`
+`/home/donald/c64/Pool of Radiance Disks/*` — which is the spelling `CLAUDE.md` and the code
+use for the same directory `/mnt/media/roms/c64/Pool of Radiance Disks/` names through a
+symlink. Copy disks into `work/` first. `POOL1.D64.orig`
 is the pristine side-1 image — `POOL1.D64` has already been modified by the game (it has a
 `.brutus` written to it), so diff against `.orig`, not against `POOL1.D64`.
 
@@ -92,6 +105,8 @@ is the pristine side-1 image — `POOL1.D64` has already been modified by the ga
 
 One repo, split along the **packaging** boundary so PyInstaller bundles the editor without
 dragging in throwaway discovery scripts. Cheap now, irritating to retrofit later.
+
+As planned:
 
 ```
 wish/
@@ -110,6 +125,21 @@ wish/
   work/         # scratch disk copies — gitignored
   tests/
 ```
+
+**The boundary held; the package count did not.** `por/` is still transport-free
+and still the single source of truth, and `editor/` still never imports
+`automap/`. What was added:
+
+| package | why it is not in the plan above |
+|---|---|
+| `automap/` | Phase 5. Quarantined so the "editor never talks to VICE" promise is structural rather than a convention |
+| `wish/` | the tabbed window, the single shared live connection, the backend registry — see [99-one-window.md](99-one-window.md) |
+| `packaging/` | PyInstaller entry point and the Windows console-stream repair |
+| `skills/goldbox/` | the transferable method, for a cold agent on a new title |
+
+`tools/wish.py` breaks the "never ships" rule for `tools/` deliberately: the CLI
+is `wish-cli` and it is in the wheel. Everything else under `tools/` is still
+discovery.
 
 - `d64.py` reuses the sector geometry already validated this session
   (tracks 1–17: 21 sectors, 18–24: 19, 25–30: 18, 31–35: 17; directory chain from 18/1).
@@ -139,6 +169,12 @@ All verified working. Results are recorded inline below.
    `this.process`, which stays null when attaching, so it will not kill your emulator.
    This is a local fork — re-apply the patch if it is ever re-cloned or updated upstream.
    Exposes 21 tools (the README's "32" is stale).
+   **Still registered, and no longer the only client.** The project grew its own
+   monitor client, `automap/vice.py`, because the shipped tool cannot hold a
+   connection open across a session and the whole automapper depends on that. Use
+   the MCP for one-off probes; use `automap/vice.py` for anything that walks. Both
+   must match responses **by request id** — see the protocol gotcha under
+   Verification — and only one of them may be attached at a time.
 5. `uv init` the repo; add `pytest`. PyQt6 is not installed until Phase 4.
 
 Not installing **RetroDebugger**: it has no Linux AppImage or .deb (CMake source build via
@@ -151,21 +187,19 @@ something those cannot show us.
 Build `por/d64.py`, `por/layout.py`, `por/record.py`, `por/savegame.py` and the `tools/` scripts.
 No emulator involvement in any of this code.
 
-**Knowledge base** — written as we go, not at the end:
+**Knowledge base** — written as we go, not at the end. The eight documents this
+phase planned all exist and have been joined by forty more;
+**[README.md](README.md) is the index** and is the only place that lists them
+all, because a second list is a list that goes stale. Three of them carry rules
+rather than findings and are worth naming here:
 
-- `docs/PLAN.md` — this document. Lives in the repo and is kept current as phases land;
-  it is the project's living plan, not a snapshot.
-- `docs/00-overview.md` — the game's disk/overlay structure, how a session loads.
-- `docs/10-disk-format.md` — D64 geometry, PoR's file naming, the `$01`-prefixed character files.
-- `docs/20-character-record.md` — the field table, **generated** from `por/layout.py`
-  by `tools/gendocs.py`, so it cannot drift from the code.
-- `docs/30-savegame-layout.md` — `SAVEDGAME0`/`SAVEDGAME1` structure, slot map, header region.
-- `docs/40-memory-map.md` — live addresses, which overlay owns what.
-- `docs/70-driving-the-game.md` — how to automate the game under VICE, and what does
-  not work. Written after the input layer cost significant time.
-- `docs/README.md` — index, plus an honest settled / open / blocked summary.
 - `docs/50-experiments.md` — append-only log: hypothesis, method, result, date. Failed
-  experiments stay in; they are the expensive knowledge.
+  experiments stay in; they are the expensive knowledge, and this is the only
+  document that gets length.
+- `docs/20-character-record.md` — **generated** from `por/layout.py` by
+  `tools/gendocs.py`, so it cannot drift from the code. `85`, `86`, `87`, `88`
+  and `89` are generated too, and need a game disk.
+- `docs/README.md` — index, plus an honest settled / open / blocked summary.
 
 ## Phase 2 — Discovery
 
@@ -193,26 +227,40 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
    — experience, level, damage, inventory. Between them the two methods produced
    the inventory format ([the shopping trip](50-experiments.md)), experience and the coin fields, the combat icons
    ([the combat-icon edits](50-experiments.md)), and seven fields from one varied party ([the six-character comparison](50-experiments.md)).
-4. ~~**Watchpoints, via the MCP.**~~ ❌ **Abandoned — they never worked.** Repeated
-   attempts either reported no hits on bytes that were unquestionably read, or fired
-   and left the machine stopped because the hit was never acknowledged (see [the two dead ends in driving VICE](50-experiments.md) and
-   the copy-wheel notes). Either the `CHECKPOINT_SET` encoding or the hit-count offset
-   is wrong, and it was never worth the time to find out: comparing saved data proved
-   faster than watching the game read it. Revisit only if a field resists every
-   diffing approach.
-5. **Disassemble the save path only.** ⏳ *Not started for `LOAD/SAVE`.* The tooling is proven; it simply has not been needed for save data. `LOAD/SAVE`, `CAMP` and `INIT` on POOL1.D64 are the PRGs
-   that matter (each carries its load address in its first two bytes, so `da65` gets correct
-   addressing for free). No whole-game disassembly — the overlay data (`ECL*`, `GEO*`, `PIC*`,
-   `MON*`) is out of scope for a character editor.
-6. **The fields still unfound.** The level-drain pair and the remaining item
-   effect bytes. The portrait pair (`0x0FE`/`0x0FF`) and the size flag
-   (`0x099`) are both found. The party's
-   **map coordinates are found** — `$49C0`/`$49C1`, with facing at `$49C2`. Racial traits have a strong candidate at `0x0AD` but no
-   decoded meaning. THAC0 and damage are both found — THAC0 as a base in the
-   record and a current value in the roster, damage in the item-type table. The full list with its evidence lives in
+4. ~~**Watchpoints, via the MCP.**~~ ~~❌ Abandoned — they never worked.~~
+   ✅ **They work, and the abandonment was wrong.** Repeated early attempts either
+   reported no hits on bytes that were unquestionably read, or fired and left the
+   machine stopped because the hit was never acknowledged. The cause was not the
+   `CHECKPOINT_SET` encoding: it is that **the connection must be held open and
+   `resume()`d rather than closed** — VICE re-enters the monitor on the connection
+   that was live when it stopped, and with that socket gone the emulator freezes.
+   Held open, watchpoints settled the character-creation question in one run. See
+   `docs/70-driving-the-game.md`. The corollary is the hazard: **never leave a
+   checkpoint armed when a socket closes**, and delete every checkpoint at the end
+   of every experiment.
+5. **Disassemble the save path only.** ⏳ *Still not started for `LOAD/SAVE`* — the
+   tooling is proven and it has simply never been needed for save data.
+   **The rest of this item is superseded.** "No whole-game disassembly — the
+   overlay data is out of scope for a character editor" was right about the
+   editor and wrong about the project: `ECL*` is decoded to 100% of every byte
+   across thirty scripts, `GEO*` is decoded and every Phlan city block matched to
+   its file, `MON*` parses through the character record, and static scans of
+   `DUNGEON`, `COMBAT`, `CAMP`, `GEN`, `LIBRARY` and `SPELLE*` are what named the
+   level-drain pair, the NPC flag, the effect list and the class ceilings after
+   months of save-diffing had failed on them. Reading the code turned out to be
+   the cheapest technique in the project, not the most expensive.
+6. **The fields still unfound.** The list this item carried has almost entirely
+   closed. `0x0AD` is not a racial trait mask with "no decoded meaning" — it is a
+   ten-slot list of **active effect codes**, seeded per race by `GEN $0BF3` from a
+   table indexed by the race byte, and its 129-code namespace is named (44
+   CONFIRMED, 84 PROBABLE) in `por/traits.py`. The level-drain pair is `0x0A1`/
+   `0x0A2`, read off the drain and restoration routines. Every one of the sixteen
+   item bytes is read. The portrait pair, the size flag, THAC0, damage and the
+   party's map coordinates at `$49C0`/`$49C1`/`$49C2` were already found when this
+   was written.
+   The full list with its evidence lives in
    `docs/80-fields-wanted.md` §Still wanted — that file is the source of truth and
-   this list is deliberately not a copy of it. Level and memorised spells came off
-   that list via `npc_party.d64`.
+   this list is deliberately not a copy of it.
 7. **The rest of the `SAVEDGAME1` roster block.** Its extent is settled — eight
    blocks filling `$8300`–`$83FF` — and about nineteen of the thirty-two bytes per
    block are still unread. THAC0 turned out to be `+0x0E`, stored as `60 - THAC0`
@@ -220,17 +268,27 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
    and `60 - x` the first encoding to try. Roster byte `+0x0C` is a specific open
    question: `$80` for every NPC in one save and for one player character in
    another.
-8. **Record byte `0x0B8`** — BRUTUS is the only character whose copy changed,
-   0 to 1, when the party equipped. It was suspected of causing his extra point
-   of armour class; that turned out to be our dexterity table, so `0x0B8` is now
-   an unexplained equipment-linked byte with nothing pinned to it.
-9. **Item effect bytes.** Mostly settled: `+0` indexes the `ITEMS` type table,
-   `+6`'s low bits are the hidden-name mask, `+7` bit 7 is cursed, and
-   `+13`–`+15` are a scroll's spells or a wand's charges. Only `+5` is left --
-   0 on 162 of 163 game items and 251 on CURSED NECKLACE alone.
-10. **What marks an NPC.** Eight record bytes read `$FF` for every NPC and `$00`
-    for every player character; `wish` reads and writes them as `npc:`. Which one
-    the game tests is unknown, so the flag has never been proven writable.
+8. ~~**Record byte `0x0B8`** — an unexplained equipment-linked byte with nothing
+   pinned to it.~~ ✅ **Explained, and it was never equipment-linked.**
+   **Bit 7 is the "this is an NPC or a monster" flag** — the byte the game itself
+   tests, in every overlay, and the one the party-count routine tallies player
+   characters with under a `CMP #$06` that is the six-PC limit in code rather
+   than in anecdote. **Bit 0 records that an ability score was altered at the
+   trainer**: `GEN $155D` sets it straight after `INC`/`DEC $6B14,X` and clears it
+   again if the change is cancelled — and *nothing anywhere reads it back*, which
+   is the answer to the forum rumour that altering a score is penalised in play.
+   BRUTUS's 0 → 1 was bit 0, not equipment. The DOS record additionally reads
+   bits 0–6 as morale, which is PROBABLE here.
+9. ~~**Item effect bytes.**~~ ✅ **Done. `+5` is a signed saving-throw bonus** —
+   which is why CURSED NECKLACE alone reads 251, i.e. −5. Every one of the
+   sixteen bytes is read: `+0` indexes the `ITEMS` type table, `+6`'s low bits are
+   the hidden-name mask, `+7` bit 7 is cursed, `+13`–`+15` are a scroll's spells
+   or a wand's charges, and `+14` is an effect id or a spell id according to
+   `+15` bit 7.
+10. ~~**What marks an NPC.**~~ ✅ **`0x0B8` bit 7** (see item 8), and `wish` writes
+    that bit alone. The eight `$FF` bytes this item pointed at are **fill
+    residue**: they already read `$FF` in the shipped `MON*` files, before any
+    save exists. `wish` leaves them untouched.
 11. ~~**The spell id table.**~~ ✅ **DONE.** `SPELLN00`, read through its pointer
     table because the strings overlap. Six class/level groups, ids 1-55. See
     `docs/86-spell-table.md`.
@@ -239,12 +297,24 @@ Scripted, repeatable experiments; each appends to `docs/50-experiments.md`.
     attributes in plane 2, and passability as **two bits per edge** in plane 3.
     A wall and a barrier are separate fields, which is why five readings failed.
     Confirmed against `simeonpilgrim/coab` and verified on our own 29 files at
-    0.991 edge reciprocity. See [GEO is solved](50-experiments.md).
-    What remains is **which file is which area**, and bits 0-6 of plane 2.
-13. ~~**The monster table.**~~ ✅ **Largely done.** 117 files, `MON00`-`MON7C`,
+    0.991 edge reciprocity, and independently against the community's ImHex
+    `GB_GEO` pattern, which parses the same four planes for all ten titles. See
+    [GEO is solved](50-experiments.md).
+    Both remainders have closed: **which file is which area** — nine Phlan city
+    blocks matched at φ 0.733 to 0.992 with nothing else above 0.316, and the
+    area id is `$4BC2` — and **bits 0-6 of plane 2**, which are a per-square
+    **script id**: the area's own ECL does `AND <mask>, ATTR, [v]` then
+    `ONGOTO idx=[v]`. The mask is the area's, not ours: eighteen scripts mask
+    `$7F`, the dungeon-floor family masks `$1F`, and in that family alone the two
+    freed bits suppress a random encounter and halve its rate.
+13. ~~**The monster table.**~~ ✅ **Done.** 117 files, `MON00`-`MON7C`,
     one monster each, using the **character record layout** — which is why the
-    race table ends `MONSTER=8`. Names, abilities, class, age and hit points all
-    decode; armour class, hit dice and experience value do not yet.
+    race table ends `MONSTER=8`. The three that did not decode when this was
+    written now do: **armour class** is `0x0E1` as `60 - AC`, **hit dice** is the
+    attack block at `0x0D9`-`0x0E0`, and **experience value** is `0x0F7`-`0x0F8`
+    with a per-hit-point bonus at `0x0F9` — proven from `POST.COM $09BB` and
+    checked against the published AD&D 1e awards (GOBLIN GUARD 10, HOBGOBLIN 20,
+    OGRE 90). `0x0D7` is the creature type, and `0x10C` the combat behaviour.
 
 ### Prove one change at a time through edits
 
@@ -272,10 +342,15 @@ since was located by diffing and has *never been written back and confirmed in
 game* — being able to read a field is not evidence we can change it. Each of
 these is one edit and one look at the character sheet:
 
-6. **Armour class** (`SAVEDGAME1` `+0x0F`, as `60 - AC`) — the first real test of
-   whether the roster blocks are writable at all, and whether the game trusts the
-   cache or recomputes over it.
-7. **Current hit points** (`+0x19`) and **movement** (`+0x1B`), same blocks.
+6. ~~**Armour class** (`SAVEDGAME1` `+0x0F`, as `60 - AC`)~~ ✅ **DONE, and the
+   roster blocks are writable.** MALCYON was edited to armour class 1 and 11 hit
+   points — two bytes, `$830F` and `$8319`, with `SAVEDGAME0` byte-identical —
+   booted, and the game showed `AC 1` and `HITPOINTS 11` on both the party list
+   and the character sheet, then wrote the same page back when it saved. **The
+   game reads that cache and does not recompute over it.** Everything living only
+   in the roster is editable for real.
+7. ~~**Current hit points** (`+0x19`)~~ ✅ done in the same edit. **Movement**
+   (`+0x1B`) is still unwritten.
 8. **Experience**, and whether the game re-derives level from it on load.
 9. **Class, race, alignment and sex** — all decoded, none ever edited. Race and
    class are the likeliest to be rejected or to corrupt a character, so prove
@@ -294,9 +369,11 @@ these is one edit and one look at the character sheet:
     appears in camp. Both are decoded and named now, so this tests writing rather
     than reading — including whether the game accepts a memorised spell the
     character does not know.
-14. **A hand-built item.** Copy one of the 1989 editor's 162 records into an empty
-    inventory slot and see whether the game accepts it. That is the whole of
-    "constructing an item", and it is one edit away.
+14. ~~**A hand-built item.**~~ ✅ **DONE — the game accepts a constructed item.**
+    See [a constructed item is accepted by the game](50-experiments.md). And the
+    1989 editor's 162 hand-made records are no longer the source: `template:`
+    copies any of the **163 real records off the game's own disks**, which brings
+    the bytes we do not understand with it. `docs/87-item-templates.md` lists them.
 
 ## Phase 3 — CLI character editor
 
@@ -348,9 +425,15 @@ Remaining, in rough order of value:
      currently writes the highest of the per-class levels and says so in its
      change list. Sum, maximum, or first class — no evidence either way. A
      multi-class character above level 1 settles it, and nothing else will.
-   * **The level-drain pair** — undead drain levels, so the game should track a
-     current and a "true" level to restore to. Expect a pair per class. Testable
-     at last, now that specimens above level 1 exist.
+   * ~~**The level-drain pair** — expect a current and a "true" level, a pair per
+     class.~~ **Found, and it is not that shape.** `0x0A0` is the current level
+     and `0x0A1`/`0x0A2` are how many levels and hit points the drain took — a
+     current-plus-delta pair, not current-and-true, which is why no "true level"
+     was ever found and why there is only one pair rather than one per class. Read
+     off the routines: `SPELLE02` loops `DEC $6B76 / DEC $6BED / INC $6BA2 /
+     DEC $6C19` then `INC $6BA1`, and `RESTORATION` in `SPELLE04` reverses it
+     exactly. What is still wanted is a **specimen** — no character of ours has
+     been drained in play.
 9. **Prove a level edit in game.** Changing level without touching experience
    also answers whether the game re-derives one from the other on load, which
    decides whether the editor must write both.
@@ -359,52 +442,64 @@ Remaining, in rough order of value:
    the circumstance that separates it. Every pair already understood turned out
    to be **base versus current** or **potential versus actual** — none was a
    redundant copy — so the two still marked ASSUMED are more likely to be hiding
-   a field than to be duplicates. Concretely: get a character **level-drained by
-   undead** and see whether `0x0A0` and the per-class array part company, which
-   would make `0x0A0` "highest level attained" and give us the drain pair in the
-   same stroke.
-11. **Racial traits, properly.** `0x0AD` was the strongest candidate and is now
-    **ruled out as a general trait mask**: gnomes and halflings read 0, and both
-    races are rich in AD&D traits. It remains unexplained and specific to elves
-    and half-elves. What is left:
+   a field than to be duplicates. The concrete experiment this item proposed —
+   drain a character and see whether `0x0A0` and the per-class array part company,
+   making `0x0A0` "highest level attained" — has been answered the other way, and
+   without the emulator: **there is no "highest level attained"** (item 8 above).
+   The saving throws have gone the same way: they looked like a stored value with
+   no derivation and turned out to be **derivable exactly** — the class-table row
+   for the level, best number in each column across every class held, minus the
+   AD&D constitution bonus for a dwarf, gnome or halfling, satisfied by 78 of 79
+   records.
+11. ~~**Racial traits, properly.** `0x0AD` … remains unexplained and specific to
+    elves and half-elves.~~ ✅ **Explained, and by reading the code rather than by
+    flipping bits.** `GEN $0BF3` seeds the list from `[1, 0, 107, 0, 124, 0, 0, 0]`
+    **indexed by the race byte itself**, which is 1-based: elf is race 2 and is
+    born with 107, half-elf is race 4 and is born with 124, and every other race
+    is born with an empty block. That is exactly the "specific to elves and
+    half-elves" pattern, with the reason.
+    It is not a trait *mask* at all: it is **ten slots of active effect codes**,
+    written by spells and readied items as well as by birth, and sharing storage
+    (but not meaning) with item byte `+14`. The namespace is named — 129 codes,
+    44 CONFIRMED off `MON*` carriers and the *Monster Manual*, 84 PROBABLE from
+    the DOS guide. `por/traits.py`.
     * ~~**Get specimens of the missing races.**~~ ✅ Done — `PORSAVE10.D64` has
       a gnome and a halfling, and half-orc turns out to be NPC-only and readable
       from the monster files.
-    * **Repeat Donald's Gold Box Companion experiment on the C64.** Set a trait,
-      change the race, save, and see which byte keeps the trait. That is what
-      showed traits are stored per character rather than derived from race.
-    * **Change one bit of `0x0AD` at a time** on a throwaway elf and look for a
-      trait appearing or disappearing in play — the only way to map bit to
-      meaning.
+    * ~~**Change one bit of `0x0AD` at a time** on a throwaway elf.~~ No longer
+      the only way to map code to meaning, and it was never going to be a *bit*
+      map — each slot holds a whole code.
     * ~~**Check `0x099`.**~~ ✅ Done, and it is not a trait at all: gnomes and
       halflings read 0 with the dwarves, which makes it the **size** flag
       (small versus large) and the icon large/small flag the editor wanted.
-12. **The two class fields — partly answered.** They **can** disagree: four NPC
-    records in the shipped game do, and where they part company the bitmask
-    matches reality (`DWARVEN FIGHTER` has a fighter's bits, a fighter's name and
-    a cleric's code). So they are not duplicates. What is still unknown is which
-    one the *game reads*, and the experiment below is unchanged.
-    `char_class` (`0x073`) and `class_bits` (`0x0EB`)
-   encode the same thing twice and agree in all twenty specimens, so nothing says
-   which the game reads. `class_bits` shares its bit order with the item-type
-   usage mask, which makes it the likely answer to "what may this character
-   wield" — and the likely target of Gold Box Companion's four checkboxes.
-   `wish` now keeps the two in step, so separating them needs a deliberate hex
-   edit rather than falling out of a `classes:` change.
-13. **What the trainer does to an ability score.** One save, one score altered
-    at the trainer, one save, one diff. It settles whether the game keeps a true
-    score beside the current one — the pattern every other pair here has turned
-    out to follow — and it is the only way to test the forum rumour that altering
-    scores is penalised in play. Also the cheapest safety check available for
-    `wish`, which writes those six bytes directly.
-14. **Find the first quest flag.** The header `$4900`–`$4BDF` is now the only
-    candidate — `SAVEDGAME1` past `$8400` turned out to be code — so whatever
-    the game remembers about the world fits in `$2E0` bytes, if it is saved at
-    all. The walk experiment already opened the header —
-    position, facing and a counter came out of it — and left two bytes behind,
-    `$4A07` and `$4BC6`, that moved only when the party left the inn. Those are
-    the first candidates for indoors/outdoors or for a location flag. The
-    fortune teller in the slums is the next isolated action worth diffing.
+12. ~~**The two class fields — partly answered.**~~ ✅ **Answered.** They are
+    **different fields, not two copies of one**, proved by building a save where
+    they disagree and looking at what the game did with it: **`0x073` is what the
+    character sheet prints, and `0x0EB` is what the game ANDs against an item's
+    class-usage byte.** So "which one does the game read" has no single answer —
+    each is read for its own purpose, which is why the shipped `DWARVEN FIGHTER`
+    can carry a fighter's bits and a cleric's code without being broken.
+    `class_bits` remains the field to prefer for anything about capability.
+13. **What the trainer does to an ability score.** ✅ **Largely answered from the
+    code.** `GEN $155D` sets **bit 0 of `0x0B8`** immediately after the
+    `INC`/`DEC $6B14,X` that moves the score, and clears it again if the change is
+    cancelled. **Nothing anywhere reads that bit back**, which is as close as a
+    static read gets to disposing of the forum rumour that altering scores is
+    penalised in play. No second "true score" array was found beside the six
+    bytes — but note that *Curse* fills a second seven-byte ability array at
+    `0x065` which Pool of Radiance leaves at zero, and which of the two that game
+    treats as current is still NOT FOUND (`docs/116` §2.2). One trainer
+    before-and-after diff would still be worth having.
+14. ~~**Find the first quest flag.**~~ ✅ **Done, and then the whole region.** The
+    prediction held: it is in the header, and `$4A20`–`$4AF8` is the persistent
+    block. `work/reports/quest-flags.md` gives all 352 bytes of `$4A20`–`$4B7F` a
+    disposition — 172 named by a direct ECL operand, 7 more as proven table
+    interiors, **135 shown not to be flag storage at all**, and 38 unreferenced
+    gaps. `$4A00`–`$4A1F` is per-script scratch that `DUNGEON $282E` zeroes on
+    every area change, which fixes the lower boundary exactly. The DOS guide
+    independently names 229 of the same addresses in English and agrees on both
+    boundaries and on all five unreferenced gaps. `por/commissions.py` reads the
+    26-entry quest ledger at `$4AA6` and the editor draws it as a quest panel.
 15. **Prove losslessness for states no specimen contains.** The class-field bug
     was invisible to every round-trip test, because all of them run over real
     saves and every real save has those fields in agreement. A round-trip test
@@ -414,14 +509,20 @@ Remaining, in rough order of value:
     round-trips it: `level` against the per-class array, `hp_max` against the
     roster's current, the base and current THAC0 and armour class. The one for
     the class fields exists and is the template.
-16. **Explain record byte `0x0B8`.** Unready and re-ready BRUTUS's armour,
-    saving at each step, and watch whether it tracks equipment. His armour class
-    is no longer a puzzle, but this byte still is.
+16. ~~**Explain record byte `0x0B8`.**~~ ✅ Done — see Phase 2 item 8. It does not
+    track equipment; bit 7 is the NPC flag and bit 0 is the trainer's
+    score-altered marker.
 
 ## Phase 4 — GUI character editor  ✅ BUILT
 
-`python -m editor [SAVE.D64]`. A PyQt6 front end over the same `por/` library.
-PyInstaller packaging is still to do.
+`wish`, on the Character Editor tab of the one window; `python -m editor` still
+opens it alone. A PyQt6 front end over the same `por/` library.
+
+**PyInstaller packaging is built too** — `wish.spec`, a `packaging/` entry point
+that repairs the Windows console streams, and a `release.yml` that runs the whole
+suite before it builds anything and asserts on `wish.exe --version`. What has not
+happened is a **tag**: nothing below has been run against a real release page.
+See [106-releases.md](106-releases.md) and [122-release-testing.md](122-release-testing.md).
 
 The library is already the right shape for this: `por/` holds the file formats and
 `por/layout.py` is a declarative field table, so a GUI can render its widgets from
@@ -445,8 +546,10 @@ and that is exactly the question a GUI has to answer.
 ## Phase 5 — Live memory and an automapper  ✅ BUILT (VICE only)
 
 The `automap/` package: a PyQt6 window that reads a running game and draws the
-map as the party walks. **VICE only** so far; the Commodore 64 Ultimate backend
-is the reason `Target` is two methods wide and nothing else.
+map as the party walks, and swaps to a combat view while a fight is on. **VICE is
+the only backend anyone has run.** A Commodore 64 Ultimate backend is written, in
+`wish/ultimate.py`, and is **unverified** because nobody on the project has the
+hardware; it is offered only when `$POR_ULTIMATE` names a device that answers.
 
 It is a **separate top-level package** on purpose. Decision 1 at the top of this
 plan says the shipped editor is a file tool that never talks to VICE, so
@@ -461,10 +564,18 @@ guessed: they are in the `SAVEDGAME0` header at `$49C0` (x), `$49C1` (y) and
 `$49C2` (facing), established by walking known distances and diffing. Walking
 leaves `SAVEDGAME1` byte-identical, which rules it out. Its first eight 32-byte
 blocks are the party roster (see `docs/30-savegame-layout.md`); everything past
-`$83FF` is still unread. `GEO*` is decoded and every Phlan city block is matched to its file, so a map can
+`$83FF` is **resident code and a graphics buffer**, not save data at all.
+`GEO*` is decoded and every Phlan city block is matched to its file, so a map can
 be drawn today. **Which map a save is on is `$4BC2`**, so a save-file automapper is
 complete: position, facing, walls, doors and area all decode. See
 [the area id](50-experiments.md).
+
+Two live findings this plan could not have predicted. **`$49C0` lags a move** —
+read straight after a step it gives the previous square — so the mapper reads the
+game's own status line first and falls back to memory, tagging each fix with its
+source. And **the running game leaves the whole `GEO` at `$0400`**: the file is a
+PRG loading there and the loader does not relocate it, so in the world (where the
+screen has moved to `$CC00`) the map is simply sitting in RAM to be read.
 
 ---
 
@@ -489,8 +600,13 @@ A and B converge at `por/savegame.py`, which is written once both have landed.
 
 - **Anything touching the emulator.** One VICE instance, one port 6502. Concurrent agents
   would fight over the monitor socket and over the game's single save disk. This is
-  now a hard rule rather than a caution: VICE serves **one** text-monitor connection
-  per run, and closing it deafens every monitor including the binary one.
+  now a hard rule rather than a caution: VICE serves **one** binary-monitor connection
+  *per process* — it accepts a second TCP connection and then silently ignores it — and
+  closing the text monitor deafens every monitor including the binary one.
+  **The limit is per process, not per machine**, so the way out is a pool of
+  emulators rather than a queue of agents; that is costed in
+  [123-parallel-sessions.md](123-parallel-sessions.md) and **nothing is built**,
+  so the one-instance rule stands until it is.
 - **Phase 2 differential experiments.** "Change exactly one thing, then diff" *is* the method;
   running experiments concurrently destroys the attribution that makes the results mean
   anything.
@@ -504,7 +620,7 @@ A and B converge at `por/savegame.py`, which is written once both have landed.
 
 - **Phase 0 — done, observed:** `da65` and `r2` installed; ImHex installed
   (`net.werwolv.ImHex`); with `POR_DEBUG=1` port 6502 opens within 1s, confirming
-  `--share=network` was the missing piece; the MCP attaches to the already-running emulator
+  `--share=network` was the missing piece at the time; the MCP attaches to the already-running emulator
   (`vice_connect` -> "Connected to VICE x64sc on port 6502") and `vice_memory_read`
   (parameter is `start`, not `address`) returns memory.
   **Protocol gotcha, cost an hour if rediscovered:** VICE interleaves *unsolicited* events into

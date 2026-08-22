@@ -266,6 +266,18 @@ cmp TESTSAVE.D64 ROUNDTRIP.D64      # expect: no output
 
 *If they differ,* stop. Everything else in the tool depends on this property.
 
+**L11a.** The same, on a **second title**. `por/games.py` detects the title from
+the save file's own name and load address and carries geometry for six of them, so
+this is the step that proves the frozen build ships that table rather than
+defaulting everything to Pool of Radiance. Copy a Curse of the Azure Bonds save
+disk (`SAVEAZURE`) or a Secret of the Silver Blades one (`SAVEDBASH`) beside its
+own game disks and repeat L11 against it.
+
+*Expect:* the export names the right title, the party decodes, and the re-import
+is byte-identical. *If the export refuses the disk,* the title table did not make
+it into the package — that is a release blocker for the same reason L9's
+`ModuleNotFoundError: tools` is.
+
 **L12.** Boot `CLI-EDITED.D64` in the game as in L7, and confirm gold. Then
 `deactivate` the venv.
 
@@ -514,6 +526,7 @@ Tick as you go. `n/a` where a row does not apply to that platform.
 | L10 | CLI export / dry-run / import round trip | ☐ | n/a |
 | L10 | `--output` over the original is refused | ☐ | n/a |
 | L11 | unedited round trip is byte-identical | ☐ | n/a |
+| L11a | the same, on a Curse or Silver Blades save | ☐ | n/a |
 | W1 | VICE installs and starts | n/a | ☐ |
 | W2 | binary monitor enabled and survives a restart | n/a | ☐ |
 | W5 | SmartScreen warning cleared, program runs | n/a | ☐ |

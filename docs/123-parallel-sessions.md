@@ -20,14 +20,14 @@ answers.
   thing blocking the first `v*` tag: thirteen rows of
   [`122-release-testing.md`](122-release-testing.md) are marked unverified
   because nobody here has Windows. It has nothing to do with DOSBox.
-* **DOSBox needs a game, not a hypervisor.** It runs natively on Linux. The
-  dependency is a DOS copy of Pool of Radiance and a DOS save, neither of which
-  exists on this machine, and that is the same dependency
-  [`117-save-conversion.md`](117-save-conversion.md) has been parked on.
+* **DOSBox needs a game, not a hypervisor.** It runs natively on Linux — and the
+  dependency this section was written around, "a DOS copy of Pool of Radiance and
+  a DOS save, neither of which exists on this machine", **has since been
+  satisfied**: see §7.
 
 And one thing worth saying before any of it: **if "tests" meant `pytest`, none
-of this applies.** `python3 -m pytest tests/ -q` is 1032 tests in 55.5 s and
-touches no emulator at all — `tests/test_automap.py` is the only file that even
+of this applies.** `python3 -m pytest tests/ -q` is 1178 passing and 1 skipped in
+about 65 s and touches no emulator at all — `tests/test_automap.py` is the only file that even
 imports `ViceTarget`, and it stubs it. Making that faster is
 `pip install pytest-xdist && pytest -n 12`, worth perhaps 40 seconds, and it is
 not what the rest of this document is about. What is serialised here is the
@@ -421,20 +421,21 @@ observation into a repeatable check, and every future release re-runs it.
 **DOSBox does not need Windows.** It runs natively on Linux, and there is no
 step below where a hypervisor helps.
 
-What it needs, in order. Step zero is the whole thing:
+What it needs, in order. **Steps 0, 1 and 3 have all landed since this was
+written, and step 0 was the whole thing:**
 
 | # | step | state |
 |---|---|---|
-| 0 | **A DOS copy of Pool of Radiance.** | **Missing.** `/mnt/media/roms/` has trees for dozens of systems and no `dos`, `pc` or `ibm` tree at all |
-| 1 | A DOS save of a known party | **Missing.** `117` obstacle 4; Donald has one and will supply it |
-| 2 | `dosbox-staging` installed | not installed here. One package. Recommending, not provisioning |
-| 3 | Check the community record layout in `work/coab-research/formats/` against a real file | `117` obstacle 5 — the table is PROBABLE and has never met a DOS byte |
+| 0 | **A DOS copy of Pool of Radiance.** | **Found.** Donald's Steam *Forgotten Realms: The Archives*, unpacked read-only at `/home/donald/Downloads/fr-archives/` — the DOS game, plus the shipped pre-generated parties for six DOS Gold Box titles |
+| 1 | A DOS save of a known party | **Found**, in the same tree: a real played DOS Pool of Radiance party in three slots (`A`, `B`, `J`), `A` and `B` being the same party at two moments. 24 specimens in all |
+| 2 | `dosbox-staging` installed | still not installed here. One package. Recommending, not provisioning |
+| 3 | Check the community record layout against a real file | **Done.** `work/reports/dos-saves.md`: **every prediction in `117` survived**, the record is 285 bytes, and the money block, spellbook, per-class array and class bitmask are all CONFIRMED against 24 specimens |
 | 4 | `por/dos_layout.py`, declarative, confidence per field | `117` order of work, step 2 |
-| 5 | Stand on a known square in both ports, read `$4BC2` / `$49C0` and the DOS equivalents | `117` obstacle 2 — half an hour once step 1 exists |
-| 6 | Item and spell numbering agreement | `117` obstacle 3 |
+| 5 | Stand on a known square in both ports, read `$4BC2` / `$49C0` and the DOS equivalents | `117` obstacle 2 — and this one really does want DOSBox |
+| 6 | Item and spell numbering agreement | `117` obstacle 3. Partly answered statically: `ITEMS` is **126 of 128 records byte-identical** between the two ports, and spell ids 1–56 match — but DOS continues to 67 with item-invoked effects where the C64 continues with combat message fragments, so a DOS memorised-spell byte in 57–67 has no C64 id |
 
-Steps 3–6 are `117`'s obstacles 2, 3, 4, 5 and 7 verbatim. **Nothing in that
-list is unblocked by hardware.** It is blocked on a file.
+**Nothing in that list is unblocked by hardware**, and the file it was blocked
+on has arrived. Only steps 4 and 5 are left, and only 5 wants a running DOSBox.
 
 ### The Amiga stand-in: where it is safe and where it is not
 
@@ -444,23 +445,22 @@ proposes exactly this: the Amiga port is DOS-lineage (`ecl.dax`, `geo.dax`,
 `DAxF` containers) so its scripts can be read to find the quest-flag base *by
 shape*.
 
-That is sound. But **an Amiga port is not a DOS port**, and the boundary is
-sharp:
+That is sound, and **it turned out better than this table expected.** Two rows
+below were written as hard "no" and both have been refuted; they are kept as
+written because the correction is the point.
 
 | use of the Amiga rips | safe? | why |
 |---|---|---|
 | Which files exist, and the container scheme (`DAxF`, `POOLDATA`) | **yes** | shared lineage; this is what obstacle 1 wants |
 | The *shape* of a structure — a 26-entry ledger, ten increment sites, an eight-entry lock table | **yes** | shape is portable; that is the whole fingerprint argument |
-| Script semantics: which event sets which flag | **yes, as PROBABLE** | the same designers' data, recompiled |
+| Script semantics: which event sets which flag | **yes, and better than PROBABLE** | not "the same designers' data, recompiled" — **the same artefact.** The Amiga `ecl.dax` unpacks to the C64's own scripts, `$1388` load address and all |
+| ~~**Any absolute address** — no~~ | **yes, inside the ECL bytecode** | **The ECL bytecode is one artefact shared by every port, absolute operands included.** 171 of the 172 referenced flag addresses appear unchanged in both ports, and DOS and C64 *Curse* differ only in a script's 2-byte header. The rule still holds for *engine* addresses — 68000 code, different loader, different bases — but a flag address named by a script is portable |
 | **Byte order of any multi-byte field** | **no** | the Amiga is **big-endian**. `117` says "both little-endian, so multi-byte fields need no swapping" — that is true of DOS and C64 and false of the Amiga. A word read off an ADF says nothing about the DOS word |
-| **Any absolute address** | **no** | 68000 code, different loader, different bases. The skill's own rule: every absolute address is re-derived per title, and this is a per-*port* case of it |
-| **Record field offsets** | **no** | the DOS/C64 offset table in `117` is community documentation about DOS; the Amiga is a third layout until someone proves otherwise |
+| ~~**Record field offsets** — no~~ | **partly** | the Amiga record is **DOS-ordered**, so the DOS offset table does describe its field *sequence*. It is still big-endian, so no multi-byte value transfers. See [`124-amiga-port.md`](124-amiga-port.md) |
 | Code-derived findings from disk 1 | **with care** | both rips are cracked (`[cr SKR]`). The loader is modified; the data files are presumably intact but that is an assumption, not a check |
 
-The one-line rule: **structure transfers from the Amiga, bytes do not.**
-Anything the Amiga work produces about the DOS save should carry `PROBABLE` and
-name the Amiga as its source, so that it is demotable the day a DOS save
-arrives.
+The one-line rule, amended: **structure and script addresses transfer from the
+Amiga; bytes and engine addresses do not.**
 
 FS-UAE 3.1.66 is installed as a flatpak, so an Amiga *runtime* is available if
 the static route stalls. It would be a second family of pooled instances and
@@ -503,7 +503,7 @@ ordinary session.
 
 | # | check | how |
 |---|---|---|
-| 1 | `pytest tests/ -q` still passes, 1032 | unchanged by the whole plan; the override defaults to today's values |
+| 1 | `pytest tests/ -q` still passes, 1178 and 1 skipped | unchanged by the whole plan; the override defaults to today's values |
 | 2 | `tests/test_instance.py` passes with no emulator | allocation, contention between two processes, reap's table, `vicerc` seeding — all files and flocks |
 | 3 | `POR_MONITOR=127.0.0.1:6523` makes `monitor_listening()` probe 6523 | the latent bug in `automap/target.py:187`; assert it, because the bug is invisible while the two numbers agree |
 | 4 | A seeded `vicerc` still carries the JiffyDOS kernal paths | a diff against the template; the fastloader answer depends on it |

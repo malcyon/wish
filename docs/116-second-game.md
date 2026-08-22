@@ -1,6 +1,11 @@
 # Curse of the Azure Bonds — how much of it is the same game
 
-**Status: researched. Nothing built beyond one test that pins the answer.**
+**Status: researched, and now supported.** `por/games.py` carries Curse's save
+file name, load address, geometry, race table, class bits and item-name base, so
+`wish` opens a Curse save disk, decodes its party and round-trips it
+byte-identically. What is *not* built is anything needing a running Curse — the
+live addresses, an automapper, an edit confirmed in game. Those are
+[`120-curse-testing.md`](120-curse-testing.md).
 
 The question was whether Curse of the Azure Bonds (C64) uses a different
 character record from Pool of Radiance. It does not.
@@ -216,7 +221,7 @@ C64 build does the same is NOT FOUND.
 | **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `por/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
 | **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `por/items.py` reads it |
 | **Spells** | 169 named ids where Pool of Radiance has 120, and the **first 56 are the same spell in the same order** — §10. Curse has **no `SPELLN00`**; it ships `SPELLN64`, and so does Pool of Radiance, and that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The names and their pointer table are in `COMBAT2`, resident at `$E000`. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (`work/reports/goldbox-inventory.md`) |
-| **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING` |
+| **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING`. **A fourth source has since made it weaker, not stronger**: the DOS format workbooks place `CharacterStatus` at DOS `0x10C`, which under the roster alignment is C64 `0x10A` and not `0x100` at all, and their enum is 0-based where the three "sir" editors' is 1-based. `roster_in_use` keeps its name. One specimen reading other than 1 settles it |
 
 ## 6. Still unknown
 
@@ -224,7 +229,7 @@ C64 build does the same is NOT FOUND.
 |---|---|
 | Where the item area really is, and whether the 16-byte item record changed | PROBABLE `$5B00`; no Curse item record has been seen |
 | How wide the memorised-spell list at `0x020` is | NOT FOUND |
-| How wide the spellbook bitmask at `0x078` is | NOT FOUND in Curse — `0x078`–`0x07D` observed, 13 bytes predicted. **At least 8 bytes** on the later engine: Silver Blades and Death Knights casters set `0x07D`–`0x07F`, four of them holding `0x07F = 0x04` |
+| How wide the spellbook bitmask at `0x078` is | NOT FOUND in Curse — `0x078`–`0x07D` observed, 13 bytes predicted. **At least 8 bytes** on the later engine: Silver Blades and Death Knights casters set `0x07D`–`0x07F`, four of them holding `0x07F = 0x04`. The 13 is `⌈100/8⌉` from the DOS per-title spell counts (Pool of Radiance 56, Curse 100, Silver Blades 117, Pools of Darkness 126), so it is a prediction that assumes the C64 cut no spells — reading one Curse caster's spellbook against `COMBAT2`'s name table settles it. See `docs/127` §4 |
 | Where `paladinCuresLeft` and the dual-class array live | NOT FOUND. **HUMAN CHANGE CLASS is on the C64 party menu**, so the dual-class array is reachable by experiment; the one character tried was refused |
 | Where the azure-bond state lives | NOT FOUND. It is not in the character record on DOS either |
 | Which of `0x014` and `0x065` is "current" and which "original" | NOT FOUND — equal in every specimen |
@@ -248,9 +253,12 @@ now settled, some against its guesses.
 | §7 "`0x100` status byte … rests on one hobbyist editor" | It reads 1 in every occupied record, like Pool of Radiance's `roster_in_use`. The editor's enum remains unsupported |
 | §7 "the `SAVEDGAME1` roster block **is** record bytes `0x100`–`0x11F`" | Confirmed in Curse: the roster block and record bytes `0x100`–`0x11F` are byte-identical for the same character |
 
-One practical note that is not in the plan: `por/d64.py` refuses one of the
-three rips. `CURSE4.D64` in the `with_docs` set is 175531 bytes — 35 tracks
-plus error bytes — and the reader accepts only plain 174848-byte images.
+One practical note that is not in the plan, **and it has since been fixed.**
+`CURSE4.D64` in the `with_docs` set is 175531 bytes — 35 tracks plus error bytes
+— and `por/d64.py` refused it, because the reader took plain 174848-byte images
+only. It now reads **six** variants, that one included; the error bytes are
+exposed through `D64.error_code` and acted on by nothing, and every variant but
+the plain image is read-only. See [`10-disk-format.md`](10-disk-format.md).
 
 ## 8. The test that pins it
 

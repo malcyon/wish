@@ -1,7 +1,14 @@
 # `wish` — the save editor
 
-A command-line character editor for Pool of Radiance (C64) save disks. Exports a
-party to YAML, and imports an edited YAML back onto a **new** disk.
+A command-line character editor for **C64 Gold Box** save disks. Exports a party
+to YAML, and imports an edited YAML back onto a **new** disk.
+
+Pool of Radiance is the reference title. `por/games.py` carries save geometry,
+race, class and item-name tables for six titles, and the title is detected from
+the save file's own name and load address — a Curse of the Azure Bonds or Secret
+of the Silver Blades save opens and round-trips byte-identically through the same
+code path. Everything below is written in Pool of Radiance's terms because that
+is where the offsets were earned; the record is the same 580 bytes in all of them.
 
 ```
 wish-cli --export PORSAVE.D64 --output party.yaml
@@ -246,21 +253,32 @@ table, not his record, and is fixed. See `docs/30-savegame-layout.md`.
 
 ## NPCs
 
-There are eight character slots. `npc:` reports which of them hold a companion
-the party picked up rather than a character you made:
+A save disk has eight character slots — at most six may hold *player* characters,
+the game enforcing that itself, and the remaining two are NPC-only. `npc:` reports
+which of them hold a companion the party picked up rather than one you made:
 
 ```yaml
     npc: false
 ```
 
-It is recognised from eight record bytes that agree across every character we
-hold. Which one the game tests is unknown, so **changing it is unproven in both
-directions** — the import writes all eight and says so. Turning an NPC into a
-player character leaves `0x0E6`–`0x0E7` reading `$FF FF`, a value no real player
-character has, and nothing is known about what that field is.
+**It is bit 7 of `0x0B8`, and that is the byte the game itself tests.** Every read
+of `$6BB8` in the overlays checks it; the party-count routine tallies player
+characters with it and enforces `CMP #$06`, which is the six-PC limit in code
+rather than in anecdote; NPC money is zeroed on it. So `npc:` writes one bit.
 
-If a save ever turns up with the marker half-set, the import reports it as a
-warning: no genuine save has been seen in that state.
+Eight other bytes — `0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`, `0x0D4`, `0x0E4`, `0x0E5`
+and `0x0FB` — read `$FF` for every NPC and `$00` for every player character, and
+were read as the flag for a while. They are **fill residue**: they already read
+`$FF` in the shipped `MON*` files, before any save exists. `wish` leaves them
+alone, because rewriting bytes we do not understand is how a lossless editor stops
+being lossless. If a save ever turns up with them half-set the import reports it
+as a warning; no genuine save has been seen in that state.
+
+`0x0E6`–`0x0E7` are **not** part of that marker and were briefly miscounted as
+such. They hold a non-zero, high-entropy per-character value in *every* player
+character, so they are not a `0`/`$FF` pair at all. What they are is UNKNOWN; the
+DOS record carries a single high-entropy byte in the same place, immediately
+before experience, which its community documentation calls `MON_Index`.
 
 Three item bugs have been fixed, none of which anything bought in a shop would
 have exposed:
@@ -292,6 +310,14 @@ nobody has yet diffed a save taken before and after a trainer visit. See
 the thief skills are computed by the game from class, race and level. They are
 stored, so they can be edited, but the game may recompute and overwrite them.
 Editing the inputs is more likely to stick than editing the results.
+
+The saving-throw rule is no longer a guess: **the class-table row for the
+character's level, best number in each column across every class held, minus the
+AD&D constitution bonus for a dwarf, gnome or halfling.** 78 of 79 records
+satisfy it exactly. So if you edit a level, a class or a constitution, the five
+saves at `0x09A`–`0x09E` are now predictable rather than merely stale — you can
+work out what they ought to be. See
+[127-community-formats.md](127-community-formats.md) §1.
 
 **Some derived values are cached and will go stale.** Raising a character's
 dexterity does *not* update their armour class: the game showed the AC for the

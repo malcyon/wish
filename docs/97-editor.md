@@ -332,8 +332,10 @@ editor/
   glyphpicker.py    the CHARPIC00 grid behind a cell's shape
   inventory.py      the sixteen item slots, the table on the form, and the
                     traits of the selected item
-  effects.py        the ten active-effect slots at 0x0AD, named where we know
-                    them
+  effects.py        the ten active-effect slots at 0x0AD. The namespace is
+                    named -- 129 codes in por/traits.py -- so a slot reads
+                    "petrifying gaze", and only a code outside the table falls
+                    back to "trait <n>"
   spellwidget.py    the spellbook and the memorised list, promoted
   enums.py          race/class/alignment/sex, per title, from por/yaml_io.py
   changes.py        what a save would write, in --dry-run's form
@@ -426,8 +428,12 @@ does now. In short: the roster carries race and class and is sized to its rows,
 every box is as wide as the widest value its bytes can hold (derived from
 `por/layout.py`), `Identity` is `Character`, the item column fits the longest
 of the 163 names the game disks carry, and two tables joined the sheet -- the
-selected item's traits, and the ten active-effect slots at `0x0AD` where the
-racial abilities live.
+selected item's traits, and the ten active-effect slots at `0x0AD`.
+
+`0x0AD` is *not* a racial trait mask, which is what it was called here for a
+while. It is a list of active effect codes, seeded per race by `GEN $0BF3` from a
+table indexed by the race byte -- so an elf is born carrying 107 and a half-elf
+124, and every other race is born with an empty block.
 
 ### The combat icon picker — done
 

@@ -51,7 +51,10 @@ win; `docs/80-fields-wanted.md` is the current field list and
   class, THAC0, hit points, movement and damage bonus live in the `SAVEDGAME1`
   roster blocks. That is also why the 1989 editor's author could
   never find AC or THAC0: he was editing an export, which has no roster block.
-* Per-class levels are at `0xC9`–`0xCC`, not `0xCA`–`0xD1`.
+* Per-class levels are at `0xC9`–`0xCC`, not `0xCA`–`0xD1`. The DOS eight-byte
+  array really is eight wide, but the C64 **indexes it by `class_bits` bit
+  position** and DOS indexes it by the class enum — so the two ports hold the
+  same array permuted, and a converter must permute it back.
 * `0xA0` is character level after all, and the doubt recorded in §5 was
   misplaced — see the correction there.
 * The item slot geometry it distrusted is correct: 16-byte records, and in a
@@ -59,10 +62,27 @@ win; `docs/80-fields-wanted.md` is the current field list and
 * Its guess that `0x71` is THAC0-base was right, and was wrongly written off
   here for a while. `0x71` is the **base** THAC0 and roster byte `+0x0E` is the
   **current** one, both stored as `60 - value`.
+* **Its §2.13 field-order hypothesis is the one that paid best.** "The C64
+  record is the DOS record with the same field sequence and different region
+  sizes" is now demonstrated over the whole record: anchoring on fields both
+  ports have CONFIRMED gives a piecewise offset map with a handful of deltas
+  (+4, +`0x2D`, +`0x2E`, +`0x33`, +`0x38`, −2), and the DOS names then say what
+  the C64's unnamed bytes are. That is how `0x0D7` was named. See
+  [127-community-formats.md](127-community-formats.md) §3.
 
-**Still open from its list:** the level-drain pair, status, order number,
-encumbrance, attacks per round, and active magical effects. Damage and the
-portrait head/body have since been found.
+**Closed since this pass, from its own list:** attacks per round (`0x0D9`–`0x0E0`,
+two independent derivations), active magical effects (`0x0AD`, a ten-slot list
+whose 129-code namespace is now named — [128](128-guide-and-scripting.md)), the
+level-drain pair (`0x0A1`/`0x0A2`, read off the drain and restoration routines),
+damage, and the portrait head/body.
+
+Order number is `0x10D`, PROBABLE — the one byte where an export and the roster
+block disagree.
+
+**Still open from its list:** status (`0x100` is the candidate and four sources
+now disagree about it, the newest *weakening* the case) and encumbrance, which
+DOS keeps as a `u16` at its `0x102` and which nothing on the C64 has been
+matched to.
 
 ## 0. The evidence base (read this before trusting anything below)
 
@@ -132,8 +152,8 @@ byte-identical. (`INFERENCE` from one specimen, but a very clean one — this re
 | Gender | 0 male, 1 female. | 1 B | Create two characters differing only in gender. | `DOS-DOC` |
 | Alignment | 0 LG, 1 LN, 2 LE, 3 NG, 4 TN, 5 NE, 6 CG, 7 CN, 8 CE. | 1 B | Create two characters differing only in alignment. | `DOS-DOC` |
 | Age | Years, 16-bit LE. Rolled at creation from race. | 2 B | **Cast Haste** — AD&D 1e ages the target one year, and Gold Box implements it. Cheapest true single-field delta in the game. Otherwise create two characters of different race. | `CORROBORATED-C64` (specimen = 21) |
-| "Type" | Present in PoR/CotAB/GttSF only; purpose undocumented even for DOS. | 1 B | — (park it) | `DOS-DOC` |
-| NPC flag | Marks a joinable NPC vs a player character. | 1 B | Let an NPC (e.g. from the slums) join, then `REMOVE` them and compare against a PC. | `DOS-DOC` |
+| "Type" | **Creature type** — humanoid, undead, giant, regenerating, … It is `0x0D7`, and it is 0 in all 79 C64 player records because a player is not a monster. 116 `MON*` records take 13 distinct values, every one inside the DOS enumeration; TROLL reads 10 (regenerating), MUMMY 4 (undead). | 1 B | read a `MON*` file | **CONFIRMED-C64** |
+| NPC flag | **`0x0B8` bit 7.** Every read of `$6BB8` in the overlays tests it; the party-count routine tallies player characters with it and enforces `CMP #$06`, which is the six-PC limit; NPC money is zeroed on it. The eight `$FF` bytes that correlate with it are fill residue, not the flag. | 1 bit | already done | **CONFIRMED-C64** |
 
 ### 1.2 Abilities
 
@@ -148,8 +168,8 @@ byte-identical. (`INFERENCE` from one specimen, but a very clean one — this re
 | Field | Meaning / encoding | Width | Cheapest isolating action | Confidence |
 |---|---|---|---|---|
 | Per-class level | **Eight separate bytes**, one per class (cleric, druid, fighter, paladin, ranger, mage, thief, monk), all present regardless of class; a fighter has 1 in the fighter byte and 0 elsewhere. This is how multiclass is represented. | 8 B | Train one level at the Training Hall. Not isolated (HP/THAC0/saves/slots all move) — but that is *useful*: it identifies the whole derived cluster in one shot. | `DOS-DOC` + `INFERENCE` (specimen has a lone `01` where a fighter slot would fall) |
-| "Level highest 1" / "2" | Highest level attained, used to restore drained levels. | 1–2 B | Get level-drained by a wight, then Restoration. | `DOS-DOC` |
-| Drained levels / drained HP | Energy-drain bookkeeping. | 2 B | Take one wight hit. | `DOS-DOC` |
+| ~~"Level highest 1" / "2"~~ | **There is no "highest level attained".** `0x0A0` is the current level and the drain state is its own pair beside it, so the scheme is current-plus-delta rather than current-and-true. That is why no "true level" was ever found. | — | — | **refuted** |
+| Drained levels / drained HP | `0x0A1` / `0x0A2`, read off the routines: `SPELLE02` computes `hp_max / total levels`, loops that many times doing `DEC $6B76 / DEC $6BED / INC $6BA2 / DEC $6C19`, then `INC $6BA1`; `RESTORATION` in `SPELLE04` reverses it exactly. Both read `$FF` on every monster, which the DOS record explains as "normally 0 for PCs, 255 for anything else". | 2 B | still wanted: a character actually drained in play | **CONFIRMED-C64** |
 | "Level undead" | Effective level for turning undead. | 1 B | Train a cleric. | `DOS-DOC` |
 | Experience points | Must exceed 65535 (PoR caps around 11–16M in practice; the C64 editor's "max" pokes three bytes to $FF). So **24-bit minimum, plausibly 32-bit LE**. | 3–4 B | Kill exactly one weak monster (one kobold) and camp-save. XP is split across the party, so all party members move together — do it with a **one-character party** to keep it clean. | `TOOL-CLAIM-C64` (specimen XP = 0, fresh character) |
 | "Highest experience" | Present from PoD onward, not in PoR-DOS. | 0–4 B | — | `DOS-DOC` |
@@ -164,10 +184,10 @@ byte-identical. (`INFERENCE` from one specimen, but a very clean one — this re
 | HP rolled | The raw die total *before* CON bonus. Max HP = rolled + CON bonus × level. | 1 B | Train one level. Cross-check arithmetic: our specimen shows a value of 9 with CON 16 (+2) and max HP 11 — consistent. | `INFERENCE` (strong) |
 | HP current | Separate from max. | 1 B | **Take exactly one point of damage, then camp-save.** The single cleanest experiment in this document: exactly one byte should move. | `DOS-DOC` + editor readme ("to get the hitpoints you changed… go to a healing temple") implies max and current are separate on C64 too |
 | THAC0 base and THAC0 current | Stored, **not derived at display time**. Base changes on level-up, current additionally reflects readied weapon/STR/effects. | 2 × 1 B | Ready and unready a magic weapon → current moves, base does not. | `DOS-DOC`; our specimen has a suggestive `0x28` (=40) immediately before the race byte, exactly where DOS puts THAC0-base. 40 = 2×20; the doubling is unexplained. `INFERENCE`, verify. |
-| AC base / AC current / AC behind | Three separate bytes. "Behind" is the rear-attack AC (shield doesn't count). | 3 × 1 B | **Ready then unready a shield.** Base unchanged, current and behind move. | `DOS-DOC` |
-| Attacks per round | Stored as a **pair** — numerator and denominator — so 3/2 attacks is `03`,`02`. Two pairs exist (main and secondary). | 2–4 B | Train a fighter to level 7. | `DOS-DOC` |
-| Unarmed damage: rolls / dice / modifier (×2 sets) | Damage expression `rolls d dice + modifier`, twice (two attack forms). Mirrored by a "current" set that reflects the readied weapon. | 6 + 6 B | Ready a weapon with distinctive damage (e.g. two-handed sword 1d10) and compare. | `DOS-DOC` |
-| Saving throws ×5 | Explicit stored numbers, not derived: paralysation/poison/death, petrification/polymorph, rod/staff/wand, breath weapon, spell. | 5 B | Train one level. **Verification is free**: a level-1 fighter's saves are exactly 14,15,16,17,17 — look for that run of bytes. (In our specimen it is present as `0E 0F 10 11 11`.) | `INFERENCE` (very strong — the exact AD&D 1e fighter table) |
+| AC base / AC current / AC behind | Base is `0x0E1` and current is roster `+0x0F`, both `60 - AC`. **"AC behind" does not transfer.** DOS spends its third byte on rear armour class; the C64 spends the byte at the aligned offset (roster `+0x10`) on the **armour's own contribution, `48 + bonus`** — measured by putting armour on: none 48, leather 50, banded mail 54, the AD&D bonuses 0, 2 and 6 exactly. The DOS alignment is exact and the DOS reading is still wrong here; see [127](127-community-formats.md) §4 for why an alignment is a hypothesis and a measurement is evidence. | 2 × 1 B on C64 | done | **CONFIRMED-C64** |
+| Attacks per round | `0x0D9`–`0x0E0` is the whole attack block: two attack forms as four parallel two-entry arrays (attacks doubled, dice, die, modifier), proved from `COMBAT $0CAD`'s stride-2 indexing. Every C64 player reads `2 0 1 0 2 0 0 0` — one attack, 1d2 unarmed. The DOS record spells the same eight bytes out column-first in the same order; both readings are right. | 8 B | done | **CONFIRMED-C64** |
+| Unarmed damage: rolls / dice / modifier (×2 sets) | The same eight bytes above. The "current" set that reflects the readied weapon is roster `+0x11`–`+0x18`: attacks remaining ×2, then dice, sides and damage bonus for the two attack forms. `+0x15` is *primary attack die sides*, which is exactly why this project called it `EQUIPMENT` for years — it rises with what is readied. | 8 + 9 B | done | **CONFIRMED-C64** (record), PROBABLE (roster) |
+| Saving throws ×5 | Explicit stored numbers at `0x09A`–`0x09E` — but **the rule that produces them is now known**: the class-table row for the character's level, taking the best number in each column across every class held, minus the AD&D constitution bonus when the character is a dwarf, gnome or halfling. **78 of 79 distinct C64 records satisfy it exactly**; the one miss is a hand-authored NPC. LADY KATHERINE (magic-user 1 / thief 1) reads `13 12 11 15 12`, which is neither class's row but the column-wise minimum of the two. | 5 B | done | **CONFIRMED-C64** ([127](127-community-formats.md) §1) |
 | Save bonus | Flat bonus from e.g. a Ring of Protection. | 1 B | Ready a ring of protection. | `DOS-DOC` |
 | Magic resistance | Percentage. Absent from PoR-DOS; appears from SotSB. | 0–1 B | — | `DOS-DOC` |
 | Movement base / movement current | Base 12 for an unencumbered human. Current drops with encumbrance and armour. | 2 × 1 B | **Pick up 500 coins.** Current moves, base does not. (Our specimen has `0C` = 12 exactly where DOS puts movement base.) | `INFERENCE` (strong) |
@@ -195,9 +215,9 @@ byte-identical. (`INFERENCE` from one specimen, but a very clean one — this re
 | Field | Meaning / encoding | Width | Cheapest isolating action | Confidence |
 |---|---|---|---|---|
 | Spells **known** | One byte per spell in the game's spell list — PoR-DOS uses 55 bytes covering cleric 1–3 and mage 1–3, in a fixed published order (bless, curse, cure light wounds, … / burning hands, charm person, …). A mage's known spells are a subset; clerics know all. | ~7–55 B | **Scribe one scroll** into a mage's book, or learn one new spell on level-up. One byte, 0 → 1. | `DOS-DOC` |
-| Spells **memorized** | A *list of spell IDs currently memorised*, not flags — PoR-DOS reserves 21 slots, CotAB 84. | 21–86 B | **In camp, memorise exactly one spell and rest.** One byte changes from 0 to a spell ID. Repeat with a different spell to read off the ID numbering. Excellent, cheap, and completely unambiguous. | `DOS-DOC` |
-| Castable slots per level | Counts of how many spells the character may memorise at each level — cleric 1/2/3, mage 1/2/3 in PoR. | 6 B | Train a spellcaster one level. | `DOS-DOC` |
-| Active magical effects | DOS keeps these in a *separate linked list* reached via an "effects address" pointer, not inline. On C64 they may be inline or in a party pool. | ? | Cast Bless on one character and camp-save. | `DOS-DOC` |
+| Spells **memorized** | Found at `0x020`, a list of ids packed **forward** in descending spell id where DOS fills its 21 slots in reverse. `por/layout.py` declares 16 and the DOS record allots 21 — 21 is also the C64 ceiling (a cleric 6 with wisdom 18 gets 13 slots and a magic-user 6 gets 8, and one character can be both), so 16 may be five short. The most anybody has used is 13, so nothing held contradicts either width. | 16 or 21 B | a cleric/magic-user with more than sixteen spells memorised | **CONFIRMED-C64** as a field, PROBABLE as 16 |
+| Castable slots per level | `0x0EE`–`0x0F0`, one byte per spell level, **cleric in the high nibble, magic-user in the low** — the C64 nibble-packs what DOS spends six bytes on. Settled by TANARAKIS (cleric 1 / magic-user 1) on SSI's own shipped party reading `$31`: no single-class specimen could distinguish the packing from two separate bytes. `0x0F1`–`0x0F3` are zero in all 79 records, as expected for a game that stops at third-level spells. | 3 B used of 6 | done | **CONFIRMED-C64** |
+| Active magical effects | **Inline, at `0x0AD`, ten slots of one effect code each.** Not a linked list and not a party pool — the C64 dropped DOS's `ADDR_Effect` pointer for a fixed array. `GEN $0BF3` seeds it per race from a table indexed by the race byte, which is why an elf is born carrying 107 and a half-elf 124. **The namespace is named**: 129 codes, 44 CONFIRMED against `MON*` carriers and the *Monster Manual*, 84 PROBABLE from the DOS guide. `por/traits.py`. | 10 B | done | **CONFIRMED-C64** |
 
 ### 1.8 Inventory and equipment
 
@@ -290,7 +310,7 @@ they are listed because they are C64 evidence, not DOS evidence.
 | `0x00`–`0x13` | Name, 20 B NUL-padded | already known + editor | `BRUTUS` | `CONFIRMED-C64` |
 | `0x14`–`0x19` | STR, INT, WIS, DEX, CON, CHA | already known + editor | 18,16,13,14,16,13 | `CONFIRMED-C64` |
 | `0x1A` | Exceptional STR percentile | already known + editor | 98 | `CONFIRMED-C64` |
-| `0x71` | THAC0 base? | position matches DOS ordering | 40 (= 2×20; unexplained) | **WRONG** — MALCYON's sheet shows THAC0 20 where this byte reads 39. THAC0 is `SAVEDGAME1` roster byte `+0x0E`, stored as `60 - THAC0` |
+| `0x71` | THAC0 base | position matches DOS ordering | 40 | **CONFIRMED.** The guess was right and this row said "WRONG" for a while, on the reasoning that MALCYON's sheet showed THAC0 20 where the byte reads 39. Both are true: the encoding is `60 - value`, so 40 is THAC0 20. `0x71` is the **base** and roster `+0x0E` is the **current**; the record and the roster each hold one |
 | `0x72` | Race | editor | 7 = human | `CORROBORATED-C64` |
 | `0x73` | Class | editor | 2 = fighter | `CORROBORATED-C64` |
 | `0x74`–`0x75` | Age, 16-bit LE | editor | 21 | `CORROBORATED-C64` |
@@ -302,31 +322,32 @@ they are listed because they are C64 evidence, not DOS evidence.
 | `0xC5`,`0xC7` | Gems, jewelry — 16-bit LE counts | editor | 0,0 | `TOOL-CLAIM-C64` |
 | `0xC9`–`0xCC` | Per-class level array — magic-user, cleric, thief, fighter, in `class_bits` order | inference, then confirmed | lone `01` at `0xCC` (fighter) | **CONFIRMED-C64.** Four entries, not eight, and the order follows the bitmask at `0x0EB` rather than the DOS class enum |
 | `0xE8`–`0xEA` | Experience, 24-bit LE (editor's "set max" writes `FF FF FF` here) | editor | 0 | `TOOL-CLAIM-C64` |
-| `0xED` | HP rolled | inference | 9, and 9 + CON-16 bonus (2) = 11 = HP max ✓ | `INFERENCE` (strong) |
-| `0xFE`–`0xFF` | Icon colours? | inference | 8, 7 (C64 colour codes orange, yellow) | `INFERENCE` |
-| `0x100` | Number of items | inference | 1 | `INFERENCE` |
+| `0xED` | HP rolled | inference | 9, and 9 + CON-16 bonus (2) = 11 = HP max ✓ | `INFERENCE` (strong), and the DOS record's `HP_Base` sits at the aligned offset |
+| `0xFE`–`0xFF` | ~~Icon colours?~~ **Portrait head and body** — indices into the `HEAD*` and `BODY*` files | later work | `0x2D`, `0x07` | **CONFIRMED-C64.** The colour reading was a coincidence: 8 and 7 are also C64 colour codes |
+| `0x100` | ~~Number of items~~ **roster `+0x00`** — record `0x100`–`0x11F` *is* the `SAVEDGAME1` roster block | later work | 1 | `PROBABLE` as `roster_in_use`. Not the item count |
 | `0x10D`–`0x11B` | Item data (present in exported file, zero in the in-save slot) | specimen | see below | `INFERENCE` |
 | `0x110` + 16·n | Item slots | editor | — | **CONFIRMED**, and the editor was right. 16-byte records; name words at `+3`/`+2`/`+1` (noun, qualifier, suffix), bonus `+4`, readied bit 7 of `+6`, weight `+8`–`+9` in tenths of a pound, quantity `+10`, cost `+11`–`+12` 16-bit. In a *save* the items live in the item area at `$5900` + slot × `$100`, not inline in the record |
 | `0x220`–`0x243` | Combat icon: 36 B of C64 screen codes + colour-RAM values; same pattern appears at `$4BE0` in `SAVEDGAME0`, with six per-slot copies following | specimen | `E4 A0 02 6B 04 05 …` | `INFERENCE` (strong) |
 
-### Non-zero bytes in the specimen that nothing above explains
+### Non-zero bytes in the specimen that nothing above explained — all resolved
 
-These are the highest-information diffing targets, because they are demonstrably *used*:
+These were the highest-information diffing targets, because they were
+demonstrably *used*. Every one has since been named:
 
-```
-0x99 = 01
-0xD8 = 03   0xD9 = 02   0xDB = 01   0xDD = 02
-0xE1 = 50   0xE2 = 22   0xE3 = 01   0xE6 = 0x57  0xE7 = 0xD1
-0xEB = 08
-0x10D..0x110 = 08 2A 33 30
-0x113 = 01  0x115 = 02  0x117 = 05  0x119 = 0B  0x11B = 0C   (five 16-bit LE values 1,2,5,11,12)
-```
+| byte | value | what it turned out to be |
+|---|---|---|
+| `0x99` | 01 | **size**, small versus large. Sits at DOS `ICO_Dimension`'s offset and carries `ICO_Size`'s meaning, one lower: 0 for every dwarf, gnome and halfling and 1 for every elf, half-elf and human, in all 79 records |
+| `0xD8` | 03 | **alignment**, a 0-based index into the game's own table at `$32B3` |
+| `0xD9`, `0xDB`, `0xDD` | 02, 01, 02 | the **attack block** at `0xD9`–`0xE0` — one attack, 1d2 unarmed |
+| `0xE1` | 50 | **base armour class**, `60 - AC` = 10 |
+| `0xE2` | 22 | **effective strength** — the exceptional-strength bands collapsed to one number. (DOS spends the aligned byte on a boolean `STR_Bonus` instead; two different fields) |
+| `0xE6`–`0xE7` | 57 D1 | still **UNKNOWN**, and the one entry here that has not closed. Non-zero and high-entropy in every player character. The DOS record has a single high-entropy per-character byte immediately before experience, which its community documentation calls `MON_Index`, so both ports carry it |
+| `0xEB` | 08 | **`class_bits`** — magic-user 1, cleric 2, thief 4, fighter 8 |
+| `0x10D`–`0x11B` | — | the **roster block**, not item data: `0x10D` party order, `0x10E` current THAC0, `0x10F` current AC, `0x119` current hit points, `0x11B` encumbered movement |
 
-`0xD8`/`0xD9` sit where DOS puts attacks-per-round and unarmed damage; `0x99` sits where DOS puts
-icon dimensions. `0x10D`–`0x110` decode under the shared item vocabulary as
-tokens 8 (`Dagger`), 42 (`Composite Short Bow`), 51 (`Padded`), 48 (`Mail`) — plausible starting
-kit, but the grouping into item records does not match the editor's 16-byte stride, so the item
-structure is **unresolved**. Buying one Long Sword (token 36) and diffing will settle it in one shot.
+The old reading of `0x10D`–`0x110` as item name tokens 8 / 42 / 51 / 48 was a
+coincidence of plausible values — the items are at `0x120`, sixteen 16-byte
+records ending exactly where the combat icon begins at `0x220`.
 
 ---
 
@@ -414,11 +435,16 @@ experiment on the list.
   and an explicit `level:` wins.
 - **amiga-dev.wikidot's Pool of Radiance project.** Explicitly says "Data File Format: Undetermined
   at this time", last edited 2012. It documents ByteKiller decompression and nothing else. There is
-  no Amiga character-record layout published there or anywhere I could find.
-- **Anything about `CHRDAT?#.*` / `SAVGAM?.DAT` filenames for the C64.** That naming appears in
-  search summaries of a GameFAQs guide and matches the *DOS* release's file naming; our C64 save
-  disk demonstrably uses `SAVEDGAME0` / `SAVEDGAME1` / `<$01>NAME`. `WEAK`, and contradicted by
-  direct observation.
+  still no *published* Amiga character-record layout anywhere — **but this project has since
+  derived one**: the Amiga record is DOS-**ordered** and **big-endian**, and the Amiga
+  `ecl.dax` unpacks to the C64's own scripts. See
+  [124-amiga-port.md](124-amiga-port.md). Structure transfers from the Amiga; bytes do not.
+- **`CHRDAT?#.*` / `SAVGAM?.DAT` filenames as *C64* names.** Still contradicted by direct
+  observation — our C64 save disk uses `SAVEDGAME0` / `SAVEDGAME1` / `<$01>NAME`. What has
+  changed is that the names are no longer unsourced: they are the **DOS** release's real
+  filenames, read off Donald's own DOS saves, and the engine's own format strings
+  `CHRDAT%s%d.SAV` / `SAVGAM%s.DAT` are in the Gold Box Companion binary
+  (`work/reports/dos-saves.md`). Right names, wrong port.
 - **The Lemon64 claim that "file TEST will be saved as UEST".** One forum post, about a different
   editor release, unexplained. If real it is a filename-mangling bug in that tool, not a property
   of the save format. `WEAK`.
@@ -478,3 +504,19 @@ to come from controlled experiment. The good news is that (b) plus our specimen 
 every field they overlap on, which is the strongest possible signal that the differential approach
 in PLAN.md will work — and that the DOS field *ordering* is a usable prior for guessing where to
 look next.
+
+**That last sentence is the one to keep, and it came in.** Three further DOS
+sources have arrived since this pass and none of them names a C64 offset — but
+used as a *lens* on the field ordering, together they named `0x0D7`, corroborated
+the attack block and base armour class, said what the eight bytes after
+roster `+0x10` are, settled the saving-throw rule and half the thief-skill one,
+and supplied the 127-entry effect namespace. They have their own write-ups:
+
+| source | doc |
+|---|---|
+| the Gold Box forums — playtester mode, DOS area tables, tooling | [126-forum-findings.md](126-forum-findings.md) |
+| `GB_FileFormat.xlsx` / `GB_Extract.xlsx`, the ten-title format workbooks | [127-community-formats.md](127-community-formats.md) |
+| Stephen S. Lee's DOS guide and Draxinusom's ImHex patterns | [128-guide-and-scripting.md](128-guide-and-scripting.md) |
+
+Both of the "needed a browser" items §8 of `126` lists as unreachable have since
+been obtained.

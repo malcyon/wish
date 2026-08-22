@@ -39,6 +39,13 @@ are *decoded*, not independently known.
 LARA SPELLSWORD is a useful independent check: her class bitmask is 9 =
 magic-user/fighter, which her name states outright.
 
+**TANARAKIS settled `spells_castable`.** Cleric 1 / magic-user 1, and `0x0EE`
+reads `$31` — both nibbles set at once, cleric high and magic-user low. No
+single-class specimen could tell that packing apart from two separate bytes, and
+every earlier specimen was single-class. Being SSI's own shipped party makes it
+the cleanest evidence in the project for that field. See
+[127-community-formats.md](127-community-formats.md) §2.
+
 ## Fixtures in the repo
 
 | file | contents |
@@ -61,7 +68,14 @@ Donald's party was captured at three points, and each one paid for itself:
 ## Specimens found elsewhere
 
 Two disks that came from outside the project, and neither is one of our own
-controlled saves. Their values prove nothing; their structure proves a lot.
+controlled saves.
+
+**"Their values prove nothing" was too strong** and this page said it for a
+while. Seven of `npc_party.d64`'s eight records satisfy a saving-throw rule
+derived without them, and its five NPC records are the game's own `MON*` files
+carried through play. The honest statement is the one below: one field in it was
+written by an editor, and everything an editor does not touch is as good as any
+other specimen.
 
 ### `npc_party.d64` — three PCs and five NPCs
 
@@ -108,7 +122,14 @@ is everything an editor does *not* touch —
   spell list at `0x020`. It also gave the roster's `+0x03`–`+0x05` a reading as
   per-level counts, which a later save contradicted;
 * three are **player characters and five are NPCs**, a contrast we could not
-  otherwise produce.
+  otherwise produce;
+* it carries the project's **only records above level 1**, which is why the
+  saving-throw rule could be tested against anything but a level-1 row at all.
+  Seven of its eight satisfy that rule exactly. The one miss is MAD MAN, a
+  level-8 NPC whose stored saves are the level-1 fighter row — a stale or
+  hand-authored record, not a counter-example to the rule. And DIRTEN (cleric 6,
+  wisdom 16, `5/5/2`) and SIMON (cleric 6, wisdom 18, `5/5/3`) are what pin the
+  wisdom bonus on `spells_castable` at a level no clean specimen reaches.
 
 **All five NPCs are shipped records and all three player characters are not** —
 GENHEERIS is `MON58`, MAD MAN `MON19`, PRINCESS FATIMA `MON68`, DIRTEN `MON6B`
@@ -168,6 +189,13 @@ out of the monster files. Gnome and halfling were missing from every specimen
 and are now supplied by `PORSAVE10.D64` above — which settled `0x0AD`, though
 not the way anyone expected: both read 0, so it is not a racial trait mask.
 
+**And the reason they read 0 is now in the code.** `GEN $0BF3` seeds `0x0AD` per
+race from `[1, 0, 107, 0, 124, 0, 0, 0]`, **indexed by the race byte itself**,
+which is 1-based. Elf is race 2 and is born with 107; half-elf is race 4 and is
+born with 124; every other race gets nothing, which is exactly what NYX and DAX
+show. `0x0AD` is a ten-slot list of *active effect codes*, seeded per race and
+then written by spells and readied items alike.
+
 ### `PORSAVE11.D64` — the save nobody had read
 
 The latest state of Donald's party, and undocumented until a sweep found it. It
@@ -200,8 +228,26 @@ Two more have closed since:
 Still wanted, and each needs a save we make ourselves:
 
 * a character **exported while wounded** — the one step that settles `0x119`;
-* a character **drained a level** by undead — the current/true level pair;
-* a **magical weapon or armour** obtained in play — to read the item effect bytes
-  against a known item, rather than against the 1989 editor's synthesised ones;
+* a character **drained a level** by undead. Not for the "current/true level
+  pair", which does not exist: `0x0A0` is the current level and `0x0A1`/`0x0A2`
+  are the drain delta, both read off the drain and restoration routines. What is
+  wanted is a specimen showing the pair non-zero, because no character of ours
+  has ever been drained;
 * a **multi-class character above level 1** — to tell "character level" at
-  `0x0A0` apart from "the single class's level".
+  `0x0A0` apart from "the single class's level";
+* a **cleric/magic-user with more than sixteen spells memorised**, which is the
+  one observation that would settle whether `spells_memorised` is 16 bytes or
+  the 21 the format allows;
+* a **character of a sturdy race with constitution below 11**, to exercise the
+  `+1` and `+2` bands of the saving-throw constitution bonus. Only `+3`/`+4`/`+5`
+  have ever been seen;
+* **one specimen where `0x100` reads other than 1**, which is what the status
+  question turns on.
+
+~~A **magical weapon or armour** obtained in play — to read the item effect bytes
+against a known item.~~ **No longer needed for the effect bytes.** The `0x0AD`
+namespace is named — 129 codes, 44 CONFIRMED off `MON*` carriers and item records
+already on the disks — and the discriminator between an item's `+14` as an effect
+id and as a spell id is `+15` bit 7. CLOAK OF DISPLACEMENT reads `+14` 89 (displaced)
+and TWO-HANDED SWORD +1 +3 VS UNDEAD reads 3 (undead-slaying), both off the player's
+own saves. See `por/traits.py` and [128-guide-and-scripting.md](128-guide-and-scripting.md).
