@@ -14,9 +14,12 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Pool of Radiance character editor")
+    ap = argparse.ArgumentParser(description="Gold Box character editor")
     ap.add_argument("save", nargs="?", help="a .D64 to open")
-    ap.add_argument("--game-disk", help="a POOL*.D64, for item names and icons")
+    ap.add_argument("--game-disk",
+                    help="a game disk of the same title as the save -- "
+                         "POOL*.D64, CURSE*.D64, SILVER*.D64 -- for item "
+                         "names and icons")
     args = ap.parse_args(argv)
 
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))

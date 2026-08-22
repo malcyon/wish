@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from automap.paths import disk_globs  # noqa: E402
 from por.d64 import D64  # noqa: E402
 from por.geo import (  # noqa: E402
     DIRECTIONS,
@@ -33,9 +34,23 @@ from por.savegame import SaveGame0  # noqa: E402
 DISKS = os.environ.get("POR_DISKS", "/home/donald/c64/Pool of Radiance Disks")
 
 
+def game_disks(root: str = DISKS) -> list[str]:
+    """Every game disk under `root`, each of them once.
+
+    `disk_globs` gives an upper- and a lower-cased pattern, and on a
+    case-insensitive filesystem both match the same file -- so dedupe, or every
+    disk is read twice.
+    """
+    seen: dict[str, str] = {}
+    for pattern in disk_globs():
+        for path in glob.glob(os.path.join(root, pattern)):
+            seen.setdefault(os.path.normcase(os.path.abspath(path)), path)
+    return sorted(seen.values())
+
+
 def all_maps(pattern: str | None = None) -> dict[str, Geo]:
     found: dict[str, Geo] = {}
-    for path in sorted(glob.glob(os.path.join(DISKS, "POOL*.D64"))):
+    for path in game_disks():
         for name, geo in load_geo_files(path).items():
             found.setdefault(name, geo)
     if pattern:

@@ -25,6 +25,7 @@ a party of six dead characters. The caller holds its last good snapshot.
 from __future__ import annotations
 
 import functools
+import os
 import pathlib
 from dataclasses import dataclass
 
@@ -314,25 +315,43 @@ def readied(payload: bytes, slot: int,
 
 
 @functools.lru_cache(maxsize=4)
-def item_names(disks=None) -> dict[int, str] | None:
-    """The item-name table off any game disk, or None if there is none.
+def item_names(disks=None, game=None) -> dict[int, str] | None:
+    """The item-name table off a title's game disks, or None if there is none.
 
     Not an error: the map runs without the disks, and the roster simply leaves
     the readied line blank. Cached, because every window that opens would
     otherwise re-read a D64 for a table that does not change.
+
+    `game` picks both the disks and where the name table loads -- $6F00 for
+    Pool of Radiance, $9E00 for every title after it -- and no game means Pool
+    of Radiance, as everywhere else.
     """
     from .paths import find_disks
 
-    root = pathlib.Path(disks) if disks else find_disks()
+    root = pathlib.Path(disks) if disks else find_disks(game)
     if root is None:
         return None
-    for pattern in ("POOL*.D64", "POOL*.d64"):
-        for path in sorted(root.glob(pattern)):
-            try:
-                return load_item_names(str(path))
-            except Exception:
-                continue
+    for path in _disk_images(root, game):
+        try:
+            return load_item_names(str(path), game)
+        except Exception:
+            continue
     return None
+
+
+def _disk_images(root: pathlib.Path, game=None) -> list[pathlib.Path]:
+    """Every disk image of a title under `root`, each of them once.
+
+    The upper- and lower-cased patterns both match on a case-insensitive
+    filesystem, so a naive loop over `disk_globs` opens every disk twice.
+    """
+    from .paths import disk_globs
+
+    seen: dict[str, pathlib.Path] = {}
+    for pattern in disk_globs(game):
+        for path in root.glob(pattern):
+            seen.setdefault(os.path.normcase(os.path.abspath(path)), path)
+    return sorted(seen.values())
 
 
 def characters(save0: SaveGame0, save1: SaveGame1,

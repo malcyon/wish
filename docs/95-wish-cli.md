@@ -48,7 +48,9 @@ It is looked for in this order:
 
 1. `--game-disk`
 2. the `POR_GAME_DISK` environment variable
-3. any `POOL*.D64` in the same directory as the save disk
+3. any game disk of the save's own title in the same directory as the
+   save disk — `POOL*.D64` for Pool of Radiance, `CURSE*.D64` for Curse,
+   whatever `Game.disk_glob` says for the rest
 
 Point 3 covers the normal case, where the game and save disks live together, so
 usually no configuration is needed.

@@ -37,7 +37,7 @@ from por.spells import capacity, load_spell_names
 
 from . import changes, files, inventory
 from .binding import bindings, field_name, value_range, widest_text
-from .enums import TABLES
+from .enums import tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
@@ -307,18 +307,26 @@ class EditorWindow(QMainWindow):
             found[name] = widget
         return found
 
-    def _fill_combos(self) -> None:
-        """Name the codes for the fields whose encoding is known.
+    def _fill_combos(self, game: por_games.Game | None = None) -> None:
+        """Name the codes for the fields whose encoding is known, per title.
+
+        Refilled on every open, because race and class are not the same list in
+        every title -- Silver Blades' human is 6 where Pool of Radiance's is 7 --
+        and a stale list would put a wrong name on a real byte. A title whose
+        list we do not have leaves the box empty and `_select` shows the number.
 
         `char_class` and `class_bits` get one box each and are never
         reconciled: they say the same thing two ways, a record is allowed to
         disagree with itself, and forcing them into agreement is where a
         losslessness bug came from once already.
         """
+        tables = tables_for(game)
         for name, w in self._widgets.items():
-            if isinstance(w, QComboBox) and name in TABLES:
-                for code, label in sorted(TABLES[name].items()):
+            if isinstance(w, QComboBox) and name in tables:
+                w.clear()
+                for code, label in sorted(tables[name].items()):
                     w.addItem(f"{code}  {label}", code)
+                _size_combo(w)
 
     def _compact(self) -> None:
         """Squeeze the whitespace out of every form and table on the sheet.
@@ -445,6 +453,9 @@ class EditorWindow(QMainWindow):
         self.party, self.path = party, pathlib.Path(path)
         self.dirty.clear()
         self.current_row = -1
+        # Before the first row is selected, and while `current_row` is -1 so
+        # that clearing a combo does not read as an edit.
+        self._fill_combos(party.game)
         self._load_game_disk()
         self.model.beginResetModel()
         self.model.party = party
@@ -555,9 +566,15 @@ class EditorWindow(QMainWindow):
         if found is None:
             self.traits.set_tables({}, {})
             return
+        # Item names live at $6F00 on Pool of Radiance and $9E00 on every
+        # title after it, so the reader needs to be told which save is open --
+        # without it a Curse item comes out as its word index.
+        game = self.party.game if self.party is not None else None
         for attr, read in (("charset", load_icon_charset),
-                           ("item_names", load_item_names),
-                           ("templates", load_item_templates),
+                           ("item_names",
+                            lambda d: load_item_names(d, game)),
+                           ("templates",
+                            lambda d: load_item_templates(d, game=game)),
                            ("item_types", load_item_types),
                            ("spell_names", load_spell_names)):
             try:

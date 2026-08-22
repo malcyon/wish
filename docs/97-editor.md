@@ -61,6 +61,12 @@ Consequences worth stating, because they are what make this work:
 * Widget *type* decides the editor: `QSpinBox` for numbers, `QLineEdit` for the
   name, `QComboBox` for race/class/alignment (populated from the game's own
   tables in `docs/40-memory-map.md`), `QCheckBox` for bit flags.
+* **The dropdowns follow the open title.** Race and the class bitmask are
+  not the same list in every game -- Silver Blades' human is 6 where Pool of
+  Radiance's is 7, and Krynn's races are a different list altogether -- so
+  the boxes are refilled from `editor/enums.py::tables_for(game)` on every
+  open. A code the title does not name, like Curse's 6, shows as its raw
+  number rather than under a name we would be guessing at.
 * **Width comes from the layout too.** The kind and the byte count give the
   widest value a field can hold -- `255` for a `u8`, `65535` for a coin count,
   `-128` for a thief skill, twenty characters for the name -- and the box is
@@ -171,7 +177,8 @@ The window title carries the open file and a dirty marker; closing with unsaved
 changes prompts.
 
 The game disk for item and spell names is found the way the CLI finds it --
-`--game-disk`, then `$POR_GAME_DISK`, then any `POOL*.D64` beside the save --
+`--game-disk`, then `$POR_GAME_DISK`, then any game disk of the save's own
+title beside it -- `POOL*.D64` for Pool of Radiance, `CURSE*.D64` for Curse --
 and the status bar says whether names are available, because a save opened
 without one shows items as bare numbers and that should not look like a bug.
 
@@ -328,7 +335,7 @@ editor/
   effects.py        the ten active-effect slots at 0x0AD, named where we know
                     them
   spellwidget.py    the spellbook and the memorised list, promoted
-  enums.py          race/class/alignment/sex, named from por/yaml_io.py
+  enums.py          race/class/alignment/sex, per title, from por/yaml_io.py
   changes.py        what a save would write, in --dry-run's form
   character.ui      the form -- EDIT THIS in Qt Designer
   ui_character.py   generated from it; do not edit
