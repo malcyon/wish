@@ -77,15 +77,29 @@ from .spells import (
     spells_known,
 )
 
-RACES = {1: "dwarf", 2: "elf", 3: "gnome", 4: "half-elf",
-         5: "halfling", 6: "half-orc", 7: "human", 8: "monster"}
+# Pool of Radiance's tables, kept at module level because they are what a
+# caller with no `Game` in hand means. **They are not universal** -- Silver
+# Blades moves human from 7 to 6 and the Krynn titles use a different race list
+# altogether -- so anything that knows which title it is holding should read
+# `game.race_names` and `game.class_bits` instead. See `por/games.py` for the
+# evidence behind each list.
+RACES = dict(DEFAULT_GAME.races)
 ALIGNMENTS = ["lawful good", "lawful neutral", "lawful evil",
               "neutral good", "true neutral", "neutral evil",
               "chaotic good", "chaotic neutral", "chaotic evil"]
-CLASS_BITS = [(1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter")]
-# Per-class levels, in the same order as the bits above.
-LEVEL_FIELDS = {"magic-user": "level_magic_user", "cleric": "level_cleric",
-                "thief": "level_thief", "fighter": "level_fighter"}
+CLASS_BITS = list(DEFAULT_GAME.class_bits)
+
+# Per-class levels. The array at 0x0C9 is eight bytes and a class's bit number
+# is its slot number, so the later titles' classes have a level of their own
+# just as the classic four do -- Curse's shipped PALADIN holds 5 at 0x0CF and
+# its RANGER 5 at 0x0D0.
+LEVEL_FIELD_BY_CLASS = {"magic-user": "level_magic_user",
+                        "cleric": "level_cleric", "thief": "level_thief",
+                        "fighter": "level_fighter", "knight": "level_knight",
+                        "paladin": "level_paladin", "ranger": "level_ranger"}
+#: Pool of Radiance's four, for a caller with no `Game` in hand.
+LEVEL_FIELDS = {k: LEVEL_FIELD_BY_CLASS[k]
+                for _, k in DEFAULT_GAME.class_bits}
 SEXES = {0: "male", 1: "female"}
 
 
@@ -110,20 +124,53 @@ def _encode(table: dict[int, str], value, field: str) -> int:
     raise ValueError_(f"{field}: {value!r} is not valid. Use one of: {options}")
 
 
-def classes_to_names(bits: int) -> list[str]:
-    names = [name for bit, name in CLASS_BITS if bits & bit]
+def class_table(game: Game | None) -> list[tuple[int, str]]:
+    """The bit -> name pairs for a title, or Pool of Radiance's four.
+
+    A title whose list we do not know gets an empty table, which makes
+    `classes_to_names` hand back the raw bitmask rather than a wrong name.
+    """
+    if game is None:
+        return list(CLASS_BITS)
+    return list(game.class_bits or ())
+
+
+def level_fields(game: Game | None) -> dict[str, str]:
+    """Class name -> the record field holding that class's level, per title.
+
+    One entry per class the title has, because the level array has one slot
+    per class bit. A class we can name but have no field for is left out
+    rather than pointed at the wrong byte.
+    """
+    return {name: LEVEL_FIELD_BY_CLASS[name] for _, name in class_table(game)
+            if name in LEVEL_FIELD_BY_CLASS}
+
+
+def race_table(game: Game | None) -> dict[int, str]:
+    """The race code -> name mapping for a title, or Pool of Radiance's.
+
+    Empty when the title's list is unknown, so `_decode` leaves the number
+    alone and `_encode` refuses to invent one.
+    """
+    if game is None:
+        return dict(RACES)
+    return game.race_names or {}
+
+
+def classes_to_names(bits: int, game: Game | None = None) -> list[str]:
+    names = [name for bit, name in class_table(game) if bits & bit]
     if not names:                       # unknown encoding: keep it visible
         return [bits]
     return names
 
 
-def names_to_classes(value) -> int:
+def names_to_classes(value, game: Game | None = None) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, str):
         value = [value]
     bits = 0
-    known = {name: bit for bit, name in CLASS_BITS}
+    known = {name: bit for bit, name in class_table(game)}
     for item in value:
         if isinstance(item, int):
             bits |= item
@@ -207,6 +254,26 @@ CLASS_CODES = {
     1 | 4 | 8: 15,   # fighter/magic-user/thief
     1 | 4: 16,       # magic-user/thief
 }
+
+
+def comments_for(game: Game | None) -> dict[str, str]:
+    """`FIELD_COMMENTS` with the race and class lists this title actually has.
+
+    The lists differ per title, and a comment naming Pool of Radiance's races
+    on a Silver Blades export would be an instruction to write a wrong number.
+    An unknown list says so instead of listing nothing.
+    """
+    out = dict(FIELD_COMMENTS)
+    races = race_table(game)
+    out["race"] = (", ".join(races[k] for k in sorted(races)) if races
+                   else "this title's race numbers are not known; edit the "
+                        "number and nothing else")
+    classes = class_table(game)
+    out["classes"] = (
+        "one or more of: " + ", ".join(name for _, name in classes) + "\n"
+        "e.g. [magic-user, thief] for a multi-class character") if classes \
+        else "this title's class bits are not known; give the number instead"
+    return out
 
 
 def class_code_for(bits: int) -> int:
@@ -299,7 +366,7 @@ def export_save(path: str, game_disk: str | None = None,
     names = types = spell_names = None
     if game_disk:
         try:
-            names = load_item_names(game_disk)
+            names = load_item_names(game_disk, game)
         except Exception:
             names = None
         try:
@@ -321,17 +388,19 @@ def export_save(path: str, game_disk: str | None = None,
         # the alignment index are implementation details; a person editing this
         # file should not have to know them.
         entry["sex"] = _decode(SEXES, rec.sex, "sex")
-        entry["race"] = _decode(RACES, rec.race, "race")
+        entry["race"] = _decode(race_table(game), rec.race, "race")
         entry["alignment"] = _decode(dict(enumerate(ALIGNMENTS)),
                                      rec.alignment, "alignment")
-        entry["classes"] = classes_to_names(rec.class_bits)
+        entry["classes"] = classes_to_names(rec.class_bits, game)
         entry["class_code"] = rec.get("char_class")
         # One level per class the character actually has. A dual-classed human
         # keeps the old class at its frozen level while the new one advances,
-        # which this represents directly.
+        # which this represents directly. A paladin, ranger or knight has a
+        # slot of its own in the eight-byte array, so it appears here too.
+        bit_for = {n: b for b, n in class_table(game)}
         entry["levels"] = {name: rec.get(field)
-                           for name, field in LEVEL_FIELDS.items()
-                           if rec.class_bits & dict((n, b) for b, n in CLASS_BITS)[name]}
+                           for name, field in level_fields(game).items()
+                           if rec.class_bits & bit_for.get(name, 0)}
         entry["experience"] = _u24(rec)
         entry["items"] = []
         for it in items_for_slot(payload, slot.index, names):
@@ -401,18 +470,20 @@ def _scalar(value: Any) -> str:
     return yaml.safe_dump(value, default_flow_style=True).strip().rstrip("...").strip()
 
 
-def _class_block(entry: dict[str, Any]) -> list[str]:
+def _class_block(entry: dict[str, Any],
+                 comments: dict[str, str] | None = None) -> list[str]:
     """Class, levels and experience together -- they belong side by side, and
     the game's own character sheet shows level and experience on one line."""
+    comments = comments or FIELD_COMMENTS
     out = ["", "    # --- class"]
-    for line in FIELD_COMMENTS["classes"].split("\n"):
+    for line in comments["classes"].split("\n"):
         out.append(f"    # {line}")
     out.append(f"    classes: [{', '.join(str(c) for c in entry['classes'])}]")
     if "class_code" in entry:
-        for line in FIELD_COMMENTS["class_code"].split("\n"):
+        for line in comments["class_code"].split("\n"):
             out.append(f"    # {line}")
         out.append(f"    class_code: {entry['class_code']}")
-    for line in FIELD_COMMENTS["levels"].split("\n"):
+    for line in comments["levels"].split("\n"):
         out.append(f"    # {line}")
     pairs = ", ".join(f"{k}: {v}" for k, v in entry["levels"].items())
     out.append(f"    levels: {{{pairs}}}")
@@ -458,9 +529,11 @@ def to_yaml(data: dict[str, Any]) -> str:
     name = pathlib.Path(data.get("source_path", "")).name or "save disk"
     key = data.get("game", DEFAULT_GAME.key)
     try:
-        title = by_key(key).title
+        game = by_key(key)
+        title = game.title
     except Exception:
-        title = key
+        game, title = None, key
+    comments = comments_for(game)
     out += [
         f"# {title} character export -- {name}",
         "#",
@@ -490,7 +563,7 @@ def to_yaml(data: dict[str, Any]) -> str:
             if field in SECTIONS:
                 out.append("")
                 out.append(f"    # --- {SECTIONS[field]}")
-            comment = FIELD_COMMENTS.get(field)
+            comment = comments.get(field)
             if comment and "\n" in comment:
                 for line in comment.split("\n"):
                     out.append(f"    # {line}")
@@ -501,7 +574,7 @@ def to_yaml(data: dict[str, Any]) -> str:
                 out.append(f"    {field}: {_scalar(entry[field])}")
 
             if field == "alignment":
-                out += _class_block(entry)
+                out += _class_block(entry, comments)
 
 
         out.append("")
@@ -789,11 +862,11 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
     names = templates = None
     if game_disk:
         try:
-            names = load_item_names(game_disk)
+            names = load_item_names(game_disk, game)
         except Exception:
             names = None
         try:
-            templates = load_item_templates(game_disk, names)
+            templates = load_item_templates(game_disk, names, game)
         except Exception:
             templates = None
     changes: list[str] = []
@@ -814,7 +887,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 rec.set(f, new)
                 changes.append(f"slot {slot} {who}: {f} {old!r} -> {new!r}")
 
-        for field, table in (("sex", SEXES), ("race", RACES),
+        for field, table in (("sex", SEXES), ("race", race_table(game)),
                              ("alignment", dict(enumerate(ALIGNMENTS)))):
             if field not in entry:
                 continue
@@ -842,11 +915,11 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # which is what makes the round-trip lossless for an NPC.
         classes_changed = False
         if "classes" in entry:
-            want = names_to_classes(entry["classes"])
+            want = names_to_classes(entry["classes"], game)
             if want != rec.class_bits:
                 classes_changed = True
                 changes.append(f"slot {slot} {who}: classes "
-                               f"{classes_to_names(rec.class_bits)} -> "
+                               f"{classes_to_names(rec.class_bits, game)} -> "
                                f"{entry['classes']}")
                 rec.class_bits = want
 
@@ -874,7 +947,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             if want_code != class_code_for(rec.class_bits):
                 changes.append(
                     f"slot {slot} {who}: NOTE class_code {want_code} does not "
-                    f"match classes {classes_to_names(rec.class_bits)}. The "
+                    f"match classes {classes_to_names(rec.class_bits, game)}. The "
                     f"game ships NPCs like that, but no player character has "
                     f"ever been seen that way")
 
@@ -884,8 +957,9 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
         # so a record whose array disagrees with its bits survives a round-trip.
         levels = entry.get("levels") or {}
         levels_changed = False
-        for name, field in LEVEL_FIELDS.items():
-            bit = dict((n, b) for b, n in CLASS_BITS)[name]
+        bit_for = {n: b for b, n in class_table(game)}
+        for name, field in level_fields(game).items():
+            bit = bit_for.get(name, 0)
             if name in levels:
                 want_level = int(levels[name])
             elif not classes_changed:

@@ -41,6 +41,97 @@ ITEM_AREA_OFFSET = 0x1000
 ICON_TABLE_OFFSET = 0x2E0
 ROSTER_PAGE = 0x100
 
+# --- race codes -------------------------------------------------------------
+# The record's race byte at 0x072 indexes a table of names the game itself
+# carries, and that table is NOT the same in every title. Each list below was
+# read off the player's disks twice over, from two independent places, and then
+# checked against the six-character party each title ships inside its own save.
+#
+# Where the table lives:
+#
+# * Pool of Radiance, Curse and Gateway keep it in `LIBRARY`, reached through a
+#   pointer table the resident code indexes with `LDA table,X / STA $07`. Base
+#   $2C48 for Pool of Radiance and $2DC8 for the other two -- fitted, not read,
+#   by scoring how many of the 66-odd pointers land on a string start (63 of 66
+#   at $2C48 against 14 at the next best).
+# * Silver Blades and the two Krynn titles fold the labels into `ITEMNAMES`'s
+#   own 256-entry string pool, at pool index `140 + race`.
+#
+# And what generation offers: `GEN` carries the character-creation menu, and in
+# Pool of Radiance, Curse and Gateway it is followed by the six bytes
+# `01 02 03 04 05 07` -- the menu-entry-to-race-code map, which is why human is
+# 7 in all three even though only six races can be rolled. Silver Blades and
+# the Krynn titles have no such array, so their menu order *is* the code order.
+#
+# CONFIRMED for all six: every one of the 36 shipped pre-generated characters
+# decodes to a race its class allows. The decisive ones are the rule cases --
+# a paladin or a Knight of Solamnia must be human, a ranger human or half-elf --
+# and Champions' TRAPSPRINGER, race 5, who is a kender by name.
+
+#: Pool of Radiance and Gateway to the Savage Frontier, identically.
+RACES_FORGOTTEN_REALMS = ((1, "dwarf"), (2, "elf"), (3, "gnome"),
+                          (4, "half-elf"), (5, "halfling"), (6, "half-orc"),
+                          (7, "human"), (8, "monster"))
+
+#: Curse drops half-orc from generation but keeps human at 7: its label table
+#: points BOTH 6 and 7 at HUMAN. 6 is left out here on purpose -- naming it
+#: "half-orc" would contradict what the game prints, and naming it "human"
+#: would give two codes one name and let an import silently rewrite a 7 as a 6.
+#: A Pool of Radiance half-orc carried across shows as a bare `6`, which is the
+#: honest answer.
+RACES_CURSE = ((1, "dwarf"), (2, "elf"), (3, "gnome"), (4, "half-elf"),
+               (5, "halfling"), (7, "human"), (8, "monster"))
+
+#: Silver Blades drops half-orc and re-orders the rest, so human moves to 6.
+#: Codes 1-6 are the generation menu in menu order; 0 also prints ELF.
+RACES_SILVER_BLADES = ((1, "elf"), (2, "half-elf"), (3, "dwarf"),
+                       (4, "gnome"), (5, "halfling"), (6, "human"))
+
+#: Krynn: a different list entirely, and the only one that is **0-based** --
+#: Death Knights' CELESTE is race 0, which is why 0 had to be a real race
+#: rather than the "monster" it is in the Realms titles.
+RACES_KRYNN = ((0, "silvanesti elf"), (1, "qualinesti elf"), (2, "half-elf"),
+               (3, "mountain dwarf"), (4, "hill dwarf"), (5, "kender"),
+               (6, "human"))
+
+# --- class bits -------------------------------------------------------------
+# 0x0EB, one bit per class. The low four are the whole story in Pool of
+# Radiance; the later titles add classes above them.
+#
+# **The bit number is the slot number in the per-class level array**, and that
+# array is eight bytes at 0x0C9-0x0D0, not four. Bit 4 is the knight at 0x0CD,
+# bit 6 the paladin at 0x0CF, bit 7 the ranger at 0x0D0 -- so
+# `class_bits == sum(1 << i for every non-zero slot i)` holds uniformly, on all
+# 36 shipped characters in all six titles. It is a cross-title check, not a
+# Pool of Radiance quirk, and `tests/test_gametables.py` asserts it.
+#
+# (`work/reports/goldbox-inventory.md` sec 3.3(a) says the rule fails for the
+# 0x10/0x40/0x80 classes. It read only the first four slots of an eight-slot
+# array; the levels are in the slots it did not read.)
+CLASS_BITS_CLASSIC = ((1, "magic-user"), (2, "cleric"), (4, "thief"),
+                      (8, "fighter"))
+
+#: Curse, Silver Blades and Gateway. CONFIRMED for Curse, whose shipped party
+#: has two characters literally named PALADIN (0x40) and RANGER (0x80); the
+#: same two names sit at the same places in all three titles' label tables.
+CLASS_BITS_WITH_PALADIN_RANGER = CLASS_BITS_CLASSIC + ((0x40, "paladin"),
+                                                       (0x80, "ranger"))
+
+#: Krynn adds the Knight of Solamnia at 0x10. PROBABLE: Champions' STRONGSWORD
+#: and Death Knights' SIR DRYDEN are single-class 0x10, lawful good, and the
+#: label pool carries KNIGHT and KNIGHT OF THE ROSE.
+CLASS_BITS_KRYNN = CLASS_BITS_CLASSIC + ((0x10, "knight"), (0x40, "paladin"),
+                                         (0x80, "ranger"))
+
+# --- item names -------------------------------------------------------------
+# `ITEMNAMES` is 256 low bytes, 256 high bytes, then the strings, and the
+# pointers are ABSOLUTE, so the file is unreadable without its load address --
+# which is not the one in its PRG header ($3000 on Curse, $1517 on Gateway).
+# Each value below is fitted: it is the only base at which entry 1 lands on
+# "BATTLE AXE", the first string, at payload offset $201 in all six titles.
+NAMES_LOAD_ADDRESS_POOL = 0x6F00
+NAMES_LOAD_ADDRESS_LATER = 0x9E00
+
 
 @dataclass(frozen=True)
 class Game:
@@ -50,6 +141,11 @@ class Game:
     None the roster is `roster_offset` bytes into the main payload; when it is
     set the roster is that separate file, and `roster_offset` is an offset
     within *it*.
+
+    `races`, `class_bits` and `item_names_load_address` are the three things
+    that are per-title *content* rather than per-title geometry. Each may be
+    None, and None means "we do not know", not "there are none": a caller that
+    gets None must show the raw number rather than invent a name for it.
     """
 
     key: str                       # stable identifier, written into the YAML
@@ -65,7 +161,22 @@ class Game:
     record_slot_count: int = 12
     disk_glob: str = "*.[dD]64"
 
+    # Pairs rather than dicts so the descriptor stays hashable and frozen.
+    races: tuple[tuple[int, str], ...] | None = None
+    class_bits: tuple[tuple[int, str], ...] | None = None
+    item_names_load_address: int | None = None
+
     # -- derived ----------------------------------------------------------
+    @property
+    def race_names(self) -> dict[int, str] | None:
+        """Race code -> name, or None when this title's list is unknown."""
+        return None if self.races is None else dict(self.races)
+
+    @property
+    def class_bit_names(self) -> dict[int, str] | None:
+        """Class bit -> name, or None when this title's list is unknown."""
+        return None if self.class_bits is None else dict(self.class_bits)
+
     @property
     def files(self) -> tuple[bytes, ...]:
         """Every directory entry that makes up a save."""
@@ -123,6 +234,9 @@ POOL_OF_RADIANCE = Game(
     roster_load_address=0x8300,
     roster_size=0x0800,
     disk_glob="POOL*.[dD]64",
+    races=RACES_FORGOTTEN_REALMS,
+    class_bits=CLASS_BITS_CLASSIC,
+    item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
 )
 
 CURSE_OF_THE_AZURE_BONDS = Game(
@@ -133,6 +247,9 @@ CURSE_OF_THE_AZURE_BONDS = Game(
     save_size=0x1D00,
     roster_offset=0x1C00,
     disk_glob="CURSE*.[dD]64",
+    races=RACES_CURSE,
+    class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
+    item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
 )
 
 SECRET_OF_THE_SILVER_BLADES = Game(
@@ -143,6 +260,9 @@ SECRET_OF_THE_SILVER_BLADES = Game(
     save_size=0x1D00,
     roster_offset=0x1C00,
     disk_glob="SILVER*.[dD]64",
+    races=RACES_SILVER_BLADES,
+    class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
+    item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
 )
 
 CHAMPIONS_OF_KRYNN = Game(
@@ -153,6 +273,9 @@ CHAMPIONS_OF_KRYNN = Game(
     save_size=0x1D00,
     roster_offset=0x1C00,
     disk_glob="*[cC]hampions*.[dD]64",
+    races=RACES_KRYNN,
+    class_bits=CLASS_BITS_KRYNN,
+    item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
 )
 
 DEATH_KNIGHTS_OF_KRYNN = Game(
@@ -163,6 +286,9 @@ DEATH_KNIGHTS_OF_KRYNN = Game(
     save_size=0x1D00,
     roster_offset=0x1C00,
     disk_glob="*[dD]eath*[kK]nights*.[dD]64",
+    races=RACES_KRYNN,
+    class_bits=CLASS_BITS_KRYNN,
+    item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
 )
 
 GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
@@ -173,6 +299,9 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
     save_size=0x1D00,
     roster_offset=0x1C00,
     disk_glob="GATE*.[dD]64",
+    races=RACES_FORGOTTEN_REALMS,
+    class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
+    item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
 )
 
 GAMES: tuple[Game, ...] = (

@@ -50,13 +50,18 @@ HIDDEN_NAME_MASK = 0x07
 # arrays -- 256 low bytes, then 256 high bytes -- of **absolute addresses**. The
 # file loads at $6F00, so entry 1 points at $7101, which is where the memory map
 # records "weapon names" in a running game.
+#
+# **That address is Pool of Radiance's.** The five later titles load the same
+# file at $9E00 and their pointers start at $A001; the value to use lives on the
+# `Game` descriptor as `item_names_load_address`, and this constant is only the
+# fallback for a caller that has no Game to hand.
 NAMES_LOAD_ADDRESS = 0x6F00
 NAMES_TABLE_ENTRIES = 256
 NAMES_LOW_BYTES = 0x000
 NAMES_HIGH_BYTES = 0x100
 
 
-def load_item_names(disk: D64 | str) -> dict[int, str]:
+def load_item_names(disk: D64 | str, game=None) -> dict[int, str]:
     """Read the item-name table out of a game disk's ITEMNAMES file.
 
     Returns a **1-based** index -> name mapping, keyed by the value an item
@@ -67,16 +72,23 @@ def load_item_names(disk: D64 | str) -> dict[int, str]:
     a sequential reader silently closes those gaps, shifting every name above
     62 by one and then by three. That put a wrong -- but entirely plausible --
     name on every item above the gap.
+
+    `game` names the title whose load address applies. A title whose address is
+    unknown yields no names at all rather than nonsense ones: an item shown by
+    its index is an honest failure, a wrongly named one is not.
     """
+    base = NAMES_LOAD_ADDRESS if game is None else game.item_names_load_address
+    if base is None:
+        return {}
     payload = load_payload(disk, b"ITEMNAMES")
     low = payload[NAMES_LOW_BYTES:NAMES_LOW_BYTES + NAMES_TABLE_ENTRIES]
     high = payload[NAMES_HIGH_BYTES:NAMES_HIGH_BYTES + NAMES_TABLE_ENTRIES]
     names: dict[int, str] = {}
     for idx in range(NAMES_TABLE_ENTRIES):
         addr = low[idx] | high[idx] << 8
-        if addr < NAMES_LOAD_ADDRESS:          # unused slot; index 0 and the gaps
+        if addr < base:                        # unused slot; index 0 and the gaps
             continue
-        start = addr - NAMES_LOAD_ADDRESS
+        start = addr - base
         end = payload.find(b"\x00", start)
         if end < 0:
             continue
@@ -426,17 +438,18 @@ ITEM_FILE_PREFIX = b"ITEMFILE"
 
 
 def load_item_templates(disk: D64 | str,
-                        names: dict[int, str] | None = None
-                        ) -> dict[str, bytes]:
+                        names: dict[int, str] | None = None,
+                        game=None) -> dict[str, bytes]:
     """Every distinct item record on a game disk, keyed by its printed name.
 
-    Given a path, its sibling `POOL*.D64` files are scanned too, because the
-    item files are spread across all eight sides.
+    Given a path, its sibling disks are scanned too, because the item files are
+    spread across all eight sides. `game` chooses which siblings count.
     """
     disks: list[D64] = []
     if isinstance(disk, str):
         here = pathlib.Path(disk).resolve()
-        siblings = sorted(here.parent.glob("POOL*.[dD]64"))
+        siblings = sorted(here.parent.glob(
+            "POOL*.[dD]64" if game is None else game.disk_glob))
         for path in ([here] + [s for s in siblings if s != here]):
             try:
                 disks.append(D64.open(str(path)))
@@ -447,7 +460,7 @@ def load_item_templates(disk: D64 | str,
 
     if names is None and disks:
         try:
-            names = load_item_names(disks[0])
+            names = load_item_names(disks[0], game)
         except Exception:
             names = None
 
