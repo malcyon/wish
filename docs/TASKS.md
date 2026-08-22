@@ -50,7 +50,6 @@ files, the standing constraints in full, and no commits.
 | **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
 | **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
-| **P20** | The 15 areas with no harvested arrival square | do they land somewhere legal? |
 | **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
 
 ---
@@ -73,6 +72,7 @@ A code retires with its task and is never reused.
 | **P15** | entering `NEWECL`'s tail is safe |
 | **P16** | `$C04B` survives the overlay restart |
 | **P17** | `turn_class` never moved from `0x0A3` |
+| **P20** | all fifteen land somewhere legal; the rule and the row were fixed on what it found |
 | **P21** | `0x0D9` is `attack_forms` |
 | **P22** | `0x0A0` promoted to CONFIRMED |
 | **P23** | `capacity()`'s docstring corrected |
