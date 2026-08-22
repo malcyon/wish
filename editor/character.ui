@@ -71,14 +71,28 @@
         <item row="22" column="1"><widget class="QLineEdit" name="field_roster_tail" /></item>
        </layout>
       </widget></item>
-      <item><widget class="QGroupBox" name="box_effects">
-      <property name="title"><string>Active effects</string></property>
-      <property name="minimumHeight"><number>240</number></property>
-      <layout class="QVBoxLayout" name="layout_effects">
-       <item><widget class="EffectsView" name="field_item_effects" /></item>
-      </layout>
-     </widget></item>
-    <item><spacer name="spacer_column_one"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_two"><item><widget class="QGroupBox" name="box_appearance">
+    <item><widget class="QGroupBox" name="box_thief_skills">
+       <property name="title"><string>Thief skills</string></property>
+       <layout class="QFormLayout" name="form_thief_skills">
+        <item row="0" column="0"><widget class="QLabel" name="label_thief_pick_pockets"><property name="text"><string>Pick pockets</string></property></widget></item>
+        <item row="0" column="1"><widget class="QSpinBox" name="field_thief_pick_pockets"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="label_thief_open_locks"><property name="text"><string>Open locks</string></property></widget></item>
+        <item row="1" column="1"><widget class="QSpinBox" name="field_thief_open_locks"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="label_thief_find_traps"><property name="text"><string>Find traps</string></property></widget></item>
+        <item row="2" column="1"><widget class="QSpinBox" name="field_thief_find_traps"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="label_thief_move_silently"><property name="text"><string>Move silently</string></property></widget></item>
+        <item row="3" column="1"><widget class="QSpinBox" name="field_thief_move_silently"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="label_thief_hide_in_shadows"><property name="text"><string>Hide in shadows</string></property></widget></item>
+        <item row="4" column="1"><widget class="QSpinBox" name="field_thief_hide_in_shadows"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="5" column="0"><widget class="QLabel" name="label_thief_hear_noise"><property name="text"><string>Hear noise</string></property></widget></item>
+        <item row="5" column="1"><widget class="QSpinBox" name="field_thief_hear_noise"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="6" column="0"><widget class="QLabel" name="label_thief_climb_walls"><property name="text"><string>Climb walls</string></property></widget></item>
+        <item row="6" column="1"><widget class="QSpinBox" name="field_thief_climb_walls"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+        <item row="7" column="0"><widget class="QLabel" name="label_thief_read_languages"><property name="text"><string>Read languages</string></property></widget></item>
+        <item row="7" column="1"><widget class="QSpinBox" name="field_thief_read_languages"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
+       </layout>
+      </widget></item>
+      <item><spacer name="spacer_column_one"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_two"><item><widget class="QGroupBox" name="box_appearance">
        <property name="title"><string>Combat icon</string></property>
        <layout class="QFormLayout" name="form_appearance">
         <item row="0" column="0" colspan="2"><widget class="IconEditor" name="field_icon" /></item>
@@ -177,28 +191,7 @@
        <item><widget class="QTableView" name="traits" /></item>
       </layout>
      </widget></item>
-     <item><spacer name="spacer_column_three"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_four"><item><widget class="QGroupBox" name="box_thief_skills">
-       <property name="title"><string>Thief skills</string></property>
-       <layout class="QFormLayout" name="form_thief_skills">
-        <item row="0" column="0"><widget class="QLabel" name="label_thief_pick_pockets"><property name="text"><string>Pick pockets</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_thief_pick_pockets"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_thief_open_locks"><property name="text"><string>Open locks</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_thief_open_locks"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_thief_find_traps"><property name="text"><string>Find traps</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_thief_find_traps"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_thief_move_silently"><property name="text"><string>Move silently</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_thief_move_silently"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_thief_hide_in_shadows"><property name="text"><string>Hide in shadows</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_thief_hide_in_shadows"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_thief_hear_noise"><property name="text"><string>Hear noise</string></property></widget></item>
-        <item row="5" column="1"><widget class="QSpinBox" name="field_thief_hear_noise"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_thief_climb_walls"><property name="text"><string>Climb walls</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_thief_climb_walls"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_thief_read_languages"><property name="text"><string>Read languages</string></property></widget></item>
-        <item row="7" column="1"><widget class="QSpinBox" name="field_thief_read_languages"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-       </layout>
-      </widget></item>
-      <item><widget class="QGroupBox" name="box_spells">
+     <item><spacer name="spacer_column_three"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_four">      <item><widget class="QGroupBox" name="box_spells">
      <property name="title"><string>Spells</string></property>
      <property name="minimumHeight"><number>240</number></property>
      <layout class="QVBoxLayout" name="layout_spells">
@@ -219,6 +212,13 @@
       </layout></item>
      </layout>
     </widget></item>
+       <item><widget class="QGroupBox" name="box_effects">
+      <property name="title"><string>Active effects</string></property>
+      <property name="minimumHeight"><number>240</number></property>
+      <layout class="QVBoxLayout" name="layout_effects">
+       <item><widget class="EffectsView" name="field_item_effects" /></item>
+      </layout>
+     </widget></item>
        <item><spacer name="spacer_column_four"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item></layout></item>
     <item><layout class="QHBoxLayout" name="tables_row">
      </layout></item>

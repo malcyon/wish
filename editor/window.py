@@ -92,13 +92,12 @@ TABLE_ROW_HEIGHT = 20
 TOOLBAR_ICON = 16
 MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
-WIDE_BOXES = ("box_inventory", "box_traits", "box_effects")
+WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # Left to right: roster and character, the icon and the ability forms, then the
 # two columns carrying tables, which are the ones that benefit from width.
 COLUMN_STRETCH = (0, 0, 5, 2)
 ROSTER_SLACK = 6
 ICON_MAX_WIDTH = 300
-SPELLS_MAX_WIDTH = 520
 STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
 # so a roster sized to this never scrolls and never leaves a fifth of the
@@ -453,11 +452,7 @@ class EditorWindow(QMainWindow):
             # box is empty, which is where most of the whitespace came from.
             # `minimumSizeHint` and not `sizeHint`: the latter is computed
             # before the combo boxes have been sized and clipped their text.
-            if box.objectName() == "box_spells":
-                # Three lists side by side ask for 690 pixels, which starves
-                # the inventory table beside it into a horizontal scroll bar.
-                box.setMaximumWidth(SPELLS_MAX_WIDTH)
-            elif box.objectName() not in WIDE_BOXES:
+            if box.objectName() not in WIDE_BOXES:
                 box.setMaximumWidth(max(box.sizeHint().width(),
                                         box.minimumSizeHint().width()))
         # A box narrower than its column would otherwise sit in the middle of

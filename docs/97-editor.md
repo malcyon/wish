@@ -140,6 +140,36 @@ other raw passthrough sits -- a single labelled row. `layout_spells` is now a
 `QVBoxLayout`: the two lists side by side in `layout_spell_lists`, the castable
 row beneath them.
 
+**A spell list is as wide as its longest name, measured.** Donald: "the spells
+are not visible in the table because it's so small" -- the spellbook was laid
+out 70 px wide, because the memorised column's drop-down asked for 330 of a box
+capped at a written-down 520 and the list beside it took what was left.
+`spellwidget.fit_to_names` sets each list's minimum from the style's own
+`sizeFromContents(CT_ItemViewItem, …)` over the longest line it can ever show,
+plus the frame and the scroll bar; `fit_to_choices` does the same for the
+drop-down through `CT_ComboBox`. The memorised list is measured against every
+name the drop-down offers rather than the two in it now, and the cap on
+`box_spells` is gone -- the box is sized by what is in it. Curse's longer names
+therefore widen it by themselves when a Curse save is opened.
+`tests/test_editor.py::test_a_spell_list_is_wide_enough_for_the_longest_name`.
+
+**The drop-down has a row to its own.** Sharing one with Add and Remove left it
+132 px of edit field for a 303 px name, and two buttons that will not shrink.
+
+**Two boxes moved**, on Donald's word: Thief skills under Character in column
+one, Active effects under Spells in column four. That is the code's own
+promise -- a box moves in Designer and nothing else changes -- and it balanced
+the columns: the sheet's content minimum went from 1389x1097 to 1668x886.
+
+**The window fits the screen even when the sheet does not.** Four columns do
+not fit 1280x662, which is what Donald's compositor hands out of a 1920x1080
+desktop; the sheet is in a scroll area for that reason. What must not happen is
+the window itself opening 1875 wide on it, with the right-hand column and the
+status bar out of reach. `editor/__main__.py::fit_on_screen` clamps before and
+after `show()` -- twice, because until it is shown there is no title bar to
+measure. It restates the mapper's `clamp_to_screen` rather than importing it:
+the editor package imports nothing from the live-reading side.
+
 ## Opening and saving
 
 Two buttons on the form, `button_open` and `button_save`, wired to `QAction`s so

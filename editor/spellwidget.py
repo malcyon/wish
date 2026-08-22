@@ -18,7 +18,7 @@ through either way.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -27,6 +27,9 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QStyle,
+    QStyleOptionComboBox,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -43,6 +46,42 @@ UNKNOWN = QColor("#b03a2e")  # memorised but not in the spellbook
 
 def _spell_text(sid: int, names: dict[int, str] | None) -> str:
     return describe(sid, names or {})
+
+
+def fit_to_names(view: QListWidget, texts, checkable: bool) -> None:
+    """Make `view` at least as wide as the longest line it can ever show.
+
+    Measured off this style and this font, never written down. Both lists sat
+    in a box capped at 520 px and the spellbook came out 70 px wide -- Donald:
+    "the spells are not visible in the table because it's so small" -- and a
+    pixel count that fixed that here would be wrong on another font, another
+    DPI, or the Windows build, where this class of bug keeps being found.
+
+    Three things beyond the text count. The tick box, which only the spellbook
+    has; the frame; and the vertical scroll bar, which is included whether it
+    is showing or not, because fifty-six spells always overflow and a list
+    sized without it loses the last characters the moment it does.
+
+    `texts` is every name the list can hold, not the names in it now: the
+    memorised list is usually empty and must still be wide enough for whatever
+    is added to it.
+    """
+    metrics = view.fontMetrics()
+    widest = max(texts, key=metrics.horizontalAdvance, default="")
+    option = QStyleOptionViewItem()
+    option.initFrom(view)
+    option.font = view.font()
+    option.fontMetrics = metrics
+    option.text = widest
+    option.features |= QStyleOptionViewItem.ViewItemFeature.HasDisplay
+    if checkable:
+        option.features |= (
+            QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator)
+    style = view.style()
+    row = style.sizeFromContents(QStyle.ContentsType.CT_ItemViewItem,
+                                 option, QSize(), view).width()
+    bar = style.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, view)
+    view.setMinimumWidth(row + bar + 2 * view.frameWidth())
 
 
 def _ordered() -> list[tuple[str, int, list[int]]]:
@@ -62,6 +101,25 @@ def _ordered() -> list[tuple[str, int, list[int]]]:
     if rest:
         out.append(("no class list", 0, rest))
     return out
+
+
+def fit_to_choices(combo: QComboBox) -> None:
+    """Make `combo` at least as wide as the longest name it offers.
+
+    Same rule as `fit_to_names`, asked of the style rather than counted in
+    pixels: the frame and the arrow are whatever this platform draws them as.
+    """
+    metrics = combo.fontMetrics()
+    widest = max((metrics.horizontalAdvance(combo.itemText(i))
+                  for i in range(combo.count())), default=0)
+    option = QStyleOptionComboBox()
+    option.initFrom(combo)
+    option.frame = combo.hasFrame()
+    option.editable = combo.isEditable()
+    size = combo.style().sizeFromContents(
+        QStyle.ContentsType.CT_ComboBox, option,
+        QSize(widest, combo.sizeHint().height()), combo)
+    combo.setMinimumWidth(size.width())
 
 
 class SpellEditor(QWidget):
@@ -116,6 +174,9 @@ class SpellbookEditor(SpellEditor):
                 self.list.addItem(row)
                 self._rows[sid] = row
         self._loading = False
+        fit_to_names(self.list,
+                     [self.list.item(i).text()
+                      for i in range(self.list.count())], checkable=True)
 
     # -- the protocol -----------------------------------------------------
 
@@ -191,12 +252,17 @@ class MemorisedEditor(SpellEditor):
         self.add.clicked.connect(self._add_chosen)
         self.remove.clicked.connect(self._remove_selected)
 
+        # The drop-down gets a row to itself. Sharing one with the buttons left
+        # it 140 px for a 303 px name -- Donald: "the text isn't entirely
+        # visible" -- and the two buttons will not shrink to give it back.
         row = QHBoxLayout()
-        for w in (self.choice, self.add, self.remove):
+        for w in (self.add, self.remove):
             row.addWidget(w)
+        row.addStretch(1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.list)
+        layout.addWidget(self.choice)
         layout.addLayout(row)
         layout.addWidget(self.capacity)
         self._fill_choices()
@@ -206,6 +272,12 @@ class MemorisedEditor(SpellEditor):
         for _cls, _level, ids in _ordered():
             for sid in ids:
                 self.choice.addItem(_spell_text(sid, self._names), sid)
+        # Any of them can end up in the list, so the list is sized for the
+        # longest of them and not for the handful memorised right now.
+        fit_to_names(self.list,
+                     [self.choice.itemText(i)
+                      for i in range(self.choice.count())], checkable=False)
+        fit_to_choices(self.choice)
 
     # -- the protocol -----------------------------------------------------
 

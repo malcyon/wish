@@ -402,6 +402,72 @@ def test_an_untouched_spell_field_is_written_back_byte_for_byte(editor):
     assert memorised.to_bytes() == record.get_raw("spells_memorised")
 
 
+@game_disks
+def test_a_spell_list_is_wide_enough_for_the_longest_name(editor):
+    """Donald: "the spells are not visible in the table because it's so
+    small". The spellbook opened 70 pixels wide beside a memorised column
+    whose drop-down asked for 330, inside a box capped at 520.
+
+    The rule and not the pixel count: whatever the font, each list is at least
+    as wide as its longest line plus the frame and the scroll bar. The
+    spellbook's tick box makes it wider still, so this is a floor for both.
+    """
+    from PyQt6.QtWidgets import QStyle
+
+    editor.resize(1875, 1030)
+    editor.show()
+    editor.ui.roster.selectRow(0)                    # MALCYON, a magic-user
+    book, memorised = editor._spell_widgets()
+    lists = ((book.list, [book.list.item(i).text()
+                          for i in range(book.list.count())]),
+             # Any spell can be memorised, so the memorised list is measured
+             # against every name the drop-down offers, not against the two
+             # in it now.
+             (memorised.list, [memorised.choice.itemText(i)
+                               for i in range(memorised.choice.count())]))
+    for view, texts in lists:
+        wanted = max(view.fontMetrics().horizontalAdvance(t) for t in texts)
+        furniture = 2 * view.frameWidth() + view.style().pixelMetric(
+            QStyle.PixelMetric.PM_ScrollBarExtent, None, view)
+        assert wanted > 0
+        assert view.minimumWidth() >= wanted + furniture
+        # And the sheet gives them the width they ask for.
+        assert view.width() >= wanted + furniture
+
+
+@game_disks
+def test_the_memorised_drop_down_shows_a_whole_spell_name(editor):
+    """Donald: "the text isn't entirely visible". Sharing a row with Add and
+    Remove left it 132 px of edit field for a 303 px name."""
+    editor.resize(1875, 1030)
+    editor.show()
+    editor.ui.roster.selectRow(0)
+    _book, memorised = editor._spell_widgets()
+    choice = memorised.choice
+    wanted = max(choice.fontMetrics().horizontalAdvance(choice.itemText(i))
+                 for i in range(choice.count()))
+    assert choice.minimumWidth() >= wanted     # plus the frame and the arrow
+    assert choice.width() >= wanted
+
+
+@game_disks
+def test_the_window_opens_inside_a_small_desktop(app, save):
+    """Donald's compositor hands out 1280x662 of a 1920x1080 desktop, and the
+    sheet asks for 1875x1030. The sheet scrolls; the window has to fit."""
+    from PyQt6.QtCore import QRect
+
+    from editor.__main__ import WANTED, fit_on_screen
+    from editor.window import EditorWindow
+    space = QRect(0, 0, 1280, 662)
+    w = EditorWindow(str(save))
+    w.resize(*WANTED)
+    fit_on_screen(w, space)
+    w.show()
+    fit_on_screen(w, space)
+    assert w.frameGeometry().width() <= space.width()
+    assert w.frameGeometry().height() <= space.height()
+
+
 # --- the combat icon --------------------------------------------------------
 
 @game_disks
