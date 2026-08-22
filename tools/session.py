@@ -68,8 +68,15 @@ class Session:
     """
 
     def __init__(self, disk: str | None = None, display: str | None = None,
-                 slot=None):
+                 slot=None, fastloader: str | None = None):
         self.slot = slot
+        # `DISABLE FASTLOADER (Y/N)?`.  A parameter, not a constant, because
+        # until P69 nobody could A/B it -- see `docs/131-fastloader.md`.
+        self.fastloader = (
+            fastloader or os.environ.get("POR_FASTLOADER") or "y"
+        ).strip().lower()[:1]
+        assert self.fastloader in ("y", "n"), \
+            f"POR_FASTLOADER must be y or n, not {self.fastloader!r}"
         self.here = str(slot.dir) if slot is not None else HERE
         self.mon_port = slot.port if slot is not None else MON_PORT
         self.text_port = slot.text_port if slot is not None else TEXT_PORT
@@ -358,8 +365,8 @@ class Session:
         if self.wait_text("DISABLE FASTLOADER", 120)[0] is None:
             self.log("no fastloader prompt")
             return False
-        self.kbd.key("y", 0.15, 0.28)
-        self.log("fastloader: Y")
+        self.kbd.key(self.fastloader, 0.15, 0.28)
+        self.log(f"fastloader: {self.fastloader.upper()}")
         if self.wait_text("PLAY GAME", 240)[0] is None:
             self.log("no PLAY GAME menu")
             return False
