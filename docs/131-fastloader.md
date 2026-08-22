@@ -1,6 +1,8 @@
 # Does the fastloader answer make any difference?
 
-**Status: measured.** 24 boots, five per cell. `work/reports/p69-fastloader.md`
+**Status: closed (P69).** Donald: *"it basically is the same either way."*
+The measurement stands and the code keeps answering `Y`; no guidance is owed
+to a player. 24 boots, five per cell. `work/reports/p69-fastloader.md`
 is the run sheet, `work/p69/` holds the harness and the raw JSON.
 
 Donald: *"You have guidance on whether we should answer Y/N to the fastloader

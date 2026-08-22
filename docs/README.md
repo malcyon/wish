@@ -57,7 +57,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [128-guide-and-scripting.md](128-guide-and-scripting.md) | the DOS guide and the Unlimited Adventures files: the GBVM address list, the area names, the ECL semantics |
 | [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — planned |
 | [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log — built |
-| [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — plan |
+| [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — measured; it does not |
 | [TASKS.md](TASKS.md) | the open task list, one code per task, retired when the task closes |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
