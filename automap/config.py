@@ -138,6 +138,49 @@ def restore_geometry(window, settings: Settings,
     return done
 
 
+def hold_geometry(window, space=None):
+    """Stand by the size we just asked for, if the platform overrides it.
+
+    A Wayland compositor answers the first `show()` with a size of its own and
+    Qt takes it: on cosmic-comp, Donald's desktop, a bare `QMainWindow` that
+    asks for 1875x1030 is 1280x662 one frame later -- measured with a plain
+    window and no code of ours in it, so it is the platform. Everything set
+    before `show()` is thrown away that way, which is what "the window doesn't
+    remember its size on Linux" was: the compositor's size was then what
+    closing remembered, so the next run opened at it and the size before it was
+    gone for good.
+
+    The same size asked for again *after* that first configure is honoured, so
+    that is what this does. The first resize the program did not ask for is
+    undone once, and then the watcher stands down -- every later one is the
+    user dragging an edge, and fighting that would be far worse than the bug.
+    The re-assertion is clamped like any other, so a platform shrinking a
+    window because it genuinely does not fit still wins.
+
+    Nothing happens on X11 or Windows, where no such configure arrives. The
+    watcher is parented to the window; the return is for a test to hold.
+    """
+    from PyQt6.QtCore import QEvent, QObject
+
+    class _Hold(QObject):
+        def __init__(self):
+            super().__init__(window)
+            self.wanted = window.size()
+
+        def eventFilter(self, obj, event):
+            if obj is window and event.type() == QEvent.Type.Resize:
+                if event.size() != self.wanted:
+                    window.removeEventFilter(self)     # never twice
+                    if not (window.isMaximized() or window.isFullScreen()):
+                        window.resize(self.wanted)
+                        clamp_to_screen(window, space)
+            return False
+
+    watcher = _Hold()
+    window.installEventFilter(watcher)
+    return watcher
+
+
 def clamp_to_screen(window, space=None) -> None:
     """Never bigger than the display, never off the edge of it.
 

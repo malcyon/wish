@@ -46,7 +46,13 @@ from PyQt6.QtWidgets import (
     QTableView,
 )
 
-from automap.config import UNSHOWN_CHROME, Settings, clamp_to_screen, restore_geometry
+from automap.config import (
+    UNSHOWN_CHROME,
+    Settings,
+    clamp_to_screen,
+    hold_geometry,
+    restore_geometry,
+)
 from editor.window import TABLE_SELECTION, _spin_width
 
 DISKS = str(disk_dir() or "no-disks-here")
@@ -162,6 +168,64 @@ def test_the_whole_window_fits_a_1080p_screen_on_a_first_run(app, tmp_path,
     win = WishWindow(None, maps={}, session=Session(find=lambda pref=None: None))
     framed(win)
     restore_geometry(win, Settings(), floor=FIRST_RUN, space=DESKTOP)
+    assert win.frameGeometry().width() <= DESKTOP.width()
+    assert win.frameGeometry().height() <= DESKTOP.height()
+    win.close()
+
+
+# --- the compositor has its own idea of the size -----------------------------
+
+def unshown(window):
+    """Laid out and sent events like a real window, and on nobody's desktop.
+
+    `WA_DontShowOnScreen` is what keeps this off whichever compositor the suite
+    is run on: `show()` still lays the window out and still delivers the resize
+    events the rule is about, and no window is created for a compositor to have
+    an opinion about.
+    """
+    window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+    window.show()
+    return window
+
+
+def test_a_size_the_platform_forces_after_show_is_asked_for_again(app):
+    """Donald: on Linux the window doesn't remember its size.
+
+    cosmic-comp answers the first `show()` with a size of its own -- 1280x662
+    for a bare `QMainWindow` that asked for 1875x1030 -- and Qt takes it, one
+    frame after the window appears. Whatever was restored was gone by the time
+    anybody looked, and closing then wrote the compositor's size back over the
+    remembered one. Asking again after that first configure is honoured.
+    """
+    win = unshown(QMainWindow())
+    win.resize(1400, 900)
+    hold_geometry(win, space=DESKTOP)
+    win.resize(1280, 662)                 # the compositor, uninvited
+    assert (win.width(), win.height()) == (1400, 900)
+    win.close()
+
+
+def test_the_user_dragging_an_edge_is_never_fought(app):
+    """One shot, and only the first. The configure comes in the same breath as
+    the window appearing; everything after it is somebody resizing on purpose,
+    and a window that snapped back from that would be unusable."""
+    win = unshown(QMainWindow())
+    win.resize(1400, 900)
+    hold_geometry(win, space=DESKTOP)
+    win.resize(1280, 662)                 # the compositor
+    win.resize(1000, 700)                 # and then the user
+    assert (win.width(), win.height()) == (1000, 700)
+    win.close()
+
+
+def test_asking_again_is_still_clamped_to_the_screen(app):
+    """A platform that shrank the window because it genuinely does not fit
+    still wins: the re-assertion goes through the same clamp as everything
+    else, or the Windows bug comes back through this door."""
+    win = unshown(framed(QMainWindow()))
+    win.resize(1900, 1200)
+    hold_geometry(win, space=DESKTOP)
+    win.resize(800, 600)
     assert win.frameGeometry().width() <= DESKTOP.width()
     assert win.frameGeometry().height() <= DESKTOP.height()
     win.close()

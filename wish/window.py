@@ -36,6 +36,7 @@ from automap import paths
 from automap.config import (
     Settings,
     clamp_to_screen,
+    hold_geometry,
     remember_geometry,
     restore_geometry,
 )
@@ -594,4 +595,9 @@ def run(save: str | None = None, game_disk: str | None = None,
     # 1920x1080 Windows desktop passed the first clamp and still opened with
     # its status bar below the bottom of the screen.
     clamp_to_screen(win)
+    # And stand by that size when the compositor answers back with one of its
+    # own. cosmic-comp does, a frame after the window appears, and Qt takes it:
+    # without this the remembered size lived about 50 ms and what closing wrote
+    # back was the compositor's idea, not Donald's.
+    hold_geometry(win)
     return app.exec()
