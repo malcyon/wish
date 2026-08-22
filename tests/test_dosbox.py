@@ -146,6 +146,14 @@ def test_the_ink_digest_ignores_a_recolour_and_not_a_reshape():
     assert white.ink() != moved.ink()
 
 
+#: The lease is an `flock`, which Windows has no equivalent of. Everything
+#: else in this file -- the PPM decode, the digest, and the findings about a
+#: DOS save -- is platform-independent and runs everywhere.
+posix_only = pytest.mark.skipif(sys.platform == "win32",
+                                reason="the instance lease is an flock")
+
+
+@posix_only
 def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 2)
@@ -162,6 +170,7 @@ def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
     third.release()
 
 
+@posix_only
 def test_a_lease_is_dropped_when_the_process_holding_it_dies(tmp_path, monkeypatch):
     """The reason the lease is an flock and not a lock file with a pid in it."""
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")

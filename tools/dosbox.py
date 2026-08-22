@@ -45,7 +45,6 @@ Everything skips cleanly when they are absent.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -54,6 +53,15 @@ import signal
 import subprocess
 import sys
 import time
+
+try:
+    import fcntl  # POSIX only
+except ImportError:                 # pragma: no cover - Windows
+    # The harness drives DOSBox on Linux and nothing else needs it, but the
+    # module still has to *import* everywhere: `tests/test_dosbox.py` asserts
+    # findings about a DOS save that hold on any platform, and CI runs the
+    # suite on Windows.
+    fcntl = None
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -155,6 +163,8 @@ class Slot:
 
 def claim(note: str = "") -> Slot:
     """Lease the first free instance slot, or raise `PoolFull`."""
+    if fcntl is None:
+        raise PoolFull("the DOSBox harness needs flock, so it is POSIX only")
     INST.mkdir(parents=True, exist_ok=True)
     for n in range(SLOTS):
         d = INST / str(n)
