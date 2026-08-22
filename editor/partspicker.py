@@ -36,7 +36,11 @@ from por.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
 
 from .palette import colour
 
-PREVIEW_ZOOM = 3
+# Four rather than three: the ask was a quarter bigger, and 3.75 is not a whole
+# number of screen pixels per source pixel. At a fractional zoom `scaled` gives
+# some source rows four pixels and some three, which on a 24-row sprite is
+# visible as banding. A third bigger and clean beats a quarter bigger and ragged.
+PREVIEW_ZOOM = 4
 # The rows were drawn at the preview's own zoom and came out half the height of
 # the thing being chosen: a pose is 24 source rows, so zoom 2 is a 48-pixel
 # figure, and picking a helmet out of one is guesswork. The list is where the
@@ -116,10 +120,14 @@ class PartsPicker(QDialog):
         top.addWidget(QLabel("Size", self))
         top.addWidget(self.size_box)
         top.addStretch(1)
-        top.addWidget(self.preview)
 
+        # The preview gets a row to itself. Sharing the size row put it hard
+        # against the right edge, which reads as an afterthought -- it is the
+        # thing being made, and it belongs over the two lists that make it.
+        # The label already centres its pixmap, so a full-width row is enough.
         outer = QVBoxLayout(self)
         outer.addLayout(top)
+        outer.addWidget(self.preview)
         outer.addLayout(lists)
         outer.addWidget(buttons)
         self._fill()
