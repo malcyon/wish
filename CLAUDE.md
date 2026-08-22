@@ -151,7 +151,14 @@ Four rules about the front-door file, all learned the hard way:
   the separate private repository, but a protection routine that computes the
   wrong answer is a bug like any other and is logged. Say what the code does
   wrong and what a player sees; do not publish the tables, the arithmetic or
-  anything else that amounts to defeating the check.
+  anything else that amounts to defeating the protection.
+
+**Name the consequence, not the mechanism.** A title and a summary line say
+what goes wrong for the player; the mechanism is what the entry is *for*.
+"Sokol Keep's dead elf comes back every time you return" is the bug. "The dead
+elf is guarded on an address nothing writes" is the cause, and it means nothing
+to somebody who has not read the entry yet. Call things by their ordinary
+names, too: it is copy protection and a code wheel, not a verification check.
 
 Each entry says what the game does, what it should do, the evidence, and what
 the player sees. Keep the addresses to what carries the evidence -- the entry

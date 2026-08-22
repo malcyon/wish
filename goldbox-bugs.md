@@ -29,19 +29,19 @@ things that looked like bugs and turned out to be our own misreadings.
 
 | # | bug | game | kind | confidence |
 |---|---|---|---|---|
-| 1 | The C64 verification check negates an index the DOS build corrects cyclically | Curse of the Azure Bonds | engine | CONFIRMED |
-| 2 | Sokol Keep's dead elf is guarded on an address nothing writes | Pool of Radiance | script | CONFIRMED, in game |
+| 1 | The C64 copy protection asks questions the code wheel cannot answer | Curse of the Azure Bonds | engine | CONFIRMED |
+| 2 | Sokol Keep's dead elf comes back every time you return | Pool of Radiance | script | CONFIRMED, in game |
 | 3 | QUICK is never cleared when a fight ends | Pool of Radiance | engine | CONFIRMED |
-| 4 | The hedge maze's half-encounter-rate squares run at full rate | Pool of Radiance | script | CONFIRMED |
+| 4 | The hedge maze's safer squares are as dangerous as the rest | Pool of Radiance | script | CONFIRMED |
 | 5 | The icon editor's SIZE choice is never written back | Pool of Radiance | engine | PROBABLE |
-| 6 | Two monster records state a level in their name that their data contradicts | Pool of Radiance | data | CONFIRMED |
-| 7 | Four monster records carry a class code that contradicts their class bits | Pool of Radiance | data | CONFIRMED |
-| 8 | The training routine subtracts the prime-requisite bonus from the racial cap | Curse of the Azure Bonds | engine | GUESS |
-| 9 | A character export gets a directory block count of zero | Curse of the Azure Bonds | engine | PROBABLE |
+| 6 | Two monsters are not the level their name claims | Pool of Radiance | data | CONFIRMED |
+| 7 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
+| 8 | A demihuman's high ability score lowers their level cap instead of raising it | Curse of the Azure Bonds | engine | GUESS |
+| 9 | An exported character is invisible to anything that trusts the directory | Curse of the Azure Bonds | engine | PROBABLE |
 
 ---
 
-## 1. Curse's C64 verification check asks questions its wheel cannot answer
+## 1. Curse's C64 copy protection asks questions its code wheel cannot answer
 
 **The most consequential defect on this list, and the only one that makes the
 game call a player wrong when they are right.**
