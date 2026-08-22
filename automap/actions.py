@@ -968,13 +968,15 @@ class Warp(Action):
     name = "warp"
     label = "Warp To"
     description = ("enter another area the way the game's own exits do -- "
-                   "unproven, and it writes to the running machine")
+                   "it writes to the running machine")
     combat_legal = False
     confirm = ("Warp writes five things into the running game and then hands "
-               "the CPU a new program counter.\n\nNothing has ever tried this: "
-               "it may crash the game, and the arriving area's script will "
-               "assume quest flags the party never set. Use a copy of your "
-               "save disk, never the original.\n\nWarp anyway?")
+               "the CPU a new program counter.\n\nThe warp itself is proven -- "
+               "it has been made in the game and the party walked afterwards. "
+               "What is not proven is the arrival: the area's script will "
+               "assume quest flags the party never set, and fifteen areas have "
+               "no harvested arrival square. Use a copy of your save disk, "
+               "never the original.\n\nWarp anyway?")
 
     def __init__(self):
         #: Where the last warp came from. `Warp Back` reads it; None until a

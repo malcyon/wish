@@ -16,8 +16,8 @@ again. The only dialog left is the confirmation an irreversible action asks
 first, because that one needs an answer.
 
 `WarpBar` is the same shape for the one action that is not in that row: it is
-gated on debug mode, it says in the row itself that it is unproven, and it asks
-before it writes.
+gated on debug mode, it says in the row itself what the warp does not
+guarantee, and it asks before it writes.
 
 The quickfight watcher is a checkbox and off by default: it writes to a running
 machine on an edge nobody asked for otherwise, and a setting that acts on its
@@ -193,10 +193,13 @@ class WarpBar(QWidget):
     machine on a control one click from the map, and because a feature nobody
     in normal play needs should not be on the screen at all.
 
-    **Nothing here has been proven against the game.** The writes are
-    `NEWECL`'s own (`docs/118-debug-mode.md`); entering its handler at `$2034`
-    from the key-wait loop has never been tried, so the row says so where it
-    can be read without hovering anything, and the button asks before it goes.
+    **The warp is proven; the arrival is not.** The writes are `NEWECL`'s own
+    and entering its handler at `$2034` from the key-wait loop was made twice
+    in the game, the party walking afterwards (`docs/118-debug-mode.md`, P15).
+    What no run has settled is where a warp *lands* -- fifteen areas have no
+    harvested arrival square, and every area's script assumes quest flags the
+    party never set. The row says so where it can be read without hovering
+    anything, and the button asks before it goes.
     Everything the row refuses, it refuses with the reason -- the same rule
     `ActionBar` follows, and here the reasons are the whole diagnostic.
 
