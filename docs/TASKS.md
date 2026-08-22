@@ -41,6 +41,7 @@ files, the standing constraints in full, and no commits.
 | **P72** | The debug log: strip the header comments, and couple it to debug mode | |
 | **P74** | A logo and icons — [`132`](132-logo.md) | the app icon is built and wired; still open: a `.desktop` file, an `.icns`, a README lockup, and a real artist |
 | **P75** | Capitalise **Wish** in the title bar and Help ▸ About | |
+| **P76** | The fighter's level-4 breath save: `por/levels.py` says 16, the game writes 15 | measured on two characters (SILAS 16→15, dwarf MAGNUS 13→12) at that level and no other. Settle it against the game's own table at `$0E2C` before editing ours — if the table says 16 and the game writes 15 it is *their* bug, not our data. `tests/test_liveparty.py`'s `KNOWN_DIVERGENCES` retires with it |
 
 ## Needs an emulator
 
