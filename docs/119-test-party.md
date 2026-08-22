@@ -1,7 +1,12 @@
 # A high-level party for automated testing — plan
 
-**Status: the route in is solved and one level-up has been driven end to end
-(P18, `docs/50-experiments.md`).** The training hall is **area 11**, which has
+**Status: the level-up specification is measured, and four of the six ceilings
+the game implements are reached.** Twenty-nine trainings driven through the game's own
+school, every one diffed across the 580-byte record: the tables, the rules and
+the corrections are in `work/reports/p18-party.md`, and §7 below is the
+summary. The party is on `work/drive/P18PARTY.D64`.
+
+The training hall is **area 11**, which has
 no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
 squares under a second script — `(5,0)` clerics, `(7,0)` magic users,
 `(8,0)` fighters, `(9,0)` thieves, `(7,1)`/`(7,2)`/`(8,2)`/`(9,2)` the arena.
@@ -13,8 +18,9 @@ Walk in; `(9,0)` is both the shortest way in and the thieves' school.
 Two practical notes the run paid for. `LOW EXPERIENCE OR WRONG CLASS` is
 usually the class half: the school's filter is `$6DA8 = 0x70 | class_bit` and
 the bits are `por.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
-**8 fighter**. And training costs gold, 1000 gp for the first level, so a
-generated party needs money as well as experience.
+**8 fighter**. And training costs gold — a flat **1000 gp at every level**,
+measured across twenty-nine of them — so a generated party needs money as well
+as experience.
 
 **The generator is still not written.** The deliverable is **a generator, not a
 disk** — `por/testparty.py` plus a test-time disk builder. A disk is game data
@@ -36,12 +42,15 @@ what all thirteen specimens are); the other is *the level a character turns at*
 separately as "Level undead — effective level for turning undead. Cheapest
 isolating action: train a cleric."
 
-We cannot train a cleric. Donald will not be fighting undead in his own game for
-some time, and the project holds no cleric above level 1. **A cleric high enough
-to turn the whole table is the instrument**, and there will be more findings
-shaped like this one — every remaining question in
+**Settled, and without the undead fight.** ROLAND was trained cleric 1 to 6 in
+the game's own school: `0x0A4` moved at every single level and `0x0A3` did not
+move once. So `0x0A4` is the character's turning level and `0x0A3` is the
+monster property `por/layout.py` documents. What `0x0A4`'s value *means* is
+still open — it runs `1 2 3 5 6 7` against cleric levels 1-6, skipping 4.
+
+The rest of the argument stands: every remaining question in
 `docs/90-specimens.md`'s "still wanted" list needs a character the party does
-not have. So the artefact to build is the means of making characters, not one
+not have, so the artefact to build is the means of making characters, not one
 character.
 
 ---
@@ -60,10 +69,12 @@ is the source for levels and thresholds.
 | 5 | GRIMSTONE | dwarf | M | fighter/thief | F7 / T8 | 150,000 | the specimen `docs/90-specimens.md` names as missing: **a multi-class character above level 1**, with two *different* non-zero entries in the per-class array at `0x0C9`–`0x0CC`. That is the only thing that can separate `0x0A0` ("character level") from "the single class's level". Plus `class_bits` 12, infravision 6, size small |
 | 6 | ASTRA | half-elf | F | cleric/fighter/magic-user | 6 / 6 / 6 | 135,000 | the widest class bitmask the game supports (`class_bits` 11) and **the only record in which both nibbles of `0x0EE` are non-zero at once** — cleric capacity and magic-user capacity in the same byte. Also the half-elf trait seed 124 at `0x0AD` |
 
-Multi-class experience divides between classes, so the totals above are chosen
-so that each class's share clears its own threshold: GRIMSTONE's 150,000 halves
-to 75,000, past fighter 7 (70,001) and thief 8 (70,001); ASTRA's 135,000 thirds
-to 45,000, past magic-user 6 (40,001), which is the highest of her three.
+~~Multi-class experience divides between classes~~ — **it does not.** LADY
+KATHERINE, magic-user 1 / thief 7 with 70,100 points, was offered thief 8,
+whose single-class threshold is 70,001. The trainer reads the whole total
+against the single-class table, so the XP column above is over-provisioned and
+GRIMSTONE and ASTRA need no more than a single-class character of the same
+level.
 
 **Ability scores are high but not uniform.** All-18 is the signature of the
 edited disk in `docs/90-specimens.md`, and a party that looks hacked is a party
@@ -345,50 +356,82 @@ at all and can run beside them.
 
 ---
 
-## 6. First live attempt — where it got to, and the wall it hit
+## 7. What the trainer actually wrote
 
-**Status after the session of 2026-08-21: XP written, party positioned, no
-level-up.** Everything up to the trainer works; the trainer itself is not where
-this document assumed.
+**Twenty-nine level-ups, 2026-08-22.** Full tables, evidence and the driving
+notes are in `work/reports/p18-party.md`; this is the part a reader of the plan
+needs.
 
-What worked, and is repeatable:
+The party on `work/drive/P18PARTY.D64`:
 
-| step | how |
-|---|---|
-| a level-1 party in New Phlan | `PORSAVE14` (the Slums) copied to `work/drive/LVBEFORE.D64`, then **warped** to area 0 — `docs/50-experiments.md`, P43 |
-| XP written past the thresholds | `$4D00 + slot*$100 + 0x0E8`, three bytes little-endian, straight into the running machine. Read back through `automap.actions.read_party` in the same connection |
-| a save that captures it | `Session.save_game` onto the copy. `SAVEDGAME0` on the disk carries the new experience, so `0x0E8` is writable live *and* survives the game's own save. CONFIRMED |
-| the party put on any square | poke `$C04B`-`$C04D` and take one step. Used to cross New Phlan in one move instead of the nineteen a walk needs |
+| name | race | class(es) | level(s) |
+|---|---|---|---|
+| MALCYON | elf | magic-user | 6 |
+| LADY KATHERINE | half-elf | magic-user / thief | 6 / 9 |
+| ROLAND | human | cleric | 6 |
+| SILAS | human | fighter | 8 |
+| MAGNUS | dwarf | fighter | 5 |
+| BRUTUS | human | fighter | 2 |
 
-The party used was Donald's own, and it is better than the plan hoped:
-MALCYON magic-user 1, ROLAND cleric 1, SILAS / MAGNUS / BRUTUS fighter 1 —
-MAGNUS wounded, 2 of 9 — and **LADY KATHERINE, `class_bits` 5, a live
-magic-user/thief with two non-zero entries in `0x0C9`-`0x0CC`**. That is the
-multi-class specimen `docs/90-specimens.md` lists as missing, already in hand;
-it only needs a level.
+Four of the six ceilings are reached, and LADY KATHERINE is the multi-class
+specimen above level 1 that `docs/90-specimens.md` lists as missing — with two
+*different* non-zero entries in `0x0C9`-`0x0CC`, both far above 1.
 
-**The wall: the training hall is not a square in New Phlan, it is area 11.**
-`ECL0B` — long mislabelled "the arena", one of the four mapless areas — holds both
-the duelling arena and every training school: `'WE TRAIN ONLY <class> HERE. DO
-YOU WANT TO TRAIN?'` is at `$A0DD`. New Phlan reaches it from `GEO00` script
-ids **10** (squares `(6,1)` and `(6,2)`) and **17** (square `(9,0)`), both of
-which end in `NEWECL 11` at `$A22D`/`$A230`.
+### The level-up specification
 
-And `ECL0B` **dispatches on `$6E82`**, not on the area it came from: its entry
-does `AND 127, ATTR, [$6E82]` — the departing square's attribute byte — then
-walks `$9800` from 10 to 18 comparing against it. So:
+Every field the trainer touched, and nothing else touched anything:
 
-* **warping into area 11 bounces straight back out.** Observed three times:
-  `$6E1B` goes `$8B` → `$0B` → `$00` within about eight seconds, no disk
-  activity worth the name, and the party is in New Phlan again on whatever
-  square the warp supplied. With `$6E82` forced to 10 it bounced the same way.
-* so the route in is either **the real door** — stand on `(7,2)` facing west and
-  step onto `(6,2)` — or a warp that also reproduces whatever `$6E82` and the
-  entry expect. Stepping onto `(6,2)` under `Session.walk` did *not* fire it
-  either, which is the next thing to chase: the walk crossed `(6,2)` and
-  finished at `(5,2)` with no message.
+| offset | field | what training does |
+|---|---|---|
+| `0x071` | `thac0_base` | class table row, `60 − THAC0`; multi-class takes the **best** |
+| `0x076` | `hp_max` | **recomputed** as `hp_rolled + level × CON bonus` |
+| `0x098` | `attack_level` | the fighter's level from 2 up; 0 otherwise |
+| `0x09A`-`0x09E` | saving throws | class table **plus a racial modifier**, rewritten from scratch; multi-class takes the field-wise **minimum** |
+| `0x0A0` | `level` | the **maximum** of the per-class levels |
+| `0x0A4` | `turn_power` | the cleric's turning level |
+| `0x0A5`-`0x0AC` | thief skills | the per-level table |
+| `0x0BB`-`0x0C4` | coin | 1000 gp taken, everything else **converted to platinum** |
+| `0x0C9`-`0x0CC` | per-class levels | +1 in the class trained |
+| `0x0D9` | `attack_forms[0]` | 2 → 3 at fighter 7 and nowhere else |
+| `0x078`-`0x07E` | `spells_known` | cleric gains a whole spell level; magic-user one bit, chosen at a menu |
+| `0x0E8` | `experience` | **clamped** to one less than the next threshold |
+| `0x0ED` | `hp_rolled` | + the die roll |
+| `0x0EE`-`0x0F0` | `spells_castable` | class table **plus the WIS bonus**, cleric high nibble, magic-user low |
+| `0x10E` / `0x119` / `0x11B` | roster | THAC0 follows `0x071`; hp_current is **set to `hp_max`**; movement recomputed |
 
-**So the next session starts here**, not from scratch: `work/drive/LVBEFORE.D64`
-is a save with six characters carrying 2000-5002 experience, one of them
-multi-class, sitting in New Phlan. Get one of them through `ECL0B`'s training
-menu and the diff is one `save_game` away.
+Six of the blockers in §3's table are now answerable, and one is not:
+
+* **The saving-throw modifiers** are racial and flat. The dwarf MAGNUS reads
+  exactly three lower than the human SILAS on all five columns at every level.
+* **`spells_castable`** is the class table plus the wisdom bonus, and ROLAND's
+  WIS 16 makes it visible: cleric 6 stores `50 50 20`, which is `3,3,2` plus
+  `+2,+2,0`.
+* **The thief table** is measured for one half-elf with DEX 16, levels 1-9.
+  Race and dexterity are still folded into those numbers.
+* **`hp_max`** is derived after all, and only `hp_rolled` needs a die.
+* **`0x0A0`** is `max()` of the per-class array — settled by five magic-user
+  levels on a thief 9 that never moved it.
+* **`0x0D9`** is attacks × 2 for a player character. It went 2 → 3 at fighter 7,
+  which is exactly where 3/2 attacks appear.
+* **`0x0A4`'s value** is still unexplained.
+
+### Corrections this run forces
+
+* **`por/levels.py` is wrong at fighter 4**: the breath save is **15**, not 16.
+  Two characters, at that level and no other.
+* **Experience is clamped, not spent.** The previous session read 5002 → 2500
+  as "−2502, twice the thief threshold"; 2500 is simply `threshold(3) − 1`.
+  Trained at 70,100 into thief 8, LADY KATHERINE came out at 70,100 — below the
+  clamp, so untouched.
+* **The fee is 1000 gp at every level**, not only the first.
+* **Training heals.** MAGNUS went in at 2 of 9 and came out at 13 of 13, so a
+  wounded high-level character cannot be produced by the trainer.
+* **At the ceiling the trainer refuses**, printing `NO MORE ADVANCEMENT
+  POSSIBLE`. `GEN $1E21`'s clamp sits behind that refusal and has still never
+  been seen to fire.
+
+### Still not built
+
+A half-elf cleric/fighter/magic-user, a dwarf fighter/thief, a wounded fighter
+8 on disk, and `por/testparty.py` itself. The specification for the last of
+those is the table above.

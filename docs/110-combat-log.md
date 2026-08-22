@@ -1,11 +1,12 @@
 # A combat log
 
-**Status: run against a live fight, and it was wrong twice.** 1428 frames of a
-slums fight — six characters against orcs — settled the region, the timing and
-the shape of the messages, and found two defects that offline tests could not
-see, because both turn on bytes only a running game writes. Both are fixed; see
-`docs/50-experiments.md`, "The combat log's two defects, found in a slums
-fight", and the two rules below marked **live**.
+**Status: run against three live fights, and the checklist is closed.** 1428
+frames of a slums fight — six characters against orcs — settled the region, the
+timing and the shape of the messages, and found two defects that offline tests
+could not see, because both turn on bytes only a running game writes. Both are
+fixed; see `docs/50-experiments.md`, "The combat log's two defects, found in a
+slums fight", and the two rules below marked **live**. A third fight settled
+the last item: **the region scrolls** — item 7 below.
 
 The game prints who hit whom for how much, holds it for a **software delay
 loop**, and paints over it. Nothing saves it. On an emulator running faster than
@@ -77,7 +78,13 @@ last overlay left there, which in a fight is usually the command bar.
   moves `$03F4` down to the row below the cursor so a follow-up lands under
   what is already showing.
 * Only when a block runs past row 22 does `LIBRARY $2D28` call `$2CA5`, which
-  **scrolls the window up by one line**.
+  **scrolls the window up by one line** — copies every row of the window up
+  one, blanks the bottom, and decrements the cursor row. **Watched happening,
+  P19 item 7 below**: the check is on the *column* wrap, not on the row.
+  `$2D28` bumps `$03CD` when the cursor passes `$03F3`, compares the new row
+  against `$03F5` and calls `$2CA5` only if it has reached the bottom. A
+  fragment that `COMBAT $299A` places directly on a row past the bottom is not
+  checked at all and prints over the combat map.
 
 **Live: a block also *shrinks*.** `$29B7` clears from the follow-up's own top,
 so an eight-row block goes back to being the five rows it grew from before the
@@ -226,8 +233,20 @@ second one.
 | 4 | a whole fight | **CONFIRMED after two fixes.** 58 messages from 1428 frames, nothing garbled, nothing doubled, in order. Before the fixes: four garbage blocks and every killing blow twice |
 | 5 | two consecutive messages | **CONFIRMED.** `MALCYON ATTACKS ORC AND HITS FOR 1 POINTS OF DAMAGE` and `... FOR 3 ...`, one blank frame apart, both kept |
 | 6 | the split | **CONFIRMED.** `MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE` and `ORC GOES DOWN AND IS DYING` came out of one eight-row frame as two messages, split on the `$03F4` = 15 the follow-up set |
-| 7 | the scroll | **UNKNOWN**, after two fights. The second (1050 frames, Sokol Keep, six characters) reached row 17 at its deepest and produced 16 messages; the three frames with text as far as row 22 were the combat map's glyphs under a stale window, not a block. Length is not what is needed -- a spell that hits several combatants, a `PARLAY`, or a death-and-experience sequence is. See `docs/50-experiments.md`, P19 item 7 |
+| 7 | the scroll | **CONFIRMED. It scrolls.** Third fight, kobolds and bugbears in the Slums with the P18 party. No natural block reaches row 22, so the window was made small instead: `COMBAT $0970`'s own four bytes were poked to `17 1E 01 11` — columns 23-29, bottom row 16 — while COMBAT was resident, and the game's own messages then overflowed it every round. Two things were watched. **A block that overflowed lost its top line**: `NAME / ATTACKS / SILAS / AND HIT / S FOR 3 / POINTS / OF DAMA / GE` came out as seven rows starting at `ATTACKS`, the name gone. And **rows moved up between two consecutive polls**: row 17 went `KOBOLD ` → `GOES DO` and row 18 `GOES` → `WN` while `$03F4`/`$03F5` stood at 17. At the shipped width nothing wraps far enough — a block would have to run about thirteen rows — which is why 2478 frames of two fights never saw it |
 | 8 | after the fight | **not reached** — the fight was ended from the emulator, not through the panel |
 
-Left to do: item 7, and the same run through the real `AutomapWindow` rather
-than through `CombatLog` alone.
+Left to do: the same run through the real `AutomapWindow` rather than through
+`CombatLog` alone.
+
+**One caution from the scroll run.** With the window narrowed, `CombatLog`'s
+own output is nonsense — it slices columns 23-38 from `$0970`'s *documented*
+constant and so reads residue from outside the narrowed region. That is the
+right behaviour for the shipped window and it is why the verdict above is read
+off the raw rows rather than off the messages the reader produced. The raw
+frames are `work/p18b/frames-narrow.jsonl`, with `frames-baseline.jsonl` and
+`frames-shrink{14,17}.jsonl` beside them; `work/p18b/fight.py` is the driver,
+and its `--shrink`/`--narrow` only ever write `$0973`/`$0971` when the four
+bytes there really are COMBAT's `17 27 01 17` — the first attempt wrote to
+`$0973` while another overlay owned it, which is the hazard
+`skills/goldbox/SKILL.md` warns about.
