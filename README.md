@@ -31,6 +31,11 @@ Run the gui with:
 wish
 ```
 
+### Windows
+
+- Unzip the downloaded file and run the exe. 
+- If you get the "Windows protected your PC" dialog, click More Info->Run Anyway.
+
 
 ## Automapper
 
