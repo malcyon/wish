@@ -50,6 +50,7 @@ import json
 import os
 import shutil
 import signal
+import struct
 import subprocess
 import sys
 import time
@@ -554,6 +555,122 @@ def position(save: bytes) -> tuple[int, int, int]:
 def area_id(save: bytes) -> int:
     """The current area, in the numbering `por/areas.py` uses."""
     return save[AREA_ID] | save[AREA_ID + 1] << 8
+
+
+# --------------------------------------------------------------------------
+# The `.DAX` container, and the 63-byte item record inside `.ITM`
+# --------------------------------------------------------------------------
+
+# A DOS Gold Box `.DAX` is a `u16le` index size, then `size // 9` entries of
+# `id:u8, offset:u32le, raw:u16le, compressed:u16le`, then the block data,
+# entry offsets relative to its start.  Blocks are byte-level run-length
+# coded: a lead byte under 128 copies the next `n + 1` bytes, and one at or
+# above 128 repeats the byte after it `256 - n` times.
+#
+# The check that this is right is that all 46 blocks of the eight `ITEM*.DAX`
+# decode to exactly their stated size and every one of those sizes is a whole
+# number of 63-byte item records.
+DAX_ENTRY = 9
+
+
+def dax_index(data: bytes) -> list[tuple[int, int, int, int]]:
+    """`(id, offset, raw size, compressed size)` for each block of a `.DAX`."""
+    size = struct.unpack_from("<H", data, 0)[0]
+    return [
+        struct.unpack_from("<BIHH", data, 2 + DAX_ENTRY * i)
+        for i in range(size // DAX_ENTRY)
+    ]
+
+
+def dax_unpack(block: bytes, raw_size: int) -> bytes:
+    out = bytearray()
+    i = 0
+    while i < len(block) and len(out) < raw_size:
+        n = block[i]
+        if n < 128:
+            out += block[i + 1:i + 2 + n]
+            i += n + 2
+        else:
+            out += bytes([block[i + 1]]) * (256 - n)
+            i += 2
+    return bytes(out)
+
+
+def dax_blocks(data: bytes):
+    """Yield `(id, decompressed bytes)` for every block of a `.DAX`."""
+    base = 2 + struct.unpack_from("<H", data, 0)[0]
+    for bid, off, raw, comp in dax_index(data):
+        yield bid, dax_unpack(data[base + off:base + off + comp], raw)
+
+
+# One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is
+# `count x ITEM_SIZE` with no header; the count is the character record's
+# `0x0C7`.
+ITEM_SIZE = 63
+
+# `0x000` is a length byte and `0x001`-`0x029` the **rendered inventory line**
+# -- readied column, "* " when a party member has detect magic up, the stack
+# count, then the name.  It is a cache the game rewrites whenever it draws the
+# list, so it can disagree with the fields below it and does: one specimen
+# reads "11 Darts" over a quantity of 8.  Never source a value from it.
+ITEM_TEXT = 0x000
+ITEM_TEXT_MAX = 41
+
+# `0x02A`-`0x02D` is a far pointer -- `offset:u16le, segment:u16le` -- to the
+# next item in the character's list, NULL on the last.  Live heap state: in 61
+# of the player's 66 `.ITM` files consecutive items sit exactly `0x40` apart,
+# and all 66 terminate.  Nothing to convert.
+ITEM_NEXT = 0x02A
+
+# `0x02E` onwards is the C64's own 16-byte item record with its packed bytes
+# spread out.  `por.items` documents what each one means; the correspondence
+# below is what makes that documentation apply.
+ITEM_TYPE = 0x02E        # indexes ITEMS, the 128 x 16 type table -- and the
+ITEM_NAME1 = 0x02F       #   DOS ITEMS is byte-identical to the C64's in 126
+ITEM_NAME2 = 0x030       #   of its 128 records.  The class restrictions are
+ITEM_NAME3 = 0x031       #   in *that* table, not here.
+ITEM_PLUS = 0x032        # signed
+ITEM_PLUS_SAVE = 0x033   # signed; accumulates into the saving-throw roll
+ITEM_READIED = 0x034     # 0 or 1
+ITEM_HIDDEN = 0x035      # bit 0 hides name 3, bit 1 name 2, bit 2 name 1
+ITEM_CURSED = 0x036      # 0 or 1
+ITEM_WEIGHT = 0x037      # u16le, tenths of a pound
+ITEM_QUANTITY = 0x039
+ITEM_VALUE = 0x03A       # u16le, gold pieces
+ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
+#                          scroll, up to three spell ids
+
+C64_ITEM_SIZE = 16
+
+
+def item_to_c64(record: bytes) -> bytes:
+    """Project one 63-byte DOS item onto the C64's 16 bytes.
+
+    Not a guess at a conversion: it is the evidence.  Applied to every item in
+    the eight `ITEM*.DAX` files it reproduces **157 of the 163 distinct item
+    records on the C64 game disks byte for byte**, which is what fixes every
+    offset above -- including that readied and the hidden-name mask share the
+    C64's byte +6 while DOS spends a byte on each, and that cursed is bit 7 of
+    +7.  The six that do not match are items the two ports hand out in
+    different places, not near misses.
+    """
+    r = record
+    return bytes((
+        r[ITEM_TYPE], r[ITEM_NAME1], r[ITEM_NAME2], r[ITEM_NAME3],
+        r[ITEM_PLUS], r[ITEM_PLUS_SAVE],
+        (0x80 if r[ITEM_READIED] else 0) | (r[ITEM_HIDDEN] & 0x07),
+        0x80 if r[ITEM_CURSED] else 0,
+        r[ITEM_WEIGHT], r[ITEM_WEIGHT + 1],
+        r[ITEM_QUANTITY],
+        r[ITEM_VALUE], r[ITEM_VALUE + 1],
+        r[ITEM_SPECIAL], r[ITEM_SPECIAL + 1], r[ITEM_SPECIAL + 2],
+    ))
+
+
+def items(data: bytes):
+    """Yield the 63-byte records of a `.ITM` file or an `ITEM<n>.DAX` block."""
+    for i in range(len(data) // ITEM_SIZE):
+        yield data[i * ITEM_SIZE:(i + 1) * ITEM_SIZE]
 
 
 class PoolOfRadiance:

@@ -2,15 +2,17 @@
 
 **Status: unblocked.** The DOS save arrived — Donald's Steam copy of
 *Forgotten Realms: The Archives* carries a played DOS Pool of Radiance party in
-three slots — and DOS can now be driven. **Obstacles 1, 2 and 4 are closed**:
-the quest flags, the party's square and the current area are all located inside
-a DOS saved game, and **the two ports number their areas the same way**.
-Obstacles 3 and 7 remain and each says below what it would take. The goal is
-one thing: turn a DOS save into a C64 save. One direction only.
+three slots — and DOS can now be driven. **Obstacles 1, 2, 3 and 4 are
+closed**: the quest flags, the party's square, the current area and the whole
+63-byte item record are all read, and **the two ports number their areas the
+same way and index their item names and item types the same way too**. Only
+obstacle 7 remains, and it needs a C64 emulator rather than any DOS work. The
+goal is one thing: turn a DOS save into a C64 save. One direction only.
 
-The decode, with its evidence: `work/reports/dos-saves.md`. The measurements
-are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`, which read
-the archives from Donald's machine and skip where there are none.
+The decode, with its evidence: `work/reports/dos-saves.md` for the character
+record and the saved game, `work/reports/dos-items.md` for the items. The
+measurements are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`,
+which read the archives from Donald's machine and skip where there are none.
 `tools/dosbox.py` is the harness that drives the game: an isolated DOSBox on
 its own X display, keystrokes through `xdotool`, and the save file as ground
 truth.
@@ -48,10 +50,11 @@ is what the obstacle list below is about. But it says where the edges are, and
 felt.
 
 Donald asked whether the editor could turn a DOSBox save into a C64 save.
-The answer has improved again: **yes for characters, and now plausibly for
-whole saves** — the character record is decoded and checked, the quest flags
-are located, the party's square and area are located, and what is left is the
-items' binary tail.
+The answer has improved again: **yes for characters, and now for whole saves
+as far as reading goes** — the character record is decoded and checked, the
+quest flags are located, the party's square and area are located, and the item
+record is read to the byte. What is left is not a decode but a demonstration:
+write a C64 save from converted fields and load it.
 
 ---
 
@@ -104,7 +107,8 @@ the real conversion work.
   paladin, ranger); DOS's are indexed by the class *number* (cleric, druid,
   fighter, paladin, ranger, mage, thief, monk). Same width, different meaning
   per slot.
-* **Items.** See obstacle 3 — DOS stores the item's name as text.
+* **Items.** Less than it looked. See obstacle 3: past its cached display
+  line the DOS record *is* the C64's 16 bytes, unpacked one field to a byte.
 
 Two things that are *not* obstacles: **both machines are little-endian** —
 now verified on the file rather than assumed, see below — and the DOS
@@ -337,8 +341,10 @@ the editor already uses.
   is a different set with different numbering.
 * **Anything cached rather than stored.** The C64 roster block holds derived
   combat values; they should be recomputed for the target, not copied.
-* **Item numbering** — because DOS has none. The item name is text in the DOS
-  record and has to be looked up in the C64's `ITEMNAMES`.
+* **The item list's heap pointers.** DOS chains its items through a far
+  pointer at `0x02A`; the C64 keeps 16 fixed slots. Drop the chain, keep the
+  order. (Item *numbering* is not on this list after all: the DOS name words
+  and type byte are already the C64's indices.)
 * **Spell numbering**, until someone checks it. DOS stores one byte per spell
   in a level-interleaved order; the C64 stores 56 bits. The spell *list* is the
   same game, so the mapping probably exists. **Do not assume it.**
@@ -371,7 +377,7 @@ from somewhere.** This is the whole list.
 | region | size | what it is | can we produce it from a DOS save? |
 |---|---|---|---|
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `por/dos_layout.py` |
-| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **probably** — the DOS item record is 63 bytes and names its item in ASCII, so this is a name lookup, not a renumbering |
+| `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
 | `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — **not save data at all** | **yes** — copy from any existing C64 save; the game overwrites it |
 | `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `por/iconparts.py` composes a legal icon |
@@ -502,24 +508,60 @@ ports agreeing on the arrival square is good evidence that a coordinate means
 the same square, but it is one specimen; a converted save landing the party
 where it should is the test that settles it, and that is obstacle 7.
 
-**3. Item encoding — reframed, and easier than feared.** The C64 item area is
-16 bytes per item with the name as an index into `ITEMNAMES`, and
-`por/items.py` decodes it. **The DOS item record is 63 bytes and spells the
-item's name out in ASCII** — up to 41 bytes of rendered text, then about 21 of
-binary: weight as `u16le` at `+0x37`, quantity at `+0x39`, cost as `u16le` at
-`+0x3A`, and an armour base at `+0x30` carrying the C64's own `48 + bonus`
-encoding. The weight is confirmed by the encumbrance identity above.
+**3. Item encoding — CLOSED, and it is a copy.** The 63-byte DOS item record
+is a cached display line, a heap pointer, and then **the C64's own 16-byte item
+record with its packed bytes spread out one to a byte**:
 
-So "do the item ids mean the same thing in both ports" was the wrong question:
-**DOS stores no item id at all.** Converting is a *name lookup* against the
-C64's `ITEMNAMES`, which is tractable and self-checking — every DOS name either
-matches an entry or is reported. What is still open is the binary tail: which
-of those 21 bytes carry the plus, the charges and the class restrictions.
+```
+0x000        length byte for the rendered line
+0x001-0x029  the rendered inventory line, up to 41 bytes  — a CACHE, not a source
+0x02A-0x02D  far pointer to the next item, NULL on the last — live heap state
+0x02E        item type          -> C64 +0        0x037  weight u16le  -> +8,+9
+0x02F-0x031  three name words   -> C64 +1,+2,+3  0x039  quantity      -> +10
+0x032        plus, signed       -> C64 +4        0x03A  cost u16le    -> +11,+12
+0x033        save bonus, signed -> C64 +5        0x03C  charges       -> +13
+0x034        readied            -> C64 +6 bit 7  0x03D  effect        -> +14
+0x035        hidden-name mask   -> C64 +6 bits 0-2  0x03E  power         -> +15
+0x036        cursed             -> C64 +7 bit 7
+```
 
-*What would resolve it:* one DOS character with a known unusual item — a wand
-with charges, a cursed weapon — saved and diffed. No emulator needed if the
-item can be arranged; the shipped parties already give scrolls, bracers and a
-ring of protection to compare against.
+`tools.dosbox.item_to_c64` is that projection, and the projection is the
+evidence: applied to every record in the DOS game's own `ITEM1.DAX`-`ITEM8.DAX`
+it reproduces **157 of the 163 distinct item records on the C64 disks byte for
+byte**, packed bytes included. One wrong offset, sign or bit collapses the
+count. The six that miss are items the two ports hand out in different places.
+
+Three things fall out, and each was an open question.
+
+* **The plus** is `0x032`, signed: `+1`, `+2`, `+3` against the printed names,
+  and `-5` in both `0x032` and `0x033` on a cursed necklace, which is the
+  C64's `+4`/`+5` pair exactly. The game prints its own field names in a debug
+  panel — `plus`, `plussave`, `ready`, `identified`, `cursed`, `value`,
+  `special(1..3)` — in that order (`work/coab/engine/ovr020.cs`).
+* **The charges** are `0x03C`. The game's use-item routine spends `count`
+  (`0x039`) while it is above one and then decrements `0x03C`, destroying the
+  item at zero. Three `WAND OF MAGIC MISSILES` templates differ in that byte
+  alone — 20, 33, 35.
+* **The class restrictions are not in the item record.** They are byte +13 of
+  the `ITEMS` type table, indexed by `0x02E` — and the DOS `ITEMS` file is
+  byte-identical to the C64's in **126 of its 128 records**, the two that
+  differ being dagger and dart differing in range, with the class flags equal.
+  Nothing to convert.
+
+And the name is not a text match after all: `0x02F`-`0x031` hold **the C64's
+own `ITEMNAMES` indices** — 48 is `MAIL`, 162 is `+1`, 208 is `CLERICAL
+SCROLL`, on both ports. The rendered line is a cache the game rewrites when it
+draws the list, it goes stale (`11 Darts` over a quantity of 8), and nothing
+should be sourced from it.
+
+No emulator was needed. The `.DAX` item files put every magic item in the game
+on disk, and the decompiled routine says what the byte does. Reading them
+needed the DOS container: a `u16le` index size, `size / 9` entries of
+`id:u8, offset:u32le, raw:u16le, compressed:u16le`, then byte-level
+run-length-coded blocks — all 46 blocks of the eight `ITEM*.DAX` decode to
+exactly their stated size and every size is a whole number of 63-byte records.
+
+Full working: `work/reports/dos-items.md`. Asserted in `tests/test_dosbox.py`.
 
 **4. We have no DOS save. — CLOSED.** Donald's Steam copy of *Forgotten
 Realms: The Archives* carries three played slots, 18 saved characters and 6
@@ -562,28 +604,33 @@ record is ASCII on both, no PETSCII), **the D64 container** (`por/d64.py`
 writes valid images with correct block counts today), **the DOS container**
 (there isn't one — plain files, no checksum), **the save-versus-export
 question** (DOS's export is the slot copied out, so one reader serves both),
-and **party size** (six on both).
+**party size** (six on both), and **the item tables** (the `ITEMS` type table
+and the `ITEMNAMES` indices are shared between the ports; see obstacle 3).
 
 ## What has to be found out first
 
-1. **The binary tail of the 63-byte item record** — plus, charges,
-   restrictions. Obstacle 3. `tools/dosbox.py` can now arrange the character
-   that needs it.
-2. **Do the spell tables agree** between ports? The DOS spellbook is one byte
+1. **Do the spell tables agree** between ports? The DOS spellbook is one byte
    per spell in a level-interleaved order; the C64's is 56 bits. The ordering
-   has to be matched before the transpose can be trusted.
-3. **Does DOS store anything the C64 does not?** Two things already: an
-   encumbrance field and a per-item weight. Both are derived and can be
-   dropped going to the C64.
+   has to be matched before the transpose can be trusted. The item side gives
+   one free check on the namespace: a DOS scroll's three special bytes hold
+   spell ids that the C64's own scrolls carry unchanged.
+2. **Does DOS store anything the C64 does not?** Three things: an encumbrance
+   field, a per-item weight, and the item list's heap pointers. All derived or
+   live-only, and all droppable going to the C64.
+3. **The clock.** `$49C6`-`$49CB` is six digits on the C64 and the DOS format
+   is unread.
 
 ## Order of work
 
-1. `por/dos_layout.py`, declarative, confidence per field — the table in
-   `work/reports/dos-saves.md` is what goes in it.
+1. `por/dos_layout.py`, declarative, confidence per field — the tables in
+   `work/reports/dos-saves.md` and `work/reports/dos-items.md` are what go in
+   it.
 2. Read a DOS character into the existing YAML export. That alone is useful —
    it makes `wish-cli` a DOS character viewer.
 3. Write a C64 record from that YAML.
-4. The items, by name lookup against `ITEMNAMES`.
+4. The items, which are `tools.dosbox.item_to_c64` and a stride change: 16
+   items of 16 bytes per C64 slot, the DOS list being a chain of 63-byte
+   records whose length the character record's `0x0C7` gives.
 5. The quest flags, which are now a copy with a stride change.
 6. The party's square and area, which are now four reads and a doubling.
 7. An editor menu item, once the CLI path is trustworthy.

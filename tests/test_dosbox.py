@@ -92,6 +92,53 @@ def _geo_files():
     return out
 
 
+@functools.lru_cache(maxsize=1)
+def _itm_files():
+    """Every `.ITM` in the archives: `{path: bytes}`, saved parties and shipped."""
+    out: dict[str, bytes] = {}
+    for root in _candidates():
+        if not root.is_dir():
+            continue
+        try:
+            for path in root.rglob("*.[iI][tT][mM]"):
+                out[str(path)] = path.read_bytes()
+        except OSError:
+            continue
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _dos_item_templates():
+    """Every distinct item record in the game's own `ITEM<n>.DAX` files."""
+    try:
+        game = dosbox.find_game()
+    except FileNotFoundError:
+        return ()
+    seen: dict[bytes, bytes] = {}
+    for n in range(1, 9):
+        path = game / f"ITEM{n}.DAX"
+        if not path.is_file():
+            continue
+        for _, block in dosbox.dax_blocks(path.read_bytes()):
+            for record in dosbox.items(block):
+                seen.setdefault(record[dosbox.ITEM_NEXT:], record)
+    return tuple(seen.values())
+
+
+def _need_items():
+    files = _itm_files()
+    if not files:
+        pytest.skip("needs the DOS item files; set FR_ARCHIVES to the archives")
+    return files
+
+
+def _need_templates():
+    templates = _dos_item_templates()
+    if not templates:
+        pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
+    return templates
+
+
 def _need_saves():
     saves = _saves()
     if not saves:
@@ -315,3 +362,214 @@ def test_driving_the_game_one_step_moves_the_square_and_nothing_else():
     assert dosbox.POS_X in out["changed_in_struct"] + out["changed_in_array"] or (
         dosbox.POS_Y in out["changed_in_struct"]
     )
+
+
+# --------------------------------------------------------------------------
+# The 63-byte item record, and its tail
+# --------------------------------------------------------------------------
+
+
+def test_every_item_file_is_a_whole_number_of_records():
+    for path, data in _need_items().items():
+        assert data and len(data) % dosbox.ITEM_SIZE == 0, path
+
+
+def test_the_item_dax_blocks_are_whole_items():
+    """The check that the container reader and the run-length coder are right:
+    every block decodes to exactly its stated size and every size is items."""
+    try:
+        game = dosbox.find_game()
+    except FileNotFoundError:
+        pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
+    blocks = 0
+    for n in range(1, 9):
+        path = game / f"ITEM{n}.DAX"
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        sizes = {bid: raw for bid, _, raw, _ in dosbox.dax_index(data)}
+        for bid, block in dosbox.dax_blocks(data):
+            assert len(block) == sizes[bid], (path.name, bid)
+            assert len(block) % dosbox.ITEM_SIZE == 0, (path.name, bid)
+            blocks += 1
+    assert blocks > 40
+
+
+def test_the_item_list_is_a_null_terminated_chain():
+    """`0x02A`-`0x02D` is a far pointer to the next item, NULL on the last.
+
+    Live heap state and nothing a converter wants, but reading it as one field
+    is what keeps it out of the fields that do matter.
+    """
+    for path, data in _need_items().items():
+        records = list(dosbox.items(data))
+        for record in records[:-1]:
+            assert any(record[dosbox.ITEM_NEXT:dosbox.ITEM_NEXT + 4]), path
+        last = records[-1][dosbox.ITEM_NEXT:dosbox.ITEM_NEXT + 4]
+        assert not any(last), path
+
+
+def test_the_rendered_line_never_reaches_the_pointer():
+    """The name is a Pascal string of at most 41 bytes, so `0x02A` is free."""
+    for path, data in _need_items().items():
+        for record in dosbox.items(data):
+            assert record[dosbox.ITEM_TEXT] <= dosbox.ITEM_TEXT_MAX, path
+
+
+def test_the_dos_item_type_table_is_the_c64_one():
+    """`ITEMS` is 128 x 16 on both ports and 126 records are identical.
+
+    This is what settles the class restrictions: they are byte +13 of *this*
+    table, indexed by the item's `0x02E`, and there is nothing in the item
+    record to convert.
+    """
+    from tests.gamedata import game_file
+
+    try:
+        game = dosbox.find_game()
+    except FileNotFoundError:
+        pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
+    dos = (game / "ITEMS").read_bytes()[2:]
+    c64 = bytes(game_file("ITEMS"))
+    assert len(dos) == len(c64) == 128 * 16
+    same = sum(
+        dos[i * 16:i * 16 + 16] == c64[i * 16:i * 16 + 16] for i in range(128)
+    )
+    assert same == 126
+    differ = [i for i in range(128) if dos[i * 16:i * 16 + 16] != c64[i * 16:i * 16 + 16]]
+    assert differ == [8, 9]                       # dagger and dart, in range only
+    for i in differ:
+        assert dos[i * 16 + 13] == c64[i * 16 + 13]      # the class flags agree
+
+
+def test_the_dos_item_tail_projects_onto_the_c64_record():
+    """157 of the C64's 163 distinct item records, byte for byte, from DOS.
+
+    Every offset in `tools.dosbox.item_to_c64` rests on this: get the plus,
+    the saving-throw bonus, the readied bit, the hidden-name mask, the cursed
+    bit, the weight, the quantity, the cost or the three special bytes wrong
+    and the count collapses.
+    """
+    from por.items import load_item_templates
+    from tests.gamedata import game_disk
+
+    c64 = set(load_item_templates(str(game_disk("POOL1"))).values())
+    dos = {dosbox.item_to_c64(r) for r in _need_templates()}
+    assert len(c64) == 163
+    assert len(c64 & dos) == 157
+
+
+def test_the_dos_name_words_are_the_c64_itemnames_indices():
+    """`0x02F`-`0x031` index the C64's `ITEMNAMES`, so a name is a copy.
+
+    Not a text match against the rendered line: the same three numbers mean
+    the same three words on both ports, and every one the game ships resolves.
+    """
+    from por.items import load_item_names
+    from tests.gamedata import game_disk
+
+    names = load_item_names(str(game_disk("POOL1")))
+    assert names[48] == "MAIL" and names[162] == "+1"
+    used = set()
+    for record in _need_templates():
+        used.update(record[dosbox.ITEM_NAME1:dosbox.ITEM_NAME3 + 1])
+    used.discard(0)
+    assert used and used <= set(names)
+
+
+def test_a_wand_carries_its_charges_in_the_first_special_byte():
+    """`0x03C` is charges, and three wands of magic missiles prove the field.
+
+    They are the same item -- type 79, the same three name words, effect 88 --
+    differing in `0x03C` and in nothing else that names them.  The game's own
+    use-item routine spends `count` first and then this byte, and destroys the
+    item when it reaches zero (`work/coab/engine/ovr020.cs`).
+    """
+    wands = [
+        r for r in _need_templates()
+        if r[dosbox.ITEM_SPECIAL + 1] == 88 and r[dosbox.ITEM_TYPE] == 79
+    ]
+    assert len(wands) >= 3
+    charges = {r[dosbox.ITEM_SPECIAL] for r in wands}
+    assert len(charges) >= 3
+    assert all(0 < c < 128 for c in charges)
+
+
+def test_the_plus_is_signed_and_a_cursed_item_carries_a_negative_one():
+    """`0x032` signed, `0x036` the curse -- the pair the C64 keeps at +4 and
+    +7 bit 7.  A cursed necklace reads -5 in both `0x032` and `0x033`."""
+    cursed = [r for r in _need_templates() if r[dosbox.ITEM_CURSED]]
+    assert cursed
+    for record in cursed:
+        plus = record[dosbox.ITEM_PLUS]
+        assert plus > 127, record[dosbox.ITEM_TEXT:]      # every curse is a minus
+    necklaces = [
+        r for r in cursed
+        if r[dosbox.ITEM_PLUS] == 251 and r[dosbox.ITEM_PLUS_SAVE] == 251
+    ]
+    assert necklaces
+
+
+def test_the_hidden_name_mask_hides_the_words_the_c64_mask_hides():
+    """`0x035` bit 0 hides name 3, bit 1 name 2, bit 2 name 1.
+
+    The invariant that fixes which bit is which: an unidentified item never
+    shows its plus.  Read the bits the other way round and 83 of the shipped
+    records leak a "+1" the party has not discovered yet; read this way, none
+    does.  It is the C64's mask at +6 bits 0-2, same order.
+    """
+    from por.items import load_item_names
+    from tests.gamedata import game_disk
+
+    names = load_item_names(str(game_disk("POOL1")))
+    grades = {i for i, text in names.items() if text[:1] in "+-"}
+    assert len(grades) > 4
+
+    masks = {r[dosbox.ITEM_HIDDEN] for r in _need_templates()}
+    assert masks <= {0, 1, 2, 3, 4, 5, 6, 7}
+
+    masked = 0
+    for record in _need_templates():
+        mask = record[dosbox.ITEM_HIDDEN]
+        if not mask:
+            continue
+        masked += 1
+        words = (record[dosbox.ITEM_NAME3], record[dosbox.ITEM_NAME2],
+                 record[dosbox.ITEM_NAME1])
+        visible = [w for i, w in enumerate(words) if not mask & 1 << i]
+        assert not set(visible) & grades, record[dosbox.ITEM_TEXT:]
+    assert masked > 50
+
+
+def test_the_quantity_falls_when_the_party_fires_the_arrows():
+    """`0x039` observed changing in the player's own two saves of one party.
+
+    The stack of arrows +1 in the earlier save holds 18 and in the later one
+    11; the rendered line still says 18, which is why the line is not a source
+    of anything.
+    """
+    files = _need_items()
+    pairs = {}
+    for path, data in files.items():
+        name = pathlib.Path(path).name.upper()
+        if not name.startswith("CHRDAT") or len(name) != 12:
+            continue
+        pairs.setdefault(pathlib.Path(path).parent, {})[name[6:8]] = data
+    for _, slots in pairs.items():
+        a, b = slots.get("A2"), slots.get("B2")
+        if not (a and b):
+            continue
+        ra = list(dosbox.items(a))
+        rb = list(dosbox.items(b))
+        if len(ra) != len(rb):
+            continue
+        for x, y in zip(ra, rb):
+            if x[dosbox.ITEM_NEXT:] == y[dosbox.ITEM_NEXT:]:
+                continue
+            moved = [
+                i for i in range(dosbox.ITEM_TYPE, dosbox.ITEM_SIZE) if x[i] != y[i]
+            ]
+            if moved == [dosbox.ITEM_QUANTITY]:
+                assert x[dosbox.ITEM_QUANTITY] < y[dosbox.ITEM_QUANTITY]
+                return
+    pytest.skip("needs the player's own two saves of one party")
