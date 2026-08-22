@@ -12,9 +12,52 @@ Geometry (35 tracks, 683 sectors, 174848 bytes)::
     tracks 18-24: 19 sectors
     tracks 25-30: 18 sectors
     tracks 31-35: 17 sectors
+    tracks 36-42: 17 sectors   -- the 40- and 42-track extensions
 
 Sectors are stored back to back in track order, so the byte offset of
-``(track, sector)`` is ``(blocks before track + sector) * 256``.
+``(track, sector)`` is ``(blocks before track + sector) * 256``. Tracks 1-35
+sit at the same offsets in every variant, which is why a 40-track image can be
+read by code that only knows about 35.
+
+Variants
+--------
+
+A ``.D64`` comes in six sizes and this reader knows all six. Anything else is
+still refused -- a size we cannot name is a file we cannot claim to understand,
+and guessing at one is how a reader starts returning plausible nonsense.
+
+===========  ======  ===========  ==============================================
+Size         Tracks  Error bytes  Where it comes from
+===========  ======  ===========  ==============================================
+174848       35      no           the plain image; every save disk this project
+                                  writes
+175531       35      yes          a copier that recorded the read status of each
+                                  of the 683 sectors (Curse side 4 is one)
+196608       40      no           a 40-track format
+197376       40      yes          Champions of Krynn side A is one
+205312       42      no           a 42-track format; unseen here
+206114       42      yes          likewise
+===========  ======  ===========  ==============================================
+
+**Error bytes are advisory and this reader does not act on them.** They are one
+byte per sector appended after the sector data, ``1`` meaning "read cleanly".
+They are exposed through :meth:`D64.error_code` and nothing else consults them,
+because on the specimens we hold they mark *padding*, not damage: all 85 sectors
+on Champions of Krynn side A's tracks 36-40 carry code 3 (no header found), they
+are simply unformatted, and no sector chain on that disk leaves track 35.
+Refusing an image because it reports errors would refuse a perfectly readable
+disk; hiding the codes would lose the evidence that says the padding is padding.
+
+**Only the plain 174848-byte image is writable.** Every other variant is
+read-only, enforced rather than documented: :meth:`D64.write_sector`,
+:meth:`D64.write_file_inplace` and :meth:`D64.save` raise
+:class:`ReadOnlyImageError`. The reason is that the variants are *rips of other
+people's disks*, not save disks. Writing to one would have to maintain an error
+map this reader does not model, and the directories on those images are not
+always the drive's own work -- Death Knights of Krynn's has PETSCII art in the
+entries and a zero block count against every real file. A rewrite that trusts
+such a directory misbehaves. Nothing in this project needs to write to anything
+but a save disk, so the safe rule costs nothing.
 """
 
 from __future__ import annotations
@@ -27,19 +70,24 @@ from typing import Iterator, Union
 __all__ = [
     "SECTOR_SIZE",
     "TRACK_COUNT",
+    "MAX_TRACK_COUNT",
     "TOTAL_SECTORS",
     "IMAGE_SIZE",
+    "VARIANTS",
+    "Variant",
     "DIRECTORY_TRACK",
     "DIRECTORY_SECTOR",
     "FILE_TYPE_NAMES",
     "D64Error",
     "InvalidImageError",
+    "ReadOnlyImageError",
     "FileNotFoundInImage",
     "SectorChainError",
     "BlockCountMismatch",
     "DirEntry",
     "D64",
     "load_payload",
+    "total_sectors",
     "sectors_per_track",
     "sector_offset",
     "split_load_address",
@@ -74,13 +122,21 @@ FILE_TYPE_NAMES = {
     FILE_TYPE_REL: "REL",
 }
 
-_TRACK_LAYOUT = ((17, 21), (24, 19), (30, 18), (35, 17))
+# The 40- and 42-track extensions keep track 35's 17 sectors going; nothing
+# else about the geometry changes, so tracks 1-35 lie at identical offsets in
+# every variant.
+MAX_TRACK_COUNT = 42
+_TRACK_LAYOUT = ((17, 21), (24, 19), (30, 18), (MAX_TRACK_COUNT, 17))
 
 
-def sectors_per_track(track: int) -> int:
-    """Number of sectors on ``track`` (1-based)."""
-    if not 1 <= track <= TRACK_COUNT:
-        raise ValueError(f"track out of range 1..{TRACK_COUNT}: {track}")
+def sectors_per_track(track: int, track_count: int = TRACK_COUNT) -> int:
+    """Number of sectors on ``track`` (1-based).
+
+    ``track_count`` defaults to 35, so a bare call still refuses track 36 --
+    which is what every existing caller means by it.
+    """
+    if not 1 <= track <= track_count:
+        raise ValueError(f"track out of range 1..{track_count}: {track}")
     for last, count in _TRACK_LAYOUT:
         if track <= last:
             return count
@@ -90,23 +146,75 @@ def sectors_per_track(track: int) -> int:
 def _sectors_before(track: int) -> int:
     total = 0
     for t in range(1, track):
-        total += sectors_per_track(t)
+        total += sectors_per_track(t, MAX_TRACK_COUNT)
     return total
 
 
-TOTAL_SECTORS = sum(sectors_per_track(t) for t in range(1, TRACK_COUNT + 1))
-IMAGE_SIZE = TOTAL_SECTORS * SECTOR_SIZE  # 174848
+def total_sectors(track_count: int = TRACK_COUNT) -> int:
+    """How many sectors an image of ``track_count`` tracks holds."""
+    return sum(sectors_per_track(t, track_count) for t in range(1, track_count + 1))
+
+
+TOTAL_SECTORS = total_sectors(TRACK_COUNT)          # 683
+IMAGE_SIZE = TOTAL_SECTORS * SECTOR_SIZE            # 174848
 
 # Precomputed offsets: index by track (1-based).
-_TRACK_OFFSET = [0] + [_sectors_before(t) * SECTOR_SIZE for t in range(1, TRACK_COUNT + 1)]
+_TRACK_OFFSET = [0] + [_sectors_before(t) * SECTOR_SIZE
+                       for t in range(1, MAX_TRACK_COUNT + 1)]
 
 
-def sector_offset(track: int, sector: int) -> int:
+def sector_offset(track: int, sector: int, track_count: int = TRACK_COUNT) -> int:
     """Byte offset of ``(track, sector)`` within a D64 image."""
-    limit = sectors_per_track(track)
+    limit = sectors_per_track(track, track_count)
     if not 0 <= sector < limit:
         raise ValueError(f"sector out of range 0..{limit - 1} for track {track}: {sector}")
     return _TRACK_OFFSET[track] + sector * SECTOR_SIZE
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One recognised ``.D64`` shape, keyed by file size.
+
+    ``writable`` is the plain 35-track image and nothing else; see the module
+    docstring for why, and :class:`ReadOnlyImageError` for what enforces it.
+    """
+
+    size: int
+    tracks: int
+    sectors: int
+    has_error_bytes: bool
+    description: str
+
+    @property
+    def writable(self) -> bool:
+        return self.tracks == TRACK_COUNT and not self.has_error_bytes
+
+    @property
+    def error_base(self) -> int | None:
+        """Offset of the error map, or None when there is not one."""
+        return self.sectors * SECTOR_SIZE if self.has_error_bytes else None
+
+
+def _variants() -> dict[int, Variant]:
+    out = {}
+    for tracks in (35, 40, 42):
+        sectors = total_sectors(tracks)
+        for errors in (False, True):
+            size = sectors * SECTOR_SIZE + (sectors if errors else 0)
+            out[size] = Variant(
+                size=size, tracks=tracks, sectors=sectors, has_error_bytes=errors,
+                description=(f"{tracks} tracks"
+                             + (" plus error bytes" if errors else "")))
+    return out
+
+
+#: Size -> :class:`Variant`. 174848, 175531, 196608, 197376, 205312, 206114.
+VARIANTS: dict[int, Variant] = _variants()
+
+#: An error byte of 1 is "read cleanly"; anything else is the 1541 error the
+#: copier saw. 3 is "no header found", which is what an unformatted track reads
+#: as -- and that is what tracks 36-40 of every 40-track rip we hold report.
+ERROR_OK = 1
 
 
 class D64Error(Exception):
@@ -114,7 +222,11 @@ class D64Error(Exception):
 
 
 class InvalidImageError(D64Error):
-    """The image is not a well-formed 35-track D64."""
+    """The image is not one of the D64 sizes in :data:`VARIANTS`."""
+
+
+class ReadOnlyImageError(D64Error):
+    """A write was attempted on a variant this reader will not modify."""
 
 
 class FileNotFoundInImage(D64Error, KeyError):
@@ -218,28 +330,59 @@ class DirEntry:
 
 
 class D64:
-    """A 35-track 1541 disk image held in memory."""
+    """A 1541 disk image held in memory: 35, 40 or 42 tracks, error bytes or not.
+
+    An unrecognised size is still an error. The point of the variant table is
+    that every accepted size is one whose geometry we can state exactly, not
+    that the reader will try its luck on anything handed to it.
+    """
 
     def __init__(self, data: bytes | bytearray):
-        if len(data) != IMAGE_SIZE:
-            # Name the likely variants rather than just the byte count. A
-            # 40-track image or one carrying error bytes is a perfectly good
-            # disk that this reader does not handle, and "expected 174848" does
-            # not tell you that.
-            hint = {
-                175531: " (35 tracks plus error bytes)",
-                196608: " (40 tracks)",
-                197376: " (40 tracks plus error bytes)",
-                174848 + 1: "",
-            }.get(len(data), "")
-            if hint:
-                raise InvalidImageError(
-                    f"this is a {len(data)}-byte D64{hint}; only plain 35-track "
-                    f"images of {IMAGE_SIZE} bytes are supported")
+        variant = VARIANTS.get(len(data))
+        if variant is None:
             raise InvalidImageError(
-                f"expected a {IMAGE_SIZE}-byte 35-track D64 image, got {len(data)} bytes"
-            )
+                f"expected a D64 image of {', '.join(str(k) for k in sorted(VARIANTS))} "
+                f"bytes, got {len(data)}")
+        self._variant = variant
         self._data = bytearray(data)
+
+    # ---- variant ---------------------------------------------------------
+
+    @property
+    def variant(self) -> Variant:
+        return self._variant
+
+    @property
+    def track_count(self) -> int:
+        return self._variant.tracks
+
+    @property
+    def total_sectors(self) -> int:
+        return self._variant.sectors
+
+    @property
+    def writable(self) -> bool:
+        """False for every variant but the plain 174848-byte image."""
+        return self._variant.writable
+
+    def _require_writable(self) -> None:
+        if not self._variant.writable:
+            raise ReadOnlyImageError(
+                f"this is a {self._variant.size}-byte D64 ({self._variant.description}); "
+                f"only plain {IMAGE_SIZE}-byte 35-track images may be written")
+
+    def error_code(self, track: int, sector: int) -> int | None:
+        """The copier's error byte for a sector, or None if the image has none.
+
+        Advisory: nothing in this reader consults it. 1 means the sector read
+        cleanly; 3 -- "no header found" -- is what an unformatted track reports,
+        and is why tracks 36-40 of a 40-track rip are padding rather than damage.
+        """
+        base = self._variant.error_base
+        if base is None:
+            return None
+        index = (sector_offset(track, sector, self._variant.tracks) // SECTOR_SIZE)
+        return self._data[base + index]
 
     # ---- construction / serialization -----------------------------------
 
@@ -264,7 +407,12 @@ class D64:
         write a temporary beside the target, flush it to the platter, and rename
         over. `os.replace` is atomic on POSIX: after it, the file is either
         entirely the old image or entirely the new one.
+
+        Refused on a read-only variant. `to_bytes` still works, so copying one
+        out remains possible; what is refused is this module putting its name to
+        a written image whose format it does not fully model.
         """
+        self._require_writable()
         target = pathlib.Path(path)
         tmp = target.with_name(f".{target.name}.tmp{os.getpid()}")
         try:
@@ -279,19 +427,24 @@ class D64:
 
     @property
     def data(self) -> bytearray:
-        """Live mutable buffer. Mutating it mutates the image."""
+        """Live mutable buffer. Mutating it mutates the image.
+
+        Deliberately not guarded by :attr:`writable` -- it is the escape hatch,
+        and a caller reaching past the accessors has said so.
+        """
         return self._data
 
     # ---- raw sector access ----------------------------------------------
 
     def read_sector(self, track: int, sector: int) -> bytes:
-        off = sector_offset(track, sector)
+        off = sector_offset(track, sector, self._variant.tracks)
         return bytes(self._data[off : off + SECTOR_SIZE])
 
     def write_sector(self, track: int, sector: int, data: bytes) -> None:
+        self._require_writable()
         if len(data) != SECTOR_SIZE:
             raise ValueError(f"a sector is {SECTOR_SIZE} bytes, got {len(data)}")
-        off = sector_offset(track, sector)
+        off = sector_offset(track, sector, self._variant.tracks)
         self._data[off : off + SECTOR_SIZE] = data
 
     # ---- disk header -----------------------------------------------------
@@ -392,7 +545,7 @@ class D64:
                 raise SectorChainError(
                     f"{entry.name!r}: chain loops at track {track} sector {sector}"
                 )
-            if len(chain) > TOTAL_SECTORS:
+            if len(chain) > self._variant.sectors:
                 raise SectorChainError(f"{entry.name!r}: chain longer than the disk")
             seen.add((track, sector))
             chain.append((track, sector))
@@ -452,6 +605,7 @@ class D64:
         and any slack after the payload in the final sector are left alone --
         so rewriting a file with its current contents is a no-op on the image.
         """
+        self._require_writable()
         entry = self._resolve(entry_or_name)
         chain = self.sector_chain(entry)
         needed = self.blocks_needed(len(new_data))
@@ -467,11 +621,11 @@ class D64:
             last = i == len(chain) - 1
             take = len(new_data) - pos if last else PAYLOAD_PER_SECTOR
             chunk = new_data[pos : pos + take]
-            off = sector_offset(track, sector) + 2
+            off = sector_offset(track, sector, self._variant.tracks) + 2
             self._data[off : off + len(chunk)] = chunk
             pos += len(chunk)
             if last:
-                link_off = sector_offset(track, sector)
+                link_off = sector_offset(track, sector, self._variant.tracks)
                 self._data[link_off] = 0
                 self._data[link_off + 1] = 1 + len(chunk)
         assert pos == len(new_data)
