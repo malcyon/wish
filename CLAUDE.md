@@ -125,6 +125,14 @@ is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
 say so and wait to be asked.
 
+**`TASKS.md` is the open task list, and it is kept current.** Close a task in
+the same commit that finishes it; add one when the work is agreed, not when it
+starts. Every task has a code, and **a code belongs to one task for life** --
+when a task closes its code retires with it and new work takes the next free
+number, so `P44` means the same thing in a conversation three weeks apart.
+Never renumber to close a gap. Donald refers to tasks by code, so a code that
+moved is worse than no code at all.
+
 **A confirmed bug in the original game goes in `goldbox-bugs.md`** -- but only
 if a player can run into it. That file is written for a human who wants to read
 something interesting, not for completeness, and it is the shortest document in
