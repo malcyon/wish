@@ -119,6 +119,27 @@ display decision only -- the bytes behind a hidden box are written back
 untouched, which
 `tests/test_editor.py::test_a_hidden_box_is_still_written_back_untouched` pins.
 
+**The sheet explains nothing it can show instead.** Standing instruction: the
+form has to be obvious without help text beside it. What that cost:
+
+| gone | why |
+|---|---|
+| the `Code` column in Active effects | the number is the backend's index; the row already names the effect, and an unnamed code still falls back to `trait <n>` |
+| `0x0AD — ten slots; racial abilities live here` | an address a player cannot use, a slot count the ten rows already show, and a claim the rows themselves make |
+| `Spellbook — what the character knows` | `Spellbook` |
+| `Memorised — what is prepared now` | `Memorised` |
+| `-- neither rule is enforced; the game may not agree` under the memorised list | the capacity note is a reading, not a warning; that the editor refuses nothing is [in the CLI doc](95-wish-cli.md) |
+| `Thief ` on eight labels, `Save ` on five | the group box already says `Thief skills` and `Saving throws` |
+| the record address in an effect row's tooltip | same reason as the label above it; the tooltip keeps the name and how sure of it we are |
+
+**`Castable per level` moved out from between the two spell lists.** It was a
+third `QVBoxLayout` column in the Spells box, so a one-line read-only hex field
+sat full height between the spellbook and the memorised list. It is a scalar
+record field (`0x0EE`, six bytes, nibble-packed) and belongs where the sheet's
+other raw passthrough sits -- a single labelled row. `layout_spells` is now a
+`QVBoxLayout`: the two lists side by side in `layout_spell_lists`, the castable
+row beneath them.
+
 ## Opening and saving
 
 Two buttons on the form, `button_open` and `button_save`, wired to `QAction`s so
@@ -356,10 +377,11 @@ editor/
   glyphpicker.py    the CHARPIC00 grid behind a cell's shape
   inventory.py      the sixteen item slots, the table on the form, and the
                     traits of the selected item
-  effects.py        the ten active-effect slots at 0x0AD. The namespace is
-                    named -- 129 codes in por/traits.py -- so a slot reads
-                    "petrifying gaze", and only a code outside the table falls
-                    back to "trait <n>"
+  effects.py        the ten trait slots at 0x0AD -- racial seeds, monster
+                    specials and item-granted passives, not cast spells. The
+                    namespace is named -- 129 codes in por/traits.py -- so a
+                    slot reads "petrifying gaze", and only a code outside the
+                    table falls back to "trait <n>"
   spellwidget.py    the spellbook and the memorised list, promoted
   enums.py          race/class/alignment/sex, per title, from por/yaml_io.py
   changes.py        what a save would write, in --dry-run's form
@@ -454,10 +476,14 @@ every box is as wide as the widest value its bytes can hold (derived from
 of the 163 names the game disks carry, and two tables joined the sheet -- the
 selected item's traits, and the ten active-effect slots at `0x0AD`.
 
-`0x0AD` is *not* a racial trait mask, which is what it was called here for a
-while. It is a list of active effect codes, seeded per race by `GEN $0BF3` from a
-table indexed by the race byte -- so an elf is born carrying 107 and a half-elf
-124, and every other race is born with an empty block.
+`0x0AD` is a list of trait codes, seeded per race by `GEN $0BF3` from a table
+indexed by the race byte -- so an elf is born carrying 107 and a half-elf 124,
+and every other race is born with an empty block. **A cast spell does not go
+here.** `P3-EFFECTS.D64` was saved with twenty-six spells running and every
+character's block came out exactly as it went in; the live effects were in the
+four 64-entry arrays inside `SAVEDGAME0` ([the saves we made
+ourselves](90-specimens.md)). One namespace, two homes, and the sheet shows only
+this one -- [the plan for editing both](133-active-effects.md).
 
 ### The combat icon picker — done
 

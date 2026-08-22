@@ -1,12 +1,17 @@
-"""The ten active-effect slots at `0x0AD`, spelled out on the character sheet.
+"""The ten trait slots at `0x0AD`, spelled out on the character sheet.
 
 The codes themselves live in `por/traits.py` -- the combat view names the same
 ones on a monster's tooltip, and one table cannot be allowed to become two.
 This module is the sheet's view of them: ten rows, coloured by confidence.
 
-**The list is shown, not edited.** Writing a code back would need the same
-confidence about what the game does with it that the confidence column says we
-do not have.
+**A cast spell is not in here.** `P3-EFFECTS.D64` proved it: twenty-six spells
+running and every block unchanged. What these slots carry is the racial seed,
+a monster's specials and an item's passive power. The live effects are four
+64-entry arrays inside `SAVEDGAME0` and nothing shows them yet --
+`docs/133-active-effects.md` is the plan for both.
+
+**The list is shown, not edited**, for now, and the plan says what editing it
+would have to be careful about.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QTableView
 
 # EMPTY is re-exported: the form's tests read it as `effects.EMPTY`.
-from por.traits import EMPTY, FIRST, NAMES, SLOTS, describe  # noqa: F401
+from por.traits import EMPTY, NAMES, SLOTS, describe  # noqa: F401
 
 FADED = QColor("#808080")
 UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is
@@ -30,7 +35,10 @@ class EffectsModel(QAbstractTableModel):
     shrank to the used ones would hide that.
     """
 
-    HEADERS = ("Slot", "Code", "Effect")
+    # No code column. The number is what the census is indexed by and what a
+    # tooltip falls back to for a code nobody has named; on the sheet it is a
+    # second spelling of the name beside it.
+    HEADERS = ("Slot", "Effect")
 
     def __init__(self, raw: bytes = b"", parent=None):
         # Parented, so the C++ view and its model die together. An unparented
@@ -67,8 +75,6 @@ class EffectsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:
                 return str(row)
-            if col == 1:
-                return str(code) if code else ""
             return describe(code)
         if role == Qt.ItemDataRole.ForegroundRole:
             if not code:
@@ -77,11 +83,9 @@ class EffectsModel(QAbstractTableModel):
                 return QBrush(UNSURE)
         if role == Qt.ItemDataRole.ToolTipRole and code:
             named = NAMES.get(code)
-            where = f"0x{FIRST + row:03X}"
             if named is None:
-                return (f"{where} holds {code}, which the effect census does "
-                        f"not name")
-            return f"{where}: {named[0]} ({named[1]})"
+                return f"code {code}; the effect census does not name it"
+            return f"{named[0]} ({named[1]})"
         return None
 
 

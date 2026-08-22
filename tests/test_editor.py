@@ -831,12 +831,12 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
     view = editor._widgets["item_effects"]
     editor.ui.roster.selectRow(0)                     # MALCYON, an elf
     assert view.codes()[0] == 107
-    assert view.model_.data(view.model_.index(0, 2)) == \
+    assert view.model_.data(view.model_.index(0, 1)) == \
         "elf: 90% resistance to sleep and charm"
     assert view.model_.rowCount() == effects.SLOTS
     editor.ui.roster.selectRow(2)                     # ROLAND, a human
     assert not any(view.codes())
-    assert view.model_.data(view.model_.index(0, 2)) == effects.EMPTY
+    assert view.model_.data(view.model_.index(0, 1)) == effects.EMPTY
 
 
 def test_a_code_nobody_has_named_is_shown_as_a_number():
@@ -851,5 +851,7 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
     assert describe(107) == "elf: 90% resistance to sleep and charm"
     assert describe(200) == "trait 200"
     m = EffectsModel(bytes([200]))
-    assert m.data(m.index(0, 1)) == "200"
-    assert m.data(m.index(0, 2)) == "trait 200"
+    assert m.data(m.index(0, 1)) == "trait 200"
+    # No code column: the sheet names the effect, and the number survives only
+    # where nobody has named it.
+    assert "Code" not in m.HEADERS

@@ -320,6 +320,4 @@ class MemorisedEditor(SpellEditor):
         stray = [s for s in ids if self._known and s not in self._known]
         if stray:
             text += f"  ({len(stray)} not in the spellbook)"
-        self.capacity.setText(text
-                              + "  -- neither rule is enforced; the game may"
-                                " not agree")
+        self.capacity.setText(text)

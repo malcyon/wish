@@ -75,7 +75,6 @@
       <property name="title"><string>Active effects</string></property>
       <property name="minimumHeight"><number>240</number></property>
       <layout class="QVBoxLayout" name="layout_effects">
-       <item><widget class="QLabel" name="label_item_effects"><property name="text"><string>0x0AD — ten slots; racial abilities live here</string></property></widget></item>
        <item><widget class="EffectsView" name="field_item_effects" /></item>
       </layout>
      </widget></item>
@@ -125,15 +124,15 @@
         <item row="6" column="1"><widget class="QSpinBox" name="field_jewelry"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
        </layout>
       </widget></item>
-      <item><widget class="QGroupBox" name="box_saves"><property name="title"><string>Saving throws</string></property><layout class="QFormLayout" name="form_saves"><item row="0" column="0"><widget class="QLabel" name="label_save_paralysis"><property name="text"><string>Save paralysis</string></property></widget></item>
+      <item><widget class="QGroupBox" name="box_saves"><property name="title"><string>Saving throws</string></property><layout class="QFormLayout" name="form_saves"><item row="0" column="0"><widget class="QLabel" name="label_save_paralysis"><property name="text"><string>Paralysis</string></property></widget></item>
         <item row="0" column="1"><widget class="QSpinBox" name="field_save_paralysis"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_save_petrification"><property name="text"><string>Save petrification</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="label_save_petrification"><property name="text"><string>Petrification</string></property></widget></item>
         <item row="1" column="1"><widget class="QSpinBox" name="field_save_petrification"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_save_wands"><property name="text"><string>Save wands</string></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="label_save_wands"><property name="text"><string>Wands</string></property></widget></item>
         <item row="2" column="1"><widget class="QSpinBox" name="field_save_wands"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_save_breath"><property name="text"><string>Save breath</string></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="label_save_breath"><property name="text"><string>Breath</string></property></widget></item>
         <item row="3" column="1"><widget class="QSpinBox" name="field_save_breath"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_save_spell"><property name="text"><string>Save spell</string></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="label_save_spell"><property name="text"><string>Spell</string></property></widget></item>
         <item row="4" column="1"><widget class="QSpinBox" name="field_save_spell"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
                </layout></widget></item>
       <item><spacer name="spacer_column_two"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_three"><item><widget class="QGroupBox" name="box_levels">
@@ -181,40 +180,42 @@
      <item><spacer name="spacer_column_three"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_four"><item><widget class="QGroupBox" name="box_thief_skills">
        <property name="title"><string>Thief skills</string></property>
        <layout class="QFormLayout" name="form_thief_skills">
-        <item row="0" column="0"><widget class="QLabel" name="label_thief_pick_pockets"><property name="text"><string>Thief pick pockets</string></property></widget></item>
+        <item row="0" column="0"><widget class="QLabel" name="label_thief_pick_pockets"><property name="text"><string>Pick pockets</string></property></widget></item>
         <item row="0" column="1"><widget class="QSpinBox" name="field_thief_pick_pockets"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_thief_open_locks"><property name="text"><string>Thief open locks</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="label_thief_open_locks"><property name="text"><string>Open locks</string></property></widget></item>
         <item row="1" column="1"><widget class="QSpinBox" name="field_thief_open_locks"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_thief_find_traps"><property name="text"><string>Thief find traps</string></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="label_thief_find_traps"><property name="text"><string>Find traps</string></property></widget></item>
         <item row="2" column="1"><widget class="QSpinBox" name="field_thief_find_traps"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_thief_move_silently"><property name="text"><string>Thief move silently</string></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="label_thief_move_silently"><property name="text"><string>Move silently</string></property></widget></item>
         <item row="3" column="1"><widget class="QSpinBox" name="field_thief_move_silently"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_thief_hide_in_shadows"><property name="text"><string>Thief hide in shadows</string></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="label_thief_hide_in_shadows"><property name="text"><string>Hide in shadows</string></property></widget></item>
         <item row="4" column="1"><widget class="QSpinBox" name="field_thief_hide_in_shadows"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_thief_hear_noise"><property name="text"><string>Thief hear noise</string></property></widget></item>
+        <item row="5" column="0"><widget class="QLabel" name="label_thief_hear_noise"><property name="text"><string>Hear noise</string></property></widget></item>
         <item row="5" column="1"><widget class="QSpinBox" name="field_thief_hear_noise"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_thief_climb_walls"><property name="text"><string>Thief climb walls</string></property></widget></item>
+        <item row="6" column="0"><widget class="QLabel" name="label_thief_climb_walls"><property name="text"><string>Climb walls</string></property></widget></item>
         <item row="6" column="1"><widget class="QSpinBox" name="field_thief_climb_walls"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_thief_read_languages"><property name="text"><string>Thief read languages</string></property></widget></item>
+        <item row="7" column="0"><widget class="QLabel" name="label_thief_read_languages"><property name="text"><string>Read languages</string></property></widget></item>
         <item row="7" column="1"><widget class="QSpinBox" name="field_thief_read_languages"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
        </layout>
       </widget></item>
       <item><widget class="QGroupBox" name="box_spells">
      <property name="title"><string>Spells</string></property>
      <property name="minimumHeight"><number>240</number></property>
-     <layout class="QHBoxLayout" name="layout_spells">
-      <item><layout class="QVBoxLayout" name="layout_spellbook">
-       <item><widget class="QLabel" name="label_spells_known"><property name="text"><string>Spellbook — what the character knows</string></property></widget></item>
-       <item><widget class="SpellbookEditor" name="field_spells_known" /></item>
+     <layout class="QVBoxLayout" name="layout_spells">
+      <item><layout class="QHBoxLayout" name="layout_spell_lists">
+       <item><layout class="QVBoxLayout" name="layout_spellbook">
+        <item><widget class="QLabel" name="label_spells_known"><property name="text"><string>Spellbook</string></property></widget></item>
+        <item><widget class="SpellbookEditor" name="field_spells_known" /></item>
+       </layout></item>
+       <item><layout class="QVBoxLayout" name="layout_memorised">
+        <item><widget class="QLabel" name="label_spells_memorised"><property name="text"><string>Memorised</string></property></widget></item>
+        <item><widget class="MemorisedEditor" name="field_spells_memorised" /></item>
+       </layout></item>
       </layout></item>
-      <item><layout class="QVBoxLayout" name="layout_castable">
+      <item><layout class="QHBoxLayout" name="layout_castable">
        <item><widget class="QLabel" name="label_spells_castable"><property name="text"><string>Castable per level</string></property></widget></item>
        <item><widget class="QLineEdit" name="field_spells_castable" /></item>
-      </layout></item>
-
-      <item><layout class="QVBoxLayout" name="layout_memorised">
-       <item><widget class="QLabel" name="label_spells_memorised"><property name="text"><string>Memorised — what is prepared now</string></property></widget></item>
-       <item><widget class="MemorisedEditor" name="field_spells_memorised" /></item>
+       <item><spacer name="castable_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
       </layout></item>
      </layout>
     </widget></item>
