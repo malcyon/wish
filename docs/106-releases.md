@@ -18,8 +18,15 @@ backup tags, and without a match pattern setuptools-scm read that one as version
 
 `wish.__version__` looks in three places in order: `wish/_version.py`, written
 by the hatch-vcs build hook and `.gitignore`d, which is what a frozen build
-reads; the installed metadata; and `0.0.0+unknown` for a source checkout that
-was never built. `wish --version` and `wish-cli --version` print it.
+reads; the installed metadata, asked for by the **distribution** name
+`wish-goldbox`; and `0.0.0+unknown` for a source checkout that was never built.
+`wish --version` and `wish-cli --version` print it.
+
+That metadata lookup has been stale twice — a leftover `por-tools` after the
+first rename put `wish unknown` at the top of every debug log. `wish/debuglog.py`
+now takes `wish.__version__` rather than asking metadata itself, and
+`tests/test_packaging.py` checks the one remaining lookup against
+`pyproject.toml`.
 
 The window says the same number under **Help > About wish** — `wish/about.py`,
 installed from `wish/window.py`.
@@ -28,8 +35,13 @@ installed from `wish/window.py`.
 
 | audience | artefact |
 |---|---|
-| people with Python | the wheel |
+| people with Python | the wheel, or PyPI — §5 |
 | everyone else | a one-folder PyInstaller build |
+
+The wheel is `wish_goldbox-<version>-py3-none-any.whl` and the sdist beside it
+`wish_goldbox-<version>.tar.gz`: the distribution is **`wish-goldbox`**, and the
+build backend spells the hyphen as an underscore in file names. Only the wheel
+reaches the release page.
 
 Linux gets `wish-<version>-linux-x86_64.tar.gz`, Windows
 `wish-<version>-windows-x86_64.zip`. Not an AppImage, not an MSI, not a signed
@@ -99,7 +111,9 @@ what vulture flags.
    stop a tag. `test.yml` gained `workflow_call:` for this rather than a second
    copy of the matrix.
 2. `dist`: `python -m build`, then a check that the wheel's version is the tag
-   with the `v` stripped.
+   with the `v` stripped. Both artefacts are uploaded, because `pypi` below
+   wants the sdist; the release page's gather step takes the wheel, the `.zip`
+   and only `*-x86_64.tar.gz`, so the sdist never lands on it.
 3. `frozen`: Ubuntu and Windows, each building `wish.spec` on its own runner
    because PyInstaller does not cross-compile. `pip install -e .` first, because
    that is what writes `wish/_version.py` from the tag. Three smoke checks on
@@ -109,8 +123,9 @@ what vulture flags.
    "unrecognized arguments" on stderr, which is the same path every diagnostic
    travels and needs no display; and `wish-cli` reports the same version on
    Linux while `wish-cli.exe` is absent on Windows.
-4. `publish`: gathers both, writes `SHA256SUMS`, and hands the lot to
-   `softprops/action-gh-release` with `generate_release_notes`.
+4. `publish`: gathers the three shipped files, writes `SHA256SUMS`, and hands
+   the lot to `softprops/action-gh-release` with `generate_release_notes`.
+5. `pypi`: after `publish`, uploads the wheel and the sdist. §5.
 
 ## 4. The PyInstaller spec
 
@@ -153,6 +168,30 @@ too. Settings and map notes live in the user's own directories
 declared as `tools.wish:main` and the window imports `tools.genui`, so without
 it both entry points were broken in an installed wheel.
 
+## 5. PyPI
+
+**`pip install wish-goldbox` installs a command called `wish`.** The
+distribution is `wish-goldbox` because `wish` on PyPI belongs to an unrelated
+package from 2013; nothing a user types changes, and the entry points are still
+`wish`, `wish-cli`, `wish-editor` and `wish-automap`.
+
+Both the wheel and the sdist go to PyPI. The release page carries the wheel and
+the two frozen builds and **no sdist of ours**: GitHub attaches its own "Source
+code (zip)" and "Source code (tar.gz)" to every tag and neither can be renamed,
+so ours would be a third source-looking download with a name close enough to
+confuse. PyPI has no such problem and wants an sdist, so that is where it goes.
+
+Publishing is **Trusted Publishing**, not a stored token: the `pypi` job mints a
+short-lived OIDC token from the workflow itself, so there is no API token in the
+repository to leak or to rotate. PyPI matches on the repository, the workflow
+file name and the environment name — hence `environment: pypi` and
+`permissions: id-token: write` in the job, and `pypa/gh-action-pypi-publish`
+with no `password`. The publisher has to be registered on PyPI once before the
+first tag, or the upload fails on an unrecognised token.
+
+It runs on `v*` tags only and `needs: [publish]`, so a failed upload cannot
+leave a half-made release page behind it.
+
 ## Verification
 
 | claim | how it stands |
@@ -168,6 +207,8 @@ it both entry points were broken in an installed wheel.
 | the Linux build runs on another distribution | **unverified** |
 | CI is green on a checkout with no game disks | **unverified as a whole**; locally, disks hidden, 539 pass and 30 skip |
 | a release page carries every artefact | **unverified** — no tag has been pushed |
+| the wheel and sdist come out named `wish_goldbox-*` | verified — `python3 -m build` on 2026-08-22 produced `wish_goldbox-0.0.1.dev173+gba225aeab.d20260822-py3-none-any.whl` and the matching `.tar.gz` |
+| Trusted Publishing uploads to PyPI | **unverified** — no tag has been pushed, and the publisher has still to be registered on PyPI |
 
 Two known failures waiting for CI, neither of them the packaging's:
 

@@ -115,14 +115,19 @@ git tag v0.1.0
 python3 -c "from wish import __version__; print(__version__)"   # 0.1.0
 ```
 
-**B3. The wheel.**
+**B3. The wheel, and the sdist that goes with it.**
 
 ```sh
-python3 -m build --wheel        # dist/wish-<version>-py3-none-any.whl
+python3 -m build                # dist/wish_goldbox-<version>-py3-none-any.whl
 ```
 
-`python3 -m build` with no flag also makes an sdist. Harmless, and not shipped —
-see §1.
+Two files come out: the wheel and `wish_goldbox-<version>.tar.gz`, the sdist.
+Both are what CI builds — **the sdist goes to PyPI and not to the release
+page**, see §1. `--wheel` skips it if you only want the file §4 installs.
+
+The distribution is `wish-goldbox`, because `wish` is taken on PyPI by an
+unrelated package; setuptools spells the hyphen as an underscore in file names.
+The command is still `wish`.
 
 **B4. The frozen build.** About ten seconds, and roughly 158 MB unpacked.
 
@@ -145,16 +150,19 @@ tar -C dist -czf "$NAME.tar.gz" "$NAME"
 **B6. Gather and checksum.** CI's `publish` job puts every artefact in one
 directory and runs `sha256sum *` there, so every line in `SHA256SUMS` is a bare
 file name. Do the same, or §2 cannot check the file: a line reading
-`dist/wish-….whl` is a name that does not exist beside `SHA256SUMS`, and
-`--ignore-missing` then skips it in silence — one `OK` instead of two, and exit
-status 0. That failure was reproduced on 2026-08-22, which is why this step no
-longer says `sha256sum dist/*.whl *.tar.gz`.
+`dist/wish_goldbox-….whl` is a name that does not exist beside `SHA256SUMS`,
+and `--ignore-missing` then skips it in silence — one `OK` instead of two, and
+exit status 0. That failure was reproduced on 2026-08-22, which is why this
+step no longer says `sha256sum dist/*.whl *.tar.gz`.
 
 ```sh
 mkdir -p release
 cp dist/*.whl "$NAME.tar.gz" release/
 (cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS)
 ```
+
+`dist/*.whl` and not `dist/*`: the sdist is in `dist/` too and does not belong
+on a release page, and `$NAME.tar.gz` is the frozen build, which does.
 
 **B7. Windows.** The same steps on the Windows machine, with two differences:
 `pyinstaller` produces `dist/wish/wish.exe` and **no `wish-cli`**, and the
@@ -199,7 +207,7 @@ The release page carries three files we build, plus checksums:
 
 | file | what it is |
 |---|---|
-| `wish-<version>-py3-none-any.whl` | the wheel |
+| `wish_goldbox-<version>-py3-none-any.whl` | the wheel |
 | `wish-<version>-linux-x86_64.tar.gz` | the frozen Linux build |
 | `wish-<version>-windows-x86_64.zip` | the frozen Windows build |
 | `SHA256SUMS` | one line per file above |
@@ -207,8 +215,10 @@ The release page carries three files we build, plus checksums:
 Above them GitHub adds **Source code (zip)** and **Source code (tar.gz)** on
 its own, for every tag. They are archives of the repository at that commit,
 they are not built by us, and they cannot be renamed or removed -- which is why
-we do not ship an sdist as well. Three things called some variation of "source"
-on one page is worse than none.
+our own sdist stays off the page. Three things called some variation of
+"source" on one page is worse than none. It is built, and it goes to PyPI,
+where it is the only source anyone can get: see
+[`106-releases.md`](106-releases.md) §5.
 
 **Nothing in this walkthrough may touch your real save disks.** Step L1 makes a
 working copy and everything afterwards operates on that copy or on files
@@ -389,7 +399,9 @@ never runs: the entry points from installed metadata, `tools/` as an installed
 package, and the version from installed metadata rather than `wish/_version.py`.
 
 *Run by the assistant on 2026-08-22 against
-`wish-0.0.1.dev165+g24a77e835.d20260822-py3-none-any.whl`. L8–L12 all passed.*
+`wish-0.0.1.dev165+g24a77e835.d20260822-py3-none-any.whl` — the distribution
+was still called `wish` on the day, so a wheel built now is
+`wish_goldbox-<version>-py3-none-any.whl`. L8–L12 all passed.*
 
 **L8.** A venv with nothing in it.
 
@@ -397,11 +409,12 @@ package, and the version from installed metadata rather than `wish/_version.py`.
 cd ~/wish-test
 python3 -m venv .venv-release
 source .venv-release/bin/activate
-pip install "$HOME/Downloads/wish-release/wish-<version>-py3-none-any.whl[gui,automap]"
+pip install "$HOME/Downloads/wish-release/wish_goldbox-<version>-py3-none-any.whl[gui,automap]"
 ```
 
 *Expect:* PyQt6, PyQt6-Qt6, PyQt6_sip and PyYAML pulled in — five packages
-including `wish` itself — with no build step and no compiler.
+including `wish-goldbox` itself, which is the distribution's name and not the
+command's — with no build step and no compiler.
 *If pip refuses the extras syntax,* quote the whole argument — the brackets are
 the shell's otherwise.
 
@@ -763,11 +776,14 @@ test ran on a bare `Xvfb` with no window manager, and geometry restore is the
 window manager's business, so that is the harness and not the build. Untested.
 
 ³ The log wrote, and rewrote every absolute path to `~.../basename` as promised.
-**But its first line reads `wish unknown`** — `wish/debuglog.py` asks
-`importlib.metadata.version("por-tools")` and the distribution has been called
-`wish` since it was renamed, so every debug log in every build, wheel and frozen
-alike, is missing the one field §8 opens by demanding. Not a release blocker;
-`wish --version` and Help > About are both right.
+**Its first line read `wish unknown` on the day** — the version was looked up by
+distribution name, and the distribution had been renamed out from under it.
+Fixed: `wish/debuglog.py` now takes `wish.__version__`, which is the same string
+`wish --version` prints and works in a frozen build where there is no metadata
+at all. The metadata lookup that remains, in `wish/__init__.py`, names
+`wish-goldbox` and is checked against `pyproject.toml` by
+`tests/test_packaging.py`. **Unverified since the fix** — no build has been
+re-run against it.
 
 ---
 
@@ -777,10 +793,9 @@ Capture these four things before you change anything. A failure you cannot
 reproduce is a failure you cannot fix.
 
 **1. The version.** `wish --version` — from a terminal on Windows too — or
-Help > About. Without it nobody knows which build you had. **Do not take it from
-the debug log**: its first line reads `wish unknown` in every build, because
-`wish/debuglog.py` asks `importlib.metadata` for `por-tools` and the
-distribution has been called `wish` since the rename. Confirmed 2026-08-22.
+Help > About. Without it nobody knows which build you had. The debug log's first
+line carries it too, and should agree; if it says `wish unknown`, that is the
+rename bug of 2026-08-22 come back and it is worth reporting on its own.
 
 **2. The debug log.** Off at every start, deliberately — it is not remembered
 between runs.

@@ -11,7 +11,9 @@ from __future__ import annotations
 import importlib.util
 import io
 import pathlib
+import re
 import sys
+import tomllib
 import types
 
 import pytest
@@ -117,6 +119,31 @@ def test_the_window_is_windowed():
     window, cli = _run_spec("linux")["EXE"]
     assert window.kwargs["console"] is False
     assert cli.kwargs["console"] is True
+
+
+# --- the distribution name ------------------------------------------------
+
+def test_the_metadata_lookup_uses_the_distribution_name():
+    """`wish` is the command; `wish-goldbox` is the distribution on PyPI.
+
+    This has been wrong twice -- once as a leftover `por-tools`, which made
+    every debug log open `wish unknown`. A pip install has only the metadata to
+    ask, so a stale name here is a version of "0.0.0+unknown" for every user
+    who did not get a frozen build.
+    """
+    with (ROOT / "pyproject.toml").open("rb") as f:
+        name = tomllib.load(f)["project"]["name"]
+    source = (ROOT / "wish" / "__init__.py").read_text(encoding="utf-8")
+    asked = re.findall(r'\bversion\("([^"]+)"\)', source)
+    assert asked == [name]
+
+
+def test_the_command_is_still_wish():
+    """Renaming the distribution must not rename what a user types."""
+    with (ROOT / "pyproject.toml").open("rb") as f:
+        scripts = tomllib.load(f)["project"]["scripts"]
+    assert scripts["wish"] == "wish.__main__:main"
+    assert scripts["wish-cli"] == "tools.wish:main"
 
 
 # --- the entry scripts ----------------------------------------------------
