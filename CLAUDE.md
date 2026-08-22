@@ -27,11 +27,24 @@ collide. Assign non-overlapping areas, and say which in the brief.
 **Subagents do not commit.** As things stand the main window makes the commits,
 so nothing races the index.
 
-**Emulator work is single-threaded.** VICE serves exactly one binary-monitor
-connection and silently ignores a second, so at most one agent drives it. That
-agent checks `ss -tnp | grep 6502` before connecting, and never kills a process
-holding the monitor -- that has happened once, and what it killed was Donald's
-own window.
+**Emulator work goes through the instance pool.** VICE serves exactly one
+binary-monitor connection *per process*, so running two things at once means
+two emulators, not two connections. `docs/123-parallel-sessions.md` plans the
+pool; **until `tools/instance.py` exists, it is still one agent at a time**,
+and the brief says which.
+
+**Port 6502 is Donald's.** The pool allocates 6520 and upwards and never
+touches 6502 or 6510. Anything on those is a game a human started from the
+desktop menu -- do not attach to it, do not probe it, do not kill it.
+
+**Never kill a process by name.** Not `pkill -x x64sc`, not `pkill -x Xephyr`.
+Kill only the process group your own slot launched. A slot that looks dead may
+be somebody's. The one time this rule was broken, what died was Donald's own
+window.
+
+**Never point VICE at Donald's config.** A pooled instance gets its own
+`vicerc` seeded from his, with `SaveResourcesOnExit=0`, so nothing an agent
+runs can write settings back.
 
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the

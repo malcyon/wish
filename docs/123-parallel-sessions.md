@@ -358,8 +358,20 @@ unaffected and stay exactly as they are.
 
 ## 6. The Windows VM
 
-**What it is for:** cutting the first release tag. Nothing else in this
-document.
+**Donald has ruled against it, and the reasoning is sound.** Finding a Windows
+ISO and standing the thing up costs more than the problem is worth when he has
+a Windows laptop on the desk: he will run `122-release-testing.md` on it
+himself. **Proxmox is retired for now** -- the fallback if running many VICE and
+DOSBox processes on one host turns out to be unworkable, not the plan of
+record. The rest of this section is kept as the argument for why, should that
+day come.
+
+The one thing that does *not* go away with the VM is the CI gap in §6.3: the
+`AttachConsole` path has never run anywhere, on any machine, because
+`release.yml` tests `--version` through a pipe. His laptop closes that, once.
+
+**What it would have been for:** cutting the first release tag. Nothing else in
+this document.
 
 [`122-release-testing.md`](122-release-testing.md) ends with a table of
 thirteen unverified claims. Every one of them is unverified for the same
