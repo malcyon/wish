@@ -30,11 +30,11 @@ def _parser() -> argparse.ArgumentParser:
         prog="wish", description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("save", nargs="?", help="a .D64 save disk to open")
-    ap.add_argument("--game-disk", help="a POOL*.D64, for item names and icons")
+    ap.add_argument("--game-disk", help="a game disk, for item names and icons")
     ap.add_argument("--tab", choices=("editor", "map"),
                     help="which tab to open on")
     ap.add_argument("--area", help="force a GEO name instead of identifying it")
-    ap.add_argument("--disks", help="where the POOL*.D64 live "
+    ap.add_argument("--disks", help="where the game disks live "
                     "(default: $POR_DISKS, else searched for)")
     ap.add_argument("--interval", type=int,
                     help="poll interval in ms (default: the backend's own)")
@@ -46,6 +46,25 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--version", action="version",
                     version=f"wish {__version__}")
     return ap
+
+
+def game_of(save: str | None):
+    """Which title's save this disk holds, or None if it cannot be told.
+
+    The map tab needs it: with Pool of Radiance and Curse of the Azure Bonds
+    disks in one directory, the open save is the only thing that says which
+    game's maps to load and whose area names to print. Never fatal -- an
+    unreadable disk is the editor's error to report, with its own message,
+    not a reason to refuse to open the window.
+    """
+    if not save:
+        return None
+    try:
+        from por import games
+        from por.d64 import D64
+        return games.detect(D64.open(save))
+    except Exception:
+        return None
 
 
 def main(argv: list[str] | None = None, tab: str = "map") -> int:
@@ -67,12 +86,13 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
         if ensure_current():
             print("character.ui changed; recompiled the form")
 
-    from automap.__main__ import forget, load_maps
+    from automap.__main__ import forget, load_maps_titled
 
     if args.forget:
         return forget(args.forget)
 
-    maps = load_maps(args.disks)
+    game = game_of(args.save)
+    maps, game = load_maps_titled(args.disks, game)
     if args.svg:
         from automap.render import to_svg
         name, out = args.svg
@@ -86,14 +106,19 @@ def main(argv: list[str] | None = None, tab: str = "map") -> int:
     if not maps:
         # Not fatal: the editor is the half most people use, and it needs no
         # game disk to open a save.
-        print("no POOL*.D64 game disks found, so the map tab will be empty.\n"
+        # Naming the title matters when the save is one game and the disks in
+        # the directory are another: "no game disks found" beside a shelf full
+        # of Pool of Radiance disks reads as a bug.
+        print(f"no game disks{f' for {game.title}' if game else ''} found, "
+              "so the map tab will be empty.\n"
               "Point --disks or $POR_DISKS at the directory holding them.",
               file=sys.stderr)
 
     from .window import EDITOR_TAB, MAP_TAB, run
     return run(args.save, args.game_disk, maps=maps, area=args.area,
                tab=MAP_TAB if tab == "map" else EDITOR_TAB,
-               interval_ms=args.interval)
+               interval_ms=args.interval,
+               title=game.title if game else None)
 
 
 def editor_main(argv: list[str] | None = None) -> int:

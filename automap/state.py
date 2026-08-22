@@ -134,14 +134,22 @@ class AutomapState:
 
     @property
     def area_label(self) -> str:
+        """Where the party is, in the words the game itself uses.
+
+        The name, and only the name: "New Phlan", "the Slums", "Kuto's Well".
+        The map's file stem is an implementation detail, it used to lead this
+        label, and 29 of Pool of Radiance's 30 areas have a real name to show
+        instead. `area` still carries the stem for anything that wants it.
+
+        The stem is the fallback, not the format: a title whose maps we have no
+        names for shows `GEO15` and never another game's "Sokol Keep", which is
+        what `geo_name` rather than `area_name` buys -- `area_name`'s own
+        fallback, "area 21", says no more than the stem does and looks like a
+        name.
+        """
         if not self.area:
             return str(self.candidates) if self.candidates else "identifying..."
-        # `geo_name`, not `area_name`: the label already shows "GEO15", so
-        # appending its fallback "area 21" would say the same thing twice. The
-        # point of the title key is that Curse's `GEO15` reads as plain
-        # "GEO15" here and never as "Sokol Keep".
-        name = areas.geo_name(self.area, self.title)
-        return f"{self.area} - {name}" if name else self.area
+        return areas.geo_name(self.area, self.title) or self.area
 
     @property
     def facing_letter(self) -> str:

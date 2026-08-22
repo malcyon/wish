@@ -26,6 +26,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import yaml
 
+from automap.paths import disk_globs
+from por.d64 import D64
+from por.games import detect
 from por.yaml_io import ValueError_, export_save, import_into, to_yaml
 from wish import __version__
 
@@ -35,9 +38,10 @@ GAME_DISK_ENV = "POR_GAME_DISK"
 def find_game_disk(explicit: str | None, save: str | None) -> str | None:
     """Locate a game disk, used only to turn item indices into names.
 
-    Tried in order: the flag, $POR_GAME_DISK, then any POOL*.D64 sitting beside
-    the save disk — which is how the disks are normally kept. Returns None if
-    none is found; items are then listed without names rather than failing.
+    Tried in order: the flag, $POR_GAME_DISK, then a game disk of the save's
+    own title sitting beside it — `POOL*.D64` for Pool of Radiance, `CURSE*.D64`
+    for Curse — which is how the disks are normally kept. Returns None if none
+    is found; items are then listed without names rather than failing.
     """
     if explicit:
         return explicit
@@ -46,11 +50,21 @@ def find_game_disk(explicit: str | None, save: str | None) -> str | None:
         return env
     if save:
         folder = pathlib.Path(save).resolve().parent
-        for pattern in ("POOL1.D64", "POOL*.D64", "pool1.d64", "pool*.d64"):
+        # An undetectable disk falls back to Pool of Radiance, which is what
+        # `disk_globs(None)` means and what this has always assumed.
+        for pattern in disk_globs(game_of(save)):
             hits = sorted(glob.glob(str(folder / pattern)))
             if hits:
                 return hits[0]
     return None
+
+
+def game_of(save: str):
+    """The title this save disk belongs to, or None if it cannot be told."""
+    try:
+        return detect(D64.open(save))
+    except Exception:
+        return None
 
 
 def cmd_export(args: argparse.Namespace) -> int:
@@ -149,8 +163,8 @@ def main() -> int:
                     help=f"a game disk. With --export it names items and "
                          f"describes their type; with --import it is needed "
                          f"only to turn item words into indices when you build "
-                         f"a new item. Otherwise ${GAME_DISK_ENV} or a "
-                         f"POOL*.D64 beside the save")
+                         f"a new item. Otherwise ${GAME_DISK_ENV} or one of "
+                         f"the title's own disks beside the save")
     ap.add_argument("--version", action="version",
                     version=f"wish-cli {__version__}")
     ap.add_argument("--dry-run", "-n", action="store_true",

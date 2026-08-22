@@ -11,6 +11,8 @@ import os
 import pathlib
 import sys
 
+from por import games
+
 APP = "wish"
 
 
@@ -40,16 +42,37 @@ def data_dir() -> pathlib.Path:
     return pathlib.Path(root) / APP
 
 
+def disk_globs(game: games.Game | None = None) -> tuple[str, ...]:
+    """The patterns matching one title's disk images.
+
+    `Game.disk_glob` already covers `POOL1.D64` and `POOL1.d64`; the lowered
+    copy is for a directory unpacked from an archive that lower-cased the whole
+    name. No game means Pool of Radiance, as everywhere else.
+    """
+    glob = (game or games.DEFAULT).disk_glob
+    return (glob, glob.lower()) if glob.lower() != glob else (glob,)
+
+
+def _dir_names(game: games.Game | None) -> tuple[str, ...]:
+    """Directory names somebody would actually give a title's disks."""
+    out = []
+    for title in ([game.title] if game else [g.title for g in games.GAMES]):
+        out += [f"{title} Disks", title]
+    if game is None or game is games.POOL_OF_RADIANCE:
+        out.append("PoR")
+    return tuple(dict.fromkeys(out))
+
+
 # Where the game disks might be. `POR_DISKS` wins; otherwise look in the places
 # somebody would actually put them, and finally the working directory. There is
 # deliberately no absolute default -- an earlier version hard-coded one
 # developer's home directory, which is useless to everybody else.
-def disk_candidates() -> list[pathlib.Path]:
+def disk_candidates(game: games.Game | None = None) -> list[pathlib.Path]:
     env = os.environ.get("POR_DISKS")
     if env:
         return [pathlib.Path(env)]
     here = _home()
-    names = ("Pool of Radiance Disks", "Pool of Radiance", "PoR")
+    names = _dir_names(game)
     roots = [pathlib.Path.cwd(), here, here / "Documents", here / "Games",
              here / "c64", here / "roms", here / "Downloads"]
     # On Windows, Documents and Downloads are commonly redirected into
@@ -64,17 +87,46 @@ def disk_candidates() -> list[pathlib.Path]:
     return out
 
 
-def find_disks() -> pathlib.Path | None:
-    """The first directory that actually holds `POOL*.D64`."""
-    for path in disk_candidates():
-        try:
-            if path.is_dir() and any(path.glob("POOL*.D64")):
-                return path
-            if path.is_dir() and any(path.glob("POOL*.d64")):
-                return path
-        except OSError:
-            continue
+def has_disks(path: pathlib.Path, game: games.Game | None = None) -> bool:
+    """Does this directory hold that title's disks?"""
+    try:
+        if not path.is_dir():
+            return False
+        for pattern in disk_globs(game):
+            if next(path.glob(pattern), None) is not None:
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def titles_in(path) -> list[games.Game]:
+    """Every title whose disks sit in this directory, Pool of Radiance first."""
+    path = pathlib.Path(path)
+    return [g for g in games.GAMES if has_disks(path, g)]
+
+
+def locate_disks(game: games.Game | None = None
+                 ) -> tuple[pathlib.Path, games.Game] | None:
+    """The first directory holding a title's disks, and which title that is.
+
+    With no `game` every title is tried, Pool of Radiance first: a machine with
+    only its disks searches exactly as it always did, and another title is
+    found only when Pool of Radiance's are nowhere to be seen. That order is a
+    fallback for when nothing says which game is wanted -- a caller that knows,
+    because a save is open, passes it and gets no guessing at all.
+    """
+    for want in ([game] if game is not None else list(games.GAMES)):
+        for path in disk_candidates(want):
+            if has_disks(path, want):
+                return path, want
     return None
+
+
+def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
+    """The first directory that actually holds this title's disks."""
+    hit = locate_disks(game)
+    return hit[0] if hit is not None else None
 
 
 def vice_settings_hint() -> str:

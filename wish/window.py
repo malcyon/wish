@@ -28,6 +28,7 @@ from automap.config import Settings
 from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
+from por import games
 
 from . import backends, debuglog, debugmode
 from .about import install as install_help
@@ -62,7 +63,7 @@ class WishWindow(QMainWindow):
                  maps: dict | None = None, area: str | None = None,
                  settings: Settings | None = None,
                  session: Session | None = None,
-                 tab: int = MAP_TAB):
+                 tab: int = MAP_TAB, title: str | None = None):
         super().__init__()
         self.settings = settings or Settings()
 
@@ -72,8 +73,12 @@ class WishWindow(QMainWindow):
         self._logged_area: str | None = None
 
         self.editor = EditorWindow(save, game_disk)
+        # Whose area names to print. `GEO15` is Sokol Keep in Pool of Radiance
+        # and somewhere else in Curse, so the caller that loaded the maps says
+        # which title they are. Failing that the open save says, and only with
+        # nothing open at all is this the title it has always been.
         self.mapper = Automapper(None, maps if maps is not None else load_maps(),
-                                 area=area)
+                                 area=area, title=title or self._open_title())
         self.map = AutomapWindow(self.mapper, settings=self.settings,
                                  drive=False)
 
@@ -106,6 +111,11 @@ class WishWindow(QMainWindow):
         self.tabs.setCurrentIndex(tab)
         self._tab_changed(self.tabs.currentIndex())
         self.session.start()
+
+    def _open_title(self) -> str:
+        """The open save's game, or Pool of Radiance when nothing is open."""
+        game = getattr(getattr(self.editor, "party", None), "game", None)
+        return getattr(game, "title", None) or games.DEFAULT.title
 
     # -- chrome ----------------------------------------------------------
 
@@ -207,18 +217,12 @@ class WishWindow(QMainWindow):
     def _prefer_backend(self, name: str) -> None:
         """Remember the preference and act on it now.
 
-        `Session` takes its preference when it is built and offers no setter,
-        so this is the whole of the state it keeps about one. A different
-        backend already attached is dropped: the next poll reattaches, and the
-        point of choosing is to be on the other one.
+        The settings are this window's to keep; dropping a backend that is
+        already attached is the session's, and `Session.prefer` does it.
         """
         self.settings.backend = name
         self.settings.save()
-        self.session._preferred = name or None
-        attached = getattr(self.session, "backend", None)
-        if name and attached is not None and \
-                attached.name.lower() != name.lower():
-            self.session.detach(f"switching to {name}")
+        self.session.prefer(name)
         self.statusBar().showMessage(
             f"backend: {name}" if name else "backend: whichever answers")
 
@@ -375,14 +379,15 @@ class WishWindow(QMainWindow):
 
 def run(save: str | None = None, game_disk: str | None = None,
         maps: dict | None = None, area: str | None = None,
-        tab: int = EDITOR_TAB, interval_ms: int | None = None) -> int:
+        tab: int = EDITOR_TAB, interval_ms: int | None = None,
+        title: str | None = None) -> int:
     from PyQt6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication([])
     settings = Settings.load()
     session = Session(preferred=getattr(settings, "backend", "") or None,
                       interval_ms=interval_ms)
     win = WishWindow(save, game_disk, maps=maps, area=area, settings=settings,
-                     session=session, tab=tab)
+                     session=session, tab=tab, title=title)
     win.resize(max(settings.window_width, 1875), max(settings.window_height, 1030))
     win.show()
     return app.exec()

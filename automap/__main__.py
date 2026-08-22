@@ -19,33 +19,59 @@ import os
 import pathlib
 import sys
 
+from por.games import Game
 from por.geo import load_geo_files
 
-from .paths import find_disks, vice_settings_hint
+from .paths import disk_globs, locate_disks, titles_in, vice_settings_hint
 from .state import Automapper
 from .target import NotConnected, ViceTarget, monitor_listening
 
 
-def default_disks() -> str:
+def default_disks(game: Game | None = None) -> str:
     """Where the game disks are. $POR_DISKS wins; otherwise go looking.
 
     There is deliberately no absolute default -- this used to hard-code one
     developer's home directory, which is no use to anybody else and does not
     exist on Windows at all.
     """
-    found = find_disks()
-    return str(found) if found else str(pathlib.Path.cwd())
+    found = locate_disks(game)
+    return str(found[0]) if found else str(pathlib.Path.cwd())
 
 
-def load_maps(disks: str | None = None) -> dict:
+def load_maps(disks: str | None = None,
+              game: Game | None = None) -> dict:
     """Every GEO file across the game disks, first copy wins."""
-    disks = disks or default_disks()
+    return load_maps_titled(disks, game)[0]
+
+
+def load_maps_titled(disks: str | None = None, game: Game | None = None
+                     ) -> tuple[dict, Game | None]:
+    """The maps, and which title's disks they came off.
+
+    Knowing the title is the point: `GEO15` is Sokol Keep in Pool of Radiance
+    and somewhere else entirely in Curse of the Azure Bonds, so whoever draws
+    the map has to be told which game it is rather than assume. A caller with a
+    save open passes its `Game`; with nothing open, one directory holding two
+    titles' disks falls back to the first found rather than guessing.
+    """
+    if disks is None:
+        hit = locate_disks(game)
+        if hit is None:
+            return {}, game
+        where, game = hit
+    else:
+        where = pathlib.Path(disks)
+        if game is None:
+            present = titles_in(where)
+            game = present[0] if present else None
+    if game is None:
+        return {}, None
     found: dict = {}
-    for pattern in ("POOL*.D64", "POOL*.d64"):
-        for path in sorted(glob.glob(os.path.join(disks, pattern))):
+    for pattern in disk_globs(game):
+        for path in sorted(glob.glob(os.path.join(str(where), pattern))):
             for name, geo in load_geo_files(path).items():
                 found.setdefault(name, geo)
-    return found
+    return found, game
 
 
 def forget(area: str) -> int:
@@ -87,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--area", help="force a GEO name instead of identifying it")
-    ap.add_argument("--disks", help="where the POOL*.D64 live "
+    ap.add_argument("--disks", help="where the game disks live "
                     "(default: $POR_DISKS, else searched for)")
     ap.add_argument("--interval", type=int,
                     help="poll interval in ms (default: remembered, else 200)")
@@ -99,9 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     disks = args.disks or default_disks()
-    maps = load_maps(disks)
+    maps, game = load_maps_titled(disks)
     if not maps:
-        print(f"no POOL*.D64 game disks under {disks}.\n"
+        print(f"no game disks under {disks}.\n"
               "Point --disks or $POR_DISKS at the directory holding them.",
               file=sys.stderr)
         return 1
@@ -137,7 +163,8 @@ def main(argv: list[str] | None = None) -> int:
               "  -binarymonitor -binarymonitoraddress 127.0.0.1:6502",
               file=sys.stderr)
 
-    mapper = Automapper(target, maps, area=args.area)
+    mapper = Automapper(target, maps, area=args.area,
+                        title=game.title if game else None)
 
     from .window import run
     return run(mapper, args.interval, connect=ViceTarget)

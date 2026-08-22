@@ -228,7 +228,7 @@ def test_the_old_hand_written_names_all_survived_the_move():
 def test_the_label_names_a_pool_of_radiance_area():
     st = AutomapState(area="GEO15")
     assert st.title == POOL_OF_RADIANCE
-    assert st.area_label == "GEO15 - Sokol Keep"
+    assert st.area_label == "Sokol Keep"
 
 
 def test_the_label_refuses_to_name_a_curse_area_sokol_keep():

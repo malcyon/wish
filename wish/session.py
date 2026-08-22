@@ -125,6 +125,20 @@ class Session(QObject):
         self._retime()
         return True
 
+    def prefer(self, name: str | None) -> None:
+        """Choose which backend to attach to, or None for whichever answers.
+
+        A *different* backend already attached is dropped, so the next poll
+        reattaches to the chosen one: the whole point of choosing is to be on
+        the other one, and waiting for the emulator to go away first would look
+        like the menu had done nothing.
+        """
+        self._preferred = name or None
+        if (self._preferred and self.target is not None
+                and self.backend is not None
+                and self.backend.name.lower() != self._preferred.lower()):
+            self.detach(f"switching to {name}")
+
     def detach(self, note: str = "disconnected") -> None:
         """Drop the connection and go back to waiting. Never raises."""
         target, self.target = self.target, None
