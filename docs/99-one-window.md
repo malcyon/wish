@@ -78,6 +78,7 @@ wish/
   window.py        the tabbed main window, menu, status bar
   session.py       the shared live connection and its state machine
   backends.py      which live backends exist, how to find one
+  preferences.py   File > Preferences… — game disks, backend, debug log
 ```
 
 That keeps the project's first decision intact: **the editor never talks to a
@@ -143,7 +144,9 @@ class Backend:
 ```
 
 `backends.py` holds the list; the session tries each in turn. A user with both
-gets whichever answers, and a preference in the config settles ties.
+gets whichever answers, and the **Live backend** radio group in
+`File > Preferences…` settles ties. The radios are a view of the window's
+`QActionGroup`, which is in no menu — see [130-preferences.md](130-preferences.md).
 
 **3. `resume()` is VICE-specific and must stay out of the contract.** VICE stops
 the machine while the monitor socket is serviced and needs an explicit resume;
@@ -169,6 +172,8 @@ in a list.
 
 * **Open / Save / Save As** for the editor's file, with the timestamped backups
   and atomic write already built. The map tab has no file of its own.
+* **File > Preferences…** (`Ctrl+,`), which is where the game-disk folder, the
+  live backend and the debug log are set for both tabs at once.
 * **The window title** carries the open save and a dirty marker, regardless of
   which tab is showing.
 * **The status bar** shows the file on the editor tab and the connection on the

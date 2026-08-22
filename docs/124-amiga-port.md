@@ -1,12 +1,14 @@
 # Porting a C64 party into Amiga Pools of Darkness — plan
 
-**Status: phase 2 is run and it changed the plan.** Amiga Pools of Darkness
-**accepts a C64 Pool of Radiance export** as a `SAVE/NAME.pc` and puts it in
-the party — no length check, no signature check, and the `0x00`-`0x5F`
-heap-address block is don't-care. It reads the wrong fields off it, so this is
-not a rename-and-ship; but blockers 3 and 4 are gone and phase 4 is now a
-write-a-file-and-read-the-sheet loop instead of a differential-save grind.
-See §2.2 and the P51 entry in `docs/50-experiments.md`. Everything else below
+**Status: phase 4 has started and thirteen fields are pinned.** Amiga Pools of
+Darkness **accepts a C64 Pool of Radiance export** as a `SAVE/NAME.pc` and puts
+it in the party — no length check, no signature check, and the `0x00`-`0x5F`
+heap-address block is don't-care. So the record can be decoded by *writing* one:
+a payload whose byte at every offset **is** that offset, added through the
+game's own menu, makes every number the character sheet draws name the offset it
+came from. §2.3 has the eight probes and what each one put on screen;
+`por/amiga.py` and `tests/test_amiga.py` carry the result. The item region at
+`0x0B6` is the wall a writer still has to get over. Everything else below
 is still a costing. It exists
 because the four-game run ends on a title the C64 never got: Pool of Radiance,
 Curse and Silver Blades on the C64, then **Pools of Darkness on the Amiga**,
@@ -37,6 +39,12 @@ confidence label.
   a disk we edited lists and adds; a C64 export's 582 bytes under the same name
   *also* lists and adds. The document is not over — the sheet it draws is
   garbage — but the two blockers that made the writer expensive are.
+* **And the garbage sheet is the instrument.** Writing a controlled record and
+  reading the sheet located name, six abilities, hit points, movement, six
+  class levels, the damage triple, armour class, experience, three money fields
+  and age, in eight runs and one afternoon. The same offsets then decode all
+  twelve genuine `.pc` files to sane values, which is the second line of
+  evidence. See §2.3.
 
 ---
 
@@ -244,6 +252,93 @@ image currently in the drive highlighted; `work/amiga/pod/swap.sh` assumes that.
 
 ---
 
+### 2.3 The ramp probe, and thirteen fields off the screen
+
+**The method.** Take the 582-byte C64 export PoD is known to accept, overwrite
+one window of it with a ramp — `byte[i] = i` — write a real name at `0x060`, and
+put it on a copy of disk 3 in the file the picker draws **first**. Add it, view
+the character, and read the numbers: a byte field prints its own offset, a
+big-endian word prints two of them side by side. One run identifies every field
+in the window at once, and the name on the sheet is the check that the payload
+on the disk is the one that loaded.
+
+`work/amiga/pod/probe.py` builds the payload and installs it,
+`work/amiga/pod/cycle.sh` drives one probe end to end, and the screenshots are
+`work/amiga/pod/R*.png`.
+
+| probe | window | what the sheet drew | reading |
+|---|---|---|---|
+| baseline | none | `STR 0 INT 40 WIS 2`, `LEVEL 15/16/17/17/12/1`, `AC 60`, `HP 0/0` | reproduces the earlier run exactly; `40` and `2` are the export's own `0x073` and `0x075` |
+| R1 | `0x07E`–`0x0C7` | `ERROR: INVALID ITEM (-1/29)`, and the character joined anyway | something in the window drives an item parse |
+| R2 | `0x07E`–`0x0A2` | `HIT POINTS 0/129`, `MOVEMENT 136`, `LEVEL 157/158/159/160/161/16…` — the sixth ran into the experience column | **hit points maximum `0x081`**, **movement `0x088`**, **six class levels `0x09D`–`0x0A2`** |
+| R3 | `0x0A3`–`0x0B5` | `ARMOR CLASS -119`, `DAMAGE 173D175-79` | **armour class `0x0B3`**, stored `60 - AC`; **damage count/sides/bonus at `0x0AD`, `0x0AF`, `0x0B1`** |
+| R4 | `0x0B6`–`0x0C7` | — | the item region; the run ended in the game asking for disk 2 |
+| R5 | `0x030`–`0x05F` | `21075 YEARS`, `EXPERIENCE 1145390663`, `PLATINUM 19533`, `GEMS 20047`, `JEWELRY 20561`, and unrelated game text where sex, alignment, race and class belong | **age `0x052` u16**, **experience `0x044` u32**, **platinum `0x04C`**, **gems `0x04E`**, **jewelry `0x050`**, all big-endian |
+| R6 | `0x054`–`0x05F` | age back to `0`, money empty, the same four wrong strings except race | sex, alignment, class and status are in `0x054`–`0x05F`; **race is below `0x054`** |
+| R7 | `0x044`–`0x04B` | — | meant to separate experience from the lighter coins; the run quit to `INSERT DISK 2` before the sheet, so it is unread |
+
+Two things the whole set agrees on and neither probe was aimed at:
+
+* **Byte fields sit on odd offsets two apart** — abilities at `0x071`, `0x073`
+  …, damage at `0x0AD`, `0x0AF`, `0x0B1`, armour class at `0x0B3`. They are the
+  second half of **base/current pairs**, and the sheet draws the current one.
+  §1.5 saw that for the abilities; it is the record's general shape.
+* **THAC0 never moved.** Every window from `0x030` to `0x0B5` left it reading
+  `4`, so it is derived from class and level, or it is in `0x000`–`0x02F` or
+  past `0x0C8`. Current hit points and encumbrance are in the same position.
+
+One loose end, recorded rather than explained: **R1's level line does not fit
+the `0x09D` reading.** With `0x07E`–`0x0C7` ramped the sheet printed seven
+values, `65/67/69/71/73/75/77`, where the array at `0x09D` would give
+`157`…`163`. Narrower windows over the same bytes (R2, R3) behave, and the
+twelve real records decode correctly at `0x09D`, so the array is not in doubt —
+but something in `0x0A3`–`0x0C7` changes how many level slots the sheet draws
+and where it draws them from, and that is unread.
+
+**The second line of evidence, and it is the stronger one.** These offsets were
+found by watching PoD *misread* a C64 record. Turned on the twelve genuine
+`.pc` files on disk 3 they decode as follows: every ability `18` (the maxed
+party §1.5 warned about), hit points 32 to 141, movement `12` for all twelve,
+exactly one non-zero class level each — two for `TRIPEL TURBO`, who is dualled —
+armour class `10` and damage `1d2` for all twelve, which is what unequipped
+means, experience `1500001` for eleven and `500000` for one, and ages 28 to 46.
+**`TROND.pc` reads 138 hit points, and `HP 138` is what the roster drew when
+TROND was added to the party** in the earlier session. `tests/test_amiga.py`
+asserts both halves — the ramp offsets, and the real files.
+
+`Save/T.pc` is the odd one: no class levels at all and a name the picker draws
+as `?T`. Somebody's abandoned scratch character, not a decode failure.
+
+**What the loop costs and how it breaks.** Each probe is about three minutes:
+rewrite the ADF, eject and re-insert DF0 so the Amiga re-reads it, `ADD
+CHARACTER` → `POOLS` → `ADD`, `VIEW CHARACTER`, screenshot, `REMOVE CHARACTER`.
+Notes for whoever runs the next one:
+
+* **PoD is driven by first letters and Return**, not by arrows — `a`, `p`, `v`,
+  `r`, `y`, `e`. FS-UAE's arrow keys reach its own menu and not the Amiga, so
+  the picker's cursor cannot be moved: **the payload goes in the file the picker
+  lists first**, which on this disk is `Save/TROND.pc`. The `*` in that list is
+  the cursor, and the red name in the party roster is the cursor there.
+* **Start every probe with an empty party.** `VIEW CHARACTER` shows whichever
+  character the cursor is on, and a failed `ADD` leaves the cursor on the
+  previous one — which is how two runs were misattributed before the loop
+  removed the character at the end.
+* **`e` on the party menu is `EXIT FROM GAME`**, not the picker's `EXIT`. A
+  swallowed `ADD` puts the `e` on the wrong screen and quits to `INSERT DISK 2`,
+  which is what ended R4 and R7.
+* `ERROR: INVALID ITEM` is recoverable — a few more key presses clear it.
+* FS-UAE does **not** write the ADF back, so rewriting the host file between
+  probes is safe; the eject/insert is only to make the Amiga re-read it.
+* FS-UAE 3.1.66 died once with `*** buffer overflow detected ***`. Restarting it
+  into the same Xephyr and rebooting the game is the recovery.
+
+**What is still missing for a writer**, in the order it matters: the item region
+from `0x0B6`, which the game parses and rejects; the exact bytes for race, sex,
+alignment and class inside `0x030`–`0x05F`; THAC0 and current hit points; and
+the length rule, since a 582-byte file loads but PoD's own files are 484 to 524.
+
+---
+
 ## 3. What actually has to be produced
 
 **Six character files, not a save.** The reasoning, because the alternative
@@ -282,23 +377,25 @@ that is mostly empty, and filling it is the project.
 | abilities ×6 | `0x014` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x010` singles — CONFIRMED | `0x070`, **base/current pairs** — CONFIRMED |
 | exceptional strength | `0x01A` — CONFIRMED | `0x016` — CONFIRMED | `0x016` — CONFIRMED | `0x07C`, pair — CONFIRMED |
 | second ability block | `0x065`, 7 — CONFIRMED | — | — | folded into the pairs — PROBABLE |
-| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | UNKNOWN |
-| race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | UNKNOWN, and the **code table differs per title** (`por/games.py`: human is 7 in PoR, 6 in Silver Blades) |
-| class | `0x073` — CONFIRMED | `0x02F` — CONFIRMED | `0x02F` — CONFIRMED | UNKNOWN |
-| age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | UNKNOWN |
-| hp max | `0x076` **u16** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x054`? u16 (371/601/960) — GUESS |
+| 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | **not in `0x030`–`0x0B5`** — derived, or below `0x030`/past `0x0C8` |
+| race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | in `0x030`–`0x053` — PROBABLE (§2.3); the **code table differs per title** (`por/games.py`: human is 7 in PoR, 6 in Silver Blades) |
+| class | `0x073` — CONFIRMED | `0x02F` — CONFIRMED | `0x02F` — CONFIRMED | in `0x054`–`0x05F` — PROBABLE (§2.3) |
+| age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | `0x052` u16 **BE** — CONFIRMED (`21075 YEARS`) |
+| hp max | `0x076` **u16** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x081` **u8** — CONFIRMED (`HP 0/129`; the earlier `0x054` guess is refuted) |
 | saving throws ×5 | `0x09A`–`0x09E` — CONFIRMED | ~`0x06B` block — PROBABLE | ~`0x06B` block — PROBABLE | UNKNOWN |
-| level | `0x0A0` — CONFIRMED | UNKNOWN | UNKNOWN | `0x050`? (28–46) — PROBABLE |
-| per-class levels ×8 | `0x0C9`–`0x0D0` — PROBABLE | UNKNOWN | UNKNOWN | UNKNOWN |
+| level | `0x0A0` — CONFIRMED | UNKNOWN | UNKNOWN | not a single field; six class levels instead |
+| per-class levels | `0x0C9`–`0x0D0`, 8 — PROBABLE | UNKNOWN | UNKNOWN | `0x09D`–`0x0A2`, **6** — CONFIRMED (`LEVEL 157/158/159/160/161/162`) |
 | class bits | `0x0EB` — CONFIRMED | UNKNOWN | UNKNOWN | UNKNOWN |
-| experience | `0x0E8`, **3 bytes** — CONFIRMED | UNKNOWN | UNKNOWN | `0x044`? 1 500 001 — GUESS |
-| money ×7 | `0x0BB`–`0x0C8`, u16 each — CONFIRMED | UNKNOWN | UNKNOWN | UNKNOWN |
+| experience | `0x0E8`, **3 bytes** — CONFIRMED | UNKNOWN | UNKNOWN | `0x044` **u32 BE** — CONFIRMED (`EXPERIENCE 1145390663`) |
+| money | `0x0BB`–`0x0C8`, 7 × u16 — CONFIRMED | UNKNOWN | UNKNOWN | platinum `0x04C`, gems `0x04E`, jewelry `0x050`, u16 BE — CONFIRMED. The lighter coins are unlocated; R7 was the probe for them and did not finish |
 | thief skills ×8 | `0x0A5`–`0x0AC` — CONFIRMED | UNKNOWN | UNKNOWN | UNKNOWN |
 | spells known / memorised | `0x078`, 7 / `0x020`, 16 — CONFIRMED / PROBABLE | UNKNOWN | UNKNOWN | UNKNOWN |
-| alignment, sex, infravision | `0x0D8`, `0x0D6`, `0x0D5` — CONFIRMED | UNKNOWN | UNKNOWN | UNKNOWN |
+| alignment, sex | `0x0D8`, `0x0D6` — CONFIRMED | UNKNOWN | UNKNOWN | both in `0x054`–`0x05F` — PROBABLE (§2.3) |
 | portrait head/body | `0x0FE`/`0x0FF` — CONFIRMED | UNKNOWN | UNKNOWN | different art set — see §7 |
-| derived combat (roster) | `0x10E` THAC0, `0x10F` AC, `0x119` hp current — PROBABLE | UNKNOWN | UNKNOWN | recompute, never copy — see §7 |
-| inventory | `0x120`, 16 × 16 bytes — CONFIRMED | separate `.ITM`, 63 B/item | separate `.itm`, 65 B/item | **inside the `.pc`**, encoding UNKNOWN |
+| armour class | roster `0x10F` — PROBABLE | `0x02D`-adjacent — PROBABLE | — | `0x0B3`, stored `60 - AC` — CONFIRMED. It is the **base**: all twelve read 10, and TROND joined at −7 |
+| unarmed damage | — | — | — | count `0x0AD`, sides `0x0AF`, bonus `0x0B1` — CONFIRMED (`173D175-79`); all twelve read 1d2 |
+| movement | roster `+0x11` — PROBABLE | UNKNOWN | UNKNOWN | `0x088` — CONFIRMED (`MOVEMENT 136`); all twelve read 12 |
+| inventory | `0x120`, 16 × 16 bytes — CONFIRMED | separate `.ITM`, 63 B/item | separate `.itm`, 65 B/item | **inside the `.pc` from `0x0B6`** — the loader parses it and rejects garbage with `ERROR: INVALID ITEM`. Encoding UNKNOWN, and it is the writer's blocker |
 | combat icon | `0x220`, 36 — CONFIRMED | none | none | none — see §7 |
 | live heap pointers | none | DOS far pointers embedded (`44 D7 46 12` at `0x1D7` of DOS PoD's record) | present | `0x000`–`0x05F`, 4–8 of them — CONFIRMED they are addresses |
 
@@ -338,7 +435,7 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | 1 | **Read the `.pc` loader.** Disassemble around `0x255B2` / `0x25802` with `work/amiga/m68dis.py`; find the `Open`/`Read` pair and any length or signature check. | a written account of what the reader validates | no | a day | we can name the number of bytes it reads and say whether it checks anything |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `por/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
-| 4 | **Decode the `.pc` record.** Method, in the project's own order: (a) align against DOS PoD's 510-byte `.SAV` using the three confirmed landmarks; (b) the twelve specimens for structure; (c) **differential saves** — in FS-UAE, save, change exactly one thing, save again, diff. This is the method that carried the whole project and it needs no live memory, only the emulator to *make* the files. | `por/amiga_pod_layout.py`, declarative, confidence per field, asserting at import that it tiles all its bytes | yes, repeatedly | the bulk of the work | the table tiles every byte of a real `.pc` and every named field decodes to a legal AD&D value across all twelve |
+| 4 | **Decode the `.pc` record.** **Started.** The method is the ramp probe of §2.3, not differential saves: write a record whose byte at every offset is that offset, add it, read the sheet. Thirteen fields are pinned and in `por/amiga.py`. What is left is the item region from `0x0B6`, the four enums inside `0x030`–`0x05F`, THAC0 and current hit points, and the lighter coins. | `por/amiga.py`, plus `tests/test_amiga.py` asserting both the ramp offsets and the twelve real files | yes, repeatedly | the bulk of the work | the table tiles every byte of a real `.pc` and every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
 | 6 | **The map and the writer.** C64 Silver Blades record → named fields → `.pc`, through the existing `por/yaml_io.py` middle. No new interchange format. | the converter, plus a **provenance report**: for every byte of the output, where it came from | no | a week | the report has no "template" category, per `117-save-conversion.md` |
 | 7 | **End to end.** A C64 Silver Blades party through Wish onto an ADF, imported in PoD, sheets compared field by field against the source. | the thing Donald asked for | yes | a session | every field on the "survives" list matches and nothing on the "lost" list surprises anyone |
@@ -396,14 +493,19 @@ Stated out loud, so nobody is surprised and nobody tries.
    would have produced, which is exactly the "copied from a template and
    probably fine" category `117-save-conversion.md` says should not exist by
    the end. Phase 5 exists to settle it and it must settle it before phase 6.
-4. **The `.pc` length rule is not derived.** Sizes 484 / 504 / 514 / 524
-   against a count at `0x08` of 4 / 5 / 5 / 6 — the count does not determine
-   the size, so at least two variables are in play. A writer cannot emit a file
-   whose length it cannot predict.
-5. **All twelve specimens are a maxed party** — every ability 18, levels 28–46.
-   They are excellent for finding *where* fields are and nearly useless for
-   finding *what encodes what*, because almost nothing varies. Real variation
-   has to be manufactured in FS-UAE, which is phase 4 and is the expensive part.
+4. **The `.pc` length rule is not derived, but it no longer blocks reading.**
+   Sizes 484 / 504 / 514 / 524 against a count at `0x08` of 4 / 5 / 5 / 6 — the
+   count does not determine the size, so at least two variables are in play. PoD
+   loads a 582-byte file happily, so the rule is a *writer's* problem and it is
+   downstream of the item region at `0x0B6`, which is what the extra bytes are.
+   That region is now the single blocker on the writer: garbage in it is
+   rejected with `ERROR: INVALID ITEM (-1/29)`.
+5. ~~**All twelve specimens are a maxed party.**~~ **Answered, and by a cheaper
+   route than manufacturing saves.** Every ability is still 18 and the variation
+   is still nearly nil, but the specimens are no longer how fields get found:
+   §2.3's ramp makes *us* the source of variation, one probe per window, and the
+   twelve maxed records became the independent check instead — every offset the
+   sheet gave up decodes them to sane values.
 6. **The Amiga releases are rips of unknown provenance.** The Pool of Radiance
    set is `[cr SKR]` and its disk 1 carries a hard-disk installer and a
    previous owner's saved party — definitely modified. The Pools of Darkness

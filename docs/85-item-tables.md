@@ -100,113 +100,127 @@ Layout, in the order the fields appear:
 | `+2`–`+4` | damage vs large: dice, sides, bonus |
 | `+5` | rate of fire |
 | `+6` | protection — see below |
-| `+7` | weapon class |
-| `+8` | melee usable |
+| `+7` | damage type: `0` slashing, `1` piercing, `128` bludgeoning |
+| `+8` | unknown; `0` or `128`, set on weapons and quarrels only |
 | `+9`–`+11` | damage vs medium: dice, sides, bonus |
 | `+12` | range |
 | `+13` | class usage bitmask, same bits as `class_bits` |
-| `+14` | missile type |
+| `+14` | weapon flags — see below |
+| `+15` | zero throughout |
 
-**Protection** (`+6`) is `0` for anything that is not armour. For body
-armour the high bits read `$B0` and the low nibble is `12 - AC`; for a
-shield they read `$80` and the low nibble is the AC bonus.
+**Protection** (`+6`) is `0` for anything that does not affect armour
+class. Bit 7 means it does, and the low **seven** bits carry the
+family's `60 - value` bias: `60 - (byte & 0x7F)`, the same encoding
+THAC0 and armour class use. Body armour stores a class that way (`$B9`
+→ AC 3, plate; `$B4` → AC 8, leather); a shield and the magical
+protective items store a small flat bonus instead (`$81` = +1), and the
+two are told apart by magnitude. Reading this as `$B0` plus a `12 - AC`
+nibble is the same arithmetic over a narrower range and agrees on every
+armour the disks carry; the two diverge at AC 13, where `$AF` is 13
+under the general rule and -3 under the nibble one.
 
-| # | vs large | vs medium | AC | hands | rate | range | usable by |
-|---|---|---|---|---|---|---|---|
-| 0 | 1d6 | 1d6 | — | 1 | — | — | fighter |
-| 1 | 1d8 | 1d8 | — | 1 | — | — | fighter |
-| 2 | 1d4 | 1d6 | — | 1 | 2 | 4 | fighter |
-| 3 | 3d4 | 2d4 | — | 2 | — | — | fighter |
-| 4 | 1d6 | 1d8 | — | 2 | — | — | fighter |
-| 5 | 1d10 | 2d4 | — | 2 | — | — | fighter |
-| 6 | 1d3 | 1d6 | — | 1 | — | — | fighter |
-| 7 | 1d3 | 1d6 | — | 1 | 2 | 4 | cleric, thief, fighter |
-| 8 | 1d3 | 1d4 | — | 1 | 2 | 4 | magic-user, thief, fighter |
-| 9 | 1d2 | 1d3 | — | 1 | 6 | 6 | magic-user, thief, fighter |
-| 10 | 1d8 | 1d6 | — | 2 | — | — | fighter |
-| 11 | 1d10 | 1d8 | — | 2 | — | — | fighter |
-| 12 | 2d4 | 1d6+1 | — | 1 | — | — | cleric, fighter |
-| 13 | 2d4 | 1d8 | — | 2 | — | — | fighter |
-| 14 | 1d10 | 1d6 | — | 2 | — | — | fighter |
-| 15 | 2d6 | 2d4 | — | 2 | — | — | fighter |
-| 16 | 1d8 | 2d4 | — | 2 | — | — | fighter |
-| 17 | 2d4 | 2d4 | — | 2 | — | — | fighter |
-| 18 | 2d6 | 1d10 | — | 2 | — | — | fighter |
-| 19 | 1d6 | 2d4 | — | 2 | — | — | fighter |
-| 20 | 1d4 | 1d4+1 | — | 1 | 2 | 4 | cleric, fighter |
-| 21 | 1d6 | 1d6 | — | 1 | 2 | 7 | fighter |
-| 22 | 1d4 | 1d6 | — | 1 | — | — | fighter |
-| 23 | 1d6 | 1d6+1 | — | 1 | — | — | cleric, fighter |
-| 24 | 1d6+1 | 2d4 | — | 1 | — | — | fighter |
-| 25 | 1d6+1 | 1d6 | — | 2 | — | — | fighter |
-| 26 | 2d4 | 1d6+1 | — | 1 | — | — | fighter |
-| 27 | 1d12 | 1d6 | — | 2 | — | — | fighter |
-| 28 | 1d4 | 1d4 | — | — | — | — | fighter |
-| 29 | 2d4 | 2d4 | — | 2 | — | — | fighter |
-| 30 | 1d8 | 1d8 | — | 1 | — | — | fighter |
-| 31 | 1d8 | 1d6 | — | 2 | 2 | 4 | fighter |
-| 32 | 2d6 | 1d6+1 | — | 2 | — | — | fighter |
-| 33 | 1d6 | 1d6 | — | 2 | — | — | magic-user, cleric, fighter |
-| 34 | 2d8 | 2d4 | — | 2 | — | — | fighter |
-| 35 | 1d6+1 | 2d4 | — | 1 | — | — | thief, fighter |
-| 36 | 1d12 | 1d8 | — | 1 | — | — | thief, fighter |
-| 37 | 1d8 | 1d6 | — | 1 | — | — | thief, fighter |
-| 38 | 3d6 | 1d10 | — | 2 | — | — | fighter |
-| 39 | 3d4 | 1d6+1 | — | 1 | — | — | fighter |
-| 40 | 2d4 | 2d4 | — | 2 | — | — | fighter |
-| 41 | 1d6 | 1d6 | — | 2 | 4 | 22 | fighter |
-| 42 | 1d6 | 1d6 | — | 2 | 4 | 19 | fighter |
-| 43 | 1d6 | 1d6 | — | 2 | 4 | 22 | fighter |
-| 44 | 1d6 | 1d6 | — | 2 | 4 | 16 | fighter |
-| 45 | 1d6 | 1d6 | — | 2 | 4 | 20 | fighter |
-| 46 | 1d4 | 1d4 | — | 2 | 2 | 19 | fighter |
-| 47 | 1d6+1 | 1d4+1 | — | 1 | 2 | 21 | thief, fighter |
-| 50 | — | — | 8 | — | — | — | cleric, thief, fighter |
-| 51 | — | — | 8 | — | — | — | cleric, fighter |
-| 52 | — | — | 7 | — | — | — | cleric, fighter |
-| 53 | — | — | 7 | — | — | — | cleric, fighter |
-| 54 | — | — | 6 | — | — | — | cleric, fighter |
-| 55 | — | — | 5 | — | — | — | cleric, fighter |
-| 56 | — | — | 4 | — | — | — | cleric, fighter |
-| 57 | — | — | 4 | — | — | — | cleric, fighter |
-| 58 | — | — | 3 | — | — | — | cleric, fighter |
-| 59 | — | — | +1 | 1 | — | — | cleric, fighter |
-| 60 | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
-| 61 | — | — | — | 2 | — | — | magic-user |
-| 62 | — | — | — | 2 | — | — | cleric |
-| 63 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 64 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 65 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 66 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 67 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 68 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 69 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 70 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 71 | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
-| 72 | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
-| 73 | 1d6 | 1d6 | — | — | — | — | fighter |
-| 74 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 75 | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
-| 76 | — | — | +0 | — | — | — | magic-user, cleric, thief, fighter |
-| 77 | — | — | 10 | — | — | — | magic-user, cleric, thief, fighter |
-| 78 | — | — | — | 1 | — | 90 | magic-user |
-| 79 | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
-| 80 | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
-| 81 | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
-| 82 | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
-| 83 | — | — | — | 1 | — | — | — |
-| 84 | — | — | — | 1 | — | — | fighter |
-| 85 | 1d1+255 | 1d1+255 | — | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
-| 86 | 2d6 | 2d6 | — | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
-| 87 | 1d8+8 | 1d8+8 | — | 2 | 2 | 10 | fighter |
-| 88 | 1d12+8 | 1d12+8 | — | 2 | 2 | 20 | — |
-| 89 | 3d6 | 1d10 | — | 2 | — | — | fighter |
-| 90 | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
-| 91 | — | — | 0 | — | — | — | — |
-| 92 | — | — | +0 | — | — | — | magic-user, cleric, thief, fighter |
-| 93 | — | — | +0 | — | — | — | magic-user, cleric, thief, fighter |
-| 94 | 1d6 | 1d6 | — | 2 | 4 | 22 | fighter |
-| 95 | 1d6 | 1d6 | — | 2 | 4 | 22 | fighter |
-| 96 | 1d6 | 1d6 | — | 2 | 4 | 16 | fighter |
-| 127 | 2d20 | 2d20 | 6 | 1 | 40 | 60 | magic-user, cleric, thief, fighter |
+**Weapon flags** (`+14`) are a bitfield, not a missile type: bit 0
+needs arrows, bit 1 ranged, bit 2 adds the strength bonus, bit 3
+multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a plain melee
+weapon, `20` a thrown one, `11` a bow, `15` a composite bow, `138` a
+crossbow, `26` a sling.
+
+| # | vs large | vs medium | AC | damage type | flags | hands | rate | range | usable by |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 1d6 | 1d6 | — | slashing | arrows | 1 | — | — | fighter |
+| 1 | 1d8 | 1d8 | — | piercing | strength | 1 | — | — | fighter |
+| 2 | 1d4 | 1d6 | — | slashing | strength, thrown | 1 | 2 | 4 | fighter |
+| 3 | 3d4 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 4 | 1d6 | 1d8 | — | slashing | strength, thrown | 2 | — | — | fighter |
+| 5 | 1d10 | 2d4 | — | slashing | arrows | 2 | — | — | fighter |
+| 6 | 1d3 | 1d6 | — | bludgeoning | strength | 1 | — | — | fighter |
+| 7 | 1d3 | 1d6 | — | bludgeoning | strength, thrown | 1 | 2 | 4 | cleric, thief, fighter |
+| 8 | 1d3 | 1d4 | — | piercing | strength, thrown | 1 | 2 | 4 | magic-user, thief, fighter |
+| 9 | 1d2 | 1d3 | — | piercing | ranged, multi-shot, thrown | 1 | 6 | 6 | magic-user, thief, fighter |
+| 10 | 1d8 | 1d6 | — | slashing | strength | 2 | — | — | fighter |
+| 11 | 1d10 | 1d8 | — | slashing | strength | 2 | — | — | fighter |
+| 12 | 2d4 | 1d6+1 | — | bludgeoning | strength | 1 | — | — | cleric, fighter |
+| 13 | 2d4 | 1d8 | — | slashing | strength | 2 | — | — | fighter |
+| 14 | 1d10 | 1d6 | — | slashing | strength | 2 | — | — | fighter |
+| 15 | 2d6 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 16 | 1d8 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 17 | 2d4 | 2d4 | — | slashing | — | 2 | — | — | fighter |
+| 18 | 2d6 | 1d10 | — | slashing | strength | 2 | — | — | fighter |
+| 19 | 1d6 | 2d4 | — | piercing | strength | 2 | — | — | fighter |
+| 20 | 1d4 | 1d4+1 | — | bludgeoning | strength, thrown | 1 | 2 | 4 | cleric, fighter |
+| 21 | 1d6 | 1d6 | — | piercing | ranged, multi-shot, thrown | 1 | 2 | 7 | fighter |
+| 22 | 1d4 | 1d6 | — | bludgeoning | strength | 1 | — | — | fighter |
+| 23 | 1d6 | 1d6+1 | — | bludgeoning | strength | 1 | — | — | cleric, fighter |
+| 24 | 1d6+1 | 2d4 | — | bludgeoning | strength | 1 | — | — | fighter |
+| 25 | 1d6+1 | 1d6 | — | slashing | strength | 2 | — | — | fighter |
+| 26 | 2d4 | 1d6+1 | — | piercing | strength | 1 | — | — | fighter |
+| 27 | 1d12 | 1d6 | — | piercing | strength | 2 | — | — | fighter |
+| 28 | 1d4 | 1d4 | — | piercing | ranged, multi-shot, bolts | — | — | — | fighter |
+| 29 | 2d4 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 30 | 1d8 | 1d8 | — | slashing | strength | 1 | — | — | fighter |
+| 31 | 1d8 | 1d6 | — | piercing | strength, thrown | 2 | 2 | 4 | fighter |
+| 32 | 2d6 | 1d6+1 | — | slashing | strength | 2 | — | — | fighter |
+| 33 | 1d6 | 1d6 | — | bludgeoning | strength | 2 | — | — | magic-user, cleric, fighter |
+| 34 | 2d8 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 35 | 1d6+1 | 2d4 | — | slashing | strength | 1 | — | — | thief, fighter |
+| 36 | 1d12 | 1d8 | — | slashing | strength | 1 | — | — | thief, fighter |
+| 37 | 1d8 | 1d6 | — | slashing | strength | 1 | — | — | thief, fighter |
+| 38 | 3d6 | 1d10 | — | slashing | strength | 2 | — | — | fighter |
+| 39 | 3d4 | 1d6+1 | — | slashing | strength | 1 | — | — | fighter |
+| 40 | 2d4 | 2d4 | — | slashing | strength | 2 | — | — | fighter |
+| 41 | 1d6 | 1d6 | — | piercing | arrows, ranged, multi-shot | 2 | 4 | 22 | fighter |
+| 42 | 1d6 | 1d6 | — | piercing | arrows, ranged, multi-shot | 2 | 4 | 19 | fighter |
+| 43 | 1d6 | 1d6 | — | piercing | arrows, ranged, multi-shot | 2 | 4 | 22 | fighter |
+| 44 | 1d6 | 1d6 | — | piercing | arrows, ranged, multi-shot | 2 | 4 | 16 | fighter |
+| 45 | 1d6 | 1d6 | — | piercing | arrows, ranged, strength, multi-shot | 2 | 4 | 20 | fighter |
+| 46 | 1d4 | 1d4 | — | piercing | ranged, multi-shot, bolts | 2 | 2 | 19 | fighter |
+| 47 | 1d6+1 | 1d4+1 | — | bludgeoning | ranged, multi-shot | 1 | 2 | 21 | thief, fighter |
+| 50 | — | — | 8 | — | — | — | — | — | cleric, thief, fighter |
+| 51 | — | — | 8 | — | — | — | — | — | cleric, fighter |
+| 52 | — | — | 7 | — | — | — | — | — | cleric, fighter |
+| 53 | — | — | 7 | — | — | — | — | — | cleric, fighter |
+| 54 | — | — | 6 | — | — | — | — | — | cleric, fighter |
+| 55 | — | — | 5 | — | — | — | — | — | cleric, fighter |
+| 56 | — | — | 4 | — | — | — | — | — | cleric, fighter |
+| 57 | — | — | 4 | — | — | — | — | — | cleric, fighter |
+| 58 | — | — | 3 | — | — | — | — | — | cleric, fighter |
+| 59 | — | — | +1 | — | — | 1 | — | — | cleric, fighter |
+| 60 | — | — | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
+| 61 | — | — | — | — | — | 2 | — | — | magic-user |
+| 62 | — | — | — | — | — | 2 | — | — | cleric |
+| 63 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 64 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 65 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 66 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 67 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 68 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 69 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 70 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 71 | — | — | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
+| 72 | — | — | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
+| 73 | 1d6 | 1d6 | — | slashing | — | — | — | — | fighter |
+| 74 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 75 | — | — | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
+| 76 | — | — | +0 | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 77 | — | — | 10 | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 78 | — | — | — | — | — | 1 | — | 90 | magic-user |
+| 79 | — | — | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
+| 80 | — | — | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
+| 81 | — | — | — | — | — | 1 | — | — | magic-user, cleric, thief, fighter |
+| 82 | — | — | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
+| 83 | — | — | — | — | — | 1 | — | — | — |
+| 84 | — | — | — | — | — | 1 | — | — | fighter |
+| 85 | 1d1+255 | 1d1+255 | — | slashing | ranged, multi-shot, thrown | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
+| 86 | 2d6 | 2d6 | — | slashing | ranged, multi-shot, thrown | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
+| 87 | 1d8+8 | 1d8+8 | — | bludgeoning | ranged, multi-shot, thrown | 2 | 2 | 10 | fighter |
+| 88 | 1d12+8 | 1d12+8 | — | bludgeoning | ranged, multi-shot, thrown | 2 | 2 | 20 | — |
+| 89 | 3d6 | 1d10 | — | slashing | strength | 2 | — | — | fighter |
+| 90 | — | — | — | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 91 | — | — | 0 | — | — | — | — | — | — |
+| 92 | — | — | +0 | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 93 | — | — | +0 | — | — | — | — | — | magic-user, cleric, thief, fighter |
+| 94 | 1d6 | 1d6 | — | piercing | arrows, ranged, strength, multi-shot | 2 | 4 | 22 | fighter |
+| 95 | 1d6 | 1d6 | — | piercing | arrows, ranged, strength, multi-shot | 2 | 4 | 22 | fighter |
+| 96 | 1d6 | 1d6 | — | piercing | arrows, ranged, strength, multi-shot | 2 | 4 | 16 | fighter |
+| 127 | 2d20 | 2d20 | 6 | piercing | ranged, multi-shot | 1 | 40 | 60 | magic-user, cleric, thief, fighter |
 

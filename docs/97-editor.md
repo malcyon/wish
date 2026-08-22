@@ -176,11 +176,14 @@ same text `--dry-run` already produces.
 The window title carries the open file and a dirty marker; closing with unsaved
 changes prompts.
 
-The game disk for item and spell names is found the way the CLI finds it --
-`--game-disk`, then `$POR_GAME_DISK`, then any game disk of the save's own
-title beside it -- `POOL*.D64` for Pool of Radiance, `CURSE*.D64` for Curse --
-and the status bar says whether names are available, because a save opened
-without one shows items as bare numbers and that should not look like a bug.
+The game disk for item and spell names comes from
+`automap.paths.resolve_disks`: `--game-disk` for one run, otherwise the **Game
+directory** setting in `File > Preferences…`, then a disk of the save's own
+title sitting beside it -- `POOL*.D64` for Pool of Radiance, `CURSE*.D64` for
+Curse. The status bar says whether names are available, because a save opened
+without one shows items as bare numbers and that should not look like a bug;
+it names the dialog, not an environment variable. See
+[130-preferences.md](130-preferences.md).
 
 ---
 

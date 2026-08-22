@@ -17,18 +17,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from por import d64  # noqa: E402
-from por.items import load_item_names  # noqa: E402
+from por.items import ItemType, load_item_names  # noqa: E402
 
 DEFAULT_DISK = "work/POOL1.D64.orig"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "85-item-tables.md"
 
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
+DAMAGE_TYPES = {0: "slashing", 1: "piercing", 128: "bludgeoning"}
+WEAPON_FLAGS = ((1, "arrows"), (2, "ranged"), (4, "strength"),
+                (8, "multi-shot"), (16, "thrown"), (128, "bolts"))
 
 
 def dice(n: int, sides: int, bonus: int) -> str:
     if not n or not sides:
         return "—"
     return f"{n}d{sides}" + (f"+{bonus}" if bonus else "")
+
+
+def flags(bits: int) -> str:
+    set_ = [name for bit, name in WEAPON_FLAGS if bits & bit]
+    return ", ".join(set_) if set_ else "—"
 
 
 def classes(bits: int) -> str:
@@ -95,32 +103,55 @@ def main() -> int:
     w("| `+2`–`+4` | damage vs large: dice, sides, bonus |")
     w("| `+5` | rate of fire |")
     w("| `+6` | protection — see below |")
-    w("| `+7` | weapon class |")
-    w("| `+8` | melee usable |")
+    w("| `+7` | damage type: `0` slashing, `1` piercing, `128` bludgeoning |")
+    w("| `+8` | unknown; `0` or `128`, set on weapons and quarrels only |")
     w("| `+9`–`+11` | damage vs medium: dice, sides, bonus |")
     w("| `+12` | range |")
     w("| `+13` | class usage bitmask, same bits as `class_bits` |")
-    w("| `+14` | missile type |")
+    w("| `+14` | weapon flags — see below |")
+    w("| `+15` | zero throughout |")
     w("")
-    w("**Protection** (`+6`) is `0` for anything that is not armour. For body")
-    w("armour the high bits read `$B0` and the low nibble is `12 - AC`; for a")
-    w("shield they read `$80` and the low nibble is the AC bonus.")
+    w("**Protection** (`+6`) is `0` for anything that does not affect armour")
+    w("class. Bit 7 means it does, and the low **seven** bits carry the")
+    w("family's `60 - value` bias: `60 - (byte & 0x7F)`, the same encoding")
+    w("THAC0 and armour class use. Body armour stores a class that way (`$B9`")
+    w("→ AC 3, plate; `$B4` → AC 8, leather); a shield and the magical")
+    w("protective items store a small flat bonus instead (`$81` = +1), and the")
+    w("two are told apart by magnitude. Reading this as `$B0` plus a `12 - AC`")
+    w("nibble is the same arithmetic over a narrower range and agrees on every")
+    w("armour the disks carry; the two diverge at AC 13, where `$AF` is 13")
+    w("under the general rule and -3 under the nibble one.")
     w("")
-    w("| # | vs large | vs medium | AC | hands | rate | range | usable by |")
-    w("|---|---|---|---|---|---|---|---|")
+    w("**Weapon flags** (`+14`) are a bitfield, not a missile type: bit 0")
+    w("needs arrows, bit 1 ranged, bit 2 adds the strength bonus, bit 3")
+    w("multi-shot, bit 4 throwable, bit 7 needs bolts. `4` is a plain melee")
+    w("weapon, `20` a thrown one, `11` a bow, `15` a composite bow, `138` a")
+    w("crossbow, `26` a sling.")
+    w("")
+    w("| # | vs large | vs medium | AC | damage type | flags | hands | rate | "
+      "range | usable by |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
     for idx in range(len(types) // 16):
         r = types[idx * 16:(idx + 1) * 16]
         if not any(r):
             continue
-        prot = r[6] & 0x0F
-        if r[6] & 0xF0 == 0xB0:
-            ac = str(12 - prot)
-        elif r[6]:
-            ac = f"+{prot}"
-        else:
+        # por.items owns the protection rule; reading the byte a second way
+        # here is how docs/85 came to carry a nibble rule the library had
+        # already dropped.
+        t = ItemType(index=idx, raw=bytes(r))
+        value = t.armour_class
+        if value is None:
             ac = "—"
+        elif t.is_shield:
+            ac = f"+{value}"
+        else:
+            ac = str(value)
+        # +7 and +14 describe how a weapon hits, so they are noise on a suit
+        # of armour -- every non-weapon reads 0, which would print "slashing".
+        kind = DAMAGE_TYPES.get(r[7], str(r[7])) if t.is_weapon else "—"
         w(f"| {idx} | {dice(r[2], r[3], r[4])} | {dice(r[9], r[10], r[11])} | "
-          f"{ac} | {r[1] or '—'} | {r[5] or '—'} | {r[12] or '—'} | "
+          f"{ac} | {kind} | {flags(r[14])} | "
+          f"{r[1] or '—'} | {r[5] or '—'} | {r[12] or '—'} | "
           f"{classes(r[13] & 0x0F)} |")
     w("")
     OUT.write_text("\n".join(out) + "\n")

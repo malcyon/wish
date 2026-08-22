@@ -11,7 +11,7 @@ southward, origin top-left.
 |---|---|---|
 | 0 | `$000` | high nibble = wall art **north**, low nibble = **east** |
 | 1 | `$100` | high nibble = wall art **south**, low nibble = **west** |
-| 2 | `$200` | square attributes; bit 7 = roofed / indoor, bits 0-6 unread |
+| 2 | `$200` | square attributes; bit 7 = roofed / indoor, the rest a **script id** |
 | 3 | `$300` | passability, two bits per direction: N = 0-1, E = 2-3, S = 4-5, W = 6-7 |
 
 A wall nibble of 0 means no wall; otherwise `wallset = (v-1)/5` and
@@ -23,7 +23,20 @@ where there is wall art**, so a wall and a barrier are independent:
 | 0 | solid |
 | 1 | passable — an opening or an open door |
 | 2 | locked door |
-| 3 | wizard-locked door |
+| 3 | barred door — locked and unpickable, bashed against a tougher table |
+
+`por/geo.py` still spells value 3 `WIZARD_LOCKED`, and that name is ours alone:
+the Gold Box guide calls it a "hard-to-open barred door" and
+`GB_GEO.hexpat` "locked, unpickable". Neither connects it to the spell. See
+[the community formats](128-guide-and-scripting.md).
+
+**The script id.** Plane 2's low bits are a per-square id into the area's own
+ECL jump table — `AND <mask>, ATTR, [v]` then `ONGOTO idx=[v]` — so stepping on
+the square runs a script. The mask is the area's, not a constant: eighteen
+scripts mask `$7F`, `ECL17` masks `$3F`, and the dungeon-floor family masks
+`$1F` and uses the two bits that frees for wandering monsters (bit 6 suppresses
+an encounter, bit 5 halves the rate). `Geo.script_id` takes the mask as an
+argument for that reason.
 
 ## Inventory
 

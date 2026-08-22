@@ -97,7 +97,9 @@ exactly those bytes and gives back records, party position, area and the icon
 table with no new decoding at all. That is the payoff of having kept `por/`
 transport-free.
 
-Poll only while the tab is visible, at the backend's own interval.
+Poll only while the tab is visible, at the backend's own interval -- 200 ms
+for VICE, 500 ms for the Ultimate. `File > Preferences…` overrides it;
+0 there means "the backend's own", which is the default.
 
 ---
 

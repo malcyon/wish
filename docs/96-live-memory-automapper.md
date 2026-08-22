@@ -29,6 +29,11 @@ The window and the connection now live in `wish/` -- see
 backends and `wish/session.py` owns the single `Target`, because VICE serves
 exactly one binary-monitor connection and ignores the second in silence.
 
+Which backend, which folder of game disks and whether the debug log is on are
+all set in `File > Preferences…` (`Ctrl+,`) --
+[130-preferences.md](130-preferences.md). The map tab says so itself when it
+has no maps to draw.
+
 ## The idea
 
 Read the party's map coordinates out of the running game and draw a live
@@ -60,8 +65,8 @@ having to pretend it has them.
 * **Commodore 64 Ultimate**, over its network interface -- written, in
   `wish/ultimate.py`, and **unverified**: nobody on this project has the
   hardware. It speaks the documented REST API (`/v1/machine:readmem`,
-  `/v1/machine:writemem`) and is offered only when `$POR_ULTIMATE` names a
-  device that answers.
+  `/v1/machine:writemem`) and is offered only when a device answers at the
+  **Ultimate host** named in `File > Preferences…`.
 
 Deliberately not supporting other emulators or bare hardware. Most emulators
 have no usable interface, and a real C64 would need a resident stub or a DMA

@@ -50,12 +50,15 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [121-silver-blades.md](121-silver-blades.md) | Secret of the Silver Blades, the third title |
 | [122-release-testing.md](122-release-testing.md) | what a release has to pass before it goes out |
 | [123-parallel-sessions.md](123-parallel-sessions.md) | running several agents in one tree without collisions |
-| [124-amiga-port.md](124-amiga-port.md) | the Amiga build, and what it shares with the C64 |
+| [124-amiga-port.md](124-amiga-port.md) | porting a C64 party into Amiga Pools of Darkness: the `.pc` record, decoded by writing one and reading the sheet |
 | [125-bug-notes.md](125-bug-notes.md) | the bugs no player sees, our own misreadings, and the community rumours |
 | [126-forum-findings.md](126-forum-findings.md) | what the Gold Box forums have that we do not — playtester mode, DOS area tables, tooling |
 | [127-community-formats.md](127-community-formats.md) | the community format spreadsheets: saving throws solved, the DOS record against ours |
 | [128-guide-and-scripting.md](128-guide-and-scripting.md) | the DOS guide and the Unlimited Adventures files: the GBVM address list, the area names, the ECL semantics |
 | [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — planned |
+| [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log — built |
+| [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — plan |
+| [TASKS.md](TASKS.md) | the open task list, one code per task, retired when the task closes |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -75,7 +78,7 @@ dragging in throwaway discovery scripts.
 | `por/` | the file formats: D64, the 580-byte character record, the save games, the item and spell tables. **Transport-free** — no sockets, nothing that knows a machine is running |
 | `editor/` | the PyQt6 character editor, over `por/` alone |
 | `automap/` | everything that reads a *running* machine, quarantined here so the first decision below is structural rather than a convention |
-| `wish/` | the one window: two tabs, the single shared live connection, the backend registry. See [99-one-window.md](99-one-window.md) |
+| `wish/` | the one window: two tabs, the single shared live connection, the backend registry, and `File > Preferences…`. See [99-one-window.md](99-one-window.md) and [130-preferences.md](130-preferences.md) |
 | `ui/` | drawing code both the editor and the map need, owned by neither |
 | `designer/` | the Qt Designer `.ui` forms, loaded at runtime |
 | `packaging/` | the PyInstaller entry points and the Windows console-stream repair |

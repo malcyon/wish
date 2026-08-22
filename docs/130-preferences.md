@@ -521,7 +521,3 @@ What it does now:
   window hands it the resolved folder, so nothing in the application reaches
   that path any more; the default is one line to delete next time that file is
   open.
-* **`docs/97-editor.md`, `docs/99-one-window.md`, `docs/96-live-memory-automapper.md`,
-  `docs/100-live-view.md` and `docs/README.md`** still describe the old orders
-  and the View > Backend menu. Outside this task's file scope, and each is a
-  small edit against §4 and §6.
