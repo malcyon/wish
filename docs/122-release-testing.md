@@ -1,7 +1,11 @@
 # Testing the release packages by hand
 
-**Status: not yet run.** No tag has been pushed, so nothing below has been done
-on a real release page.
+**Status: the Linux half was run on 2026-08-22, the Windows half never.** No tag
+has been pushed, so none of it has been done against a real release page — the
+Linux run used artefacts built locally by `§0b`, at version
+`0.0.1.dev165+g24a77e835.d20260822`. `§7` says which rows that covered, and each
+Linux section carries a note saying what was actually watched. Anything without
+such a note is still expectation.
 
 This is for you, at a keyboard, before the first `v*` tag is cut — or straight
 after it, against the artefacts the tag produced. It covers what
@@ -50,12 +54,43 @@ to write them.
 
 ---
 
-## 0. Building the packages yourself
+## 0. Getting a Windows package to test
 
-You cannot test artefacts you do not have. A real release is built by
-`.github/workflows/release.yml` when a `v*` tag is pushed, but every step of it
-runs locally, and the commands below are the same ones CI uses. **Do this
-first** unless a release page already exists.
+**This document is the Windows half.** The Linux artefacts are validated by the
+assistant, in a throwaway virtual environment that is deleted afterwards —
+`§2`, `§3`, `§4` and the Linux side of `§6` record what was run and what came
+out, and `§7`'s Linux column is filled in. Nothing here asks you to
+`pip install` anything on your own machine, because a second `wish` on your
+`PATH` is exactly the confusion this project does not need.
+
+**PyInstaller cannot cross-compile.** It bundles the interpreter it is running
+on, so a Windows executable has to be built on Windows. There is no flag, and
+Wine is not worth the trouble. That leaves two ways to get one:
+
+**The easy way — let GitHub build it, no tag needed.** `release.yml` has a
+`workflow_dispatch` trigger, so:
+
+1. GitHub → **Actions** → **release** → **Run workflow**, on `main`.
+2. Wait for it. The `windows build` job is the one you want.
+3. Download the **`frozen-windows`** artefact from the run's summary page. It
+   is a zip containing `wish-<version>-windows-x86_64.zip`.
+4. Copy that to the laptop and start at **W1**.
+
+A manual run **builds and stops** — it does not make a release page. Only a
+`v*` tag does that. The version will be a development one like
+`0.1.0.dev12+g1a2b3c4` rather than a clean tag; that is expected and does not
+affect what you are testing.
+
+**The other way — build it on the laptop.** Needs Python 3.12+ there, and is
+`§0b` below. Prefer the first way: it needs nothing installed on Windows at
+all, which is also closer to what a real user does.
+
+---
+
+## 0b. Building on the laptop, if you would rather
+
+Every step of the release build runs locally, and these are the commands CI
+uses.
 
 Everything lands in `dist/`. Start from a clean checkout of what you mean to
 test.
@@ -107,10 +142,18 @@ mv dist/wish "dist/$NAME"
 tar -C dist -czf "$NAME.tar.gz" "$NAME"
 ```
 
-**B6. Checksums.**
+**B6. Gather and checksum.** CI's `publish` job puts every artefact in one
+directory and runs `sha256sum *` there, so every line in `SHA256SUMS` is a bare
+file name. Do the same, or §2 cannot check the file: a line reading
+`dist/wish-….whl` is a name that does not exist beside `SHA256SUMS`, and
+`--ignore-missing` then skips it in silence — one `OK` instead of two, and exit
+status 0. That failure was reproduced on 2026-08-22, which is why this step no
+longer says `sha256sum dist/*.whl *.tar.gz`.
 
 ```sh
-sha256sum dist/*.whl *.tar.gz > SHA256SUMS
+mkdir -p release
+cp dist/*.whl "$NAME.tar.gz" release/
+(cd release && sha256sum * > SHA256SUMS && cat SHA256SUMS)
 ```
 
 **B7. Windows.** The same steps on the Windows machine, with two differences:
@@ -126,7 +169,17 @@ Compress-Archive -Path "dist/wish-<version>-windows-x86_64" `
 **Tidy up.** If you tagged in B2, `git tag -d v0.1.0` before you forget — a
 stray local tag will change the version of the next thing you build.
 
-*Verified on Linux: B1–B6 were run and both binaries printed their version.
+**A dirty or moving tree changes the version.** `hatch-vcs` runs
+`git describe --dirty`, so an uncommitted edit anywhere in the checkout appends
+`.dYYYYMMDD` to the version, and a commit landing between B1 and B3 gives the
+wheel and the frozen build *different* version strings. Neither is fatal for
+exercising the machinery — CI builds from a clean checkout at a tag and gets a
+clean number — but build from a quiet tree if you want the names to match.
+
+*Run by the assistant on 2026-08-22, in a throwaway venv under `work/`, at
+version `0.0.1.dev165+g24a77e835.d20260822`. B1–B6 all worked; the frozen build
+took 9.4 s and came to 158 MB unpacked, the wheel to 386 KB, the tarball to
+60 MB. B6 was rewritten in the course of the run — see the note on it.
 B7 is CI's own Windows recipe, and is unverified by hand — you are the first
 person to run it.*
 
@@ -176,8 +229,16 @@ cd ~/Downloads/wish-release
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-Expect one `OK` per file you downloaded. `--ignore-missing` is there so a
-partial download does not bury the real answer under "No such file".
+**Count the `OK` lines.** One per file you downloaded — two from a Linux-only
+download, three with the Windows zip. `--ignore-missing` is there so a partial
+download does not bury the real answer under "No such file", and the price is
+that a *name* it cannot find is skipped in silence: a `SHA256SUMS` whose lines
+carry directories rather than bare names verifies nothing and still exits 0.
+That is a check on `SHA256SUMS`, not on your download, and B6 is where it is
+fixed.
+
+*Run by the assistant on 2026-08-22 against the `0.0.1.dev165+g24a77e835.d20260822`
+wheel and tarball: two `OK` lines, exit 0.*
 
 **Windows** — PowerShell, in the folder holding the downloads:
 
@@ -199,6 +260,14 @@ it fails again the release page is wrong, not your disk.
 
 ## 3. Linux — the frozen `.tar.gz`
 
+*Run by the assistant on 2026-08-22 against
+`wish-0.0.1.dev165+g24a77e835.d20260822-linux-x86_64.tar.gz`. L1–L7 all passed;
+every measurement and every quoted string below is from that run. It was done
+under `work/relcheck/` rather than `~/wish-test`, and with `XDG_CONFIG_HOME`
+and `XDG_DATA_HOME` redirected there, so that nothing landed in Donald's own
+`~/.config/wish` or `~/.local/share/wish` — both were confirmed untouched
+afterwards. The window steps ran on a headless `Xvfb` driven by `xdotool`.*
+
 **L1.** Make the working copy. Everything downstream uses it.
 
 ```sh
@@ -214,9 +283,10 @@ cd wish-<version>-linux-x86_64
 ls
 ```
 
-*Expect:* the executables `wish` and `wish-cli` beside `_internal/`, a large
-pile of shared libraries (~157 MB unpacked, three quarters of it Qt). Both come
-out of one `COLLECT`, so `wish-cli` costs 1.8 MB and not a second copy of Qt.
+*Expect:* three entries and no more — `wish`, `wish-cli` and `_internal/`.
+158 MB unpacked, 154 MB of it `_internal/`, three quarters of that Qt; the
+tarball itself is 60 MB. Both executables come out of one `COLLECT`, so
+`wish-cli` costs 1.7 MB and not a second copy of Qt.
 *If either is not there:* the archive was built wrong — check what `tar tzf`
 lists at the top level.
 
@@ -251,10 +321,16 @@ rather than the installed one, which is the interesting half.
 ```
 
 *Expect:* the window opens on the Character Editor tab with the party loaded, a
-roster down the left, and the title bar naming the file. On stderr you may see
-a "no game disks … so the map tab will be empty" line if the disks are not
-where `automap/paths.py` looks — harmless for the editor, and step L7 fixes
-it.
+roster down the left, and the title bar reading `wish - TESTSAVE.D64`. On
+stderr you may see a "no game disks … so the map tab will be empty" line if the
+disks are not where `automap/paths.py` looks — harmless for the editor, and
+step L7 fixes it.
+
+*Also expect,* above the inventory table: `No game disk found, so items show as
+name-table indices`, and every item listed as `word 8`, `word 9` and so on.
+That is a **different** lookup from the automapper's — it wants `--game-disk` or
+`$POR_GAME_DISK`, and finding the disks for the map tab does not satisfy it.
+Not a fault, but it is the first thing in the window that looks like one.
 
 *If it does not start at all,* run it from a terminal and keep the traceback:
 a frozen Qt build failing on a distribution other than Ubuntu usually names a
@@ -270,8 +346,14 @@ Windows, so confirm it agrees here where you can check both.
    character sheet, easy to spot, and nothing else depends on it.
 2. **File > Save As…**, and give it a *new* name: `~/wish-test/EDITED.D64`.
    **Never plain Save on the first pass** — Save writes back to `TESTSAVE.D64`.
-3. *Expect:* the status bar says `wrote EDITED.D64`.
-4. **File > Open…** `EDITED.D64` and confirm gold reads `4321`.
+   The dialog opens with `TESTSAVE.D64` already in the File name box and
+   selected, so a reflexive Return here overwrites the file the step is trying
+   to protect. Type over it.
+3. *Expect:* the status bar says `wrote EDITED.D64`, and the title bar becomes
+   `wish - EDITED.D64`.
+4. **File > Open…** `TESTSAVE.D64` — gold must read `2` again — then
+   `EDITED.D64`, where it must read `4321`. Reopening only the edited disk
+   proves nothing: the field is already showing 4321 from the edit.
 5. Confirm the original is untouched:
    ```sh
    cmp "/home/donald/c64/Pool of Radiance Disks/PORSAVE11.D64" ~/wish-test/TESTSAVE.D64
@@ -287,10 +369,16 @@ round trip.
    fastloader prompt.
 2. When the game asks for a save disk, attach `~/wish-test/EDITED.D64` to
    drive 8.
-3. Load the saved game and open that character's sheet.
+3. Load the saved game and open that character's sheet — **VIEW CHARACTER**
+   from the party menu, before **BEGIN ADVENTURING**.
 4. *Expect:* gold reads 4321 and the party is otherwise exactly as you left it.
    *If the game rejects the disk or the party is wrong,* keep `EDITED.D64` — a
    broken disk is the evidence.
+
+*Verified 2026-08-22:* the game loaded `EDITED.D64`, listed all six characters
+at their right AC and HP, and MALCYON's sheet read `GOLD 4321`. The same was
+done again with `CLI-EDITED.D64` from L10 (step **L12**), where BRUTUS — gold 0
+on the original disk — read `GOLD 4321`.
 
 ---
 
@@ -299,6 +387,9 @@ round trip.
 This is the path a Python user takes, and it exercises code the frozen build
 never runs: the entry points from installed metadata, `tools/` as an installed
 package, and the version from installed metadata rather than `wish/_version.py`.
+
+*Run by the assistant on 2026-08-22 against
+`wish-0.0.1.dev165+g24a77e835.d20260822-py3-none-any.whl`. L8–L12 all passed.*
 
 **L8.** A venv with nothing in it.
 
@@ -309,7 +400,8 @@ source .venv-release/bin/activate
 pip install "$HOME/Downloads/wish-release/wish-<version>-py3-none-any.whl[gui,automap]"
 ```
 
-*Expect:* PyQt6 and PyYAML pulled in, no build step, no compiler.
+*Expect:* PyQt6, PyQt6-Qt6, PyQt6_sip and PyYAML pulled in — five packages
+including `wish` itself — with no build step and no compiler.
 *If pip refuses the extras syntax,* quote the whole argument — the brackets are
 the shell's otherwise.
 
@@ -324,6 +416,10 @@ Both must print the same number as L3. `wish-cli` is `tools.wish:main`, and
 `tools` only ships because `pyproject.toml` lists it in the wheel's packages —
 if `wish-cli` dies in `ModuleNotFoundError: tools`, that list regressed.
 
+The wheel also installs `wish-editor` and `wish-automap`, aliases that open the
+same window on one tab. They are not worth a step of their own; seeing four
+names in `.venv-release/bin` is the check.
+
 **L10.** The CLI round trip.
 
 ```sh
@@ -334,9 +430,13 @@ wish-cli --import party.yaml --dry-run
 wish-cli --import party.yaml --output CLI-EDITED.D64
 ```
 
-*Expect:* the dry run lists the gold change and writes nothing; the import
-writes `CLI-EDITED.D64`. *Expect also:* `wish-cli --import party.yaml --output
-TESTSAVE.D64` is **refused** — "--output must differ from the original save".
+*Expect:* the dry run lists **one line per character** — that `sed` rewrites
+every `gold:` in the file, so a six-strong party gives
+`slot 0 MALCYON: gold 2 -> 4321` down to `slot 5 BRUTUS: gold 0 -> 4321` and
+`6 change(s) (dry run, nothing written)` — and writes nothing; the import writes
+`CLI-EDITED.D64`. *Expect also:* `wish-cli --import party.yaml --output
+TESTSAVE.D64` is **refused**, exit 2, on
+`--output must differ from the original save; refusing to overwrite it`.
 Try it; a release where that guard is gone is a release that eats saves.
 
 **L11.** Losslessness. Export and re-import with no edit at all, and the disk
@@ -357,10 +457,16 @@ defaulting everything to Pool of Radiance. Copy a Curse of the Azure Bonds save
 disk (`SAVEAZURE`) or a Secret of the Silver Blades one (`SAVEDBASH`) beside its
 own game disks and repeat L11 against it.
 
-*Expect:* the export names the right title, the party decodes, and the re-import
-is byte-identical. *If the export refuses the disk,* the title table did not make
-it into the package — that is a release blocker for the same reason L9's
-`ModuleNotFoundError: tools` is.
+*Expect:* the export names the right title in its header comment, the party
+decodes, and the re-import is byte-identical. *If the export refuses the disk,*
+the title table did not make it into the package — that is a release blocker for
+the same reason L9's `ModuleNotFoundError: tools` is.
+
+*Verified 2026-08-22* against a Curse of the Azure Bonds save made by the
+project's own driven session (`work/curse/CURSESAVE2.D64`), there being no
+`SAVEAZURE` disk in `/mnt/media/roms`. It exported three characters under
+`# Curse of the Azure Bonds character export`, and re-imported byte for byte.
+Silver Blades remains untested: the disks are there, a save is not.
 
 **L12.** Boot `CLI-EDITED.D64` in the game as in L7, and confirm gold. Then
 `deactivate` the venv.
@@ -460,41 +566,32 @@ Double-click `wish.exe`.
 is unsigned and always will be; a certificate costs money and SmartScreen warns
 on new signatures anyway. Click **More info**, then **Run anyway**.
 
-*Expect then:* the wish window. *If instead the file vanishes,* Defender
-quarantined it as a PyInstaller false positive — check Windows Security >
-Protection history. **Unverified**: this happens to some PyInstaller builds and
-not others, and nobody has run this one on Windows.
+*Expect then:* **the wish window, and no console window behind it.** That is
+the assertion — a windowed build that opens a black console box alongside the
+map is a packaging mistake, and nobody has seen this one run.
 
-**Version — the step to watch.** From a terminal, not from Explorer:
+*If instead the file vanishes,* Defender quarantined it as a PyInstaller false
+positive — check Windows Security > Protection history. **Unverified**: this
+happens to some PyInstaller builds and not others.
+
+**Two things to note while you are there.** Neither is a pass/fail step; you
+already know the version, since you built it.
 
 ```powershell
 cd C:\wish\wish-<version>-windows-x86_64
 .\wish.exe --version
 ```
 
-*Expect:* `wish <version>`, the same number as L3. **Unverified** — this is the
-whole of P29 and no one has watched it happen. Two things to note rather than
-report as failures: the shell prints its next prompt before the program writes,
-because a windowed process does not hold the terminal, so **the version may
-appear under the prompt**; and `--version` from Explorer, or from a shortcut,
-has no console to borrow and prints nowhere. Use **Help > About wish** for that.
+A windowed program does not hold the terminal, so the shell prints its next
+prompt first and **the version may appear underneath it**. If nothing prints at
+all, note which shell you used — cmd, PowerShell, Windows Terminal, an SSH
+session — because that is what decides it. Either way it changes nothing: the
+version is in **Help > About wish**, and nobody is expected to use the command
+line on Windows.
 
-*If nothing prints at all,* `AttachConsole` did not do what
-`packaging/wish_main.py` expects on your Windows — note the shell (cmd,
-PowerShell, Windows Terminal, an SSH session) because that is exactly what
-decides it. *If you get a PyInstaller traceback box,* that is a real regression:
-the same path used to die in `AttributeError: 'NoneType' object has no attribute
-'write'`. Screenshot it.
-
-Redirection is a second route, and the one CI uses:
-
-```powershell
-.\wish.exe --version > version.txt ; Get-Content version.txt
-```
-
-*Unverified.* An inherited handle is the *first* link in the chain in
-`packaging/wish_main.py`, and the one that does not depend on a console
-existing.
+*If you get a PyInstaller traceback box, that is a real regression* and worth a
+screenshot: this path used to die in `AttributeError: 'NoneType' object has no
+attribute 'write'`.
 
 ### W6. The round trip on Windows
 
@@ -536,16 +633,32 @@ and a writable config directory, and neither is exercised by the editor.
 
 Do it once on each platform, with the game running from step L7 / W3.
 
+*Linux side run by the assistant on 2026-08-22 against the frozen
+`0.0.1.dev165+g24a77e835.d20260822` build, with the game standing in New Phlan
+at (4,2). M2–M6 all passed. Every quoted string below is what the window
+actually showed.*
+
 **M1.** With the game running and the monitor enabled, start wish on the map:
 
 * Linux, frozen: `./wish --tab map`
 * Linux, wheel: `wish --tab map`
 * Windows: `wish.exe`, then **View > Automapper** (`Ctrl+1`)
 
-**M2.** *Expect:* the status bar says `VICE: connected` within a second or two.
+**M2.** *Expect,* within a second or two, the party and the map to be **live**.
+There is no "connected" announcement — a connection that works says so by
+working:
 
-*If it says `waiting for a game — VICE: start VICE with its binary monitor
-enabled …`:* the monitor is not listening. Linux: `ss -tln | grep 6502`.
+* the six characters fill the roster down the left, with AC, THAC0, hit points
+  and readied items;
+* the strip under the map reads the party's square, facing, the game clock and
+  the area — `(4,2) facing E   16:47   New Phlan   party effects: none`, which
+  should agree with the game's own status line;
+* the status bar counts squares — `13/256 seen   revealing   [status]`. The
+  bracketed word is where the position came from, and `[status]` means the
+  game's status line, which is the ordinary case.
+
+*If it instead says `waiting for a game - VICE: start VICE with its binary
+monitor enabled …`:* the monitor is not listening. Linux: `ss -tln | grep 6502`.
 Windows: `Test-NetConnection 127.0.0.1 -Port 6502` (*unverified spelling of the
 result on a closed port*, but a `TcpTestSucceeded : False` is unambiguous).
 
@@ -556,8 +669,10 @@ the second. Close the other client.
 **M3.** Walk the party three or four squares in the game.
 
 *Expect:* the party marker moves on the map in step with the game, the squares
-you cross fill in, and the area is named in the panel. Latency of a couple of
-polls (200 ms each) is normal.
+you cross fill in, the seen count and the clock climb together, and the area
+stays named. Three steps east took the strip from `(4,2) facing E 16:47` to
+`(6,2) facing E 16:49` and the count from `7/256` to `13/256`. Latency of a
+couple of polls (200 ms each) is normal.
 
 *If the map is empty but the connection is up:* no game disks were found and
 there is no `GEO` to draw. Point `--disks` or `POR_DISKS` at them. The warning
@@ -565,10 +680,15 @@ that says so goes to stderr, so on Windows you only see it if you started
 `wish.exe` from a terminal — after a double-click this empty map is the only
 symptom.
 
-**M4.** Press **N** to put a note on the party's square. Type something into
-it. Press **R** to toggle fog of war and back.
+**M4.** Put a note on the party's square: **click the square**, or press **N**
+with the map focused — the keystroke reaches the canvas only once it has
+keyboard focus, so a click is the reliable way in. A popover opens, headed with
+the coordinates and a row of icon buttons; type the text and press Return, or
+click **Keep**. Then press **R** to toggle fog of war and back.
 
-*Expect:* a marker in the corner of the square, and its text on hover.
+*Expect:* a small marker in the corner of the square, and its text on hover.
+`R` flips the status bar between `revealing` and `whole map`, and the **Fog of
+war** box at the right-hand end of the status bar follows it.
 
 **M5.** Close the window entirely. Reopen it and return to the map tab.
 
@@ -576,15 +696,25 @@ it. Press **R** to toggle fog of war and back.
 the window is the size you left it. Notes are written on every edit *and* on
 shutdown, so both paths are covered by this one check.
 
+The files to look at, if you want to see it rather than infer it:
+`~/.local/share/wish/maps/GEO00.json` holds `"notes"` keyed by `"6,2"` and a
+`"seen"` list; `~/.config/wish/automap.json` holds `window_width`,
+`window_height`, `reveal`, `interval_ms` and `sight`.
+
 *If they are gone:* the config directory is not writable, or the frozen build
 resolved it somewhere unexpected. Check for the file — `~/.local/share/wish/maps/`
 on Linux, `%LOCALAPPDATA%\wish\maps\` on Windows.
 
 **M6.** Close and reopen wish with the game *not* running.
 
-*Expect:* the window opens, the map tab says it is waiting, nothing crashes and
-the editor tab works normally. A tool that requires the emulator to start is a
-tool that is useless half the time.
+*Expect:* the window opens, the map tab draws an empty grid and says
+`waiting for a game - VICE: start VICE with its binary monitor enabled …`
+followed by the `$POR_ULTIMATE` hint, the action buttons grey out, nothing
+crashes, and the editor tab works normally. A tool that requires the emulator to
+start is a tool that is useless half the time.
+
+*Cosmetic, seen on 2026-08-22:* that waiting message is long enough to run off
+both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 
 ---
 
@@ -592,34 +722,58 @@ tool that is useless half the time.
 
 Tick as you go. `n/a` where a row does not apply to that platform.
 
+**The Linux column is filled in.** Every ✅ was watched by the assistant on
+**2026-08-22**, at version **`0.0.1.dev165+g24a77e835.d20260822`**, against
+artefacts built by `§0b` from this working tree. The Windows column is still
+empty and is yours.
+
 | # | check | Linux | Windows |
 |---|---|---|---|
-| 2 | `SHA256SUMS` verifies | ☐ | ☐ |
-| L2 | frozen archive unpacks, `wish` present | ☐ | ☐ (W4) |
-| L3 | `wish --version` prints the tag | ☐ | ☐ (W5, from a terminal) |
-| L3a | `wish-cli --version` prints the tag | ☐ | n/a — not shipped |
-| W5 | `wish.exe --version > file` catches it when redirected | n/a | ☐ |
-| L5 | Help > About shows the same version | ☐ | ☐ (W5) |
-| L4 | window opens on a save disk | ☐ | ☐ (W6) |
-| L6 | edit, Save As, reopen — value stuck | ☐ | ☐ (W6) |
-| L6 | the original save disk is byte-identical afterwards | ☐ | ☐ |
-| L7 | the game loads the edited disk and shows the edit | ☐ | ☐ (W6) |
-| L8 | wheel installs into a clean venv | ☐ | n/a |
-| L9 | `wish` and `wish-cli` both report the version | ☐ | n/a |
+| 2 | `SHA256SUMS` verifies | ✅ | ☐ |
+| L2 | frozen archive unpacks, `wish` present | ✅ | ☐ (W4) |
+| L3 | `wish --version` prints the version | ✅ ¹ | n/a — noted at W5, nothing depends on it |
+| L3a | `wish-cli --version` prints the version | ✅ ¹ | n/a — not shipped |
+| W5 | **the window opens and no console appears** | n/a | ☐ |
+| L5 | Help > About shows the same version | ✅ | ☐ (W5) |
+| L4 | window opens on a save disk | ✅ | ☐ (W6) |
+| L6 | edit, Save As, reopen — value stuck | ✅ | ☐ (W6) |
+| L6 | the original save disk is byte-identical afterwards | ✅ | ☐ |
+| L7 | the game loads the edited disk and shows the edit | ✅ | ☐ (W6) |
+| L8 | wheel installs into a clean venv | ✅ | n/a |
+| L9 | `wish` and `wish-cli` both report the version | ✅ | n/a |
 | W4 | no `wish-cli.exe` in the zip — the intended result | n/a | ☐ |
-| L10 | CLI export / dry-run / import round trip | ☐ | n/a |
-| L10 | `--output` over the original is refused | ☐ | n/a |
-| L11 | unedited round trip is byte-identical | ☐ | n/a |
-| L11a | the same, on a Curse or Silver Blades save | ☐ | n/a |
+| L10 | CLI export / dry-run / import round trip | ✅ | n/a |
+| L10 | `--output` over the original is refused | ✅ | n/a |
+| L11 | unedited round trip is byte-identical | ✅ | n/a |
+| L11a | the same, on a Curse or Silver Blades save | ✅ (Curse) | n/a |
+| L12 | the game loads the **CLI**-edited disk and shows the edit | ✅ | n/a |
 | W1 | VICE installs and starts | n/a | ☐ |
 | W2 | binary monitor enabled and survives a restart | n/a | ☐ |
 | W5 | SmartScreen warning cleared, program runs | n/a | ☐ |
-| W7 | settings and notes land in the user directories, not beside the exe | ☐ | ☐ |
-| M2 | automapper attaches | ☐ | ☐ |
-| M3 | the map tracks the party | ☐ | ☐ |
-| M5 | notes and explored squares survive a restart | ☐ | ☐ |
-| M6 | starts cleanly with no emulator running | ☐ | ☐ |
-| 8 | debug log writes, and names no paths | ☐ | ☐ |
+| W7 | settings and notes land in the user directories, not beside the exe | ✅ | ☐ |
+| M2 | automapper attaches | ✅ | ☐ |
+| M3 | the map tracks the party | ✅ | ☐ |
+| M5 | notes and explored squares survive a restart | ✅ ² | ☐ |
+| M6 | starts cleanly with no emulator running | ✅ | ☐ |
+| 8 | debug log writes, and names no paths | ✅ ³ | ☐ |
+
+¹ **No `v*` tag has been cut, so what is proven is the pipe, not the tag.** The
+version built, printed and reported was `hatch-vcs`'s development string, and it
+was identical in the wheel, in `dist/wish/wish`, in `dist/wish/wish-cli` and in
+Help > About. Whether a real tag comes through clean is `release.yml`'s "the
+version is the tag" step, which has also never run.
+
+² The note, the explored squares and the saved geometry in `automap.json` all
+survived. **The window did not come back at the size it was left** — but the
+test ran on a bare `Xvfb` with no window manager, and geometry restore is the
+window manager's business, so that is the harness and not the build. Untested.
+
+³ The log wrote, and rewrote every absolute path to `~.../basename` as promised.
+**But its first line reads `wish unknown`** — `wish/debuglog.py` asks
+`importlib.metadata.version("por-tools")` and the distribution has been called
+`wish` since it was renamed, so every debug log in every build, wheel and frozen
+alike, is missing the one field §8 opens by demanding. Not a release blocker;
+`wish --version` and Help > About are both right.
 
 ---
 
@@ -629,7 +783,10 @@ Capture these four things before you change anything. A failure you cannot
 reproduce is a failure you cannot fix.
 
 **1. The version.** `wish --version` — from a terminal on Windows too — or
-Help > About. Without it nobody knows which build you had.
+Help > About. Without it nobody knows which build you had. **Do not take it from
+the debug log**: its first line reads `wish unknown` in every build, because
+`wish/debuglog.py` asks `importlib.metadata` for `por-tools` and the
+distribution has been called `wish` since the rename. Confirmed 2026-08-22.
 
 **2. The debug log.** Off at every start, deliberately — it is not remembered
 between runs.
@@ -670,21 +827,25 @@ monitor at the time.
 
 ## Marked unverified
 
-Nobody has run any of this. These are the specific claims above that are
-expectation rather than observation, and worth correcting in this file once you
-know:
+The Linux steps were run on 2026-08-22 and their sections now say what was
+watched. Everything here is what is *still* expectation rather than observation,
+and worth correcting in this file once you know:
 
 | where | claim |
 |---|---|
+| §0b B2 | that a real `v*` tag produces a clean version through the whole build — only a `hatch-vcs` development string has ever been carried end to end |
+| L11a | Secret of the Silver Blades: its game disks are here, a `SAVEDBASH` save is not, so only Curse has been round-tripped |
+| M5 | that the window comes back the size it was left — the settings file records it, but the Linux run had no window manager to honour it |
 | W1 | VICE ships its Windows build as a zip rather than an installer |
 | W2 | `%APPDATA%\vice\vice.ini` does not exist until VICE has run and exited once |
 | W2 | VICE's own **Settings > Save settings** wording, and that it creates the file |
 | W2 | whether Windows Defender Firewall prompts when VICE binds `127.0.0.1:6502` |
 | W5 | that SmartScreen shows "Windows protected your PC" and not something else |
 | W5 | whether Defender quarantines this PyInstaller build as a false positive |
-| W5 | that `AttachConsole(ATTACH_PARENT_PROCESS)` gives `wish.exe --version` the terminal it was typed into — the P29 fix, reasoned and unit-tested on Linux, never watched on Windows |
-| W5 | that the version lands *after* the shell's next prompt, a windowed process not holding the terminal |
-| W5 | that `wish.exe --version > file` catches the output through an inherited handle |
+| W5 | whether `wish.exe --version` reaches a terminal at all — the P29 fix, unit-tested on Linux, never watched on Windows. A curiosity, not a requirement: nobody is expected to use the command line on Windows |
+| W5 | that if it does print, the version lands *after* the shell's next prompt, a windowed process not holding the terminal |
+
+
 | W4 | that the Windows zip contains no `wish-cli.exe` — the spec's platform split is unit-tested, but no Windows build has been made |
 | W4 | that the 260-character path limit is actually reachable here |
 | M2 | `Test-NetConnection`'s exact output for a closed port |
