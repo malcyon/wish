@@ -27,7 +27,10 @@ and `ECL07` already loads `GEO03` on its way into area 5.
 Names come from `docs/88-map-files.md`, `work/reports/world-map.md` and
 `work/reports/quest-flags.md`; arrival squares were harvested from the
 departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fifteen
-areas have no known arrival square and say so with `arrival = None`.
+areas have no known arrival square and say so with `arrival = None`. Warping
+into all fifteen and watching where the party ends up is
+`work/reports/p20-arrivals.md`, and `landing_square` at the foot of this module
+is what that measurement says the fallback should be.
 
 **A name is a title, so it is title-cased**, leading article included: "The
 Slums", not "the Slums". The table used to mix the two -- proper names in
@@ -317,3 +320,71 @@ def area_name(geo: str, title: str | None = POOL_OF_RADIANCE) -> str:
         return known
     n = geo_number(geo)
     return f"area {n}" if n is not None else geo
+
+
+# -- where to put a party that arrives with no arrival square ---------------
+
+
+def components(geo) -> list[set[tuple[int, int]]]:
+    """The map's squares grouped by what can walk to what.
+
+    A `GEO` is not one room. `GEO19` breaks into 42 pieces, `GEO0D` into 21,
+    and a square picked without regard to which piece it is in can be a place
+    the party cannot walk out of.
+    """
+    from por.geo import GRID, STEP
+
+    seen: set[tuple[int, int]] = set()
+    out: list[set[tuple[int, int]]] = []
+    for sy in range(GRID):
+        for sx in range(GRID):
+            if (sx, sy) in seen:
+                continue
+            stack = [(sx, sy)]
+            seen.add((sx, sy))
+            comp: set[tuple[int, int]] = set()
+            while stack:
+                x, y = stack.pop()
+                comp.add((x, y))
+                for d, (dx, dy) in STEP.items():
+                    if not geo.is_passable(x, y, d):
+                        continue
+                    n = (x + dx, y + dy)
+                    if not (0 <= n[0] < GRID and 0 <= n[1] < GRID) or n in seen:
+                        continue
+                    seen.add(n)
+                    stack.append(n)
+            out.append(comp)
+    return out
+
+
+def landing_square(geo) -> tuple[int, int, int] | None:
+    """Where to drop a party on a map that has no arrival square of its own.
+
+    **The proposed replacement for `automap.actions.walkable_square`**, which
+    takes the first square with any passable edge at all and therefore takes
+    `(0, 0)` on every one of the twenty-nine maps -- see
+    `work/reports/p20-arrivals.md`. That is legal in the narrow sense on most
+    maps and wrong on four: `(0, 0)` is in a pocket of 32 squares in `GEO05`,
+    30 in `GEO19`, 16 in `GEO1A` and 48 in `GEO1B`, cut off from the rest of
+    the map, and a party warped there can walk but cannot get out.
+
+    So: the largest connected component, and within it a square off the outer
+    ring where one exists, facing a passable edge. Returns None for a map with
+    no passable edge anywhere, which is also what an area with no map gets --
+    and for the three overland areas the caller should pass no square at all,
+    because outdoors the position is `$49C3`/`$49C4` and the departing scripts
+    write `[$4A18]`/`[$4A19]`, the world-map cell, not a `GEO` square.
+    """
+    from por.geo import GRID
+
+    comps = [c for c in components(geo) if len(c) > 1]
+    if not comps:
+        return None
+    best = max(comps, key=len)
+    inner = [p for p in best if 0 < p[0] < GRID - 1 and 0 < p[1] < GRID - 1]
+    for x, y in sorted(inner or best, key=lambda p: (p[1], p[0])):
+        for facing in range(4):
+            if geo.is_passable(x, y, facing):
+                return (x, y, facing)
+    return None

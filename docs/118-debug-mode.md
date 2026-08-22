@@ -73,7 +73,8 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 | `$C04B`/`$C04C`/`$C04D` are the party square and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
 | A warp can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
 | The loader prompts for a disk when `$6E12` names one that is not in the drive | **CONFIRMED** — P17: POOL2 in the drive, `$6E12` = 3, and the game printed `INSERT SIDE # 3, AND PRESS ANY KEY.` and waited |
-| `$6DD5` is "a step was taken" | **GUESS**, demoted — see open question 1 |
+| `$6DD5` is "a step was taken" | **wrong, and retired.** It is zero after an ordinary step — see open question 1 |
+| `$6DD5` is the count the routine at `$10EC` returns, and the exit scripts run only while it is non-zero | **PROBABLE** — `$10EE` clears it, `$1115 INC $6DD5` is the only site that raises it, and an execution checkpoint on that `INC` did not fire on an ordinary step |
 
 **A table of exit squares per area does not exist**, and neither does a patched
 filename stem: `automap/area.py`'s `FilenameDigits` was already retired for the
@@ -298,10 +299,15 @@ Three cases, in order:
    the warp's own square is kept.
 2. **We know a square another script uses** (the arrival column above) — write
    that. It is the game's own answer for that door.
-3. **Neither** — pick a square from the target `GEO` read off the player's disk:
-   the first square with at least one passable edge and, where the automapper
-   has explored the area before, a square it has recorded the party standing on.
-   `por/geo.py` already answers both questions and needs no emulator.
+3. **Neither** — pick a square from the target `GEO` read off the player's disk.
+   What ships is "the first square with at least one passable edge", and P20
+   measured what that comes to: **`(0, 0)`, on every map in the game**, because
+   the corner always has an edge. Nothing landed off-map or in solid rock, but
+   on four maps `(0, 0)` is a walled-off pocket — 16 squares in `GEO1A`, 30 in
+   `GEO19`, 32 in `GEO05`, 48 in `GEO1B` — and a party put there can walk
+   without being able to leave. `por.areas.landing_square` is the proposed
+   replacement: the largest connected component, off the outer ring, facing an
+   open edge. `work/reports/p20-arrivals.md`.
 
 Keeping the party's current square is the one option to avoid: the maps do not
 line up and (13,13) in the Slums is a wall in Sokol Keep.
@@ -316,7 +322,8 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
 | PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made Warp To fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
-| arrival square is a wall or off-map | not a crash — the party stands inside a wall and cannot move | choose the square from the map, never carry one over |
+| arrival square is a wall or off-map | **has never happened.** Fifteen warps put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
+| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | choose from the map's **largest connected component** — `por.areas.landing_square`, `work/reports/p20-arrivals.md` |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it in the tooltip: a warp is not the same as playing there |
 | the player saves after a warp | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
 
@@ -401,25 +408,66 @@ asserted against `MemoryTarget` and a recording stub for the PC. That is how
 
 ## Open questions
 
-Six of the seven questions this section carried have been run; what they found
-is in `docs/50-experiments.md` under P15, P16, P17, P20 and P43, and is folded
-into the sections above. Two remain, and one area has turned out to be closed to
-a warp entirely.
+Every question this section carried has now been run; what they found is in
+`docs/50-experiments.md` under P15, P16, P17, P20 and P43, and is folded into
+the sections above. Both entries below are answers rather than questions, and
+**two areas have turned out to be closed to a warp** — 11, which bounces, and
+30, which is not a place.
 
-1. **Is `$6DD5` really "a step was taken"?** **GUESS**, demoted. A store
-   watchpoint caught exactly one write per keypress and always the same one:
-   `$10EE`, `STA $6DD5` with A = 0 — the flag being *cleared* as the key is
-   fetched. The other writer, `$0B05` (`LDA $B0 / STA $6DD5`, sitting between
-   `JSR $C027` and `JSR $19CA` in the resident `DUNGEON`), **did not execute** on
-   an ordinary forward step or on a step that fired a square script. **The two
-   writers are not symmetrical** and the old wording — "written by `$0B05`/`$10EE`"
-   — hid that: `$0B05` sets it from zero page `$B0`, `$10EE` clears it. So either
-   `$0AF0`'s dispatch block belongs to a mover nobody has exercised, or the
-   eighteen scripts that open with `COMPARE [$6DD5], 0 / IF= / EXIT` always take
-   that `EXIT`. Finding the mover settles it.
-2. **Does a warp to an area with no known arrival square land somewhere legal?**
-   Areas 3, 4, 5, 9, 15, 20, 21 and 29 have never been tried with a square
-   chosen from the `GEO`.
+1. **Is `$6DD5` really "a step was taken"? No — and the mover has been found.**
+   It is not `$0B05`, which still has never executed. It is **`$1115`, an
+   `INC $6DD5`**, and it lives inside the routine that `$10EC` starts — the same
+   routine whose first act is to clear the byte:
+
+   ```
+   $10EC  LDA #$00 / STA $6DD5      ; clear on entry
+   $10F1  LDA $C04E / BEQ +7 / JSR $0843
+   $1111  CMP #$10 / BCC +3 / INC $6DD5 / DEX / BPL ...
+   $111B  LDA $6DD5 / RTS           ; the count is the return value
+   ```
+
+   So `$6DD5` is not a flag at all: it is a **count**, of however many entries
+   of whatever the loop walks come out at `$10` or more, and the routine hands
+   it back in A. That is why the eighteen scripts open with
+   `COMPARE [$6DD5], 0 / IF= / EXIT` — `IF=` runs the instruction after it, so
+   the script gives up when the count is zero and does its work when it is not.
+
+   Measured, on a converted save in New Phlan and the Slums:
+
+   * an **execution checkpoint on `$1115`** did not fire at all across an
+     ordinary forward step, while `$111E` — the `RTS` — fired once with `A = 0`.
+     Reading the byte afterwards could never have told "never set" from "set and
+     cleared again"; the checkpoint can, and it says never set.
+   * a **store watchpoint** across the step that walked out of New Phlan and
+     into the Slums caught exactly two writes: `$10EE` with 0, then `$1115`
+     leaving 1. The exit script ran and the area changed.
+   * six ordinary and refused steps read 0 afterwards; both boundary crossings
+     read 1.
+
+   **PROBABLE**, and what would promote it is naming the table: `X` counts it
+   down, `$0843` is called first when `$C04E` is non-zero, and nobody has read
+   either. The old label is retired — a byte that is zero after an ordinary step
+   is not "a step was taken".
+2. **Does a warp to an area with no known arrival square land somewhere legal?
+   Answered: mostly, and the exceptions are worth fixing.** All fifteen were
+   warped into with the square `Warp` itself picks —
+   `work/reports/p20-arrivals.md` has the table. Nothing landed off the map or
+   inside a wall and nothing crashed. Three findings came out of it:
+
+   * the fallback picks **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,
+     `GEO1A` and `GEO1B` that corner is a walled-off pocket;
+   * **area 30 should not be warpable at all.** `ECL1E` is the attract-mode
+     demo: the party square reads `254, 127, 16`, no map is resident, and the
+     program counter never comes back to the key-wait loop, so no further warp
+     can be made;
+   * **area 21 does have an arrival square** and it is in the bytecode:
+     `ECL15 $9A92` writes `mapDir` 0, `mapX` 8, `mapY` 14 behind the scratch
+     flag `$4A02`, then prints the boat message. Watched happening, twice.
+
+   Two smaller things the run pinned down: areas 3 and 5 load `GEO05` and
+   `GEO04` respectively, not the maps the table names, and a warp cannot be
+   started while a script's own menu is up — the Cave of Diogenes' parlay cost
+   four probes.
 
 **One area a warp cannot enter: 11, the training hall.** `ECL0B`'s entry reads
 `$6E82` — set from the *departing* square's attribute byte by

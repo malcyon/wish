@@ -2,11 +2,13 @@
 
 **Status: unblocked.** The DOS save arrived — Donald's Steam copy of
 *Forgotten Realms: The Archives* carries a played DOS Pool of Radiance party in
-three slots — and DOS can now be driven. **Obstacles 1, 2, 3 and 4 are
+three slots — and DOS can now be driven. **Obstacles 1, 2, 3, 4 and 7 are
 closed**: the quest flags, the party's square, the current area and the whole
-63-byte item record are all read, and **the two ports number their areas the
-same way and index their item names and item types the same way too**. Only
-obstacle 7 remains, and it needs a C64 emulator rather than any DOS work. The
+63-byte item record are all read, **the two ports number their areas the same
+way and index their item names and item types the same way too**, and **a C64
+save written from DOS fields loads and plays** — no checksum, no validation,
+not a byte rewritten by the loader (obstacle 7). What is left is conversion
+work, field by field, not a question about whether the game will accept it. The
 goal is one thing: turn a DOS save into a C64 save. One direction only.
 
 The decode, with its evidence: `work/reports/dos-saves.md` for the character
@@ -588,13 +590,53 @@ here on the strength of the save, not of the tool.
 They are almost all zero in the saves we hold, so writing zero is very probably
 right — but "very probably" is doing work in that sentence.
 
-**7. Does the game validate the save? — now workable, and it needs no DOS
-work at all.** Nothing suggests a checksum, and `wish` already writes saves the
-game loads happily. What was blocking this was never the DOS save: it was that
-nobody had *tried*. The experiment is one C64 save written from converted
-fields and loaded in VICE, and it is the same experiment as before the DOS save
-arrived. Do it at the point there is a first converted save, not before —
-a checksum will announce itself immediately.
+**7. Does the game validate the save? — CLOSED. It does not.** A save written
+from DOS fields was loaded on the C64 and the game took it without a murmur:
+**no checksum, no fixup, not one byte rewritten by the loader.**
+
+What was written: `PORSAVE12.D64`, a played C64 save standing in New Phlan, with
+four regions replaced from DOS slot A (`SAVGAMA.DAT` and `CHRDATA1`-`6.SAV` /
+`.ITM`), which is a party in New Phlan too — the same area on both sides on
+purpose, so `$4BC2` and the loaded-files cache were left true rather than
+invented.
+
+| region | bytes changed | from |
+|---|---|---|
+| six character slot windows `$4D00`-`$52FF` | 205 | the DOS record, field by field |
+| six inventories `$5900`-`$5EFF` | 465 | `tools.dosbox.item_to_c64` per item |
+| quest flags `$4A20`-`$4AF8` | 27 | the DOS word array, narrowed to bytes |
+| party square `$49C0`-`$49C2` | 3 | file offsets 12801-12803, facing halved |
+| `SAVEDGAME1` roster | 6 | current hit points and party order |
+
+**700 of `SAVEDGAME0`'s 7168 bytes, and the game loaded every one of them.**
+`$4900`-`$64FF` read out of the running machine after `BEGIN ADVENTURING` is
+**byte-identical to the file** — 0 of 7168 differ — so nothing is checksummed,
+nothing is recomputed on load, and no field is normalised. The party stood in
+the world at the DOS save's own square, (4,3) facing north, and the roster
+listed the six DOS characters with their armour class and hit points.
+
+The sheets agree with DOS too. `SILAS` reads `MALE HUMAN AGE 20 / NEUTRAL GOOD /
+FIGHTER`, `STR 18(100)`, `LEVEL 4  EXP 9559`, `HITPOINTS 70`, `AC 2`,
+`THACO 18  DAMAGE 1D8+5`, and his `ITEMS` list is the six records of
+`CHRDATA6.ITM` in order — `SHIELD +1` readied, `LONG SWORD +1` not,
+`BROAD SWORD +1` readied, `SHORT BOW +1` not, `PLATE MAIL` readied,
+`50 ARROW(S)` not — which is what `por.items` reads out of the same block.
+Then the party walked: five steps across New Phlan and out through the gateway
+into the Slums, which loaded `GEO14` and ran `ECL14`'s arrival normally.
+
+The converter that made it is a throwaway — `work/p20/convert.py` and
+`build2.py`, which is gitignored along with the rest of `work/` — because the
+real one is `por/dos_layout.py` and the order of work below. It exists only to
+answer this question, and it answered it.
+
+*What this does not yet prove.* The converted save is not a whole conversion:
+the spellbook, the combat icons, alignment, the effect arrays and the clock were
+left as the base save had them, the area was deliberately the same on both sides
+so `$4BC2` and the loaded-files cache were never exercised, and only 27 of the
+217 flag bytes actually differed from the base's — both parties are early in the
+game. What is settled is the question that was asked: **a save the game did not
+write, carrying another port's field values, loads and plays.** The rest is
+conversion work, not validation risk.
 
 ## What is not an obstacle
 
