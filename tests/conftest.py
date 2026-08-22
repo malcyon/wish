@@ -28,7 +28,18 @@ import pytest
 # on whoever is logged in -- and since many tests edit a character, closing one
 # asks "save before closing?", so a run buries the user in dialogs. Set here
 # rather than in a Makefile so it protects every way of invoking pytest.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+#
+# **Forced, not defaulted.** This was `setdefault`, which does nothing for the
+# one person most likely to be running the suite: a desktop session that
+# exports `QT_QPA_PLATFORM` for its own compositor -- COSMIC and KDE both do --
+# kept its own value and got the real windows the line exists to prevent. The
+# variable a developer sets for their desktop is not a statement about how they
+# want their tests to run.
+#
+# `WISH_TEST_PLATFORM` is the way to mean it: set it to `wayland`, `xcb` or
+# anything else and that is used instead, so watching the windows go by is
+# still one variable away.
+os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_TEST_PLATFORM", "offscreen")
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -354,6 +354,20 @@ def test_editor_imports_nothing_live():
         assert "socket" not in source, path
 
 
+def test_the_test_platform_is_forced_and_not_merely_defaulted():
+    """A grep, because the failure it guards is invisible from inside a run.
+
+    `conftest.py` used `setdefault`, which does nothing for a desktop session
+    that exports `QT_QPA_PLATFORM` for its own compositor -- COSMIC and KDE
+    both do -- so the person most likely to run the suite got the real windows
+    the line exists to prevent. Asserting the value at run time cannot catch a
+    regression here: by then the variable reads `offscreen` either way.
+    """
+    source = pathlib.Path("tests/conftest.py").read_text()
+    assert 'setdefault("QT_QPA_PLATFORM"' not in source
+    assert 'os.environ["QT_QPA_PLATFORM"] = ' in source
+
+
 def test_switching_tabs_never_opens_a_second_connection(app, tmp_path,
                                                         monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))

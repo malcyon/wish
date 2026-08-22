@@ -207,6 +207,12 @@ def test_a_backup_goes_beside_the_save_disk(tmp_path):
     assert (where, fallback) == (tmp_path / "backups", False)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="chmod does not make a directory "
+                    "unwritable on Windows -- it toggles the read-only "
+                    "attribute, which is meaningless for a directory, and "
+                    "os.access(dir, W_OK) answers True anyway")
+@pytest.mark.skipif(getattr(os, "geteuid", lambda: 1)() == 0,
+                    reason="root ignores the permission bits")
 def test_an_unwritable_folder_falls_back_to_the_user_data_directory(tmp_path):
     from editor import files
     from wish.preferences import backup_folder
@@ -220,6 +226,15 @@ def test_an_unwritable_folder_falls_back_to_the_user_data_directory(tmp_path):
     finally:
         shelf.chmod(0o755)
     assert (where, fallback) == (files.fallback_dir(), True)
+
+
+def test_a_folder_that_is_not_there_falls_back(tmp_path):
+    """The same branch as the test above, on every platform and as root: a
+    folder that does not exist cannot be written to by anybody."""
+    from editor import files
+    from wish.preferences import backup_folder
+    save = tmp_path / "gone" / "PORSAVE14.D64"      # never created
+    assert backup_folder(save) == (files.fallback_dir(), True)
 
 
 def test_with_nothing_open_the_fallback_is_named_and_called_one(tmp_path):
