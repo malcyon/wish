@@ -157,7 +157,7 @@ it both entry points were broken in an installed wheel.
 
 | claim | how it stands |
 |---|---|
-| a tagged build reports the tag | verified — a throwaway clone tagged `v0.1.0` built `por_tools-0.1.0` |
+| a tagged build reports the tag | verified — a throwaway clone tagged `v0.1.0` built `wish-0.1.0` |
 | an untagged build does not claim to be a release | verified — `0.0.1.dev49+g…` |
 | the Linux frozen build runs | verified — `wish --version` and the window both start from `dist/wish/wish` |
 | the Linux tarball carries both executables | verified — `wish` 2.2 MB and `wish-cli` 1.7 MB beside one `_internal/`. The folder went 162.8 → 164.7 MB and the `.tar.gz` 61.2 → 62.9 MB: +1.1%, not the +100% a second Qt would have cost |

@@ -1,7 +1,11 @@
 [project]
-name = "por-tools"
+# The distribution is named after the program. It used to be "por-tools",
+# which put `por_tools-*` on two of the four release artefacts and `wish-*` on
+# the other two -- and since the sdist and the frozen Linux build are both
+# .tar.gz, the only thing telling them apart was a name nobody recognised.
+name = "wish"
 dynamic = ["version"]
-description = "Reverse engineering tools and character editor for Pool of Radiance (Commodore 64)"
+description = "Character editor, save editor and live automapper for the Commodore 64 Gold Box games"
 requires-python = ">=3.12"
 # GPL-3.0: PyQt6 is GPL, and linking against it makes this GPL too.
 license = "GPL-3.0-or-later"

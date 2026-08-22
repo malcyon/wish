@@ -64,14 +64,16 @@ The release page carries four files plus checksums:
 
 | file | what it is |
 |---|---|
-| `por_tools-<version>-py3-none-any.whl` | the wheel |
-| `por_tools-<version>.tar.gz` | the sdist |
+| `wish-<version>-py3-none-any.whl` | the wheel |
+| `wish-<version>.tar.gz` | the sdist |
 | `wish-<version>-linux-x86_64.tar.gz` | the frozen Linux build |
 | `wish-<version>-windows-x86_64.zip` | the frozen Windows build |
 | `SHA256SUMS` | one line per file above |
 
-**Two of them are `.tar.gz`.** One is the sdist, one is the frozen build. Read
-the name, not the extension.
+**Two of them are `.tar.gz`**, and they are not interchangeable: the sdist is
+source you build, the other is a program you run. The frozen one carries a
+platform in its name and the sdist does not, which is the only thing to look
+for.
 
 **Nothing in this walkthrough may touch your real save disks.** Step L1 makes a
 working copy and everything afterwards operates on that copy or on files
@@ -222,7 +224,7 @@ package, and the version from installed metadata rather than `wish/_version.py`.
 cd ~/wish-test
 python3 -m venv .venv-release
 source .venv-release/bin/activate
-pip install "$HOME/Downloads/wish-release/por_tools-<version>-py3-none-any.whl[gui,automap]"
+pip install "$HOME/Downloads/wish-release/wish-<version>-py3-none-any.whl[gui,automap]"
 ```
 
 *Expect:* PyQt6 and PyYAML pulled in, no build step, no compiler.
