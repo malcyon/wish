@@ -13,7 +13,9 @@ lost for being undramatic:
   does not belong on a bug list at all;
 * **our own misreadings** -- the long tail of things this project called a game
   bug before finding the mistake was ours. That section is the most useful one
-  here, because the failure modes repeat.
+  here, because the failure modes repeat;
+* **findings not yet CONFIRMED**, including ones a player would notice. The
+  front-door file takes CONFIRMED only, so those wait here until they earn it.
 
 Confidence labels mean what they mean in the front-door file. Entries are
 numbered `N1` upwards so they cannot be mistaken for it.
@@ -214,6 +216,81 @@ destination, does all the work.
 
 **Version.** Pool of Radiance, Commodore 64. CONFIRMED as dead writes; that
 `$4A59` was meant to be read is PROBABLE.
+
+---
+
+## Not yet confirmed
+
+Three findings that a player *would* notice, and that are kept out of
+[`../goldbox-bugs.md`](../goldbox-bugs.md) only because they are not CONFIRMED.
+Each says what would promote it. Move it across when that is done, rather than
+lowering the bar over there.
+
+## U1. The icon editor's SIZE choice is never written back
+
+**What the game does.** `SPELLN64` is the combat-icon editor, reached through
+ENCAMP → ALTER → ICON and during character creation. Its menu is `ICON: PARTS
+COLOR SIZE EXIT`. Choosing SIZE switches which of the four option tables the
+session offers — 28 weapons and 14 heads for small, 35 and 23 for large — and
+that is all it does. **There is no `STA $6B99` anywhere in the overlay**, so
+record byte `0x099`, the size flag, keeps whatever `GEN $0958` set it to from
+the character's race.
+
+**The evidence.** The absent store, plus a specimen: HOGARTH, on the player's
+disks, has an icon that mixes a large body with a small head — a shape no single
+(weapon, head) pair can produce. 17 of the 18 distinct shapes on our disks come
+out of one pair exactly; HOGARTH's is the 18th.
+
+**What the player sees.** The SIZE menu appears to do something and does not
+persist, and an icon can end up mixing parts from both tables.
+
+**Version.** Pool of Radiance, Commodore 64. PROBABLE — the absent store is
+certain, but whether SIZE was *meant* to be persistent is an inference from the
+menu's existence.
+
+---
+
+## U2. Curse subtracts the prime-requisite bonus from the racial level cap
+
+**What the game does.** Curse's training routine checks two ceilings: a per-class
+cap read as `LDA $7CC9,X / CMP $15A1,X`, and a racial cap indexed
+`(race - 1) * 8`. Reading the racial check, the routine looks up the
+prime-requisite bonus (+1 at 17, +2 at 18, from the second ability array at
+`0x065`) and **subtracts** it from the limit rather than adding it. Written out,
+a strong fighter would be capped *lower* than a weak one.
+
+**What it should do.** Add it. AD&D 1st edition raises a demihuman's class limit
+for a high prime requisite; it never lowers it.
+
+**The evidence, and its weakness.** The racial table itself is CONFIRMED —
+half-orc `0/4/8/10` and half-elf `8/5/99/8` are the AD&D rows exactly, and they
+are the two no other reading of the table would produce. The sign is a reading
+of the accumulation into `$B0` and nothing more. Either it is a bug or the
+accumulation works some way this reading misses. Nobody has trained a strong
+demihuman in the emulator to watch it refuse.
+
+**Version.** Curse of the Azure Bonds, Commodore 64. **GUESS**, and it is on the
+list precisely because it is the weakest claim here.
+
+---
+
+## U3. A Curse character export gets a directory block count of zero
+
+**What the game does.** `\x02BRUTUS` on the player's own `CURSESAVE2.D64`, a
+disk Curse wrote, reports **0 blocks** in its directory entry and has a
+perfectly valid sector chain. The file reads back as 582 bytes at `$7C00`.
+
+**What the player sees.** A directory listing that says 0 for a file that
+exists, and anything that trusts the count — a copier, a validator, another
+tool — refusing to see the file. Our own disk reader skipped zero-block entries
+and so hid every Curse-written character file until it was changed to follow the
+chain and ignore the count.
+
+**Version.** Curse of the Azure Bonds, Commodore 64. **PROBABLE** — the
+observation is certain, but this disk has been handled by other tools and the
+count could in principle have been zeroed after the game wrote it.
+
+---
 
 ---
 

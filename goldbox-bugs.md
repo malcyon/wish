@@ -5,23 +5,19 @@ found by decoding the games rather than by playing them.
 
 Everything here comes from the games' own bytecode, the 6502 in their overlays,
 or their data files. Several were predicted from the code first and then carried
-to a running Commodore 64 under emulation; each entry says which, and carries a
-label:
+to a running Commodore 64 under emulation; each entry says which.
 
-| label | means |
-|---|---|
-| **CONFIRMED** | corroborated a second, independent way -- usually the game's own behaviour, its own printed output, or a second decode that could have disagreed and did not |
-| **PROBABLE** | consistent with all the evidence held, not independently verified |
-| **GUESS** | a plausible reading that something about the data argues against |
+**Every bug on this list is CONFIRMED** -- corroborated a second, independent
+way, usually by the game's own behaviour or its own printed output. Where a
+supporting detail inside an entry is weaker than that, it says so. Findings that
+no player would notice, and findings not yet confirmed, are both kept out: they
+are in [`docs/125-bug-notes.md`](docs/125-bug-notes.md), with the longer list of
+things that looked like bugs and turned out to be our own misreadings.
 
 **The ECL bytecode is one artefact shared by every port** -- the Amiga's
 `ecl.dax` unpacks to the Commodore 64's own scripts, load address and all -- so
 a script bug found on the C64 is almost always in the other ports too, and where
 a port fixed one, that is said.
-
-Findings that no player would ever notice are kept out of this file. They are in
-[`docs/125-bug-notes.md`](docs/125-bug-notes.md), along with the longer list of
-things that looked like bugs and turned out to be our own misreadings.
 
 ---
 
@@ -33,11 +29,8 @@ things that looked like bugs and turned out to be our own misreadings.
 | 2 | Sokol Keep's dead elf comes back every time you return | Pool of Radiance | script | CONFIRMED, in game |
 | 3 | QUICK is never cleared when a fight ends | Pool of Radiance | engine | CONFIRMED |
 | 4 | The hedge maze's safer squares are as dangerous as the rest | Pool of Radiance | script | CONFIRMED |
-| 5 | The icon editor's SIZE choice is never written back | Pool of Radiance | engine | PROBABLE |
-| 6 | Two monsters are not the level their name claims | Pool of Radiance | data | CONFIRMED |
-| 7 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
-| 8 | A demihuman's high ability score lowers their level cap instead of raising it | Curse of the Azure Bonds | engine | GUESS |
-| 9 | An exported character is invisible to anything that trusts the directory | Curse of the Azure Bonds | engine | PROBABLE |
+| 5 | Two monsters are not the level their name claims | Pool of Radiance | data | CONFIRMED |
+| 6 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
 
 ---
 
@@ -208,31 +201,7 @@ correlation with script id 0.
 
 ---
 
-## 5. The icon editor's SIZE choice is never written back
-
-**What the game does.** `SPELLN64` is the combat-icon editor, reached through
-ENCAMP → ALTER → ICON and during character creation. Its menu is `ICON: PARTS
-COLOR SIZE EXIT`. Choosing SIZE switches which of the four option tables the
-session offers — 28 weapons and 14 heads for small, 35 and 23 for large — and
-that is all it does. **There is no `STA $6B99` anywhere in the overlay**, so
-record byte `0x099`, the size flag, keeps whatever `GEN $0958` set it to from
-the character's race.
-
-**The evidence.** The absent store, plus a specimen: HOGARTH, on the player's
-disks, has an icon that mixes a large body with a small head — a shape no single
-(weapon, head) pair can produce. 17 of the 18 distinct shapes on our disks come
-out of one pair exactly; HOGARTH's is the 18th.
-
-**What the player sees.** The SIZE menu appears to do something and does not
-persist, and an icon can end up mixing parts from both tables.
-
-**Version.** Pool of Radiance, Commodore 64. PROBABLE — the absent store is
-certain, but whether SIZE was *meant* to be persistent is an inference from the
-menu's existence.
-
----
-
-## 6. Two monster records disagree with their own names
+## 5. Two monster records disagree with their own names
 
 **What the game does.** Twenty-one of the shipped `MON*` records state their
 level in their name. `0x0A0`, the level byte, agrees with the name in nineteen
@@ -252,7 +221,7 @@ between the designer's label and his data, not between two of our readings.
 
 ---
 
-## 7. Four monster records carry a class code that contradicts their class bits
+## 6. Four monster records carry a class code that contradicts their class bits
 
 **What the game does.** A character record says its class twice: `char_class` at
 `0x073` names it, `class_bits` at `0x0EB` decides what it may use. Across 105
@@ -275,47 +244,5 @@ confined to what the character sheet prints for one of them if it ever joins.
 because a tool that "tidies" the two fields into agreement cannot represent
 records the game itself ships — ours did, and it silently rewrote two bytes on
 an import that edited nothing.
-
----
-
-## 8. Curse subtracts the prime-requisite bonus from the racial level cap
-
-**What the game does.** Curse's training routine checks two ceilings: a per-class
-cap read as `LDA $7CC9,X / CMP $15A1,X`, and a racial cap indexed
-`(race - 1) * 8`. Reading the racial check, the routine looks up the
-prime-requisite bonus (+1 at 17, +2 at 18, from the second ability array at
-`0x065`) and **subtracts** it from the limit rather than adding it. Written out,
-a strong fighter would be capped *lower* than a weak one.
-
-**What it should do.** Add it. AD&D 1st edition raises a demihuman's class limit
-for a high prime requisite; it never lowers it.
-
-**The evidence, and its weakness.** The racial table itself is CONFIRMED —
-half-orc `0/4/8/10` and half-elf `8/5/99/8` are the AD&D rows exactly, and they
-are the two no other reading of the table would produce. The sign is a reading
-of the accumulation into `$B0` and nothing more. Either it is a bug or the
-accumulation works some way this reading misses. Nobody has trained a strong
-demihuman in the emulator to watch it refuse.
-
-**Version.** Curse of the Azure Bonds, Commodore 64. **GUESS**, and it is on the
-list precisely because it is the weakest claim here.
-
----
-
-## 9. A Curse character export gets a directory block count of zero
-
-**What the game does.** `\x02BRUTUS` on the player's own `CURSESAVE2.D64`, a
-disk Curse wrote, reports **0 blocks** in its directory entry and has a
-perfectly valid sector chain. The file reads back as 582 bytes at `$7C00`.
-
-**What the player sees.** A directory listing that says 0 for a file that
-exists, and anything that trusts the count — a copier, a validator, another
-tool — refusing to see the file. Our own disk reader skipped zero-block entries
-and so hid every Curse-written character file until it was changed to follow the
-chain and ignore the count.
-
-**Version.** Curse of the Azure Bonds, Commodore 64. **PROBABLE** — the
-observation is certain, but this disk has been handled by other tools and the
-count could in principle have been zeroed after the game wrote it.
 
 ---
