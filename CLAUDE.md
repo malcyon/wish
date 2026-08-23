@@ -77,15 +77,15 @@ overlap -- but do not spend longer splitting a commit than the split is worth.
 Find the staging page at $5500
 ```
 
-**The issue number goes at the end of that same line**, never on a line of its
-own. GitHub hotlinks it either way; keeping it inline keeps the message one
-line in `git log --oneline`. Use `closes #N` on the commit that actually
-finishes the work -- that closes the issue when it reaches `main` -- and a bare
-`#N` for a commit that only moves it along.
+**The issue number goes at the end of that same line, in parentheses**, never
+on a line of its own. GitHub hotlinks it inside parentheses; keeping it inline
+keeps the message one line in `git log --oneline`. Use `closes #N` on the commit
+that actually finishes the work -- that closes the issue when it reaches `main`
+-- and a bare `#N` for a commit that only moves it along.
 
 ```
-Land in the largest open part of the map, closes #14
-Read the trainer out of GEN #10
+Land in the largest open part of the map (closes #14)
+Read the trainer out of GEN (#10)
 ```
 
 **The sentence still has to stand on its own.** It is read in `git blame`, in
@@ -179,6 +179,11 @@ the knowledge base. The two are not the same thing and must not drift into
 being the same thing: an issue tracks work and closes when the work is done, a
 doc records what is known and outlives every issue that cited it.
 
+**Open the description with one sentence restating the subject.** A body that
+starts mid-argument reads like the second half of a conversation -- the title is
+not the first line of the description, and nobody reads them as one. One
+sentence, then the detail.
+
 **Reply, never rewrite.** Progress goes in a comment (`gh issue comment N`).
 The description is what the author asked for, and editing it destroys the
 record of what was originally wanted. Edit the description only to correct a
@@ -217,13 +222,9 @@ is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
 say so and wait to be asked.
 
-**`docs/TASKS.md` is the open task list, and it is kept current.** Close a task in
-the same commit that finishes it; add one when the work is agreed, not when it
-starts. Every task has a code, and **a code belongs to one task for life** --
-when a task closes its code retires with it and new work takes the next free
-number, so `P44` means the same thing in a conversation three weeks apart.
-Never renumber to close a gap. Donald refers to tasks by code, so a code that
-moved is worse than no code at all.
+**The open work list is GitHub issues** -- see the Issues section above.
+`docs/TASKS.md` and its `P` codes are retired; do not cite a P-code in new
+work. A handful survive inside issue bodies as history and can stay there.
 
 **A confirmed bug in the original game goes in `goldbox-bugs.md`** -- but only
 if a player can run into it. That file is written for a human who wants to read

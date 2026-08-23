@@ -1,6 +1,7 @@
 """Corrections checked against the game's own bytes, not against a document.
 
-Each block here is one task from `docs/TASKS.md` and each one exists because a
+Each block here is one closed task -- once `docs/TASKS.md`, now a GitHub
+issue -- and each one exists because a
 claim was carried at the wrong confidence. The rule they all serve: a
 third-party table is PROBABLE until something on the player's own disks agrees
 with it, and our own measurement beats an outside document's alignment.

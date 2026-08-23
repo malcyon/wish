@@ -133,7 +133,7 @@ Done on 2026-08-22, on Linux, against `wish_goldbox-0.0.1.dev188+…`.
 * **`docs/97-editor.md`, `docs/99-one-window.md`, `docs/102-live-actions.md`,
   `docs/117-save-conversion.md`, `docs/118-debug-mode.md`,
   `docs/123-parallel-sessions.md`, `docs/130-preferences.md`, `docs/README.md`
-  and `docs/TASKS.md`** still name `wish-cli`, `wish-editor` or `wish-automap`.
+**  still name `wish-cli`, `wish-editor` or `wish-automap`.
   `docs/50-experiments.md` does too and should not be corrected: it is a record
   of what was run at the time.
 * **`wish/debugmode.py`** and **`editor/binding.py`** each carry a comment
