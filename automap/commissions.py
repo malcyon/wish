@@ -99,7 +99,9 @@ def _table() -> tuple[Commission, ...]:
     """Board candidates joined to the entries they settle, then the rest.
 
     Candidate 9 is dropped: it settles nothing and an unconditional `GOTO` puts
-    it beyond reach, so it is not a commission. The panel's footnote says so.
+    it beyond reach, so it is not a commission and gets no row. Nothing on
+    the face says so -- a slot no party can be offered is not the player's
+    problem; the finding is `docs/103-commissions-panel.md`.
     """
     out, claimed = [], set()
     for offer in book.BOARD:
@@ -143,8 +145,19 @@ def _name(commission, word) -> str:
     commission keeps the board's text because it has six speeches, not one.
     """
     if word in (book.PAID, book.REWARD_WAITING) and len(commission.ledger) == 1:
-        return book.LEDGER[commission.ledger[0]][0] or commission.name
-    return commission.name
+        return _sentence(book.LEDGER[commission.ledger[0]][0] or commission.name)
+    return _sentence(commission.name)
+
+
+def _sentence(text: str) -> str:
+    """First letter up, and nothing else touched.
+
+    Capitalised here rather than in `por/commissions.py`, because the strings
+    there are the clerk's own speech as the bytecode carries it and are cited
+    as such. `str.capitalize` would lower the rest and turn "Norris the Gray"
+    into "Norris the gray".
+    """
+    return text[:1].upper() + text[1:] if text else text
 
 
 def _note(commission, entries) -> str:
@@ -348,14 +361,6 @@ class CommissionsPanel(QWidget):
         for group in self.groups.values():
             column.addWidget(group)
 
-        self.footnote = _label(
-            "One board slot is withdrawn: the clerk never reaches it and it "
-            "settles nothing.", muted=True, size=7)
-        self.footnote.setWordWrap(True)
-        self.footnote.setToolTip(
-            "ECL08 $A84D, candidate 9: an unconditional GOTO $A890 jumps past "
-            "its own body, so no party can be offered it.")
-        column.addWidget(self.footnote)
         column.addStretch(1)
 
         scroll = QScrollArea()
@@ -388,7 +393,7 @@ class CommissionsPanel(QWidget):
 
         self.groups["commissions"].show_rows(
             commission_rows(flags)
-            or [("the clerk has nothing on the books for this party", "", "")])
+            or [("The clerk has nothing on the books for this party", "", "")])
         self.groups["summons"].show_rows(
-            [(a.name, a.state, f"${a.address:04X} = {a.value}")
+            [(_sentence(a.name), a.state, f"${a.address:04X} = {a.value}")
              for a in state.outstanding])

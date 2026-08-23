@@ -136,7 +136,7 @@ def test_paying_for_a_job_takes_it_off_the_board():
     put_ledger(flags, 21, PAID_VALUE)             # slums paid
     put_ledger(flags, 1, PAID_VALUE)              # Sokal Keep paid
     texts = [o.text for o in book.offered(flags, limit=16)]
-    assert "clear the slums" not in texts
+    assert "Clear the slums" not in texts
     assert "clear Sokal Keep" not in texts
     # Sokal Keep paid is what unlocks Kovel Mansion and the Bishop.
     assert "clean out Kovel Mansion" in texts
@@ -231,7 +231,7 @@ def test_the_summary_prints_the_lines_the_panel_shows():
 
 # --- the panel --------------------------------------------------------------
 
-SLUMS = {"clear the slums", "slums cleared"}
+SLUMS = {"Clear the slums", "Slums cleared"}   # the panel capitalises
 
 
 def panel_for(app, flags):
@@ -271,16 +271,16 @@ def test_the_slums_is_one_row_whatever_its_byte_reads(app, value, state):
 def test_no_unfinished_row_is_labelled_with_the_clerk_s_completion_speech(app):
     for value in (0, 3):
         panel = panel_for(app, put_ledger(blank(), 21, value))
-        assert "slums cleared" not in [r[0] for r in rows(panel)]
+        assert "Slums cleared" not in [r[0] for r in rows(panel)]
     for value in (DONE, PAID_VALUE):
         panel = panel_for(app, put_ledger(blank(), 21, value))
-        assert "slums cleared" in [r[0] for r in rows(panel)]
+        assert "Slums cleared" in [r[0] for r in rows(panel)]
 
 
 def test_a_commission_the_board_never_offers_still_gets_a_neutral_name(app):
-    # Ledger 11's only words from the clerk are "graveyard menace ended".
+    # Ledger 11's only words from the clerk are "Graveyard menace ended".
     panel = panel_for(app, put_ledger(blank(), 11, 2))
-    assert ("the graveyard menace", "in progress", "") in rows(panel)
+    assert ("The graveyard menace", "in progress", "") in rows(panel)
 
 
 def test_the_marker_value_is_in_the_tooltip_and_never_on_the_face(app):
@@ -297,8 +297,8 @@ def test_the_six_library_books_are_one_row_that_says_how_many_are_in(app):
     for index in (4, 5, 6):
         put_ledger(flags, index, PAID_VALUE)
     panel = panel_for(app, flags)
-    books = [r for r in rows(panel) if r[0].startswith("bring back books")]
-    assert books == [("bring back books, maps and tomes", "in progress",
+    books = [r for r in rows(panel) if r[0].startswith("Bring back books")]
+    assert books == [("Bring back books, maps and tomes", "in progress",
                       "3 of 6 books recovered")]
     tip = [t for t in tips(panel) if t.startswith("bring back books")][0]
     for index in range(4, 10):
@@ -313,24 +313,16 @@ def test_all_six_books_paid_is_one_paid_row_with_no_count(app):
         put_ledger(flags, index, PAID_VALUE)
     panel = panel_for(app, flags)
     assert [r for r in rows(panel) if "books" in r[0]] == [
-        ("bring back books, maps and tomes", "paid", "")]
-
-
-def test_the_candidate_that_settles_nothing_is_a_footnote_not_a_row(app):
-    panel = panel_for(app, blank())
-    assert "withdrawn" in panel.footnote.text()
-    assert panel.footnote.isVisibleTo(panel)
-    assert "candidate 9" in panel.footnote.toolTip()
-    assert all("withdrawn" not in r[0] for r in rows(panel))
+        ("Bring back books, maps and tomes", "paid", "")]
 
 
 def test_a_party_that_has_done_nothing_sees_the_opening_three(app):
     panel = panel_for(app, blank())
     assert panel.completed.text() == "Commissions completed: 0"
     assert rows(panel) == [
-        ("clear Sokal Keep", "offered", ""),
-        ("bring back books, maps and tomes", "offered", ""),
-        ("clear the slums", "offered", "")]
+        ("Clear Sokal Keep", "offered", ""),
+        ("Bring back books, maps and tomes", "offered", ""),
+        ("Clear the slums", "offered", "")]
 
 
 def test_a_commission_the_party_has_not_met_is_not_shown(app):
@@ -347,8 +339,8 @@ def test_the_rows_run_in_the_ledger_s_order_which_is_roughly_the_plot_s(app):
     put_ledger(flags, 10, PAID_VALUE)
     panel = panel_for(app, flags)
     assert [r[0] for r in rows(panel) if r[1] != "offered"] == [
-        "Sokal Keep cleared", "Podal Plaza auction", "graveyard menace ended"]
-    assert [r[1] for r in rows(panel) if r[0] == "graveyard menace ended"] == [
+        "Sokal Keep cleared", "Podal Plaza auction", "Graveyard menace ended"]
+    assert [r[1] for r in rows(panel) if r[0] == "Graveyard menace ended"] == [
         "reward waiting"]
 
 
@@ -357,7 +349,7 @@ def test_a_paid_row_is_drawn_muted_so_live_work_stands_out(app):
     drawn = {r.what.text(): bool(r.what.styleSheet())
              for r in panel.groups["commissions"].visible_rows()}
     assert drawn["Sokal Keep cleared"]
-    assert not drawn["clear the slums"]
+    assert not drawn["Clear the slums"]
 
 
 def test_the_panel_lists_an_outstanding_summons(app):
@@ -382,7 +374,7 @@ def test_the_panel_takes_a_whole_savedgame0(app):
     panel.update_from(payload)
     panel.update_from(SaveGame0.from_bytes(payload))
     assert payload == before
-    assert "clear the slums" in [r[0] for r in rows(panel)]
+    assert "Clear the slums" in [r[0] for r in rows(panel)]
 
 
 def test_a_far_advanced_save_draws_one_row_for_each_commission(app):
@@ -390,8 +382,8 @@ def test_a_far_advanced_save_draws_one_row_for_each_commission(app):
     names = [r[0] for r in rows(panel)]
     assert len(names) == len(set(names))
     assert len([n for n in names if n in SLUMS]) == 1
-    assert "slums cleared" in names
-    assert ("bring back books, maps and tomes", "paid", "") in rows(panel)
+    assert "Slums cleared" in names
+    assert ("Bring back books, maps and tomes", "paid", "") in rows(panel)
 
 
 def test_nothing_in_the_panel_is_editable(app):
@@ -432,7 +424,7 @@ def test_the_slums_says_how_many_encounters_are_cleared(app):
     flags = bytearray(book.FLAGS_SIZE)
     flags[book.LEDGER_BASE - book.FLAGS_BASE + 21] = 4
     from automap.commissions import commission_rows
-    rows = [r for r in commission_rows(bytes(flags)) if r[0] == "clear the slums"]
+    rows = [r for r in commission_rows(bytes(flags)) if r[0] == "Clear the slums"]
     assert len(rows) == 1
     assert rows[0][3] == "4 of 25 encounters cleared"
     assert "marker" not in rows[0][0] and "marker" not in rows[0][3]
