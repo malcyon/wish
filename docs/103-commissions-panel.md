@@ -25,9 +25,8 @@ this needs no new decoding — only a panel.
 
 The ledger index **is** the quest: each has the clerk's own speech in a 26-entry
 jump table, so 1 is Sokal Keep, 11 the graveyard, 20 Tyranthraxus, 25 Cadorna.
-`work/analysis4/commissions.py` already names all 26 and reproduces the offer
-loop; run against the shipped unplayed save it emits *slums, Sokal Keep, books*,
-which is what the game really opens with.
+Run against the shipped unplayed save the offer loop emits *slums, Sokal Keep,
+books*, which is what the game really opens with.
 
 **Not ready, and should not be shown:** per-area sub-bits outside the named
 ones, and anything above `$4AFF` — no ECL operand reaches there, so
@@ -35,83 +34,114 @@ ones, and anything above `$4AFF` — no ECL operand reaches there, so
 
 ---
 
-## The offer and the ledger entry are the same byte
+## One byte, one row
 
-Playing the slums, the panel showed *clear the slums* under **Available** and
-*slums cleared* under **In progress** at the same time, which reads as two
-commissions. It is one byte.
-
-`ECL08`'s board gates candidate 0 on `$4AA6 + 21 != 255`, and `$4AA6 + 21` **is**
-the ledger entry the clerk pays for. The two halves of the panel were showing
-the same flag from two ends: the board's imperative on the way in, and the
-clerk's own speech -- which is phrased as the finished state, "slums cleared" --
-on the way out.
+`ECL08`'s board gates candidate 0 on `$4AA6 + 21 != 255`, and `$4AA6 + 21`
+**is** the ledger entry the clerk pays for. The board and the ledger are the
+same byte seen from two ends: the imperative on the way in, the clerk's payment
+speech — *slums cleared* — on the way out.
 
 The byte's four states, from `por/commissions.py`:
 
 | value | what it means |
 |---|---|
 | 0 | untouched |
-| 1-253 | an area script's own marker. For the slums it counted 3, and `$4ABB` -- documented as "slum progress, N of 25" -- read 3 at the same moment, so the two count the same thing |
+| 1-253 | an area script's own marker. For the slums it counted 3, and `$4ABB` — documented as "slum progress, N of 25" — read 3 at the same moment, so the two count the same thing |
 | 254 | done; the reward is still at the City Hall |
 | 255 | paid |
 
-**It is not one-to-one in either direction**, which is why the panel does not
-collapse the two into a single "quest" row:
+**So the panel draws one row per commission**, sorted by first ledger index,
+which is roughly the plot's own order. `automap/commissions.py` builds the list
+once, at import, in `COMMISSIONS`: every board candidate paired with the ledger
+entries its gate settles, plus the six entries (0, 2, 11, 22, 24, 25) no
+candidate offers. A row appears when the party has met the commission — any
+non-zero ledger byte, or the clerk raising it on the next visit — and carries
+one state word:
 
-* offer 2, *bring back books, maps and tomes*, settles **six** ledger entries
-  (4-9);
-* offer 4, *see Councilman Cadorna*, is gated on `$4A97` and `$4ABE` as well as
-  ledger 18, and offer 13 has two separate routes through the same test;
-* offer 9 is withdrawn -- an unconditional `GOTO` past its own body -- and
-  settles nothing at all;
-* several ledger entries (2, 11, 24, 25) are never offered by the board.
+| word | when |
+|---|---|
+| offered | every entry untouched, and the clerk raises it next visit |
+| in progress | a marker, or some of a many-entry commission settled |
+| reward waiting | any entry at 254 — money sitting at the City Hall |
+| paid | every entry at 255 |
 
-So the data does not carry a quest-log concept. What it carries is a board of
-sixteen speeches and a ledger of twenty-six bytes, related by the gates.
+Paid rows are drawn muted, so live work stands out of a late-game list.
 
-**What the panel does about it**, in `automap/commissions.py`:
+### The name is the clerk's, and which of his two names depends on the state
 
-* *Available from the clerk* keeps the board's own imperative, and each row's
-  tooltip names the ledger entries that offer would settle.
-* The ledger group is headed **Working towards**, not *In progress*, so a
-  completion phrase under it reads as a destination rather than a claim.
-* A row whose entry is also on the board right now says **on the board**, and
-  its tooltip says outright that it is one commission in one state, not two.
-* Every row keeps its address and raw value in the tooltip, because the value
-  between 1 and 253 means whatever its own area script decided.
+Before it is done, the board's imperative: *clear the slums*. Once it is done,
+his payment speech: *slums cleared*. The speech is the better name and is only
+ever shown over a job that really is finished — the whole point being that
+*slums cleared* must never sit above a slum the party is halfway through.
 
-`test_the_commissions_panel_does_not_show_one_flag_as_two_commissions` pins it.
+Six entries have no candidate, so there is no imperative to borrow and the
+clerk's only words for them are the payment speech. Those get a neutral name in
+`UNBOARDED` — *the graveyard menace*, *Cadorna's treachery* — and the speech
+still arrives when the job is paid.
 
-## Shape
+### Where the model is genuinely not one-to-one, the row says so
 
-A panel in the right-hand column of the map tab, between the notes list and the
-messages. Three groups:
+* **Six ledger entries, one commission.** Candidate 2, *bring back books, maps
+  and tomes*, settles 4-9. One row, with a sub-line — *3 of 6 books recovered* —
+  when some but not all are in. Its gate is `$4AC2`, the book bounty flag, and
+  not the six entries at all; the tooltip says which byte.
+* **A candidate that settles nothing.** Candidate 9 is withdrawn — an
+  unconditional `GOTO $A890` past its own body — so it is never offered and
+  settles no entry. It is not a commission and gets no row; a muted footnote at
+  the bottom of the panel says it exists.
+* **Gates that read more than their own entry.** Candidates 4, 5, 6, 12, 13, 14
+  and 15 also test appointment flags. `GATE_NOTES` puts each in words in the
+  tooltip, which is why a row can be finished and still on the board.
+* **Three a visit.** The clerk offers at most three, so a commission whose gate
+  is open but which is fourth in line gets no row. A shown row's tooltip says
+  which of the three cases it is: raised next visit, gate open but queued
+  behind others, or gate shut.
 
-* **Available** — what the clerk would offer on the next visit.
-* **In progress** — accepted, not yet done.
-* **Done** — split into *reward waiting* and *paid*, because the difference is
-  money the party has not collected.
+### What is on the face, and what is in the tooltip
 
-Sorted by ledger index, which is roughly the plot's own order.
+The face carries only facts about the party's game: the name, the state word,
+and the books' count. The raw marker value is not one — `marker 4` says a byte
+reads 4, and what 4 means is script-specific and undecoded — so it goes in the
+tooltip with everything else that is internal:
 
-Each row is the quest's name and its state. **Nothing here is editable.** It is
-a display, and making it writable would mean writing plot flags, which is a much
-larger promise than reading them.
+```
+clear the slums
+candidate 0 on ECL08's board at $A84D: the clerk raises it on the next visit
+ledger 21 at $4ABB = 4
+  the clerk pays for it as "slums cleared"
+  written by The slums (ECL14)
+  counts towards commissions completed
+```
+
+### The design this replaced
+
+The panel first had two groups, *Available from the clerk* and *Working
+towards*, on the reasoning that the board and the ledger are different
+structures and collapsing them would lose the many-to-one cases. The slums then
+appeared in both — once as the offer, once as ledger 21 — and the mitigations
+(a heading that avoided the word "progress", an `on the board` suffix, a tooltip
+saying outright that it was one commission in one state) did not stop readers
+counting two commissions. Donald reported it more than once. The mapping really
+is complicated; that is an argument for the model, not for making the player
+carry it, so the join now happens in `COMMISSIONS` and the complications are
+handled row by row above.
 
 ## Where the code is
 
-`por/commissions.py`, promoted out of `work/analysis4/commissions.py`: the 26
-ledger names and the script that finishes each, the three states, `$4AC1`, the
-`ECL08 $A84D` offer loop, and the eight appointment flags. `read(source)`
-returns the lot; `summary_lines(source)` is the same thing as text, for the
-CLI. `source` is the 224 flags, the `$4A00` page, a whole `SAVEDGAME0` payload
-or a `SaveGame0` — the lengths are distinct, so no flag is needed. No Qt.
+`por/commissions.py`: the 26 ledger names and the script that finishes each, the
+three states, `$4AC1`, the `ECL08 $A84D` offer loop, and the eight appointment
+flags. `read(source)` returns the lot; `summary_lines(source)` is a plain-text
+rendering for the CLI, which still groups by state. `source` is the 224 flags,
+the `$4A00` page, a whole `SAVEDGAME0` payload or a `SaveGame0` — the lengths
+are distinct, so no flag is needed. No Qt.
 
-`automap/commissions.py` is the panel: `CommissionsPanel()`, one entry point
-`update_from(source)` taking exactly what the decoder takes, and
-`set_message(text)` for when there are no bytes. It redraws only when the flag
-block changes, and holds nothing that can be typed into.
+`automap/commissions.py` is the panel: `COMMISSIONS`, the joined list;
+`commission_rows(flags)`, which turns a flag block into the drawn tuples and is
+what the tests read; `CommissionsPanel()` with one entry point `update_from(source)`
+taking exactly what the decoder takes, and `set_message(text)` for when there
+are no bytes. It redraws only when the flag block changes, and holds nothing
+that can be typed into. **Nothing here is editable** — making it writable would
+mean writing plot flags, a much larger promise than reading them.
 
 **Wired** in `automap/window.py`: `poll_live` reads the two blocks itself and
 hands the panel the `SAVEDGAME0` bytes — `Snapshot` does not keep them — once
@@ -121,12 +151,19 @@ log that blanked every time somebody opened one would be a flicker.
 
 ## Verification — done, in `tests/test_commissions.py`
 
-* The shipped unplayed `POOL1` save shows nothing done and offers exactly
-  slums, Sokal Keep, and books.
-* `work/fields/npc_party.d64` reads `$4AC1` = 6, ledger 0, 1, 2, 4-9, 10, 12,
-  13, 20, 21 paid — six of them the major ones, which is what `$4AC1` counts —
-  and offers nomads, kobolds, lizardmen.
-* Every offer on the board settles a ledger index the clerk's speech table
-  names; the withdrawn candidate settles nothing and is never offered.
+* **The slums is one row whatever its byte reads** — 0, a marker, 254, 255 —
+  which is the regression this shape exists to prevent.
+* No unfinished row is labelled with the clerk's completion speech, and both
+  finished states are.
+* The six books are one row, with the count when some are in and no count when
+  all six are paid; every one of the six is named in its tooltip.
+* The withdrawn candidate is a footnote and never a row; every board candidate
+  that settles something and every one of the 26 entries appears in exactly one
+  `COMMISSIONS` member.
+* The marker value never reaches the face and always reaches the tooltip.
+* The shipped unplayed `POOL1` save shows nothing done and offers exactly slums,
+  Sokal Keep, and books. `work/fields/npc_party.d64` reads `$4AC1` = 6, fourteen
+  entries paid — six of them the major ones, which is what `$4AC1` counts — and
+  offers nomads, kobolds, lizardmen, and draws each commission once.
 * Reading is pure: the decoder copies its input, and the specimen save's bytes
   are identical after the panel has drawn them.

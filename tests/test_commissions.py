@@ -231,45 +231,147 @@ def test_the_summary_prints_the_lines_the_panel_shows():
 
 # --- the panel --------------------------------------------------------------
 
-def test_the_panel_shows_the_offers_and_hides_the_empty_groups(app):
+SLUMS = {"clear the slums", "slums cleared"}
+
+
+def panel_for(app, flags):
     from automap.commissions import CommissionsPanel
     panel = CommissionsPanel()
-    panel.update_from(blank())
+    panel.update_from(flags)
+    return panel
+
+
+def rows(panel, group="commissions"):
+    """(name, state, sub-line) for every row the group is actually drawing."""
+    g = panel.groups[group]
+    return [(r.what.text(), r.state.text(), r.note.text())
+            for r in g.visible_rows()]
+
+
+def tips(panel, group="commissions"):
+    return [r.toolTip() for r in panel.groups[group].visible_rows()]
+
+
+@pytest.mark.parametrize("value, state", [
+    (0, "offered"),                     # the clerk has it on the board
+    (3, "in progress"),                 # the slums' own progress marker
+    (DONE, "reward waiting"),
+    (PAID_VALUE, "paid"),
+])
+def test_the_slums_is_one_row_whatever_its_byte_reads(app, value, state):
+    """One byte, one row. The board gates candidate 0 on ledger 21 and the
+    clerk pays on the same byte; showing the two ends separately made one
+    commission look like two, which is the whole reason for this shape."""
+    panel = panel_for(app, put_ledger(blank(), 21, value))
+    slums = [r for r in rows(panel) if r[0] in SLUMS]
+    assert len(slums) == 1
+    assert slums[0][1] == state
+
+
+def test_no_unfinished_row_is_labelled_with_the_clerk_s_completion_speech(app):
+    for value in (0, 3):
+        panel = panel_for(app, put_ledger(blank(), 21, value))
+        assert "slums cleared" not in [r[0] for r in rows(panel)]
+    for value in (DONE, PAID_VALUE):
+        panel = panel_for(app, put_ledger(blank(), 21, value))
+        assert "slums cleared" in [r[0] for r in rows(panel)]
+
+
+def test_a_commission_the_board_never_offers_still_gets_a_neutral_name(app):
+    # Ledger 11's only words from the clerk are "graveyard menace ended".
+    panel = panel_for(app, put_ledger(blank(), 11, 2))
+    assert ("the graveyard menace", "in progress", "") in rows(panel)
+
+
+def test_the_marker_value_is_in_the_tooltip_and_never_on_the_face(app):
+    panel = panel_for(app, put_ledger(blank(), 21, 4))
+    assert not any("4" in r[1] or "marker" in r[1].lower() for r in rows(panel))
+    tip = [t for t in tips(panel) if t.startswith("clear the slums")][0]
+    assert "ledger 21 at $4ABB = 4" in tip
+    assert "candidate 0 on ECL08's board at $A84D" in tip
+    assert 'the clerk pays for it as "slums cleared"' in tip
+
+
+def test_the_six_library_books_are_one_row_that_says_how_many_are_in(app):
+    flags = blank()
+    for index in (4, 5, 6):
+        put_ledger(flags, index, PAID_VALUE)
+    panel = panel_for(app, flags)
+    books = [r for r in rows(panel) if r[0].startswith("bring back books")]
+    assert books == [("bring back books, maps and tomes", "in progress",
+                      "3 of 6 books recovered")]
+    tip = [t for t in tips(panel) if t.startswith("bring back books")][0]
+    for index in range(4, 10):
+        assert f"ledger {index} at ${LEDGER_BASE + index:04X}" in tip
+    # Its gate is not the six entries, and the tooltip says which byte it is.
+    assert "$4AC2" in tip
+
+
+def test_all_six_books_paid_is_one_paid_row_with_no_count(app):
+    flags = blank()
+    for index in range(4, 10):
+        put_ledger(flags, index, PAID_VALUE)
+    panel = panel_for(app, flags)
+    assert [r for r in rows(panel) if "books" in r[0]] == [
+        ("bring back books, maps and tomes", "paid", "")]
+
+
+def test_the_candidate_that_settles_nothing_is_a_footnote_not_a_row(app):
+    panel = panel_for(app, blank())
+    assert "withdrawn" in panel.footnote.text()
+    assert panel.footnote.isVisibleTo(panel)
+    assert "candidate 9" in panel.footnote.toolTip()
+    assert all("withdrawn" not in r[0] for r in rows(panel))
+
+
+def test_a_party_that_has_done_nothing_sees_the_opening_three(app):
+    panel = panel_for(app, blank())
     assert panel.completed.text() == "Commissions completed: 0"
-    assert panel.groups["available"].isVisibleTo(panel)
-    assert not panel.groups["paid"].isVisibleTo(panel)
-    assert not panel.groups["waiting"].isVisibleTo(panel)
-    assert [r.what.text() for r in panel.groups["available"]._rows[:3]] == [
-        "clear the slums", "clear Sokal Keep",
-        "bring back books, maps and tomes"]
+    assert rows(panel) == [
+        ("clear Sokal Keep", "offered", ""),
+        ("bring back books, maps and tomes", "offered", ""),
+        ("clear the slums", "offered", "")]
 
 
-def test_the_panel_splits_done_into_reward_waiting_and_paid(app):
-    from automap.commissions import CommissionsPanel
+def test_a_commission_the_party_has_not_met_is_not_shown(app):
+    # The clerk offers three a visit; the rest of the open gates are not the
+    # party's business yet, and the tooltip of a shown row says so.
+    panel = panel_for(app, blank())
+    assert all("nomads" not in r[0] for r in rows(panel))
+
+
+def test_the_rows_run_in_the_ledger_s_order_which_is_roughly_the_plot_s(app):
     flags = blank()
     put_ledger(flags, 11, DONE)                   # graveyard, money uncollected
     put_ledger(flags, 1, PAID_VALUE)
     put_ledger(flags, 10, PAID_VALUE)
-    panel = CommissionsPanel()
-    panel.update_from(flags)
-    waiting = panel.groups["waiting"]
-    paid = panel.groups["paid"]
-    assert [r.what.text() for r in waiting._rows if r.isVisibleTo(waiting)] == [
-        "graveyard menace ended"]
-    # Sorted by ledger index, which is roughly the plot's own order.
-    assert [r.what.text() for r in paid._rows if r.isVisibleTo(paid)] == [
-        "Sokal Keep cleared", "Podal Plaza auction"]
+    panel = panel_for(app, flags)
+    assert [r[0] for r in rows(panel) if r[1] != "offered"] == [
+        "Sokal Keep cleared", "Podal Plaza auction", "graveyard menace ended"]
+    assert [r[1] for r in rows(panel) if r[0] == "graveyard menace ended"] == [
+        "reward waiting"]
+
+
+def test_a_paid_row_is_drawn_muted_so_live_work_stands_out(app):
+    panel = panel_for(app, put_ledger(blank(), 1, PAID_VALUE))
+    drawn = {r.what.text(): bool(r.what.styleSheet())
+             for r in panel.groups["commissions"].visible_rows()}
+    assert drawn["Sokal Keep cleared"]
+    assert not drawn["clear the slums"]
 
 
 def test_the_panel_lists_an_outstanding_summons(app):
-    from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel()
-    panel.update_from(put(blank(), 0x4A97, DONE))
+    panel = panel_for(app, put(blank(), 0x4A97, DONE))
     group = panel.groups["summons"]
     assert group.isVisibleTo(panel)
-    row = group._rows[0]
+    row = group.visible_rows()[0]
     assert row.what.text() == "Councilman Cadorna's chambers"
     assert row.state.text() == "summoned"
+
+
+def test_the_panel_hides_the_summonses_when_there_are_none(app):
+    panel = panel_for(app, blank())
+    assert not panel.groups["summons"].isVisibleTo(panel)
 
 
 def test_the_panel_takes_a_whole_savedgame0(app):
@@ -280,7 +382,16 @@ def test_the_panel_takes_a_whole_savedgame0(app):
     panel.update_from(payload)
     panel.update_from(SaveGame0.from_bytes(payload))
     assert payload == before
-    assert panel.groups["available"]._rows[0].what.text() == "clear the slums"
+    assert "clear the slums" in [r[0] for r in rows(panel)]
+
+
+def test_a_far_advanced_save_draws_one_row_for_each_commission(app):
+    panel = panel_for(app, advanced_save())
+    names = [r[0] for r in rows(panel)]
+    assert len(names) == len(set(names))
+    assert len([n for n in names if n in SLUMS]) == 1
+    assert "slums cleared" in names
+    assert ("bring back books, maps and tomes", "paid", "") in rows(panel)
 
 
 def test_nothing_in_the_panel_is_editable(app):
@@ -292,10 +403,8 @@ def test_nothing_in_the_panel_is_editable(app):
         QTextEdit,
     )
 
-    from automap.commissions import CommissionsPanel
     flags = put_ledger(put_ledger(blank(), 1, PAID_VALUE), 11, DONE)
-    panel = CommissionsPanel()
-    panel.update_from(put(flags, 0x4A97, DONE))
+    panel = panel_for(app, put(flags, 0x4A97, DONE))
     for kind in (QLineEdit, QTextEdit, QComboBox, QAbstractSpinBox,
                  QAbstractButton):
         assert panel.findChildren(kind) == []
@@ -307,3 +416,11 @@ def test_the_panel_says_so_before_it_has_any_bytes(app):
     assert panel.heading.text() == "Commissions - waiting for a game"
     panel.update_from(blank())
     assert panel.heading.text() == "Commissions"
+
+
+def test_every_board_candidate_and_ledger_entry_is_in_exactly_one_row():
+    from automap.commissions import COMMISSIONS
+    seen = [i for c in COMMISSIONS for i in c.ledger]
+    assert sorted(seen) == list(range(book.LEDGER_COUNT))
+    orders = [c.order for c in COMMISSIONS if c.order is not None]
+    assert sorted(orders) == [o.order for o in book.BOARD if o.ledger]

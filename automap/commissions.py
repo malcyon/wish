@@ -13,22 +13,24 @@ against saves. This module is presentation: `update_from()` takes the same
 bytes that module does -- the 224 flags at `$4A20`, a `SaveGame0`, or a whole
 `SAVEDGAME0` image -- so it works from a live read and from a save file alike.
 
-**The offer and the ledger entry are usually the same byte**, and the panel says
-so rather than pretending they are two things. `ECL08`'s board gates "clear the
-slums" on `$4AA6+21 != 255`, and that byte is also the ledger entry whose name
-is the clerk's speech when he pays for it -- "slums cleared". Showing the offer
-under *Available* and the same byte under a heading that read *In progress* made
-one flag look like two commissions, and named an unfinished one with the words
-for having finished it. So: the offers keep the clerk's own imperative, the
-ledger rows are headed **Working towards**, a row that is also on the board says
-so, and every row's tooltip carries the address and the value. The mapping is
-not one-to-one in either direction -- one offer can settle six entries, some
-gates read appointment flags as well, and one candidate settles nothing -- which
-is why the panel does not try to collapse the two into a single "quest".
-See `docs/103-commissions-panel.md`.
+**One row per commission, in plot order, with a plain state word.** The board
+and the ledger are usually the same byte -- `ECL08` gates "clear the slums" on
+`$4AA6+21`, and that byte is also the ledger entry the clerk pays for -- so a
+panel with an offers group and a ledger group showed that one byte twice. It
+was labelled and tooltipped as one thing in two states; readers still counted
+two commissions. So the two are joined here instead: `COMMISSIONS` pairs each
+board candidate with the ledger entries its gate settles, adds the six entries
+no candidate offers, and each pair draws exactly one row.
+
+The row carries only facts about the party's game -- the commission's name, its
+state, and for the books how many of the six are in. Raw marker values, ledger
+indices, addresses and the gate's other conditions are in the tooltip, where
+they are useful and harmless. See `docs/103-commissions-panel.md`.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -47,6 +49,152 @@ from .panel import CARD, LATTICE, MUTED
 
 PANEL_WIDTH = 248
 
+#: The fourth state word. The other three are the decoder's own.
+OFFERED = "offered"
+
+# Six ledger entries have no candidate on the board, so there is no imperative
+# to borrow and the clerk's only words for them are his payment speech --
+# "graveyard menace ended". Labelling an unfinished job with the speech for
+# having finished it is the trap this panel exists to avoid, so they get a
+# neutral name here and the speech goes in the tooltip.
+UNBOARDED = {
+    0: "Norris the Gray, in Kuto's Well",
+    2: "the area by the evil temple",
+    11: "the graveyard menace",
+    24: "Cadorna's treachery",
+    25: "Cadorna himself",
+}
+
+# What a candidate's gate reads besides its own ledger entries. `_gate` in
+# `por/commissions.py` is the authority; this is the same thing in words, for
+# the tooltip, and it is why a row can be finished and still on the board.
+GATE_NOTES = {
+    2: "gated on the book bounty flag $4AC2, not on the six entries",
+    4: "also needs $4A97 (Cadorna's chambers) unpaid and $4ABE "
+       "(Cadorna exposed) below 254",
+    5: "also needs Sokal Keep paid and $4A9B (the Bishop) unfinished",
+    6: "also needs Sokal Keep paid",
+    12: "also needs Sokal Keep paid",
+    13: "also needs $4A98 (the envoy) unpaid, and either $4ABE "
+        "(Cadorna exposed) or $4A97 (his chambers) paid",
+    14: "also needs $4ABE (Cadorna exposed) at 254 or more",
+    15: "also needs $4A9A (the council meeting) unfinished",
+}
+
+#: The one commission that settles more than one ledger entry, and its noun.
+UNITS = {2: "books recovered"}
+
+
+@dataclass(frozen=True)
+class Commission:
+    """One job: the clerk's words for it, and the ledger it settles."""
+
+    name: str
+    ledger: tuple[int, ...]
+    order: int | None                   # board candidate, where there is one
+    unit: str | None = None
+
+
+def _table() -> tuple[Commission, ...]:
+    """Board candidates joined to the entries they settle, then the rest.
+
+    Candidate 9 is dropped: it settles nothing and an unconditional `GOTO` puts
+    it beyond reach, so it is not a commission. The panel's footnote says so.
+    """
+    out, claimed = [], set()
+    for offer in book.BOARD:
+        if not offer.ledger:
+            continue
+        out.append(Commission(offer.text, offer.ledger, offer.order,
+                              UNITS.get(offer.order)))
+        claimed |= set(offer.ledger)
+    for index in range(book.LEDGER_COUNT):
+        if index not in claimed:
+            out.append(Commission(
+                UNBOARDED.get(index, book.ledger_name(index)), (index,), None))
+    # By first ledger index, which is roughly the plot's own order.
+    return tuple(sorted(out, key=lambda c: min(c.ledger)))
+
+
+COMMISSIONS = _table()
+
+
+def _state(commission, entries, on_board) -> str | None:
+    """The one word, or `None` for a commission the party has not met."""
+    values = [entries[i].value for i in commission.ledger]
+    if all(v == book.PAID_VALUE for v in values):
+        return book.PAID
+    if any(v == book.DONE for v in values):
+        return book.REWARD_WAITING
+    if any(values):                     # a marker, or some but not all paid
+        return book.IN_PROGRESS
+    if commission.order in on_board:
+        return OFFERED
+    return None
+
+
+def _name(commission, word) -> str:
+    """The clerk's own words, whichever of his two sets is the true one.
+
+    Before it is done, the board's imperative -- "clear the slums". Once it is
+    done, his payment speech -- "slums cleared" -- which is the better name and
+    is only ever shown over a job that really is finished. Putting the speech on
+    an unfinished row is the label that started this redesign, and the many-entry
+    commission keeps the board's text because it has six speeches, not one.
+    """
+    if word in (book.PAID, book.REWARD_WAITING) and len(commission.ledger) == 1:
+        return book.LEDGER[commission.ledger[0]][0] or commission.name
+    return commission.name
+
+
+def _note(commission, entries) -> str:
+    """The one fact a multi-entry commission needs on its face."""
+    if not commission.unit:
+        return ""
+    total = len(commission.ledger)
+    done = sum(entries[i].value >= book.DONE for i in commission.ledger)
+    return f"{done} of {total} {commission.unit}" if 0 < done < total else ""
+
+
+def _board_line(commission, on_board, open_gates) -> str:
+    if commission.order is None:
+        return "no candidate on the clerk's board offers this one"
+    where = f"candidate {commission.order} on ECL08's board at $A84D"
+    if commission.order in on_board:
+        return f"{where}: the clerk raises it on the next visit"
+    if commission.order in open_gates:
+        return f"{where}: its gate is open, but the clerk offers three a visit"
+    return f"{where}: its gate is shut"
+
+
+def _tip(commission, entries, on_board, open_gates) -> str:
+    lines = [commission.name, _board_line(commission, on_board, open_gates)]
+    if commission.order in GATE_NOTES:
+        lines.append(f"  {GATE_NOTES[commission.order]}")
+    many = len(commission.ledger) > 1
+    for index in commission.ledger:
+        entry = entries[index]
+        line = f"ledger {index} at ${entry.address:04X} = {entry.value}"
+        speech = book.LEDGER[index][0]
+        if many:
+            lines.append(f"{line} ({entry.state})"
+                         + (f' - "{speech}"' if speech else ""))
+            continue
+        lines.append(line)
+        if speech:
+            lines.append(f'  the clerk pays for it as "{speech}"')
+        if entry.source:
+            lines.append(f"  written by {entry.source}")
+        if entry.major:
+            lines.append("  counts towards commissions completed")
+    if many:
+        sources = {entries[i].source for i in commission.ledger}
+        if len(sources) == 1 and sources != {None}:
+            lines.append(f"written by {sources.pop()}")
+        if any(entries[i].major for i in commission.ledger):
+            lines.append("counts towards commissions completed")
+    return "\n".join(lines)
+
 
 def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
     lab = QLabel(text)
@@ -63,38 +211,52 @@ def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
 
 
 class Row(QWidget):
-    """One line: what it is on the left, where it stands on the right."""
+    """One commission: its name, where it stands, and a note if it needs one."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        box = QHBoxLayout(self)
+        box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(6)
+        box.setSpacing(0)
+
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(6)
         self.what = _label(size=8)
         self.what.setWordWrap(True)
         self.what.setSizePolicy(QSizePolicy.Policy.Expanding,
                                 QSizePolicy.Policy.Preferred)
         self.state = _label(size=8, muted=True)
-        box.addWidget(self.what, 1)
-        box.addWidget(self.state, 0, Qt.AlignmentFlag.AlignTop)
+        top.addWidget(self.what, 1)
+        top.addWidget(self.state, 0, Qt.AlignmentFlag.AlignTop)
+        box.addLayout(top)
 
-    def show_row(self, what: str, state: str = "", tip: str = "") -> None:
+        self.note = _label(size=7, muted=True)
+        self.note.setWordWrap(True)
+        box.addWidget(self.note)
+
+    def show_row(self, what: str, state: str = "", tip: str = "",
+                 note: str = "", dim: bool = False) -> None:
         self.what.setText(what)
+        self.what.setStyleSheet(f"color: {MUTED.name()}" if dim else "")
         self.state.setText(state)
+        self.note.setText(note)
+        self.note.setVisible(bool(note))
         self.setToolTip(tip)
         self.show()
 
 
 class Group(QFrame):
-    """A heading and its rows. Hidden entirely when it has none."""
+    """Rows, under a heading where there is one. Hidden when it has none."""
 
-    def __init__(self, heading: str, parent=None):
+    def __init__(self, heading: str = "", parent=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.NoFrame)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(2)
         self.heading = _label(heading, bold=True, size=8)
+        self.heading.setVisible(bool(heading))
         box.addWidget(self.heading)
         self._box = box
         self._rows: list[Row] = []
@@ -109,44 +271,41 @@ class Group(QFrame):
         return self._rows[index]
 
     def show_rows(self, rows) -> None:
-        """`rows` is (text, state, tooltip) triples."""
-        for i, (what, state, tip) in enumerate(rows):
-            self._row(i).show_row(what, state, tip)
+        """`rows` is (text, state, tooltip) triples, or five-tuples with the
+        sub-line and whether to draw the name muted."""
+        for i, row in enumerate(rows):
+            self._row(i).show_row(*row)
         for row in self._rows[len(rows):]:
             row.hide()
         self.setVisible(bool(rows))
 
+    def visible_rows(self) -> list[Row]:
+        return [r for r in self._rows if r.isVisibleTo(self)]
 
-def _entry_rows(entries):
-    return [(e.name, "", _entry_tip(e)) for e in entries]
 
+def commission_rows(flags) -> list[tuple]:
+    """One tuple per commission the party has met, in plot order.
 
-def _offer_tip(offer) -> str:
-    """Which ledger entries this offer would settle, by name.
-
-    The link is what stops the two halves of the panel reading as two different
-    commissions: `ECL08`'s gate for this candidate is a test on these bytes.
+    `(name, state word, tooltip, sub-line, draw the name muted)`. A commission
+    with an untouched ledger that the clerk is not raising is left out.
     """
-    tip = f"offer {offer.order} on the board at ECL08 $A84D"
-    if offer.ledger:
-        settles = ", ".join(f"{i} ({book.ledger_name(i)})" for i in offer.ledger)
-        tip += f"\nsettles ledger {settles}"
-    else:
-        tip += "\nsettles no ledger entry"
-    return tip
-
-
-def _entry_tip(entry) -> str:
-    tip = f"ledger {entry.index} at ${entry.address:04X} = {entry.value}"
-    if entry.source:
-        tip += f"\nfinished by {entry.source}"
-    if entry.major:
-        tip += "\ncounts towards commissions completed"
-    return tip
+    state = book.read(flags)
+    entries = {e.index: e for e in state.ledger}
+    on_board = {o.order for o in state.offers}
+    open_gates = {o.order for o in book.offered(flags, limit=16)}
+    rows = []
+    for commission in COMMISSIONS:
+        word = _state(commission, entries, on_board)
+        if word is None:
+            continue
+        rows.append((_name(commission, word), word,
+                     _tip(commission, entries, on_board, open_gates),
+                     _note(commission, entries), word == book.PAID))
+    return rows
 
 
 class CommissionsPanel(QWidget):
-    """The whole log: what is on offer, what is under way, what is finished.
+    """The whole log: one row per commission, and the summonses under it.
 
     One entry point -- `update_from(source)`. Nothing here writes.
     """
@@ -173,14 +332,20 @@ class CommissionsPanel(QWidget):
         column.addWidget(self.completed)
 
         self.groups = {
-            "available": Group("Available from the clerk"),
-            "progress": Group("Working towards"),
-            "waiting": Group("Finished - reward waiting"),
-            "paid": Group("Finished - paid"),
+            "commissions": Group(),
             "summons": Group("Summoned to"),
         }
         for group in self.groups.values():
             column.addWidget(group)
+
+        self.footnote = _label(
+            "One board slot is withdrawn: the clerk never reaches it and it "
+            "settles nothing.", muted=True, size=7)
+        self.footnote.setWordWrap(True)
+        self.footnote.setToolTip(
+            "ECL08 $A84D, candidate 9: an unconditional GOTO $A890 jumps past "
+            "its own body, so no party can be offered it.")
+        column.addWidget(self.footnote)
         column.addStretch(1)
 
         scroll = QScrollArea()
@@ -211,21 +376,9 @@ class CommissionsPanel(QWidget):
         self.set_message("")
         self.completed.setText(f"Commissions completed: {state.completed}")
 
-        self.groups["available"].show_rows(
-            [(o.text, "", _offer_tip(o)) for o in state.offers]
-            or [("the clerk has nothing to offer", "", "")])
-        # Sorted by ledger index throughout, which is roughly the plot's order.
-        on_board = {i for o in state.offers for i in o.ledger}
-        self.groups["progress"].show_rows(
-            [(e.name, f"marker {e.value}"
-              + ("  on the board" if e.index in on_board else ""),
-              _entry_tip(e)
-              + ("\nthe clerk is offering this same byte: it is one "
-                 "commission in one state, not two" if e.index in on_board
-                 else ""))
-             for e in state.in_progress])
-        self.groups["waiting"].show_rows(_entry_rows(state.reward_waiting))
-        self.groups["paid"].show_rows(_entry_rows(state.paid))
+        self.groups["commissions"].show_rows(
+            commission_rows(flags)
+            or [("the clerk has nothing on the books for this party", "", "")])
         self.groups["summons"].show_rows(
             [(a.name, a.state, f"${a.address:04X} = {a.value}")
              for a in state.outstanding])
