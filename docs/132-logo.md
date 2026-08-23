@@ -7,9 +7,9 @@ use something from Font Awesome."*
 The mark is Font Awesome's `hat-wizard` on an indigo tile. Donald, 2026-08:
 *"Change the logo icon used to the wizard hat from the font awesome set."* It
 is generated from `ui/icons.py`, so it cannot drift from the glyph the program
-paints, and there is no artist to wait for. §5 is what shipped, §6 is the
-small-size problem it brought with it, and §1 and §2 are the brief for the
-artist, when there is one.
+paints, and there is no artist to wait for. §5 is what shipped, §6 is the gap
+between cone and brim and why it is left alone, and §1 and §2 are the brief for
+the artist, when there is one.
 
 ---
 
@@ -22,23 +22,53 @@ artist, when there is one.
 * **Font Awesome as an app icon is legal.** CC BY 4.0 is satisfied by the
   credit in the README and in Help > About — the attribution does not have to
   be *on* the icon, which is as well, because an `.ico` has nowhere to carry
-  one. The About box also says the drawing was changed, which the licence
-  requires and §6 is the change. What CC BY does not grant is exclusivity:
-  this is a mark anyone else may also ship. §3.
-* **The brim never touches the cone, at any size.** That is Fonticons'
-  drawing, not a fault — from 22 px up the gap reads as a gap and the icon is
-  a hat resting on a table. It is a fault at 16 and 20, where both edges land
-  on part-covered pixels and the icon is a fin over a grey smear, so those two
-  sizes slide the bar up until it meets the cone. §6.
-* **What it looks like at 16 px, honestly.** A white leaning cone with two
-  dark nicks in it, flaring into a bar, inside a rounded indigo square. One
-  connected mass — the bar `109` sets. The sparkles are what make it a hat
-  rather than a fin, and they are two dark pixels each at that size, so it is
-  legible without being self-evident. It is unmistakable from 32 up.
+  one. What CC BY does not grant is exclusivity: this is a mark anyone else may
+  also ship. §3.
+* **The drawing is not modified.** It is recoloured and placed on a tile, and
+  the path data is Fonticons', point for point, at every size. §6.
+* **The brim never touches the cone, at any size.** That is their drawing, not
+  a fault: a hat resting on a table. It is tightest at 16, where the gap is
+  about a pixel. §6.
+* **What it looks like at 16 px, honestly.** A white leaning cone with two dark
+  nicks in it, over a short white bar, inside a rounded indigo square. The
+  sparkles are what make it a hat rather than a fin, and they are two dark
+  pixels each at that size, so it is legible without being self-evident. It is
+  unmistakable from 32 up.
 
 ---
 
-## 1. Every asset, with real sizes
+## 1. Which pixel sizes, and which of them matter
+
+Donald asked. Every size the program or a packager actually asks for, and
+whether anything is lost by getting it wrong.
+
+| size | where it is used | does it matter |
+|---|---|---|
+| **16** | Windows title bar, Alt-Tab, Explorer's List and Details views, the taskbar with small buttons on | **yes** — the smallest anyone ever sees, and the first one to look at |
+| **20** | Windows' 16 px slots at 125 % display scaling | on a scaled laptop screen, yes; nothing else asks for it |
+| **22** | GNOME's panel, via the hicolor theme | on GNOME, yes; no Windows path wants it |
+| **24** | Windows' 16 px slots at 150 %; KDE's panel, via hicolor | yes, for those two |
+| **32** | the Windows taskbar button at 100 %, and the desktop shortcut | **yes** — with 16, the pair that matter most |
+| **40** | Windows' 32 px slots at 250 % scaling | rarely; conventional, and cheap to render |
+| **48** | Explorer's Medium and Large icon views, the shell's default shortcut size, hicolor | yes — this is the icon in a folder window |
+| **64** | Windows' 32 at 200 % scaling, hicolor, **and Help > About on a 1× display** | yes |
+| **128** | Help > About on a 2× display, and hicolor's large slot | yes on a HiDPI screen |
+| **192** | Help > About on a 3× display | painted on demand by `appicon.pixmap`; nothing is stored |
+| **256** | Explorer's Extra Large view and the file's Properties sheet, hicolor, and `assets/wish.png` for a README | yes, and it is the one size anyone looks at closely |
+
+The two committed containers do not hold the same list, and that is deliberate:
+`wish.ico` carries 16, 20, 24, 32, 40, 48, 64 and 256 because those are the
+sizes Windows asks for, and the hicolor tree carries 16, 22, 24, 32, 48, 64,
+128 and 256 because those are the freedesktop directories. 22 means nothing to
+Windows; 20 and 40 mean nothing to GNOME. `appicon.WINDOW_SIZES` — what Qt gets
+for the running window — is the union of the useful ones.
+
+Every one of them is **rendered from the vector at its own size**, never
+downscaled from a bigger one.
+
+---
+
+## 1b. Every asset, with real sizes
 
 This is the table to hand an artist. One master vector; everything else is a
 size-tuned export from it, and the small ones are **tuned, not scaled** — see
@@ -86,7 +116,7 @@ sheet: **one connected silhouette, every feature at least about 64 units in the
 640 box** — a tenth of the width, which is 1.6 px at 16. The failure that kills
 a glyph is *separation*, not mush: `hat-wizard`'s brim stops touching its cone
 and the icon reads as a shark's fin. That is the app icon's own glyph, and §6
-is what had to be done about it at 16 and 20.
+is why it is shipped as drawn regardless.
 
 | reads at 16 | does not |
 |---|---|
@@ -122,9 +152,9 @@ distributed: name the creator (Fonticons, Inc.), name the licence, link to it,
 link to the source, and say if you changed it. It does **not** have to appear on
 the icon or in the icon file — "any reasonable manner for the medium" is the
 licence's own wording, and a credit in an About box is the accepted form for
-software. **wish already discharges this**, in two places, and the About box
-now also says the drawing was changed — §6 — which is the clause a recoloured,
-part-rearranged glyph brings into play.
+software. **wish already discharges this**, in two places. There is no
+"changed the drawing" clause to answer, because the drawing is not changed: the
+glyph is recoloured and placed, and the path data is theirs, point for point.
 
 Two costs, accepted rather than avoided:
 
@@ -151,13 +181,13 @@ rejection stands where it was made: **the map's magic-user icon is still ours**,
 because at 13 px in a map cell the brim comes away and the glyph is a fin. An
 app icon is a different job — 16 is the smallest it is ever drawn, it sits on
 its own tile rather than beside a wall, and the sizes that matter most are 32
-and up. §6 is what the two smallest sizes cost.
+and up. §6 is the gap between cone and brim, which is left as drawn.
 
 Everything already available, judged as a logo:
 
 | candidate | source | as an app icon |
 |---|---|---|
-| **`hat-wizard`** | Font Awesome | **chosen** — Donald's call; §6 for the two smallest sizes |
+| **`hat-wizard`** | Font Awesome | **chosen** — Donald's call; drawn as Fonticons drew it, §6 |
 | `wizard-hat` | ours | the previous mark, and still the map's magic-user glyph |
 | `sword` | ours | says combat; the program does not do combat |
 | `swords` | ours | reads as a starburst at small sizes, and already means "encounter" on the map |
@@ -216,28 +246,42 @@ committing it keeps the release a single command. `tests/test_appicon.py`
 re-renders every artefact and compares, so a change to the path data that
 nobody regenerated fails the build instead of shipping the old drawing.
 
-**The comparison is pixels, not bytes**, and it is worth saying why. It was
-bytes, and CI went red on every runner with the same six names — `wish.ico`,
-`wish.png`, and the 22, 48, 64 and 256 hicolor PNGs — while 16, 24, 32 and 128
-came back byte-identical on all of them. That split is the diagnosis. A
-rasterising difference cannot be selective: the smallest edit worth catching
-moves pixels at *every* size (one path point by 1/640 moves 10 px at 16 and
-218 at 256), and one ulp on the scale factor moves none anywhere. A
-compressor's output differs exactly where the data leads it to — and the
-compressor is not ours. `ldd libQt6Gui.so.6` resolves `libpng16.so.16` and
-`libz.so.1` to the *host's* copies on Linux; the Windows wheel bundles its own.
-Qt promises the pixels, so the pixels are what is asserted, and the committed
-bytes only have to decode to them. `tools/genicons.py --check` uses the same
-`differences()` and says how many pixels moved and by how much.
+**The comparison is pixels within a tolerance**, and it took two goes to get
+there. It was **bytes**, and CI went red on every runner: a PNG's bytes are
+libpng's and zlib's, `ldd libQt6Gui.so.6` resolves both to the *host's* copies
+on Linux, and the Windows wheel bundles its own. Qt promises the pixels, not
+the file. So it became **exact pixels**, and that went red too, on all four
+runners at once — 8 of 65536 pixels at 256, 8 of 484 at 22, 1 of 4096 at 64,
+every one of them out by 1 of 255. Qt's rasteriser does not round the last bit
+of an antialiased edge the same way on every host either.
 
-**The tests measure the drawing, not the file list.** The 16 is rasterised and
-flood-filled to prove it is one connected piece — the failure that killed
-`hat-wizard` on the map — its widest row is checked to be the bottom one and at
-least 8 px across, so the brim is still there, and the 16 stored in the `.ico`
-is compared pixel for pixel against a fresh 16 to prove it is not a squeezed
-256. `test_the_brim_is_slid_up_below_22_and_left_where_it_was_above` is §6 as
-an assertion: one piece at 16 and 20, two pieces with a whole row of tile
-between them at 22, 24, 32 and 48.
+So the comparison allows **2 of 255 on any channel, and 10 % of the pixels
+touched at all** — `genicons.TOLERANCE` and `genicons.MOST`. Both bounds are
+measured, not chosen:
+
+| perturbation | worst pixel | pixels moved |
+|---|---|---|
+| the CI rounding noise | 1 of 255 | up to 1.65 % of a square |
+| `INSET` 0.10 → 0.1001 | 4 of 255 at 24, 12 at 256 | 4.5 % at 24 |
+| `RADIUS` 0.18 → 0.1801 | 3 of 255 at 20, 127 at 256 | 5.0 % at 20 |
+| one path point moved by 1/640 | 2 of 255 at 16, 35 at 256 | 1.5 % at 20 |
+| a colour changed by one unit of 255 | 6 of 255 | **70 % at every size** |
+
+The magnitude bound has six times the room the noise needs and still catches
+every edit above at one size or another; the 10 % bound is what catches the
+last row, where a great many pixels move by very little. `tools/genicons.py
+--check` uses the same `differences()` and prints both numbers.
+`test_the_comparison_still_catches_a_change_to_the_drawing` re-runs the first
+three rows as a test, so the tolerance cannot quietly widen.
+
+**The tests measure the drawing, not the file list.** The tile is checked to be
+opaque on all four sides and rounded at the corners, the hat is checked to clear
+the edge at 16, its widest row is checked to be the bottom one and at least 8 px
+across so the brim is still there, and the 16 stored in the `.ico` is compared
+against a fresh 16 to prove it is not a squeezed 256.
+`test_the_brim_stays_where_font_awesome_put_it_at_every_size` is §6 as an
+assertion: two pieces, with at least one clear row of tile between them, from 16
+to 256.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
@@ -257,7 +301,7 @@ executables, audio and PDFs, which is the part that was ever about the game.
 
 ---
 
-## 6. The brim, and the two sizes it does not survive
+## 6. The brim, and why it is left alone
 
 Font Awesome draw `hat-wizard` as three subpaths: the cone, with a four-point
 sparkle notched out of its foot; a second sparkle; and the brim, a rounded bar.
@@ -267,35 +311,29 @@ the drawing's height, at every size. That is the drawing, not a defect: it is a
 hat resting on a table.
 
 Rasterised on the tile, with the glyph inset 10 %, the gap is `0.077 × size`
-pixels. Measured:
+pixels — 1.2 px at 16, 1.7 at 22, 2.5 at 32 and rising. At 16 and 20 it is
+tight enough that the rows either side of it are part-covered, so the gap reads
+as a smudge rather than as a line.
 
-| size | what the gap does | what the bar does |
-|---|---|---|
-| **16** | 1.2 px — no row is pure tile; cone and bar smear together | never reaches full paper: a grey band |
-| **20** | 1.5 px — two part-covered rows, no clean one | solid, but the gap under it is a smudge |
-| **22** | 1.7 px — **one whole row of tile** | solid, two rows |
-| **24** | 1.8 px — one whole row | solid, two rows |
-| **32** and up | 2.5 px and rising | solid, and the gap reads as deliberate |
+**It is shipped that way regardless.** An earlier pass cut the bar off the path
+at those two sizes and slid it up until it met the cone. Donald — *"Is the
+agent modifying the art? We don't want to change the art. We should not be
+changing the art."* That is the rule in `CLAUDE.md`: an icon from somebody
+else's set is drawn the way they drew it, and if it does not work at a size the
+answer is a different icon, or not using it at that size — never nudging the
+geometry. Recolouring it and putting it on a tile is composition; moving a
+point is making art.
 
-So `ui/appicon.py` carries `CLOSE_BELOW = 22`. At 16 and 20 the bar is cut off
-the path and translated up by the 47.9 units of the gap, so it meets the cone's
-foot and the silhouette is one connected mass; the glyph is then centred on its
-own (now 48 units shorter) ink, so it does not ride high. At 22 and above the
-path is drawn exactly as Fonticons wrote it.
+So `ui/appicon.py` has no size-dependent geometry at all — `glyph()` hands back
+`painter_path("hat-wizard")` and that is the whole of it — and
+`tests/test_appicon.py::test_the_brim_stays_where_font_awesome_put_it_at_every_size`
+holds it there: two pieces, with at least one clear row of tile between cone and
+bar, at 16, 20, 22, 24, 32, 48, 128 and 256.
 
-**Three treatments were rendered and looked at before this one was picked.**
+One finding from the experiments is worth keeping. Filling the sparkles in, for
+a cleaner small silhouette, is **actively worse**: the notch in the cone's foot
+is not decoration, and without it the glyph is precisely the shark's fin `109`
+named.
 
-| treatment | verdict |
-|---|---|
-| leave it verbatim everywhere | 16 is a fin over a grey smear. No. |
-| slide the bar up **below 22** | **chosen.** Fixes the two that fail, changes nothing that works |
-| fill the sparkles in as well, for a clean small silhouette | **actively worse** — the sparkles are what make it a hat. Without them it is precisely the shark's fin `109` named |
-| keep `wizard-hat` at 16 and 22 and the FA hat above | two different marks a size apart, for one size that needed help |
-
-The third row is the finding worth keeping: the notch in the cone's foot is not
-decoration. Fill it and the glyph loses the only feature that distinguishes a
-wizard's hat from a dorsal fin.
-
-`tests/test_appicon.py::test_the_brim_is_slid_up_below_22_and_left_where_it_was_above`
-asserts all of it: one piece at 16 and 20; two pieces with at least one whole
-row of tile between them at 22, 24, 32 and 48.
+If 16 px is one day judged unacceptable, the remedy is a different mark — not
+an edited one.
