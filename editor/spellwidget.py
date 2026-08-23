@@ -43,6 +43,11 @@ MEMORISED_SIZE = 16          # the packed list at 0x020
 IN_SPELLBOOK = range(1, SPELLBOOK_SIZE * 8)
 UNKNOWN = QColor("#b03a2e")  # memorised but not in the spellbook
 
+# The Spells box is shown for every character, caster or not, because the
+# sheet's boxes may not come and go as the roster moves. So the box has to say
+# why it is empty; an empty disabled box with no explanation reads as broken.
+NO_SPELLS = "This character casts no spells."
+
 
 def _spell_text(sid: int, names: dict[int, str] | None) -> str:
     return describe(sid, names or {})
@@ -338,7 +343,7 @@ class MemorisedEditor(SpellEditor):
         sid = row.data(Qt.ItemDataRole.UserRole)
         stray = bool(self._known) and sid not in self._known
         row.setForeground(QBrush(UNKNOWN) if stray else QBrush())
-        row.setToolTip("memorised but not in the spellbook" if stray else "")
+        row.setToolTip("memorized but not in the spellbook" if stray else "")
 
     def _add_chosen(self) -> None:
         sid = self.choice.currentData()
@@ -381,7 +386,7 @@ class MemorisedEditor(SpellEditor):
         counts = [sum(1 for s in ids if (spell_group(s) or ("", 0))[1] == lv)
                   for lv in (1, 2, 3)]
         if not cap:
-            text = f"{len(ids)} memorised; this character casts no spells"
+            text = NO_SPELLS if not ids else f"{len(ids)} memorized. {NO_SPELLS}"
         else:
             parts = []
             for cls, allowed in cap.items():

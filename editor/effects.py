@@ -38,7 +38,7 @@ class EffectsModel(QAbstractTableModel):
     # No code column. The number is what the census is indexed by and what a
     # tooltip falls back to for a code nobody has named; on the sheet it is a
     # second spelling of the name beside it.
-    HEADERS = ("Slot", "Effect")
+    HEADERS = ("Slot", "Trait")
 
     def __init__(self, raw: bytes = b"", parent=None):
         # Parented, so the C++ view and its model die together. An unparented
@@ -84,7 +84,7 @@ class EffectsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ToolTipRole and code:
             named = NAMES.get(code)
             if named is None:
-                return f"code {code}; the effect census does not name it"
+                return f"code {code}; the trait census does not name it"
             return f"{named[0]} ({named[1]})"
         return None
 

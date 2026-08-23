@@ -201,7 +201,7 @@
         <item><widget class="SpellbookEditor" name="field_spells_known" /></item>
        </layout></item>
        <item><layout class="QVBoxLayout" name="layout_memorised">
-        <item><widget class="QLabel" name="label_spells_memorised"><property name="text"><string>Memorised</string></property></widget></item>
+        <item><widget class="QLabel" name="label_spells_memorised"><property name="text"><string>Memorized</string></property></widget></item>
         <item><widget class="MemorisedEditor" name="field_spells_memorised" /></item>
        </layout></item>
       </layout></item>
@@ -213,7 +213,7 @@
      </layout>
     </widget></item>
        <item><widget class="QGroupBox" name="box_effects">
-      <property name="title"><string>Active effects</string></property>
+      <property name="title"><string>Character Traits</string></property>
       <property name="minimumHeight"><number>240</number></property>
       <layout class="QVBoxLayout" name="layout_effects">
        <item><widget class="EffectsView" name="field_item_effects" /></item>

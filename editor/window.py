@@ -219,14 +219,22 @@ def _fit_height(view) -> None:
     list whose whole point is that you can see it."""
     view.setMinimumHeight(_content_height(view))
 
-# Which class bits a group box needs before it is worth showing. A fighter
-# shown eight thief-skill zeros invites somebody to type in them, and a page of
-# zeros reads as data when it is really "does not apply". Keyed by objectName
-# like everything else on the form, so the boxes can be moved in Designer.
+# Which class bits a group box applies to, and what to say when it does not.
+# These two used to be hidden for a character without the class, and Donald:
+# "The layout of the form should not change when we navigate the roster. It
+# should stay the same, so people know where to look for things at all times."
+# So they are always on the sheet and greyed instead -- a fighter's eight
+# thief-skill zeros still must not read as data somebody should type in.
+# Keyed by objectName like everything else on the form, so the boxes can be
+# moved in Designer.
 CLASS_MAGIC_USER, CLASS_CLERIC, CLASS_THIEF = 1, 2, 4
 BOX_NEEDS_CLASS = {
-    "box_thief_skills": CLASS_THIEF,
-    "box_spells": CLASS_MAGIC_USER | CLASS_CLERIC,
+    "box_thief_skills": (CLASS_THIEF,
+                         "Thief skills belong to a thief; this character is "
+                         "not one, and the game never reads these bytes."),
+    "box_spells": (CLASS_MAGIC_USER | CLASS_CLERIC,
+                   "This character casts no spells, so there is no spellbook "
+                   "and nothing to memorize."),
 }
 
 
@@ -917,7 +925,12 @@ class EditorWindow(QMainWindow):
         self._loading = False
 
     def _show_boxes(self, record) -> None:
-        """Hide the boxes this character has no use for.
+        """Grey the boxes this character has no use for. Hide none of them.
+
+        Every box is on the sheet for every character, so nothing below one
+        moves when the selection does. A box the class cannot use is disabled
+        -- which also keeps `_flush` off it, so a fighter's spell bytes go
+        back exactly as they were read -- and says why in its tooltip.
 
         A box that Designer no longer has is simply not there -- the same rule
         as every other optional widget on the form.
@@ -926,10 +939,13 @@ class EditorWindow(QMainWindow):
             bits = int(record.get("class_bits") or 0)
         except Exception:
             bits = 0
-        for name, needed in BOX_NEEDS_CLASS.items():
+        for name, (needed, why) in BOX_NEEDS_CLASS.items():
             box = self._child(name)
-            if box is not None:
-                box.setVisible(bool(bits & needed))
+            if box is None:
+                continue
+            applies = bool(bits & needed)
+            box.setEnabled(applies)
+            box.setToolTip("" if applies else why)
 
     def _apply_read_only(self) -> None:
         """Grey what must not be edited, and say why in the tooltip."""

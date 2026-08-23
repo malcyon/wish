@@ -737,9 +737,9 @@ class Ui_CharacterWindow(object):
         self.label_traits.setText(_translate("CharacterWindow", "Select an item"))
         self.box_spells.setTitle(_translate("CharacterWindow", "Spells"))
         self.label_spells_known.setText(_translate("CharacterWindow", "Spellbook"))
-        self.label_spells_memorised.setText(_translate("CharacterWindow", "Memorised"))
+        self.label_spells_memorised.setText(_translate("CharacterWindow", "Memorized"))
         self.label_spells_castable.setText(_translate("CharacterWindow", "Castable per level"))
-        self.box_effects.setTitle(_translate("CharacterWindow", "Active effects"))
+        self.box_effects.setTitle(_translate("CharacterWindow", "Character Traits"))
 from editor.effects import EffectsView
 from editor.iconwidget import IconEditor
 from editor.spellwidget import MemorisedEditor, SpellbookEditor

@@ -107,27 +107,35 @@ through both `pyuic6` and `loadUi`.
 The first pass buried sixty-odd fields behind nine inner tabs, and that was
 wrong: you could not see a character. `QGroupBox`es on a `QScrollArea` replaced
 them -- Character, Abilities, Combat, Experience and levels, Thief skills,
-Money, Appearance, Inventory, Item traits, Active effects, Spells -- two columns
+Money, Appearance, Inventory, Item traits, Character Traits, Spells -- two columns
 of form boxes with the wide ones spanning the width beneath. A group box draws a titled border, which is
 the delineation the tabs were standing in for, and Designer treats it like any
 other container, so the rearrange-in-Designer loop is untouched.
 
-**A box with nothing in it that applies is hidden**, from the class bits:
-`box_thief_skills` needs bit 4 and `box_spells` needs bit 1 or 2. A fighter
-shown eight thief-skill zeros invites somebody to type in them. Hiding is a
-display decision only -- the bytes behind a hidden box are written back
-untouched, which
-`tests/test_editor.py::test_a_hidden_box_is_still_written_back_untouched` pins.
+**No box comes or goes as the roster moves.** Donald: "The layout of the form
+should not change when we navigate the roster. It should stay the same, so
+people know where to look for things at all times." `box_thief_skills` and
+`box_spells` used to be hidden for a character without the class bit, which
+moved everything under them -- the Spells box vanishing for a fighter made
+Character Traits jump up the column. They are now shown for everyone and
+**greyed** when the class cannot use them, with the reason in the box's
+tooltip; a non-caster's Spells box reads `This character casts no spells.`
+where the capacity line goes. Greying is a display decision only -- the bytes
+behind a greyed box are written back untouched, which
+`tests/test_editor.py::test_a_disabled_box_is_still_written_back_untouched`
+pins, and the invariant itself is
+`test_the_sheet_keeps_its_shape_across_the_roster`: same set of visible boxes,
+same sheet size hint, for every character on the disk.
 
 **The sheet explains nothing it can show instead.** Standing instruction: the
 form has to be obvious without help text beside it. What that cost:
 
 | gone | why |
 |---|---|
-| the `Code` column in Active effects | the number is the backend's index; the row already names the effect, and an unnamed code still falls back to `trait <n>` |
+| the `Code` column in Character Traits | the number is the backend's index; the row already names the effect, and an unnamed code still falls back to `trait <n>` |
 | `0x0AD — ten slots; racial abilities live here` | an address a player cannot use, a slot count the ten rows already show, and a claim the rows themselves make |
 | `Spellbook — what the character knows` | `Spellbook` |
-| `Memorised — what is prepared now` | `Memorised` |
+| `Memorised — what is prepared now` | `Memorized` |
 | `-- neither rule is enforced; the game may not agree` under the memorised list | the capacity note is a reading, not a warning; that the editor refuses nothing is [in the CLI doc](95-wish-cli.md) |
 | `Thief ` on eight labels, `Save ` on five | the group box already says `Thief skills` and `Saving throws` |
 | the record address in an effect row's tooltip | same reason as the label above it; the tooltip keeps the name and how sure of it we are |
@@ -157,7 +165,7 @@ therefore widen it by themselves when a Curse save is opened.
 132 px of edit field for a 303 px name, and two buttons that will not shrink.
 
 **Two boxes moved**, on Donald's word: Thief skills under Character in column
-one, Active effects under Spells in column four. That is the code's own
+one, Character Traits under Spells in column four. That is the code's own
 promise -- a box moves in Designer and nothing else changes -- and it balanced
 the columns: the sheet's content minimum went from 1389x1097 to 1668x886.
 

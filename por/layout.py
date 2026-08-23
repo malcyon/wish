@@ -207,7 +207,7 @@ _DECLARED: Sequence[Field] = (
     #   * 0xED (9) + CON 16 bonus (+2) = 11 = hp_max at 0x76.
     # Still PROBABLE, not CONFIRMED: none has yet survived our own
     # change-it-in-game-and-observe test.  Promote once an edit test covers them.
-    _field(0x020, 16, _RAW, "spells_memorised", "Spells memorised", _MAYBE,
+    _field(0x020, 16, _RAW, "spells_memorised", "Spells memorized", _MAYBE,
            "a packed list of memorised spell ids, highest spell level first. "
            "Ids are CONFIRMED against the game's own SPELLN00 table and "
            "against spells Donald memorised on purpose: 1 BLESS, 3 CURE LIGHT "
@@ -492,8 +492,15 @@ _DECLARED: Sequence[Field] = (
            "not the cleric's level: three level-5 clerics read 1, 4 and 6, and "
            "7TH LVL CLERIC reads 0. The population is PROBABLE, the reading of "
            "the value is a guess"),
-    _field(0x0AD, 10, _RAW, "item_effects", "Active effects", _MAYBE,
-           "ten slots holding active effect codes. **The namespace is named**: "
+    _field(0x0AD, 10, _RAW, "item_effects", "Character Traits", _MAYBE,
+           "ten trait slots -- racial abilities and readied passive items. "
+           "**Not the save's active effects**, which is what this field was "
+           "called until P3-EFFECTS.D64 was saved with twenty-six spells "
+           "running and every character's ten slots came out exactly as they "
+           "went in. Nothing here has a duration and nothing here expires; "
+           "the running effects are four 64-entry arrays in SAVEDGAME0 "
+           "(docs/133-active-effects.md). The two share one code namespace, "
+           "which is why one table names both. **The namespace is named**: "
            "the DOS guide enumerates ids 1-127 and por/traits.py carries the "
            "whole table, 44 of them CONFIRMED because a MON* record or a saved "
            "item carries the id on exactly the creature or item its meaning "

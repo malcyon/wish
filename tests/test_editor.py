@@ -664,24 +664,40 @@ def test_every_field_still_binds_after_the_conversion(app, save):
 
 @game_disks
 def test_a_fighter_is_shown_no_spellbook_and_no_thief_skills(app, save):
-    """Eight thief-skill zeros invite somebody to type in them."""
+    """Greyed, never hidden: the box stays where it is and says why it is off.
+
+    Eight thief-skill zeros still must not invite somebody to type in them.
+    """
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
+    thief, spells = w._child("box_thief_skills"), w._child("box_spells")
     # isHidden, not isVisible: nothing is visible until the window is shown.
     w.ui.roster.selectRow(5)                         # BRUTUS, a fighter
-    assert w._child("box_thief_skills").isHidden()
-    assert w._child("box_spells").isHidden()
+    assert not thief.isHidden() and not spells.isHidden()
+    assert not thief.isEnabled() and not spells.isEnabled()
+    assert "not one" in thief.toolTip()
+    assert "casts no spells" in spells.toolTip()
     w.ui.roster.selectRow(1)                         # LADY KATHERINE, mu/thief
-    assert not w._child("box_thief_skills").isHidden()
-    assert not w._child("box_spells").isHidden()
+    assert thief.isEnabled() and spells.isEnabled()
+    assert thief.toolTip() == "" and spells.toolTip() == ""
     w.ui.roster.selectRow(2)                         # ROLAND, a cleric
-    assert w._child("box_thief_skills").isHidden()
-    assert not w._child("box_spells").isHidden()
+    assert not thief.isEnabled()
+    assert spells.isEnabled()
 
 
 @game_disks
-def test_a_hidden_box_is_still_written_back_untouched(app, save):
-    """Hiding is a display decision. The bytes behind it are not ours to lose."""
+def test_a_non_caster_s_spells_box_says_why_it_is_empty(app, editor):
+    """A disabled box with nothing in it and nothing to read is a broken box."""
+    editor.ui.roster.selectRow(5)                    # BRUTUS, a fighter
+    book, memorised = editor._spell_widgets()
+    assert book.known() == []
+    assert memorised.ids() == []
+    assert memorised.capacity.text() == "This character casts no spells."
+
+
+@game_disks
+def test_a_disabled_box_is_still_written_back_untouched(app, save):
+    """Greying is a display decision. The bytes behind it are not ours to lose."""
     from editor.window import EditorWindow
     before = save.read_bytes()
     w = EditorWindow(str(save))
@@ -921,3 +937,33 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
     # No code column: the sheet names the effect, and the number survives only
     # where nobody has named it.
     assert "Code" not in m.HEADERS
+
+
+# --- the layout does not move ------------------------------------------------
+
+@game_disks
+def test_the_sheet_keeps_its_shape_across_the_roster(editor):
+    """Donald: "The layout of the form should not change when we navigate the
+    roster. It should stay the same, so people know where to look for things at
+    all times."
+
+    PORSAVE11 has a magic-user, a magic-user/thief and three fighters, so it
+    covers every combination the two class-conditional boxes ever had. No box
+    may come or go, and the sheet may not change the size it asks for.
+    """
+    from PyQt6.QtWidgets import QGroupBox
+
+    editor.resize(1875, 1030)
+    editor.show()
+    shapes = []
+    for row in range(len(editor.party)):
+        editor.ui.roster.selectRow(row)
+        boxes = {b.objectName() for b in editor.findChildren(QGroupBox)
+                 if b.isVisible()}
+        shapes.append((boxes, editor.ui.sheet.sizeHint()))
+    first = shapes[0]
+    assert all(s == first for s in shapes), [
+        (editor.party.member(i).name, sorted(s[0]), s[1])
+        for i, s in enumerate(shapes) if s != first]
+    assert "box_spells" in first[0]
+    assert "box_thief_skills" in first[0]
