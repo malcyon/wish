@@ -136,9 +136,11 @@ same order as the class bits. Across all twelve specimens a byte is non-zero
 exactly when its class bit is set. This is how **dual-classing** is represented:
 the old class stays frozen at its level while the new one advances.
 
-PROBABLE rather than CONFIRMED only because every specimen is level 1, so
-"level" is not yet distinguishable from "class present". One levelled character
-settles it.
+**CONFIRMED.** Twenty-nine trainings raised exactly the entry of the class
+trained and no other, and LADY KATHERINE came out magic-user 6 / thief 9 —
+two different non-zero entries, which is what separates the array from "the
+single class's level". `0x0A0` is the **maximum** of the array, written by
+`GEN $2021`. See [`135`](135-levelling.md).
 
 ### Inventory
 
@@ -501,6 +503,27 @@ moment a turn begins.
 The game never clears it, which is
 [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3, and
 `automap/actions.py`'s `ClearQuickfight` is the fix.
+
+---
+
+## What the trainer changes when a level is gained — FOUND, and closed
+
+Every field, and the routine that writes each one, is in
+[`135`](135-levelling.md); `por/levelup.py` reproduces the record the trainer
+produces byte for byte across all thirty-four before/after pairs measured in
+[`119`](119-test-party.md). The five that stood open here are answered:
+
+* **hit points** — `hp_max = hp_rolled + level x constitution bonus`, and
+  `hp_rolled` takes one roll of the class hit die (`GEN $20A7`), divided by the
+  number of classes and never below 4 for a single-class fighter;
+* **the saving-throw modifiers** — there are none stored. Five columns start at
+  20 and are cut by two per-column bitmasks off a level-1 row, then by
+  `constitution * 2 / 7` for a dwarf, gnome or halfling only;
+* **`spells_castable`** — the class table plus the wisdom bonus at `GEN $10AD`,
+  cleric in the high nibble;
+* **the thief skills** — `GEN $102E` plus a racial row at `$1076`, and
+  **nothing else**: no ability score is read;
+* **the magic-user's new spell** — a menu, not a roll. `GEN $215A`.
 
 ---
 

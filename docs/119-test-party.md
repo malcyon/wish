@@ -138,6 +138,14 @@ diff comes first; the generator is written from it; the six fall out.
 
 ## 3. The auto-level-up debug button
 
+**Superseded, and there is no need for a debug variant.** Reading the trainer's
+own routines out of `GEN` closed every blocker; `automap.actions.LevelUp` now
+writes what the training hall writes, and `por/levelup.py` reproduces the
+records this section's diffs produced byte for byte. See
+[`135`](135-levelling.md). The rest of this section is the reasoning that got
+there and the confidence table it argued from, both of which are still worth
+reading; it is no longer the plan.
+
 **Most of it already exists and deliberately refuses.** `automap/actions.py`
 carries a `LevelUp` action whose entire implementation is
 `level_up_blockers()` — a list, as data, of every field it cannot derive — and
@@ -406,8 +414,9 @@ Six of the blockers in §3's table are now answerable, and one is not:
 * **`spells_castable`** is the class table plus the wisdom bonus, and ROLAND's
   WIS 16 makes it visible: cleric 6 stores `50 50 20`, which is `3,3,2` plus
   `+2,+2,0`.
-* **The thief table** is measured for one half-elf with DEX 16, levels 1-9.
-  Race and dexterity are still folded into those numbers.
+* **The thief table** is `GEN $102E` plus a racial row at `$1076`, and
+  **race is the whole of the adjustment** -- `GEN $1FEC` reads no ability
+  score. The half-elf ladder measured here is those two rows added.
 * **`hp_max`** is derived after all, and only `hp_rolled` needs a die.
 * **`0x0A0`** is `max()` of the per-class array — settled by five magic-user
   levels on a thief 9 that never moved it.

@@ -3500,6 +3500,101 @@ Scratch: `work/analysis6/ecl6.py` and the extracted scripts in
 `work/amiga/c64ecl/`.
 
 
+## The trainer's own routine, and the end of the level-up blockers
+
+**The question.** `automap.actions.LevelUp` refused, and named five fields it
+could not derive: the hit-die roll, the saving-throw modifiers, the cleric's
+wisdom bonus, a thief skill table the project did not have, and whatever else
+the trainer touched that nobody had measured. Twenty-nine trainings had already
+been driven through the game's own school (`docs/119-test-party.md`), so the
+*effects* were known; what was missing was the rule behind each one.
+
+**What was done.** Not another emulator run: `GEN` is a file on `POOL3.D64` and
+the trainer is in it. `GEN $1B8C` is the fourteen-call sequence a level-up
+runs, and every routine it calls was read. The tables are all in
+`docs/135-levelling.md`; the five that closed the blockers are these.
+
+**Hit points are two fields and only one of them is a die.** `GEN $2037` rolls
+one die of the class's own size — `$20A7` holds `04 08 06 0A` in class-bit
+order — divides it by how many classes the character has (`$20AB`, indexed by
+`char_class` at `0x073`, which holds 1 for a single class and 2 or 3 for the
+multi-class codes), and never returns less than 1. Then:
+
+```
+$205A  CMP #$04
+$205C  BCS  $2067
+$205E  LDX  $6BEB        ; class_bits
+$2061  CPX  #$08         ; fighter, and nothing else
+$2063  BNE  $2067
+$2065  LDA  #$04
+```
+
+so **a single-class fighter never rolls below 4 on its d10**. SILAS's eight
+trainings gained 10, 5, 7, 8, 10, 8 and 4 — no number under 4, which had looked
+like luck. `$2079` then writes `hp_max = hp_rolled + level x constitution
+bonus`, from the AD&D table at `$247B` for anyone with a fighter bit and `$2486`
+for everyone else, consulted only from 15 up. That is why MALCYON, an
+18-constitution *magic-user*, gets 2 a level and not 4.
+
+**There are no saving-throw modifiers on the character.** `GEN $1F44` fills all
+five columns with 20, then for each class the character holds walks a level-1
+row at `$1FA2` and two per-column bitmasks at `$1FB6` and `$1FCA`, subtracting
+one for every set bit in either mask among the low `level - 1` bits, and keeps
+whichever class gives the lower number. Then `$2359`:
+
+```
+$2359  LDX  $6B72        ; race
+$235C  LDA  $2380,X      ; dwarf, gnome, halfling
+$235F  BEQ  $2380
+$2361  LDA  $6B18 / ASL A ; constitution * 2
+$236F  JSR  $3F04        ; / 7
+$2374  LDA $6B9A,X / SEC / SBC $4C / STA $6B9A,X   ; all five columns
+```
+
+`26 // 7` is 3, which is exactly why the dwarf MAGNUS read three lower than the
+human SILAS at every level. The "modifiers nobody has measured" were one
+division and a three-byte race flag.
+
+**And the two masks settle P76.** The fighter's fourth column carries mask
+`$0C` where its other four carry `$08`, so that column improves twice by level 4
+and once elsewhere: the game's own table gives a breath save of **15** at
+fighter 4 where AD&D 1st edition gives 16. `por/levels.py` was wrong, not the
+game. `por/derive.py` had the same species of error next door — its fighter
+THAC0 row was AD&D's grouped `20 20 18 18 …` where `GEN $1F1F` runs
+`20 19 18 17 …`, so every even fighter level was one out.
+
+**The thief table is race and nothing else.** `GEN $1FEC` copies eight bytes
+from `$102E + (level - 1) * 8` and then adds eight from `$1076 + (race - 1) * 8`.
+No ability score is read. `docs/119` had recorded LADY KATHERINE's ladder as
+"race and dexterity are in them"; only race is, and her numbers are the level
+rows plus the half-elf row `0 0 0 5 0 0 0 5` exactly.
+
+**The wisdom bonus is a table and a stack of shifts**, at `$10AD` and `$2108`,
+and it applies only where the class table already grants a slot at that spell
+level. ROLAND, wisdom 16, stores `50 50 20` at cleric 6 — `3,3,2` plus
+`+2,+2,0`. The table itself starts a point low against the rulebook; that is
+`docs/125-bug-notes.md` N13.
+
+**A magic-user chooses; it does not roll.** `GEN $215A` walks the 32-byte
+spellbook copy, keeps every id 1-55 it does not know whose level at `$268E` is
+at or below `(level + 1) // 2` and whose flag at `$226B` is 0 (magic-user
+rather than cleric), and puts the survivors on a menu. `$1FDE` has already
+written the *new* per-class level by then, so a magic-user reaching 3 is offered
+second-level spells at that same training — which is what a first replay got
+wrong. A cleric needs no menu: `$20CF` ORs its whole new spell level in.
+
+**The verification.** `por/levelup.py` was written from the routines and then
+replayed against the thirty-four before/after record pairs in `work/p18b/`,
+each one a 580-byte read either side of a real training. Given the roll the
+game made, **every pair comes out byte-identical** on every field except the
+three the action deliberately does not do: the 1000-gold fee and the platinum
+conversion, the heal to full, and the movement recompute.
+
+`tests/test_levels.py` now re-expands every table off the player's own `GEN`
+rather than trusting the longhand rows, which is the check that would have
+caught P76 the day it was typed.
+
+
 ## Planned, not yet run
 
 
