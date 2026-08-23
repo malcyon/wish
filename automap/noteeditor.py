@@ -21,6 +21,8 @@ The window owns the click that opens this; everything here is the popover.
 from __future__ import annotations
 
 import logging
+import pathlib
+import traceback
 
 from PyQt6.QtCore import QEvent, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -157,7 +159,21 @@ class NotePopover(QWidget):
         if kind is not None:
             _log("popover %s: %s (visible=%s, active=%s)",
                  self.square, kind, self.isVisible(), self.isActiveWindow())
+        if e.type() == QEvent.Type.Close:
+            # **Who called `close()`.** Three fixes have been reasoned from
+            # Linux and all three were wrong, because `Close` arrives here
+            # bare -- no mouse event, no focus change, the popover still
+            # active. This says whether Python called it, and from where: our
+            # own frames mean `accept` or `delete` fired; nothing but the event
+            # loop means Qt dismissed the popup itself, and the two want
+            # completely different fixes.
+            frames = [f for f in traceback.extract_stack()[:-1]
+                      if "noteeditor" not in f.filename or f.name != "event"]
+            _log("popover %s: closed from %s", self.square,
+                 " <- ".join(f"{pathlib.Path(f.filename).name}:{f.lineno} "
+                             f"{f.name}" for f in frames[-6:]) or "the event loop")
         return super().event(e)
+
 
     def choose(self, name: str) -> None:
         self.chosen = name
@@ -198,6 +214,7 @@ class NotePopover(QWidget):
         self.close()
 
     def keyPressEvent(self, event):
+        _log("popover %s: key %r", self.square, event.text())
         # A popup already closes on Escape; typing a type's letter picks it,
         # which is what makes the whole thing usable one-handed.
         letter = event.text().upper()

@@ -184,9 +184,15 @@ class MapCanvas(QWidget):
             # and on Windows one appearing or closing behind a `Qt::Popup`
             # deactivates it -- which is the popover vanishing the instant it
             # opened. See `mousePressEvent`.
-            if text and getattr(self.host, "_popover", None) is None:
+            open_already = getattr(self.host, "_popover", None) is not None
+            _notelog("canvas tooltip: text=%s, popover open=%s",
+                     bool(text), open_already)
+            if text and not open_already:
                 QToolTip.showText(e.globalPos(), text, self)
-            else:
+            elif not open_already:
+                # Only when there is no popover. Touching QToolTip at all
+                # while a popup is up is exactly the sort of thing that has
+                # been closing it, and there is nothing to hide anyway.
                 QToolTip.hideText()
                 e.ignore()
             return True
