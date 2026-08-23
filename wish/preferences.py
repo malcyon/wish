@@ -537,10 +537,12 @@ class PreferencesDialog(QDialog):
         elif where:
             why = "Follows the save you open. Set one here to fix it instead."
         else:
-            why = "Open a save and this fills in. No backup folder, no saving."
-        self.backups_note.setText(
-            f"{why}  Only when something changed; the newest "
-            f"{files.KEEP_BACKUPS} are kept.")
+            # Nothing. An empty box with no save open explains itself, and
+            # Donald removed the sentence that said so.
+            why = ""
+        tail = (f"Only when something changed; the newest "
+                f"{files.KEEP_BACKUPS} are kept.")
+        self.backups_note.setText(f"{why}  {tail}" if why else tail)
 
     def browse_backups(self) -> None:
         """The folder picker. A method so a test can replace it."""

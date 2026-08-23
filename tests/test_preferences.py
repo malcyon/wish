@@ -325,7 +325,7 @@ def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
 
 def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
         app, tmp_path, monkeypatch):
-    """The path in a box you can edit, and a note saying which state it is in.
+    """The path in a box you can edit, and a note naming the state it is in.
 
     The path alone cannot say: `/somewhere/backups` looks the same whether it
     is following the open save or was typed in and is never moving again.
@@ -341,7 +341,10 @@ def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
         chosen = PreferencesDialog(win).backups_note.text()
     finally:
         win.close()
-    assert "no saving" in blank.lower()
+    # Blank says nothing about itself -- Donald removed that sentence: an empty
+    # box with no save open explains itself. The standing facts stay.
+    assert "no saving" not in blank.lower()
+    assert "open a save" not in blank.lower()
     assert "follows the save" in following.lower()
     assert "yours" in chosen.lower()
     for note in (blank, following, chosen):
