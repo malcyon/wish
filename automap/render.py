@@ -254,15 +254,15 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
 # lies inside the cell, so anything at 2 or more never touches one. See
 # `test_a_note_never_lands_on_a_wall`.
 #
-# **The note used to be 13 and now fills the square.** At 13 it sat in the
-# top-right corner, clear of the party marker in the middle, and Donald's
-# objection was that the marker was much smaller than the thing it marks. At 26
-# in a 34px cell there is no corner left to hide in: the glyph is the square,
-# and the party marker shows through it because the note is drawn first and the
-# marker over it. That is the trade -- a note you can read across the map,
-# against a note that shares its square with the marker on exactly the one
-# square the party is standing on.
-NOTE_SIZE = 26
+# **The note used to be 13 and now nearly fills the square.** At 13 it sat in
+# the top-right corner, clear of the party marker in the middle, and Donald's
+# objection was that the marker was much smaller than the thing it marks. 26
+# left no corner at all; 22 in a 34px cell is the size Donald chose after
+# seeing both. The party marker shows through it because the note is drawn
+# first and the marker over it -- that is the trade, a note you can read across
+# the map against a note that shares its square with the marker on exactly the
+# one square the party is standing on.
+NOTE_SIZE = 22
 NOTE_INSET = 3
 COUNT_SIZE = 9
 
