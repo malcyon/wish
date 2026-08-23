@@ -30,10 +30,16 @@ Wish is a save editor and automapper for the **Commodore 64** version of *Pool o
 
 
 ## Compatibility
-Supports the following Commodore 64 Gold Box games:
-- Pool of Radiance
-- Curse of the Azure Bonds
-- Secrets of the Silver Blades
+
+I would like Wish to be compatible with all the Gold Box games. Right now, though, I am mostly focused on Pool of Radiance, as that is what I am playing.
+
+| Game | Stability | Notes |
+|---|---|---|
+| Pool of Radiance | 🟢 | I have mostly been playing this game, so it works pretty well. |
+| Curse of the Azure Bonds | 🟡 | This probably has a bunch of bugs. Character editing should work. |
+| Secrets of the Silver Blades | 🟡 | This has been tested even less, but work is ongoing. |
+| Pools of Darkness | 🔴 | This for sure doesn't work at all. Wish would need to support the Amiga for this. |
+
 
 ## Caution
 Editing your save files is a dark art. High level magic can be dangerous and unpredictable. A Wish spell can bestow incredible fortune, but it cannot always be trusted to turn out the way you expect. So, too, must a save editor be used carefully.  
@@ -97,8 +103,6 @@ flatpak override --user --share=network net.sf.VICE
 
 
 
-
-
 ### Wish Config Files
 | Windows | macOS | Linux |
 |---|---|---|
@@ -113,8 +117,6 @@ Some icons are from **Font Awesome Free 7.3.1** by Fonticons, Inc.
 (<https://fontawesome.com>) — icons licensed **CC BY 4.0**. Their path data is
 in `ui/icons.py`; the licence is in
 [`docs/licences/fontawesome-LICENSE.txt`](docs/licences/fontawesome-LICENSE.txt).
-The rest of the icons — the sword, the crossed swords, the chest — are this
-project's own.
 
 
 ## Documentation
