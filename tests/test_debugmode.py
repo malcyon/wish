@@ -409,12 +409,23 @@ def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
     """Retired: `test_the_row_asks_first_and_a_no_writes_nothing`. There is no
     dialog left to answer -- a click writes and jumps."""
     from PyQt6.QtWidgets import QMessageBox
+
+    def showing():
+        # *Visible*, not merely existing: `conftest.py` holds one QApplication
+        # for the whole session, so a message box any earlier test built is
+        # still a top-level widget here -- Identify Items and Level Up both
+        # still confirm, and both run before this one. Counting them does not
+        # work either, because PyQt hands out a fresh Python wrapper for each
+        # enumeration, so `id()` is not stable between two calls.
+        return [w for w in app.topLevelWidgets()
+                if isinstance(w, QMessageBox) and w.isVisible()]
+
     target = machine(area=0)
     row = bar(app, target)
     assert not hasattr(row, "ask")
     row.button.click()
     assert target.jumps == [actions.NEWECL_TAIL]
-    assert not [w for w in app.topLevelWidgets() if isinstance(w, QMessageBox)]
+    assert not showing()
 
 
 def test_a_refused_warp_is_reported_as_an_alarm(app):
