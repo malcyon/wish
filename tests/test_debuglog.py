@@ -71,6 +71,69 @@ def test_nothing_is_written_while_it_is_off(logs):
     assert not logs.exists()
 
 
+# --- a crash, log or no log --------------------------------------------------
+
+def boom(message="boom"):
+    """Raise, and hand `crash` the three arguments `sys.excepthook` gets."""
+    import sys
+    try:
+        raise ValueError(message)
+    except ValueError:
+        debuglog.crash(*sys.exc_info())
+
+
+def test_a_crash_is_kept_even_with_the_log_off(logs):
+    """The gap this closes: `crash` wrote to stderr and, only with the log on,
+    to the file -- and a windowed Windows build's stderr is the borrowed parent
+    console or devnull. An ordinary user's crash was recorded nowhere."""
+    boom()
+    written = debuglog.crash_path().read_text(encoding="utf-8")
+    assert "ValueError: boom" in written
+    assert "Traceback" in written
+    assert not ABSOLUTE.search(written)     # scrubbed, like every other line
+
+
+def test_a_crash_with_the_log_on_goes_to_the_log(logs):
+    debuglog.start()
+    boom()
+    assert "ValueError: boom" in only_log(logs).read_text(encoding="utf-8")
+    assert not debuglog.crash_path().exists()
+
+
+def test_a_directory_that_cannot_be_made_costs_the_record_and_nothing_else(
+        logs, monkeypatch):
+    """A crash file that could not be written must not raise: `crash` runs as
+    `sys.excepthook`, where a second exception has nobody left to catch it."""
+    wall = logs.parent
+    wall.parent.mkdir(parents=True, exist_ok=True)
+    wall.write_text("not a directory")      # so `mkdir` cannot make `logs`
+    boom()                                  # the assertion is that this returns
+    assert not logs.exists()
+
+
+def test_the_crash_file_cannot_grow_without_bound(logs, monkeypatch):
+    """A fault on every tick would otherwise fill a disk, the same way the
+    session log would."""
+    monkeypatch.setattr(debuglog, "CRASH_BYTES", 2_000)
+    for i in range(200):
+        boom(f"boom {i}")
+    parts = sorted(logs.glob(debuglog.CRASH + "*"))
+    assert len(parts) == 2, parts           # the file, and its one rotation
+    assert all(p.stat().st_size < debuglog.CRASH_BYTES * 3 for p in parts)
+
+
+def test_an_unraisable_exception_is_kept_too(logs):
+    """`__del__` and a shutdown callback go to `sys.unraisablehook`, not to
+    `sys.excepthook`, and land in the same place."""
+    class Args:
+        exc_type, exc_value, exc_traceback = ValueError, ValueError("gone"), None
+        object = "a doomed thing"
+
+    debuglog._unraisable(Args())
+    written = debuglog.crash_path().read_text(encoding="utf-8")
+    assert "gone" in written and "a doomed thing" in written
+
+
 # --- on ----------------------------------------------------------------------
 
 def test_the_file_opens_on_the_versions_and_not_on_a_preamble(logs):

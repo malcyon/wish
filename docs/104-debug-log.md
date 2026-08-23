@@ -26,7 +26,9 @@ Three things make the claim checkable rather than a promise:
   any other library logs can reach the file;
 * every line is formatted through `Scrubbed`, which rewrites an absolute path
   to `.../basename` -- tracebacks included, since those are where paths hide;
-* while the log is off there is no file at all, and nothing is written.
+* while the log is off there is no session file at all, and nothing is
+  written to one. The one thing written with the log off is `crashes.log`,
+  which holds tracebacks and nothing else, scrubbed the same way.
 
 ---
 
@@ -61,6 +63,17 @@ read**, so the one report that mattered was the one nobody could have sent.
 With the hook in place Qt calls it instead of aborting, which buys two things:
 the traceback reaches the log, scrubbed like every other line, and **the window
 survives**. CONFIRMED both ways — `tests/test_debugmode.py`.
+
+**And it is kept whether or not the log is on.** The hook used to write to the
+log only when there was one, and to `sys.stderr` otherwise — which on a
+windowed Windows build is the borrowed parent console or devnull, so an
+ordinary user's crash was recorded nowhere. It now goes to `logs/crashes.log`
+when the session log is off: appended, scrubbed, one version line per entry,
+and rotated once at `CRASH_BYTES` so it is bounded at 400 KB on top of the
+ceiling below. Nothing on the face of the window changes, and a directory that
+cannot be written to costs the record and nothing more — a second exception
+inside `sys.excepthook` has nobody left to catch it. `sys.unraisablehook` — a
+`__del__`, a shutdown callback — lands in the same place.
 
 ### How big it can get
 

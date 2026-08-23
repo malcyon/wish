@@ -11,7 +11,11 @@ Three things make the claim checkable rather than a promise:
   propagate, so nothing any other library logs can reach the file;
 * every line goes through `Scrubbed`, which rewrites absolute paths to their
   last component -- a path carries a username, and tracebacks are full of them;
-* nothing is written at all while `is_on()` is false, including the file.
+* nothing is written at all while `is_on()` is false, with one exception:
+  an exception nothing caught goes to `CRASH`, a file that holds tracebacks
+  and nothing else and is scrubbed the same way. A crash nobody can see is a
+  bug report nobody can send, and a user is not asked to reproduce it with
+  the log on before it counts.
 
 **The file has no preamble.** It opens on the version line, which is the field
 a bug report needs; what is and is not recorded is `docs/104-debug-log.md`'s
@@ -60,6 +64,18 @@ PARTS = 1
 def ceiling() -> int:
     """The most the log directory can hold, in bytes. Asserted by a test."""
     return KEEP * MAX_BYTES * (PARTS + 1)
+
+
+# **The crash file is what a user who never turned the log on still leaves
+# behind.** `crash` wrote to `sys.stderr` and, only when logging was on, to the
+# file -- and on a windowed Windows build stderr is the borrowed parent console
+# or devnull. So for everybody not running with the log on, an uncaught
+# exception was recorded nowhere at all. This is one appended file beside the
+# logs, holding nothing but tracebacks, scrubbed like every other line, and
+# rotated once at `CRASH_BYTES` so a fault on every tick cannot fill a disk --
+# a bound of `2 * CRASH_BYTES`, on top of `ceiling()`.
+CRASH = "crashes.log"
+CRASH_BYTES = 200_000
 
 # A read that takes longer than this stalled the emulator: under VICE the
 # monitor holds the CPU for the whole round trip, and the poll interval is
@@ -173,6 +189,18 @@ def stop() -> None:
 
 # -- writing -----------------------------------------------------------------
 
+def debug(message: str, *args) -> None:
+    """A line for a handler that swallowed something and carried on.
+
+    One line and no traceback, because these are on the poll path: a read that
+    fails on every tick would otherwise write five tracebacks a second and bury
+    the one thing the reader came for. The traceback for the same fault is
+    written once by whichever poll wrapped the call -- `Session.poll`.
+    """
+    if _handler is not None:
+        _logger.debug(message, *args)
+
+
 def note(message: str, *args) -> None:
     if _handler is not None:
         _logger.info(message, *args)
@@ -195,7 +223,7 @@ def exception(message: str, *args) -> None:
 
 
 def crash(kind, value, tb) -> None:
-    """An exception nothing caught. Always to stderr, and to the log if it is on.
+    """An exception nothing caught. To stderr, and to the log or the crash file.
 
     Installed as `sys.excepthook` by `install_excepthook`, which is what makes
     this reachable at all: PyQt6 aborts the process on an exception raised
@@ -206,9 +234,61 @@ def crash(kind, value, tb) -> None:
     also survives what would have killed it.
     """
     text = "".join(traceback.format_exception(kind, value, tb))
-    sys.stderr.write(text)
-    if _handler is not None:
-        _logger.error("unhandled exception\n%s", text)
+    _to_stderr(text)
+    if not _to_log("unhandled exception\n%s", text):
+        _keep(text)
+
+
+def _to_stderr(text: str) -> None:
+    """stderr, if this build has one. A windowed build's can be None."""
+    try:
+        sys.stderr.write(text)
+    except Exception:                       # pragma: no cover - no stderr
+        pass
+
+
+def _to_log(message: str, *args) -> bool:
+    """The traceback into the debug log. False when there is no log to take it.
+
+    False is also the answer when the write itself failed, so the crash file
+    gets it instead: the whole point of this path is that a crash is recorded
+    somewhere, and a full disk is exactly when one is likely.
+    """
+    if _handler is None:
+        return False
+    try:
+        _logger.error(message, *args)
+        return True
+    except Exception:                       # pragma: no cover - defensive
+        return False
+
+
+def _keep(text: str) -> None:
+    """Append a traceback to the crash file. Cannot raise, whatever happens.
+
+    This is the last code to run before an exception is lost for good, so a
+    read-only home, a full disk or a directory that will not be made costs the
+    record and nothing more. A second exception here would be raised inside
+    `sys.excepthook`, where there is nobody left to catch it.
+    """
+    try:
+        target = crash_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if target.stat().st_size >= CRASH_BYTES:
+                target.replace(target.with_name(CRASH + ".1"))
+        except OSError:
+            pass
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with target.open("a", encoding="utf-8") as out:
+            out.write(f"\n{stamp} {versions()}\n{scrub(text)}")
+    except Exception:                       # pragma: no cover - defensive
+        pass
+
+
+def crash_path() -> pathlib.Path:
+    """Where `_keep` writes. A test's handle on it, and a bug report's."""
+    return log_dir() / CRASH
 
 
 def install_excepthook() -> None:
@@ -216,7 +296,8 @@ def install_excepthook() -> None:
 
     Called by each entry point before the window is built, and not gated on the
     log being on: keeping the application alive is worth doing either way, and
-    `crash` writes to the file only when there is one.
+    a crash is recorded either way -- in the session log when it is on, in the
+    crash file when it is not.
     """
     global _previous_hook
     if _previous_hook is not None:
@@ -240,9 +321,9 @@ def _unraisable(hook_args) -> None:
     tb = getattr(hook_args, "exc_traceback", None)
     where = getattr(hook_args, "object", None)
     text = "".join(traceback.format_exception(kind, value, tb))
-    sys.stderr.write(text)
-    if _handler is not None:
-        _logger.error("unraisable exception in %r\n%s", where, text)
+    _to_stderr(text)
+    if not _to_log("unraisable exception in %r\n%s", where, text):
+        _keep(f"unraisable in {where!r}\n{text}")
 
 
 @contextlib.contextmanager
@@ -294,17 +375,20 @@ def save_shape(party, file: str | os.PathLike | None = None) -> str:
     try:
         bits.append(f"{len(party.disk.to_bytes())} bytes")
         bits.append(f"{sum(e.block_count for e in party.disk.directory())} blocks")
-    except Exception:
-        pass
+    except Exception as exc:
+        # A shape that cannot be read is a shorter line, never a failed log.
+        debug("save shape: no size or block count (%s)", exc)
     try:
         bits.append("save disk" if party.is_save else "roster disk")
         bits.append(f"{len(party)} characters")
-    except Exception:
-        pass
+    except Exception as exc:
+        debug("save shape: no kind or character count (%s)", exc)
     save0 = getattr(party, "save0", None)
     if save0 is not None:
-        with contextlib.suppress(Exception):
+        try:
             bits.append(f"area {save0.area_file}")
+        except Exception as exc:
+            debug("save shape: no area (%s)", exc)
     return ", ".join(bits) or "unreadable"
 
 
