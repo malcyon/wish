@@ -29,6 +29,18 @@ carries, and where:
 
 `GEN` is resident at `$0800` in both games whatever its PRG header claims.
 
+**Not one Pool of Radiance address survives into Curse**, which is the
+measurement `TRAINER_MEASURED` rests on. The two files were compared byte for
+byte from `$0800` -- Pool of Radiance's 9083 bytes off `POOL3`, Curse's 9455
+off `CURSE_A` -- and 8925 of the 9083 common bytes differ. Every address in the
+table above and every one in `docs/135-levelling.md` holds something else in
+Curse. Two of Pool of Radiance's tables were found elsewhere in Curse's file
+and no others: the hit die 2697 bytes earlier at `$161E`, and the thief-skill
+rows 42 bytes earlier at `$1004`. So selecting Curse's level tables is not
+selecting Curse's trainer, and the rows this table still leaves at `--` --
+racial save bonus, constitution hit-point bonus, wisdom bonus spells, turning
+level -- are exactly the derivations a level-up needs.
+
 **THAC0 is the game's, not a transcription**, and reading it caught an error
 that had been in this file since it was written: **a thief is THAC0 19 at
 levels 5-8 and 16 at 9, not 18/18/18/16/16.** The rows are
@@ -598,6 +610,29 @@ BY_KEY = {t.key: t for t in TITLES}
 #: What a caller gets when it says nothing. Every caller predates the second
 #: game and means this one.
 DEFAULT = POOL_OF_RADIANCE
+
+#: The titles whose **trainer** has been read. A stricter claim than having a
+#: table, and the distinction is the whole of issue #16: Curse's level tables
+#: are in this module, and they are still not enough to level a Curse
+#: character. Everything around them was read at Pool of Radiance's addresses
+#: out of Pool of Radiance's `GEN` -- the hit-die roll at `$2037`, the
+#: saving-throw masks at `$1F44`, the constitution tables at `$247B`/`$2486`,
+#: the spell capacity at `$20BC` -- and nothing has confirmed Curse's `GEN`
+#: agrees. Measuring it is what would move a key into this set.
+#:
+#: `for_game` deliberately falls back to Pool of Radiance for a title it has no
+#: tables for, which is right for reading a spell name and wrong for writing a
+#: character record. A writer asks this instead.
+TRAINER_MEASURED: frozenset[str] = frozenset({POOL_OF_RADIANCE.key})
+
+
+def trainer_measured(game=None) -> bool:
+    """Has this title's trainer been measured? None means the default title."""
+    if game is None:
+        return DEFAULT.key in TRAINER_MEASURED
+    key = game.key if isinstance(game, LevelTables) else getattr(game, "key",
+                                                                 game)
+    return key in TRAINER_MEASURED
 
 
 def for_game(game=None) -> LevelTables:

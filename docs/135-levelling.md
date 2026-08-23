@@ -219,3 +219,36 @@ choice is visible.
 already earned, so the window asks first and names what it costs. The auto-rule
 makes that rare rather than impossible. Where it is empty there is nothing to
 confirm — the clamp is what the trainer always does.
+
+## One title, and it says so
+
+**Levelling is refused for every title but Pool of Radiance**, with the reason
+in the outcome's notes, and the button does not appear on the card at all
+(#16). `automap.actions.level_up_blockers` takes the title as well as the
+record, and `por.levels.TRAINER_MEASURED` is the list of titles whose trainer
+has been read — one entry.
+
+Curse of the Azure Bonds is the case that made this necessary, because it is
+the only one that would have failed *quietly*. Its level tables are in
+`por/levels.py`, so selecting them looks like enough; the other four titles have
+no tables, match no row and produce no button by luck. Selecting Curse's tables
+would still have left every derivation around them running on Pool of
+Radiance's numbers — the hit-die roll at `$2037`, the saving-throw masks at
+`$1F44`, the constitution tables at `$247B`/`$2486`, the spell capacity at
+`$20BC`.
+
+**Measured: none of those addresses means anything in Curse.** The two `GEN`
+files were compared byte for byte from `$0800` — Pool of Radiance's 9083 bytes
+off `POOL3`, Curse's 9455 off `CURSE_A` — and 8925 of the 9083 common bytes
+differ. Every address in the table at the top of this file holds something else
+in Curse's build. Searching Curse's whole `GEN` for Pool of Radiance's tables
+found two and only two: the hit die 2697 bytes earlier at `$161E`, and the
+thief-skill rows 42 bytes earlier at `$1004`. `por/levels.py`'s own per-title
+table agrees, and the rows it still leaves at `--` for Curse — racial save
+bonus, constitution hit-point bonus, wisdom bonus spells, turning level — are
+precisely the ones a level-up needs.
+
+So what would unblock Curse is not a decision but the same work again in
+Curse's `GEN`: find those four, and the roll and capacity routines, and replay
+measured Curse trainings through them. Until then `TRAINER_MEASURED` has one
+entry and the refusal says which title it is refusing.

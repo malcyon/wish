@@ -196,7 +196,7 @@ def best_class(record, game=None) -> str | None:
 
 
 def roll_hit_points(class_name: str, class_count: int = 1,
-                    fighter_only: bool = False, rng=None) -> int:
+                    fighter_only: bool = False, rng=None, game=None) -> int:
     """One hit die, the way `GEN $2037` rolls it.
 
     The die is the class's own (`GEN $20A7`); a multi-class character divides
@@ -205,7 +205,7 @@ def roll_hit_points(class_name: str, class_count: int = 1,
     `class_bits == 8` and nothing else -- which is why no fighter in twenty-nine
     trainings gained fewer than four hit points.
     """
-    die = levels.hit_die(class_name)
+    die = levels.hit_die(class_name, game)
     if not die:
         raise CannotLevel(f"no hit die is known for {class_name}")
     rolled = (rng or random).randint(1, die)
@@ -384,7 +384,7 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     if rolled is None:
         rolled = roll_hit_points(
             class_name, class_count=len(class_levels),
-            fighter_only=(bits == 8), rng=rng)
+            fighter_only=(bits == 8), rng=rng, game=game)
     hp_rolled = (record.get("hp_rolled") or 0) + rolled
     hp_max = hp_rolled + level * levels.constitution_hp_bonus(
         record.get("constitution"), fighter=bool(bits & 8))
