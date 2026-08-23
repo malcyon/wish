@@ -1,6 +1,6 @@
 ---
 name: Bug
-about: A defect in wish's own code. A defect in the game is research, not this.
+about: Something is broken
 labels: bug
 ---
 

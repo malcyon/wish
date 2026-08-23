@@ -1,6 +1,6 @@
 ---
 name: Enhancement
-about: Build this.
+about: New functionality
 labels: enhancement
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: Question
-about: We do not know something. Nothing gets built when it is answered; we simply know.
+about: Research. Something we want to know, but don't know. 
 labels: question
 ---
 
