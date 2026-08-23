@@ -2324,9 +2324,9 @@ bytes moved, all of them money and experience.
 `GEN $0BD0` initialises it from `hp_max`, and both the trainer and the drain
 routine move it independently afterwards. The old caveat can go.
 
-### `0x0AD` is the first slot of an effect list. PROBABLE
+### `0x0AD` is ten trait slots, in the effect namespace. CONFIRMED
 
-`0x0AD`–`0x0B6` is a **ten-slot list of active effect codes**, in the same
+`0x0AD`–`0x0B6` is **ten trait slots** carrying codes in the same
 namespace as item byte `+14`. Three overlays loop `LDX #$09` over it, and XAVIER
 — carrying 107 in the first slot and 89 in the tenth — proves the extent
 independently.
@@ -3480,8 +3480,8 @@ effect on the next fight is unproven.
   back**. The rumour has no code behind it on this port, and `wish` writing
   the six ability bytes directly is safe.
 
-- ~~**The racial-traits hunt.**~~ **Found:** `0x0AD`–`0x0B6`, a ten-slot list
-  of active effect codes seeded per race by `GEN $0BF3` from
+- ~~**The racial-traits hunt.**~~ **Found:** `0x0AD`–`0x0B6`, ten trait slots
+  carrying effect codes, seeded per race by `GEN $0BF3` from
   `[1, 0, 107, 0, 124, 0, 0, 0]`. That is why `0x0AD` was non-zero only for
   elves and half-elves.
 
@@ -4375,7 +4375,7 @@ cost nothing and survived a feature nobody had planned.
    in the code rather than a message.
 6. **Two field readings.** `0x0B8` was "an unexplained equipment-linked byte"
    and is the NPC flag in bit 7 with the trainer's score-altered marker in bit 0;
-   `0x0AD` was "a racial trait mask" and is ten slots of active effect codes,
+   `0x0AD` was "a racial trait mask" and is ten trait slots carrying effect codes,
    seeded per race by `GEN $0BF3`.
 
 **What it got right, and would be worth repeating on a new title:** staging the

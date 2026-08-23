@@ -43,7 +43,7 @@ written back and confirmed in game.
 | **experience awarded, and per hit point** | `0x0F7`–`0x0F8`, `0x0F9` | CONFIRMED — GOBLIN GUARD 10, HOBGOBLIN 20, OGRE 90, with 1, 2 and 5 per hit point: the published AD&D 1e values exactly. Zero in every player export |
 | **combat behaviour** | `0x10C` | CONFIRMED — 0 allied and controlled, 128 allied and uncontrolled, 129 hostile. 115 of 116 `MON*` records read 129 |
 | hp max / hp rolled | `0x076` (**16-bit**) / `0x0ED` | CONFIRMED |
-| **active effect list**, ten slots | `0x0AD`–`0x0B6` | PROBABLE — same namespace as item `+14`; seeded per race |
+| **character traits**, ten slots | `0x0AD`–`0x0B6` | CONFIRMED — traits, not the save's active effects; same code namespace as item `+14`; seeded per race |
 | **NPC flag** (bit 7) and **score altered at the trainer** (bit 0) | `0x0B8` | CONFIRMED — the byte the game itself tests |
 | hp current | `0x119` (**16-bit**) | CONFIRMED — **export only**; initialised from `hp_max`, then moved independently |
 | **combat icon** | `0x220`–`0x243` | CONFIRMED |

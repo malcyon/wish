@@ -327,7 +327,7 @@ not the way anyone expected: both read 0, so it is not a racial trait mask.
 race from `[1, 0, 107, 0, 124, 0, 0, 0]`, **indexed by the race byte itself**,
 which is 1-based. Elf is race 2 and is born with 107; half-elf is race 4 and is
 born with 124; every other race gets nothing, which is exactly what NYX and DAX
-show. `0x0AD` is a ten-slot list of *active effect codes*, seeded per race and
+show. `0x0AD` is ten *trait* slots, holding codes from the effect namespace, seeded per race and
 then written by spells and readied items alike.
 
 ### `PORSAVE11.D64` — the save nobody had read

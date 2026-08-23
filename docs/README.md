@@ -210,7 +210,8 @@ having been written back and confirmed in game.
 
 **Closed since this list was written**
 
-* **Racial traits** are `0x0AD`–`0x0B6`, a ten-slot list of active effect codes
+* **Character traits** are `0x0AD`–`0x0B6`, ten trait slots holding codes from
+  the same namespace as the save's active effects — but not that list
   seeded per race — which is also what `0x0AD` is.
 * **Item byte `+5`** is a signed saving-throw bonus. Every byte of the 16 is
   read.
