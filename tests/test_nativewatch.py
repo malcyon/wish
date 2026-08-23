@@ -12,6 +12,14 @@ import logging
 from wish import nativewatch
 
 
+def test_it_stays_off_unless_the_environment_asks(monkeypatch):
+    """Off in every ordinary run. The stream is thousands of messages a second
+    and means nothing to anyone not chasing a window that behaves oddly."""
+    monkeypatch.delenv(nativewatch.ENV, raising=False)
+    assert nativewatch.install_if_asked(_app()) is False
+    assert nativewatch.watching is False
+
+
 def test_it_installs_only_on_windows_and_only_once():
     """A no-op anywhere else, so the automapper does not have to know what
     platform it is on -- and idempotent on Windows, because `edit_note` calls

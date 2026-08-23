@@ -53,6 +53,11 @@ class _MSG(ctypes.Structure):
 #: Set by whoever is being watched. False costs one attribute read per message.
 watching = False
 
+#: What switches it on, because it is off in every ordinary run: the stream is
+#: thousands of messages a second and means nothing to anyone not chasing a
+#: window that behaves oddly. `WISH_NATIVE_LOG=1 wish.exe --debug`.
+ENV = "WISH_NATIVE_LOG"
+
 
 def watch(on: bool) -> None:
     """Start or stop recording. Called around the thing under suspicion."""
@@ -87,8 +92,29 @@ class _Filter:
 _installed = None
 
 
+def install_if_asked(app) -> bool:
+    """Attach the filter when `WISH_NATIVE_LOG` is set. True if it is watching.
+
+    Off by default and reached only through the environment, because what it
+    records is worth having about twice a year and is noise the rest of the
+    time. It found the one bug it was written for -- a `QPushButton` given no
+    parent was briefly a top-level window of its own, stealing activation from
+    the main window and taking the note popover down with it, visible in the
+    raw stream as a `WM_NCACTIVATE`/`WM_ACTIVATE` round trip through an hwnd
+    nothing else knew about. Nothing at the Qt level showed that at all.
+    """
+    import os
+
+    if not os.environ.get(ENV):
+        return False
+    if install(app):
+        watch(True)
+        return True
+    return False
+
+
 def install(app) -> bool:
-    """Attach the filter to this application. True if it is now watching.
+    """Attach the filter to this application. True if it is now attached.
 
     Windows only, and only worth doing with the debug log on -- there is
     nowhere else for what it records to go.

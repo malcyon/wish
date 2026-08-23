@@ -20,11 +20,7 @@ The window owns the click that opens this; everything here is the popover.
 
 from __future__ import annotations
 
-import logging
-import pathlib
-import traceback
-
-from PyQt6.QtCore import QEvent, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -44,23 +40,6 @@ from .panel import CARD, INK, LATTICE, MUTED, NOTE
 
 BUTTON = 26
 ICON = 15
-
-_log = logging.getLogger("wish.automap.note").info
-
-#: The events that can take a popover down, in the order Qt would send them.
-#: Logged because the popover closes itself on Windows the instant it opens on
-#: a square that already has a note, and nothing in the debug log said why --
-#: two guesses at the mechanism from Linux were both wrong, so the next run
-#: says which event arrived rather than being reasoned about.
-_CLOSERS = {
-    QEvent.Type.Close: "Close",
-    QEvent.Type.Hide: "Hide",
-    QEvent.Type.WindowDeactivate: "WindowDeactivate",
-    QEvent.Type.FocusOut: "FocusOut",
-    QEvent.Type.MouseButtonPress: "MouseButtonPress",
-    QEvent.Type.MouseButtonRelease: "MouseButtonRelease",
-}
-
 
 class NotePopover(QWidget):
     """The type picker, the text field, and what is already on the square.
@@ -89,13 +68,6 @@ class NotePopover(QWidget):
         note = (existing[index] if index is not None and index < len(existing)
                 else None)
         self.chosen = note.type if note else notemod.DEFAULT
-        # The state every branch below turns on, said out loud. A popover that
-        # opened on a noted square arrived empty and half-painted, and the one
-        # thing no log had yet was what it was holding when it did.
-        _log("popover %s building: %d existing, index=%r, type=%r, text=%r, "
-             "chosen=%r, label=%r", (x, y), len(existing), index,
-             getattr(note, "type", None), getattr(note, "text", None),
-             self.chosen, getattr(note, "label", None))
 
         self.setStyleSheet(
             f"NotePopover {{ background: {CARD.name()}; border: 1px solid "
@@ -172,32 +144,9 @@ class NotePopover(QWidget):
         hint = QLabel("Enter keeps it, Escape leaves it alone")
         hint.setFont(small)
         box.addWidget(hint)
-        # `isHidden`, not `isVisible`: nothing is "visible" yet, because the
-        # popover itself has not been shown.
-        _log("popover %s built: %d widgets, delete shown=%s",
-             (x, y), len(self.findChildren(QWidget)), not self.remove.isHidden())
 
     # -- editing ---------------------------------------------------------
 
-    def event(self, e):
-        kind = _CLOSERS.get(e.type())
-        if kind is not None:
-            _log("popover %s: %s (visible=%s, active=%s)",
-                 self.square, kind, self.isVisible(), self.isActiveWindow())
-        if e.type() == QEvent.Type.Close:
-            # **Who called `close()`.** Three fixes have been reasoned from
-            # Linux and all three were wrong, because `Close` arrives here
-            # bare -- no mouse event, no focus change, the popover still
-            # active. This says whether Python called it, and from where: our
-            # own frames mean `accept` or `delete` fired; nothing but the event
-            # loop means Qt dismissed the popup itself, and the two want
-            # completely different fixes.
-            frames = [f for f in traceback.extract_stack()[:-1]
-                      if "noteeditor" not in f.filename or f.name != "event"]
-            _log("popover %s: closed from %s", self.square,
-                 " <- ".join(f"{pathlib.Path(f.filename).name}:{f.lineno} "
-                             f"{f.name}" for f in frames[-6:]) or "the event loop")
-        return super().event(e)
 
 
     def choose(self, name: str) -> None:
@@ -239,7 +188,6 @@ class NotePopover(QWidget):
         self.close()
 
     def keyPressEvent(self, event):
-        _log("popover %s: key %r", self.square, event.text())
         # A popup already closes on Escape; typing a type's letter picks it,
         # which is what makes the whole thing usable one-handed.
         letter = event.text().upper()

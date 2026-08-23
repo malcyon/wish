@@ -46,7 +46,7 @@ from editor.window import EditorWindow
 from por import games
 from ui.appicon import app_icon
 
-from . import backends, debuglog, debugmode
+from . import backends, debuglog, debugmode, nativewatch
 from .about import install as install_help
 from .preferences import (
     SHORTCUT,
@@ -665,4 +665,7 @@ def run(save: str | None = None, game_disk: str | None = None,
     # without this the remembered size lived about 50 ms and what closing wrote
     # back was the compositor's idea, not Donald's.
     hold_geometry(win)
+    # Off unless `WISH_NATIVE_LOG` is set. See `wish/nativewatch.py` for what
+    # it is for and the bug it was written to catch.
+    nativewatch.install_if_asked(app)
     return app.exec()

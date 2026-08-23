@@ -9,7 +9,6 @@ way is what lets the map be developed and tested without a display -- see
 from __future__ import annotations
 
 import logging
-import traceback
 from functools import partial
 
 from PyQt6.QtCore import (
@@ -42,7 +41,6 @@ from PyQt6.QtWidgets import (
 from por import strength as strengthmod
 from por.geo import GRID
 from ui.iconpaint import draw_icon
-from wish import nativewatch
 
 from . import actions, combat, live
 from . import notes as notemod
@@ -93,8 +91,6 @@ HATCH_PEN = QColor("#68809a")
 #: to go to stderr and nowhere else.
 NO_MAPS = ("No game disks found, so there are no maps. "
            "File > Preferences… to say where they are.")
-
-_notelog = logging.getLogger("wish.automap.note").info
 
 #: Everything else this window has to say. A child of the `wish` logger, so
 #: `wish/debuglog.py`'s handler takes it when the log is on and its level
@@ -192,8 +188,6 @@ class MapCanvas(QWidget):
             # deactivates it -- which is the popover vanishing the instant it
             # opened. See `mousePressEvent`.
             open_already = getattr(self.host, "_popover", None) is not None
-            _notelog("canvas tooltip: text=%s, popover open=%s",
-                     bool(text), open_already)
             if text and not open_already:
                 QToolTip.showText(e.globalPos(), text, self)
             elif not open_already:
@@ -1030,23 +1024,7 @@ class AutomapWindow(QMainWindow):
         box in front of the map is an interruption for something that should
         cost one keystroke.
         """
-        _notelog("edit_note(%s, %s, index=%r): area=%r, %d notes",
-                 x, y, index, self.state.area, len(self.state.notes_at(x, y)))
-        # Record the raw Windows messages for as long as this popover lives.
-        # Nothing at the Qt level explains the `Close` it receives, so the
-        # cause is arriving underneath Qt -- see `wish/nativewatch.py`.
-        from PyQt6.QtWidgets import QApplication
-        nativewatch.install(QApplication.instance())
-        nativewatch.watch(True)
-        try:
-            pop = NotePopover(self.state, x, y, index, self)
-        except Exception:
-            # Logged and re-raised rather than swallowed: an exception here
-            # would otherwise reach `sys.stderr` and, on a windowed Windows
-            # build, nothing at all.
-            _notelog("edit_note(%s, %s) failed while building:\n%s",
-                     x, y, traceback.format_exc())
-            raise
+        pop = NotePopover(self.state, x, y, index, self)
         pop.changed.connect(self.notes_changed)
         corner = self.canvas.mapToGlobal(self.canvas.corner_of(x, y))
         pop.move(corner)
@@ -1060,13 +1038,9 @@ class AutomapWindow(QMainWindow):
         self._popover = pop
         pop.show()
         pop.field.setFocus()
-        _notelog("popover open at %s: %s, %s notes on the square",
-                 (x, y), pop.geometry().getRect(),
-                 len(self.state.notes_at(x, y)))
 
     def _popover_gone(self, _obj=None) -> None:
         self._popover = None
-        nativewatch.watch(False)
 
     def note_here(self) -> None:
         """`N`: a note on the party's own square, if we know where that is."""
