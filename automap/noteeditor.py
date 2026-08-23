@@ -144,12 +144,26 @@ class NotePopover(QWidget):
         self.keep.clicked.connect(self.accept)
         # Only where there is something to delete. A Delete button on a note
         # that does not exist yet would be furniture.
+        # **Parented here, in the constructor**, and not left to the layout.
+        # A widget with no parent that is made visible *is a top-level
+        # window*: Qt creates it, Windows activates it and takes focus off the
+        # main window, and parenting it a moment later destroys it again. The
+        # popover was being built inside that storm -- and only on a square
+        # that already had a note, because only then is this made visible --
+        # and Qt dismissed the popup on the way out. What the user saw was a
+        # small empty window half-painting and vanishing.
+        #
+        # `addWidget` is not enough on its own: `buttons` is not installed on
+        # anything until `box.addLayout(buttons)` further down, so a widget
+        # added to it has no parent yet either. Naming the parent is the only
+        # version that does not depend on the order of the lines below.
+        # `Keep` never had the bug because it never sets its own visibility.
         self.remove = QPushButton(QIcon(icon_pixmap("trash-can", ICON, MUTED)),
-                                  "Delete")
+                                  "Delete", self)
         self.remove.setFont(small)
         self.remove.setToolTip("remove this note from the square")
-        self.remove.setVisible(note is not None)
         self.remove.clicked.connect(lambda _checked=False: self.delete())
+        self.remove.setVisible(note is not None)
         buttons.addWidget(self.remove)
         buttons.addStretch(1)
         buttons.addWidget(self.keep)

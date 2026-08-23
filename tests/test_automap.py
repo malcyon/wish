@@ -1893,6 +1893,49 @@ def test_a_drag_across_squares_opens_nothing(app, tmp_path, monkeypatch):
     window._popover.close()
 
 
+def test_nothing_is_made_visible_before_it_has_a_parent(app, tmp_path,
+                                                        monkeypatch):
+    """A parentless widget made visible **is a top-level window.**
+
+    Qt creates it, Windows activates it and takes focus off the main window,
+    and reparenting it a line later destroys it again. The note popover was
+    built inside that storm -- `Delete` had its visibility set before
+    `addWidget` -- and only on a square that already had a note, because only
+    then was it made visible. Qt dismissed the popup on the way out, and the
+    user saw a small empty window half-paint and vanish.
+
+    Found from the raw Windows message stream: a whole `WM_NCACTIVATE` /
+    `WM_ACTIVATE` / `WM_KILLFOCUS` / `WM_SETFOCUS` round trip through a
+    stranger's hwnd, between "building" and "built", on noted squares and
+    never on blank ones.
+    """
+    from PyQt6.QtCore import Qt as _Qt
+    from PyQt6.QtWidgets import QWidget
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(3, 4, Note("dueling pairs", "encounter"))
+
+    stray = []
+    real = QWidget.setVisible
+
+    def watched(widget, visible):
+        # `isWindow()` is no use as a filter: a parentless button answers
+        # True, which *is* the fault. What separates an accident from a
+        # deliberate top-level is the window type -- a popover asks for
+        # `Popup`, a stray button gets plain `Window` by default.
+        accidental = (visible and widget.parent() is None
+                      and widget.windowType() == _Qt.WindowType.Window)
+        if accidental:
+            stray.append(type(widget).__name__)
+        return real(widget, visible)
+
+    monkeypatch.setattr(QWidget, "setVisible", watched)
+    window.edit_note(3, 4)                       # the square that used to fail
+    app.processEvents()
+    assert not stray, f"made visible with no parent: {stray}"
+    window._popover.close()
+
+
 def test_the_popover_is_on_record_before_it_is_shown(app, tmp_path,
                                                      monkeypatch):
     """`_popover` is set before `show()`, not after.
