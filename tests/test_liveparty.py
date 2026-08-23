@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from por import levels
+from por import levels, levelup
+from por.record import CharacterRecord
+from por.savegame import RECORD_SIZE
 
 # --- what the trainer wrote ------------------------------------------------
 
@@ -217,3 +219,89 @@ def test_the_clamp_past_a_ceiling_has_a_number():
     trainer clamps a thief 9 to 160,000 rather than to nothing."""
     for (class_name, level), want in PAST_THE_CEILING.items():
         assert levels.clamp_threshold(class_name, level) == want
+
+
+# --- the multi-class clamp -------------------------------------------------
+#
+# LADY KATHERINE is magic-user 1 / thief 1 on `work/drive/LVBEFORE.D64` with
+# 5,002 experience, and the trainer's own before/after pair for her thief
+# training is `work/p18/lk-{before,after}.hex`.  These are the numbers off
+# those two records, so a change to `por/levelup.py` cannot quietly stop
+# reproducing them.
+
+KATHERINE = {"class_bits": 5, "race": HALF_ELF, "constitution": 14,
+             "thac0_base": 39}
+KATHERINE_BEFORE = {"level_magic_user": 1, "level_thief": 1, "level": 1,
+                    "experience": 5002}
+KATHERINE_AFTER = {"level_magic_user": 1, "level_thief": 2, "level": 2,
+                   "experience": 2500}
+
+
+def _character(**fields):
+    """A record built from nothing, so no game data is needed to hold it."""
+    record = CharacterRecord.from_bytes(bytes(RECORD_SIZE))
+    for name, value in {**KATHERINE, **fields}.items():
+        record.set(name, value)
+    return record
+
+
+def test_training_one_class_of_a_multi_class_character_is_the_pair_measured():
+    """The whole of `work/p18/lk-{before,after}.hex`, in three numbers."""
+    before = _character(**KATHERINE_BEFORE)
+    assert levelup.ready_classes(before) == ["magic-user", "thief"]
+    plan = levelup.plan(before, "thief", rolled=1)
+    after = levelup.apply_to(before, plan)
+    assert levelup.class_level(after, "thief") == KATHERINE_AFTER["level_thief"]
+    assert levelup.class_level(after, "magic-user") == 1
+    assert after.get("experience") == KATHERINE_AFTER["experience"]
+
+
+def test_the_clamp_can_take_back_a_level_the_other_class_had_earned():
+    """Donald's report, and the game's: after the thief training the
+    magic-user level she qualified for is gone, because the clamp reads the
+    largest next threshold across her classes -- magic-user 2's 2,501 and
+    thief 3's 2,501 -- and 2,500 is below both."""
+    before = _character(**KATHERINE_BEFORE)
+    plan = levelup.plan(before, "thief", rolled=1)
+    assert plan.experience_lost == 2502
+    assert plan.classes_disqualified == ("magic-user",)
+    assert levelup.ready_classes(levelup.apply_to(before, plan)) == []
+
+
+def test_training_the_larger_threshold_first_keeps_both_levels():
+    """The same character, the other order.  Training magic-user raises *its*
+    next threshold to 5,001, so the clamp lands at 5,000 and the thief -- who
+    needs 1,251 -- is still offered.  Nothing here is a rule of ours: it falls
+    out of `GEN $23D4` taking the maximum."""
+    before = _character(**KATHERINE_BEFORE)
+    offered = levelup.learnable(before, level=2)
+    plan = levelup.plan(before, "magic-user", learn=offered[0], rolled=1)
+    after = levelup.apply_to(before, plan)
+    assert after.get("experience") == 5000
+    assert plan.classes_disqualified == ()
+    assert levelup.ready_classes(after) == ["thief"]
+
+
+def test_the_other_class_survives_when_its_threshold_is_below_the_clamp():
+    """The ordinary multi-class case, and the reason this is not a blanket
+    "training one class disqualifies the other".  Thief 5 -> 6 clamps to
+    42,500 and magic-user 2 wants 2,501."""
+    before = _character(level_magic_user=1, level_thief=5, level=5,
+                        experience=20001)
+    plan = levelup.plan(before, "thief", rolled=1)
+    after = levelup.apply_to(before, plan)
+    assert plan.experience_lost == 0
+    assert plan.classes_disqualified == ()
+    assert levelup.ready_classes(after) == ["magic-user"]
+
+
+def test_a_character_sitting_exactly_on_the_published_threshold_is_refused():
+    """`GEN $1BBC` compares `>=` against a table that holds 2,501 where AD&D
+    prints 2,500, so 2,500 exactly trains nobody."""
+    assert levels.next_threshold("magic-user", 1) == 2501
+    on_it = _character(level_magic_user=1, level_thief=1, level=1,
+                       experience=2500)
+    assert "magic-user" not in levelup.ready_classes(on_it)
+    one_more = _character(level_magic_user=1, level_thief=1, level=1,
+                          experience=2501)
+    assert "magic-user" in levelup.ready_classes(one_more)

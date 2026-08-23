@@ -97,6 +97,15 @@ class Plan:
     hp_max: int = 0
     spellbook: bytes | None = None
     learned_spell: int | None = None
+    #: What the clamp at `GEN $23D4` throws away -- experience before minus
+    #: experience after. Never negative; usually large, because the trainer
+    #: leaves a character one point short of its next level whatever it
+    #: arrived with. A caller that offers this as a button should say so.
+    experience_lost: int = 0
+    #: Classes that had the experience for a level before this training and do
+    #: not after, because the clamp lowered the number past their threshold.
+    #: Empty for a single-class character; see `_experience`.
+    classes_disqualified: tuple[str, ...] = dc_field(default=())
     notes: tuple[str, ...] = dc_field(default=())
 
 
@@ -120,6 +129,13 @@ def ready_classes(record, game=None) -> list[str]:
     1 / thief 7 with 70,100 points, was offered thief 8, whose single-class
     threshold is 70,001 (`docs/119-test-party.md`). So each class is measured
     against the same number.
+
+    **`>=`, against the game's own number, which is the published one plus 1.**
+    `GEN $1BBC` walks the class's threshold column downwards and takes the
+    first row it is not below (`SBC` then `BCS`), and the rows themselves hold
+    2501 for magic-user 2 where AD&D prints 2500 -- so 2500 exactly is refused
+    and 2501 is offered. `por/levels.py` stores the game's numbers, which is
+    why the comparison here is a plain `>=`.
     """
     experience = record.get("experience") or 0
     out = []
@@ -238,7 +254,23 @@ def _experience(record, class_levels: dict[str, int], game=None) -> int:
     """The clamp at `GEN $23D4`: one short of the largest next threshold.
 
     Across *all* the character's classes, not the one trained, and it only
-    lowers -- a character below the clamp keeps what it had.
+    lowers -- a character below the clamp keeps what it had. The routine loops
+    the four slots of the per-class level array at `0x0C9`, skips a zero, reads
+    `threshold[class * 9 + level]` -- the row for the level *after* the one now
+    stored -- keeps the largest, subtracts 1, and writes it only if it is less
+    than what `0x0E8` holds.
+
+    **Measured on a multi-class character, twice.** LADY KATHERINE, magic-user
+    1 / thief 1 with 5,002 points, came out of the thieves' school at thief 2
+    and **2,500** -- the larger of magic-user 2's 2,501 and thief 3's 2,501,
+    minus one. At magic-user 2 / thief 9 she came out of the magic-user's
+    school at **160,000**, which is the thief's entry one past its ceiling and
+    not magic-user 3's 5,001. `work/p18/lk-{before,after}.hex` and
+    `work/p18b/rec-kath-m2-*.bin`.
+
+    So the rule is the game's, not an extrapolation from single-class runs, and
+    it is why training the *lower* threshold first can cost a multi-class
+    character a level it had already earned -- `docs/135-levelling.md`.
     """
     experience = record.get("experience") or 0
     ceiling = None
@@ -357,11 +389,29 @@ def plan(record, class_name: str, *, game=None, rng=None,
     if spellbook == record.get_raw("spells_known"):
         spellbook = None
 
+    before = record.get("experience") or 0
+    after = fields["experience"]
+    disqualified = []
+    for name in ready_classes(record, game):
+        if name == class_name:
+            continue
+        want = levels.next_threshold(name, class_levels[name], game)
+        if want is not None and after < want:
+            disqualified.append(name)
+    disqualified = tuple(disqualified)
+    if disqualified:
+        notes.append(
+            "the trainer's experience clamp takes "
+            f"{', '.join(disqualified)} below the next threshold, so the "
+            "level it has already earned goes with it")
+
     return Plan(class_name=class_name, from_level=from_level, to_level=to_level,
                 fields=fields, hit_points_rolled=rolled,
                 thac0_delta=fields["thac0_base"] - record.get("thac0_base"),
                 hp_max=hp_max,
-                spellbook=spellbook, learned_spell=learned, notes=tuple(notes))
+                spellbook=spellbook, learned_spell=learned,
+                experience_lost=max(0, before - after),
+                classes_disqualified=disqualified, notes=tuple(notes))
 
 
 def apply_to(record, plan_: Plan):

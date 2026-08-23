@@ -3,8 +3,9 @@
 **Status: solved.** Every field the training hall writes is derived from the
 game's own tables, and replaying the twenty-nine measured trainings of
 [`119`](119-test-party.md) through `por/levelup.py` reproduces the record the
-trainer produced, **byte for byte**, on all thirty-four before/after pairs held
-in `work/p18b/` — given the hit die the game rolled. The five blockers
+trainer produced, **byte for byte**, on all thirty-five before/after pairs held
+in `work/p18b/` — given the hit die the game rolled. The thirty-fifth is
+`rec-kath-t2-*`, driven later for the multi-class clamp below. The five blockers
 `automap/actions.py` used to carry are gone, and `level_up_blockers()` is empty.
 
 One field is a die and always will be. `hp_rolled` at `0x0ED` takes a fresh
@@ -137,6 +138,51 @@ thief 7 with 70,100 points, was offered thief 8 — whose single-class threshold
 is 70,001. Every class is measured against the whole stored number, which is
 what the roster's per-class Level Up buttons do too.
 
+**The threshold rows hold the published number plus one, and the comparison is
+`>=`.** The magic-user's level-2 row is 2,501 where AD&D prints 2,500, and
+`GEN $1BBC` walks the column downwards taking the first row the character is
+not below. Both halves were driven at the school: LADY KATHERINE at exactly
+2,500 got `LOW EXPERIENCE OR WRONG CLASS` for thief 3 *and* for magic-user 2,
+and one point more — 2,501 — got `WILL BE A 3RD LEVEL THIEF` and
+`WILL BE A 2ND LEVEL MAGIC-USER`. So `ready_classes` compares `>=` against the
+game's own number and nothing here is off by one.
+
+### The clamp is measured on a multi-class character, not extrapolated
+
+Everything else in this file was measured class by class; the clamp was not.
+Two of the twenty-nine trainings settle the multi-class rule on their own:
+
+| character, after | classes | clamp | which class it came from |
+|---|---|---|---|
+| magic-user 1 / thief 2 | both | 2,500 | either — both want 2,501 |
+| magic-user 2 / thief 9 | both | 160,000 | the **thief**'s entry past its ceiling, not magic-user 3's 5,001 |
+
+`work/p18/lk-{before,after}.hex` and `work/p18b/rec-kath-m2-*.bin`. The rule is
+`max` across the classes, from the game, and it is why the order a multi-class
+character trains in changes what it ends up with.
+
+### The order a multi-class character trains in matters
+
+LADY KATHERINE, magic-user 1 / thief 1 with 5,002 points, qualifies for both
+magic-user 2 (2,501) and thief 2 (1,251).
+
+* **Thief first.** She becomes thief 2; the clamp takes the larger of
+  magic-user 2's 2,501 and thief 3's 2,501 and leaves her at **2,500** — one
+  short of both. The magic-user school then refuses her, and she has lost the
+  level she had earned. 2,502 points are gone.
+* **Magic-user first.** She becomes magic-user 2; the clamp takes the larger of
+  magic-user 3's 5,001 and thief 2's 1,251 and leaves her at **5,000**. The
+  thief is still offered. **She gets both levels.**
+
+The general rule is that the untrained class survives unless its next threshold
+is at or above the trained class's *new* next threshold. Both halves were driven
+at the game's own schools; the loss is in `goldbox-bugs.md` as bug 8.
+
+**`por/levelup.py` reproduces it, because the promise is that we write what the
+trainer writes.** `Plan.experience_lost` and `Plan.classes_disqualified` say
+what a training will cost before it is applied, so a caller can warn instead of
+silently doing it.
+
 ## Where the button is
 
 One per character card, at the right end of the class-and-level line, and
@@ -144,4 +190,10 @@ One per character card, at the right end of the class-and-level line, and
 card is which character it means, so the button needs no label saying so. A
 multi-class character whose classes are both ready gets a menu naming them,
 because the trainer asks which school you are standing in and nothing here
-should choose for the player.
+should choose for the player — each school teaches exactly one class
+(`'WE TRAIN ONLY THIEVES HERE'`), so one class a visit is the game's shape too.
+
+**The one case the button should not take silently is the one above**: where
+the plan's `classes_disqualified` is not empty, pressing it costs a level the
+character has already earned, and it should say so first. Where it is empty
+there is nothing to confirm — the clamp is what the trainer always does.
