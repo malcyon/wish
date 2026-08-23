@@ -311,6 +311,14 @@ class Automapper:
     # Phlan: see `_area_may_have_changed`.
     RESIDENT_EVERY = 10
 
+    #: How many polls one proof that a Gold Box game is in memory stands for.
+    #: Every status line renews it, so it only ever runs out while the fix is
+    #: coming from the memory fallback -- camp, a menu -- and renewing it there
+    #: costs one read of the resident block, on the cadence `RESIDENT_EVERY`
+    #: already sets. It expires at all so that a machine reset under a
+    #: connection that stays open cannot go on being believed.
+    PROVEN_FOR = 10
+
     def __init__(self, target, maps: dict[str, Geo] | None = None,
                  area: str | None = None, title: str | None = POOL_OF_RADIANCE):
         self.target = target
@@ -327,6 +335,14 @@ class Automapper:
         self._pending: tuple[int, int] | None = None
         self._started = False       # no "last position" to be adjacent to yet
         self._last: Fix | None = None       # the previous fix, for _refused
+        #: The target the rest of this state belongs to. A strong reference on
+        #: purpose: `is` against an object that has been freed could be true of
+        #: a different object allocated at the same address, and holding it
+        #: alive makes that impossible.
+        self._attached = None
+        #: The tick a Gold Box game was last proved to be in memory on, or None
+        #: for a connection that has never proved it. See `_running`.
+        self._proved: int | None = None
         if area:
             self.set_area(area)
 
@@ -369,9 +385,16 @@ class Automapper:
         settles it has to actually run: it used to be rate-limited even on the
         jump path, so nine crossings in ten fell through to the ordinary
         every-tenth-poll check and leaked squares for up to two seconds.
+
+        **And nothing at all is recorded until the game has been proved to be
+        in memory** -- see `_running`, which is what the second-opinion guard
+        above cannot do for itself.
         """
         if self.target is None:
+            self._attached = None      # reattaching is starting again
             return False
+        if self.target is not self._attached:
+            self._new_connection()
         if self.resident is not None:
             self.resident.target = self.target
         fix = read_fix(self.target, self.game)
@@ -379,6 +402,9 @@ class Automapper:
             return False
 
         self._ticks += 1
+        if not self._running(fix):
+            return False
+
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
         changed_area = False
@@ -413,6 +439,66 @@ class Automapper:
         self._last = fix
         self.state.exploration.visit(fix.x, fix.y, self.state.geo)
         return changed
+
+    def _new_connection(self) -> None:
+        """A new target, which is a new machine until it proves otherwise.
+
+        The window hands the mapper a fresh `Target` when the emulator goes
+        away and comes back, and everything the old session left behind is
+        about a machine that no longer exists: the last position, the fix the
+        clock is measured against, and above all the proof that a game was
+        running. Donald quit VICE mid-encounter and started it again, wish
+        reattached on its own, and the *booting* machine's zeroed position
+        triple was recorded as square (0,0) -- with the previous area's map
+        still loaded, so its sight lines drew a corridor the party had never
+        walked. Keeping the old proof is what let that first fix through.
+
+        Exploration and the area are deliberately kept: they are the player's
+        map, not this connection's state.
+        """
+        self._attached = self.target
+        self._proved = None
+        self._started = False
+        self._pending = None
+        self._last = None
+
+    def _running(self, fix: Fix) -> bool:
+        """Is a Gold Box game actually in memory? Nothing is recorded until it is.
+
+        The second-opinion guard in `poll` cannot answer this, and that is the
+        point of a separate one: it refuses a position until a second poll
+        agrees with it, and a machine sitting at the BASIC prompt reads the
+        same bytes every time. Garbage that never changes agrees with itself.
+
+        Two things prove a game and neither can be faked by unloaded RAM:
+
+        * **the game's own status line.** `E 16:48  5,2` on row 14, which is
+          what a `status` fix *is*; the odds of forty bytes of cold RAM
+          decoding to that pattern with a square inside the grid are nil.
+        * **the resident map block.** An exact 1024-byte match at `$0400`
+          against a map off the player's disks -- `_check_resident`, which
+          stamps `_proved` when it matches.
+
+        A memory fix on its own proves nothing: `$C04B` is ordinary RAM, and on
+        a freshly booted machine it reads `$00 $00 $00`, which is a perfectly
+        plausible square (0,0). So it is believed only under a proof that still
+        stands, and `PROVEN_FOR` is how long one stands for.
+
+        With no maps loaded -- no disks -- the status line is the only proof
+        available, so a long spell in camp stops being recorded until the party
+        is back in the 3D view. That costs nothing: the party does not move in
+        camp.
+        """
+        if fix.source == "status":
+            self._proved = self._ticks
+            return True
+        standing = self._proved is not None
+        if standing and self._ticks - self._proved < self.PROVEN_FOR:
+            return True
+        # `_check_resident` stamps `_proved` with this tick, and only when the
+        # block at $0400 was a map we hold. Nothing else can stamp it here.
+        self._check_resident()
+        return self._proved == self._ticks
 
     def _adjacent(self, x: int, y: int) -> bool:
         return abs(x - self.state.x) + abs(y - self.state.y) == 1
@@ -479,6 +565,9 @@ class Automapper:
         name = self.resident.identify(self._maps)
         if name is None:
             return False
+        # A map we hold, byte for byte, at the address the loader leaves it:
+        # this is also the proof `_running` needs that a game is running.
+        self._proved = self._ticks
         self.state.candidates = Candidates([name], "resident $0400", certain=True)
         if name != self.state.area:
             self.set_area(name)

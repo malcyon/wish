@@ -37,7 +37,8 @@ from automap.render import (
 )
 from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
-from automap.target import Fix, ReplayTarget
+from automap.target import Fix, MemoryTarget, ReplayTarget
+from por import games
 from por.geo import (
     EAST,
     GEO_SIZE,
@@ -702,6 +703,100 @@ def test_a_crossing_that_lands_next_door_is_caught_too(tmp_path, monkeypatch):
     assert (5, 5) in mapper.state.exploration    # on the Slums, where it is
 
 
+# --- a machine with no game on it -------------------------------------------
+
+def fresh_boot(position=(0, 0, 0)) -> MemoryTarget:
+    """A C64 with no game loaded: the state VICE comes back in.
+
+    Three registers say where the screen is and that it is text -- $D011 $1B,
+    $D018 $15, $DD00 $17, which is a boot machine's screen at $0400 -- and
+    every other byte reads as zero, because that is what a target answers for
+    memory nobody has written. So there is no status line to find on row 14,
+    and the engine's position triple reads $00 $00 $00, which is square (0,0).
+
+    `position` is there for the other half of it: while a game loads, that
+    triple passes through values that are plausible squares and hold still for
+    several polls.
+    """
+    return MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x15]),
+                         0xDD00: bytes([0x17]),
+                         games.DEFAULT.live_position: bytes(position)})
+
+
+def test_a_machine_with_no_game_on_it_records_nothing(tmp_path, monkeypatch):
+    """Donald's lone square at (0,0): VICE was restarted, wish reattached on
+    its own, and a booting machine's zeroed position triple was recorded as a
+    square the party had never stood on."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    mapper = Automapper(fresh_boot(), {"GEO14": Geo(synthetic_geo())},
+                        area="GEO14")
+    for _ in range(6):
+        assert mapper.poll() is False
+    assert mapper.state.exploration.seen == set()
+    assert mapper.state.exploration.trail == []
+
+
+def test_garbage_that_never_changes_agrees_with_itself(tmp_path, monkeypatch):
+    """And so the second-opinion guard cannot catch this on its own: it holds
+    a fix until a second poll agrees with it, and nothing is running to change
+    the bytes. This is the corridor that appeared in the middle of the map."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    mapper = Automapper(fresh_boot((6, 7, 1)), {"GEO14": Geo(synthetic_geo())},
+                        area="GEO14")
+    for _ in range(6):
+        assert mapper.poll() is False
+    assert (6, 7) not in mapper.state.exploration
+    assert (mapper.state.x, mapper.state.y) == (0, 0)
+
+
+def test_a_reconnection_proves_the_game_again_before_recording(tmp_path,
+                                                               monkeypatch):
+    """A new connection is a new machine. What the last one established --
+    where the party was, that a game was running at all -- says nothing about
+    the one that has just started answering."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    fixes = [Fix(3, 14, 0, "status", 1000), Fix(3, 13, 0, "status", 1001)]
+    mapper = Automapper(ReplayTarget(fixes), {"GEO14": Geo(synthetic_geo())},
+                        area="GEO14")
+    for _ in fixes:
+        mapper.poll()
+    seen = set(mapper.state.exploration.seen)
+    assert seen                              # the good session did record
+
+    mapper.target = fresh_boot((6, 7, 1))    # VICE closed, and opened again
+    for _ in range(6):
+        assert mapper.poll() is False
+    assert mapper.state.exploration.seen == seen
+    assert (mapper.state.x, mapper.state.y) == (3, 13)
+
+
+def test_the_game_coming_back_starts_recording_again(tmp_path, monkeypatch):
+    """The gate is not a latch on the window: once the game is back, its own
+    status line proves it and the map picks up where the party actually is."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    mapper = Automapper(fresh_boot(), {"GEO14": Geo(synthetic_geo())},
+                        area="GEO14")
+    for _ in range(3):
+        mapper.poll()
+    mapper.target = ReplayTarget([Fix(9, 9, 0, "status", 1000)])
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (9, 9)
+    assert (9, 9) in mapper.state.exploration
+
+
+def test_a_map_the_player_holds_is_proof_enough_without_a_status_line(
+        tmp_path, monkeypatch):
+    """Camp and the menus have no status line, so the fix comes from memory --
+    and the map the game has loaded at $0400 is what says the game is there."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    geo = Geo(synthetic_geo())
+    machine = fresh_boot((6, 7, 1))
+    machine.memory[RESIDENT_GEO] = geo.to_bytes()
+    mapper = Automapper(machine, {"GEO14": geo}, area="GEO14")
+    mapper.poll()
+    assert (mapper.state.x, mapper.state.y) == (6, 7)
+
+
 def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
     """It is a setting, not a property of the area. Building a plain
     `Exploration` on every area change quietly put it back to `SIGHT`."""
@@ -717,8 +812,7 @@ def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
 
 from automap import live  # noqa: E402
 from automap.state import migrate_flat_notes  # noqa: E402
-from automap.target import MemoryTarget, party_fix  # noqa: E402
-from por import games  # noqa: E402
+from automap.target import party_fix  # noqa: E402
 from por.record import FieldNotStored  # noqa: E402
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
