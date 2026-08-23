@@ -84,6 +84,17 @@ class Settings:
     # documented as one you can read and hand-edit, and a secret does not
     # belong in it -- `$POR_ULTIMATE_PASSWORD` stays the only way to give one.
     ultimate_host: str = ""
+    # Where a copy of the save goes before the editor overwrites it, and which
+    # of its **two states** it is in. Blank and unchosen is a fresh config:
+    # nowhere to put a backup, so there are no backups and no saves either
+    # (`editor/files.py`). Opening a save fills it in with `backups/` under
+    # that save's folder and it keeps following whatever save is opened next.
+    # Typing or browsing to one in the dialog sets `backup_folder_chosen`, and
+    # from then on it is used for every save and **nothing changes it
+    # automatically again**. Clearing the box is the way back: it unsets the
+    # flag, and the next save opened fills it in.
+    backup_folder: str = ""
+    backup_folder_chosen: bool = False
     # `QWidget.saveGeometry()`, base64. Size, position and which screen, which
     # is what makes a window restored from a monitor that is no longer attached
     # land somewhere visible instead of off the edge. `window_width` and

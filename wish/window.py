@@ -48,7 +48,14 @@ from ui.appicon import app_icon
 
 from . import backends, debuglog, debugmode
 from .about import install as install_help
-from .preferences import SHORTCUT, PreferencesDialog, apply_ultimate_host, game_named
+from .preferences import (
+    SHORTCUT,
+    PreferencesDialog,
+    apply_ultimate_host,
+    backup_folder,
+    chosen_backup_folder,
+    game_named,
+)
 from .session import BUSY, CONNECTED, Session
 
 # The map is what a player has open while playing; the editor is the
@@ -108,7 +115,14 @@ class WishWindow(QMainWindow):
             settings=self.settings)
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
-        self.editor = EditorWindow(save, game_disk, disks=self.disks_text())
+        self.editor = EditorWindow(save, game_disk, disks=self.disks_text(),
+                                   backups="")
+        # The backup folder follows whatever save is open until somebody
+        # chooses one, so the window has to hear about every open. `""` above
+        # is deliberate: the editor is managed from here, and until this says
+        # otherwise there is nowhere to put a copy.
+        self.editor.opened.connect(lambda _p: self.follow_save())
+        self.follow_save()
         # Whose area names to print. `GEO15` is Sokol Keep in Pool of Radiance
         # and somewhere else in Curse, so the caller that loaded the maps says
         # which title they are. Failing that the open save says, and only with
@@ -351,6 +365,34 @@ class WishWindow(QMainWindow):
         self.statusBar().showMessage(
             f"game disks: {where} - {len(maps)} maps" if where
             else "no game disks found")
+
+    def follow_save(self) -> None:
+        """A save was opened: point the automatic backup folder at it.
+
+        Does nothing at all once the user has chosen a folder in the dialog --
+        *"never change it after they've specified it themselves"* -- and that
+        is the only branch in here.
+        """
+        if not chosen_backup_folder(self.settings):
+            where = backup_folder(self.settings, self.editor.path)
+            if where != (self.settings.backup_folder or ""):
+                self.settings.backup_folder = where
+                self.settings.save()
+        self.editor.set_backup_folder(self.settings.backup_folder or "")
+
+    def set_backup_folder(self, folder: str) -> None:
+        """The user typed, browsed or cleared one in the dialog.
+
+        Anything they typed is theirs and is never moved again. **Clearing it
+        is the way back to automatic**: a setting a user cannot undo is a trap,
+        and the field fills in again from the open save -- immediately when
+        there is one, otherwise the next time one is opened.
+        """
+        folder = (folder or "").strip()
+        self.settings.backup_folder = folder
+        self.settings.backup_folder_chosen = bool(folder)
+        self.settings.save()
+        self.follow_save()
 
     def set_ultimate_host(self, host: str) -> None:
         """Where the Commodore 64 Ultimate is. Empty means "no device"."""

@@ -31,11 +31,11 @@ Three things about the shape of it:
   for its own placeholder, the spin box sizes itself from its special-value
   text, and the table is asked for its column.
 
-**`editor.files` is imported here, and only here.** The dialog reports where a
-backup of the open save would go, which is that module's decision to make. The
-one-way rule the project keeps is that `editor/` imports nothing from
-`automap/`; `wish/` is the layer that is allowed to know about both, and this
-is it.
+**`editor.files` is imported here, and only here.** The backup folder is that
+module's business and the setting is `automap`'s, so the function that puts the
+two together (`backup_folder`) lives on this side. The one-way rule the project
+keeps is that `editor/` imports nothing from `automap/`; `wish/` is the layer
+that is allowed to know about both, and this is it.
 
 The password is deliberately absent. `$POR_ULTIMATE_PASSWORD` is the only way
 to give one, and all this shows is whether it is set: the settings file is
@@ -95,6 +95,11 @@ SETTLE_MS = 400
 
 HINT = ("Leave it empty to search: beside the open save disk first, then the "
         "usual folders.")
+
+#: What the backup box says while it is empty, which is the state a fresh
+#: config is in. It is also what sets that box's width -- `room_for` measures
+#: it -- so it says the rule in as few words as carry it.
+BACKUPS_PLACEHOLDER = "set when you open a save"
 
 PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 
@@ -197,31 +202,36 @@ def _scan(where: str) -> dict:
     return found
 
 
-def backup_folder(save) -> tuple[pathlib.Path, bool]:
-    """Where a backup of `save` would go, and whether that is the fallback.
+def chosen_backup_folder(settings) -> bool:
+    """Whether the backup folder is the user's own. See `backup_folder`."""
+    return bool(getattr(settings, "backup_folder_chosen", False))
 
-    `editor.files.backup_dir_for` is the authority and is what runs at save
-    time -- but it answers "may I write here" by *making* the folder and
-    touching a probe file in it, and a dialog that only reports must not write
-    to the folder somebody keeps their disks in. So this asks the same question
-    read-only. The two can disagree only on a filesystem that lies about
-    access, and there the status line after a save names the real path, from
-    the real chooser.
 
-    With nothing open there is no per-file answer, so the fallback is named and
-    said to be the fallback.
+def backup_folder(settings, save) -> str:
+    """What the backup folder setting should hold, given the open save.
+
+    **Two states, and this function is the whole of the distinction.**
+
+    *Chosen* -- the user typed or picked a path. It is the answer for every
+    save from then on and nothing automatic may change it.
+
+    *Automatic* -- what a fresh config is in: `backups/` under the folder of
+    whatever save is open, moving with it, and **empty with nothing open**,
+    because there is no save to be beside yet. Empty means no backups, and no
+    backup means no save at all (`editor/files.py::save_disk`).
+
+    It creates nothing. A dialog that only reports must not write to the folder
+    somebody keeps their disks in, least of all this project's own
+    `Pool of Radiance Disks/`; `back_up` makes the folder at the moment it has
+    something to put in it.
     """
     from editor import files
 
+    if chosen_backup_folder(settings):
+        return (getattr(settings, "backup_folder", "") or "").strip()
     if save is None:
-        return files.fallback_dir(), True
-    beside = pathlib.Path(save).parent / files.BACKUP_DIR
-    # The folder itself once it exists, its parent while it does not: making
-    # it is the first thing `backup_dir_for` would have to do.
-    probe = beside if beside.is_dir() else beside.parent
-    if os.access(probe, os.W_OK):
-        return beside, False
-    return files.fallback_dir(), True
+        return ""
+    return str(files.automatic_dir(save))
 
 
 def _set_by(source: str, settings) -> str:
@@ -471,32 +481,34 @@ class PreferencesDialog(QDialog):
         """Where a copy of the save goes before it is overwritten.
 
         Donald asked where `~/.local/share/wish/backups` came from and said no
-        user would ever think to look there. He is right, and that folder is
-        only the *fallback*: the copy normally lands in `backups/` beside the
-        save disk, which is the folder somebody was already looking at. Saying
-        so in a line that is always here beats saying it in a status message
-        already dismissed.
+        user would ever think to look there. Nobody does now: there is one
+        folder, it is in this box, and the box says what it is.
 
-        Its own group, titled with the word somebody would look for. Read-only:
-        which of the two it is depends on the save, not on a preference.
-
-        Laid out like a backend: the path, then which of the two folders it is
-        as a badge beside it, then the standing facts underneath. It was one
-        sentence with all three run together until Donald asked for "the same
-        effect" the backend states got -- and the answer to *which folder is
-        this* is a state, exactly as "answering" is.
+        **Blank on a fresh config, and blank means no backups** -- and no
+        saves, because the editor's licence to write over the file you opened
+        is the copy it takes first. Opening a save fills it in with `backups/`
+        under that save's folder and it follows every save opened after that;
+        type or browse to one of your own and it stops following anything.
+        Clear it to go back to following.
         """
         box = QGroupBox("Backups")
         outer = QVBoxLayout(box)
         row = QHBoxLayout()
-        self.backups = QLabel("")
-        self.backups.setWordWrap(True)
-        self.backups.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.backups_badge = QLabel("")
+        self.backups = QLineEdit("")
+        self.backups.setPlaceholderText(BACKUPS_PLACEHOLDER)
+        # Measured off its own placeholder, like the folder box: what it says
+        # is the only instruction there is for an empty field.
+        self.backups.setMinimumWidth(room_for(self.backups,
+                                              self.backups.placeholderText()))
+        self.backups.editingFinished.connect(self._backups_edited)
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self.browse_backups)
+        clear = QPushButton("Clear")
+        clear.clicked.connect(lambda: self.set_backup_folder(""))
         row.addWidget(QLabel("Folder"))
         row.addWidget(self.backups, 1)
-        row.addWidget(self.backups_badge)
+        row.addWidget(browse)
+        row.addWidget(clear)
         outer.addLayout(row)
         self.backups_note = QLabel("")
         self.backups_note.setWordWrap(True)
@@ -504,37 +516,48 @@ class PreferencesDialog(QDialog):
         return box
 
     def _say_backups(self) -> None:
-        """The path, the badge and the note, re-read whenever it refreshes.
+        """The path and the note, re-read whenever it refreshes.
 
-        The standing facts are said here because both are behaviours somebody
-        would otherwise have to guess at: a backup is made only when the bytes
-        changed, and the newest few are kept rather than all of them.
+        The note is which of the two states the field is in, because the path
+        alone cannot say: `/somewhere/backups` looks the same whether it is
+        following the open save or was typed in and is never moving again.
+
+        The standing facts are said here too: a backup is made only when the
+        bytes changed, and the newest few are kept rather than all of them.
         """
         from editor import files
 
-        save = getattr(self.win.editor, "path", None)
-        where, fallback = backup_folder(save)
-        if save is None:
-            # Nothing open, so there is no per-save answer yet. Grey, not
-            # amber: this is the ordinary state of a window nobody has opened
-            # a save in, and nothing is wrong.
-            state, badge, why = (
-                "fallback", SILENT,
-                "For a save whose own folder cannot be written. Open a save "
-                "and this names where that save's backups go.")
-        elif fallback:
-            state, badge, why = (
-                "fallback", UNVERIFIED,
-                "The folder beside the save disk cannot be written, so they "
-                "go here instead.")
+        where = getattr(self.win.settings, "backup_folder", "") or ""
+        if not self.backups.hasFocus():
+            self.backups.setText(where)
+        # Two lines of note is 17 px of a dialog that has to fit 662 of them
+        # (§14), so each of these is one line at the width `fit` opens.
+        if chosen_backup_folder(self.win.settings):
+            why = "Yours, for every save. Clear it to follow the save again."
+        elif where:
+            why = "Follows the save you open. Set one here to fix it instead."
         else:
-            state, badge, why = ("beside the save disk", ANSWERING, "")
-        self.backups.setText(str(where))
-        self.backups_badge.setText(state)
-        self.backups_badge.setStyleSheet(badge)
+            why = "Open a save and this fills in. No backup folder, no saving."
         self.backups_note.setText(
             f"{why}  Only when something changed; the newest "
-            f"{files.KEEP_BACKUPS} are kept.".strip())
+            f"{files.KEEP_BACKUPS} are kept.")
+
+    def browse_backups(self) -> None:
+        """The folder picker. A method so a test can replace it."""
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Where backups of your saves go",
+            self.backups.text() or str(pathlib.Path.home()))
+        if chosen:
+            self.set_backup_folder(chosen)
+
+    def set_backup_folder(self, folder: str) -> None:
+        """Type this in and apply it, as Browse and Clear do."""
+        self.backups.setText(folder)
+        self._backups_edited()
+
+    def _backups_edited(self) -> None:
+        self.win.set_backup_folder(self.backups.text().strip())
+        self.refresh()
 
     def browse(self) -> None:
         """The folder picker. A method so a test can replace it."""

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pathlib
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -285,14 +285,26 @@ class RosterModel(QAbstractTableModel):
 
 
 class EditorWindow(QMainWindow):
+    #: A save was opened, or Save As pointed the window at another file. What
+    #: the backup folder follows while nobody has chosen one of their own --
+    #: which is a preference, so the window over in `wish/` is what listens.
+    opened = pyqtSignal(str)
+
     def __init__(self, path: str | None = None, game_disk: str | None = None,
-                 disks: str | None = None):
+                 disks: str | None = None, backups: str | None = None):
         """`disks` is the Game directory, already resolved by the caller.
 
         Handed in rather than looked up, exactly as `game_disk` is: this
         package may not import the live half of the application, and the
         setting lives over there. `tests/test_wish.py` greps this directory for
         the fact.
+
+        `backups` is the same arrangement for where a copy of the save goes.
+        **None means nobody is managing it** -- `python -m editor`, with no
+        preferences anywhere -- and the copy lands in `backups/` beside the
+        save, which is the rule the preference itself starts on. An empty
+        string is a caller saying it has no folder to give, and a save then
+        refuses rather than going through without a copy.
         """
         super().__init__()
         from .ui_character import Ui_CharacterWindow
@@ -303,6 +315,7 @@ class EditorWindow(QMainWindow):
         self.path: pathlib.Path | None = None
         self.game_disk = game_disk
         self.disks = disks
+        self.backups = backups
         #: Which image each thing was actually read off, for a report that can
         #: say so. They are not always the same disk.
         self.game_disk_found: str | None = None
@@ -584,6 +597,7 @@ class EditorWindow(QMainWindow):
                     + ("" if self.charset else
                        "  -- no game disk, so no item names and no icons"))
         self._retitle()
+        self.opened.emit(str(self.path))
 
     def _size_roster(self) -> None:
         """Give the roster exactly the width and height its rows need.
@@ -716,6 +730,14 @@ class EditorWindow(QMainWindow):
             if isinstance(w, SpellEditor):
                 w.set_names(self.spell_names)
 
+    def set_backup_folder(self, folder: str | None) -> None:
+        """Where a copy of the save goes before it is overwritten.
+
+        Empty is not "somewhere sensible": it is a window that cannot save,
+        and `files.save_disk` says so rather than writing anyway.
+        """
+        self.backups = folder
+
     def set_disks(self, disks: str | None) -> None:
         """The Game directory changed. Re-read, and redraw what it feeds.
 
@@ -764,7 +786,7 @@ class EditorWindow(QMainWindow):
         self._flush()
         try:
             self._write_back()
-            note = files.save_disk(self.party.disk, self.path)
+            note = files.save_disk(self.party.disk, self.path, self.backup_dir())
         except Exception as exc:
             if interactive:
                 QMessageBox.critical(self, "Cannot save", str(exc))
@@ -774,6 +796,16 @@ class EditorWindow(QMainWindow):
         self.status(note)
         self._retitle()
         return note
+
+    def backup_dir(self) -> str | pathlib.Path:
+        """The folder this window would back a save up into.
+
+        Beside the save when nobody is managing the setting; whatever was
+        handed in otherwise, empty included -- see `__init__`.
+        """
+        if self.backups is None:
+            return files.automatic_dir(self.path)
+        return self.backups
 
     def preview_text(self) -> str:
         """What a save would write, in the form `wish --dry-run` prints it."""
@@ -812,6 +844,9 @@ class EditorWindow(QMainWindow):
         if not path:
             return
         self.path = pathlib.Path(path)
+        # Before the write, so an automatic backup folder is already following
+        # the new location by the time the copy is taken.
+        self.opened.emit(str(self.path))
         self.save()
 
     def _write_back(self) -> None:

@@ -11,62 +11,41 @@ renames over, so an interrupted save leaves the original untouched.
 timestamped backup. Not one `.bak` overwritten each save: a bad edit is often
 not noticed until the game is booted, by which point a one-deep backup would
 already hold the damage.
+
+**And the folder is named, never guessed.** `save_disk` is told where the copy
+goes and refuses to write when nothing was named -- there is no hidden
+directory to fall back to, because the guarantee above is worth more than the
+save that would have gone through without it.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
-import os
 import pathlib
 import shutil
-import sys
 
 BACKUP_DIR = "backups"
 KEEP_BACKUPS = 20
 
 
-def fallback_dir() -> pathlib.Path:
-    """The user's data directory, wherever this platform keeps one.
-
-    This was `~/.local/share/wish/backups` everywhere, which on Windows puts a
-    Unix path in the profile root that no Windows user would think to look in.
-
-    Spelled out here rather than imported from the project's platform table,
-    because `editor` may import nothing that could reach an emulator and
-    `tests/test_wish.py` enforces that by grepping this package. Three lines of
-    duplication is the price of that rule; keep the two in step.
-    """
-    if sys.platform == "win32":
-        root = os.environ.get("LOCALAPPDATA") or pathlib.Path.home() / "AppData/Local"
-    elif sys.platform == "darwin":
-        root = pathlib.Path.home() / "Library/Application Support"
-    else:
-        root = os.environ.get("XDG_DATA_HOME") or pathlib.Path.home() / ".local/share"
-    return pathlib.Path(root) / "wish" / BACKUP_DIR
+class NoBackupFolder(RuntimeError):
+    """Nowhere to put the copy, so the save does not happen."""
 
 
-def backup_dir_for(target: pathlib.Path) -> pathlib.Path:
-    """Beside the save if we may write there, else under the user's data dir."""
-    beside = target.parent / BACKUP_DIR
-    try:
-        beside.mkdir(parents=True, exist_ok=True)
-        probe = beside / ".writable"
-        probe.touch()
-        probe.unlink()
-        return beside
-    except OSError:
-        fallback = fallback_dir()
-        fallback.mkdir(parents=True, exist_ok=True)
-        return fallback
+def automatic_dir(target: str | pathlib.Path) -> pathlib.Path:
+    """`backups/` beside the save. The answer until somebody chooses another."""
+    return pathlib.Path(target).parent / BACKUP_DIR
 
 
-def back_up(target: str | pathlib.Path) -> pathlib.Path | None:
-    """Copy `target` aside, timestamped. None if there is nothing to copy."""
+def back_up(target: str | pathlib.Path,
+            into: str | pathlib.Path) -> pathlib.Path | None:
+    """Copy `target` into `into`, timestamped. None if there is nothing to copy."""
     target = pathlib.Path(target)
     if not target.exists():
         return None                      # Save As to a new name loses nothing
     stamp = _dt.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    into = backup_dir_for(target)
+    into = pathlib.Path(into)
+    into.mkdir(parents=True, exist_ok=True)
     copy = into / f"{target.name}.{stamp}"
     n = 1
     while copy.exists():                 # two saves inside one second
@@ -87,25 +66,35 @@ def prune(target: pathlib.Path, into: pathlib.Path,
     return dropped
 
 
-def save_disk(disk, target: str | pathlib.Path) -> str:
-    """Write `disk` to `target`, backing up first. Returns what to tell the user.
+def save_disk(disk, target: str | pathlib.Path,
+              into: str | pathlib.Path | None) -> str:
+    """Write `disk` to `target`, backing up into `into` first.
+
+    Returns what to tell the user, and raises `NoBackupFolder` rather than
+    overwrite a save with nowhere to put the copy. This module's whole licence
+    to write over the file you opened is that guarantee, so an unset folder
+    stops the save instead of quietly costing it.
 
     A save that changes nothing writes nothing -- not the disk, and not a
     backup. That keeps every backup on disk corresponding to a real edit rather
-    than to somebody pressing Ctrl+S out of habit.
+    than to somebody pressing Ctrl+S out of habit, and it is why a window with
+    no backup folder can still be closed without an argument.
     """
     target = pathlib.Path(target)
     new = disk.to_bytes()
     if target.exists() and target.read_bytes() == new:
         return "no changes"
-    copy = back_up(target)
+    if not into:
+        raise NoBackupFolder(
+            f"No backup folder is set, so {target.name} was not written. "
+            "File > Preferences… to say where backups go.")
+    copy = back_up(target, into)
     disk.save(target)
     if copy is None:
         return f"wrote {target.name}"
     # Beside the disk, `backups/NAME` is enough -- it is the folder the user
-    # was already looking at. When it went to the fallback instead, the same
-    # short form names a `backups/` the user has no reason to think exists, on
-    # a path they have never heard of, so say the whole thing.
-    if copy.parent == target.parent / BACKUP_DIR:
+    # was already looking at. A folder somewhere else is one they chose, and
+    # naming it in full is how the message stays checkable.
+    if copy.parent == automatic_dir(target):
         return f"wrote {target.name}, backup {copy.parent.name}/{copy.name}"
     return f"wrote {target.name}, backup {copy}"
