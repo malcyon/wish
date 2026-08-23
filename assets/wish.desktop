@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Wish
+GenericName=Gold Box save editor
+Comment=Character editor, save editor and live automapper for the Commodore 64 SSI Gold Box games
+Exec=wish %f
+Icon=wish
+Terminal=false
+Categories=Utility;
+Keywords=Gold Box;Pool of Radiance;Commodore 64;save editor;automapper;
+MimeType=application/x-d64;
+StartupNotify=true
+StartupWMClass=wish
