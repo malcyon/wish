@@ -464,6 +464,113 @@ def test_the_poll_interval_is_remembered_and_zero_means_the_backend_s_own(
     assert win.session._interval_override is None
 
 
+# --- fast travel -------------------------------------------------------------
+
+def ticked(dialog):
+    """The names with a tick against them, in table order."""
+    from PyQt6.QtCore import Qt
+    return [dialog.travel_table.item(i, 0).text()
+            for i in range(dialog.travel_table.rowCount())
+            if dialog.travel_table.item(i, 0).checkState()
+            == Qt.CheckState.Checked]
+
+
+def tick(dialog, name, on=True):
+    from PyQt6.QtCore import Qt
+    for i in range(dialog.travel_table.rowCount()):
+        item = dialog.travel_table.item(i, 0)
+        if item.text() == name:
+            item.setCheckState(Qt.CheckState.Checked if on
+                               else Qt.CheckState.Unchecked)
+            return
+    raise AssertionError(f"no row named {name}")
+
+
+def test_a_fresh_config_ticks_the_three_areas_and_nothing_else(app, tmp_path,
+                                                               monkeypatch):
+    """Donald's three: New Phlan, The Slums, Sokol Keep. The visited-areas
+    filter this replaces was inferred from our own map files, and a party
+    walks wherever it likes while the map window is shut."""
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    assert ticked(dialog) == ["New Phlan", "Sokol Keep", "The Slums"]
+    assert "3 areas" in dialog.travel_note.text()
+
+
+def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
+    """`ECL1E` is the attract-mode demo and entering it ends the session. It
+    is `Area.warpable` that says so, not an id written down twice."""
+    from por import areas
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    assert [a.id for a in dialog.travel_rows if not a.warpable] == []
+    assert 30 not in [a.id for a in dialog.travel_rows]
+    assert dialog.travel_table.rowCount() == len(
+        [a for a in areas.AREAS if a.warpable])
+
+
+def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    tick(dialog, "The Kobold Caves")
+    assert 13 in Settings.load().chosen_areas()
+    assert "The Kobold Caves" in [r.name for r in win.map.warp_bar.rows]
+
+    tick(dialog, "Sokol Keep", on=False)
+    assert 21 not in Settings.load().chosen_areas()
+    assert "Sokol Keep" not in [r.name for r in win.map.warp_bar.rows]
+
+
+def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
+                                                       monkeypatch):
+    """An empty dropdown is then the player's own choice. The dialog says so
+    rather than leaving a table that looks like it failed to load, and the
+    empty list survives a reload where the defaults would have come back."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    for name in list(ticked(dialog)):
+        tick(dialog, name, on=False)
+    assert ticked(dialog) == []
+    assert Settings.load().warp_areas == []
+    assert Settings.load().chosen_areas() == ()
+    assert "Nothing ticked" in dialog.travel_note.text()
+    assert win.map.warp_bar.rows == ()
+
+
+def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
+                                                           monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    PreferencesDialog(window(app))          # writes nothing on its own
+    assert Settings.load().warp_areas is None
+
+    tick(PreferencesDialog(window(app)), "Kovel Mansion")
+    later = window(app, settings=Settings.load())
+    assert "Kovel Mansion" in [r.name for r in later.map.warp_bar.rows]
+    assert ticked(PreferencesDialog(later)) == [
+        "Kovel Mansion", "New Phlan", "Sokol Keep", "The Slums"]
+
+
+def test_the_warning_is_a_framed_box_in_the_same_amber_as_unverified(
+        app, tmp_path, monkeypatch):
+    """Donald's wording, unedited, and a box rather than a tooltip: it is the
+    one thing in this section somebody has to read before they use it."""
+    from PyQt6.QtWidgets import QLabel
+
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    boxes = [w for w in dialog.findChildren(QLabel)
+             if w.text() == ("Fast travel to areas you haven't been to is "
+                             "dangerous and can break the game.")]
+    assert len(boxes) == 1
+    style = boxes[0].styleSheet()
+    assert style.startswith(preferences.UNVERIFIED)   # the same amber, framed
+    assert "border" in style and boxes[0].wordWrap()
+
+
 # --- the debug log -----------------------------------------------------------
 
 def test_the_debug_log_is_in_the_dialog_and_survives_a_restart(

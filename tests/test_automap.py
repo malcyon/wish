@@ -436,6 +436,54 @@ def test_settings_round_trip(tmp_path, monkeypatch):
     assert Settings.load().window_width == 900
 
 
+def test_a_fresh_config_offers_three_areas_for_fast_travel(tmp_path,
+                                                          monkeypatch):
+    """New Phlan, The Slums and Sokol Keep -- `por/areas.py` ids 0, 20 and 21.
+    The setting is None until somebody ticks something, which is what tells a
+    fresh config from a player who unticked everything."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    from automap.config import DEFAULT_WARP_AREAS, Settings
+
+    assert Settings().warp_areas is None
+    assert Settings().chosen_areas() == DEFAULT_WARP_AREAS == (0, 20, 21)
+    # And a file written before the setting existed is a fresh config too.
+    Settings(reveal=False).save()
+    assert Settings.load().chosen_areas() == (0, 20, 21)
+
+
+def test_the_chosen_areas_survive_a_reload_and_so_does_an_empty_choice(
+        tmp_path, monkeypatch):
+    """Unticking everything is an answer: it has to come back as an empty list
+    and not as the defaults, or the setting would undo itself overnight."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    from automap.config import Settings
+
+    settings = Settings()
+    settings.set_chosen_areas([13, 0, 13])
+    settings.save()
+    assert Settings.load().chosen_areas() == (0, 13)
+
+    settings.set_chosen_areas([])
+    settings.save()
+    assert Settings.load().warp_areas == []
+    assert Settings.load().chosen_areas() == ()
+
+
+def test_a_hand_edited_area_list_is_read_for_what_it_holds(tmp_path,
+                                                           monkeypatch):
+    """The settings file is documented as one you can edit, so a row that is
+    not a number loses that row and nothing else."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    from automap.config import Settings
+
+    assert Settings(warp_areas=["0", 20, None, "twenty"]).chosen_areas() == (
+        0, 20)
+    assert Settings(warp_areas=7).chosen_areas() == (0, 20, 21)
+
+
 def test_unreadable_settings_are_not_fatal(tmp_path, monkeypatch):
     """Losing a preference is not worth refusing to start."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -1101,11 +1149,11 @@ def test_every_icon_parses():
         assert icons.commands(name), name
 
 
-def test_every_note_type_and_class_icon_draws():
+def test_every_note_type_draws():
     """Every name the program asks for by string is a name one of the two
-    tables has -- path data, or a character."""
-    from automap.panel import CLASS_ICON
-    for name in [t.icon for t in notemod.TYPES] + list(CLASS_ICON.values()):
+    tables has -- path data, or a character. The roster's class icons were
+    removed: they carried little at 13px and are not missed."""
+    for name in [t.icon for t in notemod.TYPES]:
         assert name in icons.NAMES, name
         if not icons.is_text(name):
             assert icons.commands(name), name
@@ -1385,24 +1433,16 @@ def test_without_a_game_disk_the_readied_line_is_blank_not_numbered():
     assert live.readied(save.to_bytes(), 5, None) == ()
 
 
-def test_the_class_icons_stand_beside_the_class_text_never_instead_of_it(app):
-    """The text is what a screen reader gets, and what somebody who does not
-    recognise a hooded figure gets."""
+def test_the_class_is_written_out_and_not_left_to_an_icon(app):
+    """The roster's class icons were removed -- they carried little at 13px --
+    so the text is the whole statement, and it is what a screen reader gets."""
     from automap.panel import CharacterCard
     card = CharacterCard()
     two = (live.ClassProgress("magic-user", 1, 0, 0.0, 2500),
            live.ClassProgress("thief", 1, 0, 0.0, 1250))
     card.show_character(_character(classes=two))
-    assert card.class_icons.names == ("wizard-hat", "hood")
     assert card.klass.text().startswith("magic-user/thief")
-
-
-def test_the_fighter_icon_is_one_of_ours(app):
-    """Font Awesome Free has no sword: `sword` and `swords` are Pro, and
-    `khanda` is a Sikh religious emblem."""
-    from automap.panel import CLASS_ICON
-    assert CLASS_ICON["fighter"] == "sword"
-    assert "sword" in icons.OURS and "sword" not in icons.FONT_AWESOME
+    assert not hasattr(card, "class_icons")
 
 
 # --- the notes panel and the popover ----------------------------------------
