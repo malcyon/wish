@@ -14,6 +14,7 @@ Qt in it and is tested against captured bytes.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
@@ -24,14 +25,20 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.iconpaint import draw_icon, icon_pixmap
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and the level swallows them when it is off -- without
+#: `automap` importing `wish`.
+log = logging.getLogger("wish.automap.panel")
 
 PAPER = QColor("#fbfcfd")
 CARD = QColor("#ffffff")
@@ -67,12 +74,10 @@ BAR_HEIGHT = 15
 
 NOTE = QColor("#b8601f")
 
-# The class icons, beside the class text and never instead of it: the text is
-# what a screen reader gets, and what somebody who does not recognise the icon
-# gets. Three of the four are ours, because Font Awesome Free has no sword and
-# its `hat-wizard` and `mask` failed at 13px -- see `docs/109-icon-choices.md`.
-CLASS_ICON = {"magic-user": "wizard-hat", "cleric": "cross",
-              "thief": "hood", "fighter": "sword"}
+# **There are no class icons.** There were, beside the class text; four
+# 13-pixel glyphs that nobody could tell apart at that size and that said
+# nothing the words "fighter/thief" beside them did not. `IconRow` stays,
+# because the conditions row uses it and a skull at 13px does read.
 ICON_SIZE = 13
 
 
@@ -80,8 +85,8 @@ class IconRow(QWidget):
     """A few icons in a line, painted from `automap.icons`.
 
     Painted rather than assembled from `QLabel` pixmaps so the row costs one
-    widget however many icons it holds, and so a multi-class card does not
-    rebuild its layout when the classes change.
+    widget however many icons it holds, and so a card whose conditions change
+    does not rebuild its layout.
     """
 
     def __init__(self, size: int = ICON_SIZE, colour: QColor = MUTED,
@@ -170,10 +175,25 @@ def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
 
 class CharacterCard(QFrame):
     """One character: name, class and level, AC and THAC0, bars, what is in
-    hand, and what is on them."""
+    hand, and what is on them.
+
+    **The Level Up button lives here and nowhere else.** It sits at the right
+    end of the class-and-level line, and it is *hidden* -- not disabled --
+    unless that character has the experience for another level. A button that
+    is there only when it can be used needs no label saying which character it
+    means: the card is the answer.
+    """
+
+    #: `(slot, class name)`. The class is named because a multi-class character
+    #: levels each class separately and the trainer asks which school you are
+    #: standing in; when two are ready the button offers a menu rather than
+    #: choosing.
+    level_up_requested = pyqtSignal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.slot = 0
+        self.ready: tuple[str, ...] = ()
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
             f"CharacterCard {{ background: {CARD.name()};"
@@ -196,11 +216,18 @@ class CharacterCard(QFrame):
 
         klass_row = QHBoxLayout()
         klass_row.setSpacing(4)
-        self.class_icons = IconRow()
         self.klass = _label(muted=True, size=8)
-        klass_row.addWidget(self.class_icons)
         klass_row.addWidget(self.klass)
         klass_row.addStretch(1)
+        self.level_up = QPushButton("Level up")
+        font = self.level_up.font()
+        font.setPointSize(8)
+        self.level_up.setFont(font)
+        self.level_up.setFixedHeight(18)
+        self.level_up.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.level_up.clicked.connect(self._level_up_clicked)
+        self.level_up.hide()
+        klass_row.addWidget(self.level_up, 0, Qt.AlignmentFlag.AlignRight)
         box.addLayout(klass_row)
 
         self.hp = Bar()
@@ -229,14 +256,43 @@ class CharacterCard(QFrame):
         self.effects.setWordWrap(True)
         box.addWidget(self.effects)
 
+    @staticmethod
+    def ready_to_level(who) -> tuple[str, ...]:
+        """Which of this character's classes have the experience for a level.
+
+        **Every class is measured against the whole stored number.** The
+        trainer does not divide experience between a multi-class character's
+        classes -- LADY KATHERINE, magic-user 1 / thief 7 with 70,100 points,
+        was offered thief 8, whose threshold is 70,001 -- so this asks each
+        class the same question the school does.
+        """
+        return tuple(c.name for c in who.classes
+                     if c.next_threshold is not None
+                     and c.experience >= c.next_threshold)
+
+    def _level_up_clicked(self) -> None:
+        if len(self.ready) == 1:
+            self.level_up_requested.emit(self.slot, self.ready[0])
+            return
+        menu = QMenu(self.level_up)
+        for name in self.ready:
+            menu.addAction(name).triggered.connect(
+                lambda _checked=False, n=name:
+                self.level_up_requested.emit(self.slot, n))
+        menu.exec(self.level_up.mapToGlobal(
+            self.level_up.rect().bottomLeft()))
+
     def show_character(self, who) -> None:
+        self.slot = who.slot
         self.name.setText(who.name)
         ac = "--" if who.armour_class is None else who.armour_class
         thac0 = "--" if who.thac0 is None else who.thac0
         self.combat.setText(f"AC {ac}   THAC0 {thac0}")
         self.klass.setText(f"{who.class_text}  {who.level_text}")
-        self.class_icons.set_icons(CLASS_ICON.get(c.name) for c in who.classes)
-        self.class_icons.setToolTip(who.class_text)
+        self.ready = self.ready_to_level(who)
+        self.level_up.setVisible(bool(self.ready))
+        if self.ready:
+            self.level_up.setToolTip("level up as " + " or ".join(self.ready))
         conditions = who.conditions
         self.conditions.set_icons(icon for icon, _ in conditions)
         self.conditions.setToolTip("\n".join(why for _, why in conditions))
@@ -285,7 +341,14 @@ class CharacterCard(QFrame):
 
 
 class RosterPanel(QWidget):
-    """The cards, down the left. Scrolls, because eight cards outrun a window."""
+    """The cards, down the left. Scrolls, because eight cards outrun a window.
+
+    `level_up_requested` carries `(slot, class name)` up from whichever card
+    was clicked. The panel does not run the action itself -- it has no target
+    and no confirmation dialog, and both belong to the window.
+    """
+
+    level_up_requested = pyqtSignal(int, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -316,6 +379,7 @@ class RosterPanel(QWidget):
     def _card(self, index: int) -> CharacterCard:
         while len(self.cards) <= index:
             card = CharacterCard()
+            card.level_up_requested.connect(self.level_up_requested)
             self.column.insertWidget(len(self.cards), card)
             self.cards.append(card)
         return self.cards[index]
@@ -343,7 +407,7 @@ class RosterPanel(QWidget):
 
 
 class BottomStrip(QWidget):
-    """Where, when, which area, what is on the party, and what is loaded."""
+    """Where, when, which area, and what is on the party."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -361,27 +425,14 @@ class BottomStrip(QWidget):
             row.addWidget(widget)
         row.addWidget(self.effects, 1)
 
-        # Collapsed by default. The loader's cache is of interest while reverse
-        # engineering and of none at all while playing.
-        self.toggle = QToolButton()
-        self.toggle.setText("Loaded files")
-        self.toggle.setCheckable(True)
-        self.toggle.setArrowType(Qt.ArrowType.RightArrow)
-        self.toggle.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.toggle.toggled.connect(self._toggled)
-        row.addWidget(self.toggle)
         box.addLayout(row)
 
-        self.loaded = _label("", muted=True, size=8)
-        self.loaded.setWordWrap(True)
-        self.loaded.hide()
-        box.addWidget(self.loaded)
-
-    def _toggled(self, on: bool) -> None:
-        self.toggle.setArrowType(Qt.ArrowType.DownArrow if on
-                                 else Qt.ArrowType.RightArrow)
-        self.loaded.setVisible(on)
+        #: The loader's cache, last time it changed. It used to be a collapsed
+        #: readout on this strip, which is a reverse-engineering number in a
+        #: window somebody is playing a game in; it goes to the debug log now,
+        #: and only when it moves -- twenty-five bytes five times a second
+        #: would drown the file.
+        self._loaded: tuple[int, ...] = ()
 
     def show_state(self, state, snap=None) -> None:
         """The map's own state answers "where"; the snapshot answers the rest.
@@ -412,8 +463,11 @@ class BottomStrip(QWidget):
             text += f"   (+{len(monsters)} on monsters)"
         self.effects.setText(text)
         self.effects.setToolTip("\n".join(e.detail for e in party + monsters))
-        self.loaded.setText("loaded files: " + " ".join(
-            f"{b:02X}" for b in snap.loaded_files))
+        loaded = tuple(snap.loaded_files)
+        if loaded != self._loaded:
+            self._loaded = loaded
+            log.info("loaded files: %s",
+                     " ".join(f"{b:02X}" for b in loaded) or "none")
 
 
 class NotesPanel(QWidget):
