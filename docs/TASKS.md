@@ -35,10 +35,7 @@ files, the standing constraints in full, and no commits.
 | **P50** | Implement the C64→Amiga port — [`124`](124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
 | **P74** | A logo and icons — [`132`](132-logo.md) | the app icon is built and wired; still open: a `.desktop` file, an `.icns`, a README lockup, and a real artist |
-| **P76** | The fighter's level-4 breath save: `por/levels.py` says 16, the game writes 15 | measured on two characters (SILAS 16→15, dwarf MAGNUS 13→12) at that level and no other. Settle it against the game's own table at `$0E2C` before editing ours — if the table says 16 and the game writes 15 it is *their* bug, not our data. `tests/test_liveparty.py`'s `KNOWN_DIVERGENCES` retires with it |
-| **P78** | Make Level Up work, and move it into the roster | needs the hit-die roll, the saving-throw modifiers, the cleric wisdom bonus, a thief skill table and a wizard's new-spell choice; the trainer's own routine is the authority |
 | **P79** | One row per commission, and the raw marker off the face | the slums reads as two commissions because one byte is shown in two groups |
-| **P80** | Decode what is left of the commission flags | the 1–253 markers above all, plus ledger 22's nameless handler, `$4A22`, `$4A4C`/`$4A4E` and the 38 unattributed bytes |
 
 ## Needs an emulator
 
@@ -121,3 +118,6 @@ A code retires with its task and is never reused.
 | **P71** | the Preferences dialog trimmed and the backend status boxed |
 | **P72** | the debug log has no preamble and turns debug mode on |
 | **P75** | **Wish** capitalised in the title bar and Help ▸ About |
+| **P80** | the commission flags decoded — [`134`](134-commissions.md) |
+| **P76** | the game's own table gives 15; `por/levels.py` was wrong, and so was `por/derive.py`'s fighter THAC0 row |
+| **P78** | the trainer's routines read, every field derived, and the button is one per character card |
