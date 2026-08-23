@@ -232,6 +232,13 @@ class CharacterCard(QFrame):
         self.klass = _label(muted=True, size=8)
         klass_row.addWidget(self.klass)
         klass_row.addStretch(1)
+        # The quickfight badge, on the class line at Donald's asking. It had a
+        # row of its own under the readied line, and that row was 13px of blank
+        # card on every character who does not use quickfight -- which is most
+        # of them, and which cost about one party member of scrolling in a
+        # panel that is meant to show the whole party at once.
+        self.quickfight = IconRow()
+        klass_row.addWidget(self.quickfight, 0, Qt.AlignmentFlag.AlignRight)
         self.level_up = QPushButton("Level up")
         font = self.level_up.font()
         font.setPointSize(8)
@@ -261,20 +268,6 @@ class CharacterCard(QFrame):
         self.readied = _label(size=8, muted=True)
         self.readied.setMinimumHeight(14)
         box.addWidget(self.readied)
-
-        # The quickfight badge, under the readied line and pushed to the right
-        # edge -- Donald's placement. **Its own row, not the conditions row**:
-        # the conditions row sits beside the name in the danger red and holds
-        # things that have happened *to* a character, where quickfight is a
-        # setting that character's player made. It is always here and always
-        # 13px tall, empty or not, so toggling it does not shift the cards
-        # below.
-        badge_row = QHBoxLayout()
-        badge_row.setContentsMargins(0, 0, 0, 0)
-        badge_row.addStretch(1)
-        self.quickfight = IconRow()
-        badge_row.addWidget(self.quickfight, 0, Qt.AlignmentFlag.AlignRight)
-        box.addLayout(badge_row)
 
         # Always present, even when empty: a strip that appears and disappears
         # would shift every card below it each time a spell expires.
