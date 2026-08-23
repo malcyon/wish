@@ -98,6 +98,21 @@ there, `fcntl` does not exist, paths are not split on `/`), and something that
 is not byte-identical on another machine (a rendered image, anything with a
 font or a timestamp in it).
 
+## Art
+
+**No AI-generated art, anywhere, ever.** Not icons, not logos, not textures, not
+placeholders "until we find a real one". This is Donald's rule and it is not
+negotiable by an agent that finds it inconvenient.
+
+**Do not modify somebody else's art either.** An icon lifted from Font Awesome
+is drawn the way Fonticons drew it. If it does not work at a size, the answer
+is a different icon, or not using it at that size -- never nudging the artist's
+geometry until it does. An assistant that moves a path point is making art, and
+that is the thing it must not do.
+
+Art comes from a set with a licence we can honour (Font Awesome Free, CC BY
+4.0, attributed in the README and the About box) or from a human being.
+
 ## What must never enter this repository
 
 This is a reverse-engineering project. It documents a game it does not ship.
