@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -33,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from por.levelup import best_next_class
 from ui.iconpaint import draw_icon, icon_pixmap
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -185,11 +185,13 @@ class CharacterCard(QFrame):
     means: the card is the answer.
     """
 
-    #: `(slot, class name)`. The class is named because a multi-class character
-    #: levels each class separately and the trainer asks which school you are
-    #: standing in; when two are ready the button offers a menu rather than
-    #: choosing.
-    level_up_requested = pyqtSignal(int, str)
+    #: The slot, and nothing else. **The player is not asked which class.** A
+    #: multi-class character with two ready gets the one whose threshold after
+    #: the level is highest, which keeps the trainer's experience clamp as high
+    #: as it goes and so usually leaves the other class still qualified;
+    #: pressing again takes that one. `por.levelup.best_next_class` is the rule
+    #: and `docs/135-levelling.md` is why.
+    level_up_requested = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -285,17 +287,15 @@ class CharacterCard(QFrame):
                      if c.next_threshold is not None
                      and c.experience >= c.next_threshold)
 
+    @classmethod
+    def chosen_class(cls, who) -> str | None:
+        """Which class the button will raise. For the tooltip only -- the
+        window asks the record the same question before it writes."""
+        return best_next_class(cls.ready_to_level(who),
+                               {c.name: c.level for c in who.classes})
+
     def _level_up_clicked(self) -> None:
-        if len(self.ready) == 1:
-            self.level_up_requested.emit(self.slot, self.ready[0])
-            return
-        menu = QMenu(self.level_up)
-        for name in self.ready:
-            menu.addAction(name).triggered.connect(
-                lambda _checked=False, n=name:
-                self.level_up_requested.emit(self.slot, n))
-        menu.exec(self.level_up.mapToGlobal(
-            self.level_up.rect().bottomLeft()))
+        self.level_up_requested.emit(self.slot)
 
     def show_character(self, who) -> None:
         self.slot = who.slot
@@ -307,7 +307,7 @@ class CharacterCard(QFrame):
         self.ready = self.ready_to_level(who)
         self.level_up.setVisible(bool(self.ready))
         if self.ready:
-            self.level_up.setToolTip("level up as " + " or ".join(self.ready))
+            self.level_up.setToolTip(f"level up as {self.chosen_class(who)}")
         conditions = who.conditions
         self.conditions.set_icons(icon for icon, _ in conditions)
         self.conditions.setToolTip("\n".join(why for _, why in conditions))
@@ -361,12 +361,13 @@ class CharacterCard(QFrame):
 class RosterPanel(QWidget):
     """The cards, down the left. Scrolls, because eight cards outrun a window.
 
-    `level_up_requested` carries `(slot, class name)` up from whichever card
-    was clicked. The panel does not run the action itself -- it has no target
-    and no confirmation dialog, and both belong to the window.
+    `level_up_requested` carries the slot up from whichever card was clicked,
+    and nothing else: which class gets the level is decided from the record.
+    The panel does not run the action itself -- it has no target and no
+    confirmation dialog, and both belong to the window.
     """
 
-    level_up_requested = pyqtSignal(int, str)
+    level_up_requested = pyqtSignal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)

@@ -952,6 +952,15 @@ class AutomapWindow(QMainWindow):
                     break
         return self._spell_names
 
+    def ask(self, question: str) -> bool:
+        """A yes/no the player has to answer. A method so a test can answer
+        it, the same way `ActionBar.ask` is."""
+        from PyQt6.QtWidgets import QMessageBox
+        return QMessageBox.question(
+            self, "wish", question,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
+
     def _chosen_spell(self, record, name: str) -> int | None:
         """Which spell a magic-user learns, or None if the player backed out.
 
@@ -970,23 +979,43 @@ class AutomapWindow(QMainWindow):
             return None
         return offers[labels.index(pick)]
 
-    def _level_up(self, slot: int, class_name: str) -> None:
-        """The roster card's button. The card knows which character it is."""
+    def _level_up(self, slot: int) -> None:
+        """The roster card's button. The card knows which character it is.
+
+        **The class is not asked for.** `LevelUp.class_for` picks the one whose
+        threshold after the level is highest, which is the one the trainer's
+        experience clamp reads -- so the ceiling stays as high as it can and
+        the other class usually survives to be taken on the next press. The
+        order of the questions follows from that: the class first, because only
+        then is it known whether a spell has to be chosen at all.
+        """
         action = actions.LevelUp()
         target = self.mapper.target
+        party = actions.read_party(target)
+        member = party.by_slot(slot) if party else None
+        if member is None:
+            self.messages.say(f"level up: no character in slot {slot}",
+                              alarm=True)
+            return
+        class_name = actions.LevelUp.class_for(member.record) or ""
         spell = 0
         if class_name == "magic-user":
-            party = actions.read_party(target)
-            member = party.by_slot(slot) if party else None
-            if member is None:
-                self.messages.say(f"level up: no character in slot {slot}",
-                                  alarm=True)
-                return
             spell = self._chosen_spell(member.record, member.name)
             if spell is None:
                 return                      # the player closed the dialog
-        # No confirmation: the button only appears on a character who can
-        # level, it names the class it will raise, and a save disk is a copy.
+        # No confirmation in the ordinary case: the button only appears on a
+        # character who can level, and a save disk is a copy. The exception is
+        # the clamp taking a class below a threshold it had already passed --
+        # that costs a level the character earned, so it is asked about.
+        plan = actions.LevelUp.preview(member.record, class_name, spell or None)
+        if plan is not None and plan.classes_disqualified:
+            lost = ", ".join(plan.classes_disqualified)
+            if not self.ask(
+                    f"{member.name} as a {class_name} {plan.to_level} drops "
+                    f"{plan.experience_lost} experience, which takes {lost} "
+                    f"below the next threshold and costs a level already "
+                    f"earned. Go ahead?"):
+                return
         outcome = action.apply(target, slot=slot, class_name=class_name,
                                spell=spell or None)
         self.messages.say(f"level up: {outcome.message}",

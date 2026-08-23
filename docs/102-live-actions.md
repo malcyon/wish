@@ -141,6 +141,16 @@ before/after pairs, given the hit die it rolled.
 the right end of the class-and-level line, hidden unless that character has the
 experience for another level. The card is which character it means.
 
+**It does not ask which class.** A multi-class character with two ready gets
+the one whose threshold *after* the level it is about to gain is largest —
+`por.levelup.best_next_class`, ties broken in class-bit order. That is the
+number the trainer's experience clamp reads, so it leaves the ceiling as high
+as it goes and the other class usually still qualified; pressing again takes
+it. The outcome names the class raised — `LADY KATHERINE is a magic-user 2` —
+because it is the only place the choice is now visible. Where the clamp would
+still cost a class a level it had already earned, `Plan.classes_disqualified`
+is non-empty and the window asks first; otherwise nothing is asked.
+
 | what | how |
 |---|---|
 | `hp_rolled` | one roll of the class hit die — the one field nothing derives, so the outcome reports the number |
@@ -148,7 +158,8 @@ experience for another level. The card is which character it means.
 | saving throws | a level-1 row cut by two per-column bitmasks, then `constitution * 2 / 7` for a dwarf, gnome or halfling |
 | `spells_castable` | the class table plus the wisdom bonus, cleric in the high nibble |
 | thief skills | the level row plus the racial row, and no ability score |
-| a magic-user's new spell | **chosen**, from `offers(record)`. The action refuses without one rather than picking |
+| which class | `best_next_class`, not the player: highest post-level threshold. `class_for(record)` is the answer, and an explicit `class_name` still overrides |
+| a magic-user's new spell | **chosen**, from `offers(record)`. The action refuses without one rather than picking. Asked *after* the class, since only then is it known whether it is needed |
 
 `level_up_blockers()` survives as the gate: any field it writes that is not
 CONFIRMED in `por/layout.py` stops the action dead. It is empty today, and it

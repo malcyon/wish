@@ -567,6 +567,14 @@ class LevelUp(Action):
     level-up until one is picked -- so `spell` is required for a magic-user
     with anything left to learn, and the action refuses rather than choosing.
     `offers(record)` is that list.
+
+    **Which class is not a question the player is asked.** A multi-class
+    character with two classes ready gets the one whose threshold after the
+    level is largest -- `levelup.best_next_class`, and `class_for(record)` is
+    the answer for a caller that needs it before the write. That keeps the
+    experience clamp's ceiling as high as it goes, so the other class usually
+    survives; pressing the button again then takes it. An explicit
+    `class_name` still overrides.
     """
 
     name = "level-up"
@@ -579,6 +587,29 @@ class LevelUp(Action):
         """The spell ids a magic-user would be offered at its next level."""
         return levelup.learnable(
             record, level=levelup.class_level(record, "magic-user") + 1)
+
+    @staticmethod
+    def class_for(record) -> str | None:
+        """Which class the button would raise, or None if none is ready.
+
+        A caller has to know before it writes, because a magic-user needs its
+        spell chosen and no other class does.
+        """
+        return levelup.best_class(record)
+
+    @staticmethod
+    def preview(record, class_name: str = "",
+                spell: int | None = None) -> levelup.Plan | None:
+        """The plan without writing it, or None if it cannot be made.
+
+        Only `experience_lost` and `classes_disqualified` are worth reading off
+        it: the hit die is rolled again by `run`, so every number that depends
+        on the roll differs.
+        """
+        try:
+            return levelup.plan(record, class_name, learn=spell)
+        except levelup.CannotLevel:
+            return None
 
     def run(self, target, slot: int = 0, class_name: str = "",
             spell: int | None = None, **kwargs) -> Outcome:
@@ -602,17 +633,6 @@ class LevelUp(Action):
             return Outcome(False,
                            f"levelling {member.name} would write fields we "
                            f"cannot derive, so it writes nothing", (), blockers)
-
-        ready = levelup.ready_classes(record)
-        if not class_name:
-            if len(ready) > 1:
-                return Outcome(False,
-                               f"{member.name} can level in more than one "
-                               f"class; say which",
-                               (), tuple(ready))
-            # None ready falls through to `plan`, which says which class and
-            # what it is short of -- a better answer than "no".
-            class_name = (ready or levelup.classes_of(record) or [""])[0]
 
         try:
             plan = levelup.plan(record, class_name, learn=spell)
@@ -645,15 +665,17 @@ class LevelUp(Action):
         _write_all(target, writes)
         notes = list(plan.notes)
         notes.append(f"hit die: rolled {plan.hit_points_rolled} on a d"
-                     f"{levels.hit_die(class_name)}")
+                     f"{levels.hit_die(plan.class_name)}")
         if plan.learned_spell is not None:
             notes.append(f"learned spell {plan.learned_spell}")
         notes.append(f"healed to {healed} hit points, as the trainer does")
         notes.append("the trainer also charges 1000 gold and converts the rest "
                      "of the coin to platinum; that is what a school costs, "
                      "not what a level costs, so no money moved")
+        # The class is named because the player no longer picks it: the only
+        # place the choice is visible is here.
         return Outcome(True,
-                       f"{member.name} is {class_name} {plan.to_level}",
+                       f"{member.name} is a {plan.class_name} {plan.to_level}",
                        tuple(writes), tuple(notes))
 
 
