@@ -223,12 +223,13 @@ def install_excepthook() -> None:
         return
     _previous_hook = sys.excepthook
     sys.excepthook = crash
-    # **And the ones `sys.excepthook` never sees.** An exception raised inside
-    # a Qt virtual method -- a `paintEvent`, an event handler -- does not reach
-    # `sys.excepthook`; PyQt prints it to `sys.stderr` and carries on. On a
-    # windowed Windows build `sys.stderr` is the borrowed console, or devnull
-    # when there is no console to borrow, so such an exception was invisible in
-    # the debug log and looked like a widget that simply half-drew itself.
+    # **And the ones `sys.excepthook` never sees.** Measured on PyQt 6.11:
+    # a slot, a `QTimer` callback and a `paintEvent` all *do* route through
+    # `sys.excepthook`, so those were covered already. What is not is an
+    # exception nobody can raise onward -- in a `__del__`, or in a callback
+    # during interpreter shutdown. Those go to `sys.unraisablehook`, and on a
+    # windowed Windows build its default lands on a `sys.stderr` that is the
+    # borrowed console or devnull, which is nowhere.
     sys.unraisablehook = _unraisable
 
 
