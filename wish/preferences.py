@@ -517,6 +517,7 @@ class PreferencesDialog(QDialog):
         row.addWidget(clear)
         outer.addLayout(row)
         self.backups_note = QLabel("")
+        self.backups_note.hide()          # two of the three states say nothing
         self.backups_note.setWordWrap(True)
         outer.addWidget(self.backups_note)
         return box
@@ -539,12 +540,17 @@ class PreferencesDialog(QDialog):
         if chosen_backup_folder(self.win.settings):
             why = "Yours, for every save. Clear it to follow the save again."
         elif where:
-            why = "Follows the save you open. Set one here to fix it instead."
+            why = ""
         else:
             # Nothing. An empty box with no save open explains itself, and
             # Donald removed the sentence that said so.
             why = ""
+        # Hidden when it says nothing, not merely empty: an empty QLabel still
+        # takes its line, and the dialog has 662 of them (§14). Two of the
+        # three states have no note now, so this is where the row the checkbox
+        # took comes back from.
         self.backups_note.setText(why)
+        self.backups_note.setVisible(bool(why))
 
     def browse_backups(self) -> None:
         """The folder picker. A method so a test can replace it."""
@@ -647,10 +653,8 @@ class PreferencesDialog(QDialog):
         self.interval.setEnabled(bool(saved))
         self.interval.setValue(saved or MIN_INTERVAL_MS)
         self.interval.valueChanged.connect(self._interval_changed)
-        row = QHBoxLayout()
-        row.addWidget(self.interval_default)
-        row.addWidget(self.interval, 1)
-        form.addRow("Poll every", row)
+        form.addRow("Poll every", self.interval)
+        form.addRow(self.interval_default)
         outer.addLayout(form)
         return box
 

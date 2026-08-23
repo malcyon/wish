@@ -353,13 +353,6 @@ a note about how many backups are kept -- each looked reasonable alone, and
 together they made a program that apologises for itself. Every one of them was
 removed on request.
 
-Two rules that follow, and hold even when new text is approved:
-
-* **A control that acts says why it will not act.** A disabled button that writes
-  to a running game earns one short sentence, because silence reads as breakage.
-* **A panel that only displays stays quiet.** Nobody presses it and nothing is at
-  stake in it being empty.
-
 When in doubt, leave it out and say so in the reply. Removing a sentence is
 cheap; a user reading a paragraph that should never have existed is not.
 

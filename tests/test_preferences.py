@@ -345,7 +345,7 @@ def test_the_backups_note_names_the_state_and_nothing_else(
     # box with no save open explains itself. The standing facts stay.
     assert "no saving" not in blank.lower()
     assert "open a save" not in blank.lower()
-    assert "follows the save" in following.lower()
+    assert following == ""            # Donald removed this one too
     assert "yours" in chosen.lower()
     # The standing facts went too -- Donald removed them. The note names the
     # state and nothing else, and blank names nothing at all.

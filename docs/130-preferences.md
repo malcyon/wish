@@ -215,7 +215,6 @@ There is now **one folder, in a box you can edit**:
 ```
 ┌─ Backups ────────────────────────────────────────────────────┐
 │  Folder  [ /home/donald/c64/saves/backups ] [Browse…] [Clear] │
-│  Follows the save you open. Set one here to fix it instead.   │
 │  Only when something changed; the newest 20 are kept.         │
 └──────────────────────────────────────────────────────────────┘
 ```
