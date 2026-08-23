@@ -62,6 +62,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
 | [136-condition-badges.md](136-condition-badges.md) | which spell effects earn a badge on the roster card, measured at 13 px — a decision sheet for Donald |
 | [137-wilderness-automap.md](137-wilderness-automap.md) | why the automapper is blank outdoors, and what to draw the terrain with |
+| [138-multiple-games.md](138-multiple-games.md) | fast travel for more than one Gold Box title: what is per-title today, what data the other games have, and the dialog |
 | [TASKS.md](TASKS.md) | the open task list, one code per task, retired when the task closes |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
