@@ -226,19 +226,17 @@ def test_warp_back_returns_to_the_square_the_warp_started_on():
     assert warp.back is None                              # and no further back
 
 
-def test_the_confirmation_names_the_disk_the_area_is_on():
-    """A warning and not a refusal, because **what is in the drive cannot be
-    read**: `$6E12` is what the game last asked for, and a refusal keyed on it
-    would block a player who had already swapped. A wrong disk is not a trap
-    either -- the loader stops and asks, exactly as it does when a player walks
-    through the same door."""
+def test_fast_travel_asks_nothing_and_names_no_disk():
+    """Retired: `test_the_confirmation_names_the_disk_the_area_is_on`. Donald
+    tested the feature and the game asks for the disk it wants itself, so the
+    confirmation and the disk warning both went; what travelling does not
+    guarantee is `HELP`, under the row's help icon."""
     warp = actions.Warp()
-    question = warp.question(machine(area=0, disk=3), area(13))  # POOL8
-    assert "POOL8" in question and "POOL3" in question
-    assert "copy of your save disk" in question
-    assert question.endswith(warp.CONFIRM_TAIL)
-    assert warp.question(None, area(13)).startswith("Fast travel")
-    assert warp.question(None, None) == warp.confirm
+    assert warp.confirm == ""                      # nothing to ask
+    assert not hasattr(warp, "question")
+    assert not hasattr(warp, "disk_note")
+    assert "copy of your save disk" in warp.HELP
+    assert "POOL" not in warp.HELP
 
 
 # --- the area table ----------------------------------------------------------
@@ -283,7 +281,6 @@ def app():
 def bar(app, target=None, **kw):
     from automap.actionbar import WarpBar
     row = WarpBar(**kw)
-    row.ask = lambda _question: True          # never open a dialog in a test
     if target is not None:
         row.attach(target)
     return row
@@ -348,17 +345,27 @@ def test_with_nothing_attached_the_row_is_disabled_rather_than_inert(app):
     assert "no emulator attached" in row.button.toolTip()
 
 
-def test_the_disk_line_names_the_disk_the_area_is_on(app):
+def test_no_disk_is_named_anywhere_in_the_row(app):
+    """The game stops and asks for the disk it wants, so saying it first told
+    the player only what the game was about to."""
     row = bar(app, machine(area=0, disk=3))
-    row.combo.setCurrentIndex(row.rows.index(area(13)))       # kobold caves
-    assert "POOL8" in row.disk.text() and "POOL3" in row.disk.text()
+    row.combo.setCurrentIndex(row.rows.index(area(13)))       # POOL8
+    assert not hasattr(row, "disk")
+    assert "POOL" not in row.note.text()
+    assert "POOL" not in row.button.toolTip()
 
 
-def test_the_row_says_what_it_cannot_promise_before_anything_is_clicked(app):
+def test_what_travelling_cannot_promise_is_under_a_help_icon(app):
     """Plain language, and no "debug" or "unproven": ordinary players see this
-    row now, so the honesty bar went up rather than down."""
+    row now, so the honesty bar went up rather than down. It is a tooltip on a
+    circled question mark rather than a paragraph in the row, and rich text so
+    that the tooltip wraps instead of running off the screen."""
     row = bar(app)
-    said = row.note.text()
+    assert row.note.text() == ""                     # nothing said yet
+    said = row.help_icon.toolTip()
+    assert row.help_icon.text() == "?"
+    assert said.startswith("<p>") and said.endswith("</p>")
+    assert actions.Warp.HELP in said
     assert "quest flags your party never set" in said
     assert "copy of your save disk" in said
     assert "debug" not in said.lower() and "unproven" not in said.lower()
@@ -398,12 +405,16 @@ def test_the_row_warps_what_the_combo_box_is_showing(app):
     assert target.jumps == [actions.NEWECL_TAIL]
 
 
-def test_the_row_asks_first_and_a_no_writes_nothing(app):
+def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
+    """Retired: `test_the_row_asks_first_and_a_no_writes_nothing`. There is no
+    dialog left to answer -- a click writes and jumps."""
+    from PyQt6.QtWidgets import QMessageBox
     target = machine(area=0)
     row = bar(app, target)
-    row.ask = lambda _question: False
-    assert row.run() is None
-    assert target.jumps == []
+    assert not hasattr(row, "ask")
+    row.button.click()
+    assert target.jumps == [actions.NEWECL_TAIL]
+    assert not [w for w in app.topLevelWidgets() if isinstance(w, QMessageBox)]
 
 
 def test_a_refused_warp_is_reported_as_an_alarm(app):
@@ -546,7 +557,10 @@ def test_a_warp_is_verified_by_the_map_at_0400(app):
     assert row_bar._pending is not None             # watching for it
     assert row_bar.check_arrival() == row.geos[0]
     assert row_bar._pending is None                 # and stops watching
-    assert "byte for byte" in row_bar.note.text()
+    # The area's name, in the words the status line uses. The GEO file and
+    # the address it matched at are the debug log's business.
+    assert row_bar.note.text() == "Arrived: The Kobold Caves"
+    assert "GEO" not in row_bar.note.text() and "$" not in row_bar.note.text()
 
 
 def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
@@ -569,6 +583,7 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     assert row_bar.check_arrival() is None
     assert row_bar._pending is None
     assert "after 30s" in row_bar.note.text()
+    assert "GEO" not in row_bar.note.text()
 
 
 def test_nothing_is_read_at_0400_when_no_warp_is_in_flight(app):

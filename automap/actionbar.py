@@ -16,8 +16,10 @@ again. The only dialog left is the confirmation an irreversible action asks
 first, because that one needs an answer.
 
 `WarpBar` is the same shape for the one action that is not in that row: the
-Fast Travel row. It says in the row itself what travelling does not guarantee,
-and it asks before it writes.
+Fast Travel row. It asks nothing before it writes: the game itself stops and
+asks for the disk it wants, so the confirmation was a question the game was
+about to ask again. What travelling does not guarantee is under a help icon
+beside the buttons.
 
 The quickfight watcher is a checkbox and off by default: it writes to a running
 machine on an edge nobody asked for otherwise, and a setting that acts on its
@@ -26,6 +28,7 @@ own has to be turned on deliberately.
 
 from __future__ import annotations
 
+import logging
 import time
 
 from PyQt6.QtCore import Qt
@@ -42,6 +45,13 @@ from PyQt6.QtWidgets import (
 from . import actions as engine
 from .area import ResidentGeo
 from .panel import MUTED
+
+#: Which map was found at `$0400`, and which was not, goes here rather than on
+#: the face of the window: it is the evidence a bug report needs and nothing a
+#: player asked for. A child of `wish`, so `wish/debuglog.py`'s handler picks
+#: it up when the log is on and its level swallows it when the log is off --
+#: and this module still imports nothing from `wish`.
+_log = logging.getLogger("wish.automap.warp").info
 
 
 class _OnePoll:
@@ -185,6 +195,10 @@ class ActionBar(QWidget):
 #: of a timeout that was too short.
 VERIFY_SECONDS = 30.0
 
+#: The side of the help icon, in pixels. Half of it is the corner radius, so
+#: the border draws a circle rather than a rounded square.
+HELP_SIZE = 16
+
 
 class WarpBar(QWidget):
     """The Fast Travel row: pick an area, and enter it the way the exits do.
@@ -203,8 +217,13 @@ class WarpBar(QWidget):
     twice in the game, the party walking afterwards (`docs/118-debug-mode.md`,
     P15). Fourteen areas have no arrival square of their own, so one is chosen
     off the map, and every area's script assumes quest flags the party never
-    set. The row says so where it can be read without hovering anything, and
-    the button asks before it goes.
+    set. `Warp.HELP` says so, under the help icon at the end of the row.
+
+    **Nothing is confirmed and no disk is named.** Both were dialogs and rows
+    of small print in front of a feature Donald has now tested: the game stops
+    and prints `INSERT SIDE # n, AND PRESS ANY KEY.` for the disk it wants,
+    exactly as it does when a player walks through the same door, so warning
+    about a disk beforehand told the player only what the game was about to.
 
     **Area 30 is not listed.** `ECL1E` is the attract-mode demo: a warp there
     leaves the world and no later warp can be started, so the session is over
@@ -240,10 +259,10 @@ class WarpBar(QWidget):
         grid.setSpacing(4)
 
         self.combo = QComboBox()
-        # Names only. The map files and the disk are what this row is built on
-        # and neither is anything to ask a player to read past: the disk that
-        # matters is on the line under the row, and the whole `New Phlan -
-        # GEO00, POOL3` string is the item's tooltip for whoever wants it.
+        # Names only. The map files and the disk are what this row is built
+        # on and neither is anything to ask a player to read past: the whole
+        # `New Phlan - GEO00, POOL3` string is the item's tooltip for whoever
+        # wants it.
         for i, row in enumerate(self.rows):
             self.combo.addItem(self._label(row))
             self.combo.setItemData(i, self._detail(row),
@@ -261,15 +280,13 @@ class WarpBar(QWidget):
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
         grid.addWidget(self.back_button, 0, 3)
 
-        self.disk = self._small(QLabel(""))
-        grid.addWidget(self.disk, 1, 0, 1, 4)
-        self.note = self._small(QLabel(
-            "The area you arrive in assumes you got there by playing: its "
-            "script can expect quest flags your party never set. Where the "
-            "game does not place the party itself, wish picks a square in the "
-            "largest open part of the map. Use a copy of your save disk, "
-            "never the original."))
-        grid.addWidget(self.note, 2, 0, 1, 4)
+        self.help_icon = self._help_icon(engine.Warp.HELP)
+        grid.addWidget(self.help_icon, 0, 4)
+
+        #: What the last trip did. Empty until something has been clicked --
+        #: the standing warning that used to sit here is under the help icon.
+        self.note = self._small(QLabel(""))
+        grid.addWidget(self.note, 1, 0, 1, 5)
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
         self.refresh()
@@ -303,6 +320,32 @@ class WarpBar(QWidget):
         label.setWordWrap(True)
         label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
+        return label
+
+    @staticmethod
+    def _help_icon(text: str) -> QLabel:
+        """A circled question mark whose tooltip is `text`.
+
+        **Rich text, because that is what makes a tooltip wrap.** `QTipLabel`
+        turns word wrap on only when the text might be rich text; a paragraph
+        of plain text becomes one line as wide as the screen, which is no
+        better than the dialog it replaced.
+
+        Font Awesome's `circle-question` is not in `ui/icons.py` yet, so the
+        circle is the label's own border rather than a glyph.
+        """
+        label = QLabel("?")
+        label.setToolTip(f"<p>{text}</p>")
+        label.setAccessibleName("About fast travel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setFixedSize(HELP_SIZE, HELP_SIZE)
+        font = label.font()
+        font.setPointSize(8)
+        font.setBold(True)
+        label.setFont(font)
+        label.setStyleSheet(
+            f"color: {MUTED.name()}; border: 1px solid {MUTED.name()}; "
+            f"border-radius: {HELP_SIZE // 2}px")
         return label
 
     # -- what is selected --------------------------------------------------
@@ -369,13 +412,18 @@ class WarpBar(QWidget):
         name = ResidentGeo(self.target).identify(self.maps) if self.maps else None
         if name is not None and name in expect:
             self._pending = None
-            self._said(f"arrived: {name} is loaded at $0400, byte for byte")
+            place = engine.place_name(name)
+            self._said(f"Arrived: {place}" if place else "Arrived.")
+            _log("arrived: %s is loaded at $0400, byte for byte", name)
             return name
         if time.monotonic() > deadline:
             self._pending = None
-            self._said(f"no map from {' or '.join(expect)} at $0400 after "
-                       f"{VERIFY_SECONDS:.0f}s; the game is loading, waiting "
-                       f"for a disk, or the warp did not take", alarm=True)
+            self._said("The area has not loaded after "
+                       f"{VERIFY_SECONDS:.0f}s; the game may still be loading, "
+                       "waiting for a disk, or the trip may not have taken",
+                       alarm=True)
+            _log("no map from %s at $0400 after %.0fs", " or ".join(expect),
+                 VERIFY_SECONDS)
         return None
 
     def _expect(self, area) -> None:
@@ -393,16 +441,8 @@ class WarpBar(QWidget):
         self.back_button.setEnabled(back.ok)
         self.back_button.setToolTip(
             back.reason or "return to the area the last trip started in")
-        self.disk.setText(self.warp.disk_note(self.target, area))
 
     # -- running one -------------------------------------------------------
-
-    def ask(self, question: str) -> bool:
-        """The confirmation. A method so a test can answer it."""
-        return QMessageBox.question(
-            self, "wish", question,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
     def _said(self, line: str, alarm: bool = False) -> None:
         self.note.setText(line)
@@ -419,9 +459,6 @@ class WarpBar(QWidget):
     def run(self) -> engine.Outcome | None:
         area = self.area()
         if area is None:
-            return None
-        question = self.warp.question(self.target, area)
-        if question and not self.ask(question):
             return None
         outcome = self.warp.apply(self.target, area=area,
                                   arrival=self.arrival())

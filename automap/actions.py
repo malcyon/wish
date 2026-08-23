@@ -814,6 +814,21 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     return pick(geo)
 
 
+def place_name(geo: str) -> str | None:
+    """What to call the map now resident, or None if we cannot say.
+
+    `por.areas.geo_name`, imported the same guarded way as the table and for
+    the same reason. The name is the one the status line under the map already
+    shows -- `AutomapState.area_label` calls the same function -- so the two
+    cannot disagree about where the party is.
+    """
+    try:
+        from por.areas import geo_name
+    except ImportError:                     # pragma: no cover - defensive
+        return None
+    return geo_name(geo)
+
+
 @dataclass(frozen=True)
 class Waypoint:
     """Where the party was before a warp, so that `Warp Back` has an answer."""
@@ -971,7 +986,7 @@ class Warp(Action):
     What it cannot guard: the quest flags. Arriving this way is not the same
     as having played there, the arriving script assumes things the party never
     did, and the honest answer is to say so rather than to pretend otherwise.
-    That is what `confirm` is for, and it is shown before every trip.
+    That is what `HELP` is for, and the row keeps it under a help icon.
     """
 
     name = "warp"
@@ -979,24 +994,26 @@ class Warp(Action):
     description = ("travel to another area the way the game's own exits do -- "
                    "it writes to the running game")
     combat_legal = False
-    #: Shown before every trip. Deliberately not a list of what could go wrong
-    #: in the machine -- that half has been made in the game and the party
-    #: walked afterwards (P15) -- but of what the *game* assumes about a party
-    #: that arrives somewhere it never played to.
-    #: The body and the closing question are separate so that `question` can
-    #: put the disk line between them, where it is read rather than skipped.
-    CONFIRM_BODY = (
+    #: What travelling does not guarantee, in Donald's own words, kept where
+    #: it can be read rather than dismissed: the row hangs it off a help icon.
+    #: It is deliberately not a list of what could go wrong in the machine --
+    #: that half has been made in the game and the party walked afterwards
+    #: (P15) -- but of what the *game* assumes about a party that arrives
+    #: somewhere it never played to.
+    #:
+    #: **There is no confirmation any more.** It was a dialog in front of every
+    #: trip until Donald tested the feature; the game itself asks for the disk
+    #: it wants, so the popup asked a question the game was about to ask again.
+    HELP = (
         "Fast travel puts the party in another area the way the game's own "
-        "exits do.\n\nThe area you arrive in assumes you got there by "
-        "playing: its script can expect quest flags your party never set, "
-        "people already spoken to and fights already won. In the fourteen "
-        "areas where the game does not place the party itself, wish picks a "
-        "square in the largest open part of the map, which need not be where "
-        "a player would normally walk in.\n\nNothing here can be undone from "
+        "exits do. The area you arrive in assumes you got there by playing: "
+        "its script can expect quest flags your party never set, people "
+        "already spoken to and fights already won. In the fourteen areas "
+        "where the game does not place the party itself, wish picks a square "
+        "in the largest open part of the map, which need not be where a "
+        "player would normally walk in. Nothing here can be undone from "
         "inside the game, so point the emulator at a copy of your save disk, "
         "never the original.")
-    CONFIRM_TAIL = "Travel anyway?"
-    confirm = f"{CONFIRM_BODY}\n\n{CONFIRM_TAIL}"
 
     def __init__(self):
         #: Where the last warp came from. `Warp Back` reads it; None until a
@@ -1029,50 +1046,6 @@ class Warp(Action):
         except Exception:
             return None
         return (raw[0], raw[1], raw[2]) if len(raw) == 3 else None
-
-    def disk_note(self, target, area) -> str:
-        """What to say about disks before warping.
-
-        **Which image is actually in drive 8 is not readable** -- the monitor
-        does not say and `automap/vice.py` has no attach command -- so this
-        reports what the *game* last asked for and leaves the drive to the
-        person at the keyboard.
-        """
-        if area is None:
-            return ""
-        want = getattr(area, "disk", None)
-        if want is None:
-            return ""
-        now = self.current_disk(target) if target is not None else None
-        if now is None:
-            return f"needs POOL{want} in drive 8"
-        if now == want:
-            return f"needs POOL{want}, which is what the game last asked for"
-        return (f"needs POOL{want}; the game last asked for POOL{now}, so put "
-                f"POOL{want} in drive 8 first or the game will stop and ask "
-                "for it")
-
-    def question(self, target, area) -> str:
-        """The confirmation, with the disk this area is on named in it.
-
-        **The disk hazard is real but it is not a trap**, so this warns rather
-        than refuses. Each area's script lives on one of the eight sides
-        (`por/areas.py`), and if that side is not in the drive the loader stops
-        and prints `INSERT SIDE # n, AND PRESS ANY KEY.` -- exactly what the
-        game does when a player walks through the same door. Putting the disk
-        in and pressing a key carries on.
-
-        Refusing instead is not open to us: **what is in the drive cannot be
-        read.** `$6E12` is what the game last *asked* for, not what is mounted,
-        and the monitor has no command that says. A refusal keyed on `$6E12`
-        would block a player who had already swapped, which is worse than a
-        sentence they can read.
-        """
-        note = self.disk_note(target, area)
-        if not note:
-            return self.confirm
-        return f"{self.CONFIRM_BODY}\n\n{note[0].upper()}{note[1:]}." \
-               f"\n\n{self.CONFIRM_TAIL}"
 
     # -- may we -----------------------------------------------------------
 
@@ -1226,7 +1199,9 @@ class Warp(Action):
             self.back = was
             return Outcome(False, "the writes were made but the program "
                                   "counter could not be set", writes)
-        return Outcome(True, f"travelled back to area {was.area}", writes)
+        row = area_by_id(was.area)
+        name = getattr(row, "name", None) or f"area {was.area}"
+        return Outcome(True, f"travelled back to {name}", writes)
 
 
 def area_by_id(id: int):

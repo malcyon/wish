@@ -238,22 +238,29 @@ argument that put the actions there: it acts on what is drawn above it.
 * **`Fast Travel` button**, disabled with the reason in its tooltip, exactly as
   `ActionBar` does it: no emulator, not `ViceTarget`, `$6E11 != 1`, or the
   selected area is the current one.
-* **A disk line** under the row: `needs POOL7; the game last asked for POOL3, so
-  put POOL7 in drive 8 first or the game will stop and ask for it`. The same
-  sentence goes into the confirmation, between the warning and the question.
-  **It warns rather than refuses, and that is on purpose**: what is in drive 8
-  cannot be read — `$6E12` is what the game last *asked* for and the monitor has
-  no command that says — so a refusal keyed on it would block a player who had
-  already swapped. A wrong disk is not a trap either: the loader stops and
-  prints `INSERT SIDE # n, AND PRESS ANY KEY.`, exactly as it does when a player
-  walks through the same door, and putting the disk in carries on.
 * **`Travel Back`**, which restores the id and square captured before the last
   trip. One button, and it turns a trip from a one-way journey into a probe.
-* **A confirmation before every trip**, in plain language and with no "debug" or
-  "unproven" in it: what the arriving script assumes about a party that never
-  played its way there, that wish picks the square in the fourteen areas the
-  game does not place the party itself, and to point the emulator at a copy of
-  the save disk.
+* **A help icon** — a circled question mark at the end of the row, whose
+  tooltip is `Warp.HELP`: in plain language and with no "debug" or "unproven"
+  in it, what the arriving script assumes about a party that never played its
+  way there, that wish picks the square in the fourteen areas the game does not
+  place the party itself, and to point the emulator at a copy of the save disk.
+  (Font Awesome's `circle-question` is not in `ui/icons.py` yet, so the circle
+  is the label's border.)
+* **A message line** under the row, empty until something is clicked: what the
+  trip did, and then **`Arrived: The Kobold Caves`** when the map lands —
+  the area's name, the same one the status line under the map shows, and
+  `Arrived.` where the map has no name we can give. The `GEO` file that matched
+  at `$0400` goes to the debug log instead.
+
+**No confirmation, and no disk line.** Both were there until Donald tested the
+feature: a dialog in front of every trip, and a row of small print naming the
+`POOL` disk the area lives on. The game asks for the disk it wants itself —
+`LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` and carries on once the
+disk is there, exactly as it does when a player walks through the same door —
+so warning first told the player only what the game was about to, and the
+question the dialog asked was the one the game asks again a second later. The
+`$6E12` reader stays: `Travel Back` records the disk it has to restore.
 
 The area table is data, not UI: **`por/areas.py`**, a frozen dataclass per area
 carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square, generated
@@ -353,7 +360,7 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 
 | failure | what it looks like | guard |
 |---|---|---|
-| wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits — the same prompt a player gets walking through the door, and it carries on once the disk is there | name the area's disk in the row *and* in the confirmation, warn rather than refuse (§2), and time the trip out and report. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
+| wrong disk in drive 8 | `LIBRARY` prints `INSERT SIDE # n, AND PRESS ANY KEY.` on row 24 and waits — the same prompt a player gets walking through the door, and it carries on once the disk is there | **the game's own prompt is the guard.** wish says nothing beforehand (§2) and times the trip out and reports. The text monitor's `attach` answers it — but the 1541 only notices a disk *change*, so the image has to be re-attached even when it is already in the drive |
 | `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
 | PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
@@ -361,7 +368,7 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `por.areas.landing_square`, `work/reports/p20-arrivals.md` |
 | **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be warped out again — the session is over | **fixed**: not offered in the dropdown, and refused by `Warp.legality` for a caller that did not come through it |
 | a script's own **menu** is up | the next warp is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then warp. Anything that warps repeatedly has to clear the arriving script's **menus**, not only its messages |
-| **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it in the tooltip: a warp is not the same as playing there |
+| **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a warp is not the same as playing there |
 | the player saves after a warp | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
 
 `/home/donald/c64/Pool of Radiance Disks/` is read-only for this project and
@@ -373,10 +380,9 @@ It was off by default for as long as nobody had measured where a trip lands.
 P20 did (`work/reports/p20-arrivals.md`): nothing landed off the map, inside a
 wall or in a crash, the one area that was not a place is now unreachable, and
 the pocket the old rule could drop a party into is gone. What is left is a
-consequence the user is told about before every trip and cannot be guarded
-against at all — the arriving script assumes quest flags the party never set —
-and the answer to that is the confirmation and a copy of the save disk, not a
-hidden control.
+consequence that cannot be guarded against at all — the arriving script assumes
+quest flags the party never set — and the answer to that is the help icon and a
+copy of the save disk, not a hidden control.
 
 ### One hazard that is no longer a hazard
 
