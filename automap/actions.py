@@ -37,12 +37,14 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 
 from por import items as por_items
+from por import levels, levelup
 from por.layout import Confidence, field_by_name
 from por.record import CharacterRecord
 from por.savegame import (
     ITEM_AREA_BASE,
     ROSTER_HP_CURRENT,
     ROSTER_STRIDE,
+    ROSTER_THAC0,
     SAVE1_LOAD_ADDRESS,
     SLOT_AREA_BASE,
     SLOT_STRIDE,
@@ -494,73 +496,74 @@ class IdentifyItems(Action):
 
 # --- levelling ---------------------------------------------------------------
 
-#: What the trainer changes that the level tables do **not** answer for. Each
-#: entry is a field the action would have to write and a reason it cannot yet
-#: be written. This is the whole of why levelling refuses: a half-levelled
-#: character is a corrupt character, and every one of these is a field where
-#: writing the table's number would be a guess.
-LEVEL_UP_BLOCKERS: tuple[tuple[str, str], ...] = (
-    ("hp_max",
-     "the trainer rolls a hit die and adds the constitution bonus; the table's "
-     "hp_max is the maximum roll, not what the game would give"),
-    ("hp_rolled",
-     "0x0ED is the rolled total behind hp_max and moves with it; nothing "
-     "derives one from the other"),
-    ("save_paralysis",
-     "por/levels.py carries a BASE saving-throw table and says so: stored "
-     "saves differ between two characters of the same class and level, so the "
-     "record holds modifiers that are not understood"),
-    ("spells_castable",
-     "0x0EE is nibble-packed capacity including the wisdom bonus for clerics, "
-     "and no bonus table has been checked against a record"),
-    ("thief_pick_pockets",
-     "there is no per-level thief skill table in the project at all"),
-)
-
-#: And the fields the tables *do* answer for, none of which is CONFIRMED. Kept
-#: as data so that promoting a field in por/layout.py is what unblocks it,
-#: rather than an edit here.
+#: Every record field a level-up writes. Each one has to be CONFIRMED in
+#: `por/layout.py` before the action will write anything at all: a
+#: half-levelled character is a corrupt character, and one field written from a
+#: guess is enough to make it one.
 LEVEL_UP_FIELDS: tuple[str, ...] = (
-    "level", "thac0_base", "level_cleric", "level_fighter",
-    "level_magic_user", "level_thief",
-)
+    "level", "thac0_base", "hp_max", "hp_rolled", "experience",
+    "level_cleric", "level_fighter", "level_magic_user", "level_thief",
+    "save_paralysis", "save_petrification", "save_wands", "save_breath",
+    "save_spell", "spells_castable", "spells_known", "turn_power",
+    "attack_level", "attack_forms",
+) + levelup.THIEF_FIELDS
 
 
 def level_up_blockers(record: CharacterRecord | None = None) -> tuple[str, ...]:
     """Every reason levelling refuses, most specific first.
 
-    Returns an empty tuple only when every field the trainer touches is both
-    known and CONFIRMED, which no field currently is. It takes a record so that
-    a class-specific blocker -- thief skills for a thief -- can be dropped for
-    a character it cannot apply to, once the rest are gone.
+    Empty means every field the trainer touches is both derivable and
+    CONFIRMED. **It got there by measurement, not by lowering a bar**: the
+    five entries this used to carry were closed by reading the trainer's own
+    routines out of `GEN` and replaying twenty-nine measured trainings through
+    `por/levelup.py` -- see `docs/135-levelling.md`.
+
+    It takes a record because the remaining refusals are per character: a class
+    at its ceiling, a race at its limit, or not enough experience.
     """
-    out = [f"{name}: {why}" for name, why in LEVEL_UP_BLOCKERS]
+    out = []
     unsure = [name for name in LEVEL_UP_FIELDS
               if field_by_name(name).confidence is not Confidence.CONFIRMED]
     if unsure:
         out.append("not CONFIRMED, so not written: " + ", ".join(sorted(unsure)))
-    out.append(
-        "and what else the trainer touches is unmeasured -- see 'What the "
-        "trainer changes when an ability score is altered' in "
-        "docs/80-fields-wanted.md")
+    if record is not None and not levels.for_game().thief_skills:
+        out.append("the trainer's own tables have only been read for Pool of "
+                   "Radiance")
     return tuple(out)
 
 
 class LevelUp(Action):
-    """Raise a character a level without walking to the training hall.
+    """Raise a character a level, writing what the training hall writes.
 
-    **It refuses, and that is the implementation.** The level tables in
-    `por/levels.py` are verified, but they answer for six fields and the
-    trainer touches more than six: hit points are rolled, saving throws carry
-    modifiers nobody has measured, spell capacity is packed with a wisdom bonus
-    that has never been checked, and there is no thief skill table at all.
-    Writing the six we know and leaving the rest stale is exactly the corrupt
-    character this action exists to avoid, so it writes nothing and names every
-    field standing in the way.
+    **The trainer is the specification and this is a copy of it.** `GEN $1B8C`
+    is the sequence a level-up runs; every routine it calls has been read and
+    `por/levelup.py` names each one beside the field it fills. Replaying the
+    twenty-nine trainings measured in `docs/119-test-party.md` through it
+    reproduces the game's own record **byte for byte** on every field, given
+    the hit die it rolled.
 
-    `level_up_blockers()` is that list, and it empties itself as
-    `por/layout.py` promotes fields -- so this becomes an action rather than a
-    refusal by making the fields CONFIRMED, not by editing it.
+    **The die is rolled, because the game rolls one.** `hp_rolled` at `0x0ED`
+    takes a fresh roll of the class hit die at every training and derives from
+    nothing; `hp_max` derives from it exactly. The roll is reported in the
+    outcome so the number is never silent.
+
+    **Money is untouched, and the trainer does take it**: a flat 1000 gold at
+    every level, with the rest of the character's coin converted to platinum,
+    measured across all twenty-nine. That is what walking into a school costs
+    rather than what gaining a level costs, so none of the seven coin fields at
+    `0x0BB` is written. Movement is not recomputed either -- the trainer does
+    that from encumbrance, which nothing here changes.
+
+    **Healing is done, because the trainer does it.** Current hit points end at
+    the *new* maximum, after the die is rolled and `hp_max` has risen. A
+    character at 0 is refused rather than healed: zero is dead or dying and the
+    record does not say which, which is the same refusal `HealParty` makes.
+
+    **A magic-user has to choose.** `GEN $215A` puts every spell it does not
+    know, of a level it can now cast, on a menu and does not finish the
+    level-up until one is picked -- so `spell` is required for a magic-user
+    with anything left to learn, and the action refuses rather than choosing.
+    `offers(record)` is that list.
     """
 
     name = "level-up"
@@ -568,22 +571,87 @@ class LevelUp(Action):
     description = "raise a character a level without the trainer"
     confirm = "Level up this character? There is no way to undo this in the game."
 
-    def run(self, target, slot: int = 0, **kwargs) -> Outcome:
+    @staticmethod
+    def offers(record) -> list[int]:
+        """The spell ids a magic-user would be offered at its next level."""
+        return levelup.learnable(
+            record, level=levelup.class_level(record, "magic-user") + 1)
+
+    def run(self, target, slot: int = 0, class_name: str = "",
+            spell: int | None = None, **kwargs) -> Outcome:
         party = read_party(target)
         if party is None:
             return Outcome(False, "no party to read")
         member = party.by_slot(slot)
         if member is None:
             return Outcome(False, f"no character in slot {slot}")
-        blockers = level_up_blockers(member.record)
+        record = member.record
+        if member.hp == 0:
+            # The same refusal `HealParty` makes, and for the same reason: zero
+            # is dead or dying and the record does not say which. Levelling
+            # ends in a heal to full, and a corpse at full hit points is a
+            # character in a state the game never writes.
+            return Outcome(False,
+                           f"{member.name} is at 0 hit points: dead or dying "
+                           f"is not a hit point count, and levelling heals")
+        blockers = level_up_blockers(record)
         if blockers:
             return Outcome(False,
                            f"levelling {member.name} would write fields we "
-                           f"cannot derive, so it writes nothing",
-                           (), blockers)
-        # No path here yet, deliberately: when the blockers empty, the writes
-        # go in with a test that levels a real character.
-        return Outcome(False, "no levelling path is implemented", (), blockers)
+                           f"cannot derive, so it writes nothing", (), blockers)
+
+        ready = levelup.ready_classes(record)
+        if not class_name:
+            if len(ready) > 1:
+                return Outcome(False,
+                               f"{member.name} can level in more than one "
+                               f"class; say which",
+                               (), tuple(ready))
+            # None ready falls through to `plan`, which says which class and
+            # what it is short of -- a better answer than "no".
+            class_name = (ready or levelup.classes_of(record) or [""])[0]
+
+        try:
+            plan = levelup.plan(record, class_name, learn=spell)
+        except levelup.CannotLevel as why:
+            return Outcome(False, f"{member.name} cannot level: {why}")
+
+        writes = []
+        after = levelup.apply_to(record, plan)
+        for name in sorted(plan.fields):
+            f = field_by_name(name)
+            writes.append((member.field_address(name),
+                           after.slice(f.offset, f.size)))
+        if plan.spellbook is not None:
+            f = field_by_name("spells_known")
+            writes.append((member.field_address("spells_known"), plan.spellbook))
+
+        # The roster's cached THAC0 and current hit points. Both live past the
+        # 256 bytes a live slot holds, so the roster block is the only copy a
+        # save or a running game has -- record `0x119` exists in an export and
+        # nowhere else.
+        if plan.thac0_delta:
+            writes.append((member.roster_base + ROSTER_THAC0,
+                           bytes([(member.roster[ROSTER_THAC0]
+                                   + plan.thac0_delta) & 0xFF])))
+        # Healed to the *new* maximum, and after it rose: the trainer does the
+        # same, and healing first would heal to the old number.
+        healed = min(plan.hp_max, 0xFF)
+        writes.append((member.roster_base + ROSTER_HP_CURRENT, bytes([healed])))
+
+        _write_all(target, writes)
+        notes = list(plan.notes)
+        notes.append(f"hit die: rolled {plan.hit_points_rolled} on a d"
+                     f"{levels.hit_die(class_name)}")
+        if plan.learned_spell is not None:
+            notes.append(f"learned spell {plan.learned_spell}")
+        notes.append(f"healed to {healed} hit points, as the trainer does")
+        notes.append("the trainer also charges 1000 gold and converts the rest "
+                     "of the coin to platinum; that is what a school costs, "
+                     "not what a level costs, so no money moved")
+        return Outcome(True,
+                       f"{member.name} is {class_name} {plan.to_level}",
+                       tuple(writes), tuple(notes))
 
 
 # --- quickfight --------------------------------------------------------------
@@ -706,7 +774,14 @@ def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
     """
     store = store or SpellStore()
     return (HealParty(), IdentifyItems(), StoreSpells(store),
-            RestoreSpells(store), ClearQuickfight(), LevelUp())
+            RestoreSpells(store), ClearQuickfight())
+
+
+#: **`LevelUp` is deliberately not in that list.** Every other action here is
+#: party-wide, so one button on a bar is the whole of what it needs to be told;
+#: levelling is about *one* character and a bar button cannot say which -- the
+#: old one silently meant slot 0. It lives on the roster card instead, where
+#: the card answers the question, and the window instantiates it directly.
 
 
 # --- warping between areas ---------------------------------------------------

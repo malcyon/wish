@@ -19,6 +19,7 @@ import pytest
 from automap import actions, live
 from automap.target import MemoryTarget
 from por import items as por_items
+from por import levelup
 from por.savegame import ROSTER_HP_CURRENT
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -46,6 +47,8 @@ def machine(mode: int = WORLD, hp: int | None = None,
 
 
 def find(name: str, store=None) -> actions.Action:
+    if name == "level-up":
+        return actions.LevelUp()      # not on the bar; see the registry test
     for action in actions.actions(store):
         if action.name == name:
             return action
@@ -231,21 +234,135 @@ def test_identifying_asks_first():
 # --- levelling ---------------------------------------------------------------
 
 
-def test_levelling_refuses_and_names_every_field_in_the_way():
+def with_experience(points: int) -> MemoryTarget:
+    """The captured party with BRUTUS given enough to train. 0x0E8, 24-bit."""
+    save0, save1 = captured()
+    at = actions.SLOT_AREA_BASE - 0x4900 + 0x0E8
+    save0[at:at + 3] = points.to_bytes(3, "little")
+    return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
+                         0x6E11: bytes([WORLD])})
+
+
+def test_levelling_refuses_without_the_experience_for_it():
+    """BRUTUS is a fighter 1 with no experience, so there is nothing to take."""
     outcome = find("level-up").apply(machine(), slot=0)
     assert not outcome.ok and outcome.writes == ()
-    blockers = " ".join(outcome.notes)
-    for field in ("hp_max", "save_paralysis", "spells_castable", "thief"):
-        assert field in blockers
+    assert "2001" in outcome.message
 
 
 def test_levelling_refuses_before_it_reads_a_slot_that_is_not_there():
     assert not find("level-up").apply(machine(), slot=7).ok
 
 
-def test_the_blockers_are_data_so_promoting_a_field_is_what_unblocks_them():
-    assert actions.level_up_blockers()
-    assert all(isinstance(b, str) for b in actions.level_up_blockers())
+def test_the_blockers_are_empty_because_every_field_is_confirmed():
+    """The mechanism stays -- a field demoted in por/layout.py stops the
+    action dead -- but nothing is standing in the way today."""
+    assert actions.level_up_blockers() == ()
+    assert all(isinstance(b, str) for b in actions.level_up_blockers(None))
+
+
+def test_levelling_writes_what_the_trainer_writes():
+    target = with_experience(2001)
+    outcome = find("level-up").apply(target, slot=0)
+    assert outcome.ok, outcome.message
+    written = dict(outcome.writes)
+    base = actions.SLOT_AREA_BASE
+    # fighter 2: THAC0 19 (stored 60 - 19), the per-class entry, the level
+    # byte, attack_level, and experience -- which the clamp only ever lowers,
+    # so 2001 stays 2001.
+    assert written[base + 0x071] == bytes([41])
+    assert written[base + 0x0CC] == bytes([2])
+    assert written[base + 0x0A0] == bytes([2])
+    assert written[base + 0x098] == bytes([2])
+    assert written[base + 0x0E8] == (2001).to_bytes(3, "little")
+    # a d10 and a +2 constitution bonus at level 2
+    rolled = written[base + 0x0ED][0]
+    assert 9 + 4 <= rolled <= 9 + 10          # a pure fighter never rolls under 4
+    assert written[base + 0x076] == (rolled + 4).to_bytes(2, "little")
+    # the roster's cached THAC0 follows, and current hit points are healed to
+    # the *new* maximum -- the trainer heals, and healing before the maximum
+    # rose would heal to the old number.
+    assert 0x8300 + 0x0E in written
+    assert written[0x8300 + ROSTER_HP_CURRENT] == bytes([rolled + 4])
+
+
+def test_no_money_moves():
+    """The trainer charges 1000 gold and turns the rest to platinum. This does
+    not: that is what a school costs, not what a level costs."""
+    outcome = find("level-up").apply(with_experience(2001), slot=0)
+    assert outcome.ok
+    coin = range(actions.SLOT_AREA_BASE + 0x0BB, actions.SLOT_AREA_BASE + 0x0C9)
+    assert not [a for a, _ in outcome.writes if a in coin]
+
+
+def test_a_character_at_zero_is_refused_rather_than_healed():
+    """Levelling ends in a heal, and zero is dead or dying -- the record does
+    not say which. A corpse at full hit points is a state the game never has."""
+    save0, save1 = captured()
+    save1[ROSTER_HP_CURRENT] = 0
+    at = actions.SLOT_AREA_BASE - 0x4900 + 0x0E8
+    save0[at:at + 3] = (2001).to_bytes(3, "little")
+    target = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
+                           0x6E11: bytes([WORLD])})
+    outcome = find("level-up").apply(target, slot=0)
+    assert not outcome.ok and outcome.writes == ()
+    assert "dead or dying" in outcome.message
+
+
+def test_a_multi_class_character_is_asked_which_class():
+    """Nothing chooses for the player when two classes are both ready."""
+    target = with_experience(2501)
+    party = actions.read_party(target)
+    record = party.by_slot(0).record
+    record.set("class_bits", 0b1001)          # magic-user and fighter
+    record.set("level_magic_user", 1)
+    assert levelup.ready_classes(record) == ["magic-user", "fighter"]
+
+
+def test_a_magic_user_is_not_levelled_without_a_spell_chosen():
+    """`GEN $215A` stops on a menu and so does this: nothing picks for you."""
+    target = with_experience(2501)
+    record = actions.read_party(target).by_slot(0).record
+    record.set("class_bits", 1)
+    record.set("level_magic_user", 1)
+    record.set("level_fighter", 0)
+    offered = actions.LevelUp.offers(record)
+    assert offered, "a level-1 magic-user has spells left to learn"
+    with pytest.raises(levelup.CannotLevel, match="picks one new spell"):
+        levelup.plan(record, "magic-user")
+    plan = levelup.plan(record, "magic-user", learn=offered[0], rolled=3)
+    assert plan.learned_spell == offered[0]
+
+
+def test_the_offer_is_for_the_level_being_reached_not_the_one_held():
+    """`GEN $1FDE` writes the new per-class level before the menu is built, so
+    a magic-user reaching 3 is offered second-level spells at that training."""
+    target = with_experience(5001)
+    record = actions.read_party(target).by_slot(0).record
+    record.set("class_bits", 1)
+    record.set("level_magic_user", 2)
+    from por import spells
+    offered = actions.LevelUp.offers(record)
+    assert any(spells.spell_group(i)[1] == 2 for i in offered)
+    assert all(spells.spell_group(i)[0] == "magic-user" for i in offered)
+
+
+def test_the_ceiling_refuses():
+    target = with_experience(10 ** 6)
+    record = actions.read_party(target).by_slot(0).record
+    record.set("level_fighter", 8)
+    with pytest.raises(levelup.CannotLevel, match="stops at 8"):
+        levelup.plan(record, "fighter")
+
+
+def test_a_race_at_its_limit_refuses():
+    """A halfling stops at fighter 6 whatever the class ceiling says."""
+    target = with_experience(10 ** 6)
+    record = actions.read_party(target).by_slot(0).record
+    record.set("race", 5)
+    record.set("level_fighter", 6)
+    with pytest.raises(levelup.CannotLevel, match="stops at 6"):
+        levelup.plan(record, "fighter")
 
 
 # --- quickfight --------------------------------------------------------------
@@ -328,7 +445,10 @@ def test_every_action_carries_what_a_button_needs():
         assert action.name not in names
         names.add(action.name)
     assert names == {"heal", "identify", "store-spells", "restore-spells",
-                     "clear-quickfight", "level-up"}
+                     "clear-quickfight"}
+    # Levelling is not on the bar: it is about one character, and a bar button
+    # cannot say which. The roster card is where it lives.
+    assert "level-up" not in names
 
 
 def test_nothing_writes_a_disk():

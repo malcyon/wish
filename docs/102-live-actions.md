@@ -108,24 +108,36 @@ on the experiment in [fields wanted](80-fields-wanted.md).
 
 ### 5. Level up without the training hall — `level-up`
 
-**It refuses, and that is the implementation.** The tables in `por/levels.py`
-are verified and they answer for six fields; the trainer touches more than six.
+**It writes what the training hall writes.** `GEN $1B8C` is the sequence a
+level-up runs; every routine it calls has been read, and `por/levelup.py` names
+each one beside the field it fills — see [levelling](135-levelling.md).
+Replaying the twenty-nine trainings measured in [`119`](119-test-party.md)
+through it reproduces the game's own record **byte for byte** on all thirty-four
+before/after pairs, given the hit die it rolled.
 
-| field | why it cannot be written |
+**The button is in the roster, not on this bar.** One per character card, at
+the right end of the class-and-level line, hidden unless that character has the
+experience for another level. The card is which character it means.
+
+| what | how |
 |---|---|
-| `hp_max` | the trainer rolls a hit die and adds the constitution bonus; the table's `hp_max` is the maximum roll |
-| `hp_rolled` | `0x0ED` moves with it and nothing derives one from the other |
-| saving throws | `por/levels.py` carries a *base* table and says so — two characters of the same class and level store different saves, so the record holds modifiers nobody has measured |
-| `spells_castable` | `0x0EE` is nibble-packed capacity including a wisdom bonus that has never been checked against a record |
-| thief skills | there is no per-level thief skill table in the project at all |
+| `hp_rolled` | one roll of the class hit die — the one field nothing derives, so the outcome reports the number |
+| `hp_max` | `hp_rolled + level x constitution bonus`, recomputed |
+| saving throws | a level-1 row cut by two per-column bitmasks, then `constitution * 2 / 7` for a dwarf, gnome or halfling |
+| `spells_castable` | the class table plus the wisdom bonus, cleric in the high nibble |
+| thief skills | the level row plus the racial row, and no ability score |
+| a magic-user's new spell | **chosen**, from `offers(record)`. The action refuses without one rather than picking |
 
-On top of that, none of the six fields it *could* write is CONFIRMED, and what
-else the trainer touches is unmeasured — see
-[fields wanted](80-fields-wanted.md).
+`level_up_blockers()` survives as the gate: any field it writes that is not
+CONFIRMED in `por/layout.py` stops the action dead. It is empty today, and it
+got there by measurement rather than by lowering the bar.
 
-`level_up_blockers()` is that list, as data. It empties itself as
-`por/layout.py` promotes fields, so this becomes an action by making the fields
-CONFIRMED rather than by editing the action.
+**No money moves.** The trainer charges 1000 gold at every level and converts
+the rest of the coin to platinum; that is what a school costs rather than what
+a level costs, so none of the seven coin fields is written, and neither is
+movement. **Healing is done**, because the trainer does it: current hit points
+end at the *new* maximum, after the die has been rolled. A character at 0 is
+refused rather than healed, for the reason `HealParty` gives.
 
 ---
 
