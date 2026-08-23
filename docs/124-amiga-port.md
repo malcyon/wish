@@ -1,6 +1,12 @@
 # Porting a C64 party into Amiga Pools of Darkness — plan
 
-**Status: phase 4 is done for every field the character sheet shows, and the
+**Status: it works end to end.** A character out of the player's own C64
+*Pool of Radiance* save disk now converts to a `.pc`, and Amiga *Pools of
+Darkness* loaded it, put it in the party and drew a sheet that matches the C64
+one field for field -- see §2.5. `por/amiga.py` is the whole converter and
+`tools/toamiga.py` is how it is invoked.
+
+**Phase 4 is done for every field the character sheet shows, and the
 writer works.** Amiga Pools of Darkness **accepts a C64 Pool of Radiance
 export** as a `SAVE/NAME.pc` and puts it in the party — no length check, no
 signature check, and the `0x00`-`0x5F` heap-address block is don't-care. So the
@@ -424,6 +430,50 @@ specimens and none appears on the character sheet, so no probe can promote
 them; the appended item data that takes a record from 484 to 524 bytes is
 undecoded; and spells are untouched.
 
+### 2.5 End to end: a C64 character in the Amiga party
+
+**The thing Donald asked for, run.** `LADY KATHERINE` off `work/PORSAVE11.D64`
+-- a half-elf magic-user/thief the player rolled on the C64 -- converted with
+`tools/toamiga.py`, installed as `Save/TROND.pc` on a copy of disk 3, added
+through `Add Character -> Pools` and viewed. The party roster drew
+`LADY KATHERINE  AC 8  HP 4`; the sheet drew everything else.
+
+| field | the C64 save says | the sheet drew |
+|---|---|---|
+| name | `LADY KATHERINE` | `LADY KATHERINE` |
+| sex, age | female, 41 | `FEMALE 41 YEARS` |
+| alignment | neutral evil | `NEUTRAL EVIL` |
+| race | half-elf | `HALF-ELF` |
+| classes | magic-user + thief | `MAGIC-USER/THIEF` |
+| levels | magic-user 1, thief 1 | `LEVEL 1/1` |
+| hit points | 4 of 5 | `HIT POINTS 4/5` |
+| experience | 40 | `EXPERIENCE: 40` |
+| abilities | 16 18 14 16 14 13 | `STR 16 INT 18 WIS 14 DEX 16 CON 14 CHA 13` |
+| platinum | 15 | `PLATINUM 15` |
+| movement | 12 | `MOVEMENT 12` |
+| alive | yes | `STATUS: OKAY` |
+
+And the four derived fields came out **right rather than copied**, which is
+the stronger half of the result:
+
+* `ARMOR CLASS 8` -- the writer wrote the unarmoured base 10 and PoD applied
+  the −2 for her dexterity of 16 itself. The C64 save said 6, because on the
+  C64 she was wearing armour that does not cross.
+* `DAMAGE 1D2+1` -- the writer wrote unarmed `1d2` and PoD added her strength
+  bonus.
+* `THAC0 20` -- a first-level character's, computed from the class levels.
+* `ENCUMBRANCE 15` -- her 15 platinum. `MOVEMENT 12`, not the C64's cached 6.
+
+The losses were the expected ones and every one was named in the report before
+the run: 104 silver and gold pieces (only platinum, gems and jewelry have a
+located home), her items, her spellbook, her portrait and her combat icon.
+
+Screenshots are `work/amiga/pod/v_*.png`; `work/amiga/pod/install_pc.py` puts a
+built `.pc` on a fresh copy of disk 3. Two practical notes on top of §2.4's:
+**the picker takes several seconds to populate** and looks empty until it
+does, and the first row is the file `Save/TROND.pc` whatever the record inside
+it is called.
+
 ---
 
 ## 3. What actually has to be produced
@@ -444,6 +494,13 @@ caps, starting position, the opening scene — instead of us guessing at it.
 
 So the deliverable is: **one OFS ADF, a `SAVE` drawer, six `.pc` files.** The
 player boots PoD normally, chooses `Add Character` → `Pools`, and picks them.
+
+**The `.pc` files exist; the ADF does not.** `tools/toamiga.py` writes a whole
+party into a directory, and §2.5 got one of them into the game by *replacing*
+an existing file's contents on a copy of disk 3 — which is what
+`work/amiga/adfedit.py` can do and all it can do. Authoring a disk, or adding
+a directory entry to one, still wants phase 3's OFS writer. That is the last
+piece between here and something a player can be handed.
 
 If the `Secret` route ever becomes reachable (blocker 1), prefer it: writing a
 Silver Blades `.sav` and letting PoD convert it is strictly less for us to get
@@ -470,9 +527,9 @@ that is mostly empty, and filling it is the project.
 | age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | `0x052` u16 **BE** — CONFIRMED (`21075 YEARS`) |
 | hp max | `0x076` **u16** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x081` **u8** — CONFIRMED (`HP 0/129`). **Current** hit points are a u16 at `0x190` — CONFIRMED (`HIT POINTS 55/77`) |
 | saving throws ×5 | `0x09A`–`0x09E` — CONFIRMED | ~`0x06B` block — PROBABLE | ~`0x06B` block — PROBABLE | `0x083`–`0x087` — PROBABLE; they decode to the AD&D table for each specimen's class and level, and the sheet never shows them |
-| level | `0x0A0` — CONFIRMED | UNKNOWN | UNKNOWN | `0x089` — PROBABLE, and it equals the sum of the seven class levels in all twelve; the sheet draws the class levels, not this |
+| level | `0x0A0` — CONFIRMED | UNKNOWN | UNKNOWN | `0x089` — PROBABLE, and it equals the **highest** of the seven class levels in all twelve. It is a maximum, not a sum: `TRIPEL TURBO` is 6/6/12 and reads 12. The sheet draws the class levels, not this |
 | per-class levels | `0x0C9`–`0x0D0`, 8 — PROBABLE | UNKNOWN | UNKNOWN | `0x09D`–`0x0A3`, **7** — CONFIRMED (`LEVEL 1/2/3/4/5/6/7`); indexed by the single-class code, so slot 6 is the thief's |
-| class bits | `0x0EB` — CONFIRMED | UNKNOWN | UNKNOWN | `0x0B7` — PROBABLE; 13 = 1\|4\|8 for the fighter/magic-user/thief, and 1, 2, 4, 8, 64 for singles |
+| class bits | `0x0EB` — CONFIRMED | UNKNOWN | UNKNOWN | `0x0B7` — PROBABLE; magic-user 1, cleric 2, thief 4, fighter 8, which is the C64's own numbering, and 13 = 1\|4\|8 for the fighter/magic-user/thief. But **64 for the paladin and the ranger alike**, where the C64 gives them 0x40 and 0x80 separately — so the byte is *not* the C64's and must not be copied. `por/amiga.CLASS_BIT` is the table |
 | experience | `0x0E8`, **3 bytes** — CONFIRMED | UNKNOWN | UNKNOWN | `0x044` **u32 BE** — CONFIRMED (`EXPERIENCE 1145390663`) |
 | money | `0x0BB`–`0x0C8`, 7 × u16 — CONFIRMED | UNKNOWN | UNKNOWN | platinum `0x04C`, gems `0x04E`, jewelry `0x050`, u16 BE — CONFIRMED. The lighter coins are unlocated; R7 was the probe for them and did not finish |
 | thief skills ×8 | `0x0A5`–`0x0AC` — CONFIRMED | UNKNOWN | UNKNOWN | `0x08B`–`0x092` — PROBABLE; non-zero in exactly the two specimens with a thief level |
@@ -524,8 +581,8 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `por/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
 | 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `por/amiga.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
-| 6 | **The map and the writer.** **Half done.** `por.amiga.PodWriter` emits a 484-byte `.pc` from named fields and PoD drew every one of them back (§2.4), and `provenance()` credits every non-zero byte to a field — there is no "template" category, because a byte is either a field the sheet showed us or it is zero. What is left is the C64 Silver Blades → named-fields half, through the existing `por/yaml_io.py` middle. | the converter and its provenance report | no | days, not a week | the report has no "template" category, per `117-save-conversion.md` |
-| 7 | **End to end.** A C64 Silver Blades party through Wish onto an ADF, imported in PoD, sheets compared field by field against the source. | the thing Donald asked for | yes | a session | every field on the "survives" list matches and nothing on the "lost" list surprises anyone |
+| 6 | ~~**The map and the writer.**~~ **DONE.** `por.amiga.from_entry` reads `yaml_io.entry_for`'s dictionary — the same neutral form the editor round-trips and `por/dos.py` builds a DOS party into — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `field_disposition()` names what becomes of every neutral-form field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `por/amiga.py`, `tools/toamiga.py` | no | done | run |
+| 7 | ~~**End to end.**~~ **DONE**, on Pool of Radiance rather than Silver Blades, for blocker 2's reason. `LADY KATHERINE` off the player's own C64 save loaded into PoD and her sheet matches field for field — §2.5. | the thing Donald asked for | yes | done | run |
 
 Two side experiments worth naming, both cheap and neither on the critical path:
 
@@ -554,6 +611,8 @@ Stated out loud, so nobody is surprised and nobody tries.
 | **Memorised spells** | C64 spell ids run 1–56. Pools of Darkness has cleric spells to level 7 and mage spells to level 9, so its id space is larger and the mapping is certainly not identity. | map by name, or drop and let the player re-memorise |
 | **Experience** | The C64 field is **3 bytes** — 16 777 215 maximum. Pools of Darkness characters exceed that. | the target field is wider; carry the value up, and expect a C64-sourced total to look low rather than wrong |
 | **Race and class codes** | `por/games.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
+| **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
+| **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself, and no item crosses — so a converted character genuinely arrives unarmoured. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not carried, and not wanted — see §3 |
 
 ---
@@ -567,12 +626,15 @@ Stated out loud, so nobody is surprised and nobody tries.
    with the `Pools` route, which makes **us** responsible for producing a
    PoD-legal character. This is the largest single cost in the plan and it is a
    missing-disk problem, not a technical one.
-2. **The C64 source end is weaker than the Amiga target end.**
-   `docs/121-silver-blades.md`: no Silver Blades save disk written by the game
-   exists here, no exported character file exists on any of the six sides, and
-   the export load address and marker byte are still UNKNOWN. Wish reads the
-   shipped `SAVEDBASH` demo party and has never round-tripped a real Silver
-   Blades save. The chain starts at a link that has not been tested.
+2. **The C64 source end is weaker than the Amiga target end**, and it is why
+   §2.5 ran on Pool of Radiance. `docs/121-silver-blades.md`: no Silver Blades
+   save disk written by the game exists here, no exported character file
+   exists on any of the six sides, and the export load address and marker byte
+   are still UNKNOWN. Wish reads the shipped `SAVEDBASH` demo party and has
+   never round-tripped a real Silver Blades save. The converter itself is
+   title-agnostic — it reads named fields, so a Silver Blades party goes
+   through the same code the moment there is one to read — but nobody has run
+   it on one.
 3. ~~**The `.pc` record contains live heap pointers.**~~ **Answered by writing
    one.** `PodWriter` leaves `0x00`–`0x43` entirely zero and PoD loaded the
    record and put it in the party. The longwords are don't-care, nothing has to
