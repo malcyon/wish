@@ -23,6 +23,7 @@ files, the standing constraints in full, and no commits.
 | | task | what is needed |
 |---|---|---|
 | **P77** | Replace the icons we drew ourselves with official Font Awesome ones | `chest` and `swords` are done — `gem` regular and U+2694, Donald's picks. Three left, all class icons. **Worth re-reading:** every "fails" verdict in [`109`](109-icon-choices.md) is a 13px one and the map draws at 26 now, so Font Awesome has candidates it did not have before |
+| **P83** | Condition badges on the roster card — [`136`](136-condition-badges.md) | **Donald picks the icons.** The decision sheet is the table at the foot of `136`: nineteen effects, a recommended glyph and an alternative each, all measured at 13 px, and a blank column. A default set of five new badges is recommended so the card does not grow fifteen. Nothing is added to `ui/icons.py` until the column comes back |
 | **P1** | Read the ECL scripts | a person has to read them — [`115`](115-review-the-scripts.md) |
 | **P12** | Cut the first `v*` tag | after the Windows run below. The tag also publishes to PyPI, and **PyPI never allows re-uploading a version** |
 | **P62** | Run the Windows half of [`122`](122-release-testing.md) | the Linux half is done and passing; the Windows package builds from Actions → release → Run workflow |
@@ -45,6 +46,7 @@ files, the standing constraints in full, and no commits.
 | **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
 | **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
+| **P84** | Draw the wilderness — [`137`](137-wilderness-automap.md) | the map is blank outdoors for three separate reasons, all confirmed off `work/p3/W1.D64`. The **blocker is one screenshot of the travel screen**: the square byte indexes 120 tile *pictures*, not a terrain enum, and the colour attributes bucket them six ways but nothing yet says which bucket is hills and which is mountains. Drawing before that is a map that looks right and is wrong. The two steps that need no emulator — an `OUTDOORS` status pattern plus the `$49C3`/`$49C4` fallback, and `por/world.py` — can start now |
 | **P82** | Does the slums fortune teller come back on every visit? | `$4A0B` is her one-shot and it sits inside `$4A00`-`$4A1F`, the scratch page `DUNGEON $202A` zeroes on every area change — so she may be killable repeatedly, the "gods have noted your actions" penalty may evaporate with her, and `$4A80` may be resettable without limit. PROBABLE on the addresses and the specimens; needs one emulator run. Same shape as the Sokol Keep dead elf |
 
 ---

@@ -60,6 +60,8 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — measured; it does not |
 | [134-commissions.md](134-commissions.md) | the council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
+| [136-condition-badges.md](136-condition-badges.md) | which spell effects earn a badge on the roster card, measured at 13 px — a decision sheet for Donald |
+| [137-wilderness-automap.md](137-wilderness-automap.md) | why the automapper is blank outdoors, and what to draw the terrain with |
 | [TASKS.md](TASKS.md) | the open task list, one code per task, retired when the task closes |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
