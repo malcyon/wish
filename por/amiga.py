@@ -37,6 +37,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
+from . import neutral
+
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
 COMBAT_BIAS = 60
 
@@ -584,39 +586,29 @@ class ConversionError(ValueError):
 
 
 @dataclass
-class Report:
+class Report(neutral.Report):
     """Where every non-zero byte of the `.pc` came from, and what stayed.
 
-    The same bargain `por/dos.py` strikes in the other direction: a field the
-    Amiga cannot hold is *named*, never dropped quietly. `unaccounted` is the
-    acceptance test -- `docs/124-amiga-port.md` phase 6 asks for a provenance
-    report with no "template" category, and a byte is either a field a probe
-    put on the character sheet or it is zero.
+    The same bargain `por/dos.py` strikes in the other direction, in the one
+    shape `por/neutral.py` gives every direction: a field the Amiga cannot
+    hold is *named*, never dropped quietly.  `unaccounted` is the acceptance
+    test -- `docs/124-amiga-port.md` phase 6 asks for a provenance report with
+    no "template" category, and a byte is either a field a probe put on the
+    character sheet or it is zero.  **Only the non-zero bytes have to be
+    explained**, which is where this differs from the C64's report.
     """
 
-    length: int = RECORD_LENGTH
-    sources: dict[int, str] = field(default_factory=dict)
-    #: Neutral-form fields with no Amiga home, said out loud.
-    dropped: list[str] = field(default_factory=list)
-    #: Conversions that happened but changed something.
-    warnings: list[str] = field(default_factory=list)
+    total: int = RECORD_LENGTH
 
-    def note(self, offset: int, size: int, why: str) -> None:
-        for i in range(offset, offset + size):
-            self.sources[i] = why
+    @property
+    def length(self) -> int:
+        """What this report calls its size. `docs/124` counts `.pc` bytes."""
+        return self.total
 
-    def unaccounted(self, record: bytes) -> list[int]:
+    def unaccounted(self, record: bytes) -> list[int]:  # type: ignore[override]
         """Non-zero output bytes this report cannot explain. Always empty."""
         return [i for i, b in enumerate(record)
                 if b and i not in self.sources]
-
-    def summary(self) -> str:
-        lines = [f"{len(self.sources)}/{self.length} bytes accounted for"]
-        for w in self.warnings:
-            lines.append(f"  warning: {w}")
-        for d in self.dropped:
-            lines.append(f"  dropped: {d}")
-        return "\n".join(lines)
 
 
 #: Neutral-form field -> the Amiga field it becomes, where the value crosses
@@ -697,15 +689,9 @@ def field_disposition() -> dict[str, str]:
 
     The test that keeps this module honest: a field `yaml_io.entry_for`
     produces and this table does not name would be a field silently dropped.
+    The shape is `por/neutral.py`'s, so every direction reports the same way.
     """
-    out: dict[str, str] = {}
-    for name, amiga in DIRECT:
-        out[name] = f"copied to the Amiga's {amiga}"
-    for name, why in TRANSFORMED:
-        out[name] = why
-    for name, why in DROPPED:
-        out[name] = f"dropped: {why}"
-    return out
+    return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the Amiga's")
 
 
 def pc_filename(name: str) -> str:

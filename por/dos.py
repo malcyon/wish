@@ -6,12 +6,18 @@ sourcing what the C64 needs, and any DOS field with no C64 counterpart can be
 dropped -- provided it is *reported* rather than dropped silently, which is
 what `Report` is for.
 
-    DOS character file  ->  decode  ->  named fields  ->  encode  ->  C64 record
+    DOS character file  ->  to_neutral  ->  NeutralCharacter
+                                          ->  c64_codec.write  ->  C64 record
 
-No new interchange format is invented: the middle is `por/yaml_io.py`'s, the
-one the editor already uses.  `por/dos_layout.py` is the field table, in the
-same declarative style as `por/layout.py` and with a confidence on every
-entry.
+The middle is `por/neutral.py`'s typed record, and this module is the DOS
+*reader* of that pair -- the only half that knows a DOS offset.  Writing the
+C64 record is `por/c64_codec.py`'s, and the two never mention each other.
+`por/dos_layout.py` is the field table, in the same declarative style as
+`por/layout.py` and with a confidence on every entry, which is the grade the
+neutral value carries and a writer refuses to write below.
+
+`export_party` renders the result as the editor's own YAML, so a DOS party
+and a C64 party come out in one shape; that is a view, not the interchange.
 
 What the conversion promises
 ----------------------------
@@ -30,8 +36,9 @@ The three places the formats diverge in kind
   the transpose is a pack and not a permutation.  See `dos_layout.spellbook`.
   Spell 56, `RESTORATION`, is the one id with no C64 bit and is reported.
 * **The per-class level array.** Eight wide on both.  DOS indexes by the class
-  *number*, the C64 by the class *bit*; `CLASS_LEVEL_SLOTS` is the
-  permutation, and druid and monk have no C64 slot at all.
+  *number*, the C64 by the class *bit*, and the neutral record names the class
+  instead; `CLASS_LEVEL_SLOTS` is this side of it, `c64_codec.LEVEL_FIELDS`
+  the other, and druid and monk have no C64 slot at all.
 * **The items.** Past its cached display line the 63-byte DOS record *is* the
   C64's sixteen bytes, one field to a byte -- `item_to_c64` is the projection,
   and it reproduces 157 of the 163 distinct C64 item records byte for byte.
@@ -42,12 +49,12 @@ Evidence: `work/reports/dos-saves.md`, `work/reports/dos-items.md`,
 
 from __future__ import annotations
 
-import dataclasses
 import pathlib
 import struct
 from typing import Any, Sequence
 
-from . import spells, traits
+from . import c64_codec, neutral, traits
+from .c64_codec import Report
 from .dos_layout import (
     EFFECT_SIZE,
     FIELDS_BY_NAME,
@@ -55,12 +62,14 @@ from .dos_layout import (
     ITEM_SIZE,
     RECORD_SIZE,
 )
-from .layout import RECORD_SIZE as C64_RECORD_SIZE
-from .layout import Field, Kind
+from .layout import Confidence, Field, Kind
+from .neutral import NeutralCharacter, Provenance
 from .record import CharacterRecord
 
 __all__ = [
     "DosRecordError",
+    "INFRAVISION",
+    "to_neutral",
     "DosCharacter",
     "DosItem",
     "Report",
@@ -82,6 +91,12 @@ __all__ = [
 
 class DosRecordError(ValueError):
     """A file that is not a DOS Pool of Radiance record."""
+
+
+#: Race -> infravision range.  The table lives with the C64 writer, which is
+#: the only port that stores infravision at all; it is re-exported here
+#: because this module is where it was first written down.
+INFRAVISION = c64_codec.INFRAVISION
 
 
 # ---------------------------------------------------------------------------
@@ -206,16 +221,6 @@ CLASS_LEVEL_SLOTS: tuple[tuple[int, str, str | None], ...] = (
     (6, "thief", "level_thief"),
     (7, "monk", None),
 )
-
-#: Race code -> infravision range in feet.  The C64 stores this at `0x0D5` and
-#: **DOS does not store it at all** -- there is no byte at the aligned offset
-#: and the Curse importer sources it from nothing either, because it is a
-#: property of the race.  Computed rather than copied, and reported as such.
-#: 6 for every dwarf, elf and half-elf and 0 for every human across the twelve
-#: C64 specimens that carry it; gnome, halfling and half-orc are PROBABLE, on
-#: AD&D 1st edition giving all three the same 60 feet.
-INFRAVISION = {0: 0, 1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 0}
-
 
 class DosCharacter(_Fielded):
     """One 285-byte DOS Pool of Radiance character, saved or exported.
@@ -353,46 +358,8 @@ def read_party(folder: str | pathlib.Path, slot: str) -> list[DosCharacter]:
 
 
 # ---------------------------------------------------------------------------
-# The conversion report -- what became of every byte
+# What the conversion does with every DOS field
 # ---------------------------------------------------------------------------
-@dataclasses.dataclass
-class Report:
-    """Where each byte of the C64 record came from, and what was left behind.
-
-    `docs/117-save-conversion.md` makes this the test that replaces a round
-    trip: for any offset in the output, say where that byte came from.
-    """
-
-    #: How many bytes the provenance covers: one 580-byte record by default,
-    #: or a whole `SAVEDGAME0` payload when `convert_save` builds it.
-    total: int = C64_RECORD_SIZE
-    #: Offset -> a one-line provenance.
-    sources: dict[int, str] = dataclasses.field(default_factory=dict)
-    #: DOS fields with no C64 home, said out loud rather than dropped.
-    dropped: list[str] = dataclasses.field(default_factory=list)
-    #: Anything the conversion could not do faithfully.
-    warnings: list[str] = dataclasses.field(default_factory=list)
-
-    def note(self, offset: int, size: int, why: str) -> None:
-        for i in range(offset, offset + size):
-            self.sources[i] = why
-
-    @property
-    def unaccounted(self) -> list[int]:
-        """C64 offsets this conversion cannot explain. Should be empty."""
-        return [i for i in range(self.total) if i not in self.sources]
-
-    def summary(self) -> str:
-        lines = [f"{len(self.sources)}/{self.total} bytes accounted for"]
-        if self.unaccounted:
-            lines.append(f"  UNACCOUNTED: {len(self.unaccounted)} bytes")
-        for w in self.warnings:
-            lines.append(f"  warning: {w}")
-        for d in self.dropped:
-            lines.append(f"  dropped: {d}")
-        return "\n".join(lines)
-
-
 #: DOS field -> C64 field, where the conversion is a straight copy of a value
 #: the two ports encode the same way.  Everything not in this table needs work
 #: and gets it below.
@@ -498,207 +465,100 @@ def field_disposition() -> dict[str, str]:
 
     The test that keeps this module honest: a field declared in
     `por/dos_layout.py` and named nowhere here would be a field silently
-    dropped, which `docs/117-save-conversion.md` forbids.
+    dropped, which `docs/117-save-conversion.md` forbids.  The shape is
+    `por/neutral.py`'s, so every direction reports its drops the same way.
     """
-    out: dict[str, str] = {}
-    for name, c64 in DIRECT:
-        out[name] = f"copied to the C64's {c64}"
-    for name, why in TRANSFORMED:
-        out[name] = why
+    return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the C64's")
+
+
+def to_neutral(dos: DosCharacter) -> NeutralCharacter:
+    """Read one DOS character into the neutral record.
+
+    The DOS half of the pair `por/neutral.py` describes, and the only half
+    that knows a DOS offset.  It names where every value came from and what
+    the DOS record holds that no neutral field does; what becomes of them
+    afterwards is a writer's business.
+    """
+    out = NeutralCharacter("DOS", source=dos.source)
+
+    # -- the name: a count byte and fifteen characters -----------------------
+    out.set("name", dos.name, "re-padded from the DOS count byte at 0x000",
+            FIELDS_BY_NAME["name_text"].confidence, Provenance.RESHAPED)
+
+    # -- everything the two ports encode the same way ------------------------
+    for dos_name, _ in DIRECT:
+        f = FIELDS_BY_NAME[dos_name]
+        out.set(dos_name, dos.get(dos_name),
+                f"DOS {dos_name} @{f.offset:#05x} ({f.confidence})",
+                f.confidence)
+
+    # -- the spellbook: one byte per spell ------------------------------------
+    out.set("spells_known", dos.spells_known,
+            "DOS spellbook @0x033, one byte per spell",
+            FIELDS_BY_NAME["spellbook"].confidence)
+
+    # -- memorised spells, put into the neutral order: highest first ---------
+    out.set("spells_memorised", dos.spells_memorised, "DOS 0x01C reversed",
+            FIELDS_BY_NAME["spells_memorised"].confidence)
+
+    # -- the per-class levels, named rather than numbered --------------------
+    raw_levels = dos.raw("class_levels")
+    out.set("levels", {name: raw_levels[n] for n, name, _ in CLASS_LEVEL_SLOTS},
+            "DOS class_levels @0x096, permuted from class number to class bit",
+            FIELDS_BY_NAME["class_levels"].confidence)
+
+    # -- spell slots: two triples, by class ----------------------------------
+    out.set("spells_castable",
+            {"cleric": tuple(dos.raw("spells_castable_cleric")),
+             "magic-user": tuple(dos.raw("spells_castable_magic_user"))},
+            "DOS 0x0B2 (cleric) and 0x0B5 (magic-user)",
+            FIELDS_BY_NAME["spells_castable_cleric"].confidence)
+
+    # -- size: DOS 1 small / 2 medium, the neutral 0 small / 1 large ---------
+    out.set("size_small", max(0, dos.get("size") - 1),
+            "DOS size @0x0C0, less one", FIELDS_BY_NAME["size"].confidence)
+
+    out.set("turn_power", dos.get("turn_power"), "DOS 0x076",
+            FIELDS_BY_NAME["turn_power"].confidence)
+    out.set("attack_forms", dos.raw("attack_forms"), "DOS 0x0A1 (PROBABLE)",
+            FIELDS_BY_NAME["attack_forms"].confidence)
+    out.set("roster_tail", dos.raw("roster_tail"),
+            "DOS 0x112: the armour bonus and the eight running attack-form "
+            "bytes, one for one",
+            FIELDS_BY_NAME["roster_tail"].confidence)
+
+    # -- the .SPC file splits in two: innate, and running ---------------------
+    out.set("innate_effects",
+            [e for e in dos.effect_ids if e in INNATE_EFFECTS],
+            "the innate ids of the DOS .SPC file; the two ports share one "
+            "effect-id namespace (por/traits.py)",
+            Confidence.PROBABLE,
+            dropped=[f".SPC effect {e} ({traits.describe(e)}): a running "
+                     f"effect, not an innate one, and running effects do not "
+                     f"survive"
+                     for e in dos.effect_ids if e not in INNATE_EFFECTS])
+
+    # -- the .ITM file, projected -------------------------------------------
+    out.set("inventory", [it.to_c64() for it in dos.items],
+            "the .ITM file, each 63-byte record projected onto sixteen bytes",
+            Confidence.CONFIRMED)
+
+    # -- what the DOS record holds and no neutral field does ------------------
     for name, why in DROPPED:
-        out[name] = f"dropped: {why}"
+        out.drop(f"DOS {name} @{FIELDS_BY_NAME[name].offset:#05x}: {why}")
     return out
-
-
-def _clamp_nibble(n: int) -> int:
-    return min(int(n), 0x0F)
 
 
 def to_c64_record(dos: DosCharacter, slot: int = 0,
                   icon: bytes | None = None) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
-    `slot` only names the character in the report.  `icon` is the 36-byte
-    combat icon; DOS has no equivalent -- its art is a different set -- so
-    with none given the field is left zero and reported.
+    A DOS read and a C64 write with the neutral record between them, which is
+    all this function is now.  `slot` only names the character in the report.
+    `icon` is the 36-byte combat icon; DOS has no equivalent -- its art is a
+    different set -- so with none given the field is left zero and reported.
     """
-    rec = CharacterRecord.blank()
-    rep = Report()
-
-    # -- the name: length-prefixed ASCII becomes 20 NUL-padded bytes --------
-    rec.set("name", dos.name)
-    rep.note(0x000, 20, "name, re-padded from the DOS count byte at 0x000")
-
-    for dos_name, c64_name in DIRECT:
-        src = FIELDS_BY_NAME[dos_name]
-        dst = rec_field(c64_name)
-        rec.set(c64_name, dos.get(dos_name))
-        rep.note(dst.offset, dst.size,
-                 f"{c64_name} <- DOS {dos_name} @{src.offset:#05x} "
-                 f"({src.confidence})")
-
-    # -- the second ability array -------------------------------------------
-    # Seven zeroes in every Pool of Radiance specimen, and Curse's importer
-    # writes both halves of every (base, current) pair. Zero is what a Pool of
-    # Radiance C64 record holds, so zero is what we write.
-    rep.note(0x065, 7, "abilities_second: zero, as in every C64 Pool of "
-                       "Radiance specimen")
-
-    # -- the spellbook: 56 bytes become 56 bits ------------------------------
-    known = dos.spells_known
-    carried = [i for i in known if i <= spells.LAST_SPELLBOOK_SPELL]
-    rec.set("spells_known", spells.spellbook_bytes(carried))
-    rep.note(0x078, 7, "spells_known <- DOS spellbook @0x033, one byte per "
-                       "spell packed to one bit; ids are identical")
-    for i in known:
-        if i > spells.LAST_SPELLBOOK_SPELL:
-            rep.warnings.append(
-                f"spell id {i} is set in the DOS spellbook and the C64's "
-                f"seven-byte mask has no bit for it (56 bits hold ids 0-55 "
-                f"and id 0 does not exist); id 56 is RESTORATION")
-
-    # -- memorised spells: DOS fills backwards, the C64 forwards -------------
-    mem = dos.spells_memorised[:16]
-    rec.set_raw("spells_memorised", bytes(mem) + bytes(16 - len(mem)))
-    rep.note(0x020, 16, "spells_memorised <- DOS 0x01C reversed (DOS fills "
-                        "its slots from the end; the C64 from the start)")
-
-    # -- the per-class level array: indexed by number, not by bit ------------
-    raw_levels = dos.raw("class_levels")
-    for n, name, field in CLASS_LEVEL_SLOTS:
-        if field is None:
-            if raw_levels[n]:
-                rep.warnings.append(
-                    f"DOS carries {name} level {raw_levels[n]}, and the C64's "
-                    f"eight-slot array has no {name} slot")
-            continue
-        rec.set(field, raw_levels[n])
-    for f in ("level_magic_user", "level_cleric", "level_thief",
-              "level_fighter", "level_knight", "level_paladin",
-              "level_ranger"):
-        dst = rec_field(f)
-        rep.note(dst.offset, dst.size,
-                 f"{f} <- DOS class_levels @0x096, permuted from class number "
-                 f"to class bit")
-    rep.note(0x0CE, 1, "the C64's unused sixth level slot: zero")
-
-    # -- spell slots: two DOS triples become three packed nibbles -----------
-    cleric = dos.raw("spells_castable_cleric")
-    mage = dos.raw("spells_castable_magic_user")
-    packed = bytes((_clamp_nibble(cleric[i]) << 4) | _clamp_nibble(mage[i])
-                   for i in range(3)) + bytes(3)
-    rec.set_raw("spells_castable", packed)
-    rep.note(0x0EE, 6, "spells_castable <- DOS 0x0B2 (cleric) and 0x0B5 "
-                       "(magic-user), repacked cleric-high/magic-user-low")
-
-    # -- size: DOS 1 small / 2 medium, the C64 0 small / 1 large ------------
-    rec.set("size_small", max(0, dos.get("size") - 1))
-    rep.note(0x099, 1, "size_small <- DOS size @0x0C0, less one")
-
-    # -- turning: the C64 has two bytes where DOS Pool of Radiance has one ---
-    rec.set("turn_power", dos.get("turn_power"))
-    rep.note(0x0A3, 1, "turn_class: zero -- no player character is undead")
-    rep.note(0x0A4, 1, "turn_power <- DOS 0x076 (PROBABLE: which of the C64's "
-                       "two turning bytes this is cannot be told from a party "
-                       "with no turning cleric above level 3)")
-
-    # -- attack forms: eight bytes, same shape ------------------------------
-    rec.set_raw("attack_forms", dos.raw("attack_forms"))
-    rep.note(0x0D9, 8, "attack_forms <- DOS 0x0A1 (PROBABLE)")
-
-    # -- computed, not copied ------------------------------------------------
-    rec.set("infravision", INFRAVISION.get(dos.get("race"), 0))
-    rep.note(0x0D5, 1, "infravision: computed from race; DOS does not store it")
-    rec.set("strength_index", _strength_index(dos.get("strength"),
-                                              dos.get("exceptional_strength")))
-    rep.note(0x0E2, 1, "strength_index: computed from strength and the "
-                       "percentile; the DOS byte at the aligned offset is a "
-                       "different field")
-
-    # -- innate effects: the racial half of the .SPC file --------------------
-    innate = [e for e in dos.effect_ids if e in INNATE_EFFECTS][:10]
-    rec.set_raw("item_effects", bytes(innate) + bytes(10 - len(innate)))
-    rep.note(0x0AD, 10,
-             "item_effects <- the innate ids of the DOS .SPC file; the two "
-             "ports share one effect-id namespace (por/traits.py)")
-    for e in dos.effect_ids:
-        if e not in INNATE_EFFECTS:
-            rep.dropped.append(
-                f".SPC effect {e} ({traits.describe(e)}): a running effect, "
-                f"not an innate one, and running effects do not survive")
-
-    # -- the inventory: sixteen fixed slots ---------------------------------
-    inv = bytearray(256)
-    for n, it in enumerate(dos.items[:16]):
-        inv[n * 16:(n + 1) * 16] = it.to_c64()
-    rec.set_raw("inventory", bytes(inv))
-    rep.note(0x120, 256, "inventory <- the .ITM file, each 63-byte record "
-                         "projected onto sixteen bytes")
-    if len(dos.items) > 16:
-        rep.warnings.append(
-            f"{len(dos.items)} items and the C64 has sixteen slots; "
-            f"{len(dos.items) - 16} dropped from the end")
-
-    # -- the combat icon: DOS has none --------------------------------------
-    if icon is not None:
-        rec.set_raw("region_220", bytes(icon))
-        rep.note(0x220, 36, "combat icon: supplied")
-    else:
-        rep.note(0x220, 36, "combat icon: zero. DOS has no C64 charset icon; "
-                            "por/iconparts.py can compose a legal one")
-        rep.dropped.append("the combat icon: C64 icons are 18 CHARPIC00 "
-                           "screen codes plus 18 colours and DOS has no "
-                           "equivalent")
-
-    # -- fields with no DOS source, written as documented constants ---------
-    rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 clear")
-    rep.note(0x0FE, 2, "portrait_head/body: zero. HEADnn/BODYnn name C64 disk "
-                       "files; the DOS art is a different set")
-    rep.dropped.append("portrait ids: the DOS art has different numbering")
-    rep.note(0x100, 1, "roster status: 1 (OK)")
-    rec.set("roster_in_use", 1)
-    rec.set_raw("roster_tail", dos.raw("roster_tail"))
-    rep.note(0x110, 9, "roster_tail <- DOS 0x112: the armour bonus and the "
-                       "eight running attack-form bytes, one for one")
-
-    for name, why in DROPPED:
-        rep.dropped.append(f"DOS {name} @{FIELDS_BY_NAME[name].offset:#05x}: {why}")
-
-    # Everything still unnamed is a byte the C64 record does not use: the
-    # unknown gaps of por/layout.py, which are zero in every specimen we hold.
-    for f in _c64_layout():
-        for i in range(f.offset, f.end):
-            rep.sources.setdefault(
-                i, f"{f.name}: zero (UNKNOWN on the C64 side and zero in "
-                   f"every specimen)" if not f.is_known
-                   else f"{f.name}: zero (no DOS source)")
-    return rec, rep
-
-
-def _strength_index(strength: int, percentile: int) -> int:
-    """The C64's `strength_index`: STR below 18, else 18 plus the band.
-
-    Equals strength below 18; 18/01-18/50 give 19 and 20, 18/80 and 18/81 give
-    21, 18/98 gives 22 -- the AD&D exceptional-strength bands collapsed to one
-    number.  PROBABLE, and it is computed rather than copied because the DOS
-    byte at the aligned offset is a boolean.
-    """
-    if strength != 18 or not percentile:
-        return strength
-    for bound, value in ((50, 19), (75, 20), (90, 21), (99, 22)):
-        if percentile <= bound:
-            return value
-    return 23
-
-
-def _c64_layout():
-    from . import layout as _l
-    return _l.LAYOUT
-
-
-def rec_field(name: str) -> Field:
-    from . import layout as _l
-    return _l.FIELDS_BY_NAME[name]
+    return c64_codec.write(to_neutral(dos), icon=icon)
 
 
 # ---------------------------------------------------------------------------
