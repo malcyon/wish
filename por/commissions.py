@@ -144,10 +144,37 @@ MARKERS: dict[int, dict[int, str]] = {
 }
 
 # Index 21 is a plain count rather than a set of states: `ECL14 $B6A4 ADD 1,
-# [$4ABB], [$4ABB]` after each cleared slum encounter, and `$B6AD COMPARE
-# [$4ABB], 25 / IF< / RETURN` then `SAVE 254`, so 25 clears the area and the
-# byte never holds 25 itself.
+# [$4ABB], [$4ABB]`, then `$B6AD COMPARE [$4ABB], 25 / IF< / RETURN` and
+# `SAVE 254`, so 25 clears the area and the byte never holds 25 itself.
+#
+# "Encounters" is the right noun and the call sites are what prove it. The
+# three instructions above are a subroutine at `ECL14 $B69C`, guarded by
+# `COMPARE [$4ABB], 254 / IF>= / RETURN`, and fourteen `GOSUB [$B69C]` sites
+# call it. Every one of them sits immediately after a `COMBAT`:
+#
+#   * twelve after a *set* encounter's fight -- $9E73 $9F08 $A0BE $A3B2 $A514
+#     $AA02 $AA87 $AB91 $ABFE $AC4B $AF7A $B10D. Each is behind its own
+#     one-shot flag, and $A0BE/$A3B2 are two outcomes of one encounter (the
+#     man who wants the potion), so ten to eleven distinct fights;
+#   * two in the wandering-monster outcome handler at $B118, on the two
+#     winning results -- `$6DC7 == 0`, and `$6DC7 == 1` with kills. A loss
+#     (128) and a flight (129) branch away without counting, so **one won
+#     fight is exactly one increment**.
+#
+# The wandering half is capped elsewhere. `$4A80` counts won wandering fights
+# and both spawn sites refuse to roll another once it reaches 15 (`ECL14
+# $9B32` and `$ADD6`, `COMPARE [$4A80], 15 / IF>= / EXIT`). That 15 is the
+# number Ozzy_98's PC walkthrough quotes; it is a different counter from this
+# one and does not contradict the 25. Ten set fights plus fifteen wandering
+# ones is 25 exactly, and two saves that finished the slums show `$4A80` = 15
+# with all nine one-shot flags and the potion-man's `$4A81` set -- 10 + 15.
+# The guide's "the set encounters do not need to be cleared" is wrong: on the
+# minimum path every one of them is needed.
 SLUM_ENCOUNTERS = 25
+
+#: How the 25 splits, for anything that has to explain the number.
+SLUM_WANDERING = 15         # $4A80's cap, ECL14 $9B32 / $ADD6
+SLUM_SET = SLUM_ENCOUNTERS - SLUM_WANDERING
 
 # What each marker is worth, one line, for a panel that has to say something
 # better than the number.

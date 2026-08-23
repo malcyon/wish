@@ -190,6 +190,16 @@ def _board_line(commission, on_board, open_gates) -> str:
     return f"{where}: its gate is shut"
 
 
+# A marker byte a reader will otherwise misread. The slums' 25 is the whole
+# area's encounters, set and wandering together; a PC walkthrough quotes 15,
+# which is `$4A80`'s separate cap on wandering fights. Saying so here is
+# cheaper than the row saying it and shorter than being asked twice.
+MARKER_NOTES = {
+    21: (f"counts every fight won in the slums: {book.SLUM_SET} set encounters "
+         f"and {book.SLUM_WANDERING} wandering, one each"),
+}
+
+
 def _tip(commission, entries, on_board, open_gates) -> str:
     lines = [commission.name, _board_line(commission, on_board, open_gates)]
     if commission.order in GATE_NOTES:
@@ -204,6 +214,8 @@ def _tip(commission, entries, on_board, open_gates) -> str:
                          + (f' - "{speech}"' if speech else ""))
             continue
         lines.append(line)
+        if index in MARKER_NOTES:
+            lines.append(f"  {MARKER_NOTES[index]}")
         if speech:
             lines.append(f'  the clerk pays for it as "{speech}"')
         if entry.source:

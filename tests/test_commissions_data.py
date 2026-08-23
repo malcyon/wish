@@ -96,6 +96,13 @@ def test_the_slums_counter_reads_as_a_count():
     assert C.marker_text(21, C.SLUM_ENCOUNTERS) is None
 
 
+def test_the_slums_split_adds_up():
+    """`$4A80` stops the wandering rolls at 15 (`ECL14 $9B32`, `$ADD6`) and
+    there are ten set fights behind it, which is where the 25 comes from."""
+    assert C.SLUM_WANDERING == 15
+    assert C.SLUM_SET + C.SLUM_WANDERING == C.SLUM_ENCOUNTERS
+
+
 def test_a_marker_reaches_the_entry():
     entry = C.ledger(block(x4ABB=4))[21]
     assert entry.state == C.IN_PROGRESS

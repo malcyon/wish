@@ -428,3 +428,7 @@ def test_the_slums_says_how_many_encounters_are_cleared(app):
     assert len(rows) == 1
     assert rows[0][3] == "4 of 25 encounters cleared"
     assert "marker" not in rows[0][0] and "marker" not in rows[0][3]
+    # The 25 is set and wandering fights together. A PC walkthrough quotes 15,
+    # which is `$4A80`'s cap on the wandering half, and a reader who has seen
+    # it needs the tooltip to say which number this row is.
+    assert "10 set encounters and 15 wandering" in rows[0][2]
