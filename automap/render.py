@@ -250,11 +250,19 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
     return Poly(pts, "party")
 
 
-# Notes sit in the square's top-right corner, clear of the party marker in the
-# middle and of every wall. `NOTE_INSET` is measured against the 3px wall
-# stroke: half of that stroke lies inside the cell, so anything at 2 or more
-# never touches one. See `test_a_note_never_lands_on_a_wall`.
-NOTE_SIZE = 13
+# `NOTE_INSET` is measured against the 3px wall stroke: half of that stroke
+# lies inside the cell, so anything at 2 or more never touches one. See
+# `test_a_note_never_lands_on_a_wall`.
+#
+# **The note used to be 13 and now fills the square.** At 13 it sat in the
+# top-right corner, clear of the party marker in the middle, and Donald's
+# objection was that the marker was much smaller than the thing it marks. At 26
+# in a 34px cell there is no corner left to hide in: the glyph is the square,
+# and the party marker shows through it because the note is drawn first and the
+# marker over it. That is the trade -- a note you can read across the map,
+# against a note that shares its square with the marker on exactly the one
+# square the party is standing on.
+NOTE_SIZE = 26
 NOTE_INSET = 3
 COUNT_SIZE = 9
 
@@ -275,7 +283,11 @@ def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
         top = margin + y * cell + NOTE_INSET
         yield Glyph(left, top, NOTE_SIZE, items[0].icon, "note")
         if len(items) > 1:
-            yield Label(left + NOTE_SIZE, top + NOTE_SIZE + COUNT_SIZE - 2,
+            # The cell's own bottom-right corner, not the glyph's. Hung off the
+            # icon it fell out of the square as soon as the icon grew, and the
+            # count has to stay inside the wall stroke whatever the icon does.
+            yield Label(margin + x * cell + cell - NOTE_INSET,
+                        margin + y * cell + cell - NOTE_INSET,
                         str(len(items)), "note-count")
 
 
@@ -362,8 +374,11 @@ SVG_STYLE = {
     "door-wizard": 'fill="#ffffff" stroke="#9e2b9e" stroke-width="2"',
     "party": 'fill="#0067c7" stroke="none"',
     "note": 'fill="#b8601f" stroke="none"',
+    # The one note drawn as a character. Same ink, but a glyph needs a font
+    # named and the size is set per-glyph rather than in the style.
+    "note-text": 'fill="#b8601f" font-family="sans-serif"',
     "note-count": 'fill="#b8601f" font-family="sans-serif" font-size="9" '
-                  'text-anchor="end"',
+                  'font-weight="bold" text-anchor="end"',
 }
 
 
@@ -404,12 +419,28 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
         elif isinstance(p, Rect):
             out.append(f'<rect x="{p.x}" y="{p.y}" width="{p.w}" '
                        f'height="{p.h}" {style}/>')
+        elif isinstance(p, Glyph) and icons.is_text(p.name):
+            # A character, not a path: the export names the code point and
+            # lets whatever opens the file resolve it, exactly as the window
+            # does. Centred in the box rather than fitted to its ink, which
+            # is the closest an SVG can get without measuring the font.
+            out.append(f'<text x="{p.x + p.size / 2:.1f}" '
+                       f'y="{p.y + p.size * 0.82:.1f}" '
+                       f'font-size="{p.size:.1f}" text-anchor="middle" '
+                       f'{SVG_STYLE["note-text"]}>'
+                       f'{icons.TEXT_GLYPHS[p.name]}</text>')
         elif isinstance(p, Glyph):
             scale = p.size / icons.BOX
             out.append(f'<path transform="translate({p.x},{p.y}) '
                        f'scale({scale:.5f})" d="{icons.path_data(p.name)}" '
                        f'{style}/>')
         elif isinstance(p, Label):
+            # The paper disc the window paints behind the count, so a
+            # multi-note square reads the same in the export as on screen.
+            r = COUNT_SIZE * 0.62 + 1.5
+            out.append(f'<circle cx="{p.x - COUNT_SIZE * 0.62:.1f}" '
+                       f'cy="{p.y - COUNT_SIZE * 0.62:.1f}" r="{r:.1f}" '
+                       f'fill="#fbfcfd"/>')
             out.append(f'<text x="{p.x}" y="{p.y}" {style}>{p.text}</text>')
         else:
             pts = " ".join(f"{a},{b}" for a, b in p.points)
