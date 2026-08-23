@@ -262,6 +262,42 @@ def test_the_blockers_are_empty_because_every_field_is_confirmed():
     assert all(isinstance(b, str) for b in actions.level_up_blockers(None))
 
 
+# --- one title has been measured and five have not ---------------------------
+
+def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
+    """#16. Curse is the dangerous one: its level tables are in
+    `por/levels.py`, so selecting them looks like enough and is not. Every
+    derivation around them was read at Pool of Radiance's addresses out of Pool
+    of Radiance's `GEN`, so a Curse fighter would be written Pool of Radiance's
+    THAC0, saving throws, hit die and thresholds."""
+    from por import games
+
+    target = with_experience(2001)
+    before = dict(target.memory)
+    outcome = actions.LevelUp(games.CURSE_OF_THE_AZURE_BONDS).apply(target,
+                                                                    slot=0)
+    assert not outcome.ok and outcome.writes == ()
+    assert target.memory == before
+    assert "Curse of the Azure Bonds" in " ".join(outcome.notes)
+    assert "measured" in " ".join(outcome.notes)
+
+
+@pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
+                                  "secret-of-the-silver-blades",
+                                  "champions-of-krynn",
+                                  "death-knights-of-krynn",
+                                  "gateway-to-the-savage-frontier"])
+def test_every_title_but_pool_of_radiance_is_refused_by_name(game):
+    """The other four have no tables at all, so `levels.for_game` falls back to
+    Pool of Radiance's -- which is exactly the silent wrong answer the blocker
+    is here to stop."""
+    from por import games
+
+    blockers = actions.level_up_blockers(None, games.by_key(game))
+    assert blockers and games.by_key(game).title in blockers[0]
+    assert actions.level_up_blockers(None, games.POOL_OF_RADIANCE) == ()
+
+
 def test_levelling_writes_what_the_trainer_writes():
     target = with_experience(2001)
     outcome = find("level-up").apply(target, slot=0)

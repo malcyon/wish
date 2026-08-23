@@ -368,7 +368,8 @@ def test_area_30_is_never_offered_however_the_setting_is_written(app):
     does not get it (`work/reports/p20-arrivals.md`)."""
     from automap.config import Settings
 
-    row = bar(app, settings=Settings(fast_travel_targets=[0, 30]))
+    row = bar(app, settings=Settings(
+        fast_travel_targets={"pool-of-radiance": [0, 30]}))
     assert [r.id for r in row.rows] == [0]
 
 
@@ -378,7 +379,8 @@ def test_nothing_ticked_says_so_rather_than_looking_broken(app):
     instead of the emulator's."""
     from automap.config import Settings
 
-    row = bar(app, machine(area=13), settings=Settings(fast_travel_targets=[]))
+    row = bar(app, machine(area=13),
+              settings=Settings(fast_travel_targets={"pool-of-radiance": []}))
     assert row.rows == ()
     assert row.area() is None
     assert not row.combo.isEnabled()
@@ -386,6 +388,49 @@ def test_nothing_ticked_says_so_rather_than_looking_broken(app):
     assert not row.button.isEnabled()
     assert "Fast travel" in row.button.toolTip()
     assert row.run() is None
+
+
+def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
+    """#14. `AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL` disk
+    numbers in them, and a trip writes both into the machine -- so a Curse
+    session that was offered them would write Pool of Radiance's numbers into
+    Curse. Offering nothing is the fix; falling back to that list is the one
+    answer that corrupts."""
+    from automap.config import Settings
+    from por import games
+
+    row = bar(app, machine(area=13), settings=Settings(),
+              title=games.CURSE_OF_THE_AZURE_BONDS.title,
+              game=games.CURSE_OF_THE_AZURE_BONDS)
+    assert row.all_rows == () and row.rows == ()
+    assert not row.has_areas
+    assert not row.combo.isEnabled()
+    assert row.combo.itemText(0) == ("No areas are known for Curse of the "
+                                     "Azure Bonds.")
+    assert not row.button.isEnabled()
+    assert "Curse of the Azure Bonds" in row.button.toolTip()
+    assert row.run() is None
+    # And the ticks are not Pool of Radiance's either: nothing is ticked for a
+    # title with no table to tick.
+    assert row.settings.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
+
+
+def test_the_row_follows_the_title_when_the_disks_change(app):
+    """The one place the title moves under a live row: `set_maps`."""
+    from automap.config import Settings
+    from por import games
+
+    row = bar(app, settings=Settings(), title=games.POOL_OF_RADIANCE.title,
+              game=games.POOL_OF_RADIANCE)
+    assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
+                                          "The Slums"]
+    row.set_title(games.SECRET_OF_THE_SILVER_BLADES.title,
+                  games.SECRET_OF_THE_SILVER_BLADES)
+    assert row.rows == ()
+    assert "Secret of the Silver Blades" in row.combo.itemText(0)
+    row.set_title(games.POOL_OF_RADIANCE.title, games.POOL_OF_RADIANCE)
+    assert [r.name for r in row.rows] == ["New Phlan", "Sokol Keep",
+                                          "The Slums"]
 
 
 def test_the_button_carries_its_refusal_in_its_tooltip(app):
@@ -693,12 +738,16 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     class Action:
         confirm = "sure?"
 
+        def __init__(self, game=None):
+            seen["action_game"] = game
+
         @staticmethod
-        def class_for(record):
+        def class_for(record, game=None):
+            seen["class_for_game"] = game
             return "fighter"
 
         @staticmethod
-        def preview(record, class_name="", spell=None):
+        def preview(record, class_name="", spell=None, game=None):
             return None
 
         def apply(self, target, **kwargs):
@@ -706,6 +755,7 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
             return actions.Outcome(True, "SILAS is a fighter 6")
 
     window.actions_bar, window.messages = Bar(), Messages()
+    window.state = type("S", (), {"title": "Pool of Radiance"})()
     window.mapper = type("M", (), {"target": object()})()
     window._refresh_roster = lambda: seen.update(refreshed=True)
     window.ask = lambda question: seen.update(asked=question) or True
@@ -722,6 +772,30 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     assert "asked" not in seen           # no confirmation: the button is the ask
     assert seen["said"] == "level up: SILAS is a fighter 6"
     assert seen["refreshed"], "the card still shows the old level and xp"
+    # And the title went with it: every table the plan reads is per-title, and
+    # passing none is how a Curse character got Pool of Radiance's (#16).
+    assert seen["class_for_game"].key == "pool-of-radiance"
+
+
+def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
+    """#16. A button that appears and then fails is worse than one that never
+    appears: `level_up_blockers` refuses every title but Pool of Radiance, so
+    the card does not offer the press."""
+    from automap.state import Automapper
+    from automap.window import AutomapWindow
+
+    pool = AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
+    assert pool.roster.levelling
+    assert pool.warp_bar.has_areas
+
+    curse = AutomapWindow(
+        Automapper(MemoryTarget({}), {},
+                   title="Curse of the Azure Bonds"), drive=False)
+    assert not curse.roster.levelling
+    assert not curse.warp_bar.has_areas
+    # Cards built after the fact are told too -- they are made on demand.
+    card = curse.roster._card(0)
+    assert not card.levelling
 
 
 def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
@@ -746,12 +820,15 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         confirm = ""
         plan = costly
 
+        def __init__(self, game=None):
+            seen["action_game"] = game
+
         @staticmethod
-        def class_for(record):
+        def class_for(record, game=None):
             return "thief"
 
         @classmethod
-        def preview(cls, record, class_name="", spell=None):
+        def preview(cls, record, class_name="", spell=None, game=None):
             return cls.plan
 
         def apply(self, target, **kwargs):
@@ -759,6 +836,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
             return actions.Outcome(True, "LADY KATHERINE is a thief 2")
 
     window.messages = Messages()
+    window.state = type("S", (), {"title": "Pool of Radiance"})()
     window.mapper = type("M", (), {"target": object()})()
     window._refresh_roster = lambda: None
     window.ask = lambda question: seen.update(asked=question) or False

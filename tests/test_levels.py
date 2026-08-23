@@ -252,3 +252,31 @@ def test_the_spell_slot_rows_are_the_games_own():
             assert raw[:len(row.spells)] == tuple(row.spells), \
                 f"{name} {row.level}"
             assert not any(raw[len(row.spells):]), f"{name} {row.level}"
+
+
+def test_only_pool_of_radiances_trainer_has_been_measured():
+    """Having a table is not having read the trainer, and #16 is the
+    difference. Curse's level tables are in this module; the hit-die roll at
+    `GEN $2037`, the saving-throw masks at `$1F44`, the constitution tables at
+    `$247B`/`$2486` and the spell capacity at `$20BC` were all read at Pool of
+    Radiance's addresses out of Pool of Radiance's `GEN`, and nothing has
+    confirmed Curse's agrees.
+
+    `for_game` falls back to Pool of Radiance for a title it has no tables for,
+    which is right for a spell name and wrong for writing a record -- so a
+    writer asks `trainer_measured`, which does not fall back.
+    """
+    from por import games
+
+    assert levels.trainer_measured() is True             # None is the default
+    assert levels.trainer_measured(games.POOL_OF_RADIANCE)
+    assert levels.trainer_measured(levels.POOL_OF_RADIANCE)
+    for game in games.GAMES:
+        if game is games.POOL_OF_RADIANCE:
+            continue
+        assert not levels.trainer_measured(game), game.title
+    # Curse has tables and is still refused; Silver Blades has none and
+    # `for_game` hands back Pool of Radiance's, which is the silent case.
+    assert levels.for_game(games.CURSE_OF_THE_AZURE_BONDS).key == \
+        "curse-of-the-azure-bonds"
+    assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES) is levels.DEFAULT

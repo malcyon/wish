@@ -539,7 +539,7 @@ def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
     for name in list(ticked(dialog)):
         tick(dialog, name, on=False)
     assert ticked(dialog) == []
-    assert Settings.load().fast_travel_targets == []
+    assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()
     assert dialog.travel_note.text() == "0 areas in the Fast Travel list."
     assert win.map.warp_bar.rows == ()
@@ -556,6 +556,22 @@ def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
     assert "Kovel Mansion" in [r.name for r in later.map.warp_bar.rows]
     assert ticked(PreferencesDialog(later)) == [
         "Kovel Mansion", "New Phlan", "Sokol Keep", "The Slums"]
+
+
+def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
+        app, tmp_path, monkeypatch):
+    """#14. Ticking Pool of Radiance's thirty areas for a Curse session would
+    file Pool of Radiance's ids under Curse's key, and the dropdown would then
+    offer them. The table is the map's title's, and five of the six titles have
+    none -- `docs/138-multiple-games.md` §7 task 1."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app, title=games.CURSE_OF_THE_AZURE_BONDS.title)
+    dialog = PreferencesDialog(win)
+    assert dialog.travel_rows == []
+    assert dialog.travel_table.rowCount() == 0
+    assert dialog.travel_note.text() == ("No areas are known for Curse of the "
+                                         "Azure Bonds.")
+    assert win.map.warp_bar.rows == ()
 
 
 def test_the_warning_is_a_framed_box_in_the_same_amber_as_unverified(
@@ -591,11 +607,14 @@ def test_a_config_file_written_before_the_rename_keeps_its_ticks(app, tmp_path,
         json.dumps({"warp_areas": [13, 21], "sight": 4}))
 
     old = Settings.load()
-    assert old.fast_travel_targets == [13, 21]
+    # Two migrations in one read: the key rename, and then the bare list into
+    # the per-title dict. A file from before 2026-08 takes both.
+    assert old.fast_travel_targets == {"pool-of-radiance": [13, 21]}
     assert old.chosen_areas() == (13, 21)
 
     old.save()
-    assert written_config(tmp_path)["fast_travel_targets"] == [13, 21]
+    assert written_config(tmp_path)["fast_travel_targets"] == {
+        "pool-of-radiance": [13, 21]}
     assert "warp_areas" not in written_config(tmp_path)
 
 
@@ -609,8 +628,28 @@ def test_the_new_key_wins_and_an_empty_old_list_is_still_a_choice(app, tmp_path,
     assert Settings.load().chosen_areas() == (2,)
 
     path.write_text(json.dumps({"warp_areas": []}))
-    assert Settings.load().fast_travel_targets == []
+    assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()      # not the default three
+
+
+def test_a_config_already_keyed_by_title_is_read_as_it_stands(app, tmp_path,
+                                                              monkeypatch):
+    """The third shape: a file this build wrote. No migration, and a title
+    nobody has ticked for keeps its own default rather than borrowing Pool of
+    Radiance's."""
+    nowhere(tmp_path, monkeypatch)
+    (tmp_path / "wish").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "wish" / "automap.json").write_text(json.dumps(
+        {"fast_travel_targets": {"pool-of-radiance": [13],
+                                 "curse-of-the-azure-bonds": []}}))
+
+    kept = Settings.load()
+    assert kept.chosen_areas(games.POOL_OF_RADIANCE) == (13,)
+    assert kept.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert kept.chosen_areas(games.SECRET_OF_THE_SILVER_BLADES) == ()
+    kept.save()
+    assert written_config(tmp_path)["fast_travel_targets"] == {
+        "pool-of-radiance": [13], "curse-of-the-azure-bonds": []}
 
 
 # --- how big the dialog opens ------------------------------------------------

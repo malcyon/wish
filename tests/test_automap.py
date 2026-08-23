@@ -468,7 +468,7 @@ def test_the_chosen_areas_survive_a_reload_and_so_does_an_empty_choice(
 
     settings.set_chosen_areas([])
     settings.save()
-    assert Settings.load().fast_travel_targets == []
+    assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()
 
 
@@ -480,10 +480,37 @@ def test_a_hand_edited_area_list_is_read_for_what_it_holds(tmp_path,
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import Settings
 
-    assert Settings(
-        fast_travel_targets=["0", 20, None, "twenty"]).chosen_areas() == (
+    assert Settings(fast_travel_targets={
+        "pool-of-radiance": ["0", 20, None, "twenty"]}).chosen_areas() == (
         0, 20)
     assert Settings(fast_travel_targets=7).chosen_areas() == (0, 20, 21)
+    assert Settings(fast_travel_targets={
+        "pool-of-radiance": 7}).chosen_areas() == (0, 20, 21)
+
+
+def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
+        tmp_path, monkeypatch):
+    """An area id means nothing without a title, so the file is keyed by
+    `por.games.Game.key` -- `docs/138-multiple-games.md` §5.
+
+    Only Pool of Radiance has a default, because only Pool of Radiance has an
+    area table: a tick for a title with no table would be an id off another
+    game's list."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    from automap.config import Settings
+    from por import games
+
+    fresh = Settings()
+    assert fresh.chosen_areas(games.POOL_OF_RADIANCE) == (0, 20, 21)
+    assert fresh.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert fresh.chosen_areas(games.SECRET_OF_THE_SILVER_BLADES) == ()
+
+    fresh.set_chosen_areas([13], games.CURSE_OF_THE_AZURE_BONDS)
+    assert fresh.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == (13,)
+    # Pool of Radiance's list is untouched, and is still the default.
+    assert fresh.chosen_areas(games.POOL_OF_RADIANCE) == (0, 20, 21)
+    assert "pool-of-radiance" not in fresh.fast_travel_targets
 
 
 def test_unreadable_settings_are_not_fatal(tmp_path, monkeypatch):
