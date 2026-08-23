@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import levels
 from .d64 import D64, load_payload
 
 
@@ -276,11 +277,16 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
                  (3, 2, 0, 0, 0), (3, 3, 1, 0, 0), (3, 3, 2, 0, 0),
                  (3, 3, 2, 1, 0), (3, 3, 3, 2, 0), (4, 4, 3, 2, 1),
                  (4, 4, 3, 3, 2)]
-# Bonus first-, second- and third-level cleric spells for high Wisdom. AD&D
-# gives a fourth-level bonus at 18 and 19 as well; it is left out because the
-# record reserves six spell levels and neither game has been seen to grant it.
-_WISDOM_BONUS = {13: (1, 0, 0), 14: (2, 0, 0), 15: (2, 1, 0), 16: (2, 2, 0),
-                 17: (2, 2, 1), 18: (2, 2, 1), 19: (3, 2, 1)}
+# Bonus first-, second- and third-level cleric spells for high Wisdom. **The
+# game's, not AD&D's**: `por.levels.wisdom_bonus_spells` implements `GEN
+# $10AD` and the shifts `$2108` puts it through, and the game's first-level
+# column starts a point low -- 1 at wisdom 12, where the rulebook gives the
+# first bonus spell at 13. See `docs/125-bug-notes.md` N13. Curse's copy has
+# not been read and takes Pool of Radiance's until it is.
+#
+# AD&D gives a fourth-level bonus at 18 and 19 as well; it is left out because
+# the record reserves six spell levels and neither game has been seen to grant
+# it.
 
 _SLOTS = {
     POOL_OF_RADIANCE.key: (_MAGIC_USER, _CLERIC),
@@ -333,7 +339,7 @@ def capacity(class_bits: int, level: int, wisdom: int,
         out["magic-user"] = magic_user[level - 1]
     if class_bits & 2:
         row = cleric[min(level, len(cleric)) - 1]
-        bonus = _WISDOM_BONUS.get(min(int(wisdom or 0), 19), (0, 0, 0))
+        bonus = levels.wisdom_bonus_spells(wisdom)
         # A Wisdom bonus only applies at a spell level the cleric can already
         # reach, so a level-1 cleric with WIS 16 gets three first-level spells
         # and no second-level ones.

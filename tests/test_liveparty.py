@@ -49,11 +49,13 @@ MEASURED_SAVES = {
     },
 }
 
-# `por/levels.py` says the fighter's breath save is 16 at level 4.  The game
-# writes 15, on two independent characters -- SILAS 16 -> 15 and the dwarf
-# MAGNUS 13 -> 12, at that level and no other.  Recorded rather than fixed
-# because the table is another file; delete the entry when it is corrected.
-KNOWN_DIVERGENCES = {("fighter", 4)}
+# `por/levels.py` used to give the fighter's breath save as 16 at level 4 and
+# the game writes 15, on two independent characters -- SILAS 16 -> 15 and the
+# dwarf MAGNUS 13 -> 12, at that level and no other.  **Settled (P76): the
+# table was wrong.**  `GEN $1FCA + 18` holds mask `$0C` where the fighter's
+# other four columns hold `$08`, so that column improves twice by level 4; AD&D
+# 1st edition says 16 and the game has never agreed.  Nothing diverges now.
+KNOWN_DIVERGENCES: set[tuple[str, int]] = set()
 
 # What `0x0E8` held after training, per class per level reached.  The trainer
 # clamps experience to one less than the *next* level's threshold, so each of
@@ -101,11 +103,9 @@ def test_saving_throws_match_the_trainer(class_name):
         assert tuple(table[level].saves) == saves, f"{class_name} {level}"
 
 
-def test_the_one_known_divergence_is_still_there():
-    """Fails the day `por/levels.py` is corrected, which is the point."""
-    for class_name, level in KNOWN_DIVERGENCES:
-        table = _levels(class_name)
-        assert tuple(table[level].saves) != MEASURED_SAVES[class_name][level]
+def test_nothing_diverges_from_the_trainer_any_more():
+    """P76 closed the last one. A new entry here means a new disagreement."""
+    assert KNOWN_DIVERGENCES == set()
 
 
 def test_the_dwarf_pays_three_on_every_column():
@@ -142,3 +142,78 @@ def test_the_ceilings_are_where_training_stopped():
     assert levels.ceiling("cleric") == 6
     assert levels.ceiling("magic-user") == 6
     assert levels.ceiling("thief") == 9
+
+
+# --- what the trainer wrote that the old tables had no column for -----------
+
+# LADY KATHERINE, half-elf (race 4), levels 1-9. Her numbers, not the base
+# table: race is in them, and nothing else is -- `GEN $1FEC` writes the level
+# row and adds the racial row and reads no ability score at all.
+MEASURED_THIEF_SKILLS = {
+    1: (30, 25, 20, 20, 10, 10, 85, 5),
+    2: (35, 29, 25, 26, 15, 10, 86, 5),
+    3: (40, 33, 30, 32, 20, 15, 87, 5),
+    4: (45, 37, 35, 38, 25, 15, 88, 25),
+    5: (50, 42, 40, 45, 31, 20, 90, 30),
+    6: (55, 47, 45, 52, 37, 20, 92, 35),
+    7: (60, 52, 50, 60, 43, 25, 94, 40),
+    8: (65, 57, 55, 67, 49, 25, 96, 45),
+    9: (70, 62, 60, 75, 56, 30, 98, 50),
+}
+HALF_ELF = 4
+
+# ROLAND, cleric 1-6: `0x0A4` at every training. It is not the level.
+MEASURED_TURN_POWER = {1: 1, 2: 2, 3: 3, 4: 5, 5: 6, 6: 7}
+
+# ROLAND again, wisdom 16: `0x0EE`-`0x0F0`, cleric in the high nibble.
+# `3 / 4 / 4,3 / 5,4 / 5,5,1 / 5,5,2` is the class table plus +2 first-level
+# and +2 second-level spells.
+MEASURED_CLERIC_CAPACITY = {
+    1: (3,), 2: (4,), 3: (4, 3), 4: (5, 4), 5: (5, 5, 1), 6: (5, 5, 2),
+}
+ROLAND_WISDOM = 16
+
+# MALCYON, elf magic-user, constitution 18 -- and 2, not 4, because the
+# fighter column of the constitution table is for fighters.
+# Level 1 is the record as it arrived -- `hp_max` 4 with `hp_rolled` 4, which
+# the arithmetic does not fit because the constitution 18 on his sheet is an
+# edit the trainer had not yet been asked to reconcile. The first training put
+# it right, so the rows start at 2.
+MEASURED_MAGIC_USER_HP = {2: (7, 11), 3: (8, 14), 4: (10, 18),
+                          5: (12, 22), 6: (16, 28)}
+MALCYON_CONSTITUTION = 18
+
+
+def test_the_thief_skills_match_the_trainer():
+    for level, want in MEASURED_THIEF_SKILLS.items():
+        assert levels.thief_skills(level, HALF_ELF) == want, level
+
+
+def test_the_turning_level_matches_the_trainer():
+    for level, want in MEASURED_TURN_POWER.items():
+        assert levels.turning_level(level) == want, level
+
+
+def test_the_cleric_spell_capacity_matches_the_trainer():
+    bonus = levels.wisdom_bonus_spells(ROLAND_WISDOM)
+    assert bonus == (2, 2, 0)
+    for level, want in MEASURED_CLERIC_CAPACITY.items():
+        row = levels.at_level("cleric", level).spells
+        got = tuple(n + bonus[i] for i, n in enumerate(row))
+        assert got == want, level
+
+
+def test_hit_points_are_the_rolls_plus_the_constitution_bonus():
+    """`hp_max = hp_rolled + level * bonus`, recomputed at every training."""
+    bonus = levels.constitution_hp_bonus(MALCYON_CONSTITUTION, fighter=False)
+    assert bonus == 2
+    assert levels.constitution_hp_bonus(MALCYON_CONSTITUTION, fighter=True) == 4
+    for level, (rolled, hp_max) in MEASURED_MAGIC_USER_HP.items():
+        assert rolled + level * bonus == hp_max, level
+
+
+def test_the_clamp_past_a_ceiling_has_a_number():
+    """The game's threshold arrays run one entry past every ceiling, so the
+    trainer clamps a thief 9 to 160,000 rather than to nothing."""
+    for (class_name, level), want in PAST_THE_CEILING.items():
+        assert levels.clamp_threshold(class_name, level) == want

@@ -25,12 +25,19 @@ from .items import TYPE_DAMAGE_MEDIUM, ItemType
 # its type record carries 1 here and readying it is worth a point of damage.
 _TYPE_DAMAGE_BONUS = TYPE_DAMAGE_MEDIUM + 2
 
-# THAC0 by class and level, AD&D 1st edition. Index by level - 1.
+# THAC0 by class and level, read off the game's own table at `GEN $1F1F` --
+# four rows of nine, indexed `class * 9 + level`. Index by level - 1.
+#
+# **The fighter row is per level, not per pair of levels.** AD&D 1st edition
+# groups fighters 1-2, 3-4 and so on; this file used to carry that grouping and
+# gave a level-2 fighter 20 where the game writes 19, a level-4 fighter 18
+# where it writes 17, and so on up. Every one of twenty-nine trainings
+# disagreed with the grouping (`docs/119-test-party.md`).
 _THAC0 = {
-    "fighter":    [20, 20, 18, 18, 16, 16, 14, 14, 12, 12],
-    "cleric":     [20, 20, 20, 18, 18, 18, 16, 16, 16, 14],
-    "thief":      [21, 21, 21, 21, 19, 19, 19, 19, 16, 16],
-    "magic-user": [21, 21, 21, 21, 21, 19, 19, 19, 19, 19],
+    "fighter":    [20, 19, 18, 17, 16, 15, 14, 13, 12],
+    "cleric":     [20, 20, 20, 18, 18, 18, 16, 16, 16],
+    "thief":      [21, 21, 21, 21, 19, 19, 19, 19, 16],
+    "magic-user": [21, 21, 21, 21, 21, 19, 19, 19, 19],
 }
 CLASS_BITS = ((1, "magic-user"), (2, "cleric"), (4, "thief"), (8, "fighter"))
 
@@ -86,7 +93,7 @@ def dexterity_ac_bonus(dexterity: int) -> int:
 
 def base_thac0(class_bits: int, level: int) -> int:
     """The best THAC0 among the character's classes, before any adjustment."""
-    level = max(1, min(int(level or 1), 10))
+    level = max(1, min(int(level or 1), 9))
     best = 99
     for bit, name in CLASS_BITS:
         if class_bits & bit:

@@ -260,7 +260,7 @@ _DECLARED: Sequence[Field] = (
            "observed and says how far the field really runs. PROBABLE, because "
            "a C64 port may cut spells; one Curse caster's book read against "
            "COMBAT2's name table settles it. docs/127-community-formats.md"),
-    _field(0x071, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _MAYBE,
+    _field(0x071, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _OK,
            "base THAC0, stored as 60 - THAC0, the same encoding the SAVEDGAME1 "
            "roster uses for the current value at +0x0E. Matches the AD&D 1st "
            "edition table for all twelve of Donald's characters and all six "
@@ -269,7 +269,12 @@ _DECLARED: Sequence[Field] = (
            "because MALCYON's sheet shows 20 where the byte reads 39 -- but 39 "
            "is 60-21, his base as a level-1 magic-user, and the 20 on screen "
            "is the current value after readying a dart. Base and current are "
-           "different fields in different files"),
+           "different fields in different files.\n"
+           "**CONFIRMED**: the trainer rewrote it at every one of twenty-nine "
+           "level-ups, always to the row of the game's own table at GEN $1F1F "
+           "and, for a multi-class character, to the best of its classes -- "
+           "GEN $1EF3 keeps a value only when it beats what is already there. "
+           "docs/119-test-party.md"),
     _field(0x072, 1, _U8, "race", "Race", _OK,
            "1-based: DWARF=1 ELF=2 GNOME=3 HALF-ELF=4 HALFLING=5 HALF-ORC=6 "
            "HUMAN=7 MONSTER=8. BRUTUS/ZARRADA=7 human, LARA=2 elf. HALF-ORC "
@@ -420,7 +425,15 @@ _DECLARED: Sequence[Field] = (
            "with the SAVEDGAME1 roster's +0x0F for the same character: BRUTUS "
            "9, MALCYON 8, LADY KATHERINE 8. Base and current again, in "
            "different places"),
-    _field(0x0ED, 1, _U8, "hp_rolled", "HP rolled", _MAYBE, "9; +2 CON = hp_max"),
+    _field(0x0ED, 1, _U8, "hp_rolled", "HP rolled", _OK,
+           "the accumulated hit-die rolls, without the constitution bonus. "
+           "hp_max at 0x076 is this plus level x the bonus, recomputed from "
+           "here at every training -- so this is the stored half and hp_max "
+           "the derived one, not the other way round. GEN $2037 adds one roll "
+           "of the class hit die (GEN $20A7: d4, d8, d6, d10 in class-bit "
+           "order) and GEN $2079 writes hp_max from it. Confirmed on "
+           "twenty-nine trainings across four classes and three constitution "
+           "scores; the roll itself is a die and derives from nothing"),
     # --- Explicitly unknown regions (unchanged) ---------------------------
     _field(0x099, 1, _U8, "size_small", "Size", _MAYBE,
            "0 small, 1 large -- the only two the game offers, and the two its "
@@ -481,7 +494,7 @@ _DECLARED: Sequence[Field] = (
            "records the two are disjoint: 0x0A3 is non-zero only on undead and "
            "0x0A4 only on clerics, and no record sets both. They are two "
            "fields, one per side of the same rule"),
-    _field(0x0A4, 1, _U8, "turn_power", "Turn undead (caster side)", _MAYBE,
+    _field(0x0A4, 1, _U8, "turn_power", "Turn undead (caster side)", _OK,
            "the caster's half of turning, sitting beside the undead's half at "
            "0x0A3. Non-zero in eight of the eleven records carrying the cleric "
            "class bit and in nothing else -- ACOLYTE and 1ST LVL CLERIC 1, 2ND "
@@ -490,8 +503,14 @@ _DECLARED: Sequence[Field] = (
            "Curse: 6 for its level-5 cleric, 3 for its level-5 paladin, zero "
            "for everyone else. What the *number* means is not settled and is "
            "not the cleric's level: three level-5 clerics read 1, 4 and 6, and "
-           "7TH LVL CLERIC reads 0. The population is PROBABLE, the reading of "
-           "the value is a guess"),
+           "7TH LVL CLERIC reads 0.\n"
+           "**CONFIRMED, and the value is a table lookup rather than the "
+           "level.** GEN $2388 writes it from the fourteen bytes at $2399, "
+           "indexed by the cleric level: 1 2 3 5 6 7 8 9 10 10 10 10 10 12. "
+           "That is the row of the AD&D turning table the cleric reads, which "
+           "is why it skips 4. ROLAND's six cleric trainings moved this byte "
+           "every time and never moved 0x0A3, which is what separates the two "
+           "fields. docs/119-test-party.md"),
     _field(0x0AD, 10, _RAW, "item_effects", "Character Traits", _MAYBE,
            "ten trait slots -- racial abilities and readied passive items. "
            "**Not the save's active effects**, which is what this field was "
@@ -534,7 +553,7 @@ _DECLARED: Sequence[Field] = (
     # present". Donald's Gold Box Companion experience supports level: a human
     # thief changed to fighter became dual-classed, and as he levelled the
     # fighter entry rose while the thief entry stayed at 1.
-    _field(0x0C9, 1, _U8, "level_magic_user", "Magic-user level", _MAYBE,
+    _field(0x0C9, 1, _U8, "level_magic_user", "Magic-user level", _OK,
            "1 for every magic-user, 0 otherwise. One entry of the per-class "
            "level array -- how dual-classing keeps an old class frozen "
            "while a new one advances (the per-class levels).\n"
@@ -548,16 +567,21 @@ _DECLARED: Sequence[Field] = (
            "cleric) slot 1, BRUTUS (class 2, fighter) slot 3, and LADY "
            "KATHERINE (class 16, magic-user/thief) slots 0 and 2. A converter "
            "that copies the array straight across turns every cleric into a "
-           "druid"),
-    _field(0x0CA, 1, _U8, "level_cleric", "Cleric level", _MAYBE,
+           "druid.\n"
+           "**CONFIRMED**: twenty-nine trainings raised exactly the entry of "
+           "the class trained and no other, and LADY KATHERINE ended "
+           "magic-user 6 / thief 9 with two different non-zero entries -- "
+           "which is what separates this array from 'the single class's "
+           "level'. docs/119-test-party.md"),
+    _field(0x0CA, 1, _U8, "level_cleric", "Cleric level", _OK,
            "1 for every cleric, 0 otherwise. One entry of the per-class "
            "level array -- how dual-classing keeps an old class frozen "
            "while a new one advances (the per-class levels)"),
-    _field(0x0CB, 1, _U8, "level_thief", "Thief level", _MAYBE,
+    _field(0x0CB, 1, _U8, "level_thief", "Thief level", _OK,
            "1 for every thief, 0 otherwise. One entry of the per-class "
            "level array -- how dual-classing keeps an old class frozen "
            "while a new one advances (the per-class levels)"),
-    _field(0x0CC, 1, _U8, "level_fighter", "Fighter level", _MAYBE,
+    _field(0x0CC, 1, _U8, "level_fighter", "Fighter level", _OK,
            "1 for every fighter, 0 otherwise. One entry of the per-class "
            "level array (the per-class levels). Previously guessed to be an "
            "exceptional-strength flag, because the only fighters seen then "

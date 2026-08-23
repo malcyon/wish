@@ -19,6 +19,13 @@ carries, and where:
 | THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead |
 | hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount |
 | spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` payload `0x88D`, magic-user 11 rows then cleric 10, x 5 |
+| saving throws | `GEN` `$1FA2` level-1 row then two per-column bitmasks at `$1FB6` and `$1FCA` | level-1 rows only, `GEN` `$0F49` |
+| racial save bonus | `GEN` `$2359`, `CON * 2 / 7` for the races flagged at `$2380` | -- |
+| thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | -- |
+| hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` |
+| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score | -- |
+| wisdom bonus spells | `GEN` `$10AD`, indexed by the score | -- |
+| turning level | `GEN` `$2399`, indexed by cleric level | -- |
 
 `GEN` is resident at `$0800` in both games whatever its PRG header claims.
 
@@ -38,12 +45,23 @@ zero. That reproduces Pool of Radiance's own fighter row and extends it, so a
 level-12 fighter needs 9. It is also why a paladin and a ranger need no THAC0
 table of their own.
 
-**The saving-throw rule is solved** -- `saving_throws` below implements it, and
-it is no longer merely transcribed:
+**The saving-throw rule is the game's own, read out of `GEN`** -- `saving_throws`
+below implements it:
 
 > A character's five stored saves are the class-table row for its level, taking
 > the best number in each column across every class it holds, less the AD&D
 > constitution bonus when the character is a dwarf, gnome or halfling.
+
+Pool of Radiance does not tabulate the rows. `GEN $1F44` fills all five columns
+with 20, then for each class subtracts, per column, the number of set bits in
+the low `level - 1` bits of *two* masks -- `$1FB6` and `$1FCA` -- from the
+level-1 row at `$1FA2`, keeping whichever class gives the lower number. The
+rows written out below are that encoding expanded, and
+`tests/test_levels.py` re-expands it off the player's own `GEN` rather than
+trusting the transcription. It is what settles **the fighter's level-4 breath
+save at 15**: the fighter's fourth column carries mask `$0C` where the other
+four carry `$08`, so that column improves twice by level 4 where the rest
+improve once. AD&D 1st edition says 16 there; the game has always written 15.
 
 78 of 79 distinct Pool of Radiance records satisfy that (`docs/127`), and every
 Curse record on the player's disks does too. **The two games disagree on one
@@ -71,6 +89,9 @@ from dataclasses import dataclass
 
 #: What the racial-limit tables write for "no limit".
 UNLIMITED = 99
+
+#: The one title whose trainer tables have been read byte for byte.
+POOL_KEY = "pool-of-radiance"
 
 #: The five columns, in stored order at record offset `0x09A`.
 SAVE_COLUMNS = ("paralysis/poison/death", "petrification/polymorph",
@@ -120,7 +141,7 @@ FIGHTER = (
     Level(1, 0, "1d10", 20, 1, (14, 15, 16, 17, 17)),        # 20 confirmed
     Level(2, 2001, "2d10", 19, 1, (14, 15, 16, 17, 17)),
     Level(3, 4001, "3d10", 18, 1, (13, 14, 15, 16, 16)),
-    Level(4, 8001, "4d10", 17, 1, (13, 14, 15, 16, 16)),
+    Level(4, 8001, "4d10", 17, 1, (13, 14, 15, 15, 16)),   # breath 15, not 16
     Level(5, 18001, "5d10", 16, 1, (11, 12, 13, 13, 14)),
     Level(6, 35001, "6d10", 15, 1, (11, 12, 13, 13, 14)),
     Level(7, 70001, "7d10", 14, 1.5, (10, 11, 12, 12, 13)),  # 14 confirmed
@@ -278,6 +299,119 @@ CURSE_RANGER = _progression(
     saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_FIGHTER)
 
 
+# --- what the trainer rolls and looks up --------------------------------------
+# Everything below is Pool of Radiance's `GEN`, read byte for byte, and is what
+# lets `por/levelup.py` reproduce a training without one. Curse has its own
+# copies of all of it and none of them has been read, which is why these are
+# fields on the per-title descriptor with an empty default rather than module
+# constants that would answer for a title nobody measured.
+
+#: `GEN $102E`, nine rows of eight, indexed by `thief level - 1`. The columns
+#: are the stored order at `0x0A5`: pick pockets, open locks, find traps, move
+#: silently, hide in shadows, hear noise, climb walls, read languages.
+_THIEF_SKILLS_POOL = (
+    (30, 25, 20, 15, 10, 10, 85, 0),
+    (35, 29, 25, 21, 15, 10, 86, 0),
+    (40, 33, 30, 27, 20, 15, 87, 0),
+    (45, 37, 35, 33, 25, 15, 88, 20),
+    (50, 42, 40, 40, 31, 20, 90, 25),
+    (55, 47, 45, 47, 37, 20, 92, 30),
+    (60, 52, 50, 55, 43, 25, 94, 35),
+    (65, 57, 55, 62, 49, 25, 96, 40),
+    (70, 62, 60, 70, 56, 30, 98, 45),
+)
+
+#: `GEN $1076`, eight rows of eight, indexed by `race - 1` and added to the row
+#: above. **Race is the whole of the adjustment**: `GEN $1FEC` writes the level
+#: row and then adds this one, and nothing reads dexterity. LADY KATHERINE's
+#: measured ladder (`docs/119-test-party.md`) is the half-elf row exactly.
+_THIEF_SKILL_RACE_POOL = (
+    (0, 10, 15, 0, 0, 0, -10, -5),      # dwarf
+    (5, -5, 0, 5, 10, 5, 0, 0),         # elf
+    (0, 5, 10, 5, 5, -5, 0, 10),        # gnome
+    (0, 0, 0, 5, 0, 0, 0, 5),           # half-elf
+    (5, 5, 10, 15, 5, -15, -5, -5),     # halfling
+    (5, 5, 0, 0, 5, 5, -10, 0),         # half-orc
+    (0, 0, 0, 0, 0, 0, 0, 0),           # human
+    (0, 0, 0, 0, 0, 0, 0, 0),           # monster
+)
+
+#: `GEN $2399`, indexed by cleric level, written to `0x0A4`. Not the level: it
+#: is the row of the AD&D turning table the cleric reads, which is why it runs
+#: `1 2 3 5 6 7` and skips 4. ROLAND's six trainings wrote exactly this.
+_TURN_POWER_POOL = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10, 10, 10, 10, 12)
+
+#: `GEN $20A7`, in class-bit order: how many sides the hit die has.
+_HIT_DIE_POOL = {"magic-user": 4, "cleric": 8, "thief": 6, "fighter": 10}
+
+#: `GEN $247B` and `$2486`, indexed by the constitution score and consulted
+#: only from 15 up (`CPX #$0F`). A character with any fighter bit takes the
+#: first row; everybody else the second, which is why an 18-constitution
+#: magic-user gets 2 and not 4.
+_HP_BONUS_FIGHTER = (1, 2, 3, 4, 5, 5, 6, 6, 6, 7, 7)      # CON 15-25
+_HP_BONUS_OTHER = (1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5)        # CON 15-25
+HP_BONUS_FROM = 15
+
+
+def hit_die(class_name: str, game=None) -> int | None:
+    """How many sides the class rolls a level, or None for no such class."""
+    tables = for_game(game)
+    if tables.key == POOL_KEY:
+        return _HIT_DIE_POOL.get(class_name)
+    row = tables.at_level(class_name, 1)
+    if row is None:
+        return None
+    _, _, die = row.hit_dice.partition("d")
+    die, _, _flat = die.partition("+")
+    return int(die)
+
+
+def constitution_hp_bonus(constitution: int, fighter: bool = False) -> int:
+    """Hit points a level from constitution. `GEN $2471`.
+
+    **Pool of Radiance's, and taken to answer for Curse** until somebody reads
+    Curse's copy: it is the AD&D 1st edition table unchanged, including the cap
+    of +2 for anybody who is not a fighter.
+    """
+    score = int(constitution or 0)
+    if score < HP_BONUS_FROM:
+        return 0
+    row = _HP_BONUS_FIGHTER if fighter else _HP_BONUS_OTHER
+    return row[min(score - HP_BONUS_FROM, len(row) - 1)]
+
+
+#: `GEN $10AD`, indexed by the wisdom score. One number, which `GEN $2108`
+#: then halves its way down for the second and third spell levels.
+_WISDOM_BONUS_BASE = 12
+
+
+def wisdom_bonus_spells(wisdom: int) -> tuple[int, int, int]:
+    """Bonus cleric spells at the first three spell levels. `GEN $2108`.
+
+    **The game's table starts one point low.** AD&D 1st edition gives the first
+    bonus spell at wisdom 13 and the second at 14; `$10AD` holds 1 at 12 and 2
+    from 13 up, so a wisdom-12 cleric memorises a first-level spell the rules
+    do not give it. The second- and third-level columns are AD&D exactly --
+    they are gated on `CPY #$0F`, `#$10` and `#$11`. See `docs/125-bug-notes.md`.
+
+    The bonus is only granted where the class table already gives a slot at
+    that spell level (`GEN $210A` skips a zero), so a level-1 cleric gets no
+    second-level spell however wise it is.
+    """
+    score = int(wisdom or 0)
+    if score < _WISDOM_BONUS_BASE:
+        return (0, 0, 0)
+    base = 1 if score == _WISDOM_BONUS_BASE else 2
+    second = 0 if score < 15 else (base >> 1 if score < 16 else base)
+    third = 0
+    if score >= 15:
+        third = base >> 1 if score < 16 else base
+        third >>= 1
+        if score < 17:
+            third >>= 1
+    return (base, second, third)
+
+
 # --- the per-title descriptor ------------------------------------------------
 
 @dataclass(frozen=True)
@@ -305,6 +439,52 @@ class LevelTables:
     #: `games.Game.races` and would live better there; it is here because
     #: nothing else needs it yet and this module does not import that one.
     sturdy_races: tuple[int, ...] = (1, 3, 5)
+    #: The trainer's own tables, read out of the title's `GEN`. Empty means
+    #: nobody has read this title's copy, and every caller treats that as
+    #: "cannot answer" rather than as a zero.
+    thief_skills: tuple[tuple[int, ...], ...] = ()
+    thief_skill_race: tuple[tuple[int, ...], ...] = ()
+    turn_power: tuple[int, ...] = ()
+    #: What the trainer clamps experience to at the class ceiling. The game's
+    #: threshold arrays are nine wide a class and each class's tenth entry
+    #: falls in the next class's unused slot 0, so `GEN $23D4` reads a real
+    #: number one past every ceiling: 60,001 for a magic-user 6, 55,001 for a
+    #: cleric 6, 160,001 for a thief 9 and 250,001 for a fighter 8. Kept apart
+    #: from the rows because `next_threshold` must stay None at the ceiling --
+    #: an experience bar there has nothing to fill towards.
+    clamp_thresholds: tuple[tuple[str, int], ...] = ()
+
+    def thief_skill_row(self, level: int, race: int) -> tuple[int, ...] | None:
+        """The eight percentages a thief of that level and race stores.
+
+        The level row plus the racial row, which is the whole rule: `GEN $1FEC`
+        writes one and adds the other and reads nothing else.
+        """
+        if not self.thief_skills:
+            return None
+        level = max(1, min(int(level or 1), len(self.thief_skills)))
+        row = self.thief_skills[level - 1]
+        index = int(race or 0) - 1
+        if 0 <= index < len(self.thief_skill_race):
+            row = tuple(a + b for a, b in
+                        zip(row, self.thief_skill_race[index]))
+        return tuple(row)
+
+    def clamp_threshold(self, class_name: str, level: int) -> int | None:
+        """What `GEN $23D4` reads for a class at that level, ceiling included."""
+        want = self.at_level(class_name, level + 1)
+        if want is not None:
+            return want.experience
+        if level == self.ceiling(class_name):
+            return dict(self.clamp_thresholds).get(class_name)
+        return None
+
+    def turning_level(self, cleric_level: int) -> int | None:
+        """What `0x0A4` holds for a cleric of that level, or None."""
+        if not self.turn_power or not cleric_level:
+            return None
+        level = max(1, min(int(cleric_level), len(self.turn_power)))
+        return self.turn_power[level - 1]
 
     @property
     def tables(self) -> dict[str, tuple[Level, ...]]:
@@ -378,6 +558,11 @@ POOL_OF_RADIANCE = LevelTables(
                    (5, (0, 0, UNLIMITED, 6)), (6, (0, 4, 8, 10)),
                    (7, (UNLIMITED,) * 4)),
     constitution_save_columns=(0, 1, 2, 3, 4),
+    thief_skills=_THIEF_SKILLS_POOL,
+    thief_skill_race=_THIEF_SKILL_RACE_POOL,
+    turn_power=_TURN_POWER_POOL,
+    clamp_thresholds=(("magic-user", 60001), ("cleric", 55001),
+                      ("thief", 160001), ("fighter", 250001)),
 )
 
 #: Curse zeroes the cleric column for dwarf, elf and gnome where Pool of
@@ -431,16 +616,15 @@ def for_game(game=None) -> LevelTables:
 
 
 def constitution_save_bonus(constitution: int) -> int:
-    """AD&D 1st edition: +1 saving throw per 3.5 points of constitution.
+    """+1 saving throw per 3.5 points of constitution. `GEN $2359`.
 
-    Only dwarves, gnomes and halflings take it. The `+1` and `+2` bands are
-    PROBABLE -- no specimen has a constitution under 11 -- and `+3`/`+4`/`+5`
-    are exercised by MAGNUS, HOGARTH, GRON, NYX and DAX.
+    Not a band table and not a transcription: the game divides `constitution *
+    2` by 7 and subtracts the quotient, which is this expression exactly. Only
+    the races flagged at `GEN $2380` -- dwarf, gnome and halfling -- take it.
+    MAGNUS, a dwarf with constitution 13, reads three lower than the human
+    SILAS on all five columns at every level, and `26 // 7` is 3.
     """
-    for floor, bonus in ((18, 5), (14, 4), (11, 3), (7, 2), (4, 1)):
-        if int(constitution or 0) >= floor:
-            return bonus
-    return 0
+    return int(constitution or 0) * 2 // 7
 
 
 def table(class_name: str, game=None) -> tuple[Level, ...]:
@@ -462,6 +646,18 @@ def racial_limit(race: int, class_name: str, game=None) -> int | None:
 def saving_throws(class_levels, race: int = 0, constitution: int = 0,
                   game=None) -> tuple[int, ...] | None:
     return for_game(game).saving_throws(class_levels, race, constitution)
+
+
+def thief_skills(level: int, race: int, game=None) -> tuple[int, ...] | None:
+    return for_game(game).thief_skill_row(level, race)
+
+
+def turning_level(cleric_level: int, game=None) -> int | None:
+    return for_game(game).turning_level(cleric_level)
+
+
+def clamp_threshold(class_name: str, level: int, game=None) -> int | None:
+    return for_game(game).clamp_threshold(class_name, level)
 
 
 def next_threshold(class_name: str, level: int, game=None) -> int | None:
