@@ -105,13 +105,36 @@ reads 4, and what 4 means is script-specific and undecoded — so it goes in the
 tooltip with everything else that is internal:
 
 ```
-clear the slums
-candidate 0 on ECL08's board at $A84D: the clerk raises it on the next visit
-ledger 21 at $4ABB = 4
-  the clerk pays for it as "slums cleared"
-  written by The slums (ECL14)
+clean out Kovel Mansion
+candidate 6 on ECL08's board at $A84D: the clerk raises it on the next visit
+ledger 12 at $4AB2 = 4
+  the clerk pays for it as "Kovel Mansion thieves"
+  written by Kovel Mansion (ECL0E)
   counts towards commissions completed
 ```
+
+**One row is an exception, and it is the Slums.** Its tooltip is one sentence:
+
+```
+Counts every fight won in the Slums: 10 set encounters and 15 wandering.
+```
+
+That number is the only thing the row has to settle — a PC walkthrough quotes
+15 for the same job, which is `$4A80`'s separate cap on the wandering half
+([`134-commissions.md`](134-commissions.md)) — and Donald asked in 2026-08 for
+that sentence and nothing under it. `TOOLTIPS` in `automap/commissions.py` is
+the override, keyed by ledger index.
+
+### Place names are capitalised at display time
+
+The board says *clear the slums* and the clerk pays for *slums cleared*; a
+quest log should say **Clear the Slums**. `_sentence` does both the first
+letter and the place names, beside each other and for the same reason: the
+strings in `por/commissions.py` are the bytecode's own words and are cited as
+such, so nothing there is edited. `PLACES` holds the one word that needs it —
+every other place the board names (Sokal Keep, Kuto's Well, Podal Plaza, Kovel
+Mansion, Valjevo Castle, Stojanow Gate) is already capitalised in the game's
+text. **Sokal, not Sokol**: that is the game's spelling and it stands.
 
 ### The design this replaced
 
@@ -160,7 +183,8 @@ log that blanked every time somebody opened one would be a flicker.
 * The withdrawn candidate is a footnote and never a row; every board candidate
   that settles something and every one of the 26 entries appears in exactly one
   `COMMISSIONS` member.
-* The marker value never reaches the face and always reaches the tooltip.
+* The marker value never reaches the state word; the Slums' tooltip is
+  Donald's one sentence and every other row keeps its ledger line.
 * The shipped unplayed `POOL1` save shows nothing done and offers exactly slums,
   Sokal Keep, and books. `work/fields/npc_party.d64` reads `$4AC1` = 6, fourteen
   entries paid — six of them the major ones, which is what `$4AC1` counts — and

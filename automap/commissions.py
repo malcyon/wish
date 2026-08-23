@@ -30,6 +30,7 @@ they are useful and harmless. See `docs/103-commissions-panel.md`.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt
@@ -149,14 +150,27 @@ def _name(commission, word) -> str:
     return _sentence(commission.name)
 
 
-def _sentence(text: str) -> str:
-    """First letter up, and nothing else touched.
+#: Place names the clerk's speech spells in lower case, and what a reader
+#: expects to see. Only one so far: every other district and building the board
+#: mentions -- Sokal Keep, Kuto's Well, Podal Plaza, Kovel Mansion, Valjevo
+#: Castle, Stojanow Gate -- is already capitalised in the bytecode.
+#:
+#: **Sokal, not Sokol.** That is the game's own spelling and it stands; the
+#: guides say Sokol and are not the authority on what the board says.
+PLACES = {"slums": "Slums"}
 
-    Capitalised here rather than in `por/commissions.py`, because the strings
+
+def _sentence(text: str) -> str:
+    """First letter up, place names capitalised, nothing else touched.
+
+    Both done here rather than in `por/commissions.py`, because the strings
     there are the clerk's own speech as the bytecode carries it and are cited
-    as such. `str.capitalize` would lower the rest and turn "Norris the Gray"
-    into "Norris the gray".
+    as such -- "clear the slums" is what is on the board, and "Clear the Slums"
+    is what a quest log should say. `str.capitalize` would lower the rest and
+    turn "Norris the Gray" into "Norris the gray".
     """
+    for word, name in PLACES.items():
+        text = re.sub(rf"\b{word}\b", name, text)
     return text[:1].upper() + text[1:] if text else text
 
 
@@ -190,17 +204,22 @@ def _board_line(commission, on_board, open_gates) -> str:
     return f"{where}: its gate is shut"
 
 
-# A marker byte a reader will otherwise misread. The slums' 25 is the whole
-# area's encounters, set and wandering together; a PC walkthrough quotes 15,
-# which is `$4A80`'s separate cap on wandering fights. Saying so here is
-# cheaper than the row saying it and shorter than being asked twice.
-MARKER_NOTES = {
-    21: (f"counts every fight won in the slums: {book.SLUM_SET} set encounters "
-         f"and {book.SLUM_WANDERING} wandering, one each"),
+# A row whose tooltip is one sentence instead of the ledger detail. The Slums'
+# 25 is the whole area's encounters, set and wandering together; a PC
+# walkthrough quotes 15, which is `$4A80`'s separate cap on wandering fights,
+# and the number on the face reads as contradicting it. That is the only thing
+# this row's tooltip has to settle, and Donald asked in 2026-08 for exactly
+# this sentence and nothing under it -- the ledger address and the board
+# candidate are on every other row for whoever wants them.
+TOOLTIPS = {
+    21: (f"Counts every fight won in the Slums: {book.SLUM_SET} set encounters "
+         f"and {book.SLUM_WANDERING} wandering."),
 }
 
 
 def _tip(commission, entries, on_board, open_gates) -> str:
+    if len(commission.ledger) == 1 and commission.ledger[0] in TOOLTIPS:
+        return TOOLTIPS[commission.ledger[0]]
     lines = [commission.name, _board_line(commission, on_board, open_gates)]
     if commission.order in GATE_NOTES:
         lines.append(f"  {GATE_NOTES[commission.order]}")
@@ -214,8 +233,6 @@ def _tip(commission, entries, on_board, open_gates) -> str:
                          + (f' - "{speech}"' if speech else ""))
             continue
         lines.append(line)
-        if index in MARKER_NOTES:
-            lines.append(f"  {MARKER_NOTES[index]}")
         if speech:
             lines.append(f'  the clerk pays for it as "{speech}"')
         if entry.source:
