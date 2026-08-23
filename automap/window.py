@@ -32,7 +32,7 @@ from por import strength as strengthmod
 from por.geo import GRID
 from ui.iconpaint import draw_icon
 
-from . import combat, live
+from . import actions, combat, live
 from . import notes as notemod
 from .actionbar import ActionBar, WarpBar
 from .combatlog import CombatLog
@@ -435,6 +435,10 @@ class AutomapWindow(QMainWindow):
         self.stack.addWidget(self.battle_canvas)
         self.battle = None
         self.roster = RosterPanel()
+        self.roster.level_up_requested.connect(self._level_up)
+        #: Spell names, read off the player's disks the first time a wizard is
+        #: levelled and kept after. A magic-user picks its new spell by name.
+        self._spell_names: dict[int, str] | None = None
         self.strip = BottomStrip()
         self.notes_panel = NotesPanel()
         self.notes_panel.chosen.connect(self.point_at)
@@ -912,6 +916,69 @@ class AutomapWindow(QMainWindow):
         self.state.save_notes()
         self.notes_panel.show_notes(self.state.notes)
         self.canvas.update()
+
+    # -- levelling -------------------------------------------------------
+
+    def _names_for_spells(self) -> dict[int, str]:
+        """The spell-name table, or an empty one when the disks are absent.
+
+        Absent disks are not an error here any more than they are for the item
+        names: the dialog falls back to numbering the offers, which is worse
+        but is not a refusal.
+        """
+        if self._spell_names is None:
+            from .paths import find_disks
+            self._spell_names = {}
+            for disk in find_disks() or ():
+                try:
+                    from por.spells import load_spell_names
+                    found = load_spell_names(disk, game_named(self.state.title))
+                except Exception:                       # not the right disk
+                    continue
+                if found:
+                    self._spell_names = found
+                    break
+        return self._spell_names
+
+    def _chosen_spell(self, record, name: str) -> int | None:
+        """Which spell a magic-user learns, or None if the player backed out.
+
+        The trainer asks, so we ask. `$215A` builds this same list and the
+        level-up does not finish until one is picked -- `docs/135-levelling.md`.
+        """
+        from PyQt6.QtWidgets import QInputDialog
+        offers = actions.LevelUp.offers(record)
+        if not offers:
+            return 0                        # nothing to learn is not a refusal
+        names = self._names_for_spells()
+        labels = [f"{names.get(i) or f'spell {i}'}" for i in offers]
+        pick, ok = QInputDialog.getItem(
+            self, "wish", f"{name} learns one new spell:", labels, 0, False)
+        if not ok:
+            return None
+        return offers[labels.index(pick)]
+
+    def _level_up(self, slot: int, class_name: str) -> None:
+        """The roster card's button. The card knows which character it is."""
+        action = actions.LevelUp()
+        target = self.mapper.target
+        spell = 0
+        if class_name == "magic-user":
+            party = actions.read_party(target)
+            member = party.by_slot(slot) if party else None
+            if member is None:
+                self.messages.say(f"level up: no character in slot {slot}",
+                                  alarm=True)
+                return
+            spell = self._chosen_spell(member.record, member.name)
+            if spell is None:
+                return                      # the player closed the dialog
+        if action.confirm and not self.actions_bar.ask(action.confirm):
+            return
+        outcome = action.apply(target, slot=slot, class_name=class_name,
+                               spell=spell or None)
+        self.messages.say(f"level up: {outcome.message}",
+                          "\n".join(outcome.notes), alarm=not outcome.ok)
 
     def point_at(self, x: int, y: int) -> None:
         """Flash a square, because a row in the notes list was clicked."""

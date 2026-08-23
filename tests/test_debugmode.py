@@ -671,3 +671,40 @@ def test_nothing_is_read_at_0400_when_no_warp_is_in_flight(app):
     target.reads.clear()
     row.attach(target)
     assert not [r for r in target.reads if r[0] == 0x0400]
+
+
+def test_the_roster_button_levels_the_character_whose_card_it_is(app):
+    """The old action-bar button called `apply(target)` with no slot, which
+    silently meant slot 0 -- the ambiguity Donald reported. The card knows
+    which character it is, so the signal carries the slot."""
+    from automap.window import AutomapWindow
+    window = AutomapWindow.__new__(AutomapWindow)
+    seen = {}
+
+    class Bar:
+        def ask(self, question):
+            seen["asked"] = question
+            return True
+
+    class Messages:
+        def say(self, text, detail="", alarm=False):
+            seen["said"] = text
+
+    class Action:
+        confirm = "sure?"
+
+        def apply(self, target, **kwargs):
+            seen["kwargs"] = kwargs
+            return actions.Outcome(True, "SILAS is a fighter 6")
+
+    window.actions_bar, window.messages = Bar(), Messages()
+    window.mapper = type("M", (), {"target": object()})()
+    monkey = actions.LevelUp
+    actions.LevelUp = Action
+    try:
+        AutomapWindow._level_up(window, 3, "fighter")
+    finally:
+        actions.LevelUp = monkey
+    assert seen["kwargs"] == {"slot": 3, "class_name": "fighter", "spell": None}
+    assert seen["asked"] == "sure?"
+    assert seen["said"] == "level up: SILAS is a fighter 6"
