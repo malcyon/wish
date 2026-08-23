@@ -15,6 +15,8 @@ function.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from automap import actions
@@ -358,17 +360,121 @@ def test_no_disk_is_named_anywhere_in_the_row(app):
 def test_what_travelling_cannot_promise_is_under_a_help_icon(app):
     """Plain language, and no "debug" or "unproven": ordinary players see this
     row now, so the honesty bar went up rather than down. It is a tooltip on a
-    circled question mark rather than a paragraph in the row, and rich text so
-    that the tooltip wraps instead of running off the screen."""
+    button rather than a paragraph in the row, and rich text so that the
+    tooltip wraps instead of running off the screen."""
     row = bar(app)
     assert row.note.text() == ""                     # nothing said yet
     said = row.help_icon.toolTip()
-    assert row.help_icon.text() == "?"
     assert said.startswith("<p>") and said.endswith("</p>")
     assert actions.Warp.HELP in said
     assert "quest flags your party never set" in said
     assert "copy of your save disk" in said
     assert "debug" not in said.lower() and "unproven" not in said.lower()
+
+
+def test_the_help_affordance_is_a_button_that_highlights(app):
+    """Donald's objection to the drawn question mark: nothing about a label on
+    the face of a window says there is a tooltip to find. A `QToolButton` with
+    `autoRaise` gets the style's own hover frame, and it does nothing when
+    clicked because the tooltip is the whole content."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QToolButton
+
+    row = bar(app)
+    assert isinstance(row.help_icon, QToolButton)
+    assert row.help_icon.autoRaise()
+    assert not row.help_icon.icon().isNull()
+    assert row.help_icon.cursor().shape() != Qt.CursorShape.ArrowCursor
+    assert row.help_icon.receivers(row.help_icon.clicked) == 0
+
+
+def _mapped(directory, *geos, seen=(("1,1"),)):
+    """Write the map files the automapper would have written for `geos`."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in geos:
+        (directory / f"{name}.json").write_text(
+            json.dumps({"notes": {}, "seen": list(seen)}), encoding="utf-8")
+    return directory
+
+
+def test_the_dropdown_offers_only_the_areas_we_watched_the_party_walk_in(
+        app, tmp_path):
+    """Donald: travelling somewhere you have already been is safer, and a
+    purer play experience. The record is ours -- one file per area under the
+    map folder -- because the game keeps none."""
+    _mapped(tmp_path, "GEO00", "GEO14")
+    row = bar(app, visited=tmp_path)
+    assert row.visited_only.isChecked()
+    assert [row._label(r) for r in row.rows] == ["New Phlan", "The Slums"]
+    assert len(row.all_rows) > len(row.rows)
+
+    row.visited_only.setChecked(False)
+    assert row.rows == row.all_rows
+    # The area that was selected survives the widening.
+    assert row._label(row.area()) == "New Phlan"
+
+
+def test_an_area_counts_when_any_of_its_maps_does(app, tmp_path):
+    """Kuto's Well is `GEO1D` and `GEO20` and is one place to a player."""
+    _mapped(tmp_path, "GEO20")
+    row = bar(app, visited=tmp_path)
+    assert [row._label(r) for r in row.rows] == ["Kuto's Well"]
+
+
+def test_no_record_at_all_offers_everything_and_says_why(app, tmp_path):
+    """A player who installed wish after a year of play has no record, and an
+    empty dropdown would look like a broken feature rather than an honest one.
+    So the filter turns itself off, disables itself, and explains."""
+    row = bar(app, visited=tmp_path / "nothing-here")
+    assert not row.visited_only.isChecked()
+    assert not row.visited_only.isEnabled()
+    assert "keeps no such list" in row.visited_only.toolTip()
+    assert row.rows == row.all_rows
+    assert row.combo.count() == len(row.all_rows)
+
+
+def test_notes_without_squares_are_not_a_visit(app, tmp_path):
+    """`seen` is the only entry that means somebody walked there: notes can be
+    typed into an area from the editor side without the party ever going."""
+    from automap.state import visited_geos
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "GEO0A.json").write_text(
+        json.dumps({"notes": {"3,4": [{"type": "note", "text": "hi"}]},
+                    "seen": []}), encoding="utf-8")
+    (tmp_path / "GEO0B.json").write_text("{ not json", encoding="utf-8")
+    assert visited_geos(tmp_path) == set()
+
+    row = bar(app, visited=tmp_path)
+    assert not row.visited_only.isEnabled()
+    assert row.rows == row.all_rows
+
+
+def test_the_filter_notices_an_area_mapped_while_the_window_is_open(
+        app, tmp_path):
+    """The list has to grow while the player walks; a dropdown that only
+    learned at startup would be wrong within the first minute."""
+    _mapped(tmp_path, "GEO00")
+    row = bar(app, visited=tmp_path)
+    assert [row._label(r) for r in row.rows] == ["New Phlan"]
+    _mapped(tmp_path, "GEO15")
+    row._visited_read = 0.0                      # the next poll is due
+    row.refresh()
+    assert [row._label(r) for r in row.rows] == ["New Phlan", "Sokol Keep"]
+
+
+def test_the_filter_does_not_change_what_a_warp_may_do(app, tmp_path):
+    """It narrows what is *offered*, not what is legal: `Warp.legality` and
+    the arrival square are untouched, so an area reachable before is reachable
+    now if it is still in the list."""
+    _mapped(tmp_path, "GEO00")
+    filtered = bar(app, machine(area=0, disk=3), visited=tmp_path)
+    everything = bar(app, machine(area=0, disk=3), visited=tmp_path / "none")
+    everything.combo.setCurrentIndex(everything.rows.index(area(0)))
+    assert filtered.arrival() == everything.arrival()
+    assert (filtered.warp.legality(filtered.target, filtered.area()).ok
+            == everything.warp.legality(everything.target,
+                                        everything.area()).ok)
 
 
 def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):

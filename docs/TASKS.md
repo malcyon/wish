@@ -22,7 +22,7 @@ files, the standing constraints in full, and no commits.
 
 | | task | what is needed |
 |---|---|---|
-| **P77** | Replace the icons we drew ourselves with official Font Awesome ones | Donald picks which; the `OURS` set in `ui/icons.py` exists because Font Awesome Free has no sword and `hat-wizard` was judged unusable at 12px, so the replacements have to be chosen against the 13px sheet in [`109`](109-icon-choices.md), not swapped in blind |
+| **P77** | Replace the icons we drew ourselves with official Font Awesome ones | `chest` and `swords` are done — `gem` regular and U+2694, Donald's picks. Three left, all class icons. **Worth re-reading:** every "fails" verdict in [`109`](109-icon-choices.md) is a 13px one and the map draws at 26 now, so Font Awesome has candidates it did not have before |
 | **P1** | Read the ECL scripts | a person has to read them — [`115`](115-review-the-scripts.md) |
 | **P12** | Cut the first `v*` tag | after the Windows run below. The tag also publishes to PyPI, and **PyPI never allows re-uploading a version** |
 | **P62** | Run the Windows half of [`122`](122-release-testing.md) | the Linux half is done and passing; the Windows package builds from Actions → release → Run workflow |
@@ -39,7 +39,6 @@ files, the standing constraints in full, and no commits.
 | **P78** | Make Level Up work, and move it into the roster | needs the hit-die roll, the saving-throw modifiers, the cleric wisdom bonus, a thief skill table and a wizard's new-spell choice; the trainer's own routine is the authority |
 | **P79** | One row per commission, and the raw marker off the face | the slums reads as two commissions because one byte is shown in two groups |
 | **P80** | Decode what is left of the commission flags | the 1–253 markers above all, plus ledger 22's nameless handler, `$4A22`, `$4A4C`/`$4A4E` and the 38 unattributed bytes |
-| **P81** | Fast Travel lists only areas the party has visited | blocked on whether the save itself records this — our JSON only knows what the automapper saw |
 
 ## Needs an emulator
 

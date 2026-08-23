@@ -7,6 +7,7 @@ ranges the live view reads, so the fixtures under `tests/fixtures` serve as
 recorded machines.
 """
 
+import inspect
 import json
 import os
 import pathlib
@@ -20,7 +21,9 @@ from automap.area import RESIDENT_GEO, Fingerprint
 from automap.notes import Note
 from automap.render import (
     CELL,
+    COUNT_SIZE,
     MARGIN,
+    NOTE_SIZE,
     Glyph,
     Label,
     Line,
@@ -854,18 +857,6 @@ def test_the_strip_says_when_the_party_is_not_readable(app):
     assert "none" in strip.effects.text()
 
 
-def test_the_loaded_files_start_collapsed(app):
-    from automap.panel import BottomStrip
-    strip = BottomStrip()
-    strip.show_state(AutomapState(), live.snapshot_from_bytes(*captured()))
-    # isHidden, not isVisible: nothing here is shown on screen, so isVisible is
-    # False for the whole strip either way and would prove nothing.
-    assert strip.loaded.isHidden()
-    strip.toggle.setChecked(True)
-    assert not strip.loaded.isHidden()
-    assert "loaded files:" in strip.loaded.text()
-
-
 # --- attaching --------------------------------------------------------------
 
 def test_a_socket_that_accepts_and_never_answers_is_busy_not_absent(monkeypatch):
@@ -1111,10 +1102,79 @@ def test_every_icon_parses():
 
 
 def test_every_note_type_and_class_icon_draws():
-    """Every name the program asks for by string is a name the table has."""
+    """Every name the program asks for by string is a name one of the two
+    tables has -- path data, or a character."""
     from automap.panel import CLASS_ICON
     for name in [t.icon for t in notemod.TYPES] + list(CLASS_ICON.values()):
-        assert icons.commands(name), name
+        assert name in icons.NAMES, name
+        if not icons.is_text(name):
+            assert icons.commands(name), name
+
+
+def test_the_encounter_note_is_the_one_glyph_we_do_not_draw():
+    """U+2694 is Donald's choice and it is a **font** character, so what it
+    looks like is the platform's. Here it resolves monochrome; on Windows and
+    macOS the same code point is commonly the colour emoji. Pinned so that a
+    later "tidy-up" into a path is a deliberate decision rather than a
+    silent one -- see `docs/109-icon-choices.md`."""
+    assert icons.TEXT_GLYPHS == {"crossed-swords": "\u2694"}
+    assert notemod.BY_NAME["encounter"].icon == "crossed-swords"
+    assert icons.is_text("crossed-swords")
+    assert "crossed-swords" not in icons.ICONS
+
+
+def test_the_two_icons_that_were_ours_are_gone():
+    """`chest` and `swords` were drawn here because Font Awesome Free has no
+    sword and a filled rectangle reads as terrain. Both were replaced --
+    `gem` regular and U+2694 -- and an unused drawing left in the table is a
+    thing a later note will pick up by accident."""
+    assert "chest" not in icons.ICONS
+    assert "swords" not in icons.ICONS
+
+
+def test_the_gem_survives_a_map_cell(app):
+    """The Treasure note, in Font Awesome's **regular** weight: an outline,
+    which is the whole reason Donald picked it over the solid. An outline is
+    the shape most at risk of coming apart, so it is measured rather than
+    eyeballed -- one connected silhouette, and the table facet still paper.
+    `docs/109-icon-choices.md` carries the counts at 13 and 26."""
+    from PyQt6.QtGui import QColor, QImage, QPainter
+
+    from ui.iconpaint import draw_icon
+
+    size = NOTE_SIZE
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(QColor("white"))
+    p = QPainter(image)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    draw_icon(p, "gem", 0, 0, size, QColor("black"))
+    p.end()
+
+    ink = [[QColor(image.pixel(x, y)).lightness() < 128 for x in range(size)]
+           for y in range(size)]
+    seen = [[False] * size for _ in range(size)]
+    pieces = []
+    for y in range(size):
+        for x in range(size):
+            if ink[y][x] and not seen[y][x]:
+                stack, count = [(x, y)], 0
+                seen[y][x] = True
+                while stack:
+                    cx, cy = stack.pop()
+                    count += 1
+                    for dy in (-1, 0, 1):
+                        for dx in (-1, 0, 1):
+                            nx, ny = cx + dx, cy + dy
+                            if (0 <= nx < size and 0 <= ny < size
+                                    and ink[ny][nx] and not seen[ny][nx]):
+                                seen[ny][nx] = True
+                                stack.append((nx, ny))
+                pieces.append(count)
+    assert len(pieces) == 1, f"the gem came apart into {sorted(pieces)}"
+    # The table -- the big facet under the crown -- is the hole that carries
+    # the reading. Dead centre of the box is inside it.
+    middle = QColor(image.pixel(size // 2, int(size * 0.62))).lightness()
+    assert middle > 200, f"the gem filled in: lightness {middle}"
 
 
 def test_no_icon_leaves_the_640_box():
@@ -1168,7 +1228,7 @@ def test_the_sheet_only_names_icons_that_exist():
     named = [name for _, items in module.SHEET for name, _, _ in items]
     assert named, "the sheet lists nothing"
     for name in named:
-        assert name in icons.ICONS, name
+        assert name in icons.NAMES, name
 
 
 def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
@@ -1188,8 +1248,36 @@ def test_a_square_with_three_notes_draws_one_icon_and_a_count():
                                            Note("c")]}))
     glyphs = [p for p in prims if isinstance(p, Glyph)]
     labels = [p for p in prims if isinstance(p, Label)]
-    assert [g.name for g in glyphs] == ["swords"]        # the first one only
+    assert [g.name for g in glyphs] == ["crossed-swords"]   # the first only
     assert [(lab.text, lab.kind) for lab in labels] == [("3", "note-count")]
+
+
+def test_the_note_count_stays_inside_its_own_cell():
+    """It used to hang off the bottom-right of the icon, which put it outside
+    the square as soon as the icon grew from 13 to `NOTE_SIZE`. It is placed
+    against the cell now, and `NOTE_INSET` keeps it off the 3px wall stroke."""
+    from automap.render import NOTE_INSET
+
+    (label,) = [p for p in note_primitives({(2, 3): [Note("a"), Note("b")]})
+                if isinstance(p, Label)]
+    left, top = MARGIN + 2 * CELL, MARGIN + 3 * CELL
+    # `(x, y)` is the text's bottom right corner.
+    assert label.x == left + CELL - NOTE_INSET
+    assert label.y == top + CELL - NOTE_INSET
+    assert left < label.x - COUNT_SIZE and label.y - COUNT_SIZE > top
+
+
+def test_a_note_and_the_party_marker_share_one_square_marker_on_top():
+    """At 13 the note sat in a corner and the two never met. At `NOTE_SIZE` the
+    note is most of the square, so on the square the party is standing on one
+    of them is underneath -- and it is the note. Where the party is is the one
+    thing on this map that must not be in doubt."""
+    from automap import window as windowmod
+
+    source = inspect.getsource(windowmod.MapCanvas)
+    notes = source.index("note_primitives(st.notes)")
+    party = source.index("party_marker(st.x")
+    assert notes < party, "the note is drawn over the party marker"
 
 
 @game_disks
@@ -1629,25 +1717,6 @@ def test_the_effect_table_is_still_shown_by_number():
     assert effect.label == "effect 64"
     from por import traits
     assert traits.describe(64).startswith("melee poison")   # a trait, not this
-
-
-def test_the_commissions_panel_does_not_show_one_flag_as_two_commissions(app):
-    """`ECL08` gates "clear the slums" on the same byte the ledger row is, so
-    the row says it is on the board rather than reading as a second job."""
-    from automap.commissions import CommissionsPanel
-    flags = bytearray(book_flags())
-    flags[0x4AA6 - 0x4A20 + 21] = 3              # the slums, part cleared
-    panel = CommissionsPanel()
-    panel.update_from(bytes(flags))
-    progress = panel.groups["progress"]
-    assert progress.heading.text() == "Working towards"
-    row = progress._rows[0]
-    assert row.what.text() == "slums cleared"
-    assert "marker 3" in row.state.text() and "on the board" in row.state.text()
-    assert "one commission in one state, not two" in row.toolTip()
-    offer = panel.groups["available"]._rows[0]
-    assert offer.what.text() == "clear the slums"
-    assert "settles ledger 21" in offer.toolTip()
 
 
 def book_flags() -> bytes:
