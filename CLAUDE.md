@@ -339,6 +339,30 @@ Each entry says what the game does, what it should do, the evidence, and what
 the player sees. Keep the addresses to what carries the evidence -- the entry
 has to make sense to somebody who has never read a disassembly.
 
+## Help text in the GUI
+
+**Every word a user reads in the interface is Donald's to approve.** Labels,
+button text, tooltips, status messages, empty-state lines, dialog prose --
+propose the wording, do not ship it. He has final say on how it is worded before
+it goes in.
+
+This exists because the interface kept growing sentences that explained itself.
+An info icon whose tooltip ran four sentences, a footnote about a board slot no
+player can reach, a line under the backup folder saying what an empty box means,
+a note about how many backups are kept -- each looked reasonable alone, and
+together they made a program that apologises for itself. Every one of them was
+removed on request.
+
+Two rules that follow, and hold even when new text is approved:
+
+* **A control that acts says why it will not act.** A disabled button that writes
+  to a running game earns one short sentence, because silence reads as breakage.
+* **A panel that only displays stays quiet.** Nobody presses it and nothing is at
+  stake in it being empty.
+
+When in doubt, leave it out and say so in the reply. Removing a sentence is
+cheap; a user reading a paragraph that should never have existed is not.
+
 ## Code comments
 
 Comment the *why*, and only when it is not obvious. A field note that carries
