@@ -17,7 +17,14 @@ FILE = "automap.json"
 #: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `por/areas.py`
 #: ids 0, 20 and 21. The three a party has almost certainly walked in by the
 #: time it wants to travel anywhere, so the list starts safe rather than long.
-DEFAULT_WARP_AREAS: tuple[int, ...] = (0, 20, 21)
+DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
+
+#: Keys an older build wrote, and the field each is now called. Read, never
+#: written: a file saved by this build carries the new name only, so the rename
+#: finishes rather than being carried forever. The cost of that is one-way --
+#: an older build reading a new file sees no choice and offers its own three --
+#: which beats a settings file with two names for one setting in it.
+RENAMED = {"warp_areas": "fast_travel_targets"}
 
 
 @dataclass
@@ -66,17 +73,18 @@ class Settings:
     diagnostics: bool = False
     # Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
     # **None is not the same as `[]`**: None means nobody has chosen yet, which
-    # is a fresh config and gets `DEFAULT_WARP_AREAS`, while an empty list is a
-    # player who unticked everything and is kept. Anything else in the file --
-    # a number, a string, a hand-edited mess -- reads as "not chosen".
-    warp_areas: list[int] | None = None
+    # is a fresh config and gets `DEFAULT_FAST_TRAVEL_TARGETS`, while an empty
+    # list is a player who unticked everything and is kept. Anything else in the
+    # file -- a number, a string, a hand-edited mess -- reads as "not chosen".
+    # Called `warp_areas` until 2026-08; `RENAMED` is what reads that file.
+    fast_travel_targets: list[int] | None = None
 
     def chosen_areas(self) -> tuple[int, ...]:
         """The area ids the Fast Travel dropdown may offer."""
-        if not isinstance(self.warp_areas, (list, tuple)):
-            return DEFAULT_WARP_AREAS
+        if not isinstance(self.fast_travel_targets, (list, tuple)):
+            return DEFAULT_FAST_TRAVEL_TARGETS
         ids = []
-        for value in self.warp_areas:
+        for value in self.fast_travel_targets:
             try:
                 ids.append(int(value))
             except (TypeError, ValueError):
@@ -85,7 +93,7 @@ class Settings:
 
     def set_chosen_areas(self, ids) -> None:
         """Record the choice, empty included."""
-        self.warp_areas = sorted({int(i) for i in ids})
+        self.fast_travel_targets = sorted({int(i) for i in ids})
 
     @classmethod
     def load(cls) -> "Settings":
@@ -94,8 +102,14 @@ class Settings:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return cls()
+        if not isinstance(raw, dict):
+            return cls()
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        values = {k: v for k, v in raw.items() if k in known}
+        for old, new in RENAMED.items():
+            if old in raw and new not in values:
+                values[new] = raw[old]
+        return cls(**values)
 
     def save(self) -> None:
         path = config_dir() / FILE
