@@ -314,7 +314,7 @@ def _set_u24(rec: CharacterRecord, value: int) -> None:
     rec.set("experience", value)
 
 
-def _consistency(rec, block, payload, slot, names, types, spell_names):
+def _consistency(rec, block, items, names, types, spell_names):
     """Everything about this character that does not add up.
 
     Two kinds. The combat numbers are **cached** by the game and go stale when
@@ -327,8 +327,7 @@ def _consistency(rec, block, payload, slot, names, types, spell_names):
     that breaks it and watching the game load it.
     """
     if types:
-        readied = [(i, types[i.type_index])
-                   for i in items_for_slot(payload, slot, names)
+        readied = [(i, types[i.type_index]) for i in items
                    if i.readied and i.type_index in types]
         yield from derive.check(rec, block, readied)
 
@@ -380,80 +379,13 @@ def export_save(path: str, game_disk: str | None = None,
 
     party = []
     for slot in sg.characters:
-        rec = slot.record
-        entry: dict[str, Any] = {"slot": slot.index}
-        for f in EDITABLE:
-            entry[f] = rec.get(f)
-        # Present the opaque numbers as names. The bitmask, the race table and
-        # the alignment index are implementation details; a person editing this
-        # file should not have to know them.
-        entry["sex"] = _decode(SEXES, rec.sex, "sex")
-        entry["race"] = _decode(race_table(game), rec.race, "race")
-        entry["alignment"] = _decode(dict(enumerate(ALIGNMENTS)),
-                                     rec.alignment, "alignment")
-        entry["classes"] = classes_to_names(rec.class_bits, game)
-        entry["class_code"] = rec.get("char_class")
-        # One level per class the character actually has. A dual-classed human
-        # keeps the old class at its frozen level while the new one advances,
-        # which this represents directly. A paladin, ranger or knight has a
-        # slot of its own in the eight-byte array, so it appears here too.
-        bit_for = {n: b for b, n in class_table(game)}
-        entry["levels"] = {name: rec.get(field)
-                           for name, field in level_fields(game).items()
-                           if rec.class_bits & bit_for.get(name, 0)}
-        entry["experience"] = _u24(rec)
-        entry["items"] = []
-        for it in items_for_slot(payload, slot.index, names):
-            row: dict[str, Any] = {
-                "name": it.name or "?", "readied": it.readied,
-                "bonus": it.bonus, "quantity": it.quantity,
-                "cost_gp": it.cost_gp, "weight_lb": it.weight_lb,
-                "type": it.type_index, "identified": it.is_identified,
-            }
-            if not it.is_identified:
-                row["_shows_as"] = it.unidentified_name
-            kind = (types or {}).get(it.type_index)
-            if kind is not None:
-                row["_type_summary"] = kind.summary()
-            row["raw"] = it.raw.hex()
-            entry["items"].append(row)
-        entry["icon"] = {
-            "shape": icon_for_slot(payload, slot.index).shape.hex(),
-            "colours": icon_for_slot(payload, slot.index).colours.hex(),
-        }
-        # The character level the game itself keeps, separate from the
-        # per-class array above. They agree in every specimen, and every
-        # specimen is single-class.
-        entry["level"] = rec.get("level")
-        entry["npc"] = rec.is_npc
-        # The ids a character has memorised, highest spell level first.
-        ids = [b for b in rec.get_raw("spells_memorised") if b]
-        entry["spells"] = ids
-        if ids:
-            entry["_spells_named"] = [describe(i, spell_names) for i in ids]
-        book = spells_known(rec.to_bytes())
-        entry["spells_known"] = book
-        if book:
-            entry["_spells_known_named"] = [describe(i, spell_names) for i in book]
-        cap = capacity(rec.class_bits, rec.get("level"), rec.get("wisdom"))
-        if cap:
-            entry["_spell_capacity"] = "; ".join(
-                "%s %s" % (k, "/".join(str(n) for n in v)) for k, v in cap.items())
-        if sg1 is not None:
-            block = sg1.roster(slot.index)
-            warnings = list(_consistency(rec, block, payload, slot.index,
-                                         names, types, spell_names))
-            if warnings:
-                entry["_warnings"] = warnings
-            entry["combat"] = {
-                "armour_class": block.armour_class,
-                "thac0": block.thac0,
-                "damage_bonus": block.damage_bonus,
-                "hp_current": block.hit_points,
-                "movement_current": block.movement,
-                "unknown_03_05": list(block.unknown_03_05),
-            }
-        party.append(entry)
+        block = sg1.roster(slot.index) if sg1 is not None else None
+        party.append(entry_for(
+            slot.record, slot.index,
+            items=items_for_slot(payload, slot.index, names),
+            icon=icon_for_slot(payload, slot.index),
+            game=game, names=names, types=types, spell_names=spell_names,
+            block=block))
 
     return {
         # Absolute, so `--import` can default to it and the YAML alone is
@@ -463,6 +395,89 @@ def export_save(path: str, game_disk: str | None = None,
         "game": game.key,
         "party": party,
     }
+
+
+def entry_for(rec, slot_index: int, items, icon, game: Game | None = None,
+              names=None, types=None, spell_names=None,
+              block=None) -> dict[str, Any]:
+    """One character as plain data, whichever port it came from.
+
+    Split out of `export_save` so `por/dos.py` can hand a record converted
+    from a DOS save through the same builder.  One shape, one set of field
+    names, one place to change them -- which is what `docs/117` means by
+    keeping the existing YAML as the interchange rather than inventing a
+    second one.
+    """
+    entry: dict[str, Any] = {"slot": slot_index}
+    for f in EDITABLE:
+        entry[f] = rec.get(f)
+    # Present the opaque numbers as names. The bitmask, the race table and
+    # the alignment index are implementation details; a person editing this
+    # file should not have to know them.
+    entry["sex"] = _decode(SEXES, rec.sex, "sex")
+    entry["race"] = _decode(race_table(game), rec.race, "race")
+    entry["alignment"] = _decode(dict(enumerate(ALIGNMENTS)),
+                                 rec.alignment, "alignment")
+    entry["classes"] = classes_to_names(rec.class_bits, game)
+    entry["class_code"] = rec.get("char_class")
+    # One level per class the character actually has. A dual-classed human
+    # keeps the old class at its frozen level while the new one advances,
+    # which this represents directly. A paladin, ranger or knight has a
+    # slot of its own in the eight-byte array, so it appears here too.
+    bit_for = {n: b for b, n in class_table(game)}
+    entry["levels"] = {name: rec.get(field)
+                       for name, field in level_fields(game).items()
+                       if rec.class_bits & bit_for.get(name, 0)}
+    entry["experience"] = _u24(rec)
+    entry["items"] = []
+    for it in items:
+        row: dict[str, Any] = {
+            "name": it.name or "?", "readied": it.readied,
+            "bonus": it.bonus, "quantity": it.quantity,
+            "cost_gp": it.cost_gp, "weight_lb": it.weight_lb,
+            "type": it.type_index, "identified": it.is_identified,
+        }
+        if not it.is_identified:
+            row["_shows_as"] = it.unidentified_name
+        kind = (types or {}).get(it.type_index)
+        if kind is not None:
+            row["_type_summary"] = kind.summary()
+        row["raw"] = it.raw.hex()
+        entry["items"].append(row)
+    entry["icon"] = {"shape": icon.shape.hex(),
+                     "colours": icon.colours.hex()}
+    # The character level the game itself keeps, separate from the
+    # per-class array above. They agree in every specimen, and every
+    # specimen is single-class.
+    entry["level"] = rec.get("level")
+    entry["npc"] = rec.is_npc
+    # The ids a character has memorised, highest spell level first.
+    ids = [b for b in rec.get_raw("spells_memorised") if b]
+    entry["spells"] = ids
+    if ids:
+        entry["_spells_named"] = [describe(i, spell_names) for i in ids]
+    book = spells_known(rec.to_bytes())
+    entry["spells_known"] = book
+    if book:
+        entry["_spells_known_named"] = [describe(i, spell_names) for i in book]
+    cap = capacity(rec.class_bits, rec.get("level"), rec.get("wisdom"))
+    if cap:
+        entry["_spell_capacity"] = "; ".join(
+            "%s %s" % (k, "/".join(str(n) for n in v)) for k, v in cap.items())
+    if block is not None:
+        warnings = list(_consistency(rec, block, items, names, types,
+                                     spell_names))
+        if warnings:
+            entry["_warnings"] = warnings
+        entry["combat"] = {
+            "armour_class": block.armour_class,
+            "thac0": block.thac0,
+            "damage_bonus": block.damage_bonus,
+            "hp_current": block.hit_points,
+            "movement_current": block.movement,
+            "unknown_03_05": list(block.unknown_03_05),
+        }
+    return entry
 
 
 def _scalar(value: Any) -> str:
@@ -678,6 +693,25 @@ def to_yaml(data: dict[str, Any]) -> str:
                 "      # is contradicted by another -- see docs/30-savegame-layout.md.",
                 f"      unknown_03_05: [{', '.join(str(n) for n in combat['unknown_03_05'])}]",
             ]
+
+        if entry.get("_dropped") or entry.get("_dos_encumbrance") is not None:
+            out.append("")
+            out += [
+                "    # --- what came from DOS and did not survive the trip.",
+                "    # Comments, not fields: nothing here is imported. The rule",
+                "    # docs/117-save-conversion.md sets is that a DOS field with",
+                "    # no C64 home is reported rather than dropped in silence.",
+            ]
+            enc = entry.get("_dos_encumbrance")
+            if enc is not None:
+                want = entry.get("_dos_encumbrance_expected")
+                mark = "" if enc == want else f"  (expected {want} -- stale)"
+                out.append(f"    #    encumbrance {enc}, derived and not stored"
+                           f" on the C64{mark}")
+            for line in entry.get("_dos_effects") or []:
+                out.append(f"    #    active effect {line}")
+            for line in entry.get("_dropped") or []:
+                out.append(f"    #    {line}")
 
         out.append("")
         out.append("    # --- combat icon: 18 screen codes, then 18 colours (0-15)")

@@ -84,6 +84,10 @@ ARCHIVES = Path(
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from por import dos as _por_dos  # noqa: E402
+
+
 class DosboxUnavailable(RuntimeError):
     """One of dosbox, Xvfb, xdotool or ImageMagick is not installed."""
 
@@ -643,28 +647,11 @@ ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
 C64_ITEM_SIZE = 16
 
 
-def item_to_c64(record: bytes) -> bytes:
-    """Project one 63-byte DOS item onto the C64's 16 bytes.
-
-    Not a guess at a conversion: it is the evidence.  Applied to every item in
-    the eight `ITEM*.DAX` files it reproduces **157 of the 163 distinct item
-    records on the C64 game disks byte for byte**, which is what fixes every
-    offset above -- including that readied and the hidden-name mask share the
-    C64's byte +6 while DOS spends a byte on each, and that cursed is bit 7 of
-    +7.  The six that do not match are items the two ports hand out in
-    different places, not near misses.
-    """
-    r = record
-    return bytes((
-        r[ITEM_TYPE], r[ITEM_NAME1], r[ITEM_NAME2], r[ITEM_NAME3],
-        r[ITEM_PLUS], r[ITEM_PLUS_SAVE],
-        (0x80 if r[ITEM_READIED] else 0) | (r[ITEM_HIDDEN] & 0x07),
-        0x80 if r[ITEM_CURSED] else 0,
-        r[ITEM_WEIGHT], r[ITEM_WEIGHT + 1],
-        r[ITEM_QUANTITY],
-        r[ITEM_VALUE], r[ITEM_VALUE + 1],
-        r[ITEM_SPECIAL], r[ITEM_SPECIAL + 1], r[ITEM_SPECIAL + 2],
-    ))
+#: The projection itself now lives in `por/dos.py`, because it is part of the
+#: converter rather than part of the harness that drives DOSBox.  Re-exported
+#: here so the measurements in `tests/test_dosbox.py` keep reading it from the
+#: place they were written against, and so there is one copy of it.
+item_to_c64 = _por_dos.item_to_c64
 
 
 def items(data: bytes):
