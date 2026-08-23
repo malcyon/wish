@@ -522,11 +522,11 @@ class WarpBar(QWidget):
             _log("arrived: %s is loaded at $0400, byte for byte", name)
             return name
         if time.monotonic() > deadline:
+            # Stop watching, and say nothing. The explanation that used to go
+            # here named three things that might have happened and could not
+            # tell you which -- a paragraph of GUI apologising for itself, and
+            # Donald had it removed. The debug log still records it.
             self._pending = None
-            self._said("The area has not loaded after "
-                       f"{VERIFY_SECONDS:.0f}s; the game may still be loading, "
-                       "waiting for a disk, or the trip may not have taken",
-                       alarm=True)
             _log("no map from %s at $0400 after %.0fs", " or ".join(expect),
                  VERIFY_SECONDS)
         return None

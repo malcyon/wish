@@ -705,8 +705,11 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     assert row_bar._pending is not None             # still waiting, not failed
     clock[0] += 2
     assert row_bar.check_arrival() is None
-    assert row_bar._pending is None
-    assert "after 30s" in row_bar.note.text()
+    assert row_bar._pending is None                # stopped watching
+    # And said nothing about it. The timeout used to write a sentence naming
+    # three things that might have gone wrong, which is the sort of GUI help
+    # text Donald has ruled out; the debug log carries it instead.
+    assert "30s" not in row_bar.note.text()
     assert "GEO" not in row_bar.note.text()
 
 
