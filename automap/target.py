@@ -34,18 +34,27 @@ import sys
 from dataclasses import dataclass
 from typing import Protocol
 
+from por import games
+
 from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, monitor_address
 
-# SAVEDGAME0 is a verbatim image of $4900-$64FF, so a live read of this range
-# decodes with por.savegame and no new code at all.
+# Pool of Radiance's save image, as names, because tests and documents cite
+# them and because they are what the *save* holds. They are NOT what the memory
+# fallback reads: `$49C0` is refreshed only when `$1A3C` flushes `$C04B` into
+# it, so it lags a move -- and in a running Curse the same address is engine
+# code (`tests/test_curselive.py`).
 PARTY_BASE = 0x4900
 PARTY_X, PARTY_Y, PARTY_FACING = 0x49C0, 0x49C1, 0x49C2
-# The clock, three bytes: units of a minute, tens, then the HOUR. Ten bytes from
-# PARTY_X covers the position and the clock in one read, which matters because
-# the cost of a read is the round trip and not the bytes.
 PARTY_CLOCK = 0x49C7
-PARTY_BLOCK = PARTY_CLOCK + 3 - PARTY_X         # 10
+
+#: The position triple, and the clock: three bytes each. Two reads rather than
+#: one ten-byte read, because the live triple is outside the save image and the
+#: clock is inside it, so they no longer sit next to each other. That costs
+#: nothing measurable -- `ViceTarget.fix` puts both inside one resume, and the
+#: cost of a monitor round trip is the resume and not the bytes.
+POSITION_BYTES = 3
+CLOCK_BYTES = 3
 
 # The game's own status line, e.g. "E 16:48  5,2" -- facing, clock, x, y. It is
 # correct the moment the screen settles, where the memory copy at $49C0 lags a
@@ -68,9 +77,11 @@ class Target(Protocol):
 class Fix:
     """One reading of where the party is.
 
-    `source` is "status" or "memory". A status-line fix is authoritative; a
-    memory fix is a move behind and is only used when the status line is not on
-    screen -- in camp, in combat, in a menu.
+    `source` is "status" or "memory". A status-line fix is authoritative and is
+    what the map runs on; a memory fix is the engine's own live triple, read
+    only when the status line is not on screen -- in camp, in combat, in a
+    menu. It used to be the save image's copy, which lagged a move; it is not
+    that any more (#29), which is why "a move behind" no longer appears here.
 
     `clock` is the game clock in minutes since midnight, or None where it could
     not be read. It costs nothing -- the status line already carries it and the
@@ -93,18 +104,31 @@ def _plausible(x: int, y: int, facing: int) -> bool:
     return 0 <= x < GRID and 0 <= y < GRID and 0 <= facing < 4
 
 
-def party_fix(read) -> Fix | None:
+def party_fix(read, game: games.Game | None = None) -> Fix | None:
     """Where the party is, read through any backend's `read(addr, length)`.
 
-    Tries the game's own status line first and falls back to the memory copy.
-    Returns None on a bitmap screen (title, credits), in camp, in a menu, or
-    before a save is loaded -- all ordinary states, not errors. The caller
-    holds its last good fix rather than drawing garbage.
+    Tries the game's own status line first and falls back to the engine's live
+    position triple. Returns None on a bitmap screen (title, credits), in camp,
+    in a menu, or before a save is loaded -- all ordinary states, not errors.
+    The caller holds its last good fix rather than drawing garbage.
+
+    **The status line is title-independent and the fallback is not.** Every
+    title draws `E 16:48  5,2` on the same row 14 of the same screen, so the
+    preferred source needed no change at all; the memory copy is at an address
+    that was measured per title and is `Game.live_position`.
+
+    **A title whose triple has never been measured gets no fallback**, and says
+    so by having none: `live_position` is None, this returns None, and the map
+    simply waits for a status line. Falling back to another title's address
+    would answer with a square the party is not on, which is worse than not
+    answering -- `test_curselive.py::test_the_memory_fallback_would_misread_a_
+    curse_machine` is what that looks like.
 
     Nothing here is VICE-specific, which is the point: reading the status line
     is four reads of ordinary memory, so a second backend gets it for free and
     a test gets it against a dictionary of bytes.
     """
+    game = game or games.DEFAULT
     if is_bitmap(read):
         return None
     base = screen_address(read)
@@ -116,16 +140,17 @@ def party_fix(read) -> Fix | None:
         if _plausible(x, y, facing):
             clock = int(m.group(2)) * 60 + int(m.group(3))
             return Fix(x, y, facing, "status", clock)
-    block = read(PARTY_X, PARTY_BLOCK)
-    x, y, facing = block[0], block[1], block[2]
+    if game.live_position is None:
+        return None
+    x, y, facing = read(game.live_position, POSITION_BYTES)[:POSITION_BYTES]
     if _plausible(x, y, facing):
-        off = PARTY_CLOCK - PARTY_X
-        clock = block[off + 2] * 60 + block[off + 1] * 10 + block[off]
+        c = read(game.clock_base, CLOCK_BYTES)
+        clock = c[2] * 60 + c[1] * 10 + c[0]
         return Fix(x, y, facing, "memory", clock)
     return None
 
 
-def read_fix(target) -> Fix | None:
+def read_fix(target, game: games.Game | None = None) -> Fix | None:
     """One fix from whatever this target is.
 
     A target may answer for itself -- `ViceTarget` does, to keep its burst of
@@ -135,8 +160,8 @@ def read_fix(target) -> Fix | None:
     """
     own = getattr(target, "fix", None)
     if own is not None:
-        return own()
-    return party_fix(target.read)
+        return own(game)
+    return party_fix(target.read, game)
 
 
 class NotConnected(RuntimeError):
@@ -305,7 +330,7 @@ class ViceTarget:
 
     # -- what the automapper actually asks for ---------------------------
 
-    def fix(self) -> Fix | None:
+    def fix(self, game: games.Game | None = None) -> Fix | None:
         """`party_fix` over this connection, with exactly one resume.
 
         The reads go through the monitor directly rather than through
@@ -317,7 +342,7 @@ class ViceTarget:
         window knows to go back to waiting for it.
         """
         try:
-            return party_fix(self._mon.read)
+            return party_fix(self._mon.read, game)
         except OSError as exc:
             self._open = False
             raise NotConnected(str(exc)) from exc
@@ -379,7 +404,7 @@ class ReplayTarget:
     def close(self) -> None:
         pass
 
-    def fix(self) -> Fix | None:
+    def fix(self, game: games.Game | None = None) -> Fix | None:
         if self._i >= len(self._fixes):
             return self._fixes[-1] if self._fixes else None
         f = self._fixes[self._i]

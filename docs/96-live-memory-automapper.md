@@ -115,7 +115,9 @@ different overlay into that space corrupted a live routine — see the warning i
 it still decodes as a sane party, and refuse otherwise. For writes that check
 should be mandatory.
 
-**Batch aggressively.** Read `$4900`–`$64FF` in one call, not sixty small ones.
+**Batch aggressively.** Read the whole save image in one call, not sixty small
+ones — `$4900`–`$64FF` in Pool of Radiance, and whatever `por/games.py` says for
+any other title.
 At network latency that is the difference between a usable map and an unusable
 one.
 
@@ -139,6 +141,16 @@ mapper does not even need that, because the running game keeps the whole map at
 The live-memory version needs the same addresses read out of a running game
 rather than off a disk, and `SAVEDGAME0` is a verbatim image of `$4900`–`$64FF`,
 so the addresses are the same ones.
+
+**Two things about that do not transfer to another title**, and both are settled
+in code now rather than in prose. The base moves — `$4B00` in Curse and Silver
+Blades — so every address here is `save_load_address` plus a payload offset, and
+the descriptor carries it. And the header triple is **not what moves**: `$49C0`
+is refreshed only when `$1A3C` flushes it, so the fallback reads the engine's
+own `$C04B`/`$C04C`/`$C04D` instead. That one is `Game.live_position`, it is
+*measured* per title — Pool of Radiance, Curse (`docs/120` §4) and Silver Blades
+(`docs/121` §5), and no others — and a title where nobody has measured it has
+None there and gets no fallback at all rather than a plausible wrong square.
 
 **And the area question is now answered, live.** The `GEO` file is a PRG loading
 at `$0400`, and the game **does not relocate it**: `$0400` is the boot screen,
@@ -236,10 +248,16 @@ together and neither is much use alone.
 Automapper *window*, which lives in `automap/`, and `wish/` imports `automap/`
 rather than the other way round. Nothing else about that plan changed.
 
-Two reads a poll -- `$4900`-`$64FF` and the roster page at `$8300` -- batched
-into a single `resume()` by `ViceTarget.read_blocks`, and taken every fifth map
-tick, which is once a second at the default interval. Only the visible tab polls
-at all.
+Two reads a poll in Pool of Radiance -- `$4900`-`$64FF` and the roster page at
+`$8300` -- batched into a single `resume()` by `ViceTarget.read_blocks`, and
+taken every fifth map tick, which is once a second at the default interval. Only
+the visible tab polls at all.
+
+**One read in every title after it.** Curse and Silver Blades load the save at
+`$4B00` and fold the roster into its last page at `$6700`, so the page is in
+hand already and asking for it again would be a round trip for bytes we have.
+`live.memory_blocks(game)` is where that choice is made and `por/games.py` is
+where the numbers are; nothing in `automap/live.py` holds an address (#29).
 
 ### The refused step -- wired up
 
@@ -249,8 +267,9 @@ key presses. It does not need to: the status line carries the game clock, and
 step the game refused. Positive evidence needs 111 steps to identify New Phlan;
 one refusal settles it, because impassable edges are rare.
 
-Guarded three ways -- both fixes must come from the status line (`$49C0` lags a
-move, so a *successful* step read from memory looks identical), the clock must
+Guarded three ways -- both fixes must come from the status line (the fallback is
+only reached in camp, combat and menus, where an advancing clock is not a step),
+the clock must
 have advanced by exactly one minute (longer is searching or camping; zero is
 standing still), and the facing must not have changed.
 

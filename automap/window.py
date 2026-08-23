@@ -86,7 +86,7 @@ NO_MAPS = ("No game disks found, so there are no maps. "
 def game_named(title: str | None):
     """The `Game` this title is, for the readers that need one."""
     from por import games
-    return next((g for g in games.GAMES if g.title == title), None)
+    return games.by_title(title)
 
 
 class MapCanvas(QWidget):
@@ -613,6 +613,9 @@ class AutomapWindow(QMainWindow):
         roster card's Level up button (#16).
         """
         game = game_named(self.state.title)
+        # The mapper reads the party position at an address that is per title
+        # too, and it is holding the descriptor the title resolved to.
+        self.mapper.game = game
         self.warp_bar.set_title(self.state.title, game)
         self.roster.set_levelling(not actions.level_up_blockers(game=game))
 
@@ -752,9 +755,13 @@ class AutomapWindow(QMainWindow):
         self.actions_bar.watch(target)
         self.warp_bar.attach(target)
 
-        save0_bytes, roster_bytes = live.read_blocks(target)
+        # Every address in that read comes from the title's descriptor: Pool
+        # of Radiance is $4900 plus a roster file at $8300, Curse and Silver
+        # Blades are $4B00 with the roster folded in at $6700 (#29).
+        game = game_named(self.state.title)
+        save0_bytes, roster_bytes = live.read_blocks(target, game)
         snap = live.snapshot_from_bytes(save0_bytes, roster_bytes,
-                                        self.item_names)
+                                        self.item_names, game)
         if snap is None:
             # In camp, in a menu, mid-load or at the title screen. Hold the
             # last good snapshot and say it is stale rather than blank the

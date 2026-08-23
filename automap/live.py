@@ -1,10 +1,16 @@
 """What the running game holds right now, as plain data. No Qt in here.
 
 Two reads cover the whole tab, because the cost of reading a live machine is the
-round trip and not the bytes -- 14.3 ms either way under VICE:
+round trip and not the bytes -- 14.3 ms either way under VICE. In Pool of
+Radiance those are:
 
     $4900-$64FF   header, the four effect arrays, every character record, items
     $8300-$83FF   the roster
+
+**and in no other title.** Curse and Silver Blades load the save at `$4B00` and
+keep the roster inside it at `$6700`, which is one read rather than two. Every
+address here therefore comes from the `por.games.Game` descriptor -- see
+`memory_blocks` -- and not from a constant, so a new title costs a table row.
 
 Both go into `por/savegame.py` unchanged. `SaveGame0.from_bytes()` takes exactly
 the first range, and the roster page is padded out to the length `SaveGame1`
@@ -29,32 +35,52 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-from por import levels
+from por import games, levels
 from por.derive import CLASS_BITS
 from por.items import items_for_slot, load_item_names
 from por.record import FieldNotStored
 from por.savegame import (
     ROSTER_COUNT,
     ROSTER_STRIDE,
-    SAVE0_LOAD_ADDRESS,
-    SAVE0_SIZE,
-    SAVE1_LOAD_ADDRESS,
-    SAVE1_SIZE,
     SaveGame0,
     SaveGame1,
 )
 
-# The two blocks, as (address, length). Whole-tab, per poll.
 ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
-BLOCKS = ((SAVE0_LOAD_ADDRESS, SAVE0_SIZE), (SAVE1_LOAD_ADDRESS, ROSTER_PAGE))
 
 # The four parallel 64-slot effect arrays. Four arrays and not one table of
 # records, so a slot is read across all four at the same index.
-EFFECT_ID = 0x4900
-EFFECT_OWNER = 0x4940
-EFFECT_DURATION = 0x4980
-EFFECT_MAGNITUDE = 0x4B80
+#
+# **Payload offsets, not addresses**, which is the form that transfers: in Pool
+# of Radiance they are $4900, $4940, $4980 and $4B80, and in Curse the same
+# four offsets off $4B00. The arrays have only ever been *read* on Pool of
+# Radiance (`docs/139` A16) -- what is fixed here is that they follow the save
+# image wherever it loads, not that their contents mean the same thing.
+EFFECT_ID_OFFSET = 0x000
+EFFECT_OWNER_OFFSET = 0x040
+EFFECT_DURATION_OFFSET = 0x080
+EFFECT_MAGNITUDE_OFFSET = 0x280
 EFFECT_SLOTS = 0x40
+
+
+def memory_blocks(game: games.Game | None = None):
+    """The ranges one poll reads, as (address, length), for this title.
+
+    Two for Pool of Radiance, whose roster is a second file at `$8300`. One for
+    every title after it, which folds the roster into the payload's last page:
+    asking for that page separately would be a second round trip for bytes
+    already in hand, and a round trip is the whole cost of a read.
+    """
+    game = game or games.DEFAULT
+    payload = (game.save_load_address, game.save_size)
+    if game.roster_in_payload:
+        return (payload,)
+    return (payload, (game.roster_base, ROSTER_PAGE))
+
+
+#: Pool of Radiance's, for the callers not yet threaded through a descriptor --
+#: `automap/actions.py`, whose own addresses are Pool of Radiance's too.
+BLOCKS = memory_blocks(games.POOL_OF_RADIANCE)
 
 # Owner encoding: a party member by slot, a monster, or everybody.
 FIRST_MONSTER = 8
@@ -268,19 +294,22 @@ class Snapshot:
 
 
 def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:
-    """Every effect slot whose id is non-zero, read across all four arrays."""
-    base = SAVE0_LOAD_ADDRESS
+    """Every effect slot whose id is non-zero, read across all four arrays.
+
+    Takes the payload, so it is already title-independent: the offsets are
+    inside the save image and follow it wherever the title loads it.
+    """
     out = []
     for i in range(EFFECT_SLOTS):
-        eid = save0_bytes[EFFECT_ID - base + i]
+        eid = save0_bytes[EFFECT_ID_OFFSET + i]
         if not eid:
             continue                       # expiry clears only the id
         out.append(Effect(
             slot=i,
             id=eid,
-            owner=save0_bytes[EFFECT_OWNER - base + i],
-            duration=save0_bytes[EFFECT_DURATION - base + i],
-            magnitude=save0_bytes[EFFECT_MAGNITUDE - base + i],
+            owner=save0_bytes[EFFECT_OWNER_OFFSET + i],
+            duration=save0_bytes[EFFECT_DURATION_OFFSET + i],
+            magnitude=save0_bytes[EFFECT_MAGNITUDE_OFFSET + i],
         ))
     return tuple(out)
 
@@ -404,7 +433,8 @@ def characters(save0: SaveGame0, save1: SaveGame1,
 
 
 def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
-                        names: dict[int, str] | None = None) -> Snapshot | None:
+                        names: dict[int, str] | None = None,
+                        game: games.Game | None = None) -> Snapshot | None:
     """Decode one snapshot, or None if these bytes are not a live party.
 
     The checks are the ones `docs/100-live-view.md` asks for: a position inside
@@ -412,14 +442,17 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
     and none of them is an error -- at the title screen, mid-load, in a menu,
     the bytes simply are not there yet.
     """
-    if len(save0_bytes) != SAVE0_SIZE or len(roster_bytes) < ROSTER_PAGE:
+    game = game or games.DEFAULT
+    if len(save0_bytes) != game.save_size or len(roster_bytes) < ROSTER_PAGE:
         return None
     try:
-        save0 = SaveGame0.from_bytes(bytes(save0_bytes))
-        # SaveGame1 expects its whole $800; only the first page is the roster
-        # and the rest is resident code that a live read has no reason to pull.
+        save0 = SaveGame0.from_bytes(bytes(save0_bytes), game)
+        # Pool of Radiance's SaveGame1 expects its whole $800; only the first
+        # page is the roster and the rest is resident code that a live read has
+        # no reason to pull. A later title's roster is exactly the one page, so
+        # there is nothing to pad.
         save1 = SaveGame1(bytes(roster_bytes[:ROSTER_PAGE])
-                          + bytes(SAVE1_SIZE - ROSTER_PAGE))
+                          + bytes(game.roster_size - ROSTER_PAGE), game)
         position = save0.party
         if not (0 <= position.x < GRID and 0 <= position.y < GRID
                 and 0 <= position.facing < 4):
@@ -442,23 +475,38 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
     )
 
 
-def read_blocks(target, blocks=BLOCKS) -> list[bytes]:
-    """Read several ranges, in one burst where the backend can do that.
+def read_blocks(target, game: games.Game | None = None) -> list[bytes]:
+    """The save image and the roster page, in one burst where the backend can.
+
+    Always a pair, whichever shape the title stores them in: a title that keeps
+    its roster inside the payload is read once and sliced, so every caller
+    downstream sees `(save0_bytes, roster_bytes)` and none of them has to know
+    which shape this title is.
 
     `ViceTarget.read_blocks` stops the machine once and resumes once, because
     each resume hands the emulation ~14.3 ms of extra emulated time. A backend
     without it gets one round trip per block, which is what `read` alone can
     promise.
     """
+    game = game or games.DEFAULT
+    ranges = memory_blocks(game)
     burst = getattr(target, "read_blocks", None)
     if burst is not None:
-        return list(burst(blocks))
-    return [target.read(addr, length) for addr, length in blocks]
+        data = list(burst(ranges))
+    else:
+        data = [target.read(addr, length) for addr, length in ranges]
+    if len(data) == 1:
+        payload = data[0]
+        at = game.roster_offset
+        return [payload, payload[at:at + ROSTER_PAGE]]
+    return data
 
 
-def read_snapshot(target, names: dict[int, str] | None = None) -> Snapshot | None:
+def read_snapshot(target, names: dict[int, str] | None = None,
+                  game: games.Game | None = None) -> Snapshot | None:
     """Two reads, whole tab. None when there is nothing sane to show."""
     if target is None:
         return None
-    save0_bytes, roster_bytes = read_blocks(target)
-    return snapshot_from_bytes(save0_bytes, roster_bytes, names)
+    game = game or games.DEFAULT
+    save0_bytes, roster_bytes = read_blocks(target, game)
+    return snapshot_from_bytes(save0_bytes, roster_bytes, names, game)

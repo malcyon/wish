@@ -132,6 +132,30 @@ CLASS_BITS_KRYNN = CLASS_BITS_CLASSIC + ((0x10, "knight"), (0x40, "paladin"),
 NAMES_LOAD_ADDRESS_POOL = 0x6F00
 NAMES_LOAD_ADDRESS_LATER = 0x9E00
 
+# --- payload offsets a running machine needs --------------------------------
+# Both are inside the save image, so both follow `save_load_address` and
+# neither is a per-title field.
+POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
+CLOCK_OFFSET = 0x0C7           # minute units, tens, hour
+
+#: Where the **engine** keeps the party's square while the game runs, which is
+#: not where it writes it when the game saves. `$C04B` x, `$C04C` y, `$C04D`
+#: facing.
+#:
+#: MEASURED, three times over, and not inferred from anything:
+#:
+#: * Pool of Radiance -- `$1A3C` is `if $49E6 then copy $C04B..$C04D into
+#:   $49C0..$49C2`, and 29 of its 30 area scripts write it (`docs/118` §);
+#: * Curse of the Azure Bonds -- found by intersecting two 64K dumps taken
+#:   either side of a step, one candidate left (`docs/120` §4);
+#: * Secret of the Silver Blades -- the same triple, confirmed unchanged over
+#:   nine steps and three refusals (`docs/121` §5).
+#:
+#: `docs/138-multiple-games.md` records it as CONFIRMED for those three titles
+#: and for no others, which is why the Krynn titles and Gateway leave
+#: `live_position` None below.
+LIVE_POSITION_GOLDBOX = 0xC04B
+
 
 @dataclass(frozen=True)
 class Game:
@@ -165,6 +189,14 @@ class Game:
     races: tuple[tuple[int, str], ...] | None = None
     class_bits: tuple[tuple[int, str], ...] | None = None
     item_names_load_address: int | None = None
+
+    #: The engine's live x/y/facing triple. **Not geometry**: it sits outside
+    #: the save image, so it cannot be derived from `save_load_address` and has
+    #: to be measured on a running machine, one title at a time. None means
+    #: nobody has measured this title's -- and a reader must then refuse rather
+    #: than fall back to another title's, because a wrong address yields a
+    #: plausible square instead of an error.
+    live_position: int | None = None
 
     # -- derived ----------------------------------------------------------
     @property
@@ -206,6 +238,20 @@ class Game:
         return self.save_load_address + ICON_TABLE_OFFSET
 
     @property
+    def save_position_base(self) -> int:
+        """The save image's own copy of the party square.
+
+        Refreshed only when the game saves, so it names the square the party
+        stood on at the last save. `live_position` is the one that moves.
+        """
+        return self.save_load_address + POSITION_OFFSET
+
+    @property
+    def clock_base(self) -> int:
+        """The game clock, which *is* live at its save-image address."""
+        return self.save_load_address + CLOCK_OFFSET
+
+    @property
     def roster_base(self) -> int:
         """The roster's live address, wherever it lives."""
         if self.roster_file is None:
@@ -237,6 +283,7 @@ POOL_OF_RADIANCE = Game(
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_CLASSIC,
     item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
+    live_position=LIVE_POSITION_GOLDBOX,
 )
 
 CURSE_OF_THE_AZURE_BONDS = Game(
@@ -250,6 +297,7 @@ CURSE_OF_THE_AZURE_BONDS = Game(
     races=RACES_CURSE,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
+    live_position=LIVE_POSITION_GOLDBOX,
 )
 
 SECRET_OF_THE_SILVER_BLADES = Game(
@@ -263,6 +311,7 @@ SECRET_OF_THE_SILVER_BLADES = Game(
     races=RACES_SILVER_BLADES,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
+    live_position=LIVE_POSITION_GOLDBOX,
 )
 
 CHAMPIONS_OF_KRYNN = Game(
@@ -276,6 +325,8 @@ CHAMPIONS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
+    # live_position stays None: nobody has run this title under a monitor,
+    # and $C04B is a measurement of three other games, not a family constant.
 )
 
 DEATH_KNIGHTS_OF_KRYNN = Game(
@@ -289,6 +340,8 @@ DEATH_KNIGHTS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
+    # live_position stays None: nobody has run this title under a monitor,
+    # and $C04B is a measurement of three other games, not a family constant.
 )
 
 GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
@@ -302,6 +355,8 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
+    # live_position stays None: nobody has run this title under a monitor,
+    # and $C04B is a measurement of three other games, not a family constant.
 )
 
 GAMES: tuple[Game, ...] = (
@@ -319,6 +374,18 @@ DEFAULT = POOL_OF_RADIANCE
 
 BY_KEY = {g.key: g for g in GAMES}
 BY_SAVE_FILE = {g.save_file: g for g in GAMES}
+BY_TITLE = {g.title: g for g in GAMES}
+
+
+def by_title(title: str | None) -> Game | None:
+    """The title a person named, or None. Never falls back to a default.
+
+    The windows carry the game as a plain string -- see `AutomapState.title` --
+    and this is the one place that turns it back into a descriptor. None for an
+    unrecognised name on purpose: a caller that needs an address has to notice
+    it does not have one.
+    """
+    return BY_TITLE.get(title) if title else None
 
 
 class UnknownGameError(ValueError):
