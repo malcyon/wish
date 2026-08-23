@@ -31,6 +31,7 @@ a port fixed one, that is said.
 | 4 | The hedge maze's safer squares are as dangerous as the rest | Pool of Radiance | script | CONFIRMED |
 | 5 | Two monsters are not the level their name claims | Pool of Radiance | data | CONFIRMED |
 | 6 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
+| 7 | Clearing the pyramid cancels the council's summons to the war meeting | Pool of Radiance | script | CONFIRMED |
 
 ---
 
@@ -258,3 +259,57 @@ records the game itself ships — ours did, and it silently rewrote two bytes on
 an import that edited nothing.
 
 ---
+
+---
+
+## 7. Clearing Yarash's pyramid cancels the council's summons to the war meeting
+
+**What the game does.** Near the end of the game the City Hall clerk summons the
+party to a special council meeting: the Lord High Mayor, the whole council
+waiting, and the request that the party lead the assault on Valjevo Castle. The
+council tracks that summons in one byte, `$4A9A` — 254 means *you are summoned*,
+255 means *you have been*.
+
+The wilderness map that contains Yarash's pyramid uses the **same byte** as a
+scratch variable. When the party first crosses that map after killing Yarash,
+the game plays the short scene where the land begins to recover from the
+pollution; the sprite animation behind it borrows `$4A9A` as a per-frame flag
+(`ECL1A $AF2B SAVE 1, [$4A9A]`) and leaves it at 255 when the scene ends
+(`$AF3B SAVE 255, [$4A9A]`).
+
+**What it should do.** Use one of the thirty-two scratch bytes at `$4A00`-`$4A1F`
+that the engine wipes on every area change, which is what the rest of the same
+animation does — it already uses `$4A06`, `$4A09`, `$4A0D` and `$4A1E`. `$4A9A`
+is nine bytes past the end of that page.
+
+**The evidence.** Three lines, each independent.
+
+* `$4A9A` is the only address in the whole persistent-flag region written by two
+  scripts that have nothing to do with each other. Every other shared byte is
+  either one area's several levels — the four Valjevo Castle scripts, the two
+  pyramid levels, the three wilderness maps — or a deliberate handshake with the
+  City Hall. `ECL1A` is a wilderness map and `ECL08` is the City Hall.
+* The council reads the byte for **exact** equality with 254 in both places it
+  matters: the clerk will not raise the meeting once it is 254 or more, and the
+  council chamber itself does nothing unless it reads exactly 254. 255 shuts
+  both doors.
+* `npc_party.d64`, the most advanced save this project holds, has `$4A9A` at
+  255 while Lord Urslingen has never briefed the party and Stojanow Gate has
+  never been taken — so the meeting demonstrably had not happened, and something
+  other than the council wrote that byte. Its pyramid commission is paid.
+
+**What the player sees.** The party is never called to the special council
+meeting before the assault on Valjevo Castle, and never hears the Lord High
+Mayor ask them to lead it. If the clerk had already summoned them and they had
+not yet walked to the chamber, the summons evaporates: they arrive and the room
+is empty.
+
+The scene awards nothing mechanical, so the castle is still enterable and the
+game still finishable — what is lost is the set-piece the whole middle of the
+game builds towards. A player who never takes the river-pollution commission
+never triggers it and sees the meeting normally, which is why the bug has gone
+unremarked.
+
+**Version.** Pool of Radiance, Commodore 64; the Amiga scripts are the same
+artefact and carry the same two writes. CONFIRMED from the bytecode and
+corroborated by a save.
