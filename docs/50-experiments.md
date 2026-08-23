@@ -3595,6 +3595,93 @@ rather than trusting the longhand rows, which is the check that would have
 caught P76 the day it was typed.
 
 
+## The slums fortune teller comes back, and the wandering cap with her
+
+**Claim under test.** `$4A0B` is the fortune teller's one-shot flag and it sits
+in `$4A00`-`$4A1F`, the scratch page `DUNGEON $202A` zeroes on every area
+change; so she is alive again on every fresh visit, the "gods have noted your
+actions" penalty goes with her, and `$4A80`, the fifteen-fight cap on the
+slums' wandering monsters, can be reset without limit because `ECL14 $A749`
+does `SAVE 0, [$4A80]` when she dies. Issue 12, PROBABLE on the addresses.
+
+**All four halves confirmed.** `goldbox-bugs.md` #9.
+
+**Read first.** Two corrections to how the project had been reading `ECL14`
+came out of this and both matter beyond it.
+
+* **The square-script dispatcher is 0-based.** `ECL14 $99A2` seeds `$9800` with
+  **0** and walks it up to 20 against the square's `AND 127, ATTR`, so
+  `ONGOTO [$9800], 21, …` sends script id 0 to the *first* pointer. The fortune
+  teller is id **8**, the single square `(3, 5)`, and not id 9 — and she proves
+  it herself: her LEAVE branch writes `mapX` 3, `mapY` 4, the square directly
+  north of her. Ohlo's LEAVE writes `(14, 10)`, next door to his own id-3 block
+  at x 11-13, y 9-10. Driven: stepping onto `(3, 5)` ran `$A63A`.
+* **Script id 21 is unreachable.** `$99B4 COMPARE [$9800], 20 / IF> / EXIT`
+  caps the walk at 20, so the thirteen `GEO14` squares whose attribute is 21 —
+  `(1,0) (2,0) (3,0) (0,1) (1,1)` and `(8,5) (6,6) (7,6) (8,6) (6,7) (7,7)
+  (8,7) (7,8)`, two building-shaped blocks — match nothing and fall through the
+  `ONGOTO` into whatever follows it. PROBABLE; nobody stood on one.
+
+**The zero fill, read out of the running machine.** `$2011` onward is
+`LDA $6E1B / AND #$7F / STA $49F2 … LDX #$1F / LDA #$00 / STA $4A00,X / DEX /
+BPL` at `$202A`-`$2032`, exactly as `docs/41` has it. Every `NEWECL` clears
+`$4A0B`.
+
+**Method.** Instance-pool slot 4, headless, from `PORSAVE13.D64` — Donald's own
+save one step inside the slums at `(15, 4)`, `$4A0B` = 0, `$4A80` = `$4ABB` = 3.
+Two harness decisions, both of which touch what was being measured:
+
+* **the party was moved between steps by writing `$C04B`-`$C04D`**, the live
+  square, which is what the warp harness does before `NEWECL` minus the
+  `NEWECL`, so it never goes near `$4A00`-`$4A1F`. Every step the party
+  actually took was the game's own, and every area change was a real walk off
+  the edge of a map.
+* **`$4A80` was held at 15 for the walking.** `$9B32 COMPARE [$4A80], 15 /
+  IF>= / EXIT` is the wandering roll's own off switch, and after the murder the
+  roll is five points likelier — the first attempt at this run was eaten by
+  three consecutive wandering fights and a party wipe. The murder's write to
+  `$4A80` was read **before** the harness put it back, which is the whole point
+  of watching it.
+
+**What happened.**
+
+| step | printed | `$4A0B` | `$4A80` |
+|---|---|---|---|
+| step onto `(3, 5)` | the greeting, `ATTACK LEAVE PAY` | 251 | 3 |
+| ATTACK | `YOU EASILY MURDER THE OLD WOMAN… THE GODS HAVE NOTED YOUR ACTIONS.` | 255 | **0** |
+| step off and back onto `(3, 5)` | nothing; the square is inert | 255 | — |
+| walk east off `(15, 4)` | New Phlan, `ECL00`, `GEO00` | **0** | held 15 |
+| walk west off `(0, 6)` | `YOU HAVE ENTERED THE MONSTER-CRAWLING SLUMS…` | 0 | held 15 |
+| step onto `(3, 5)` | the greeting again, word for word | 251 | 15 |
+| ATTACK | the murder again | 255 | **0** |
+
+**`$4ABB` never moved** — 3 throughout, across two murders. So the City Hall
+commission is not farmable and `$4ABB` and `$4A80` can be **out of step**, which
+is worth knowing because `docs/134` observes that every specimen we hold has
+them equal. They are equal in specimens because nothing in ordinary play
+separates them; the murder does, and so does a lost wandering fight.
+
+**Two side observations, both weaker.**
+
+* **The penalty is real while it lasts.** With `$4A0B` = 255 the first run took
+  two wandering fights in three ordinary steps, against one in twenty before
+  the murder. That is the `+5` at `$9B50` on a `RANDOM 13` that has to beat 12.
+  Suggestive rather than measured — six steps is not a sample.
+* **`$6DD2`/`$6DD3` read `00 00` throughout**, so `ECL14`'s entry 2 — the block
+  at `$9A0E` that writes 24 into both when `$4A0B` is 255 and 0 otherwise —
+  never fired while the flag was set. What calls entry 2 is not known; the
+  encounter-frequency reading of that block stays GUESS.
+
+**The east doorway works and the west one does not.** Walking east off the
+slums' `(15, 4)` reached New Phlan, and walking west off New Phlan's `(0, 6)`
+came back. Walking west off New Phlan's `(0, 4)` — the square `PORSAVE12` was
+saved on, facing west, one step before `PORSAVE13` — was refused four times,
+with `$6DD5` still 0 afterwards, so the engine never treated it as a boundary
+crossing. Both squares are edge exits in `GEO00` with the same barrier bits.
+Unexplained, and the difference is not `ECL00`, whose entry 0 is an
+unconditional `NEWECL 20`.
+
+
 ## Planned, not yet run
 
 

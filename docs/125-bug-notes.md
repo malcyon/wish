@@ -371,6 +371,46 @@ player sees nothing.
 Found while settling whether `$4ABB`'s threshold of 25 means encounters,
 `docs/134-commissions.md`.
 
+## N16. Thirteen slums squares carry a script id the dispatcher cannot reach
+
+`ECL14`'s square dispatcher walks a counter against the square's own id:
+`$99A2 SAVE 0, [$9800]`, `$99A8 COMPARE [$9800], [$6E82] / IF= / GOTO [$99C9]`,
+`$99B4 COMPARE [$9800], 20 / IF> / EXIT`, `ADD 1`, loop. Twenty-one ids, 0 to
+20, and `$99C9`'s `ONGOTO` has exactly twenty-one pointers.
+
+**Thirteen squares in `GEO14` have id 21.** `(1,0) (2,0) (3,0) (0,1) (1,1)` in
+the north-west and `(8,5) (6,6) (7,6) (8,6) (6,7) (7,7) (8,7) (7,8)` in the
+middle — two building-shaped blocks. The counter reaches 21, matches, and the
+`ONGOTO` is handed an index one past its last entry.
+
+**What the player sees.** Two rooms that say nothing, where the map data says
+something was meant to happen. Whether the out-of-range `ONGOTO` falls through
+into the instruction after it — which is `$9A0E`, the script's own entry 2 —
+or does nothing at all has not been driven. PROBABLE, and what would promote it
+is standing on one of the thirteen with a checkpoint on `$9A0E`.
+
+Found while confirming `goldbox-bugs.md` #9, which needed the dispatcher's
+indexing settled: it is 0-based, so script id 8 is the fortune teller.
+
+## N17. Ohlo introduces himself again after a trip out of the slums
+
+`ECL14 $9F13` is the small man with the pen who wants a potion fetched. His
+handler keeps two bytes: `$4A81`, in the persistent bank, which is 250 once you
+are carrying the potion and 255 once the errand is closed either way, and
+`$4A04`, which `$A251` sets to 250 when you accept the commission and which is
+only read to print `YOU HAVE RETURNED EMPTY HANDED` on the way back.
+
+`$4A04` is in `$4A00`-`$4A1F`, the page `DUNGEON $202A` zeroes on every area
+change. So a party that takes the errand, walks out of the slums and comes back
+without the potion gets `YOU BURST INTO AN ELEGANTLY PANELLED ROOM…` and the
+whole parlay again, instead of the one line written for that case.
+
+**What the player sees.** A scene replayed, and nothing else: `$4A81` carries
+the errand itself, so no reward is repeated and no state is lost. PROBABLE —
+read from the bytecode, not driven. Same page and same class of mistake as
+`goldbox-bugs.md` #9; it is here rather than there because the consequence is
+a repeated paragraph.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
