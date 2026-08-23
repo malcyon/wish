@@ -141,6 +141,11 @@ before/after pairs, given the hit die it rolled.
 the right end of the class-and-level line, hidden unless that character has the
 experience for another level. The card is which character it means.
 
+**Pool of Radiance only.** `GEN` is a different build in every title and none of
+Pool of Radiance's addresses survives into Curse's, so `level_up_blockers`
+refuses any other title by name and the button is not drawn at all —
+[levelling](135-levelling.md), "One title, and it says so".
+
 **It does not ask which class.** A multi-class character with two ready gets
 the one whose threshold *after* the level it is about to gain is largest —
 `por.levelup.best_next_class`, ties broken in class-bit order. That is the

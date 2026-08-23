@@ -78,7 +78,7 @@ from PyQt6.QtWidgets import (
 )
 
 from automap import paths
-from automap.actionbar import DANGER
+from automap.actionbar import DANGER, no_areas
 from automap.config import clamp_to_screen
 from por import areas as area_table
 from por import games
@@ -654,6 +654,12 @@ class PreferencesDialog(QDialog):
         attract-mode demo and entering it ends the session. `Area.warpable`
         says so, and it is asked rather than the id being written down here.
 
+        **The table is the open title's**, and five of the six titles have no
+        area table at all -- `por.areas.areas_for_title`. For those the table
+        is empty and a sentence says which game nothing is known for, rather
+        than offering Pool of Radiance's thirty to be ticked for a game they do
+        not belong to (#14, `docs/138-multiple-games.md` §7 task 1).
+
         **The warning is a box, not a tooltip**, and it is here rather than on
         General: beside the thing it warns about. Same amber as the
         `unverified` badge -- one visual language for "this is a thing to know
@@ -669,9 +675,12 @@ class PreferencesDialog(QDialog):
         #: The table's rows, in the dropdown's own order: by name. Every
         #: warpable area has one, and area 30 -- the only nameless one -- is
         #: also the only unwarpable one, so excluding it needs no second rule.
-        self.travel_rows = sorted((a for a in area_table.AREAS if a.warpable),
-                                  key=lambda a: a.name or "")
-        chosen = set(self.win.settings.chosen_areas())
+        self.travel_game = self.win.map_game()
+        self.travel_rows = sorted(
+            (a for a in area_table.areas_for_title(
+                getattr(self.travel_game, "title", None)) if a.warpable),
+            key=lambda a: a.name or "")
+        chosen = set(self.win.settings.chosen_areas(self.travel_game))
         self.travel_table = QTableWidget(len(self.travel_rows), 1)
         self.travel_table.setHorizontalHeaderLabels(["Area"])
         self.travel_table.verticalHeader().setVisible(False)
@@ -735,7 +744,15 @@ class PreferencesDialog(QDialog):
         the setting doing what was asked. Donald had it out in 2026-08 -- "the
         user will figure it out" -- and the dropdown's own disabled item and
         the disabled button say it where somebody is looking for it.
+
+        A title with no area table is the one case that still needs a sentence:
+        an empty table with "0 areas" under it looks like a feature that failed
+        to load, where it is a game whose areas nobody has tabulated.
         """
+        if not self.travel_rows:
+            self.travel_note.setText(no_areas(
+                getattr(self.travel_game, "title", None)))
+            return
         ticked = len(self.travel_ticked())
         self.travel_note.setText(
             f"{ticked} area{'' if ticked == 1 else 's'} in the Fast Travel "

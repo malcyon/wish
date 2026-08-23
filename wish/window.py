@@ -309,6 +309,18 @@ class WishWindow(QMainWindow):
         return (getattr(getattr(self.editor, "party", None), "game", None)
                 or game_named(self._title))
 
+    def map_game(self):
+        """Which title the *automapper* is labelling with, as a `Game`.
+
+        **Not `game()`**, which is the open save's and is None with nothing
+        open. The fast-travel list has to agree with the map, and the map
+        always has a title -- it falls back through the open save, the disks
+        folder and `games.DEFAULT` (`docs/138-multiple-games.md` §3). A list
+        keyed off anything else would offer one game's areas in another's
+        session, which is the whole of #14.
+        """
+        return game_named(getattr(self.map.state, "title", None))
+
     def set_disks(self, folder: str) -> None:
         """The Game directory changed: remember it, and act on it now.
 
@@ -356,9 +368,10 @@ class WishWindow(QMainWindow):
         """Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
 
         Empty is a choice like any other and is saved as one: the setting is
-        None only until somebody has ticked or unticked anything.
+        None only until somebody has ticked or unticked anything. Filed under
+        the open title's key, because an area id means nothing without one.
         """
-        self.settings.set_chosen_areas(ids)
+        self.settings.set_chosen_areas(ids, self.map_game())
         self.settings.save()
         self.map.warp_bar.reload_areas()
 

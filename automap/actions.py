@@ -512,7 +512,23 @@ LEVEL_UP_FIELDS: tuple[str, ...] = (
 ) + levelup.THIEF_FIELDS
 
 
-def level_up_blockers(record: CharacterRecord | None = None) -> tuple[str, ...]:
+def game_title(game=None) -> str:
+    """What to call a title in a refusal. Takes a `Game`, a key, or None."""
+    title = getattr(game, "title", None)
+    if title:
+        return title
+    if game is None:
+        return levels.DEFAULT.title
+    try:
+        from por import games
+    except ImportError:                     # pragma: no cover - defensive
+        return str(game)
+    known = games.BY_KEY.get(str(game))
+    return known.title if known else str(game)
+
+
+def level_up_blockers(record: CharacterRecord | None = None,
+                      game=None) -> tuple[str, ...]:
     """Every reason levelling refuses, most specific first.
 
     Empty means every field the trainer touches is both derivable and
@@ -523,15 +539,22 @@ def level_up_blockers(record: CharacterRecord | None = None) -> tuple[str, ...]:
 
     It takes a record because the remaining refusals are per character: a class
     at its ceiling, a race at its limit, or not enough experience.
+
+    **And it takes a title, because the measurement was of one title.** Curse
+    is the case that would corrupt quietly: its level tables are in
+    `por/levels.py`, so selecting them looks like enough, and it is not. Every
+    derivation around them was read at Pool of Radiance's addresses out of Pool
+    of Radiance's `GEN` -- `levels.TRAINER_MEASURED` names them -- so a title
+    nobody has measured is refused whatever tables it has.
     """
     out = []
     unsure = [name for name in LEVEL_UP_FIELDS
               if field_by_name(name).confidence is not Confidence.CONFIRMED]
     if unsure:
         out.append("not CONFIRMED, so not written: " + ", ".join(sorted(unsure)))
-    if record is not None and not levels.for_game().thief_skills:
-        out.append("the trainer's own tables have only been read for Pool of "
-                   "Radiance")
+    if not levels.trainer_measured(game):
+        out.append(f"the trainer's tables have not been measured for "
+                   f"{game_title(game)}; only {levels.DEFAULT.title}'s have")
     return tuple(out)
 
 
@@ -575,6 +598,13 @@ class LevelUp(Action):
     experience clamp's ceiling as high as it goes, so the other class usually
     survives; pressing the button again then takes it. An explicit
     `class_name` still overrides.
+
+    **Which title, though, is a question, and it is asked.** `game` is the
+    `por.games.Game` the session is, and every table and every derivation is
+    taken from it. None means Pool of Radiance, because every caller written
+    before there was a second title meant that one. A title whose trainer
+    nobody has measured is refused by `level_up_blockers` before a byte is
+    written -- see `por.levels.TRAINER_MEASURED`.
     """
 
     name = "level-up"
@@ -582,24 +612,28 @@ class LevelUp(Action):
     description = "raise a character a level without the trainer"
     confirm = "Level up this character? There is no way to undo this in the game."
 
-    @staticmethod
-    def offers(record) -> list[int]:
-        """The spell ids a magic-user would be offered at its next level."""
-        return levelup.learnable(
-            record, level=levelup.class_level(record, "magic-user") + 1)
+    def __init__(self, game=None):
+        self.game = game
 
     @staticmethod
-    def class_for(record) -> str | None:
+    def offers(record, game=None) -> list[int]:
+        """The spell ids a magic-user would be offered at its next level."""
+        return levelup.learnable(
+            record, game,
+            level=levelup.class_level(record, "magic-user") + 1)
+
+    @staticmethod
+    def class_for(record, game=None) -> str | None:
         """Which class the button would raise, or None if none is ready.
 
         A caller has to know before it writes, because a magic-user needs its
         spell chosen and no other class does.
         """
-        return levelup.best_class(record)
+        return levelup.best_class(record, game)
 
     @staticmethod
-    def preview(record, class_name: str = "",
-                spell: int | None = None) -> levelup.Plan | None:
+    def preview(record, class_name: str = "", spell: int | None = None,
+                game=None) -> levelup.Plan | None:
         """The plan without writing it, or None if it cannot be made.
 
         Only `experience_lost` and `classes_disqualified` are worth reading off
@@ -607,7 +641,7 @@ class LevelUp(Action):
         on the roll differs.
         """
         try:
-            return levelup.plan(record, class_name, learn=spell)
+            return levelup.plan(record, class_name, game=game, learn=spell)
         except levelup.CannotLevel:
             return None
 
@@ -628,14 +662,15 @@ class LevelUp(Action):
             return Outcome(False,
                            f"{member.name} is at 0 hit points: dead or dying "
                            f"is not a hit point count, and levelling heals")
-        blockers = level_up_blockers(record)
+        blockers = level_up_blockers(record, self.game)
         if blockers:
             return Outcome(False,
                            f"levelling {member.name} would write fields we "
                            f"cannot derive, so it writes nothing", (), blockers)
 
         try:
-            plan = levelup.plan(record, class_name, learn=spell)
+            plan = levelup.plan(record, class_name, game=self.game,
+                                learn=spell)
         except levelup.CannotLevel as why:
             return Outcome(False, f"{member.name} cannot level: {why}")
 
@@ -665,7 +700,7 @@ class LevelUp(Action):
         _write_all(target, writes)
         notes = list(plan.notes)
         notes.append(f"hit die: rolled {plan.hit_points_rolled} on a d"
-                     f"{levels.hit_die(plan.class_name)}")
+                     f"{levels.hit_die(plan.class_name, self.game)}")
         if plan.learned_spell is not None:
             notes.append(f"learned spell {plan.learned_spell}")
         notes.append(f"healed to {healed} hit points, as the trainer does")
@@ -887,17 +922,30 @@ KEY_WAIT = (0x10C2, 0x10EC)
 KEY_FETCH = (0x2E4E, 0x2E6B)
 
 
-def area_rows() -> tuple:
-    """The area table, or nothing if this build has not got one.
+#: No title given means "whatever table this build has", which is what every
+#: caller written before there was a second title meant. A caller that has a
+#: title passes it, and five of the six get nothing.
+ANY_TITLE = object()
+
+
+def area_rows(title=ANY_TITLE) -> tuple:
+    """This title's area table, or nothing if there is none.
 
     `por/areas.py` owns it. Imported here rather than at the top of the module
     so that a checkout without it still has the other five actions.
+
+    **Only Pool of Radiance has one.** A row's disk number and `ECL` id are
+    Pool of Radiance's, and `Warp` writes both into the running machine, so
+    another title's session must be offered nothing rather than these --
+    `por.areas.areas_for_title` is where that refusal lives.
     """
     try:
-        from por.areas import AREAS
+        from por import areas
     except ImportError:                     # pragma: no cover - defensive
         return ()
-    return tuple(AREAS)
+    if title is ANY_TITLE:
+        return tuple(areas.AREAS)
+    return tuple(areas.areas_for_title(title))
 
 
 def landing_square(geo) -> tuple[int, int, int] | None:

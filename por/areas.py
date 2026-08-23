@@ -70,6 +70,7 @@ __all__ = [
     "Area",
     "AREAS",
     "AREAS_BY_ID",
+    "areas_for_title",
     "MISSING_ID",
     "area",
     "areas_for_geo",
@@ -266,6 +267,21 @@ def _by_geo() -> Mapping[str, tuple[Area, ...]]:
 
 
 _BY_GEO = _by_geo()
+
+
+def areas_for_title(title: str | None) -> tuple[Area, ...]:
+    """Every area of this title, which is nothing for five of the six.
+
+    **`AREAS` is Pool of Radiance's and only Pool of Radiance's.** Every row
+    carries a `POOL` disk number and an `ECL` id, and neither means anything in
+    another title -- Curse's disks are not numbered like Pool of Radiance's and
+    its `ECL` ids have never been decoded (`docs/138-multiple-games.md` §§2, 6).
+    A caller that is about to *write* one of those numbers into a running
+    machine must ask this rather than reading `AREAS`, and must offer nothing
+    when it comes back empty. Falling back to Pool of Radiance's list is the
+    one answer that corrupts.
+    """
+    return AREAS if title == POOL_OF_RADIANCE else ()
 
 
 def area(id: int) -> Area | None:

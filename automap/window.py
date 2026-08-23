@@ -471,9 +471,14 @@ class AutomapWindow(QMainWindow):
         # was behind `WISH_DEBUG` for as long as that was unknown.
         # `settings` is what says which areas the dropdown offers: the player
         # ticks them in Preferences, and there is no other filter.
+        # `title` is what says whether there is an area table at all: five of
+        # the six titles have none, and offering Pool of Radiance's would write
+        # Pool of Radiance's disk numbers into another game (#14).
         self.warp_bar = WarpBar(say=self.messages.say,
                                 maps=getattr(self.mapper, "_maps", {}),
-                                settings=self.settings)
+                                settings=self.settings,
+                                title=self.state.title,
+                                game=game_named(self.state.title))
 
         # Roster left, map centre, the two reading panels right, the actions
         # under the map and one strip along the bottom for what is none of
@@ -572,6 +577,7 @@ class AutomapWindow(QMainWindow):
         self.timer.timeout.connect(self.tick)
         if drive:
             self.timer.start(interval_ms)
+        self._apply_title()
         self._refresh()
 
     def set_maps(self, maps: dict, title: str | None = None,
@@ -591,12 +597,24 @@ class AutomapWindow(QMainWindow):
                                 else None)
         if title:
             self.state.title = title
+        self._apply_title()
         if self.state.area:
             self.state.geo = maps.get(self.state.area)
         self.no_maps = not maps
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
         self._refresh()
+
+    def _apply_title(self) -> None:
+        """Tell the per-title controls which game this is.
+
+        Two of them, and both would otherwise run on Pool of Radiance's data in
+        another title's session: the Fast Travel row's area list (#14) and the
+        roster card's Level up button (#16).
+        """
+        game = game_named(self.state.title)
+        self.warp_bar.set_title(self.state.title, game)
+        self.roster.set_levelling(not actions.level_up_blockers(game=game))
 
     def _toggle_reveal(self, checked: bool) -> None:
         self.state.reveal = checked
@@ -961,14 +979,14 @@ class AutomapWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
-    def _chosen_spell(self, record, name: str) -> int | None:
+    def _chosen_spell(self, record, name: str, game=None) -> int | None:
         """Which spell a magic-user learns, or None if the player backed out.
 
         The trainer asks, so we ask. `$215A` builds this same list and the
         level-up does not finish until one is picked -- `docs/135-levelling.md`.
         """
         from PyQt6.QtWidgets import QInputDialog
-        offers = actions.LevelUp.offers(record)
+        offers = actions.LevelUp.offers(record, game)
         if not offers:
             return 0                        # nothing to learn is not a refusal
         names = self._names_for_spells()
@@ -989,7 +1007,8 @@ class AutomapWindow(QMainWindow):
         order of the questions follows from that: the class first, because only
         then is it known whether a spell has to be chosen at all.
         """
-        action = actions.LevelUp()
+        game = game_named(self.state.title)
+        action = actions.LevelUp(game)
         target = self.mapper.target
         party = actions.read_party(target)
         member = party.by_slot(slot) if party else None
@@ -997,17 +1016,25 @@ class AutomapWindow(QMainWindow):
             self.messages.say(f"level up: no character in slot {slot}",
                               alarm=True)
             return
-        class_name = actions.LevelUp.class_for(member.record) or ""
+        blockers = actions.level_up_blockers(member.record, game)
+        if blockers:
+            self.messages.say(f"level up: nothing written for "
+                              f"{member.name}; {actions.game_title(game)}'s "
+                              f"trainer has not been measured",
+                              "\n".join(blockers), alarm=True)
+            return
+        class_name = actions.LevelUp.class_for(member.record, game) or ""
         spell = 0
         if class_name == "magic-user":
-            spell = self._chosen_spell(member.record, member.name)
+            spell = self._chosen_spell(member.record, member.name, game)
             if spell is None:
                 return                      # the player closed the dialog
         # No confirmation in the ordinary case: the button only appears on a
         # character who can level, and a save disk is a copy. The exception is
         # the clamp taking a class below a threshold it had already passed --
         # that costs a level the character earned, so it is asked about.
-        plan = actions.LevelUp.preview(member.record, class_name, spell or None)
+        plan = actions.LevelUp.preview(member.record, class_name,
+                                       spell or None, game)
         if plan is not None and plan.classes_disqualified:
             lost = ", ".join(plan.classes_disqualified)
             if not self.ask(

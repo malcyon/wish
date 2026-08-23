@@ -17,7 +17,34 @@ FILE = "automap.json"
 #: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `por/areas.py`
 #: ids 0, 20 and 21. The three a party has almost certainly walked in by the
 #: time it wants to travel anywhere, so the list starts safe rather than long.
+#: **A Pool of Radiance fact**, which is why it is keyed like one below.
 DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
+
+#: `por.games.Game.key` for the one title with an area table. Spelled out
+#: rather than imported: this module is the settings file and has no other
+#: business with the game descriptors.
+POOL_OF_RADIANCE = "pool-of-radiance"
+
+#: What a title gets before anybody has ticked anything. Every title but Pool
+#: of Radiance gets nothing, because `por.areas.areas_for_title` has nothing to
+#: offer it -- an id ticked for a title with no area table would be an id from
+#: another game's list.
+DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
+    POOL_OF_RADIANCE: DEFAULT_FAST_TRAVEL_TARGETS,
+}
+
+
+def game_key(game=None) -> str:
+    """The key to file a fast-travel choice under.
+
+    Takes a `por.games.Game`, a key string, or None -- and None is Pool of
+    Radiance, because every choice made before this setting was keyed at all
+    was Pool of Radiance's. A `Game.title` is **not** accepted: the file is
+    keyed by the stable identifier, never by display text.
+    """
+    key = getattr(game, "key", game)
+    return key if isinstance(key, str) and key else POOL_OF_RADIANCE
+
 
 #: Keys an older build wrote, and the field each is now called. Read, never
 #: written: a file saved by this build carries the new name only, so the rename
@@ -71,29 +98,52 @@ class Settings:
     # `tests/test_debuglog.py` still asserts no settings field carries "log";
     # that test encodes the superseded decision and is Donald's to retire.
     diagnostics: bool = False
-    # Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
-    # **None is not the same as `[]`**: None means nobody has chosen yet, which
-    # is a fresh config and gets `DEFAULT_FAST_TRAVEL_TARGETS`, while an empty
-    # list is a player who unticked everything and is kept. Anything else in the
-    # file -- a number, a string, a hand-edited mess -- reads as "not chosen".
-    # Called `warp_areas` until 2026-08; `RENAMED` is what reads that file.
-    fast_travel_targets: list[int] | None = None
+    # Which areas the Fast Travel dropdown offers, by `por/areas.py` id, and
+    # **keyed by `por.games.Game.key`** -- an area id means nothing without a
+    # title, and warping on Pool of Radiance's ids in another game's machine is
+    # what issue #14 was.
+    #
+    # Three "nothing here" states and they are three different answers:
+    # **None** means nobody has ticked anything ever, and every title gets its
+    # own default; a **key absent** from the dict means nobody has ticked
+    # anything *for that title*, and it gets that title's default; a key
+    # present with **`[]`** is a player who unticked everything and is kept.
+    # Anything else in the file -- a number, a string, a hand-edited mess --
+    # reads as "not chosen".
+    #
+    # Called `warp_areas` until 2026-08 (`RENAMED` reads that), and a bare list
+    # until 2026-08 as well -- `load` migrates one to
+    # `{"pool-of-radiance": [...]}`, because Pool of Radiance is the only title
+    # that ever had one.
+    fast_travel_targets: dict[str, list[int]] | None = None
 
-    def chosen_areas(self) -> tuple[int, ...]:
-        """The area ids the Fast Travel dropdown may offer."""
-        if not isinstance(self.fast_travel_targets, (list, tuple)):
-            return DEFAULT_FAST_TRAVEL_TARGETS
+    def chosen_areas(self, game=None) -> tuple[int, ...]:
+        """The area ids the Fast Travel dropdown may offer for this title."""
+        key = game_key(game)
+        default = DEFAULT_FAST_TRAVEL_BY_GAME.get(key, ())
+        if not isinstance(self.fast_travel_targets, dict):
+            return default
+        chosen = self.fast_travel_targets.get(key)
+        if not isinstance(chosen, (list, tuple)):
+            return default
         ids = []
-        for value in self.fast_travel_targets:
+        for value in chosen:
             try:
                 ids.append(int(value))
             except (TypeError, ValueError):
                 continue        # a hand-edited file; drop the row, keep the rest
         return tuple(sorted(set(ids)))
 
-    def set_chosen_areas(self, ids) -> None:
-        """Record the choice, empty included."""
-        self.fast_travel_targets = sorted({int(i) for i in ids})
+    def set_chosen_areas(self, ids, game=None) -> None:
+        """Record the choice for one title, empty included.
+
+        Only that title's entry is touched: ticking in a Curse session must
+        not disturb the Pool of Radiance list somebody spent a while building.
+        """
+        table = dict(self.fast_travel_targets) \
+            if isinstance(self.fast_travel_targets, dict) else {}
+        table[game_key(game)] = sorted({int(i) for i in ids})
+        self.fast_travel_targets = table
 
     @classmethod
     def load(cls) -> "Settings":
@@ -109,6 +159,12 @@ class Settings:
         for old, new in RENAMED.items():
             if old in raw and new not in values:
                 values[new] = raw[old]
+        # A bare list is Pool of Radiance's, because it is the only title that
+        # ever had one. `warp_areas` feeds in above first, so a file written
+        # before 2026-08 migrates twice in this one read and comes out right.
+        if isinstance(values.get("fast_travel_targets"), list):
+            values["fast_travel_targets"] = {
+                POOL_OF_RADIANCE: values["fast_travel_targets"]}
         return cls(**values)
 
     def save(self) -> None:

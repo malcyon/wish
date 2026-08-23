@@ -207,6 +207,18 @@ DANGER = ("Fast travel to areas you haven't been to is dangerous and can "
 NOTHING_TICKED = "No areas ticked — Preferences ▸ Fast travel"
 
 
+def no_areas(title: str | None) -> str:
+    """What the row says for a title `por/areas.py` has no table for.
+
+    Five of the six titles, and the sentence is the whole feature for them.
+    **It must never be Pool of Radiance's list instead**: a trip writes a
+    `POOL` disk number and an `ECL` id into the running machine, and Curse's
+    disks are not numbered like Pool of Radiance's -- `docs/138-multiple-games.md`
+    §§6, 7.
+    """
+    return f"No areas are known for {title or 'this game'}."
+
+
 class WarpBar(QWidget):
     """The Fast Travel row: pick an area, and enter it the way the exits do.
 
@@ -260,18 +272,34 @@ class WarpBar(QWidget):
     **The choice narrows what is offered, never what is legal.**
     `Warp.legality` and the arrival-square logic are untouched.
 
+    **One title has areas and the other five have none.** `AREAS` is Pool of
+    Radiance's -- `POOL` disk numbers and `ECL` ids, both of which a trip
+    writes into the machine -- so a session of any other title is offered
+    nothing and told which game it is that nothing is known for. The row used
+    to offer Pool of Radiance's thirty in a Curse session and warping on one
+    wrote Pool of Radiance's numbers into Curse (#14); falling back to that
+    list is the one answer that corrupts, so the title is asked for at
+    construction and again whenever the disks change.
+
     The area table is `por/areas.py`, and the row holds no copy of it.
     """
 
     def __init__(self, parent=None, warp=None, areas=None, say=None,
-                 maps=None, settings: Settings | None = None):
+                 maps=None, settings: Settings | None = None,
+                 title: str | None = None, game=None):
         super().__init__(parent)
         self.say = say or (lambda text, detail="", alarm=False: None)
         self.warp = warp or engine.Warp()
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
-        rows = engine.area_rows() if areas is None else areas
+        #: Which title this session is, as `AutomapState.title` spells it, and
+        #: the `por.games.Game` that names for the settings key. **None is
+        #: Pool of Radiance**, which is what a row built without a window means
+        #: and what every caller written before there was a second title meant.
+        self.title = title
+        self.game = game
+        rows = self._rows_for_title() if areas is None else areas
         #: Every area a warp is allowed to name, in display order. `rows` is
         #: what the dropdown is currently showing, which is the ticked subset
         #: of this whenever there are settings to read.
@@ -282,6 +310,9 @@ class WarpBar(QWidget):
         #: program passes the window's settings, so this is the tests' case
         #: and not a fallback anybody plays with.
         self.settings = settings
+        #: Whether the areas were given to us wholesale. A caller that passes
+        #: its own table means it, so a title change does not throw it away.
+        self._own_areas = areas is not None
         self.rows = self.all_rows
         self.target = None
         self.last: engine.Outcome | None = None
@@ -316,6 +347,32 @@ class WarpBar(QWidget):
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
         self.refresh()
+
+    def _rows_for_title(self) -> tuple:
+        """This title's areas, which is nothing for every title but one."""
+        if self.title is None:
+            return engine.area_rows()
+        return engine.area_rows(self.title)
+
+    def set_title(self, title: str | None, game=None) -> None:
+        """The session is this title now. Rebuilds the dropdown.
+
+        The window calls it when the disks change, which is the one place the
+        title can change while the row is on the screen.
+        """
+        if (title, game) == (self.title, self.game):
+            return
+        self.title, self.game = title, game
+        if not self._own_areas:
+            self.all_rows = self._sorted(
+                r for r in self._rows_for_title()
+                if getattr(r, "warpable", True))
+        self.repopulate()
+
+    @property
+    def has_areas(self) -> bool:
+        """Whether this title has an area table at all."""
+        return bool(self.all_rows)
 
     @staticmethod
     def _sorted(rows) -> tuple:
@@ -358,7 +415,7 @@ class WarpBar(QWidget):
         """
         if self.settings is None:
             return self.all_rows
-        wanted = set(self.settings.chosen_areas())
+        wanted = set(self.settings.chosen_areas(self.game))
         return tuple(r for r in self.all_rows if getattr(r, "id", None) in wanted)
 
     def reload_areas(self) -> None:
@@ -385,7 +442,11 @@ class WarpBar(QWidget):
             self.combo.setItemData(i, self._detail(row),
                                    Qt.ItemDataRole.ToolTipRole)
         if not self.rows:
-            self.combo.addItem(NOTHING_TICKED)
+            # Two different empties. Nothing ticked is the player's own doing
+            # and names the setting; no table at all is ours, and says which
+            # game it has nothing for.
+            self.combo.addItem(NOTHING_TICKED if self.has_areas
+                               else no_areas(self.title))
         self.combo.setEnabled(bool(self.rows))
         if keeping is not None and keeping in self.rows:
             self.combo.setCurrentIndex(self.rows.index(keeping))
@@ -479,12 +540,16 @@ class WarpBar(QWidget):
     def refresh(self) -> None:
         area = self.area()
         if area is None and not self.rows:
-            # Nothing ticked. Say that rather than the emulator's verdict:
-            # there is nothing to be legal or illegal about.
+            # Nothing ticked, or nothing to tick. Say that rather than the
+            # emulator's verdict: there is nothing to be legal or illegal
+            # about.
             self.button.setEnabled(False)
             self.button.setToolTip(
                 "No areas are ticked in Preferences ▸ Fast travel, so there "
-                "is nowhere to travel to.")
+                "is nowhere to travel to." if self.has_areas else
+                f"{no_areas(self.title)} Its areas have not been tabulated, "
+                f"and Pool of Radiance's disk numbers and area ids would be "
+                f"the wrong thing to write here.")
         else:
             verdict = self.warp.legality(self.target, area)
             self.button.setEnabled(verdict.ok)

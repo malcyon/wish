@@ -183,6 +183,12 @@ class CharacterCard(QFrame):
     unless that character has the experience for another level. A button that
     is there only when it can be used needs no label saying which character it
     means: the card is the answer.
+
+    **And it is hidden for a title whose trainer nobody has measured**, which
+    is every title but Pool of Radiance -- `levelling`, set from the window.
+    The refusal is `automap.actions.level_up_blockers` and it is enforced at
+    the write as well; hiding the button is so that the feature is not offered
+    and then withdrawn (#16).
     """
 
     #: The slot, and nothing else. **The player is not asked which class.** A
@@ -197,6 +203,10 @@ class CharacterCard(QFrame):
         super().__init__(parent)
         self.slot = 0
         self.ready: tuple[str, ...] = ()
+        #: Whether levelling is possible in this title at all. True until the
+        #: window says otherwise, because a card built without one is Pool of
+        #: Radiance's -- the same default every other per-title reader takes.
+        self.levelling = True
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
             f"CharacterCard {{ background: {CARD.name()};"
@@ -305,7 +315,7 @@ class CharacterCard(QFrame):
         self.combat.setText(f"AC {ac}   THAC0 {thac0}")
         self.klass.setText(f"{who.class_text}  {who.level_text}")
         self.ready = self.ready_to_level(who)
-        self.level_up.setVisible(bool(self.ready))
+        self.level_up.setVisible(bool(self.ready) and self.levelling)
         if self.ready:
             self.level_up.setToolTip(f"level up as {self.chosen_class(who)}")
         conditions = who.conditions
@@ -371,6 +381,7 @@ class RosterPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.levelling = True
         self.setFixedWidth(CARD_WIDTH + 22)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -398,10 +409,20 @@ class RosterPanel(QWidget):
     def _card(self, index: int) -> CharacterCard:
         while len(self.cards) <= index:
             card = CharacterCard()
+            card.levelling = self.levelling
             card.level_up_requested.connect(self.level_up_requested)
             self.column.insertWidget(len(self.cards), card)
             self.cards.append(card)
         return self.cards[index]
+
+    def set_levelling(self, allowed: bool) -> None:
+        """Whether this title can be levelled at all, and so whether the Level
+        up button belongs on a card. Held for cards not built yet."""
+        self.levelling = allowed
+        for card in self.cards:
+            card.levelling = allowed
+            if not allowed:
+                card.level_up.hide()
 
     def set_message(self, text: str) -> None:
         """No party to show. Says why rather than showing empty cards."""
