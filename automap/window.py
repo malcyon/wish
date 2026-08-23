@@ -113,6 +113,11 @@ class MapCanvas(QWidget):
         #: The square a notes-panel row asked to be pointed at, until the next
         #: click anywhere. Not a selection -- nothing here is selectable.
         self.flash: tuple[int, int] | None = None
+        #: The square the mouse went down on, so the release can check it is
+        #: still the same one. See `mousePressEvent` for why nothing opens
+        #: until the button comes back up.
+        self._pressed: tuple[int, int] | None = None
+        self._pressed_button = None
         # The floor, not `CELL`. A 596px square that could never give way was
         # a 596px floor under the whole window, and on Donald's 1080p Windows
         # desktop that put the menu bar off the top of the screen.
@@ -188,16 +193,31 @@ class MapCanvas(QWidget):
         return super().event(e)
 
     def mousePressEvent(self, event):
-        # **Before anything opens.** Only a square with a note has a tooltip,
-        # and only a square with a note failed to open its popover on Windows:
-        # it appeared and closed again immediately, where a blank square was
-        # fine. Qt hides the tooltip itself on a click, but it does it after
-        # the popover is up, and the window closing behind the popup takes the
-        # popup with it. Hiding it first leaves nothing to close.
+        """Note where the press landed. **Nothing opens here.**
+
+        The popover used to open on the press, while the button was still
+        down, and on Windows it closed itself the instant it appeared: the
+        debug log showed it receiving a bare `Close` while still visible and
+        still the active window, with no mouse event, no `FocusOut` and no
+        `WindowDeactivate` before it. That is Qt dismissing a popup, and the
+        only thing left for it to be dismissed by is the release of the very
+        click that opened it -- a popup grabs the mouse, so the release lands
+        on a popup that was not there when the button went down.
+
+        Opening on the release instead means no button is down by the time
+        the popup exists, and there is nothing left to straddle it.
+        """
         QToolTip.hideText()
-        square = self.square_at(event.position().x(), event.position().y())
         self.flash = None
-        if square is None:
+        self._pressed = self.square_at(event.position().x(),
+                                       event.position().y())
+        self._pressed_button = event.button()
+
+    def mouseReleaseEvent(self, event):
+        square = self.square_at(event.position().x(), event.position().y())
+        pressed, self._pressed = getattr(self, "_pressed", None), None
+        # Both ends on the same square, or it was a drag and not a click.
+        if square is None or square != pressed:
             return
         at = event.globalPosition().toPoint()
         if event.button() == Qt.MouseButton.RightButton and \

@@ -1833,11 +1833,20 @@ def test_a_click_hides_the_tooltip_before_the_popover_opens(app, tmp_path,
     hidden = []
     monkeypatch.setattr(QToolTip, "hideText",
                         staticmethod(lambda: hidden.append(True)))
-    window.canvas.mousePressEvent(QMouseEvent(
-        QMouseEvent.Type.MouseButtonPress, at, at,
-        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier))
-    assert hidden, "the tooltip is hidden before the popover opens"
+
+    def press(kind):
+        window.canvas.__getattribute__(
+            "mousePressEvent" if kind == "down" else "mouseReleaseEvent")(
+            QMouseEvent(
+                QMouseEvent.Type.MouseButtonPress if kind == "down"
+                else QMouseEvent.Type.MouseButtonRelease, at, at,
+                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier))
+
+    press("down")
+    assert hidden, "the tooltip is hidden as soon as the button goes down"
+    assert window._popover is None, "and nothing opens until it comes up"
+    press("up")
     assert window._popover is not None
 
     # And with one open, the square offers no tooltip to reopen.
@@ -1847,6 +1856,36 @@ def test_a_click_hides_the_tooltip_before_the_popover_opens(app, tmp_path,
     spot = QPoint(int(at.x()), int(at.y()))
     window.canvas.event(QHelpEvent(QEvent.Type.ToolTip, spot, spot))
     assert not shown
+    window._popover.close()
+
+
+def test_a_drag_across_squares_opens_nothing(app, tmp_path, monkeypatch):
+    """The popover opens on the release, so the release has to land on the
+    square the press did. Otherwise dragging across the map would open a note
+    on whichever square the mouse happened to stop over."""
+    from PyQt6.QtCore import QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.canvas.resize(window.canvas.sizeHint())
+
+    def at(x, y):
+        return QPointF(MARGIN + x * CELL + 2, MARGIN + y * CELL + 2)
+
+    def send(kind, point):
+        which = ("mousePressEvent" if kind == "down" else "mouseReleaseEvent")
+        getattr(window.canvas, which)(QMouseEvent(
+            QMouseEvent.Type.MouseButtonPress if kind == "down"
+            else QMouseEvent.Type.MouseButtonRelease, point, point,
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier))
+
+    send("down", at(3, 4))
+    send("up", at(7, 9))                       # let go somewhere else
+    assert window._popover is None
+    send("down", at(3, 4))
+    send("up", at(3, 4))                       # and again, properly
+    assert window._popover is not None
     window._popover.close()
 
 
