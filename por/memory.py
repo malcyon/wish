@@ -86,10 +86,12 @@ MAP: tuple[Region, ...] = (
     Region(0x49FD, 2, "wall colour by roofed bit", MAYBE, saved_in="SAVEDGAME0",
            note="a two-entry table indexed by the roofed bit of the square you "
                 "stand on; every ECL writes both"),
-    Region(0x4A00, 0x20, "per-script scratch", MAYBE, saved_in="SAVEDGAME0",
-           note="zeroed by DUNGEON $202A whenever the resident ECL changes, so "
-                "nothing here survives leaving an area. $4A07 is 'staying at "
-                "the inn' in ECL00 and something else in seven other scripts"),
+    Region(0x4A00, 0x20, "per-script scratch", OK, saved_in="SAVEDGAME0",
+           note="zeroed by the NEWECL handler's LDX #$1F / LDA #$00 / "
+                "STA $4A00,X / DEX / BPL at DUNGEON $202A-$2032 whenever the "
+                "resident ECL changes, so nothing here survives leaving an "
+                "area. $4A07 is 'staying at the inn' in ECL00 and something "
+                "else in seven other scripts"),
     Region(0x4A20, 0xD9, "persistent quest flags", MAYBE,
            saved_in="SAVEDGAME0",
            note="survives an area change, unlike $4A00-$4A1F. 179 of these "

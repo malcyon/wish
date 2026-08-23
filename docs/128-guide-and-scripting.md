@@ -163,7 +163,7 @@ without it. The agreement is exact where it can be:
 
 | claim | ours | theirs |
 |---|---|---|
-| lower boundary of the persistent block | `$4A20`, from `DUNGEON $282E` zeroing `$4A00`-`$4A1F` | "`$4A00`…`$4A1F` are reset to 0 every time a new ECL script is loaded" |
+| lower boundary of the persistent block | `$4A20`, from `DUNGEON $202A` zeroing `$4A00`-`$4A1F` | "`$4A00`…`$4A1F` are reset to 0 every time a new ECL script is loaded" |
 | upper boundary | `$4AF8` — no operand in thirty scripts names anything above it | highest named flag is `$4AF8`; `$4AF9`…`$4AFF` "unknown" |
 | unreferenced gaps | `$4A53`-`$4A58`, `$4A6E`-`$4A71`, `$4A79`-`$4A7B`, `$4AA3`-`$4AA5`, `$4ADC`-`$4ADF` | the same five ranges, all "unused" |
 | `$4A72` | "exists only as the casualty" of a bug in `ECL07 $A81C` | "mistakenly set in Valjevo Castle Inner Tower; never checked" |

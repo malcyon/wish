@@ -221,7 +221,7 @@ bytes **194**, **195** and **196** of the file — useful if you want to read th
 without the library.
 
 **Quest state is found, and the region above is where it lives.** The split at
-`$4A20` is the game's own: `DUNGEON $282E` zeroes `$4A00`-`$4A1F` on every area
+`$4A20` is the game's own: `DUNGEON $202A` zeroes `$4A00`-`$4A1F` on every area
 change and everything from `$4A20` to `$4AF8` survives. `work/reports/quest-flags.md`
 attributes 172 of those addresses to the scripts that write them, and a DOS guide
 published since names 229 of them in English —

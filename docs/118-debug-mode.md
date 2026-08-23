@@ -42,12 +42,22 @@ It does not load a map. It does five things:
 | `$2011`-`$2016` | `$49F2 = $6E1B & $7F` | the **outgoing** area id, which is how the arriving script knows where you came from |
 | `$2019`-`$2023` | evaluate the operand; skip everything if it is `$FF` or equals the current id | **warping to the area you are already in is a no-op** |
 | `$2025`-`$2027` | `$6E1B = new \| $80` | the ECL slot of the loaded-files cache, bit 7 = "reload me" |
-| `$202A`-`$2032` | zero `$4A00`-`$4A1F` | the origin of the scratch/persistent split |
+| `$202A`-`$2032` | zero `$4A00`-`$4A1F` — `LDX #$1F / LDA #$00 / STA $4A00,X / DEX / BPL`, the store itself at `$202E` | the origin of the scratch/persistent split |
 | `$2034`-`$203E` | `JSR $1A3C`, `INC $6DDD`, `LDX $03BF / TXS`, `JMP $0809` | flush the position, reset the stack, restart `DUNGEON` |
 
 `$1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` — so the save's
 party position is written from the live one at exactly this moment, which is why
 `$49C0` "lags a move".
+
+**Every `DUNGEON` address here is a run-time address, and `DUNGEON` does not run
+where its PRG header says.** The header carries `$1000`; the file is loaded and
+executed at `$0800`, so a file offset maps to an address as `offset + $07FE` and
+anything computed from the header comes out `$800` too high. Three independent
+checks: the file opens with a jump table whose first entry is `JMP $0809`, the
+restart target; `$1A3C` disassembles to the `$49E6` position copy above; and
+`$09F7` is `LDA $49C9 / JSR / LDA #':' / JSR / LDA $49C8 / JSR / LDA $49C7`, the
+clock printer. CONFIRMED. A stale `$282E` for the scratch wipe was this mistake
+— `$202E + $800` — and run-time `$282E` is a `BEQ` in an unrelated table search.
 
 The restart re-enters `DUNGEON` at `$0809`, which loads whatever in
 `$6E13`-`$6E2B` carries bit 7 and then calls the new script's **entry 4**, the

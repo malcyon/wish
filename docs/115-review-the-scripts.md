@@ -28,7 +28,7 @@ that clearing the pollution swaps an impassable-terrain table.
   one of the 352 bytes a disposition: 172 named by a direct ECL operand, 7 more
   as the interior of a proven table, and **135 shown not to be flag storage at
   all** — the region ends at `$4AF8`, not `$4AFF`, and `$4A00`-`$4A1F` is
-  per-script scratch that `DUNGEON $282E` wipes on every area change. What is
+  per-script scratch that `DUNGEON $202A` wipes on every area change. What is
   left for a human is the *meanings*: the DOS guide names 229 of these addresses
   in English (`docs/128` §"The script-flag map"), and merging its names onto our
   addresses is a cheap, high-value job for whoever next touches
