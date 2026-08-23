@@ -368,7 +368,7 @@ def test_area_30_is_never_offered_however_the_setting_is_written(app):
     does not get it (`work/reports/p20-arrivals.md`)."""
     from automap.config import Settings
 
-    row = bar(app, settings=Settings(warp_areas=[0, 30]))
+    row = bar(app, settings=Settings(fast_travel_targets=[0, 30]))
     assert [r.id for r in row.rows] == [0]
 
 
@@ -378,7 +378,7 @@ def test_nothing_ticked_says_so_rather_than_looking_broken(app):
     instead of the emulator's."""
     from automap.config import Settings
 
-    row = bar(app, machine(area=13), settings=Settings(warp_areas=[]))
+    row = bar(app, machine(area=13), settings=Settings(fast_travel_targets=[]))
     assert row.rows == ()
     assert row.area() is None
     assert not row.combo.isEnabled()
@@ -699,6 +699,7 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
 
     window.actions_bar, window.messages = Bar(), Messages()
     window.mapper = type("M", (), {"target": object()})()
+    window._refresh_roster = lambda: seen.update(refreshed=True)
     monkey = actions.LevelUp
     actions.LevelUp = Action
     try:
@@ -706,5 +707,27 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     finally:
         actions.LevelUp = monkey
     assert seen["kwargs"] == {"slot": 3, "class_name": "fighter", "spell": None}
-    assert seen["asked"] == "sure?"
+    assert "asked" not in seen           # no confirmation: the button is the ask
     assert seen["said"] == "level up: SILAS is a fighter 6"
+    assert seen["refreshed"], "the card still shows the old level and xp"
+
+
+def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
+    """`find_disks` returns the directory, not a list of images. Iterating it
+    crashed the window the first time a magic-user levelled -- `'PosixPath'
+    object is not iterable`."""
+    import automap.window as win
+
+    window = win.AutomapWindow.__new__(win.AutomapWindow)
+    window._spell_names = None
+    window.state = type("S", (), {"title": None})()
+    (tmp_path / "POOL1.D64").write_bytes(b"")       # a directory with a disk
+    monkey = win.find_disks if hasattr(win, "find_disks") else None
+    assert monkey is None                            # imported inside, not at top
+    import automap.paths as paths
+    was = paths.find_disks
+    paths.find_disks = lambda game=None: tmp_path
+    try:
+        assert win.AutomapWindow._names_for_spells(window) == {}
+    finally:
+        paths.find_disks = was

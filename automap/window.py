@@ -721,6 +721,11 @@ class AutomapWindow(QMainWindow):
         """
         if self._live_ticks % self.LIVE_EVERY:
             return
+        self._refresh_roster()
+
+    def _refresh_roster(self) -> None:
+        """Re-read the party and redraw the cards. Called by the poll, and
+        straight after a write that changes what a card shows."""
         target = self.mapper.target
         # The buttons follow the mode flag, and the watcher gets its tick here
         # rather than from a timer of its own -- the edge it fires on is the
@@ -927,12 +932,19 @@ class AutomapWindow(QMainWindow):
         but is not a refusal.
         """
         if self._spell_names is None:
+            # `find_disks` returns the *directory*, not a list of images -- the
+            # same shape `live.item_names` walks with `_disk_names`. Iterating
+            # it directly crashed the window the first time a wizard levelled.
+            from .live import _disk_images
             from .paths import find_disks
+
             self._spell_names = {}
-            for disk in find_disks() or ():
+            game = game_named(self.state.title)
+            root = find_disks(game)
+            for path in (_disk_images(root, game) if root else ()):
                 try:
                     from por.spells import load_spell_names
-                    found = load_spell_names(disk, game_named(self.state.title))
+                    found = load_spell_names(str(path), game)
                 except Exception:                       # not the right disk
                     continue
                 if found:
@@ -973,12 +985,17 @@ class AutomapWindow(QMainWindow):
             spell = self._chosen_spell(member.record, member.name)
             if spell is None:
                 return                      # the player closed the dialog
-        if action.confirm and not self.actions_bar.ask(action.confirm):
-            return
+        # No confirmation: the button only appears on a character who can
+        # level, it names the class it will raise, and a save disk is a copy.
         outcome = action.apply(target, slot=slot, class_name=class_name,
                                spell=spell or None)
         self.messages.say(f"level up: {outcome.message}",
                           "\n".join(outcome.notes), alarm=not outcome.ok)
+        if outcome.ok:
+            # The card caches what it drew. A level-up changes the experience
+            # bar, the level, and whether the button belongs there at all --
+            # and a multi-class character usually still has a class to raise.
+            self._refresh_roster()
 
     def point_at(self, x: int, y: int) -> None:
         """Flash a square, because a row in the notes list was clicked."""
