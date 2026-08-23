@@ -21,6 +21,7 @@ Monitor-shaped spelling `tools/` uses.
 
 from __future__ import annotations
 
+import logging
 import os
 import socket
 import struct
@@ -49,6 +50,10 @@ def monitor_address(value: str | None = None) -> tuple[str, int]:
     except ValueError:
         return DEFAULT_MON_HOST, DEFAULT_MON_PORT
 
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off.
+_log = logging.getLogger("wish.automap.vice")
 
 # The import-time snapshot, kept because `tools/drive.py` re-exports it. Code
 # that wants the *current* answer calls `monitor_address()`: a long-lived GUI
@@ -108,8 +113,11 @@ class Monitor:
                 # EXIT resumes the emulator; closing does too, but saying so
                 # explicitly means a lingering socket cannot freeze the game.
                 self._send(CMD_EXIT, b"")
-        except Exception:
-            pass
+        except Exception as exc:
+            # The close below resumes the emulator too, so a failed EXIT is
+            # survivable -- but it is also the shape of a monitor that has
+            # already gone, which is worth seeing in a report.
+            _log.debug("the monitor would not take EXIT: %s", exc)
         finally:
             if self.sock is not None:
                 self.sock.close()

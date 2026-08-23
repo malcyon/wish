@@ -96,6 +96,11 @@ NO_MAPS = ("No game disks found, so there are no maps. "
 
 _notelog = logging.getLogger("wish.automap.note").info
 
+#: Everything else this window has to say. A child of the `wish` logger, so
+#: `wish/debuglog.py`'s handler takes it when the log is on and its level
+#: swallows it when the log is off.
+_log = logging.getLogger("wish.automap.window")
+
 
 def game_named(title: str | None):
     """The `Game` this title is, for the readers that need one."""
@@ -695,6 +700,9 @@ class AutomapWindow(QMainWindow):
         self.no_maps = not getattr(mapper, "_maps", None)
         self._popover: NotePopover | None = None
         self._waiting = "" if mapper.target is not None else "looking for the game"
+        #: The last swallowed poll failure, so its traceback is written once
+        #: rather than on every tick.
+        self._trouble = ""
         self.alarm = False
         self._live_ticks = 0
         self.snapshot = None
@@ -781,9 +789,15 @@ class AutomapWindow(QMainWindow):
         except Exception as exc:                      # keep the window alive
             if not self._drive:
                 raise
-            self._status.setText(f"trouble reading the emulator: {exc}")
-            self.messages.say(f"trouble reading the emulator: {exc}",
-                              alarm=True)
+            trouble = f"trouble reading the emulator: {exc}"
+            # Once per distinct failure. The window survives a poll that throws
+            # on every tick, and five tracebacks a second would bury the log it
+            # is meant to leave behind.
+            if trouble != self._trouble:
+                self._trouble = trouble
+                _log.exception("the poll raised, and was swallowed")
+            self._status.setText(trouble)
+            self.messages.say(trouble, alarm=True)
             return
         self._waiting = ""
         if changed:
@@ -1121,7 +1135,8 @@ class AutomapWindow(QMainWindow):
                 try:
                     from por.spells import load_spell_names
                     found = load_spell_names(str(path), game)
-                except Exception:                       # not the right disk
+                except Exception as exc:                # not the right disk
+                    _log.debug("no spell names on %s: %s", path.name, exc)
                     continue
                 if found:
                     self._spell_names = found
@@ -1234,7 +1249,9 @@ class AutomapWindow(QMainWindow):
             try:
                 self.mapper.target.close()
             except Exception:
-                pass
+                # The window is closing either way; a connection that will not
+                # hang up cleanly must not stop the notes being written.
+                _log.exception("closing the connection raised on shutdown")
 
     def closeEvent(self, event):
         self.shutdown()

@@ -72,6 +72,9 @@ def game_of(save: str | None):
         from por.d64 import D64
         return games.detect(D64.open(save))
     except Exception:
+        # The editor opens the same disk and reports its own failure; this one
+        # only decides which title's maps to load.
+        debuglog.exception("could not tell which game %s belongs to", save)
         return None
 
 

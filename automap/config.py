@@ -8,11 +8,17 @@ an error -- losing a preference is not worth refusing to start over.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, fields
 
 from .paths import config_dir
 
 FILE = "automap.json"
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off.
+_log = logging.getLogger("wish.automap.config")
+
 
 #: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `por/areas.py`
 #: ids 0, 20 and 21. The three a party has almost certainly walked in by the
@@ -236,6 +242,7 @@ def restore_geometry(window, settings: Settings,
             done = window.restoreGeometry(
                 QByteArray.fromBase64(settings.geometry.encode("ascii")))
         except Exception:               # a hand-edited file, or another build
+            _log.exception("the remembered geometry would not restore")
             done = False
     if not done:
         w, h = settings.window_width, settings.window_height

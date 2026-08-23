@@ -156,7 +156,10 @@ class Session(QObject):
             try:
                 target.close()
             except Exception:
-                pass
+                # Broad on purpose: `detach` is called from the poll, from the
+                # close and from a backend switch, and none of those has
+                # anywhere to put a failure to hang up.
+                debuglog.exception("closing the connection raised")
         self._say(note)
         self._retime()
 

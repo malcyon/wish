@@ -29,9 +29,14 @@ duplicates it.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from por.geo import DIRECTIONS, GEO_SIZE, STEP, Geo
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off.
+_log = logging.getLogger("wish.automap.area")
 
 # Where a loaded GEO block sits: **$0400**, and the game does not relocate it at
 # all. The file is a PRG loading at $0400, which is screen memory at boot -- but
@@ -192,6 +197,10 @@ class ResidentGeo:
                 try:
                     geo = Geo(chunk)
                 except Exception:
+                    # Not logged, and the one handler here that is not: this
+                    # sweeps hundreds of kilobytes a step at a time and "these
+                    # bytes are not a map" is the loop's ordinary answer, not a
+                    # fault. A line each would be the whole log.
                     continue
                 agree, total = geo.reciprocity()
                 if total and agree / total > 0.98:
@@ -204,5 +213,8 @@ class ResidentGeo:
             return None
         try:
             return Geo(self.target.read(self.address, GEO_SIZE))
-        except Exception:
+        except Exception as exc:
+            # Read on every poll, and the map moves out from under us on every
+            # area change, so one line and no traceback.
+            _log.debug("no map at $%04X any more: %s", self.address, exc)
             return None

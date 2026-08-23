@@ -21,6 +21,8 @@ from typing import Callable
 from automap.paths import vice_settings_hint
 from automap.target import Target, ViceTarget, monitor_listening
 
+from . import debuglog
+
 
 @dataclass(frozen=True)
 class Backend:
@@ -41,7 +43,11 @@ class Backend:
         """`probe()`, with anything it throws treated as "not there"."""
         try:
             return bool(self.probe())
-        except Exception:
+        except Exception as exc:
+            # Probed on every tick while nothing is attached, so one line and
+            # no traceback: a backend that is not there says so five times a
+            # second and would otherwise bury the log.
+            debuglog.debug("%s did not answer the probe: %s", self.name, exc)
             return False
 
 
@@ -64,7 +70,9 @@ def _ultimate() -> list[Backend]:
     """
     try:
         from .ultimate import ULTIMATE
-    except Exception:                       # pragma: no cover - defensive
+    except Exception as exc:                # pragma: no cover - defensive
+        # Also on the per-tick path, through `available()`.
+        debuglog.debug("the Ultimate backend did not import: %s", exc)
         return []
     return [ULTIMATE]
 

@@ -17,6 +17,7 @@ alone, and `por/games.py` is the only place that knows the difference.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from por import games
@@ -27,6 +28,11 @@ from por.record import CharacterRecord
 from por.savegame import SaveGame0, SaveGame1, load_save
 
 from .inventory import Inventory
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off -- and
+#: `editor` still imports nothing from `wish`.
+_log = logging.getLogger("wish.editor.roster")
 
 
 @dataclass
@@ -56,7 +62,11 @@ class Member:
         from por.yaml_io import RACES
         try:
             code = int(self.record.get("race"))
-        except Exception:
+        except Exception as exc:
+            # Read for every visible row on every repaint, so one line and no
+            # traceback: a record whose race will not read is a blank cell, not
+            # a reason to stop drawing the table.
+            _log.debug("no race for %s: %s", self.name, exc)
             return ""
         return RACES.get(code, "monster" if code == 0 else str(code))
 
@@ -70,13 +80,15 @@ class Member:
         from .enums import CHAR_CLASS, CLASS_BIT_NAMES
         try:
             bits = int(self.record.get("class_bits"))
-        except Exception:
+        except Exception as exc:
+            _log.debug("no class_bits for %s: %s", self.name, exc)
             return ""
         if bits:
             return CLASS_BIT_NAMES.get(bits, str(bits))
         try:
             return CHAR_CLASS.get(int(self.record.get("char_class")), "")
-        except Exception:
+        except Exception as exc:
+            _log.debug("no char_class for %s: %s", self.name, exc)
             return ""
 
     @property
@@ -150,7 +162,11 @@ class Party:
                 continue
             try:
                 record = CharacterRecord.from_prg(self.disk.read_file(entry))
-            except Exception:
+            except Exception as exc:
+                # A roster disk carries PRGs that are not characters -- the
+                # loader among them -- so a file that will not parse is the
+                # filter working, not a fault.
+                _log.debug("%s is not a character record: %s", entry.name, exc)
                 continue
             self.members.append(
                 Member(i, record, record.name, source=entry.name,

@@ -632,8 +632,8 @@ def dress(app) -> None:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 "net.donaldmorton.wish")
-        except Exception:                    # noqa: BLE001 -- cosmetic only
-            pass
+        except Exception as exc:             # noqa: BLE001 -- cosmetic only
+            debuglog.debug("no app user model id: %s", exc)
 
 
 def run(save: str | None = None, game_disk: str | None = None,

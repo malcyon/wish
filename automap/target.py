@@ -29,6 +29,7 @@ Two hazards from `docs/70-driving-the-game.md` shape what is *not* here:
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from dataclasses import dataclass
@@ -38,6 +39,10 @@ from por import games
 
 from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, monitor_address
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off.
+_log = logging.getLogger("wish.automap.target")
 
 # Pool of Radiance's save image, as names, because tests and documents cite
 # them and because they are what the *save* holds. They are NOT what the memory
@@ -303,8 +308,8 @@ class ViceTarget:
         try:
             if getattr(self, "_mon", None) is not None:
                 self._mon.__exit__(None, None, None)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("could not close a half-made connection: %s", exc)
 
     def close(self) -> None:
         if self._open:
@@ -315,6 +320,11 @@ class ViceTarget:
         try:
             self.close()
         except Exception:
+            # Deliberately the one handler here that says nothing. A `__del__`
+            # can run during interpreter shutdown, where the logging machinery
+            # may already be torn down and a log call is itself what raises;
+            # anything raised here goes to `sys.unraisablehook`, which
+            # `wish/debuglog.py` installs, so it is not lost either way.
             pass
 
     # -- Target ----------------------------------------------------------

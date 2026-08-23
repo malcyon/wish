@@ -31,6 +31,7 @@ a party of six dead characters. The caller holds its last good snapshot.
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import pathlib
 from dataclasses import dataclass
@@ -45,6 +46,10 @@ from por.savegame import (
     SaveGame0,
     SaveGame1,
 )
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off.
+_log = logging.getLogger("wish.automap.live")
 
 ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 
@@ -384,7 +389,10 @@ def item_names(disks=None, game=None) -> dict[int, str] | None:
     for path in _disk_images(root, game):
         try:
             return load_item_names(str(path), game)
-        except Exception:
+        except Exception as exc:
+            # Which disk carries the table is not fixed, so a miss is the
+            # search working. Bounded by the number of images in the folder.
+            _log.debug("no item names on %s: %s", path.name, exc)
             continue
     return None
 

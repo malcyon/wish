@@ -8,6 +8,7 @@ a line of this file changing.
 
 from __future__ import annotations
 
+import logging
 import pathlib
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
@@ -41,6 +42,11 @@ from .enums import tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off -- and
+#: `editor` still imports nothing from `wish`.
+_log = logging.getLogger("wish.editor.window")
 
 
 def _size_combo(combo: QComboBox) -> None:
@@ -576,6 +582,9 @@ class EditorWindow(QMainWindow):
         try:
             party = Party(path)
         except Exception as exc:
+            # The user is told; the log gets the traceback, which is the half a
+            # bug report needs and a dialog cannot carry.
+            _log.exception("could not open %s", path)
             QMessageBox.critical(self, "Cannot open", str(exc))
             return
         self.party, self.path = party, pathlib.Path(path)
@@ -688,7 +697,9 @@ class EditorWindow(QMainWindow):
         for c in self._disk_candidates():
             try:
                 read(c)
-            except Exception:
+            except Exception as exc:
+                # A candidate that has not got the thing is the search working.
+                _log.debug("%s does not carry it: %s", c, exc)
                 continue
             return c
         return None
@@ -719,7 +730,9 @@ class EditorWindow(QMainWindow):
             try:
                 setattr(self, attr, read(found))
             except Exception:
-                pass
+                # Each table is optional on its own: missing item names cost
+                # numbered items, not a window that will not open.
+                _log.exception("could not read %s off %s", attr, found)
         # Damage, protection and the class mask are in the ITEMS type table,
         # not in the item record, so the traits table needs the game disk too.
         self.traits.set_tables(self.item_types, self.spell_names)
@@ -771,6 +784,9 @@ class EditorWindow(QMainWindow):
         try:
             self.icon_parts = IconParts.load(disk)
         except Exception:
+            # `_find_disk` already loaded these off this disk, so a failure
+            # here is surprising and worth the traceback.
+            _log.exception("could not read the icon parts off %s", disk)
             self.icon_parts = None
         else:
             self.icon_parts_disk = disk
@@ -788,6 +804,7 @@ class EditorWindow(QMainWindow):
             self._write_back()
             note = files.save_disk(self.party.disk, self.path, self.backup_dir())
         except Exception as exc:
+            _log.exception("could not save %s", self.path)
             if interactive:
                 QMessageBox.critical(self, "Cannot save", str(exc))
                 return "failed"
@@ -907,7 +924,10 @@ class EditorWindow(QMainWindow):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
             except Exception:
-                pass
+                # A field that will not take the value is one field, not the
+                # whole flush -- but it is an edit the user made and did not
+                # get, so it is logged with its traceback rather than dropped.
+                _log.exception("could not flush %s", name)
         self.party.member(row).name = record.name
 
     def _populate(self) -> None:
@@ -921,7 +941,10 @@ class EditorWindow(QMainWindow):
                 continue
             try:
                 value = record.get(name)
-            except Exception:
+            except Exception as exc:
+                # A field this title does not store, most often. The box shows
+                # its empty value rather than the form failing to fill.
+                _log.debug("no %s on this record: %s", name, exc)
                 value = None
             if isinstance(w, QSpinBox):
                 w.setValue(int(value) if isinstance(value, int) else 0)
@@ -972,7 +995,10 @@ class EditorWindow(QMainWindow):
         """
         try:
             bits = int(record.get("class_bits") or 0)
-        except Exception:
+        except Exception as exc:
+            # No class bits greys every class-gated box, which is the safe way
+            # round: a box `_flush` cannot reach cannot corrupt a record.
+            _log.debug("no class_bits, so every class box is greyed: %s", exc)
             bits = 0
         for name, (needed, why) in BOX_NEEDS_CLASS.items():
             box = self._child(name)

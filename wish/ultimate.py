@@ -49,6 +49,7 @@ import urllib.request
 
 from automap.target import NotConnected
 
+from . import debuglog
 from .backends import Backend
 
 DEFAULT_PORT = 80
@@ -142,7 +143,9 @@ class UltimateTarget:
     def describe(self) -> str:
         try:
             info = json.loads(self._request("/info"))
-        except Exception:
+        except Exception as exc:
+            # A device that will not name itself is still a device to read.
+            debuglog.debug("the Ultimate would not describe itself: %s", exc)
             return "Ultimate"
         return (f"{info.get('product', 'Ultimate')} "
                 f"firmware {info.get('firmware_version', '?')}").strip()
@@ -151,7 +154,10 @@ class UltimateTarget:
 def _errors(body: bytes) -> str:
     try:
         return "; ".join(json.loads(body).get("errors") or []) or "refused"
-    except Exception:
+    except Exception as exc:
+        # The body is the device's, and a firmware that answers with something
+        # other than the documented JSON is exactly what this is for.
+        debuglog.debug("unreadable error body from the Ultimate: %s", exc)
         return "refused"
 
 
@@ -172,7 +178,9 @@ def present(timeout: float = 0.5) -> bool:
             req.add_header("X-Password", password)
         with urllib.request.urlopen(req, timeout=timeout) as reply:
             return reply.status == 200
-    except Exception:
+    except Exception as exc:
+        # Per tick while nothing is attached, so one line and no traceback.
+        debuglog.debug("nothing answered at %s:%s (%s)", host, port, exc)
         return False
 
 

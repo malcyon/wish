@@ -29,8 +29,8 @@ Two facts from `docs/50-experiments.md` bound what is safe to write:
 
 from __future__ import annotations
 
-import contextlib
 import json
+import logging
 import struct
 import time
 from dataclasses import dataclass
@@ -65,13 +65,31 @@ SPELLS_MEMORISED = field_by_name("spells_memorised")
 SPELL_FILE = "spells.json"
 UNKNOWN_DISK = "unknown disk"
 
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off -- without
+#: this module importing `wish`.
+_log = logging.getLogger("wish.automap.actions")
+
+
+def _read(target, addr: int, length: int) -> bytes | None:
+    """`target.read`, or None when the machine cannot be read.
+
+    Every caller treats that as "no answer" rather than as an error: at the
+    title screen, mid-load or with the emulator gone the bytes simply are not
+    there, and each action refuses on that separately. The fault still reaches
+    the log, as one line and not a traceback -- these run on the poll, and the
+    poll above them writes the traceback once per distinct failure.
+    """
+    try:
+        return target.read(addr, length)
+    except Exception as exc:
+        _log.debug("could not read %d bytes at $%04X: %s", length, addr, exc)
+        return None
+
 
 def mode(target) -> int | None:
     """Which overlay is running, or None if the machine cannot be read."""
-    try:
-        raw = target.read(MODE, 1)
-    except Exception:
-        return None
+    raw = _read(target, MODE, 1)
     return raw[0] if raw else None
 
 
@@ -214,7 +232,8 @@ def read_party(target) -> Party | None:
         members = tuple(
             Member(slot=s.index, record=s.record, roster=save1.roster(s.index).raw)
             for s in save0.characters)
-    except Exception:
+    except Exception as exc:
+        _log.debug("these bytes are not a party: %s", exc)
         return None
     return Party(members, bytes(save0_bytes)) if members else None
 
@@ -1056,10 +1075,16 @@ def pc_register(mon, default: int = PC_REGISTER) -> int:
                 got = rid
                 break
             off += size + 1
-    except Exception:                       # pragma: no cover - build-specific
+    except Exception as exc:                # pragma: no cover - build-specific
+        _log.debug("this build does not list its registers (%s); "
+                   "the PC is assumed to be %d", exc, default)
         got = default
-    with contextlib.suppress(Exception):
+    try:
         mon._pc_register = got
+    except Exception as exc:
+        # A monitor that will not take the attribute costs a round trip on
+        # every call and nothing else.
+        _log.debug("could not cache the PC register id: %s", exc)
     return got
 
 
@@ -1083,13 +1108,16 @@ def program_counter(target):
         return None
     try:
         regs = mon.registers()
-    except Exception:
+    except Exception as exc:
+        _log.debug("could not read the registers: %s", exc)
         return None
     finally:
+        # The resume matters more than the read did: the monitor holds the
+        # CPU, so leaving without it freezes the game.
         try:
             mon.resume()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("could not resume after reading the registers: %s", exc)
     return regs.get(pc_register(mon))
 
 
@@ -1109,12 +1137,13 @@ def jump(target, address: int) -> bool:
     try:
         mon.set_registers({pc_register(mon): address})
     except Exception:
+        _log.exception("could not set the PC to $%04X", address)
         return False
     finally:
         try:
             mon.resume()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("could not resume after setting the PC: %s", exc)
     return True
 
 
@@ -1180,27 +1209,18 @@ class Warp(Action):
     @staticmethod
     def current_area(target) -> int | None:
         """The id of the area running now: `$6E1B` without the reload bit."""
-        try:
-            raw = target.read(WARP_SLOT, 1)
-        except Exception:
-            return None
+        raw = _read(target, WARP_SLOT, 1)
         return raw[0] & 0x7F if raw else None
 
     @staticmethod
     def current_disk(target) -> int | None:
-        try:
-            raw = target.read(WARP_DISK, 1)
-        except Exception:
-            return None
+        raw = _read(target, WARP_DISK, 1)
         return raw[0] if raw else None
 
     @staticmethod
     def current_square(target) -> tuple[int, int, int] | None:
-        try:
-            raw = target.read(WARP_X, 3)
-        except Exception:
-            return None
-        return (raw[0], raw[1], raw[2]) if len(raw) == 3 else None
+        raw = _read(target, WARP_X, 3)
+        return (raw[0], raw[1], raw[2]) if raw and len(raw) == 3 else None
 
     # -- may we -----------------------------------------------------------
 
@@ -1229,10 +1249,8 @@ class Warp(Action):
         if here is not None and here == getattr(area, "id", None):
             return Verdict(False, "the party is already in that area, and "
                                   "NEWECL skips a same-area transition")
-        try:
-            indoors = target.read(WARP_INDOORS, 1)[0]
-        except Exception:
-            indoors = None
+        raw = _read(target, WARP_INDOORS, 1)
+        indoors = raw[0] if raw else None
         if indoors == 0 and not getattr(area, "outdoors", False):
             return Verdict(False, self.OUTDOORS_TRAP)
         return Verdict(True)
@@ -1300,10 +1318,8 @@ class Warp(Action):
                        "than a GEO; an arrival square is pointless there, "
                        "because outdoors the party's position is $49C3/$49C4 "
                        "and $C04B is not even GDRIVE00's any more")
-        try:
-            indoors = target.read(WARP_INDOORS, 1)[0]
-        except Exception:
-            indoors = None
+        raw = _read(target, WARP_INDOORS, 1)
+        indoors = raw[0] if raw else None
         if indoors is not None:
             outdoors_now = indoors == 0
             if outdoors_now != bool(getattr(area, "outdoors", False)):
