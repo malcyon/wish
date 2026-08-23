@@ -22,6 +22,7 @@ files, the standing constraints in full, and no commits.
 
 | | task | what is needed |
 |---|---|---|
+| **P77** | Replace the icons we drew ourselves with official Font Awesome ones | Donald picks which; the `OURS` set in `ui/icons.py` exists because Font Awesome Free has no sword and `hat-wizard` was judged unusable at 12px, so the replacements have to be chosen against the 13px sheet in [`109`](109-icon-choices.md), not swapped in blind |
 | **P1** | Read the ECL scripts | a person has to read them — [`115`](115-review-the-scripts.md) |
 | **P12** | Cut the first `v*` tag | after the Windows run below. The tag also publishes to PyPI, and **PyPI never allows re-uploading a version** |
 | **P62** | Run the Windows half of [`122`](122-release-testing.md) | the Linux half is done and passing; the Windows package builds from Actions → release → Run workflow |
