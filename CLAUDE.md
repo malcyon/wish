@@ -201,9 +201,76 @@ factual error in it, and say in a comment that you did.
   machine only he has, a save only he can play to. Work blocked on a
   measurement we could take ourselves is **not** blocked.
 
-**Never undo a label or an edit somebody else made.** A label that is not what
-an agent asked for is at least as likely to be Donald's correction as a fault.
-Ask, or check, before changing it back.
+**Never undo a label or an edit somebody else made. This one has already gone
+wrong.** An agent asked for `enhancement`, Donald had set `question`, the
+mismatch was reported as a fault, and the assistant "fixed" it -- destroying his
+work. He curates labels and priorities by hand and will keep doing so.
+
+So: **an agent never removes or changes a label it did not itself just add**,
+and never re-applies a label that has since been changed. A label that is not
+what you expected is Donald's decision until proven otherwise. If it looks
+wrong, say so in the reply and leave it alone. The same goes for a title,
+a priority, a milestone, or an issue somebody closed.
+
+**Every issue follows one of three templates.** They are in
+`.github/ISSUE_TEMPLATE/` so the forms appear when a human opens one; an agent
+writing an issue with `gh` follows the same shape by hand.
+
+**Bug** -- a defect in our code:
+
+```
+One sentence saying what goes wrong.
+
+## What breaks
+What a user sees, and when. Evidence.
+
+## Root cause
+The mechanism. Addresses and code paths belong here, not above.
+
+## What would fix it
+Not a patch -- the shape of the fix.
+
+## Testing
+What would fail today and pass after.
+```
+
+**Enhancement** -- build this:
+
+```
+One sentence saying what this builds.
+
+## Why
+What is impossible or awkward now.
+
+## What is known
+The measurements it rests on, graded CONFIRMED / PROBABLE / UNKNOWN.
+
+## What has to be found out first
+The blockers, each with the experiment that would settle it.
+
+## Order of work
+Smallest first.
+```
+
+**Question** -- we do not know something:
+
+```
+One sentence stating the question.
+
+## Why it matters
+What changes depending on the answer.
+
+## What we know
+
+## What would settle it
+The specific experiment.
+```
+
+**"What would fix it", not "Fix".** An issue carrying a patch ages into a stale
+patch that no longer applies; an issue carrying the *shape* of the fix stays
+true. And every enhancement ends with a `Documentation:` line linking the doc it
+rests on -- that link is what joins the work list to the knowledge base now the
+P codes are gone.
 
 **Close an issue in the commit that finishes it**, and say which issue in the
 commit message only when it needs saying -- one sentence is still the rule.
