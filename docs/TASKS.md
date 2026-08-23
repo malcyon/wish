@@ -31,17 +31,15 @@ files, the standing constraints in full, and no commits.
 
 | | task | notes |
 |---|---|---|
-| **P46** | The VICE instance pool — [`123`](123-parallel-sessions.md) | `tools/instance.py`, and **remove the four `pkill -x` calls** that would kill a running game. Do it when nothing is driving the emulator |
 | **P48** | `docs/117` obstacle 3 — the item record's binary tail | the DOSBox harness can now arrange the character that exposes it |
 | **P50** | Implement the C64→Amiga port — [`124`](124-amiga-port.md) | unblocked: Pools of Darkness loads a C64 export with no checks at all |
 | **P60** | `tools/genitems.py` and `tools/genmaps.py` carry stale prose | they regenerate `docs/85` and `docs/88`, so the docs cannot be fixed by hand |
-| **P63** | Merge `wish` and `wish-cli` into one binary — [`129`](129-one-binary.md) | agreed; do it before the first tag |
-| **P70** | Windows GUI: the window opens bigger than the screen, spin boxes hide their values, the roster selection reads as stray highlight | found on Windows, none reproduces on Linux |
-| **P71** | Preferences: drop Maps/Names/Icons, box the backend status, drop the debug-log blurb and its popup | |
-| **P72** | The debug log: strip the header comments, and couple it to debug mode | |
 | **P74** | A logo and icons — [`132`](132-logo.md) | the app icon is built and wired; still open: a `.desktop` file, an `.icns`, a README lockup, and a real artist |
-| **P75** | Capitalise **Wish** in the title bar and Help ▸ About | |
 | **P76** | The fighter's level-4 breath save: `por/levels.py` says 16, the game writes 15 | measured on two characters (SILAS 16→15, dwarf MAGNUS 13→12) at that level and no other. Settle it against the game's own table at `$0E2C` before editing ours — if the table says 16 and the game writes 15 it is *their* bug, not our data. `tests/test_liveparty.py`'s `KNOWN_DIVERGENCES` retires with it |
+| **P78** | Make Level Up work, and move it into the roster | needs the hit-die roll, the saving-throw modifiers, the cleric wisdom bonus, a thief skill table and a wizard's new-spell choice; the trainer's own routine is the authority |
+| **P79** | One row per commission, and the raw marker off the face | the slums reads as two commissions because one byte is shown in two groups |
+| **P80** | Decode what is left of the commission flags | the 1–253 markers above all, plus ledger 22's nameless handler, `$4A22`, `$4A4C`/`$4A4E` and the 38 unattributed bytes |
+| **P81** | Fast Travel lists only areas the party has visited | blocked on whether the save itself records this — our JSON only knows what the automapper saw |
 
 ## Needs an emulator
 
@@ -51,7 +49,6 @@ files, the standing constraints in full, and no commits.
 | **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
 | **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
-| **P48b** | `docs/117` obstacle 7 — does the game accept a save we wrote? | one C64 load in VICE, at the point there is a first converted save |
 
 ---
 
@@ -118,3 +115,10 @@ A code retires with its task and is never reused.
 | **P3** | twelve specimen disks driven and taken, including one mid-effect |
 | **P69** | the fastloader answer is worth 1.0 s inside a 1.1 s spread — no guidance needed |
 | **P73** | the fog leak: the resident map is read on every jump, not one time in ten |
+| **P46** | the instance pool, and the four `pkill -x` calls are gone |
+| **P48b** | obstacle 7 closed: the game loads a save we wrote, unvalidated |
+| **P63** | one binary — `wish` is the only console script |
+| **P70** | all three Windows faults: the window, the spin boxes, the roster selection |
+| **P71** | the Preferences dialog trimmed and the backend status boxed |
+| **P72** | the debug log has no preamble and turns debug mode on |
+| **P75** | **Wish** capitalised in the title bar and Help ▸ About |
