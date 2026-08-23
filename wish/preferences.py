@@ -1,4 +1,5 @@
-"""File > Preferences: where the game disks are, and which live backend.
+"""File > Preferences: the game disks, the live backend, and where a warp
+may go.
 
 **Half of this is the report, not the form.** The failure it exists to fix is
 silent -- items rendered as `word 8`, an empty map tab, and the one diagnostic
@@ -43,6 +44,7 @@ import re
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -50,6 +52,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -57,10 +60,14 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStyle,
     QStyleOptionFrame,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
 )
 
 from automap import paths
+from automap.actionbar import DANGER
+from por import areas as area_table
 from por import games
 
 #: Spelled out rather than `QKeySequence.StandardKey.Preferences`, which
@@ -91,6 +98,17 @@ _BADGE = ("border: 1px solid {edge}; border-radius: 7px; padding: 0px 7px;"
 ANSWERING = _BADGE.format(edge="#8fbf9c", ground="#eaf5ed", ink="#1d5b34")
 SILENT = _BADGE.format(edge="#c3c8cf", ground="#f1f3f5", ink="#4a5b6d")
 UNVERIFIED = _BADGE.format(edge="#d8c48a", ground="#fbf4e2", ink="#6b5510")
+
+#: The unverified badge with room for a sentence in it. Same amber, same
+#: border: a warning that looked like a different kind of object from the one
+#: beside the backends would be a second visual language for one idea.
+WARNING_BOX = UNVERIFIED + " padding: 6px 8px;"
+
+#: How tall the area table is allowed to get. Twenty-nine rows is more than a
+#: dialog can show without becoming a wall, so it scrolls. 160 keeps the whole
+#: dialog inside a 1080-line screen's work area with room to spare, which the
+#: geometry work (`docs/130-preferences.md` §12) is the reason to care about.
+TABLE_HEIGHT = 160
 
 #: The `$POR_ULTIMATE` this process started with, read once, so that emptying
 #: the box gives the user's own value back rather than nothing.
@@ -287,6 +305,7 @@ class PreferencesDialog(QDialog):
         outer.addWidget(self._disks_group())
         outer.addWidget(self._backups_group())
         outer.addWidget(self._backend_group())
+        outer.addWidget(self._travel_group())
         outer.addWidget(self._log_group())
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -504,6 +523,90 @@ class PreferencesDialog(QDialog):
 
     def _interval_changed(self, value: int) -> None:
         self.win.set_interval(value)
+
+    # -- fast travel -----------------------------------------------------
+
+    def _travel_group(self) -> QGroupBox:
+        """Which areas the Fast Travel dropdown offers, and the warning.
+
+        **The player chooses, and nothing infers.** The dropdown used to filter
+        itself by the areas the automapper had watched the party walk in;
+        Donald threw that out because the record is only ever ours -- a party
+        walks wherever it likes while the map window is shut -- so this is an
+        explicit list of ticks and there is no second, cleverer rule behind it.
+
+        **Area 30 is not in the table**, ticked or unticked: `ECL1E` is the
+        attract-mode demo and entering it ends the session. `Area.warpable`
+        says so, and it is asked rather than the id being written down here.
+
+        **The warning is a box, not a tooltip.** It is the same amber as the
+        `unverified` badge above it: one visual language for "this is a thing
+        to know before you press it", and a sentence nobody has to hover to
+        find.
+        """
+        box = QGroupBox("Fast travel")
+        outer = QVBoxLayout(box)
+        warning = QLabel(DANGER)
+        warning.setWordWrap(True)
+        warning.setStyleSheet(WARNING_BOX)
+        outer.addWidget(warning)
+
+        #: The table's rows, in the dropdown's own order: by name. Every
+        #: warpable area has one, and area 30 -- the only nameless one -- is
+        #: also the only unwarpable one, so excluding it needs no second rule.
+        self.travel_rows = sorted((a for a in area_table.AREAS if a.warpable),
+                                  key=lambda a: a.name or "")
+        chosen = set(self.win.settings.chosen_areas())
+        self.travel_table = QTableWidget(len(self.travel_rows), 1)
+        self.travel_table.setHorizontalHeaderLabels(["Area"])
+        self.travel_table.verticalHeader().setVisible(False)
+        self.travel_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch)
+        self.travel_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection)
+        self.travel_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.travel_table.setMaximumHeight(TABLE_HEIGHT)
+        self.travel_table.blockSignals(True)
+        for i, row in enumerate(self.travel_rows):
+            item = QTableWidgetItem(row.name or row.ecl)
+            item.setFlags(Qt.ItemFlag.ItemIsUserCheckable
+                          | Qt.ItemFlag.ItemIsEnabled)
+            item.setCheckState(Qt.CheckState.Checked if row.id in chosen
+                               else Qt.CheckState.Unchecked)
+            # The maps and the disk, exactly as the dropdown's items carry
+            # them: interesting to whoever wants them, in nobody's way.
+            item.setToolTip(row.label)
+            self.travel_table.setItem(i, 0, item)
+        self.travel_table.blockSignals(False)
+        self.travel_table.itemChanged.connect(lambda _item: self._travel_changed())
+        outer.addWidget(self.travel_table)
+
+        self.travel_note = QLabel("")
+        self.travel_note.setWordWrap(True)
+        outer.addWidget(self.travel_note)
+        self._say_travel()
+        return box
+
+    def travel_ticked(self) -> list[int]:
+        """The area ids with a tick against them, in table order."""
+        return [row.id for i, row in enumerate(self.travel_rows)
+                if self.travel_table.item(i, 0).checkState()
+                == Qt.CheckState.Checked]
+
+    def _travel_changed(self) -> None:
+        self.win.set_warp_areas(self.travel_ticked())
+        self._say_travel()
+
+    def _say_travel(self) -> None:
+        """How many areas the dropdown will offer, and none is an answer."""
+        ticked = len(self.travel_ticked())
+        self.travel_note.setText(
+            "Nothing ticked, so the Fast Travel list is empty. That is this "
+            "setting doing what you asked, not a fault."
+            if not ticked else
+            f"{ticked} area{'' if ticked == 1 else 's'} in the Fast Travel "
+            "list.")
 
     # -- the debug log ---------------------------------------------------
 

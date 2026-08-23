@@ -14,6 +14,11 @@ from .paths import config_dir
 
 FILE = "automap.json"
 
+#: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `por/areas.py`
+#: ids 0, 20 and 21. The three a party has almost certainly walked in by the
+#: time it wants to travel anywhere, so the list starts safe rather than long.
+DEFAULT_WARP_AREAS: tuple[int, ...] = (0, 20, 21)
+
 
 @dataclass
 class Settings:
@@ -59,6 +64,28 @@ class Settings:
     # `tests/test_debuglog.py` still asserts no settings field carries "log";
     # that test encodes the superseded decision and is Donald's to retire.
     diagnostics: bool = False
+    # Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
+    # **None is not the same as `[]`**: None means nobody has chosen yet, which
+    # is a fresh config and gets `DEFAULT_WARP_AREAS`, while an empty list is a
+    # player who unticked everything and is kept. Anything else in the file --
+    # a number, a string, a hand-edited mess -- reads as "not chosen".
+    warp_areas: list[int] | None = None
+
+    def chosen_areas(self) -> tuple[int, ...]:
+        """The area ids the Fast Travel dropdown may offer."""
+        if not isinstance(self.warp_areas, (list, tuple)):
+            return DEFAULT_WARP_AREAS
+        ids = []
+        for value in self.warp_areas:
+            try:
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue        # a hand-edited file; drop the row, keep the rest
+        return tuple(sorted(set(ids)))
+
+    def set_chosen_areas(self, ids) -> None:
+        """Record the choice, empty included."""
+        self.warp_areas = sorted({int(i) for i in ids})
 
     @classmethod
     def load(cls) -> "Settings":

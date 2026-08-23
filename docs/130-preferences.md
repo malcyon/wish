@@ -597,6 +597,50 @@ What it does now:
 
 ---
 
+## 13. Fast travel — which areas the dropdown offers
+
+The Fast Travel row under the map used to filter itself by the areas the
+automapper had watched the party walk in. Donald threw that out:
+
+> I don't think we can trust our visited-areas record. The player might visit
+> areas while the automapper isn't open. It isn't useful to us.
+
+He is right, and the evidence agrees: the save keeps no visited list at all —
+exactly one arrival flag exists, `$4AC5`, and every game starts there
+([`118-debug-mode.md`](118-debug-mode.md) §2.1) — so the record was only ever
+what wish happened to see. What replaced it is a table of ticks in this dialog.
+
+* **A `QTableWidget`, one checkable row per area**, sorted by name, capped in
+  height so twenty-nine rows scroll rather than making the dialog a wall. Each
+  row's tooltip is the area's `label` — `New Phlan - GEO00, POOL3` — the same
+  string the dropdown's own items carry.
+* **New Phlan, The Slums and Sokol Keep are ticked on a fresh config**, ids 0,
+  20 and 21 in `por/areas.py`.
+* **`Settings.warp_areas` is `null` until somebody ticks something.** That is
+  what distinguishes a fresh config from a player who unticked everything, and
+  it is why an empty selection comes back empty instead of quietly reverting to
+  the three. `Settings.chosen_areas()` is the reader; anything in the file that
+  is not a list of numbers reads as "never chosen", because the file is
+  documented as one you can hand-edit.
+* **Nothing ticked says so in both places.** The note under the table says the
+  Fast Travel list is empty and that this setting is doing what was asked, and
+  the dropdown itself shows `No areas ticked — Preferences ▸ Fast travel` with
+  the button disabled and the same reason in its tooltip.
+* **Area 30 is not in the table**, ticked or not: `ECL1E` is the attract-mode
+  demo and entering it ends the session. `Area.warpable` is asked; the id is
+  not written down here.
+* **The warning is a framed box, not a tooltip** — *"Fast travel to areas you
+  haven't been to is dangerous and can break the game."*, Donald's wording, at
+  the top of the section in the `UNVERIFIED` amber the backend badges use, with
+  room for a sentence in it. One visual language for "know this before you
+  press it", and the same sentence is the Fast Travel button's own tooltip.
+
+The path is the one every other control here takes: the table writes through
+`WishWindow.set_warp_areas`, which saves the settings and tells the row to
+repopulate. No second storage, no second precedence rule.
+
+---
+
 ## Open
 
 * **`sight` has no UI anywhere** and is deliberately left that way. Whether it

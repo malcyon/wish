@@ -18,8 +18,8 @@ first, because that one needs an answer.
 `WarpBar` is the same shape for the one action that is not in that row: the
 Fast Travel row. It asks nothing before it writes: the game itself stops and
 asks for the disk it wants, so the confirmation was a question the game was
-about to ask again. What travelling does not guarantee is under a help icon
-beside the buttons.
+about to ask again. What travelling costs is the Fast Travel button's own
+tooltip, and the same sentence is a framed box in Preferences.
 
 The quickfight watcher is a checkbox and off by default: it writes to a running
 machine on an edge nobody asked for otherwise, and a setting that acts on its
@@ -31,8 +31,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -40,16 +39,13 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QToolButton,
     QWidget,
 )
 
-from ui.iconpaint import icon_pixmap
-
 from . import actions as engine
 from .area import ResidentGeo
+from .config import Settings
 from .panel import MUTED
-from .state import visited_geos
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -200,9 +196,15 @@ class ActionBar(QWidget):
 #: of a timeout that was too short.
 VERIFY_SECONDS = 30.0
 
-#: The side of the help icon, in pixels. Half of it is the corner radius, so
-#: the border draws a circle rather than a rounded square.
-HELP_SIZE = 16
+#: The Fast Travel button's own help text, and Donald's wording exactly. The
+#: same sentence is a framed box in the Preferences dialog's Fast travel
+#: section, because a tooltip is only read by somebody who already suspects
+#: there is something to read.
+DANGER = ("Fast travel to areas you haven't been to is dangerous and can "
+          "break the game.")
+
+#: What the row says when the player has ticked nothing.
+NOTHING_TICKED = "No areas ticked — Preferences ▸ Fast travel"
 
 
 class WarpBar(QWidget):
@@ -222,7 +224,8 @@ class WarpBar(QWidget):
     twice in the game, the party walking afterwards (`docs/118-debug-mode.md`,
     P15). Fourteen areas have no arrival square of their own, so one is chosen
     off the map, and every area's script assumes quest flags the party never
-    set. `Warp.HELP` says so, under the help icon at the end of the row.
+    set. `DANGER` is the short version of that, and it is the Fast Travel
+    button's own tooltip while the button is usable.
 
     **Nothing is confirmed and no disk is named.** Both were dialogs and rows
     of small print in front of a feature Donald has now tested: the game stops
@@ -238,27 +241,30 @@ class WarpBar(QWidget):
     Everything the row refuses, it refuses with the reason -- the same rule
     `ActionBar` follows, and here the reasons are the whole diagnostic.
 
-    **The dropdown offers what we have watched the party walk in.** Donald's
-    reasoning is that travelling somewhere you have already been is a safer
-    thing to offer and a purer one to play. The record is ours -- one
-    `GEO*.json` under the map folder, written by the automapper -- because the
-    game has none: thirty area scripts were walked from their
-    area-initialisation entry and exactly one writes a persistent flag merely
-    because the party arrived, `ECL00`'s first-entry-to-Phlan flag, which is
-    where every game starts. See `automap/state.py::visited_geos` and
-    `docs/50-experiments.md`.
+    **The player chooses which areas are offered, in Preferences.** The row
+    tried filtering by what the automapper had watched the party walk in;
+    Donald threw that out -- *"I don't think we can trust our visited-areas
+    record. The player might visit areas while the automapper isn't open"* --
+    and he is right, because the record was only ever ours. The game keeps
+    none: thirty area scripts were walked from their area-initialisation entry
+    and exactly one writes a persistent flag merely because the party arrived,
+    `ECL00`'s first-entry-to-Phlan flag, which is where every game starts
+    (`docs/50-experiments.md`). So the list is an explicit setting --
+    `Settings.chosen_areas`, ticked in Preferences ▸ Fast travel, New Phlan,
+    The Slums and Sokol Keep on a fresh config.
 
-    That makes the filter a convenience, not a fact about the save, so it is a
-    checkbox and not a rule: empty record, no filter and the reason in its
-    tooltip. **It does not narrow what a warp may do** -- `Warp.legality` and
-    the arrival-square logic are unchanged, and `HELP` still says what
-    arriving somewhere the party never played to costs.
+    **Nothing ticked is an answer, not a fault.** The dropdown then says so
+    and the button is disabled with the same reason, rather than looking like
+    a feature that failed to load.
+
+    **The choice narrows what is offered, never what is legal.**
+    `Warp.legality` and the arrival-square logic are untouched.
 
     The area table is `por/areas.py`, and the row holds no copy of it.
     """
 
     def __init__(self, parent=None, warp=None, areas=None, say=None,
-                 maps=None, visited=None):
+                 maps=None, settings: Settings | None = None):
         super().__init__(parent)
         self.say = say or (lambda text, detail="", alarm=False: None)
         self.warp = warp or engine.Warp()
@@ -267,15 +273,16 @@ class WarpBar(QWidget):
         self.maps = maps if maps is not None else {}
         rows = engine.area_rows() if areas is None else areas
         #: Every area a warp is allowed to name, in display order. `rows` is
-        #: what the dropdown is currently showing, which is a subset of this
-        #: whenever the visited filter is on.
+        #: what the dropdown is currently showing, which is the ticked subset
+        #: of this whenever there are settings to read.
         self.all_rows = self._sorted(r for r in rows
                                      if getattr(r, "warpable", True))
+        #: Whose choice to honour. **None means every warpable area**, which
+        #: is a row built without a window -- the one construction site in the
+        #: program passes the window's settings, so this is the tests' case
+        #: and not a fallback anybody plays with.
+        self.settings = settings
         self.rows = self.all_rows
-        #: Where the visited record is read from; a test points it elsewhere.
-        self.visited_dir = visited
-        self._visited: set[str] = set()
-        self._visited_read = 0.0
         self.target = None
         self.last: engine.Outcome | None = None
         #: `(GEO names to watch for, when to give up)`, while a warp is in
@@ -301,23 +308,10 @@ class WarpBar(QWidget):
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
         grid.addWidget(self.back_button, 0, 3)
 
-        self.help_icon = self._help_button(engine.Warp.HELP)
-        grid.addWidget(self.help_icon, 0, 4)
-
-        #: Show only the areas we have watched the party walk in. On by
-        #: default where there is a record and off, disabled and explained
-        #: where there is not -- see `set_visited_only`.
-        self.visited_only = QCheckBox("Only areas I have mapped")
-        self.visited_only.setFont(self.note_font())
-        self.visited_only.toggled.connect(lambda _on: self.repopulate())
-        grid.addWidget(self.visited_only, 1, 0, 1, 5)
-
         #: What the last trip did. Empty until something has been clicked --
-        #: the standing warning that used to sit here is under the help icon.
+        #: the standing warning is the Fast Travel button's own tooltip.
         self.note = self._small(QLabel(""))
-        grid.addWidget(self.note, 2, 0, 1, 5)
-        self.read_visited(force=True)
-        self.visited_only.setChecked(bool(self._visited))
+        grid.addWidget(self.note, 1, 0, 1, 4)
         self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
@@ -354,110 +348,32 @@ class WarpBar(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         return label
 
-    def note_font(self):
-        """The 8-point face the row's small print uses."""
-        font = self.font()
-        font.setPointSize(8)
-        return font
-
-    @staticmethod
-    def _help_button(text: str) -> QToolButton:
-        """Font Awesome's `circle-info`, on a button whose tooltip is `text`.
-
-        **A button rather than a label**, which is Donald's call and the right
-        one: a drawn glyph on the face of a window is furniture, and nothing
-        about it says there is anything to point at. `autoRaise` gives it the
-        frame-on-hover every other tool button has, so the affordance is the
-        style's rather than something invented here.
-
-        **It does nothing when clicked.** The tooltip is the whole content, and
-        a button that opens a dialog saying what the tooltip said is the dialog
-        this row already got rid of.
-
-        **Rich text, because that is what makes a tooltip wrap.** `QTipLabel`
-        turns word wrap on only when the text might be rich text; a paragraph
-        of plain text becomes one line as wide as the screen, which is no
-        better than the dialog it replaced.
-        """
-        button = QToolButton()
-        button.setIcon(QIcon(icon_pixmap("circle-info", HELP_SIZE, MUTED)))
-        button.setIconSize(QSize(HELP_SIZE, HELP_SIZE))
-        button.setAutoRaise(True)
-        button.setCursor(Qt.CursorShape.WhatsThisCursor)
-        # Not in the tab order: there is nothing to activate, so stopping here
-        # on the way to the Fast Travel button would be a dead end.
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.setToolTip(f"<p>{text}</p>")
-        button.setAccessibleName("About fast travel")
-        return button
-
     # -- which areas are offered -------------------------------------------
 
-    #: How often the visited record is re-read off disk while the row is up.
-    #: The party maps a new area every few minutes at best, and `refresh` runs
-    #: on every poll.
-    VISITED_EVERY = 5.0
+    def chosen_rows(self) -> tuple:
+        """The areas the player has ticked, in display order.
 
-    def read_visited(self, force: bool = False) -> set[str]:
-        """The `GEO` names our own map files record squares for.
-
-        Re-read rather than cached for the session: the whole point is that the
-        list grows while the player walks, and a dropdown that only learns at
-        startup would be wrong within the first minute.
+        With no settings -- a row built without a window -- every warpable
+        area, because there is nobody to have made a choice.
         """
-        now = time.monotonic()
-        if force or now - self._visited_read >= self.VISITED_EVERY:
-            self._visited = visited_geos(self.visited_dir)
-            self._visited_read = now
-        return self._visited
+        if self.settings is None:
+            return self.all_rows
+        wanted = set(self.settings.chosen_areas())
+        return tuple(r for r in self.all_rows if getattr(r, "id", None) in wanted)
 
-    def visited_rows(self) -> tuple:
-        """The areas whose maps we have watched the party stand on.
-
-        An area counts when **any** of its `GEO` files does: the two-map areas
-        -- Kuto's Well, the lizardman keep, the Temple district -- are one
-        place to a player.
-        """
-        seen = self.read_visited()
-        return tuple(r for r in self.all_rows
-                     if seen & set(getattr(r, "geos", ()) or ()))
-
-    def set_visited_only(self, on: bool) -> None:
-        self.visited_only.setChecked(bool(on))
+    def reload_areas(self) -> None:
+        """The setting changed. Called by the Preferences dialog's table."""
+        self.repopulate()
 
     def repopulate(self) -> None:
-        """Rebuild the dropdown, keeping the area that was selected if it
-        survives the filter.
+        """Rebuild the dropdown, keeping the selected area where it survives.
 
-        **The filter can be empty and that is not a failure.** A player who
-        installed wish after a year of play has no record at all, and an empty
-        dropdown with a disabled Fast Travel button would look like a broken
-        feature rather than an honest one. So an empty record turns the filter
-        off, disables it, and says why in its tooltip: the full list is what is
-        offered, exactly as before.
+        **Nothing ticked is an answer.** The player unticked everything, so
+        the dropdown says which setting to go and look at rather than sitting
+        there empty, and `refresh` disables the button with the same reason.
         """
-        record = self.read_visited()
-        wanted = self.visited_rows() if self.visited_only.isChecked() \
-            else self.all_rows
-        if self.visited_only.isChecked() and not wanted:
-            self.visited_only.blockSignals(True)
-            self.visited_only.setChecked(False)
-            self.visited_only.blockSignals(False)
-            wanted = self.all_rows
-        self.visited_only.setEnabled(bool(record))
-        self.visited_only.setToolTip(
-            "wish's own record of where it has watched the party walk, one "
-            "file per area under its map folder. **It is not the game's**: "
-            "Pool of Radiance keeps no list of the areas a party has been "
-            "in, so an area you played before installing wish, or on another "
-            "machine, is not in here."
-            if record else
-            "Nothing mapped yet. wish records the areas it watches the party "
-            "walk in, and the game itself keeps no such list, so until the "
-            "mapper has seen somewhere there is nothing to filter by.")
-
         keeping = self.area()
-        self.rows = tuple(wanted)
+        self.rows = self.chosen_rows()
         self.combo.blockSignals(True)
         self.combo.clear()
         for i, row in enumerate(self.rows):
@@ -468,6 +384,9 @@ class WarpBar(QWidget):
             self.combo.addItem(self._label(row))
             self.combo.setItemData(i, self._detail(row),
                                    Qt.ItemDataRole.ToolTipRole)
+        if not self.rows:
+            self.combo.addItem(NOTHING_TICKED)
+        self.combo.setEnabled(bool(self.rows))
         if keeping is not None and keeping in self.rows:
             self.combo.setCurrentIndex(self.rows.index(keeping))
         self.combo.blockSignals(False)
@@ -514,8 +433,7 @@ class WarpBar(QWidget):
 
     def attach(self, target) -> None:
         self.target = target
-        self.read_visited(force=True)
-        self.repopulate()
+        self.refresh()
         self.check_arrival()
 
     def check_arrival(self) -> str | None:
@@ -559,17 +477,21 @@ class WarpBar(QWidget):
                          if geos and self.maps else None)
 
     def refresh(self) -> None:
-        # The record grows while the player walks, so the dropdown has to
-        # notice. `read_visited` is rate-limited; `repopulate` ends by calling
-        # this again, and the second pass finds nothing changed.
-        before = set(self._visited)
-        if self.read_visited() != before:
-            self.repopulate()
-            return
         area = self.area()
-        verdict = self.warp.legality(self.target, area)
-        self.button.setEnabled(verdict.ok)
-        self.button.setToolTip(verdict.reason or self.warp.description)
+        if area is None and not self.rows:
+            # Nothing ticked. Say that rather than the emulator's verdict:
+            # there is nothing to be legal or illegal about.
+            self.button.setEnabled(False)
+            self.button.setToolTip(
+                "No areas are ticked in Preferences ▸ Fast travel, so there "
+                "is nowhere to travel to.")
+        else:
+            verdict = self.warp.legality(self.target, area)
+            self.button.setEnabled(verdict.ok)
+            # `DANGER` when it is enabled, the refusal when it is not: the
+            # warning is about making a trip, and a disabled button is not
+            # about to make one.
+            self.button.setToolTip(verdict.reason or DANGER)
         back = self.warp.back_verdict(self.target)
         self.back_button.setEnabled(back.ok)
         self.back_button.setToolTip(

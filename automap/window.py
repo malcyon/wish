@@ -179,8 +179,8 @@ class MapCanvas(QWidget):
         # perverse.
         #
         # **Before the party marker, not after.** At `NOTE_SIZE` 13 the note
-        # sat in the corner and the two never met; at 26 the note is the
-        # square, so on the one square that has both, something has to be
+        # sat in the corner and the two never met; at 22 the note is most of
+        # the square, so on the one square that has both, something has to be
         # underneath. It is the note: where the party is standing is the one
         # thing on this map that must never be in doubt.
         for prim in note_primitives(st.notes):
@@ -465,8 +465,11 @@ class AutomapWindow(QMainWindow):
         # areas whose arrival square nobody has harvested. Built for every
         # session since P20 measured where those landings put the party: it
         # was behind `WISH_DEBUG` for as long as that was unknown.
+        # `settings` is what says which areas the dropdown offers: the player
+        # ticks them in Preferences, and there is no other filter.
         self.warp_bar = WarpBar(say=self.messages.say,
-                                maps=getattr(self.mapper, "_maps", {}))
+                                maps=getattr(self.mapper, "_maps", {}),
+                                settings=self.settings)
 
         # Roster left, map centre, the two reading panels right, the actions
         # under the map and one strip along the bottom for what is none of
