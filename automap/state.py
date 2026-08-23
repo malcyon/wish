@@ -12,7 +12,7 @@ import json
 import pathlib
 from dataclasses import dataclass, field
 
-from por import areas
+from por import areas, games
 from por.areas import POOL_OF_RADIANCE
 from por.geo import DIRECTIONS, GRID, STEP, Geo
 
@@ -33,6 +33,72 @@ AREA_NAMES = areas.GEO_NAMES
 
 def data_dir() -> pathlib.Path:
     return _data_dir() / "maps"
+
+
+def title_dir(title: str | None) -> str:
+    """The sub-directory one title's notes live in.
+
+    The `Game.key` where there is one -- `pool-of-radiance` -- because that is
+    already the stable identifier this project writes into YAML, and it is
+    filesystem-safe in every locale. An unrecognised title still gets a
+    directory of its own rather than sharing anyone else's; the point of the
+    split is that `GEO15` is a different place in every game, and that is true
+    of a game we do not have a descriptor for as well.
+    """
+    game = games.by_title(title)
+    if game is not None:
+        return game.key
+    slug = "".join(c if c.isalnum() else "-" for c in (title or "").lower())
+    return slug.strip("-") or "unknown"
+
+
+def _pool_of_radiance_maps() -> frozenset[str]:
+    """Every `GEO` stem Pool of Radiance actually ships, from `por/areas.py`."""
+    out = set(areas.GEO_NAMES.get(POOL_OF_RADIANCE, {}))
+    for area_ in areas.AREAS:
+        out |= set(area_.geos)
+    return frozenset(out)
+
+
+def migrate_flat_notes(root: pathlib.Path | None = None) -> list[pathlib.Path]:
+    """Move the pre-title notes files under the title that wrote them.
+
+    Until the notes file was keyed by title it was `{data dir}/maps/GEO15.json`
+    for every game, so a note pinned in Sokol Keep turned up on whatever Curse's
+    `GEO15` is. Everything written before that fix is Pool of Radiance's in
+    practice, because it is the only title anyone has mapped.
+
+    **Attributed, not assumed**, because losing somebody's notes is worse than
+    the bug. A flat file is moved only when its stem is one of the twenty-nine
+    maps Pool of Radiance actually ships; anything else -- another title's map
+    id, `unknown.json`, a file somebody put there by hand -- is left exactly
+    where it is, under no title at all. And a move never overwrites: where the
+    per-title file already exists the flat one stays put too, so a partly
+    migrated directory cannot lose the half that was already moved.
+
+    Returns the files it moved, which is what a test asserts on.
+    """
+    root = pathlib.Path(root) if root is not None else data_dir()
+    try:
+        flat = sorted(path for path in root.glob("*.json") if path.is_file())
+    except OSError:
+        return []
+    known = _pool_of_radiance_maps()
+    into = root / title_dir(POOL_OF_RADIANCE)
+    moved = []
+    for path in flat:
+        if path.stem not in known:
+            continue
+        destination = into / path.name
+        if destination.exists():
+            continue
+        try:
+            into.mkdir(parents=True, exist_ok=True)
+            path.rename(destination)
+        except OSError:
+            continue
+        moved.append(destination)
+    return moved
 
 
 # How far down an open corridor the party can see. The game's own 3D view shows
@@ -161,9 +227,19 @@ class AutomapState:
     # -- notes, persisted per area ---------------------------------------
 
     def notes_path(self) -> pathlib.Path:
-        return data_dir() / f"{self.area or 'unknown'}.json"
+        """`{data dir}/maps/{title}/{GEO id}.json`.
+
+        The title is in the path because `GEO15` is Sokol Keep in Pool of
+        Radiance and somewhere else entirely in Curse, and the file holds the
+        explored squares as well as the notes -- so without it a Curse map the
+        player had never entered opened partly revealed with somebody else's
+        notes on it.
+        """
+        return (data_dir() / title_dir(self.title)
+                / f"{self.area or 'unknown'}.json")
 
     def save_notes(self) -> None:
+        migrate_flat_notes()
         path = self.notes_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -173,6 +249,7 @@ class AutomapState:
         path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
 
     def load_notes(self) -> None:
+        migrate_flat_notes()
         path = self.notes_path()
         if not path.exists():
             return
@@ -238,6 +315,11 @@ class Automapper:
                  area: str | None = None, title: str | None = POOL_OF_RADIANCE):
         self.target = target
         self.state = AutomapState(title=title)
+        #: The descriptor behind `title`, for the readers that need addresses.
+        #: None for a title with no descriptor, which `party_fix` reads as
+        #: "assume the default" -- it is only ever reached from a window that
+        #: has already resolved the title from the disks.
+        self.game = games.by_title(title)
         self.fingerprint = Fingerprint(maps) if maps else None
         self._maps = maps or {}
         self.resident = ResidentGeo(target) if maps else None
@@ -292,7 +374,7 @@ class Automapper:
             return False
         if self.resident is not None:
             self.resident.target = self.target
-        fix = read_fix(self.target)
+        fix = read_fix(self.target, self.game)
         if fix is None:
             return False
 
@@ -345,10 +427,12 @@ class Automapper:
 
         Three guards, each of them a way this would otherwise lie:
 
-        * **Both fixes must come from the status line.** The memory copy at
-          `$49C0` lags a move, so a successful step read from memory looks like
-          a square that did not change while the clock advanced -- which is
-          exactly the pattern being tested for.
+        * **Both fixes must come from the status line.** The reason has
+          changed and the guard has not: the fallback used to read `$49C0`,
+          which lags a move, so a successful step looked exactly like this
+          pattern. It now reads the engine's own triple and does not lag -- but
+          it is only reached when the status line is *absent*, which is camp,
+          combat and menus, where an advancing clock is not a step at all.
         * **Exactly one minute.** Longer means the party did something else.
           Zero means it did nothing at all, which is the ordinary case: the
           clock does not run while you stand still, so "the party never tried

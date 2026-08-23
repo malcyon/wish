@@ -91,9 +91,13 @@ def forget(area: str) -> int:
     """
     import json
 
-    from .state import data_dir
+    from .state import data_dir, migrate_flat_notes
 
-    files = sorted(data_dir().glob("*.json"))
+    # Notes are kept per title now -- `{data dir}/maps/{title}/GEO15.json` --
+    # so this walks one level down, and takes anything still flat with it
+    # rather than pretending a file older than that split does not exist.
+    migrate_flat_notes()
+    files = sorted(data_dir().glob("*/*.json")) + sorted(data_dir().glob("*.json"))
     if area.upper() != "ALL":
         files = [f for f in files if f.stem.upper() == area.upper()]
         if not files:
