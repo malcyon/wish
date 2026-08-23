@@ -634,9 +634,9 @@ will want to find them, and probably to clear them between runs:
 | what | path | when it appears |
 |---|---|---|
 | settings | `%APPDATA%\wish\automap.json` | when the window closes |
-| notes, explored squares | `%LOCALAPPDATA%\wish\maps\<AREA>.json` | when a note is added, or the window closes |
+| notes, explored squares | `%LOCALAPPDATA%\wish\maps\<GAME>\<AREA>.json` | when a note is added, or the window closes |
 | debug log | `%APPDATA%\wish\logs\wish-*.log` | only while the log is on |
-| save backups, when the disk's folder is read-only | `%LOCALAPPDATA%\wish\backups\` | on a save that changed something |
+| save backups | the folder named in File > Preferences — `backups\` beside the save until the player picks another | on a save that changed something |
 
 To test a genuinely first run, close wish and delete `%APPDATA%\wish` and
 `%LOCALAPPDATA%\wish`. Paste those into the Explorer address bar; they expand.

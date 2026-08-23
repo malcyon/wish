@@ -236,16 +236,16 @@ Two rules that keep the backups meaningful:
 * **Save As to a new filename makes no backup**, because there is nothing yet to
   lose.
 
-If the directory holding the save is not writable, fall back to the user's data
-directory (`~/.local/share/wish/backups/`, `%LOCALAPPDATA%\wish\backups\` on
-Windows) rather than failing the save. **File > Preferences names whichever of
-the two the open save uses**, because Donald asked where that path came from and
-observed that nobody would think to look there — see
-[`130-preferences.md`](130-preferences.md) §5c. Worth being aware
-that this project's own working rule is never to write to
-`/home/donald/c64/Pool of Radiance Disks/` -- that rule governs scripts and
-agents, not a person deliberately editing their own save through the editor, but
-the fallback means a read-only disk directory still cannot cost you a save.
+**The folder is a setting, and there is no hidden second one.** File >
+Preferences holds it: blank until a save has been opened, then `backups/` beside
+whatever save that was, and fixed for good once the player picks one themselves —
+[`130-preferences.md`](130-preferences.md). It was two implicit folders with a
+badge saying which one you got, and Donald ruled that out as confusing.
+
+**No backup folder means no save.** `save_disk` raises rather than writing, and
+the editor reports it. Falling back to a directory the player never chose is
+exactly what was removed, and writing with no copy at all would take away the
+only reason the editor may overwrite a save in place.
 
 **No modal diff on save.** An editor that interrogates you every time you press
 Ctrl+S is an editor you stop pressing Ctrl+S in. Save just saves, and the status

@@ -10,8 +10,8 @@ backend … The backend option should move into the preferences dialog."*
 
 ## The verdict
 
-* **The dialog holds three things: where the game disks are, which live backend
-  to use, and the debug log.** Nothing else. Fog of war and the map's own knobs
+* **The dialog holds four things: where the game disks are, where backups go,
+  which live backend to use, and the debug log.** Nothing else. Fog of war and the map's own knobs
   stay on the map, where you change them mid-play.
 * **One directory setting, not two.** The editor's game disk and the
   automapper's map disks are the same box of `.D64`s in practice, and the
@@ -71,6 +71,7 @@ Preferences…**, in the window.
 | `geometry`, `window_width`, `window_height` | written on close | **never in the dialog** | remembered state, not a preference; nobody types a window size. See §12 |
 | *(new)* `disks` | — | **in the dialog** | the point of the exercise |
 | *(new)* `ultimate_host` | was `$POR_ULTIMATE` only | **in the dialog** | see §6 |
+| *(new)* `backup_folder`, `backup_folder_chosen` | — | **in the dialog** | it was two implicit folders and no way to choose either. See §5c |
 
 **The rule the table applies:** a preferences dialog collects the settings you
 set *once*, about this machine. Everything you set *while playing* belongs on
@@ -206,48 +207,80 @@ names the folder it tried and who named it. It is not the only channel any more.
 ### 5c. Where the backups go
 
 Donald, on the first Windows build: *"where does `~/.local/share/wish/backups/`
-come from? No user is ever going to think to look there."*
+come from? No user is ever going to think to look there."* Then, on the two
+implicit folders that answered him: *"confusing and too complicated"*.
 
-Both halves are answered by saying it in a line that is always on screen rather
-than in a status message already dismissed:
+There is now **one folder, in a box you can edit**:
 
 ```
 ┌─ Backups ────────────────────────────────────────────────────┐
-│  Folder  /home/donald/c64/saves/backups  (beside the save disk)│
+│  Folder  [ /home/donald/c64/saves/backups ] [Browse…] [Clear] │
+│  Follows the save you open. Set one here to fix it instead.   │
 │  Only when something changed; the newest 20 are kept.         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Laid out like a backend row, because Donald asked for it: *"The backend
-informational boxes look good. We need the same effect for the Backup folder
-help text."* The path is the value, **which of the two folders it is is a
-badge** beside it — green for *beside the save disk*, grey for the fallback
-with nothing open, amber for the fallback because the save's own folder cannot
-be written — and the standing facts sit underneath. The three were one
-sentence, and the middle of a sentence is the one place a state cannot be seen.
+**Two states, and the whole design is the distinction.** A bare path cannot
+carry it, so the setting is a pair: `Settings.backup_folder` and
+`backup_folder_chosen`.
 
-* **The user data directory is only the fallback.** The copy normally lands in
-  `backups/` beside the save disk, which is the folder somebody was already
-  looking at; the data directory is where it goes when that folder cannot be
-  written.
-* **The answer depends on the open save**, not on a preference, so the line is
-  read-only and is re-read on every `refresh()`. With nothing open there is no
-  per-file answer, so it names the fallback *and says that is what it is*.
-* **The two standing facts are on the line underneath**: a backup is made only
-  when the bytes changed, and the newest `editor.files.KEEP_BACKUPS` are kept.
-  Both are behaviours somebody would otherwise have to guess at.
-* **It asks read-only.** `editor.files.backup_dir_for` is the authority and is
-  what runs at save time, but it answers "may I write here" by *making* the
-  folder and touching a probe file in it — and a dialog that only reports must
-  not write to the folder somebody keeps their disks in, least of all this
-  project's own `Pool of Radiance Disks/`. `preferences.backup_folder` asks the
-  same question with `os.access`, creates nothing, and is a plain function over
-  a path so it is tested without opening a dialog. The two can disagree only on
-  a filesystem that lies about access, and there the status line after a save
-  names the real path from the real chooser.
+| state | `backup_folder` | `chosen` | behaviour |
+|---|---|---|---|
+| blank | `""` | false | a fresh config. No backups, and **no saving** — see below |
+| automatic | `<the open save's folder>/backups` | false | follows every save opened, moving with it |
+| chosen | whatever was typed or picked | true | used for every save, and **nothing automatic changes it again** |
+
+Donald's specification, in his words: *"blank by default … once the user loads
+a save from somewhere, populate this field automatically, as a `backups/`
+directory under their save directory. If the user … specifies a different
+backup folder, use that one regardless of which save location they use. Never
+change it after they've specified it themselves."* "Never change it *after*"
+implies it does change before, which is the automatic state.
+
+* **Clearing the box is the way back to automatic.** The specification does not
+  say, and this is the ruling: a setting a user cannot undo is a trap. Clearing
+  unsets `chosen`, and the field fills in again — at once when a save is open,
+  otherwise the next time one is.
+* **Blank means no saving, and that is on purpose.** The editor writes back
+  over the file you opened, and the only thing that makes that defensible is
+  the copy it takes first (`editor/files.py`). So `save_disk` is *told* the
+  folder and raises `NoBackupFolder` when there is none, naming File >
+  Preferences; the editor's own `Cannot save` box shows it and the file is not
+  touched. **There is no fallback directory any more** — the user data
+  directory was the confusing half of the old arrangement and it is gone.
+* **In practice blank and an open save cannot coexist**, because opening one
+  fills the field in. The refusal is the guarantee holding when they somehow
+  do, not the ordinary path.
+* **A save that changes nothing still needs no folder.** It writes nothing, so
+  there is nothing to copy, and closing a window nobody edited in never turns
+  into an argument about backups.
+* **The note says which state it is in**, because the path cannot:
+  `/somewhere/backups` looks identical whether it is following the open save or
+  was typed in and is never moving again. Each note is one line at the width
+  `fit` opens — two would be 17 px of a dialog that has to fit 662 (§14).
+* **The wiring.** `EditorWindow.opened` is emitted by `load` and by `save_as`;
+  `WishWindow.follow_save` listens and is the only thing that moves the folder,
+  and its only branch is *has the user chosen one*. The editor is handed the
+  answer as a string — `EditorWindow(backups=…)` — exactly as `disks` is,
+  because `editor/` may not import `automap/`, where the setting lives.
+  `python -m editor` hands it nothing at all: `backups=None` means nobody is
+  managing this, and the copy goes beside the save, which is the rule the
+  preference itself starts on.
+* **It creates nothing to answer.** `preferences.backup_folder(settings, save)`
+  is a plain function over the setting and a path, so what the dialog claims is
+  tested without opening one, and no dialog ever writes to the folder somebody
+  keeps their disks in. `back_up` makes the folder at the moment it has a copy
+  to put in it.
 * **This is the one place `editor.files` is imported.** The rule the project
   keeps is one-way — `editor/` imports nothing from `automap/` — and `wish/` is
   the layer allowed to know about both.
+
+**An existing config has no backup setting in it at all**, because there never
+was one: it reads as blank, and the first save opened fills it in with the
+`backups/` folder beside that save — the same folder the old build was already
+writing to. Anything that landed in `~/.local/share/wish/backups` under the old
+fallback is still there and still a file; nothing in the application ever
+listed those, and nothing does now.
 
 ---
 
@@ -379,14 +412,15 @@ re-runs a directory search as you type, which is code either way.
 | file | change |
 |---|---|
 | **`wish/preferences.py`** | **new.** `PreferencesDialog(QDialog)`, the pure `report()`, `apply_ultimate_host()`, and the `SHORTCUT` constant |
-| `wish/window.py` | `File > Preferences…`; the backend actions live in no menu; `preferences()`/`show_dialog()`; `set_disks`/`reload_disks`/`set_ultimate_host`/`set_interval`; the debug-log indicator; geometry on close |
+| `wish/window.py` | `File > Preferences…`; the backend actions live in no menu; `preferences()`/`show_dialog()`; `set_disks`/`reload_disks`/`set_ultimate_host`/`set_interval`/`set_backup_folder`/`follow_save`; the debug-log indicator; geometry on close |
 | `wish/session.py` | `set_interval`, so the dialog can retime a running poll |
 | `wish/__main__.py` | resolves once with `resolve_disks` and passes `--disks` down; the stderr text names the folder, the source, and File > Preferences |
-| `automap/config.py` | `disks`, `ultimate_host`, `geometry`, `diagnostics`; `interval_ms` default 200 → 0; `remember_geometry`/`restore_geometry`/`clamp_to_screen`/`hold_geometry` |
+| `automap/config.py` | `disks`, `ultimate_host`, `backup_folder` + `backup_folder_chosen`, `geometry`, `diagnostics`; `interval_ms` default 200 → 0; `remember_geometry`/`restore_geometry`/`clamp_to_screen`/`hold_geometry` |
 | `automap/paths.py` | `resolve_disks` and its six source constants |
 | `automap/__main__.py` | `default_disks` and `load_maps_titled` call `resolve_disks`; the stderr text |
 | `automap/window.py` | `disks=` parameter, `set_maps()`, `no_maps`, `waiting_text()`, the wrapped grid text, geometry only when it is the window |
-| `editor/window.py` | `disks=` parameter, `set_disks()`, `_disk_candidates` gains rank 2, `game_disk_found`/`icon_parts_disk` for the report, and the two "no game disk" strings name the dialog |
+| `editor/files.py` | one folder, told to it: `automatic_dir`, `back_up(target, into)`, `save_disk(disk, target, into)` and `NoBackupFolder`. `fallback_dir` and `backup_dir_for` are gone |
+| `editor/window.py` | `disks=` and `backups=` parameters, `set_disks()`, `set_backup_folder()`, the `opened` signal, `_disk_candidates` gains rank 2, `game_disk_found`/`icon_parts_disk` for the report, and the two "no game disk" strings name the dialog |
 
 **No OK/Cancel — a single `Close`.** Every control here applies at once (the
 backend menu it replaces already did), and a Cancel would need an undo path
@@ -411,7 +445,7 @@ PyQt6 in `.venv`.
 
 ### Tests
 
-`tests/test_preferences.py`, 30 of them, and two rules it obeys: **no modal
+`tests/test_preferences.py`, 54 of them, and two rules it obeys: **no modal
 dialog** (`WishWindow.show_dialog` is the seam; `exec()` is never called) and
 **no game data in the repository** (empty files of the right *name*, which is
 all a glob can see; the two tests that need real maps and real item names
@@ -681,8 +715,11 @@ squeezed, which is exactly the line edits, the spin box and the table.
   across, so the scarce one is height, and every line a paragraph wraps to is a
   line a wider dialog would not have spent. `fit()` widens while that is still
   true and stops — as narrow as it can be without costing height. Here that is
-  **784 × 640**: the search hint goes from two lines to one, the backups note
-  from three to two, and the dialog fits the cap with 22 px to spare.
+  **667 × 648** with nothing open and 647 wide once the backup box has a path
+  in it: the search hint goes from two lines to one, and the dialog fits the
+  cap with 14 px to spare. It was 784 × 640 while the backups line was a
+  three-line paragraph; the note that replaced it is one line by
+  construction (§5c), which is where the width went.
   `heightForWidth` under-reports what the group boxes then take, by 19 px, so
   it is the *saving* that is read off it and the size hint, measured at the
   hint width, that is trusted.
