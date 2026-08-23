@@ -9,9 +9,11 @@ away by itself when it loses focus.
 **Clicking a square that already has a note opens that note**, with its type
 picked and its words in the field, and a **Delete** button beside them. The
 first version opened blank and offered no way to remove anything, which made a
-note something you could create and not undo. Where a square holds several, they
-are listed above the field: clicking a row edits it, and each row carries its
-own delete.
+note something you could create and not undo.
+
+**A square holds one note.** A file written by a build that allowed several
+still loads, and the right-click menu lists every one of them so the extras
+can be edited and deleted -- but nothing here makes a second.
 
 The window owns the click that opens this; everything here is the popover.
 """
@@ -83,30 +85,6 @@ class NotePopover(QWidget):
         head.setFont(small)
         box.addWidget(head)
 
-        # Every other note on the square, so a second one is reachable and
-        # removable without hunting for the right-click menu.
-        self.rows: list[QWidget] = []
-        for i, other in enumerate(existing):
-            if i == index:
-                continue
-            row = QHBoxLayout()
-            row.setSpacing(4)
-            open_ = QPushButton(QIcon(icon_pixmap(other.icon, ICON, NOTE)),
-                                other.label)
-            open_.setFont(small)
-            open_.setFlat(True)
-            open_.setToolTip("edit this note")
-            open_.clicked.connect(
-                lambda _checked=False, at=i: self.switch_to(at))
-            drop = QToolButton()
-            drop.setIcon(QIcon(icon_pixmap("trash-can", ICON, MUTED)))
-            drop.setToolTip("delete this note")
-            drop.clicked.connect(
-                lambda _checked=False, at=i: self.delete(at))
-            row.addWidget(open_, 1)
-            row.addWidget(drop)
-            box.addLayout(row)
-
         picker = QHBoxLayout()
         picker.setSpacing(2)
         self.buttons: dict[str, QToolButton] = {}
@@ -161,19 +139,6 @@ class NotePopover(QWidget):
         button = self.buttons.get(name)
         if button is not None and not button.isChecked():
             button.setChecked(True)
-
-    def switch_to(self, index: int) -> None:
-        """Edit another note on the same square: close and reopen on it.
-
-        Reopening rather than re-filling, because the row list has to change
-        too and rebuilding a popover is cheaper than rewriting it in place.
-        """
-        square = self.square
-        parent = self.parent()
-        self.close()
-        opener = getattr(parent, "edit_note", None)
-        if opener is not None:
-            opener(*square, index)
 
     def delete(self, index: int | None = None) -> None:
         """Remove one note. Defaults to the one being edited."""

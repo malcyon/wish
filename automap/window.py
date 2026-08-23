@@ -52,7 +52,6 @@ from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (
     CELL,
     CELL_MIN,
-    COUNT_SIZE,
     MARGIN,
     Glyph,
     Hatch,
@@ -271,24 +270,6 @@ class MapCanvas(QWidget):
             p.setBrush(Qt.BrushStyle.NoBrush)
         elif isinstance(prim, Glyph):
             draw_icon(p, prim.name, prim.x, prim.y, prim.size, NOTE)
-        elif isinstance(prim, Label):
-            # The note count, whose point is its bottom right corner.
-            #
-            # **On a disc of paper.** It used to hang off the bottom-right of
-            # a 13px icon with the rest of the cell empty behind it; a 26px
-            # icon fills the cell, and the digit landed in the middle of the
-            # glyph and was unreadable. The disc is the smallest thing that
-            # separates the two without moving either.
-            r = COUNT_SIZE * 0.62
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(PAPER)
-            p.drawEllipse(QPointF(prim.x - r, prim.y - r), r + 1.5, r + 1.5)
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(NOTE))
-            p.setFont(QFont("sans", COUNT_SIZE - 2, QFont.Weight.Bold))
-            p.drawText(QRectF(prim.x - 20, prim.y - COUNT_SIZE, 20, COUNT_SIZE),
-                       Qt.AlignmentFlag.AlignRight
-                       | Qt.AlignmentFlag.AlignBottom, prim.text)
 
 
 class CombatCanvas(QWidget):
@@ -994,6 +975,10 @@ class AutomapWindow(QMainWindow):
 
         Data rather than a `QMenu` so the offer can be tested without a display
         -- `note_menu` is four lines on top of this.
+
+        **No "add another".** A square holds one note. It still lists whatever
+        is on the square rather than assuming one, because a file written by a
+        build that allowed several has to stay editable and deletable.
         """
         entries = []
         for i, note in enumerate(self.state.notes_at(x, y)):
@@ -1001,7 +986,6 @@ class AutomapWindow(QMainWindow):
                             partial(self.edit_note, x, y, i)))
             entries.append((f"Delete  {note.label}",
                             partial(self.delete_note, x, y, i)))
-        entries.append(("Add another note", partial(self.edit_note, x, y)))
         return entries
 
     def note_menu(self, x: int, y: int, at: QPoint) -> None:

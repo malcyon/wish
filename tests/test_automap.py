@@ -21,7 +21,6 @@ from automap.area import RESIDENT_GEO, Fingerprint
 from automap.notes import Note
 from automap.render import (
     CELL,
-    COUNT_SIZE,
     MARGIN,
     NOTE_SIZE,
     Glyph,
@@ -1517,29 +1516,16 @@ def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
     assert painter_path("location-dot").fillRule() == _Qt.FillRule.WindingFill
 
 
-def test_a_square_with_three_notes_draws_one_icon_and_a_count():
+def test_a_square_with_several_notes_draws_the_first_and_nothing_else():
+    """A square holds one note, so there is no count to draw. An old file that
+    holds several still loads: the first is the marker, and the rest are
+    reachable from the right-click menu."""
     prims = list(note_primitives({(2, 3): [Note("a", "encounter"),
                                            Note("b", "treasure"),
                                            Note("c")]}))
     glyphs = [p for p in prims if isinstance(p, Glyph)]
-    labels = [p for p in prims if isinstance(p, Label)]
     assert [g.name for g in glyphs] == ["crossed-swords"]   # the first only
-    assert [(lab.text, lab.kind) for lab in labels] == [("3", "note-count")]
-
-
-def test_the_note_count_stays_inside_its_own_cell():
-    """It used to hang off the bottom-right of the icon, which put it outside
-    the square as soon as the icon grew from 13 to `NOTE_SIZE`. It is placed
-    against the cell now, and `NOTE_INSET` keeps it off the 3px wall stroke."""
-    from automap.render import NOTE_INSET
-
-    (label,) = [p for p in note_primitives({(2, 3): [Note("a"), Note("b")]})
-                if isinstance(p, Label)]
-    left, top = MARGIN + 2 * CELL, MARGIN + 3 * CELL
-    # `(x, y)` is the text's bottom right corner.
-    assert label.x == left + CELL - NOTE_INSET
-    assert label.y == top + CELL - NOTE_INSET
-    assert left < label.x - COUNT_SIZE and label.y - COUNT_SIZE > top
+    assert not [p for p in prims if isinstance(p, Label)]
 
 
 def test_a_note_and_the_party_marker_share_one_square_marker_on_top():
@@ -1590,7 +1576,9 @@ def test_the_svg_export_carries_the_notes(new_phlan):
     svg = to_svg(new_phlan, notes={(1, 1): [Note("a", "person"),
                                             Note("b", "done")]})
     assert icons.path_data("user") in svg
-    assert 'text-anchor="end"' in svg and ">2<" in svg
+    # The first note's icon and nothing else: no count, because a square
+    # holds one note and there is nothing to count.
+    assert 'text-anchor="end"' not in svg and ">2<" not in svg
 
 
 # --- the roster's new lines -------------------------------------------------
@@ -1738,12 +1726,13 @@ def test_right_clicking_a_square_offers_edit_and_delete(app, tmp_path,
     window.state.add_note(3, 4, Note("locked, come back", "locked"))
     window.state.add_note(3, 4, Note("cleared", "done"))
     entries = window.note_menu_entries(3, 4)
+    # No "add another": a square holds one note. Both are still listed,
+    # because a file from a build that allowed two has to stay deletable.
     assert [text for text, _ in entries] == [
         "Edit  Locked - locked, come back",
         "Delete  Locked - locked, come back",
         "Edit  Done - cleared",
-        "Delete  Done - cleared",
-        "Add another note"]
+        "Delete  Done - cleared"]
     entries[1][1]()                                   # delete the first
     assert [n.type for n in window.state.notes_at(3, 4)] == ["done"]
 
@@ -1950,17 +1939,20 @@ def test_the_delete_button_removes_the_note(app, tmp_path, monkeypatch):
     assert window.notes_panel.list.count() == 0
 
 
-def test_a_second_note_on_the_square_is_listed_with_its_own_delete(
+def test_the_popover_opens_the_note_and_offers_no_way_to_make_a_second(
         app, tmp_path, monkeypatch):
+    """A square holds one note. An old file holding two still opens on the
+    first, and the popover says nothing about the second -- the right-click
+    menu is where the extras are reached and deleted."""
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
     window.state.add_note(6, 2, Note("dueling pairs", "encounter"))
     window.state.add_note(6, 2, Note("needs a thief", "treasure"))
     window.edit_note(6, 2)
     pop = window._popover
     assert pop.field.text() == "dueling pairs"          # the first is open
-    others = [b.text() for b in pop.findChildren(QPushButton)]
-    assert "Treasure - needs a thief" in others         # the second is listed
-    pop.delete(1)
+    assert [b.text() for b in pop.findChildren(QPushButton)] == ["Delete",
+                                                                 "Keep"]
+    window.delete_note(6, 2, 1)                         # still removable
     assert [n.type for n in window.state.notes_at(6, 2)] == ["encounter"]
 
 

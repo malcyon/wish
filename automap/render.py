@@ -123,9 +123,8 @@ class Label:
     """A short piece of text at a point.
 
     The combat view puts hit points in a square with it, where `(x, y)` is the
-    centre. A `note-count` puts the number of notes on a square beside its
-    marker, where `(x, y)` is the **bottom right** of the text -- the marker is
-    already against the cell's right edge and the count grows leftwards from it.
+    centre. Nothing on the area map uses one: the note count that did was
+    removed with the second note per square it counted.
     """
 
     x: float
@@ -272,7 +271,6 @@ def party_marker(x: int, y: int, facing: int, cell: int = CELL,
 # one square the party is standing on.
 NOTE_SIZE = 22
 NOTE_INSET = 3
-COUNT_SIZE = 9
 
 
 def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
@@ -281,8 +279,9 @@ def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
     **Drawn whatever the fog says.** A note is something you know; hiding it
     because the square is currently fogged would be perverse.
 
-    A square with several notes draws the first one's icon and a count, rather
-    than trying to fit four icons into a 34px cell.
+    **One note per square.** A square can only hold several by having been
+    written by a build that allowed it; the first is what is drawn, and the
+    rest are reachable from the right-click menu.
     """
     # `NOTE_SIZE` is what Donald chose in a 34px cell, and the marker keeps
     # that share of the square when the cell shrinks -- a fixed 22px icon in a
@@ -296,13 +295,6 @@ def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
         left = margin + x * cell + cell - NOTE_INSET - size
         top = margin + y * cell + NOTE_INSET
         yield Glyph(left, top, size, items[0].icon, "note")
-        if len(items) > 1:
-            # The cell's own bottom-right corner, not the glyph's. Hung off the
-            # icon it fell out of the square as soon as the icon grew, and the
-            # count has to stay inside the wall stroke whatever the icon does.
-            yield Label(margin + x * cell + cell - NOTE_INSET,
-                        margin + y * cell + cell - NOTE_INSET,
-                        str(len(items)), "note-count")
 
 
 def map_primitives(geo: Geo, visible=None, cell: int = CELL,
@@ -391,8 +383,6 @@ SVG_STYLE = {
     # The one note drawn as a character. Same ink, but a glyph needs a font
     # named and the size is set per-glyph rather than in the style.
     "note-text": 'fill="#b8601f" font-family="sans-serif"',
-    "note-count": 'fill="#b8601f" font-family="sans-serif" font-size="9" '
-                  'font-weight="bold" text-anchor="end"',
 }
 
 
@@ -449,12 +439,6 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
                        f'scale({scale:.5f})" d="{icons.path_data(p.name)}" '
                        f'{style}/>')
         elif isinstance(p, Label):
-            # The paper disc the window paints behind the count, so a
-            # multi-note square reads the same in the export as on screen.
-            r = COUNT_SIZE * 0.62 + 1.5
-            out.append(f'<circle cx="{p.x - COUNT_SIZE * 0.62:.1f}" '
-                       f'cy="{p.y - COUNT_SIZE * 0.62:.1f}" r="{r:.1f}" '
-                       f'fill="#fbfcfd"/>')
             out.append(f'<text x="{p.x}" y="{p.y}" {style}>{p.text}</text>')
         else:
             pts = " ".join(f"{a},{b}" for a, b in p.points)
