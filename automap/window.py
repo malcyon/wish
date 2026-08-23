@@ -42,6 +42,7 @@ from PyQt6.QtWidgets import (
 from por import strength as strengthmod
 from por.geo import GRID
 from ui.iconpaint import draw_icon
+from wish import nativewatch
 
 from . import actions, combat, live
 from . import notes as notemod
@@ -1017,6 +1018,12 @@ class AutomapWindow(QMainWindow):
         """
         _notelog("edit_note(%s, %s, index=%r): area=%r, %d notes",
                  x, y, index, self.state.area, len(self.state.notes_at(x, y)))
+        # Record the raw Windows messages for as long as this popover lives.
+        # Nothing at the Qt level explains the `Close` it receives, so the
+        # cause is arriving underneath Qt -- see `wish/nativewatch.py`.
+        from PyQt6.QtWidgets import QApplication
+        nativewatch.install(QApplication.instance())
+        nativewatch.watch(True)
         try:
             pop = NotePopover(self.state, x, y, index, self)
         except Exception:
@@ -1045,6 +1052,7 @@ class AutomapWindow(QMainWindow):
 
     def _popover_gone(self, _obj=None) -> None:
         self._popover = None
+        nativewatch.watch(False)
 
     def note_here(self) -> None:
         """`N`: a note on the party's own square, if we know where that is."""
