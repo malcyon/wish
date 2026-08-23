@@ -32,6 +32,7 @@ a port fixed one, that is said.
 | 5 | Two monsters are not the level their name claims | Pool of Radiance | data | CONFIRMED |
 | 6 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
 | 7 | Clearing the pyramid cancels the council's summons to the war meeting | Pool of Radiance | script | CONFIRMED |
+| 8 | Training a multi-class character in the wrong order throws away a level it has earned | Pool of Radiance | engine | CONFIRMED, in game |
 
 ---
 
@@ -313,3 +314,52 @@ unremarked.
 **Version.** Pool of Radiance, Commodore 64; the Amiga scripts are the same
 artefact and carry the same two writes. CONFIRMED from the bytecode and
 corroborated by a save.
+
+---
+
+## 8. Training a multi-class character in the wrong order throws away a level it has earned
+
+**Predicted from the trainer's arithmetic, then driven on a running machine.**
+
+**What the game does.** After a training the school rewrites the character's
+experience: `GEN $23D4` walks all four slots of the per-class level array,
+reads each class's *next* threshold, keeps the largest, and stores one less
+than it — if that is lower than what the character had. For a single class
+that is the design of the whole system: you may never bank more than one
+level's worth. For a multi-class character the largest threshold need not
+belong to the class that was just trained, so the clamp can drop the total
+below what the **other** class had already qualified for. The level it had
+earned goes with the points.
+
+**What it should do.** Not take back an entitlement it had already granted:
+clamp no lower than the highest threshold the character still meets. The
+trainer already knows both numbers — it reads the same table when it decides
+who may train.
+
+**The evidence.** Driven in the game on a Commodore 64 under emulation, with
+LADY KATHERINE, a half-elf magic-user 1 / thief 1 holding 5,002 experience.
+Magic-user 2 wants 2,501 and thief 2 wants 1,251, so both schools would take
+her.
+
+| step | what the game did |
+|---|---|
+| thieves' school, `TRAIN` | `LADY KATHERINE WILL BE A 2ND LEVEL THIEF`; she came out thief 2 with **2,500** experience — 2,502 gone |
+| magic-users' school | `LOW EXPERIENCE OR WRONG CLASS` |
+| one point added, to 2,501 | `LADY KATHERINE WILL BE A 2ND LEVEL MAGIC-USER` |
+
+2,500 is one short of *both* her thresholds: magic-user 2 wants 2,501 and thief
+3 wants 2,501, and the clamp keeps the larger and subtracts one. **The other
+order costs nothing.** Training the magic-user first raises its next threshold
+to 5,001, the clamp lands at 5,000, and the thief — who wants 1,251 — is still
+offered. She can have both levels, in that order and not the other.
+
+**What the player sees.** A multi-class character with enough experience for a
+level in each class. Train the cheaper one and the other school says
+`LOW EXPERIENCE OR WRONG CLASS`, for a level that was on offer minutes earlier;
+the only way back to it is to go and earn more experience. Nothing in the game
+says the order mattered, and the character sheet shows no experience at all
+between visits.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED — read out of `GEN` and
+then reproduced at the game's own training halls, with the record read before
+and after.
