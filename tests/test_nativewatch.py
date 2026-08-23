@@ -12,10 +12,31 @@ import logging
 from wish import nativewatch
 
 
-def test_it_does_nothing_off_windows():
-    """`install` is a no-op anywhere else, so importing it costs nothing and
-    the automapper does not have to know what platform it is on."""
-    assert nativewatch.install(object()) is False
+def test_it_installs_only_on_windows_and_only_once():
+    """A no-op anywhere else, so the automapper does not have to know what
+    platform it is on -- and idempotent on Windows, because `edit_note` calls
+    it every time a popover opens.
+
+    Asserted per platform rather than as one number: the first version of this
+    said `is False` flatly and went red on Windows CI, where it is True and
+    correctly so.
+    """
+    import sys
+
+    first = nativewatch.install(_app())
+    if sys.platform != "win32":
+        assert first is False
+        assert nativewatch._installed is None
+    else:
+        assert first is True
+        assert nativewatch.install(_app()) is True      # again, harmlessly
+        assert nativewatch._installed is not None
+
+
+def _app():
+    """The running QApplication, which `conftest` has already made."""
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance()
 
 
 def test_it_records_nothing_until_something_asks(caplog):
