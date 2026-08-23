@@ -77,6 +77,22 @@ overlap -- but do not spend longer splitting a commit than the split is worth.
 Find the staging page at $5500
 ```
 
+**The issue number goes at the end of that same line**, never on a line of its
+own. GitHub hotlinks it either way; keeping it inline keeps the message one
+line in `git log --oneline`. Use `closes #N` on the commit that actually
+finishes the work -- that closes the issue when it reaches `main` -- and a bare
+`#N` for a commit that only moves it along.
+
+```
+Land in the largest open part of the map, closes #14
+Read the trainer out of GEN #10
+```
+
+**The sentence still has to stand on its own.** It is read in `git blame`, in
+`git log` and in a terminal, where `#14` is an opaque number -- and that is
+where this project's archaeology actually happens. A message that needs GitHub
+to be understood is worse than one that does not.
+
 **After a push, check that CI passed.** Not optional and not "later": a red
 `main` is the state everything else is built on, and a failure found an hour
 later has other people's work stacked on top of it.
