@@ -321,7 +321,7 @@ the four buttons at `TOOLBAR_ICON = 16`.
 
 Font Awesome Free paths are verbatim from `svgs-full/`, from `solid/` except
 `gem`, which is `regular/`; licensed CC BY 4.0, attributed in the README and the
-About box with the text in `licenses/`. U+2694 is not Font Awesome and is
+About box with the text in `fontawesome-LICENSE.txt`. U+2694 is not Font Awesome and is
 not shipped at all — it is a code point, drawn by the reader's own font. Nothing is redrawn: the app icon recolours `hat-wizard` and
 puts it on a tile, and the path data is theirs, untouched, at every size.
 **Nothing comes from `brands/`** — the licence forbids

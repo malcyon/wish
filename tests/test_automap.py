@@ -1684,7 +1684,7 @@ def test_the_font_awesome_attribution_travels_with_the_icons():
     # `encoding=` is not optional: the default is the locale codec, which is
     # cp1252 on the Windows runners, and the README has an em dash in it.
     assert "Font Awesome" in (root / "README.md").read_text(encoding="utf-8")
-    assert (root / "licenses/fontawesome-LICENSE.txt").exists()
+    assert (root / "fontawesome-LICENSE.txt").exists()
     assert "Font Awesome" in icons.__doc__
 
 

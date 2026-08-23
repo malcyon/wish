@@ -27,7 +27,7 @@ Icons under `FONT_AWESOME` are **Font Awesome Free 7.3.1 by Fonticons, Inc.**
 (https://fontawesome.com), icons licensed **CC BY 4.0**. The path data is
 verbatim from `svgs-full/`, `solid/` except for `gem`, which Donald chose in
 the **regular** weight; the licence text is in
-`licenses/fontawesome-LICENSE.txt` and the attribution is carried in the
+`fontawesome-LICENSE.txt` and the attribution is carried in the
 README and the About box. Brands are not used and must not be: the licence
 forbids brand-logo use and the set carries `wizards-of-the-coast`.
 

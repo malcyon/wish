@@ -7,7 +7,7 @@ description = "Character editor, save editor and live automapper for the Commodo
 requires-python = ">=3.12"
 # GPL-3.0: PyQt6 is GPL, and linking against it makes this GPL too.
 license = "GPL-3.0-or-later"
-license-files = ["licenses/LICENSE"]
+license-files = ["LICENSE"]
 # por/yaml_io.py reads and writes the party export.
 dependencies = ["pyyaml>=6.0"]
 

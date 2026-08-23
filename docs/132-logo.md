@@ -144,7 +144,7 @@ sides of every edge, and it still reads greyscale.
 
 This project already carries Font Awesome Free 7.3.1 path data in `ui/icons.py`
 under **CC BY 4.0**, licence text in
-[`licenses/fontawesome-LICENSE.txt`](../licenses/fontawesome-LICENSE.txt), credited
+[`fontawesome-LICENSE.txt`](../fontawesome-LICENSE.txt), credited
 in the README's *Credits* and in `wish/about.py`.
 
 **What CC BY 4.0 obliges, for an application icon.** Wherever the work is
