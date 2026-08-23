@@ -209,7 +209,7 @@ name we have not proved, which is a decision and not a detail.
 ## The licence, and its two traps
 
 Confirmed against the package's own `LICENSE.txt`, which is committed at
-`docs/licences/fontawesome-LICENSE.txt`. Font Awesome Free is triple-licensed —
+`licenses/fontawesome-LICENSE.txt`. Font Awesome Free is triple-licensed —
 icons **CC BY 4.0**, fonts **SIL OFL 1.1**, code **MIT** — and all three are
 compatible with GPL-3.0. The obligation we carry is attribution: a line in the
 README and a line in the About box, both naming the work, the author and the

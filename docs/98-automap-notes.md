@@ -58,7 +58,7 @@ the measurements.
 Brands are not used and must not be: the licence forbids brand-logo use and the
 set carries `wizards-of-the-coast`.
 
-Attribution travels with the paths: `docs/licences/fontawesome-LICENSE.txt`, a
+Attribution travels with the paths: `licenses/fontawesome-LICENSE.txt`, a
 line in the README, and a line in the About box.
 
 ## Drawing

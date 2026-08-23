@@ -97,7 +97,7 @@ def test_only_the_players_own_saves_live_in_fixtures(files):
 
 def test_the_licence_is_present(files):
     """PyQt6 is GPL, so this is too, and the text has to ship with it."""
-    assert pathlib.Path("LICENSE") in files
-    text = (ROOT / "LICENSE").read_text()
+    assert pathlib.Path("licenses/LICENSE") in files
+    text = (ROOT / "licenses/LICENSE").read_text(encoding="utf-8")
     assert "GNU GENERAL PUBLIC LICENSE" in text
     assert "Version 3" in text
