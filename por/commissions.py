@@ -9,25 +9,55 @@ Two structures in `ECL08` (the Phlan City Hall, disk 3) carry the whole state:
 
     $4AA6 + i, i = 0..25   the reward ledger. The area script writes 254 when
                            the job is done; the clerk pays and writes 255. 0 is
-                           untouched, and a few small values are progress
-                           markers an area script keeps in the same byte.
+                           untouched, and four entries also keep a progress
+                           marker between 1 and 253 in the same byte.
     $4AC1                  commissions completed -- bumped by the clerk for the
                            ten jobs that count as major.
 
 The index *is* the quest: each has the clerk's own speech in the 26-entry
 `ONGOSUB [$6E79], 26` table at `ECL08 $9D55`, which is where the names below
-come from. Index 22's handler is a bare `RETURN`, so it has no name and is not
-given one.
+come from. The clerk pays on exactly 254 (`$9D1C COMPARE [$6E7A], 254`), so any
+other value sits there untouched by her.
+
+**Only four entries ever hold a value between 1 and 253**; the other
+twenty-two are 0, 254 or 255 and nothing else. `MARKERS` below carries those
+four, each read off the script that writes it. A ledger byte the clerk will not
+pay for is a real state, not a decoding error.
+
+**255 does not always mean the party was paid.** Two entries are closed at 255
+without a reward: index 3 when the party fled the Buccaneer's Base and left the
+boy behind (`ECL08 $9EAD`, beside "YOUR BUNGLING THE BIVANT RESCUE HAS COST
+US"), and index 18 when the party broke the seal on Cadorna's iron box, which
+`ECL08 $9AAF` closes on entry to the City Hall while Cadorna confronts them.
+
+**Index 22 is dead.** No instruction in any of the thirty scripts reads or
+writes `$4ABC`, and its handler is a bare `RETURN` — but its row in the clerk's
+four payout tables at `ECL08 $B5E0`/`$B5F7`/`$B60E`/`$B625` is not empty, so it
+was a commission once. It can never be anything but 0.
 
 `offered()` re-implements the board at `ECL08 $A84D`: sixteen candidates tested
-in a fixed order, each a two-instruction `COMPARE`/`IF`/`GOTO $A890` gate, at
-most three offered per visit. The cap counter is `$4A05`, in the per-script
-scratch page, so it resets when the party leaves.
+in a fixed order, each a `COMPARE`/`IF`/`GOTO $A890` gate, at most three offered
+per visit. The cap counter is `$4A05`, in the per-script scratch page, so it
+resets when the party leaves — and it is never reset inside the script, which is
+why a second approach to the clerk on the same visit says only "BACK SO SOON? I
+CAN ONLY REPEAT THE EARLIER OFFERS" and lists nothing.
 
-Evidence for every line is in `work/reports/quest-flags.md`; the plan is
-`docs/103-commissions-panel.md`. Nothing outside those two structures and the
-named appointment flags is exposed, because nothing else in the region is
-confirmed to the same standard.
+Three things the board does that a pure predicate cannot show:
+
+* **The graveyard commission is offered before the sixteen** (`ECL08 $A584`) and
+  does not count against the cap. `graveyard_offer()` has it.
+* **Being offered a job writes flags.** Candidates 3, 4, 5, 12, 13, 14 and 15
+  set `$4AB0`, `$4A97`, `$4A9B`, `$4A8C`, `$4A98`, `$4A99`/`$4A6B` and `$4A9A`
+  as the clerk speaks. `offered()` predicts, it does not simulate.
+* **Running the board dry advances the plot.** If the loop reaches candidate 16
+  without filling the three slots, `$A842`/`$AF2C` writes 254 into `$4ABE` —
+  ledger index 24, "Cadorna exposed as a traitor" — so the next visit gets that
+  speech.
+
+Evidence for every line is in `work/reports/quest-flags.md` and
+`work/reports/commissions.md`; the plan is `docs/103-commissions-panel.md`.
+Nothing outside those two structures and the named appointment flags is exposed,
+because nothing else in the region is confirmed to the same standard.
 """
 
 from __future__ import annotations
@@ -85,8 +115,56 @@ LEDGER = (
 )
 assert len(LEDGER) == LEDGER_COUNT
 
-# The ten handlers that bump $4AC1.
+# The ten handlers that bump $4AC1. Confirmed twice: ten `ADD 1, [$4AC1],
+# [$4AC1]` sites in the clerk's speech table, and `npc_party.d64`, which has
+# exactly these six of them paid and reads 6.
 MAJOR = frozenset({0, 1, 10, 11, 12, 13, 15, 16, 17, 21})
+
+# ---------------------------------------------------------------------------
+# The 1-253 markers.
+#
+# A ledger byte is 0 untouched, 254 done, 255 paid -- and four of the
+# twenty-six also serve as the area script's own progress counter in the same
+# byte. These are all of them; every write in every script was enumerated, and
+# no other entry is ever anything but 0, 254 or 255.
+#
+# Each line names the instruction that writes it, because that is the evidence.
+MARKERS: dict[int, dict[int, str]] = {
+    3: {  # $4AA9, the Bivant heir -- Buccaneer's Base, ECL01
+        1: "the boy has been bought from the captain; still inside the base",
+        128: "you fled the last fight and left the boy behind",
+    },
+    10: {  # $4AB0, Podal Plaza
+        1: "the clerk has read out the commission",
+    },
+    14: {  # $4AB4, Cadorna's diplomatic mission -- Zhentil outpost, ECL1C
+        1: "the outpost commandant is dead; still inside the outpost",
+        253: "the outpost has been left; the ride home is what pays it",
+    },
+}
+
+# Index 21 is a plain count rather than a set of states: `ECL14 $B6A4 ADD 1,
+# [$4ABB], [$4ABB]` after each cleared slum encounter, and `$B6AD COMPARE
+# [$4ABB], 25 / IF< / RETURN` then `SAVE 254`, so 25 clears the area and the
+# byte never holds 25 itself.
+SLUM_ENCOUNTERS = 25
+
+# What each marker is worth, one line, for a panel that has to say something
+# better than the number.
+def marker_text(index: int, value: int) -> str | None:
+    """What a ledger byte between 1 and 253 means, or None if it means nothing.
+
+    `None` is the honest answer for a value no script writes: the four entries
+    below are the only ones with markers, so anything else in 1..253 is a byte
+    the game did not put there.
+    """
+    if not 0 < value < DONE:
+        return None
+    if index == 21:
+        if value >= SLUM_ENCOUNTERS:            # 25 latches to 254 at once
+            return None
+        return f"{value} of {SLUM_ENCOUNTERS} encounters cleared"
+    return MARKERS.get(index, {}).get(value)
 
 
 def ledger_name(index: int) -> str:
@@ -163,6 +241,11 @@ class Entry:
     @property
     def done(self) -> bool:
         return self.value >= DONE
+
+    @property
+    def detail(self) -> str | None:
+        """What the progress marker means, for the entries that keep one."""
+        return marker_text(self.index, self.value)
 
 
 def ledger(source) -> tuple[Entry, ...]:
@@ -250,17 +333,62 @@ BOARD = (
 )
 assert len(BOARD) == 16
 
+# The seventeenth. `ECL08 $A584` runs before the sixteen and outside the
+# three-offer cap, so the graveyard can be raised on a visit that also fills
+# the board. Its `order` is -1 because it is not on the board's own list.
+GRAVEYARD = Offer(-1, "end the graveyard menace", (11,))
 
-def offered(source, limit: int = OFFER_LIMIT) -> tuple[Offer, ...]:
-    """What the clerk would offer on the next visit, in the board's order."""
+# The strength the clerk demands before she raises it at all, and the strength
+# above which she offers an enchanted weapon for accepting. `PARTYSTRENGTH` is
+# computed from the party, not stored in the flags, which is why it is a
+# parameter here -- see `docs/114-party-strength.md`.
+GRAVEYARD_MIN_STRENGTH = 19
+GRAVEYARD_WEAPON_STRENGTH = 36
+
+# Commissions completed before the clerk will raise the graveyard at all.
+GRAVEYARD_MIN_COMPLETED = 4
+
+
+def graveyard_offer(source, party_strength: int | None = None) -> Offer | None:
+    """`ECL08 $A584`: the graveyard commission, offered before the sixteen.
+
+    Four gates, in the script's order: `$4AC1 >= 4`, the graveyard reward not
+    already paid, party strength `>= 19`, and the commission not already
+    accepted (`$4A96 != 255`). `party_strength` of None means "not known", and
+    the strength gate is taken as passed.
+    """
+    f = flags(source)
+    if f[COMPLETED] < GRAVEYARD_MIN_COMPLETED:
+        return None
+    if f.ledger(11) == PAID_VALUE:
+        return None
+    if party_strength is not None and party_strength < GRAVEYARD_MIN_STRENGTH:
+        return None
+    if f[0x4A96] == PAID_VALUE:
+        return None
+    return GRAVEYARD
+
+
+def offered(source, limit: int = OFFER_LIMIT,
+            party_strength: int | None = None) -> tuple[Offer, ...]:
+    """What the clerk would offer on the next visit, in the board's order.
+
+    The graveyard commission comes first and does not count against `limit`,
+    which is how `ECL08` runs it: `$A584` is reached before `$A831` zeroes the
+    board index, and `$4A05` is only bumped inside the board's own loop.
+    """
     f = flags(source)
     out = []
+    grave = graveyard_offer(f, party_strength)
+    if grave is not None:
+        out.append(grave)
+    board = []
     for offer in BOARD:
         if _gate(offer.order, f):
-            out.append(offer)
-            if len(out) == limit:
+            board.append(offer)
+            if len(board) == limit:
                 break
-    return tuple(out)
+    return tuple(out + board)
 
 
 # --- appointments -----------------------------------------------------------
@@ -343,11 +471,12 @@ class Commissions:
         return tuple(a for a in self.appointments if a.outstanding)
 
 
-def read(source) -> Commissions:
+def read(source, party_strength: int | None = None) -> Commissions:
     """Everything, from the flag block."""
     f = flags(source)
     return Commissions(completed=f[COMPLETED], ledger=ledger(f),
-                       offers=offered(f), appointments=appointments(f))
+                       offers=offered(f, party_strength=party_strength),
+                       appointments=appointments(f))
 
 
 def summary_lines(source) -> list[str]:
@@ -361,7 +490,8 @@ def summary_lines(source) -> list[str]:
                           ("Paid:", state.paid)):
         if rows:
             lines.append(heading)
-            lines += [f"  {e.name}" for e in rows]
+            lines += [f"  {e.name}" + (f" - {e.detail}" if e.detail else "")
+                      for e in rows]
     if state.outstanding:
         lines.append("Summoned to:")
         lines += [f"  {a.name} ({a.state})" for a in state.outstanding]
