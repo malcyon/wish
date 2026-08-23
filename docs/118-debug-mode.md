@@ -240,18 +240,65 @@ argument that put the actions there: it acts on what is drawn above it.
   selected area is the current one.
 * **`Travel Back`**, which restores the id and square captured before the last
   trip. One button, and it turns a trip from a one-way journey into a probe.
-* **A help icon** — a circled question mark at the end of the row, whose
-  tooltip is `Warp.HELP`: in plain language and with no "debug" or "unproven"
-  in it, what the arriving script assumes about a party that never played its
-  way there, that wish picks the square in the fourteen areas the game does not
-  place the party itself, and to point the emulator at a copy of the save disk.
-  (Font Awesome's `circle-question` is not in `ui/icons.py` yet, so the circle
-  is the label's border.)
+* **A help button** — Font Awesome's `circle-info` on a `QToolButton` at the
+  end of the row, whose tooltip is `Warp.HELP`: in plain language and with no
+  "debug" or "unproven" in it, what the arriving script assumes about a party
+  that never played its way there, that wish picks the square in the fourteen
+  areas the game does not place the party itself, and to point the emulator at
+  a copy of the save disk. It was a `QLabel` with a drawn circle and a `?` in
+  it, and Donald's objection was the right one: nothing about a glyph painted
+  on the face of a window says there is anything to hover. `autoRaise` gives
+  the button the style's own frame-on-hover, so the affordance is the
+  platform's rather than something invented here, and clicking it does
+  nothing — the tooltip is the whole content, and a dialog repeating it is the
+  dialog this row already got rid of.
+* **A `Only areas I have mapped` checkbox**, on by default. §2.1.
 * **A message line** under the row, empty until something is clicked: what the
   trip did, and then **`Arrived: The Kobold Caves`** when the map lands —
   the area's name, the same one the status line under the map shows, and
   `Arrived.` where the map has no name we can give. The `GEO` file that matched
   at `$0400` goes to the debug log instead.
+
+### 2.1 The dropdown offers where the party has been
+
+Donald: *"Do we have a list anywhere of which areas the player has visited?
+What if the dropdown only listed areas the player has already been to. I think
+that would be safer, and then we wouldn't need the big warning? It would also
+be a more pure play experience."*
+
+**The game keeps no such list**, which is the finding this rests on: thirty area
+scripts walked from their area-initialisation entry point, and exactly one
+writes a persistent flag merely because the party arrived — `ECL00 $B06E SAVE
+1, [$4AC5]`, first entry to New Phlan, which is where every game starts and is
+therefore 1 on every played save. Everything else in `$4A20`-`$4AF8` records a
+scene, a fight or a search, and a party can walk into an area, look at it and
+walk out having set nothing. The per-area table is under "Does the save know
+where the party has been" in [`50-experiments.md`](50-experiments.md).
+
+So the list is **ours**: `automap/state.py::visited_geos` reads the map folder
+and takes every `GEO*.json` with a non-empty `seen` — the squares the
+automapper watched the party stand on. Three things follow, and each is visible
+rather than papered over:
+
+| | |
+|---|---|
+| it only knows what wish watched | a player who installed wish after a year of play has no record. The filter then **turns itself off, disables itself and says why in its tooltip**, and the full list is offered exactly as before. An empty dropdown would look like a broken feature |
+| it is per config directory, not per save disk | two parties played on one machine merge into one visited set. Keying it by disk is possible and is not free — see below |
+| visited is not the same as safely arrivable | an area the party walked through once is in the list. **The arrival-square logic is unchanged**, and so is `Warp.legality`: the filter narrows what is *offered*, never what is legal |
+
+**It does not replace the help text.** A visited area still runs its script
+against quest flags the party may not have set, and the fourteen areas with no
+arrival square of their own are still placed by us. The filter removes the
+worst case — arriving somewhere the party has never been — and leaves the rest,
+so `Warp.HELP` still has something to say.
+
+**Keying the record by save disk** would mean a stable identity for a party.
+The obvious candidate is the roster: `SAVEDGAME0`'s character names and the
+save's own creation are the only things that distinguish two parties, and both
+are read at run time rather than known when the window opens. It would mean a
+directory per party under the map folder, a migration for everybody's existing
+notes, and a decision about what happens when the same party is played from two
+copies of the disk. Not cheap, and not built.
 
 **No confirmation, and no disk line.** Both were there until Donald tested the
 feature: a dialog in front of every trip, and a row of small print naming the

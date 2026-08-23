@@ -174,14 +174,18 @@ class MapCanvas(QWidget):
         visible = None if not st.reveal else st.is_visible
         for prim in map_primitives(st.geo, visible):
             self._draw(p, prim)
-        self._draw(p, party_marker(st.x, st.y, st.facing))
-
         # Notes are drawn **regardless of fog**: a note is something you know,
         # and hiding it because the square is currently fogged would be
-        # perverse. They sit in the corner, clear of the party marker and of
-        # every wall -- the map's job is the walls.
+        # perverse.
+        #
+        # **Before the party marker, not after.** At `NOTE_SIZE` 13 the note
+        # sat in the corner and the two never met; at 26 the note is the
+        # square, so on the one square that has both, something has to be
+        # underneath. It is the note: where the party is standing is the one
+        # thing on this map that must never be in doubt.
         for prim in note_primitives(st.notes):
             self._draw(p, prim)
+        self._draw(p, party_marker(st.x, st.y, st.facing))
 
         if self.flash is not None:
             x, y = self.flash
@@ -216,6 +220,17 @@ class MapCanvas(QWidget):
             draw_icon(p, prim.name, prim.x, prim.y, prim.size, NOTE)
         elif isinstance(prim, Label):
             # The note count, whose point is its bottom right corner.
+            #
+            # **On a disc of paper.** It used to hang off the bottom-right of
+            # a 13px icon with the rest of the cell empty behind it; a 26px
+            # icon fills the cell, and the digit landed in the middle of the
+            # glyph and was unreadable. The disc is the smallest thing that
+            # separates the two without moving either.
+            r = COUNT_SIZE * 0.62
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(PAPER)
+            p.drawEllipse(QPointF(prim.x - r, prim.y - r), r + 1.5, r + 1.5)
+            p.setBrush(Qt.BrushStyle.NoBrush)
             p.setPen(QPen(NOTE))
             p.setFont(QFont("sans", COUNT_SIZE - 2, QFont.Weight.Bold))
             p.drawText(QRectF(prim.x - 20, prim.y - COUNT_SIZE, 20, COUNT_SIZE),

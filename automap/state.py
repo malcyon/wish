@@ -35,6 +35,44 @@ def data_dir() -> pathlib.Path:
     return _data_dir() / "maps"
 
 
+def visited_geos(directory: pathlib.Path | None = None) -> set[str]:
+    """Which maps we have watched the party stand on, from the files on disk.
+
+    One `GEO*.json` per area, written by `AutomapState.save_notes`; a non-empty
+    `seen` list means the mapper recorded at least one square. That is the
+    closest thing to a visited-areas list that exists, and it is important to be
+    clear about what it is not:
+
+    * **It is ours, not the game's.** Pool of Radiance keeps no record of which
+      areas a party has been in. Thirty area scripts were walked from their
+      area-initialisation entry point and only one writes a persistent flag
+      simply because the party arrived -- `ECL00 $B06E SAVE 1, [$4AC5]`, first
+      entry to New Phlan, which is where every game starts and is therefore 1
+      on every played save. Everything else in `$4A20`-`$4AF8` records a scene,
+      a fight or a search. See "Does the save know where the party has been" in
+      `docs/50-experiments.md`.
+    * **It is per config directory, not per save disk.** Two parties played on
+      one machine share one set of files and merge into one visited set.
+    * **A file with notes but no squares does not count.** Notes can be typed
+      into an area from the editor side; `seen` is the only entry that means
+      somebody walked there.
+    """
+    directory = data_dir() if directory is None else directory
+    out: set[str] = set()
+    try:
+        entries = sorted(directory.glob("*.json"))
+    except OSError:
+        return out
+    for path in entries:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(payload, dict) and payload.get("seen"):
+            out.add(path.stem)
+    return out
+
+
 # How far down an open corridor the party can see. The game's own 3D view shows
 # several squares ahead, so revealing only the square you stand on would lag
 # badly behind what the player has actually looked at.

@@ -3441,6 +3441,65 @@ clean save has, so the write cannot hurt; the action says plainly that its
 effect on the next fight is unproven.
 
 
+## Does the save know where the party has been
+
+**No.** One area has a first-entry flag and it is the area every game starts in,
+so nothing in `SAVEDGAME0` distinguishes a party that has seen Sokol Keep from
+one that has not.
+
+The question came from Fast Travel: Donald asked whether the dropdown could
+offer only the areas the party has already visited, and whether the game itself
+records that anywhere. If it did, the save would be the authority and wish's own
+map files a supplement. It does not, and it is the other way round.
+
+**Method.** Every area script has five entry points in its first `$14` bytes,
+and entry 4 is area initialisation — CONFIRMED, `LOADFILES`/`LOADPIECES` in the
+first fourteen instructions of 26 of 30 scripts
+(`work/reports/ecl-opcodes.md`). Walking each script from entry 4 and looking
+for a write into the persistent-flag region `$4A20`-`$4AF8` asks exactly the
+right question: what does a party set by *arriving*? The walk was then repeated
+from every entry with any of `PRINT`, a menu, a fight, an item search or a
+random roll treated as "the player did something", so that only the
+interaction-free paths counted.
+
+**Result — four scripts write a flag at all, and none of them is a visit
+record.**
+
+| script | area | write | is arrival enough? |
+|---|---|---|---|
+| `ECL00` | New Phlan | `$B06E SAVE 1, [$4AC5]`, guarded by `$9B40 COMPARE [$4AC5], 1 / IF<` | **yes** — a genuine first-entry flag. Useless as a discriminator: New Phlan is where the game starts, so it is 1 on all thirteen played saves and 0 only on the shipped one |
+| `ECL00` | New Phlan | `$9AF2 SAVE 0, [$4AC4]` | no — a clear on every entry |
+| `ECL07` | Valjevo Castle, the Pool | `$A8FE SAVE 0, [$4AE0]` | no — clears "the castle has been left after the win" |
+| `ECL12` | Podol Plaza | `$9998/$999E` and `$99AC/$99B2`, setting `$4A34`/`$4A35` | no — the auction state machine, and one branch writes 0, which is what an unvisited area reads |
+| `ECL1D` | Kuto's Well | `$995F SAVE 0, [$4ADB]` on street-level squares, `$99CC SAVE 1` after the climb | no — a level register. Street level writes 0, indistinguishable from never having been |
+| `ECL1C` | Zhentil Keep Outpost | `$993C SAVE 253, [$4AB4]` on the leave-the-map entry | no — a ledger entry, gated |
+| `ECL03`-`ECL06`, `ECL09` | Valjevo Castle | `SAVE 0, [$4A64]`, `AND [$4A67], 127` | no — the alarm timer lapsing and a per-level one-shot being cleared |
+| `ECL1A` | Wilderness, middle | `$AF35 SAVE 255, [$4AA2]`, `$AF3B SAVE 255, [$4A9A]` | no — a wilderness site and an appointment, both gated |
+| the other **twenty-one** area scripts | — | nothing | no flag write on any interaction-free path from any entry |
+
+`$4A9E` looks like a candidate and is not: identical code in `ECL19`/`ECL1A`/
+`ECL1B` sets it 255 on entering a wilderness site and 0 on leaving, so it is
+current state, not history. `$4BC0`-`$4BD8` is the loader's file cache, also
+current state. The 44 one-shot "already happened" flags in
+`work/reports/quest-flags.md` §3.4 are each tied to a *scene*, not to arrival.
+
+**What this means for the feature.** The visited list has to be wish's own
+record — one `GEO*.json` per area with a non-empty `seen` — which covers only
+what the automapper watched. That is a real limitation and the reason the filter
+is a checkbox that disables itself when there is no record, rather than a rule.
+See [`118-debug-mode.md`](118-debug-mode.md) §2.1.
+
+**Worth knowing for Curse.** The same question will come up, and the same method
+answers it: the ECL bytecode is one artefact shared by every port, absolute
+address operands included (`work/reports/quest-flags.md` §7), so a Curse script
+can be walked from its entry 4 exactly as these were. Whether Curse's scripts
+happen to carry arrival flags is not settled by this — only that Pool of
+Radiance's do not.
+
+Scratch: `work/analysis6/ecl6.py` and the extracted scripts in
+`work/amiga/c64ecl/`.
+
+
 ## Planned, not yet run
 
 

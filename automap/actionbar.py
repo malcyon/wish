@@ -31,7 +31,8 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -39,12 +40,16 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QToolButton,
     QWidget,
 )
+
+from ui.iconpaint import icon_pixmap
 
 from . import actions as engine
 from .area import ResidentGeo
 from .panel import MUTED
+from .state import visited_geos
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -233,11 +238,27 @@ class WarpBar(QWidget):
     Everything the row refuses, it refuses with the reason -- the same rule
     `ActionBar` follows, and here the reasons are the whole diagnostic.
 
+    **The dropdown offers what we have watched the party walk in.** Donald's
+    reasoning is that travelling somewhere you have already been is a safer
+    thing to offer and a purer one to play. The record is ours -- one
+    `GEO*.json` under the map folder, written by the automapper -- because the
+    game has none: thirty area scripts were walked from their
+    area-initialisation entry and exactly one writes a persistent flag merely
+    because the party arrived, `ECL00`'s first-entry-to-Phlan flag, which is
+    where every game starts. See `automap/state.py::visited_geos` and
+    `docs/50-experiments.md`.
+
+    That makes the filter a convenience, not a fact about the save, so it is a
+    checkbox and not a rule: empty record, no filter and the reason in its
+    tooltip. **It does not narrow what a warp may do** -- `Warp.legality` and
+    the arrival-square logic are unchanged, and `HELP` still says what
+    arriving somewhere the party never played to costs.
+
     The area table is `por/areas.py`, and the row holds no copy of it.
     """
 
     def __init__(self, parent=None, warp=None, areas=None, say=None,
-                 maps=None):
+                 maps=None, visited=None):
         super().__init__(parent)
         self.say = say or (lambda text, detail="", alarm=False: None)
         self.warp = warp or engine.Warp()
@@ -245,8 +266,16 @@ class WarpBar(QWidget):
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
         rows = engine.area_rows() if areas is None else areas
-        self.rows = self._sorted(r for r in rows
-                                 if getattr(r, "warpable", True))
+        #: Every area a warp is allowed to name, in display order. `rows` is
+        #: what the dropdown is currently showing, which is a subset of this
+        #: whenever the visited filter is on.
+        self.all_rows = self._sorted(r for r in rows
+                                     if getattr(r, "warpable", True))
+        self.rows = self.all_rows
+        #: Where the visited record is read from; a test points it elsewhere.
+        self.visited_dir = visited
+        self._visited: set[str] = set()
+        self._visited_read = 0.0
         self.target = None
         self.last: engine.Outcome | None = None
         #: `(GEO names to watch for, when to give up)`, while a warp is in
@@ -259,14 +288,6 @@ class WarpBar(QWidget):
         grid.setSpacing(4)
 
         self.combo = QComboBox()
-        # Names only. The map files and the disk are what this row is built
-        # on and neither is anything to ask a player to read past: the whole
-        # `New Phlan - GEO00, POOL3` string is the item's tooltip for whoever
-        # wants it.
-        for i, row in enumerate(self.rows):
-            self.combo.addItem(self._label(row))
-            self.combo.setItemData(i, self._detail(row),
-                                   Qt.ItemDataRole.ToolTipRole)
         self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
         grid.addWidget(self.combo, 0, 0, 1, 2)
 
@@ -280,13 +301,24 @@ class WarpBar(QWidget):
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
         grid.addWidget(self.back_button, 0, 3)
 
-        self.help_icon = self._help_icon(engine.Warp.HELP)
+        self.help_icon = self._help_button(engine.Warp.HELP)
         grid.addWidget(self.help_icon, 0, 4)
+
+        #: Show only the areas we have watched the party walk in. On by
+        #: default where there is a record and off, disabled and explained
+        #: where there is not -- see `set_visited_only`.
+        self.visited_only = QCheckBox("Only areas I have mapped")
+        self.visited_only.setFont(self.note_font())
+        self.visited_only.toggled.connect(lambda _on: self.repopulate())
+        grid.addWidget(self.visited_only, 1, 0, 1, 5)
 
         #: What the last trip did. Empty until something has been clicked --
         #: the standing warning that used to sit here is under the help icon.
         self.note = self._small(QLabel(""))
-        grid.addWidget(self.note, 1, 0, 1, 5)
+        grid.addWidget(self.note, 2, 0, 1, 5)
+        self.read_visited(force=True)
+        self.visited_only.setChecked(bool(self._visited))
+        self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
         self.refresh()
@@ -322,31 +354,124 @@ class WarpBar(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         return label
 
+    def note_font(self):
+        """The 8-point face the row's small print uses."""
+        font = self.font()
+        font.setPointSize(8)
+        return font
+
     @staticmethod
-    def _help_icon(text: str) -> QLabel:
-        """A circled question mark whose tooltip is `text`.
+    def _help_button(text: str) -> QToolButton:
+        """Font Awesome's `circle-info`, on a button whose tooltip is `text`.
+
+        **A button rather than a label**, which is Donald's call and the right
+        one: a drawn glyph on the face of a window is furniture, and nothing
+        about it says there is anything to point at. `autoRaise` gives it the
+        frame-on-hover every other tool button has, so the affordance is the
+        style's rather than something invented here.
+
+        **It does nothing when clicked.** The tooltip is the whole content, and
+        a button that opens a dialog saying what the tooltip said is the dialog
+        this row already got rid of.
 
         **Rich text, because that is what makes a tooltip wrap.** `QTipLabel`
         turns word wrap on only when the text might be rich text; a paragraph
         of plain text becomes one line as wide as the screen, which is no
         better than the dialog it replaced.
-
-        Font Awesome's `circle-question` is not in `ui/icons.py` yet, so the
-        circle is the label's own border rather than a glyph.
         """
-        label = QLabel("?")
-        label.setToolTip(f"<p>{text}</p>")
-        label.setAccessibleName("About fast travel")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setFixedSize(HELP_SIZE, HELP_SIZE)
-        font = label.font()
-        font.setPointSize(8)
-        font.setBold(True)
-        label.setFont(font)
-        label.setStyleSheet(
-            f"color: {MUTED.name()}; border: 1px solid {MUTED.name()}; "
-            f"border-radius: {HELP_SIZE // 2}px")
-        return label
+        button = QToolButton()
+        button.setIcon(QIcon(icon_pixmap("circle-info", HELP_SIZE, MUTED)))
+        button.setIconSize(QSize(HELP_SIZE, HELP_SIZE))
+        button.setAutoRaise(True)
+        button.setCursor(Qt.CursorShape.WhatsThisCursor)
+        # Not in the tab order: there is nothing to activate, so stopping here
+        # on the way to the Fast Travel button would be a dead end.
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setToolTip(f"<p>{text}</p>")
+        button.setAccessibleName("About fast travel")
+        return button
+
+    # -- which areas are offered -------------------------------------------
+
+    #: How often the visited record is re-read off disk while the row is up.
+    #: The party maps a new area every few minutes at best, and `refresh` runs
+    #: on every poll.
+    VISITED_EVERY = 5.0
+
+    def read_visited(self, force: bool = False) -> set[str]:
+        """The `GEO` names our own map files record squares for.
+
+        Re-read rather than cached for the session: the whole point is that the
+        list grows while the player walks, and a dropdown that only learns at
+        startup would be wrong within the first minute.
+        """
+        now = time.monotonic()
+        if force or now - self._visited_read >= self.VISITED_EVERY:
+            self._visited = visited_geos(self.visited_dir)
+            self._visited_read = now
+        return self._visited
+
+    def visited_rows(self) -> tuple:
+        """The areas whose maps we have watched the party stand on.
+
+        An area counts when **any** of its `GEO` files does: the two-map areas
+        -- Kuto's Well, the lizardman keep, the Temple district -- are one
+        place to a player.
+        """
+        seen = self.read_visited()
+        return tuple(r for r in self.all_rows
+                     if seen & set(getattr(r, "geos", ()) or ()))
+
+    def set_visited_only(self, on: bool) -> None:
+        self.visited_only.setChecked(bool(on))
+
+    def repopulate(self) -> None:
+        """Rebuild the dropdown, keeping the area that was selected if it
+        survives the filter.
+
+        **The filter can be empty and that is not a failure.** A player who
+        installed wish after a year of play has no record at all, and an empty
+        dropdown with a disabled Fast Travel button would look like a broken
+        feature rather than an honest one. So an empty record turns the filter
+        off, disables it, and says why in its tooltip: the full list is what is
+        offered, exactly as before.
+        """
+        record = self.read_visited()
+        wanted = self.visited_rows() if self.visited_only.isChecked() \
+            else self.all_rows
+        if self.visited_only.isChecked() and not wanted:
+            self.visited_only.blockSignals(True)
+            self.visited_only.setChecked(False)
+            self.visited_only.blockSignals(False)
+            wanted = self.all_rows
+        self.visited_only.setEnabled(bool(record))
+        self.visited_only.setToolTip(
+            "wish's own record of where it has watched the party walk, one "
+            "file per area under its map folder. **It is not the game's**: "
+            "Pool of Radiance keeps no list of the areas a party has been "
+            "in, so an area you played before installing wish, or on another "
+            "machine, is not in here."
+            if record else
+            "Nothing mapped yet. wish records the areas it watches the party "
+            "walk in, and the game itself keeps no such list, so until the "
+            "mapper has seen somewhere there is nothing to filter by.")
+
+        keeping = self.area()
+        self.rows = tuple(wanted)
+        self.combo.blockSignals(True)
+        self.combo.clear()
+        for i, row in enumerate(self.rows):
+            # Names only. The map files and the disk are what this row is
+            # built on and neither is anything to ask a player to read past:
+            # the whole `New Phlan - GEO00, POOL3` string is the item's
+            # tooltip for whoever wants it.
+            self.combo.addItem(self._label(row))
+            self.combo.setItemData(i, self._detail(row),
+                                   Qt.ItemDataRole.ToolTipRole)
+        if keeping is not None and keeping in self.rows:
+            self.combo.setCurrentIndex(self.rows.index(keeping))
+        self.combo.blockSignals(False)
+        self.refresh()
 
     # -- what is selected --------------------------------------------------
 
@@ -389,7 +514,8 @@ class WarpBar(QWidget):
 
     def attach(self, target) -> None:
         self.target = target
-        self.refresh()
+        self.read_visited(force=True)
+        self.repopulate()
         self.check_arrival()
 
     def check_arrival(self) -> str | None:
@@ -433,6 +559,13 @@ class WarpBar(QWidget):
                          if geos and self.maps else None)
 
     def refresh(self) -> None:
+        # The record grows while the player walks, so the dropdown has to
+        # notice. `read_visited` is rate-limited; `repopulate` ends by calling
+        # this again, and the second pass finds nothing changed.
+        before = set(self._visited)
+        if self.read_visited() != before:
+            self.repopulate()
+            return
         area = self.area()
         verdict = self.warp.legality(self.target, area)
         self.button.setEnabled(verdict.ok)
