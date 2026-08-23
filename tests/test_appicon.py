@@ -3,21 +3,18 @@
 Two different things are checked here and they fail for different reasons.
 
 **The drawing.** `ui/appicon.py` puts Font Awesome's `hat-wizard` on a tile,
-and the whole question `docs/109-icon-choices.md` asks of a glyph is whether it
-survives at the smallest size somebody sees it. This one does not, unaided: its
-brim is a bar that never touches the cone, so below `appicon.CLOSE_BELOW` the
-bar is slid up. So the 16 is rendered and *measured* -- one connected
-silhouette, a brim wide enough to count, and enough contrast against the tile
-to read in monochrome -- rather than merely produced, and 22 is measured too,
-because that is where the gap is claimed to start reading as a gap.
+recoloured and inset and otherwise exactly as Fonticons drew it. What is
+measured here is the composition -- the tile is the ground on every side, the
+hat clears the edge at 16, it reads in monochrome -- and that the path data is
+still theirs: the brim is a separate bar that never touches the cone, at every
+size, because moving it would be redrawing somebody else's art.
 
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
 the path data that nobody regenerated fails the build instead of shipping an
-executable whose icon is the old drawing. The comparison is the *pixels*: a
-PNG's bytes belong to libpng and zlib, which Qt links from the host on Linux
-and bundles on Windows, and two machines encoded the same drawing into
-different files -- see `test_the_committed_assets_are_todays_drawing`.
+executable whose icon is the old drawing. The comparison is the *pixels*,
+within a measured tolerance -- see `test_the_committed_assets_are_todays_drawing`
+and `test_the_comparison_still_catches_a_change_to_the_drawing`.
 """
 
 from __future__ import annotations
@@ -28,7 +25,7 @@ import pytest
 
 pytest.importorskip("PyQt6.QtGui")
 
-from PyQt6.QtGui import QGuiApplication, QImage  # noqa: E402
+from PyQt6.QtGui import QColor, QGuiApplication, QImage  # noqa: E402
 
 from tools import genicons  # noqa: E402
 from ui import appicon  # noqa: E402
@@ -87,34 +84,25 @@ def _pieces(mask: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
     return sorted(out, key=len, reverse=True)
 
 
-def test_the_hat_is_one_connected_silhouette_at_16(app):
-    """The failure `109` says kills a glyph is separation, not mush.
+def test_the_hat_is_the_font_awesome_path_and_nothing_else(app):
+    """The glyph is drawn, not redrawn. `appicon.glyph` has to hand back the
+    same object `iconpaint` builds from the path data -- no cut, no translate,
+    no boolean."""
+    from ui.iconpaint import painter_path
 
-    `hat-wizard` was rejected for the map at 13 px for exactly this: its brim
-    is a separate bar and the icon reads as a shark's fin. The app icon slides
-    the bar up below `CLOSE_BELOW`, and this is what proves the result is one
-    piece after rasterising rather than merely in the vector.
+    assert appicon.glyph() == painter_path(appicon.NAME)
+    assert _glyph_mask(16), "nothing was drawn"
+
+
+def test_the_brim_stays_where_font_awesome_put_it_at_every_size(app):
+    """Their drawing, not ours.
+
+    The bar never touches the cone -- the cone closes at y=464 and the bar
+    starts at y=512 -- so every size rasterises as two pieces with at least
+    one clear row of tile between them. Sliding the bar up at the sizes where
+    the gap is tight is the thing this asserts nobody has done again.
     """
-    mask = _glyph_mask(16)
-    assert mask, "nothing was drawn"
-    assert len(_pieces(mask)) == 1, "the brim came away from the cone"
-
-
-def test_the_brim_is_slid_up_below_22_and_left_where_it_was_above(app):
-    """`CLOSE_BELOW` is a measurement, so it is measured here.
-
-    Fonticons draw the brim as a bar that never touches the cone, and that is
-    the drawing rather than a fault: from 22 px up a whole row of tile pixels
-    survives between the two and the icon reads as a hat resting on a table.
-    At 20 and 16 nothing survives -- the cone's foot and the bar's top both
-    land on part-covered pixels and it is a fin over a grey smear -- so those
-    two sizes get the bar slid up instead.
-    """
-    for size in (16, 20):
-        assert size < appicon.CLOSE_BELOW
-        assert len(_pieces(_glyph_mask(size))) == 1, size
-    for size in (22, 24, 32, 48):
-        assert size >= appicon.CLOSE_BELOW
+    for size in (16, 20, 22, 24, 32, 48, 128, 256):
         pieces = _pieces(_glyph_mask(size))
         assert len(pieces) == 2, f"{size}: {[len(p) for p in pieces]}"
         cone, bar = pieces
@@ -234,7 +222,12 @@ def test_the_small_entries_are_dibs_and_the_256_is_a_png():
 
 def test_the_16_is_drawn_and_not_a_squeezed_256(app):
     """The whole reason the file has eight entries. A 256 scaled to 16 is
-    mush; this compares the stored pixels with a fresh render at 16."""
+    mush; this compares the stored pixels with a fresh render at 16.
+
+    To `genicons.TOLERANCE`, for the reason the comparison of the whole of
+    `assets/` is: the committed bytes were rasterised on somebody else's
+    machine. A downscale would be out by a hundred, not by two.
+    """
     entry = next(e for e in _entries() if e["size"] == 16)
     header = 40
     stride = 16 * 4
@@ -245,7 +238,8 @@ def test_the_16_is_drawn_and_not_a_squeezed_256(app):
     for y, row in enumerate(rows):
         for x in range(16):
             b, g, r, a = row[x * 4:x * 4 + 4]
-            assert (r, g, b, a) == fresh[y][x], (x, y)
+            off = max(abs(u - v) for u, v in zip((r, g, b, a), fresh[y][x]))
+            assert off <= genicons.TOLERANCE, (x, y, off)
 
 
 def test_the_committed_assets_are_todays_drawing(app):
@@ -253,25 +247,40 @@ def test_the_committed_assets_are_todays_drawing(app):
     `python3 tools/genicons.py` when this fails.
 
     **Pixels, not bytes.** This compared the files byte for byte until CI
-    turned red on three of four runners with the same six names: `wish.ico`,
-    `wish.png` and the 22, 48, 64 and 256 hicolor PNGs. The other four hicolor
-    PNGs -- 16, 24, 32, 128 -- were byte-identical on every one of them, and
-    that is the whole diagnosis. A rasterising difference cannot be that
-    selective: the smallest edit worth catching moves pixels at *every* size
-    (one path point by 1/640 moves 10 px at 16 and 218 at 256), and an
-    arithmetic wobble a thousand times smaller than that -- one ulp on the
-    scale factor -- moves none anywhere. A compressor's output, on the other
-    hand, differs exactly where the data leads it to.
+    turned red on every runner. A PNG's bytes are libpng's and zlib's, and
+    `ldd libQt6Gui.so.6` on Linux resolves `libpng16.so.16` and `libz.so.1` to
+    the *host's* copies while the Windows wheel carries its own. Qt hands the
+    encoder pixels and the encoder writes whatever file it likes.
 
-    And the compressor is not ours. `ldd libQt6Gui.so.6` on Linux resolves
-    `libpng16.so.16` and `libz.so.1` to the *host's* copies; the Windows wheel
-    carries its own. Qt hands the encoder the pixels and the encoder writes
-    whatever file it likes -- so the pixels are what is asserted here, and the
-    committed bytes only have to decode to them.
+    **And pixels within a tolerance.** That went red too, on all four runners
+    at once: 8 of 65536 pixels at 256, 8 of 484 at 22, 1 of 4096 at 64, each
+    by 1 of 255. Qt's rasteriser does not round the last bit of an antialiased
+    edge the same way on every host. `genicons.TOLERANCE` and `genicons.MOST`
+    are the room that leaves, and
+    `test_the_comparison_still_catches_a_change_to_the_drawing` is the proof
+    that it is not so much room that a real change gets through.
     """
     stale = {str(path.relative_to(ROOT)): why
              for path, why in genicons.differences(ASSETS).items()}
     assert not stale, f"run tools/genicons.py: {stale}"
+
+
+@pytest.mark.parametrize("attribute,value", [("INSET", 0.1001),
+                                             ("RADIUS", 0.1801),
+                                             ("TILE", QColor("#2b3a68"))])
+def test_the_comparison_still_catches_a_change_to_the_drawing(
+        app, monkeypatch, attribute, value):
+    """The tolerance above has to be noise-wide, not change-wide.
+
+    Each of these is the smallest perturbation of its kind worth arguing
+    about -- the inset and the corner radius moved by one part in a thousand,
+    and a colour by a single unit of 255 -- and each has to leave the
+    committed `assets/` looking stale. Measured when the bounds were chosen:
+    a part in a thousand off the inset goes 4 of 255 out at 24 and 12 at 256,
+    and a one-unit colour change moves 70 % of the pixels at every size.
+    """
+    monkeypatch.setattr(appicon, attribute, value)
+    assert genicons.differences(ASSETS), f"{attribute}={value} slipped through"
 
 
 def test_the_hicolor_tree_covers_gnome_and_kde():

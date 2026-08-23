@@ -39,9 +39,8 @@ subpath that stops touching the cone at 13px and reads as a shark's fin; and
 
 **`hat-wizard` is in the table anyway**, because the *application* icon is
 drawn from it -- `ui/appicon.py`, at 16 px and up on a tile, where the sizes
-that matter are 32 and above and the two that are not are handled there. It is
-not the magic-user's glyph on the map and must not be used as one: at 13px the
-finding above still stands.
+that matter are 32 and above. It is not the magic-user's glyph on the map and
+must not be used as one: at 13px the finding above still stands.
 
 **The 13px rule these were drawn to.** One connected silhouette, with at most
 one hole and that hole no smaller than about 64 units in the 640 box. Hole

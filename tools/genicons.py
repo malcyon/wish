@@ -27,9 +27,10 @@ before `pyinstaller`, and PyInstaller wants the `.ico` to exist when it reads
 `tests/test_appicon.py` re-renders and compares, so a committed file that no
 longer matches the drawing fails the build rather than shipping.
 
-**The comparison is pixels, not bytes** -- `differences`, and the note above it.
-Qt does not promise a byte-identical PNG on two machines and did not deliver
-one; it does promise the pixels, and the pixels are the drawing.
+**The comparison is pixels within a tolerance** -- `differences`, and the note
+above it. Qt does not promise a byte-identical PNG on two machines and did not
+deliver one, and it does not quite promise the last bit of an antialiased pixel
+either. `TOLERANCE` and `MOST` are what separates that from a real change.
 """
 
 from __future__ import annotations
@@ -144,12 +145,13 @@ def artefacts(assets: pathlib.Path = ASSETS) -> dict[pathlib.Path, bytes]:
 # Not by its bytes. A PNG's bytes are libpng's and zlib's, and on Linux Qt
 # links the *host's* copies of both (`ldd libQt6Gui.so.6` finds
 # `libpng16.so.16` and `libz.so.1`) while the Windows wheel bundles its own.
-# Qt promises the pixels, not the file, and on CI four of the eight hicolor
-# PNGs came back byte-identical and four did not -- which no rasterising
-# difference could produce, because a change to the drawing moves pixels at
-# every size at once (measured: the smallest useful path edit moves 10 px at
-# 16 and 218 at 256, and a 1-ulp change to the scale factor moves none).
-# So the pixels are compared and the encoding is left to the machine.
+# Qt promises the pixels, not the file, so the pixels are compared and the
+# encoding is left to the machine.
+#
+# And not by exact pixels either. Qt's rasteriser rounds the last bit of an
+# antialiased edge differently on different hosts: CI came back with 8 of
+# 65536 pixels moved at 256, 8 of 484 at 22 and 1 of 4096 at 64, every one of
+# them by 1 of 255. That is the noise the tolerance below has to sit above.
 
 
 def png_pixels(data: bytes) -> tuple[int, int, bytes]:
@@ -199,6 +201,19 @@ def drawing(name: str, data: bytes) -> dict[str, tuple[int, int, bytes]]:
     return out
 
 
+#: How far a stored square may be from today's render and still be the same
+#: drawing: no channel of any pixel off by more than `TOLERANCE`, and no more
+#: than `MOST` of the pixels touched at all. Both bounds are measured rather
+#: than chosen. The rounding noise above is 1 of 255 on at most 1.65 % of a
+#: square, so each has about six times the room it needs; and every edit small
+#: enough to be worth arguing about breaks one of them at one size or another
+#: -- moving the inset by a part in a thousand goes 4 of 255 out at 24, moving
+#: one path point by 1/640 goes 35 out at 256, and changing a colour by a
+#: single unit moves 70 % of the pixels at every size.
+TOLERANCE = 2
+MOST = 0.10
+
+
 def _difference(was, now) -> str:
     """Why two squares are not the same square, or "" when they are."""
     if was is None or now is None:
@@ -208,11 +223,14 @@ def _difference(was, now) -> str:
         return f"{width}x{height} against {wide}x{high}"
     if before == after:
         return ""
+    total = width * height
     pixels = sum(1 for i in range(0, len(before), 4)
                  if before[i:i + 4] != after[i:i + 4])
     worst = max(abs(a - b) for a, b in zip(before, after))
-    return (f"{pixels} of {width * height} pixels differ, "
-            f"by up to {worst} of 255")
+    if worst <= TOLERANCE and pixels <= total * MOST:
+        return ""
+    return (f"{pixels} of {total} pixels differ ({100 * pixels / total:.2f} %),"
+            f" by up to {worst} of 255")
 
 
 def differences(assets: pathlib.Path = ASSETS) -> dict[pathlib.Path, str]:

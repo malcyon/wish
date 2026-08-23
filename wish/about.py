@@ -25,11 +25,11 @@ PICTURE = 64
 
 TEXT = f"""<h3>Wish {__version__}</h3>
 <p>A character editor and live automapper for Pool of Radiance (Commodore 64).</p>
-<p>GPL-3.0-or-later. The game's own data stays on the player's disks.</p>
+<p>GPL-3.0-or-later.</p>
 <p>The application icon and some of the interface icons are from
 <a href="https://fontawesome.com">Font Awesome Free 7.3.1</a> by Fonticons,
-Inc., licensed CC BY 4.0. The icon is <code>hat-wizard</code>, recoloured on a
-tile, with its brim moved up at the two smallest sizes.</p>"""
+Inc., licensed CC BY 4.0. The application icon is <code>hat-wizard</code>,
+recoloured on a tile.</p>"""
 
 
 def box(parent: QMainWindow | None = None) -> QMessageBox:
