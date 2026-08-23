@@ -272,6 +272,13 @@ true. And every enhancement ends with a `Documentation:` line linking the doc it
 rests on -- that link is what joins the work list to the knowledge base now the
 P codes are gone.
 
+**Comment before you close.** An issue that closes with nothing but a commit
+reference makes the next reader open the diff to find out what happened. Say
+what was actually done, what it now does instead, and anything that was
+deliberately left undone -- a few sentences, in the issue, before or as it
+closes. The commit message is one line; the comment is where the explanation
+goes.
+
 **Close an issue in the commit that finishes it**, and say which issue in the
 commit message only when it needs saying -- one sentence is still the rule.
 
