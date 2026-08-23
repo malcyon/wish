@@ -189,6 +189,22 @@ Compress-Archive -Path "dist/wish-<version>-windows-x86_64" `
                  -DestinationPath "wish-<version>-windows-x86_64.zip"
 ```
 
+**B8. Gather and checksum, on Windows.** B6's counterpart, and it was missing:
+the Windows path stopped at the zip, so §2 sent you to verify a `SHA256SUMS`
+that nothing on this machine had written. Bare file names, like B6, so §2 can
+find each file beside it.
+
+```powershell
+New-Item -ItemType Directory -Force release | Out-Null
+Copy-Item "wish-<version>-windows-x86_64.zip" release/
+Push-Location release
+Get-ChildItem -File | Where-Object Name -ne SHA256SUMS | ForEach-Object {
+  "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name
+} | Set-Content -Encoding ascii SHA256SUMS
+Get-Content SHA256SUMS
+Pop-Location
+```
+
 **Tidy up.** If you tagged in B2, `git tag -d v0.1.0` before you forget — a
 stray local tag will change the version of the next thing you build.
 
@@ -244,6 +260,13 @@ first — `editor/files.py::save_disk` — but it does write). Work on the copy.
 ---
 
 ## 2. Checksums, both platforms
+
+**Only for a release you downloaded.** If you built the artefacts yourself in
+§0 there is nothing here to catch: you have the bytes you just made, and the
+`SHA256SUMS` you would check them against is one you wrote in B6 or B8. Skip
+to §3. A frozen build straight out of `pyinstaller` is `wish.exe` and
+`_internal/` in `dist/wish` and nothing else -- no checksum file, because
+making one is a later step, and running §2 against it reports nothing at all.
 
 Do this before unpacking anything.
 
