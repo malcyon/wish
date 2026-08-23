@@ -190,7 +190,13 @@ record of what was originally wanted. Edit the description only to correct a
 factual error in it, and say in a comment that you did.
 
 **Labels.** Exactly one priority on every issue -- `Priority: High`,
-`Priority: Medium`, `Priority: Low`. Then:
+`Priority: Medium`, `Priority: Low`.
+
+**Set it when you open the issue**, in the same `gh issue create` -- an issue
+filed without one is not "unprioritised pending triage", it is an issue that
+falls off the list, and #41 was opened that way. Guess if you have to and say
+in the body that you guessed; Donald recurates priorities by hand, and a label
+he has to correct costs him less than one he has to notice is missing. Then:
 
 * **`bug`** -- a defect in *our* code, one a user can hit.
 * **`enhancement`** -- build this. Plans are enhancements.
