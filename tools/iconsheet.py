@@ -2,7 +2,7 @@
 
 `docs/109-icon-choices.md` was once a table of names. A table of names is how
 `hat-wizard` got chosen and how it turned out to read as a shark's fin at
-13 pixels. This draws the icons instead, through `automap.iconpaint` -- the same
+13 pixels. This draws the icons instead, through `ui.iconpaint` -- the same
 code the map and the roster paint with -- so what comes out is what the program
 would do, not an approximation of it.
 
@@ -75,7 +75,7 @@ GAP = 10
 
 #: What ships. `(section, [(name, source, note), ...])`.
 #: `test_the_sheet_only_names_icons_that_exist` fails the build if a name here
-#: is not in `automap.icons`, so a renamed drawing breaks the build rather than
+#: is not in `ui.icons`, so a renamed drawing breaks the build rather than
 #: the sheet.
 SHEET = [
     ("Class icons", [

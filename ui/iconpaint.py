@@ -1,4 +1,4 @@
-"""Turn `automap.icons` path data into something Qt can paint.
+"""Turn `ui.icons` path data into something Qt can paint.
 
 Kept apart from `icons.py` so the table stays importable with no display, and
 apart from the widgets so the map and the roster draw the same glyph the same
