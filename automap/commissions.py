@@ -148,12 +148,22 @@ def _name(commission, word) -> str:
 
 
 def _note(commission, entries) -> str:
-    """The one fact a multi-entry commission needs on its face."""
-    if not commission.unit:
-        return ""
-    total = len(commission.ledger)
-    done = sum(entries[i].value >= book.DONE for i in commission.ledger)
-    return f"{done} of {total} {commission.unit}" if 0 < done < total else ""
+    """The one fact a commission needs on its face, when it has one.
+
+    Two shapes. A commission spanning several ledger entries counts them --
+    "3 of 6 books recovered". A single entry that keeps a progress marker says
+    what the marker means, which `por.commissions.marker_text` decoded: only
+    four entries have one, and only the slums' counts anything.
+    """
+    if commission.unit:
+        total = len(commission.ledger)
+        done = sum(entries[i].value >= book.DONE for i in commission.ledger)
+        return f"{done} of {total} {commission.unit}" if 0 < done < total else ""
+    if len(commission.ledger) == 1:
+        entry = entries.get(commission.ledger[0])
+        if entry is not None and entry.detail:
+            return entry.detail
+    return ""
 
 
 def _board_line(commission, on_board, open_gates) -> str:

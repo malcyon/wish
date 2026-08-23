@@ -424,3 +424,15 @@ def test_every_board_candidate_and_ledger_entry_is_in_exactly_one_row():
     assert sorted(seen) == list(range(book.LEDGER_COUNT))
     orders = [c.order for c in COMMISSIONS if c.order is not None]
     assert sorted(orders) == [o.order for o in book.BOARD if o.ledger]
+
+
+def test_the_slums_says_how_many_encounters_are_cleared(app):
+    """`marker 4` used to be the whole story a player got. `$4ABB` counts slum
+    encounters cleared, of 25 -- `docs/134-commissions.md`."""
+    flags = bytearray(book.FLAGS_SIZE)
+    flags[book.LEDGER_BASE - book.FLAGS_BASE + 21] = 4
+    from automap.commissions import commission_rows
+    rows = [r for r in commission_rows(bytes(flags)) if r[0] == "clear the slums"]
+    assert len(rows) == 1
+    assert rows[0][3] == "4 of 25 encounters cleared"
+    assert "marker" not in rows[0][0] and "marker" not in rows[0][3]
