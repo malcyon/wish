@@ -1,0 +1,29 @@
+# automap
+
+The live automapper: everything that knows about a running machine — the VICE
+client, the map state, the rendering geometry, the window. Kept in its own
+package so `editor/` can promise it never talks to an emulator, and so the
+decoding half of each pair stays Qt-free and testable headless.
+
+| file | purpose |
+|---|---|
+| `__init__.py` | Package docstring only: why the live code is separate from `por/` and `editor/`. |
+| `__main__.py` | `python -m automap` — attach to an already-running emulator, or render one map offline with `--svg`. Never launches VICE itself, because VICE serves one monitor connection per run and a second emulator would fight the first over the port. |
+| `actionbar.py` | The row of buttons under the map. Each carries one action, is disabled with the reason in its tooltip when the mode flag forbids it, and asks first where the action is irreversible. Results go to the messages panel rather than a pop-up, so the map stays usable. |
+| `actions.py` | The engine behind those buttons: an action takes a `Target`, decides whether it is legal, and either writes or says why not. No Qt. Legality is re-checked at `apply` time and gated on `$6E11` — the mode flag `LINKER` dispatches on — never on the screen, because a button's enabled state is one poll interval stale. Nothing here writes to a disk. |
+| `area.py` | Which GEO map the party is standing on, answered two ways: `ResidentGeo` matches the 1024 bytes at `$0400` against the disk copies, which is exact and follows the game into a new area as the load finishes; `Fingerprint` needs no addresses at all and stays wired underneath as a contradiction check. |
+| `combat.py` | What the machine holds while a battle runs, and where to draw it. No Qt. Gated on `$6E11 == 2`, which is not an optimisation — outside combat `$8B00` is a graphics buffer and an ungated reader stacks every combatant at (0,0). The battlefield's shape is read from the `SQRPACI<nn>` parameter block, never assumed. |
+| `combatlog.py` | Keeps the combat messages the game throws away. The game prints who hit whom, holds it in a **software** delay loop and paints over it — so on an emulator faster than a 1 MHz 6510 the line is gone before it can be read. Folds screen text into messages; the window paints them. |
+| `commissions.py` | The City Council's books drawn beside the map — a quest log the game itself only shows one City Hall visit at a time, including what is finished and still owed money. Read-only on purpose: every byte behind it is a plot flag. Decoding is `por/commissions.py`. |
+| `config.py` | Settings that survive closing the window, as small hand-editable JSON. An unreadable or half-written file counts as "no settings yet" rather than as an error. |
+| `live.py` | What the running game holds right now, as plain data. No Qt. Covers the whole tab in two reads because the cost of reading a live machine is the round trip and not the bytes; every address comes from the `por.games.Game` descriptor, so a new title costs a table row. |
+| `noteeditor.py` | Adding, editing and deleting a note without stopping playing — a popover at the square rather than a modal dialog, since notes get made mid-game with a fight probably waiting. Clicking a square that already has a note opens that note, with a Delete beside it. |
+| `notes.py` | Typed notes on a square. No Qt. A note is a kind plus a few words: the kind carries an icon visible from across the map, the words are the tooltip. `type` is stored as a string so a renamed type degrades to an unknown icon rather than silently becoming a different one, and the old single-string format still loads. |
+| `panel.py` | The live party drawn beside the map, one card per character. Bars rather than bare numbers, because mid-fight "who is hurt" should be answered by looking; the numbers stay beside the bar. Presentation only — the decoding is `live.py`. |
+| `paths.py` | Where settings, notes and the game disks live, on any platform. Nothing here is Linux-specific: a Windows user running VICE has every reason to want these programs. |
+| `render.py` | Turns a `Geo` into drawing primitives. No Qt — the window paints these, the tests assert on them, and `to_svg` renders them with no emulator running. Doors are drawn as doors, and every edge is drawn from both sides, because wall art is only 0.960 reciprocal and reciprocity silently drops the one-way edges. |
+| `screen.py` | Reading the C64's 40x25 text screen from anything with a `read(addr, length)` — split out of `vice.py` because none of it is VICE-specific. `read` is passed as a callable so a backend that has to batch or resume around a burst keeps that decision to itself. |
+| `state.py` | What the automapper knows, with no Qt anywhere in it. The game saves no explored bitmap — `SAVEDGAME1` past `$83FF` turned out to be resident code and a graphics buffer — so `Exploration` tracks and persists what has been seen. |
+| `target.py` | Where live bytes come from. The contract is deliberately two methods, so a second backend need not pretend it has breakpoints. `ViceTarget` holds one connection for the session and resumes after each burst; the cost is measured at about 14.3 ms of extra emulated time per `resume()`, not per byte. |
+| `vice.py` | The VICE binary-monitor client. Matches responses by request id, because VICE interleaves unsolicited events into the same stream and a naive client returns the *previous* request's data; and treats an open connection as a stopped machine, which is why it is a context manager. |
+| `window.py` | The PyQt6 map window, deliberately thin: the geometry is in `render.py` and the knowledge is in `state.py`, and this paints primitives and forwards key presses. That split is what lets the map be developed and tested with no display. |

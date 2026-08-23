@@ -1,0 +1,25 @@
+# editor
+
+The character editor GUI. Opens a `.D64` and writes it back; imports nothing
+from `automap/`, so it works with no emulator installed anywhere —
+`tests/test_wish.py::test_editor_imports_nothing_live` greps every file here to
+keep that true.
+
+| file | purpose |
+|---|---|
+| `__init__.py` | Empty. |
+| `__main__.py` | `python -m editor [SAVE.D64]` — the standalone entry point. Recompiles `character.ui` on startup, so editing the form in Qt Designer and restarting is the whole workflow. |
+| `binding.py` | Which widget edits which record field, and which fields must not be edited. Widgets bind by `objectName` (`field_strength` edits the `strength` entry in `por/layout.py`), and read-only is *computed* from three sources the project already maintains — the game recomputes it, we do not understand it, or the write would be silently dropped — so the list cannot go stale. |
+| `changes.py` | What a save would write, phrased exactly as `wish --dry-run` prints it. Compares against the bytes as read rather than against a dirty flag, so a value typed and typed back counts as no change. |
+| `character.ui` | The Qt Designer form for the character sheet — the actual layout of every widget. Edit it in Designer (`designer/`), not by hand; `tools/genui.py` compiles it to `ui_character.py`. |
+| `effects.py` | The ten trait slots at `0x0AD` spelled out on the character sheet, coloured by confidence. The codes themselves stay in `por/traits.py` so the sheet and the combat tooltip cannot become two tables. Shown, not edited. |
+| `enums.py` | Fields whose numbers have names, taken from `por/yaml_io.py` so the CLI and the GUI cannot drift. Race and class are *functions* of the title, not constants, because the lists differ between the six games. |
+| `files.py` | Opening and saving, and not losing anybody's save disk. The editor writes back over the file you opened, which is only defensible because the write is atomic (temp file, fsync, rename) and a timestamped backup is taken every time into a folder that is named rather than guessed. |
+| `iconwidget.py` | The combat-icon editor, promoted onto the form as class `IconEditor`. Draws the genuine article — two stacked 3x3 poses of `CHARPIC00` glyphs in multicolour text mode — and offers the sixteen C64 colours and nothing else, because a general colour dialog would offer colours the machine cannot show. |
+| `inventory.py` | The sixteen item slots one character carries, with names spelled out. Items live in `SAVEDGAME0`, not in the record, so a `.chr` export has none. Adding an item means copying one of the 163 real templates off the game disks, never filling in fields, so the bytes we do not understand keep sane values. |
+| `palette.py` | The sixteen colours a C64 has, and no others. |
+| `partspicker.py` | Pick an icon the way the game's own ICON menu does — a weapon and a head — with each option rendered as the icon you would end up with, so you choose a result rather than a number. Replaces a per-cell glyph picker that could build a figure with two heads and no legs. |
+| `roster.py` | The party list, and the three kinds of file it can come from. Shows name, armour class and current hit points — exactly what the game's own party list prints, established by disassembling all 64 call sites into its string printer. Which title a disk is stays a `Party.game`; no filename is spelled out here. |
+| `spellwidget.py` | Spells by name: the spellbook a character knows (`0x078`) and what is memorised (`0x020`), two shapes behind one three-method interface so the window handles them generically. Neither consistency rule is enforced — the capacity is shown beside the list and an unknown spell is coloured, and the edit goes through either way. |
+| `ui_character.py` | **Generated** from `character.ui` by `tools/genui.py` (which is `pyuic6`). Never edit it; `--check` fails CI if it is out of step with the `.ui`. |
+| `window.py` | The main window — roster across the top, character sheet below. Finds widgets by `objectName` and matches them to `por/layout.py` fields, so the form can be rearranged, regrouped or relabelled in Qt Designer without a line of this file changing. |
