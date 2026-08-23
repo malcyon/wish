@@ -1,9 +1,20 @@
 ---
 name: goldbox
-description: Reverse engineer a Commodore 64 SSI Gold Box game — Pool of Radiance, Curse of the Azure Bonds or a successor title. Use when decoding a Gold Box D64, save-game or character-record format, matching GEO map files to areas, reading a running game's memory, or building or validating an automapper for a title the project has not done yet. Carries the order of attack, the shared-format facts that transfer between titles, the confidence discipline, and the recipe for locating live data whose addresses are unknown.
+description: Reverse engineer a Commodore 64 SSI Gold Box game — Pool of Radiance, Curse of the Azure Bonds or a successor title. Use when decoding a Gold Box D64, save-game or character-record format, matching GEO map files to areas, reading a running game's memory, or building an automapper for a title the project has not done yet. Carries the order of attack, the shared-format facts that transfer between titles, the confidence discipline, and the recipe for locating live data whose addresses are unknown. This is a decoding checklist; for validating the shipped features against a title, see docs/139-per-title-validation.md instead.
 ---
 
 # Reverse engineering a C64 Gold Box game
+
+**This is a decoding checklist, not a test plan.** It says how to take a title
+the project has never opened and get from a disk image to a mapper you can
+believe. It says nothing about whether the *shipped* features — the editor's
+tabs, the CLI, the live actions, Fast Travel, Level Up, the combat log, the
+commissions panel — work on a title once it is decoded. Decoding a title is not
+supporting it.
+
+**For validating what ships, against a title, use
+`docs/139-per-title-validation.md`.** It is the feature × title matrix, with the
+evidence for every cell and the grouped runs that would fill the empty ones.
 
 ## Lead with this: most of the format is already solved
 
@@ -35,11 +46,15 @@ not need.
 | 580-byte character record, offset for offset | Every absolute address: save base, export load address, resident bases |
 | The record is four blocks the game saves separately: `0x000`-`0x0FF` slot, `0x100`-`0x11F` roster, `0x120`-`0x21F` items, `0x220`-`0x243` icon | How many files a save disk holds, and their names |
 | Biased encodings: `60 - value` (THAC0, armour class), `48 + value` (armour bonus), `12 - AC` (item protection nibble) | The character-file marker byte (`$01` vs `$02`) |
-| Race 1-based, class 0-based, `class_bits` the field to prefer; per-class level array eight wide at `0x0C9` | Which classes the title implements inside those eight slots |
+| Class 0-based, `class_bits` the field to prefer; per-class level array eight wide at `0x0C9` | Which classes the title implements inside those eight slots |
+| The race byte at `0x072` is a code | **The race table it indexes.** Silver Blades drops half-orc and human becomes 6, not 7; the Krynn titles are 0-based. `por/games.py` carries one list per title |
+| Save container geometry: header `$400`, slots `$400`, items `$1000`, icons `$2E0`, position `$C0`, area `$2C2` — all payload-relative | The payload's **base**, but only three values across six titles: `$4900` Pool of Radiance, `$4B00` Curse/Silver Blades/Gateway, `$4000` both Krynn titles. `por/games.py` is the table |
+| `spells_known` is sixteen bytes, `0x078`-`0x087`, ids 0-127 — read out of `GEN`'s own clear loop on Silver Blades | How many of them a title's casters reach |
 | Base-versus-current: the record holds base values, the roster block holds the derived current ones | Which file the roster block lives in |
 | `GEO` maps: 1024 bytes, four 256-byte planes, 16×16, indexed `x + (y << 4)` | Which `GEO` file is which area — always local, always earned |
 | The ECL bytecode VM: opcode table, operand encoding, 6-bit packed strings, plane-`$200` byte as the script id | The ECL block's base address (`$9900` in C64 Pool of Radiance, `$8000` in DOS) |
-| `ITEMNAMES` as 256 low + 256 high + strings; `ITEMS` as 128 × 16; 16-byte item records | The file stems present at all — Curse has no `SPELLN`; its spell names live in `COMBAT2` |
+| `ITEMNAMES` as 256 low + 256 high + strings; `ITEMS` as 128 × 16; 16-byte item records | The file stems present at all — Curse has no `SPELLN00` and keeps its spell names in `COMBAT2`. `SPELLN64` exists in both games and is the **icon-editor menu**, not a spell table |
+| `GEO` **ids are not a range.** Enumerate maps by directory scan, never by count: Silver Blades and both Krynn titles have no `GEO00` and start at `$10` or `$20`, and Silver Blades' high nibble is the disk side | Which ids a title uses |
 | D64 container; saves are verbatim uncompressed memory images with no checksum | Screen layout, status-line row, menu wording |
 | Spell ids 1-56 | Spell ids past 56, and the number of character slots |
 
@@ -186,9 +201,17 @@ So the automapper reads the status line first and falls back to memory only
 when the status line is not on screen (camp, combat, a menu), and it tags each
 fix with its `source`. Two consequences worth carrying to any title:
 
-* **Prefer the value the game displays over the value you believe it stores**,
-  then confirm the two agree at rest. Where they disagree, the display is the
-  live truth and the memory copy is a cache with its own update rule.
+* **Find which copy is live on *this* title, by moving and watching.** Do not
+  assume it is the one that reaches the disk, and do not assume it is the one on
+  screen. Pool of Radiance's memory copy lags a move and the status line is
+  right; **Silver Blades is the other way round** — the status line read `2,0`
+  when every memory copy and the clock said `(3,0)`. Two saves either side of one
+  step, then the one address in the machine that changed the way the step must.
+* **The address the save writes need not be the address the game reads.** Curse
+  and Silver Blades both keep the save's copy at `$4BC0` and the engine's
+  working copy at `$C04B`, and `$4BC0` does not move at all while the party
+  walks. "Lags a move" is the mild version of this failure and "does not move"
+  is the severe one; for the first step they look identical.
 * **A cache has an update rule and you must find it.** Armour class in the
   roster block is not recomputed on load — it is refreshed only when *equipment*
   changes. Editing dexterity leaves it stale, which looked for a while like the
@@ -247,11 +270,13 @@ last non-empty candidate set and count the contradiction.
 is your signal that an address is wrong.
 
 **The map fact is that the *square* did not change on a forward step**, and
-that is the only thing to assert. Whether a bump advances the clock is
-**unmeasured** — nobody has watched the clock during one — so "the clock
-changed" is evidence of neither movement nor a refusal. `automap.state`'s
-`_refused` infers a one-minute cost and says in its own docstring that it is
-inferred; if the cost turns out to be zero it simply never fires.
+that is the only thing to assert. **A refused move costs no time** — measured
+on Curse (four turns and one refusal at an unchanged clock) and on Silver Blades
+(four bumps at `(3,3)` left the clock at `0:05`) — so "the clock changed" is
+evidence of neither movement nor a refusal. `automap.state`'s `_refused` infers
+a one-minute cost and says in its own docstring that it is inferred; on both
+later titles it never fires, and a driver that wants refusals must compare
+squares.
 
 ### Hazards — read these before connecting
 
@@ -260,11 +285,22 @@ inferred; if the cost turns out to be zero it simply never fires.
   the emulator freezes and only `pkill` recovers it. Delete every checkpoint at
   the end of every experiment. The automapper offers no checkpoints at all for
   this reason.
-* **One binary-monitor connection at a time.** VICE accepts a second TCP
-  connection and then never answers it. A stray GUI holding port 6502 makes the
-  game look frozen. **Check `ss -tnp | grep 6502` before connecting**, and never
-  kill a process holding the monitor without knowing what it is — that has
-  killed a human's window here once already.
+* **One binary-monitor connection per VICE process.** A second TCP connection is
+  accepted and then never answered, so two things at once means two emulators.
+  **Go through the instance pool** — `tools/instance.py claim` hands back the
+  ports, the display, a work directory and its own `vicerc`, and holds the lease
+  for the life of your process. Never launch one outside the pool, never attach
+  to one you did not launch, and never kill by name: an instance nobody leased
+  cannot be told from a human's, and breaking that rule killed a human's window
+  here once already.
+* **A D64 a driven session wrote must be flushed before it is read back.**
+  Attach something else, or tear the session down cleanly. Otherwise the last
+  file written reads as a `*PRG` with a zero block count — which our own reader
+  accepts and the 1541 will not open. It cost the first hour of the Silver
+  Blades run, answering `CHARACTER NOT FOUND` on a working import.
+* **A directory block count of zero is not an empty file.** Follow the sector
+  chain and ignore the count: every character Curse exports reports 0 blocks, as
+  does every file on the Death Knights of Krynn sides.
 * **Closing the text-monitor connection kills the binary monitor too.** Open it
   once, never close it, never send `x` on it.
 * **Batch reads.** The cost is per `resume()`, not per byte: a 7168-byte read
@@ -328,12 +364,18 @@ the artefact before moving on.
 | 11 | Inventory the maps: walls, doors, locked, indoor, reciprocity | indoor 256/256 = dungeon, 0/256 = wilderness, mid = town block |
 | 12 | Anchor one map: match a square you have stood on, or match transcribed fan maps square by square | file-to-area assignment, with a score and a next-best score |
 | 13 | Decode the item tables and spell ids with the existing readers, changing only base addresses | item names, item types, spell names |
-| 14 | Start the emulator with the binary monitor; check `ss -tnp \| grep 6502` first | one connection, held open |
-| 15 | Find the save image in RAM by searching for a run from the save file | the live base, exactly |
-| 16 | Confirm the resident map block: search RAM for a copy of the `GEO` you are standing on | the live map address (`$0400` in Pool of Radiance — the loader does not relocate it) |
+| 14 | Claim a pool slot (`tools/instance.py claim`) and start VICE through it | one connection, held open, on a port that is not a human's |
+| 15 | Find the save image in RAM by searching for a run from the save file | the live base, exactly. It worked in one step on Curse and again on Silver Blades — 25 bytes of difference, all of them the loaded-file cache |
+| 16 | Confirm the resident map block: search RAM for a copy of the `GEO` you are standing on | `$0400`, in **all three titles measured**. The loader does not relocate the map block — this is now a rule, not a pattern |
 | 17 | Build the party fix: status line first, memory as fallback, `_plausible` on both | a `Fix` with a `source` tag |
 | 18 | Drive a scripted route and assert all five validations above | a walk corpus, a manifest, and a mapper you can believe |
 | 19 | Write every finding into the experiment log with its evidence **and its failures** | the reasoning, which is the actual product |
+| 20 | **Then stop.** Decoding a title is not supporting it — take the feature × title matrix in `docs/139-per-title-validation.md` and fill in the new column | an honest answer to "does the program work on this game" |
+
+**The disk prompts and the side letters are per-title**, and a driver that
+matches Pool of Radiance's wordings answers none of them: Silver Blades says
+`INSERT SIDE A` where Pool of Radiance uses a digit, and the import and export
+prompts name the *other* game.
 
 ## References
 

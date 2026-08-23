@@ -171,9 +171,10 @@ Guard it three ways or it fires wrongly:
   camping, zero is standing still;
 * the facing must not have changed.
 
-Whether a bump costs a minute at all is worth confirming on each new title; if
-it costs nothing this never fires, and if bashing a locked door costs a minute it
-records a false blocked edge.
+**A bump costs no time on Curse or Silver Blades**, measured on both — so this
+detector never fires on either, and a driver that wants refusals there must
+compare squares instead. Confirm the cost on each new title before relying on
+it; if bashing a locked door costs a minute it records a false blocked edge.
 
 ### Contradictions are counted, not obeyed
 

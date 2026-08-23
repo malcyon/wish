@@ -78,18 +78,23 @@ that after months of save-diffing had failed on them.
 
 ## The obvious address is not always the live one
 
-The party's x, y and facing bytes in the header are genuinely the party's
-position and genuinely what reaches the disk. **They lag a move**: read straight
-after a step they give the previous square. The game's own status line — facing,
-clock, x, y — is correct the moment the screen settles.
+In Pool of Radiance the party's x, y and facing bytes in the header are
+genuinely the party's position and genuinely what reaches the disk. **They lag
+a move**: read straight after a step they give the previous square. The status
+line — facing, clock, x, y — is correct the moment the screen settles.
 
 So the automapper reads the status line first, falls back to memory only when
 the status line is not on screen (camp, combat, a menu), and tags every fix with
-its source. Two rules follow for any title:
+its source. Three rules follow for any title:
 
-* **Prefer the value the game displays to the value you believe it stores.**
-  Then confirm the two agree at rest; where they disagree, the display is live
-  truth and the memory copy is a cache.
+* **Find which copy is live on this title, by moving and watching.** Neither
+  source is trustworthy by default. Curse and Silver Blades keep the save's copy
+  at `$4BC0` and the engine's working copy at `$C04B`, and `$4BC0` does not move
+  *at all* while the party walks — the severe version of a lag, and identical to
+  it for the first step. On Silver Blades the **status line** is the one that
+  lagged: it read `2,0` when every memory copy and the clock said `(3,0)`.
+* **The address the save writes need not be the address the game reads**, and
+  the live one need not be inside the save image at all. `$C04B` is not.
 * **A cache has an update rule and you must find it.** The derived combat values
   refresh on equipment change and at no other time.
 
@@ -128,7 +133,7 @@ routines minutes apart.
 | **Connecting stops the machine.** | Hold **one** connection open and `resume()` after each burst rather than connecting per read. |
 | **Polling speeds the game up, it does not stall it.** | Each stop/resume hands the emulation ~14.3 ms of *extra* emulated time. Flat out is 3.05× real time; 200 ms is 1.07×; 500 ms is 1.03×. Distortion is `14.3 ms / interval`. |
 | **The cost is per `resume()`, not per byte.** | A 7168-byte read costs the same as one `peek`. Four peeks with four resumes cost 45.9 ms against 14.4 ms batched. Batch a whole poll into one resume. |
-| **One connection at a time.** | A second is accepted at TCP level and then never answered. Check `ss -tnp \| grep 6502` first. A timeout on the *greeting* means busy; a timeout on the *connect* means absent — they are different failures and users deserve different messages. |
+| **One connection per VICE process.** | A second is accepted at TCP level and then never answered, so two things at once means two emulators. In this repository, claim one through `tools/instance.py` — never launch outside the pool, never attach to one you did not launch, never kill by name. A timeout on the *greeting* means busy; a timeout on the *connect* means absent — different failures, different messages. |
 | **Never leave a checkpoint armed when the socket closes.** | The emulator re-enters the monitor on a socket that no longer exists and only a kill recovers it. Delete every checkpoint at the end of every experiment. |
 | **Reading RAM under I/O needs the explicit `ram` bank.** | Query the available banks rather than assuming an index. |
 | **Do not infer "stopped" from a constant raster counter.** | Monitor reads with side effects disabled do not return live VIC values. |

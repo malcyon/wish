@@ -66,7 +66,7 @@ The header is where the world lives, and it is where things hide.
 
 | What | Note |
 |---|---|
-| party x, y, facing | facing 0 north, 1 east, 2 south, 3 west. **x, y lags a move** |
+| party x, y, facing | facing 0 north, 1 east, 2 south, 3 west. **This is the save's copy and it is not the live one.** It lags a move in Pool of Radiance and does not move at all in Curse or Silver Blades, where the engine works from `$C04B` |
 | game clock | six bytes, **not three**: units of a minute, tens, the hour, then day and month. Read the game's own print routine before deciding |
 | previous square | the square occupied before the last move |
 | the loader's "what is currently loaded" cache | one entry per data-file type — **this is where the area id is** |
