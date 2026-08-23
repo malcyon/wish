@@ -22,6 +22,14 @@ Three things about the shape of it:
 * **`report()` is a plain function over a folder.** It takes settings and a
   path, not a window, so what the dialog claims can be tested without opening
   one.
+* **Two tabs, and every width in it is measured.** General holds the form;
+  Fast travel holds the 29-row area table, which stretches to fill it. In one
+  column neither could have the height it wanted, and a dialog compressed below
+  its layout's minimum squeezes the controls that can be squeezed rather than
+  refusing -- which is what "a lot of fields are squished" was. No width here
+  is a chosen number either: `room_for` asks the style what a line edit needs
+  for its own placeholder, the spin box sizes itself from its special-value
+  text, and the table is asked for its column.
 
 **`editor.files` is imported here, and only here.** The dialog reports where a
 backup of the open save would go, which is that module's decision to make. The
@@ -50,6 +58,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -57,16 +66,20 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSpinBox,
     QStyle,
     QStyleOptionFrame,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from automap import paths
 from automap.actionbar import DANGER
+from automap.config import clamp_to_screen
 from por import areas as area_table
 from por import games
 
@@ -104,11 +117,11 @@ UNVERIFIED = _BADGE.format(edge="#d8c48a", ground="#fbf4e2", ink="#6b5510")
 #: beside the backends would be a second visual language for one idea.
 WARNING_BOX = UNVERIFIED + " padding: 6px 8px;"
 
-#: How tall the area table is allowed to get. Twenty-nine rows is more than a
-#: dialog can show without becoming a wall, so it scrolls. 160 keeps the whole
-#: dialog inside a 1080-line screen's work area with room to spare, which the
-#: geometry work (`docs/130-preferences.md` §12) is the reason to care about.
-TABLE_HEIGHT = 160
+#: The fewest rows of the area table worth drawing. It has no maximum -- it is
+#: the one thing on its own tab that stretches, so it takes whatever height the
+#: dialog has, which is the point of the tab (`docs/130-preferences.md` §14).
+#: Six is enough to read as a list on a display that gives it nothing.
+TABLE_MIN_ROWS = 6
 
 #: The `$POR_ULTIMATE` this process started with, read once, so that emptying
 #: the box gives the user's own value back rather than nothing.
@@ -301,16 +314,28 @@ class PreferencesDialog(QDialog):
         self.win = window
         self.setWindowTitle("Preferences")
         self.setModal(True)
+
+        # **Two tabs, and the tall thing has one to itself.** In one column the
+        # form and the 29-row area table competed for a height neither could
+        # have: the page wanted 930 px, cosmic-comp caps a window at 662
+        # (`docs/130-preferences.md` §12), and a layout handed less than its
+        # minimum does not refuse -- it squeezes whatever can be squeezed,
+        # which was the Ultimate host box, the poll spinner and the table, all
+        # crushed to a few pixels. Split, each tab is shorter than the screen
+        # and the table gets the whole of its own.
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._general_tab(), "General")
+        self.tabs.addTab(self._travel_tab(), "Fast travel")
+        # General every time. A dialog that reopens on a tab nobody chose is
+        # worse than one that remembers nothing, so nothing is remembered.
+        self.tabs.setCurrentIndex(0)
+
         outer = QVBoxLayout(self)
-        outer.addWidget(self._disks_group())
-        outer.addWidget(self._backups_group())
-        outer.addWidget(self._backend_group())
-        outer.addWidget(self._travel_group())
-        outer.addWidget(self._log_group())
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        outer.addWidget(buttons)
+        outer.addWidget(self.tabs, 1)
+        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self._buttons.rejected.connect(self.reject)
+        self._buttons.accepted.connect(self.accept)
+        outer.addWidget(self._buttons)
 
         # One timer for both: re-reading a folder opens every D64 in it, and
         # applying it reloads 29 maps. Neither belongs on a keystroke.
@@ -318,6 +343,84 @@ class PreferencesDialog(QDialog):
         self._settle.setSingleShot(True)
         self._settle.timeout.connect(self._folder_settled)
         self.refresh()
+        self.fit()
+
+    def _general_tab(self) -> QWidget:
+        """Everything except fast travel: the disks, the backups, the backend
+        and the log.
+
+        **The scroll area is a floor, not a feature.** At the size `fit` opens
+        it there is nothing to scroll -- the bar is not drawn. It is here for
+        the display that cannot give this tab its 578 lines, where the choice
+        is a scrollbar or the crushed line edits this dialog was rebuilt to
+        stop. Never sideways: the width is the width the content measured.
+        """
+        self._general = QWidget()
+        box = QVBoxLayout(self._general)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.addWidget(self._disks_group())
+        box.addWidget(self._backups_group())
+        box.addWidget(self._backend_group())
+        box.addWidget(self._log_group())
+        box.addStretch(1)
+
+        self._general_scroll = QScrollArea()
+        self._general_scroll.setWidget(self._general)
+        self._general_scroll.setWidgetResizable(True)
+        self._general_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._general_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        return self._general_scroll
+
+    def sizeHint(self) -> QSize:
+        """The size the tabs want, with General's real page asked for.
+
+        A `QScrollArea`'s own hint is a fraction of what it holds -- ask it and
+        the dialog opens 100 px tall with the whole form scrolled away -- so
+        the page inside is what is asked, plus the scrollbar's width because it
+        is there on a short screen.
+        """
+        hint = super().sizeHint()
+        room = self._general.sizeHint() - self._general_scroll.sizeHint()
+        return QSize(hint.width() + max(room.width(), 0)
+                     + self._general_scroll.verticalScrollBar()
+                     .sizeHint().width(),
+                     hint.height() + max(room.height(), 0))
+
+    # -- how big it opens --------------------------------------------------
+
+    def fit(self, space=None) -> None:
+        """Open wide enough that the prose stops wrapping, and tall enough for
+        General at that width.
+
+        **Height is the scarce one.** The work area is 662 lines tall and 1280
+        across, and every line a paragraph wraps to is a line of height a wider
+        dialog would not have spent -- the search hint under the folder box takes
+        two lines at the width the folder row alone asks for and one at 784,
+        and the backups note three and two. So the width is raised while that
+        is still true and then stopped: as narrow as it can be without costing
+        height. The ceiling is twice the widest control, which no
+        sentence in a settings dialog needs.
+
+        Getting this wrong is not cosmetic. A dialog handed less height than
+        its layout's minimum does not refuse -- it squeezes what can be
+        squeezed, and what can be squeezed here is the Ultimate host box and
+        the poll spinner, which went to nine pixels tall with their text cut
+        through the middle. That was Donald's "squished and unusable".
+        """
+        hint = self.sizeHint()
+        wrap = self._general.layout()
+        widest = 2 * hint.width()
+        settled = wrap.heightForWidth(widest)
+        width = hint.width()
+        while width < widest and wrap.heightForWidth(width) > settled:
+            width += 10
+        # `heightForWidth` under-reports what the group boxes then take -- by
+        # 19 px here -- so it is the *saving* that is used and the size hint,
+        # which is measured at the hint width, that is trusted.
+        self.resize(width, hint.height() - (wrap.heightForWidth(hint.width())
+                                            - settled))
+        clamp_to_screen(self, space)
 
     # -- the game disks --------------------------------------------------
 
@@ -492,6 +595,10 @@ class PreferencesDialog(QDialog):
         self.host = QLineEdit(getattr(self.win.settings, "ultimate_host", "")
                               or "")
         self.host.setPlaceholderText("ultimate64.local, or host:port")
+        # Measured like the folder box, for the same reason: what it says is
+        # the only instruction there is for the field.
+        self.host.setMinimumWidth(room_for(self.host,
+                                           self.host.placeholderText()))
         self.host.editingFinished.connect(self._host_changed)
         form.addRow("Ultimate host", self.host)
         self.password = QLabel("")
@@ -526,8 +633,16 @@ class PreferencesDialog(QDialog):
 
     # -- fast travel -----------------------------------------------------
 
-    def _travel_group(self) -> QGroupBox:
+    def _travel_tab(self) -> QWidget:
         """Which areas the Fast Travel dropdown offers, and the warning.
+
+        **A tab of its own, and the table takes all of it.** Twenty-nine rows
+        beside the rest of the form meant a table capped at 160 px inside a
+        dialog that itself scrolled -- Donald, on seeing it: *"I am not sure
+        that making it bigger is the right option. What about tabs across the
+        top?"* On its own tab the table is the only thing that stretches, so it
+        gets every pixel the dialog has and the list is scanned rather than
+        hunted through.
 
         **The player chooses, and nothing infers.** The dropdown used to filter
         itself by the areas the automapper had watched the party walk in;
@@ -539,12 +654,12 @@ class PreferencesDialog(QDialog):
         attract-mode demo and entering it ends the session. `Area.warpable`
         says so, and it is asked rather than the id being written down here.
 
-        **The warning is a box, not a tooltip.** It is the same amber as the
-        `unverified` badge above it: one visual language for "this is a thing
-        to know before you press it", and a sentence nobody has to hover to
-        find.
+        **The warning is a box, not a tooltip**, and it is here rather than on
+        General: beside the thing it warns about. Same amber as the
+        `unverified` badge -- one visual language for "this is a thing to know
+        before you press it", and a sentence nobody has to hover to find.
         """
-        box = QGroupBox("Fast travel")
+        box = QWidget()
         outer = QVBoxLayout(box)
         warning = QLabel(DANGER)
         warning.setWordWrap(True)
@@ -566,7 +681,14 @@ class PreferencesDialog(QDialog):
             QAbstractItemView.SelectionMode.NoSelection)
         self.travel_table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.travel_table.setMaximumHeight(TABLE_HEIGHT)
+        # No cap any more: the table is the only thing on this tab that
+        # stretches, so it takes the height the dialog has. The minimum is
+        # measured off a row -- enough that it is recognisably a list even on a
+        # display that leaves it nothing.
+        self.travel_table.setMinimumHeight(
+            TABLE_MIN_ROWS * self.travel_table.verticalHeader().defaultSectionSize()
+            + self.travel_table.horizontalHeader().sizeHint().height()
+            + 2 * self.travel_table.frameWidth())
         self.travel_table.blockSignals(True)
         for i, row in enumerate(self.travel_rows):
             item = QTableWidgetItem(row.name or row.ecl)
@@ -579,8 +701,16 @@ class PreferencesDialog(QDialog):
             item.setToolTip(row.label)
             self.travel_table.setItem(i, 0, item)
         self.travel_table.blockSignals(False)
+        # Wide enough for the longest area name with its tick box, asked of the
+        # view rather than counted here: `sizeHintForColumn` puts the indicator,
+        # the cell padding and the font together the way the delegate will draw
+        # them. The bar is up whenever 29 rows do not fit, so it is added.
+        self.travel_table.setMinimumWidth(
+            self.travel_table.sizeHintForColumn(0)
+            + self.travel_table.verticalScrollBar().sizeHint().width()
+            + 2 * self.travel_table.frameWidth())
         self.travel_table.itemChanged.connect(lambda _item: self._travel_changed())
-        outer.addWidget(self.travel_table)
+        outer.addWidget(self.travel_table, 1)
 
         self.travel_note = QLabel("")
         self.travel_note.setWordWrap(True)
@@ -595,16 +725,19 @@ class PreferencesDialog(QDialog):
                 == Qt.CheckState.Checked]
 
     def _travel_changed(self) -> None:
-        self.win.set_warp_areas(self.travel_ticked())
+        self.win.set_fast_travel_targets(self.travel_ticked())
         self._say_travel()
 
     def _say_travel(self) -> None:
-        """How many areas the dropdown will offer, and none is an answer."""
+        """How many areas the dropdown will offer. A count, and no more.
+
+        Nothing ticked used to get a sentence explaining that an empty list was
+        the setting doing what was asked. Donald had it out in 2026-08 -- "the
+        user will figure it out" -- and the dropdown's own disabled item and
+        the disabled button say it where somebody is looking for it.
+        """
         ticked = len(self.travel_ticked())
         self.travel_note.setText(
-            "Nothing ticked, so the Fast Travel list is empty. That is this "
-            "setting doing what you asked, not a fault."
-            if not ticked else
             f"{ticked} area{'' if ticked == 1 else 's'} in the Fast Travel "
             "list.")
 
@@ -657,3 +790,7 @@ class PreferencesDialog(QDialog):
         # a poll timer and stale if it were done once at startup.
         self.refresh()
         super().showEvent(event)
+        # Again with a frame to measure. Before `show()` the chrome reads as
+        # nothing and `clamp_to_screen` has to guess at it -- the same trap the
+        # main window fell into (`docs/130-preferences.md` §12).
+        clamp_to_screen(self)

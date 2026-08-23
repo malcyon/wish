@@ -526,18 +526,22 @@ def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
 
 def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
                                                        monkeypatch):
-    """An empty dropdown is then the player's own choice. The dialog says so
-    rather than leaving a table that looks like it failed to load, and the
-    empty list survives a reload where the defaults would have come back."""
+    """An empty dropdown is then the player's own choice, and the empty list
+    survives a reload where the defaults would have come back.
+
+    The note under the table is a count and no more. It explained itself --
+    "Nothing ticked, so the Fast Travel list is empty" -- until Donald had that
+    out in 2026-08: "the user will figure it out", and the dropdown's own
+    disabled item says it where somebody is looking for it."""
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
     for name in list(ticked(dialog)):
         tick(dialog, name, on=False)
     assert ticked(dialog) == []
-    assert Settings.load().warp_areas == []
+    assert Settings.load().fast_travel_targets == []
     assert Settings.load().chosen_areas() == ()
-    assert "Nothing ticked" in dialog.travel_note.text()
+    assert dialog.travel_note.text() == "0 areas in the Fast Travel list."
     assert win.map.warp_bar.rows == ()
 
 
@@ -545,7 +549,7 @@ def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
                                                            monkeypatch):
     nowhere(tmp_path, monkeypatch)
     PreferencesDialog(window(app))          # writes nothing on its own
-    assert Settings.load().warp_areas is None
+    assert Settings.load().fast_travel_targets is None
 
     tick(PreferencesDialog(window(app)), "Kovel Mansion")
     later = window(app, settings=Settings.load())
@@ -569,6 +573,118 @@ def test_the_warning_is_a_framed_box_in_the_same_amber_as_unverified(
     style = boxes[0].styleSheet()
     assert style.startswith(preferences.UNVERIFIED)   # the same amber, framed
     assert "border" in style and boxes[0].wordWrap()
+
+
+def written_config(tmp_path) -> dict:
+    return json.loads((tmp_path / "wish" / "automap.json").read_text())
+
+
+def test_a_config_file_written_before_the_rename_keeps_its_ticks(app, tmp_path,
+                                                                  monkeypatch):
+    """It was `warp_areas` until 2026-08 -- Donald: "since we aren't calling it
+    warp_to anymore. We need consistency in our naming." His own file has the
+    old key in it, so the old key is read; only the new one is written, so the
+    rename finishes instead of being carried in the file forever."""
+    nowhere(tmp_path, monkeypatch)
+    (tmp_path / "wish").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "wish" / "automap.json").write_text(
+        json.dumps({"warp_areas": [13, 21], "sight": 4}))
+
+    old = Settings.load()
+    assert old.fast_travel_targets == [13, 21]
+    assert old.chosen_areas() == (13, 21)
+
+    old.save()
+    assert written_config(tmp_path)["fast_travel_targets"] == [13, 21]
+    assert "warp_areas" not in written_config(tmp_path)
+
+
+def test_the_new_key_wins_and_an_empty_old_list_is_still_a_choice(app, tmp_path,
+                                                                  monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    (tmp_path / "wish").mkdir(parents=True, exist_ok=True)
+    path = tmp_path / "wish" / "automap.json"
+
+    path.write_text(json.dumps({"warp_areas": [1], "fast_travel_targets": [2]}))
+    assert Settings.load().chosen_areas() == (2,)
+
+    path.write_text(json.dumps({"warp_areas": []}))
+    assert Settings.load().fast_travel_targets == []
+    assert Settings.load().chosen_areas() == ()      # not the default three
+
+
+# --- how big the dialog opens ------------------------------------------------
+
+def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
+                                                               monkeypatch):
+    """Donald: "A lot of fields are squished and unusable."
+
+    Each number is asked of the style and the font, never written down, and the
+    dialog is at least the widest of them.
+    """
+    from wish.preferences import room_for
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    needed = {
+        "folder": room_for(dialog.folder, dialog.folder.placeholderText()),
+        "host": room_for(dialog.host, dialog.host.placeholderText()),
+        "interval": dialog.interval.minimumSizeHint().width(),
+        "areas": dialog.travel_table.sizeHintForColumn(0),
+    }
+    assert dialog.folder.minimumWidth() >= needed["folder"]
+    assert dialog.host.minimumWidth() >= needed["host"]
+    assert dialog.travel_table.minimumWidth() >= needed["areas"]
+    assert dialog.sizeHint().width() >= max(needed.values())
+    assert dialog.width() >= max(needed.values())
+
+
+def test_two_tabs_and_it_opens_on_general_every_time(app, tmp_path,
+                                                      monkeypatch):
+    """Donald: "What about tabs across the top? Can we have a General tab and
+    a Fast Travel tab?" Nothing about which one was open is remembered -- a
+    dialog reopening on a tab nobody chose is worse than one that forgets."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    assert [dialog.tabs.tabText(i) for i in range(dialog.tabs.count())] == [
+        "General", "Fast travel"]
+    assert dialog.tabs.currentIndex() == 0
+    # The warning belongs beside the thing it warns about.
+    travel = dialog.tabs.widget(1)
+    assert travel.isAncestorOf(dialog.travel_table)
+    assert not dialog.tabs.widget(0).isAncestorOf(dialog.travel_table)
+    assert [w for w in travel.findChildren(type(dialog.travel_note))
+            if w.text().startswith("Fast travel to areas")]
+    assert not [f for f in fields(Settings) if "tab" in f.name.lower()]
+
+    dialog.tabs.setCurrentIndex(1)
+    assert PreferencesDialog(win).tabs.currentIndex() == 0
+
+
+def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
+                                                              monkeypatch):
+    """cosmic-comp caps a window at 1280 x 662 (§12). A dialog handed less
+    height than its layout's minimum does not refuse -- it squeezes what can be
+    squeezed, and the Ultimate host box and the poll spinner went to nine
+    pixels tall. Neither tab scrolls at the size it opens; the area table
+    scrolls inside itself, which is what a table does."""
+    nowhere(tmp_path, monkeypatch)
+    dialog = PreferencesDialog(window(app))
+    assert dialog.width() <= 1280 and dialog.height() <= 662
+    dialog.show()
+    try:
+        assert dialog.host.height() >= dialog.host.sizeHint().height()
+        assert dialog.interval.height() >= dialog.interval.sizeHint().height()
+        assert dialog.folder.height() >= dialog.folder.sizeHint().height()
+        bar = dialog._general_scroll.verticalScrollBar()
+        assert bar.maximum() == 0                # General fits; no bar drawn
+        assert not dialog._general_scroll.horizontalScrollBar().isVisible()
+        # The table takes the tab, which was the point of splitting it: it was
+        # capped at 160 px in one column and shows three times as much now.
+        dialog.tabs.setCurrentIndex(1)
+        assert dialog.travel_table.height() > 400
+    finally:
+        dialog.close()
 
 
 # --- the debug log -----------------------------------------------------------

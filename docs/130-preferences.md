@@ -610,22 +610,31 @@ exactly one arrival flag exists, `$4AC5`, and every game starts there
 ([`118-debug-mode.md`](118-debug-mode.md) §2.1) — so the record was only ever
 what wish happened to see. What replaced it is a table of ticks in this dialog.
 
-* **A `QTableWidget`, one checkable row per area**, sorted by name, capped in
-  height so twenty-nine rows scroll rather than making the dialog a wall. Each
-  row's tooltip is the area's `label` — `New Phlan - GEO00, POOL3` — the same
-  string the dropdown's own items carry.
+* **A `QTableWidget`, one checkable row per area**, sorted by name, on its own
+  tab and stretching to fill it (§14). Each row's tooltip is the area's `label`
+  — `New Phlan - GEO00, POOL3` — the same string the dropdown's own items
+  carry.
 * **New Phlan, The Slums and Sokol Keep are ticked on a fresh config**, ids 0,
   20 and 21 in `por/areas.py`.
-* **`Settings.warp_areas` is `null` until somebody ticks something.** That is
-  what distinguishes a fresh config from a player who unticked everything, and
-  it is why an empty selection comes back empty instead of quietly reverting to
-  the three. `Settings.chosen_areas()` is the reader; anything in the file that
-  is not a list of numbers reads as "never chosen", because the file is
-  documented as one you can hand-edit.
-* **Nothing ticked says so in both places.** The note under the table says the
-  Fast Travel list is empty and that this setting is doing what was asked, and
-  the dropdown itself shows `No areas ticked — Preferences ▸ Fast travel` with
-  the button disabled and the same reason in its tooltip.
+* **`Settings.fast_travel_targets` is `null` until somebody ticks something.**
+  That is what distinguishes a fresh config from a player who unticked
+  everything, and it is why an empty selection comes back empty instead of
+  quietly reverting to the three. `Settings.chosen_areas()` is the reader;
+  anything in the file that is not a list of numbers reads as "never chosen",
+  because the file is documented as one you can hand-edit.
+* **It was `warp_areas` until 2026-08.** Donald: *"since we aren't calling it
+  warp_to anymore. We need consistency in our naming."* `config.RENAMED` reads
+  the old key when the new one is absent, so a file written before the rename
+  keeps its ticks; nothing writes the old key back, so the rename finishes in
+  one save rather than living in the file forever. The accessors are still
+  `chosen_areas()` / `set_chosen_areas()`, which is what the Fast Travel row
+  calls.
+* **Nothing ticked says so once, not three times.** The note under the table is
+  a count — *0 areas in the Fast Travel list.* — and the dropdown itself shows
+  `No areas ticked — Preferences ▸ Fast travel` with the button disabled and
+  the same reason in its tooltip. The note used to explain that an empty list
+  was the setting doing what was asked; Donald had that out: *"The user will
+  figure it out. No explanation is necessary."*
 * **Area 30 is not in the table**, ticked or not: `ECL1E` is the attract-mode
   demo and entering it ends the session. `Area.warpable` is asked; the id is
   not written down here.
@@ -636,8 +645,59 @@ what wish happened to see. What replaced it is a table of ticks in this dialog.
   press it", and the same sentence is the Fast Travel button's own tooltip.
 
 The path is the one every other control here takes: the table writes through
-`WishWindow.set_warp_areas`, which saves the settings and tells the row to
-repopulate. No second storage, no second precedence rule.
+`WishWindow.set_fast_travel_targets`, which saves the settings and tells the
+row to repopulate. No second storage, no second precedence rule.
+
+---
+
+## 14. Two tabs, and how big it opens
+
+Donald: *"The Preferences dialog needs to be bigger. A lot of fields are
+squished and unusable."* Then, on the widened one: *"I can see all fields. But
+I have to scroll down. I am not sure that making it bigger is the right option.
+What about tabs across the top?"*
+
+**The squeeze was vertical, not horizontal.** Rendered at the size his desktop
+gives it, the Ultimate host box and the poll spinner are nine pixels tall with
+their text cut through the middle, and the area table shows one row; every one
+of them is wide enough. The cause is §12's cap: one column of groups wants
+930 px, cosmic-comp hands the window 662, and **a layout given less than its
+minimum does not refuse** — it takes the shortfall out of whatever can be
+squeezed, which is exactly the line edits, the spin box and the table.
+
+* **`General` and `Fast travel`.** General holds the disks, the backups line,
+  the backend and the debug log; Fast travel holds the area table and the amber
+  warning, which belongs beside the thing it warns about. Split, neither has to
+  fight the other for height: General needs 578 lines and gets them, and the
+  table has a whole tab to stretch into — **15 of the 29 areas visible instead
+  of 5**, with no cap on it at all (`TABLE_MIN_ROWS` is a floor, not a
+  ceiling). The table still scrolls internally; 29 rows is 900 px and no
+  662-line screen will ever show them all.
+* **It opens on General, always.** Nothing about the current tab is stored, and
+  `test_two_tabs_and_it_opens_on_general_every_time` asserts no settings field
+  mentions one. A dialog reopening on a tab nobody chose is worse than one that
+  remembers nothing.
+* **Width is spent to buy height.** The work area is 662 lines tall and 1280
+  across, so the scarce one is height, and every line a paragraph wraps to is a
+  line a wider dialog would not have spent. `fit()` widens while that is still
+  true and stops — as narrow as it can be without costing height. Here that is
+  **784 × 640**: the search hint goes from two lines to one, the backups note
+  from three to two, and the dialog fits the cap with 22 px to spare.
+  `heightForWidth` under-reports what the group boxes then take, by 19 px, so
+  it is the *saving* that is read off it and the size hint, measured at the
+  hint width, that is trusted.
+* **Horizontally, nothing is written down.** `room_for` asks the style what a
+  line edit needs for its own placeholder — 209 px for the folder box, 169 for
+  the Ultimate host; `QSpinBox` sizes itself from its special-value text, *the
+  backend's own (VICE 200, Ultimate 500)*, at 267; and the area table is asked
+  for `sizeHintForColumn(0)`, 200 with the tick box and the scrollbar. The
+  widest was always the folder row, so the *measured* answer is that the width
+  was already right — it is now measured on four controls rather than one.
+* **General sits in a `QScrollArea`, which never draws its bar.** It is the
+  floor under the whole section: on a display that cannot give the tab its 578
+  lines the choice is a scrollbar or the crushed line edits this was rebuilt to
+  stop. At the size `fit` opens there is nothing to scroll, and the test
+  asserts the scrollbar's maximum is 0.
 
 ---
 

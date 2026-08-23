@@ -352,7 +352,7 @@ class WishWindow(QMainWindow):
         self.settings.save()
         self.session.set_interval(interval_ms)
 
-    def set_warp_areas(self, ids) -> None:
+    def set_fast_travel_targets(self, ids) -> None:
         """Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
 
         Empty is a choice like any other and is saved as one: the setting is
