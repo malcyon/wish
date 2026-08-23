@@ -355,6 +355,22 @@ from the player's own `GEN` rather than trusting the longhand.
 
 ---
 
+## N15. The slums' booth man is tested against a value he cannot hold
+
+`ECL14` counts a cleared slum encounter by `GOSUB [$B69C]`, and at the booth in
+the old Rope Guild the call is guarded: `$AF73 COMPARE [$4A81], 255 / IF<> /
+GOSUB [$B69C]`. The guard can never fail. The booth encounter's own entry test
+two hundred bytes earlier is `$AE1E COMPARE [$4A81], 250 / IF>= / EXIT`, so
+control only reaches `$AF73` when `$4A81` is below 250, and 255 is not.
+
+The author was guarding against double-counting the man who wants the potion —
+`$4A81` is shared between the two scenes and both `$A0B8` and `$A3A8` set it to
+255 — but the entry test already does that job. Nothing is miscounted and the
+player sees nothing.
+
+Found while settling whether `$4ABB`'s threshold of 25 means encounters,
+`docs/134-commissions.md`.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
