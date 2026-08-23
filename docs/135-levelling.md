@@ -187,13 +187,35 @@ silently doing it.
 
 One per character card, at the right end of the class-and-level line, and
 **hidden** rather than disabled unless that character has the experience. The
-card is which character it means, so the button needs no label saying so. A
-multi-class character whose classes are both ready gets a menu naming them,
-because the trainer asks which school you are standing in and nothing here
-should choose for the player — each school teaches exactly one class
-(`'WE TRAIN ONLY THIEVES HERE'`), so one class a visit is the game's shape too.
+card is which character it means, so the button needs no label saying so.
 
-**The one case the button should not take silently is the one above**: where
-the plan's `classes_disqualified` is not empty, pressing it costs a level the
-character has already earned, and it should say so first. Where it is empty
-there is nothing to confirm — the clamp is what the trainer always does.
+**Which class is not a question the player is asked.** Donald's rule: the
+button always raises the class with the highest threshold, and the next press
+takes the next one. `por.levelup.best_next_class` implements it as the class
+whose threshold **after** the level it is about to gain is largest — not the
+one it needs now — because the post-level number is the one `$23D4` actually
+reads. Ties break in class-bit order (magic-user, cleric, thief, fighter),
+which is the order `0x0C9` stores, so repeated presses walk down the order by
+themselves.
+
+The two readings are not the same rule. A magic-user 4 / thief 5 needs 22,501
+for the magic-user against the thief's 20,001, so comparing what each needs now
+picks the magic-user; after the level it is 40,001 against 42,501, so the clamp
+will read the thief's. With 42,500 points thief-first reaches magic-user 6 /
+thief 6 where magic-user-first stalls at 5 / 6. Across every two- and
+three-class combination in the tables the post-level rule never gains fewer
+levels than the current-threshold one and in 62 cases gains more.
+
+On LADY KATHERINE, magic-user 1 / thief 1 with 5,002 points, the rule picks the
+magic-user, and three presses leave her magic-user 2 / thief 3 on 5,000 — the
+measured good order above, taken without her player having to know it.
+
+**The outcome names the class it raised** — `LADY KATHERINE is a magic-user 2`
+— because the button no longer says which and that line is the only place the
+choice is visible.
+
+**The one case the button does not take silently** is where the plan's
+`classes_disqualified` is not empty: the clamp costs a level the character has
+already earned, so the window asks first and names what it costs. The auto-rule
+makes that rare rather than impossible. Where it is empty there is nothing to
+confirm — the clamp is what the trainer always does.

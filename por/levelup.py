@@ -146,6 +146,55 @@ def ready_classes(record, game=None) -> list[str]:
     return out
 
 
+#: Class-bit order, as a plain list, for the tie-break in `best_next_class`.
+_CLASS_ORDER = [name for _, name in CLASS_BITS_CLASSIC]
+
+
+def best_next_class(ready, class_levels, game=None) -> str | None:
+    """Which of the ready classes to train, when nobody has said.
+
+    **The one whose threshold after the level it is about to gain is largest.**
+    The clamp at `GEN $23D4` reads the *new* per-class levels -- `$1FDE` has
+    already written them -- so the number that decides the ceiling is the one a
+    class will have once it is raised, not the one it has now. Raising the
+    class with the highest post-level threshold leaves the ceiling as high as
+    it can be, which is what keeps the other classes above their own
+    thresholds.
+
+    The two readings genuinely differ: a magic-user 4 / thief 5 wants the
+    magic-user by current threshold (22,501 against 20,001) and the thief by
+    post-level threshold (42,501 against 40,001), and the thief is right --
+    with 42,500 points the thief-first order reaches magic-user 6 / thief 6
+    where magic-user-first stalls at 5 / 6. Across every two- and three-class
+    combination in Pool of Radiance's tables the post-level rule never gains
+    fewer levels and sometimes gains more.
+
+    Ties break in class-bit order -- magic-user, cleric, thief, fighter --
+    which is the order `0x0C9` stores and the order every one of the game's own
+    tables is indexed in. Repeated calls then walk down the order themselves,
+    because each level raises the class it just picked.
+    """
+    def rank(name: str):
+        # None where the title's tables have no entry past the ceiling; sorts
+        # last rather than raising, since something has to be picked.
+        after = levels.clamp_threshold(name, class_levels[name] + 1, game)
+        order = (_CLASS_ORDER.index(name) if name in _CLASS_ORDER
+                 else len(_CLASS_ORDER))
+        return (after or 0, -order)
+
+    ready = [name for name in ready if name in class_levels]
+    return max(ready, key=rank) if ready else None
+
+
+def best_class(record, game=None) -> str | None:
+    """The class `plan` would raise if it were not told which. None if none is
+    ready."""
+    return best_next_class(
+        ready_classes(record, game),
+        {name: class_level(record, name) for name in classes_of(record)},
+        game)
+
+
 def roll_hit_points(class_name: str, class_count: int = 1,
                     fighter_only: bool = False, rng=None) -> int:
     """One hit die, the way `GEN $2037` rolls it.
@@ -283,9 +332,13 @@ def _experience(record, class_levels: dict[str, int], game=None) -> int:
     return min(experience, ceiling - 1)
 
 
-def plan(record, class_name: str, *, game=None, rng=None,
+def plan(record, class_name: str | None = None, *, game=None, rng=None,
          learn: int | None = None, rolled: int | None = None) -> Plan:
     """What one level in `class_name` would write. Raises rather than guessing.
+
+    **An absent `class_name` means "the best one"** -- `best_next_class` picks
+    it -- and not "refuse because two are ready". An explicit name still works
+    and is what the byte-for-byte replay of the measured trainings passes.
 
     `learn` is the spell a magic-user picks. It is required whenever the
     trainer's own menu would have offered one, because the game does not finish
@@ -299,6 +352,11 @@ def plan(record, class_name: str, *, game=None, rng=None,
     tables = levels.for_game(game)
     if not tables.thief_skills:
         raise CannotLevel(f"{tables.title}'s trainer tables have not been read")
+    if not class_name:
+        # Nothing ready falls through to the threshold check below, which says
+        # which class and what it is short of -- a better answer than "no".
+        class_name = (best_class(record, game)
+                      or (classes_of(record) or [""])[0])
     if class_name not in classes_of(record):
         raise CannotLevel(f"{record.name} is not a {class_name}")
 
