@@ -230,6 +230,131 @@ destination, does all the work.
 
 ---
 
+## N10. The pyramid's "no monsters left" test needs a bit nothing sets
+
+**What the game does.** Yarash's pyramid, first level (`ECL16`), keeps a bitmask
+of the fixed encounters it has already used — `$4A4E` for the north half of the
+map, `$4A4C` for the south, chosen on `mapY < 8`. Five encounters are drawn by
+`RANDOM 5` and marked off through a powers-of-two table, so they occupy bits 0
+to 4; bit 6 is the human priest. Before setting the wandering-monster rate,
+`$9BE9` asks whether the mask has run out: `AND [$6E82], 63 / COMPARE [$6E82],
+63 / IF= / EXIT`.
+
+**What it should do.** Compare against 31. Bit 5 is never written by anything —
+the only two writes to either mask are `$A38F` and `$A39A`, both
+`OR [$4A4C|$4A4E], [$6E7F], …` where `[$6E7F]` is the table entry for an index
+that is only ever 0-4 or 6.
+
+**The evidence.** With all five encounters used and the priest met, the mask is
+`$5F`; `$5F & 63` is 31, not 63. The test can never pass.
+
+**What the player sees.** Almost nothing: the pyramid's first level keeps
+rolling wandering monsters after its fixed encounters are exhausted, where it
+was meant to go quiet. Nobody would know the difference without the code.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED from the bytecode.
+
+---
+
+## N11. Phlan's proclamation board runs out of proclamations
+
+**What the game does.** The notice board in civilised Phlan reads out a journal
+reference chosen by how many major commissions the council has paid for:
+`ECL00 $AC60 SUB 1, [$4AC1], [$4A18]` then `ONGOSUB [$4A18], 9, …`, nine
+handlers, each of which stores a roman numeral into the string slot the next
+two instructions print.
+
+**What it should do.** Carry ten handlers. `$4AC1` is bumped by exactly ten of
+the clerk's speeches, so it reaches 10 and the index reaches 9 — one past the
+end of a nine-entry table.
+
+**The evidence.** The VM's `ONGOSUB` at `DUNGEON $20B7` walks its operand list
+counting up to the index and leaves the target's high byte zero if it never
+matches; `$20F2 BEQ $20F9` then returns without calling anything. So the
+out-of-range case is safe, and the string slot keeps whatever it last held.
+
+**What the player sees.** Once the tenth major commission is paid, the board
+repeats the previous proclamation number instead of showing a new one. Two of
+the nine handlers already print `CXIV.`, so a repeat is not even conspicuous.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED from the bytecode.
+
+---
+
+## N12. The reward ledger has a twenty-third commission that was cut
+
+**What the game does.** The council's ledger is 26 bytes at `$4AA6`. Index 22,
+`$4ABC`, is named by **no instruction in any of the thirty scripts** — not a
+read, not a write — and its handler in the clerk's speech table at
+`ECL08 $9D55` is a bare `RETURN` at `$A4CD`.
+
+**The evidence.** Two independent ones. The three-byte operand a script spends
+naming `$4ABC` occurs zero times across all 46 `ECL*` files on the eight disks
+(`tests/test_commissions_data.py` asserts it). And the entry is not merely a
+spare slot: the clerk's four payout tables run 0-22, and index 22's row is not
+empty, so the byte was a commission that paid something before it was cut.
+
+**What the player sees.** Nothing. The byte can never leave 0.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED unreachable; that it is
+cut content rather than a slot never filled is PROBABLE.
+
+---
+
+## N13. A cleric one point short of the rulebook still gets the bonus spell
+
+**What the game does.** `GEN $2108` looks up the wisdom bonus in the table at
+`$10AD`, indexed by the score. The table is zero to 11, **1 at 12** and 2 from
+13 up. AD&D 1st edition gives the first bonus first-level spell at wisdom 13
+and the second at 14, so the whole first-level column is shifted one point
+down: a wisdom-12 cleric memorises a first-level spell the rules do not give
+it, and a wisdom-13 cleric gets two where the rules give one.
+
+**What it should do.** Start at 13. The second- and third-level columns are the
+rulebook's exactly — they are gated on `CPY #$0F`, `#$10` and `#$11`, which is
+wisdom 15, 16 and 17 — so it is the one column and not the whole table.
+
+**The evidence.** The table's bytes and the three compares. ROLAND, wisdom 16,
+stores `50 50 20` at cleric 6, which is `3,3,2` plus `+2,+2,0` and agrees with
+both readings; no cleric on the player's disks has a wisdom of 12 or 13, which
+is why the shift has never been seen rather than computed.
+
+**What the player sees.** One extra first-level spell on the memorise screen,
+and no way to tell it is extra. Here rather than in the front-door file for
+that reason: it is CONFIRMED from the table and the compares, but what it costs
+a player is a spell they will assume they were owed.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED.
+
+---
+
+## N14. Ours: the fighter's level-4 breath save, and the four THAC0 rows above it
+
+**What we got wrong.** `por/levels.py` gave a level-4 fighter a breath save of
+16, which is the AD&D 1st edition number, and the game writes 15. It was
+recorded as a divergence in `tests/test_liveparty.py` for a day on the reading
+that the game might be wrong.
+
+**What is actually there.** The game does not tabulate saving throws. It holds
+a level-1 row at `GEN $1FA2` and two per-column bitmasks at `$1FB6` and
+`$1FCA`, and a column improves by one for every set bit, in either mask, among
+the low `level - 1` bits. The fighter's fourth column carries mask `$0C` where
+its other four carry `$08`, so that column improves twice by level 4 and once
+elsewhere. Fifteen is the table's own answer, deliberately, and ours was a
+transcription of the rulebook rather than of the game.
+
+`por/derive.py` had the same shape of error next door: its fighter THAC0 row
+was AD&D's grouped one, `20 20 18 18 16 16 14 14`, where the game's table at
+`$1F1F` runs `20 19 18 17 16 15 14 13`. Every even fighter level was one out,
+and no specimen was an even-level fighter with cached combat numbers to catch
+it.
+
+**The lesson, which is the same one twice.** A published table and the game's
+table are different documents. `tests/test_levels.py` now re-expands every row
+from the player's own `GEN` rather than trusting the longhand.
+
+---
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
