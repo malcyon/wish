@@ -1,6 +1,14 @@
 # Converting between the DOS and C64 versions — plan
 
-**Status: unblocked.** The DOS save arrived — Donald's Steam copy of
+**Status: the converter is written.** `por/dos_layout.py` is the DOS field
+table and `por/dos.py` reads a DOS save, exports it as the editor's own YAML,
+and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
+order of work below are closed**; step 7, the editor menu item, is what is
+left. Everything the plan said had to be found out first has been found out —
+the spell tables agree exactly, nothing DOS stores is lost that matters, and
+the clock is the one loose end.
+
+The DOS save arrived — Donald's Steam copy of
 *Forgotten Realms: The Archives* carries a played DOS Pool of Radiance party in
 three slots — and DOS can now be driven. **Obstacles 1, 2, 3, 4 and 7 are
 closed**: the quest flags, the party's square, the current area and the whole
@@ -52,11 +60,9 @@ is what the obstacle list below is about. But it says where the edges are, and
 felt.
 
 Donald asked whether the editor could turn a DOSBox save into a C64 save.
-The answer has improved again: **yes for characters, and now for whole saves
-as far as reading goes** — the character record is decoded and checked, the
-quest flags are located, the party's square and area are located, and the item
-record is read to the byte. What is left is not a decode but a demonstration:
-write a C64 save from converted fields and load it.
+The answer is **yes, and the code to do it is written**: `por.dos.convert_save`
+takes a DOS save directory, a slot letter and an existing C64 save's two
+payloads and rewrites them. What is left is the menu item.
 
 ---
 
@@ -92,6 +98,8 @@ predicted table had to be corrected.
 | item count | `0x0C7` | — | CONFIRMED; the C64 carries the items in the record instead |
 | encumbrance | `0x102`, `u16le` | — | CONFIRMED; the C64 has no such field |
 | hit points current | `0x11B` | `0x119`, 2 bytes | CONFIRMED |
+| alignment | `0x0A0` | `0x0D8` | PROBABLE — the C64's nine-entry table, fixed by the runs either side |
+| the whole combat tail | `0x110`-`0x11C` | `0x10E`-`0x11B` | PROBABLE — THAC0, armour class, the armour bonus and the eight running attack-form bytes, **one for one at −2**, hit points widening by a byte at the end |
 
 The early fields differ by **exactly four**, which is exactly how much wider the
 C64's name field is — the abilities are otherwise in the same order. Past that
@@ -102,8 +110,10 @@ the real conversion work.
 
 * **The spellbook.** The C64 packs it into 7 bytes of bits at `0x078`. DOS
   spends **one byte per spell** across `0x033`–`0x06A`, in an order grouped
-  cleric-1, mage-1, cleric-2, mage-2, cleric-3, mage-3. Transpose, do not copy,
-  and check the ordering before trusting it.
+  cleric-1, mage-1, cleric-2, mage-2, cleric-3, mage-3. **The ordering has
+  been checked and it is the identity**: DOS byte *n* is spell id *n* + 1, the
+  same id `por/spells.py` uses, so the conversion is a pack and not a
+  permutation. See "What had to be found out first" below.
 * **The per-class level array.** Eight wide on both. The C64's slots are
   ordered by the class *bits* (magic-user, cleric, thief, fighter, knight, —,
   paladin, ranger); DOS's are indexed by the class *number* (cleric, druid,
@@ -341,15 +351,20 @@ the editor already uses.
   from the option tables (`por/iconparts.py` composes a legal one).
 * **Portrait ids.** `HEADnn`/`BODYnn` name files on the C64 disks. The DOS art
   is a different set with different numbering.
-* **Anything cached rather than stored.** The C64 roster block holds derived
-  combat values; they should be recomputed for the target, not copied.
+* ~~**Anything cached rather than stored.**~~ This said the C64 roster's
+  derived combat values should be recomputed rather than copied. They should
+  be **copied**: DOS `0x110`-`0x11C` is the C64 roster block `0x10E`-`0x11B`
+  at a displacement of −2, field for field. Leaving them zero is not neutral
+  — a converted party whose roster armour class is zero displays **AC 60** on
+  the character list, which is what the first end-to-end run showed.
 * **The item list's heap pointers.** DOS chains its items through a far
   pointer at `0x02A`; the C64 keeps 16 fixed slots. Drop the chain, keep the
   order. (Item *numbering* is not on this list after all: the DOS name words
   and type byte are already the C64's indices.)
-* **Spell numbering**, until someone checks it. DOS stores one byte per spell
-  in a level-interleaved order; the C64 stores 56 bits. The spell *list* is the
-  same game, so the mapping probably exists. **Do not assume it.**
+* **One spell.** The numbering was checked and agrees exactly, so the
+  spellbook is not on this list — except for id 56, `RESTORATION`, which DOS
+  has a byte for and the C64's 56-bit mask has no room for. Zero in every
+  specimen; reported, not dropped.
 * **Encumbrance and per-item weight**, which DOS keeps and the C64 does not.
   Both are derived; drop them.
 
@@ -386,7 +401,7 @@ from somewhere.** This is the whole list.
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
-| `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes** — port-specific indices; zero it and let the loader refill |
+| `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes, but not by zeroing it.** Keep the template's entries and set bit 7 on each — see "Do not zero the loaded-files cache" below |
 | `$4900`-`$49BF`, `$4B80`-`$4BBF` | 256 | four effect arrays | **yes, by dropping them** — zero means no active effects, which is a legal state |
 | `$4A00`-`$4A1F` | 32 | per-script scratch | **yes** — `DUNGEON $202A` zeroes it on every area change anyway |
 | `$4A20`-`$4AF8` | 217 | **persistent quest flags** | **yes.** Located: `SAVGAM?.DAT` offsets 577-1009, one `u16le` per C64 byte. See obstacle 1 |
@@ -649,42 +664,178 @@ question** (DOS's export is the slot copied out, so one reader serves both),
 **party size** (six on both), and **the item tables** (the `ITEMS` type table
 and the `ITEMNAMES` indices are shared between the ports; see obstacle 3).
 
-## What has to be found out first
+## What had to be found out first — two answered, one open
 
-1. **Do the spell tables agree** between ports? The DOS spellbook is one byte
-   per spell in a level-interleaved order; the C64's is 56 bits. The ordering
-   has to be matched before the transpose can be trusted. The item side gives
-   one free check on the namespace: a DOS scroll's three special bytes hold
-   spell ids that the C64's own scrolls carry unchanged.
-2. **Does DOS store anything the C64 does not?** Three things: an encumbrance
-   field, a per-item weight, and the item list's heap pointers. All derived or
-   live-only, and all droppable going to the C64.
-3. **The clock.** `$49C6`-`$49CB` is six digits on the C64 and the DOS format
-   is unread.
+**1. The spell tables agree, and the mapping is the identity.** DOS byte *n*
+of the book at `0x033` is **spell id *n* + 1**, the same id `por/spells.py`
+uses, so the transpose is a pack and not a permutation. Three lines say so
+together:
+
+* the DOS array's runs are cleric-1 (8), mage-1 (13), cleric-2 (7), mage-2
+  (7), cleric-3 (9), mage-3 (11), and `_GROUPS_POOL`'s boundaries are 1-8,
+  9-21, 22-28, 29-35, 36-44, 45-55 — **the same partition, byte for byte**;
+* across all 24 specimens every set byte falls in a group its owner's class
+  can cast, with no crossover in either direction. A level-1 cleric sets
+  exactly bytes 0-7; a level-3 magic-user sets 8-20 and 28-34;
+* the *memorised* list at `0x01C` is written as ids rather than as a mask and
+  carries the same numbers — 3 `CURE LIGHT WOUNDS` for the cleric, 21 `SLEEP`
+  for the mages.
+
+**The armour-class bias is settled too**, and it was hiding behind a sign.
+DOS `0x111` is `60 − AC` like everything else in the family; it looked wrong
+because SILAS reads 63, which is armour class **−3** — and AD&D 1st edition
+puts a fighter in plate mail (AC 3) with a shield +1 (−2) and dexterity 18
+(−4) at exactly −3. A negative armour class is the point of plate mail, not a
+decoding error.
+
+**One spell has no C64 home.** DOS byte 55 is spell id 56, `RESTORATION`, and
+the C64's seven-byte mask holds ids 0-55 with id 0 unused. It is zero in all
+24 specimens, and the converter reports it rather than dropping it.
+
+**2. Nothing DOS stores is lost that matters, and four things were gained.**
+Encumbrance, per-item weight and the item heap pointers are all derived or
+live-only, as predicted, and all three are reported dropped. What came out of
+checking was better than the question:
+
+* **the class byte copies**, multi-class included. Gold Box Companion's
+  18-entry class table is `por/yaml_io.py`'s `CLASS_CODES` entry for entry —
+  0 cleric, 5 mage, 9 cleric/fighter/mage, 13 fighter/mage, 15
+  fighter/mage/thief — checked against the class bitmask on all 24;
+* **alignment is DOS `0x0A0`**, on the C64's own nine-entry table, fixed by
+  the run either side of it;
+* **the effect id space is shared.** A `.SPC` record's first byte is a
+  `por/traits.py` id: 107 is elf sleep resistance and 124 the half-elf's on
+  both ports, and the dwarf carries 26, 47, 90 and 97 — the four racial
+  bonuses `por/traits.py` names. So a character's **innate** abilities survive
+  the trip into the C64's ten trait slots at `0x0AD`, and only the running
+  spells are dropped;
+* **`0x0C7` is load-bearing.** The item count, not the `.ITM` file's length,
+  says how many items a character has. The archives hold exports sitting
+  beside stale `.ITM` files from an earlier save, and trusting the file length
+  gives `BRYTWYN` seven items she does not carry.
+
+**3. The clock is still unread.** `$49C6`-`$49CB` is six digits on the C64 and
+nothing has been found in the DOS save that carries it. The converter leaves
+the template save's clock alone, which is a defensible constant and not an
+answer.
 
 ## Order of work
 
-1. `por/dos_layout.py`, declarative, confidence per field — the tables in
-   `work/reports/dos-saves.md` and `work/reports/dos-items.md` are what go in
-   it.
-2. Read a DOS character into the existing YAML export. That alone is useful —
-   it makes `wish-cli` a DOS character viewer.
-3. Write a C64 record from that YAML.
-4. The items, which are `tools.dosbox.item_to_c64` and a stride change: 16
-   items of 16 bytes per C64 slot, the DOS list being a chain of 63-byte
-   records whose length the character record's `0x0C7` gives.
-5. The quest flags, which are now a copy with a stride change.
-6. The party's square and area, which are now four reads and a doubling.
-7. An editor menu item, once the CLI path is trustworthy.
+1. **`por/dos_layout.py` — done.** Declarative, a confidence on every field,
+   the same `Field` and `Confidence` as `por/layout.py` and the same rule that
+   every byte of the record belongs to exactly one entry. It carries the
+   285-byte character record and the 63-byte item record. 125 bytes CONFIRMED,
+   56 PROBABLE, 4 GUESS, 100 unattributed — and the unattributed hundred is
+   almost all live heap state the C64 has no use for.
+2. **Read a DOS character into the existing YAML export — done.**
+   `por.dos.export_party` converts the record and then hands it to
+   `yaml_io.entry_for`, which was split out of `export_save` for the purpose,
+   so a DOS party and a C64 party render through one code path in one shape.
+   `python3 -m por.dos <save-dir> <slot> [game.d64]` prints it.
+3. **Write a C64 record from that YAML — done.** `por.dos.to_c64_record`
+   returns the 580 bytes and a `Report` saying, for **every one of the 580
+   offsets**, where that byte came from. `Report.unaccounted` is empty for all
+   24 specimens, which is the test that replaced the round trip.
+4. **The items — done.** `por.dos.item_to_c64` is now the single copy of the
+   projection and `tools/dosbox.py` re-exports it. Sixteen fixed C64 slots
+   from a DOS chain of 63-byte records, the count from `0x0C7`.
+5. **The quest flags — done.** `por.dos.quest_flags` reads the 217 words and
+   `apply_quest_flags` writes the bytes. Every nonzero word in the window fits
+   in a byte, so narrowing loses nothing.
+6. **The party's square and area — done.** `por.dos.position` and `area_id`;
+   the facing is halved.
+7. **An editor menu item.** Not started. `por.dos.convert_save` is the whole
+   of what it needs to call: hand it a DOS save directory, a slot letter and a
+   C64 save's two payloads and it rewrites them in place.
+
+### The real converter, loaded and played
+
+`PORSAVE12.D64` — a played C64 save standing in New Phlan — converted from DOS
+slot A, a party in New Phlan, by `por.dos.convert_save` and nothing else.
+**812 of `SAVEDGAME0`'s 7168 bytes and 51 of the roster's changed, and the
+game took every one of them.**
+
+* `$4900`-`$64FF` read out of the running machine after `BEGIN ADVENTURING` is
+  **byte-identical to the file bar one byte**, `$4A17`, which is inside the
+  per-script scratch at `$4A00`-`$4A1F` that the arrival script writes. No
+  checksum, no fixup, no normalisation — the obstacle-7 result again, this
+  time with a converter that changed the roster and the icons too.
+* The character list reads `SILAS -3 70`, `ASTRID 5 15`, `GILES 2 11`,
+  `ROLAND 0 27`, `MAGNUS -3 56`, `BRUTUS -3 42` — the DOS hit points and the
+  DOS armour classes, in the DOS party order.
+* The party stands at `4,3` facing north, which is DOS `SAVGAM A` bytes
+  12801-12803 with the facing halved, and it **walks**: three steps north to
+  `4,0` and then a wall.
+
+**The armour class is what the first run got wrong**, and it is why the roster
+matters. Writing the converted record's `0x100`-`0x11F` into the roster while
+leaving armour class zero puts `AC 60` beside every name — `60 − 0` — which is
+a legal number the game will happily display. Mapping DOS `0x110`-`0x11C` onto
+the C64's `0x10E`-`0x11B` fixed it, and finding that mapping is what settled
+the armour-class bias.
+
+### Do not zero the loaded-files cache
+
+`docs/117` guessed, in the table above, that `$4BC0`-`$4BD8` could be zeroed
+and the loader left to refill it. **It cannot, and the failure is silent until
+the party tries to move.**
+
+The experiment: `PORSAVE14.D64`, a C64 save standing in the Slums (area 20),
+converted from DOS slot A, a party in New Phlan (area 0) — deliberately a
+*different* area from the template, which is the case the obstacle-7 run
+avoided on purpose. The save loaded. The roster listed the six DOS characters,
+`$49C0`-`$49C2` read the DOS square (4, 3) facing north, and `$4D00` held
+`BRUTUS`. Then the screen went to `OUTWARD BOUND ...` and asked for side 2,
+forever: 105 answered prompts and the state never moved.
+
+The reason is that **`$4BC2` is entry 2 of that cache**, not a field beside
+it, and `docs/41-memory-regions.md` says bit 7 of an entry is a reload marker.
+Zeroing the region and then writing the bare area number leaves entry 2 at
+`$00` — "area 0, already resident" — so the engine never fetches the map it
+has not got. The live copy at `$6E13` read `01 80 00 80 80 ...` in the hung
+machine, which is that sentence in bytes.
+
+What `convert_save` does instead is keep the template's entries and OR `$80`
+into every one, entry 2 included, so the engine reloads all of them and the
+new area with them.
+
+### What `convert_save` writes, and what it leaves
+
+A template C64 save is still required, and for a good reason: `$8400`-`$8AFF`
+is `ANIMATE00` and a bitmap buffer rather than save data, and the combat icons
+are a C64 charset DOS has no equivalent of. Everything else is replaced.
+
+| region | from |
+|---|---|
+| twelve character slot windows, six of them | the converted record's first 256 bytes |
+| six inventories `$5900`-`$5EFF` | the converted record's `0x120`-`0x21F` |
+| the `SAVEDGAME1` roster, six blocks | the converted record's `0x100`-`0x11F` |
+| quest flags `$4A20`-`$4AF8` | the DOS word array, narrowed |
+| party square and facing `$49C0`-`$49C2`, area `$4BC2` | `SAVGAM?.DAT` bytes 12801-12803 and the `$49C5` entry |
+| the four effect arrays, and `$4A00`-`$4A1F` | zeroed — "nothing running" is a legal state, and `DUNGEON $202A` zeroes the scratch on every area change |
+| the loaded-files cache `$4BC0`-`$4BD8` | the template's entries with **bit 7 set on every one**, so the engine reloads the lot; `$4BC2` is entry 2 and carries the new area with the same bit set |
+| the combat icon table `$4BE0`-`$4CFF` | **kept from the template** |
+| everything else | **kept from the template**, and said so in the report |
+
+`Report.total` is the whole payload for a save conversion, and
+`Report.unaccounted` is empty: every one of `SAVEDGAME0`'s 7168 bytes has a
+one-line provenance, "carried through from the template save" included.
 
 ## Verification
 
-* A DOS character read and written back unchanged, byte for byte — the same
-  losslessness bar the C64 side already holds. The DOS side is read-only in
-  practice, but the reader has to be able to prove it understood the file.
-* The encumbrance identity balances on every converted character. It is the
-  cheapest whole-record check available and it costs nothing to keep.
-* Every DOS field with no C64 home is **reported**, not silently dropped.
-* A converted character **loads in Pool of Radiance on the C64** and its sheet
-  reads the same. That is the only test that really counts, and it needs one
-  emulator, not two.
+All four are `tests/test_dosconvert.py`, which skips cleanly where there are
+no archives.
+
+* **A DOS character read and written back unchanged, byte for byte** — 24 of
+  24. The DOS side is read-only in practice, but the reader has to be able to
+  prove it understood the file.
+* **The encumbrance identity balances** — 22 of 24, the two misses being the
+  documented dart stacks, and all six exports exactly once `0x0C7` governs the
+  item read.
+* **Every DOS field with no C64 home is reported.** `por.dos.field_disposition`
+  names every field the layout declares, and a test fails if the two sets ever
+  disagree — so a field added to the table and forgotten by the converter
+  cannot pass in silence.
+* **A converted character loads in Pool of Radiance on the C64**, which
+  obstacle 7 already showed with a throwaway converter and the real one
+  repeats.
