@@ -278,13 +278,13 @@ So wish's own map files were the only record there was, and they only ever knew
 what the automapper happened to watch. A record that is silently missing half a
 campaign is worse than no record, because it looks like an answer.
 
-**What replaced it is a setting.** `Settings.warp_areas` is a list of area ids,
-ticked in a table in Preferences ▸ Fast travel, and the dropdown is exactly
-what is ticked. Four rules:
+**What replaced it is a setting.** `Settings.fast_travel_targets` is a list of
+area ids, ticked in a table in Preferences ▸ Fast travel, and the dropdown is
+exactly what is ticked. Four rules:
 
 | | |
 |---|---|
-| a fresh config gets three | New Phlan, The Slums and Sokol Keep — ids 0, 20 and 21. `warp_areas` is `null` until somebody ticks something, which is what tells a fresh config from a player who unticked everything |
+| a fresh config gets three | New Phlan, The Slums and Sokol Keep — ids 0, 20 and 21. `fast_travel_targets` is `null` until somebody ticks something (`warp_areas` in a file written before 2026-08, read by `config.RENAMED`), which is what tells a fresh config from a player who unticked everything |
 | an empty choice is kept | unticking everything leaves the dropdown empty, and it says `No areas ticked — Preferences ▸ Fast travel` with the button disabled and the same reason in its tooltip. The player asked for that; a control that quietly refilled itself would be lying |
 | area 30 is not in the table | ticked or unticked. `Area.warpable` is what says so, asked rather than the id written down a second time |
 | it narrows what is offered, never what is legal | `Warp.legality` and the arrival-square logic are untouched |
