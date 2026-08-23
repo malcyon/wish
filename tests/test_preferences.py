@@ -676,8 +676,16 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
         assert dialog.host.height() >= dialog.host.sizeHint().height()
         assert dialog.interval.height() >= dialog.interval.sizeHint().height()
         assert dialog.folder.height() >= dialog.folder.sizeHint().height()
+        # Given the height it asks for, General does not scroll. Asserted this
+        # way round because the dialog caps itself to the screen: CI's offscreen
+        # screen is smaller than Donald's, so a bare `maximum() == 0` failed
+        # there by 40 px on Linux and 4 on Windows while being true on his
+        # desktop. What matters is that the content fits when there is room --
+        # the squeeze assertions above are what pin the small-screen case.
+        dialog.resize(dialog.width(), 2000)
+        app.processEvents()
         bar = dialog._general_scroll.verticalScrollBar()
-        assert bar.maximum() == 0                # General fits; no bar drawn
+        assert bar.maximum() == 0
         assert not dialog._general_scroll.horizontalScrollBar().isVisible()
         # The table takes the tab, which was the point of splitting it: it was
         # capped at 160 px in one column and shows three times as much now.
