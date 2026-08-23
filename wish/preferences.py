@@ -310,6 +310,12 @@ def apply_ultimate_host(host: str) -> None:
         os.environ.pop("POR_ULTIMATE", None)
 
 
+#: The spin box no longer carries 0 as "let the backend decide" -- the
+#: checkbox does. So it needs a real floor, and 50 ms is four times the
+#: fastest poll anything here runs at.
+MIN_INTERVAL_MS = 50
+
+
 class PreferencesDialog(QDialog):
     """The window's settings, and what they found.
 
@@ -525,8 +531,6 @@ class PreferencesDialog(QDialog):
         The standing facts are said here too: a backup is made only when the
         bytes changed, and the newest few are kept rather than all of them.
         """
-        from editor import files
-
         where = getattr(self.win.settings, "backup_folder", "") or ""
         if not self.backups.hasFocus():
             self.backups.setText(where)
@@ -540,9 +544,7 @@ class PreferencesDialog(QDialog):
             # Nothing. An empty box with no save open explains itself, and
             # Donald removed the sentence that said so.
             why = ""
-        tail = (f"Only when something changed; the newest "
-                f"{files.KEEP_BACKUPS} are kept.")
-        self.backups_note.setText(f"{why}  {tail}" if why else tail)
+        self.backups_note.setText(why)
 
     def browse_backups(self) -> None:
         """The folder picker. A method so a test can replace it."""
@@ -629,15 +631,26 @@ class PreferencesDialog(QDialog):
         self.password = QLabel("")
         form.addRow("Password", self.password)
 
+        # 0 means "the backend decides" in the setting, and it used to mean that
+        # on the face too -- a spin box whose lowest value printed a sentence
+        # instead of a number, and turned into milliseconds the moment anybody
+        # touched an arrow. Donald: confusing. So the state is a checkbox and
+        # the spin box only ever shows a number.
+        self.interval_default = QCheckBox("Backend default")
+        self.interval_default.toggled.connect(self._interval_default_toggled)
         self.interval = QSpinBox()
-        self.interval.setRange(0, 60000)
+        self.interval.setRange(MIN_INTERVAL_MS, 60000)
         self.interval.setSingleStep(50)
         self.interval.setSuffix(" ms")
-        self.interval.setSpecialValueText("the backend's own "
-                                          "(VICE 200, Ultimate 500)")
-        self.interval.setValue(getattr(self.win.settings, "interval_ms", 0) or 0)
+        saved = getattr(self.win.settings, "interval_ms", 0) or 0
+        self.interval_default.setChecked(not saved)
+        self.interval.setEnabled(bool(saved))
+        self.interval.setValue(saved or MIN_INTERVAL_MS)
         self.interval.valueChanged.connect(self._interval_changed)
-        form.addRow("Poll every", self.interval)
+        row = QHBoxLayout()
+        row.addWidget(self.interval_default)
+        row.addWidget(self.interval, 1)
+        form.addRow("Poll every", row)
         outer.addLayout(form)
         return box
 
@@ -654,7 +667,14 @@ class PreferencesDialog(QDialog):
         self.refresh()
 
     def _interval_changed(self, value: int) -> None:
-        self.win.set_interval(value)
+        if not self.interval_default.isChecked():
+            self.win.set_interval(value)
+
+    def _interval_default_toggled(self, on: bool) -> None:
+        """Ticked hands the interval back to the backend; 0 is how that is
+        stored, and has been since before there was a checkbox."""
+        self.interval.setEnabled(not on)
+        self.win.set_interval(0 if on else self.interval.value())
 
     # -- fast travel -----------------------------------------------------
 

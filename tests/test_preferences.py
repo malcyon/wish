@@ -323,7 +323,7 @@ def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
     assert list(shelf.iterdir()) == [save]
 
 
-def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
+def test_the_backups_note_names_the_state_and_nothing_else(
         app, tmp_path, monkeypatch):
     """The path in a box you can edit, and a note naming the state it is in.
 
@@ -347,9 +347,12 @@ def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
     assert "open a save" not in blank.lower()
     assert "follows the save" in following.lower()
     assert "yours" in chosen.lower()
+    # The standing facts went too -- Donald removed them. The note names the
+    # state and nothing else, and blank names nothing at all.
     for note in (blank, following, chosen):
-        assert "only when something changed" in note.lower()
-        assert str(files.KEEP_BACKUPS) in note
+        assert "only when something changed" not in note.lower()
+        assert str(files.KEEP_BACKUPS) not in note
+    assert blank == ""
 
 
 def test_the_folder_box_is_wide_enough_to_read_its_own_placeholder(
@@ -516,17 +519,33 @@ def test_no_password_is_ever_written_to_the_settings_file(app, tmp_path,
 
 # --- the poll interval -------------------------------------------------------
 
-def test_the_poll_interval_is_remembered_and_zero_means_the_backend_s_own(
+def test_the_backend_default_checkbox_owns_the_poll_interval(
         app, tmp_path, monkeypatch):
+    """Donald: the spin box printed a sentence at its lowest value and turned
+    into milliseconds the moment an arrow was touched. The state is a checkbox
+    now, the spin box only ever shows a number, and 0 is still how "the backend
+    decides" is stored."""
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
+
+    assert dialog.interval_default.isChecked()      # on by default
+    assert not dialog.interval.isEnabled()          # and the number is disabled
+    assert Settings.load().interval_ms == 0
+
+    dialog.interval_default.setChecked(False)
+    assert dialog.interval.isEnabled()
     dialog.interval.setValue(750)
     assert Settings.load().interval_ms == 750
     assert win.session._interval_override == 750
-    dialog.interval.setValue(0)
+
+    dialog.interval_default.setChecked(True)
+    assert not dialog.interval.isEnabled()
     assert Settings.load().interval_ms == 0
     assert win.session._interval_override is None
+
+    # and it comes back ticked, with the box still disabled
+    assert PreferencesDialog(win).interval_default.isChecked()
 
 
 # --- fast travel -------------------------------------------------------------
