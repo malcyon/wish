@@ -87,15 +87,21 @@ the whole menu they were picked from are in `docs/109-icon-choices.md`.
 
 **Font Awesome Free has no sword.** `sword` and `swords` are Pro only, and
 `khanda` is a Sikh religious emblem — wrong in meaning and illegible at twelve
-pixels. So the fighter's blade, the crossed swords of the Encounter note and the
-treasure chest are drawn here, from straight lines in the same 640 box, thick
-enough not to read as a scratch beside 3px walls.
+pixels. So the fighter's blade is drawn here, from straight lines in the same
+640 box, thick enough not to read as a scratch beside 3px walls.
 
 **Do not rely on system fonts** for any of this. Measured on this machine,
 crossed swords and a cross come from DejaVu Sans, a shield and a dagger only
 from Noto Sans Symbols2, and a scroll or a pin only from a colour emoji font.
 Windows ships a different set again, so the same code would draw a different map
 on every machine.
+
+**One glyph now does exactly that, deliberately.** The Encounter note is
+**U+2694**, Donald's choice, and it accepts the cost this paragraph describes:
+it is the platform's drawing, not ours. It replaced a pair of crossed blades we
+drew that read as a starburst at every size. It is the only one, and
+`docs/109-icon-choices.md` records what it renders as here and what is not known
+about the other platforms.
 
 ## 5. Status icons — two, and only two
 

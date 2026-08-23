@@ -25,7 +25,8 @@ lifted here -- so `commands()` is a twenty-line parser rather than a dependency.
 
 Icons under `FONT_AWESOME` are **Font Awesome Free 7.3.1 by Fonticons, Inc.**
 (https://fontawesome.com), icons licensed **CC BY 4.0**. The path data is
-verbatim from `svgs-full/solid/`; the licence text is in
+verbatim from `svgs-full/`, `solid/` except for `gem`, which Donald chose in
+the **regular** weight; the licence text is in
 `docs/licences/fontawesome-LICENSE.txt` and the attribution is carried in the
 README and the About box. Brands are not used and must not be: the licence
 forbids brand-logo use and the set carries `wizards-of-the-coast`.
@@ -37,6 +38,14 @@ meaning and illegible at twelve pixels; `hat-wizard`'s brim is a separate
 subpath that stops touching the cone at 13px and reads as a shark's fin; and
 `mask` stays perfectly legible while reading as goggles.
 
+`TEXT_GLYPHS` are neither: a **character**, drawn from whatever font the
+platform resolves it to. There is exactly one, the Encounter note's U+2694
+crossed swords, and it is Donald's choice. It is not path data and does not
+scale from the 640 box, so `ui/iconpaint.py` fits it to the box by its own ink
+-- and it looks like whatever the machine has. Here that is DejaVu Sans and
+monochrome; on Windows and macOS the same code point is commonly resolved to
+the colour emoji font instead. See `docs/109-icon-choices.md`.
+
 **`hat-wizard` is in the table anyway**, because the *application* icon is
 drawn from it -- `ui/appicon.py`, at 16 px and up on a tile, where the sizes
 that matter are 32 and above. It is not the magic-user's glyph on the map and
@@ -45,13 +54,17 @@ must not be used as one: at 13px the finding above still stands.
 **The 13px rule these were drawn to.** One connected silhouette, with at most
 one hole and that hole no smaller than about 64 units in the 640 box. Hole
 *count* is not what matters -- a large second counter survives -- and the
-failure that kills a glyph is separation, not mush. `docs/109-icon-choices.md`
-carries the sheet the whole set was judged on.
+failure that kills a glyph is separation, not mush.
+
+**That rule now binds in one place only.** The map cell draws a note at
+`render.NOTE_SIZE`, which is 26; the note editor's picker is 15. The last 13px
+consumer is the notes list in `automap/panel.py`. A new icon still has to pass
+the rule to go in that list, and no longer has to pass it to go on the map.
+`docs/109-icon-choices.md` carries the sheet and the sizes.
 """
 
 from __future__ import annotations
 
-import math
 import re
 
 #: Every icon is drawn in this box, matching Font Awesome's `svgs-full` canvas.
@@ -194,27 +207,42 @@ FONT_AWESOME = {
         "205.5zM96 512L544 512C561.7 512 576 526.3 576 544C576 561.7 "
         "561.7 576 544 576L96 576C78.3 576 64 561.7 64 544C64 526.3 "
         "78.3 512 96 512z",
+    # The Treasure note. **Regular weight, not solid** -- Donald picked
+    # the outline, and on graph paper a filled lozenge reads as terrain,
+    # which is what the drawn chest it replaces was avoiding. Verbatim
+    # from `svgs-full/regular/`, the one icon here not from `solid/`.
+    "gem":
+        "M232.5 136L320 229L407.5 136L232.5 136zM447.9 163.1L375.6 "
+        "240L504.6 240L448 163.1zM497.9 288L142.1 288L320 484.3L497.9 "
+        "288zM135.5 240L264.5 240L192.2 163.1L135.6 240zM569.8 "
+        "280.1L337.8 536.1C333.3 541.1 326.8 544 320 544C313.2 544 "
+        "306.8 541.1 302.2 536.1L70.2 280.1C62.5 271.6 61.9 258.9 "
+        "68.7 249.7L180.7 97.7C185.2 91.6 192.4 87.9 200 87.9L440 "
+        "87.9C447.6 87.9 454.8 91.5 459.3 97.7L571.3 249.7C578.1 "
+        "258.9 577.4 271.6 569.8 280.1z",
+    # The Fast Travel help affordance, on a `QToolButton` so that it
+    # looks like something to point at -- `actionbar.WarpBar`.
+    "circle-info":
+        "M320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 "
+        "64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM288 "
+        "224C288 206.3 302.3 192 320 192C337.7 192 352 206.3 352 "
+        "224C352 241.7 337.7 256 320 256C302.3 256 288 241.7 288 "
+        "224zM280 288L328 288C341.3 288 352 298.7 352 312L352 400L360 "
+        "400C373.3 400 384 410.7 384 424C384 437.3 373.3 448 360 "
+        "448L280 448C266.7 448 256 437.3 256 424C256 410.7 266.7 400 "
+        "280 400L304 400L304 336L280 336C266.7 336 256 325.3 256 "
+        "312C256 298.7 266.7 288 280 288z",
 }
 
 
-def _poly(points, cx: float = 0.0, cy: float = 0.0, turn: float = 0.0) -> str:
-    """One closed subpath, optionally turned about `(cx, cy)` by `turn` degrees.
-
-    The rotation is what makes crossed swords one drawing rather than two: the
-    blade is written once, upright, and the pair is the same points twice.
-    """
-    r = math.radians(turn)
-    sin, cos = math.sin(r), math.cos(r)
-    out = []
-    for i, (x, y) in enumerate(points):
-        dx, dy = x - cx, y - cy
-        px, py = cx + dx * cos - dy * sin, cy + dx * sin + dy * cos
-        out.append(f"{'M' if i == 0 else 'L'}{px:.1f} {py:.1f}")
-    return "".join(out) + "z"
+def _poly(points) -> str:
+    """One closed subpath."""
+    return "".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}"
+                   for i, (x, y) in enumerate(points)) + "z"
 
 
-def _rect(x: float, y: float, w: float, h: float, **kw) -> str:
-    return _poly(((x, y), (x + w, y), (x + w, y + h), (x, y + h)), **kw)
+def _rect(x: float, y: float, w: float, h: float) -> str:
+    return _poly(((x, y), (x + w, y), (x + w, y + h), (x, y + h)))
 
 
 def _ellipse(cx: float, cy: float, rx: float, ry: float,
@@ -254,20 +282,6 @@ _POMMEL = (240, 546, 160, 62)          # x, y, w, h
 OURS = {
     # One sword, for the fighter: Font Awesome Free has none.
     "sword": _poly(_BLADE) + _rect(*_POMMEL),
-    # Crossed swords, for an encounter. Turned 32 degrees either way, which is
-    # wide enough that the two guards do not land on each other at 12px.
-    "swords": (_poly(_BLADE, 320, 320, -32) + _rect(*_POMMEL, cx=320, cy=320,
-                                                    turn=-32)
-               + _poly(_BLADE, 320, 320, 32) + _rect(*_POMMEL, cx=320, cy=320,
-                                                     turn=32)),
-    # A chest, drawn as an outline rather than a solid: on graph paper a filled
-    # rectangle reads as terrain, which is the one thing a note must not do.
-    # The inner rectangle is wound the other way, so winding fill makes it a
-    # hole -- the same trick `location-dot`'s counter uses.
-    "chest": (_rect(104, 232, 432, 304)
-              + _poly(((144, 272), (144, 496), (496, 496), (496, 272)))
-              + _rect(104, 232, 432, 96)
-              + _rect(284, 296, 72, 104)),
     # A wizard's hat for the magic-user, drawn because Font Awesome's
     # `hat-wizard` comes apart at 13px: its brim is a separate subpath and
     # reads as a fin below the cone. Here the brim is part of the cone, and one
@@ -285,6 +299,26 @@ OURS = {
 }
 
 ICONS: dict[str, str] = {**FONT_AWESOME, **OURS}
+
+#: Icons that are a **character**, not a path. `ui/iconpaint.py` draws these
+#: with the system font and fits them to the same box the paths are drawn in.
+#:
+#: The Encounter note is the only one. `swords`, drawn here, was replaced by
+#: Donald's choice of U+2694 -- which buys a real pair of crossed swords in
+#: place of the starburst ours read as, and costs the guarantee that every
+#: note on the map is drawn by the same hand.
+TEXT_GLYPHS: dict[str, str] = {
+    "crossed-swords": "⚔",
+}
+
+#: Every name a caller may ask for, drawn by either route.
+NAMES: frozenset[str] = frozenset(ICONS) | frozenset(TEXT_GLYPHS)
+
+
+def is_text(name: str) -> bool:
+    """Is this icon a font character rather than path data?"""
+    return name in TEXT_GLYPHS
+
 
 _NUMBER = re.compile(r"[MLCZmlczHhVvSsQqTtAa]|-?\d*\.?\d+(?:[eE][-+]?\d+)?")
 

@@ -9,10 +9,13 @@ what is left is what ships.
 | thief | `hood` | **ours** |
 | cleric | `cross` | Font Awesome Free |
 | fighter | `sword` | **ours** |
+| **`Treasure` note** | **`gem`** | **Font Awesome Free, `regular/`** |
+| **`Encounter` note** | **U+2694 ⚔** | **the system font** |
 | map, `Stairs` note | `stairs` U+E289 | Font Awesome Free |
 | toolbar, open | `folder-open` | Font Awesome Free |
 | toolbar, save and save as | `floppy-disk` | Font Awesome Free |
 | toolbar, preview changes | `eye` | Font Awesome Free |
+| Fast Travel help | `circle-info` | Font Awesome Free |
 | application icon | `hat-wizard` | Font Awesome Free |
 
 The last row is not one of these. It is the *app* icon, judged in
@@ -23,12 +26,52 @@ The sheet is still buildable and now shows the chosen set:
 
     .venv/bin/python tools/iconsheet.py work/reports/icon-sheet.png
 
-Every icon at 13, 16 and 20 pixels, in `NOTE` ink in a map cell with a wall
-against it and in `MUTED` on a roster card, and then magnified 8×. **The
+Every icon at 13, 15 and 26 pixels, in `NOTE` ink in a map cell with a wall
+against it and in `MUTED` on a roster card, and then magnified 8× and 5×. **The
 magnified column is the one that decides**, and it is where a replacement
 drawing has to be judged too.
 
+## The sizes an icon is actually drawn at
+
+This changed, and it changes what the rule below is for.
+
+| place | size | file |
+|---|---|---|
+| the map cell | **26** | `render.NOTE_SIZE` |
+| the note editor's picker | 15 | `noteeditor.ICON` |
+| the notes list in the panel | **13** | `panel.ICON_SIZE` |
+| the toolbar | 16 | `editor/window.py::_toolbar_icons` |
+| the Fast Travel help button | 16 | `actionbar.HELP_SIZE` |
+| the application icon | 32 and up | `ui/appicon.py` |
+
+Donald: *"Can you double the size of the note icons? They are very small. The
+square they are marking is much larger than the actual icon."* So the map draws
+at 26 in a 34px cell, and 13 survives in one place only — the notes list.
+
+Two things had to move with it, both visible in
+`work/reports/note-sizes.png`-style renderings and both now pinned by a test:
+
+* **the count on a multi-note square.** It hung off the bottom-right of the
+  *icon*, which put it outside the cell as soon as the icon grew. It is placed
+  against the **cell's** bottom-right corner now, `NOTE_INSET` from each edge so
+  it clears the 3px wall stroke, on a disc of paper so it reads over the glyph
+  behind it.
+* **the party marker.** At 13 the note sat in a corner and the two never met; at
+  26 the note is most of the square. Notes are now drawn **before** the marker,
+  so on the one square that carries both, the marker is on top. Where the party
+  is standing is the one thing on this map that must not be in doubt.
+
+22 is the calmer number — at 26 a note on the party's own square wraps the
+triangle fairly tightly — but 26 is legible, does not swamp the roofed shading,
+and is what was asked for.
+
 ## The 13px rule, as the sheet corrected it
+
+**Scope first: this rule now binds on the notes list and nowhere else.** It was
+written when the map drew at 13 and the roster class icons drew at 13; the map
+draws at 26 and the class icons are gone. It is not wrong, it is narrow — and it
+is still the bar a new icon has to pass, because the notes list is a real place
+a real user reads.
 
 The rule the shortlist was built on was "a solid silhouette with at most one
 hole". Two things on the sheet corrected it:
@@ -59,12 +102,66 @@ already and does not change; so is every toolbar and note icon not listed here.
 | `wizard-hat` | the **magic-user** mark on a roster card, beside the class text | 13 px | FA's `hat-wizard` comes apart at 13 — the brim is a separate bar |
 | `hood` | the **thief** mark on a roster card | 13 px | FA's `mask` is legible but reads as goggles |
 | `sword` | the **fighter** mark on a roster card | 13 px | Font Awesome Free has **no sword**: `sword` and `swords` are Pro-only |
-| `swords` | the **Encounter** note — the glyph in the map cell, the row in the notes list, and the button in the note editor's picker | 13, 13 and 15 px | the same: no swords in FA Free |
-| `chest` | the **Treasure** note, in the same three places | 13, 13 and 15 px | drawn as an outline, because a filled rectangle on graph paper reads as *terrain* |
+| ~~`swords`~~ | the **Encounter** note | — | **gone.** Replaced by U+2694 — see below |
+| ~~`chest`~~ | the **Treasure** note | — | **gone.** Replaced by `gem`, regular weight — see below |
 
-`CLASS_ICON` in `automap/panel.py` is the roster mapping and `automap/notes.py`
-is the note one; the map cell size is `render.NOTE_SIZE = 13` and the editor
+`automap/notes.py` is the note mapping; the map cell size is
+`render.NOTE_SIZE = 26`, the notes list is `panel.ICON_SIZE = 13` and the editor
 button is `noteeditor.ICON = 15`.
+
+### The two Donald chose
+
+**`Treasure` → Font Awesome's `gem`, the REGULAR weight**, not the solid, and
+picked specifically: an outline says *thing on the floor* where a filled lozenge
+on graph paper reads as terrain, which is the objection the drawn chest existed
+to answer. It is the one icon in `ui/icons.py` lifted from `svgs-full/regular/`
+rather than `svgs-full/solid/`, and the module docstring says so.
+
+Measured, at half-coverage, in the 640 box:
+
+| size | ink | pieces | holes |
+|---|---|---|---|
+| 13 | 36 px | **1** | 16, 3, 2, 2 |
+| 15 | 57 px | **1** | 16, 4, 3, 3 |
+| 26 | ~190 px | **1** | table facet plus the three crown facets |
+| 56 | 704 px | **1** | 274, 56, 39, 39 |
+
+**It survives 13 px**: one connected silhouette, and the table — the big facet
+under the crown — is 16 px of paper, well clear of the 64-unit floor. The three
+crown facets are 2–3 px each and are the marginal part; they go grey rather than
+white and the icon still reads as a gem, which is the same verdict `hood` got
+and by the same measurement. The solid weight is denser (52 px of ink at 13
+against 36) and would have been the safer choice on legibility alone; it is not
+the one that was asked for, and the outline holds.
+
+**`Encounter` → U+2694 ⚔, crossed swords.** This is the only glyph in the
+program that is **not** path data, and that is the whole of what has to be said
+about it: it renders from whatever font the platform resolves the code point to.
+
+| | |
+|---|---|
+| here (Linux, PyQt6) | **DejaVu Sans, monochrome.** 173 non-white colours in a 56px render, all of them grey — antialiasing, not colour |
+| with U+FE0F appended | the colour emoji font, 362 colours, **not monochrome** — so an emoji font *is* installed and Qt will use it when asked |
+| with U+FE0E appended | still DejaVu Sans, and the selector itself is a zero-width glyph from Noto Sans: same advance, same ink |
+| Windows, macOS | **not verified here.** U+2694 is in Segoe UI Emoji and Apple Color Emoji as well as in monochrome faces, and Qt 6's own fallback chain — not the platform's shaper — picks. It may well come out as a colour emoji sitting among monochrome icons |
+
+U+FE0E is the text-presentation selector and is the correct request. On this
+machine it changes nothing because nothing needed changing; whether Qt honours
+it on a platform that *does* default to emoji is not something a Linux box can
+answer, and appending it costs a second glyph run for a zero-width character.
+**Implemented bare, as asked.** If Windows shows a colour emoji, U+FE0E is the
+first thing to try and this is where the evidence is.
+
+What it buys: a real pair of crossed swords in place of a drawing that read as a
+starburst at every size, which was the standing complaint about `swords`. What
+it costs: at 13 px it is visibly lighter than the Font Awesome solids beside it
+in the notes list — DejaVu draws the blades as thin outlines — and it is the one
+icon whose appearance we do not control.
+
+`ui/iconpaint.py` fits it to the same box the paths get, measured by its **ink**
+rather than its advance: at 13 px DejaVu's ⚔ is 9×10 of ink inside an 11.6
+advance, so drawing it as text would put it half out of the cell and two pixels
+smaller than its neighbour.
 
 One thing measuring the candidates turned up about **our own** drawings: at 13
 px, counting a pixel as ink only when it is at least half covered, `hood` comes
@@ -105,8 +202,22 @@ Free has no sword, no dagger, no axe and no spear; the nearest glyph in meaning
 is a shield, which is a different idea. That is the one slot where dropping our
 drawing costs something a replacement does not give back.
 
-**Nothing is replaced yet** — the choice is Donald's, and the sheet is what he
-chooses from.
+**Two are now replaced** — `chest` and `swords`, above — and the three class
+icons are Donald's call.
+
+### P77 is worth reopening, and the reason is the size change
+
+Every "fails" in the table above is a 13 px verdict, and 13 px was the map. The
+map draws at **26** now. `hat-wizard`'s brim separating from its cone,
+`user-ninja`'s head coming away from its body, `wand-sparkles` falling into
+loose dots — none of those is a failure at 26, and two of them are the reasons
+`wizard-hat` and `hood` were drawn in the first place.
+
+That does not automatically readmit anything: the notes list is still 13, so a
+*note* icon still has to pass. But the class icons are not drawn on the map at
+all, and if they come back at any size above about 20 the honest answer is that
+Font Awesome has candidates it did not have before. Not swapped here — the
+choice is Donald's, and the sheet is what he chooses from.
 
 ## Why the rest lost
 
@@ -152,9 +263,11 @@ Font Awesome Free has no sword: `sword` and `swords` are Pro only.
 
 | rejected | why |
 |---|---|
-| `swords`, ours | reads as a starburst, and already means "encounter" on the map |
 | `shield` | a rounded blob; a shield only once you are at 20 |
 | `shield-halved` | the seam survives, but it reads as "half" of something |
+
+`swords`, ours, is gone: it read as a starburst, and U+2694 is the encounter
+mark now.
 
 ### Toolbar
 
@@ -189,15 +302,17 @@ the four buttons at `TOOLBAR_ICON = 16`.
 | roster | class icons | **done** — beside the class text, never instead of it |
 | roster | dead, level-drained | **already done** — skull and a down arrow |
 | toolbar | open, save, save as, preview | **done** — `editor/window.py::_toolbar_icons`, 16 px |
+| Fast Travel | the help affordance | **done** — `circle-info` on a `QToolButton`, `autoRaise` so it highlights on hover. It was a `QLabel` with a drawn circle and a `?`, which said nothing about being hoverable |
 | map | doors, locked, wizard-locked | **no** — `render.py` draws these better than a font can |
 | combat | party, enemy, active | **no** — coloured squares with hit points in them are unambiguous |
 | roster | poisoned, paralysed | **blocked** — the effect codes are not decoded |
 
 ## Licence
 
-Font Awesome Free paths are verbatim from `svgs-full/solid/`, licensed CC BY
-4.0, attributed in the README and the About box with the text in
-`docs/licences/`. Nothing is redrawn: the app icon recolours `hat-wizard` and
+Font Awesome Free paths are verbatim from `svgs-full/`, from `solid/` except
+`gem`, which is `regular/`; licensed CC BY 4.0, attributed in the README and the
+About box with the text in `docs/licences/`. U+2694 is not Font Awesome and is
+not shipped at all — it is a code point, drawn by the reader's own font. Nothing is redrawn: the app icon recolours `hat-wizard` and
 puts it on a tile, and the path data is theirs, untouched, at every size.
 **Nothing comes from `brands/`** — the licence forbids
 brand-logo use and the set carries `wizards-of-the-coast`. The font itself is

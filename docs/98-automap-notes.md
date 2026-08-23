@@ -18,8 +18,8 @@ type is one line.
 
 | type | icon | source | for |
 |---|---|---|---|
-| Encounter | crossed swords | ours | a fight, set or remembered |
-| Treasure | chest | ours | something to take, or taken |
+| Encounter | **U+2694 ⚔** | the system font | a fight, set or remembered |
+| Treasure | `gem` | Font Awesome, **regular** | something to take, or taken |
 | Person | `user` | Font Awesome | trainer, shop, quest-giver |
 | Exit | `door-open` | Font Awesome | where this map joins another |
 | Locked | `lock` | Font Awesome | a door that beat you |
@@ -45,11 +45,18 @@ with a 3px descender and the advance differs per icon, so every glyph would need
 blobbing at 12px. Drawing it needs winding fill, not Qt's odd-even default, or
 the counter fills in.
 
-**Font Awesome Free has no sword** — `sword` and `swords` are Pro, and `khanda`
-is a Sikh religious emblem, wrong in meaning and illegible at twelve pixels — so
-the crossed swords, the chest and the fighter's blade are ours, built from
-straight lines in the same 640 box. Brands are not used and must not be: the
-licence forbids brand-logo use and the set carries `wizards-of-the-coast`.
+**One note is a character and not a path.** Font Awesome Free has no sword —
+`sword` and `swords` are Pro, and `khanda` is a Sikh religious emblem, wrong in
+meaning and illegible at twelve pixels — so the Encounter note was a drawing of
+ours until Donald picked **U+2694**, which is a code point and renders from
+whatever font the machine has. `icons.TEXT_GLYPHS` holds it and `iconpaint.py`
+fits it to the same box the paths get. The cost is the obvious one: it looks
+like whatever the platform draws, which here is DejaVu Sans and monochrome and
+on Windows or macOS may be a colour emoji. `docs/109-icon-choices.md` carries
+the measurements.
+
+Brands are not used and must not be: the licence forbids brand-logo use and the
+set carries `wizards-of-the-coast`.
 
 Attribution travels with the paths: `docs/licences/fontawesome-LICENSE.txt`, a
 line in the README, and a line in the About box.
@@ -57,7 +64,7 @@ line in the README, and a line in the About box.
 ## Drawing
 
 `render.py` grew one primitive, `Glyph(x, y, size, name)`, and
-`note_primitives(notes)` puts a 13px icon in the square's **top-right corner**,
+`note_primitives(notes)` puts a 26px icon in the square (`NOTE_SIZE`),
 3px in. That inset is measured against the 3px wall stroke, half of which lies
 inside the cell: `test_a_note_never_lands_on_a_wall` puts a note on all 256
 squares of `GEO14` and checks every one against every wall segment. A square

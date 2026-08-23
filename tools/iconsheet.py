@@ -11,15 +11,20 @@ the next change to a drawing is judged the same way the first one was.
 
 Each row is one icon, shown three ways:
 
-* **in a map cell**, at `render.py`'s `NOTE_SIZE` of 13 and at 16 and 20, in
-  `NOTE` ink on graph paper with a wall against it, in the top-right corner
-  where `note_primitives` puts it;
+* **in a map cell**, at the three sizes the program actually draws at -- 13 in
+  the notes list, 15 in the note editor's picker, and `render.py`'s `NOTE_SIZE`
+  of 26 on the map itself -- in `NOTE` ink on graph paper with a wall against
+  it, where `note_primitives` puts it;
 * **on a roster card**, at the same three sizes, in `MUTED` beside the class
   text, which is where `panel.py`'s `IconRow` puts it;
-* **magnified**, 13px at 8x and 20px at 4x with nearest-neighbour scaling, so
+* **magnified**, 13px at 8x and 26px at 4x with nearest-neighbour scaling, so
   the pixels are visible. This column is the one that decided, and the one a
   replacement has to survive: a glyph that is mush is mush here and merely
   small everywhere else.
+
+The map used to draw at 13 and the 13px rule was written for it. It draws at 26
+now, so the rule binds on the notes list and nowhere else -- see
+`docs/109-icon-choices.md`.
 
     .venv/bin/python tools/iconsheet.py work/reports/icon-sheet.png
 """
@@ -56,15 +61,15 @@ MUTED = QColor("#5c6b7a")
 NOTE = QColor("#b8601f")
 RULE = QColor("#e7ecf2")
 
-SIZES = (13, 16, 20)
+SIZES = (13, 15, 26)
 CELL = 34                       # `render.py`'s map cell
 INSET = 3                       # `render.py`'s NOTE_INSET
 
 LABEL_W = 210
 MAP_W = 42
 CARD_W = 104
-BIG13, BIG20 = 8, 4             # magnification factors
-ROW_H = 13 * BIG13 + 12
+BIG_SMALL, BIG_MAP = 8, 4       # magnification factors
+ROW_H = 26 * BIG_MAP + 12
 GAP = 10
 
 
@@ -80,8 +85,11 @@ SHEET = [
         ("sword", "ours", "fighter: FA Free has no sword"),
     ]),
     ("Note types", [
-        ("swords", "ours", "encounter"),
-        ("chest", "ours", "treasure"),
+        ("crossed-swords", "U+2694", "encounter -- a font character, not a "
+                                     "path: what it looks like is the "
+                                     "platform's"),
+        ("gem", "FA Free, regular", "treasure -- the one icon lifted from "
+                                    "`regular/` rather than `solid/`"),
         ("user", "FA Free", "person"),
         ("door-open", "FA Free", "exit"),
         ("lock", "FA Free", "locked"),
@@ -152,7 +160,7 @@ def _magnified(p: QPainter, x: float, y: float, name: str, size: int,
 
 def build() -> QImage:
     width = (LABEL_W + len(SIZES) * MAP_W + GAP + len(SIZES) * CARD_W + GAP
-             + 13 * BIG13 + GAP + 20 * BIG20 + 2 * GAP)
+             + 13 * BIG_SMALL + GAP + 26 * BIG_MAP + 2 * GAP)
     rows = sum(len(items) for _, items in SHEET)
     height = 96 + rows * ROW_H + len(SHEET) * 40 + 40
 
@@ -172,9 +180,10 @@ def build() -> QImage:
     small.setPointSize(8)
     p.setFont(small)
     p.setPen(QPen(MUTED))
-    p.drawText(GAP, 44, "At 13 pixels a glyph survives if it is one connected "
-                        "silhouette and every feature is at least about 64 "
-                        "units in the 640 box. Judge the magnified column.")
+    p.drawText(GAP, 44, "The 13px rule -- one connected silhouette, every "
+                        "feature at least about 64 units in the 640 box -- "
+                        "now binds on the notes list only. The map draws at "
+                        "26.")
     p.drawText(GAP, 58, "Map cells are NOTE ink on graph paper with a wall "
                         "against them; cards are MUTED beside the class text. "
                         "This is the chosen set.")
@@ -193,8 +202,8 @@ def build() -> QImage:
     for i, size in enumerate(SIZES):
         p.drawText(map_x + i * MAP_W, 82, f"map {size}")
         p.drawText(card_x + i * CARD_W, 82, f"card {size}")
-    p.drawText(big_x, 82, f"13px x{BIG13}")
-    p.drawText(big_x + 13 * BIG13 + GAP, 82, f"20px x{BIG20}")
+    p.drawText(big_x, 82, f"13px x{BIG_SMALL}")
+    p.drawText(big_x + 13 * BIG_SMALL + GAP, 82, f"26px x{BIG_MAP}")
 
     y = 96
     for section, items in SHEET:
@@ -206,7 +215,7 @@ def build() -> QImage:
         p.drawLine(x0, y - 6, width - GAP, y - 6)
 
         for name, source, why in items:
-            assert name in icons.ICONS, name
+            assert name in icons.NAMES, name
             p.setFont(head)
             p.setPen(QPen(INK))
             p.drawText(x0, y + 16, name)
@@ -219,8 +228,9 @@ def build() -> QImage:
             for i, size in enumerate(SIZES):
                 _map_cell(p, map_x + i * MAP_W, y + 4, name, size)
                 _card(p, card_x + i * CARD_W, y + 4, name, size)
-            _magnified(p, big_x, y + 4, name, 13, BIG13)
-            _magnified(p, big_x + 13 * BIG13 + GAP, y + 4, name, 20, BIG20)
+            _magnified(p, big_x, y + 4, name, 13, BIG_SMALL)
+            _magnified(p, big_x + 13 * BIG_SMALL + GAP, y + 4, name, 26,
+                       BIG_MAP)
 
             y += ROW_H
             p.setPen(QPen(RULE, 1))
