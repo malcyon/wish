@@ -21,7 +21,7 @@ from editor.binding import (
     editable_fields,
     shown_fields,
 )
-from editor.files import back_up, prune
+from editor.files import automatic_dir, back_up, prune
 from editor.roster import Party
 from por.layout import LAYOUT, Confidence
 
@@ -102,50 +102,70 @@ def test_a_roster_disk_has_no_savedgame_and_still_lists_characters():
 
 # --- backups ----------------------------------------------------------------
 
-def test_the_message_spells_out_a_backup_that_went_somewhere_odd(tmp_path,
-                                                                 monkeypatch):
-    """Beside the disk, `backups/NAME` is enough. In the fallback it is not.
+class FakeDisk:
+    """A disk with bytes in it, so the file handling is tested without one."""
 
-    The one time the location surprises a user -- a read-only folder sends the
-    copy to `~/.local/share/wish/backups`, or `%LOCALAPPDATA%` on Windows -- is
-    the one time the short form names a directory they have never heard of.
+    def __init__(self, data):
+        self.data = data
+
+    def to_bytes(self):
+        return self.data
+
+    def save(self, path):
+        pathlib.Path(path).write_bytes(self.data)
+
+
+def test_the_message_spells_out_a_backup_that_went_somewhere_else(tmp_path):
+    """Beside the disk, `backups/NAME` is enough. Elsewhere it is not.
+
+    A folder the user chose in Preferences is not one they are looking at, so
+    the short form would name a `backups/` on a path the message never gives.
     """
     from editor import files
 
-    class FakeDisk:
-        def __init__(self, data):
-            self.data = data
-
-        def to_bytes(self):
-            return self.data
-
-        def save(self, path):
-            pathlib.Path(path).write_bytes(self.data)
-
     beside = tmp_path / "PORSAVE11.D64"
     beside.write_bytes(b"old")
-    said = files.save_disk(FakeDisk(b"new"), beside)
+    said = files.save_disk(FakeDisk(b"new"), beside,
+                           files.automatic_dir(beside))
     assert said.startswith("wrote PORSAVE11.D64, backup backups/")
 
     elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    monkeypatch.setattr(files, "backup_dir_for", lambda _t: elsewhere)
     other = tmp_path / "PORSAVE12.D64"
     other.write_bytes(b"old")
-    said = files.save_disk(FakeDisk(b"new"), other)
+    said = files.save_disk(FakeDisk(b"new"), other, elsewhere)
     assert str(elsewhere) in said          # the whole path, not just the leaf
+
+
+def test_no_backup_folder_refuses_the_save_rather_than_writing(tmp_path):
+    """The rule the editor's licence to overwrite rests on.
+
+    It writes back over the file you opened, and the only reason that is
+    defensible is the copy it takes first. With nowhere to put the copy the
+    save does not happen -- there is no hidden directory to fall back to.
+    """
+    from editor import files
+
+    save = tmp_path / "PORSAVE11.D64"
+    save.write_bytes(b"old")
+    with pytest.raises(files.NoBackupFolder) as raised:
+        files.save_disk(FakeDisk(b"new"), save, "")
+    assert save.read_bytes() == b"old"
+    assert "Preferences" in str(raised.value)
+    # And a save that would write nothing needs no folder: closing a window
+    # nobody edited in must not turn into an argument about backups.
+    assert files.save_disk(FakeDisk(b"old"), save, "") == "no changes"
 
 
 def test_a_backup_is_made_and_the_original_is_unchanged(tmp_path):
     f = tmp_path / "x.d64"
     f.write_bytes(b"before")
-    copy = back_up(f)
+    copy = back_up(f, automatic_dir(f))
     assert copy.read_bytes() == b"before"
     assert copy.parent.name == "backups"
 
 
 def test_saving_to_a_new_name_backs_up_nothing(tmp_path):
-    assert back_up(tmp_path / "not-there.d64") is None
+    assert back_up(tmp_path / "not-there.d64", tmp_path / "backups") is None
 
 
 def test_pruning_drops_the_oldest_not_the_newest(tmp_path):

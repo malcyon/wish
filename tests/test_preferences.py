@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 from dataclasses import asdict, fields
 
 import pytest
@@ -196,67 +197,126 @@ def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
 
 
 # --- where the backups go ----------------------------------------------------
+#
+# Two states, and every test below names which one it is pinning. **Automatic**
+# is what a fresh config is in: the folder follows whatever save is open.
+# **Chosen** is a folder the user typed or picked, which is used for every save
+# and which nothing automatic may touch again.
 
-def test_a_backup_goes_beside_the_save_disk(tmp_path):
-    """Donald: "no user is ever going to think to look there" -- and mostly
-    they do not have to, because the copy lands beside the disk."""
-    from wish.preferences import backup_folder
-    save = tmp_path / "PORSAVE14.D64"
+
+def opens(win, save):
+    """What the editor does when a save is loaded, without needing a disk.
+
+    `EditorWindow.load` sets `path` and emits `opened`; a real D64 is the
+    player's and this rule has nothing to do with what is inside one.
+    """
+    save.parent.mkdir(parents=True, exist_ok=True)
     save.write_bytes(b"")
-    where, fallback = backup_folder(save)
-    assert (where, fallback) == (tmp_path / "backups", False)
+    win.editor.path = pathlib.Path(save)
+    win.editor.opened.emit(str(save))
 
 
-@pytest.mark.skipif(os.name == "nt", reason="chmod does not make a directory "
-                    "unwritable on Windows -- it toggles the read-only "
-                    "attribute, which is meaningless for a directory, and "
-                    "os.access(dir, W_OK) answers True anyway")
-@pytest.mark.skipif(getattr(os, "geteuid", lambda: 1)() == 0,
-                    reason="root ignores the permission bits")
-def test_an_unwritable_folder_falls_back_to_the_user_data_directory(tmp_path):
-    from editor import files
-    from wish.preferences import backup_folder
-    shelf = tmp_path / "read only"
-    shelf.mkdir()
-    save = shelf / "PORSAVE14.D64"
-    save.write_bytes(b"")
-    shelf.chmod(0o555)
+def test_a_fresh_config_has_no_backup_folder_at_all(app, tmp_path, monkeypatch):
+    """Blank by default, and blank all the way down to the editor: with
+    nowhere to put a copy there is nothing to save over a save with."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
     try:
-        where, fallback = backup_folder(save)
+        assert win.settings.backup_folder == ""
+        assert win.settings.backup_folder_chosen is False
+        assert win.editor.backup_dir() == ""
+        assert PreferencesDialog(win).backups.text() == ""
     finally:
-        shelf.chmod(0o755)
-    assert (where, fallback) == (files.fallback_dir(), True)
+        win.close()
 
 
-def test_a_folder_that_is_not_there_falls_back(tmp_path):
-    """The same branch as the test above, on every platform and as root: a
-    folder that does not exist cannot be written to by anybody."""
-    from editor import files
-    from wish.preferences import backup_folder
-    save = tmp_path / "gone" / "PORSAVE14.D64"      # never created
-    assert backup_folder(save) == (files.fallback_dir(), True)
+def test_opening_a_save_fills_the_backup_folder_in(app, tmp_path, monkeypatch):
+    """Automatic: `backups/` under the folder the save came from."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        shelf = tmp_path / "saves"
+        opens(win, shelf / "PORSAVE11.D64")
+        assert win.settings.backup_folder == str(shelf / "backups")
+        assert win.settings.backup_folder_chosen is False
+        assert win.editor.backup_dir() == str(shelf / "backups")
+        assert PreferencesDialog(win).backups.text() == str(shelf / "backups")
+    finally:
+        win.close()
 
 
-def test_with_nothing_open_the_fallback_is_named_and_called_one(tmp_path):
-    from editor import files
-    from wish.preferences import backup_folder
-    assert backup_folder(None) == (files.fallback_dir(), True)
+def test_a_save_from_another_folder_moves_it_while_it_is_automatic(
+        app, tmp_path, monkeypatch):
+    """*"Never change it after they've specified it themselves"* -- so before
+    that it does keep changing, and this is the case that says so."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        opens(win, tmp_path / "first" / "PORSAVE11.D64")
+        opens(win, tmp_path / "second" / "PORSAVE12.D64")
+        assert win.settings.backup_folder == str(tmp_path / "second" / "backups")
+    finally:
+        win.close()
+
+
+def test_a_chosen_folder_is_used_for_a_save_opened_anywhere(
+        app, tmp_path, monkeypatch):
+    """Chosen: fixed, and nothing automatic may move it again."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        mine = tmp_path / "my backups"
+        PreferencesDialog(win).set_backup_folder(str(mine))
+        assert win.settings.backup_folder_chosen is True
+        opens(win, tmp_path / "somewhere" / "PORSAVE11.D64")
+        opens(win, tmp_path / "elsewhere" / "PORSAVE12.D64")
+        assert win.settings.backup_folder == str(mine)
+        assert win.editor.backup_dir() == str(mine)
+    finally:
+        win.close()
+
+
+def test_clearing_it_goes_back_to_following_the_save(app, tmp_path, monkeypatch):
+    """A setting a user cannot undo is a trap, so clearing the box is the way
+    back to automatic -- and it fills in again from the save that is open."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        shelf = tmp_path / "saves"
+        opens(win, shelf / "PORSAVE11.D64")
+        dialog = PreferencesDialog(win)
+        dialog.set_backup_folder(str(tmp_path / "my backups"))
+        dialog.set_backup_folder("")
+        assert win.settings.backup_folder_chosen is False
+        assert win.settings.backup_folder == str(shelf / "backups")
+    finally:
+        win.close()
+
+
+def test_a_chosen_folder_survives_a_restart(app, tmp_path, monkeypatch):
+    """Both halves of the state are in the file, or the next run would take a
+    folder somebody chose for a folder it may move."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        PreferencesDialog(win).set_backup_folder(str(tmp_path / "my backups"))
+    finally:
+        win.close()
+    again = Settings.load()
+    assert again.backup_folder == str(tmp_path / "my backups")
+    assert again.backup_folder_chosen is True
 
 
 def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
                                                      monkeypatch):
-    """`editor.files.backup_dir_for` answers by *making* the folder and
-    touching a probe file in it. A dialog that only reports must not write to
-    the folder somebody keeps their disks in."""
-    from wish.preferences import backup_folder
+    """A dialog that only reports must not write to the folder somebody keeps
+    their disks in. The folder is made when there is a copy to put in it."""
     nowhere(tmp_path, monkeypatch)
     shelf = tmp_path / "disks"
-    shelf.mkdir()
     save = shelf / "PORSAVE14.D64"
-    save.write_bytes(b"")
-    backup_folder(save)
     win = window(app)
     try:
+        opens(win, save)
         PreferencesDialog(win)
     finally:
         win.close()
@@ -265,26 +325,28 @@ def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,
 
 def test_the_dialog_says_where_backups_go_and_the_two_standing_facts(
         app, tmp_path, monkeypatch):
-    """The path, which of the two folders it is as a badge, and the facts.
+    """The path in a box you can edit, and a note saying which state it is in.
 
-    Donald asked for "the same effect" the backend states got, so the answer to
-    *which folder is this* is a badge beside the path rather than a clause in
-    the middle of a sentence with two other things in it.
+    The path alone cannot say: `/somewhere/backups` looks the same whether it
+    is following the open save or was typed in and is never moving again.
     """
     from editor import files
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
-        dialog = PreferencesDialog(win)
-        said, badge = dialog.backups.text(), dialog.backups_badge
-        note = dialog.backups_note.text()
+        blank = PreferencesDialog(win).backups_note.text()
+        opens(win, tmp_path / "saves" / "PORSAVE11.D64")
+        following = PreferencesDialog(win).backups_note.text()
+        PreferencesDialog(win).set_backup_folder(str(tmp_path / "mine"))
+        chosen = PreferencesDialog(win).backups_note.text()
     finally:
         win.close()
-    assert said == str(files.fallback_dir())
-    assert badge.text() == "fallback"
-    assert "border" in badge.styleSheet()      # framed, like the backends
-    assert "only when something changed" in note.lower()
-    assert str(files.KEEP_BACKUPS) in note
+    assert "no saving" in blank.lower()
+    assert "follows the save" in following.lower()
+    assert "yours" in chosen.lower()
+    for note in (blank, following, chosen):
+        assert "only when something changed" in note.lower()
+        assert str(files.KEEP_BACKUPS) in note
 
 
 def test_the_folder_box_is_wide_enough_to_read_its_own_placeholder(
