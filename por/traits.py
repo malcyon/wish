@@ -8,14 +8,17 @@ creature that id's meaning demands. `docs/128-guide-and-scripting.md` is the
 write-up.
 
 **The names below are transcribed from a third-party document and then checked
-against the player's own disks.** 49 are CONFIRMED, because a `MON*` record or
-an item template carries the code on exactly the creature or item the meaning
-requires -- the anhkheg carries 121 "anhkheg acid squirt", the troll carries
-100 and 101, the ghoul carries the paralysis that spares elves, the wight
-carries "silver or magic" and the wraith the "silver does half" variant, which
-is the *Monster Manual* distinction between them. 79 are PROBABLE: the guide
-names them, nothing on the C64 exercises them, and a third-party document on
-its own is never CONFIRMED.
+against the player's own disks.** 66 are CONFIRMED. Most were settled by the
+census: a `MON*` record or an item template carries the code on exactly the
+creature or item the meaning requires -- the anhkheg carries 121 "anhkheg acid
+squirt", the troll carries 100 and 101, the ghoul carries the paralysis that
+spares elves, the wight carries "silver or magic" and the wraith the "silver
+does half" variant, which is the *Monster Manual* distinction between them.
+**Seventeen more were settled by playing**: `P3-EFFECTS.D64` was saved with 26
+spells running, and each one named the code it had just written -- 1 Bless, 25
+invisible, 39 hasted and the rest, `docs/90-specimens.md`. 62 are PROBABLE: the
+guide names them, nothing on the C64 exercises them, and a third-party document
+on its own is never CONFIRMED.
 
 The census is 108 `MON*` records across the eight `POOL` disks and the 163
 item templates in the `ITEMFILE*` lists. **52 of the 129 codes are carried by
