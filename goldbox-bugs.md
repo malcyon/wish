@@ -33,6 +33,7 @@ a port fixed one, that is said.
 | 6 | Four monsters disagree with themselves about their own class | Pool of Radiance | data | CONFIRMED |
 | 7 | Clearing the pyramid cancels the council's summons to the war meeting | Pool of Radiance | script | CONFIRMED |
 | 8 | Training a multi-class character in the wrong order throws away a level it has earned | Pool of Radiance | engine | CONFIRMED, in game |
+| 9 | The slums fortune teller is alive again every time you come back | Pool of Radiance | script | CONFIRMED, in game |
 
 ---
 
@@ -363,3 +364,68 @@ between visits.
 **Version.** Pool of Radiance, Commodore 64. CONFIRMED — read out of `GEN` and
 then reproduced at the game's own training halls, with the record read before
 and after.
+
+---
+
+## 9. The slums fortune teller is alive again every time you come back
+
+**Predicted from the bytecode, then confirmed on a running machine.**
+
+**What the game does.** The old woman's tent is the single square `(3, 5)` in
+`GEO14`, and `ECL14 $A63A` is her handler. It opens
+`COMPARE [$4A0B], 250 / IF> / EXIT`, writes 251 when she greets you, and on
+ATTACK prints `YOU EASILY MURDER THE OLD WOMAN. … THE GODS HAVE NOTED YOUR
+ACTIONS`, sets `$4A0B` to 255 — and does one more thing:
+`$A749 SAVE 0, [$4A80]`, zeroing the counter that stops the slums' wandering
+fights at fifteen.
+
+**`$4A0B` is inside `$4A00`-`$4A1F`, the scratch page the engine wipes on every
+area change.** `DUNGEON $202A` is `LDX #$1F / LDA #$00 / STA $4A00,X / DEX /
+BPL`, read out of the running machine on the day. `$4A80` is not in that page:
+it is in the persistent bank and stays at the 0 she was killed for.
+
+**What it should do.** Guard her with a byte in `$4A20`-`$4AF8` like the ten set
+encounters beside her, every one of which uses one — `$4ACA`, `$4ACB`, `$4ACD`,
+`$4ACE`, `$4ACF`, `$4AD0`, `$4AD8`, `$4AD9`, `$4A85`. Hers is the one flag in
+the slums that guards a killable person and lives in the wrong half.
+
+**The evidence.** Driven on a Commodore 64 under emulation, from Donald's own
+`PORSAVE13` — the party one step inside the slums, `$4A0B` = 0, `$4A80` = 3.
+
+| step | what the game printed | `$4A0B` |
+|---|---|---|
+| step onto `(3, 5)` | `SEATED AT A TABLE IS A RAGGED OLD WOMAN. SHE GREETS YOU…` then `ATTACK LEAVE PAY` | `FB` (251) |
+| chose ATTACK | `YOU EASILY MURDER THE OLD WOMAN… THE GODS HAVE NOTED YOUR ACTIONS.` | `FF` |
+| stepped off and back onto `(3, 5)` | nothing at all — the square is inert | `FF` |
+| walked east off `(15, 4)` into New Phlan | — | **`00`** |
+| walked back west into the slums | `YOU HAVE ENTERED THE MONSTER-CRAWLING SLUMS OF PHLAN…` | `00` |
+| stepped onto `(3, 5)` | the greeting again, word for word | `FB` |
+| chose ATTACK again | the murder again | `FF` |
+
+`$4A80` was 3 before the first murder and 0 after it; held at 15 for the walking
+so that wandering fights could not interrupt the run, it was 0 again after the
+second. Both murders zeroed it.
+
+**What the player sees.** Kill her, walk out of the slums, walk back in, and she
+is sitting at her table with the same three copper pieces on it. Three things
+follow from that.
+
+* **The slums never run out of random encounters.** `$4A80` counts won wandering
+  fights and both spawn sites refuse to roll another once it reaches fifteen
+  (`ECL14 $9B32`, `$ADD6`). Murdering her puts it back to zero, and she can be
+  murdered as often as you are willing to walk to the gate and back — so the
+  fifteen is not a cap on anything, and the experience and treasure behind it
+  are unbounded.
+* **The penalty for murdering her evaporates with her.** While `$4A0B` is 255
+  the script adds 5 to the roll that decides whether a wandering fight happens
+  at all (`$9B50`), 5 to the party-strength figure the fight is sized on
+  (`$9B7A`), and 10 more at the rope guild's own spawn (`$ADE8`). Leaving the
+  area clears all three. "The gods have noted your actions" lasts until you walk
+  out of the gate.
+* **The City Hall's books are not affected.** `$4ABB`, the "N of 25 encounters
+  cleared" the clerk pays on, is in the persistent bank and neither murder
+  touched it. The commission cannot be farmed; only the fighting can.
+
+**Version.** Pool of Radiance, Commodore 64. The Amiga `ECL14` is the same 7,679
+bytes and differs in ten of them, none at `$A63A`, `$A749`, `$9B50`, `$9B7A` or
+`$ADE8`, so the Amiga has it too. CONFIRMED, in game.
