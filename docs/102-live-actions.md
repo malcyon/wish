@@ -35,7 +35,23 @@ nothing to *this one*, and here is why" are different answers.
 enabled state is a poll interval stale, and a fight can start inside that
 interval.
 
-`actions()` returns the whole set, in build order.
+`actions()` returns the whole set, **in the order the bar reads**, and
+`actionbar.COLUMNS = 3` breaks that into rows. Donald chose the grouping:
+
+| row | buttons |
+|---|---|
+| first | Heal the party · Store memorized spells · Restore memorized spells |
+| second | Identify all items · Turn quickfight off |
+
+The three that are about spells and hit points sit together; the two that stand
+alone sit under them. `Fast Travel` is its own row (`WarpBar`) and levelling is
+on the roster card, so neither is in this grid.
+`test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for` pins it.
+
+**The labels are American: "memorized".** The internal names
+(`store-spells`, `restore-spells`), the methods, and the record field
+`spells_memorised` are unchanged — that field name reaches generated docs and
+saved YAML that has to keep loading.
 
 ---
 
@@ -59,20 +75,7 @@ went 8 → 9 mid-fight at `$6E11 = 2`. See
 marks that is not decoded, so raising the byte alone would be the half-write
 levelling refuses over. The outcome says whom it skipped.
 
-### 2. Identify every item — `identify`
-
-Clears the low three bits of each item's byte `+6`, which hide its name words
-until it is identified. Bit 7 is readied and is never touched.
-
-**Illegal in combat**, and it carries a `confirm`: identification is part of the
-game's economy and there is no in-game way to undo it.
-
-**The write may not stick.** `$5900`+ is a copy fed from a master elsewhere —
-poking an item's weight there was reverted by the game — so this is the one
-action whose effect is worth checking in the game's own item list. Not yet
-tested live: the party on the test disk carried no unidentified item.
-
-### 3. Store and restore memorised spells — `store-spells`, `restore-spells`
+### 2. Store and restore memorized spells — `store-spells`, `restore-spells`
 
 `store-spells` remembers record `0x020`, the sixteen-byte packed list, for
 every character; `restore-spells` writes it back to
@@ -89,12 +92,31 @@ each level a character *may* prepare and does not change with resting.
 fight's casting already spent, which is not what anybody means by "store my
 spells".
 
+### 3. Identify every item — `identify`
+
+Clears the low three bits of each item's byte `+6`, which hide its name words
+until it is identified. Bit 7 is readied and is never touched.
+
+**Illegal in combat**, and it carries a `confirm`: identification is part of the
+game's economy and there is no in-game way to undo it.
+
+**The write may not stick.** `$5900`+ is a copy fed from a master elsewhere —
+poking an item's weight there was reverted by the game — so this is the one
+action whose effect is worth checking in the game's own item list. Not yet
+tested live: the party on the test disk carried no unidentified item.
+
 ### 4. Turn quickfight off — `clear-quickfight`
 
 **The bit is found**: roster block `+0x0C`, bit 7. QUICK on the combat menu
 moved exactly that bit for exactly the character quickfought, and it survives a
 fight onto the disk — eight of the player's own saves carry it set for one
 character.
+
+**The roster card shows who is on it.** `live.Character.quickfight` reads the
+same byte and the same mask — `live.ROSTER_QUICKFIGHT` and
+`live.QUICKFIGHT_BIT`, which `QUICKFIGHT` is built from, so the read side and
+the write side cannot drift — and the card draws `person-running` under the
+readied line. See [the roster](107-roster-and-notes.md).
 
 **Legal anywhere**, and `QuickfightWatcher` will clear it on the tick `$6E11`
 leaves 2, if the caller turns that on. It fires on the edge only, so it does

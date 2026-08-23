@@ -384,7 +384,10 @@ class StoreSpells(Action):
     """
 
     name = "store-spells"
-    label = "Store memorised spells"
+    # American spelling on the face of the program, Donald's; the field name
+    # `spells_memorised` stays as it is, because it reaches generated docs and
+    # saved YAML that has to keep loading.
+    label = "Store memorized spells"
     description = "remember the memorised list for every character"
 
     def __init__(self, store: SpellStore | None = None):
@@ -413,7 +416,7 @@ class RestoreSpells(Action):
     """
 
     name = "restore-spells"
-    label = "Restore memorised spells"
+    label = "Restore memorized spells"
     description = "put back the memorised list stored earlier"
 
     def __init__(self, store: SpellStore | None = None):
@@ -677,8 +680,10 @@ class QuickfightFlag:
 #: `+0x0C`" in `docs/50-experiments.md`. Selecting QUICK from the combat menu
 #: moved exactly this bit for exactly the character quickfought, and nothing
 #: else in 13568 bytes but two of COMBAT's own scratch bytes.
-QUICKFIGHT = QuickfightFlag(base=SAVE1_LOAD_ADDRESS + 0x0C,
-                            stride=ROSTER_STRIDE, mask=0x80)
+#: The offset and the mask are `live.ROSTER_QUICKFIGHT` / `live.QUICKFIGHT_BIT`,
+#: so the roster card's badge and this write cannot come to disagree.
+QUICKFIGHT = QuickfightFlag(base=SAVE1_LOAD_ADDRESS + live.ROSTER_QUICKFIGHT,
+                            stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
 
 WANTED = ("the quickfight flag has not been found -- see 'The quickfight flag "
           "-- WANTED' in docs/80-fields-wanted.md")
@@ -766,15 +771,20 @@ class QuickfightWatcher:
 
 
 def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
-    """Every action, in the order `docs/102-live-actions.md` builds them.
+    """Every action, in the order the bar lays them out.
 
     The window iterates this: one button per action, `label` on it,
     `description` and the reason from `legality` in its tooltip, and
     `confirm` asked first where it is non-empty.
+
+    **This tuple is the reading order**, and `actionbar.COLUMNS` breaks it into
+    rows -- so the three spell-and-healing actions fill the first row and the
+    two that stand alone fill the second. Donald chose the grouping; moving an
+    entry here moves the button.
     """
     store = store or SpellStore()
-    return (HealParty(), IdentifyItems(), StoreSpells(store),
-            RestoreSpells(store), ClearQuickfight())
+    return (HealParty(), StoreSpells(store), RestoreSpells(store),
+            IdentifyItems(), ClearQuickfight())
 
 
 #: **`LevelUp` is deliberately not in that list.** Every other action here is
