@@ -118,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     # stripped before the parser would reject it.
     from wish.debugmode import enable_from_argv
     enable_from_argv(argv)
+    from wish import debuglog
+    debuglog.install_excepthook()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--area", help="force a GEO name instead of identifying it")

@@ -731,3 +731,33 @@ def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
         assert win.AutomapWindow._names_for_spells(window) == {}
     finally:
         paths.find_disks = was
+
+
+def test_an_uncaught_exception_reaches_the_debug_log(tmp_path, monkeypatch):
+    """The crash Donald hit killed the process -- PyQt aborts on an exception
+    raised inside a slot, and `Aborted (core dumped)` puts the traceback on a
+    stderr the windowed Windows build has not got. With the hook installed it
+    lands in the file a bug report can carry, and the window survives."""
+    import sys
+
+    from wish import debuglog
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    was = sys.excepthook
+    debuglog._previous_hook = None
+    path = debuglog.start()
+    try:
+        debuglog.install_excepthook()
+        assert sys.excepthook is debuglog.crash
+        try:
+            raise TypeError("'PosixPath' object is not iterable")
+        except TypeError:
+            sys.excepthook(*sys.exc_info())
+    finally:
+        debuglog.stop()
+        sys.excepthook = was
+        debuglog._previous_hook = None
+    written = path.read_text(encoding="utf-8")
+    assert "unhandled exception" in written
+    assert "'PosixPath' object is not iterable" in written
+    assert "/home/" not in written        # scrubbed, like every other line

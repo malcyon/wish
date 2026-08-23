@@ -49,6 +49,19 @@ and one line in the status bar; the traceback used to die there. It is written
 once per distinct failure, because a poll that fails every tick would otherwise
 write five tracebacks a second.
 
+### Crashes, and why the hook exists at all
+
+`sys.excepthook` is installed by every entry point, log on or off. Without it
+**PyQt6 aborts the process** on an exception raised inside a slot: the traceback
+goes to stderr and the window dies. That is what happened the first time a
+magic-user was levelled — `TypeError: 'PosixPath' object is not iterable`,
+then `Aborted (core dumped)` — and a **windowed Windows build has no stderr to
+read**, so the one report that mattered was the one nobody could have sent.
+
+With the hook in place Qt calls it instead of aborting, which buys two things:
+the traceback reaches the log, scrubbed like every other line, and **the window
+survives**. CONFIRMED both ways — `tests/test_debugmode.py`.
+
 ## What stays out
 
 * **No file paths.** `scrub()` rewrites every absolute path to its last

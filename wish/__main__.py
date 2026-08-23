@@ -22,7 +22,7 @@ import argparse
 import pathlib
 import sys
 
-from . import __version__
+from . import __version__, debuglog
 from .debugmode import enable_from_argv
 
 #: The subcommands, and the whole of the rule for spotting one: the first
@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     # it is a mode the whole process is in, and it has to be set before
     # anything reads it.
     enable_from_argv(argv)
+    debuglog.install_excepthook()
 
     # `tools` sits beside this package in the source tree, and both the
     # subcommands and the Designer loop below live in it.

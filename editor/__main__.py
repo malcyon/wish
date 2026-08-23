@@ -61,6 +61,13 @@ def fit_on_screen(window, space=None) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Uncaught exceptions to the debug log rather than to a stderr a windowed
+    # Windows build has not got -- `wish/debuglog.py`. Imported here because
+    # `editor` may not import a package that could reach an emulator, and
+    # `tests/test_wish.py` greps this one for that.
+    from wish import debuglog
+    debuglog.install_excepthook()
+
     ap = argparse.ArgumentParser(description="Gold Box character editor")
     ap.add_argument("save", nargs="?", help="a .D64 to open")
     ap.add_argument("--game-disk",

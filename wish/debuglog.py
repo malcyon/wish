@@ -32,7 +32,9 @@ import os
 import pathlib
 import platform
 import re
+import sys
 import time
+import traceback
 
 from automap.paths import config_dir
 
@@ -54,6 +56,7 @@ _logger.propagate = False       # nothing of ours leaks into a root handler
 _logger.setLevel(logging.CRITICAL + 1)
 
 _handler: logging.Handler | None = None
+_previous_hook = None
 _path: pathlib.Path | None = None
 
 
@@ -170,6 +173,37 @@ def exception(message: str, *args) -> None:
     """
     if _handler is not None:
         _logger.error(message, *args, exc_info=True)
+
+
+def crash(kind, value, tb) -> None:
+    """An exception nothing caught. Always to stderr, and to the log if it is on.
+
+    Installed as `sys.excepthook` by `install_excepthook`, which is what makes
+    this reachable at all: PyQt6 aborts the process on an exception raised
+    inside a slot -- `Aborted (core dumped)`, with the traceback on stderr and
+    nothing anywhere else. A Windows user running the windowed build has no
+    stderr to read, so the one report that mattered was the one nobody could
+    send. With a hook installed Qt calls it instead of aborting, so the window
+    also survives what would have killed it.
+    """
+    text = "".join(traceback.format_exception(kind, value, tb))
+    sys.stderr.write(text)
+    if _handler is not None:
+        _logger.error("unhandled exception\n%s", text)
+
+
+def install_excepthook() -> None:
+    """Route every uncaught exception through `crash`. Idempotent.
+
+    Called by each entry point before the window is built, and not gated on the
+    log being on: keeping the application alive is worth doing either way, and
+    `crash` writes to the file only when there is one.
+    """
+    global _previous_hook
+    if _previous_hook is not None:
+        return
+    _previous_hook = sys.excepthook
+    sys.excepthook = crash
 
 
 @contextlib.contextmanager
