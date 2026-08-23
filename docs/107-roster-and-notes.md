@@ -1,8 +1,8 @@
 # The automapper's roster and notes
 
 **Status: built.** The bar colours, the readied items, the note tooltip, the
-icons, and the two status icons the record can actually justify.
-`automap/panel.py` is the roster, `automap/icons.py` the icons, and
+icons, the two status icons the record can actually justify, and the quickfight
+badge. `automap/panel.py` is the roster, `ui/icons.py` the icons, and
 `docs/98-automap-notes.md` covers the notes.
 
 ---
@@ -61,34 +61,18 @@ one per line, in the pattern the combat view's `tooltip_at` set. See
 
 ## 4. The icons
 
-**Path data, not a font.** `automap/icons.py` holds each icon's SVG path in a
-uniform 640×640 box; `automap/iconpaint.py` fills it into a `QPainterPath` at
+**Path data, not a font.** `ui/icons.py` holds each icon's SVG path in a
+uniform 640×640 box; `ui/iconpaint.py` fills it into a `QPainterPath` at
 whatever size the caller wants. The weighing against `qtawesome` and against
 bundling the 405 KB Solid `.otf` is in `docs/98-automap-notes.md`; the short of
 it is that the map draws with `QPainter`, the SVG export gets the icons free,
 and nothing ships that the release build has to be told about.
 
-**Class icons stand beside the class text and never instead of it** — the text
-is what a screen reader gets, and what somebody who does not recognise a hooded
-figure gets. Multi-class shows one icon per class, in the card's own class
-order.
-
-| class | icon | source |
-|---|---|---|
-| magic-user | a pointed hat | **ours** |
-| cleric | `cross` U+F654 | Font Awesome Free |
-| thief | a hooded figure | **ours** |
-| fighter | a sword | **ours** |
-
-Three of the four are drawn here. Font Awesome's `hat-wizard` comes apart at
-13px — its brim is a separate subpath and reads as a fin below the cone — and
-its `mask` stays perfectly legible while reading as goggles. The verdicts and
-the whole menu they were picked from are in `docs/109-icon-choices.md`.
-
-**Font Awesome Free has no sword.** `sword` and `swords` are Pro only, and
-`khanda` is a Sikh religious emblem — wrong in meaning and illegible at twelve
-pixels. So the fighter's blade is drawn here, from straight lines in the same
-640 box, thick enough not to read as a scratch beside 3px walls.
+**There are no class icons.** There were — a hat, a cross, a hood and a sword
+beside the class text — and they are gone: four 13-pixel glyphs nobody could
+tell apart at that size, saying nothing the words "fighter/thief" beside them
+did not. The drawings and the reasoning survive in
+`docs/109-icon-choices.md`; the card shows the class as text and only as text.
 
 **Do not rely on system fonts** for any of this. Measured on this machine,
 crossed swords and a cross come from DejaVu Sans, a shield and a dagger only
@@ -117,19 +101,110 @@ The tooltip says what each means, and the skull's says the thing the record does
 not: 0 is dead **or** dying and nothing decoded distinguishes them. That is the
 same reason `automap/actions.py` refuses to heal a character at 0.
 
-**Poisoned and paralysed are still blocked, and `por/traits.py` does not unblock
-them.** That module names the **trait** codes in the ten slots at record `0x0AD`
-— racial abilities and monster specials — and its own docstring warns that item
-byte `+14` shares those slots without sharing their meaning. The effect table
-the live view reads is a different structure: four parallel 64-slot arrays at
-`$4900`, whose id byte is written by whatever applied the effect. Nothing in the
-project maps one code space onto the other, and **no save we hold carries a
-single active effect**, so there is nothing to check a mapping against. Naming
-`effect 64` "poison" because trait 64 is poison would be inventing the table.
+## 6. The quickfight badge
 
-So the effects keep their numbers, and the way to unblock this is to capture a
-save with a poisoned character in it and read the id — not to borrow a name from
-a table that answers a different question.
+Roster block `+0x0C`, bit 7, CONFIRMED — the bit the combat menu's QUICK sets,
+which `automap/actions.py` also clears. `live.Character.quickfight` reads it
+off the roster page the poll already has, so the panel never reads memory of its
+own, and `actions.QUICKFIGHT` is built from `live.ROSTER_QUICKFIGHT` and
+`live.QUICKFIGHT_BIT` so the badge and the write cannot come to disagree.
+
+| | |
+|---|---|
+| glyph | `person-running`, Font Awesome Free solid, verbatim |
+| tooltip | `Quickfight` |
+| where | its own row **under the readied line**, right-aligned |
+
+**Not in the conditions row**, and the reason is what the two rows mean. The
+conditions row sits beside the name in the danger red and holds things that
+have happened *to* a character; quickfight is a setting that character's player
+made from the combat menu. It is also where Donald asked for it. The row is
+always present and always 13px tall, so turning quickfight on does not shift
+the cards below.
+
+`person-running` at 13px is three connected pieces — head, body, trailing arm —
+34 pixels of ink. The 13px rule wants one silhouette; this passes anyway,
+because the separations are the ones a reader of a running figure expects and
+every limb clears the 64-unit floor.
+
+## 7. The status effects we could badge, and what with
+
+**The old objection is retired.** This section used to say a poisoned or
+paralysed icon "would be an invented mapping", on the reading that the effect
+ids at `$4900` and the trait codes at `0x0AD` were two code spaces. They are
+one: `LIBRARY $4028` reads the arrays first and falls back to the character's
+own slots, which is why one table names both
+([active effects](133-active-effects.md)). `P3-EFFECTS.D64` — twenty-six spells
+running — promoted seventeen codes, and 66 of `por/traits.py`'s 129 names are
+CONFIRMED today.
+
+So the name is no longer the blocker. **The glyph is**, and this is the menu.
+Nothing below is implemented: Donald is choosing.
+
+**Restricted to what can be true of a player character.** Ids 64 and up are
+monster attack forms — poison bites, gazes, breath weapons — and belong on a
+monster's tooltip, not a roster card. The four exceptions are the passive item
+powers a character can carry, and 89 is one of them.
+
+Every glyph below was rendered at 13px through `ui/iconpaint.py` and judged on
+the magnified image, the way `docs/109-icon-choices.md` says. "None" is a real
+answer and there are six of them.
+
+### The fifteen Donald named
+
+| code | name | confidence | candidate | at 13px |
+|---|---|---|---|---|
+| 1 | Bless | CONFIRMED | `person-rays` | a figure with rays off it; 35px of ink, reads |
+| 5 | Detect Magic | CONFIRMED | `wand-magic` | one clean diagonal wand. `wand-magic-sparkles` is five pieces and mush |
+| 8 | Protection from Evil | CONFIRMED | `user-shield` | a figure carrying a shield; tells apart from plain `shield` at 13 |
+| 10 | Resist Cold | CONFIRMED | `snowflake` | thin arms, 57px, unmistakable |
+| 12 | Enlarge | CONFIRMED | `maximize` | four arrows outward, one connected mass |
+| 17 | Shield | CONFIRMED | `shield` | 71px of solid ink — the most legible glyph tested |
+| 19 | Find Traps | CONFIRMED | `magnifying-glass` | clean ring and handle |
+| 20 | Resist Fire | CONFIRMED | `fire-flame-simple` | one flame. Plain `fire` has an inner counter that half-closes at 13 |
+| 25 | invisible | CONFIRMED | `ghost` | one silhouette. `eye-slash` is the literal reading and at 13 the eye is gone — what survives is the slash |
+| 28 | Mirror Image | CONFIRMED | `clone` | two offset frames |
+| 35 | under an allied Prayer | CONFIRMED | `person-praying` | one silhouette, 38px |
+| 37 | blinking | CONFIRMED | **none** | nothing in FA Free says "flickers out and back". `shuffle` breaks into 22/11/5 and reads as "randomise" |
+| 38 | extra strength | CONFIRMED | `dumbbell` | clear |
+| 39 | hasted | CONFIRMED | `forward-fast` | the double chevron; clearest of the lot after `shield` |
+| 89 | displaced | CONFIRMED | **none** | `copy` is the same drawing as `clone`; on one card nobody would tell it from Mirror Image |
+
+89 is above 64 and belongs here anyway: it is one of the four passive item
+powers, carried by the player's own CLOAK OF DISPLACEMENT.
+
+### The rest of the CONFIRMED ones a character can carry
+
+| code | name | candidate | at 13px |
+|---|---|---|---|
+| 3 | wielding an undead-slaying weapon | — | the weapon's, not the character's; the readied line already says it |
+| 9 | Protection from Good | **none** | nothing distinguishes it from Protection from Evil |
+| 14 | Friends | **none** | a charisma bonus has no picture |
+| 16 | Read Magic | `book-open` | clear at 13 — but it ends when the scroll is read |
+| 24 | sees invisible creatures | `eye` | clear, and already the toolbar's preview icon; reuse across two surfaces is the only cost |
+| 41 | Protection from Normal Missiles | **none** | FA Free has no arrow-on-shield |
+| 61 | wearing a Ring of Fire Resistance | `ring` | clear, but it says what Resist Fire says |
+| 107, 124 | elf / half-elf resistance to sleep and charm | — | true of every elf that ever existed; a badge on all of them says nothing |
+
+### PROBABLE, and the ones a player would actually want
+
+Every one of these is the guide's name with no C64 carrier. A badge here is a
+name we have not proved, which is a decision and not a detail.
+
+| code | name | candidate | at 13px |
+|---|---|---|---|
+| 11 | charmed | `heart` | clear |
+| 13 | Reduce | `minimize` | four corner brackets, 16px each — thin, and the weakest of the size pair |
+| 27 | feather falling | `feather-pointed` | clear |
+| 31 | helpless | `person-falling` | readable |
+| 33 | blind | `eye-slash` | marginal, and it is what invisible would otherwise want |
+| 34 | diseased | `virus` | clear |
+| 42 | slowed | `hourglass-half` | clear |
+| 52 | held or paralysed | `handcuffs` | 53px, clear. `hands-bound` also works |
+| 53 | sleeping | `bed` | clear; `moon` is equally clear and less literal |
+| 55 | poisoned | **none good** | `skull-crossbones` collides with the dead skull, and `droplet` and `vial` read as water and a potion |
+| 2, 36 | Curse, Bestow Curse | **none** | |
+| 29 | Ray of Enfeeblement | **none** | |
 
 ## The licence, and its two traps
 
@@ -154,11 +229,15 @@ licence.
   tooltip.
 * `live.readied` returns the readied items and not the rest — checked against
   the player's own equipped party, and empty with no disk.
-* Class icons appear beside the class name, never instead of it.
-* The fighter's icon is one of ours, not a Font Awesome name.
 * The attribution is in the README and the About box, and the licence file is in
   the repository.
 * A character at 0 hit points shows the skull and a drained one the arrow;
   a whole character shows neither.
-* An effect is still labelled by its number, and the trait table is not
-  borrowed to name it.
+* An effect is still labelled by its number.
+* The quickfight badge appears only when roster `+0x0C` bit 7 is set, carries
+  the tooltip `Quickfight`, stays out of the conditions row, and does not change
+  the card's height when it goes.
+* `live.ROSTER_QUICKFIGHT` and `live.QUICKFIGHT_BIT` are the same byte and mask
+  `actions.QUICKFIGHT` writes.
+* `person-running` is Font Awesome's path verbatim — three subpaths — and holds
+  its ink at 13px.

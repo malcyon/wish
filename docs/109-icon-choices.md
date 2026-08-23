@@ -16,6 +16,7 @@ what is left is what ships.
 | toolbar, save and save as | `floppy-disk` | Font Awesome Free |
 | toolbar, preview changes | `eye` | Font Awesome Free |
 | Fast Travel help | `circle-info` | Font Awesome Free |
+| **roster, quickfight badge** | **`person-running`** | Font Awesome Free |
 | application icon | `hat-wizard` | Font Awesome Free |
 
 The last row is not one of these. It is the *app* icon, judged in
@@ -40,6 +41,7 @@ This changed, and it changes what the rule below is for.
 | the map cell | **26** | `render.NOTE_SIZE` |
 | the note editor's picker | 15 | `noteeditor.ICON` |
 | the notes list in the panel | **13** | `panel.ICON_SIZE` |
+| the roster card's conditions and quickfight badge | **13** | `panel.ICON_SIZE` |
 | the toolbar | 16 | `editor/window.py::_toolbar_icons` |
 | the Fast Travel help button | 16 | `actionbar.HELP_SIZE` |
 | the application icon | 32 and up | `ui/appicon.py` |
@@ -86,7 +88,15 @@ hole". Two things on the sheet corrected it:
   Anything drawn as one connected mass survived every size on the sheet.
 
 So: **one connected silhouette, every feature at least about 64 units.** That
-is the rule `automap/icons.py` now carries.
+is the rule `ui/icons.py` now carries.
+
+**`person-running` is the one exception on the sheet, and it is a real one.**
+Three subpaths — head, body, trailing arm — 34 pixels of ink at 13, in pieces
+of 25, 5 and 4. It passes because the rule is about *unexpected* separation:
+`hat-wizard`'s brim reads as a fin because nobody expects a hat to come in two
+parts, where a runner's head and trailing arm are exactly what a runner looks
+like. Measured up the ladder it holds from 12 upwards and only loses the arm at
+11. The 13px cell it is drawn in is the roster card's quickfight badge.
 
 ## P77 — replacing the five icons we drew ourselves
 
