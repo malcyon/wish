@@ -1778,6 +1778,43 @@ def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     assert card.conditions.names == ()
 
 
+def _multi_class_character(**kw):
+    """LADY KATHERINE at magic-user 1 / thief 1 with 5,002 points: both
+    classes ready, and the two thresholds that decide the order."""
+    return _character(
+        slot=3, name="LADY KATHERINE", level=1,
+        classes=(live.ClassProgress("magic-user", 1, 5002, 1.0, 2501),
+                 live.ClassProgress("thief", 1, 5002, 1.0, 1251)), **kw)
+
+
+def test_the_level_up_button_opens_no_menu_for_a_multi_class_character(app):
+    """The player is not asked which class. The button acts, and the signal
+    carries the slot and nothing else -- a menu would also have blocked in
+    `exec` here, so reaching the assertions is half the proof."""
+    from PyQt6.QtWidgets import QMenu
+
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    seen = []
+    card.level_up_requested.connect(seen.append)
+    card.show_character(_multi_class_character())
+    assert card.level_up.isVisibleTo(card)
+    card.level_up.click()
+    assert seen == [3]
+    assert card.findChildren(QMenu) == []
+
+
+def test_the_button_says_which_class_it_will_raise(app):
+    """The magic-user, because its threshold after the level -- 5,001 -- is
+    larger than the thief's 2,501, and that is the number the trainer's clamp
+    reads. Thief first would strand her at 2,500."""
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    card.show_character(_multi_class_character())
+    assert card.chosen_class(_multi_class_character()) == "magic-user"
+    assert card.level_up.toolTip() == "level up as magic-user"
+
+
 def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):
     """Roster block `+0x0C` bit 7, CONFIRMED. Its own row under the readied
     line and right-aligned -- not the conditions row, which is what has

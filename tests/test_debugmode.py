@@ -693,6 +693,14 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     class Action:
         confirm = "sure?"
 
+        @staticmethod
+        def class_for(record):
+            return "fighter"
+
+        @staticmethod
+        def preview(record, class_name="", spell=None):
+            return None
+
         def apply(self, target, **kwargs):
             seen["kwargs"] = kwargs
             return actions.Outcome(True, "SILAS is a fighter 6")
@@ -700,16 +708,81 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     window.actions_bar, window.messages = Bar(), Messages()
     window.mapper = type("M", (), {"target": object()})()
     window._refresh_roster = lambda: seen.update(refreshed=True)
-    monkey = actions.LevelUp
+    window.ask = lambda question: seen.update(asked=question) or True
+    member = type("Member", (), {"record": object(), "name": "SILAS"})()
+    party = type("Party", (), {"by_slot": lambda self, slot: member})()
+    monkey, was_read = actions.LevelUp, actions.read_party
     actions.LevelUp = Action
+    actions.read_party = lambda target: party
     try:
-        AutomapWindow._level_up(window, 3, "fighter")
+        AutomapWindow._level_up(window, 3)
     finally:
-        actions.LevelUp = monkey
+        actions.LevelUp, actions.read_party = monkey, was_read
     assert seen["kwargs"] == {"slot": 3, "class_name": "fighter", "spell": None}
     assert "asked" not in seen           # no confirmation: the button is the ask
     assert seen["said"] == "level up: SILAS is a fighter 6"
     assert seen["refreshed"], "the card still shows the old level and xp"
+
+
+def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
+    """No dialog in the common case -- Donald had that removed once already.
+    The exception is `classes_disqualified`: the clamp takes a class below a
+    threshold it had already passed, so a level the character earned goes, and
+    that is worth a question. The refusal must write nothing."""
+    from automap.window import AutomapWindow
+    from por.levelup import Plan
+    window = AutomapWindow.__new__(AutomapWindow)
+    seen = {}
+
+    class Messages:
+        def say(self, text, detail="", alarm=False):
+            seen["said"] = text
+
+    costly = Plan(class_name="thief", from_level=1, to_level=2, fields={},
+                  hit_points_rolled=3, experience_lost=2502,
+                  classes_disqualified=("magic-user",))
+
+    class Action:
+        confirm = ""
+        plan = costly
+
+        @staticmethod
+        def class_for(record):
+            return "thief"
+
+        @classmethod
+        def preview(cls, record, class_name="", spell=None):
+            return cls.plan
+
+        def apply(self, target, **kwargs):
+            seen["applied"] = kwargs
+            return actions.Outcome(True, "LADY KATHERINE is a thief 2")
+
+    window.messages = Messages()
+    window.mapper = type("M", (), {"target": object()})()
+    window._refresh_roster = lambda: None
+    window.ask = lambda question: seen.update(asked=question) or False
+    member = type("Member", (), {"record": object(),
+                                 "name": "LADY KATHERINE"})()
+    party = type("Party", (), {"by_slot": lambda self, slot: member})()
+    monkey, was_read = actions.LevelUp, actions.read_party
+    actions.LevelUp = Action
+    actions.read_party = lambda target: party
+    try:
+        AutomapWindow._level_up(window, 0)
+        assert "applied" not in seen, "the player said no"
+        assert "2502" in seen["asked"] and "magic-user" in seen["asked"]
+
+        # Nothing lost, nothing asked.
+        seen.clear()
+        Action.plan = Plan(class_name="thief", from_level=1, to_level=2,
+                           fields={}, hit_points_rolled=3)
+        AutomapWindow._level_up(window, 0)
+        assert "asked" not in seen
+        assert seen["applied"]["class_name"] == "thief"
+    finally:
+        actions.LevelUp, actions.read_party = monkey, was_read
+        Action.plan = costly
 
 
 def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):

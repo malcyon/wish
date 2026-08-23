@@ -20,6 +20,7 @@ from automap import actions, live
 from automap.target import MemoryTarget
 from por import items as por_items
 from por import levelup
+from por.record import RECORD_SIZE, CharacterRecord
 from por.savegame import ROSTER_HP_CURRENT
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -309,14 +310,116 @@ def test_a_character_at_zero_is_refused_rather_than_healed():
     assert "dead or dying" in outcome.message
 
 
-def test_a_multi_class_character_is_asked_which_class():
-    """Nothing chooses for the player when two classes are both ready."""
-    target = with_experience(2501)
-    party = actions.read_party(target)
-    record = party.by_slot(0).record
-    record.set("class_bits", 0b1001)          # magic-user and fighter
-    record.set("level_magic_user", 1)
-    assert levelup.ready_classes(record) == ["magic-user", "fighter"]
+def multi_class(points: int, **levels_) -> MemoryTarget:
+    """The captured party with BRUTUS turned into a multi-class character.
+
+    The record goes back into `SAVEDGAME0` so `read_party` reads it the way it
+    would read the game's -- the action takes a target and not a record, and a
+    test that shortcut that would not exercise the write.
+    """
+    save0, save1 = captured()
+    at = actions.SLOT_AREA_BASE - 0x4900
+    record = CharacterRecord.from_bytes(
+        bytes(save0[at:at + 0x100]).ljust(RECORD_SIZE, b"\x00"))
+    bits = {"magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8}
+    record.set("class_bits", sum(bits[n] for n in levels_))
+    for name, level in levels_.items():
+        record.set(levelup.CLASS_LEVEL_FIELD[name], level)
+    for name in bits:
+        if name not in levels_:
+            record.set(levelup.CLASS_LEVEL_FIELD[name], 0)
+    record.set("level", max(levels_.values()))
+    record.set("experience", points)
+    save0[at:at + 0x100] = bytes(record)[:0x100]
+    return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
+                         0x6E11: bytes([WORLD])})
+
+
+def press_level_up(target, slot: int = 0):
+    """One press of the roster card's button, spell dialog and all."""
+    record = actions.read_party(target).by_slot(slot).record
+    class_name = actions.LevelUp.class_for(record)
+    spell = None
+    if class_name == "magic-user":
+        offered = actions.LevelUp.offers(record)
+        spell = offered[0] if offered else None
+    return find("level-up").apply(target, slot=slot, spell=spell)
+
+
+def test_a_multi_class_character_is_not_asked_which_class():
+    """The player picks nothing. Among the ready classes the button takes the
+    one whose threshold *after* the level is largest, because that is the
+    number `GEN $23D4` reads -- so the clamp's ceiling stays as high as it can
+    and the other class usually survives."""
+    target = multi_class(5002, **{"magic-user": 1, "thief": 1})
+    record = actions.read_party(target).by_slot(0).record
+    assert levelup.ready_classes(record) == ["magic-user", "thief"]
+    assert levelup.best_class(record) == "magic-user"
+
+
+def test_the_rule_reads_the_threshold_after_the_level_and_not_the_one_held():
+    """The two readings disagree, and the post-level one is right. A
+    magic-user 4 / thief 5 holds 22,501 against the thief's 20,001, so
+    comparing what they need now picks the magic-user; after the level it is
+    40,001 against 42,501, so the clamp will read the thief's -- and with
+    42,500 points thief-first reaches magic-user 6 / thief 6 where
+    magic-user-first stalls at 5 / 6."""
+    target = multi_class(42500, **{"magic-user": 4, "thief": 5})
+    record = actions.read_party(target).by_slot(0).record
+    assert levelup.best_class(record) == "thief"
+
+
+def test_a_tie_breaks_in_class_bit_order():
+    """Deterministic, and the order `0x0C9` stores: magic-user, cleric, thief,
+    fighter. A magic-user 1 / cleric 1 both reach 3,001 after the level."""
+    target = multi_class(2501, **{"magic-user": 1, "cleric": 1})
+    record = actions.read_party(target).by_slot(0).record
+    assert levelup.ready_classes(record) == ["magic-user", "cleric"]
+    assert levelup.best_class(record) == "magic-user"
+
+
+def test_katherine_takes_three_levels_from_three_presses():
+    """The measured result. LADY KATHERINE, magic-user 1 / thief 1 with 5,002
+    points, ends magic-user 2 / thief 3 on 5,000 -- three levels -- because the
+    magic-user goes first. Thief first would have clamped her to 2,500 and
+    stranded both (`docs/135-levelling.md`)."""
+    target = multi_class(5002, **{"magic-user": 1, "thief": 1})
+    raised = []
+    for _ in range(3):
+        outcome = press_level_up(target)
+        assert outcome.ok, outcome.message
+        raised.append(outcome.message)
+    record = actions.read_party(target).by_slot(0).record
+    assert record.get("level_magic_user") == 2
+    assert record.get("level_thief") == 3
+    assert record.get("experience") == 5000
+    assert levelup.ready_classes(record) == []          # nothing left to take
+    assert [m.split(" is a ")[1] for m in raised] == [
+        "magic-user 2", "thief 2", "thief 3"]
+
+
+def test_the_outcome_names_the_class_it_raised():
+    """The player no longer chooses, so this line is the only place the choice
+    is visible."""
+    target = multi_class(5002, **{"magic-user": 1, "thief": 1})
+    assert press_level_up(target).message.endswith(" is a magic-user 2")
+
+
+def test_a_single_class_character_is_unaffected():
+    """One class ready is one class picked, exactly as before."""
+    target = with_experience(2001)
+    outcome = find("level-up").apply(target, slot=0)
+    assert outcome.ok and outcome.message.endswith(" is a fighter 2")
+    record = actions.read_party(target).by_slot(0).record
+    assert record.get("level_fighter") == 2
+
+
+def test_an_explicit_class_still_wins():
+    """`plan` and `run` keep taking a class name: the byte-for-byte replay of
+    the measured trainings passes one, and so may any caller that wants it."""
+    target = multi_class(5002, **{"magic-user": 1, "thief": 1})
+    outcome = find("level-up").apply(target, slot=0, class_name="thief")
+    assert outcome.ok and outcome.message.endswith(" is a thief 2")
 
 
 def test_a_magic_user_is_not_levelled_without_a_spell_chosen():
