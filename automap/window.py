@@ -471,6 +471,11 @@ class AutomapWindow(QMainWindow):
     #: panels hold short rows; past this they are mostly paper.
     SIDE_WIDTH = 460
 
+    #: And the narrowest. A squeezed window still shows enough of a note or a
+    #: commission to say which one it is; without a floor here the column was
+    #: 270px of fixed width whatever the screen was (#41).
+    SIDE_SQUEEZED = 160
+
     def __init__(self, mapper, interval_ms: int = 200, connect=None,
                  settings: Settings | None = None, drive: bool = True,
                  disks: str | None = None):
@@ -517,6 +522,10 @@ class AutomapWindow(QMainWindow):
         # the cap comes off and the column decides -- otherwise every pixel the
         # window gains lands as blank paper beside a fixed 270px panel.
         self.commissions.setMaximumWidth(QWIDGETSIZE_MAX)
+        # And the floor comes off with it, for the same reason in the other
+        # direction: a fixed 270px was the whole of this column's minimum
+        # width, and the rows inside it scroll and wrap already (#41).
+        self.commissions.setMinimumWidth(self.SIDE_SQUEEZED)
         self.messages = MessagesPanel()
         self.combat_log = CombatLog()
         # Party strength, live. Nothing stores it -- `PARTYSTRENGTH` recomputes

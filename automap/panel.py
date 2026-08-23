@@ -20,6 +20,8 @@ from datetime import datetime
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
 from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -28,6 +30,10 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyle,
+    QStyleOptionButton,
+    QStyleOptionComboBox,
+    QStylePainter,
     QVBoxLayout,
     QWidget,
 )
@@ -161,8 +167,150 @@ class Bar(QWidget):
         p.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text)
 
 
-def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
-    lab = QLabel(text)
+# --- widgets that can be squeezed narrower than their own text ---------------
+#
+# The window's minimum width was the sum of the widest strings its panels
+# happened to be holding, so a wider UI font dragged the window out with it:
+# Windows answered 1546px where Linux answered 1071px, and a 1366px laptop
+# could not show the window at all (#41).
+#
+# Each of these asks for exactly the width it always did -- `sizeHint` is
+# untouched, so nothing about the full-size layout moves -- and elides only
+# once it has been given less room than its text needs. `minimumSizeHint` is
+# what a layout reads for the floor, and it is the only thing that changes.
+
+
+def _squeezed(hint: QSize, floor: int) -> QSize:
+    """`hint` with its width capped at `floor`. Never widens anything."""
+    return QSize(min(floor, hint.width()), hint.height())
+
+
+def _let_it_shrink(widget) -> None:
+    """Let a layout squeeze this widget down to its `minimumSizeHint`.
+
+    Buttons and checkboxes ship with `QSizePolicy.Minimum`, which is not a
+    minimum at all: without the shrink flag a layout takes the widget's
+    *`sizeHint`* as its floor, so overriding `minimumSizeHint` alone changes
+    nothing. `Preferred` is the same policy with the shrink flag on -- it
+    still asks for `sizeHint` and neither policy expands, so the full-size
+    layout is unmoved.
+    """
+    policy = widget.sizePolicy()
+    policy.setHorizontalPolicy(QSizePolicy.Policy.Preferred)
+    widget.setSizePolicy(policy)
+
+
+class ElidingButton(QPushButton):
+    """A push button that gives way instead of holding the window open."""
+
+    #: A word and an ellipsis. Below this a button is a smear, and the row of
+    #: them says nothing at all.
+    SQUEEZED = 64
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _let_it_shrink(self)
+
+    def minimumSizeHint(self) -> QSize:
+        return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
+
+    def paintEvent(self, _event):
+        painter = QStylePainter(self)
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        # The style's own text rect, not the widget's: eliding to anything
+        # wider would cut a label that still fits, and the full-size render
+        # has to come out byte for byte as it did.
+        room = self.style().subElementRect(
+            QStyle.SubElement.SE_PushButtonContents, option, self).width()
+        option.text = self.fontMetrics().elidedText(
+            option.text, Qt.TextElideMode.ElideRight, room)
+        painter.drawControl(QStyle.ControlElement.CE_PushButton, option)
+
+
+class ElidingCheckBox(QCheckBox):
+    """The same, for a checkbox whose label is a sentence."""
+
+    #: Wider than a button's floor because the box itself eats the first 20.
+    SQUEEZED = 96
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _let_it_shrink(self)
+
+    def minimumSizeHint(self) -> QSize:
+        return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
+
+    def paintEvent(self, _event):
+        painter = QStylePainter(self)
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        room = self.style().subElementRect(
+            QStyle.SubElement.SE_CheckBoxContents, option, self).width()
+        option.text = self.fontMetrics().elidedText(
+            option.text, Qt.TextElideMode.ElideRight, room)
+        painter.drawControl(QStyle.ControlElement.CE_CheckBox, option)
+
+
+class ElidingComboBox(QComboBox):
+    """A dropdown whose floor is not the length of the area it is showing."""
+
+    #: Enough for a short area name. The whole row -- maps and disk -- is the
+    #: item's tooltip whatever width the box is.
+    SQUEEZED = 110
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _let_it_shrink(self)
+
+    def minimumSizeHint(self) -> QSize:
+        return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
+
+    def paintEvent(self, _event):
+        painter = QStylePainter(self)
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, option)
+        room = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, option,
+            QStyle.SubControl.SC_ComboBoxEditField, self).width()
+        option.currentText = self.fontMetrics().elidedText(
+            option.currentText, Qt.TextElideMode.ElideRight, room)
+        painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, option)
+
+
+class ElidingLabel(QLabel):
+    """A read-out that shortens rather than setting a floor under the window.
+
+    The text a label is holding changes while the program runs -- the bottom
+    strip's party effects line grows as spells land on the party -- so a label
+    that sets the window's minimum width moves that minimum under the player.
+    """
+
+    SQUEEZED = 44
+
+    def minimumSizeHint(self) -> QSize:
+        return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
+
+    def paintEvent(self, event):
+        room = self.contentsRect().width()
+        elided = self.fontMetrics().elidedText(
+            self.text(), Qt.TextElideMode.ElideRight, room)
+        if elided == self.text():
+            super().paintEvent(event)   # nothing to elide: paint it as always
+            return
+        painter = QPainter(self)
+        # `drawItemText` rather than `drawText`, because the style sheet's
+        # colour is applied by the style and not by the palette.
+        self.style().drawItemText(painter, self.contentsRect(),
+                                  int(self.alignment()), self.palette(),
+                                  self.isEnabled(), elided,
+                                  self.foregroundRole())
+
+
+def _label(text="", *, bold=False, muted=False, size=0,
+           elide=False) -> QLabel:
+    lab = ElidingLabel(text) if elide else QLabel(text)
     font = lab.font()
     if bold:
         font.setBold(True)
@@ -450,10 +598,13 @@ class BottomStrip(QWidget):
 
         row = QHBoxLayout()
         row.setSpacing(16)
-        self.where = _label("-")
-        self.clock = _label("-")
-        self.area = _label("-")
-        self.effects = _label("-", muted=True, size=8)
+        # Elided, because the strip spans all three columns and its text is
+        # whatever the game is doing: an area with a long name and a party
+        # under four spells set the window's minimum width between them.
+        self.where = _label("-", elide=True)
+        self.clock = _label("-", elide=True)
+        self.area = _label("-", elide=True)
+        self.effects = _label("-", muted=True, size=8, elide=True)
         for widget in (self.where, self.clock, self.area):
             row.addWidget(widget)
         row.addWidget(self.effects, 1)

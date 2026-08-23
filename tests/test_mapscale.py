@@ -20,6 +20,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QRect
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication
 
 from automap import paths
@@ -159,19 +160,8 @@ def test_a_fight_does_not_put_the_floor_back(app):
 
 # --- and the window it was all for -------------------------------------------
 
-def test_the_window_can_be_made_short_enough_for_a_small_laptop(app, tmp_path,
-                                                               monkeypatch):
-    """The bug, at the top: the window could not be made short enough for the
-    screen it was on, whatever the positioning did about it.
-
-    **Height only.** The width is a separate and still-open defect: this
-    asserted both, and Windows CI answered `QSize(1546, 618)` where Linux
-    answers `(1071, 662)`. The height is fixed and portable; the minimum
-    *width* is not, because it is set by text -- Windows' UI font is wider
-    than Linux's and drags the panels out with it. A 1546px floor still fits
-    Donald's 1920px desktop, which is why it is not what he reported, but it
-    does not fit a 1366px laptop. Tracked separately; do not widen this test
-    to cover it without fixing it first."""
+def _floor(tmp_path, monkeypatch):
+    """The whole window's minimum, built somewhere with no settings file."""
     from wish.session import Session
     from wish.window import WishWindow
 
@@ -183,4 +173,45 @@ def test_the_window_can_be_made_short_enough_for_a_small_laptop(app, tmp_path,
     win = WishWindow(None, maps={}, session=Session(find=lambda pref=None: None))
     floor = win.minimumSizeHint()
     win.close()
+    return floor
+
+
+def test_the_window_can_be_made_short_enough_for_a_small_laptop(app, tmp_path,
+                                                               monkeypatch):
+    """The bug, at the top: the window could not be made small enough for the
+    screen it was on, whatever the positioning did about it. Kept under its
+    old name, which is the one issue #41 asks for.
+
+    The height went first, and the width followed: Windows CI answered
+    `QSize(1546, 618)` where Linux answered `(1071, 662)`, because every
+    column that was sized by its text grew with Windows' wider UI font. A
+    1546px floor still fits Donald's 1920px desktop, which is why it is not
+    what he reported, but it does not fit a 1366x768 laptop -- and `SMALL` is
+    narrower than one of those, so passing here passes there (#41).
+    """
+    floor = _floor(tmp_path, monkeypatch)
     assert floor.height() <= SMALL.height()
+    assert floor.width() <= SMALL.width()
+
+
+def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
+                                                         monkeypatch):
+    """And the real test, because a number measured on Linux says nothing
+    about Windows: the floor has to stop tracking the font.
+
+    Three points of extra font used to buy 144px of minimum width, which is
+    the mechanism that made Windows 475px worse than Linux. What is left is
+    the map's own floor, the roster's fixed cards and the panels' caps, and
+    none of those is text.
+    """
+    base = app.font()
+    try:
+        widths = []
+        for extra in (0, 3):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            widths.append(_floor(tmp_path, monkeypatch).width())
+    finally:
+        app.setFont(base)
+    assert widths[1] == widths[0], "the minimum width grew with the font"

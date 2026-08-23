@@ -33,8 +33,6 @@ import time
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QGridLayout,
     QLabel,
     QMessageBox,
@@ -45,7 +43,7 @@ from PyQt6.QtWidgets import (
 from . import actions as engine
 from .area import ResidentGeo
 from .config import Settings
-from .panel import MUTED
+from .panel import MUTED, ElidingButton, ElidingCheckBox, ElidingComboBox
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -100,7 +98,7 @@ class ActionBar(QWidget):
         grid.setSpacing(4)
         self.buttons: dict[str, QPushButton] = {}
         for i, action in enumerate(self.actions):
-            button = QPushButton(action.label)
+            button = ElidingButton(action.label)
             button.setToolTip(action.description)
             button.setEnabled(False)          # nothing attached yet
             button.clicked.connect(
@@ -109,7 +107,7 @@ class ActionBar(QWidget):
             self.buttons[action.name] = button
         rows = (len(self.actions) + COLUMNS - 1) // COLUMNS
 
-        self.watch_box = QCheckBox("Clear quickfight after a fight")
+        self.watch_box = ElidingCheckBox("Clear quickfight after a fight")
         self.watch_box.setToolTip(
             "When a fight ends, take everyone off quickfight. Off by default: "
             "it writes to the running game on an edge you did not ask for")
@@ -325,16 +323,19 @@ class WarpBar(QWidget):
         grid.setContentsMargins(0, 2, 0, 2)
         grid.setSpacing(4)
 
-        self.combo = QComboBox()
+        # Eliding, because a dropdown asks for the area it is showing and
+        # "Valhingen Graveyard" was that much floor under the window, growing
+        # with the UI font (#41). The width it opens at is unchanged.
+        self.combo = ElidingComboBox()
         self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
         grid.addWidget(self.combo, 0, 0, 1, 2)
 
-        self.button = QPushButton("Fast Travel")
+        self.button = ElidingButton("Fast Travel")
         self.button.setEnabled(False)
         self.button.clicked.connect(lambda _checked=False: self.run())
         grid.addWidget(self.button, 0, 2)
 
-        self.back_button = QPushButton("Travel Back")
+        self.back_button = ElidingButton("Travel Back")
         self.back_button.setEnabled(False)
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
         grid.addWidget(self.back_button, 0, 3)
