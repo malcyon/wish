@@ -156,6 +156,37 @@ routine is not.
 
 Describe, cite, measure, and generate. Do not copy.
 
+## Issues
+
+**GitHub issues are the work list.** `gh issue list` is the register; `docs/` is
+the knowledge base. The two are not the same thing and must not drift into
+being the same thing: an issue tracks work and closes when the work is done, a
+doc records what is known and outlives every issue that cited it.
+
+**Reply, never rewrite.** Progress goes in a comment (`gh issue comment N`).
+The description is what the author asked for, and editing it destroys the
+record of what was originally wanted. Edit the description only to correct a
+factual error in it, and say in a comment that you did.
+
+**Labels.** Exactly one priority on every issue -- `Priority: High`,
+`Priority: Medium`, `Priority: Low`. Then:
+
+* **`bug`** -- a defect in *our* code, one a user can hit.
+* **`enhancement`** -- build this. Plans are enhancements.
+* **`question`** -- we do not know something. Nothing gets built when it is
+  answered; we simply know. A defect in *the game* is research, not our bug,
+  and is usually a `question` or an `enhancement`.
+* **`blocked`** -- waiting on Donald specifically: a choice only he can make, a
+  machine only he has, a save only he can play to. Work blocked on a
+  measurement we could take ourselves is **not** blocked.
+
+**Never undo a label or an edit somebody else made.** A label that is not what
+an agent asked for is at least as likely to be Donald's correction as a fault.
+Ask, or check, before changing it back.
+
+**Close an issue in the commit that finishes it**, and say which issue in the
+commit message only when it needs saying -- one sentence is still the rule.
+
 ## Documentation
 
 `docs/50-experiments.md` is the only place that gets length, because the whole
