@@ -1720,6 +1720,42 @@ def test_hovering_a_note_shows_every_note_on_the_square(app, tmp_path,
     assert window.canvas.tooltip_at(MARGIN + 8 * CELL, py) is None
 
 
+def test_a_click_hides_the_tooltip_before_the_popover_opens(app, tmp_path,
+                                                            monkeypatch):
+    """Only a square with a note has a tooltip, and only a square with a note
+    failed to open its popover on Windows -- it appeared and vanished, where a
+    blank square was fine. A tooltip is a window, and one closing behind a
+    `Qt::Popup` deactivates it. So the click hides it first, and no tooltip is
+    offered at all while a popover is open."""
+    from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PyQt6.QtGui import QHelpEvent, QMouseEvent
+    from PyQt6.QtWidgets import QToolTip
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(3, 4, Note("dueling pairs", "encounter"))
+    window.canvas.resize(window.canvas.sizeHint())
+    at = QPointF(MARGIN + 3 * CELL + 2, MARGIN + 4 * CELL + 2)
+
+    hidden = []
+    monkeypatch.setattr(QToolTip, "hideText",
+                        staticmethod(lambda: hidden.append(True)))
+    window.canvas.mousePressEvent(QMouseEvent(
+        QMouseEvent.Type.MouseButtonPress, at, at,
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier))
+    assert hidden, "the tooltip is hidden before the popover opens"
+    assert window._popover is not None
+
+    # And with one open, the square offers no tooltip to reopen.
+    shown = []
+    monkeypatch.setattr(QToolTip, "showText",
+                        staticmethod(lambda *a, **k: shown.append(a)))
+    spot = QPoint(int(at.x()), int(at.y()))
+    window.canvas.event(QHelpEvent(QEvent.Type.ToolTip, spot, spot))
+    assert not shown
+    window._popover.close()
+
+
 def test_right_clicking_a_square_offers_edit_and_delete(app, tmp_path,
                                                         monkeypatch):
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")

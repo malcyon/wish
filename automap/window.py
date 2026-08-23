@@ -172,7 +172,11 @@ class MapCanvas(QWidget):
         if e.type() == QEvent.Type.ToolTip:
             pos = e.pos()
             text = self.tooltip_at(pos.x(), pos.y())
-            if text:
+            # Never over an open popover. A tooltip is a window of its own,
+            # and on Windows one appearing or closing behind a `Qt::Popup`
+            # deactivates it -- which is the popover vanishing the instant it
+            # opened. See `mousePressEvent`.
+            if text and getattr(self.host, "_popover", None) is None:
                 QToolTip.showText(e.globalPos(), text, self)
             else:
                 QToolTip.hideText()
@@ -181,6 +185,13 @@ class MapCanvas(QWidget):
         return super().event(e)
 
     def mousePressEvent(self, event):
+        # **Before anything opens.** Only a square with a note has a tooltip,
+        # and only a square with a note failed to open its popover on Windows:
+        # it appeared and closed again immediately, where a blank square was
+        # fine. Qt hides the tooltip itself on a click, but it does it after
+        # the popover is up, and the window closing behind the popup takes the
+        # popup with it. Hiding it first leaves nothing to close.
+        QToolTip.hideText()
         square = self.square_at(event.position().x(), event.position().y())
         self.flash = None
         if square is None:
