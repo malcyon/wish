@@ -19,6 +19,7 @@ import pathlib
 
 import pytest
 
+from por import amiga
 from por.amiga import (
     ABILITIES,
     ALIGNMENTS,
@@ -269,3 +270,211 @@ def test_a_real_record_agrees_with_what_the_game_displayed():
     if not trond:
         pytest.skip("no TROND.pc among the .pc files")
     assert PodCharacter.from_bytes(trond[0].read_bytes()).hit_points_max == 138
+
+
+def test_the_level_byte_is_the_highest_class_level_not_their_sum():
+    """`TRIPEL TURBO` is 6/6/12 and reads 12 at 0x089, not 24."""
+    for path in real_records():
+        pc = PodCharacter.from_bytes(path.read_bytes())
+        assert pc.level == max(pc.class_levels), (path, pc.level)
+
+
+def test_a_real_record_carries_the_class_bit_the_converter_writes():
+    """1 magic-user, 2 cleric, 4 thief, 8 fighter -- the C64's own numbering
+    for the four base classes -- but **64 for the paladin and the ranger
+    alike**, where the C64 gives them 0x40 and 0x80 separately."""
+    from por.amiga import CLASS_BIT, CLASS_LEVEL_SLOT
+    by_pod_name = {CLASS_LEVEL_SLOT[c64]: bit for c64, bit in CLASS_BIT.items()}
+    for path in real_records():
+        pc = PodCharacter.from_bytes(path.read_bytes())
+        if pc.character_class >= CLASS_LEVEL_COUNT:
+            continue
+        want = by_pod_name.get(CLASSES[pc.character_class])
+        if want is None:
+            continue                      # druid: no C64 class to come from
+        assert pc.class_bits == want, (path, pc.class_name, pc.class_bits)
+
+
+def test_the_disk_names_its_files_the_way_the_converter_would():
+    """`MAGIC JHONSON` is `MAGICJHO.pc`; `TRIPEL TURBO` is `TRIPELTU.pc`."""
+    from por.amiga import pc_filename
+    for path in real_records():
+        pc = PodCharacter.from_bytes(path.read_bytes())
+        assert pc_filename(pc.name).lower() == path.name.split("_")[-1].lower()
+
+
+# ---------------------------------------------------------------------------
+# C64 -> Amiga, through `yaml_io.entry_for`'s neutral form
+# ---------------------------------------------------------------------------
+FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+
+
+def neutral_party() -> list[dict]:
+    """The player's own saved game as the dictionaries the converter eats.
+
+    Straight through `yaml_io.entry_for`, which is the point: the converter
+    reads named fields and never a `CharacterRecord`, so it needs to know
+    neither the C64 record layout nor which of the six titles wrote it.
+    """
+    from por.icons import icon_for_slot
+    from por.items import items_for_slot
+    from por.savegame import SaveGame0, SaveGame1
+    from por.yaml_io import entry_for
+
+    sg0 = SaveGame0((FIXTURES / "savedgame0.bin").read_bytes()[2:])
+    sg1 = SaveGame1((FIXTURES / "savedgame1.bin").read_bytes()[2:])
+    payload = sg0.to_bytes()
+    return [entry_for(slot.record, slot.index,
+                      items=items_for_slot(payload, slot.index),
+                      icon=icon_for_slot(payload, slot.index),
+                      block=sg1.roster(slot.index))
+            for slot in sg0.characters]
+
+
+def test_every_neutral_form_field_has_a_disposition():
+    """A field `entry_for` produces and `field_disposition` does not name
+    would be a field silently dropped, which is the one thing the conversion
+    promises not to do."""
+    produced = {k for entry in neutral_party() for k in entry
+                if not k.startswith("_")}
+    declared = set(amiga.field_disposition())
+    assert produced - declared == set(), "no disposition for these"
+    assert declared - produced == set(), "a disposition for a field that is "\
+                                         "not in the neutral form"
+
+
+def test_a_converted_character_reads_back_as_the_c64_one():
+    for entry in neutral_party():
+        record, _ = amiga.to_pc(entry)
+        pc = PodCharacter.from_bytes(record)
+        assert pc.name == entry["name"][:15]
+        assert pc.sex_name == entry["sex"].upper()
+        assert pc.alignment_name.lower().replace("neutral neutral",
+                                                 "true neutral") \
+            == entry["alignment"]
+        assert pc.abilities == [entry[k] for k in amiga.ABILITY_KEYS]
+        assert pc.experience == entry["experience"]
+        assert pc.age == entry["age"]
+        assert pc.platinum == entry["platinum"]
+        assert pc.hit_points_max == entry["hp_max"]
+        assert pc.hit_points_current == entry["combat"]["hp_current"]
+        assert pc.saving_throws == [entry[k] for k in amiga.SAVE_KEYS]
+        assert pc.thief_skills == [entry[k] for k in amiga.THIEF_KEYS]
+
+
+def test_the_conversion_credits_every_non_zero_byte():
+    """`docs/124-amiga-port.md` phase 6's acceptance: no "template" category.
+    A byte of the output is a field a probe put on the character sheet, or it
+    is zero."""
+    for entry in neutral_party():
+        record, rep = amiga.to_pc(entry)
+        assert len(record) == RECORD_LENGTH
+        assert rep.unaccounted(record) == []
+
+
+def test_the_class_level_lands_in_the_slot_pods_own_code_names():
+    for entry in neutral_party():
+        record, _ = amiga.to_pc(entry)
+        pc = PodCharacter.from_bytes(record)
+        for name, level in entry["levels"].items():
+            slot = CLASSES.index(amiga.CLASS_LEVEL_SLOT[name])
+            assert pc.class_levels[slot] == level, (name, pc.class_levels)
+
+
+def sample_entry(**over) -> dict:
+    """One neutral-form character, built rather than read.
+
+    Not a slice of any game file: every value here is chosen, which is what
+    lets the edge cases below be tested where no disk is present.
+    """
+    entry = {
+        "slot": 0, "name": "AELFRIC", "sex": "female", "race": "half-elf",
+        "age": 33, "alignment": "chaotic evil",
+        "strength": 18, "exceptional_strength": 0, "intelligence": 17,
+        "wisdom": 16, "dexterity": 15, "constitution": 14, "charisma": 13,
+        "hp_max": 55, "hp_rolled": 40,
+        "jewelry": 22, "gems": 11, "platinum": 200, "gold": 0, "electrum": 0,
+        "silver": 0, "copper": 0,
+        "movement": 12, "infravision": 0,
+        "save_paralysis": 13, "save_petrification": 14, "save_wands": 12,
+        "save_breath": 16, "save_spell": 15,
+        "thief_pick_pockets": 60, "thief_open_locks": 45,
+        "thief_find_traps": 40, "thief_move_silently": 50,
+        "thief_hide_in_shadows": 43, "thief_hear_noise": 20,
+        "thief_climb_walls": 92, "thief_read_languages": 20,
+        "portrait_head": 3, "portrait_body": 4,
+        "classes": ["thief"], "class_code": 6, "levels": {"thief": 7},
+        "experience": 10000, "items": [],
+        "icon": {"shape": "00" * 18, "colours": "00" * 18},
+        "level": 7, "npc": False, "spells": [], "spells_known": [],
+    }
+    entry.update(over)
+    return entry
+
+
+def test_the_probe_that_loaded_in_the_game_is_what_the_converter_emits():
+    """P3 in `docs/124-amiga-port.md` sec 2.4: PoD drew `FEMALE 33 YEARS`,
+    `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`, `EXPERIENCE 10000`,
+    `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`."""
+    record, _ = amiga.to_pc(sample_entry(combat={"hp_current": 55}))
+    pc = PodCharacter.from_bytes(record)
+    assert (pc.sex_name, pc.age) == ("FEMALE", 33)
+    assert pc.alignment_name == "CHAOTIC EVIL"
+    assert pc.race_name == "HALF-ELF"
+    assert pc.class_name == "THIEF"
+    assert pc.class_levels[CLASSES.index("THIEF")] == 7
+    assert (pc.experience, pc.platinum, pc.gems, pc.jewelry) == (
+        10000, 200, 11, 22)
+    assert pc.movement == 12
+    assert pc.hit_points_current == 55
+
+
+def test_a_race_pools_of_darkness_lacks_is_substituted_and_said_out_loud():
+    record, rep = amiga.to_pc(sample_entry(race="half-orc"))
+    assert PodCharacter.from_bytes(record).race_name == "HUMAN"
+    assert any("half-orc" in w for w in rep.warnings), rep.warnings
+
+
+def test_a_knight_arrives_as_a_fighter_and_says_so():
+    """The Knight of Solamnia is Krynn's and has no Realms slot."""
+    record, rep = amiga.to_pc(sample_entry(
+        classes=["knight"], levels={"knight": 9}, level=9))
+    pc = PodCharacter.from_bytes(record)
+    assert pc.class_name == "FIGHTER"
+    assert pc.class_levels[CLASSES.index("FIGHTER")] == 9
+    assert any("knight" in w for w in rep.warnings), rep.warnings
+
+
+def test_the_lighter_coins_are_reported_rather_than_vanishing():
+    """Only platinum, gems and jewelry have a located home in the `.pc`."""
+    _, rep = amiga.to_pc(sample_entry(gold=900, silver=10, copper=7))
+    assert any("917" in w for w in rep.warnings), rep.warnings
+
+
+def test_hit_points_over_the_amiga_byte_are_clamped_and_reported():
+    record, rep = amiga.to_pc(sample_entry(hp_max=300))
+    assert PodCharacter.from_bytes(record).hit_points_max == 255
+    assert any("300" in w for w in rep.warnings), rep.warnings
+
+
+def test_a_class_pools_of_darkness_cannot_express_is_refused():
+    """A combination with no code is refused rather than written as another
+    one, which is `yaml_io.class_code_for`'s rule in the other direction."""
+    with pytest.raises(amiga.ConversionError):
+        amiga.to_pc(sample_entry(classes=["cleric", "thief", "fighter"],
+                                 levels={"cleric": 3, "thief": 3,
+                                         "fighter": 3}))
+
+
+def test_the_items_and_the_portraits_are_named_as_losses():
+    _, rep = amiga.to_pc(sample_entry())
+    named = " ".join(rep.dropped)
+    for what in ("items", "portrait_head", "portrait_body", "icon",
+                 "spells", "copper"):
+        assert what in named, what
+
+
+def test_a_built_filename_is_uppercase_and_eight_characters():
+    assert amiga.pc_filename("MAGIC JHONSON") == "MAGICJHO.pc"
+    assert amiga.pc_filename("TRIPEL TURBO") == "TRIPELTU.pc"
+    assert amiga.pc_filename("?T") == "T.pc"
