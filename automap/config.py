@@ -321,7 +321,15 @@ def clamp_to_screen(window, space=None) -> None:
     if (w, h) != (inner.width(), inner.height()):
         window.resize(w, h)
     frame = window.frameGeometry()
-    x = min(max(frame.x(), space.x()), space.right() - frame.width() + 1)
-    y = min(max(frame.y(), space.y()), space.bottom() - frame.height() + 1)
+    # Pull the far edge inside the work area first, then the near one -- and in
+    # that order, because a window that still does not fit has to overflow
+    # *downwards*. The other order aligned its bottom to the bottom of the
+    # screen and pushed the title bar and the menu bar off the top, which is
+    # what "the window is too big and I cannot see the menus" was on Windows:
+    # the resize above cannot shrink a window past its minimum size, so on a
+    # 1032 px work area a window whose layout will not go below about 1100 px
+    # stayed 1100 px and then moved to y=-68.
+    x = max(min(frame.x(), space.right() - frame.width() + 1), space.x())
+    y = max(min(frame.y(), space.bottom() - frame.height() + 1), space.y())
     if (x, y) != (frame.x(), frame.y()):
         window.move(x, y)

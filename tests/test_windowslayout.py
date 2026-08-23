@@ -143,6 +143,21 @@ def test_a_window_on_screen_is_clamped_against_its_real_frame(app):
     win.close()
 
 
+def test_a_window_too_tall_to_shrink_keeps_its_top_on_screen(app):
+    """The resize cannot go below the layout's minimum, so some windows still
+    do not fit. When one does not, it overflows off the *bottom*: the menu bar
+    has to stay reachable. Donald's Windows build aligned its bottom edge to
+    the bottom of the screen instead, and the menus went off the top."""
+    win = framed(QMainWindow())
+    win.setMinimumSize(1170, DESKTOP.height() + 120)
+    win.resize(1200, DESKTOP.height() + 120)
+    win.move(200, 100)
+    clamp_to_screen(win, DESKTOP)
+    assert win.frameGeometry().top() == DESKTOP.top()
+    assert win.frameGeometry().height() > DESKTOP.height()   # still too tall
+    win.close()
+
+
 def test_a_maximised_window_is_left_alone(app):
     """Donald's own workaround was to maximise it. The clamp must not undo
     that: resizing a maximised window un-maximises it."""
