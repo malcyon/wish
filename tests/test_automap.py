@@ -36,7 +36,7 @@ from automap.render import (
     party_marker,
     to_svg,
 )
-from automap.state import Automapper, AutomapState, Exploration
+from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
 from automap.target import Fix, ReplayTarget
 from por.geo import (
@@ -656,7 +656,8 @@ def test_a_crossing_does_not_record_the_new_areas_squares_on_the_old_map(
 
     assert mapper.state.area == "GEO14"
     assert (14, 1) in mapper.state.exploration
-    kept = json.loads((state_data_dir() / "GEO00.json").read_text())["seen"]
+    notes = state_data_dir() / title_dir("Pool of Radiance") / "GEO00.json"
+    kept = json.loads(notes.read_text())["seen"]
     assert "14,1" not in kept
     # nor anything the sight lines drew around it, on the wrong map: New
     # Phlan's own squares here run from x=0 to the sight limit at x=7.
@@ -716,8 +717,13 @@ def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
 # --- the live party ---------------------------------------------------------
 
 from automap import live  # noqa: E402
-from automap.target import MemoryTarget  # noqa: E402
+from automap.state import migrate_flat_notes  # noqa: E402
+from automap.target import MemoryTarget, party_fix  # noqa: E402
+from por import games  # noqa: E402
 from por.record import FieldNotStored  # noqa: E402
+
+CURSE = games.CURSE_OF_THE_AZURE_BONDS
+CHAMPIONS = games.CHAMPIONS_OF_KRYNN
 
 
 @pytest.fixture
@@ -795,6 +801,102 @@ def test_the_whole_tab_costs_two_reads():
     assert machine.reads == [(0x4900, 0x1C00), (0x8300, 0x100)]
 
 
+# --- the same reader, on another title's addresses (#29) --------------------
+
+def curse_machine() -> MemoryTarget:
+    """The captured party, laid out the way Curse of the Azure Bonds lays a
+    save out: one payload at `$4B00` with the roster as its last page.
+
+    Curse's `$1D00` payload is Pool of Radiance's `$1C00` with the roster's
+    `$100` folded on, which is exactly these two fixtures concatenated -- so a
+    Curse-shaped machine can be built from a Pool of Radiance save with no new
+    bytes and no game disk. Nothing here claims the *contents* are a Curse
+    party; what is under test is which addresses get read.
+    """
+    save0, roster = captured()
+    return MemoryTarget({CURSE.save_load_address: save0 + roster})
+
+
+def test_a_curse_machine_is_read_at_4b00_and_not_4900():
+    """The whole of #29 in one assertion. `$4900` is Pool of Radiance's, and
+    reading it on Curse is not an error -- it is a party made of whatever the
+    engine happens to keep there."""
+    machine = curse_machine()
+    snap = live.read_snapshot(machine, game=CURSE)
+    assert machine.reads == [(0x4B00, 0x1D00)]
+    assert snap is not None
+    assert [c.name for c in snap.characters] == ["BRUTUS"]
+
+
+def test_the_same_machine_read_at_pool_of_radiances_addresses_lies():
+    """And what it cost before the fix, which is the part worth pinning:
+    reading `$4900` on a Curse machine does **not** refuse. `$4900`-`$64FF`
+    overlaps `$4B00`'s payload two pages in, so the whole tab decodes -- a
+    party, a square, an area name -- and every one of them is wrong."""
+    wrong = live.read_snapshot(curse_machine())
+    right = live.read_snapshot(curse_machine(), game=CURSE)
+    assert wrong is not None and right is not None
+    assert (wrong.area_file, wrong.x, wrong.y) != (right.area_file,
+                                                   right.x, right.y)
+    assert [c.slot for c in wrong.characters] != [c.slot
+                                                  for c in right.characters]
+
+
+def test_curses_roster_comes_from_6700_inside_the_payload():
+    """One read, not two: a title that folds the roster into the payload has
+    the page in hand already, and asking for it again is a round trip for bytes
+    we have. The slice has to be the right one, which is what this checks."""
+    save0, roster = captured()
+    machine = curse_machine()
+    assert CURSE.roster_base == 0x6700
+    payload, page = live.read_blocks(machine, CURSE)
+    assert payload == save0 + roster
+    assert page == roster
+    assert machine.reads == [(0x4B00, 0x1D00)]
+
+
+def test_the_effect_arrays_follow_the_save_image():
+    """They are payload offsets, so they move with the base and need no table
+    of their own -- `$4900`/`$4940`/`$4980`/`$4B80` in Pool of Radiance are the
+    same four offsets off `$4B00` in Curse."""
+    save0, roster = captured()
+    raw = bytearray(save0)
+    raw[live.EFFECT_ID_OFFSET] = 7
+    raw[live.EFFECT_OWNER_OFFSET] = live.PARTY_WIDE
+    machine = MemoryTarget({CURSE.save_load_address: bytes(raw) + roster})
+    snap = live.read_snapshot(machine, game=CURSE)
+    assert [e.id for e in snap.party_effects] == [7]
+
+
+def test_the_memory_fallback_reads_the_engines_own_triple():
+    """`$C04B`, measured on three titles and on no others. Pool of Radiance's
+    `$49C0` is the save image's copy and lags a move, so it is not what the
+    fallback reads on any title now."""
+    for game in (games.POOL_OF_RADIANCE, CURSE,
+                 games.SECRET_OF_THE_SILVER_BLADES):
+        assert game.live_position == 0xC04B
+        machine = MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
+                                0xDD00: bytes([0x00]),
+                                0xC04B: bytes([6, 11, 2]),
+                                game.clock_base: bytes([4, 2, 9])})
+        fix = party_fix(machine.read, game)
+        assert (fix.x, fix.y, fix.facing, fix.source) == (6, 11, 2, "memory")
+        assert fix.clock == 9 * 60 + 24
+
+
+def test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback():
+    """Champions of Krynn has never been run under a monitor, so its
+    `live_position` is None and the fallback refuses. `$C04B` is a measurement
+    of three other games, not a family constant, and answering with it would
+    give a square rather than an error."""
+    assert CHAMPIONS.live_position is None
+    machine = MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
+                            0xDD00: bytes([0x00]),
+                            0xC04B: bytes([6, 11, 2])})
+    assert party_fix(machine.read, CHAMPIONS) is None
+    assert 0xC04B not in [addr for addr, _ in machine.reads]
+
+
 def test_the_combat_numbers_come_from_the_roster_not_the_record():
     """A save slot holds 256 bytes; AC, THAC0 and current hit points are past
     them. Reading them from the record gives AC 60 -- plausible and wrong."""
@@ -811,10 +913,11 @@ def test_the_combat_numbers_come_from_the_roster_not_the_record():
 def with_effect(slot=0, id=1, owner=0, duration=0x43, magnitude=2):
     save0, save1 = captured()
     raw = bytearray(save0)
-    for base, value in ((live.EFFECT_ID, id), (live.EFFECT_OWNER, owner),
-                        (live.EFFECT_DURATION, duration),
-                        (live.EFFECT_MAGNITUDE, magnitude)):
-        raw[base - 0x4900 + slot] = value
+    for at, value in ((live.EFFECT_ID_OFFSET, id),
+                      (live.EFFECT_OWNER_OFFSET, owner),
+                      (live.EFFECT_DURATION_OFFSET, duration),
+                      (live.EFFECT_MAGNITUDE_OFFSET, magnitude)):
+        raw[at + slot] = value
     return bytes(raw), save1
 
 
@@ -1102,6 +1205,101 @@ def _area(tmp_path, monkeypatch, area="GEO14") -> AutomapState:
     state = AutomapState()
     state.area = area
     return state
+
+
+# --- and one title's notes are not another's (#30) --------------------------
+
+def test_a_note_on_one_titles_geo15_is_absent_from_anothers(tmp_path,
+                                                            monkeypatch):
+    """`GEO15` is Sokol Keep in Pool of Radiance and somewhere else entirely in
+    Curse. Before the path carried the title, a note pinned in one turned up on
+    the other's square, and the explored squares merged with it."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    pool = AutomapState(title="Pool of Radiance")
+    pool.area = "GEO15"
+    pool.add_note(4, 7, Note("dead elf", "person"))
+    pool.exploration.visit(4, 7)
+    pool.save_notes()
+
+    curse = AutomapState(title="Curse of the Azure Bonds")
+    curse.area = "GEO15"
+    curse.load_notes()
+    assert curse.notes_at(4, 7) == []
+    assert (4, 7) not in curse.exploration
+    assert curse.notes_path() != pool.notes_path()
+
+    # and the one that was written is still there, under its own title
+    again = AutomapState(title="Pool of Radiance")
+    again.area = "GEO15"
+    again.load_notes()
+    assert [n.text for n in again.notes_at(4, 7)] == ["dead elf"]
+
+    # every title we claim, not just the two above: three distinct paths for
+    # one map id, so nothing any of them writes can reach the others.
+    paths = set()
+    for game in (games.POOL_OF_RADIANCE, CURSE,
+                 games.SECRET_OF_THE_SILVER_BLADES):
+        state = AutomapState(title=game.title)
+        state.area = "GEO15"
+        paths.add(state.notes_path())
+    assert len(paths) == 3
+
+
+def test_a_flat_notes_file_is_still_readable_after_the_split(tmp_path,
+                                                             monkeypatch):
+    """Everything written before the title was in the path is Pool of
+    Radiance's -- it is the only title anyone has mapped -- so it is moved
+    there rather than orphaned."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    flat = state_data_dir() / "GEO15.json"
+    flat.parent.mkdir(parents=True, exist_ok=True)
+    flat.write_text(json.dumps({"notes": {"4,7": [{"text": "dead elf",
+                                                   "type": "person"}]},
+                                "seen": ["4,7"]}), encoding="utf-8")
+
+    state = AutomapState(title="Pool of Radiance")
+    state.area = "GEO15"
+    state.load_notes()
+    assert [n.text for n in state.notes_at(4, 7)] == ["dead elf"]
+    assert (4, 7) in state.exploration
+    assert not flat.exists()
+    assert state.notes_path().exists()
+
+
+def test_a_notes_file_that_cannot_be_attributed_is_left_where_it_is(
+        tmp_path, monkeypatch):
+    """Losing somebody's notes is worse than the bug, so a flat file is moved
+    only when its stem is one of the twenty-nine maps Pool of Radiance actually
+    ships. `GEO08` is not one of them and neither is `unknown`."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    root = state_data_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    for name in ("GEO08.json", "unknown.json"):
+        (root / name).write_text('{"notes": {}, "seen": []}', encoding="utf-8")
+    (root / "GEO15.json").write_text('{"notes": {}, "seen": []}',
+                                     encoding="utf-8")
+
+    moved = migrate_flat_notes()
+    assert [path.name for path in moved] == ["GEO15.json"]
+    assert (root / "GEO08.json").exists()
+    assert (root / "unknown.json").exists()
+
+
+def test_a_migration_never_overwrites_what_is_already_there(tmp_path,
+                                                            monkeypatch):
+    """A half-migrated directory must not lose the half that already moved."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    root = state_data_dir()
+    already = root / title_dir("Pool of Radiance")
+    already.mkdir(parents=True, exist_ok=True)
+    (already / "GEO15.json").write_text('{"notes": {}, "seen": ["1,1"]}',
+                                        encoding="utf-8")
+    (root / "GEO15.json").write_text('{"notes": {}, "seen": ["9,9"]}',
+                                     encoding="utf-8")
+
+    assert migrate_flat_notes() == []
+    assert json.loads((already / "GEO15.json").read_text())["seen"] == ["1,1"]
+    assert (root / "GEO15.json").exists()
 
 
 def test_an_old_format_note_loads_as_one_note_and_is_rewritten(tmp_path,

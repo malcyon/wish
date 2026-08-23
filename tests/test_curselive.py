@@ -178,13 +178,14 @@ def test_the_area_byte_names_a_map_the_disks_carry():
     assert f"GEO{raw & ~AREA_DIRTY_BIT:02X}" in _curse_maps()
 
 
-def test_the_automappers_memory_fallback_is_a_pool_of_radiance_address():
+def test_the_live_triple_is_the_one_address_that_is_not_save_geometry():
     """The one address that does **not** transfer, stated as a fact.
 
     `$49C0` in a running Curse is engine code, not a party position. Curse
     keeps the position in two places, neither of them here: the save image's
     copy at `$4BC0`, refreshed only when the game saves, and the engine's
-    working copy at `$C04B`, which is what moves.
+    working copy at `$C04B`, which is what moves -- and which is outside the
+    save image, so no payload offset can reach it.
     """
     assert PARTY_X == 0x49C0
     assert CURSE_SAVE_POSITION != PARTY_X
@@ -192,19 +193,32 @@ def test_the_automappers_memory_fallback_is_a_pool_of_radiance_address():
     assert CURSE_LIVE_POSITION not in range(CURSE.save_load_address,
                                             CURSE.save_load_address
                                             + CURSE.save_size)
+    # Which is why it is a descriptor field and not a derived property.
+    assert CURSE.live_position == CURSE_LIVE_POSITION
 
 
-def test_the_memory_fallback_would_misread_a_curse_machine():
-    """And what that costs, demonstrated rather than asserted from a constant.
+def test_the_memory_fallback_no_longer_reads_the_save_images_stale_copy():
+    """What the fallback used to cost, and does not any more.
 
     Hand `party_fix` a machine with Curse's save image where Curse puts it and
-    no status line on screen, and the fallback reads `$49C0` -- which is not
-    the party -- and answers with a square the party is not on.
+    no status line on screen. The old reader answered from `$49C0`, which in a
+    running Curse is engine code. The reader now goes to `$C04B` -- which this
+    machine does not carry -- so it does not answer with the *stale* square in
+    the save image either, which is the other wrong answer available here.
     """
     payload = _curse_save_payload()
-    truth = tuple(payload[POSITION_OFFSET:POSITION_OFFSET + 3])
-    fix = party_fix(MemoryTarget({0x4B00: payload}).read)
-    assert fix is None or (fix.x, fix.y, fix.facing) != truth
+    stale = tuple(payload[POSITION_OFFSET:POSITION_OFFSET + 3])
+    machine = MemoryTarget({0x4B00: payload})
+    fix = party_fix(machine.read, CURSE)
+    assert fix is None or (fix.x, fix.y, fix.facing) != stale
+
+
+def test_the_memory_fallback_reads_curses_own_live_triple():
+    """And what it does instead: `$C04B`, the address the live run measured."""
+    machine = MemoryTarget({0x4B00: _curse_save_payload(),
+                            CURSE_LIVE_POSITION: bytes([9, 2, 1])})
+    fix = party_fix(machine.read, CURSE)
+    assert (fix.x, fix.y, fix.facing, fix.source) == (9, 2, 1, "memory")
 
 
 def test_the_status_line_reads_through_the_unchanged_party_fix():

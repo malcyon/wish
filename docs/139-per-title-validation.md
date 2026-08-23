@@ -10,11 +10,11 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `skills/goldbox/SKILL.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 47 verified, Curse 21, Silver Blades 13.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The live tab.** Every read it makes is at Pool of Radiance's `$4900`/`$8300`, so on Curse and Silver Blades the roster cards, the badges and all five live actions are reading the wrong memory — not refusing, reading it | CONFIRMED, `automap/live.py:49` against `por/games.py` |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 47 verified, Curse 23, Silver Blades 15.** §2 | CONFIRMED, cited per row |
+| Where is the promise thinnest? | **The live actions.** The *reader* is per-title now (#29): `automap/live.py` takes every address from the `Game` descriptor and `automap/target.py` reads the engine's measured `$C04B` triple. `automap/actions.py` was not threaded with it, so the five buttons still write Pool of Radiance's `$4900`/`$8300` on every title — not refusing, writing it | CONFIRMED, `automap/actions.py:151`, `:482`, `:742` |
 
-The honest one-line version: **the file path works on three titles and the live
-path works on one.**
+The honest one-line version: **the file path works on three titles, the live
+*reader* now works on three, and the live *writes* work on one.**
 
 ## 1. How far out of date `docs/120` and `docs/121` are
 
@@ -34,9 +34,10 @@ five-row table of the automapper; the automapper tab today has fifteen rows in
 
 Two specific corrections they already earned and have not had:
 
-* `docs/120` tier 4 lists the memory fallback as "does not transfer" and leaves
-  it there. It is now a **shipped defect** on two titles, not a note in a plan,
-  because five buttons and the whole roster panel ride the same constants.
+* `docs/120` tier 4 listed the memory fallback as "does not transfer" and left
+  it there, so it shipped as a defect on two titles. **Closed by #29**: the
+  triple is `Game.live_position`, measured per title, and a title where it is
+  unmeasured refuses instead of guessing.
 * `docs/121` §6 lists eight edits the run owes `SKILL.md` and says they were
   not made because the file was another agent's. Seven of the eight are still
   not made. §4.
@@ -86,22 +87,22 @@ applicable.
 | C1 | `GEO` decode, verified by reciprocity | V | V | V | `test_curse.py::test_every_curse_map_decodes_through_the_unmodified_decoder`, `test_silverblades.py::test_all_seventeen_maps_decode_through_the_unmodified_decoder` |
 | C2 | resident map block at `$0400` | V | V | V | `test_curselive.py::test_the_resident_map_block_is_at_0400_in_curse_too`, `docs/121` §5 |
 | C3 | party fix from the status line | V | V | V | `test_curselive.py::test_the_status_line_reads_through_the_unchanged_party_fix`; `docs/121` §5 — and it **lags** on SSB |
-| C4 | party fix from memory (the fallback) | V | **X** | **X** | `test_curselive.py::test_the_memory_fallback_would_misread_a_curse_machine`; the live triple is `$C04B`, `automap/target.py:43` holds `$49C0` |
+| C4 | party fix from memory (the fallback) | V | V | V | `test_automap.py::test_the_memory_fallback_reads_the_engines_own_triple` — `Game.live_position`, `$C04B` measured on all three (`docs/120` §4, `docs/121` §5). An unmeasured title refuses: `…::test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback` |
 | C5 | `Fingerprint` narrows the map from a walk | V | V | V | `test_curselive.py::test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two`, `test_ssblive.py::test_every_step_the_party_completed_crossed_a_passable_edge` |
 | C6 | area identification across a boundary | V | **U** | **U** | `docs/120` tier 3 — no boundary was crossed, the area byte stays PROBABLE; `docs/121` §5 — the party never left `GEO10` |
 | C7 | map drawing, reveal, exploration | V | **U** | **U** | pure `Geo`, so it ought to transfer; nothing has drawn a Curse or SSB map in the shipped window |
 | C8 | area names on the map | V | — | — | `por/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
-| C9 | map notes and exploration, persisted | V | **X** | **X** | `automap/state.py:164` keys the file `{GEO id}.json` with **no title in it**, and `GEO15` is a different place in each game (`docs/120` tier 1.1). PoR's Sokol Keep notes land on Curse's `GEO15` |
+| C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
 | C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
 | C11 | combat log | V | **U**, expected broken | **U**, expected broken | `automap/combatlog.py` is built on `COMBAT $2983`, a PoR address in a PoR overlay |
-| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | **X** | **X** | `automap/live.py:49` — `BLOCKS` is `$4900` + `$8300`; Curse and SSB are `$4B00` + `$6700` (`por/games.py`) |
-| C13 | condition badges | V | **X** | **X** | rides C12 |
-| C14 | quickfight badge | V | **X** | **X** | rides C12 |
+| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | **U** | **U** | the addresses are right now — `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29). No real Curse or SSB roster has ever been read through it; that is G6 |
+| C13 | condition badges | V | **U** | **U** | rides C12 |
+| C14 | quickfight badge | V | **U** | **U** | rides C12 |
 | C15 | commissions panel | V | — | — | `por/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
-| C16 | heal party | V | **X** | **X** | `automap/actions.read_party` reads through `live.read_blocks`, so it rides C12 |
-| C17 | store / restore spells | V | **X** | **X** | rides C12 |
-| C18 | identify items | V | **X** | **X** | rides C12 |
-| C19 | clear quickfight, and the watcher | V | **X** | **X** | rides C12 |
+| C16 | heal party | V | **X** | **X** | `automap/actions.py` was not threaded through the descriptor with `live.py`: `Member.record_base`/`roster_base`/`item_base` are `$4D00`/`$8300`/`$5900` and `read_party` calls `live.read_blocks(target)` with no game. It reads and **writes** Pool of Radiance's addresses on every title |
+| C17 | store / restore spells | V | **X** | **X** | rides C16 |
+| C18 | identify items | V | **X** | **X** | rides C16 — `live.BLOCKS[0][0]` at `automap/actions.py:482` |
+| C19 | clear quickfight, and the watcher | V | **X** | **X** | rides C16 — `QUICKFIGHT` is built on `SAVE1_LOAD_ADDRESS`, `automap/actions.py:742` |
 | C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
 | C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `warp_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
 | C22 | the *running* title is identified from the machine | **X** | **X** | **X** | issue #21 — it is guessed from the open save, then a preference, then a default. Both refusals above are only as good as that guess |
@@ -121,8 +122,13 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **47** | 0 | 1 | 1 | 0 |
-| Curse of the Azure Bonds | 49 | **21** | 2 | 11 | 10 | 5 |
-| Secret of the Silver Blades | 49 | **13** | 2 | 19 | 10 | 5 |
+| Curse of the Azure Bonds | 49 | **23** | 2 | 14 | 5 | 5 |
+| Secret of the Silver Blades | 49 | **15** | 2 | 22 | 5 | 5 |
+
+Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
+`U` (C12–C14) when #29 and #30 landed. The five `X` left on each are the four
+live actions and C22, and all five are `automap/actions.py` or the title guess
+it depends on.
 
 Pool of Radiance's one `U` is the Ultimate backend, which nobody can test, and
 its one `X` is C22, which is everyone's.
@@ -134,14 +140,15 @@ Read against the feature list in `README.md` itself:
 | the README says | for Curse | for Silver Blades |
 |---|---|---|
 | "Reveals the area map as you explore" | holds — the status line and `$0400` both transfer | holds |
-| "Pin notes to the map" | **wrong** — the notes file is not keyed by title, so notes cross between games (C9) | **wrong**, same |
+| "Pin notes to the map" | holds — the file is `{data dir}/maps/{title}/{GEO id}.json` (C9) | holds |
 | "Combat view that shows the whole battlefield" | **not backed** — PoR overlay addresses (C10) | **not backed** |
-| "Party stats. HP, XP, AC, THAC0, readied items" | **wrong** — reads `$4900`, which is not the save image in Curse (C12) | **wrong**, same |
+| "Party stats. HP, XP, AC, THAC0, readied items" | reads the right memory now, and nobody has looked at the result on a running Curse (C12) | same |
 | "Quest log. Shows what commissions you have from the council" | **not applicable** — Phlan's council only (C15) | **not applicable** |
 | "Update your stats … Spells … Inventory … Combat Icon Editor" | mostly holds; inventory and the icon charset unverified (A13, A14) | holds for the sheet; **the write-back path itself is unverified** (A17, A18) |
 
-Two of the five automapper bullets are wrong for two of the three titles named
-in the same file, and a third does not exist for them.
+One of the five automapper bullets is still wrong for two of the three titles
+named in the same file — the live *actions* under "Party stats" — and a third
+does not exist for them.
 
 ## 3. How the unverified cells would be tested, grouped
 
@@ -164,24 +171,29 @@ and none of it needs a machine.
 
 ### G2 — thread the save geometry into the live reader · code, no emulator
 
-Closes C4, and unblocks C12–C19 for testing at all.
+**Done (#29)**, for the reader. `live.memory_blocks(game)` and `party_fix(read,
+game)` take every address from the `Game` descriptor, and the live party triple
+is `Game.live_position` — `$C04B`, measured on Pool of Radiance, Curse and
+Silver Blades and None on the other three, which refuse rather than guess.
+Closed C4 and moved C12–C14 from `X` to `U`.
 
-`automap/live.py:49` and `automap/target.py:42-47` hold Pool of Radiance's
-addresses as module constants. `por/games.py` already carries every title's,
-and `docs/120` tier 4 already names the missing piece: the live party triple is
-**outside** the save image (`$C04B` on both later titles), so it is a fourth
-field on `Game`, not a payload offset. The test is the one `docs/120` sketched
-— hand `party_fix` a machine with Curse's image where Curse puts it and assert
-it now reads the party rather than engine code, which is
-`test_curselive.py::test_the_memory_fallback_would_misread_a_curse_machine`
-inverted.
+**Not done: `automap/actions.py`.** It reads and writes `$4D00`, `$5900` and
+`$8300` as module constants and takes no game, so the five live buttons are
+still Pool of Radiance's (C16–C19). Same shape of work, on `Member` and
+`read_party` instead of on `live.py`, and it is the last thing between here and
+G6.
 
 ### G3 — namespace the notes by title · code, no emulator
 
-Closes C9. `AutomapState.notes_path` becomes `{title}/{GEO id}.json`, with the
-existing flat files migrated as Pool of Radiance's — the same shape as the
-config migration in `bbacdbc`. A test that writes a note on PoR's `GEO15`,
-switches the title to Curse and asserts the square is empty fails today.
+**Done (#30)**, closing C9. `AutomapState.notes_path` is
+`{data dir}/maps/{title}/{GEO id}.json`, keyed by `Game.key`, and the fog-of-war
+record moved with it because it is in the same file.
+
+`state.migrate_flat_notes` moves what already exists, **attributed rather than
+assumed**: a flat file is filed under Pool of Radiance only if its stem is one
+of the twenty-nine maps Pool of Radiance ships, it never overwrites a file
+already there, and anything it cannot attribute is left exactly where it is
+under no title at all.
 
 ### G4 — one Curse session: a played party with an inventory
 
@@ -207,7 +219,9 @@ already proved the disk-flush hazard; `docs/121` §5 has the list.
 ### G6 — one Curse and one Silver Blades session for the live tab · needs G2
 
 Closes C6, C7, C12–C19 for both titles — twenty cells between them, and they
-share one prerequisite and one kind of run.
+share one prerequisite and one kind of run. C12–C14 are ready for it; C16–C19
+are not, because G2's second half — `automap/actions.py` — is not done, and
+those four buttons **write**.
 
 Attach to each title in turn and, in one pass: draw the map (C7), cross an area
 boundary and read the area byte either side (C6 — the negative example `docs/120`

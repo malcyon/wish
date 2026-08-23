@@ -34,6 +34,10 @@ def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
             memory_clock: tuple[int, int, int] = (3, 2, 9)) -> MemoryTarget:
     """A C64 with the game's status line on screen at $CC00.
 
+    `memory_xy` is the three bytes at $C04B, which is where the *engine* keeps
+    the party square -- Pool of Radiance's `$49C0` is the save image's copy and
+    is only refreshed when `$1A3C` flushes it, so it lags a move (#29).
+
     `memory_clock` is the three bytes at $49C7: units of a minute, tens, then
     the hour -- so (3, 2, 9) is 09:23."""
     row = screen_codes(status.ljust(40))
@@ -42,7 +46,7 @@ def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
         0xD018: bytes([0x30]),          # character base $CC00 within bank 3...
         0xDD00: bytes([0x00]),          # ...which is what bank 0 selects
         0xCC00 + 14 * 40: row,
-        0x49C0: bytes(memory_xy),
+        0xC04B: bytes(memory_xy),
         0x49C7: bytes(memory_clock),
     })
 
