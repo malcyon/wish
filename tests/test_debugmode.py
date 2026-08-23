@@ -912,3 +912,26 @@ def test_an_uncaught_exception_reaches_the_debug_log(tmp_path, monkeypatch):
     assert "unhandled exception" in written
     assert "'PosixPath' object is not iterable" in written
     assert "/home/" not in written        # scrubbed, like every other line
+
+
+def test_the_debug_log_cannot_grow_without_bound(tmp_path, monkeypatch):
+    """Donald: "I don't want someone's disk filling up because it's been on for
+    6 months." One file per session is not a bound -- a session left running
+    writes for ever. Each file rotates and the directory is pruned, so the
+    whole thing has a stated ceiling."""
+    from wish import debuglog
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(debuglog, "MAX_BYTES", 2_000)
+    path = debuglog.start()
+    try:
+        for _ in range(400):
+            debuglog.note("%s", "x" * 120)
+        parts = sorted(debuglog.log_dir().glob("wish-*.log*"))
+        assert len(parts) > 1, "it never rotated"
+        assert all(p.stat().st_size <= debuglog.MAX_BYTES * 2 for p in parts)
+    finally:
+        debuglog.stop()
+    assert debuglog.ceiling() == debuglog.KEEP * debuglog.MAX_BYTES * (
+        debuglog.PARTS + 1)
+    assert path.exists()

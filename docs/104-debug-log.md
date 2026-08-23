@@ -62,6 +62,21 @@ With the hook in place Qt calls it instead of aborting, which buys two things:
 the traceback reaches the log, scrubbed like every other line, and **the window
 survives**. CONFIRMED both ways — `tests/test_debugmode.py`.
 
+### How big it can get
+
+**Bounded, and stated.** One file per session is not a bound: a session left
+running for weeks with the map polling five times a second writes until the disk
+is full. Donald asked for this and he is right.
+
+So each session's file rotates once at 2 MB and keeps one previous part, and the
+five newest sessions survive. The directory therefore cannot exceed
+**`KEEP * MAX_BYTES * (PARTS + 1)`** -- about 20 MB -- whatever anybody does.
+`debuglog.ceiling()` returns that number and a test asserts the arithmetic
+rather than a constant.
+
+The pruner globs `wish-*.log*`, not `wish-*.log`: a rotated part is
+`wish-....log.1`, and a pruner blind to those would leave them for ever.
+
 ## What stays out
 
 * **No file paths.** `scrub()` rewrites every absolute path to its last

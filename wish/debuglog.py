@@ -28,6 +28,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import logging
+import logging.handlers
 import os
 import pathlib
 import platform
@@ -45,6 +46,20 @@ NAME = "wish"
 # One file per session, and the last few kept. Enough to compare "it worked
 # yesterday" against today; not a diary of everything the program ever did.
 KEEP = 5
+
+# **The log has a ceiling, and it is not a matter of trust.** One file per
+# session is not a bound: a session left running for weeks with the map polling
+# five times a second writes until the disk is full. So each session's file
+# rotates once at `MAX_BYTES` and keeps one previous part, and `KEEP` sessions
+# survive -- so the whole directory cannot exceed roughly
+# `KEEP * MAX_BYTES * (PARTS + 1)`, about 20 MB, whatever anybody does.
+MAX_BYTES = 2_000_000
+PARTS = 1
+
+
+def ceiling() -> int:
+    """The most the log directory can hold, in bytes. Asserted by a test."""
+    return KEEP * MAX_BYTES * (PARTS + 1)
 
 # A read that takes longer than this stalled the emulator: under VICE the
 # monitor holds the CPU for the whole round trip, and the poll interval is
@@ -100,7 +115,9 @@ def is_on() -> bool:
 
 def _prune(keep: int = KEEP) -> None:
     try:
-        files = sorted(log_dir().glob("wish-*.log"))
+        # `*.log*`, not `*.log`: a rotated part is `wish-....log.1`, and a
+        # pruner that could not see those would leave them for ever.
+        files = sorted(log_dir().glob("wish-*.log*"))
     except OSError:
         return
     for old in files[:-keep] if keep else files:
@@ -124,7 +141,9 @@ def start() -> pathlib.Path | None:
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("", encoding="utf-8")   # and prove it can be written
-        handler = logging.FileHandler(target, encoding="utf-8")
+        handler = logging.handlers.RotatingFileHandler(
+            target, maxBytes=MAX_BYTES, backupCount=PARTS,
+            encoding="utf-8")
     except OSError:
         return None
     handler.setFormatter(Scrubbed("%(asctime)s %(levelname)s %(message)s",
