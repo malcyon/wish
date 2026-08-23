@@ -45,6 +45,7 @@ files, the standing constraints in full, and no commits.
 | **P9** | Silver Blades phases 3–5 — [`121`](121-silver-blades.md) | phase 4, the import diff, decides the field table by the game's own arithmetic |
 | **P18** | Finish the high-level test party — [`119`](119-test-party.md) | one class-level diff taken; the rest remain |
 | **P19** | Combat log checklist item 7, the scroll | needs a fight with **long** messages, not a long fight |
+| **P82** | Does the slums fortune teller come back on every visit? | `$4A0B` is her one-shot and it sits inside `$4A00`-`$4A1F`, the scratch page `DUNGEON $202A` zeroes on every area change — so she may be killable repeatedly, the "gods have noted your actions" penalty may evaporate with her, and `$4A80` may be resettable without limit. PROBABLE on the addresses and the specimens; needs one emulator run. Same shape as the Sokol Keep dead elf |
 
 ---
 
