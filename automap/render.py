@@ -41,6 +41,14 @@ from ui import icons
 CELL = 34
 MARGIN = 26
 
+#: The smallest square the area map is drawn at. Everything here is a fraction
+#: of the cell, so the drawing survives the shrink; what does not survive is
+#: the reading, and 20 is where a door leaf is still a leaf. The floor exists
+#: because 596px of map was a hard floor under the whole window, and on a
+#: 1080p Windows desktop at 125% that floor put the menu bar off the top of
+#: the screen.
+CELL_MIN = 20
+
 # Fractions of a cell.
 DOOR_GAP = 0.52          # how much of the wall the doorway removes
 DOOR_LEAF = 0.44         # the leaf drawn in the gap, along the wall
@@ -276,12 +284,18 @@ def note_primitives(notes, cell: int = CELL, margin: int = MARGIN):
     A square with several notes draws the first one's icon and a count, rather
     than trying to fit four icons into a 34px cell.
     """
+    # `NOTE_SIZE` is what Donald chose in a 34px cell, and the marker keeps
+    # that share of the square when the cell shrinks -- a fixed 22px icon in a
+    # 20px cell is not a corner marker, it is the square. `NOTE_INSET` does
+    # not scale with it: it is measured against the 3px wall stroke, and that
+    # stroke is the same 3px whatever the cell is.
+    size = NOTE_SIZE * cell / CELL
     for (x, y), items in sorted(notes.items()):
         if not items:
             continue
-        left = margin + x * cell + cell - NOTE_INSET - NOTE_SIZE
+        left = margin + x * cell + cell - NOTE_INSET - size
         top = margin + y * cell + NOTE_INSET
-        yield Glyph(left, top, NOTE_SIZE, items[0].icon, "note")
+        yield Glyph(left, top, size, items[0].icon, "note")
         if len(items) > 1:
             # The cell's own bottom-right corner, not the glyph's. Hung off the
             # icon it fell out of the square as soon as the icon grew, and the

@@ -10,7 +10,16 @@ from __future__ import annotations
 
 from functools import partial
 
-from PyQt6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import (
+    QEvent,
+    QPoint,
+    QPointF,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
@@ -42,6 +51,7 @@ from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (
     CELL,
+    CELL_MIN,
     COUNT_SIZE,
     MARGIN,
     Glyph,
@@ -101,12 +111,50 @@ class MapCanvas(QWidget):
         #: The square a notes-panel row asked to be pointed at, until the next
         #: click anywhere. Not a selection -- nothing here is selectable.
         self.flash: tuple[int, int] | None = None
-        self.setMinimumSize(GRID * CELL + MARGIN * 2, GRID * CELL + MARGIN * 2)
+        # The floor, not `CELL`. A 596px square that could never give way was
+        # a 596px floor under the whole window, and on Donald's 1080p Windows
+        # desktop that put the menu bar off the top of the screen.
+        self.setMinimumSize(GRID * CELL_MIN + MARGIN * 2,
+                            GRID * CELL_MIN + MARGIN * 2)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+    def sizeHint(self):
+        """What it asks for: the full-size map, so nothing changes where there
+        is room for it."""
+        return QSize(GRID * CELL + MARGIN * 2, GRID * CELL + MARGIN * 2)
+
+    @property
+    def cell(self) -> int:
+        """How big a square is drawn, for the room the widget has been given.
+
+        Derived from the size rather than remembered from a resize event,
+        because a widget that is not on screen is not sent one until it is
+        shown -- and a click, a tooltip and a note anchor all have to agree
+        with what was painted whether that event has arrived or not.
+        """
+        room = (min(self.width(), self.height()) - MARGIN * 2) // GRID
+        return max(CELL_MIN, min(CELL, room))
+
+    @property
+    def origin(self) -> tuple[int, int]:
+        """Where the grid's top-left corner sits in the widget.
+
+        The grid stays square and centred: a widget wider than it is tall
+        spends the difference on paper, not on rectangles for squares.
+        """
+        span = GRID * self.cell
+        return (self.width() - span) // 2, (self.height() - span) // 2
+
+    def corner_of(self, x: int, y: int) -> QPoint:
+        """The bottom-left corner of a square, for hanging the popover off."""
+        ox, oy = self.origin
+        return QPoint(ox + x * self.cell, oy + (y + 1) * self.cell)
+
     def square_at(self, px: float, py: float) -> tuple[int, int] | None:
-        x = int((px - MARGIN) // CELL)
-        y = int((py - MARGIN) // CELL)
+        ox, oy = self.origin
+        cell = self.cell
+        x = int((px - ox) // cell)
+        y = int((py - oy) // cell)
         return (x, y) if 0 <= x < GRID and 0 <= y < GRID else None
 
     def tooltip_at(self, px: float, py: float) -> str | None:
@@ -150,12 +198,14 @@ class MapCanvas(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), PAPER)
 
+        cell = self.cell
+        ox, oy = self.origin
         p.setPen(QPen(LATTICE, 1))
-        span = GRID * CELL
+        span = GRID * cell
         for i in range(GRID + 1):
-            at = MARGIN + i * CELL
-            p.drawLine(at, MARGIN, at, MARGIN + span)
-            p.drawLine(MARGIN, at, MARGIN + span, at)
+            at = i * cell
+            p.drawLine(ox + at, oy, ox + at, oy + span)
+            p.drawLine(ox, oy + at, ox + span, oy + at)
 
         st = self.state
         if st.geo is None:
@@ -171,8 +221,12 @@ class MapCanvas(QWidget):
                        self.host.waiting_text() or st.area_label)
             return
 
+        # The primitives are asked for at margin zero and the painter is moved
+        # to the grid's corner instead, because the corner is not `MARGIN` in
+        # both axes once the widget is not square.
+        p.translate(ox, oy)
         visible = None if not st.reveal else st.is_visible
-        for prim in map_primitives(st.geo, visible):
+        for prim in map_primitives(st.geo, visible, cell, 0):
             self._draw(p, prim)
         # Notes are drawn **regardless of fog**: a note is something you know,
         # and hiding it because the square is currently fogged would be
@@ -183,16 +237,15 @@ class MapCanvas(QWidget):
         # the square, so on the one square that has both, something has to be
         # underneath. It is the note: where the party is standing is the one
         # thing on this map that must never be in doubt.
-        for prim in note_primitives(st.notes):
+        for prim in note_primitives(st.notes, cell, 0):
             self._draw(p, prim)
-        self._draw(p, party_marker(st.x, st.y, st.facing))
+        self._draw(p, party_marker(st.x, st.y, st.facing, cell, 0))
 
         if self.flash is not None:
             x, y = self.flash
             p.setPen(QPen(NOTE, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawRect(QRectF(MARGIN + x * CELL + 1, MARGIN + y * CELL + 1,
-                              CELL - 2, CELL - 2))
+            p.drawRect(QRectF(x * cell + 1, y * cell + 1, cell - 2, cell - 2))
 
     def _draw(self, p: QPainter, prim) -> None:
         if isinstance(prim, Rect):
@@ -267,9 +320,32 @@ class CombatCanvas(QWidget):
         self.update()
 
     def _resize(self) -> None:
+        # The minimum comes off `CELL_MIN`, not off the cell this fight would
+        # like: the map canvas shares a stack with this one, and a stack is as
+        # tall as its tallest page whichever page is showing. A minimum of
+        # `cell` here would put a 600px floor back under the window the moment
+        # a fight started.
         _, _, w, h = self.box
-        self.setMinimumSize(w * self.cell + combat.MARGIN * 2,
-                            h * self.cell + combat.MARGIN * 2)
+        self.setMinimumSize(w * combat.CELL_MIN + combat.MARGIN * 2,
+                            h * combat.CELL_MIN + combat.MARGIN * 2)
+        self.updateGeometry()
+
+    def sizeHint(self):
+        _, _, w, h = self.box
+        return QSize(w * self.cell + combat.MARGIN * 2,
+                     h * self.cell + combat.MARGIN * 2)
+
+    @property
+    def drawn_cell(self) -> int:
+        """The cell actually painted: `self.cell` where there is room for it.
+
+        Derived from the widget's size rather than remembered from a resize
+        event, for the reason `MapCanvas.cell` gives.
+        """
+        _, _, w, h = self.box
+        room = min((self.width() - combat.MARGIN * 2) // max(1, w),
+                   (self.height() - combat.MARGIN * 2) // max(1, h))
+        return max(combat.CELL_MIN, min(self.cell, room))
 
     def tooltip_at(self, px: float, py: float) -> str | None:
         """The record of whoever is under this point, or None.
@@ -278,7 +354,8 @@ class CombatCanvas(QWidget):
         """
         if self.battle is None:
             return None
-        square = combat.square_at(px, py, self.box, self.cell, combat.MARGIN)
+        square = combat.square_at(px, py, self.box, self.drawn_cell,
+                                  combat.MARGIN)
         if square is None:
             return None
         who = self.battle.at(*square)
@@ -302,7 +379,7 @@ class CombatCanvas(QWidget):
         p.fillRect(self.rect(), PAPER)
 
         _, _, w, h = self.box
-        cell, margin = self.cell, combat.MARGIN
+        cell, margin = self.drawn_cell, combat.MARGIN
         p.setPen(QPen(LATTICE, 1))
         for i in range(w + 1):
             at = margin + i * cell
@@ -482,9 +559,11 @@ class AutomapWindow(QMainWindow):
 
         # Roster left, map centre, the two reading panels right, the actions
         # under the map and one strip along the bottom for what is none of
-        # those. The map is a fixed 596px square, so the stretch goes to the
-        # right-hand column: it is the one thing here that is worth more with
-        # more room, and giving it to the map's column only makes whitespace.
+        # those. The map asks for a 596px square and takes no more, so the
+        # stretch goes to the right-hand column: it is the one thing here that
+        # is worth more with more room, and giving it to the map's column only
+        # makes whitespace. Below 596 the map gives way -- see `MapCanvas.cell`
+        # -- because that square was a floor under the whole window.
         side = QWidget()
         column = QVBoxLayout(side)
         column.setContentsMargins(0, 0, 0, 0)
@@ -893,8 +972,7 @@ class AutomapWindow(QMainWindow):
         """
         pop = NotePopover(self.state, x, y, index, self)
         pop.changed.connect(self.notes_changed)
-        corner = self.canvas.mapToGlobal(
-            QPoint(MARGIN + x * CELL, MARGIN + (y + 1) * CELL))
+        corner = self.canvas.mapToGlobal(self.canvas.corner_of(x, y))
         pop.move(corner)
         pop.show()
         pop.field.setFocus()

@@ -206,7 +206,9 @@ def drawn(cell=None):
     if cell is not None:
         canvas.cell = cell
         canvas._resize()
-    canvas.resize(canvas.minimumSize())
+    # `sizeHint`, not `minimumSize`: the minimum is the floor the canvas will
+    # shrink to when the window is small, and this wants the cell it asked for.
+    canvas.resize(canvas.sizeHint())
     return canvas.grab().toImage(), canvas
 
 

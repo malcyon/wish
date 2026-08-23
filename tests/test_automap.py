@@ -1550,7 +1550,7 @@ def test_a_note_and_the_party_marker_share_one_square_marker_on_top():
     from automap import window as windowmod
 
     source = inspect.getsource(windowmod.MapCanvas)
-    notes = source.index("note_primitives(st.notes)")
+    notes = source.index("note_primitives(st.notes")
     party = source.index("party_marker(st.x")
     assert notes < party, "the note is drawn over the party marker"
 
@@ -1722,6 +1722,9 @@ def test_hovering_a_note_shows_every_note_on_the_square(app, tmp_path,
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
     window.state.add_note(3, 4, Note("dueling pairs", "encounter"))
     window.state.add_note(3, 4, Note("", "locked"))
+    # A window nobody showed has never laid its canvas out, and the canvas
+    # answers for the size it actually has. Full size is what `CELL` measures.
+    window.canvas.resize(window.canvas.sizeHint())
     px = MARGIN + 3 * CELL + 2
     py = MARGIN + 4 * CELL + 2
     assert window.canvas.tooltip_at(px, py) == (
