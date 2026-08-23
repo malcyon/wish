@@ -1847,6 +1847,8 @@ def test_a_click_hides_the_tooltip_before_the_popover_opens(app, tmp_path,
     assert hidden, "the tooltip is hidden as soon as the button goes down"
     assert window._popover is None, "and nothing opens until it comes up"
     press("up")
+    # Queued behind the tooltip's own deletion, so it opens a turn later.
+    app.processEvents()
     assert window._popover is not None
 
     # And with one open, the square offers no tooltip to reopen.
@@ -1882,9 +1884,11 @@ def test_a_drag_across_squares_opens_nothing(app, tmp_path, monkeypatch):
 
     send("down", at(3, 4))
     send("up", at(7, 9))                       # let go somewhere else
+    app.processEvents()
     assert window._popover is None
     send("down", at(3, 4))
     send("up", at(3, 4))                       # and again, properly
+    app.processEvents()
     assert window._popover is not None
     window._popover.close()
 

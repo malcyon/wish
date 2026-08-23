@@ -223,6 +223,25 @@ def install_excepthook() -> None:
         return
     _previous_hook = sys.excepthook
     sys.excepthook = crash
+    # **And the ones `sys.excepthook` never sees.** An exception raised inside
+    # a Qt virtual method -- a `paintEvent`, an event handler -- does not reach
+    # `sys.excepthook`; PyQt prints it to `sys.stderr` and carries on. On a
+    # windowed Windows build `sys.stderr` is the borrowed console, or devnull
+    # when there is no console to borrow, so such an exception was invisible in
+    # the debug log and looked like a widget that simply half-drew itself.
+    sys.unraisablehook = _unraisable
+
+
+def _unraisable(hook_args) -> None:
+    """An exception nobody could raise onward: log it, do not lose it."""
+    kind = getattr(hook_args, "exc_type", None)
+    value = getattr(hook_args, "exc_value", None)
+    tb = getattr(hook_args, "exc_traceback", None)
+    where = getattr(hook_args, "object", None)
+    text = "".join(traceback.format_exception(kind, value, tb))
+    sys.stderr.write(text)
+    if _handler is not None:
+        _logger.error("unraisable exception in %r\n%s", where, text)
 
 
 @contextlib.contextmanager

@@ -9,6 +9,7 @@ way is what lets the map be developed and tested without a display -- see
 from __future__ import annotations
 
 import logging
+import traceback
 from functools import partial
 
 from PyQt6.QtCore import (
@@ -226,11 +227,25 @@ class MapCanvas(QWidget):
         if square is None or square != pressed:
             return
         at = event.globalPosition().toPoint()
+        # **Let the tooltip finish dying first.** `QToolTip.hideText()` does
+        # not destroy the tip window, it queues a `deleteLater` on it -- so on
+        # a square that *has* a note, and therefore has a tooltip up, a
+        # top-level window was being destroyed one turn of the event loop
+        # after the popover appeared. On Windows that takes the popup with it:
+        # the popover arrived half-painted and empty and was gone, with a bare
+        # `Close` and no mouse or focus event before it, which is exactly what
+        # the debug log showed. Only a noted square has a tooltip to destroy,
+        # which is the whole of why a blank one was always fine.
+        #
+        # Hiding it earlier did not help, because the deletion still landed
+        # after the popup. Queueing our own open *behind* it does: both go on
+        # the same queue, and it went on first.
+        QToolTip.hideText()
         if event.button() == Qt.MouseButton.RightButton and \
                 self.state.notes_at(*square):
-            self.host.note_menu(*square, at)
+            QTimer.singleShot(0, partial(self.host.note_menu, *square, at))
         else:
-            self.host.edit_note(*square)
+            QTimer.singleShot(0, partial(self.host.edit_note, *square))
 
     def paintEvent(self, _event):
         p = QPainter(self)
@@ -1000,7 +1015,17 @@ class AutomapWindow(QMainWindow):
         box in front of the map is an interruption for something that should
         cost one keystroke.
         """
-        pop = NotePopover(self.state, x, y, index, self)
+        _notelog("edit_note(%s, %s, index=%r): area=%r, %d notes",
+                 x, y, index, self.state.area, len(self.state.notes_at(x, y)))
+        try:
+            pop = NotePopover(self.state, x, y, index, self)
+        except Exception:
+            # Logged and re-raised rather than swallowed: an exception here
+            # would otherwise reach `sys.stderr` and, on a windowed Windows
+            # build, nothing at all.
+            _notelog("edit_note(%s, %s) failed while building:\n%s",
+                     x, y, traceback.format_exc())
+            raise
         pop.changed.connect(self.notes_changed)
         corner = self.canvas.mapToGlobal(self.canvas.corner_of(x, y))
         pop.move(corner)

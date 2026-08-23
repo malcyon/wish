@@ -89,6 +89,13 @@ class NotePopover(QWidget):
         note = (existing[index] if index is not None and index < len(existing)
                 else None)
         self.chosen = note.type if note else notemod.DEFAULT
+        # The state every branch below turns on, said out loud. A popover that
+        # opened on a noted square arrived empty and half-painted, and the one
+        # thing no log had yet was what it was holding when it did.
+        _log("popover %s building: %d existing, index=%r, type=%r, text=%r, "
+             "chosen=%r, label=%r", (x, y), len(existing), index,
+             getattr(note, "type", None), getattr(note, "text", None),
+             self.chosen, getattr(note, "label", None))
 
         self.setStyleSheet(
             f"NotePopover {{ background: {CARD.name()}; border: 1px solid "
@@ -151,6 +158,10 @@ class NotePopover(QWidget):
         hint = QLabel("Enter keeps it, Escape leaves it alone")
         hint.setFont(small)
         box.addWidget(hint)
+        # `isHidden`, not `isVisible`: nothing is "visible" yet, because the
+        # popover itself has not been shown.
+        _log("popover %s built: %d widgets, delete shown=%s",
+             (x, y), len(self.findChildren(QWidget)), not self.remove.isHidden())
 
     # -- editing ---------------------------------------------------------
 
