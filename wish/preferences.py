@@ -642,7 +642,7 @@ class PreferencesDialog(QDialog):
         # instead of a number, and turned into milliseconds the moment anybody
         # touched an arrow. Donald: confusing. So the state is a checkbox and
         # the spin box only ever shows a number.
-        self.interval_default = QCheckBox("Backend default")
+        self.interval_default = QCheckBox("Poll using backend default")
         self.interval_default.toggled.connect(self._interval_default_toggled)
         self.interval = QSpinBox()
         self.interval.setRange(MIN_INTERVAL_MS, 60000)
