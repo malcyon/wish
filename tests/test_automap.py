@@ -443,10 +443,11 @@ def test_a_fresh_config_offers_three_areas_for_fast_travel(tmp_path,
     fresh config from a player who unticked everything."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    from automap.config import DEFAULT_WARP_AREAS, Settings
+    from automap.config import DEFAULT_FAST_TRAVEL_TARGETS, Settings
 
-    assert Settings().warp_areas is None
-    assert Settings().chosen_areas() == DEFAULT_WARP_AREAS == (0, 20, 21)
+    assert Settings().fast_travel_targets is None
+    assert Settings().chosen_areas() == DEFAULT_FAST_TRAVEL_TARGETS == (
+        0, 20, 21)
     # And a file written before the setting existed is a fresh config too.
     Settings(reveal=False).save()
     assert Settings.load().chosen_areas() == (0, 20, 21)
@@ -467,7 +468,7 @@ def test_the_chosen_areas_survive_a_reload_and_so_does_an_empty_choice(
 
     settings.set_chosen_areas([])
     settings.save()
-    assert Settings.load().warp_areas == []
+    assert Settings.load().fast_travel_targets == []
     assert Settings.load().chosen_areas() == ()
 
 
@@ -479,9 +480,10 @@ def test_a_hand_edited_area_list_is_read_for_what_it_holds(tmp_path,
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import Settings
 
-    assert Settings(warp_areas=["0", 20, None, "twenty"]).chosen_areas() == (
+    assert Settings(
+        fast_travel_targets=["0", 20, None, "twenty"]).chosen_areas() == (
         0, 20)
-    assert Settings(warp_areas=7).chosen_areas() == (0, 20, 21)
+    assert Settings(fast_travel_targets=7).chosen_areas() == (0, 20, 21)
 
 
 def test_unreadable_settings_are_not_fatal(tmp_path, monkeypatch):
@@ -1572,6 +1574,34 @@ def test_with_nothing_attached_the_buttons_are_disabled_not_inert(app):
     assert bar.buttons["heal"].toolTip() == "no emulator attached"
 
 
+def test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
+    """Donald's order, and the labels in the American spelling he asked for
+    three times. `actions()` is the reading order and `COLUMNS` breaks it into
+    rows, so this pins both at once."""
+    from automap.actionbar import COLUMNS, ActionBar
+    bar = ActionBar()
+    grid = bar.layout()
+    rows: dict[int, list[str]] = {}
+    for name, button in bar.buttons.items():
+        i = grid.indexOf(button)
+        row, column, _, _ = grid.getItemPosition(i)
+        rows.setdefault(row, []).append((column, button.text()))
+    laid = [[text for _, text in sorted(rows[r])] for r in sorted(rows)]
+    assert laid == [
+        ["Heal the party", "Store memorized spells", "Restore memorized "
+         "spells"],
+        ["Identify all items", "Turn quickfight off"],
+    ]
+    assert COLUMNS == 3
+    # The label moved to the American spelling; the internal names and the
+    # record field `spells_memorised` did not.
+    assert set(bar.buttons) == {"heal", "store-spells", "restore-spells",
+                                "identify", "clear-quickfight"}
+    assert "memorised" not in " ".join(b.text() for b in bar.buttons.values())
+    # Levelling is on the roster card, not here.
+    assert "level-up" not in bar.buttons
+
+
 def test_a_fight_disables_what_a_fight_forbids(app):
     from automap.actionbar import ActionBar
     bar = ActionBar()
@@ -1748,11 +1778,72 @@ def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     assert card.conditions.names == ()
 
 
+def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):
+    """Roster block `+0x0C` bit 7, CONFIRMED. Its own row under the readied
+    line and right-aligned -- not the conditions row, which is what has
+    happened *to* a character rather than what their player chose."""
+    from automap.panel import CharacterCard
+    card = CharacterCard()
+    card.show_character(_character(quickfight=True))
+    assert card.quickfight.names == ("person-running",)
+    assert card.quickfight.toolTip() == "Quickfight"
+    # Not in with the conditions, and not shifting the card when it goes.
+    assert card.conditions.names == ()
+    tall = card.sizeHint().height()
+    card.show_character(_character())
+    assert card.quickfight.names == ()
+    assert card.sizeHint().height() == tall
+
+
+def test_the_quickfight_bit_reaches_the_snapshot_from_the_roster_page(app):
+    """The panel does not read the roster itself: `live.characters` carries the
+    bit, and `actions.QUICKFIGHT` writes the same byte and the same mask."""
+    from automap import actions
+    save0, save1 = captured()
+    roster = bytearray(save1)
+    plain = live.snapshot_from_bytes(save0, bytes(roster))
+    assert plain is not None and not any(c.quickfight for c in plain.characters)
+
+    slot = plain.characters[0].slot
+    roster[slot * live.ROSTER_STRIDE
+           + live.ROSTER_QUICKFIGHT] |= live.QUICKFIGHT_BIT
+    snap = live.snapshot_from_bytes(save0, bytes(roster))
+    assert [c.slot for c in snap.characters if c.quickfight] == [slot]
+
+    assert actions.QUICKFIGHT.address(slot) == 0x8300 + slot * 0x20 + 0x0C
+    assert actions.QUICKFIGHT.mask == live.QUICKFIGHT_BIT
+
+
+def test_the_running_figure_is_font_awesome_verbatim_and_reads_at_13px(app):
+    """Lifted from `svgs-full/solid/person-running.svg`, not redrawn: three
+    subpaths -- head, body, trailing arm -- which is what a runner looks like
+    and is why it passes the 13px rule despite not being one silhouette."""
+    from PyQt6.QtGui import QColor, QImage, QPainter
+
+    from ui.iconpaint import draw_icon
+    assert "person-running" in icons.FONT_AWESOME
+    assert sum(1 for c in icons.commands("person-running") if c[0] == "M") == 3
+
+    size = 13
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(QColor("white"))
+    p = QPainter(image)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    draw_icon(p, "person-running", 0, 0, size, QColor("black"))
+    p.end()
+    ink = sum(1 for y in range(size) for x in range(size)
+              if QColor(image.pixel(x, y)).lightness() < 190)
+    # 34 pixels of ink at 13px, measured. A glyph that has come apart into
+    # nothing or filled into a blob fails here rather than on somebody's card.
+    assert 24 <= ink <= 60, ink
+
+
 def test_the_effect_table_is_still_shown_by_number():
-    """`por/traits.py` names the trait codes at record `0x0AD`, which is a
-    different table from the effect ids at `$4900`. Nothing maps one to the
-    other, so an effect keeps its number rather than borrowing a trait's
-    name."""
+    """The two lists share one namespace -- `LIBRARY $4028` reads the arrays
+    and falls back to the character's own slots -- so `por/traits.py` could
+    name an effect. It does not here: the strip beside the map is a row of
+    running spells and a PROBABLE name in it reads as a fact.
+    `docs/133-active-effects.md` is where the naming is being designed."""
     effect = live.Effect(slot=0, id=64, owner=0, duration=3, magnitude=0)
     assert effect.label == "effect 64"
     from por import traits

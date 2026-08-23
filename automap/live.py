@@ -60,6 +60,15 @@ EFFECT_SLOTS = 0x40
 FIRST_MONSTER = 8
 PARTY_WIDE = 0xFF
 
+# The quickfight bit, in the roster block: byte `+0x0C`, bit 7. CONFIRMED --
+# "The quickfight bit is roster `+0x0C`" in `docs/50-experiments.md`, where
+# selecting QUICK moved exactly this bit for exactly the character quickfought.
+# Kept here rather than in `actions.py` because `actions` imports this module
+# and not the other way round; `actions.QUICKFIGHT` builds its address from
+# these two, so the read side and the write side cannot drift apart.
+ROSTER_QUICKFIGHT = 0x0C
+QUICKFIGHT_BIT = 0x80
+
 # Bits 6-7 of the duration byte select the time unit. Which unit each value
 # means is NOT decoded, so the count is shown and the unit is not invented.
 DURATION_COUNT = 0x3F
@@ -172,6 +181,10 @@ class Character:
     #: `0x0A1`, CONFIRMED: how many levels undead have drained. One of the two
     #: conditions the record actually tells us; the other is hit points at 0.
     levels_drained: int = 0
+    #: Roster block `+0x0C` bit 7, CONFIRMED. Not a condition: it is a setting
+    #: the player made from the combat menu, so the card badges it apart from
+    #: the conditions row rather than in the danger red beside the name.
+    quickfight: bool = False
 
     @property
     def down(self) -> bool:
@@ -186,10 +199,18 @@ class Character:
     def conditions(self) -> tuple[tuple[str, str], ...]:
         """`(icon, what it means)` for every condition we can actually read.
 
-        Deliberately two. The effect table at `$4900` carries ids nothing in
-        the project names -- `por/traits.py` is the *trait* table at `0x0AD`,
-        a different code space -- so a poisoned or paralysed icon would be an
-        invented mapping. See `docs/107-roster-and-notes.md`.
+        Still two, and no longer for the old reason. The effect ids at `$4900`
+        and the trait codes at `0x0AD` are **one namespace**, not two:
+        `LIBRARY $4028` reads the arrays first and falls back to the
+        character's own slots (`docs/133-active-effects.md`), so
+        `por/traits.py` names both and a badge would not be invented. 66 of
+        its 129 names are CONFIRMED, 21 of them things that can be true of a
+        player character.
+
+        What is missing is a chosen glyph for each, not a name. The candidates
+        and their verdicts at 13px are the table in
+        `docs/107-roster-and-notes.md`; Donald picks from it, and nothing is
+        badged until he has.
         """
         out = []
         if self.down:
@@ -376,6 +397,8 @@ def characters(save0: SaveGame0, save1: SaveGame1,
             effects=tuple(e for e in effects if e.owner == slot.index),
             readied=readied(payload, slot.index, names),
             levels_drained=record.get("levels_drained") or 0,
+            quickfight=live and bool(block.raw[ROSTER_QUICKFIGHT]
+                                     & QUICKFIGHT_BIT),
         ))
     return tuple(out)
 

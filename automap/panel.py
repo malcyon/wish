@@ -77,7 +77,8 @@ NOTE = QColor("#b8601f")
 # **There are no class icons.** There were, beside the class text; four
 # 13-pixel glyphs that nobody could tell apart at that size and that said
 # nothing the words "fighter/thief" beside them did not. `IconRow` stays,
-# because the conditions row uses it and a skull at 13px does read.
+# because the conditions row and the quickfight badge use it, and a skull or a
+# running figure at 13px does read.
 ICON_SIZE = 13
 
 
@@ -175,7 +176,7 @@ def _label(text="", *, bold=False, muted=False, size=0) -> QLabel:
 
 class CharacterCard(QFrame):
     """One character: name, class and level, AC and THAC0, bars, what is in
-    hand, and what is on them.
+    hand, what is on them, and whether they are on quickfight.
 
     **The Level Up button lives here and nowhere else.** It sits at the right
     end of the class-and-level line, and it is *hidden* -- not disabled --
@@ -249,6 +250,20 @@ class CharacterCard(QFrame):
         self.readied.setMinimumHeight(14)
         box.addWidget(self.readied)
 
+        # The quickfight badge, under the readied line and pushed to the right
+        # edge -- Donald's placement. **Its own row, not the conditions row**:
+        # the conditions row sits beside the name in the danger red and holds
+        # things that have happened *to* a character, where quickfight is a
+        # setting that character's player made. It is always here and always
+        # 13px tall, empty or not, so toggling it does not shift the cards
+        # below.
+        badge_row = QHBoxLayout()
+        badge_row.setContentsMargins(0, 0, 0, 0)
+        badge_row.addStretch(1)
+        self.quickfight = IconRow()
+        badge_row.addWidget(self.quickfight, 0, Qt.AlignmentFlag.AlignRight)
+        box.addLayout(badge_row)
+
         # Always present, even when empty: a strip that appears and disappears
         # would shift every card below it each time a spell expires.
         self.effects = _label(size=8, muted=True)
@@ -321,6 +336,9 @@ class CharacterCard(QFrame):
             bar.hide()
 
         self.show_readied(who.readied)
+
+        self.quickfight.set_icons(("person-running",) if who.quickfight else ())
+        self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
 
         self.effects.setText("   ".join(e.label for e in who.effects))
         self.effects.setToolTip("\n".join(e.detail for e in who.effects))
