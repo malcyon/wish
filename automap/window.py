@@ -8,6 +8,7 @@ way is what lets the map be developed and tested without a display -- see
 
 from __future__ import annotations
 
+import logging
 from functools import partial
 
 from PyQt6.QtCore import (
@@ -90,6 +91,8 @@ HATCH_PEN = QColor("#68809a")
 #: to go to stderr and nowhere else.
 NO_MAPS = ("No game disks found, so there are no maps. "
            "File > Preferences… to say where they are.")
+
+_notelog = logging.getLogger("wish.automap.note").info
 
 
 def game_named(title: str | None):
@@ -975,12 +978,19 @@ class AutomapWindow(QMainWindow):
         pop.changed.connect(self.notes_changed)
         corner = self.canvas.mapToGlobal(self.canvas.corner_of(x, y))
         pop.move(corner)
-        pop.show()
-        pop.field.setFocus()
         # A popup with no reference is collected; the reference goes when the
         # popover destroys itself, so a closed one is not kept alive here.
         pop.destroyed.connect(self._popover_gone)
+        # **Before `show()`, not after.** Showing a popup pumps the platform's
+        # message queue, so anything that asks "is a popover open?" during the
+        # show -- the canvas suppressing its tooltip, for one -- was answered
+        # "no" and acted on it.
         self._popover = pop
+        pop.show()
+        pop.field.setFocus()
+        _notelog("popover open at %s: %s, %s notes on the square",
+                 (x, y), pop.geometry().getRect(),
+                 len(self.state.notes_at(x, y)))
 
     def _popover_gone(self, _obj=None) -> None:
         self._popover = None

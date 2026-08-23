@@ -20,7 +20,9 @@ The window owns the click that opens this; everything here is the popover.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+import logging
+
+from PyQt6.QtCore import QEvent, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -40,6 +42,22 @@ from .panel import CARD, INK, LATTICE, MUTED, NOTE
 
 BUTTON = 26
 ICON = 15
+
+_log = logging.getLogger("wish.automap.note").info
+
+#: The events that can take a popover down, in the order Qt would send them.
+#: Logged because the popover closes itself on Windows the instant it opens on
+#: a square that already has a note, and nothing in the debug log said why --
+#: two guesses at the mechanism from Linux were both wrong, so the next run
+#: says which event arrived rather than being reasoned about.
+_CLOSERS = {
+    QEvent.Type.Close: "Close",
+    QEvent.Type.Hide: "Hide",
+    QEvent.Type.WindowDeactivate: "WindowDeactivate",
+    QEvent.Type.FocusOut: "FocusOut",
+    QEvent.Type.MouseButtonPress: "MouseButtonPress",
+    QEvent.Type.MouseButtonRelease: "MouseButtonRelease",
+}
 
 
 class NotePopover(QWidget):
@@ -133,6 +151,13 @@ class NotePopover(QWidget):
         box.addWidget(hint)
 
     # -- editing ---------------------------------------------------------
+
+    def event(self, e):
+        kind = _CLOSERS.get(e.type())
+        if kind is not None:
+            _log("popover %s: %s (visible=%s, active=%s)",
+                 self.square, kind, self.isVisible(), self.isActiveWindow())
+        return super().event(e)
 
     def choose(self, name: str) -> None:
         self.chosen = name

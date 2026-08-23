@@ -1850,6 +1850,31 @@ def test_a_click_hides_the_tooltip_before_the_popover_opens(app, tmp_path,
     window._popover.close()
 
 
+def test_the_popover_is_on_record_before_it_is_shown(app, tmp_path,
+                                                     monkeypatch):
+    """`_popover` is set before `show()`, not after.
+
+    Showing a popup pumps the platform's message queue, so anything asking
+    "is a popover open?" during the show is answered then. The canvas's
+    tooltip guard asks exactly that, and only a square that *has* a note has a
+    tooltip to offer -- which is why a noted square's popover died on Windows
+    and a blank square's did not, and why suppressing the tooltip alone did
+    not fix it. `show()` here stands for that moment.
+    """
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.state.add_note(3, 4, Note("dueling pairs", "encounter"))
+
+    seen = []
+    from automap import noteeditor
+    real = noteeditor.NotePopover.show
+    monkeypatch.setattr(noteeditor.NotePopover, "show",
+                        lambda s: (seen.append(window._popover), real(s)))
+    window.edit_note(3, 4)
+    assert seen and seen[0] is window._popover, \
+        "the window knew about the popover before it was shown"
+    window._popover.close()
+
+
 def test_right_clicking_a_square_offers_edit_and_delete(app, tmp_path,
                                                         monkeypatch):
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
