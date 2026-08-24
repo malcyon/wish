@@ -380,6 +380,27 @@ Each entry says what the game does, what it should do, the evidence, and what
 the player sees. Keep the addresses to what carries the evidence -- the entry
 has to make sense to somebody who has never read a disassembly.
 
+**Two things every bug entry needs and most bug reports never have.**
+
+**How a player ends up there.** Not the trigger in memory -- the situation. "You
+save on the road within sight of a place you have not found yet, and reload"
+is how somebody arrives at bug 10; "the paint runs on entry and not on load" is
+why it happens. Both belong in the entry and they are not the same sentence.
+Write the first one even when it is unflattering: **"no player can reach this"
+is an answer**, and it is the answer that moves an entry out of
+`goldbox-bugs.md` and into `125-bug-notes.md`. N18 is there for exactly that
+reason.
+
+**The steps, in the game's own terms.** A numbered path a person can follow with
+a joystick, naming the menus and the commands the game shows -- `VIEW`, `ITEMS`,
+`QUICK` -- and no addresses at all. If the only route is editing the files out
+from under the engine, **say so in those words**, because that is the sentence
+that tells the next reader it is not a bug a player hits.
+
+The discipline is worth the lines because the failure it prevents is a real
+one: an entry that is all mechanism reads as authoritative and cannot be
+checked, argued with, or reproduced by the person most likely to care.
+
 ## Help text in the GUI
 
 **Every word a user reads in the interface is Donald's to approve.** Labels,
