@@ -329,18 +329,24 @@ through Pools of Darkness and across into the Savage Frontier pair.
 
 ## The shape of it
 
-We already have the neutral middle. `por/yaml_io.py` decodes a C64 record into
-named fields and writes it back; `por/layout.py` is the field table. Conversion
-is the same idea with a second table:
+One neutral record in the middle and a codec per format around it. A **reader**
+decodes one port's bytes into named neutral values; a **writer** encodes those
+values into another port's bytes; neither knows the other exists.
 
 ```
-DOS character file  ->  decode  ->  named fields  ->  encode  ->  C64 record
+DOS character file  ->  reader  ->  NeutralCharacter  ->  writer  ->  C64 record
 ```
 
-That means a new `por/dos_layout.py` beside `por/layout.py`, in the same
-declarative style with a confidence on every field, and the existing YAML
-export as the interchange. **No new format is invented**: the middle is the one
-the editor already uses.
+The middle is `por/neutral.py`: a typed record of 62 declared fields, each one
+a `Value` carrying the number, the grade the source's own field table gave it,
+and the phrase saying where it came from. Every port keeps its own declarative
+table with a confidence on every field — `por/layout.py` for the C64,
+`por/dos_layout.py` for DOS — and a codec reads only its own.
+
+The YAML export is not the interchange. It was, while there was one direction;
+it is a presentation now, and `por/yaml_io.py` still builds it from a C64
+`CharacterRecord` rather than from the neutral record — see "Who talks to
+whom" below, where that is the design's largest remaining reach-around.
 
 ---
 
@@ -727,14 +733,16 @@ answer.
    285-byte character record and the 63-byte item record. 125 bytes CONFIRMED,
    56 PROBABLE, 4 GUESS, 100 unattributed — and the unattributed hundred is
    almost all live heap state the C64 has no use for.
-2. **Read a DOS character into the existing YAML export — done.**
-   `por.dos.export_party` converts the record and then hands it to
-   `yaml_io.entry_for`, which was split out of `export_save` for the purpose,
-   so a DOS party and a C64 party render through one code path in one shape.
+2. **Read a DOS character into the neutral record — done.**
+   `por.dos.to_neutral` is the DOS reader and the only half that knows a DOS
+   offset. `por.dos.export_party` then converts and hands the C64 record to
+   `yaml_io.entry_for`, so a DOS party and a C64 party *render* through one
+   code path; the YAML is the view, not the conversion.
    `python3 -m por.dos <save-dir> <slot> [game.d64]` prints it.
-3. **Write a C64 record from that YAML — done.** `por.dos.to_c64_record`
+3. **Write a C64 record from the neutral one — done.** `por.c64_codec.write`
    returns the 580 bytes and a `Report` saying, for **every one of the 580
-   offsets**, where that byte came from. `Report.unaccounted` is empty for all
+   offsets**, where that byte came from; `por.dos.to_c64_record` is now
+   nothing but `write(to_neutral(dos))`. `Report.unaccounted` is empty for all
    24 specimens, which is the test that replaced the round trip.
 4. **The items — done.** `por.dos.item_to_c64` is now the single copy of the
    projection and `tools/dosbox.py` re-exports it. Sixteen fixed C64 slots
@@ -821,17 +829,323 @@ are a C64 charset DOS has no equivalent of. Everything else is replaced.
 `Report.unaccounted` is empty: every one of `SAVEDGAME0`'s 7168 bytes has a
 one-line provenance, "carried through from the template save" included.
 
-## The module graph, which is generated
+## The design, drawn
 
-`por/` holds one neutral record and a codec per format, and what keeps that
-arrangement honest is that **a format's own layout has exactly one importer**:
-`dos_layout` is reached only from `dos`, and `c64_codec` never reaches for it.
-`dos` importing `c64_codec` is not a breach of that -- `por/dos.py` is the
-conversion driver as well as the DOS reader, and it calls `c64_codec.write`
-with a neutral record, never a DOS one. The graph is read out of the AST by
-`tools/genimports.py` rather than drawn by hand, because a codec quietly
-reaching into another format's layout is exactly the edge somebody adds without
-noticing.
+Four drawings of what `por/` actually does, read out of the source rather than
+out of the plan. They exist to settle three questions — whether the neutral
+record really sits in the middle, whether the reader/writer split falls in the
+same place at every field, and what a fourth format actually costs — and the
+answers are at the end of the section. Where a drawing disagrees with the
+design, the drawing is what is here.
+
+### One conversion end to end
+
+A DOS save in, a C64 record and a `Report` out. The two things worth following
+are **where the confidence floor is applied** (step 9, and nowhere else) and
+**where a refusal becomes a reported drop rather than a written guess** (the
+`else` branch: nothing reaches the record, a line reaches the report, and the
+byte is later accounted for as having no source).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Caller as caller
+  participant Reader as por/dos.py<br/>to_neutral
+  participant Table as por/dos_layout.py<br/>FIELDS_BY_NAME
+  participant Char as NeutralCharacter<br/>port is DOS
+  participant Writer as por/c64_codec.py<br/>write
+  participant Rec as CharacterRecord<br/>580 bytes
+  participant Rep as Report
+
+  Caller->>Reader: to_neutral(dos)
+  loop each value the DOS record carries
+    Reader->>Table: the DOS field's declared confidence
+    Table-->>Reader: Confidence
+    Reader->>Char: set(name, value, origin, confidence, how, dropped)
+    Note over Char: a name outside FIELDS raises NeutralError here.<br/>The vocabulary refuses a typo at the reader,<br/>not at the writer that would never see the field
+  end
+  Reader->>Char: drop("DOS heap_0c1 @0x0c1: live heap pointers") x 12
+  Note over Reader,Char: the reader says only where a value came from,<br/>and what it could not carry at all
+  Reader-->>Caller: char
+
+  Caller->>Writer: write(char, icon)
+  Writer->>Rec: CharacterRecord.blank()
+  loop each C64 field this writer knows
+    Writer->>Char: take(name, floor = GUESS)
+    alt graded at or above the floor
+      Char-->>Writer: Value
+      Writer->>Rec: set(c64_field, value.value)
+      Writer->>Rep: note(offset, size, value.line(destination, extra))
+      Note right of Rep: the writer's half of the line is the rule it applied:<br/>"packed to one bit", "repacked cleric-high/magic-user-low"
+      Writer->>Rep: dropped += value.dropped
+    else graded below the floor, or never set
+      Char-->>Writer: None
+      Writer->>Rep: dropped += "DOS name: read at UNKNOWN,<br/>which is not a grade this conversion will write"
+      Note right of Rec: nothing is written. The byte stays zero and is<br/>accounted for at the end as "zero, no DOS source"
+    end
+  end
+
+  Writer->>Rep: note(...) for every computed byte and documented constant
+  Writer->>Char: unwritten(taken)
+  Char-->>Writer: neutral fields no C64 field consumed
+  Writer->>Rep: dropped += those, then char.dropped, then char.warnings
+  Writer->>Rep: sources.setdefault(...) for every remaining layout byte
+  Writer-->>Caller: (rec, rep) with rep.unaccounted empty
+```
+
+Two things the drawing shows that the design did not intend:
+
+* **the floor is bypassed twice.** `infravision` and `strength_index` are
+  computed with `char.get("race")`, `char.get("strength")` and
+  `char.get("exceptional_strength")`, which read the value whatever its grade.
+  A `race` graded UNKNOWN would be refused by the direct pass and reported as
+  unwritable — and then used anyway to compute the infravision byte at
+  `0x0D5`. Latent today, because DOS grades all three CONFIRMED.
+* **a refusal loses the drops attached to it.** `Value.dropped` is emitted by
+  `emit`, and `emit` runs only on the branch that writes. The running `.SPC`
+  effects ride on `innate_effects.dropped`; were that field ever graded below
+  the floor, the refusal would be reported and the dropped effects would not.
+
+### What a codec author writes, and what it inherits
+
+The first six boxes are `por/neutral.py` and come free. `DosReader` and
+`C64Writer` are what a format costs.
+
+```mermaid
+classDiagram
+  direction LR
+
+  class Confidence {
+    <<enum, por/layout.py>>
+    UNKNOWN
+    GUESS
+    PROBABLE
+    CONFIRMED
+  }
+  class Provenance {
+    <<enum, the shape of the report line>>
+    COPIED
+    COMPUTED
+    RESHAPED
+  }
+  class Value {
+    <<frozen dataclass>>
+    +Any value
+    +str origin
+    +Confidence confidence
+    +Provenance how
+    +tuple dropped
+    +line(destination, extra) str
+  }
+  class FIELDS {
+    <<the vocabulary, 62 declared names>>
+    +str name
+    +str race
+    +str thac0_base
+    +str and 59 more, each stating its neutral convention
+  }
+  class NeutralCharacter {
+    +str port
+    +str source
+    +Map~str, Value~ fields
+    +list dropped
+    +list warnings
+    +set(name, value, origin, confidence, how, dropped)
+    +drop(what)
+    +take(name, floor) Value
+    +get(name, default) Any
+    +unwritten(taken) list
+  }
+  class Report {
+    +int total
+    +Map~int, str~ sources
+    +list dropped
+    +list warnings
+    +note(offset, size, why)
+    +summary_notes() list
+    +summary() str
+  }
+  class disposition {
+    <<module function>>
+    +disposition(direct, transformed, dropped, into) Map
+    +undeclared(declared, table) tuple
+  }
+
+  NeutralCharacter "1" o-- "0..62" Value : fields
+  NeutralCharacter ..> FIELDS : set refuses a name not declared here
+  Value --> Confidence
+  Value --> Provenance
+
+  class Field {
+    <<por/layout.py, shared by both tables>>
+    +str name
+    +int offset
+    +int size
+    +Confidence confidence
+  }
+  class DosFieldTable {
+    <<por/dos_layout.py>>
+    +Field the 285-byte DOS record
+  }
+  class C64FieldTable {
+    <<por/layout.py>>
+    +Field the 580-byte C64 record
+  }
+  DosFieldTable ..> Field
+  C64FieldTable ..> Field
+
+  class DosReader {
+    <<reader, one per source format>>
+    +to_neutral(dos) NeutralCharacter
+    +DIRECT
+    +TRANSFORMED
+    +DROPPED
+    +field_disposition() Map
+  }
+  class C64Writer {
+    <<writer, one per target format>>
+    +write(char, icon) tuple
+    +DIRECT
+    +LEVEL_FIELDS
+    +INFRAVISION
+    +strength_index(strength, percentile) int
+    -use(name) Value
+    -emit(v, destination, offset, size, extra)
+  }
+  class C64Report {
+    <<por/c64_codec.py, total 580>>
+    +unaccounted() list
+  }
+  class AmigaReport {
+    <<por/amiga.py, total 484>>
+    +unaccounted(record) list
+  }
+
+  DosReader ..> DosFieldTable : grades come from here
+  DosReader ..> NeutralCharacter : set, drop
+  DosReader ..> disposition
+  C64Writer ..> NeutralCharacter : take, unwritten
+  C64Writer ..> C64FieldTable : offsets come from here
+  C64Writer --> C64Report : builds
+  Report <|-- C64Report
+  Report <|-- AmigaReport
+
+  note for C64Writer "use and emit are closures inside write, not methods of anything. Every writer re-implements the floor, the refusal line, the taken list and the final unwritten, dropped and warnings sweep."
+  note for AmigaReport "All por/amiga.py inherits. It never sees a NeutralCharacter."
+```
+
+**A reader** is `to_neutral()` plus a field table with a confidence on every
+field. It inherits the vocabulary check, `Value`, the grades and `Report`.
+**A writer** is `write()` plus a name-to-name table, and it inherits `Report`,
+`take` and `unwritten` — but not `use` and `emit`, which are local closures
+inside `por/c64_codec.write` and carry the whole take-refuse-report protocol.
+The bookkeeping that makes a codec honest is the part a codec author copies by
+hand. That is the one place the "one reader or one writer" claim is more
+expensive than it sounds, and it is why `por/amiga.py`, written first,
+re-implemented all of it against a different middle.
+
+### Who talks to whom
+
+The question this has to answer is whether a port still talks to another port
+rather than through the neutral record. **Two do**, and they are drawn in red.
+
+```mermaid
+graph LR
+  classDef file stroke-dasharray: 5 5
+  classDef mid stroke-width:3px
+  classDef around stroke:#e05252,stroke-width:2px,color:#e05252
+
+  dosfile[("DOS save<br/>slot or .CHA, .ITM, .SPC")]:::file
+  c64file[("C64 SAVEDGAME0 / SAVEDGAME1")]:::file
+  pcfile[("Amiga Save/NAME.pc")]:::file
+
+  subgraph mid_group["through the neutral record"]
+    dos["por/dos.py<br/>to_neutral — the DOS reader"]
+    neutral["por/neutral.py<br/>NeutralCharacter, Value, FIELDS, Report"]:::mid
+    c64["por/c64_codec.py<br/>write — the C64 writer"]
+  end
+
+  doslayout["por/dos_layout.py<br/>the DOS field table"]
+  layout["por/layout.py<br/>the C64 field table, and Confidence"]
+  record["por/record.py<br/>CharacterRecord, 580 bytes"]
+  yaml["por/yaml_io.py<br/>entry_for — a dict off a CharacterRecord"]
+  amiga["por/amiga.py<br/>from_entry — the Amiga writer"]
+
+  dosfile -->|"1 read_party"| dos
+  dos -->|"2 offsets and grades"| doslayout
+  dos -->|"3 set / drop"| neutral
+  c64 -->|"4 take(name, floor = GUESS)"| neutral
+  c64 -->|"5 Value.line, Report.note"| neutral
+  c64 -->|"6 offsets"| layout
+  c64 -->|"7 rec.set, rec.set_raw"| record
+  record -->|8| c64file
+  neutral -->|"Confidence only"| layout
+
+  itm["dos.item_to_c64<br/>63 DOS bytes onto the C64's 16"]:::around
+  dos -->|"A"| itm
+  itm -->|"A the value set on inventory is<br/>already C64-shaped"| neutral
+
+  record -->|"B entry_for takes a C64 record,<br/>never a NeutralCharacter"| yaml
+  yaml -->|"C from_entry, to_pc"| amiga
+  amiga -->|"D Report and disposition only —<br/>no NeutralCharacter"| neutral
+  amiga -->|E| pcfile
+  c64file -.->|"F amiga.export_party calls<br/>yaml_io.export_save itself"| yaml
+
+  class yaml,amiga around
+```
+
+**A** is the known exception and it is declared, not hidden: `FIELDS` says
+`inventory` is "the shared sixteen-byte item shape `por/items.py` reads", so
+the neutral vocabulary itself admits that one field is a port's shape. The
+value `to_neutral` sets has already been through `dos.item_to_c64`. It carries
+the 157-of-163 evidence and `tools/dosbox.py` re-exports it, so it stays;
+what the drawing adds is that the exception is one field wide and stated in
+the vocabulary.
+
+**B, C, D, E, F** are the larger one, and it was not on the list.
+`por/amiga.py` imports `por/neutral.py` for `Report` and `disposition` and for
+nothing else — it never sees a `NeutralCharacter`. Its middle is the
+`yaml_io.entry_for` dictionary, and its `DIRECT`, `TRANSFORMED` and `DROPPED`
+tables are written in that dictionary's vocabulary (`classes`, `class_code`,
+`combat`, `npc`, `icon`, `slot`), not in `FIELDS`. Since `entry_for` is built
+from a C64 `CharacterRecord`, **the Amiga writer's source format is the C64
+record**, and `amiga.export_party` reads a C64 save disk through
+`yaml_io.export_save` to get one. So there are two middles, and the older one
+is C64-shaped.
+
+The same edge runs the other way for the DOS *view*: `dos.export_party` builds
+a C64 record and hands it to `entry_for`, so a DOS character is displayed by
+being converted to the C64 first. Harmless while the C64 is the only
+destination; it is the pairwise web the moment a second one exists, because
+DOS to Amiga would today read DOS, write a C64 record, render it as a dict and
+convert that — through a port neither end asked for.
+
+### The module graph, which is generated
+
+`por/` holds one neutral record and a codec per format, and the invariant that
+keeps that arrangement honest is that **a format's own record table is reached
+only by that format's own codec**: `dos_layout` is imported by `dos` and by
+nothing else, and `c64_codec` never reaches for it.
+
+The graph does not show that invariant cleanly, and the reason is
+`por/layout.py`. It is two things in one module — the C64's 580-byte field
+table *and* the project's shared vocabulary, `Confidence`, `Field` and `Kind`
+— so it has eight importers where `dos_layout` has one. Three of those eight
+want the C64 record itself (`c64_codec`, `record`, and `strength` for
+`NAME_SIZE`); the other five — `dos`, `dos_layout`, `neutral`, `memory`,
+`areas` — want `Confidence` and nothing more. The edge
+`neutral --> layout` reads as the neutral middle depending on the C64 port and
+is nothing of the kind.
+
+`dos --> c64_codec` is not a breach either: `por/dos.py` is the conversion
+driver as well as the DOS reader, and it calls `c64_codec.write` with a
+neutral record, never a DOS one. It also re-exports `c64_codec.Report` and
+`INFRAVISION` under their old names, which is the whole of the rest of that
+edge.
+
+The graph is read out of the AST by `tools/genimports.py` rather than drawn by
+hand, because a codec quietly reaching into another format's layout is exactly
+the edge somebody adds without noticing.
 
 ```mermaid
 graph LR
@@ -890,6 +1204,36 @@ graph LR
 
 A dotted edge is an import inside a function or a class body: real, but
 deferred, and usually there to break a cycle.
+
+**The graph is one edge short, and the gap is the shape of the thing it
+guards.** `tools/genimports.py` matches relative imports (`from .layout import
+…`) and `import por.layout`, but not `from por.layout import …` — an absolute
+import of a sibling. `por/areas.py` writes exactly that, so `areas --> layout`
+is missing above; a codec written the same way would reach into another
+format's layout without appearing here at all. `edges()` needs the
+`ast.ImportFrom` case with `level == 0` and a `module` beginning `por.`.
+
+### What the drawings settle
+
+1. **Does the neutral record sit in the middle?** For DOS to C64, yes: the
+   reader names DOS offsets, the writer names C64 fields, and neither imports
+   the other's table. `dos.item_to_c64` is the declared exception and is one
+   field wide. **For the Amiga, no** — `por/amiga.py` never touches a
+   `NeutralCharacter`; its middle is the `yaml_io.entry_for` dictionary, which
+   is built from a C64 record. There are two middles and the older one is
+   C64-shaped.
+2. **Is the reader/writer split in the right place at every field?** Nearly.
+   The floor is applied in one place and at one grade, and a refusal is
+   reported rather than guessed — but the floor is bypassed for `infravision`
+   and `strength_index`, a refusal drops the `Value.dropped` riding on it, and
+   two fields have the reader claiming the writer's rule: `name`'s origin says
+   "re-padded" for padding the C64 writer does, and `spells_memorised` is
+   explained as a reversal twice, once at each end.
+3. **What does adding a codec cost?** One reader or one writer, plus about
+   forty lines of take-refuse-report bookkeeping that `por/c64_codec.write`
+   keeps in local closures and a second writer would have to copy. The
+   vocabulary, the grades, `Value`, `Report` and `disposition` are inherited;
+   the protocol that uses them is not.
 
 ## Verification
 
