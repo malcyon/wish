@@ -4865,3 +4865,79 @@ converter has to set, and `docs/117`'s field table currently lists
 `$49EA`-`$49EF` among the unattributed gaps.
 
 The build scripts and the driven session are `work/p24/`.
+
+## The travel grid's cache entries, and the outdoor form of the recipe
+
+**Hypothesis.** Outdoors the two-entry recipe holds with **slot 4 (`SQRDATA`)**
+in place of slot 2 (`GEO`) — read off `LIBRARY $4209`'s slot→kind map but never
+observed — and something has to be said about `$49EA` and whether `$49E6` = 0
+puts the engine in travel mode from a cold load.
+
+**Method.** Differential first: the seven game-written wilderness saves
+(`work/p3/W1`–`W7`, `docs/90-specimens.md`) against the fourteen indoor
+specimens, which localises every byte before any theory. Then two live runs on
+pool slot 1, `work/p47/`.
+
+**What the specimens say, before the emulator was touched.** All seven outdoor
+saves, areas 26 (`$1A`, window `SQRDATA05`) and 27 (`$1B`, `SQRDATA06`):
+
+| byte | indoors | outdoors (W set) |
+|---|---|---|
+| cache slot 2 (`GEO`) | the map number, clean | `$80` — the stale indoor map, dirty |
+| cache slot 4 (`SQRDATA`) | `$FF` | `$85`/`$86` — the window, dirty |
+| cache slot 1 (`SQRPACI`) | varies | `$00` clean |
+| cache slot 0 (`GDRIVE`) | `$01` | `$00` |
+| `$49C5` | the `GEO` number | **the `SQRDATA` number** — `05`/`06`, not the id and not a `GEO` |
+| `$49E6` | 1 | 0 |
+| `$49EA` | the area's disk | **7 for area 26, 8 for area 27** — the disk carrying `ECLnn`, as indoors |
+| position | `$49C0`-`$49C2` | `$49C3`/`$49C4`, with `$49C0`-`$49C2` left stale |
+
+**Result. CONFIRMED, both live tests.** The recipe generalises with slot 4 in
+slot 2's role and nothing else new.
+
+*Test C, the minimal cache on a genuine outdoor save.* `W1.D64` — at rest on
+window `1A`, square (5,2) — with the cache cut to `$FF` × 25 except slot 4 =
+`$05` and slot 8 = `$1A`. It loaded, prompted for SIDE 7 (the disk hint doing
+its job), came up **`OUTDOORS 21:15 5,2`**, and travel-stepped east to (6,2) and
+back. `$8C00` read back byte-identical to `SQRDATA05` in **648 of 648**.
+
+*Test D, the retarget.* `PORSAVE13` — the Slums, indoors — given the outdoor
+recipe wholesale: cache `$FF` × 25 with slot 4 = `$05` and slot 8 = `$1A`,
+`$49E6` = 0, `$49EA` = 7, `$49C5` = `$05`, `$49F2` = `$1A`, `$49C3`/`$49C4` =
+(5,2), and `$49C0`-`$49C2` left at the template's own indoor square, exactly as
+every genuine outdoor save leaves them. From a cold boot it loaded, drew the
+travel window, put the party at **(5,2)** — the square the save carried — and
+walked. So `$49E6` = 0 *is* sufficient from a cold load, and slot 2 never needs
+writing: the refilled live cache read `GDRIVE00`, `SQRPACI00`, slot 2 still
+`$FF`, `SECSET05`, `SQRDATA05`, `ECL1A`, which is `LOADFILES`' outdoor branch
+exactly as `140-loaded-files-cache.md` reads it.
+
+**The placement question is settled outdoors, unlike test B indoors.** A warp
+with `$49C3`/`$49C4` = (0,0) came up at (0,0) (`work/reports/p20-arrivals.md`);
+test D with (5,2) came up at (5,2). Two different values, both honoured — on a
+load the arriving script does not re-place an outdoor party, and a converter's
+square survives.
+
+**A loose end worth recording: the hidden-site paint did not happen on either
+load.** `work/reports/p3-saves.md` measured the walk-in case at 647/648, the
+one difference being the nomad camp square (12,11) painted `$39` over the
+disk's `$37` while its flag is clear. Both p47 loads read **648/648 — no square
+painted**, on the same flag bytes (test C is W1's own flags verbatim).
+SPECULATIVE, mechanism unknown: perhaps the forced reload of a dirty slot 4
+runs after the script's paint and clobbers it, in which case loading an outdoor
+save shows undiscovered sites until the next repaint — a player-visible bug
+candidate. The experiment: load the unmodified `W1.D64`, read `$8C00`; if it
+too is 648/648 the cache edit is exonerated, and walking the party within sight
+of (12,11) says whether the player is actually shown the camp.
+
+**What this leaves for the converter.** The C64 side is closed: the refusal in
+`por.dos.apply_file_cache` for areas 25–27 can be replaced by the recipe above
+(slot 4 = the `SQRDATA` number, slot 8 = the id, `$49C5` = the `SQRDATA`
+number, `$49E6` = 0, disk from `por/areas.py`, position into `$49C3`/`$49C4`).
+The **DOS side is not**: none of the three DOS specimen saves is outdoors, so
+where a DOS save keeps the travel square is unmeasured. PROBABLE by the
+variable-array mapping that already carried `$49C5` and `$49F2`, it is
+`savgam_word` at `$49C3`/`$49C4`; the experiment is one DOS save made on the
+overland map, its words at those addresses against the on-screen position.
+
+Build scripts, runner, logs and screenshots: `work/p47/`.

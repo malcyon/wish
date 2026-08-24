@@ -184,5 +184,28 @@ Given a target area id `N`, its `GEO` number `G` and the disk `D` that carries
 | `$49C5` | `G` |
 | `$49C0`-`$49C2` | the party's square and facing |
 
-Outdoors the same shape holds with slot 4 (`SQRDATA`) in place of slot 2 —
-untested; `137-wilderness-automap.md` has the travel-grid combinations.
+## The outdoor form — areas 25, 26 and 27
+
+CONFIRMED, twice, in the running game (`work/p47/`): once cutting a genuine
+wilderness save's cache to the two entries, once retargeting the indoor Slums
+template onto travel window `1A` from a cold boot. Both came up `OUTDOORS`,
+at the square the save carried, and walked the grid; `$8C00` matched the
+window's `SQRDATA` file in 648 of 648 bytes.
+
+The same shape with **slot 4 (`SQRDATA`) in slot 2's role**, and the `SQRDATA`
+number `S` (`04`/`05`/`06`) standing in for `G` everywhere `G` appears:
+
+| address | value |
+|---|---|
+| `$4BC0`-`$4BD8` | `$FF` × 25, then slot 4 = `S` and slot 8 = `N` |
+| `$49EA` | `D` — still the disk carrying `ECLN`: 6, 7, 8 for the three windows |
+| `$49E6` | 0, and it is sufficient on its own to come up in travel mode |
+| `$49C5` | `S` — the seven game-written outdoor specimens all carry it, not `G` and not `N` |
+| `$49C3`-`$49C4` | the travel square. `$49C0`-`$49C2` stay stale, as every genuine outdoor save leaves them |
+
+Slot 2 stays `$FF` and stays empty after arrival — no `GEO` is loaded outdoors.
+The refill is `LOADFILES`' travel branch: `GDRIVE00`, `SQRPACI00`, `SECSET0n`
+and the `SQRDATA` itself. And unlike indoors, the placement question is closed:
+a warp carrying (0,0) came up at (0,0) and the retarget carrying (5,2) came up
+at (5,2), so the arriving script honours `$49C3`/`$49C4` rather than re-placing
+the party.
