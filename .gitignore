@@ -73,6 +73,8 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+# Sphinx autosummary writes one stub per module here at build time.
+docs/api/generated/
 
 # PyBuilder
 .pybuilder/

@@ -1,0 +1,13 @@
+# What Read the Docs installs to build the API reference. Pinned so a build
+# two years from now is the build we tested -- docs/conf.py, issue #44.
+#
+# PyQt6 is deliberately absent. autodoc imports what it documents, and
+# `automap`, `editor`, `wish` and `ui` all pull Qt in, but `autodoc_mock_imports`
+# covers it and the docstrings are what is being published. Installing PyQt6 on
+# the builder would cost ~100 MB and buy nothing.
+sphinx==9.1.0
+# The knowledge base in docs/ is Markdown and is published beside the API pages.
+myst-parser==5.1.0
+furo==2025.12.19
+# por/yaml_io.py imports it at module scope, so autodoc needs it for real.
+PyYAML==6.0.3
