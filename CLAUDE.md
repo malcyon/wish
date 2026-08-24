@@ -290,6 +290,21 @@ commit message only when it needs saying -- one sentence is still the rule.
 
 ## Documentation
 
+**A new file means a new row in that directory's `README.md`.** Every package
+directory carries one -- a table of `file` and `purpose`, one line each -- and
+`INDEX.md` at the top level says what each directory is for. Add the row in the
+same change that adds the file, not afterwards: a table that is only mostly
+true is worse than no table, because the gap is invisible.
+
+The line says what the file is *for*, not what it is named. "Character record
+layout" is worthless beside a file called `layout.py`; "the 580-byte character
+record as a declarative table of fields, each with a confidence grade" earns
+its place. If a file is generated, or generates something, the row says so --
+that is what a reader needs to know before editing it.
+
+The same goes for a file that moves or is deleted: the row moves or goes with
+it.
+
 `docs/50-experiments.md` is the only place that gets length, because the whole
 project is the reasoning. Everything else is a lookup table: state the finding,
 give the evidence in one clause, link the experiment by name.
