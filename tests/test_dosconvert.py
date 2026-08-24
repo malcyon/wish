@@ -24,7 +24,7 @@ import pytest
 import yaml
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import dos, dos_layout, spells
+from por import areas, dos, dos_layout, spells
 from por.layout import RECORD_SIZE as C64_RECORD_SIZE
 
 # --- the tables, which need no save -----------------------------------------
@@ -359,6 +359,12 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     assert payload[0x49C0 - 0x4900] == x
     assert payload[0x49C1 - 0x4900] == y
     assert payload[0x49C2 - 0x4900] == facing
+    # The area is not written here: `$4BC2` is slot 2 of the loaded-files
+    # cache, so it belongs to `apply_file_cache` with the other twenty-four.
+    payload[0x4BC2 - 0x4900] = 0xFF
+    dos.apply_position(payload, save)
+    assert payload[0x4BC2 - 0x4900] == 0xFF
+    dos.apply_file_cache(payload, save)
     assert payload[0x4BC2 - 0x4900] == dos.area_id(save)
     # Nothing outside the two regions was touched.
     assert payload[:0x49C0 - 0x4900] == bytes(0xC0)
@@ -401,31 +407,63 @@ def test_convert_save_accounts_for_the_whole_payload():
 
 
 @needs_dos_saves
-def test_a_template_from_another_area_is_refused():
-    """The loaded-files cache at `$4BC0` names the files for the template's
-    area, `$4BC2` is entry 2 of it, and nothing in a DOS save can refill the
-    rest. A converted save built over a mismatched template loads, seats the
-    party on the DOS square, and then hangs in `OUTWARD BOUND ...` asking for
-    a disk forever -- twice, once with the region zeroed and once with bit 7
-    set on every entry. Refusing is better than writing that.
-    `docs/117-save-conversion.md`, "Do not zero the loaded-files cache".
+def test_a_template_from_another_area_is_retargeted_not_refused():
+    """`$FF` in all twenty-five slots, then slot 2 = the `GEO` and slot 8 =
+    the area id. That is the whole cache a save needs: the arriving script's
+    entry 4 refills the rest, CONFIRMED twice in the running game
+    (`docs/140-loaded-files-cache.md`). The three bytes outside the cache go
+    with it, `$49EA` above all -- without the disk hint the loader sits on
+    `INSERT SIDE # N` hunting a file that is not on the side it asked for.
     """
     savgam = _savgam("A")
     there = dos.area_id(savgam)
+    where = areas.area(there)
     save0 = bytearray(0x1C00)
     save0[0x4BC2 - dos.SAVE0_BASE] = (there + 1) & 0x7F
-    with pytest.raises(dos.AreaMismatch):
-        dos.convert_save(_save_dir(), "A", save0)
-    # The same template, standing where the DOS party stands, is accepted --
-    # and $4BC2 keeps whatever reload bit it had.
-    save0[0x4BC2 - dos.SAVE0_BASE] = there | dos.FILE_CACHE_RELOAD
-    before = bytes(save0[dos.FILE_CACHE[0] - dos.SAVE0_BASE:
-                          dos.FILE_CACHE[0] - dos.SAVE0_BASE
-                          + dos.FILE_CACHE[1]])
     dos.convert_save(_save_dir(), "A", save0)
-    after = save0[dos.FILE_CACHE[0] - dos.SAVE0_BASE:
-                  dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.FILE_CACHE[1]]
-    assert bytes(after) == before
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    cache = bytes(save0[at:at + dos.FILE_CACHE[1]])
+    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
+    want[dos.CACHE_GEO] = areas.geo_number(where.geos[0])
+    want[dos.CACHE_ECL] = there
+    assert cache == bytes(want)
+    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == where.disk
+    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == want[dos.CACHE_GEO]
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == there
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
+
+
+@needs_dos_saves
+def test_a_template_already_in_the_area_keeps_its_own_cache():
+    """A template standing where the DOS party stands carries a real cache the
+    game itself wrote, naming every file it had resident. That is strictly
+    more than the two slots a converted save needs, so it is kept."""
+    savgam = _savgam("A")
+    there = dos.area_id(savgam)
+    save0 = bytearray(0x1C00)
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    save0[at:at + dos.FILE_CACHE[1]] = bytes(range(0x20, 0x39))
+    save0[at + dos.CACHE_GEO] = there | dos.FILE_CACHE_RELOAD
+    before = bytes(save0[at:at + dos.FILE_CACHE[1]])
+    dos.convert_save(_save_dir(), "A", save0)
+    assert bytes(save0[at:at + dos.FILE_CACHE[1]]) == before
+
+
+@needs_dos_saves
+def test_an_area_whose_map_we_cannot_name_is_refused():
+    """Nine of the thirty areas: the four that load no map, the two whose
+    script picks one at run time, and the three travel-grid windows, where the
+    cache names a `SQRDATA` in slot 4 instead of a `GEO` in slot 2 and nothing
+    has tested it. Guessing there is what wrote a save that loads and hangs.
+    """
+    savgam = bytearray(_savgam("A"))
+    save0 = bytearray(0x1C00)
+    for id in (3, 8, 25):
+        off = 1 + 2 * (0x49C5 - dos.SAVGAM_BASE)
+        savgam[off:off + 2] = id.to_bytes(2, "little")
+        assert dos.area_id(bytes(savgam)) == id
+        with pytest.raises(dos.DosRecordError):
+            dos.apply_file_cache(save0, bytes(savgam))
 
 
 @needs_dos_saves

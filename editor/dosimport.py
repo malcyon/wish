@@ -11,13 +11,11 @@ reaches a disk until the user saves the result through the editor's ordinary
 Save, which is what keeps the backup guarantee in `editor/files.py` covering
 this the way it covers every other write.
 
-The second thing it exists for is the refusal. `por.dos.convert_save` will not
-build a save from a C64 template standing in a different area from the DOS
-party, because the loaded-files cache at `$4BC0` names the files for the
-template's area and nothing in a DOS save can refill it -- the result loads,
-seats the party, and then hangs asking for a disk. Coming out of a menu that
-has to be a sentence, not a traceback, so `rehearse` raises and the dialog
-prints `AREA_MISMATCH`.
+The template no longer has to stand where the DOS party stands. The
+loaded-files cache at `$4BC0` is decoded (`docs/140-loaded-files-cache.md`) and
+`por.dos.convert_save` writes it, so any Pool of Radiance save will do as a
+template. What is left of the refusal is the wrong game, which is still a
+sentence in the pane rather than a traceback.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`, so
 the two are never told apart by sniffing: the first picker asks for a folder.
@@ -44,7 +42,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por import areas, dos, games
+from por import dos, games
 from por.d64 import D64
 from por.savegame import SaveGame0, SaveGame1, load_save, store_save
 
@@ -78,21 +76,12 @@ TEMPLATE_FILTER = "Gold Box disks (*.d64 *.D64);;All files (*)"
 NO_TEMPLATE = "Choose a C64 save to convert into."
 DROPPED_HEADING = "The conversion cannot carry these:"
 
-#: The two refusals, both shown in the report pane with Convert greyed out.
+#: The refusal, shown in the report pane with Convert greyed out.
 WRONG_GAME = "This is a {title} save. Only Pool of Radiance can be converted."
-AREA_MISMATCH = (
-    "The DOS party is in {there} and this C64 save is in {here}.\n"
-    "Choose a C64 save made in {there}.")
 
 #: The status line after the conversion, which has written nothing yet.
 CONVERTED = "converted DOS slot {slot} - not saved yet"
 # ---------------------------------------------------------------------------
-
-
-def _area_named(id: int) -> str:
-    """An area by name where we have one, by number where we do not."""
-    area = areas.area(id)
-    return area.name if area is not None and area.name else f"area {id}"
 
 
 class NotPoolOfRadiance(dos.DosRecordError):
@@ -120,8 +109,8 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     """Convert onto a copy of the template and report, writing nothing.
 
     The template is read; the DOS files are read; the result exists only as
-    the returned `Conversion`. `por.dos.convert_save` raises `AreaMismatch`
-    from in here, which is the refusal the dialog turns into a sentence.
+    the returned `Conversion`. Anything `por.dos.convert_save` refuses raises
+    from in here, which is what the dialog turns into a sentence.
     """
     disk = D64.open(template)
     game, sg0, sg1 = load_save(disk)
@@ -136,27 +125,6 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     store_save(disk, sg0, sg1, game)
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot, pathlib.Path(template))
-
-
-def template_area(template: str | pathlib.Path) -> int | None:
-    """Which area a C64 save stands in, or None if it is not a save at all."""
-    try:
-        _game, sg0, _sg1 = load_save(D64.open(template))
-    except Exception as exc:
-        _log.debug("no area for %s: %s", template, exc)
-        return None
-    payload = sg0.to_bytes()
-    return payload[0x4BC2 - dos.SAVE0_BASE] & ~dos.FILE_CACHE_RELOAD
-
-
-def dos_area(folder: str | pathlib.Path, slot: str) -> int | None:
-    """Which area the DOS party stands in, or None if the slot will not read."""
-    path = pathlib.Path(folder) / f"SAVGAM{slot}.DAT"
-    try:
-        return dos.area_id(path.read_bytes())
-    except Exception as exc:
-        _log.debug("no area for %s: %s", path, exc)
-        return None
 
 
 def dropped_text(report: dos.Report) -> str:
@@ -253,9 +221,9 @@ class DosImportDialog(QDialog):
     def _rehearse(self) -> None:
         """Convert onto a copy, and put what it costs on screen.
 
-        Failures are shown, not raised: the area refusal is the expected one
-        and reads as a sentence, and anything else at least reaches the user
-        as its message while the log keeps the traceback.
+        Failures are shown, not raised: a refusal reaches the user as its own
+        message while the log keeps the traceback, which is a sentence in the
+        pane rather than what looks like a broken menu item.
         """
         self.conversion = None
         text = self._attempt()
@@ -268,12 +236,6 @@ class DosImportDialog(QDialog):
             return NO_TEMPLATE
         try:
             self.conversion = rehearse(self.folder, self.slot, self.template)
-        except dos.AreaMismatch:
-            here = template_area(self.template)
-            there = dos_area(self.folder, self.slot)
-            return AREA_MISMATCH.format(
-                here=_area_named(here) if here is not None else "?",
-                there=_area_named(there) if there is not None else "?")
         except NotPoolOfRadiance as exc:
             return WRONG_GAME.format(title=str(exc))
         except Exception as exc:

@@ -53,7 +53,7 @@ import pathlib
 import struct
 from typing import Any, Sequence
 
-from . import c64_codec, neutral, traits
+from . import areas, c64_codec, neutral, traits
 from .c64_codec import Report
 from .dos_layout import (
     EFFECT_SIZE,
@@ -86,6 +86,8 @@ __all__ = [
     "area_file",
     "apply_position",
     "apply_quest_flags",
+    "apply_file_cache",
+    "convert_save",
 ]
 
 
@@ -720,12 +722,16 @@ def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
 
 
 def apply_position(save0: bytearray, savgam: bytes) -> None:
-    """Write the party's square, facing and current area into `SAVEDGAME0`."""
+    """Write the party's square and facing into `SAVEDGAME0`.
+
+    The area is **not** written here.  `$4BC2` is slot 2 of the loaded-files
+    cache, not a field beside it, so it belongs to `apply_file_cache` with the
+    other twenty-four slots and the three bytes that make them findable.
+    """
     x, y, facing = position(savgam)
     save0[0x49C0 - SAVGAM_BASE] = x
     save0[0x49C1 - SAVGAM_BASE] = y
     save0[0x49C2 - SAVGAM_BASE] = facing
-    save0[0x4BC2 - SAVGAM_BASE] = area_id(savgam)
 
 
 # ---------------------------------------------------------------------------
@@ -748,33 +754,102 @@ ROSTER_STRIDE = 0x20
 EFFECT_ARRAYS = ((0x4900, 0xC0), (0x4B80, 0x40))
 #: Per-script scratch. `DUNGEON $202A` zeroes it on every area change anyway.
 SCRIPT_SCRATCH = (0x4A00, 0x20)
-#: The loaded-files cache: one entry per data-file type, saying which `GEO`,
-#: `ECL`, `MON` and `PIC` the engine believes are resident, and **bit 7 is a
-#: reload marker** (`docs/41-memory-regions.md`).  `$4BC2` is entry 2 and is
-#: the current area, which is why the two are one region and not two.
+#: The loaded-files cache: twenty-five slots, one per **file kind**, each
+#: holding the two hex digits of the file of that kind the engine believes is
+#: resident.  Slot 2 is `GEO`, which is why `$4BC2` is the area, and slot 8 is
+#: `ECL`.  `docs/140-loaded-files-cache.md` has the whole table.
 #:
-#: **Leave it alone, and take the template from the DOS save's own area.**
-#: Two experiments, both on a template standing in the Slums against a DOS
-#: party in New Phlan: zeroing the region hangs the game in `OUTWARD BOUND
-#: ...` asking for a disk forever, because entry 2 reads `$00` -- area 0 with
-#: the reload bit *clear*, which says the map it has not got is resident.
-#: Setting bit 7 on every entry hangs it too: the low bits are still the
-#: *template's* file numbers, so the engine reloads the wrong files for the
-#: new area.  Filling it correctly needs the entry-to-file mapping decoded,
-#: and until that is done `convert_save` refuses a template from a different
-#: area rather than writing a save that loads and then hangs.
+#: `$FF` is "empty" and is the only value the load path leaves alone.  Bit 7 is
+#: not data: `GEN $25DE` reads `LDA $4BC0,X / ORA #$80 / STA $6E13,X` for all
+#: twenty-five, so whatever bit a save carries is discarded and set again.
+#:
+#: **Two slots are enough.**  `$FF` everywhere else, slot 2 = the area's `GEO`
+#: number and slot 8 = the area id, and the arriving script's entry 4 refills
+#: the rest -- CONFIRMED twice in the running game, once retargeting a New
+#: Phlan save into Sokol Keep.  That is what lets a converted save stand
+#: somewhere the template never did.
 FILE_CACHE = (0x4BC0, 0x19)
+FILE_CACHE_EMPTY = 0xFF
 FILE_CACHE_RELOAD = 0x80
+#: Which slot is which kind, for the two a converted save writes.
+CACHE_GEO = 2
+CACHE_ECL = 8
+
+#: The disk hint.  `GEN $08BD` is `LDA $49EA / STA $6E12`, and `$6E12` is the
+#: `POOL` side the loader asks for by number.  It is not part of the cache but
+#: it is what makes the cache's entries findable: a save naming an area on
+#: another disk and carrying the template's hint sits on `INSERT SIDE # N`
+#: hunting a file that is not on the side it asked for.
+DISK_HINT = 0x49EA
+#: The map `LOADFILES` reloads into slot 2 indoors.
+CURRENT_GEO = 0x49C5
+#: The script id.  `CAMP $0D0B` copies it into cache slot 8 when it saves.
+CURRENT_SCRIPT = 0x49F2
+#: 1 indoors, 0 on the travel grid: `LOADFILES` picks the file *type* from it.
+INDOORS = 0x49E6
 
 
-class AreaMismatch(DosRecordError):
-    """The template save stands somewhere the DOS party does not."""
+def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
+    """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
+
+    Returns the one line the report puts against the cache, because which of
+    the two things happened is exactly what a reader of the report wants to
+    know:
+
+    * the template already stands in that area, and its own cache -- a real
+      one, written by the game -- is kept untouched;
+    * or it does not, and the cache is rewritten to `$FF` in all twenty-five
+      slots with slot 2 = the area's `GEO` number and slot 8 = the area id,
+      plus the three bytes outside the cache that make those two findable:
+      the disk hint `$49EA`, the map `$49C5` and the script id `$49F2`.
+
+    The second is `docs/140-loaded-files-cache.md`'s recipe and is the shape
+    both live tests used.  It refuses rather than guesses for three kinds of
+    area: one this project has no row for, one whose script picks its map at
+    run time or loads none at all, and the travel grid, where the cache uses
+    slot 4 for `SQRDATA` in place of slot 2 and nothing has tested it.
+    """
+    at = FILE_CACHE[0] - SAVE0_BASE
+    there = area_id(savgam)
+    here = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD
+    if here == there:
+        return ("loaded-files cache: the template's own, untouched -- it "
+                "stands where the DOS party stands, so it already names the "
+                "right files")
+
+    where = areas.area(there)
+    if where is None:
+        raise DosRecordError(
+            f"the DOS party is in area {there}, which is not an area of Pool "
+            f"of Radiance, so there is no map file and no disk to name")
+    if where.outdoors:
+        raise DosRecordError(
+            f"the DOS party is on the travel grid, in {where.name}. The "
+            f"loaded-files cache names a SQRDATA there instead of a GEO and "
+            f"no test has established the rest, so a converted save would be "
+            f"a guess. Use a C64 save made in the same window")
+    if where.dynamic_geo or len(where.geos) < 1:
+        raise DosRecordError(
+            f"the DOS party is in {where.name or where.ecl}, whose script "
+            f"chooses its map at run time, so this conversion cannot say "
+            f"which GEO the save should name. Use a C64 save made there")
+
+    geo = areas.geo_number(where.geos[0])
+    save0[at:at + FILE_CACHE[1]] = bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1]
+    save0[at + CACHE_GEO] = geo
+    save0[at + CACHE_ECL] = there
+    save0[DISK_HINT - SAVE0_BASE] = where.disk
+    save0[CURRENT_GEO - SAVE0_BASE] = geo
+    save0[CURRENT_SCRIPT - SAVE0_BASE] = there
+    save0[INDOORS - SAVE0_BASE] = 1
+    return (f"loaded-files cache: $FF in all twenty-five, then slot 2 = "
+            f"{where.geos[0]} and slot 8 = {where.ecl}; the arriving script "
+            f"refills the rest")
 
 
 def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
-                 keep_icons: bool = True,
-                 allow_area_change: bool = False) -> Report:
+                 keep_icons: bool = True) -> Report:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     `save0` and `save1` come from an existing C64 save, which supplies the
@@ -787,16 +862,6 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     party = read_party(folder, slot)
     savgam = pathlib.Path(folder).joinpath(f"SAVGAM{slot}.DAT").read_bytes()
     report = Report(total=len(save0))
-    here = save0[0x4BC2 - SAVE0_BASE] & ~FILE_CACHE_RELOAD
-    there = area_id(savgam)
-    if here != there and not allow_area_change:
-        raise AreaMismatch(
-            f"the template save is in area {here} and the DOS party is in "
-            f"area {there}. The loaded-files cache at $4BC0 names the files "
-            f"for the template's area and nothing in a DOS save can refill "
-            f"it, so the converted save loads and then hangs. Use a template "
-            f"saved in area {there}, or pass allow_area_change=True and "
-            f"expect it not to work")
 
     for index, char in enumerate(party):
         icon = None
@@ -833,23 +898,23 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "per-script scratch: zeroed, as DUNGEON $202A does on every "
                 "area change")
     at = FILE_CACHE[0] - SAVE0_BASE
-    report.note(at, FILE_CACHE[1],
-                "loaded-files cache: the template's, unchanged -- it names "
-                "the files for the area, and the template is in the DOS "
-                "party's area")
+    retargeted = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != area_id(savgam)
+    report.note(at, FILE_CACHE[1], apply_file_cache(save0, savgam))
+    if retargeted:
+        for address, what in (
+                (DISK_HINT, "the POOL side the loader will ask for"),
+                (CURRENT_GEO, "the map LOADFILES reloads"),
+                (CURRENT_SCRIPT, "the script id"),
+                (INDOORS, "indoors, which is where every convertible area is")):
+            report.note(address - SAVE0_BASE, 1,
+                        f"{what}, from the area the DOS party is in")
 
-    here_bit = save0[0x4BC2 - SAVE0_BASE] & FILE_CACHE_RELOAD
     changed = apply_quest_flags(save0, savgam)
     report.note(FLAGS_FIRST - SAVE0_BASE, FLAGS_LAST - FLAGS_FIRST + 1,
                 "quest flags: the DOS word array, narrowed to bytes")
     apply_position(save0, savgam)
-    # $4BC2 is entry 2 of the cache above, so `apply_position` has just
-    # cleared its reload bit; put back whatever the template had.
-    save0[0x4BC2 - SAVE0_BASE] |= here_bit
     for address, what in ((0x49C0, "party x"), (0x49C1, "party y"),
-                          (0x49C2, "facing, the DOS value halved"),
-                          (0x4BC2, "current area, keeping the template's "
-                                   "reload bit")):
+                          (0x49C2, "facing, the DOS value halved")):
         report.note(address - SAVE0_BASE, 1, what + ", from SAVGAM")
     report.warnings.append(
         f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "

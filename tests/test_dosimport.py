@@ -2,8 +2,8 @@
 
 The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
 the one thing a menu can get wrong that a command line cannot: **the losses
-are on screen before anything is written**, and the refusal of a template from
-the wrong area reaches the user as a sentence rather than as a traceback.
+are on screen before anything is written**, and a refusal reaches the user as
+a sentence rather than as a traceback.
 
 Both halves need somebody's files. The DOS save is Donald's unpacked copy of
 *Forgotten Realms: The Archives* (`$FR_ARCHIVES`), the C64 template is his save
@@ -23,8 +23,9 @@ from test_dossave import _save_dir, needs_dos_saves
 from por import dos
 
 # `PORSAVE11` stands in New Phlan, which is where the archives' slot A party
-# stands; `PORSAVE13` stands in the Slums and is the mismatch. Both are read
-# only ever as a template and always through a copy.
+# stands; `PORSAVE13` stands in the Slums. Since the loaded-files cache was
+# decoded either will do as a template, and that is what the pair now tests.
+# Both are read only ever as a template and always through a copy.
 SAME_AREA = "PORSAVE11"
 OTHER_AREA = "PORSAVE13"
 
@@ -120,40 +121,44 @@ def test_the_losses_are_on_screen_before_the_button_is_pressable(
 
 @needs_dos_saves
 @needs_disks
-def test_a_template_from_another_area_is_explained_not_raised(
-        app, dos_save, elsewhere):
-    """`por.dos.convert_save` raises `AreaMismatch`; the window says where each
-    party is standing and greys the button. A traceback here would look like a
-    broken menu item rather than a template that has to be chosen again."""
+def test_a_template_from_another_area_converts(app, dos_save, elsewhere):
+    """A Slums template against a New Phlan DOS party. This was the refusal;
+    the loaded-files cache is decoded and `convert_save` writes it, so the
+    dialog rehearses, reports the losses and offers the button like any other
+    template. `docs/140-loaded-files-cache.md`."""
     from PyQt6.QtWidgets import QDialogButtonBox
 
-    from editor.dosimport import DosImportDialog
+    from editor.dosimport import DROPPED_HEADING, DosImportDialog
 
     dialog = DosImportDialog(dos_save, elsewhere)
     text = dialog.report_pane.toPlainText()
-    assert "New Phlan" in text and "Slums" in text
+    assert text.startswith(DROPPED_HEADING)
     assert "Traceback" not in text
-    assert dialog.conversion is None
-    assert not dialog.buttons.button(
+    assert dialog.conversion is not None
+    assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
+    payload = dialog.conversion.save0.to_bytes()
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    there = dos.area_id((dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
+    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
+    want[dos.CACHE_GEO] = want[dos.CACHE_ECL] = there
+    assert payload[at:at + dos.FILE_CACHE[1]] == bytes(want)
 
 
 @needs_dos_saves
 @needs_disks
-def test_choosing_a_template_that_fits_re_enables_the_button(
-        app, dos_save, template, elsewhere):
+def test_changing_the_template_re_rehearses(app, dos_save, template,
+                                            elsewhere):
     """Every change re-rehearses, so the pane is never the losses of a
     conversion other than the one the button would commit."""
-    from PyQt6.QtWidgets import QDialogButtonBox
-
     from editor.dosimport import DosImportDialog
 
     dialog = DosImportDialog(dos_save, elsewhere)
-    assert dialog.conversion is None
+    first = dialog.conversion
+    assert first is not None
     dialog.set_template(template)
-    assert dialog.conversion is not None
-    assert dialog.buttons.button(
-        QDialogButtonBox.StandardButton.Ok).isEnabled()
+    assert dialog.conversion is not None and dialog.conversion is not first
+    assert dialog.conversion.template == template
 
 
 @needs_dos_saves

@@ -407,12 +407,12 @@ from somewhere.** This is the whole list.
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
-| `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes, but not by zeroing it.** Keep the template's entries and set bit 7 on each — see "Do not zero the loaded-files cache" below |
+| `$4BC0`-`$4BD8` | 25 | loaded-files cache | **yes** — `$FF` in all twenty-five slots, then slot 2 = the area's `GEO` number and slot 8 = the area id; see "The loaded-files cache, and the three bytes with it" below |
 | `$4900`-`$49BF`, `$4B80`-`$4BBF` | 256 | four effect arrays | **yes, by dropping them** — zero means no active effects, which is a legal state |
 | `$4A00`-`$4A1F` | 32 | per-script scratch | **yes** — `DUNGEON $202A` zeroes it on every area change anyway |
 | `$4A20`-`$4AF8` | 217 | **persistent quest flags** | **yes.** Located: `SAVGAM?.DAT` offsets 577-1009, one `u16le` per C64 byte. See obstacle 1 |
 | `$4AF9`-`$4B7F` | 135 | **not flag storage at all** — no ECL operand and no engine reference names anything in it | **yes** — zero, in all 21 specimens and by construction |
-| the gaps | ~54 | `$49C3`-`$49C5`, `$49CC`-`$49E6`, `$49EA`-`$49EF`, `$49F2`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed. Do not fill any of it from the DOS save: DOS keeps its *own* current area at the `$49C5` and `$49F2` entries, which is a DOS fact about a DOS engine and says nothing about what the C64 puts there |
+| the gaps | ~50 | `$49C3`/`$49C4`, `$49CC`-`$49E5`, `$49EB`-`$49EF`, `$49F3`-`$49FB`, `$49FF`, `$4BD9`-`$4BDF` | **unknown, mostly zero.** `$49C3`/`$49C4` are the wilderness travel position; the rest is unattributed. Four bytes have left this row: `$49EA` is the disk hint, `$49E6` is indoors-or-travel-grid, `$49C5` is the resident `GEO` and `$49F2` the script id, and the converter writes all four — `docs/140-loaded-files-cache.md` |
 
 ## The obstacles, worst first
 
@@ -782,30 +782,56 @@ a legal number the game will happily display. Mapping DOS `0x110`-`0x11C` onto
 the C64's `0x10E`-`0x11B` fixed it, and finding that mapping is what settled
 the armour-class bias.
 
-### Do not zero the loaded-files cache
+### The loaded-files cache, and the three bytes with it
 
 `docs/117` guessed, in the table above, that `$4BC0`-`$4BD8` could be zeroed
 and the loader left to refill it. **It cannot, and the failure is silent until
-the party tries to move.**
-
-The experiment: `PORSAVE14.D64`, a C64 save standing in the Slums (area 20),
-converted from DOS slot A, a party in New Phlan (area 0) — deliberately a
-*different* area from the template, which is the case the obstacle-7 run
-avoided on purpose. The save loaded. The roster listed the six DOS characters,
-`$49C0`-`$49C2` read the DOS square (4, 3) facing north, and `$4D00` held
-`BRUTUS`. Then the screen went to `OUTWARD BOUND ...` and asked for side 2,
+the party tries to move.** The experiment: `PORSAVE14.D64`, a C64 save standing
+in the Slums (area 20), converted from DOS slot A, a party in New Phlan
+(area 0). The save loaded — the roster listed the six DOS characters,
+`$49C0`-`$49C2` read the DOS square (4, 3) facing north, `$4D00` held `BRUTUS`
+— and then the screen went to `OUTWARD BOUND ...` and asked for side 2,
 forever: 105 answered prompts and the state never moved.
 
-The reason is that **`$4BC2` is entry 2 of that cache**, not a field beside
-it, and `docs/41-memory-regions.md` says bit 7 of an entry is a reload marker.
-Zeroing the region and then writing the bare area number leaves entry 2 at
-`$00` — "area 0, already resident" — so the engine never fetches the map it
-has not got. The live copy at `$6E13` read `01 80 00 80 80 ...` in the hung
-machine, which is that sentence in bytes.
+**Zero names a file for every kind at once.** The cache is twenty-five slots,
+one per *file kind*, and the byte in a slot is the filename's two hex digits,
+so twenty-five zeroes ask for `GDRIVE00`, `SQRPACI00`, `GEO00`, `SECSET00` and
+twenty-one more across eight disks — and `WALLSET00`, `WALLDEF00` and
+`ITEMFILE00` are on no disk at all, so three of those requests can never be
+satisfied. That is the 105 prompts.
 
-What `convert_save` does instead is keep the template's entries and OR `$80`
-into every one, entry 2 included, so the engine reloads all of them and the
-new area with them.
+**Setting bit 7 does nothing whatever.** `GEN $25DE` is `LDA $4BC0,X / ORA
+#$80 / STA $6E13,X` for all twenty-five, so the bit a save carries is discarded
+and set again regardless; the low bits are still the *template's* file numbers
+and the same wrong files are fetched. That hung too.
+
+`$FF` is the one value the load path leaves alone — `LIBRARY $4225` opens `CMP
+#$FF / BEQ` — and **two slots are enough**: slot 2 (`GEO`) and slot 8 (`ECL`),
+`$FF` in the other twenty-three, and the arriving script's entry 4 refills the
+rest. The decode and the twenty-five stems are
+`docs/140-loaded-files-cache.md`; **the conversion itself is CONFIRMED** on
+`PORSAVE13`, the Slums, converted from DOS slot A, a party in New Phlan. The
+save wrote `ff ff 00 ff … 00 ff …` into the cache and `03` into `$49EA`; it
+loaded, listed SILAS, ASTRID, GILES, ROLAND, MAGNUS and BRUTUS, came up at
+`N 21:15 4,3` — the DOS square — with `$0400`-`$07FF` byte-identical to `GEO00`
+and not to the template's `GEO14`; `$6E13` refilled to `GDRIVE01`, `GEO00`,
+`SECSET00`, `ECL00`; and it walked — north twice, then west into a temple,
+whose script printed `WELCOME TO THE TEMPLE`.
+
+Three bytes outside the cache go with it, and `$49EA` is the one that bites:
+`GEN $08BD` is `LDA $49EA / STA $6E12`, the `POOL` side the loader asks for by
+number, so a save naming an area on another disk while carrying the template's
+hint sits on `INSERT SIDE # N` hunting a file that is not on the side it asked
+for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
+`por/areas.py` has the disk and the `GEO` for every area.
+
+**So the template no longer has to stand in the DOS party's area.** What
+`convert_save` still refuses is nine areas of the thirty, where the answer
+would be a guess: the four that load no map, the two whose script picks its map
+at run time, and the three travel-grid windows, where the cache carries a
+`SQRDATA` in slot 4 in place of the `GEO` in slot 2 and nothing has tested it.
+A template already standing in the target area keeps its own cache untouched:
+that one is real, written by the game, and names more than the two slots.
 
 ### What `convert_save` writes, and what it leaves
 
@@ -819,9 +845,9 @@ are a C64 charset DOS has no equivalent of. Everything else is replaced.
 | six inventories `$5900`-`$5EFF` | the converted record's `0x120`-`0x21F` |
 | the `SAVEDGAME1` roster, six blocks | the converted record's `0x100`-`0x11F` |
 | quest flags `$4A20`-`$4AF8` | the DOS word array, narrowed |
-| party square and facing `$49C0`-`$49C2`, area `$4BC2` | `SAVGAM?.DAT` bytes 12801-12803 and the `$49C5` entry |
+| party square and facing `$49C0`-`$49C2` | `SAVGAM?.DAT` bytes 12801-12803 |
 | the four effect arrays, and `$4A00`-`$4A1F` | zeroed — "nothing running" is a legal state, and `DUNGEON $202A` zeroes the scratch on every area change |
-| the loaded-files cache `$4BC0`-`$4BD8` | the template's entries with **bit 7 set on every one**, so the engine reloads the lot; `$4BC2` is entry 2 and carries the new area with the same bit set |
+| the loaded-files cache `$4BC0`-`$4BD8`, and `$49EA`, `$49C5`, `$49F2`, `$49E6` with it | **`$FF` in all twenty-five slots**, then slot 2 = the area's `GEO` number and slot 8 = the area id, with the disk hint, the map and the script id to match — or the template's own cache untouched where it already stands in that area |
 | the combat icon table `$4BE0`-`$4CFF` | **kept from the template** |
 | everything else | **kept from the template**, and said so in the report |
 
@@ -1158,6 +1184,7 @@ graph LR
   c64_codec --> record
   c64_codec --> spells
   derive --> items
+  dos --> areas
   dos --> c64_codec
   dos --> dos_layout
   dos -.->|deferred| icons
