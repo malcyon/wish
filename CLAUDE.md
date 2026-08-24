@@ -27,6 +27,22 @@ collide. Assign non-overlapping areas, and say which in the brief.
 **Subagents do not commit.** As things stand the main window makes the commits,
 so nothing races the index.
 
+**Every subagent that wrote code gets reviewed before its work is committed.**
+Run the `code-reviewer` subagent on what it changed, read the findings, and act
+on them -- or say why not. The reason is not ceremony: an agent that has spent
+two hours inside a problem is the worst possible judge of whether its own answer
+is right, and the reviewer has already caught things the author could not see.
+
+**Verify a finding before acting on it.** The reviewer is a reader, not an
+oracle. It once reported a dead code path in `automap/actions.py` that turned
+out to be a deliberate lever with a test and a docstring explaining it; the
+guard was most of the way deleted before the test caught it. Check the claim,
+then fix or reject it -- and rejecting it is a normal outcome, not a failure of
+the review.
+
+This does not apply to a subagent that only wrote documentation or only ran
+experiments. It applies to code.
+
 **Emulator work goes through the instance pool.** VICE serves exactly one
 binary-monitor connection *per process*, so running two things at once means
 two emulators, not two connections. `tools/instance.py claim` hands back a
@@ -113,6 +129,81 @@ something Windows cannot do (`chmod` does not make a directory unwritable
 there, `fcntl` does not exist, paths are not split on `/`), and something that
 is not byte-identical on another machine (a rendered image, anything with a
 font or a timestamp in it).
+
+## Testing
+
+**A green suite is the floor, not the finding.** Everything below is about the
+gap between "the tests pass" and "we know this works".
+
+**Test what would actually break.** A test that restates the implementation
+passes forever and catches nothing. Ask what a user would see go wrong, and
+assert that. `tests/test_mapscale.py` pins a window minimum because a window
+that does not fit the screen is what the user hits; it does not assert that a
+function returns what the function returns.
+
+**Prove a regression test bites.** Revert the fix, watch the test fail, put the
+fix back. A test written against a bug that has already been fixed is a guess
+until you have seen it red. This has gone wrong here twice: a test that filtered
+on `not isWindow()` passed with the fix reverted, because the fault *was* a
+parentless widget answering `isWindow() == True`; and a feature-flag test only
+earned its place once forcing the flag on made it fail.
+
+**Say what the sample size was.** "24 of 24 records round-trip byte for byte" is
+evidence. "It worked on my character" is not. Where a rule has exceptions, count
+them and name them rather than rounding them away.
+
+**A test that skips is not a test that passes.** `tests/gamedata.py` skips
+cleanly with no disks, which is right -- but a suite that is green because
+forty tests skipped has told you nothing. Say how many skipped and why when it
+matters.
+
+**Never weaken a test to make a change fit.** If a change makes a test fail, the
+change is wrong until proven otherwise, and the proof is an argument about
+behaviour, not a smaller assertion. `test_the_window_opens_inside_a_small_desktop`
+encodes Donald's actual screen; a layout that fails it is a layout that does not
+fit his screen.
+
+**Failures found in the running program are worth more than any of it.** The
+suite runs offscreen with no emulator. A screenshot, a save that loads and
+walks, a party that reads right in the game -- those are the evidence, and the
+tests are how you keep them true afterwards.
+
+## Testing a conversion
+
+**The standard is a perfect conversion.** Not "every loss is reported" -- that
+is the old rule and it is too weak. Reporting a dropped field is the *minimum*;
+it is not permission to drop it.
+
+**Every field is carried, or it is on a short list with a tested reason.** Three
+reasons are legitimate:
+
+* the destination format **has no such field** -- and that has been established
+  by reading its layout, not assumed;
+* the destination **derives it** on load, so writing it is pointless -- and that
+  has been *demonstrated in the running game*, not argued from plausibility;
+* we **do not understand the bytes well enough to write them**, in which case
+  the entry is a defect with a settling experiment, not a permanent exemption.
+
+The third kind is a bug that has not been filed yet. Treat it that way.
+
+**"Reported as dropped" is not a resting state.** Every entry in a drop list
+carries the experiment that would remove it, and a drop list that has not
+shrunk in months is a list of unfiled bugs.
+
+**Test the empty and the extreme case, not only the typical one.** A drop list
+measured survivable for a character carrying items said nothing about a
+character carrying none -- and that is exactly where #62 was found, after the
+conversion had been declared proven.
+
+**Round-trip byte for byte, and mask by the declared list rather than by the
+diff.** Masking by whatever happened to differ makes the test agree with the
+code by construction. `tests/test_doswriter.py` masks by `WRITE_UNSOURCED`,
+which is the list the writer declares, so a new difference fails.
+
+**A conversion is not proven until it runs.** Bytes matching is necessary and
+not sufficient: load it in the game, walk, and look at the sheet. Three separate
+faults this project shipped -- an AC of 9 displayed as 51, a dropped combat
+tail, and a garbage weapon line -- passed every byte-level check that existed.
 
 ## Art
 
