@@ -16,8 +16,13 @@ closed**: the quest flags, the party's square, the current area and the whole
 way and index their item names and item types the same way too**, and **a C64
 save written from DOS fields loads and plays** — no checksum, no validation,
 not a byte rewritten by the loader (obstacle 7). What is left is conversion
-work, field by field, not a question about whether the game will accept it. The
-goal is one thing: turn a DOS save into a C64 save. One direction only.
+work, field by field, not a question about whether the game will accept it.
+The plan below was written for one direction — DOS into C64 — and that
+narrowing was what made it tractable. **The reverse now exists too** (#26):
+`por.dos.write` builds a DOS character record and its `.ITM` from the neutral
+record, `por.dos.write_dos_save` writes a whole C64 save into a DOS save
+directory over a template's `SAVGAM`, and DOS Pool of Radiance loads and
+plays the result under DOSBox — see "The reverse direction" below.
 
 The decode, with its evidence: `work/reports/dos-saves.md` for the character
 record and the saved game, `work/reports/dos-items.md` for the items. The
@@ -33,11 +38,12 @@ padding — and the DOS half turned out not to be a translation problem at all:
 the ECL bytecode is one artefact shared by every port, so 178 of the 179 named
 flags sit at the *same address* on DOS. See obstacle 1.
 
-That narrowing is worth more than it looks. It means **no DOS encoder** — we
-never have to write a DOS save, so the DOS format only has to be decoded far
-enough to source what the C64 needs, and any DOS field with no C64 counterpart
-can simply be ignored. It also retires the whole round-trip question: there is
-no round trip.
+That narrowing was worth more than it looked, and it was right at the time:
+**no DOS encoder** meant the DOS format only had to be decoded far enough to
+source what the C64 needs. #26 reversed it deliberately — the encoder now
+exists, and with it the round trip the narrowing had retired: a DOS record
+read into the neutral middle and written out again is byte-for-byte the
+original outside the named live-heap bytes, 24 of 24.
 
 What it does demand is absolute: **we must be able to produce every byte of a
 C64 save.** All 9216 of them. Not most, not the interesting ones — a save is a
@@ -417,8 +423,8 @@ from somewhere.** This is the whole list.
 
 ## The obstacles, worst first
 
-One direction removes two of these outright: nothing below requires writing a
-DOS file, and nothing requires a C64 field to survive a trip back.
+This list was written when nothing below required writing a DOS file; the
+reverse direction has since been built and has its own section further down.
 
 **1. The quest flags — the correspondence is identity.**
 `$4A20`-`$4B7F` is 352 bytes. Every one of them has a disposition
@@ -1248,6 +1254,7 @@ graph LR
   amiga -.->|deferred| savegame
   areas -.->|deferred| geo
   areas --> layout
+  c64_codec --> encoding
   c64_codec --> layout
   c64_codec --> neutral
   c64_codec --> record
@@ -1261,6 +1268,7 @@ graph LR
   dos --> layout
   dos --> neutral
   dos --> record
+  dos -.->|deferred| savegame
   dos -.->|deferred| spells
   dos --> traits
   dos -.->|deferred| yaml_io
@@ -1334,12 +1342,130 @@ the block above ever drifts from what the tool prints.
    are inherited from `por/neutral.py`. `por/amiga.py` is the demonstration:
    rewritten onto the neutral record it lost its own copy of that bookkeeping
    and its own C64-shaped middle, and every `.pc` byte it writes is what it
-   was before.
+   was before. The DOS writer of #26 is the second demonstration, with a
+   caveat the first could not show: the writer itself cost one writer, but
+   its arrival exposed two latent defects in `c64_codec.read` that only a
+   second consumer could reach — see "The reverse direction" below.
+
+## The reverse direction: writing a DOS save (#26)
+
+`por.dos.write` builds the 285-byte character record and its `.ITM` payload
+from a `NeutralCharacter`; `por.dos.item_from_c64` is the inverse of the item
+projection; `por.dos.write_dos_save` writes a whole C64 save into a DOS save
+directory. The player's own DOS files are still never written — the template
+is read, the output goes where the caller says, and the two may not be the
+same directory.
+
+### Where every DOS byte comes from
+
+The writer inherits `neutral.Writer` whole — no protocol code was copied —
+and accounts for every byte of both outputs in a `WriteReport`. Its three
+tables over the neutral vocabulary (`WRITE_DIRECT`, 49 copies;
+`WRITE_TRANSFORMED`, 9 rules; `WRITE_DROPPED`, 6 refusals) are checked
+complete against `FIELDS`, and a fourth, `WRITE_TARGETS`, accounts over the
+DOS layout's own names so a field added to `por/dos_layout.py` and forgotten
+here fails a test. Three kinds of byte have no neutral source:
+
+* **constants** — `icon_dimension` 1, `strength_bonus` 1, `field_83_87`
+  `00 00 01 00 00`, `field_10c_10f` `00 01 00 00`, each the one value all 24
+  specimens hold;
+* **computed** — `item_count` from the `.ITM` records written, `encumbrance`
+  from money plus item weight × quantity, the identity the engine itself
+  uses;
+* **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
+  `heap_0c1`, `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`,
+  `icon_choice` — live heap and the unattributed, ~80 bytes.
+
+The `.SPC` effects file is never written: its 9-byte record is decoded only
+to the id byte, and writing the other eight would be a guess. A character's
+innate effects are reported as dropped. Whether DOS rederives racial bonuses
+without one is UNKNOWN; the settling experiment is a dwarf's poison save,
+before and after conversion.
+
+### The round trip, which is the bar
+
+`tests/test_doswriter.py`, on Donald's 24 DOS records:
+
+* **DOS → neutral → DOS is byte-for-byte the original outside the writer's
+  own unsourced list, 24 of 24** — and the mask is `WRITE_UNSOURCED`, not
+  whatever happened to differ. Encumbrance is recomputed and matches
+  wherever the original's own identity balanced (22 of 24; the two stale
+  dart stacks come back *corrected*).
+* **DOS → neutral → C64 record → neutral → DOS loses nothing more, 24 of
+  24.** The C64 record is a sufficient interchange for everything the DOS
+  writer can source, which is the architecture's claim measured rather than
+  asserted.
+* The `.ITM` tails are the originals record for record; the rendered-line
+  cache and the next pointer are left empty.
+
+### Loaded and played, four DOSBox runs
+
+1. **Slot A with every record rewritten by the round trip** (only the
+   unsourced bytes differ from the game's own files): loads, all six
+   characters on the roster with their real AC and HP, the party on its
+   square. **CONFIRMED: DOS accepts a save it did not write** — issue #26's
+   question 2, answered yes. Re-saving from inside the game showed the
+   engine rebuilding the item chain-head pointer itself and keeping most of
+   our zeros: its own resave zeroes `heap_0c1`, the extra item pointers,
+   `hands_used` and `unnamed_0ab` too.
+2. **The item list renders** from the fields, readied flags and quantities
+   right, and the game refills the rendered-line cache after drawing it
+   once — the empty cache is harmless.
+3. **A C64 save end to end**: the fixture party written by `write_dos_save`
+   loads, stands on the C64 party's square and facing, and the character
+   sheet reads correctly.
+4. **The control that saved a false bug report**: the C64 character's sheet
+   showed `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, THAC0 148 — and an
+   *unmodified* DOS character with only his items removed shows the
+   identical garbage. That display is the game's own behaviour for a
+   character who owns nothing, not the converter's. (Whether a player can
+   reach it unaided — a freshly rolled character before shopping —
+   is SPECULATIVE; create one in-game and view it.)
+
+### What the second consumer of the C64 reader exposed
+
+The claim "a new direction costs one writer" held for the writer itself. It
+did **not** hold for free on the reader beside it: the first real consumer of
+`c64_codec.read` found three things nothing else could have.
+
+* **The roster branch spoke the wrong convention.** `RosterBlock` accessors
+  decode the family's 60 − value bias into sheet numbers; every record path
+  carries the stored byte; the neutral vocabulary had never said which it
+  meant. A converted AC 9 fighter displayed **AC 51** in DOS. Fixed in the
+  reader, and `FIELDS` now states the convention on all four biased fields.
+* **The roster branch dropped the nine-byte combat tail** the block carries
+  at `+0x10`–`+0x18`, so a slot-sourced conversion wrote zeros into the DOS
+  combat tail. Fixed: the tail rides `roster_tail` like the record path's.
+* **`0x10D` is 1 in all 24 DOS records** — inside a "gap" documented as zero
+  in every specimen. The reader's hand-the-bytes-back losslessness check
+  could never catch it; the writer's round trip did on its first run. Now
+  declared (`field_10c_10f`) and written as a constant; plausibly a health
+  status byte, uncorroborated.
+
+### What a converted party loses, said out loud
+
+* **The sheet portrait**: `icon_choice` indexes the DOS art set, no other
+  port numbers it, and zero draws no portrait. Cosmetic, real, reported.
+  (What zero does to the *combat* icon is untested.)
+* **Running spell effects and the innate `.SPC` bonuses** — see above.
+* **The clock** stays the template's; the DOS clock format is undecoded.
+* **The area**: quest flags convert unconditionally (same ECL addresses,
+  byte to word), but the party's square converts only when the C64 party
+  stands in the template's own area. Retargeting a DOS save has no measured
+  recipe — the C64's two-slot cache trick has no known DOS counterpart, and
+  the 8016 resident-state bytes are unattributed — so a mismatch keeps the
+  template's square and warns. The settling experiment: rewrite the header
+  byte, `$49C5` and `$49F2` in a copied SAVGAM and see where the party
+  stands.
+* **Current combat numbers need `SAVEDGAME1`.** A C64 save without the
+  roster file (the game disks' own `SAVEDGAME0`-only saves) has no current
+  hit points to give; the writer refuses and reports rather than writing
+  hp_max as a guess, and the party arrives at 0 hit points on the sheet.
 
 ## Verification
 
-All four are `tests/test_dosconvert.py`, which skips cleanly where there are
-no archives.
+The DOS-to-C64 direction is `tests/test_dosconvert.py`, the reverse is
+`tests/test_doswriter.py`; both skip cleanly where there are no archives.
 
 * **A DOS character read and written back unchanged, byte for byte** — 24 of
   24. The DOS side is read-only in practice, but the reader has to be able to
@@ -1354,3 +1480,18 @@ no archives.
 * **A converted character loads in Pool of Radiance on the C64**, which
   obstacle 7 already showed with a throwaway converter and the real one
   repeats.
+
+And for the reverse direction, `tests/test_doswriter.py`:
+
+* **A DOS record round-trips through the neutral middle** — byte for byte
+  outside `WRITE_UNSOURCED`, 24 of 24 — and **through the C64 record** with
+  nothing more lost, 24 of 24.
+* **Every neutral field has a disposition in the DOS writer, and every DOS
+  layout field a target**, both set-checked, so neither vocabulary can grow
+  a silently-skipped field.
+* **Every byte of the record and the `.ITM` has a provenance**
+  (`WriteReport.unaccounted` empty).
+* **A written save is read back by our own reader**, and the quest flags,
+  square and facing land where `SAVGAM` keeps them.
+* **A converted save loads and plays in DOS Pool of Radiance** under
+  DOSBox — the four driven runs above.

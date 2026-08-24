@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 
 from . import neutral, spells
+from .encoding import COMBAT_BIAS
 from .layout import RECORD_SIZE, Confidence, Field
 from .neutral import NeutralCharacter, Provenance
 from .record import CharacterRecord
@@ -32,6 +33,7 @@ __all__ = [
     "strength_index",
     "write",
     "read",
+    "READ_TARGETS",
     "field_disposition",
     "DIRECT",
     "TRANSFORMED",
@@ -415,10 +417,7 @@ def field_disposition() -> dict[str, str]:
 #: the way :func:`write` takes the combat icon -- a C64 "character" is spread
 #: across three places and only a `.chr` file has it in one.
 #:
-#: C64 fields this reader deliberately leaves behind, and why.  **Not the
-#: whole layout**: the reader here is only as wide as the Amiga and YAML
-#: writers need, and the layout-wide disposition that would make a silent
-#: drop impossible belongs with the DOS writer of #26.
+#: C64 fields this reader deliberately leaves behind, and why.
 READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("abilities_second", "zero in every Pool of Radiance specimen; Curse's "
                          "(base, current) pairs, unused here"),
@@ -429,6 +428,33 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("roster_in_use", "roster bookkeeping, not character state"),
     ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
                    "colours, a C64 character set no other port can draw"),
+)
+
+#: What :func:`read` does with every named field of the C64 layout -- the
+#: layout-wide account the DOS writer of #26 called for, so a C64 field
+#: nothing reads cannot be dropped in silence.  `tests/test_doswriter.py`
+#: checks it against `por/layout.py`'s named fields.
+READ_TARGETS: dict[str, str] = (
+    {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
+    | {"name": "read as neutral name",
+       "spells_known": "the 56-bit mask unpacked to neutral spells_known",
+       "spells_memorised": "zeroes stripped into neutral spells_memorised",
+       "spells_castable": "nibbles unpacked into neutral spells_castable",
+       "item_effects": "zeroes stripped into neutral innate_effects",
+       "flags_0b8": "bit 7 read as neutral npc",
+       "attack_forms": "read as neutral attack_forms",
+       "infravision": "read as neutral infravision",
+       "turn_power": "read as neutral turn_power",
+       "size_small": "read as neutral size_small",
+       "portrait_head": "read as neutral portrait_head",
+       "portrait_body": "read as neutral portrait_body",
+       "roster_tail": "read as neutral roster_tail, from the roster block's "
+                      "+0x10-+0x18 or the record",
+       "inventory": "read as neutral inventory, from the save's item page "
+                    "or the record's sixteen slots"}
+    | {f: "read into neutral levels, named by the class bit"
+       for f in _LEVEL_ORDER}
+    | {name: f"dropped: {why}" for name, why in READ_DROPPED}
 )
 
 
@@ -469,16 +495,30 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
         copy(neutral_name, c64_name)
 
     # -- what a save slot stops short of, from the roster block --------------
+    # The block's own accessors decode the family's 60 - value bias into the
+    # number on the sheet; the neutral convention is the *stored* byte, the
+    # one every record path carries.  Handing the decoded value through here
+    # is what made a converted DOS character display AC 51 for AC 9 -- the
+    # first live C64-to-DOS run caught it.
     if roster is not None:
         for neutral_name, c64_name, value in (
                 ("hp_current", "hp_current", roster.hit_points),
-                ("thac0_current", "thac0", roster.thac0),
-                ("armour_class", "armour_class", roster.armour_class),
+                ("thac0_current", "thac0", COMBAT_BIAS - roster.thac0),
+                ("armour_class", "armour_class",
+                 COMBAT_BIAS - roster.armour_class),
                 ("movement_current", "roster_movement", roster.movement)):
             out.set(neutral_name, value,
                     f"the C64 roster block's {c64_name}", grade(c64_name))
-        out.drop("C64 roster damage_bonus and +0x03-0x05: the roster's own "
-                 "derived bytes, with no neutral field to hold them")
+        # The block also holds the nine-byte combat tail -- the armour bonus
+        # and the eight running attack-form bytes -- which a slot record
+        # stops short of.  Leaving it behind wrote zeros into the DOS combat
+        # tail on the first C64-to-DOS conversion.
+        out.set("roster_tail", roster.raw[0x10:0x19],
+                "the C64 roster block's +0x10-+0x18: the armour bonus and "
+                "the eight running attack-form bytes",
+                grade("roster_tail"))
+        out.drop("C64 roster +0x03-0x05: the roster's own derived bytes, "
+                 "with no neutral field to hold them")
 
     copy("infravision", "infravision")
     copy("turn_power", "turn_power")
@@ -530,7 +570,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                 "the C64's sixteen fixed slots @0x120, the empty ones "
                 "stripped", grade("inventory"))
 
-    if rec.is_stored("roster_tail"):
+    if rec.is_stored("roster_tail") and "roster_tail" not in out:
         out.set("roster_tail", rec.get_raw("roster_tail"),
                 origin("roster_tail"), grade("roster_tail"))
 

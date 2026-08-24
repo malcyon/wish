@@ -3,10 +3,10 @@
 `por/layout.py` is this module's model and its sibling: same `Field`, same
 `Confidence`, same rule that every byte of the record belongs to exactly one
 entry so an overlap cannot be introduced silently.  What differs is the
-record.  The DOS one is **285 bytes** to the C64's 580, it is *rearranged
-rather than translated*, and it is read-only here -- `wish` converts DOS into
-C64 and never the other way, so nothing in this module has to be able to
-write a DOS file.
+record.  The DOS one is **285 bytes** to the C64's 580, and it is *rearranged
+rather than translated*.  Both directions read this table now: `por/dos.py`
+decodes a DOS record through it and, since #26, encodes one too -- the
+player's own files are still never written to.
 
 Where the offsets come from
 ---------------------------
@@ -396,6 +396,13 @@ _DECLARED: Sequence[Field] = (
     _f(0x104, 8, _RAW, "heap_104", "unnamed @0x104 (LIVE)", _NOPE,
        "another of the runs Curse's importer skips; 0x106/0x107 move with "
        "the heap. LIVE"),
+    _f(0x10C, 4, _RAW, "field_10c_10f", "unnamed @0x10C", _NOPE,
+       "00 01 00 00 in all 24 specimens -- found by the writer's round trip, "
+       "which the reader's hand-the-bytes-back check could never catch. "
+       "0x10C-0x10E sit inside the combat tail Curse's importer copies "
+       "verbatim and 0x10F is one of the bytes it skips; none is named on "
+       "either side. The constant 1 at 0x10D is plausibly a health status "
+       "('okay'), but nothing corroborates that", candidate=True),
     _f(0x110, 1, _U8, "thac0_current", "THAC0 current (60 - value)", _MAYBE,
        "40-47, one above the base for the fighter with 18/17 strength. "
        "Derived from the readied weapon. The C64's roster keeps the same "

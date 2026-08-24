@@ -144,12 +144,14 @@ FIELDS: dict[str, str] = {
     "hp_rolled": "hit points rolled, before the constitution bonus",
     "hp_current": "hit points now",
     # -- fighting -----------------------------------------------------------
-    "thac0_base": "the class-and-level THAC0, before anything carried",
-    "thac0_current": "THAC0 as the game last computed it",
+    "thac0_base": "the class-and-level THAC0, before anything carried, in "
+                  "the family's stored 60 - value encoding",
+    "thac0_current": "THAC0 as the game last computed it, stored 60 - value",
     "attack_level": "the level the attack tables are read at",
     "attack_forms": "the eight attack-form bytes",
-    "armour_class_base": "armour class with nothing worn",
-    "armour_class": "armour class as the game last computed it",
+    "armour_class_base": "armour class with nothing worn, stored 60 - value",
+    "armour_class": "armour class as the game last computed it, stored "
+                    "60 - value (63 is AC -3)",
     "movement": "movement rate unencumbered",
     "movement_current": "movement rate as the game last computed it",
     "infravision": "infravision range in feet; a property of the race, which "

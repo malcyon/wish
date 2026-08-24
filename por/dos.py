@@ -1,17 +1,17 @@
-"""Read a DOS Pool of Radiance save, and turn one into a C64 one.
+"""The DOS codec: read a DOS Pool of Radiance save, or write one.
 
-**One direction only.** `wish` never writes a DOS file: the DOS side of this
-module is read-only, so the DOS format has to be decoded only as far as
-sourcing what the C64 needs, and any DOS field with no C64 counterpart can be
-dropped -- provided it is *reported* rather than dropped silently, which is
-what `Report` is for.
+Both directions now (#26).  The player's own DOS files are still opened
+read-only and never written -- :func:`write` builds *new* bytes, and
+:func:`write_dos_save` writes them into a directory the caller names.
 
     DOS character file  ->  to_neutral  ->  NeutralCharacter
                                           ->  c64_codec.write  ->  C64 record
+    C64 save  ->  c64_codec.read  ->  NeutralCharacter
+                                    ->  dos.write  ->  DOS record + .ITM
 
 The middle is `por/neutral.py`'s typed record, and this module is the DOS
-*reader* of that pair -- the only half that knows a DOS offset.  Writing the
-C64 record is `por/c64_codec.py`'s, and the two never mention each other.
+codec of that pair -- the only module that knows a DOS offset.  The C64 half
+is `por/c64_codec.py`'s, and the two never mention each other.
 `por/dos_layout.py` is the field table, in the same declarative style as
 `por/layout.py` and with a confidence on every entry, which is the grade the
 neutral value carries and a writer refuses to write below.
@@ -49,6 +49,7 @@ Evidence: `work/reports/dos-saves.md`, `work/reports/dos-items.md`,
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 import struct
 from typing import Any, Sequence
@@ -60,7 +61,9 @@ from .dos_layout import (
     FIELDS_BY_NAME,
     ITEM_FIELDS_BY_NAME,
     ITEM_SIZE,
+    LAYOUT,
     RECORD_SIZE,
+    SPELLBOOK_SPELLS,
 )
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
@@ -74,6 +77,7 @@ __all__ = [
     "DosItem",
     "Report",
     "item_to_c64",
+    "item_from_c64",
     "read_character",
     "read_party",
     "slots_available",
@@ -88,6 +92,10 @@ __all__ = [
     "apply_quest_flags",
     "apply_file_cache",
     "convert_save",
+    "WriteReport",
+    "write",
+    "write_field_disposition",
+    "write_dos_save",
 ]
 
 
@@ -440,6 +448,8 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("unnamed_0ab", "one unattributed byte, stable per character"),
     ("field_83_87", "unattributed; Curse's importer copies it without naming "
                     "it either"),
+    ("field_10c_10f", "unattributed; 00 01 00 00 in all 24 specimens, inside "
+                      "the combat tail"),
 )
 
 
@@ -562,6 +572,419 @@ def to_c64_record(dos: DosCharacter, slot: int = 0,
     different set -- so with none given the field is left zero and reported.
     """
     return c64_codec.write(to_neutral(dos), icon=icon)
+
+
+# ---------------------------------------------------------------------------
+# The writing half: a neutral character becomes a DOS record (#26)
+# ---------------------------------------------------------------------------
+@dataclasses.dataclass
+class WriteReport(neutral.Report):
+    """A DOS write's provenance: **every** byte of both outputs explained.
+
+    Offsets 0 to `RECORD_SIZE - 1` are the 285-byte character record;
+    `RECORD_SIZE` and up are the `.ITM` payload that goes beside it.  `total`
+    is set by :func:`write` once the item count is known.
+    """
+
+    total: int = RECORD_SIZE
+
+    @property
+    def unaccounted(self) -> list[int]:
+        """Offsets this conversion cannot explain. Should be empty."""
+        return [i for i in range(self.total) if i not in self.sources]
+
+    def summary_notes(self) -> list[str]:
+        if self.unaccounted:
+            return [f"  UNACCOUNTED: {len(self.unaccounted)} bytes"]
+        return []
+
+
+def item_from_c64(record: bytes) -> bytes:
+    """Project one C64 sixteen-byte item onto the DOS 63 bytes.
+
+    The inverse of :func:`item_to_c64` for every field the two ports share:
+    the C64's two packed bytes come apart into DOS's readied, hidden and
+    cursed bytes, everything else is a straight copy.  The 46 bytes the C64
+    has no words for are left empty, and each is a documented empty value
+    rather than a guess: the rendered line at `0x001` is a cache the game
+    rewrites whenever it draws the list, and NULL at `0x02A` is the chain's
+    own last-item marker.
+    """
+    if len(record) != 16:
+        raise DosRecordError(f"a C64 item is 16 bytes; got {len(record)}")
+    at = {n: ITEM_FIELDS_BY_NAME[n].offset for n in
+          ("type_index", "name1", "name2", "name3", "plus", "plus_save",
+           "readied", "hidden", "cursed", "weight", "quantity", "value",
+           "charges", "effect", "power")}
+    r = record
+    out = bytearray(ITEM_SIZE)
+    out[at["type_index"]] = r[0]
+    out[at["name1"]], out[at["name2"]], out[at["name3"]] = r[1], r[2], r[3]
+    out[at["plus"]], out[at["plus_save"]] = r[4], r[5]
+    out[at["readied"]] = 1 if r[6] & 0x80 else 0
+    out[at["hidden"]] = r[6] & 0x07
+    out[at["cursed"]] = 1 if r[7] & 0x80 else 0
+    out[at["weight"]:at["weight"] + 2] = r[8:10]
+    out[at["quantity"]] = r[10]
+    out[at["value"]:at["value"] + 2] = r[11:13]
+    out[at["charges"]], out[at["effect"]], out[at["power"]] = r[13], r[14], r[15]
+    return bytes(out)
+
+
+#: Neutral field -> the DOS field it becomes, where the value crosses
+#: unchanged.  The mirror of the reader's `DIRECT` above: the same fields, in
+#: the other direction.
+WRITE_DIRECT: tuple[tuple[str, str], ...] = (
+    ("strength", "strength"),
+    ("intelligence", "intelligence"),
+    ("wisdom", "wisdom"),
+    ("dexterity", "dexterity"),
+    ("constitution", "constitution"),
+    ("charisma", "charisma"),
+    ("exceptional_strength", "exceptional_strength"),
+    ("thac0_base", "thac0_base"),
+    ("race", "race"),
+    ("char_class", "char_class"),
+    ("age", "age"),
+    ("hp_max", "hp_max"),
+    ("attack_level", "attack_level"),
+    ("save_paralysis", "save_paralysis"),
+    ("save_petrification", "save_petrification"),
+    ("save_wands", "save_wands"),
+    ("save_breath", "save_breath"),
+    ("save_spell", "save_spell"),
+    ("movement", "movement"),
+    ("level", "level"),
+    ("levels_drained", "levels_drained"),
+    ("hp_lost_to_drain", "hp_lost_to_drain"),
+    # One DOS byte where the C64 has two turning bytes; the C64 *reader*
+    # supplies the caster's, which is the pairing `to_neutral` uses too.
+    ("turn_power", "turn_power"),
+    ("thief_pick_pockets", "thief_pick_pockets"),
+    ("thief_open_locks", "thief_open_locks"),
+    ("thief_find_traps", "thief_find_traps"),
+    ("thief_move_silently", "thief_move_silently"),
+    ("thief_hide_in_shadows", "thief_hide_in_shadows"),
+    ("thief_hear_noise", "thief_hear_noise"),
+    ("thief_climb_walls", "thief_climb_walls"),
+    ("thief_read_languages", "thief_read_languages"),
+    ("copper", "copper"),
+    ("silver", "silver"),
+    ("electrum", "electrum"),
+    ("gold", "gold"),
+    ("platinum", "platinum"),
+    ("gems", "gems"),
+    ("jewelry", "jewelry"),
+    ("sex", "sex"),
+    ("alignment", "alignment"),
+    ("armour_class_base", "armour_class_base"),
+    ("experience", "experience"),
+    ("class_bits", "class_bits"),
+    ("hp_rolled", "hp_rolled"),
+    ("party_order", "party_order"),
+    ("hp_current", "hp_current"),
+    ("thac0_current", "thac0_current"),
+    ("armour_class", "armour_class"),
+    ("movement_current", "movement_current"),
+)
+
+#: Neutral fields the DOS writer takes by a rule rather than by a copy.
+WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("name", "length-prefixed into one count byte and fifteen ASCII"),
+    ("levels", "permuted onto the DOS eight slots, which are indexed by the "
+               "class number; a class with no number (knight) is reported"),
+    ("spells_known", "unpacked to one byte per spell; the ids are identical, "
+                     "and DOS even has the byte for id 56 the C64's mask "
+                     "lacks"),
+    ("spells_memorised", "reversed: DOS fills its sixteen slots from the "
+                         "end, the neutral order is highest first"),
+    ("spells_castable", "unpacked from the class map to two three-byte "
+                        "runs, cleric at 0x0B2 and magic-user at 0x0B5"),
+    ("size_small", "plus one -- DOS stores 1 small / 2 medium"),
+    ("attack_forms", "copied as a block to 0x0A1"),
+    ("roster_tail", "copied as a block to 0x112, the combat tail the C64 "
+                    "roster keeps at -2"),
+    ("inventory", "each sixteen-byte record unpacked onto a 63-byte .ITM "
+                  "record; the count and the encumbrance are computed from "
+                  "it"),
+)
+
+#: Neutral fields the DOS writer takes nothing from, and why.  Reported by
+#: `Writer.finish` for any character that carries one, never silent.
+WRITE_DROPPED: tuple[tuple[str, str], ...] = (
+    ("infravision", "DOS does not store it; the DOS engine derives what it "
+                    "needs from the race byte"),
+    ("innate_effects", "the 9-byte .SPC effect record is decoded only to its "
+                       "id byte, so writing one would be a guess at the "
+                       "other eight; no .SPC file is written"),
+    ("npc", "no attributed DOS field holds it"),
+    ("encumbrance", "recomputed from money and item weight -- the identity "
+                    "the DOS engine itself uses -- rather than copied"),
+    ("portrait_head", "the DOS icon_choice indexes the DOS art set, which "
+                      "no other port numbers; left zero"),
+    ("portrait_body", "see portrait_head"),
+)
+
+#: DOS bytes with no source in any neutral field: live heap the engine
+#: rebuilds, and the unattributed.  Zeroed and reported -- and **measured
+#: survivable**: a slot whose records differ from the game's own only in
+#: these regions loads and plays under DOSBox, and the game's own resave
+#: keeps most of the zeroes (`docs/117-save-conversion.md`, the reverse
+#: direction).  The round-trip test masks exactly this list rather than
+#: whatever happened to differ.
+WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
+    ("effect_chain", "live heap pointer; NULL, which is also what an empty "
+                     "effect list looks like"),
+    ("unnamed_0ab", "unattributed, and different for every DOS character"),
+    ("icon_choice", "indexes the DOS art set, which no other port numbers; "
+                    "zero leaves the sheet portrait blank"),
+    ("heap_0c1", "live heap pointers"),
+    ("item_chain", "live heap pointer block; the items themselves are in "
+                   "the .ITM file"),
+    ("hands_used", "live combat state with no attributed source"),
+    ("heap_104", "live heap"),
+)
+
+#: DOS fields written as documented constants: `(name, bytes, why)`.  Each is
+#: the one value all 24 specimens hold.
+WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
+    ("icon_dimension", b"\x01", "1 in all 24 DOS specimens"),
+    ("field_83_87", b"\x00\x00\x01\x00\x00",
+     "00 00 01 00 00 in all 24 DOS specimens"),
+    ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
+    ("field_10c_10f", b"\x00\x01\x00\x00",
+     "00 01 00 00 in all 24 DOS specimens"),
+)
+
+#: What :func:`write` does with every field `por/dos_layout.py` declares --
+#: the *output-side* account, over DOS field names, where
+#: :func:`write_field_disposition` accounts over the neutral vocabulary.
+#: `tests/test_doswriter.py` fails if a field is declared in the layout and
+#: named nowhere here, so a new field cannot be skipped in silence.
+WRITE_TARGETS: dict[str, str] = (
+    {dos_name: f"from neutral {n}" for n, dos_name in WRITE_DIRECT}
+    | {"name_length": "from neutral name, the count byte",
+       "name_text": "from neutral name, fifteen ASCII",
+       "spells_memorised": "from neutral spells_memorised, reversed",
+       "spellbook": "from neutral spells_known, one byte per id",
+       "class_levels": "from neutral levels, permuted to class numbers",
+       "spells_castable_cleric": "from neutral spells_castable['cleric']",
+       "spells_castable_magic_user":
+           "from neutral spells_castable['magic-user']",
+       "size": "from neutral size_small, plus one",
+       "attack_forms": "from neutral attack_forms, as a block",
+       "roster_tail": "from neutral roster_tail, as a block",
+       "item_count": "computed: the number of .ITM records written",
+       "encumbrance": "computed: money plus item weight x quantity"}
+    | {name: f"constant: {why}" for name, _, why in WRITE_CONSTANTS}
+    | {name: f"zero: {why}" for name, why in WRITE_UNSOURCED}
+)
+
+
+#: Class name -> the DOS level slot with that number.  All eight have one --
+#: DOS can hold the druid and monk levels the C64 cannot -- and only the
+#: C64-only knight is left with nowhere to go.
+_DOS_CLASS_SLOT: dict[str, int] = {name: n for n, name, _ in CLASS_LEVEL_SLOTS}
+
+_COINS = ("copper", "silver", "electrum", "gold", "platinum", "gems",
+          "jewelry")
+
+
+def _encode(f: Field, rec: bytearray, value: Any) -> None:
+    """The inverse of `_decode`, onto a mutable record."""
+    if f.kind in (Kind.U8, Kind.I8):
+        rec[f.offset] = int(value) & 0xFF
+    elif f.kind in (Kind.U16LE, Kind.UINT_LE):
+        rec[f.offset:f.end] = int(value).to_bytes(f.size, "little")
+    else:
+        data = bytes(value)
+        if len(data) != f.size:
+            raise DosRecordError(
+                f"DOS field {f.name!r} is {f.size} bytes; got {len(data)}")
+        rec[f.offset:f.end] = data
+
+
+def write(char: NeutralCharacter) -> tuple[bytes, bytes, WriteReport]:
+    """Build a 285-byte DOS record and its `.ITM` payload from a neutral
+    character.
+
+    The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
+    C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
+    `(record, itm, report)`; the `.SPC` effects file is never written, because
+    its 9-byte record is decoded only to the id byte -- see `WRITE_DROPPED`.
+
+    Every byte of both outputs is justified in the report: it came from a
+    neutral value, it was computed by a named rule, it is a documented
+    constant, or it is a zero the report names as having no source --
+    the live heap and the three unattributed runs, which the round-trip test
+    masks *by this same list* rather than by whatever happened to differ.
+    """
+    rec = bytearray(RECORD_SIZE)
+    rep = WriteReport()
+    port = char.port
+    w = neutral.Writer(char, rep, into="DOS", dropped=WRITE_DROPPED)
+    use, emit = w.use, w.emit
+
+    def put(v: neutral.Value, dos_name: str, extra: str = "",
+            value: Any = None) -> None:
+        f = FIELDS_BY_NAME[dos_name]
+        val = v.value if value is None else value
+        if f.kind is Kind.U8 and not 0 <= int(val) <= 0xFF:
+            rep.warnings.append(
+                f"{dos_name}: {val} does not fit the DOS one-byte field; "
+                f"clamped")
+            val = max(0, min(int(val), 0xFF))
+        _encode(f, rec, val)
+        emit(v, dos_name, f.offset, f.size, extra)
+
+    # -- the name: one count byte, fifteen of ASCII --------------------------
+    name = use("name")
+    if name is not None:
+        text = str(name.value)[:15].encode("ascii", "replace")
+        if len(str(name.value)) > 15:
+            rep.warnings.append(
+                f"name {str(name.value)!r} is longer than the DOS fifteen "
+                f"characters; truncated")
+        rec[0x000] = len(text)
+        rec[0x001:0x001 + len(text)] = text
+        emit(name, "name_length/name_text", 0x000, 16,
+             ", length-prefixed into one count byte and fifteen ASCII")
+
+    # -- everything the two ports encode the same way ------------------------
+    for neutral_name, dos_name in WRITE_DIRECT:
+        v = use(neutral_name)
+        if v is not None:
+            put(v, dos_name)
+
+    # -- the spellbook: one byte per spell, ids 1..56 -------------------------
+    known = use("spells_known")
+    if known is not None:
+        book = bytearray(SPELLBOOK_SPELLS)
+        for sid in known.value:
+            if 1 <= int(sid) <= SPELLBOOK_SPELLS:
+                book[int(sid) - 1] = 1
+            else:
+                rep.warnings.append(
+                    f"spell id {sid} is outside the DOS book's ids 1-56")
+        put(known, "spellbook", ", unpacked to one byte per spell",
+            value=bytes(book))
+
+    # -- memorised spells: sixteen slots, filled from the end ----------------
+    memorised = use("spells_memorised")
+    if memorised is not None:
+        ids = [int(i) for i in memorised.value][:16]
+        if len(memorised.value) > 16:
+            rep.warnings.append(
+                f"{len(memorised.value)} spells memorised and DOS has "
+                f"sixteen slots; the rest dropped")
+        put(memorised, "spells_memorised",
+            " reversed -- DOS fills its sixteen slots from the end",
+            value=bytes(16 - len(ids)) + bytes(reversed(ids)))
+
+    # -- the per-class level array: indexed by the class number --------------
+    levels = use("levels")
+    if levels is not None:
+        raw = bytearray(8)
+        for cname, lv in levels.value.items():
+            n = _DOS_CLASS_SLOT.get(cname)
+            if n is None:
+                if lv:
+                    rep.warnings.append(
+                        f"{port} carries {cname} level {lv}, and the DOS "
+                        f"eight-slot array has no {cname} slot")
+                continue
+            raw[n] = min(int(lv), 0xFF)
+        put(levels, "class_levels",
+            ", permuted from class name to class number", value=bytes(raw))
+
+    # -- spell slots: two three-byte runs ------------------------------------
+    castable = use("spells_castable")
+    if castable is not None:
+        for school, dos_name in (
+                ("cleric", "spells_castable_cleric"),
+                ("magic-user", "spells_castable_magic_user")):
+            triple = (tuple(castable.value.get(school, ())) + (0, 0, 0))[:3]
+            put(castable, dos_name, f", the {school} run",
+                value=bytes(min(int(n), 0xFF) for n in triple))
+
+    # -- size: neutral 0 small / 1 large, DOS 1 small / 2 medium -------------
+    size = use("size_small")
+    if size is not None:
+        put(size, "size", " plus one -- DOS stores 1 small / 2 medium",
+            value=int(size.value) + 1)
+
+    # -- two blocks the ports share byte for byte ----------------------------
+    forms = use("attack_forms")
+    if forms is not None:
+        put(forms, "attack_forms", " copied as a block")
+    tail = use("roster_tail")
+    if tail is not None:
+        put(tail, "roster_tail", " copied as a block")
+
+    # -- the inventory becomes the .ITM file ---------------------------------
+    itm = b""
+    projected: list[bytes] = []
+    inventory = use("inventory")
+    if inventory is not None:
+        projected = [bytes(i) for i in inventory.value]
+        itm = b"".join(item_from_c64(i) for i in projected)
+        if projected:
+            emit(inventory, "the .ITM file", RECORD_SIZE, len(itm),
+                 ", each sixteen-byte record unpacked onto the DOS 63")
+            for n in range(len(projected)):
+                base = RECORD_SIZE + n * ITEM_SIZE
+                rep.note(base, 0x02A,
+                         f"item {n}: the rendered-line cache, left empty -- "
+                         f"the game rewrites it whenever it draws the list")
+                rep.note(base + 0x02A, 4,
+                         f"item {n}: next pointer left NULL -- the loader "
+                         f"rebuilds the chain, measured by its own resave")
+
+    # -- computed, not copied ------------------------------------------------
+    count = min(len(projected), 0xFF)
+    rec[FIELDS_BY_NAME["item_count"].offset] = count
+    rep.note(FIELDS_BY_NAME["item_count"].offset, 1,
+             f"item_count: computed -- the {count} records of the .ITM file")
+    money = sum(int(w.get(k, 0)) for k in _COINS)
+    weight = sum(int.from_bytes(i[8:10], "little") * (i[10] or 1)
+                 for i in projected)
+    _encode(FIELDS_BY_NAME["encumbrance"], rec,
+            min(money + weight, 0xFFFF))
+    rep.note(FIELDS_BY_NAME["encumbrance"].offset, 2,
+             "encumbrance: computed -- money plus item weight x quantity, "
+             "the identity the DOS engine itself uses")
+
+    # -- documented constants ------------------------------------------------
+    for cname, data, why in WRITE_CONSTANTS:
+        f = FIELDS_BY_NAME[cname]
+        rec[f.offset:f.end] = data
+        rep.note(f.offset, f.size, f"{cname}: {why}")
+
+    # -- bytes with no source: live heap and the unattributed ----------------
+    for uname, why in WRITE_UNSOURCED:
+        f = FIELDS_BY_NAME[uname]
+        rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
+
+    # -- the gaps, zero in every specimen held -------------------------------
+    for f in LAYOUT:
+        if f.name.startswith("gap_"):
+            rep.note(f.offset, f.size, f"{f.name}: zero ({f.note})")
+
+    # -- the closing sweep: unwritten fields, then the reader's own drops ----
+    w.finish()
+    rep.total = RECORD_SIZE + len(itm)
+    return bytes(rec), itm, rep
+
+
+def write_field_disposition() -> dict[str, str]:
+    """Every neutral field and what :func:`write` does with it.
+
+    The DOS writer's twin of `por.c64_codec.field_disposition`, over the
+    neutral vocabulary; `WRITE_TARGETS` is the same account over the DOS
+    layout's own names, and the tests hold both complete.
+    """
+    return neutral.disposition(WRITE_DIRECT, WRITE_TRANSFORMED, WRITE_DROPPED,
+                               "the DOS record's")
 
 
 # ---------------------------------------------------------------------------
@@ -932,6 +1355,94 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     # required at all.
     for i in range(len(save0)):
         report.sources.setdefault(i, "carried through from the template save")
+    return report
+
+
+# ---------------------------------------------------------------------------
+# The whole save, the other way: a C64 save becomes DOS files (#26)
+# ---------------------------------------------------------------------------
+def write_dos_save(save0: bytes, save1: bytes | None,
+                   template: str | pathlib.Path, out: str | pathlib.Path,
+                   slot: str = "A") -> neutral.Report:
+    """Write a C64 save into a DOS save directory.
+
+    `save0` and `save1` are the C64 `SAVEDGAME0`/`SAVEDGAME1` payloads;
+    `template` is an existing DOS save directory whose `SAVGAM<slot>.DAT`
+    supplies the 8016 resident-state bytes nothing has attributed; `out` is
+    where the new files go, and it must not be the player's own save
+    directory -- the template is only ever read.
+
+    What is written: `CHRDAT<slot><n>.SAV` and its `.ITM` for each character,
+    a `.SPC` never (and a stale one in `out` is removed, so it cannot be read
+    as the character's effects), and `SAVGAM<slot>.DAT` copied from the
+    template with the quest-flag words rewritten from the C64 bytes -- the two
+    ports index them by the same ECL address.  The party's square goes in
+    only when the C64 party stands in the template's own area; retargeting a
+    DOS save's area has no measured recipe, so a mismatch keeps the
+    template's square and says so.  The clock stays the template's: the DOS
+    clock format is undecoded.
+    """
+    from .items import items_for_slot
+    from .savegame import SaveGame0, SaveGame1
+
+    template = pathlib.Path(template)
+    out = pathlib.Path(out)
+    if out.resolve() == template.resolve():
+        raise DosRecordError(
+            "the output directory is the template; the template is read-only")
+    out.mkdir(parents=True, exist_ok=True)
+
+    sg = SaveGame0.from_bytes(bytes(save0))
+    sg1 = SaveGame1(bytes(save1)) if save1 is not None else None
+    party = sg.characters
+    if len(party) > 6:
+        raise DosRecordError(
+            f"a DOS save holds six characters; this save has {len(party)}")
+
+    report = neutral.Report(total=0)
+    for n, char_slot in enumerate(party, start=1):
+        block = sg1.roster(char_slot.index) if sg1 is not None else None
+        inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
+        char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
+                              source=f"C64 slot {char_slot.index}")
+        rec, itm, one = write(char)
+        stem = out / f"CHRDAT{slot}{n}"
+        stem.with_suffix(".SAV").write_bytes(rec)
+        stem.with_suffix(".ITM").write_bytes(itm)
+        spc = stem.with_suffix(".SPC")
+        if spc.exists():
+            spc.unlink()
+        who = char.get("name", f"slot {char_slot.index}")
+        report.dropped.extend(d for d in one.dropped
+                              if d not in report.dropped)
+        report.warnings.extend(f"{who}: {w}" for w in one.warnings)
+
+    savgam = bytearray(
+        (template / f"SAVGAM{slot}.DAT").read_bytes())
+    for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
+        off = 1 + 2 * (addr - SAVGAM_BASE)
+        savgam[off:off + 2] = bytes(
+            (save0[addr - SAVE0_BASE], 0))
+    c64_area = save0[CURRENT_SCRIPT - SAVE0_BASE]
+    if c64_area == area_id(bytes(savgam)):
+        savgam[POS_X] = save0[0x49C0 - SAVE0_BASE]
+        savgam[POS_Y] = save0[0x49C1 - SAVE0_BASE]
+        savgam[POS_FACING] = save0[0x49C2 - SAVE0_BASE] * FACING_SCALE
+    else:
+        report.warnings.append(
+            f"the C64 party stands in area {c64_area} and the template's "
+            f"DOS party in area {area_id(bytes(savgam))}; retargeting a DOS "
+            f"save has no measured recipe, so the party will stand on the "
+            f"template's square")
+    report.warnings.append(
+        "the clock is the template's; the DOS clock format is undecoded")
+    template_count = len(list(template.glob(f"CHRDAT{slot}?.SAV")))
+    if template_count != len(party):
+        report.warnings.append(
+            f"the template's party has {template_count} characters and this "
+            f"one {len(party)}; whether SAVGAM records the count is "
+            f"unmeasured")
+    (out / f"SAVGAM{slot}.DAT").write_bytes(bytes(savgam))
     return report
 
 
