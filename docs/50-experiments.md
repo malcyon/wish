@@ -3682,6 +3682,131 @@ Unexplained, and the difference is not `ECL00`, whose entry 0 is an
 unconditional `NEWECL 20`.
 
 
+## Every overlay's PRG header is a stamp, not a load address
+
+`DUNGEON` running at `$0800` where its header says `$1000` is not one file's
+quirk, and it is not a family-wide `$800` either. **Every code overlay that
+declares `$1000` runs somewhere else, and the offsets range from `-$0800` to
+`+$9F00`.** The header is a number stamped per family by whatever built the
+disks; the twenty-three stems that declare `$1000` run at eight different
+bases.
+
+The distribution gives it away. Across the 983 files on the eight sides there
+are 34 distinct header values, and four of them cover more than half the disk:
+206 files say `$5000`, 170 say `$6400`, 115 say `$1000`, 106 say `$1388`. A
+per-file load address does not cluster like that.
+
+### Measured in the running game — CONFIRMED
+
+Slot 3, `P18PARTY.D64`, headless. Five 32-byte runs are taken from each file on
+the disks and the machine's 64K is searched for them; a run found once names the
+base with no inference at all. Three states were dumped — walking in the world,
+in camp, and in character generation.
+
+| file | header | runs at | the header is | evidence |
+|---|---|---|---|---|
+| `GEO00` | `$0400` | `$0400` | **right** | 5/5 probes, in the world |
+| `DUNGEON` | `$1000` | `$0800` | `$0800` high | 5/5, in the world |
+| `CAMP` | `$1000` | `$0800` | `$0800` high | 5/5, in camp |
+| `GEN` | `$1000` | `$0800` | `$0800` high | 9078 of its 9083 bytes, in character generation |
+| `LINKER` | `$1000` | `$2B80` | `$1B80` low | 5/5 |
+| `LIBRARY` | `$1000` | `$2C48` | `$1C48` low | 5/5 |
+| `SECSET00` | `$3A00` | `$6500` | `$2B00` high | 5/5 |
+| `ITEMNAMES` | `$6F00` | `$6F00` | **right** | 5/5 |
+| `DUNGEON2` | `$1000` | `$7A00` | `$6A00` low | 5/5 |
+| `COMBAT3` | `$1000` | `$7AC0` | `$6AC0` low | 5/5 |
+| `ITEMS` | `$7600` | `$7B00` | `$0500` low | **2048 of 2048 bytes** |
+| `ANIMATE00` | `$1000` | `$8400` | `$7400` low | 3/5, and the file's own `4C xx 84` table |
+| `BODY01` | `$5000` | `$8C00` | `$3C00` low | 5/5 |
+| `HEAD10` | `$5000` | `$9000` | `$4000` low | 5/5 |
+| `ECL0B` | `$1388` | `$9900` | `$8578` low | 5/5 |
+| `SPELLN64` | `$1000` | `$AF00` | `$9F00` low | 5/5 |
+| `FAST1.O` | `$B700` | `$B700` | **right** | 5/5 |
+| `MDRIVER` | `$BA00` | `$BA00` | **right** | 5/5 |
+| `SOUNDFX` | `$BA00` | `$BA00` | **right** | 5/5 |
+| `GDRIVE01` | `$1388` | `$C000` | `$AC78` low | 3/5 |
+
+Seventeen of the twenty are wrong, three are right, and the three that are right
+are the three that declare something other than a family stamp.
+
+The dumps also settle the page above the roster, which now tiles without a gap:
+`$7A00` `DUNGEON2`, `$7AC0` `COMBAT3`, `$7B00`-`$82FF` `ITEMS`, `$8300` the
+roster blocks, `$8400` `ANIMATE00`.
+
+`MON04` sits at `$5500` in all three dumps, 467 of its 480 bytes matching — a
+monster record with its run-time fields moved. Its header says `$6400`.
+PROBABLE, and worth saying because the `goldbox` skill records `MON*` at
+`$6B00`; `$6B00` is where a record is *worked on*, not where the file lands.
+
+### Fitted rather than measured
+
+For an overlay nothing in a session made resident, the base is fitted: linear
+sweep for instruction starts, then score every candidate base by the `JSR`/`JMP`
+targets that land inside the file, `+1` at an instruction start and `-1`
+elsewhere. A wrong base scatters its targets, so the penalty separates the true
+base from near-misses.
+
+| file | header | fitted | hit / miss | runner-up | grade |
+|---|---|---|---|---|---|
+| `COMBAT` | `$1000` | `$0800` | 482 / 6 | `$07FD`, 246 | CONFIRMED (below) |
+| `POST.COM` | `$1000` | `$0800` | 245 / 38 | `$2BF3`, 128 | PROBABLE |
+| `COM.PREP` | `$1000` | `$0800` | 97 / 6 | `$08EE`, 53 | PROBABLE |
+| `INIT` | `$1000` | `$0800` | 54 / 3 | `$090F`, 41 | PROBABLE |
+| `FINAL` | `$1000` | `$0800` | 31 / 4 | `$0683`, 29 | GUESS — the fit is a tie and only the family says `$0800` |
+| `SPELLE01` | `$1000` | `$A700` | 45 / 1 | `$2362`, 38 | PROBABLE |
+| `SPELLE02` | `$1000` | `$A700` | 21 / 0 | `$A4DD`, 19 | PROBABLE |
+| `SPELLE04` | `$1000` | `$A700` | 99 / 5 | `$A559`, 57 | PROBABLE |
+| `SPELLE00` | `$1000` | `$A700` | 33 / 0 | `$99BF` scores higher on recall | GUESS |
+| `SECSET64` | `$1000` | `$6500` | 37 / 0 | `$64FD`, 19 | PROBABLE, and `SECSET00` is measured there |
+| `ECL64` | `$1000` | `$9900` | 15 / 1 | `$98ED`, 12 | PROBABLE, and `ECL0B` is measured there |
+| `GDRIVE00` | `$C000` | `$C000` | 139 / 3 | `$BD0C`, 54 | PROBABLE |
+
+`LOAD_SAVE`, `BOOT` and the `POOLR*` boot files have too few internal targets to
+fit and were never resident in a dump. UNKNOWN, and nothing cites them.
+
+`COMBAT` is CONFIRMED without a dump, by the file's own arithmetic: `$0969` is
+`LDA #$70 / LDX #$09 / JMP $485A`, which builds the address `$0970` out of two
+immediates, and `$0970` — file offset `$0170` — holds `17 27 01 17`, the message
+window that was poked live to `17 1E 01 11` while `COMBAT` was resident and made
+the window small (`docs/110-combat-log.md`). Only base `$0800` puts those four
+bytes at that address.
+
+`GEN` is separately CONFIRMED by external rule: at `$0800` the AD&D tables land
+byte-exact. `$102E` is `30 25 20 15 10 10 85 0`, the level-1 thief row; `$20A7`
+is `4 8 6 10`, the four hit dice; `$1FA2` is four consecutive level-1
+saving-throw rows — `14 13 11 15 12` magic-user, `10 13 14 16 15` cleric,
+`13 12 14 16 15` thief, `14 15 16 17 17` fighter — every number the book's.
+
+### The audit of what we already cite
+
+107 distinct `OVERLAY $XXXX` citations across `docs/`, `por/`, `automap/`,
+`tools/` and `tests/` were checked against the measured bases. **Every one is
+inside the overlay it names.** The handful the checker flagged are all
+explained: a linear sweep desynchronises over an embedded table, so `GEN $102E`,
+`$1F44` and `$2228` "are not instructions" because they are the thief-skill,
+saving-throw and spell-slot tables; `GEN $136E` and `$15A9` are *Curse's* `GEN`,
+cited in `por/levels.py` beside Pool of Radiance's; and `CAMP $301C` is an
+address *in* `LIBRARY` that a sentence about `CAMP` mentions.
+
+So `$282E` was the only one. The reason nothing else slipped is that `$282E` is
+the only address in the log that was ever *computed* rather than found — every
+other citation came from reading the file at a base somebody had already fixed.
+
+### One correction
+
+**`ITEMS` loads at `$7B00`, not the `$7600` its PRG header claims.**
+`docs/85-item-tables.md` says `$7600`; the string is hardcoded in
+`tools/genitems.py` and the document is generated, so the fix goes there.
+Nothing depends on it — `por/items.py` indexes the file by record number and
+never by address — but it is the same mistake `$282E` was, still sitting in the
+knowledge base. `docs/125-bug-notes.md` R51's "the DOS file even carries the
+same `$7600` load address" is a statement about the two files' headers and stays
+true.
+
+Scripts: `work/p17/` (gitignored) — `fit2.py` the base fit, `cites.py` the
+citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
+
+
 ## Planned, not yet run
 
 

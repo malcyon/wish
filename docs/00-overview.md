@@ -81,6 +81,12 @@ demand rather than holding everything resident. Relevant groupings:
   `SPRITE*`, `COMPIC*`, `WALLSET*`/`WALLDEF*` (graphics), `MON*` (monsters),
   `ITEMFILE*` / `ITEMS` / `ITEMNAMES`, `SPELLE*` / `SPELLN*` (spells), `CHARSET`, `MUSIC`
 
+**A PRG header on these disks is a family stamp, not a load address.** 115 files declare
+`$1000` and not one of them runs there: `DUNGEON` runs at `$0800`, `LIBRARY` at `$2C48`,
+`ANIMATE00` at `$8400`, `SPELLN64` at `$AF00`. Only three of the twenty overlays measured
+in a running game load where their header says. The table of measured bases is in
+[40-memory-map.md](40-memory-map.md).
+
 **The `SPELLN*` stem is misleading.** `SPELLN00` is the spell-name table; `SPELLN64` is
 **not a spell-name table in either Pool of Radiance or Curse**. Its payload is the
 `ALTER`/combat-icon editor's menu strings, and `por/iconparts.py` reads it as such.

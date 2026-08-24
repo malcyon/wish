@@ -8,6 +8,42 @@ owns it is resident.
 [41-memory-regions.md](41-memory-regions.md)**, generated from `por/memory.py`.
 This page keeps the reasoning and the game's own string tables.
 
+## Where each overlay runs
+
+**A PRG header on this disk set is a family stamp, not a load address.** 115
+files declare `$1000` and none of them runs there. Never compute an address from
+a header; look it up here, or measure it. The evidence, the method and the
+grades are in [50-experiments.md](50-experiments.md).
+
+| file | header | runs at | grade |
+|---|---|---|---|
+| `GEO*` | `$0400` | `$0400` | CONFIRMED |
+| `DUNGEON`, `CAMP`, `GEN`, `COMBAT` | `$1000` | `$0800` | CONFIRMED |
+| `POST.COM`, `COM.PREP`, `INIT` | `$1000` | `$0800` | PROBABLE |
+| `FINAL` | `$1000` | `$0800` | GUESS -- the fit is a tie; only the family says so |
+| `LINKER` | `$1000` | `$2B80` | CONFIRMED |
+| `LIBRARY` | `$1000` | `$2C48` | CONFIRMED |
+| `MON*` | `$6400` | `$5500` | PROBABLE -- `MON04`, 467 of 480 bytes |
+| `SECSET*` | `$3A00`, `$1000`, ... | `$6500` | CONFIRMED (`SECSET00`) |
+| `ITEMNAMES` | `$6F00` | `$6F00` | CONFIRMED |
+| `DUNGEON2` | `$1000` | `$7A00` | CONFIRMED |
+| `COMBAT3` | `$1000` | `$7AC0` | CONFIRMED |
+| `ITEMS` | `$7600` | `$7B00` | CONFIRMED -- all 2048 bytes |
+| `ANIMATE00` | `$1000` | `$8400` | CONFIRMED |
+| `BODY*`, `PIC*` | `$5000` | `$8C00` | CONFIRMED (`BODY01`, `PIC1D`) |
+| `HEAD*` | `$5000` | `$9000` | CONFIRMED (`HEAD10`) |
+| `ECL*` | `$1388` | `$9900` | CONFIRMED (`ECL0B`) |
+| `SPELLE01`, `02`, `04` | `$1000` | `$A700` | PROBABLE |
+| `SPELLN00`, `SPELLN64` | `$2710`, `$1000` | `$AF00` | CONFIRMED (`SPELLN64`) |
+| `FAST1.O` | `$B700` | `$B700` | CONFIRMED |
+| `MDRIVER`, `SOUNDFX` | `$BA00` | `$BA00` | CONFIRMED |
+| `GDRIVE00`, `GDRIVE01` | `$C000`, `$1388` | `$C000` | CONFIRMED (`GDRIVE01`) |
+| `BOOT`, `LOAD_SAVE`, `POOLR*` | `$0801`, ... | -- | UNKNOWN -- too few internal targets to fit, never resident in a dump |
+
+`$7A00` `DUNGEON2`, `$7AC0` `COMBAT3`, `$7B00`-`$82FF` `ITEMS`, `$8300` the
+roster blocks, `$8400` `ANIMATE00` -- that page tiles with no gap, which is a
+check on all five.
+
 ## Party / character data
 
 | Range | Contents |
