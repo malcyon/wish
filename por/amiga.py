@@ -37,7 +37,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
-from . import neutral
+from . import games, neutral
+from .neutral import NeutralCharacter
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
 COMBAT_BIAS = 60
@@ -448,23 +449,26 @@ class PodWriter:
         return bytes(out)
 
 
+
 # ---------------------------------------------------------------------------
-# C64 -> Amiga: the conversion, through the neutral form
+# Anything -> Amiga: the writing half of the pair `por/neutral.py` describes
 # ---------------------------------------------------------------------------
-# The middle is `por/yaml_io.py`'s `entry_for` dictionary -- the same one the
-# editor round-trips and the same one `por/dos.py` builds a DOS party into.
-# Nothing here reads a `CharacterRecord`: it reads named fields, so a C64
-# title's own race and class tables have already been applied and this module
-# never has to know which of the six games the character came from.
+# The middle is a `NeutralCharacter`, the same record `por/dos.py` reads into
+# and `por/c64_codec.py` writes out of. Nothing here reads a `CharacterRecord`
+# and nothing here reads another codec's output: this module is one writer, it
+# names neutral fields, and what produced them is somebody else's business.
+# That is what makes a fourth format cost one reader rather than a converter
+# per pair.
 #
 # The direction is one way. `wish` never reads an Amiga record back into a C64
 # save, and `docs/124-amiga-port.md` sec 9 says why: there is no C64 Pools of
 # Darkness to go back to.
 
 
-#: Pool of Radiance's races by name -> PoD's own six-entry table. The tables
-#: differ per title on the C64 alone (`por/games.py`), which is exactly why
-#: the conversion goes by name and not by number.
+#: Gold Box race names -> PoD's own six-entry table. The C64 tables differ per
+#: title (`por/games.py`), which is exactly why the conversion goes by name
+#: and not by number: the neutral `race` is an index into the *source title's*
+#: table and `por.games.race_table` is what turns it into a name.
 RACE_FROM_C64: dict[str, str] = {
     "elf": "ELF",
     "half-elf": "HALF-ELF",
@@ -489,10 +493,10 @@ RACE_SUBSTITUTE: dict[str, tuple[str, str]] = {
     "kender": ("HALFLING", "a Krynn race; halfling is the Realms' nearest"),
 }
 
-#: C64 class name -> the slot its level occupies in the seven-byte array at
-#: 0x09D. The array is indexed by PoD's *single-class* code, which is how it
-#: was identified: every single-classed specimen on disk 3 has its one
-#: non-zero level in the slot its class code names.
+#: Class name -> the slot its level occupies in the seven-byte array at 0x09D.
+#: The array is indexed by PoD's *single-class* code, which is how it was
+#: identified: every single-classed specimen on disk 3 has its one non-zero
+#: level in the slot its class code names.
 CLASS_LEVEL_SLOT: dict[str, str] = {
     "cleric": "CLERIC",
     "fighter": "FIGHTER",
@@ -512,16 +516,16 @@ CLASS_SUBSTITUTE: dict[str, tuple[str, str]] = {
 #: The class bitmask at 0x0B7, read off the twelve genuine records: magic-user
 #: 1, cleric 2, thief 4, fighter 8 -- which is the C64's own numbering -- and
 #: **64 for both the paladin and the ranger**, where the C64 gives them 0x40
-#: and 0x80 separately. So the mask is *not* the C64's byte and must not be
-#: copied across. PROBABLE: the twelve agree, but no probe has put the byte on
-#: screen.
+#: and 0x80 separately. So the mask is *not* the neutral `class_bits` byte and
+#: must not be copied across. PROBABLE: the twelve agree, but no probe has put
+#: the byte on screen.
 CLASS_BIT: dict[str, int] = {
     "magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8,
     "paladin": 64, "ranger": 64,
 }
 
 #: Class combinations -> PoD's class code. Only the combinations both ports
-#: have; a C64 pairing PoD's table has no entry for is refused rather than
+#: have; a combination PoD's table has no entry for is refused rather than
 #: written as something else, which is `yaml_io.class_code_for`'s rule too.
 CLASS_CODE_FROM_C64: dict[frozenset[str], str] = {
     frozenset(k.split("+")): v for k, v in {
@@ -543,19 +547,12 @@ CLASS_CODE_FROM_C64: dict[frozenset[str], str] = {
     }.items()
 }
 
-#: `yaml_io.ALIGNMENTS` is already `law * 3 + morality` in PoD's own order, so
-#: the index crosses unchanged. Spelled out rather than assumed, because the
-#: two lists agreeing is a fact about them and not a rule.
-ALIGNMENT_FROM_C64: dict[str, int] = {
-    "lawful good": 0, "lawful neutral": 1, "lawful evil": 2,
-    "neutral good": 3, "true neutral": 4, "neutral evil": 5,
-    "chaotic good": 6, "chaotic neutral": 7, "chaotic evil": 8,
-}
+#: The neutral `alignment` is `law * 3 + morality`, which is PoD's own byte.
+#: Spelled out rather than assumed, because the two encodings agreeing is a
+#: fact about them and not a rule.
+ALIGNMENT_NAMES: tuple[str, ...] = ALIGNMENTS
 
-SEX_FROM_C64: dict[str, int] = {"male": 0, "female": 1}
-
-#: The six abilities in the order the sheet draws them, which is also the
-#: order `yaml_io.EDITABLE` lists them in.
+#: The six abilities in the order the sheet draws them.
 ABILITY_KEYS = ("strength", "intelligence", "wisdom", "dexterity",
                 "constitution", "charisma")
 
@@ -568,8 +565,8 @@ THIEF_KEYS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
               "thief_read_languages")
 
 #: What an unarmoured, unarmed character is, and what all twelve genuine
-#: records hold: armour class 10 and 1d2. **Not** carried from the C64. The
-#: C64's armour class is a cache that already includes worn armour and a
+#: records hold: armour class 10 and 1d2. **Not** carried from the source. A
+#: Gold Box armour class is a cache that already includes worn armour and a
 #: dexterity bonus, PoD re-applies dexterity itself, and no item crosses -- so
 #: a converted character genuinely arrives with nothing on and 10 is the right
 #: answer rather than a lossy one.
@@ -582,15 +579,15 @@ FILENAME_LENGTH = 8
 
 
 class ConversionError(ValueError):
-    """A C64 character Pools of Darkness has no way to represent."""
+    """A character Pools of Darkness has no way to represent."""
 
 
 @dataclass
 class Report(neutral.Report):
     """Where every non-zero byte of the `.pc` came from, and what stayed.
 
-    The same bargain `por/dos.py` strikes in the other direction, in the one
-    shape `por/neutral.py` gives every direction: a field the Amiga cannot
+    The same bargain `por/c64_codec.py` strikes in the other direction, in the
+    one shape `por/neutral.py` gives every direction: a field the Amiga cannot
     hold is *named*, never dropped quietly.  `unaccounted` is the acceptance
     test -- `docs/124-amiga-port.md` phase 6 asks for a provenance report with
     no "template" category, and a byte is either a field a probe put on the
@@ -611,7 +608,7 @@ class Report(neutral.Report):
                 if b and i not in self.sources]
 
 
-#: Neutral-form field -> the Amiga field it becomes, where the value crosses
+#: Neutral field -> the Amiga field it becomes, where the value crosses
 #: unchanged.
 DIRECT: tuple[tuple[str, str], ...] = (
     ("age", "age"),
@@ -622,27 +619,25 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("jewelry", "jewelry"),
     ("exceptional_strength", "exceptional_strength"),
     ("level", "level"),
+    ("sex", "sex"),
+    ("alignment", "alignment"),
 )
 
-#: Fields converted by a rule rather than by a copy.
+#: Neutral fields converted by a rule rather than by a copy.
 TRANSFORMED: tuple[tuple[str, str], ...] = (
-    ("name", "truncated from the C64's 20 bytes to the Amiga's 15 at 0x060"),
-    ("sex", "name -> index, MALE 0 FEMALE 1"),
-    ("race", "name -> PoD's own six-entry table; a race PoD lacks is "
-             "substituted and reported"),
-    ("alignment", "name -> law * 3 + morality, which is the same index the "
-                  "C64 uses"),
-    ("classes", "names -> PoD's 17-entry class code at 0x059 and its class "
-                "bitmask at 0x0B7, which is not the C64's byte"),
-    ("class_code", "recomputed from `classes`; the C64 code and PoD's are "
-                   "different tables"),
+    ("name", "truncated to the Amiga's fifteen characters at 0x060"),
+    ("race", "index -> name in the source title's table -> PoD's own six; a "
+             "race PoD lacks is substituted and reported"),
+    ("class_bits", "names -> PoD's 17-entry class code at 0x059 and its own "
+                   "class bitmask at 0x0B7, which is not this byte"),
+    ("char_class", "recomputed from `class_bits`; the two ports' class codes "
+                   "are different tables"),
     ("levels", "spread into the seven-slot array at 0x09D, indexed by PoD's "
                "single-class code"),
-    ("hp_max", "the C64 keeps a 16-bit maximum, the Amiga one byte at 0x081; "
+    ("hp_max", "a Gold Box maximum is 16 bits, the Amiga's one byte at 0x081; "
                "above 255 it is clamped and reported"),
-    ("combat", "only `hp_current` is taken, into the u16 at 0x190. THAC0, "
-               "armour class, the damage bonus and the second movement byte "
-               "are all recomputed by PoD on load and its copies ignored"),
+    ("hp_current", "copied to the u16 at 0x190, capped at the maximum the "
+                   "Amiga byte could hold"),
     *((k, "one of the six abilities at 0x070, written to both halves of its "
           "base/current pair") for k in ABILITY_KEYS),
     *((k, "one of the five saving throws at 0x083, in the same order: the "
@@ -652,44 +647,71 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
           "noise is low and climb walls high in both") for k in THIEF_KEYS),
 )
 
-#: Fields deliberately left behind, and why. Reported, never silent.
+#: Neutral fields deliberately left behind, and why. Reported, never silent:
+#: `neutral.Writer.finish` quotes these for whatever the character carries,
+#: and :func:`field_disposition` states the whole contract whether or not any
+#: one character happens to carry it.
 DROPPED: tuple[tuple[str, str], ...] = (
-    ("slot", "names the output file; not a field of the record"),
     ("copper", "only platinum, gems and jewelry have been located in the "
                "`.pc`; the lighter coins have no known home"),
     ("silver", "no located home -- see `copper`"),
     ("electrum", "no located home -- see `copper`"),
     ("gold", "no located home -- see `copper`"),
     ("infravision", "no located home; PoD derives what it needs from race"),
-    ("hp_rolled", "the C64's pre-constitution roll; the Amiga keeps only the "
+    ("hp_rolled", "the pre-constitution roll; the Amiga keeps only the "
                   "maximum"),
+    ("hp_lost_to_drain", "level drain is bookkeeping the Amiga record has no "
+                         "located home for -- see `levels_drained`"),
+    ("levels_drained", "no located home; a drained character arrives at the "
+                       "levels the record actually holds"),
     ("portrait_head", "PoD's art is `CHEAD.TLB`, a different set with "
                       "different numbering. A copied index is a wrong "
                       "picture, silently"),
     ("portrait_body", "PoD's art is `CBODY.TLB` -- see `portrait_head`"),
-    ("icon", "the C64 combat icon is 18 screen codes into `CHARPIC00` plus 18 "
-             "colours. It is a C64 character set and the Amiga has nothing of "
-             "the kind"),
-    ("items", "the appended item region past 484 bytes is undecoded, and a "
-              "Silver Blades item id and a Pools of Darkness one are two "
-              "different games' tables. The character arrives carrying "
-              "nothing"),
-    ("spells", "PoD runs cleric spells to level 7 and mage to 9, so its id "
-               "space is larger than the C64's 1-56 and the mapping is not "
-               "the identity. Re-memorise in game"),
+    ("inventory", "the appended item region past 484 bytes is undecoded, and "
+                  "a Pool of Radiance item id and a Pools of Darkness one are "
+                  "two different games' tables. The character arrives "
+                  "carrying nothing"),
+    ("innate_effects", "racial abilities and item powers share one id "
+                       "namespace with the C64's, and PoD's is a third; "
+                       "nothing here can be crossed by number"),
+    ("spells_memorised", "PoD runs cleric spells to level 7 and mage to 9, so "
+                         "its id space is larger than the C64's 1-56 and the "
+                         "mapping is not the identity. Re-memorise in game"),
     ("spells_known", "the spellbook's home in the `.pc` is undecoded -- see "
-                     "`spells`"),
-    ("npc", "a C64 roster flag; PoD decides for itself what it has just "
-            "imported"),
+                     "`spells_memorised`"),
+    ("spells_castable", "slots free per level follow from class and level, "
+                        "which PoD recomputes on load"),
+    ("npc", "a roster flag of the source save; PoD decides for itself what it "
+            "has just imported"),
+    ("party_order", "the marching order of a party the character is leaving"),
+    ("encumbrance", "PoD recomputes it: a probe that set it to 1234 drew 233, "
+                    "which is the character's own coins, gems and jewelry"),
+    ("size_small", "no located home; PoD takes size from race"),
+    ("turn_power", "no located home for a cleric's turning strength"),
+    ("attack_level", "no located home; PoD reads its attack tables at the "
+                     "class level"),
+    ("attack_forms", "the running attack-form bytes are combat state, and the "
+                     "0x0AD damage triple is written unarmed instead"),
+    ("roster_tail", "the source roster's derived block: armour bonus and the "
+                    "running attack forms, all of which PoD recomputes"),
+    ("thac0_base", "PoD recomputes THAC0 on load from the class levels and "
+                   "ignores what the file holds"),
+    ("thac0_current", "recomputed on load -- see `thac0_base`"),
+    ("armour_class", "recomputed on load; the record gets the unarmoured "
+                     "constant instead"),
+    ("armour_class_base", "recomputed on load -- see `armour_class`"),
+    ("movement_current", "recomputed on load: a probe that set the derived "
+                         "movement to 99 drew the base's 12"),
 )
 
 
 def field_disposition() -> dict[str, str]:
-    """Every neutral-form field and what the conversion does with it.
+    """Every neutral field and what this writer does with it.
 
-    The test that keeps this module honest: a field `yaml_io.entry_for`
-    produces and this table does not name would be a field silently dropped.
-    The shape is `por/neutral.py`'s, so every direction reports the same way.
+    The test that keeps this module honest: a field `por/neutral.py` declares
+    and this table does not name would be a field silently dropped.  The
+    shape is `por/neutral.py`'s, so every direction reports the same way.
     """
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the Amiga's")
 
@@ -707,11 +729,11 @@ def pc_filename(name: str) -> str:
     return f"{stem}.pc"
 
 
-def _classes_of(entry: dict) -> tuple[list[str], list[str]]:
+def _classes_of(names) -> tuple[list[str], list[str]]:
     """The character's classes as PoD names them, plus any substitutions."""
     warnings: list[str] = []
     out: list[str] = []
-    for raw in entry.get("classes") or []:
+    for raw in names or []:
         if not isinstance(raw, str):
             raise ConversionError(
                 f"class {raw!r} is a raw bitmask -- this title's class table "
@@ -730,20 +752,22 @@ def _classes_of(entry: dict) -> tuple[list[str], list[str]]:
     return out, warnings
 
 
-def from_entry(entry: dict) -> tuple[PodWriter, Report]:
-    """One `yaml_io.entry_for` dictionary as a `PodWriter` and its report.
+def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
+    """Build a `Save/NAME.pc` writer from a neutral character, and its report.
 
     Everything the Amiga cannot hold lands in `Report.dropped`; everything it
     holds differently lands in `Report.warnings`.
     """
     rep = Report()
-    # Unconditionally, as `por/dos.py` does in the other direction: the report
-    # is the conversion's whole contract, not a list of what this one
-    # character happened to be carrying.
-    for name, why in DROPPED:
-        rep.dropped.append(f"{name}: {why}")
+    w = neutral.Writer(char, rep, into="Amiga", dropped=DROPPED)
 
-    name = str(entry.get("name", "")).rstrip("\0").strip()
+    def num(name: str, default: int = 0) -> int:
+        """One neutral field as a number, taken and counted as consumed."""
+        v = w.use(name)
+        return default if v is None else int(v.value)
+
+    name_value = w.use("name")
+    name = str(name_value.value if name_value else "").rstrip("\0").strip()
     if not name:
         raise ConversionError("a character with no name cannot be converted")
     if len(name) > NAME_LENGTH:
@@ -751,7 +775,9 @@ def from_entry(entry: dict) -> tuple[PodWriter, Report]:
             f"name {name!r} is {len(name)} characters; PoD keeps "
             f"{NAME_LENGTH}, so it arrives as {name[:NAME_LENGTH]!r}")
 
-    race_key = str(entry.get("race", "")).strip().lower()
+    race_value = w.use("race")
+    race_key = str(_races(char).get(
+        race_value.value if race_value else None, "")).strip().lower()
     if race_key in RACE_SUBSTITUTE:
         replacement, why = RACE_SUBSTITUTE[race_key]
         rep.warnings.append(f"race {race_key} -> {replacement.lower()}: {why}")
@@ -760,20 +786,25 @@ def from_entry(entry: dict) -> tuple[PodWriter, Report]:
         race_name = RACE_FROM_C64[race_key]
     else:
         raise ConversionError(
-            f"race {entry.get('race')!r} has no Pools of Darkness equivalent")
+            f"race {race_value.value if race_value else None!r} has no Pools "
+            f"of Darkness equivalent")
 
-    sex_key = str(entry.get("sex", "")).strip().lower()
-    if sex_key not in SEX_FROM_C64:
-        raise ConversionError(f"sex {entry.get('sex')!r} is not male or female")
-
-    align_key = str(entry.get("alignment", "")).strip().lower()
-    if align_key not in ALIGNMENT_FROM_C64:
+    sex = w.use("sex")
+    if sex is None or sex.value not in (0, 1):
         raise ConversionError(
-            f"alignment {entry.get('alignment')!r} is not one of "
-            f"{', '.join(ALIGNMENT_FROM_C64)}")
+            f"sex {sex.value if sex else None!r} is not male or female")
 
-    classes, class_warnings = _classes_of(entry)
+    align = w.use("alignment")
+    if align is None or not 0 <= align.value < len(ALIGNMENT_NAMES):
+        raise ConversionError(
+            f"alignment {align.value if align else None!r} is not one of "
+            f"{', '.join(ALIGNMENT_NAMES)}")
+
+    bits = w.use("class_bits")
+    classes, class_warnings = _classes_of(
+        games.classes_to_names(bits.value if bits else 0, char.game))
     rep.warnings.extend(class_warnings)
+    w.use("char_class")
     combination = frozenset(classes)
     if combination not in CLASS_CODE_FROM_C64:
         raise ConversionError(
@@ -782,47 +813,28 @@ def from_entry(entry: dict) -> tuple[PodWriter, Report]:
             + "; its table is: " + ", ".join(sorted(
                 v for v in CLASS_CODE_FROM_C64.values())))
 
+    level_value = w.use("levels")
     levels = {str(k).strip().lower(): int(v)
-              for k, v in (entry.get("levels") or {}).items()}
+              for k, v in (level_value.value if level_value else {}).items()}
     slots = [0] * CLASS_LEVEL_COUNT
-    for c64_name in classes:
-        level = levels.get(c64_name, 0)
+    for class_name in classes:
+        level = levels.get(class_name, 0)
         # A knight's level arrives under its own name, not the fighter's.
         if not level:
             for original, (replacement, _) in CLASS_SUBSTITUTE.items():
-                if replacement == c64_name:
+                if replacement == class_name:
                     level = levels.get(original, level)
-        slots[CLASS_LEVEL_SLOTS.index(CLASS_LEVEL_SLOT[c64_name])] = level
+        slots[CLASS_LEVEL_SLOTS.index(CLASS_LEVEL_SLOT[class_name])] = level
 
-    hp_max = int(entry.get("hp_max") or 0)
+    max_hp = w.use("hp_max")
+    hp_max = int(max_hp.value if max_hp else 0)
     if hp_max > 0xFF:
         rep.warnings.append(
             f"hit points maximum {hp_max} does not fit the Amiga's one byte "
             f"at {HP_MAX:#05x}; clamped to 255")
         hp_max = 0xFF
 
-    combat = entry.get("combat") or {}
-    if combat:
-        current = int(combat.get("hp_current", hp_max))
-        for key in ("thac0", "armour_class", "damage_bonus",
-                    "movement_current"):
-            if key in combat:
-                rep.dropped.append(
-                    f"combat.{key}: PoD recomputes it on load from the base "
-                    f"values and ignores what the file says")
-        if "unknown_03_05" in combat:
-            rep.dropped.append(
-                "combat.unknown_03_05: three undecoded C64 roster bytes, with "
-                "nothing to map them to")
-    else:
-        current = hp_max
-        rep.warnings.append(
-            "no party roster in the source, so current hit points are set to "
-            "the maximum")
-    if current > hp_max:
-        current = hp_max
-
-    lighter = sum(int(entry.get(k) or 0)
+    lighter = sum(int(w.get(k) or 0)
                   for k in ("copper", "silver", "electrum", "gold"))
     if lighter:
         rep.warnings.append(
@@ -831,55 +843,71 @@ def from_entry(entry: dict) -> tuple[PodWriter, Report]:
             f"the .pc")
 
     rep.dropped.append(
-        "armour class and damage: the C64's are caches that already include "
-        "worn armour and a strength bonus, no item crosses, and PoD "
-        "re-applies dexterity itself -- so the record gets an unarmoured "
-        f"{UNARMOURED_AC} and {UNARMED_DAMAGE[0]}d{UNARMED_DAMAGE[1]}, which "
-        "is what all twelve genuine records hold")
+        "armour class and damage: a Gold Box armour class is a cache that "
+        "already includes worn armour and a strength bonus, no item crosses, "
+        "and PoD re-applies dexterity itself -- so the record gets an "
+        f"unarmoured {UNARMOURED_AC} and "
+        f"{UNARMED_DAMAGE[0]}d{UNARMED_DAMAGE[1]}, which is what all twelve "
+        "genuine records hold")
+
+    current = w.use("hp_current")
+    if current is None:
+        hp_current = hp_max
+        rep.warnings.append(
+            "no current hit points in the source, so they are set to the "
+            "maximum")
+    else:
+        hp_current = min(int(current.value), hp_max)
 
     writer = PodWriter(
         name=name[:NAME_LENGTH],
         race=RACES.index(race_name),
         character_class=CLASSES.index(CLASS_CODE_FROM_C64[combination]),
-        sex=SEX_FROM_C64[sex_key],
-        alignment=ALIGNMENT_FROM_C64[align_key],
-        age=int(entry.get("age") or 0),
-        experience=int(entry.get("experience") or 0),
-        platinum=int(entry.get("platinum") or 0),
-        gems=int(entry.get("gems") or 0),
-        jewelry=int(entry.get("jewelry") or 0),
-        abilities=tuple(int(entry.get(k) or 0) for k in ABILITY_KEYS),
-        exceptional_strength=int(entry.get("exceptional_strength") or 0),
+        sex=int(sex.value),
+        alignment=int(align.value),
+        age=num("age"),
+        experience=num("experience"),
+        platinum=num("platinum"),
+        gems=num("gems"),
+        jewelry=num("jewelry"),
+        abilities=tuple(num(k) for k in ABILITY_KEYS),
+        exceptional_strength=num("exceptional_strength"),
         hit_points_max=hp_max,
-        hit_points_current=current,
-        movement=int(entry.get("movement") or 0),
+        hit_points_current=hp_current,
+        movement=num("movement"),
         class_levels=tuple(slots),
         damage=UNARMED_DAMAGE,
         armour_class=UNARMOURED_AC,
-        level=int(entry.get("level") or max(slots)),
-        saving_throws=tuple(int(entry.get(k) or 0) for k in SAVE_KEYS),
-        thief_skills=tuple(int(entry.get(k) or 0) for k in THIEF_KEYS),
+        level=num("level") or max(slots),
+        saving_throws=tuple(num(k) for k in SAVE_KEYS),
+        thief_skills=tuple(num(k) for k in THIEF_KEYS),
         class_bits=sum(CLASS_BIT[c] for c in set(classes)),
     )
+    w.finish()
     return writer, rep
 
 
-def to_pc(entry: dict) -> tuple[bytes, Report]:
-    """One neutral-form character as the 484 bytes of a `Save/NAME.pc`."""
-    writer, rep = from_entry(entry)
+def _races(char: NeutralCharacter) -> dict[int, str]:
+    """The source title's race table, so an index can be named."""
+    return games.race_table(char.game)
+
+
+def to_pc(char: NeutralCharacter) -> tuple[bytes, Report]:
+    """One neutral character as the 484 bytes of a `Save/NAME.pc`."""
+    writer, rep = write(char)
     record = writer.to_bytes()
     for offset, who in writer.provenance().items():
-        rep.sources[offset] = f"{who} <- C64 {_SOURCE_OF.get(who, who)}"
+        rep.sources[offset] = f"{who} <- {char.port} {_SOURCE_OF.get(who, who)}"
     return record, rep
 
 
-#: Which neutral-form field each written Amiga field came from, for the
-#: provenance report. Kept beside the writer's own plan so the two cannot
-#: drift apart without a test noticing.
+#: Which neutral field each written Amiga field came from, for the provenance
+#: report. Kept beside the writer's own plan so the two cannot drift apart
+#: without a test noticing.
 _SOURCE_OF: dict[str, str] = {
     "name": "name",
     "race": "race",
-    "character_class": "classes",
+    "character_class": "class_bits",
     "sex": "sex",
     "alignment": "alignment",
     "age": "age",
@@ -890,7 +918,7 @@ _SOURCE_OF: dict[str, str] = {
     "abilities": "strength/intelligence/wisdom/dexterity/constitution/charisma",
     "exceptional_strength": "exceptional_strength",
     "hit_points_max": "hp_max",
-    "hit_points_current": "combat.hp_current",
+    "hit_points_current": "hp_current",
     "movement": "movement",
     "class_levels": "levels",
     "damage": "nothing -- unarmed 1d2, the constant all twelve records hold",
@@ -898,7 +926,7 @@ _SOURCE_OF: dict[str, str] = {
     "level": "level",
     "saving_throws": "save_paralysis..save_spell",
     "thief_skills": "thief_pick_pockets..thief_read_languages",
-    "class_bits": "classes",
+    "class_bits": "class_bits",
 }
 
 
@@ -907,19 +935,27 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
     `.pc` files.
 
     Returns one `(path, Report)` per character. The C64 disk is opened
-    read-only; `out_dir` is created if it is not there.
+    read-only; `out_dir` is created if it is not there.  `game_disk` is
+    accepted and unused: it names items, and no item crosses.
     """
     import pathlib
 
-    from .yaml_io import export_save
+    from . import c64_codec
+    from .d64 import D64
+    from .savegame import load_save
 
-    doc = export_save(str(save_path), game_disk)
+    img = D64.open(str(save_path))
+    game, sg0, sg1 = load_save(img)
     root = pathlib.Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
     out = []
-    for entry in doc["party"]:
-        record, rep = to_pc(entry)
-        path = root / pc_filename(str(entry["name"]))
+    for slot in sg0.characters:
+        char = c64_codec.read(
+            slot.record,
+            roster=sg1.roster(slot.index) if sg1 is not None else None,
+            game=game, source=str(save_path))
+        record, rep = to_pc(char)
+        path = root / pc_filename(str(char.get("name")))
         path.write_bytes(record)
         out.append((path, rep))
     return out

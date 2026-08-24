@@ -1,10 +1,12 @@
-"""The C64 codec: a neutral character becomes a 580-byte C64 record.
+"""The C64 codec: a 580-byte C64 record to and from a neutral character.
 
-The writing half of the pair `por/neutral.py` describes.  It knows the C64
-record and nothing else: which neutral field goes to which entry of
-`por/layout.py`, what the C64 stores that no source supplies, and what the
-C64 has no room for.  Where a value came from is the reader's business and
-reaches this module only as the phrase :class:`por.neutral.Value` carries.
+Both halves of the pair `por/neutral.py` describes.  :func:`write` turns a
+neutral character into the 580 bytes; :func:`read` turns the 580 bytes into a
+neutral character.  The module knows the C64 record and nothing else: which
+neutral field goes to which entry of `por/layout.py`, what the C64 stores
+that no source supplies, and what the C64 has no room for.  Where a value
+came from is a source reader's business and reaches :func:`write` only as
+the phrase :class:`por.neutral.Value` carries.
 
 Every byte of the output is justified -- it came from a neutral value, or it
 was computed from one by a named rule, or it is a documented constant --
@@ -19,17 +21,21 @@ from __future__ import annotations
 import dataclasses
 
 from . import neutral, spells
-from .layout import RECORD_SIZE, Field
-from .neutral import NeutralCharacter
+from .layout import RECORD_SIZE, Confidence, Field
+from .neutral import NeutralCharacter, Provenance
 from .record import CharacterRecord
 
 __all__ = [
     "Report",
-    "DIRECT",
     "INFRAVISION",
     "LEVEL_FIELDS",
     "strength_index",
     "write",
+    "read",
+    "field_disposition",
+    "DIRECT",
+    "TRANSFORMED",
+    "DROPPED",
 ]
 
 
@@ -179,29 +185,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rec = CharacterRecord.blank()
     rep = Report()
     port = char.port
-    taken: list[str] = []
-
-    def use(name: str) -> neutral.Value | None:
-        """The value, if the reader stands behind it. A field graded UNKNOWN
-        comes back as nothing to write and something to report."""
-        taken.append(name)
-        v = char.take(name)
-        if v is None and name in char:
-            rep.dropped.append(
-                f"{port} {name}: read at {char.value(name).confidence}, "
-                f"which is not a grade this conversion will write")
-        return v
-
-    def emit(v: neutral.Value, destination: str, offset: int, size: int,
-             extra: str = "") -> None:
-        rep.note(offset, size, v.line(destination, extra))
-        rep.dropped.extend(v.dropped)
+    w = neutral.Writer(char, rep, into="C64", dropped=DROPPED)
+    use, emit = w.use, w.emit
 
     # -- the name: 20 NUL-padded bytes ---------------------------------------
     name = use("name")
     if name is not None:
         rec.set("name", name.value)
-        emit(name, "name", 0x000, 20)
+        emit(name, "name", 0x000, 20,
+             ", re-padded to the C64's 20 NUL-padded bytes")
 
     for field, c64_name in DIRECT:
         v = use(field)
@@ -238,7 +230,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         mem = list(memorised.value)[:16]
         rec.set_raw("spells_memorised", bytes(mem) + bytes(16 - len(mem)))
         emit(memorised, "spells_memorised", 0x020, 16,
-             f" ({port} fills its slots from the end; the C64 from the start)")
+             " (the C64 fills its sixteen slots from the start, which is the "
+             "neutral order)")
 
     # -- the per-class level array: indexed by the class bit -----------------
     levels = use("levels")
@@ -290,12 +283,15 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         emit(forms, "attack_forms", 0x0D9, 8)
 
     # -- computed, not copied ------------------------------------------------
-    rec.set("infravision", INFRAVISION.get(char.get("race", 0), 0))
+    # `w.get`, not `char.get`: the floor applies to a derivation as much as
+    # to a copy, so a refused race yields infravision 0 and not a value
+    # computed from a grade this conversion would not write.
+    rec.set("infravision", INFRAVISION.get(w.get("race", 0), 0))
     rep.note(0x0D5, 1,
              f"infravision: computed from race; {port} does not store it")
-    rec.set("strength_index", strength_index(char.get("strength", 0),
-                                             char.get("exceptional_strength",
-                                                      0)))
+    rec.set("strength_index", strength_index(w.get("strength", 0),
+                                             w.get("exceptional_strength",
+                                                   0)))
     rep.note(0x0E2, 1, f"strength_index: computed from strength and the "
                        f"percentile; the {port} byte at the aligned offset is "
                        f"a different field")
@@ -344,15 +340,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set_raw("roster_tail", bytes(tail.value))
         emit(tail, "roster_tail", 0x110, 9)
 
-    # -- what this writer took nothing from ----------------------------------
-    for name in char.unwritten(taken):
-        rep.dropped.append(
-            f"{name}: the neutral record carries it and the C64 conversion "
-            f"takes nothing from it")
-
-    # -- what the reader itself could not carry ------------------------------
-    rep.dropped.extend(char.dropped)
-    rep.warnings.extend(char.warnings)
+    # -- the closing sweep: unwritten fields, then the reader's own drops ----
+    w.finish()
 
     # Everything still unnamed is a byte the C64 record does not use: the
     # unknown gaps of por/layout.py, which are zero in every specimen we hold.
@@ -363,3 +352,188 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                    f"every specimen)" if not f.is_known
                    else f"{f.name}: zero (no {port} source)")
     return rec, rep
+
+
+
+# ---------------------------------------------------------------------------
+# What the C64 writer does with every neutral field
+# ---------------------------------------------------------------------------
+#: Neutral fields the writer takes by a rule rather than by a copy.
+TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("name", "re-padded into the C64's 20 NUL-padded bytes at 0x000"),
+    ("levels", "permuted onto the C64's eight slots, which are indexed by the "
+               "class bit; a class with no bit is reported"),
+    ("spells_known", "packed into the C64's 56-bit mask; an id past 55 has no "
+                     "bit and is warned about"),
+    ("spells_memorised", "the first sixteen ids, into slots the C64 fills "
+                         "from the start"),
+    ("spells_castable", "repacked cleric-high/magic-user-low into three "
+                        "bytes"),
+    ("size_small", "copied to the C64's size byte"),
+    ("turn_power", "copied to the C64's caster turning byte at 0x0A4"),
+    ("attack_forms", "copied as a block to 0x0D9"),
+    ("innate_effects", "the first ten ids, into the C64's trait slots"),
+    ("inventory", "the first sixteen items, into the C64's fixed slots; the "
+                  "rest are warned about"),
+    ("roster_tail", "copied as a block into the C64's roster tail"),
+)
+
+#: Neutral fields the C64 writer takes nothing from, and why.  Reported by
+#: `Writer.finish` for any character that carries one, never silent.
+DROPPED: tuple[tuple[str, str], ...] = (
+    ("infravision", "the C64 computes its own from race, so a source's value "
+                    "is recomputed rather than copied"),
+    ("npc", "0x0B8 is written as a player character with bit 7 clear; which "
+            "roster slot a character lands in is the destination save's "
+            "business"),
+    ("encumbrance", "derived -- the C64 has no such field and recomputes what "
+                    "it needs"),
+    ("portrait_head", "HEADnn names a C64 disk file; another port's art is a "
+                      "different set with different numbering"),
+    ("portrait_body", "BODYnn -- see portrait_head"),
+)
+
+
+def field_disposition() -> dict[str, str]:
+    """Every neutral field and what :func:`write` does with it.
+
+    The neutral-vocabulary twin of `por.dos.field_disposition`, which asks the
+    same question of the DOS layout.  `Writer.finish` catches a value no
+    writer took one character at a time; this catches a *name* the writer has
+    never been taught, which is the failure that rots silently -- a field
+    added to `por/neutral.py`'s `FIELDS` and never wired up here.
+    """
+    return neutral.disposition(DIRECT, TRANSFORMED, DROPPED,
+                               "the C64 record's")
+
+
+# ---------------------------------------------------------------------------
+# The reading half: a C64 record becomes a neutral character
+# ---------------------------------------------------------------------------
+#: A save slot holds 256 of the record's 580 bytes; the roster block and the
+#: item page hold the rest.  So the reader takes them as separate arguments,
+#: the way :func:`write` takes the combat icon -- a C64 "character" is spread
+#: across three places and only a `.chr` file has it in one.
+#:
+#: C64 fields this reader deliberately leaves behind, and why.  **Not the
+#: whole layout**: the reader here is only as wide as the Amiga and YAML
+#: writers need, and the layout-wide disposition that would make a silent
+#: drop impossible belongs with the DOS writer of #26.
+READ_DROPPED: tuple[tuple[str, str], ...] = (
+    ("abilities_second", "zero in every Pool of Radiance specimen; Curse's "
+                         "(base, current) pairs, unused here"),
+    ("turn_class", "zero for every player character -- the undead's row, not "
+                   "the caster's"),
+    ("strength_index", "derived from strength and the percentile; a writer "
+                       "that wants it recomputes it"),
+    ("roster_in_use", "roster bookkeeping, not character state"),
+    ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
+                   "colours, a C64 character set no other port can draw"),
+)
+
+
+def read(rec: CharacterRecord, roster=None, inventory=None,
+         game=None, source: str | None = None) -> NeutralCharacter:
+    """Read one C64 record into the neutral record.
+
+    `roster` is the character's roster block, which is where a *save slot*
+    keeps the four current combat numbers -- a slot record stores only 256 of
+    the 580 bytes and stops short of them.  `inventory` is the sixteen-byte
+    item records off the save's item page, for the same reason.  Either may be
+    None, and then the value is read from `rec` when it holds it and left
+    unset when it does not: a field nobody supplied is absent rather than
+    zero, so a writer reports it instead of writing a plausible nothing.
+
+    `game` is the title whose race and class tables the record's indices are
+    in; it travels on the neutral record so a writer can name them.
+    """
+    out = NeutralCharacter("C64", source=source, game=game)
+
+    def grade(name: str) -> Confidence:
+        return _field(name).confidence
+
+    def origin(name: str) -> str:
+        f = _field(name)
+        return f"C64 {name} @{f.offset:#05x} ({f.confidence})"
+
+    def copy(neutral_name: str, c64_name: str) -> None:
+        if rec.is_stored(c64_name):
+            out.set(neutral_name, rec.get(c64_name), origin(c64_name),
+                    grade(c64_name))
+
+    out.set("name", rec.get("name"),
+            "the C64's 20 NUL-padded bytes at 0x000", grade("name"),
+            Provenance.RESHAPED)
+
+    for neutral_name, c64_name in DIRECT:
+        copy(neutral_name, c64_name)
+
+    # -- what a save slot stops short of, from the roster block --------------
+    if roster is not None:
+        for neutral_name, c64_name, value in (
+                ("hp_current", "hp_current", roster.hit_points),
+                ("thac0_current", "thac0", roster.thac0),
+                ("armour_class", "armour_class", roster.armour_class),
+                ("movement_current", "roster_movement", roster.movement)):
+            out.set(neutral_name, value,
+                    f"the C64 roster block's {c64_name}", grade(c64_name))
+        out.drop("C64 roster damage_bonus and +0x03-0x05: the roster's own "
+                 "derived bytes, with no neutral field to hold them")
+
+    copy("infravision", "infravision")
+    copy("turn_power", "turn_power")
+    copy("size_small", "size_small")
+    copy("portrait_head", "portrait_head")
+    copy("portrait_body", "portrait_body")
+
+    out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
+            "itself counts player characters with", grade("flags_0b8"))
+
+    out.set("spells_known", spells.spells_known(rec.to_bytes()),
+            "the C64's 56-bit spellbook mask @0x078, unpacked to ids",
+            grade("spells_known"))
+    out.set("spells_memorised",
+            [b for b in rec.get_raw("spells_memorised") if b],
+            "the C64's sixteen slots @0x020, zeroes stripped",
+            grade("spells_memorised"))
+
+    out.set("levels",
+            {name: rec.get(field) for name, field in LEVEL_FIELDS.items()},
+            "the C64's level slots @0x0C9, named by the class bit that "
+            "indexes them", grade("level_magic_user"))
+
+    packed = rec.get_raw("spells_castable")
+    out.set("spells_castable",
+            {"cleric": tuple(b >> 4 for b in packed[:3]),
+             "magic-user": tuple(b & 0x0F for b in packed[:3])},
+            "the C64's three packed bytes @0x0EE, cleric high nibble and "
+            "magic-user low", grade("spells_castable"))
+
+    out.set("attack_forms", rec.get_raw("attack_forms"),
+            origin("attack_forms"), grade("attack_forms"))
+    out.set("innate_effects",
+            [b for b in rec.get_raw("item_effects") if b],
+            "the C64's ten trait slots @0x0AD, zeroes stripped; racial "
+            "abilities and item powers share one id namespace and the slots "
+            "do not say which is which", grade("item_effects"))
+
+    if inventory is not None:
+        out.set("inventory", [bytes(i) for i in inventory],
+                "the save's item page, one sixteen-byte record each",
+                grade("inventory"))
+    elif rec.is_stored("inventory"):
+        raw = rec.get_raw("inventory")
+        out.set("inventory",
+                [raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE]
+                 for n in range(ITEM_SLOTS)
+                 if any(raw[n * ITEM_SIZE:(n + 1) * ITEM_SIZE])],
+                "the C64's sixteen fixed slots @0x120, the empty ones "
+                "stripped", grade("inventory"))
+
+    if rec.is_stored("roster_tail"):
+        out.set("roster_tail", rec.get_raw("roster_tail"),
+                origin("roster_tail"), grade("roster_tail"))
+
+    for name, why in READ_DROPPED:
+        out.drop(f"C64 {name}: {why}")
+    return out

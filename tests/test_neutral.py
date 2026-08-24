@@ -185,3 +185,94 @@ def test_the_reader_grades_every_value_it_carries():
     for name in char.keys():
         assert isinstance(char.value(name).confidence, Confidence)
         assert char.value(name).origin
+
+
+# --- the neutral vocabulary's own disposition --------------------------------
+
+def test_every_neutral_field_has_a_disposition_in_every_writer():
+    """The gap the design review found: `por.dos.field_disposition` checks the
+    DOS layout and nothing checked the *neutral* vocabulary, so a name added
+    to `FIELDS` and never wired up would rot in silence.
+
+    Both writers now state what they do with each of the 64 names, and this is
+    what fails when one of them forgets.
+    """
+    for writer in (c64_codec, amiga):
+        unaccounted, unknown = neutral.undeclared(
+            neutral.FIELDS, writer.field_disposition())
+        assert unaccounted == set(), (writer.__name__, "no disposition")
+        assert unknown == set(), (writer.__name__, "not in the vocabulary")
+
+
+def test_a_name_dropped_from_a_writers_table_is_named_rather_than_lost():
+    short = dict(c64_codec.field_disposition())
+    del short["race"]
+    assert neutral.undeclared(neutral.FIELDS, short) == ({"race"}, set())
+
+
+# --- the shared take-refuse-report protocol ----------------------------------
+
+def _writer(char, floor=Confidence.GUESS, dropped=()):
+    rep = neutral.Report()
+    return neutral.Writer(char, rep, into="test", floor=floor,
+                          dropped=dropped), rep
+
+
+def test_the_floor_applies_to_a_derivation_as_much_as_to_a_copy():
+    """`NeutralCharacter.get` applies no floor, which is why `Writer.get`
+    exists: a byte computed from a field the writer would have refused to copy
+    would be a guess wearing a rule's clothes."""
+    char = NeutralCharacter("test")
+    char.set("race", 3, "a value nobody measured", Confidence.UNKNOWN)
+    assert char.get("race") == 3           # the record hands it over
+    w, _ = _writer(char)
+    assert w.get("race", 0) == 0           # the writer will not stand behind it
+
+
+def test_a_refusal_carries_the_drops_that_rode_on_it():
+    """`Value.dropped` is what the reader left behind to produce a value, and
+    that is a fact about the source whether or not the value is written."""
+    char = NeutralCharacter("test")
+    char.set("innate_effects", [18], "the .SPC file", Confidence.UNKNOWN,
+             dropped=[".SPC effect 90: a running effect"])
+    w, rep = _writer(char)
+    assert w.use("innate_effects") is None
+    assert any("not a grade this conversion will write" in d
+               for d in rep.dropped)
+    assert ".SPC effect 90: a running effect" in rep.dropped
+
+
+def test_the_closing_sweep_quotes_the_codecs_own_reason():
+    char = NeutralCharacter("test")
+    char.set("encumbrance", 300, "the DOS byte")
+    w, rep = _writer(char, dropped=(("encumbrance", "derived; no such field"),))
+    w.finish()
+    assert "encumbrance: derived; no such field" in rep.dropped
+
+
+def test_the_closing_sweep_names_a_field_the_codec_never_declared():
+    char = NeutralCharacter("test")
+    char.set("encumbrance", 300, "the DOS byte")
+    w, rep = _writer(char)
+    w.finish()
+    assert any("takes nothing from it" in d for d in rep.dropped)
+
+
+# --- the C64 reader, as far as the Amiga and YAML writers need it ------------
+
+def test_the_c64_reader_supplies_what_the_c64_writer_takes():
+    """Read a full record and write it back: every neutral name the writer's
+    disposition says it takes is one the reader set."""
+    char = _filled()
+    rec, _ = c64_codec.write(char)
+    back = c64_codec.read(rec)
+    taken = ({n for n, _ in c64_codec.DIRECT}
+             | {n for n, _ in c64_codec.TRANSFORMED})
+    assert taken - set(back.keys()) == set()
+
+
+def test_the_c64_reader_grades_every_value_from_the_layout():
+    back = c64_codec.read(c64_codec.write(_filled())[0])
+    for name in back.keys():
+        assert isinstance(back.value(name).confidence, Confidence)
+        assert back.value(name).origin

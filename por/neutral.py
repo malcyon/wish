@@ -56,6 +56,7 @@ __all__ = [
     "NeutralCharacter",
     "NeutralError",
     "Report",
+    "Writer",
     "disposition",
     "undeclared",
 ]
@@ -151,6 +152,8 @@ FIELDS: dict[str, str] = {
     "armour_class": "armour class as the game last computed it",
     "movement": "movement rate unencumbered",
     "movement_current": "movement rate as the game last computed it",
+    "infravision": "infravision range in feet; a property of the race, which "
+                   "some ports store and others derive",
     "turn_power": "the cleric's turning strength",
     "size_small": "0 small, 1 large",
     # -- saving throws ------------------------------------------------------
@@ -188,6 +191,8 @@ FIELDS: dict[str, str] = {
                       "than spells running on it",
     "roster_tail": "the derived combat block the roster keeps beside the "
                    "record",
+    "npc": "true for a companion the party picked up rather than one the "
+           "player made",
     # -- carried by some ports and not others -------------------------------
     # Declared here because a character has them, not because every writer
     # wants them: a writer that takes nothing from a field reports so.
@@ -204,11 +209,19 @@ class NeutralCharacter:
     so a writer can say whose value it is turning away.  `dropped` is what the
     reader itself could not carry: fields of the source with no neutral home,
     named on the way past rather than lost.
+
+    `game` is the *title* whose tables the port-relative indices were read in
+    -- `race`, `char_class` and `class_bits` are numbers into a table that is
+    not the same in every Gold Box game, so a writer that wants a name asks
+    `por/games.py` with this in hand.  None means Pool of Radiance's, which is
+    what a caller with no title in hand means.
     """
 
-    def __init__(self, port: str, source: str | None = None) -> None:
+    def __init__(self, port: str, source: str | None = None,
+                 game: Any = None) -> None:
         self.port = port
         self.source = source
+        self.game = game
         self.fields: dict[str, Value] = {}
         #: Source fields with no neutral home, said out loud by the reader.
         self.dropped: list[str] = []
@@ -316,6 +329,88 @@ class Report:
         for d in self.dropped:
             lines.append(f"  dropped: {d}")
         return "\n".join(lines)
+
+
+class Writer:
+    """The take-refuse-report protocol every writer shares.
+
+    Hoisted from `por/c64_codec.write`, where `use` and `emit` were closures
+    a second writer would have copied by hand -- which is exactly what
+    `por/amiga.py` did, against a different middle, and the mistake this
+    class exists to end.  A writer constructs one around the character and
+    its own report and gets four things it would otherwise re-implement:
+
+    * :meth:`use` -- take a field at the floor, and turn a refusal into a
+      report line rather than silence.  A refused value's own `dropped` list
+      still reaches the report: what a reader had to leave behind to produce
+      a value is a fact about the source whether or not the value is written.
+    * :meth:`emit` -- the provenance note for the bytes a value became.
+    * :meth:`get` -- a plain value for a *derivation*, at the same floor.
+      `NeutralCharacter.get` does not apply one, and a writer that computes
+      a byte from a field it would have refused to copy is standing behind
+      the value twice as hard, not half as hard.
+    * :meth:`finish` -- the closing sweep: neutral fields this writer took
+      nothing from, then the reader's own drops and warnings.
+
+    `dropped` is the codec's own `(name, why)` table of fields it takes
+    nothing from, so that the sweep reports *this* conversion's reason for
+    leaving a field behind rather than a generic sentence.  It reports what
+    the character actually carries, which is why the whole-contract statement
+    lives in the codec's `field_disposition()` and is tested there instead.
+    """
+
+    def __init__(self, char: "NeutralCharacter", report: "Report",
+                 into: str, floor: Confidence = Confidence.GUESS,
+                 dropped: Sequence[tuple[str, str]] = ()) -> None:
+        self.char = char
+        self.report = report
+        self.into = into
+        self.floor = floor
+        self.reasons = dict(dropped)
+        self.taken: list[str] = []
+
+    def use(self, name: str) -> Value | None:
+        """The value, if the reader stands behind it at the floor.
+
+        A field graded below the floor comes back as nothing to write and
+        something to report, never as a plausible-looking guess.
+        """
+        self.taken.append(name)
+        v = self.char.take(name, self.floor)
+        if v is None and name in self.char:
+            held = self.char.value(name)
+            self.report.dropped.append(
+                f"{self.char.port} {name}: read at {held.confidence}, "
+                f"which is not a grade this conversion will write")
+            self.report.dropped.extend(held.dropped)
+        return v
+
+    def emit(self, v: Value, destination: str, offset: int, size: int,
+             extra: str = "") -> None:
+        self.report.note(offset, size, v.line(destination, extra))
+        self.report.dropped.extend(v.dropped)
+
+    def get(self, name: str, default: Any = None) -> Any:
+        """A bare value for a rule to compute from, floor applied.
+
+        Does **not** count as taking the field: a writer that derives one
+        byte from `race` and also copies `race` reports the copy, and a
+        writer that only derives must still `use` the field once if it wants
+        the field counted as consumed.
+        """
+        v = self.char.take(name, self.floor)
+        return default if v is None else v.value
+
+    def finish(self) -> None:
+        """The closing sweep every writer used to copy by hand."""
+        for name in self.char.unwritten(self.taken):
+            why = self.reasons.get(name)
+            self.report.dropped.append(
+                f"{name}: {why}" if why else
+                f"{name}: the neutral record carries it and the {self.into} "
+                f"conversion takes nothing from it")
+        self.report.dropped.extend(self.char.dropped)
+        self.report.warnings.extend(self.char.warnings)
 
 
 def disposition(direct: Sequence[tuple[str, str]],

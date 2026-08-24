@@ -484,7 +484,7 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
     out = NeutralCharacter("DOS", source=dos.source)
 
     # -- the name: a count byte and fifteen characters -----------------------
-    out.set("name", dos.name, "re-padded from the DOS count byte at 0x000",
+    out.set("name", dos.name, "the DOS count byte and text at 0x000",
             FIELDS_BY_NAME["name_text"].confidence, Provenance.RESHAPED)
 
     # -- everything the two ports encode the same way ------------------------
@@ -500,7 +500,8 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
             FIELDS_BY_NAME["spellbook"].confidence)
 
     # -- memorised spells, put into the neutral order: highest first ---------
-    out.set("spells_memorised", dos.spells_memorised, "DOS 0x01C reversed",
+    out.set("spells_memorised", dos.spells_memorised,
+            "DOS 0x01C, reversed into the neutral highest-first order",
             FIELDS_BY_NAME["spells_memorised"].confidence)
 
     # -- the per-class levels, named rather than numbered --------------------
@@ -564,17 +565,17 @@ def to_c64_record(dos: DosCharacter, slot: int = 0,
 
 
 # ---------------------------------------------------------------------------
-# The YAML interchange -- the same shape `por/yaml_io.export_save` produces
+# The conversion, previewed as the plain data `por/yaml_io.py` writes
 # ---------------------------------------------------------------------------
 def export_party(folder: str | pathlib.Path, slot: str,
                  game_disk: str | None = None) -> dict[str, Any]:
     """A DOS save slot as the same plain data a C64 export produces.
 
-    The record is converted first and the entry built by `yaml_io.entry_for`,
-    so a DOS party and a C64 party render through one code path and come out
-    in one shape -- which is what `docs/117` means by keeping the existing
-    YAML as the interchange rather than inventing a second one.  It makes the
-    reader a DOS character viewer, which is worth having on its own.
+    A **preview of the conversion**, not a raw view of the DOS files: the
+    record is converted to the C64 first and the entry built off that, so what
+    the document shows is what would land on the C64 disk, and each entry
+    carries the conversion's own `_dropped` beside it.  That is why the extra
+    hop through `por/c64_codec.py` is there and is not a detour.
 
     Everything DOS keeps and the C64 does not is carried as a `_`-prefixed
     annotation: `strip_annotations` drops those on import, so the document
@@ -607,7 +608,8 @@ def export_party(folder: str | pathlib.Path, slot: str,
         items = [Item(inv[n * C64_ITEM_SIZE:(n + 1) * C64_ITEM_SIZE], names)
                  for n in range(len(inv) // C64_ITEM_SIZE)]
         items = [i for i in items if not i.is_empty]
-        entry = entry_for(rec, index, items=items,
+        entry = entry_for(c64_codec.read(rec, source=str(folder)),
+                          index, items=items,
                           icon=Icon(rec.get_raw("region_220")),
                           names=names, types=types, spell_names=spell_names)
         # What DOS keeps and the C64 does not. Reported, not dropped.

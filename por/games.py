@@ -452,3 +452,44 @@ def detect(disk, default: Game | None = None) -> Game | None:
     """The title a D64 holds a save for, or `default`."""
     found = detect_from_names(e.name for e in disk.directory())
     return found if found is not None else default
+
+
+# ---------------------------------------------------------------------------
+# The per-title tables, resolved
+# ---------------------------------------------------------------------------
+# `race`, `char_class` and `class_bits` are *indices into this title's own
+# tables* wherever they appear -- in a C64 record, in `por/neutral.py`'s
+# vocabulary, in the YAML. Turning one into a name therefore needs the title,
+# and every codec needs the same answer. These live here, beside the tables
+# themselves, so that a codec asking for a name imports a table module rather
+# than another codec: `por/yaml_io.py` and `por/amiga.py` both need this and
+# neither may reach for the other.
+def race_table(game: "Game | None") -> dict[int, str]:
+    """Race code -> name for a title, or Pool of Radiance's.
+
+    Empty when the title's list is unknown, so a caller shows the raw number
+    rather than inventing a name for it.
+    """
+    if game is None:
+        return dict(DEFAULT.races or ())
+    return game.race_names or {}
+
+
+def class_table(game: "Game | None") -> list[tuple[int, str]]:
+    """The bit -> name pairs for a title, or Pool of Radiance's four.
+
+    A title whose list we do not know gets an empty table, which makes
+    :func:`classes_to_names` hand back the raw bitmask rather than a wrong
+    name.
+    """
+    if game is None:
+        return list(DEFAULT.class_bits or ())
+    return list(game.class_bits or ())
+
+
+def classes_to_names(bits: int, game: "Game | None" = None) -> list[str]:
+    """The classes a bitmask holds, named -- or the mask itself, unnamed."""
+    names = [name for bit, name in class_table(game) if bits & bit]
+    if not names:                       # unknown encoding: keep it visible
+        return [bits]
+    return names

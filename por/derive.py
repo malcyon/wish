@@ -121,7 +121,7 @@ def expected_thac0(record, readied: list[tuple[object, ItemType]]) -> int:
     hit, _ = strength_bonuses(record.get("strength"),
                               record.get("exceptional_strength"))
     weapon = next((i for i, k in readied if k.is_weapon), None)
-    return (base_thac0(record.class_bits, record.get("level"))
+    return (base_thac0(record.get("class_bits"), record.get("level"))
             - hit - (getattr(weapon, "bonus", 0) or 0))
 
 
