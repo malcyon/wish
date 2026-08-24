@@ -87,12 +87,20 @@ case, not an edge one, and it already has an answer.
 
 Two consequences worth writing down:
 
-* The running game's identity is **not** read out of memory. Nothing probes a
-  live machine for which title it is. If a player attaches to a Curse session
-  while the disks preference points at Pool of Radiance, the window believes
-  Pool of Radiance. GRADE: a live title probe is UNKNOWN work and not needed
-  for this feature — but it is the thing that would make the whole feature
-  self-correcting, and §7 lists it last for that reason.
+* The running game is **checked against memory** now, and a machine that
+  disagrees takes the per-title controls off (#21). Not *identified* —
+  validated. The observable is the one the automapper already had: the game
+  leaves the `GEO` it is drawing at `$0400`, and `ResidentGeo.verdict` asks
+  only "is this one of the maps we hold?" Three answers, and only the middle
+  one does anything: `OURS`, `NOT_OURS` — a Gold Box map that is none of ours —
+  and `UNKNOWN`, which is a page that is not a map at all and is the ordinary
+  state at the title screen, mid-load and in combat.
+
+  Asking *which* title it is would need every title's disks and would fail
+  **open** on the titles whose disks are nowhere, which for most players is
+  most of them. Asking whether it is ours needs only the disks we already have
+  and fails **closed**. GRADE: CONFIRMED, and it needed no new address —
+  `$0400` was already trusted and already read every tenth poll.
 * The dropdown must use the **automapper's** title, never a selector's. If the
   Preferences selector lets a player look at Curse's list while the automapper
   is on Pool of Radiance, the dropdown still offers Pool of Radiance. Anything
@@ -214,7 +222,38 @@ disk column of a Curse area table is a separate measurement.
 | 5 | **Build Silver Blades' area table.** The cheap one: 17 maps, disk side free from the id's high nibble, names blank. Enough for a dropdown that says `GEO32` | task 3 for somewhere to put it; task 4's answer for whether it can be acted on |
 | 6 | **Name Curse's sixteen maps.** Needs somebody who has played it, or the `ECL` decode. This is the item with no engineering answer | a human |
 | 7 | **The game selector in Preferences.** One row above the table, defaulting to the automapper's title, with the empty-title sentence in the body | a second real table — task 5 |
-| 8 | **Read the running game's title out of memory**, so attaching to a title the disks folder does not name stops being a silent mislabel | nothing depends on it; it is what would make every one of the above self-correcting |
+| 8 | **Done.** **Check the running game against memory**, so attaching to a title the disks folder does not name stops being a silent mislabel | nothing depends on it; it is what makes every one of the above fail closed rather than open |
+
+**Task 8 is done** (#21), as validation rather than identification.
+`Automapper._check_resident` reads the block at `$0400` it was already reading
+and asks `ResidentGeo.verdict` whether it is one of the believed title's own
+maps. A Gold Box map that is none of them means the disks the window is set up
+for are not the game that is running, and then: the Level up button goes, the
+Fast Travel row and every live-action button lose the emulator, the mapper
+records nothing, and the Messages panel says *"ERROR: Wrong game disk loaded.
+Disabling functionality to protect from corruption."* It names neither game
+because it cannot — the check validates one title, it does not identify the
+other — so which title was believed goes to the debug log instead.
+
+Two contradictions in a row are needed before anything comes off, and only a
+positive match on one of our own maps lifts it. "Cannot tell" never lifts it
+and never causes it.
+
+**What makes 1024 bytes a map** is three measured clauses in
+`automap/area.py`: barrier reciprocity ≥ 0.93, at least 20 shared edges walled
+from both sides, and at least half of those agreeing about which wall it is.
+Measured against every 1024-byte page of every non-`GEO` file on the Pool of
+Radiance and Curse disks — 19130 blocks at 64-byte steps — it admits **none**,
+and it admits 32 of the 38 real maps. The six it turns away read as `UNKNOWN`,
+which refuses nothing. `tests/test_wronggame.py` re-measures both directions
+off the player's own disks.
+
+**And a map may drift from its disk copy by up to `NEAR_ENOUGH` = 128 bytes**
+and still be that map, because the running game is allowed to write into the
+block it is drawing and an exact test would then disable the controls in front
+of a player who has done nothing wrong. The two closest *distinct* maps in the
+two titles differ in 379 of 1024 bytes, so there is a factor of three between
+the tolerance and any chance of confusing one map with another.
 
 **Tasks 1 and 2 are done** (#14). `por.areas.areas_for_title` is the refusal:
 it hands back `AREAS` for Pool of Radiance and `()` for every other title, and

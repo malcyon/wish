@@ -45,6 +45,7 @@ from ui.iconpaint import draw_icon
 from . import actions, combat, live
 from . import notes as notemod
 from .actionbar import ActionBar, WarpBar
+from .area import NOT_OURS
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
 from .config import Settings, remember_geometry, restore_geometry
@@ -91,6 +92,17 @@ HATCH_PEN = QColor("#68809a")
 #: to go to stderr and nowhere else.
 NO_MAPS = ("No game disks found, so there are no maps. "
            "File > Preferences… to say where they are.")
+
+#: Said in the Messages panel when the map the machine is drawing is a Gold Box
+#: map and none of the configured title's -- so the disks the window is set up
+#: for are not the game that is running. Donald's wording, exactly.
+#:
+#: It names neither game on purpose, and it could not name the second one
+#: anyway: the check that fires it validates the title we believe rather than
+#: identifying the one that is there. What was believed, and what was seen, go
+#: to the debug log -- `Automapper._contradicted`.
+WRONG_GAME = ("ERROR: Wrong game disk loaded. Disabling functionality to "
+              "protect from corruption.")
 
 #: Everything else this window has to say. A child of the `wish` logger, so
 #: `wish/debuglog.py`'s handler takes it when the log is on and its level
@@ -697,6 +709,10 @@ class AutomapWindow(QMainWindow):
         #: The last swallowed poll failure, so its traceback is written once
         #: rather than on every tick.
         self._trouble = ""
+        #: Whether the Messages panel has already carried `WRONG_GAME`. The
+        #: refusal latches in the mapper, so without this the same line would
+        #: be said on every tick for the rest of the session.
+        self._said_wrong_game = False
         self.alarm = False
         self._live_ticks = 0
         self.snapshot = None
@@ -711,23 +727,14 @@ class AutomapWindow(QMainWindow):
                  disks: str | None = None) -> None:
         """New game disks: draw their maps instead, without a restart.
 
-        Reaching into the mapper's fields rather than building a new one keeps
-        the explored squares, the notes and the connection -- everything the
-        window is holding open -- and the four attributes below are the whole
-        of what a map set is to it.
+        These maps are also the signature the running game is checked against
+        (#21), so changing them takes the window's verdict on the title back to
+        "no idea" -- see `Automapper.use_maps`.
         """
-        from .state import Fingerprint, ResidentGeo
-        self.mapper._maps = maps
-        self.mapper.fingerprint = Fingerprint(maps) if maps else None
-        self.mapper.resident = (ResidentGeo(self.mapper.target)
-                                if maps and self.mapper.target is not None
-                                else None)
-        if title:
-            self.state.title = title
+        self.mapper.use_maps(maps, title=title)
+        self._said_wrong_game = False
         self._apply_title()
-        if self.state.area:
-            self.state.geo = maps.get(self.state.area)
-        self.no_maps = not maps
+        self.no_maps = not self.mapper._maps
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
         self._refresh()
@@ -745,6 +752,35 @@ class AutomapWindow(QMainWindow):
         self.mapper.game = game
         self.warp_bar.set_title(self.state.title, game)
         self.roster.set_levelling(not actions.level_up_blockers(game=game))
+
+    def _check_the_game(self) -> None:
+        """The machine is not running the title the window is set up for.
+
+        **Said out loud, never silently.** The two per-title safeguards -- the
+        Fast Travel list (#14) and the Level up button (#16) -- were built on a
+        title that was only ever a preference, so believing the wrong one made
+        both of them fail open and write Pool of Radiance's data into another
+        game (#21). They come off here, along with everything else on the tab
+        that writes to the machine: see `_refresh_roster`, which stops handing
+        the emulator to the buttons the moment this is true.
+
+        Level up is hidden rather than merely disabled, which is what
+        `set_levelling(False)` already does for a title with no trainer tables.
+
+        **It comes back**, without a word, when the machine goes on to draw a
+        map that *is* ours -- a player who loads the right game into the
+        emulator they already had open has fixed the problem, and only a
+        positive identification lifts this. "Cannot tell" never does.
+        """
+        wrong = self.mapper.title_check is NOT_OURS
+        if wrong == self._said_wrong_game:
+            return
+        self._said_wrong_game = wrong
+        if wrong:
+            self.roster.set_levelling(False)
+            self.messages.say(WRONG_GAME, alarm=True)
+        else:
+            self._apply_title()
 
     def _toggle_reveal(self, checked: bool) -> None:
         self.state.reveal = checked
@@ -794,6 +830,7 @@ class AutomapWindow(QMainWindow):
             self.messages.say(trouble, alarm=True)
             return
         self._waiting = ""
+        self._check_the_game()
         if changed:
             self._refresh()
 
@@ -881,6 +918,19 @@ class AutomapWindow(QMainWindow):
         """Re-read the party and redraw the cards. Called by the poll, and
         straight after a write that changes what a card shows."""
         target = self.mapper.target
+        if self.mapper.title_check is NOT_OURS:
+            # The machine is running a different game, so every address below
+            # and in every button underneath it is the wrong one (#21).
+            # Withholding the target is the whole disable: each control already
+            # refuses, with the reason in its tooltip, when it has nothing to
+            # act on, so nothing here has to invent a sentence. Nor is the
+            # party re-read: at these addresses it would be another game's
+            # bytes decoded as this one's characters.
+            self.actions_bar.attach(None)
+            self.warp_bar.attach(None)
+            self.roster.set_stale(True)
+            self.strip.show_state(self.state, self.snapshot)
+            return
         # The buttons follow the mode flag, and the watcher gets its tick here
         # rather than from a timer of its own -- the edge it fires on is the
         # same `$6E11` this poll already reads.

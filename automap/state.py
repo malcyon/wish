@@ -9,6 +9,7 @@ bitmap to read. The mapper therefore tracks exploration itself, which is why
 from __future__ import annotations
 
 import json
+import logging
 import pathlib
 from dataclasses import dataclass, field
 
@@ -17,7 +18,14 @@ from por.areas import POOL_OF_RADIANCE
 from por.geo import DIRECTIONS, GRID, STEP, Geo
 
 from . import notes as notemod
-from .area import Candidates, Fingerprint, ResidentGeo
+from .area import (
+    NOT_OURS,
+    OURS,
+    UNKNOWN,
+    Candidates,
+    Fingerprint,
+    ResidentGeo,
+)
 from .notes import Note
 from .paths import data_dir as _data_dir
 from .target import Fix, read_fix
@@ -29,6 +37,12 @@ from .target import Fix, read_fix
 #: "Sokol Keep". Use `por.areas.area_name`, which degrades an unknown title to
 #: "area 21" instead of guessing.
 AREA_NAMES = areas.GEO_NAMES
+
+#: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
+#: when the log is on and its level swallows them when it is off. The window's
+#: own message about the wrong game deliberately names neither title, so this
+#: is where the detail lives.
+_log = logging.getLogger("wish.automap.state")
 
 
 def data_dir() -> pathlib.Path:
@@ -319,6 +333,12 @@ class Automapper:
     #: connection that stays open cannot go on being believed.
     PROVEN_FOR = 10
 
+    #: How many contradictions in a row before the controls come off. One is
+    #: not enough: a single odd read costs a player their Level up button, and
+    #: `_check_resident` runs every `RESIDENT_EVERY` polls, so two is about
+    #: four seconds and no player notices the difference.
+    CONTRADICTIONS_BEFORE_REFUSING = 2
+
     def __init__(self, target, maps: dict[str, Geo] | None = None,
                  area: str | None = None, title: str | None = POOL_OF_RADIANCE):
         self.target = target
@@ -328,6 +348,10 @@ class Automapper:
         #: "assume the default" -- it is only ever reached from a window that
         #: has already resolved the title from the disks.
         self.game = games.by_title(title)
+        #: Whether the machine agrees that it is running `state.title`:
+        #: `area.OURS`, `area.NOT_OURS` or `area.UNKNOWN`. See `_check_resident`.
+        self.title_check = UNKNOWN
+        self._contradictions = 0
         self.fingerprint = Fingerprint(maps) if maps else None
         self._maps = maps or {}
         self.resident = ResidentGeo(target) if maps else None
@@ -345,6 +369,31 @@ class Automapper:
         self._proved: int | None = None
         if area:
             self.set_area(area)
+
+    def use_maps(self, maps: dict[str, Geo] | None = None,
+                 title: str | None = None) -> None:
+        """New game disks: draw these maps instead, keeping the connection.
+
+        Everything the window is holding open -- the target, the explored
+        squares, the notes -- survives, because a map set is only these four
+        fields to it.
+
+        **The verdict on the title goes back to "no idea".** It was reached
+        against the old maps, and pointing the Game directory at another
+        title's disks is exactly how a player fixes the mistake it is
+        complaining about; leaving the refusal latched would make that
+        unfixable without a restart.
+        """
+        self._maps = dict(maps or {})
+        self.fingerprint = Fingerprint(self._maps) if self._maps else None
+        self.resident = ResidentGeo(self.target) if self._maps else None
+        self.title_check = UNKNOWN
+        self._contradictions = 0
+        if title:
+            self.state.title = title
+            self.game = games.by_title(title)
+        if self.state.area:
+            self.state.geo = self._maps.get(self.state.area)
 
     def set_area(self, name: str) -> None:
         if name == self.state.area:
@@ -404,6 +453,21 @@ class Automapper:
         self._ticks += 1
         if not self._running(fix):
             return False
+        if self.title_check is NOT_OURS:
+            # The machine is running something else, so this fix is somebody
+            # else's party on somebody else's map. Recording it would write
+            # their squares into our title's explored set and file their notes
+            # under our title's name -- so nothing is recorded at all.
+            #
+            # The block is still read on the ordinary cadence, and only that
+            # can lift the refusal: a player who loads the right game into the
+            # emulator they already had open has fixed it, and the next tick
+            # picks the session up. It has to happen here rather than in
+            # `_running`, which never reaches the block at all while the game
+            # is drawing a status line.
+            if self._ticks % self.RESIDENT_EVERY == 0:
+                self._check_resident()
+            return False
 
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
@@ -461,6 +525,8 @@ class Automapper:
         self._started = False
         self._pending = None
         self._last = None
+        self.title_check = UNKNOWN
+        self._contradictions = 0
 
     def _running(self, fix: Fix) -> bool:
         """Is a Gold Box game actually in memory? Nothing is recorded until it is.
@@ -547,12 +613,26 @@ class Automapper:
     def _check_resident(self) -> bool:
         """Name the area from the map block the game itself has loaded.
 
-        The game leaves the `GEO` file where it loads, at `$0400`, so an exact
-        byte match against the disk copies settles the area outright -- no
-        walking, no inference, and it follows the game into a new area as soon
-        as the load finishes. `Fingerprint` stays wired up underneath as the
-        check on this: if the party walks through an edge the named map says is
-        solid, the two disagree and the name is wrong.
+        The game leaves the `GEO` file where it loads, at `$0400`, so a byte
+        match against the disk copies settles the area outright -- no walking,
+        no inference, and it follows the game into a new area as soon as the
+        load finishes. `Fingerprint` stays wired up underneath as the check on
+        this: if the party walks through an edge the named map says is solid,
+        the two disagree and the name is wrong.
+
+        **And the same read validates the title.** A block that is a Gold Box
+        map but *none of ours* says the machine is not running the title the
+        preference named, which is the whole of #21: the title used to be a
+        chain of guesses -- the open save, the disks folder, `games.DEFAULT` --
+        that nothing ever contradicted, so attaching to a Curse session with
+        the Game directory pointing at Pool of Radiance left both per-title
+        safeguards running on Pool of Radiance's data.
+
+        **Validating is not identifying**, and the difference is the reason
+        this works. Naming the running title would need every title's disks and
+        would fail *open* on a title whose disks are nowhere -- which is most of
+        them, for most players. Asking only "is this ours?" needs the disks we
+        already have, and fails *closed*.
 
         **Rate-limiting belongs to the caller.** This used to carry its own
         `% RESIDENT_EVERY` guard, so `poll`'s deliberate immediate check --
@@ -562,17 +642,51 @@ class Automapper:
         """
         if self.resident is None:
             return False
-        name = self.resident.identify(self._maps)
-        if name is None:
+        verdict, name = self.resident.verdict(self._maps)
+        if verdict is NOT_OURS:
+            self._contradicted()
             return False
-        # A map we hold, byte for byte, at the address the loader leaves it:
-        # this is also the proof `_running` needs that a game is running.
+        if verdict is not OURS:
+            return False            # no map loaded: combat, a menu, the title
+        # A map we hold, at the address the loader leaves it: this is also the
+        # proof `_running` needs that a game is running, and the proof that the
+        # game is the one we think it is.
         self._proved = self._ticks
+        self.title_check = OURS
+        self._contradictions = 0
         self.state.candidates = Candidates([name], "resident $0400", certain=True)
         if name != self.state.area:
             self.set_area(name)
             return True
         return False
+
+    def _contradicted(self) -> None:
+        """The block at `$0400` is a Gold Box map and it is not one of ours.
+
+        Counted rather than obeyed on sight. The map is 1024 bytes of the
+        player's own disk read through an emulator monitor, and one bad read
+        that took a control away would be a worse bug than the one this is
+        for; `CONTRADICTIONS_BEFORE_REFUSING` is how many it takes.
+
+        The refusal then **stands until it is positively contradicted**. Two
+        things lift it and neither is the absence of evidence: one of our own
+        maps turning up at `$0400`, which is a player loading the right game
+        into the emulator they already had open, and `use_maps`, which is a
+        player pointing the Game directory at the right disks. `UNKNOWN` never
+        lifts it -- a fight, a menu and a title screen all read that way, and
+        any of them would otherwise hand the controls back for the asking.
+        """
+        if self.title_check is NOT_OURS:
+            return
+        self._contradictions += 1
+        if self._contradictions >= self.CONTRADICTIONS_BEFORE_REFUSING:
+            self.title_check = NOT_OURS
+            _log.info(
+                "the map at $0400 is not one of %s's %d, so the machine is not "
+                "running %s: the per-title controls are off (source: resident "
+                "$0400, %d readings)",
+                self.state.title, len(self._maps), self.state.title,
+                self._contradictions)
 
     def _area_may_have_changed(self, fix: Fix) -> bool:
         """Does this fix contradict the map we believe we are on?

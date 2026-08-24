@@ -10,7 +10,7 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `skills/goldbox/SKILL.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 47 verified, Curse 23, Silver Blades 15.** §2 | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 24, Silver Blades 16.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **The live actions.** The *reader* is per-title now (#29): `automap/live.py` takes every address from the `Game` descriptor and `automap/target.py` reads the engine's measured `$C04B` triple. `automap/actions.py` was not threaded with it, so the five buttons still write Pool of Radiance's `$4900`/`$8300` on every title — not refusing, writing it | CONFIRMED, `automap/actions.py:151`, `:482`, `:742` |
 
 The honest one-line version: **the file path works on three titles, the live
@@ -105,7 +105,7 @@ applicable.
 | C19 | clear quickfight, and the watcher | V | **X** | **X** | rides C16 — `QUICKFIGHT` is built on `SAVE1_LOAD_ADDRESS`, `automap/actions.py:742` |
 | C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
 | C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `warp_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
-| C22 | the *running* title is identified from the machine | **X** | **X** | **X** | issue #21 — it is guessed from the open save, then a preference, then a default. Both refusals above are only as good as that guess |
+| C22 | the *running* title is **checked against** the machine | V | V | V | issue #21, closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
 
 ### D. The application shell
 
@@ -121,17 +121,22 @@ applicable.
 
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
-| Pool of Radiance | 49 | **47** | 0 | 1 | 1 | 0 |
-| Curse of the Azure Bonds | 49 | **23** | 2 | 14 | 5 | 5 |
-| Secret of the Silver Blades | 49 | **15** | 2 | 22 | 5 | 5 |
+| Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
+| Curse of the Azure Bonds | 49 | **24** | 2 | 14 | 4 | 5 |
+| Secret of the Silver Blades | 49 | **16** | 2 | 22 | 4 | 5 |
 
 Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
-`U` (C12–C14) when #29 and #30 landed. The five `X` left on each are the four
-live actions and C22, and all five are `automap/actions.py` or the title guess
-it depends on.
+`U` (C12–C14) when #29 and #30 landed, and a third when #21 closed C22. The
+four `X` left on each are the live actions, all of them `automap/actions.py`.
 
 Pool of Radiance's one `U` is the Ultimate backend, which nobody can test, and
-its one `X` is C22, which is everyone's.
+it has no `X` left.
+
+**C22 does not make the four `X` safe, and it is not meant to.** The live
+actions write Pool of Radiance's addresses whatever the title says, so they are
+still wrong on a Curse machine the window has correctly identified as Curse.
+What C22 buys is the case the window has it *wrong*: a machine running a game
+the disks folder does not name now loses those buttons entirely.
 
 ### What the README is promising that is not backed
 
@@ -242,7 +247,6 @@ show nothing rather than garbage on the others, the way Fast Travel now does.
 
 | cell | issue |
 |---|---|
-| C22, the running title read from the machine | #21 |
 | C20 for Curse, the trainer measurement | #18 |
 | C21 for SSB, an area table | #20 |
 | C21 for Curse, whether the mechanism exists at all | #19 |

@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from por.geo import DIRECTIONS, GEO_SIZE, STEP, Geo
+from por.geo import DIRECTIONS, EAST, GEO_SIZE, GRID, OPPOSITE, SOUTH, STEP, Geo
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off.
@@ -49,6 +49,84 @@ _log = logging.getLogger("wish.automap.area")
 # was meant to settle the area question kept coming back empty.
 RESIDENT_GEO = 0x0400
 SEARCH_RANGES = ((RESIDENT_GEO, 0xCFFF),)
+
+# -- is the machine running the title we believe it is? -----------------------
+#
+# The three answers `ResidentGeo.verdict` gives. Strings rather than an enum
+# because they go straight into the debug log and into `Candidates.source`.
+OURS = "ours"
+NOT_OURS = "not ours"
+UNKNOWN = "unknown"
+
+#: How many of the 1024 bytes may differ and the block still be that map.
+#:
+#: Not zero, because the running game is allowed to write into the block it is
+#: drawing and an exact test would then read a legitimate session as somebody
+#: else's game -- which disables the controls in front of a player who has done
+#: nothing wrong. MEASURED on the player's own disks: the two *closest*
+#: distinct maps anywhere in Pool of Radiance and Curse differ in **379** of
+#: 1024 bytes, and the median pair differs in about 790, so 128 leaves a
+#: factor of three before any tolerance could confuse one map with another.
+NEAR_ENOUGH = 128
+
+# What makes 1024 bytes a Gold Box map rather than whatever else the page
+# happens to hold. Three clauses, and all three thresholds are MEASURED against
+# every 1024-byte window, at 64-byte steps, of every non-`GEO` file on the Pool
+# of Radiance and Curse of the Azure Bonds disks -- 19130 blocks of real code,
+# graphics, saves and tables:
+#
+# | | 38 real maps | 19130 other blocks |
+# |---|---|---|
+# | barrier reciprocity | 0.940 - 1.000 | median 0.292, and 358 reach 0.93 |
+# | shared edges walled on both sides | 21 - 270 | the 358 above run 0 - 301 |
+# | of those, how many agree | **0.212 - 1.000** | **0.000 - 0.423** |
+#
+# All three together admit **none** of the 19130 and 32 of the 38 maps. The six
+# it turns away -- Pool of Radiance's `GEO02`, `GEO11`, `GEO12`, `GEO15`,
+# `GEO20` and Curse's `GEO33` -- carry so much one-sided wall art that their
+# own two sides disagree, and they simply read as `UNKNOWN`: no verdict, no
+# refusal. That is the direction to be wrong in, and the party walks off them.
+MAP_RECIPROCITY = 0.93
+MAP_WALLED_EDGES = 20
+MAP_WALL_AGREEMENT = 0.5
+
+
+def _distance(a: bytes, b: bytes) -> int:
+    """How many bytes differ. Both blocks are `GEO_SIZE`."""
+    return sum(x != y for x, y in zip(a, b))
+
+
+def looks_like_a_map(geo: Geo) -> bool:
+    """Are these 1024 bytes a Gold Box map at all?
+
+    The question `verdict` needs answered before it may say a block is
+    *somebody else's* map: the page at `$0400` is a map only while one is
+    loaded, and in combat it holds `SQRPACI` instead -- a tile remap, the
+    combat parameter block and code, which scores 137/480 = 0.285 read as a map
+    (`docs/50-experiments.md`, "`$0400` is not the combat map").
+
+    Reciprocity alone is not enough, and the reason is worth keeping: a page of
+    zeroes reciprocates 1.000, because every square agrees with its neighbour
+    that there is nothing there. So a map must also actually draw walls, and
+    the two sides of a walled edge must mostly agree about which wall it is.
+    """
+    agree, walled = geo.reciprocity()
+    if not walled or agree / walled < MAP_RECIPROCITY:
+        return False
+    both = agreed = 0
+    for y in range(GRID):
+        for x in range(GRID):
+            for direction in (EAST, SOUTH):
+                dx, dy = STEP[direction]
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < GRID and 0 <= ny < GRID):
+                    continue
+                here = geo.wall(x, y, direction)
+                there = geo.wall(nx, ny, OPPOSITE[direction])
+                if here and there:
+                    both += 1
+                    agreed += here == there
+    return both >= MAP_WALLED_EDGES and agreed / both >= MAP_WALL_AGREEMENT
 
 
 @dataclass
@@ -173,6 +251,42 @@ class ResidentGeo:
             if known.to_bytes() == raw:
                 return name
         return None
+
+    def verdict(self, maps: dict[str, Geo]) -> tuple[str, str | None]:
+        """Is the machine running the title these maps came off? Three answers.
+
+        `(OURS, name)` -- the block is one of these maps, near enough.
+        `(NOT_OURS, None)` -- it is somebody else's map.
+        `(UNKNOWN, None)` -- the block is not a map at all, so it says nothing.
+
+        The three-way answer is the point. Asking "which title is this?" needs
+        every title's disks and fails *open* when it has not got them; asking
+        "is this ours?" needs only the disks we already have and fails
+        *closed*, and that is the difference #21 turns on.
+
+        `UNKNOWN` is the ordinary state whenever no map is loaded -- at the
+        title screen, mid-load, and in combat, where `SQRPACI` occupies the
+        same page. It is not evidence of anything and must never disable a
+        control.
+        """
+        geo = self.read()
+        if geo is None or not maps:
+            return UNKNOWN, None
+        raw = geo.to_bytes()
+        for name, known in maps.items():
+            if known.to_bytes() == raw:
+                return OURS, name
+        # Only now is the expensive question worth asking, and asking it in
+        # this order matters twice over: the exact match is a C-speed compare
+        # and the common case, and `NEAR_ENOUGH` must never be reached by a
+        # page that is not a map at all. A booted machine reads 1024 zeroes at
+        # `$0400`, which is within a stone's throw of any sparse map and is
+        # not a map.
+        if not looks_like_a_map(geo):
+            return UNKNOWN, None
+        distance, name = min((_distance(raw, known.to_bytes()), name)
+                             for name, known in maps.items())
+        return (OURS, name) if distance <= NEAR_ENOUGH else (NOT_OURS, None)
 
     def search(self, expect: Geo | None = None,
                ranges=SEARCH_RANGES) -> int | None:
