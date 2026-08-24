@@ -1,8 +1,8 @@
 """Fields whose numbers have names, and the names the game itself uses.
 
-The tables come from `por/yaml_io.py` where it already has them, so the CLI and
-the editor cannot drift apart, and from the field notes in `por/layout.py` for
-the two it does not carry.
+The tables come from `por/games.py`, re-exported through `por/yaml_io.py`, so
+the CLI and the editor cannot drift apart, and from the field notes in
+`por/layout.py` for the two it does not carry.
 
 **Race and class are per-title and so are functions, not constants.** Silver
 Blades moves human from 7 to 6, the Krynn titles use a different race list
