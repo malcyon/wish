@@ -95,6 +95,11 @@ Standing constraints, because you start cold:
   them or kill them. **Never kill a process by name** — only
   `Session.terminate()` or `slot.teardown()`, which kill the process group
   your own slot started.
+* **Do not leave a background wait loop running when you report.** A `sleep`
+  loop watching an emulator or a DOSBox run keeps waking the session long
+  after the work is done, and one that outlives you looks exactly like an
+  orphan holding a slot. Wait for what you are waiting for, then stop it, and
+  check nothing of yours is still running before you write your report.
 * **Never point VICE at Donald's own config.** Every pooled instance gets its
   own seeded `vicerc`.
 * **A new file means a new row in that directory's `README.md`**, in the same
