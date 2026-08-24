@@ -821,6 +821,76 @@ are a C64 charset DOS has no equivalent of. Everything else is replaced.
 `Report.unaccounted` is empty: every one of `SAVEDGAME0`'s 7168 bytes has a
 one-line provenance, "carried through from the template save" included.
 
+## The module graph, which is generated
+
+`por/` holds one neutral record and a codec per format, and what keeps that
+arrangement honest is that **a format's own layout has exactly one importer**:
+`dos_layout` is reached only from `dos`, and `c64_codec` never reaches for it.
+`dos` importing `c64_codec` is not a breach of that -- `por/dos.py` is the
+conversion driver as well as the DOS reader, and it calls `c64_codec.write`
+with a neutral record, never a DOS one. The graph is read out of the AST by
+`tools/genimports.py` rather than drawn by hand, because a codec quietly
+reaching into another format's layout is exactly the edge somebody adds without
+noticing.
+
+```mermaid
+graph LR
+  amiga --> neutral
+  amiga -.->|deferred| yaml_io
+  c64_codec --> layout
+  c64_codec --> neutral
+  c64_codec --> record
+  c64_codec --> spells
+  derive --> items
+  dos --> c64_codec
+  dos --> dos_layout
+  dos -.->|deferred| icons
+  dos -.->|deferred| items
+  dos --> layout
+  dos --> neutral
+  dos --> record
+  dos -.->|deferred| spells
+  dos --> traits
+  dos -.->|deferred| yaml_io
+  dos_layout --> layout
+  geo --> d64
+  iconparts --> d64
+  icons --> d64
+  icons --> savegame
+  items --> d64
+  items --> savegame
+  items --> spells
+  levelup --> games
+  levelup --> levels
+  levelup -.->|deferred| record
+  levelup --> spells
+  memory --> layout
+  neutral --> layout
+  record --> encoding
+  record --> layout
+  record --> petscii
+  savegame --> d64
+  savegame --> encoding
+  savegame --> games
+  savegame --> record
+  spells --> d64
+  spells --> levels
+  strength --> layout
+  strength --> petscii
+  strength --> savegame
+  yaml_io --> d64
+  yaml_io --> derive
+  yaml_io --> games
+  yaml_io --> icons
+  yaml_io --> items
+  yaml_io --> record
+  yaml_io --> savegame
+  yaml_io --> spells
+```
+
+A dotted edge is an import inside a function or a class body: real, but
+deferred, and usually there to break a cycle.
+
 ## Verification
 
 All four are `tests/test_dosconvert.py`, which skips cleanly where there are
