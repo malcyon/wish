@@ -789,6 +789,17 @@ CURRENT_SCRIPT = 0x49F2
 INDOORS = 0x49E6
 
 
+#: The three refusals `apply_file_cache` raises, which reach the player through
+#: the import dialog's generic handler. Donald's wording, approved 2026-08-24.
+#: Each fires on where the *DOS* party stood, not on the C64 template -- and
+#: none of them fires at all when the template already stands in that same
+#: area, because then its own cache is real and is kept.
+NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of Pool "
+               "of Radiance, so there is no map file and no disk to name")
+WILDERNESS = "Saves from wilderness locations are not yet supported."
+ILLEGAL_LOCATION = "Save is inside an illegal location."
+
+
 def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
@@ -819,20 +830,11 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
 
     where = areas.area(there)
     if where is None:
-        raise DosRecordError(
-            f"the DOS party is in area {there}, which is not an area of Pool "
-            f"of Radiance, so there is no map file and no disk to name")
+        raise DosRecordError(NOT_AN_AREA.format(area=there))
     if where.outdoors:
-        raise DosRecordError(
-            f"the DOS party is on the travel grid, in {where.name}. The "
-            f"loaded-files cache names a SQRDATA there instead of a GEO and "
-            f"no test has established the rest, so a converted save would be "
-            f"a guess. Use a C64 save made in the same window")
+        raise DosRecordError(WILDERNESS)
     if where.dynamic_geo or len(where.geos) < 1:
-        raise DosRecordError(
-            f"the DOS party is in {where.name or where.ecl}, whose script "
-            f"chooses its map at run time, so this conversion cannot say "
-            f"which GEO the save should name. Use a C64 save made there")
+        raise DosRecordError(ILLEGAL_LOCATION)
 
     geo = areas.geo_number(where.geos[0])
     save0[at:at + FILE_CACHE[1]] = bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1]
