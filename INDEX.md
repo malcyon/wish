@@ -1,7 +1,6 @@
 # Index
 
-What each directory in this repository is for. One line each; the packages that
-carry code have their own `README.md` listing their files.
+What each directory in this repository is for.
 
 | directory | purpose |
 |---|---|
