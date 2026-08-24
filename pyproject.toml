@@ -3,7 +3,7 @@
 # `wish`; only the distribution is spelled differently.
 name = "wish-goldbox"
 dynamic = ["version"]
-description = "Character editor, save editor and live automapper for the Commodore 64 Gold Box games"
+description = "Save editor and live automapper for the Commodore 64 Gold Box games"
 requires-python = ">=3.12"
 # GPL-3.0: PyQt6 is GPL, and linking against it makes this GPL too.
 license = "GPL-3.0-or-later"
