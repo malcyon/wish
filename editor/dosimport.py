@@ -51,11 +51,8 @@ from por.savegame import SaveGame0, SaveGame1, load_save, store_save
 _log = logging.getLogger("wish.editor.dosimport")
 
 
-# ---------------------------------------------------------------------------
-# WORDING NOT YET APPROVED. Every string below is a placeholder standing in
-# until Donald rules on it -- the same arrangement the mapper's own window uses
-# for `WRONG_GAME`, whose text is his exactly. Nothing here is, yet.
-# ---------------------------------------------------------------------------
+# Every string below is Donald's, approved 2026-08-24. Changing one is his
+# call, not a refactor.
 
 #: The File menu entry and the submenu it hangs under.
 MENU_IMPORT = "&Import"
