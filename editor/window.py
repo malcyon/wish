@@ -100,16 +100,12 @@ TOOLBAR_ICON = 16
 MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
-# `box_record` -- the other half of Character -- carries the title
-# `TITLE NOT APPROVED` in `character.ui`, and that is deliberate. Every word a
-# user reads is Donald's to write and he has not named this box yet: do not
-# invent one, and do not add a tooltip or a hint to explain it either.
-
 # Which item in a horizontal row is allowed to grow. `sheet_columns` is the
-# Stats tab, whose last column ends in Character Traits -- the only table on
-# it. `header_row` is the roster, the icon and the Character box above the
-# tabs, where the spacer at the end takes the slack.
-ROW_STRETCH = {"sheet_columns": (0, 0, 0, 1), "header_row": (0, 0, 0, 1)}
+# Stats tab, whose third column ends in Character Traits -- the only table on
+# it; the fourth is Miscellaneous, which is capped to its own fields and can
+# do nothing with the room. `header_row` is the roster, the icon and the
+# Character box above the tabs, where the spacer at the end takes the slack.
+ROW_STRETCH = {"sheet_columns": (0, 0, 1, 0), "header_row": (0, 0, 0, 1)}
 ROSTER_SLACK = 6
 ICON_MAX_WIDTH = 300
 STRIP_TABLE_HEIGHT = 150

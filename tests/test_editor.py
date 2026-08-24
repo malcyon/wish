@@ -673,15 +673,25 @@ HEADER_BOXES = ("box_appearance", "box_identity")
 
 #: Donald's grouping, and the whole of it. `box_levels` -- Experience and
 #: levels -- was not in the grouping he wrote and is here because it is a
-#: stats box; it is the one placement to check with him. `box_record` is the
-#: other eighteen fields of Character, split off so the header box fits a
-#: desktop; its title is a placeholder Donald has not yet written.
+#: stats box; it is the one placement to check with him. `box_record` --
+#: Miscellaneous -- is the other eighteen fields of Character, split off so
+#: the header box fits a desktop.
 TABS = {
     "Stats": ("box_record", "box_abilities", "box_money", "box_saves",
               "box_thief_skills", "box_effects", "box_levels"),
     "Inventory": ("box_inventory", "box_traits"),
     "Spells": ("box_spells",),
 }
+
+#: Left to right across the Stats tab. Donald asked for Abilities and Saving
+#: throws on the left of the window and Miscellaneous to the right of Money,
+#: which is a fact about order and not about grouping, so it is pinned
+#: separately: a repack that put Miscellaneous back on the left would still
+#: satisfy `TABS`.
+STATS_COLUMNS = (("box_abilities", "box_saves"),
+                 ("box_levels", "box_thief_skills"),
+                 ("box_money", "box_effects"),
+                 ("box_record",))
 
 
 @game_disks
@@ -707,6 +717,39 @@ def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
             assert not tabs.widget(i).isAncestorOf(w._child(name)), name
 
 
+@game_disks
+def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
+    """Abilities and Saving throws on the left of the window, Miscellaneous to
+    the right of Money.
+
+    Left to right and not merely present, because the four columns pack six
+    boxes and the tallest of them decides how much of the tab scrolls --
+    Miscellaneous stands alone and is the tallest. A repack that balanced
+    better and ignored the order would pass
+    `test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them`.
+
+    No column heights are quoted here on purpose. Three measurements of them
+    during round four disagreed by up to 30px, because a box's minimum depends
+    on whether a save is open, whether the widget has been shown, and the UI
+    font -- so a number written down here is true of one run and misleading in
+    the next. The order is what this test is about, and the order is stable.
+    """
+    from PyQt6.QtWidgets import QGroupBox
+
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    columns = w.ui.sheet_columns
+    got = []
+    for i in range(columns.count()):
+        column = columns.itemAt(i).layout()
+        if column is None:
+            continue
+        got.append(tuple(column.itemAt(j).widget().objectName()
+                         for j in range(column.count())
+                         if isinstance(column.itemAt(j).widget(), QGroupBox)))
+    assert got == list(STATS_COLUMNS)
+
+
 #: A 1280x800 laptop with a task bar taken off it, which is the screen
 #: `tests/test_mapscale.py` holds the whole window to. The editor has to fit
 #: inside it with room to spare, or it becomes the floor instead of the map.
@@ -719,24 +762,21 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
     Four columns in one scroll area asked for 2001x1127 and collapsed to
     421x141, so the sheet was unreadable at any window anybody would open.
-    Measured here: the window's minimum is 1014x380, and the widest tab --
+    Measured here: the window's minimum is 992x380, and the widest tab --
     Stats -- asks for 1099x564 and scrolls when it cannot have it.
 
-    The width is the header, and it is the whole of round three. Character is
-    beside the combat icon rather than down a tab, and the header does not
-    scroll, so the window can never be narrower than the roster, the icon and
-    Character side by side: 683 with no Character there at all, 1883 with all
-    23 of its fields, 1014 with the five that are left. The other eighteen are
-    in `box_record` on the Stats tab.
+    The width is the header. Character is beside the combat icon rather than
+    down a tab, and the header does not scroll, so the window can never be
+    narrower than the roster, the icon and Character side by side: 683 with no
+    Character there at all, 1883 with all 23 of its fields, 992 with the five
+    that are left. The other eighteen are in Miscellaneous on the Stats tab.
 
-    Five, and not eleven, because a header sized by its text is the floor
-    issue #41 spent its life removing -- see
+    Five, and not ten, because a header sized by its text is the floor issue
+    #41 spent its life removing -- see
     `tests/test_mapscale.py::test_the_windows_minimum_does_not_follow_the_ui_font`,
-    which is what actually holds the line. The roster and the icon cost 410px
-    at any font size, the automapper's own floor is 836, and that leaves
-    Character 426 at three points of extra UI font: `Race` is 338 of it, so
-    the label column has 60, which `Name`, `Race`, `Sex`, `Age` and `Size`
-    fit and `Char class`, `Class bits` and `Alignment` do not.
+    which is what actually holds the line, and
+    `test_character_fits_the_header_s_width_budget` below, which is the same
+    arithmetic where a failure names the box that broke it.
 
     The floor is not zero because a box of spin boxes cannot shrink, which is
     why the scroll area survived the tabs and merely moved inside them.
@@ -765,6 +805,49 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     # Every box is still on the form -- a split that dropped one would be
     # silent, since a field with no widget is simply not shown.
     assert {b.objectName() for b in w.findChildren(QGroupBox)} >= set(BOXES)
+
+
+#: What Character may cost, at three points of extra UI font, before the
+#: editor rather than the map sets the whole window's floor. The automapper's
+#: minimum is 836 (`tests/test_mapscale.py`); the roster, the combat icon and
+#: the spacings between them take 392 of it and the window's own margins 22,
+#: which leaves this.
+IDENTITY_BUDGET = 836 - 392 - 22
+
+
+@game_disks
+def test_character_fits_the_header_s_width_budget(app, save):
+    """The header does not scroll, so every pixel in it is a floor under the
+    whole window -- and every widget in it is sized from font metrics, which
+    is the mechanism #41 was opened to remove.
+
+    Measured at three points of extra UI font, round four: the five fields
+    Character carries cost 392. Donald's two-column arrangement -- Name, Race,
+    Char class, Class bits, Alignment beside Hp max, Hp rolled, Hp current,
+    Armour class base, Armour class -- costs 672, and its left column alone
+    costs 424, because `Alignment` is a 78px label where `Name` is 46 and the
+    field column is already 318 wide for a twenty-character name. Both are
+    over the budget, the second by two pixels; the whole-app floor measured
+    947 and 838 respectively, against 836.
+
+    Three extra points and not Windows, because that is the proxy
+    `tests/test_mapscale.py` already uses and neither of us has a Windows
+    machine to hand.
+    """
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorWindow
+    base = app.font()
+    try:
+        bigger = QFont(base)
+        bigger.setPointSizeF(base.pointSizeF() + 3)
+        app.setFont(bigger)
+        w = EditorWindow(str(save))
+        w.show()
+        cost = w._child("box_identity").minimumSizeHint().width()
+    finally:
+        app.setFont(base)
+    assert cost <= IDENTITY_BUDGET
 
 
 @game_disks
