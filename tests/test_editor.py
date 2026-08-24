@@ -654,16 +654,24 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
 
 # --- the sheet is three tabs under the roster -------------------------------
 
-BOXES = ("box_identity", "box_abilities", "box_saves", "box_levels",
-         "box_thief_skills", "box_money", "box_appearance", "box_inventory",
-         "box_spells", "box_traits", "box_effects")
+BOXES = ("box_identity", "box_record", "box_abilities", "box_saves",
+         "box_levels", "box_thief_skills", "box_money", "box_appearance",
+         "box_inventory", "box_spells", "box_traits", "box_effects")
 
-#: Donald's grouping, and the whole of it: every box is on exactly one tab
-#: except the icon, which is above them with the roster. `box_levels` --
-#: Experience and levels -- was not in the grouping he wrote and is here
-#: because it is a stats box; it is the one placement to check with him.
+#: Above the tabs, on every one of them: the roster, the combat icon and
+#: Character. Character is up there because 23 fields stacked in a column were
+#: 672px tall and the tab could not hold them; what is left of it is the five
+#: that fit beside the icon without putting a font-sized floor under the
+#: window -- see `test_the_sheet_is_not_a_floor_under_the_window`.
+HEADER_BOXES = ("box_appearance", "box_identity")
+
+#: Donald's grouping, and the whole of it. `box_levels` -- Experience and
+#: levels -- was not in the grouping he wrote and is here because it is a
+#: stats box; it is the one placement to check with him. `box_record` is the
+#: other eighteen fields of Character, split off so the header box fits a
+#: desktop; its title is a placeholder Donald has not yet written.
 TABS = {
-    "Stats": ("box_identity", "box_abilities", "box_money", "box_saves",
+    "Stats": ("box_record", "box_abilities", "box_money", "box_saves",
               "box_thief_skills", "box_effects", "box_levels"),
     "Inventory": ("box_inventory", "box_traits"),
     "Spells": ("box_spells",),
@@ -686,10 +694,11 @@ def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
         page = tabs.widget(i)
         for name in boxes:
             assert page.isAncestorOf(w._child(name)), name
-    # The roster and the icon are above the tabs, on every one of them.
+    # The roster, the icon and Character are above the tabs, on every one.
     for i in range(tabs.count()):
         assert not tabs.widget(i).isAncestorOf(w.ui.roster)
-        assert not tabs.widget(i).isAncestorOf(w._child("box_appearance"))
+        for name in HEADER_BOXES:
+            assert not tabs.widget(i).isAncestorOf(w._child(name)), name
 
 
 #: A 1280x800 laptop with a task bar taken off it, which is the screen
@@ -704,27 +713,52 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
     Four columns in one scroll area asked for 2001x1127 and collapsed to
     421x141, so the sheet was unreadable at any window anybody would open.
-    Three tabs ask for 912x837 at most -- the Stats tab -- and the window's
-    minimum is 681x380 here. The width it gained is the roster, which is above
-    the tabs now and so outside the scroll area that used to let it collapse.
+    Measured here: the window's minimum is 1014x380, and the widest tab --
+    Stats -- asks for 1099x564 and scrolls when it cannot have it.
 
-    The floor is not zero because Character is 395x672 of spin boxes and
-    cannot shrink: pinned to their pages with no scroll area the tabs want
-    891x1078, which is taller than the laptop in `SMALL_LAPTOP`. That is why
-    the scroll area survives the tabs and merely moved inside them.
+    The width is the header, and it is the whole of round three. Character is
+    beside the combat icon rather than down a tab, and the header does not
+    scroll, so the window can never be narrower than the roster, the icon and
+    Character side by side: 683 with no Character there at all, 1883 with all
+    23 of its fields, 1014 with the five that are left. The other eighteen are
+    in `box_record` on the Stats tab.
 
-    Both assertions are relations rather than the numbers above, because a
-    number measured on Linux says nothing about Windows -- three points of UI
-    font take the minimum to 778x403 and Character to 504x792.
+    Five, and not eleven, because a header sized by its text is the floor
+    issue #41 spent its life removing -- see
+    `tests/test_mapscale.py::test_the_windows_minimum_does_not_follow_the_ui_font`,
+    which is what actually holds the line. The roster and the icon cost 410px
+    at any font size, the automapper's own floor is 836, and that leaves
+    Character 426 at three points of extra UI font: `Race` is 338 of it, so
+    the label column has 60, which `Name`, `Race`, `Sex`, `Age` and `Size`
+    fit and `Char class`, `Class bits` and `Alignment` do not.
+
+    The floor is not zero because a box of spin boxes cannot shrink, which is
+    why the scroll area survived the tabs and merely moved inside them.
+
+    The assertions are relations wherever they can be, because a number
+    measured on Linux says nothing about Windows -- but the width is pinned to
+    a real screen, because a window wider than the desktop is the failure this
+    round exists to prevent.
     """
+    from PyQt6.QtWidgets import QGroupBox
+
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     w.show()
     floor = w.minimumSizeHint()
     assert floor.width() <= SMALL_LAPTOP[0]
     assert floor.height() <= SMALL_LAPTOP[1]
-    # The tallest box on the sheet is taller than the whole window's minimum.
-    assert floor.height() < w._child("box_identity").minimumSizeHint().height()
+    # The tallest box on the sheet is taller than the whole window's minimum,
+    # so the scroll areas are still doing the work.
+    tallest = max(w._child(name).minimumSizeHint().height() for name in BOXES)
+    assert floor.height() < tallest
+    # Character sits beside the combat icon and must not make the header
+    # taller than the icon already does -- 182px, and five rows of spin box.
+    icon = w._child("box_appearance").minimumSizeHint().height()
+    assert w._child("box_identity").minimumSizeHint().height() <= icon
+    # Every box is still on the form -- a split that dropped one would be
+    # silent, since a field with no widget is simply not shown.
+    assert {b.objectName() for b in w.findChildren(QGroupBox)} >= set(BOXES)
 
 
 @game_disks
