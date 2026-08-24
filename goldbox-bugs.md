@@ -34,6 +34,7 @@ a port fixed one, that is said.
 | 7 | Clearing the pyramid cancels the council's summons to the war meeting | Pool of Radiance | script | CONFIRMED |
 | 8 | Training a multi-class character in the wrong order throws away a level it has earned | Pool of Radiance | engine | CONFIRMED, in game |
 | 9 | The slums fortune teller is alive again every time you come back | Pool of Radiance | script | CONFIRMED, in game |
+| 10 | Reload a save on the road and undiscovered places appear on the map | Pool of Radiance | engine | CONFIRMED, in game |
 
 ---
 
@@ -429,3 +430,55 @@ follow from that.
 **Version.** Pool of Radiance, Commodore 64. The Amiga `ECL14` is the same 7,679
 bytes and differs in ten of them, none at `$A63A`, `$A749`, `$9B50`, `$9B7A` or
 `$ADE8`, so the Amiga has it too. CONFIRMED, in game.
+
+---
+
+## 10. Reload a save on the road and undiscovered places appear on the map
+
+**Found as a one-byte discrepancy between two memory dumps, then carried to the
+screen.**
+
+**What the game does.** The overland map keeps its secret locations — the nomad
+camp, the lizardman keep, the kobold caves — hidden until the party finds them.
+When the party rides into one of the three wilderness windows, the game loads
+that window's map and then paints plain terrain over each location the party
+has not discovered yet, so the map shows grass where the camp really is.
+
+Loading a saved game skips the painting. The map comes back from disk with
+every location's true picture on it, the paint never happens, and whatever the
+party has not discovered is sitting there drawn.
+
+**What it should do.** What riding in does: hide the undiscovered places. A
+saved game restores the same flags the paint is driven by, so the load path has
+everything it needs and simply does not do it.
+
+**The evidence.** Driven on a Commodore 64 under emulation from `W7.D64`, a
+save made on the middle wilderness window two squares from the undiscovered
+nomad camp at `(12,11)`, whose map byte is `$37` — the camp — on disk and
+`$39` — plain terrain — once the entry paint has run.
+
+| step | camp's map byte | the screen |
+|---|---|---|
+| load the save | `$37` | — |
+| ride east across the window seam and back — a fresh entry | **`$39`** | — |
+| ride to `(13,10)`, beside the camp | `$39` | **plain grass** where the camp is |
+| save the game there, reload it | **`$37`** | **the camp's ring of tents**, same square, one game-minute later |
+
+The two screenshots differ in exactly one thing: the camp, drawn after the
+reload and not before, with the party standing still. The byte read `$37`
+after every one of four cold loads across two experiments and `$39` after
+every fresh entry — same party, same discovery flags throughout.
+
+**What the player sees.** Save while travelling within sight of a place they
+have not found yet — saving on the road is the normal way to play — and on
+reloading, it is on the map: a ring of tents, a keep, a cave, standing where
+the game had been showing empty terrain. Nothing repaints while the party
+rides, so it appears to stay visible until they leave the window and come
+back. The reveal is real information: two of the hidden sites are commission
+targets the player is otherwise left to search the wilderness for.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED, in game, for the nomad
+camp; the other sites hang on the same one-shot paint, measured painted
+together on a fresh entry, so they reload revealed the same way — PROBABLE,
+one screen short of confirmed. Whether the other ports share the load-path
+omission is not known.

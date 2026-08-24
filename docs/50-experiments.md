@@ -4993,3 +4993,48 @@ variable, leading the status line in the p3 walk logs. CONFIRMED — same store
 twice per fact, live reads here plus p20 and the p3 logs.
 
 Build, runner, log and screenshots: `work/p46/`.
+
+## The hidden-site paint does not survive a reload, and the player can see it
+
+**Hypothesis.** The #47 loose end — walk-in `$8C00` at 647/648 against the disk,
+load at 648/648, same flag bytes — is the hidden-site paint being lost on load,
+and it reaches the screen. The alternative was timing: the walk-in capture was
+taken at a different moment in the arrival.
+
+**Method.** It has to end at pixels, and the issue's literal protocol has a
+trap: after a *load* the paint may already be gone, so "load, screenshot, save,
+reload, screenshot" could show the site in both shots and read as a no. The
+painted control state was manufactured first — a seam bounce, east into window
+`1B` and back, so `ECL1A`'s entry runs as a genuine walk-in. Start from
+`W7.D64` at `(14,8)`, two squares from the camp at `(12,11)`, rather than the
+issue's `W1.D64` at `(5,2)`, sixteen squares away — every travel step risks a
+random encounter and the run took none. One session, pool slot 1, `work/p49/`.
+
+**Result. CONFIRMED at the screen; `goldbox-bugs.md` #10.** The camp byte
+`$8CD2` (= `$8C00` + 11·18 + 12):
+
+| stage | byte |
+|---|---|
+| after loading `W7.D64` | `$37` — disk value, unpainted |
+| after the seam bounce, a fresh walk-in | **`$39` — painted** |
+| at `(13,10)`, camp on screen, before saving | `$39`; screenshot `PRE.png` shows **plain grass** |
+| after saving there and cold-reloading | **`$37`**; screenshot `POST.png` shows **the camp's ring of tents**, same square |
+
+`PRE.png` and `POST.png` differ in exactly the camp tile — status line
+`OUTDOORS 22:23 13,10` against `22:24 13,10`, party still, flags identical by
+construction (the save between them is the only event). The timing explanation
+is dead: the walk-in paint was reproduced live in the same session that showed
+two loads without it, and the byte has now read `$37` after all four cold loads
+across p47 and p49, `$39` after every fresh entry.
+
+**Not established, and named as such.** *Where* in the load path the paint is
+lost — whether entry 4's paint runs and the forced reload of dirty slot 4
+clobbers it after, or the paint branch never runs on a load — is SPECULATIVE
+either way; a write-watchpoint on `$8CD2` through a load would say. The other
+three hidden sites (all on window `1B`) reload revealed by the same one-shot
+paint — PROBABLE, measured painted together on walk-in in
+`work/reports/p3-saves.md` but not carried to a screenshot. Whether the reveal
+survives riding around the window is PROBABLE (nothing repaints between
+entries); a step-and-redump would confirm.
+
+Runner, log, `PRE.png`/`POST.png` and the phase-2 `$8C00` dump: `work/p49/`.
