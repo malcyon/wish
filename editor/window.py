@@ -587,8 +587,19 @@ class EditorWindow(QMainWindow):
             _log.exception("could not open %s", path)
             QMessageBox.critical(self, "Cannot open", str(exc))
             return
+        self._adopt(party, path)
+
+    def _adopt(self, party: Party, path: str, note: str | None = None,
+               dirty: bool = False) -> None:
+        """Show a party that is already built, from wherever it came.
+
+        `load` reads one off a disk; the DOS import converts one in memory and
+        has nothing on disk to read it back from. `dirty` marks every row
+        changed, which is how an import arrives: on screen, in the title bar,
+        and not yet written anywhere.
+        """
         self.party, self.path = party, pathlib.Path(path)
-        self.dirty.clear()
+        self.dirty = set(range(len(party))) if dirty else set()
         self.current_row = -1
         # Before the first row is selected, and while `current_row` is -1 so
         # that clearing a combo does not read as an edit.
@@ -602,11 +613,59 @@ class EditorWindow(QMainWindow):
             self.ui.roster.selectRow(0)
         self._apply_read_only()
         self._game_label.setText(party.game.title if party.is_save else "")
-        self.status(f"{party.describe()}"
+        self.status(note if note is not None else
+                    f"{party.describe()}"
                     + ("" if self.charset else
                        "  -- no game disk, so no item names and no icons"))
         self._retitle()
         self.opened.emit(str(self.path))
+
+    # -- importing --------------------------------------------------------
+
+    def import_dos_save(self, folder: str | None = None) -> str:
+        """File > Import > DOS save. Returns what happened, for a test.
+
+        Two pickers and a window, and no write: what the conversion costs is
+        on screen before the button that commits it exists to press, and what
+        it commits is a party in this window that Save has yet to write. The
+        editor's own Save is what reaches the disk, so the backup in
+        `editor/files.py` covers an import like any other edit.
+        """
+        from por import dos
+
+        from .dosimport import (
+            FOLDER_TITLE,
+            NO_SLOTS,
+            NO_SLOTS_TITLE,
+            DosImportDialog,
+        )
+
+        if folder is None:
+            folder = QFileDialog.getExistingDirectory(
+                self, FOLDER_TITLE,
+                str(self.path.parent if self.path else ""))
+        if not folder:
+            return "cancelled"
+        if not dos.slots_available(folder):
+            QMessageBox.warning(self, NO_SLOTS_TITLE,
+                                NO_SLOTS.format(folder=folder))
+            return "no DOS save"
+        dialog = DosImportDialog(folder, self.path, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "cancelled"
+        return self.adopt_conversion(dialog.conversion)
+
+    def adopt_conversion(self, conversion) -> str:
+        """Show a converted save, unwritten. Separate so a test can call it."""
+        from .dosimport import CONVERTED
+
+        if conversion is None:
+            return "cancelled"
+        note = CONVERTED.format(slot=conversion.slot)
+        party = Party(str(conversion.template), game=conversion.game,
+                      disk=conversion.disk)
+        self._adopt(party, str(conversion.template), note=note, dirty=True)
+        return note
 
     def _size_roster(self) -> None:
         """Give the roster exactly the width and height its rows need.

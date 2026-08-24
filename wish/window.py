@@ -193,6 +193,18 @@ class WishWindow(QMainWindow):
             action.setShortcut(key)
             action.triggered.connect(lambda _checked=False, s=slot: s())
             menu.addAction(action)
+
+        # A submenu with one item in it, because the thing it imports is one
+        # of several ports and the next one goes beside it rather than growing
+        # the File menu another top-level verb.
+        from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
+        imports = menu.addMenu(MENU_IMPORT)
+        dos_save = QAction(MENU_DOS_SAVE, self)
+        dos_save.triggered.connect(
+            lambda _checked=False: self.editor.import_dos_save())
+        imports.addAction(dos_save)
+        self.import_dos_action = dos_save
+
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)
         prefs.setShortcut(QKeySequence(SHORTCUT))

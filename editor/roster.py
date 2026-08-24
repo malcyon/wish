@@ -118,9 +118,16 @@ class Party:
     -- and that now identifies the *title* as well as the kind of disk.
     """
 
-    def __init__(self, path: str, game: Game | None = None):
+    def __init__(self, path: str, game: Game | None = None, disk=None):
+        """`disk` is an image already in memory, standing in for reading one.
+
+        The one caller is the DOS import, which builds a converted disk that
+        has never been written anywhere and needs the roster read off *it*
+        rather than off the template still on disk under `path`. Everything
+        else leaves it None and the file is opened as always.
+        """
         self.path = path
-        self.disk = D64.open(path)
+        self.disk = D64.open(path) if disk is None else disk
         self.game = game or games.detect(self.disk, games.DEFAULT)
         self.is_save = games.detect(self.disk) is not None
         self.save0: SaveGame0 | None = None

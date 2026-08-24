@@ -1,0 +1,256 @@
+"""File > Import > DOS save: the window over `por/dos.py`'s converter.
+
+The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
+the one thing a menu can get wrong that a command line cannot: **the losses
+are on screen before anything is written**, and the refusal of a template from
+the wrong area reaches the user as a sentence rather than as a traceback.
+
+Both halves need somebody's files. The DOS save is Donald's unpacked copy of
+*Forgotten Realms: The Archives* (`$FR_ARCHIVES`), the C64 template is his save
+disk directory, and with either missing the module skips -- which is what CI
+does. Nothing here opens a window: `tests/conftest.py` forces the offscreen
+platform before Qt is imported.
+"""
+
+from __future__ import annotations
+
+import pathlib
+
+import pytest
+from gamedata import disk_path
+from test_dossave import _save_dir, needs_dos_saves
+
+from por import dos
+
+# `PORSAVE11` stands in New Phlan, which is where the archives' slot A party
+# stands; `PORSAVE13` stands in the Slums and is the mismatch. Both are read
+# only ever as a template and always through a copy.
+SAME_AREA = "PORSAVE11"
+OTHER_AREA = "PORSAVE13"
+
+needs_disks = pytest.mark.skipif(
+    disk_path(SAME_AREA) is None or disk_path(OTHER_AREA) is None,
+    reason="needs the save disks")
+
+
+@pytest.fixture
+def app():
+    """The session-wide application `tests/conftest.py` holds a reference to."""
+    from PyQt6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def _copy(name: str, tmp_path) -> pathlib.Path:
+    src = disk_path(name)
+    if src is None:
+        pytest.skip("needs the save disks")
+    out = tmp_path / f"{name}.D64"
+    out.write_bytes(src.read_bytes())
+    return out
+
+
+@pytest.fixture
+def template(tmp_path):
+    return _copy(SAME_AREA, tmp_path)
+
+
+@pytest.fixture
+def elsewhere(tmp_path):
+    return _copy(OTHER_AREA, tmp_path)
+
+
+@pytest.fixture
+def dos_save():
+    where = _save_dir()
+    if where is None:
+        pytest.skip("needs a DOS save; set FR_ARCHIVES")
+    return where
+
+
+# --- the rehearsal, which is the whole point --------------------------------
+
+@needs_dos_saves
+@needs_disks
+def test_the_conversion_is_rehearsed_and_writes_nothing(dos_save, template):
+    """`rehearse` builds the converted disk in memory and leaves the file it
+    read alone. Everything downstream depends on that: the report cannot be
+    shown before the write unless there is a conversion with no write in it."""
+    from editor.dosimport import rehearse
+
+    before = template.read_bytes()
+    conversion = rehearse(dos_save, "A", template)
+    assert template.read_bytes() == before
+    assert conversion.disk.to_bytes() != before
+    assert conversion.report.dropped
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_report_names_the_fields_with_no_c64_home(dos_save, template):
+    """The list `docs/117-save-conversion.md` requires: encumbrance, the item
+    count, the icon choice and the strength-bonus boolean, by name."""
+    from editor.dosimport import dropped_text, rehearse
+
+    text = dropped_text(rehearse(dos_save, "A", template).report)
+    for field in ("encumbrance", "item_count", "icon_choice", "strength_bonus"):
+        assert field in text
+
+
+# --- the window -------------------------------------------------------------
+
+@needs_dos_saves
+@needs_disks
+def test_the_losses_are_on_screen_before_the_button_is_pressable(
+        app, dos_save, template):
+    """The dialog rehearses on construction, so the pane is filled and the
+    template file is untouched at the moment Convert first becomes pressable."""
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import DROPPED_HEADING, DosImportDialog
+
+    before = template.read_bytes()
+    dialog = DosImportDialog(dos_save, template)
+    text = dialog.report_pane.toPlainText()
+    assert text.startswith(DROPPED_HEADING)
+    assert "encumbrance" in text
+    assert dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+    assert template.read_bytes() == before
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_template_from_another_area_is_explained_not_raised(
+        app, dos_save, elsewhere):
+    """`por.dos.convert_save` raises `AreaMismatch`; the window says where each
+    party is standing and greys the button. A traceback here would look like a
+    broken menu item rather than a template that has to be chosen again."""
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import DosImportDialog
+
+    dialog = DosImportDialog(dos_save, elsewhere)
+    text = dialog.report_pane.toPlainText()
+    assert "New Phlan" in text and "Slums" in text
+    assert "Traceback" not in text
+    assert dialog.conversion is None
+    assert not dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+@needs_dos_saves
+@needs_disks
+def test_choosing_a_template_that_fits_re_enables_the_button(
+        app, dos_save, template, elsewhere):
+    """Every change re-rehearses, so the pane is never the losses of a
+    conversion other than the one the button would commit."""
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import DosImportDialog
+
+    dialog = DosImportDialog(dos_save, elsewhere)
+    assert dialog.conversion is None
+    dialog.set_template(template)
+    assert dialog.conversion is not None
+    assert dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+@needs_dos_saves
+def test_with_no_template_there_is_nothing_to_convert(app, dos_save):
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import NO_TEMPLATE, DosImportDialog
+
+    dialog = DosImportDialog(dos_save)
+    assert dialog.report_pane.toPlainText() == NO_TEMPLATE
+    assert not dialog.buttons.button(
+        QDialogButtonBox.StandardButton.Ok).isEnabled()
+
+
+@needs_dos_saves
+def test_the_slots_offered_are_the_ones_the_folder_holds(app, dos_save):
+    from editor.dosimport import DosImportDialog
+
+    dialog = DosImportDialog(dos_save)
+    offered = [dialog.slots.itemText(i) for i in range(dialog.slots.count())]
+    assert offered == dos.slots_available(dos_save)
+
+
+# --- what reaches the editor -------------------------------------------------
+
+@needs_dos_saves
+@needs_disks
+def test_the_import_lands_unsaved_and_the_editors_own_save_writes_it(
+        app, tmp_path, dos_save, template):
+    """The converted party is in the window, marked dirty, and the file on
+    disk is still the template. Save is what writes it -- through
+    `editor/files.py`, so the backup is taken like any other write."""
+    from editor.dosimport import rehearse
+    from editor.window import EditorWindow
+
+    before = template.read_bytes()
+    window = EditorWindow(backups=str(tmp_path / "backups"))
+    note = window.adopt_conversion(rehearse(dos_save, "A", template))
+
+    assert window.dirty                      # unsaved, and the title says so
+    assert window.path == template
+    assert template.read_bytes() == before   # nothing written yet
+    names = [m.name for m in window.party.members if m.name]
+    assert names == [c.name for c in dos.read_party(dos_save, "A")]
+    assert "slot A" in note or "A" in note
+
+    window.save(interactive=False)
+    assert template.read_bytes() != before
+    assert list((tmp_path / "backups").glob("*.D64.*"))
+    window.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_import_dos_save_is_cancellable_without_touching_anything(
+        app, tmp_path, dos_save, template, monkeypatch):
+    """A folder picker dismissed is a menu item that did nothing."""
+    from editor.window import EditorWindow
+
+    window = EditorWindow(backups=str(tmp_path / "backups"))
+    before = template.read_bytes()
+    assert window.import_dos_save(folder="") == "cancelled"
+    assert template.read_bytes() == before
+    window.close()
+
+
+def test_a_folder_with_no_dos_save_says_so(app, tmp_path, monkeypatch):
+    """And says it in a box rather than opening an empty conversion window."""
+    import editor.window as ew
+    from editor.window import EditorWindow
+
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "warning",
+                        lambda *a, **k: said.append(a[2]))
+    window = EditorWindow(backups=str(tmp_path / "backups"))
+    assert window.import_dos_save(folder=str(tmp_path)) == "no DOS save"
+    assert said and str(tmp_path) in said[0]
+    window.close()
+
+
+# --- the menu ----------------------------------------------------------------
+
+def test_the_file_menu_carries_the_import(app, tmp_path, monkeypatch):
+    from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
+    from wish.window import WishWindow
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    # Nothing answering, and nothing looked for: a menu test must not go
+    # probing the ports a human's own game session is on.
+    from wish.session import Session
+    window = WishWindow(maps={},
+                        session=Session(find=lambda pref=None: None))
+    file_menu = next(a.menu() for a in window.menuBar().actions()
+                     if a.text() == "&File")
+    submenu = next(a.menu() for a in file_menu.actions()
+                   if a.text() == MENU_IMPORT)
+    assert [a.text() for a in submenu.actions()] == [MENU_DOS_SAVE]
+    assert window.import_dos_action.text() == MENU_DOS_SAVE
+    window.close()
