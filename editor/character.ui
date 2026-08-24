@@ -2,227 +2,1360 @@
 <ui version="4.0">
  <class>CharacterWindow</class>
  <widget class="QMainWindow" name="CharacterWindow">
-  <property name="windowTitle"><string>Wish</string></property>
+  <property name="windowTitle">
+   <string>Wish</string>
+  </property>
   <widget class="QWidget" name="centre">
    <layout class="QVBoxLayout" name="outer">
-    <item><layout class="QHBoxLayout" name="buttons">
-     <item><widget class="QPushButton" name="button_open"><property name="text"><string>&amp;Open…</string></property></widget></item>
-     <item><widget class="QPushButton" name="button_save"><property name="text"><string>&amp;Save</string></property></widget></item>
-     <item><widget class="QPushButton" name="button_save_as"><property name="text"><string>Save &amp;As…</string></property></widget></item>
-     <item><widget class="QPushButton" name="button_preview"><property name="text"><string>&amp;Preview changes…</string></property></widget></item>
-     <item><spacer name="button_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-    </layout></item>
-    <item><widget class="QScrollArea" name="sheet_scroll">
-      <property name="widgetResizable"><bool>true</bool></property>
-      <widget class="QWidget" name="sheet">
-       <layout class="QVBoxLayout" name="sheet_layout">
-        <item><layout class="QHBoxLayout" name="sheet_columns">
-     <item><layout class="QVBoxLayout" name="column_one"><item><widget class="QTableView" name="roster">
-      <property name="minimumHeight"><number>60</number></property>
-     </widget>
-     </item><item><widget class="QGroupBox" name="box_identity">
-       <property name="title"><string>Character</string></property>
-       <layout class="QFormLayout" name="form_identity">
-        <item row="0" column="0"><widget class="QLabel" name="label_name"><property name="text"><string>Name</string></property></widget></item>
-        <item row="0" column="1"><widget class="QLineEdit" name="field_name" /></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_race"><property name="text"><string>Race</string></property></widget></item>
-        <item row="1" column="1"><widget class="QComboBox" name="field_race" /></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_char_class"><property name="text"><string>Char class</string></property></widget></item>
-        <item row="2" column="1"><widget class="QComboBox" name="field_char_class" /></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_class_bits"><property name="text"><string>Class bits</string></property></widget></item>
-        <item row="3" column="1"><widget class="QComboBox" name="field_class_bits" /></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_sex"><property name="text"><string>Sex</string></property></widget></item>
-        <item row="4" column="1"><widget class="QComboBox" name="field_sex" /></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_alignment"><property name="text"><string>Alignment</string></property></widget></item>
-        <item row="5" column="1"><widget class="QComboBox" name="field_alignment" /></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_age"><property name="text"><string>Age</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_age"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_size_small"><property name="text"><string>Size</string></property></widget></item>
-        <item row="7" column="1"><widget class="QComboBox" name="field_size_small" /></item>
-        <item row="8" column="0"><widget class="QLabel" name="label_infravision"><property name="text"><string>Infravision</string></property></widget></item>
-        <item row="8" column="1"><widget class="QSpinBox" name="field_infravision"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="9" column="0"><widget class="QLabel" name="label_flags_0b8"><property name="text"><string>Flags 0b8</string></property></widget></item>
-        <item row="9" column="1"><widget class="QSpinBox" name="field_flags_0b8"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-       <item row="10" column="0"><widget class="QLabel" name="label_hp_max"><property name="text"><string>Hp max</string></property></widget></item>
-        <item row="10" column="1"><widget class="QSpinBox" name="field_hp_max"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="11" column="0"><widget class="QLabel" name="label_hp_rolled"><property name="text"><string>Hp rolled</string></property></widget></item>
-        <item row="11" column="1"><widget class="QSpinBox" name="field_hp_rolled"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="12" column="0"><widget class="QLabel" name="label_hp_current"><property name="text"><string>Hp current</string></property></widget></item>
-        <item row="12" column="1"><widget class="QSpinBox" name="field_hp_current"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="13" column="0"><widget class="QLabel" name="label_armour_class_base"><property name="text"><string>Armour class base</string></property></widget></item>
-        <item row="13" column="1"><widget class="QSpinBox" name="field_armour_class_base"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="14" column="0"><widget class="QLabel" name="label_armour_class"><property name="text"><string>Armour class</string></property></widget></item>
-        <item row="14" column="1"><widget class="QSpinBox" name="field_armour_class"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="15" column="0"><widget class="QLabel" name="label_thac0_base"><property name="text"><string>Thac0 base</string></property></widget></item>
-        <item row="15" column="1"><widget class="QSpinBox" name="field_thac0_base"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="16" column="0"><widget class="QLabel" name="label_thac0"><property name="text"><string>Thac0</string></property></widget></item>
-        <item row="16" column="1"><widget class="QSpinBox" name="field_thac0"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="17" column="0"><widget class="QLabel" name="label_movement"><property name="text"><string>Movement</string></property></widget></item>
-        <item row="17" column="1"><widget class="QSpinBox" name="field_movement"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="18" column="0"><widget class="QLabel" name="label_turn_class"><property name="text"><string>Turn class</string></property></widget></item>
-        <item row="18" column="1"><widget class="QSpinBox" name="field_turn_class"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="19" column="0"><widget class="QLabel" name="label_roster_in_use"><property name="text"><string>Roster in use</string></property></widget></item>
-        <item row="19" column="1"><widget class="QSpinBox" name="field_roster_in_use"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="20" column="0"><widget class="QLabel" name="label_party_order"><property name="text"><string>Party order</string></property></widget></item>
-        <item row="20" column="1"><widget class="QSpinBox" name="field_party_order"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="21" column="0"><widget class="QLabel" name="label_roster_movement"><property name="text"><string>Roster movement</string></property></widget></item>
-        <item row="21" column="1"><widget class="QSpinBox" name="field_roster_movement"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="22" column="0"><widget class="QLabel" name="label_roster_tail"><property name="text"><string>Roster tail</string></property></widget></item>
-        <item row="22" column="1"><widget class="QLineEdit" name="field_roster_tail" /></item>
-       </layout>
-      </widget></item>
-    <item><widget class="QGroupBox" name="box_thief_skills">
-       <property name="title"><string>Thief skills</string></property>
-       <layout class="QFormLayout" name="form_thief_skills">
-        <item row="0" column="0"><widget class="QLabel" name="label_thief_pick_pockets"><property name="text"><string>Pick pockets</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_thief_pick_pockets"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_thief_open_locks"><property name="text"><string>Open locks</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_thief_open_locks"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_thief_find_traps"><property name="text"><string>Find traps</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_thief_find_traps"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_thief_move_silently"><property name="text"><string>Move silently</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_thief_move_silently"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_thief_hide_in_shadows"><property name="text"><string>Hide in shadows</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_thief_hide_in_shadows"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_thief_hear_noise"><property name="text"><string>Hear noise</string></property></widget></item>
-        <item row="5" column="1"><widget class="QSpinBox" name="field_thief_hear_noise"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_thief_climb_walls"><property name="text"><string>Climb walls</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_thief_climb_walls"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_thief_read_languages"><property name="text"><string>Read languages</string></property></widget></item>
-        <item row="7" column="1"><widget class="QSpinBox" name="field_thief_read_languages"><property name="minimum"><number>-128</number></property><property name="maximum"><number>127</number></property></widget></item>
-       </layout>
-      </widget></item>
-      <item><spacer name="spacer_column_one"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_two"><item><widget class="QGroupBox" name="box_appearance">
-       <property name="title"><string>Combat icon</string></property>
-       <layout class="QFormLayout" name="form_appearance">
-        <item row="0" column="0" colspan="2"><widget class="IconEditor" name="field_icon" /></item>
-       </layout>
-      </widget></item>
-      <item><widget class="QGroupBox" name="box_abilities">
-       <property name="title"><string>Abilities</string></property>
-       <layout class="QFormLayout" name="form_abilities">
-        <item row="0" column="0"><widget class="QLabel" name="label_strength"><property name="text"><string>Strength</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_strength"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_exceptional_strength"><property name="text"><string>Exceptional strength</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_exceptional_strength"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_strength_index"><property name="text"><string>Strength index</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_strength_index"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_intelligence"><property name="text"><string>Intelligence</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_intelligence"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_wisdom"><property name="text"><string>Wisdom</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_wisdom"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_dexterity"><property name="text"><string>Dexterity</string></property></widget></item>
-        <item row="5" column="1"><widget class="QSpinBox" name="field_dexterity"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_constitution"><property name="text"><string>Constitution</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_constitution"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_charisma"><property name="text"><string>Charisma</string></property></widget></item>
-        <item row="7" column="1"><widget class="QSpinBox" name="field_charisma"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-       </layout>
-      </widget></item>
-      <item><widget class="QGroupBox" name="box_money">
-       <property name="title"><string>Money</string></property>
-       <layout class="QFormLayout" name="form_money">
-        <item row="0" column="0"><widget class="QLabel" name="label_copper"><property name="text"><string>Copper</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_copper"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_silver"><property name="text"><string>Silver</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_silver"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_electrum"><property name="text"><string>Electrum</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_electrum"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_gold"><property name="text"><string>Gold</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_gold"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_platinum"><property name="text"><string>Platinum</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_platinum"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_gems"><property name="text"><string>Gems</string></property></widget></item>
-        <item row="5" column="1"><widget class="QSpinBox" name="field_gems"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_jewelry"><property name="text"><string>Jewelry</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_jewelry"><property name="minimum"><number>0</number></property><property name="maximum"><number>65535</number></property></widget></item>
-       </layout>
-      </widget></item>
-      <item><widget class="QGroupBox" name="box_saves"><property name="title"><string>Saving throws</string></property><layout class="QFormLayout" name="form_saves"><item row="0" column="0"><widget class="QLabel" name="label_save_paralysis"><property name="text"><string>Paralysis</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_save_paralysis"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_save_petrification"><property name="text"><string>Petrification</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_save_petrification"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_save_wands"><property name="text"><string>Wands</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_save_wands"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_save_breath"><property name="text"><string>Breath</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_save_breath"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_save_spell"><property name="text"><string>Spell</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_save_spell"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-               </layout></widget></item>
-      <item><spacer name="spacer_column_two"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_three"><item><widget class="QGroupBox" name="box_levels">
-       <property name="title"><string>Experience and levels</string></property>
-       <layout class="QFormLayout" name="form_levels">
-        <item row="0" column="0"><widget class="QLabel" name="label_experience"><property name="text"><string>Experience</string></property></widget></item>
-        <item row="0" column="1"><widget class="QSpinBox" name="field_experience"><property name="minimum"><number>0</number></property><property name="maximum"><number>16777215</number></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_level"><property name="text"><string>Level</string></property></widget></item>
-        <item row="1" column="1"><widget class="QSpinBox" name="field_level"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="label_level_fighter"><property name="text"><string>Level fighter</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSpinBox" name="field_level_fighter"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="label_level_cleric"><property name="text"><string>Level cleric</string></property></widget></item>
-        <item row="3" column="1"><widget class="QSpinBox" name="field_level_cleric"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="label_level_magic_user"><property name="text"><string>Level magic user</string></property></widget></item>
-        <item row="4" column="1"><widget class="QSpinBox" name="field_level_magic_user"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="5" column="0"><widget class="QLabel" name="label_level_thief"><property name="text"><string>Level thief</string></property></widget></item>
-        <item row="5" column="1"><widget class="QSpinBox" name="field_level_thief"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="6" column="0"><widget class="QLabel" name="label_levels_drained"><property name="text"><string>Levels drained</string></property></widget></item>
-        <item row="6" column="1"><widget class="QSpinBox" name="field_levels_drained"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-        <item row="7" column="0"><widget class="QLabel" name="label_hp_lost_to_drain"><property name="text"><string>Hp lost to drain</string></property></widget></item>
-        <item row="7" column="1"><widget class="QSpinBox" name="field_hp_lost_to_drain"><property name="minimum"><number>0</number></property><property name="maximum"><number>255</number></property></widget></item>
-       </layout>
-      </widget></item>
-      <item><widget class="QGroupBox" name="box_inventory">
-     <property name="title"><string>Inventory</string></property>
-     <property name="minimumHeight"><number>240</number></property>
-     <layout class="QVBoxLayout" name="layout_inventory">
-      <item><widget class="QLabel" name="label_inventory"><property name="text"><string>Items</string></property></widget></item>
-      <item><widget class="QTableView" name="inventory" /></item>
-      <item><layout class="QHBoxLayout" name="inventory_buttons">
-       <item><widget class="QPushButton" name="button_item_add"><property name="text"><string>&amp;Add item…</string></property></widget></item>
-       <item><widget class="QPushButton" name="button_item_delete"><property name="text"><string>&amp;Delete item</string></property></widget></item>
-       <item><spacer name="inventory_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-      </layout></item>
+    <item>
+     <layout class="QHBoxLayout" name="buttons">
+      <item>
+       <widget class="QPushButton" name="button_open">
+        <property name="text">
+         <string>&amp;Open…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="button_save">
+        <property name="text">
+         <string>&amp;Save</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="button_save_as">
+        <property name="text">
+         <string>Save &amp;As…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="button_preview">
+        <property name="text">
+         <string>&amp;Preview changes…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="button_spacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
      </layout>
-    </widget></item>
-    <item><widget class="QGroupBox" name="box_traits">
-      <property name="title"><string>Item traits</string></property>
-      <property name="minimumHeight"><number>240</number></property>
-      <layout class="QVBoxLayout" name="layout_traits">
-       <item><widget class="QLabel" name="label_traits"><property name="text"><string>Select an item</string></property></widget></item>
-       <item><widget class="QTableView" name="traits" /></item>
-      </layout>
-     </widget></item>
-     <item><spacer name="spacer_column_three"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item><item><layout class="QVBoxLayout" name="column_four">      <item><widget class="QGroupBox" name="box_spells">
-     <property name="title"><string>Spells</string></property>
-     <property name="minimumHeight"><number>240</number></property>
-     <layout class="QVBoxLayout" name="layout_spells">
-      <item><layout class="QHBoxLayout" name="layout_spell_lists">
-       <item><layout class="QVBoxLayout" name="layout_spellbook">
-        <item><widget class="QLabel" name="label_spells_known"><property name="text"><string>Spellbook</string></property></widget></item>
-        <item><widget class="SpellbookEditor" name="field_spells_known" /></item>
-       </layout></item>
-       <item><layout class="QVBoxLayout" name="layout_memorised">
-        <item><widget class="QLabel" name="label_spells_memorised"><property name="text"><string>Memorized</string></property></widget></item>
-        <item><widget class="MemorisedEditor" name="field_spells_memorised" /></item>
-       </layout></item>
-      </layout></item>
-      <item><layout class="QHBoxLayout" name="layout_castable">
-       <item><widget class="QLabel" name="label_spells_castable"><property name="text"><string>Castable per level</string></property></widget></item>
-       <item><widget class="QLineEdit" name="field_spells_castable" /></item>
-       <item><spacer name="castable_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-      </layout></item>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="header_row">
+      <item>
+       <widget class="QTableView" name="roster">
+        <property name="minimumHeight">
+         <number>60</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="box_appearance">
+        <property name="title">
+         <string>Combat icon</string>
+        </property>
+        <layout class="QFormLayout" name="form_appearance">
+         <item row="0" column="0" colspan="2">
+          <widget class="IconEditor" name="field_icon" />
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <spacer name="header_spacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
      </layout>
-    </widget></item>
-       <item><widget class="QGroupBox" name="box_effects">
-      <property name="title"><string>Character Traits</string></property>
-      <property name="minimumHeight"><number>240</number></property>
-      <layout class="QVBoxLayout" name="layout_effects">
-       <item><widget class="EffectsView" name="field_item_effects" /></item>
-      </layout>
-     </widget></item>
-       <item><spacer name="spacer_column_four"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>10</height></size></property></spacer></item></layout></item></layout></item>
-    <item><layout class="QHBoxLayout" name="tables_row">
-     </layout></item>
-    </layout>
+    </item>
+    <item>
+     <widget class="QTabWidget" name="sheet_tabs">
+      <widget class="QWidget" name="tab_stats">
+       <attribute name="title">
+        <string>Stats</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="layout_tab_stats">
+        <item>
+         <widget class="QScrollArea" name="scroll_stats">
+          <property name="widgetResizable">
+           <bool>true</bool>
+          </property>
+          <widget class="QWidget" name="page_stats">
+           <layout class="QHBoxLayout" name="sheet_columns">
+            <item>
+             <layout class="QVBoxLayout" name="column_one">
+              <item>
+               <widget class="QGroupBox" name="box_identity">
+                <property name="title">
+                 <string>Character</string>
+                </property>
+                <layout class="QFormLayout" name="form_identity">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_name">
+                   <property name="text">
+                    <string>Name</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QLineEdit" name="field_name" />
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_race">
+                   <property name="text">
+                    <string>Race</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QComboBox" name="field_race" />
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_char_class">
+                   <property name="text">
+                    <string>Char class</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QComboBox" name="field_char_class" />
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_class_bits">
+                   <property name="text">
+                    <string>Class bits</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QComboBox" name="field_class_bits" />
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_sex">
+                   <property name="text">
+                    <string>Sex</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QComboBox" name="field_sex" />
+                 </item>
+                 <item row="5" column="0">
+                  <widget class="QLabel" name="label_alignment">
+                   <property name="text">
+                    <string>Alignment</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="1">
+                  <widget class="QComboBox" name="field_alignment" />
+                 </item>
+                 <item row="6" column="0">
+                  <widget class="QLabel" name="label_age">
+                   <property name="text">
+                    <string>Age</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="1">
+                  <widget class="QSpinBox" name="field_age">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="0">
+                  <widget class="QLabel" name="label_size_small">
+                   <property name="text">
+                    <string>Size</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="1">
+                  <widget class="QComboBox" name="field_size_small" />
+                 </item>
+                 <item row="8" column="0">
+                  <widget class="QLabel" name="label_infravision">
+                   <property name="text">
+                    <string>Infravision</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="8" column="1">
+                  <widget class="QSpinBox" name="field_infravision">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="9" column="0">
+                  <widget class="QLabel" name="label_flags_0b8">
+                   <property name="text">
+                    <string>Flags 0b8</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="9" column="1">
+                  <widget class="QSpinBox" name="field_flags_0b8">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="10" column="0">
+                  <widget class="QLabel" name="label_hp_max">
+                   <property name="text">
+                    <string>Hp max</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="10" column="1">
+                  <widget class="QSpinBox" name="field_hp_max">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="11" column="0">
+                  <widget class="QLabel" name="label_hp_rolled">
+                   <property name="text">
+                    <string>Hp rolled</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="11" column="1">
+                  <widget class="QSpinBox" name="field_hp_rolled">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="12" column="0">
+                  <widget class="QLabel" name="label_hp_current">
+                   <property name="text">
+                    <string>Hp current</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="12" column="1">
+                  <widget class="QSpinBox" name="field_hp_current">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="13" column="0">
+                  <widget class="QLabel" name="label_armour_class_base">
+                   <property name="text">
+                    <string>Armour class base</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="13" column="1">
+                  <widget class="QSpinBox" name="field_armour_class_base">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="14" column="0">
+                  <widget class="QLabel" name="label_armour_class">
+                   <property name="text">
+                    <string>Armour class</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="14" column="1">
+                  <widget class="QSpinBox" name="field_armour_class">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="15" column="0">
+                  <widget class="QLabel" name="label_thac0_base">
+                   <property name="text">
+                    <string>Thac0 base</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="15" column="1">
+                  <widget class="QSpinBox" name="field_thac0_base">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="16" column="0">
+                  <widget class="QLabel" name="label_thac0">
+                   <property name="text">
+                    <string>Thac0</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="16" column="1">
+                  <widget class="QSpinBox" name="field_thac0">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="17" column="0">
+                  <widget class="QLabel" name="label_movement">
+                   <property name="text">
+                    <string>Movement</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="17" column="1">
+                  <widget class="QSpinBox" name="field_movement">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="18" column="0">
+                  <widget class="QLabel" name="label_turn_class">
+                   <property name="text">
+                    <string>Turn class</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="18" column="1">
+                  <widget class="QSpinBox" name="field_turn_class">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="19" column="0">
+                  <widget class="QLabel" name="label_roster_in_use">
+                   <property name="text">
+                    <string>Roster in use</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="19" column="1">
+                  <widget class="QSpinBox" name="field_roster_in_use">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="20" column="0">
+                  <widget class="QLabel" name="label_party_order">
+                   <property name="text">
+                    <string>Party order</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="20" column="1">
+                  <widget class="QSpinBox" name="field_party_order">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="21" column="0">
+                  <widget class="QLabel" name="label_roster_movement">
+                   <property name="text">
+                    <string>Roster movement</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="21" column="1">
+                  <widget class="QSpinBox" name="field_roster_movement">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="22" column="0">
+                  <widget class="QLabel" name="label_roster_tail">
+                   <property name="text">
+                    <string>Roster tail</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="22" column="1">
+                  <widget class="QLineEdit" name="field_roster_tail" />
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_column_one">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>10</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="column_two">
+              <item>
+               <widget class="QGroupBox" name="box_abilities">
+                <property name="title">
+                 <string>Abilities</string>
+                </property>
+                <layout class="QFormLayout" name="form_abilities">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_strength">
+                   <property name="text">
+                    <string>Strength</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QSpinBox" name="field_strength">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_exceptional_strength">
+                   <property name="text">
+                    <string>Exceptional strength</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QSpinBox" name="field_exceptional_strength">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_strength_index">
+                   <property name="text">
+                    <string>Strength index</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QSpinBox" name="field_strength_index">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_intelligence">
+                   <property name="text">
+                    <string>Intelligence</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QSpinBox" name="field_intelligence">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_wisdom">
+                   <property name="text">
+                    <string>Wisdom</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QSpinBox" name="field_wisdom">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="0">
+                  <widget class="QLabel" name="label_dexterity">
+                   <property name="text">
+                    <string>Dexterity</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="1">
+                  <widget class="QSpinBox" name="field_dexterity">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="0">
+                  <widget class="QLabel" name="label_constitution">
+                   <property name="text">
+                    <string>Constitution</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="1">
+                  <widget class="QSpinBox" name="field_constitution">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="0">
+                  <widget class="QLabel" name="label_charisma">
+                   <property name="text">
+                    <string>Charisma</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="1">
+                  <widget class="QSpinBox" name="field_charisma">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="box_money">
+                <property name="title">
+                 <string>Money</string>
+                </property>
+                <layout class="QFormLayout" name="form_money">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_copper">
+                   <property name="text">
+                    <string>Copper</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QSpinBox" name="field_copper">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_silver">
+                   <property name="text">
+                    <string>Silver</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QSpinBox" name="field_silver">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_electrum">
+                   <property name="text">
+                    <string>Electrum</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QSpinBox" name="field_electrum">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_gold">
+                   <property name="text">
+                    <string>Gold</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QSpinBox" name="field_gold">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_platinum">
+                   <property name="text">
+                    <string>Platinum</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QSpinBox" name="field_platinum">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="0">
+                  <widget class="QLabel" name="label_gems">
+                   <property name="text">
+                    <string>Gems</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="1">
+                  <widget class="QSpinBox" name="field_gems">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="0">
+                  <widget class="QLabel" name="label_jewelry">
+                   <property name="text">
+                    <string>Jewelry</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="1">
+                  <widget class="QSpinBox" name="field_jewelry">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="box_saves">
+                <property name="title">
+                 <string>Saving throws</string>
+                </property>
+                <layout class="QFormLayout" name="form_saves">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_save_paralysis">
+                   <property name="text">
+                    <string>Paralysis</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QSpinBox" name="field_save_paralysis">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_save_petrification">
+                   <property name="text">
+                    <string>Petrification</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QSpinBox" name="field_save_petrification">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_save_wands">
+                   <property name="text">
+                    <string>Wands</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QSpinBox" name="field_save_wands">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_save_breath">
+                   <property name="text">
+                    <string>Breath</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QSpinBox" name="field_save_breath">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_save_spell">
+                   <property name="text">
+                    <string>Spell</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QSpinBox" name="field_save_spell">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_column_two">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>10</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QVBoxLayout" name="column_three">
+              <item>
+               <widget class="QGroupBox" name="box_levels">
+                <property name="title">
+                 <string>Experience and levels</string>
+                </property>
+                <layout class="QFormLayout" name="form_levels">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_experience">
+                   <property name="text">
+                    <string>Experience</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QSpinBox" name="field_experience">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>16777215</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_level">
+                   <property name="text">
+                    <string>Level</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QSpinBox" name="field_level">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_level_fighter">
+                   <property name="text">
+                    <string>Level fighter</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QSpinBox" name="field_level_fighter">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_level_cleric">
+                   <property name="text">
+                    <string>Level cleric</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QSpinBox" name="field_level_cleric">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_level_magic_user">
+                   <property name="text">
+                    <string>Level magic user</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QSpinBox" name="field_level_magic_user">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="0">
+                  <widget class="QLabel" name="label_level_thief">
+                   <property name="text">
+                    <string>Level thief</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="1">
+                  <widget class="QSpinBox" name="field_level_thief">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="0">
+                  <widget class="QLabel" name="label_levels_drained">
+                   <property name="text">
+                    <string>Levels drained</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="1">
+                  <widget class="QSpinBox" name="field_levels_drained">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="0">
+                  <widget class="QLabel" name="label_hp_lost_to_drain">
+                   <property name="text">
+                    <string>Hp lost to drain</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="1">
+                  <widget class="QSpinBox" name="field_hp_lost_to_drain">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>255</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="box_thief_skills">
+                <property name="title">
+                 <string>Thief skills</string>
+                </property>
+                <layout class="QFormLayout" name="form_thief_skills">
+                 <item row="0" column="0">
+                  <widget class="QLabel" name="label_thief_pick_pockets">
+                   <property name="text">
+                    <string>Pick pockets</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QSpinBox" name="field_thief_pick_pockets">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="0">
+                  <widget class="QLabel" name="label_thief_open_locks">
+                   <property name="text">
+                    <string>Open locks</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="1" column="1">
+                  <widget class="QSpinBox" name="field_thief_open_locks">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
+                  <widget class="QLabel" name="label_thief_find_traps">
+                   <property name="text">
+                    <string>Find traps</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="1">
+                  <widget class="QSpinBox" name="field_thief_find_traps">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="0">
+                  <widget class="QLabel" name="label_thief_move_silently">
+                   <property name="text">
+                    <string>Move silently</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="3" column="1">
+                  <widget class="QSpinBox" name="field_thief_move_silently">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="0">
+                  <widget class="QLabel" name="label_thief_hide_in_shadows">
+                   <property name="text">
+                    <string>Hide in shadows</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="4" column="1">
+                  <widget class="QSpinBox" name="field_thief_hide_in_shadows">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="0">
+                  <widget class="QLabel" name="label_thief_hear_noise">
+                   <property name="text">
+                    <string>Hear noise</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="5" column="1">
+                  <widget class="QSpinBox" name="field_thief_hear_noise">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="0">
+                  <widget class="QLabel" name="label_thief_climb_walls">
+                   <property name="text">
+                    <string>Climb walls</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="6" column="1">
+                  <widget class="QSpinBox" name="field_thief_climb_walls">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="0">
+                  <widget class="QLabel" name="label_thief_read_languages">
+                   <property name="text">
+                    <string>Read languages</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="7" column="1">
+                  <widget class="QSpinBox" name="field_thief_read_languages">
+                   <property name="minimum">
+                    <number>-128</number>
+                   </property>
+                   <property name="maximum">
+                    <number>127</number>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="box_effects">
+                <property name="title">
+                 <string>Character Traits</string>
+                </property>
+                <property name="minimumHeight">
+                 <number>240</number>
+                </property>
+                <layout class="QVBoxLayout" name="layout_effects">
+                 <item>
+                  <widget class="EffectsView" name="field_item_effects" />
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacer_column_three">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>10</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_inventory">
+       <attribute name="title">
+        <string>Inventory</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="layout_tab_inventory">
+        <item>
+         <widget class="QScrollArea" name="scroll_inventory">
+          <property name="widgetResizable">
+           <bool>true</bool>
+          </property>
+          <widget class="QWidget" name="page_inventory">
+           <layout class="QVBoxLayout" name="column_inventory">
+            <item>
+             <widget class="QGroupBox" name="box_inventory">
+              <property name="title">
+               <string>Inventory</string>
+              </property>
+              <property name="minimumHeight">
+               <number>240</number>
+              </property>
+              <layout class="QVBoxLayout" name="layout_inventory">
+               <item>
+                <widget class="QLabel" name="label_inventory">
+                 <property name="text">
+                  <string>Items</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QTableView" name="inventory" />
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="inventory_buttons">
+                 <item>
+                  <widget class="QPushButton" name="button_item_add">
+                   <property name="text">
+                    <string>&amp;Add item…</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="button_item_delete">
+                   <property name="text">
+                    <string>&amp;Delete item</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <spacer name="inventory_spacer">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="box_traits">
+              <property name="title">
+               <string>Item traits</string>
+              </property>
+              <property name="minimumHeight">
+               <number>240</number>
+              </property>
+              <layout class="QVBoxLayout" name="layout_traits">
+               <item>
+                <widget class="QLabel" name="label_traits">
+                 <property name="text">
+                  <string>Select an item</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QTableView" name="traits" />
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_spells">
+       <attribute name="title">
+        <string>Spells</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="layout_tab_spells">
+        <item>
+         <widget class="QScrollArea" name="scroll_spells">
+          <property name="widgetResizable">
+           <bool>true</bool>
+          </property>
+          <widget class="QWidget" name="page_spells">
+           <layout class="QVBoxLayout" name="column_spells">
+            <item>
+             <widget class="QGroupBox" name="box_spells">
+              <property name="title">
+               <string>Spells</string>
+              </property>
+              <property name="minimumHeight">
+               <number>240</number>
+              </property>
+              <layout class="QVBoxLayout" name="layout_spells">
+               <item>
+                <layout class="QHBoxLayout" name="layout_spell_lists">
+                 <item>
+                  <layout class="QVBoxLayout" name="layout_spellbook">
+                   <item>
+                    <widget class="QLabel" name="label_spells_known">
+                     <property name="text">
+                      <string>Spellbook</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="SpellbookEditor" name="field_spells_known" />
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <layout class="QVBoxLayout" name="layout_memorised">
+                   <item>
+                    <widget class="QLabel" name="label_spells_memorised">
+                     <property name="text">
+                      <string>Memorized</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="MemorisedEditor" name="field_spells_memorised" />
+                   </item>
+                  </layout>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="layout_castable">
+                 <item>
+                  <widget class="QLabel" name="label_spells_castable">
+                   <property name="text">
+                    <string>Castable per level</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLineEdit" name="field_spells_castable" />
+                 </item>
+                 <item>
+                  <spacer name="castable_spacer">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>40</width>
+                     <height>20</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
+                </layout>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
       </widget>
      </widget>
     </item>
@@ -230,19 +1363,28 @@
   </widget>
   <widget class="QStatusBar" name="statusbar" />
  </widget>
- <customwidgets><customwidget>
-  <class>IconEditor</class><extends>QWidget</extends>
-  <header>editor.iconwidget</header>
- </customwidget><customwidget>
-  <class>EffectsView</class><extends>QTableView</extends>
-  <header>editor.effects</header>
- </customwidget><customwidget>
-  <class>SpellbookEditor</class><extends>QWidget</extends>
-  <header>editor.spellwidget</header>
- </customwidget><customwidget>
-  <class>MemorisedEditor</class><extends>QWidget</extends>
-  <header>editor.spellwidget</header>
- </customwidget></customwidgets>
+ <customwidgets>
+  <customwidget>
+   <class>IconEditor</class>
+   <extends>QWidget</extends>
+   <header>editor.iconwidget</header>
+  </customwidget>
+  <customwidget>
+   <class>EffectsView</class>
+   <extends>QTableView</extends>
+   <header>editor.effects</header>
+  </customwidget>
+  <customwidget>
+   <class>SpellbookEditor</class>
+   <extends>QWidget</extends>
+   <header>editor.spellwidget</header>
+  </customwidget>
+  <customwidget>
+   <class>MemorisedEditor</class>
+   <extends>QWidget</extends>
+   <header>editor.spellwidget</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

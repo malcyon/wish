@@ -1,4 +1,5 @@
-"""The main window: the roster across the top, the character sheet below it.
+"""The main window: the roster and the icon across the top, the sheet on
+tabs below them.
 
 The form comes from `editor/character.ui`. Widgets are found by `objectName`
 and matched to `por/layout.py` fields, so the form can be rearranged in Qt
@@ -99,9 +100,11 @@ TOOLBAR_ICON = 16
 MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
-# Left to right: roster and character, the icon and the ability forms, then the
-# two columns carrying tables, which are the ones that benefit from width.
-COLUMN_STRETCH = (0, 0, 5, 2)
+# Which item in a horizontal row is allowed to grow. `sheet_columns` is the
+# Stats tab: Character, then the ability forms, then the column ending in
+# Character Traits, which is the only table on that tab. `header_row` is the
+# roster and the icon above the tabs, where the spacer takes the slack.
+ROW_STRETCH = {"sheet_columns": (0, 0, 1), "header_row": (0, 0, 1)}
 ROSTER_SLACK = 6
 ICON_MAX_WIDTH = 300
 STRIP_TABLE_HEIGHT = 150
@@ -255,6 +258,15 @@ class RosterModel(QAbstractTableModel):
     """
 
     HEADERS = ("Name", "Race", "Class", "AC", "HP")
+
+    #: On the class as well as on the instance, and that is load bearing.
+    #: Destroying the window hides the table, which asks the header for a
+    #: column width, which asks the model for `rowCount` -- and by then the
+    #: garbage collector may have emptied the model's `__dict__`, because the
+    #: window, the view and the model are collected as one cycle. An
+    #: `AttributeError` raised inside a Qt virtual is a `qFatal`, so the
+    #: process aborts. Falling back to the class attribute answers 0 instead.
+    party: Party | None = None
 
     def __init__(self, party: Party | None = None):
         super().__init__()
@@ -492,19 +504,22 @@ class EditorWindow(QMainWindow):
                 head.setMinimumSectionSize(TABLE_ROW_HEIGHT)
 
     def _weight_columns(self) -> None:
-        """Spare width goes to the columns holding tables.
+        """Spare width goes where something can use it.
 
-        The field columns are capped to their contents and cannot use it; the
-        inventory, the traits and the spell lists can always take more.
+        On the Stats tab the field columns are capped to their contents and
+        cannot use it; Character Traits is a table and can always take more.
+        Above the tabs the roster is capped to its own columns too, so the
+        slack goes to the spacer rather than to five columns of empty grid.
         """
-        # A layout is not a QWidget, so `_child` cannot find it.
-        from PyQt6.QtWidgets import QHBoxLayout
-        columns = self.findChild(QHBoxLayout, "sheet_columns")
-        if columns is None:
-            return
-        for i in range(columns.count()):
-            columns.setStretch(i, COLUMN_STRETCH[i] if i < len(COLUMN_STRETCH)
-                               else 0)
+        # A layout is not a QWidget, so `_child` cannot find it. `pyuic6`
+        # names every layout on the Ui object, which is cheaper and steadier
+        # than a `findChild` walk of the whole form.
+        for name, stretch in ROW_STRETCH.items():
+            row = getattr(self.ui, name, None)
+            if row is None:
+                continue
+            for i in range(row.count()):
+                row.setStretch(i, stretch[i] if i < len(stretch) else 0)
 
     def _size_fields(self) -> None:
         """Give every box the width of the widest value its bytes can hold.
@@ -670,10 +685,10 @@ class EditorWindow(QMainWindow):
     def _size_roster(self) -> None:
         """Give the roster exactly the width and height its rows need.
 
-        There is no splitter any more. The roster, the icon and the sheet are
-        all one scrolling page, because a fixed top over a scrolling bottom
-        squeezed the fields into a sixty-pixel strip whenever the window was
-        anything short of enormous.
+        There is no splitter any more. The roster and the icon sit above the
+        tabs and the sheet scrolls inside whichever tab is showing, because a
+        fixed top over a scrolling bottom squeezed the fields into a
+        sixty-pixel strip whenever the window was anything short of enormous.
         """
         view = self.ui.roster
         view.resizeColumnsToContents()
@@ -684,9 +699,23 @@ class EditorWindow(QMainWindow):
         for column in range(self.model.columnCount()):
             header.setSectionResizeMode(column,
                                         header.ResizeMode.ResizeToContents)
-        # No width cap: the table lives in a column now, and the column
-        # already constrains it. Capping as well produced a horizontal scroll
-        # bar inside the table, which then ate a row off the bottom.
+        # A floor under the width, and no ceiling. `QTableView` hints 256px
+        # whatever is in it, and the row above the tabs takes the hint, so the
+        # five columns did not fit and the table grew a horizontal scroll bar
+        # -- which cost a row off the bottom, which brought up the vertical bar
+        # as well, which took another 14px of width. `header.length()` is what
+        # the columns actually came to; the vertical bar's width is reserved
+        # whether or not it is up, because that loop is what happens when the
+        # table is a few pixels short.
+        #
+        # The width is asked of the style rather than of `verticalScrollBar()`:
+        # capping a table's size and reaching for its scroll bar in the same
+        # breath segfaults PyQt inside a later `findChild`, which the editor
+        # work hit once already.
+        from PyQt6.QtWidgets import QStyle
+        bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        view.setMinimumWidth(header.length() + view.verticalHeader().width()
+                             + 2 * view.frameWidth() + bar)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
@@ -694,10 +723,6 @@ class EditorWindow(QMainWindow):
         # The table stops at its rows rather than stretching, or a six-character
         # party leaves 300 pixels of empty grid at the top of the window.
         #
-        # Height only, and no scroll-bar accessor. Capping a table's size and
-        # reaching for its scroll bar in the same breath segfaults PyQt inside a
-        # later `findChild` -- the editor work hit this once already with
-        # `setMaximumWidth`, and it reproduces about two runs in three.
         # A floor as well as a ceiling. Selecting a fighter hides the spell
         # box, the column reflows, and a table with only a maximum collapses to
         # the 60-pixel minimum the form gives it -- two rows visible out of six.

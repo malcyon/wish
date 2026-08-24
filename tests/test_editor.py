@@ -652,25 +652,79 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
     assert w.preview_text().endswith("no changes")
 
 
-# --- the sheet is boxes, not tabs -------------------------------------------
+# --- the sheet is three tabs under the roster -------------------------------
 
 BOXES = ("box_identity", "box_abilities", "box_saves", "box_levels",
          "box_thief_skills", "box_money", "box_appearance", "box_inventory",
          "box_spells", "box_traits", "box_effects")
 
+#: Donald's grouping, and the whole of it: every box is on exactly one tab
+#: except the icon, which is above them with the roster. `box_levels` --
+#: Experience and levels -- was not in the grouping he wrote and is here
+#: because it is a stats box; it is the one placement to check with him.
+TABS = {
+    "Stats": ("box_identity", "box_abilities", "box_money", "box_saves",
+              "box_thief_skills", "box_effects", "box_levels"),
+    "Inventory": ("box_inventory", "box_traits"),
+    "Spells": ("box_spells",),
+}
+
 
 @game_disks
-def test_the_sheet_is_one_scrolling_page_of_group_boxes(app, save):
-    """Nine tabs answered "is this the wounded one" in nine clicks. One page
-    with titled borders answers it in none."""
-    from PyQt6.QtWidgets import QGroupBox, QScrollArea, QTabWidget
+def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
+    """Four columns side by side asked for 2001px of width and got a scroll
+    bar instead. Grouped by what you are doing, the widest tab asks for 912."""
+    from PyQt6.QtWidgets import QGroupBox, QTabWidget
 
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
-    assert w.findChild(QTabWidget) is None
-    assert isinstance(w.findChild(QScrollArea, "sheet_scroll"), QScrollArea)
+    tabs = w.findChild(QTabWidget, "sheet_tabs")
+    assert [tabs.tabText(i) for i in range(tabs.count())] == list(TABS)
     for name in BOXES:
         assert isinstance(w.findChild(QGroupBox, name), QGroupBox), name
+    for i, boxes in enumerate(TABS.values()):
+        page = tabs.widget(i)
+        for name in boxes:
+            assert page.isAncestorOf(w._child(name)), name
+    # The roster and the icon are above the tabs, on every one of them.
+    for i in range(tabs.count()):
+        assert not tabs.widget(i).isAncestorOf(w.ui.roster)
+        assert not tabs.widget(i).isAncestorOf(w._child("box_appearance"))
+
+
+#: A 1280x800 laptop with a task bar taken off it, which is the screen
+#: `tests/test_mapscale.py` holds the whole window to. The editor has to fit
+#: inside it with room to spare, or it becomes the floor instead of the map.
+SMALL_LAPTOP = (1280, 760)
+
+
+@game_disks
+def test_the_sheet_is_not_a_floor_under_the_window(app, save):
+    """The measurement issue #43 asked for, and the reason for the tabs.
+
+    Four columns in one scroll area asked for 2001x1127 and collapsed to
+    421x141, so the sheet was unreadable at any window anybody would open.
+    Three tabs ask for 912x837 at most -- the Stats tab -- and the window's
+    minimum is 681x380 here. The width it gained is the roster, which is above
+    the tabs now and so outside the scroll area that used to let it collapse.
+
+    The floor is not zero because Character is 395x672 of spin boxes and
+    cannot shrink: pinned to their pages with no scroll area the tabs want
+    891x1078, which is taller than the laptop in `SMALL_LAPTOP`. That is why
+    the scroll area survives the tabs and merely moved inside them.
+
+    Both assertions are relations rather than the numbers above, because a
+    number measured on Linux says nothing about Windows -- three points of UI
+    font take the minimum to 778x403 and Character to 504x792.
+    """
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    w.show()
+    floor = w.minimumSizeHint()
+    assert floor.width() <= SMALL_LAPTOP[0]
+    assert floor.height() <= SMALL_LAPTOP[1]
+    # The tallest box on the sheet is taller than the whole window's minimum.
+    assert floor.height() < w._child("box_identity").minimumSizeHint().height()
 
 
 @game_disks
@@ -816,26 +870,44 @@ def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
     w = EditorWindow(str(save))
     w.resize(1200, 900)
     w.show()                       # heights are wrong until the table is shown
-    # No splitter: the roster, the icon and the sheet are one scrolling page.
+    # No splitter: the roster and the icon are a row above the tabs.
     # The table is capped at its own rows and never stretches to the window.
     assert w.ui.roster.maximumHeight() <= _content_height(w.ui.roster) + 8
     assert _content_height(w.ui.roster) < 300
 
 
-def test_the_whole_sheet_scrolls_as_one_page(app, save):
+@game_disks
+def test_the_roster_is_wide_enough_for_all_five_columns(app, save):
+    """Beside the icon rather than under Character, the table gets the 256px
+    `QTableView` hints and not the 331px its columns came to -- so HP fell off
+    the right, a horizontal scroll bar appeared, and it ate a row."""
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    w.resize(1200, 900)
+    w.show()
+    view = w.ui.roster
+    assert view.viewport().width() >= view.horizontalHeader().length()
+
+
+def test_each_tab_scrolls_inside_itself(app, save):
     """A fixed top over a scrolling bottom squeezed the fields into a sixty
-    pixel strip on any window short of enormous. Everything scrolls together."""
-    from PyQt6.QtWidgets import QScrollArea, QSplitter
+    pixel strip on any window short of enormous, and one scroll area over the
+    lot took the tab bar off screen with it. Each tab scrolls on its own, so
+    the roster, the icon and the tab bar are always where they were."""
+    from PyQt6.QtWidgets import QScrollArea, QSplitter, QTabWidget
 
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     w.resize(1200, 700)
     w.show()
     assert w.findChild(QSplitter) is None, "the splitter is what caused this"
-    scroll = w.findChild(QScrollArea, "sheet_scroll")
-    assert scroll is not None
-    # The roster is inside the scrolled page, not above it.
-    assert w.ui.roster.isVisibleTo(scroll)
+    tabs = w.findChild(QTabWidget, "sheet_tabs")
+    for name in ("scroll_stats", "scroll_inventory", "scroll_spells"):
+        scroll = w.findChild(QScrollArea, name)
+        assert scroll is not None, name
+        assert scroll.widgetResizable(), name
+        assert tabs.isAncestorOf(scroll), name
+    assert not tabs.isAncestorOf(w.ui.roster)
 
 
 # --- field widths come from the layout --------------------------------------
@@ -969,18 +1041,24 @@ def test_the_sheet_keeps_its_shape_across_the_roster(editor):
 
     PORSAVE11 has a magic-user, a magic-user/thief and three fighters, so it
     covers every combination the two class-conditional boxes ever had. No box
-    may come or go, and the sheet may not change the size it asks for.
+    may come or go, and no tab may change the size it asks for.
+
+    `isHidden`, not `isVisible`: a box on a tab that is not showing is not
+    visible and never was hidden, and greying it out -- which is what the two
+    class-conditional boxes do -- is not hiding it either.
     """
     from PyQt6.QtWidgets import QGroupBox
 
     editor.resize(1875, 1030)
     editor.show()
+    pages = ("page_stats", "page_inventory", "page_spells")
     shapes = []
     for row in range(len(editor.party)):
         editor.ui.roster.selectRow(row)
         boxes = {b.objectName() for b in editor.findChildren(QGroupBox)
-                 if b.isVisible()}
-        shapes.append((boxes, editor.ui.sheet.sizeHint()))
+                 if not b.isHidden()}
+        shapes.append((boxes, tuple(editor._child(n).sizeHint()
+                                    for n in pages)))
     first = shapes[0]
     assert all(s == first for s in shapes), [
         (editor.party.member(i).name, sorted(s[0]), s[1])
