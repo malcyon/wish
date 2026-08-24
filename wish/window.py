@@ -198,7 +198,7 @@ class WishWindow(QMainWindow):
         # of several ports and the next one goes beside it rather than growing
         # the File menu another top-level verb.
         #
-        # Built only when `WISH_DOS_IMPORT` says so -- see `editor/dosimport.py`.
+        # Built only when `WISH_EXPERIMENTAL_DOS_IMPORT` says so -- see `editor/dosimport.py`.
         # Not built rather than disabled: a greyed-out entry invites the
         # question of how to un-grey it, and the answer would be a sentence
         # this window does not want.
