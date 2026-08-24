@@ -58,6 +58,14 @@ def edges(package: pathlib.Path) -> list[tuple[str, str, str]]:
                     targets = [a.name for a in node.names if a.name in modules]
                 elif node.module in modules:     # from .a import x
                     targets = [node.module]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0:
+                # `from por.a import x` -- a sibling reached by its absolute
+                # name. It binds exactly as `from .a import x` does, and
+                # missing it would hide the one edge this tool exists to
+                # catch. `por.areas` reaches `por.layout` this way.
+                head = (node.module or "").split(".")
+                if head[:1] == [package.name] and head[1:2] and head[1] in modules:
+                    targets = [head[1]]
             elif isinstance(node, ast.Import):   # import por.a
                 targets = [a.name.split(".")[1] for a in node.names
                            if a.name.startswith(package.name + ".")

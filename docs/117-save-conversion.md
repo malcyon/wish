@@ -1151,6 +1151,8 @@ the edge somebody adds without noticing.
 graph LR
   amiga --> neutral
   amiga -.->|deferred| yaml_io
+  areas -.->|deferred| geo
+  areas --> layout
   c64_codec --> layout
   c64_codec --> neutral
   c64_codec --> record
@@ -1205,13 +1207,14 @@ graph LR
 A dotted edge is an import inside a function or a class body: real, but
 deferred, and usually there to break a cycle.
 
-**The graph is one edge short, and the gap is the shape of the thing it
-guards.** `tools/genimports.py` matches relative imports (`from .layout import
-…`) and `import por.layout`, but not `from por.layout import …` — an absolute
-import of a sibling. `por/areas.py` writes exactly that, so `areas --> layout`
-is missing above; a codec written the same way would reach into another
-format's layout without appearing here at all. `edges()` needs the
-`ast.ImportFrom` case with `level == 0` and a `module` beginning `por.`.
+The review that drew these diagrams found the graph one edge short, and the
+gap was the shape of the thing it guards: `tools/genimports.py` matched
+`from .layout import …` and `import por.layout` but not `from por.layout
+import …`, an absolute import of a sibling. `por/areas.py` writes exactly
+that, so `areas --> layout` was missing — and a codec written the same way
+would have reached into another format's layout without appearing here at all.
+The `level == 0` case is now handled, and `tests/test_genimports.py` fails if
+the block above ever drifts from what the tool prints.
 
 ### What the drawings settle
 
