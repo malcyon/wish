@@ -228,7 +228,10 @@ work/
 
 # AI files
 .agents/
-.claude/
+# The subagent definitions are the project's, not one machine's; everything
+# else under `.claude/` is local state.
+.claude/*
+!.claude/agents/
 skills-lock.json
 # Written by hatch-vcs at build time; the tag is the source of truth.
 wish/_version.py
