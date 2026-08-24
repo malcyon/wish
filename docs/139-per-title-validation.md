@@ -11,10 +11,11 @@ actually backed by — and what it would take to back the rest.
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `skills/goldbox/SKILL.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
 | How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 24, Silver Blades 16.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The live actions.** The *reader* is per-title now (#29): `automap/live.py` takes every address from the `Game` descriptor and `automap/target.py` reads the engine's measured `$C04B` triple. `automap/actions.py` was not threaded with it, so the five buttons still write Pool of Radiance's `$4900`/`$8300` on every title — not refusing, writing it | CONFIRMED, `automap/actions.py:151`, `:482`, `:742` |
+| Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `por/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
-*reader* now works on three, and the live *writes* work on one.**
+*reader* now works on three, and the live *writes* are addressed correctly on
+three and gated on one.**
 
 ## 1. How far out of date `docs/120` and `docs/121` are
 
@@ -99,10 +100,10 @@ applicable.
 | C13 | condition badges | V | **U** | **U** | rides C12 |
 | C14 | quickfight badge | V | **U** | **U** | rides C12 |
 | C15 | commissions panel | V | — | — | `por/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
-| C16 | heal party | V | **X** | **X** | `automap/actions.py` was not threaded through the descriptor with `live.py`: `Member.record_base`/`roster_base`/`item_base` are `$4D00`/`$8300`/`$5900` and `read_party` calls `live.read_blocks(target)` with no game. It reads and **writes** Pool of Radiance's addresses on every title |
-| C17 | store / restore spells | V | **X** | **X** | rides C16 |
-| C18 | identify items | V | **X** | **X** | rides C16 — `live.BLOCKS[0][0]` at `automap/actions.py:482` |
-| C19 | clear quickfight, and the watcher | V | **X** | **X** | rides C16 — `QUICKFIGHT` is built on `SAVE1_LOAD_ADDRESS`, `automap/actions.py:742` |
+| C16 | heal party | V | **R** | **R** | Addresses done (#29): `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `$4F00`/`$5B00`/`$6700` on Curse -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own`. The **gate** is not: `$6E11` is `LINKER`'s own byte and no other title's loader has been read, so `Game.mode_flag` is None there and every action refuses -- `…::test_a_title_with_no_measured_mode_flag_writes_nothing` |
+| C17 | store / restore spells | V | **R** | **R** | rides C16 |
+| C18 | identify items | V | **R** | **R** | rides C16; the payload offset now comes off `Game.save_load_address` and `live.BLOCKS` is gone |
+| C19 | clear quickfight, and the watcher | V | **R** | **R** | rides C16; `actions.quickfight_flag(game)` builds the address from `Game.roster_base` -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page` |
 | C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
 | C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `warp_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
 | C22 | the *running* title is **checked against** the machine | V | V | V | issue #21, closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
@@ -122,21 +123,24 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
-| Curse of the Azure Bonds | 49 | **24** | 2 | 14 | 4 | 5 |
-| Secret of the Silver Blades | 49 | **16** | 2 | 22 | 4 | 5 |
+| Curse of the Azure Bonds | 49 | **24** | 6 | 14 | 0 | 5 |
+| Secret of the Silver Blades | 49 | **16** | 6 | 22 | 0 | 5 |
 
 Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
 `U` (C12–C14) when #29 and #30 landed, and a third when #21 closed C22. The
-four `X` left on each are the live actions, all of them `automap/actions.py`.
+second half of #29 turned the last four `X` -- the live actions -- into `R`:
+every address they write is the descriptor's now, and the one address that
+cannot be derived, the loader's mode flag, is unmeasured on both titles, so the
+buttons refuse and say so.
 
-Pool of Radiance's one `U` is the Ultimate backend, which nobody can test, and
-it has no `X` left.
+**Neither title has an `X` left.** Pool of Radiance's one `U` is the Ultimate
+backend, which nobody can test.
 
-**C22 does not make the four `X` safe, and it is not meant to.** The live
-actions write Pool of Radiance's addresses whatever the title says, so they are
-still wrong on a Curse machine the window has correctly identified as Curse.
-What C22 buys is the case the window has it *wrong*: a machine running a game
-the disks folder does not name now loses those buttons entirely.
+**C22 was never what made the live actions safe.** It covers the case the
+window has the title *wrong* -- a machine running a game the disks folder does
+not name loses those buttons entirely. What made them safe on a machine
+correctly identified as Curse is C16-C19 above: the addresses follow the
+descriptor, and the missing gate is a refusal rather than a guess.
 
 ### What the README is promising that is not backed
 
@@ -182,11 +186,20 @@ is `Game.live_position` — `$C04B`, measured on Pool of Radiance, Curse and
 Silver Blades and None on the other three, which refuse rather than guess.
 Closed C4 and moved C12–C14 from `X` to `U`.
 
-**Not done: `automap/actions.py`.** It reads and writes `$4D00`, `$5900` and
-`$8300` as module constants and takes no game, so the five live buttons are
-still Pool of Radiance's (C16–C19). Same shape of work, on `Member` and
-`read_party` instead of on `live.py`, and it is the last thing between here and
-G6.
+**Also done (#29): `automap/actions.py`.** `Member` and `read_party` take the
+descriptor, so the slot area, the item area and the roster page all follow
+`save_load_address`; `live.BLOCKS` is gone with its last caller. `ActionBar`
+takes a game and the window hands it the one it resolved, alongside the Fast
+Travel row and the Level up button.
+
+**One address in that file does not follow the save image, and it stops the
+buttons.** `$6E11` is a byte of `LINKER`'s own resident page -- the flag every
+action reads before it writes, because `2` is combat -- and no other title's
+loader has been disassembled here. It is `Game.mode_flag`, None on all five
+later titles, and an action whose title has None refuses rather than write with
+no way to see a fight. So C16-C19 are `R` and not `V`, and **one measurement
+per title lifts all four**: find the loader's dispatch byte, put it in the
+table row. That measurement is the first thing G6 should take.
 
 ### G3 — namespace the notes by title · code, no emulator
 
@@ -224,15 +237,21 @@ already proved the disk-flush hazard; `docs/121` §5 has the list.
 ### G6 — one Curse and one Silver Blades session for the live tab · needs G2
 
 Closes C6, C7, C12–C19 for both titles — twenty cells between them, and they
-share one prerequisite and one kind of run. C12–C14 are ready for it; C16–C19
-are not, because G2's second half — `automap/actions.py` — is not done, and
-those four buttons **write**.
+share one prerequisite and one kind of run. G2 has landed, so C12–C14 are ready
+for it and C16–C19 need one measurement first.
 
-Attach to each title in turn and, in one pass: draw the map (C7), cross an area
-boundary and read the area byte either side (C6 — the negative example `docs/120`
-tier 3 says is missing), then check the roster panel shows the party, the badges
-match the sheet, and each of the five live actions does what it says. Two
-sittings, one per title, after G2 has landed.
+**Take the mode flag first, because everything else in the sitting is free
+afterwards.** The loader's dispatch byte is what the five action buttons gate
+on, and until it is a row in `por/games.py` they all refuse. It is a
+differential read like any other: sit in the world, dump; start a fight, dump;
+one byte in the loader's resident page goes to 2 and back. Then the four `R`
+cells can be tried.
+
+Then, in the same pass: draw the map (C7), cross an area boundary and read the
+area byte either side (C6 — the negative example `docs/120` tier 3 says is
+missing), check the roster panel shows the party and the badges match the
+sheet, and finally that each of the five live actions does what it says. Two
+sittings, one per title.
 
 ### G7 — decide what the combat features mean on a later title
 

@@ -18,8 +18,8 @@ import pytest
 
 from automap import actions, live
 from automap.target import MemoryTarget
+from por import games, levelup
 from por import items as por_items
-from por import levelup
 from por.record import RECORD_SIZE, CharacterRecord
 from por.savegame import ROSTER_HP_CURRENT
 
@@ -238,7 +238,7 @@ def test_identifying_asks_first():
 def with_experience(points: int) -> MemoryTarget:
     """The captured party with BRUTUS given enough to train. 0x0E8, 24-bit."""
     save0, save1 = captured()
-    at = actions.SLOT_AREA_BASE - 0x4900 + 0x0E8
+    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
     save0[at:at + 3] = points.to_bytes(3, "little")
     return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
                          0x6E11: bytes([WORLD])})
@@ -278,8 +278,14 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
                                                                     slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before
-    assert "Curse of the Azure Bonds" in " ".join(outcome.notes)
-    assert "measured" in " ".join(outcome.notes)
+    # Message or notes: since #29 the title is refused one gate earlier, at
+    # `Action.legality`, because Curse's combat flag has never been measured
+    # either -- so the refusal that reaches the player is the message rather
+    # than `run`'s list. Both name the title and both say "measured", which is
+    # what this test is about.
+    said = " ".join((outcome.message,) + outcome.notes)
+    assert "Curse of the Azure Bonds" in said
+    assert "measured" in said
 
 
 @pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
@@ -303,7 +309,7 @@ def test_levelling_writes_what_the_trainer_writes():
     outcome = find("level-up").apply(target, slot=0)
     assert outcome.ok, outcome.message
     written = dict(outcome.writes)
-    base = actions.SLOT_AREA_BASE
+    base = games.POOL_OF_RADIANCE.slot_area_base
     # fighter 2: THAC0 19 (stored 60 - 19), the per-class entry, the level
     # byte, attack_level, and experience -- which the clamp only ever lowers,
     # so 2001 stays 2001.
@@ -328,7 +334,8 @@ def test_no_money_moves():
     not: that is what a school costs, not what a level costs."""
     outcome = find("level-up").apply(with_experience(2001), slot=0)
     assert outcome.ok
-    coin = range(actions.SLOT_AREA_BASE + 0x0BB, actions.SLOT_AREA_BASE + 0x0C9)
+    slot0 = games.POOL_OF_RADIANCE.slot_area_base
+    coin = range(slot0 + 0x0BB, slot0 + 0x0C9)
     assert not [a for a, _ in outcome.writes if a in coin]
 
 
@@ -337,7 +344,7 @@ def test_a_character_at_zero_is_refused_rather_than_healed():
     not say which. A corpse at full hit points is a state the game never has."""
     save0, save1 = captured()
     save1[ROSTER_HP_CURRENT] = 0
-    at = actions.SLOT_AREA_BASE - 0x4900 + 0x0E8
+    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900 + 0x0E8
     save0[at:at + 3] = (2001).to_bytes(3, "little")
     target = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
                            0x6E11: bytes([WORLD])})
@@ -354,7 +361,7 @@ def multi_class(points: int, **levels_) -> MemoryTarget:
     test that shortcut that would not exercise the write.
     """
     save0, save1 = captured()
-    at = actions.SLOT_AREA_BASE - 0x4900
+    at = games.POOL_OF_RADIANCE.slot_area_base - 0x4900
     record = CharacterRecord.from_bytes(
         bytes(save0[at:at + 0x100]).ljust(RECORD_SIZE, b"\x00"))
     bits = {"magic-user": 1, "cleric": 2, "thief": 4, "fighter": 8}
@@ -597,3 +604,92 @@ def test_nothing_writes_a_disk():
     find("heal").apply(target)
     assert set(target.memory) <= {0x4900, 0x8300, 0x6E11,
                                   0x8300 + ROSTER_HP_CURRENT}
+
+
+# --- per title (#29) ---------------------------------------------------------
+#
+# The write side of the same fix `tests/test_automap.py` pins for the read side.
+# `automap/live.py` and `automap/target.py` were threaded through the `Game`
+# descriptor first; these five buttons were not, so they carried Pool of
+# Radiance's `$4D00`, `$5900` and `$8300` into every title -- and they *write*,
+# which is why the matrix graded them `X` where the reader was only `U`.
+#
+# The bytes below are still Pool of Radiance's captured party. Nothing here
+# claims they are a Curse party; what is under test is which addresses an
+# action reads and writes, and Curse's payload is Pool of Radiance's with the
+# roster page folded on, so the shape is exactly right for that question.
+
+CURSE = games.CURSE_OF_THE_AZURE_BONDS
+
+
+def curse_machine(mode: int | None = None, hp: int | None = None
+                  ) -> MemoryTarget:
+    """The captured party laid out the way Curse lays a save out.
+
+    `mode` writes a byte at Pool of Radiance's `$6E11` on purpose: it is there
+    to prove that an action on a Curse machine refuses *whatever* is at that
+    address, because on Curse that address is somebody else's.
+    """
+    save0, roster = captured()
+    if hp is not None:
+        roster[ROSTER_HP_CURRENT] = hp
+    memory = {CURSE.save_load_address: bytes(save0 + roster)}
+    if mode is not None:
+        memory[0x6E11] = bytes([mode])
+    return MemoryTarget(memory)
+
+
+def test_a_curse_party_is_read_at_curses_own_addresses():
+    """`read_party` takes the descriptor, so one read at `$4B00` and a roster
+    sliced out of the payload's last page -- not two reads at `$4900` and
+    `$8300`."""
+    target = curse_machine()
+    party = actions.read_party(target, CURSE)
+    assert party is not None and [m.name for m in party] == ["BRUTUS"]
+    assert target.reads == [(0x4B00, 0x1D00)]
+
+
+def test_every_address_a_curse_action_would_write_is_curses_own():
+    """The three bases, per slot. `$4F00`, `$5B00` and `$6700` are Curse's;
+    `$4D00`, `$5900` and `$8300` are Pool of Radiance's, and writing those into
+    a running Curse is what #29 is about."""
+    member = actions.read_party(curse_machine(), CURSE).by_slot(0)
+    assert (member.record_base, member.item_base, member.roster_base) == (
+        0x4F00, 0x5B00, 0x6700)
+    assert member.field_address("spells_memorised") == 0x4F00 + 0x020
+    pool = actions.read_party(machine(), games.POOL_OF_RADIANCE).by_slot(0)
+    assert (pool.record_base, pool.item_base, pool.roster_base) == (
+        0x4D00, 0x5900, 0x8300)
+
+
+def test_the_quickfight_flag_follows_the_roster_page():
+    """Roster `+0x0C` bit 7 in both titles: the offset is the block's and the
+    block is the same block. Only where the page lives moves."""
+    assert actions.quickfight_flag(CURSE).address(3) == 0x6700 + 3 * 0x20 + 0x0C
+    assert actions.quickfight_flag().address(3) == 0x8300 + 3 * 0x20 + 0x0C
+    assert actions.quickfight_flag(CURSE).mask == live.QUICKFIGHT_BIT
+
+
+def test_a_title_with_no_measured_mode_flag_writes_nothing():
+    """The gate is the one address that does not follow the save image. `$6E11`
+    is `LINKER`'s own byte, measured on Pool of Radiance and looked for on no
+    other title, so on Curse there is no way to tell a fight from the map --
+    and every action refuses rather than write blind.
+
+    A wounded party is used deliberately: on Pool of Radiance's machine this
+    same call heals, so what is asserted is the refusal and not an empty one.
+    """
+    assert CURSE.mode_flag is None
+    for name in ("heal", "identify", "store-spells", "restore-spells",
+                 "clear-quickfight"):
+        action = next(a for a in actions.actions(game=CURSE) if a.name == name)
+        target = curse_machine(mode=WORLD, hp=1)
+        before = dict(target.memory)
+        outcome = action.apply(target)
+        assert not outcome.ok, name
+        assert outcome.writes == () and target.memory == before, name
+        assert CURSE.title in outcome.message and "measured" in outcome.message
+    # And the same machine on the title whose flag *was* measured does heal,
+    # so the refusal is about the title and not about these bytes.
+    healed = find("heal").apply(machine(hp=1))
+    assert healed.ok and healed.writes

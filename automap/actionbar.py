@@ -82,13 +82,23 @@ COLUMNS = 3
 class ActionBar(QWidget):
     """One button per action, and the watcher's checkbox."""
 
-    def __init__(self, parent=None, actions=None, watcher=None, say=None):
+    def __init__(self, parent=None, actions=None, watcher=None, say=None,
+                 game=None):
         super().__init__(parent)
         #: Where results are reported. `MessagesPanel.say` in the window; a
         #: no-op alone, so the bar is usable without one.
         self.say = say or (lambda text, detail="", alarm=False: None)
-        self.actions = tuple(actions if actions is not None else engine.actions())
-        self.watcher = watcher or engine.QuickfightWatcher()
+        #: Whose addresses the buttons write to. **None is Pool of Radiance**,
+        #: which is what a bar built without a window means; the window tells
+        #: it the title it resolved off the disks, and again whenever those
+        #: change -- `set_game`.
+        self.game = game
+        #: Whether the actions were handed to us wholesale. A caller that
+        #: passes its own means them, so a title change does not replace them.
+        self._own_actions = actions is not None
+        self.actions = tuple(actions if actions is not None
+                             else engine.actions(game=game))
+        self.watcher = watcher or engine.QuickfightWatcher(game=game)
         self.last: engine.Outcome | None = None
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
@@ -127,6 +137,29 @@ class ActionBar(QWidget):
 
     def _watch_toggled(self, on: bool) -> None:
         self.watcher.enabled = on
+
+    def set_game(self, game) -> None:
+        """The session is this title now: rebuild the actions around it.
+
+        Every address the five buttons write comes off the descriptor, so a
+        title change is a new set of actions rather than a setting on the old
+        ones. The watcher goes with them, and keeps whether it was ticked --
+        that is the player's choice and has nothing to do with which game.
+        """
+        if game is self.game:
+            return
+        self.game = game
+        if not self._own_actions:
+            self.actions = tuple(engine.actions(game=game))
+            for action in self.actions:
+                button = self.buttons.get(action.name)
+                if button is not None:
+                    button.clicked.disconnect()
+                    button.clicked.connect(
+                        lambda _checked=False, a=action: self.run(a))
+        self.watcher = engine.QuickfightWatcher(
+            engine.ClearQuickfight(game=game), enabled=self.watcher.enabled)
+        self.refresh(self.target)
 
     # -- the poll --------------------------------------------------------
 

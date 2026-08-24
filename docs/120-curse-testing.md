@@ -214,7 +214,7 @@ not in the save image at all.
 | area byte | `$4BC2` | **`$4DC2`** (payload `+$2C2`), read `$81` | PROBABLE |
 | resident `GEO` block | `$0400` | **`$0400` — unchanged** | CONFIRMED |
 | `LIBRARY`'s `GEO` stem digits at `$2714` | — | **not there**; `$2710` is code. The `docs/116` figure came from the file and does not hold live. Nothing depends on it | — |
-| combat mode flag | `$6E11` | not looked for | UNKNOWN |
+| combat mode flag | `$6E11` | still not looked for | UNKNOWN. `Game.mode_flag` is None for Curse because of this, and every live action refuses (#29) |
 
 **How `$C04B` was earned**, because it is the one that a "check `$4BC0`" task
 would have got wrong in both directions. `$4BC0`–`$4BC2` *is* the position

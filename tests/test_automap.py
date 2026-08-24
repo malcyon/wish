@@ -2371,3 +2371,20 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
     assert window._popover is pop            # no second popover opened
     assert pop.chosen == "note"              # and no type was picked by "e"
     window.close()
+
+
+def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
+    """The window resolves the title off the disks and tells the row; the row
+    is what carries the descriptor into every address the buttons write."""
+    from automap.actionbar import ActionBar
+
+    bar = ActionBar()
+    assert all(a.game is games.POOL_OF_RADIANCE for a in bar.actions)
+    bar.set_game(CURSE)
+    assert all(a.game is CURSE for a in bar.actions)
+    assert bar.watcher.game is CURSE
+    # Every button is refused, with the reason, rather than silently inert.
+    bar.attach(curse_machine())
+    for name, button in bar.buttons.items():
+        assert not button.isEnabled(), name
+        assert "measured" in button.toolTip(), name

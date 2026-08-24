@@ -156,6 +156,18 @@ CLOCK_OFFSET = 0x0C7           # minute units, tens, hour
 #: `live_position` None below.
 LIVE_POSITION_GOLDBOX = 0xC04B
 
+#: `LINKER`'s dispatch byte in Pool of Radiance: which overlay is running, and
+#: `2` is COMBAT. Outside the save image like `live_position`, and like it a
+#: measurement of one title rather than a family constant -- `LINKER` is
+#: 136 bytes of resident code and no other title's loader has been
+#: disassembled here (`docs/138-multiple-games.md`; `docs/120` tier 3's
+#: resident-address table records it as "not looked for").
+#:
+#: CONFIRMED for Pool of Radiance: "`$6E11` is the mode flag" in
+#: `docs/50-experiments.md` reads the outer loop itself -- `LDA $6E11`, index
+#: the overlay name table, load it at `$0800`, call it.
+MODE_FLAG_POOL = 0x6E11
+
 
 @dataclass(frozen=True)
 class Game:
@@ -197,6 +209,16 @@ class Game:
     #: than fall back to another title's, because a wrong address yields a
     #: plausible square instead of an error.
     live_position: int | None = None
+
+    #: The loader's resident-overlay flag -- the byte an action has to read
+    #: before it writes, because `2` is combat and half of them are illegal
+    #: there. **Not geometry either**: it is a byte of the loader's own
+    #: resident page, not of the save image, so it neither follows
+    #: `save_load_address` nor transfers. None means nobody has found this
+    #: title's, and every action then refuses: an unmeasured address reads as
+    #: "not combat" whatever the machine is doing, which is a gate that is
+    #: open rather than a gate that is missing.
+    mode_flag: int | None = None
 
     # -- derived ----------------------------------------------------------
     @property
@@ -284,6 +306,7 @@ POOL_OF_RADIANCE = Game(
     class_bits=CLASS_BITS_CLASSIC,
     item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
     live_position=LIVE_POSITION_GOLDBOX,
+    mode_flag=MODE_FLAG_POOL,
 )
 
 CURSE_OF_THE_AZURE_BONDS = Game(
@@ -298,6 +321,9 @@ CURSE_OF_THE_AZURE_BONDS = Game(
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
     live_position=LIVE_POSITION_GOLDBOX,
+    # `mode_flag` stays None: `$6E11` is Pool of Radiance's `LINKER`, and
+    # nobody has looked for this title's (`docs/120` tier 3). Every live
+    # action refuses until somebody does.
 )
 
 SECRET_OF_THE_SILVER_BLADES = Game(
@@ -312,6 +338,9 @@ SECRET_OF_THE_SILVER_BLADES = Game(
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
     live_position=LIVE_POSITION_GOLDBOX,
+    # `mode_flag` stays None: `$6E11` is Pool of Radiance's `LINKER`, and
+    # nobody has looked for this title's (`docs/120` tier 3). Every live
+    # action refuses until somebody does.
 )
 
 CHAMPIONS_OF_KRYNN = Game(
@@ -325,8 +354,9 @@ CHAMPIONS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position stays None: nobody has run this title under a monitor,
-    # and $C04B is a measurement of three other games, not a family constant.
+    # live_position and mode_flag stay None: nobody has run this title under
+    # a monitor, and $C04B and $6E11 are measurements of other games, not
+    # family constants.
 )
 
 DEATH_KNIGHTS_OF_KRYNN = Game(
@@ -340,8 +370,9 @@ DEATH_KNIGHTS_OF_KRYNN = Game(
     races=RACES_KRYNN,
     class_bits=CLASS_BITS_KRYNN,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position stays None: nobody has run this title under a monitor,
-    # and $C04B is a measurement of three other games, not a family constant.
+    # live_position and mode_flag stay None: nobody has run this title under
+    # a monitor, and $C04B and $6E11 are measurements of other games, not
+    # family constants.
 )
 
 GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
@@ -355,8 +386,9 @@ GATEWAY_TO_THE_SAVAGE_FRONTIER = Game(
     races=RACES_FORGOTTEN_REALMS,
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
-    # live_position stays None: nobody has run this title under a monitor,
-    # and $C04B is a measurement of three other games, not a family constant.
+    # live_position and mode_flag stay None: nobody has run this title under
+    # a monitor, and $C04B and $6E11 are measurements of other games, not
+    # family constants.
 )
 
 GAMES: tuple[Game, ...] = (

@@ -19,6 +19,7 @@ import pytest
 
 from automap import actionbar, actions
 from automap.target import MemoryTarget
+from por import games
 from wish import debugmode
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
@@ -49,7 +50,7 @@ class Machine(MemoryTarget):
 def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             pc: int = IN_THE_LOOP, indoors: int = 1) -> Machine:
     """A machine standing in an area, ready to be warped out of."""
-    return Machine({actions.MODE: bytes([mode]),
+    return Machine({games.MODE_FLAG_POOL: bytes([mode]),
                     actions.WARP_SLOT: bytes([area]),
                     actions.WARP_DISK: bytes([disk]),
                     actions.WARP_INDOORS: bytes([indoors]),
@@ -189,7 +190,7 @@ def test_a_warp_to_the_area_we_are_in_is_refused():
 
 
 def test_a_backend_with_no_cpu_cannot_warp():
-    plain = MemoryTarget({actions.MODE: bytes([WORLD])})
+    plain = MemoryTarget({games.MODE_FLAG_POOL: bytes([WORLD])})
     verdict = actions.Warp().legality(plain, area(20))
     assert not verdict and "program counter" in verdict.reason
 
@@ -766,7 +767,7 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     party = type("Party", (), {"by_slot": lambda self, slot: member})()
     monkey, was_read = actions.LevelUp, actions.read_party
     actions.LevelUp = Action
-    actions.read_party = lambda target: party
+    actions.read_party = lambda target, game=None: party
     try:
         AutomapWindow._level_up(window, 3)
     finally:
@@ -848,7 +849,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     party = type("Party", (), {"by_slot": lambda self, slot: member})()
     monkey, was_read = actions.LevelUp, actions.read_party
     actions.LevelUp = Action
-    actions.read_party = lambda target: party
+    actions.read_party = lambda target, game=None: party
     try:
         AutomapWindow._level_up(window, 0)
         assert "applied" not in seen, "the player said no"

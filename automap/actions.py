@@ -5,21 +5,33 @@ here, the same way `live.py` and `combat.py` have none -- an action takes a
 `Target`, decides whether it is legal, and either writes or says why not. The
 window wires buttons to these; the tests drive them against `MemoryTarget`.
 
-**Everything is gated on `$6E11`**, the mode flag LINKER dispatches on, and
-never on the screen: `2` is COMBAT. An action that is illegal in combat refuses
-at `apply` time and not only in its tooltip, because a button's enabled state is
+**Everything is gated on the mode flag** the loader dispatches on, and never on
+the screen: `2` is COMBAT. An action that is illegal in combat refuses at
+`apply` time and not only in its tooltip, because a button's enabled state is
 one poll interval stale and a fight can start inside that interval.
+
+**Every address here is per title, and comes from `por.games.Game`** -- the
+slot area, the item area and the roster page all follow `save_load_address`,
+so Curse and Silver Blades are written at `$4F00`, `$5B00` and `$6700` and not
+at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
+
+**The mode flag is the one address that does not follow it.** `$6E11` is a byte
+of `LINKER`'s own resident page, not of the save image, and no other title's
+loader has been disassembled here -- so `Game.mode_flag` is None everywhere but
+Pool of Radiance and every action refuses on those titles rather than write with
+no way to see a fight. One measurement per title lifts it, and it is one row in
+`por/games.py`.
 
 **Nothing here writes to a disk.** These change the machine's memory; the player
 saves in the game as usual, which is what keeps the losslessness promise intact.
 
 Two facts from `docs/50-experiments.md` bound what is safe to write:
 
-* **The item area at `$5900` is a copy.** Poking `$5A98` to 150 lb was reverted
-  by the game, so a write there is fed from a master elsewhere and may not
-  stick. `IdentifyItems` writes anyway -- it is one bit and the failure mode is
-  "nothing happened" -- but it says so, and it is the one action whose effect
-  the caller should verify by looking at the game.
+* **The item area is a copy.** Poking `$5A98` -- Pool of Radiance's -- to
+  150 lb was reverted by the game, so a write there is fed from a master
+  elsewhere and may not stick. `IdentifyItems` writes anyway -- it is one bit
+  and the failure mode is "nothing happened" -- but it says so, and it is the
+  one action whose effect the caller should verify by looking at the game.
 * **`$6B00` is the resident character record** and `$6C00` the resident roster
   block, so the game works on a *copy* of whichever character is in hand. A
   write into the slot area is what the next save writes out; a write into a
@@ -36,24 +48,21 @@ import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
+from por import games, levels, levelup
 from por import items as por_items
-from por import levels, levelup
 from por.layout import Confidence, field_by_name
 from por.record import CharacterRecord
 from por.savegame import (
-    ITEM_AREA_BASE,
     ROSTER_HP_CURRENT,
     ROSTER_STRIDE,
     ROSTER_THAC0,
-    SAVE1_LOAD_ADDRESS,
-    SLOT_AREA_BASE,
     SLOT_STRIDE,
     SaveGame0,
     SaveGame1,
 )
 
 from . import live
-from .combat import COMBAT, MODE
+from .combat import COMBAT
 from .paths import config_dir
 
 # The whole memorised list, as the record stores it: a packed list of spell ids
@@ -87,16 +96,27 @@ def _read(target, addr: int, length: int) -> bytes | None:
         return None
 
 
-def mode(target) -> int | None:
-    """Which overlay is running, or None if the machine cannot be read."""
-    raw = _read(target, MODE, 1)
+def mode(target, game: games.Game | None = None) -> int | None:
+    """Which overlay is running, or None if that cannot be established.
+
+    Two ways it comes back None and the caller has to separate them itself:
+    the machine could not be read, and **this title has no mode flag**.
+    `Game.mode_flag` is `LINKER`'s dispatch byte, measured on Pool of Radiance
+    and nowhere else, so a title with None here has no gate at all -- see
+    `Action.legality`, which refuses rather than reading somebody else's
+    address and calling whatever it finds "not combat".
+    """
+    game = game or games.DEFAULT
+    if game.mode_flag is None:
+        return None
+    raw = _read(target, game.mode_flag, 1)
     return raw[0] if raw else None
 
 
-def in_combat(target) -> bool:
+def in_combat(target, game: games.Game | None = None) -> bool:
     """True only when the mode flag *says* combat. An unreadable machine is not
     combat -- it is unreadable, and every action refuses on that separately."""
-    return mode(target) == COMBAT
+    return mode(target, game) == COMBAT
 
 
 # --- what an action answers with ---------------------------------------------
@@ -150,11 +170,18 @@ class Member:
     the layout places past `0x0FF` reads as zero and must not be written --
     live, the slots are `$100` apart and offset `0x119` of slot 0 is offset
     `0x019` of slot 1.
+
+    **Every address below comes from `game`** and none of them is a constant:
+    the three bases were Pool of Radiance's `$4D00`, `$5900` and `$8300`, which
+    is what made these actions write into another title's memory (#29). The
+    offsets inside the payload are the same in all six titles; only the base
+    moves, so a new title costs a row in `por/games.py` and nothing here.
     """
 
     slot: int
     record: CharacterRecord
     roster: bytes
+    game: games.Game = games.DEFAULT
 
     @property
     def name(self) -> str:
@@ -162,15 +189,15 @@ class Member:
 
     @property
     def record_base(self) -> int:
-        return SLOT_AREA_BASE + self.slot * SLOT_STRIDE
+        return self.game.slot_area_base + self.slot * SLOT_STRIDE
 
     @property
     def roster_base(self) -> int:
-        return SAVE1_LOAD_ADDRESS + self.slot * ROSTER_STRIDE
+        return self.game.roster_base + self.slot * ROSTER_STRIDE
 
     @property
     def item_base(self) -> int:
-        return ITEM_AREA_BASE + self.slot * por_items.ITEM_BLOCK_STRIDE
+        return self.game.item_area_base + self.slot * por_items.ITEM_BLOCK_STRIDE
 
     @property
     def hp(self) -> int:
@@ -201,6 +228,7 @@ class Party:
 
     members: tuple[Member, ...]
     save0_bytes: bytes = dc_field(repr=False, default=b"")
+    game: games.Game = games.DEFAULT
 
     def __iter__(self):
         return iter(self.members)
@@ -215,27 +243,39 @@ class Party:
         return None
 
 
-def read_party(target) -> Party | None:
+def read_party(target, game: games.Game | None = None) -> Party | None:
     """The party, or None when these bytes are not one.
 
-    Same two blocks as `live.read_snapshot` and the same validate-before-trust
-    rule: at the title screen, mid-load or in a menu the bytes simply are not
-    there, and that is ordinary rather than an error.
+    Same blocks as `live.read_snapshot`, read through the same
+    `live.read_blocks`, and the same validate-before-trust rule: at the title
+    screen, mid-load or in a menu the bytes simply are not there, and that is
+    ordinary rather than an error.
+
+    `game` says where to read and how to decode. One read for a title that
+    keeps its roster in the payload's last page, two for Pool of Radiance,
+    which keeps it in a second file -- `live.read_blocks` hides which, so this
+    always sees the pair.
     """
     if target is None:
         return None
+    game = game or games.DEFAULT
     try:
-        save0_bytes, roster_bytes = live.read_blocks(target)
-        save0 = SaveGame0.from_bytes(bytes(save0_bytes))
+        save0_bytes, roster_bytes = live.read_blocks(target, game)
+        save0 = SaveGame0.from_bytes(bytes(save0_bytes), game)
+        # Pool of Radiance's `SaveGame1` expects its whole `$800` and only the
+        # first page of it is the roster; a later title's roster *is* the page,
+        # so there is nothing to pad. `live.snapshot_from_bytes` does the same
+        # sum for the same reason.
         save1 = SaveGame1(bytes(roster_bytes[:live.ROSTER_PAGE])
-                          + bytes(0x800 - live.ROSTER_PAGE))
+                          + bytes(game.roster_size - live.ROSTER_PAGE), game)
         members = tuple(
-            Member(slot=s.index, record=s.record, roster=save1.roster(s.index).raw)
+            Member(slot=s.index, record=s.record,
+                   roster=save1.roster(s.index).raw, game=game)
             for s in save0.characters)
     except Exception as exc:
         _log.debug("these bytes are not a party: %s", exc)
         return None
-    return Party(members, bytes(save0_bytes)) if members else None
+    return Party(members, bytes(save0_bytes), game) if members else None
 
 
 # --- the actions -------------------------------------------------------------
@@ -255,21 +295,52 @@ class Action:
     label = ""
     #: One line, for a tooltip.
     description = ""
-    #: False means "refuse while $6E11 is 2".
+    #: False means "refuse while the mode flag is 2".
     combat_legal = False
     #: Non-empty means ask this question before running. There is no in-game
     #: undo for anything that carries one.
     confirm = ""
 
+    def __init__(self, game: games.Game | None = None):
+        """Which title this acts on. None is Pool of Radiance.
+
+        Every address an action writes is `Game` geometry now -- the slot
+        area, the item area and the roster page all follow
+        `save_load_address` -- so the title is the whole of what a subclass
+        has to be told (#29).
+        """
+        self.game = game or games.DEFAULT
+
+    @property
+    def descriptor(self) -> games.Game:
+        """This action's title, as the descriptor its addresses come from.
+
+        A property rather than the attribute itself because `LevelUp` accepts
+        a key or a `LevelTables` as well -- `por/levels.py` is duck-typed on
+        `.key` on purpose -- and the addresses need a `Game`.
+        """
+        return self.game
+
     def legality(self, target) -> Verdict:
+        game = self.descriptor
         if target is None:
             return Verdict(False, "no emulator attached")
-        state = mode(target)
+        if game.mode_flag is None:
+            # No gate, so no writes. `mode` would answer None here and that
+            # reads as "unreadable", which is the wrong sentence: the machine
+            # is fine and it is the address that is missing. Pool of Radiance's
+            # `$6E11` is `LINKER`'s own byte and no other title's loader has
+            # been read, so on those titles this is a fight we cannot see.
+            return Verdict(False, f"{self.label.lower()} is refused on "
+                                  f"{game.title}: its combat flag has never "
+                                  f"been measured, so nothing here can tell a "
+                                  f"fight from the map")
+        state = mode(target, game)
         if state is None:
             return Verdict(False, "the machine is not readable right now")
         if state == COMBAT and not self.combat_legal:
             return Verdict(False, f"{self.label.lower()} is refused during a "
-                                  f"fight ($6E11 is 2)")
+                                  f"fight (${game.mode_flag:04X} is 2)")
         return Verdict(True)
 
     def apply(self, target, **kwargs) -> Outcome:
@@ -294,10 +365,10 @@ class HealParty(Action):
     **Legal anywhere**, including mid-fight: healing is a cheat rather than a
     corruption risk, and nothing the game recomputes would notice.
 
-    The write is the roster block at `$8300 + slot * $20`, byte `+0x19`.
-    Current hit points are not in the stored 256 bytes of a record -- record
-    `0x119` is export-only -- so this is a live-only address and the roster is
-    the only copy a running game has.
+    The write is the roster block at `Game.roster_base + slot * $20`, byte
+    `+0x19`. Current hit points are not in the stored 256 bytes of a record --
+    record `0x119` is export-only -- so this is a live-only address and the
+    roster is the only copy a running game has.
 
     **A character at zero is skipped.** Zero is dead or dying, and whatever else
     the game marks that with is not decoded; raising the hit point byte alone
@@ -314,7 +385,7 @@ class HealParty(Action):
     combat_legal = True
 
     def run(self, target, **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to heal")
         writes, notes = [], []
@@ -409,11 +480,13 @@ class StoreSpells(Action):
     label = "Store memorized spells"
     description = "remember the memorised list for every character"
 
-    def __init__(self, store: SpellStore | None = None):
+    def __init__(self, store: SpellStore | None = None,
+                 game: games.Game | None = None):
+        super().__init__(game)
         self.store = store or SpellStore()
 
     def run(self, target, disk: str = "", **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to read")
         for m in party:
@@ -426,8 +499,8 @@ class RestoreSpells(Action):
     """Write the stored memorised list back, so nobody has to rest for it.
 
     **Illegal in combat.** The write is record `0x020`, sixteen bytes, in the
-    slot area at `$4D00 + slot * $100` -- inside the stored 256 bytes, so it is
-    also what the next save writes out.
+    slot area at `Game.slot_area_base + slot * $100` -- inside the stored 256
+    bytes, so it is also what the next save writes out.
 
     Only the memorised list moves. The capacity at `0x0EE` says how many spells
     of each level the character *may* prepare and does not change with resting,
@@ -438,11 +511,13 @@ class RestoreSpells(Action):
     label = "Restore memorized spells"
     description = "put back the memorised list stored earlier"
 
-    def __init__(self, store: SpellStore | None = None):
+    def __init__(self, store: SpellStore | None = None,
+                 game: games.Game | None = None):
+        super().__init__(game)
         self.store = store or SpellStore()
 
     def run(self, target, disk: str = "", **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to restore")
         writes, notes = [], []
@@ -480,7 +555,7 @@ class IdentifyItems(Action):
     **Illegal in combat, and it asks first**: identification is part of the
     game's economy and there is no in-game way to undo it.
 
-    **The write may not stick.** `$5900`+ is a copy fed from a master
+    **The write may not stick.** The item area is a copy fed from a master
     elsewhere -- poking an item's weight there was reverted by the game -- so
     this is the one action whose effect is worth checking in the game's own
     item list before believing it.
@@ -493,12 +568,15 @@ class IdentifyItems(Action):
                "this in the game.")
 
     def run(self, target, **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to read")
         writes = []
         for m in party:
-            base = m.item_base - live.BLOCKS[0][0]
+            # The item block's offset *inside the payload we just read*, which
+            # is why the payload's own load address is what comes off it and
+            # not Pool of Radiance's `$4900` (#29).
+            base = m.item_base - self.game.save_load_address
             block = party.save0_bytes[base:base + por_items.ITEM_BLOCK_STRIDE]
             for n in range(por_items.ITEMS_PER_CHARACTER):
                 raw = block[n * por_items.ITEM_SIZE:(n + 1) * por_items.ITEM_SIZE]
@@ -632,7 +710,27 @@ class LevelUp(Action):
     confirm = "Level up this character? There is no way to undo this in the game."
 
     def __init__(self, game=None):
+        # Not `super().__init__`: `None` here has to stay `None`. Every table
+        # below takes a title-or-None and resolves it itself, and
+        # `level_up_blockers` refuses a title whose trainer nobody measured
+        # before a byte is written -- so an unnamed title must not be quietly
+        # turned into Pool of Radiance's descriptor.
         self.game = game
+
+    @property
+    def descriptor(self) -> games.Game:
+        """`game` as a `Game`, for the addresses `run` writes to.
+
+        An unknown key falls back to Pool of Radiance's geometry, which costs
+        nothing: `level_up_blockers` has already refused every title but the
+        one whose trainer was measured.
+        """
+        if isinstance(self.game, games.Game):
+            return self.game
+        key = getattr(self.game, "key", self.game)
+        if isinstance(key, str) and key in games.BY_KEY:
+            return games.BY_KEY[key]
+        return games.DEFAULT
 
     @staticmethod
     def offers(record, game=None) -> list[int]:
@@ -666,7 +764,7 @@ class LevelUp(Action):
 
     def run(self, target, slot: int = 0, class_name: str = "",
             spell: int | None = None, **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.descriptor)
         if party is None:
             return Outcome(False, "no party to read")
         member = party.by_slot(slot)
@@ -758,8 +856,29 @@ class QuickfightFlag:
 #: else in 13568 bytes but two of COMBAT's own scratch bytes.
 #: The offset and the mask are `live.ROSTER_QUICKFIGHT` / `live.QUICKFIGHT_BIT`,
 #: so the roster card's badge and this write cannot come to disagree.
-QUICKFIGHT = QuickfightFlag(base=SAVE1_LOAD_ADDRESS + live.ROSTER_QUICKFIGHT,
-                            stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
+QUICKFIGHT = QuickfightFlag(
+    base=games.POOL_OF_RADIANCE.roster_base + live.ROSTER_QUICKFIGHT,
+    stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
+
+
+def quickfight_flag(game: games.Game | None = None) -> QuickfightFlag | None:
+    """This title's flag, or None while the bit itself is unfound.
+
+    The *offset* is roster `+0x0C` in every title, because the roster block is
+    the same block; what moves is where the roster page lives, and
+    `Game.roster_base` is that -- `$8300` in Pool of Radiance's second file,
+    `$6700` inside the payload in Curse and Silver Blades (#29).
+
+    `QUICKFIGHT` being None is the separate case, and it stays the one that
+    means "nobody has found this bit at all": `ClearQuickfight` then refuses
+    with `WANTED` rather than writing an offset nothing established.
+    """
+    if QUICKFIGHT is None:
+        return None
+    game = game or games.DEFAULT
+    return QuickfightFlag(base=game.roster_base + live.ROSTER_QUICKFIGHT,
+                          stride=ROSTER_STRIDE, mask=live.QUICKFIGHT_BIT)
+
 
 WANTED = ("the quickfight flag has not been found -- see 'The quickfight flag "
           "-- WANTED' in docs/80-fields-wanted.md")
@@ -768,10 +887,10 @@ WANTED = ("the quickfight flag has not been found -- see 'The quickfight flag "
 class ClearQuickfight(Action):
     """Clear the bit the combat menu's QUICK sets, for everyone.
 
-    The write is the roster block at `$8300 + slot * $20`, byte `+0x0C`, bit 7.
-    The roster page is saved in `SAVEDGAME1`, so this bit reaches the disk:
-    eight of the player's own save disks carry it set for one character and
-    clear for the other seven.
+    The write is the roster block at `Game.roster_base + slot * $20`, byte
+    `+0x0C`, bit 7. The roster page is saved with the game, so this bit reaches
+    the disk: eight of the player's own save disks carry it set for one
+    character and clear for the other seven.
 
     **What is established and what is not.** That QUICK writes this bit, for
     that character alone, is established -- it is the only byte outside
@@ -793,8 +912,10 @@ class ClearQuickfight(Action):
     description = "clear the combat menu's QUICK bit for every character"
     combat_legal = True
 
-    def __init__(self, flag: QuickfightFlag | None = None):
-        self.flag = flag if flag is not None else QUICKFIGHT
+    def __init__(self, flag: QuickfightFlag | None = None,
+                 game: games.Game | None = None):
+        super().__init__(game)
+        self.flag = flag if flag is not None else quickfight_flag(self.game)
 
     def legality(self, target) -> Verdict:
         if self.flag is None:
@@ -802,7 +923,7 @@ class ClearQuickfight(Action):
         return super().legality(target)
 
     def run(self, target, **kwargs) -> Outcome:
-        party = read_party(target)
+        party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to read")
         writes = []
@@ -822,21 +943,32 @@ class ClearQuickfight(Action):
 class QuickfightWatcher:
     """Clear the flag on the tick that combat ends, if the caller wants that.
 
-    Deliberately a plain object with one method: the window already polls
-    `$6E11` for the combat canvas, so this needs no timer of its own. Feed it
+    Deliberately a plain object with one method: the window already polls the
+    mode flag for the combat canvas, so this needs no timer of its own. Feed it
     the mode on every poll and it fires exactly on the 2-to-not-2 edge -- not
     on every tick afterwards, which would fight the player who turned
     quickfight on deliberately in the *next* fight.
     """
 
-    def __init__(self, action: ClearQuickfight | None = None, enabled: bool = False):
-        self.action = action or ClearQuickfight()
+    def __init__(self, action: ClearQuickfight | None = None,
+                 enabled: bool = False, game: games.Game | None = None):
+        self.action = action or ClearQuickfight(game=game)
         self.enabled = enabled
         self.was: int | None = None
 
+    @property
+    def game(self) -> games.Game:
+        """Whose mode flag to watch: the action's, so the two cannot drift."""
+        return self.action.descriptor
+
     def poll(self, target) -> Outcome | None:
-        """One tick. Returns the outcome only on the tick that fires."""
-        now = mode(target)
+        """One tick. Returns the outcome only on the tick that fires.
+
+        A title with no measured mode flag never fires: `mode` answers None,
+        which is the same "no edge" answer an unreadable machine gives, and
+        the action underneath would refuse in any case.
+        """
+        now = mode(target, self.game)
         was, self.was = self.was, now
         if not self.enabled or was != COMBAT or now == COMBAT or now is None:
             return None
@@ -846,7 +978,8 @@ class QuickfightWatcher:
 # --- the set of them ---------------------------------------------------------
 
 
-def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
+def actions(store: SpellStore | None = None,
+            game: games.Game | None = None) -> tuple[Action, ...]:
     """Every action, in the order the bar lays them out.
 
     The window iterates this: one button per action, `label` on it,
@@ -857,10 +990,15 @@ def actions(store: SpellStore | None = None) -> tuple[Action, ...]:
     rows -- so the three spell-and-healing actions fill the first row and the
     two that stand alone fill the second. Donald chose the grouping; moving an
     entry here moves the button.
+
+    `game` is which title they act on, and it reaches every address each one
+    writes. None is Pool of Radiance, which is what every caller written before
+    there was a second title meant.
     """
     store = store or SpellStore()
-    return (HealParty(), StoreSpells(store), RestoreSpells(store),
-            IdentifyItems(), ClearQuickfight())
+    return (HealParty(game), StoreSpells(store, game),
+            RestoreSpells(store, game), IdentifyItems(game),
+            ClearQuickfight(game=game))
 
 
 #: **`LevelUp` is deliberately not in that list.** Every other action here is
@@ -1200,6 +1338,11 @@ class Warp(Action):
         "never the original.")
 
     def __init__(self):
+        # Pool of Radiance, always and explicitly. Every address below is one
+        # of this title's overlays -- `NEWECL`'s tail, DUNGEON's key-wait loop,
+        # the disk and cache-slot bytes -- and `por/areas.py` has a table for
+        # no other title, so the row offers a later title nothing at all (#14).
+        super().__init__(games.POOL_OF_RADIANCE)
         #: Where the last warp came from. `Warp Back` reads it; None until a
         #: warp has been made, which is why the button starts disabled.
         self.back: Waypoint | None = None
@@ -1228,7 +1371,7 @@ class Warp(Action):
         base = super().legality(target)
         if not base:
             return base
-        if mode(target) != DUNGEON:
+        if mode(target, self.game) != DUNGEON:
             return Verdict(False, "$6E11 is not 1, so DUNGEON is not the "
                                   "resident overlay and $2034 is not NEWECL")
         pc = program_counter(target)

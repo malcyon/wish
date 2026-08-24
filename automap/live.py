@@ -11,6 +11,8 @@ Radiance those are:
 keep the roster inside it at `$6700`, which is one read rather than two. Every
 address here therefore comes from the `por.games.Game` descriptor -- see
 `memory_blocks` -- and not from a constant, so a new title costs a table row.
+`automap/actions.py` reads through the same `read_blocks`, so the write side
+cannot come to disagree with the read side about where a title lives.
 
 Both go into `por/savegame.py` unchanged. `SaveGame0.from_bytes()` takes exactly
 the first range, and the roster page is padded out to the length `SaveGame1`
@@ -83,10 +85,6 @@ def memory_blocks(game: games.Game | None = None):
     return (payload, (game.roster_base, ROSTER_PAGE))
 
 
-#: Pool of Radiance's, for the callers not yet threaded through a descriptor --
-#: `automap/actions.py`, whose own addresses are Pool of Radiance's too.
-BLOCKS = memory_blocks(games.POOL_OF_RADIANCE)
-
 # Owner encoding: a party member by slot, a monster, or everybody.
 FIRST_MONSTER = 8
 PARTY_WIDE = 0xFF
@@ -95,8 +93,9 @@ PARTY_WIDE = 0xFF
 # "The quickfight bit is roster `+0x0C`" in `docs/50-experiments.md`, where
 # selecting QUICK moved exactly this bit for exactly the character quickfought.
 # Kept here rather than in `actions.py` because `actions` imports this module
-# and not the other way round; `actions.QUICKFIGHT` builds its address from
-# these two, so the read side and the write side cannot drift apart.
+# and not the other way round; `actions.quickfight_flag` builds its address
+# from these two and `Game.roster_base`, so the read side and the write side
+# cannot drift apart.
 ROSTER_QUICKFIGHT = 0x0C
 QUICKFIGHT_BIT = 0x80
 

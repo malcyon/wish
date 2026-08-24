@@ -14,6 +14,31 @@ legality — `2` is combat.
 player saves in the game as usual. That keeps the losslessness promise intact:
 `wish` still never writes a save file except through the editor's own save path.
 
+## Which title, and the one address that stops it (#29)
+
+**Every address an action writes comes from the `por.games.Game` descriptor.**
+The slot area, the item area and the roster page are payload offsets that are
+identical in all six titles, so they follow `save_load_address` and nothing
+here is a constant: Pool of Radiance's `$4D00`/`$5900`/`$8300` are Curse's
+`$4F00`/`$5B00`/`$6700`, and a new title costs a table row. `read_party` takes
+the descriptor and reads through the same `live.read_blocks` the roster cards
+use, so the write side and the read side cannot come to disagree about where a
+title lives.
+
+**The mode flag is the exception, and it is what holds the buttons.** `$6E11`
+is a byte of `LINKER`'s own resident page rather than of the save image, so it
+neither follows the load address nor transfers, and no other title's loader has
+been disassembled here. It is `Game.mode_flag` — CONFIRMED for Pool of
+Radiance, None for the other five — and an action whose title has None
+**refuses**, with the reason in its tooltip and in the `Outcome`. Reading Pool
+of Radiance's byte on a Curse machine would answer "not combat" whatever the
+game was doing, which is a gate that is open rather than a gate that is
+missing.
+
+What would lift it, per title: sit in the world and dump memory, start a fight
+and dump again, and find the byte in the loader's resident page that goes to 2
+and back. Then one row in `por/games.py`.
+
 ---
 
 ## What an action is
@@ -206,7 +231,7 @@ answer.
 With no target attached every `legality` is False with a reason, so the buttons
 are disabled rather than merely inert.
 
-**One read, not six.** Every `legality` asks the machine for `$6E11`, and six
+**One read, not six.** Every `legality` asks the machine for the mode flag, and six
 round trips is six times ~14.3 ms of extra emulated time, so `refresh` hands the
 actions a wrapper that reads each address once —
 `test_the_whole_row_costs_one_read_of_the_mode_flag`.

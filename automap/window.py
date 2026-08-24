@@ -597,7 +597,8 @@ class AutomapWindow(QMainWindow):
         self.strength_label.setFont(_font)
         self.strength_label.setToolTip(
             "How big a random encounter is. Not readable yet.")
-        self.actions_bar = ActionBar(say=self.messages.say)
+        self.actions_bar = ActionBar(say=self.messages.say,
+                                     game=game_named(self.state.title))
         # `_maps` is what the automapper loaded off the player's disks; the
         # Fast Travel row needs them to pick a landing square for the fourteen
         # areas whose arrival square nobody has harvested. Built for every
@@ -742,15 +743,17 @@ class AutomapWindow(QMainWindow):
     def _apply_title(self) -> None:
         """Tell the per-title controls which game this is.
 
-        Two of them, and both would otherwise run on Pool of Radiance's data in
-        another title's session: the Fast Travel row's area list (#14) and the
-        roster card's Level up button (#16).
+        Three of them, and every one would otherwise run on Pool of Radiance's
+        data in another title's session: the Fast Travel row's area list (#14),
+        the roster card's Level up button (#16), and the five live action
+        buttons, whose every write address comes off the descriptor (#29).
         """
         game = game_named(self.state.title)
         # The mapper reads the party position at an address that is per title
         # too, and it is holding the descriptor the title resolved to.
         self.mapper.game = game
         self.warp_bar.set_title(self.state.title, game)
+        self.actions_bar.set_game(game)
         self.roster.set_levelling(not actions.level_up_blockers(game=game))
 
     def _check_the_game(self) -> None:
@@ -1207,7 +1210,7 @@ class AutomapWindow(QMainWindow):
         game = game_named(self.state.title)
         action = actions.LevelUp(game)
         target = self.mapper.target
-        party = actions.read_party(target)
+        party = actions.read_party(target, game)
         member = party.by_slot(slot) if party else None
         if member is None:
             self.messages.say(f"level up: no character in slot {slot}",
