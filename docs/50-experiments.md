@@ -5038,3 +5038,68 @@ survives riding around the window is PROBABLE (nothing repaints between
 entries); a step-and-redump would confirm.
 
 Runner, log, `PRE.png`/`POST.png` and the phase-2 `$8C00` dump: `work/p49/`.
+
+## Why the converted C64 character reached DOS with no items (#56)
+
+**Hypothesis.** #26's converted character arrived in DOS owning nothing either
+because the C64 party used had nothing, or because the
+`write_dos_save` → `items_for_slot` → `item_from_c64` path drops items.
+
+**Result 1. The fixture owned nothing; the path drops nothing. Both
+CONFIRMED.** The character in #26's end-to-end run was `savedgame0.bin`'s
+BRUTUS, and both places a C64 save can hold his items are all zero: the
+`$5900` item area's slot-0 block (0 non-zero bytes of 256) and the record's
+own inventory at `0x120`–`0x21F` (0 of 256). `party6_savedgame0.bin` is the
+same for all six slots. He arrived naked because he left naked.
+
+**Result 2. A played save crosses intact, measured three ways.**
+`PORSAVE4.D64` — six characters, 25 items, counts [7, 3, 2, 3, 7, 3] —
+through `write_dos_save`:
+
+| check | result |
+|---|---|
+| `.ITM` files vs the C64 item area, offline | 25 of 25 records byte-identical through `item_to_c64(item_from_c64(x))`, per-slot counts and order exact |
+| in the game, MALCYON's item list | `NO DAGGER`, five `NO 4 DARTS`, `YES 15 DARTS` — count, order, quantities and the one readied flag all right; sheet reads `WEAPON 15 DARTS`, `DAMAGE 1D3` |
+| the engine's own resave to slot D | all six characters' `.ITM` re-emitted, 25 of 25 still byte-identical in the shared fields |
+
+The resave is the check that covers slots 2–6, which the view screen would
+not show: no key tried (map digits, camp arrows, slow arrows) moves the
+viewed character off slot 1, so the engine rewriting every chain correctly
+is the evidence that it read every chain correctly.
+
+**Result 3. The garbage no-items sheet is NOT the game's display for any
+character who owns nothing — it needs a record whose bytes disagree with the
+empty list.** #26 run 4 said "the game's own behaviour for a character who
+owns nothing"; two in-game controls narrow that:
+
+* a character freshly rolled in the DOS game, viewed before buying anything,
+  shows a **clean** sheet — no `WEAPON` line at all, `DAMAGE 1D2+1`,
+  `THAC0 20`, sane encumbrance (`work/p56/shots/h6_next.png`);
+* MALCYON with every item dropped **in the game** (unready the darts, then
+  DROP each with its `GONE FOREVER` confirmation) is also clean — the
+  `ITEMS` command even disappears from the VIEW bar
+  (`work/p56/shots/k3_list.png`).
+
+So a player cannot reach the garbage unaided by either route. What does show
+it, reproduced today under the current writer: the zero-item fixture BRUTUS
+converted and loaded reads `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, `THAC0 148`,
+`ENCUMBRANCE 60540` (`l1_sheet.png`, identical to #26's `exp3_view.png`) —
+and the #26 control (a native character whose `.ITM` was emptied by hand)
+showed the same. Both are records that imply gear the item list does not
+carry; the engine's own no-item encoding differs from ours somewhere.
+
+**The engine invents an item for him.** Resaving the converted BRUTUS wrote
+a **63-byte `.ITM`** — one record of heap garbage (name byte `0xFE` = 254,
+the `254 PASSS` on the sheet) — and touched only bytes `0xC8`, `0xCA`,
+`0xCB` of the `.SAV`, the chain-head pointer. With `item_count` = 0 and an
+empty `.ITM` on disk, the engine still built a one-item chain at load.
+Which of our bytes makes it do that is **SPECULATIVE** — candidates are
+`hands_used` (`0x100`, we write 0; native fighters carry 2) and the combat
+tail's attack-form bytes. Settling experiment: create a fresh character
+in the DOS game, save him into a slot so the engine writes his `.SAV`,
+diff it against `work/p56/dos-out-fixture/CHRDATA1.SAV` over `0x0C0`–`0x11C`,
+then flip the differing bytes in our output one at a time and re-view.
+Practical weight is low — a played C64 party's characters all carry items —
+but a converted naked character grows a garbage item on his first resave.
+
+Conversions, resaves, runner scripts and screenshots: `work/p56/`.

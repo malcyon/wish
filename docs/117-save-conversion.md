@@ -1417,10 +1417,26 @@ before and after conversion.
 4. **The control that saved a false bug report**: the C64 character's sheet
    showed `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, THAC0 148 — and an
    *unmodified* DOS character with only his items removed shows the
-   identical garbage. That display is the game's own behaviour for a
-   character who owns nothing, not the converter's. (Whether a player can
-   reach it unaided — a freshly rolled character before shopping —
-   is SPECULATIVE; create one in-game and view it.)
+   identical garbage, so the display was not the converter mangling item
+   bytes. #56 then established why the character owned nothing (the fixture
+   itself is item-free, in both the `$5900` area and the in-record
+   inventory) and narrowed the garbage claim: a character freshly rolled in
+   the DOS game, and a character whose items are all dropped *in* the game,
+   both show a clean sheet with no `WEAPON` line — so the garbage is the
+   engine rendering a record whose bytes imply gear the empty item list
+   does not carry, not its display for any character who owns nothing, and
+   a player cannot reach it unaided. CONFIRMED, `docs/50-experiments.md`
+   "Why the converted C64 character reached DOS with no items".
+
+**Items cross a real conversion intact — CONFIRMED, not merely designed.**
+`PORSAVE4.D64`'s six characters carry 25 items; through `write_dos_save`
+the six `.ITM` files match the C64 item area 25 of 25 records
+byte-identical in the shared fields, the in-game item list renders
+character 1's count, order, quantities and readied flag exactly, and the
+engine's own resave re-emits all 25 for all six characters unchanged.
+One residue: a character converted with *zero* items still shows the
+garbage sheet, and the engine invents one heap-garbage item for him on
+resave — see the #56 experiment for the settling diff.
 
 ### What the second consumer of the C64 reader exposed
 

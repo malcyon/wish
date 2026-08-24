@@ -411,6 +411,24 @@ read from the bytecode, not driven. Same page and same class of mistake as
 `goldbox-bugs.md` #9; it is here rather than there because the consequence is
 a repeated paragraph.
 
+## N18. The DOS sheet renders garbage for a record that claims gear it does not have
+
+**What the game does.** DOS Pool of Radiance, shown a character whose 285-byte
+record disagrees with an empty item list, draws `WEAPON 254 PASSS`,
+`DAMAGE 0D8-128`, `THAC0 148` and a five-digit encumbrance on the view screen —
+and on the next save invents a one-record `.ITM` of heap garbage for him,
+rebuilding the chain-head pointer at `0x0C8`/`0x0CA`/`0x0CB`.
+
+**Why no player sees it.** Both in-game routes to owning nothing render clean:
+a freshly rolled character's sheet has no `WEAPON` line at all, and a character
+who drops every item in play gets the same clean sheet, with the `ITEMS`
+command removed from the VIEW bar. The garbage needs the files edited out from
+under the engine — #26 emptied a `.ITM` by hand — or a record written by our
+own converter for a C64 character who owned nothing, which real played saves
+do not contain. CONFIRMED at the screen both ways, `docs/50-experiments.md`
+"Why the converted C64 character reached DOS with no items (#56)"; which
+record byte triggers it is the open diff named there.
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of
