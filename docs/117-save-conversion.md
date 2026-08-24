@@ -469,8 +469,12 @@ the address the ECL bytecode itself uses:
 file offset of ECL address A  =  1 + 2 × (A − $4900)
 ```
 
-2560 entries cover `$4900`-`$52FF`; the remaining 8016 bytes are resident
-engine state. The mechanism is in the Curse reimplementation:
+2560 entries cover `$4900`-`$58FF`; the remaining 8016 bytes are mapped in
+[`141-dos-savegame.md`](141-dos-savegame.md) (#59): 7680 of them are the
+current area's ECL script, byte-identical to its `ECL<n>.DAX` block and
+reloaded from the DAX on load — dead data for a converter — and the rest is
+the square, the party size, the `CHRDAT` filename table the engine loads the
+party from, and UI scratch. The mechanism is in the Curse reimplementation:
 `vm_SetMemoryValue` in `work/coab/engine/ovr008.cs` ends in
 `area_ptr.field_6A00_Set(0x6A00 + (location * 2), value)` — the operand
 address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
@@ -1464,15 +1468,19 @@ did **not** hold for free on the reader beside it: the first real consumer of
   port numbers it, and zero draws no portrait. Cosmetic, real, reported.
   (What zero does to the *combat* icon is untested.)
 * **Running spell effects and the innate `.SPC` bonuses** — see above.
-* **The clock** stays the template's; the DOS clock format is undecoded.
+* **The clock** stays the template's today, but the format is no longer
+  unknown: it is the C64's six digit bytes as VM words at the same addresses,
+  `$49C6`-`$49CB` (#59, `141-dos-savegame.md`). What remains is carrying
+  them in `write_dos_save`, the same unconditional copy the flags get.
 * **The area**: quest flags convert unconditionally (same ECL addresses,
   byte to word), but the party's square converts only when the C64 party
-  stands in the template's own area. Retargeting a DOS save has no measured
-  recipe — the C64's two-slot cache trick has no known DOS counterpart, and
-  the 8016 resident-state bytes are unattributed — so a mismatch keeps the
-  template's square and warns. The settling experiment: rewrite the header
-  byte, `$49C5` and `$49F2` in a copied SAVGAM and see where the party
-  stands.
+  stands in the template's own area. #59 ran the settling experiment: the
+  naive recipe (header byte, `$49C5`, `$49F2`, square) is **refuted** —
+  `Unable to load geo in Load3DMap.`, exit to DOS — and the working recipe
+  adds `$5012` (the DAX number as a VM word) and the wallset triple at
+  `$4AFA`-`$4AFF`, which the C64 save's cache slots 15-17 carry verbatim.
+  Driven once, area 0 → area 20, walked and engine-resaved. What remains is
+  writing it into `write_dos_save`.
 * **Current combat numbers need `SAVEDGAME1`.** A C64 save without the
   roster file (the game disks' own `SAVEDGAME0`-only saves) has no current
   hit points to give; the writer refuses and reports rather than writing

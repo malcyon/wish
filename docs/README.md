@@ -65,6 +65,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [138-multiple-games.md](138-multiple-games.md) | fast travel for more than one Gold Box title: what is per-title today, what data the other games have, and the dialog |
 | [139-per-title-validation.md](139-per-title-validation.md) | every shipped feature against every title we claim: what is verified, what refuses, what does not work |
 | [140-loaded-files-cache.md](140-loaded-files-cache.md) | the 25-slot loaded-files cache at `$4BC0`: which file kind each slot names, where each loads, and the two entries a converted save actually needs |
+| [141-dos-savegame.md](141-dos-savegame.md) | the 13137-byte DOS `SAVGAM?.DAT` mapped: header byte, sparse VM word array, dead ECL buffer, square and party size, and the retarget recipe that survives `Load3DMap` |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run

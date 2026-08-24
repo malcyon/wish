@@ -5103,3 +5103,90 @@ Practical weight is low — a played C64 party's characters all carry items —
 but a converted naked character grows a garbage item on his first resave.
 
 Conversions, resaves, runner scripts and screenshots: `work/p56/`.
+
+## Mapping the DOS saved game (#59)
+
+**Hypothesis.** `SAVGAM?.DAT`'s 8016 unattributed bytes can be mapped the way
+the C64 save was: differential analysis, one known in-game change at a time,
+then bisection with hand-built saves the game is made to load.
+
+**Specimens.** Donald's slots A (New Phlan, area 0), B (Sokol Keep, 21) and
+J (the Slums, 20); four saves taken one action apart (run 1); two engine
+resaves of converted parties from #56; and nine hand-built variants V1-V12.
+All artefacts in `work/p59/`. `docs/141-dos-savegame.md` is the resulting
+layout; `por/dos_savegame.py` reads it.
+
+**Result 1. The file is five fixed regions**, and the biggest is dead
+weight. Bytes 5121-12800 are the current area's ECL script, byte-identical
+to its `ECL<n>.DAX` block from interior offset K on (K = 39/148/28 for
+A/B/J — the block's parsed-out header). What first read as a floating image
+at "shift 5082/4973/5093" was this: one fixed buffer at 5121, differently
+sized scripts, stale bytes of longer previous scripts past the end. The
+engine **reloads the script from the DAX on every load** — V11 stood in the
+Slums with area 0's bytes still staged — and its own resave refills the
+buffer: run 9's resave is 0 mismatches over 7511 bytes against `ECL2:20`.
+
+**Result 2. One action, one delta** (run 1, saves C/D/E/F, screenshots for
+ground truth):
+
+| pair | action | file delta |
+|---|---|---|
+| C→D | save again | display 10:02→10:02; no state byte moved — only CHRDAT slot letters, heap pointers, rendered-text scratch |
+| D→E | turn right | 12803: 0→2 — facing, doubled |
+| E→F | one step | 12801: 4→5 (x); word `$49C7`: 2→3 as the display moved 10:02→10:03 |
+
+The clock is the C64's, at the C64's addresses: digit words `$49C6`-`$49CB`,
+sub-minute / units / tens / hour / day / month. A=10:02 day 16, B=1:22,
+J=10:56, all as loaded. Saving costs no time on DOS (it costs a minute on
+the C64). **#58's decode is done**: carry the six words like the flags.
+
+**Result 3. Party size is `$503E` and byte 12808, twice each.** The one word
+the engine changed when a six-member template carried a one-member party was
+`$503E` (6→1), with byte 12808 alongside; Curse's and Secret's six-member
+defaults both read 6. Not a C64 address — C64 saves hold 0 there.
+
+**Result 4. The naive #60 recipe is refuted; the real one is seven writes.**
+Header byte + `$49C5` + `$49F2` + square dies with `Unable to load geo in
+Load3DMap.` and an exit to DOS. Bisection (V1-V12, one boot per pair):
+
+| variant | carried from the target save | result |
+|---|---|---|
+| V1 | everything (J's file verbatim) | loads — and loads **J's party**: the engine reads the `CHRDAT` filenames from the save's own table at 12809, not the slot letter |
+| V2 | naive fields + ECL buffer | `Unable to load geo` — the buffer is not the missing piece |
+| V4 | naive + whole word array | works |
+| V6 | naive + words `$4B80`-`$58FF` | `Unable to load wallset in LoadWallSet.` — the geo gate is in this half, the wallset gate elsewhere |
+| V7 | V6 + words `$4AFA`-`$4AFF` | **works** |
+| V11 | naive + `$4AFA`-`$4AFF` + `$5012` | **works — the minimal set** |
+| V12 | naive + `$4AFA`-`$4AFF` + `$5200`-`$520F` | `Unable to load geo` — so the geo gate is `$5012` alone |
+
+`$5012` holds the DAX container number (3/4/2 in A/B/J — numerically the
+C64 disk side); the header byte alone does not satisfy `Load3DMap`.
+`$4AFA`-`$4AFC` are the wallset triple — `WALLDEF<n>.DAX`/`8X8D<n>.DAX`
+block ids, `$FFFF` empty — and the cross-port check is exact: C64
+`PORSAVE13` (the Slums) carries cache slots 15-17 = (2,4,1), byte-identical
+to DOS slot J's triple, so **a converter can source the triple from the C64
+save**. Run 9 played the retargeted party and let the engine resave it:
+dax 2, area 20, `$5012` = 2, triple (2,4,1), CHRDAT letters rewritten,
+buffer refilled. CONFIRMED for area 0 → area 20; a second pair would firm
+the general claim.
+
+**Result 5. The variable array is sparse and the tail is mostly not state.**
+2407 of 2560 words are zero in all nine specimens. `$5227`+ is the
+encounter-message buffer, one ASCII character per word ("YOU SPY A GROUP OF
+SEEDY-LOOKING GOBLINS."). The 32 bytes after each CHRDAT filename and
+everything past 13055 are heap and rendered-text scratch — the "+1 per save"
+counters that first looked like state were the slot letter in `CHRDATC1` →
+`CHRDATD1` and the ASCII digits of the drawn status line.
+
+**Negative results, named.** The C64's 25-slot cache addresses (`$4BC0`+)
+are zero words on DOS — the cache's DOS descendants are `$4AFA`-`$4AFF` +
+`$5012`. No GEO image is stored in the save. No pointer to the ECL buffer
+exists in the file (none needed; the buffer is at a fixed offset).
+`tools/dosbox.py`'s `dax_unpack` IndexErrors on `ECL2.DAX` block 9 — a
+run-length record that ends mid-pair; latent tool bug, worked around by
+skipping the block, not fixed here.
+
+**Left open.** ~30 live words unnamed (`$49F0`, `$49FC`-`$49FF`,
+`$4FC0`-`$4FD3`, `$5200`-`$520F`), bytes 12804-12807, outdoor saves
+(no specimen), #57's portrait path. Each carries its settling experiment in
+`docs/141-dos-savegame.md`.
