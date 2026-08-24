@@ -91,7 +91,7 @@ def main() -> int:
     w("")
     w("## The type table (`ITEMS`)")
     w("")
-    w("128 records of 16 bytes, loading at `$7600`. An item record's byte `+0`")
+    w("128 records of 16 bytes, loading at `$7B00`. An item record's byte `+0`")
     w("indexes this table. Only entries something refers to are listed.")
     w("")
     w("Layout, in the order the fields appear:")

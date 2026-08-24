@@ -23,7 +23,7 @@ grades are in [50-experiments.md](50-experiments.md).
 | `FINAL` | `$1000` | `$0800` | GUESS -- the fit is a tie; only the family says so |
 | `LINKER` | `$1000` | `$2B80` | CONFIRMED |
 | `LIBRARY` | `$1000` | `$2C48` | CONFIRMED |
-| `MON*` | `$6400` | `$5500` | PROBABLE -- `MON04`, 467 of 480 bytes |
+| `MON*` | `$6400` | `$6B00` | CONFIRMED -- `LIBRARY`'s own load-address table, [`140`](140-loaded-files-cache.md). `MON04` was also found at `$5500`, which is combat slot 8 and a copy, not the load base |
 | `SECSET*` | `$3A00`, `$1000`, ... | `$6500` | CONFIRMED (`SECSET00`) |
 | `ITEMNAMES` | `$6F00` | `$6F00` | CONFIRMED |
 | `DUNGEON2` | `$1000` | `$7A00` | CONFIRMED |

@@ -88,7 +88,7 @@ them and shifts every later name onto a wrong — but plausible — value.
 
 ## The type table (`ITEMS`)
 
-128 records of 16 bytes, loading at `$7600`. An item record's byte `+0`
+128 records of 16 bytes, loading at `$7B00`. An item record's byte `+0`
 indexes this table. Only entries something refers to are listed.
 
 Layout, in the order the fields appear:
