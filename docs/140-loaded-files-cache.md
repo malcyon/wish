@@ -113,17 +113,18 @@ A save whose cache is `$FF` in every slot except **slot 2 (`GEO`)** and
 
 Test B needed one more byte than the cache, `$49EA`; see below.
 
-**Test B does not settle whether the arriving script re-places the party**, and
-it was built so that it could not: the square written into the save, `(8,14)`,
-is also Sokol Keep's own arrival square, so the two hypotheses predict the same
-result. The boat message did print, which says the message branch ran, and
-`118-debug-mode.md` reads `ECL15 $9A92` as gating both the message and the
-`mapX`/`mapY` writes on the scratch flag `$4A02` rather than on `$49F2`.
-**The experiment that would settle it:** the same save with `$49C0`-`$49C2` set
-to some other walkable Sokol Keep square — `(8,12)`, which test B walked to.
-If the party comes up at `(8,12)` the save's square survives; if it comes up at
-`(8,14)` the script placed it, and a converter must either accept the arrival
-square or clear whatever gates it.
+**The placement question is settled: a deliberately-placing script wins.**
+Test B rebuilt with `$49C0`-`$49C2` = `(8,12)` — neither the save's square nor
+the arrival — came up at **`(8,14)`**: the boat message printed, `$4A02` went
+0 → 1, and the live position `$C04B`-`$C04D` read the script's square while
+`$49C0`-`$49C2` still held `(8,12)` (`work/p46/`). So `ECL15 $9A92`'s
+message-and-place branch, gated on the scratch flag `$4A02`, overwrites the
+saved square when the gate is open — and a converter that zeroes the scratch
+arms it, which is safe: the script's own square is legal by construction. An
+area with no placing arrival leaves the saved square alone — PROBABLE from the
+#24 conversion run, which came up at `(4,3)` where New Phlan's arrival is
+`(15,1)`. Indoors the saved square is a shadow: it seeds the live
+`$C04B`-`$C04D` during arrival and does not move again until the game saves.
 
 After test A settled, the live cache read
 

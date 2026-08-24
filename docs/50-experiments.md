@@ -4941,3 +4941,55 @@ variable-array mapping that already carried `$49C5` and `$49F2`, it is
 overland map, its words at those addresses against the on-screen position.
 
 Build scripts, runner, logs and screenshots: `work/p47/`.
+
+## Does the arriving script re-place the party? Yes, when it means to
+
+**Hypothesis.** #24's test B could not say whether `ECL15` placed the retargeted
+party or the saved square survived, because `(8,14)` was both. The clean test is
+the same build carrying `(8,12)` — a walkable square that is neither.
+
+**Method.** `work/p24/build2.py`'s Sokol Keep retarget rebuilt with
+`$49C0`-`$49C2` = `(8,12,0)` and one benign extra, `$49EA` = 4, so the run does
+not sit on the disk-hint hang test B had to poke through. `$4A02` — the scratch
+flag `118-debug-mode.md` reads as the gate on `ECL15 $9A92`'s message-and-place
+branch — is 0 in the built save, so the branch is armed. One session on pool
+slot 1; `work/p46/`.
+
+**Result. CONFIRMED: `ECL15` placed the party at `(8,14)` and the saved
+`(8,12)` was ignored.** The boat message printed, `$4A02` went 0 → 1, and
+after arrival the live position `$C04B`-`$C04D` read `08 0e 00` — Sokol Keep's
+own square, facing north — while `$49C0`-`$49C2` still held the save's
+`08 0c 00`. The party then walked north twice, `(8,13)` and `(8,12)`, `$C04B`
+following each step and `$49C0` never moving.
+
+So the two indoor cases are now separated:
+
+* **a script with a deliberate arrival** — a boat landing, gated on its own
+  flag — overwrites the saved square when the gate is open. CONFIRMED, this
+  run. With the gate closed (`$4A02` = 1 in a save made inside Sokol Keep) the
+  branch is skipped, which is why an ordinary same-area reload never sees the
+  boat.
+* **a script with no placing arrival** leaves the saved square alone —
+  PROBABLE, one run: the #24 DOS conversion came up at `(4,3)`, the DOS square,
+  where New Phlan's own arrival is `(15,1)`. The settling experiment for a
+  second area: retarget onto the Slums (`ECL14`) with a square that is neither
+  the template's nor an arrival, and read `$C04B`.
+
+**What a converter should conclude:** `$49C0`-`$49C2` is not decoration — it
+seeds the live position on load and is what a non-placing area uses — but it is
+also not always final. A converter that zeroes the script scratch (ours does)
+arms every deliberate-arrival gate, so a placer area runs its arrival and puts
+the party on its own square, which is legal by construction. The failure mode
+the issue feared — a wrong square inside a wall — belongs only to non-placer
+areas, where the square written must be walkable.
+
+**The mechanism question, settled as two mechanisms.** Indoors the live
+position is `$C04B`-`$C04D` in the `GDRIVE01` overlay page: before BEGIN
+ADVENTURING it still read `fe 7f 10` (the same bytes p20 saw in the attract
+demo), it was seeded during arrival, and it moved with every step while
+`$49C0`-`$49C2` sat still — the save bytes are a shadow, written back at save
+time. Outdoors there is no overlay copy: `$49C3`/`$49C4` is itself the live
+variable, leading the status line in the p3 walk logs. CONFIRMED — same store
+twice per fact, live reads here plus p20 and the p3 logs.
+
+Build, runner, log and screenshots: `work/p46/`.
