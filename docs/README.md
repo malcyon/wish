@@ -64,6 +64,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [137-wilderness-automap.md](137-wilderness-automap.md) | why the automapper is blank outdoors, and what to draw the terrain with |
 | [138-multiple-games.md](138-multiple-games.md) | fast travel for more than one Gold Box title: what is per-title today, what data the other games have, and the dialog |
 | [139-per-title-validation.md](139-per-title-validation.md) | every shipped feature against every title we claim: what is verified, what refuses, what does not work |
+| [140-loaded-files-cache.md](140-loaded-files-cache.md) | the 25-slot loaded-files cache at `$4BC0`: which file kind each slot names, where each loads, and the two entries a converted save actually needs |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run

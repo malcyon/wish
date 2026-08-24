@@ -4752,3 +4752,116 @@ before it cost anything to do; and the one method that carried everything —
 save, change exactly one thing, save again, diff. That was later beaten, for
 every field that does not need a character to *change*, by comparing six
 different characters against each other at once.
+
+---
+
+## The loaded-files cache decodes, and a save needs two entries of it
+
+**Hypothesis.** The 25 bytes at `$4BC0` are one entry per data-file kind, and if
+the slot-to-filename mapping can be read, a converted save no longer needs a
+template standing in the same area.
+
+**Method.** Static first. `LIBRARY $4225` was already known to be "ensure file
+number `A` of kind `X` is loaded"; disassembling it forwards gave
+`LDY $4209,X / LDX $4196,Y / LDX $41AA,Y / LDX $4182,Y` — a 25-entry slot→kind
+map, then a split low/high stem-pointer table and a length table, 20 entries
+each. Reading them at `LIBRARY`'s base `$2C48` tiles the block `$40EB`-`$4181`
+into exactly twenty NUL-free stems with no byte left over. Then the emulator, on
+slot 2, twice.
+
+**Result. CONFIRMED, and the table is in
+[`140-loaded-files-cache.md`](140-loaded-files-cache.md).** Slot index is the
+file kind: 0 `GDRIVE`, 1 `SQRPACI`, **2 `GEO`**, 3 `SECSET`, 4 `SQRDATA`,
+5 `PIC`, 6 `SPELLN`, 7 `SPELLE`, **8 `ECL`**, 9 `WALLS`, 10 `SPRITE`,
+11 `ANIMATE`, 12 `MON`, 13 `BODY`, 14 `HEAD`, 15-17 `WALLSET`, 18-20 `WALLDEF`,
+21-22 `CHARPIC`, 23 `COMPIC`, 24 `ITEMFILE`. The byte in the slot is the stem's
+two hex digits.
+
+**Six independent checks, all of which could have failed:**
+
+1. The four slots already attributed by other routes — `GEO` at 2, `SQRDATA` at
+   4, `SPELLN` at 6, `ECL` at 8 — land where the table puts them.
+2. The load-address table at `$41BE`/`$41D7,X` gives `MON` `$6B00`, `ECL`
+   `$9900`, `SPELLE` `$A700`, `SPELLN` `$AF00` and `GEO` `$0400`: five addresses
+   this project had already fixed by unrelated evidence.
+3. The three `WALLSET` slots load 400 bytes apart at `$6650`, `$67E0`, `$6970`,
+   and every `WALLSET` file on the disks is exactly 400 bytes. The third ends at
+   `$6B00`, where `MON` begins.
+4. `LIBRARY $48B3`-`$48C2` loads `HEAD` from `$6BFE` and `BODY` from `$6BFF` —
+   character-record offsets `0x0FE` and `0x0FF`, which `por/layout.py`
+   independently calls `portrait_head` and `portrait_body`.
+5. Across about sixty specimen saves, **every** non-empty entry names a file that
+   exists on Donald's disks. Nothing unresolved.
+6. `PORSAVE13`'s wall entries read `02 04 01` and `82 84 81` — the `WALLSET` and
+   `WALLDEF` triples carrying the same three numbers, which is what
+   `LOADPIECES` (`DUNGEON $28DC`) writes from one operand per piece.
+
+**Two corrections to earlier entries in this log.**
+
+* "The stems are not patched in place at all: the loader must copy a stem into a
+  scratch buffer" — **wrong, and the reason is instructive.** They *are* patched
+  in place, at `LIBRARY $425A`/`$4265`, through `STA ($4C),Y`. The scan that
+  concluded otherwise looked for *absolute* stores landing in `$40E0`-`$4150`
+  and an indirect store has no such operand. A negative from an operand scan only
+  rules out the addressing modes the scan understood.
+* `CHARPIC00` "loading at `$8000`" was read off the file's own PRG header, which
+  like every overlay's is a lie. The loader puts it at `$9900` (slot 21) or
+  `$8C00` (slot 22). Nothing depends on it — `por/icons.py` reads the disk file.
+
+**Why `$FF` is the value that matters.** `GEN $25DE` is
+`LDA $4BC0,X / ORA #$80 / STA $6E13,X` for all 25 entries, so **the reload bit a
+save carries is discarded and set unconditionally on load**. Setting bit 7 in a
+converted save therefore changes nothing whatever, which is why that attempt
+hung exactly as the zeroed one did. `$FF` is the only value the load path leaves
+alone: `LIBRARY $4225` opens `CMP #$FF / BEQ` and returns without loading.
+Zeroing asks for `stem00` of all twenty kinds across eight disks — and
+`WALLSET00`, `WALLDEF00` and `ITEMFILE00` do not exist on any disk, so three of
+those requests can never be satisfied at all. That is the 105-prompt hang.
+
+**The two entries a save actually needs, tested in the running game.**
+
+*Test A.* `PORSAVE13`, the Slums, with its cache replaced by `$FF` everywhere
+except slot 2 = `$14` and slot 8 = `$14`. It loaded, prompted once for POOL2,
+drew the view, and put the status line at `W 21:15 15,4` — `PORSAVE13`'s own
+square. `$0400`-`$07FF` came back byte-identical to `GEO14`. Walking `KKI`
+crossed east into New Phlan at `(0,4)` and printed the gateway text, the cache
+following to `GEO00`/`ECL00`/`SECSET00`/`WALLS00`. The engine had refilled
+
+```
+01 ff 14 02 ff ff ff ff 14 ff ff ff ff ff ff 02 04 01 02 04 01 ff ff ff ff
+```
+
+which matches the genuine save in every slot the arriving script owns; what is
+still `$FF` is the lazy half — pictures, sprites, portraits, spell tables, the
+icon charset — loaded when something first asks.
+
+*Test B, the one that answers the issue.* `PORSAVE`, a **New Phlan** save,
+retargeted to **Sokol Keep**: cache `$FF` except slots 2 and 8 = `$15`, plus
+`$49C0`-`$49C2` = 8,14,0, `$49C5` = `$15`, `$49E6` = 1. It loaded, ran `ECL15`'s
+own arrival — "THE BOAT DISEMBARKS YOU AT SOKAL KEEP." — settled at `(8,14)`
+facing north with `$0400`-`$07FF` byte-identical to `GEO15`, and walked. The
+cache had refilled itself to `GDRIVE01`, `GEO15`, `SECSET02`, `ECL15` and the
+wall triple `01 05 09`. **A template from a different area is no longer needed.**
+
+**A negative to record about test B:** it cannot say whether the arriving script
+re-placed the party, because `(8,14)` is both the square written into the save
+and Sokol Keep's own arrival square, so the two hypotheses predict the same
+result. `$49F2` was set to the target's own id, which `118-debug-mode.md`'s
+`COMPARE [$49F2], <own id> / IF= / EXIT` reading says should suppress the
+placement — and the boat message printed anyway, which is consistent with
+`ECL15 $9A92` gating on the scratch flag `$4A02` instead. The experiment that
+settles it is the same save with `$49C0`-`$49C2` = `(8,12)`, a walkable Sokol
+Keep square test B reached: coming up at `(8,12)` means the save's square
+survives, `(8,14)` means the script placed it.
+
+**One thing test B found that test A could not: `$49EA` is the disk hint.**
+`GEN $08BD` is `LDA $49EA / STA $6E12`, and `$6E12` is the `POOL` side the loader
+asks for. Test B's template was a New Phlan save, so `$49EA` was `3`, and the
+game sat on `INSERT SIDE # 3` looking for `ECL15`, which is on POOL4. Poking
+`$6E12 = 4` freed it immediately. Checked against the specimens afterwards: all
+eleven New Phlan saves carry `$49EA = 03` and both Slums saves carry `02`,
+matching `ECL00` on POOL3 and `ECL14` on POOL2. So `$49EA` is a third byte a
+converter has to set, and `docs/117`'s field table currently lists
+`$49EA`-`$49EF` among the unattributed gaps.
+
+The build scripts and the driven session are `work/p24/`.
