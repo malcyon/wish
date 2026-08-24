@@ -2,9 +2,11 @@
 
 `por/dos.py` decodes the DOS *character record*; this module is the map of
 the saved game around it, the DOS counterpart of `docs/30-savegame-layout.md`.
-Everything here was established by differential analysis in DOSBox -- one
-known in-game change per save pair -- plus three of the player's own slots
-and two cross-title spot checks.  `docs/141-dos-savegame.md` is the prose
+Everything here was established by differential analysis in DOSBox: nine
+specimens -- Donald's own slots A, B and J, four saves taken one action
+apart, and two engine resaves of converted parties.  The Curse and Secret
+file sizes above are a spot check and are PROBABLE at best; the five-region
+map is Pool of Radiance's.  `docs/141-dos-savegame.md` is the prose
 form; `docs/50-experiments.md` "Mapping the DOS saved game" is the reasoning.
 
 The file, in five regions
@@ -39,9 +41,20 @@ from __future__ import annotations
 
 import struct
 
+
+class DosSaveError(ValueError):
+    """A buffer that is not a DOS saved game, or an address outside it.
+
+    Its own class rather than `por.dos.DosRecordError` because this module is
+    the layer *under* `por/dos.py` -- importing it the other way would invert
+    the edge the module graph in `docs/117-save-conversion.md` exists to keep
+    honest.  Both derive from `ValueError`, so a caller that catches that
+    catches either.
+    """
+
 SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469
 VAR_BASE = 0x4900
-VAR_WORDS = 2560             # $4900-$58FF
+VAR_WORDS = 2560             # $4900-$52FF
 VAR_OFFSET = 1
 
 ECL_BUFFER = (5121, 12801)   # the loaded script text; dead on load
@@ -75,17 +88,32 @@ ENCOUNTER_TEXT = 0x5227      # string buffer, one ASCII character per word
 def word_offset(address: int) -> int:
     """File offset of the VM word for an ECL address."""
     if not VAR_BASE <= address < VAR_BASE + VAR_WORDS:
-        raise ValueError(f"${address:04X} is outside the variable space")
+        raise DosSaveError(f"${address:04X} is outside the variable space")
     return VAR_OFFSET + 2 * (address - VAR_BASE)
 
 
+def _whole(save: bytes) -> bytes:
+    """Refuse a truncated buffer before indexing a fixed offset into it.
+
+    Every accessor here reads an offset established for a 13137-byte Pool of
+    Radiance save.  Without this a short buffer raises `IndexError` or
+    `struct.error` from somewhere inside, which says nothing useful; the
+    sibling `por.dos.savgam_word` already checks its length and this matches
+    it.  Curse and Secret are other sizes and are not this module's yet.
+    """
+    if len(save) < SAVGAM_SIZE:
+        raise DosSaveError(
+            f"a DOS saved game is {SAVGAM_SIZE} bytes; this is {len(save)}")
+    return save
+
+
 def word(save: bytes, address: int) -> int:
-    return struct.unpack_from("<H", save, word_offset(address))[0]
+    return struct.unpack_from("<H", _whole(save), word_offset(address))[0]
 
 
 def dax_number(save: bytes) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
-    return save[0]
+    return _whole(save)[0]
 
 
 def area_id(save: bytes) -> int:
@@ -99,11 +127,12 @@ def clock(save: bytes) -> tuple[int, int, int, int]:
 
 
 def party_size(save: bytes) -> int:
-    return save[PARTY_SIZE_BYTE]
+    return _whole(save)[PARTY_SIZE_BYTE]
 
 
 def position(save: bytes) -> tuple[int, int, int]:
     """(x, y, facing) with facing in the C64's units, 0 N 1 E 2 S 3 W."""
+    save = _whole(save)
     return save[POS_X], save[POS_Y], save[POS_FACING] // FACING_SCALE
 
 
@@ -119,11 +148,16 @@ def wall_triple(save: bytes) -> tuple[int, int, int]:
 
 def character_files(save: bytes) -> list[str]:
     """The CHRDAT filenames the engine will load the party from."""
+    save = _whole(save)
     out = []
     for n in range(PARTY_ENTRIES):
         at = PARTY_TABLE + n * PARTY_ENTRY
         length = save[at]
-        if 0 < length <= 12:
+        # An entry is one length byte, the name, then 32 bytes of heap
+        # scratch, so a real name cannot exceed eight -- which is exactly
+        # `CHRDATA1`. A looser bound reads the scratch as filename characters
+        # and returns a wrong-but-plausible name instead of nothing.
+        if 0 < length < PARTY_NAME_LEN:
             out.append(save[at + 1:at + 1 + length].decode("ascii", "replace"))
     return out
 
@@ -141,12 +175,19 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 #: the naive recipe (header + $49C5 + $49F2 + square) dies with "Unable to
 #: load geo in Load3DMap."; adding $5012 cures the geo and $4AFA-$4AFF the
 #: wallset.  The ECL buffer needs nothing.
+#:
+#: CONFIRMED for one area pair in one direction; a second pair would firm it
+#: up. The addresses are formatted from the constants above so the recipe
+#: cannot drift from the map it is a recipe for.
 RETARGET_WRITES = (
     "byte 0 = the target area's DAX number",
-    "word $49C5 = the target area id",
-    "word $49F2 = the target area id",
-    "word $5012 = the target area's DAX number",
-    "words $4AFA-$4AFC = the target's wallset triple ($FFFF = empty slot)",
-    "words $4AFD-$4AFF = (1,2,3) for three sets, (1,$FFFF,$FFFF) for one",
-    "bytes 12801-12803 = x, y, facing*2",
+    f"word ${AREA:04X} = the target area id",
+    f"word ${SCRIPT:04X} = the target area id",
+    f"word ${DISK:04X} = the target area's DAX number",
+    f"words ${WALLSET:04X}-${WALLSET + 2:04X} = the target's wallset triple "
+    f"($FFFF = empty slot)",
+    f"words ${WALLMAP:04X}-${WALLMAP + 2:04X} = (1,2,3) for three sets, "
+    f"(1,$FFFF,$FFFF) for one",
+    f"bytes {POS_X}-{POS_FACING} = x, y, facing*{FACING_SCALE}",
+    f"word ${PARTY_SIZE:04X} and byte {PARTY_SIZE_BYTE} = the party size",
 )
