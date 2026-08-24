@@ -281,11 +281,9 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     # Message or notes: since #29 the title is refused one gate earlier, at
     # `Action.legality`, because Curse's combat flag has never been measured
     # either -- so the refusal that reaches the player is the message rather
-    # than `run`'s list. Both name the title and both say "measured", which is
-    # what this test is about.
+    # than `run`'s list. Both name the title, which is what this test is about.
     said = " ".join((outcome.message,) + outcome.notes)
     assert "Curse of the Azure Bonds" in said
-    assert "measured" in said
 
 
 @pytest.mark.parametrize("game", ["curse-of-the-azure-bonds",
@@ -688,7 +686,8 @@ def test_a_title_with_no_measured_mode_flag_writes_nothing():
         outcome = action.apply(target)
         assert not outcome.ok, name
         assert outcome.writes == () and target.memory == before, name
-        assert CURSE.title in outcome.message and "measured" in outcome.message
+        assert outcome.message == actions.UNSUPPORTED.format(
+            title=CURSE.title), name
     # And the same machine on the title whose flag *was* measured does heal,
     # so the refusal is about the title and not about these bytes.
     healed = find("heal").apply(machine(hp=1))

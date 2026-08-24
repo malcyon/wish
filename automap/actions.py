@@ -96,6 +96,12 @@ def _read(target, addr: int, length: int) -> bytes | None:
         return None
 
 
+#: Donald's wording, approved 2026-08-24. Shown when the running title has no
+#: measured combat flag, so we cannot tell a fight from the map and will not
+#: write blind. The five actions all use it.
+UNSUPPORTED = "ERROR: Action unsupported on {title}."
+
+
 def mode(target, game: games.Game | None = None) -> int | None:
     """Which overlay is running, or None if that cannot be established.
 
@@ -331,10 +337,7 @@ class Action:
             # is fine and it is the address that is missing. Pool of Radiance's
             # `$6E11` is `LINKER`'s own byte and no other title's loader has
             # been read, so on those titles this is a fight we cannot see.
-            return Verdict(False, f"{self.label.lower()} is refused on "
-                                  f"{game.title}: its combat flag has never "
-                                  f"been measured, so nothing here can tell a "
-                                  f"fight from the map")
+            return Verdict(False, UNSUPPORTED.format(title=game.title))
         state = mode(target, game)
         if state is None:
             return Verdict(False, "the machine is not readable right now")

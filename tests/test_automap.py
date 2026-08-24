@@ -2376,6 +2376,7 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
 def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     """The window resolves the title off the disks and tells the row; the row
     is what carries the descriptor into every address the buttons write."""
+    from automap import actions
     from automap.actionbar import ActionBar
 
     bar = ActionBar()
@@ -2387,4 +2388,5 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     bar.attach(curse_machine())
     for name, button in bar.buttons.items():
         assert not button.isEnabled(), name
-        assert "measured" in button.toolTip(), name
+        assert button.toolTip() == actions.UNSUPPORTED.format(
+            title=CURSE.title), name
