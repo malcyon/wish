@@ -550,9 +550,15 @@ def test_race_class_alignment_and_sex_are_named(editor):
 
 def test_race_zero_is_named_rather_than_left_blank():
     """The commonest race in the game, and the reason PRINCESS FATIMA reads as
-    a monster. Not evidence of tampering."""
+    a monster. Not evidence of tampering.
+
+    Named `MONSTER` and not annotated since 2026-08-24: the note it used to
+    carry was wider than the longest real race, and `Race` is what sets the
+    Character box's width -- and so the header's, which is a floor under the
+    whole window (#41, #43).
+    """
     from editor.enums import RACE
-    assert "MONSTER" in RACE[0] and "none" in RACE[0]
+    assert RACE[0] == "MONSTER" and RACE[8] == "MONSTER"
 
 
 @game_disks

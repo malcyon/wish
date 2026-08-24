@@ -42,8 +42,12 @@ def race_names(game: Game | None = None) -> dict[int, str]:
     # Radiance does. Silver Blades prints ELF for 0 and Krynn's 0 is a real
     # race, so neither gets these notes.
     if table.get(8) == "MONSTER":
-        table.setdefault(0, "0 — none (the game prints MONSTER)")
-        table[8] = "MONSTER (enumerated, never used)"
+        # Both are named MONSTER and neither is annotated: Donald's wording,
+        # approved 2026-08-24. The note that used to ride on each was three
+        # times the width of the longest real race, and `Race` sets the
+        # Character box's width -- which sets the header's, which is a floor
+        # under the whole window (#41, #43).
+        table.setdefault(0, "MONSTER")
     return table
 
 
