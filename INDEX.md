@@ -21,6 +21,10 @@ What each directory in this repository is for.
 | `build/` | PyInstaller's intermediate output. Gitignored. |
 | `dist/` | The frozen build — `wish` and `_internal/`. Gitignored. |
 
+## API Documentation
+
+https://wish-goldbox.readthedocs.io/en/latest/
+
 ## The split that is a rule, not tidiness
 
 `por/` stays transport-free, `editor/` stays emulator-free, and everything that
