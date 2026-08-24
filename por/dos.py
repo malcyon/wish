@@ -797,7 +797,7 @@ INDOORS = 0x49E6
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of Pool "
                "of Radiance, so there is no map file and no disk to name")
 WILDERNESS = "Saves from wilderness locations are not yet supported."
-ILLEGAL_LOCATION = "Save is inside an illegal location."
+UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 
 
 def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
@@ -834,7 +834,7 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     if where.outdoors:
         raise DosRecordError(WILDERNESS)
     if where.dynamic_geo or len(where.geos) < 1:
-        raise DosRecordError(ILLEGAL_LOCATION)
+        raise DosRecordError(UNSUPPORTED_LOCATION)
 
     geo = areas.geo_number(where.geos[0])
     save0[at:at + FILE_CACHE[1]] = bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1]
