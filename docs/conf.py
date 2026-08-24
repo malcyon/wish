@@ -50,11 +50,27 @@ def _release() -> str:
         return "0.0.0"
 
 
+def _description() -> str:
+    """The one-line description, read from `pyproject.toml`.
+
+    One source of truth: the landing page says what the packaging says, so
+    changing it in one place changes it in both.
+    """
+    import tomllib
+
+    try:
+        with (REPO / "pyproject.toml").open("rb") as f:
+            return tomllib.load(f)["project"]["description"]
+    except Exception:
+        return ""
+
+
 project = "wish"
 author = "Donald Morton"
 copyright = "2026, Donald Morton"
 release = _release()
 version = release.split("+")[0]
+rst_prolog = f".. |description| replace:: {_description()}\n"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -73,7 +89,18 @@ source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
 # knowledge base's own index for anyone browsing the repository; this is the
 # published landing page, and the two have different jobs.
 root_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# **The API reference only.** The knowledge base under `docs/` is written for
+# somebody reading the repository, is full of relative links into the source,
+# and is not what a published reference is for. Excluding it here rather than
+# just dropping it from a toctree is what stops Sphinx building 65 orphan
+# pages and warning about every one of them.
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "*.md",
+    "README.md",
+]
 
 # Cheaper than putting PyQt6 on the builder: the docstrings are what is being
 # published, and none of them need Qt to be resolvable. See issue #44.
