@@ -67,7 +67,12 @@ extensions = [
 
 # The knowledge base is Markdown; the generated pages are reStructuredText.
 source_suffix = {".rst": "restructuredtext", ".md": "markdown"}
-root_doc = "api/index"
+# `docs/index.rst` and not `docs/api/index.rst`: Read the Docs serves the root
+# URL from `index.html` at the top of the output and fails the build without
+# one, whatever Sphinx thinks its root document is. `docs/README.md` stays the
+# knowledge base's own index for anyone browsing the repository; this is the
+# published landing page, and the two have different jobs.
+root_doc = "index"
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # Cheaper than putting PyQt6 on the builder: the docstrings are what is being
