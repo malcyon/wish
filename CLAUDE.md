@@ -218,6 +218,26 @@ what you expected is Donald's decision until proven otherwise. If it looks
 wrong, say so in the reply and leave it alone. The same goes for a title,
 a priority, a milestone, or an issue somebody closed.
 
+**`blocked` is the one exception, and only in the one direction.** An agent may
+**remove** `blocked` when it has established that the blocker is gone -- and
+only then. It may not add it to somebody else's issue, may not change any other
+label, and may not remove `blocked` because the work now looks doable or
+important.
+
+The reason for the exception is that `blocked` is the one label that is a claim
+about the *world* rather than a judgement about the work, so it can be checked
+and it can be wrong. #29 sat blocked on Curse and Silver Blades disks that were
+on the machine the whole time -- an assistant wrote that they were missing
+without looking. A label nobody may correct is a label that outlives the fact
+it was recording.
+
+**The bar is evidence, not inference**, and it is the same bar as any finding:
+the disks are at this path, the measurement is in this commit, the question was
+answered on this issue. "Probably fine now" is not it. **Say what you removed
+and why in a comment on the issue**, in the same breath -- an issue whose label
+changed with no explanation is exactly the silent edit the rule above exists to
+prevent.
+
 **Every issue follows one of three templates.** They are in
 `.github/ISSUE_TEMPLATE/` so the forms appear when a human opens one; an agent
 writing an issue with `gh` follows the same shape by hand.
