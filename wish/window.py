@@ -197,13 +197,20 @@ class WishWindow(QMainWindow):
         # A submenu with one item in it, because the thing it imports is one
         # of several ports and the next one goes beside it rather than growing
         # the File menu another top-level verb.
-        from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
-        imports = menu.addMenu(MENU_IMPORT)
-        dos_save = QAction(MENU_DOS_SAVE, self)
-        dos_save.triggered.connect(
-            lambda _checked=False: self.editor.import_dos_save())
-        imports.addAction(dos_save)
-        self.import_dos_action = dos_save
+        #
+        # Built only when `WISH_DOS_IMPORT` says so -- see `editor/dosimport.py`.
+        # Not built rather than disabled: a greyed-out entry invites the
+        # question of how to un-grey it, and the answer would be a sentence
+        # this window does not want.
+        from editor import dosimport
+        self.import_dos_action = None
+        if dosimport.enabled():
+            imports = menu.addMenu(dosimport.MENU_IMPORT)
+            dos_save = QAction(dosimport.MENU_DOS_SAVE, self)
+            dos_save.triggered.connect(
+                lambda _checked=False: self.editor.import_dos_save())
+            imports.addAction(dos_save)
+            self.import_dos_action = dos_save
 
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)

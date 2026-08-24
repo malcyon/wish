@@ -241,10 +241,58 @@ def test_a_folder_with_no_dos_save_says_so(app, tmp_path, monkeypatch):
 
 # --- the menu ----------------------------------------------------------------
 
-def test_the_file_menu_carries_the_import(app, tmp_path, monkeypatch):
-    from editor.dosimport import MENU_DOS_SAVE, MENU_IMPORT
+def _window(tmp_path, monkeypatch):
+    """A window with nothing to attach to. The caller closes it."""
+    from wish.session import Session
     from wish.window import WishWindow
 
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    # Nothing answering, and nothing looked for: a menu test must not go
+    # probing the ports a human's own game session is on.
+    return WishWindow(maps={}, session=Session(find=lambda pref=None: None))
+
+
+def _file_menu(window):
+    return next(a.menu() for a in window.menuBar().actions()
+                if a.text() == "&File")
+
+
+def test_the_import_is_not_offered_unless_it_is_asked_for(app, tmp_path,
+                                                          monkeypatch):
+    """The gate, asserted from the outside: no submenu, not a greyed one.
+
+    The conversion drops the portrait and the clock in this direction too
+    (#57, #58), so until those close a player should not be able to reach it
+    by accident. `dosimport.ENV` unset is the shipped state.
+    """
+    from editor.dosimport import ENV, MENU_IMPORT
+
+    monkeypatch.delenv(ENV, raising=False)
+    window = _window(tmp_path, monkeypatch)
+    assert MENU_IMPORT not in [a.text() for a in _file_menu(window).actions()]
+    assert window.import_dos_action is None
+    window.close()
+
+
+def test_a_variable_somebody_forgot_does_not_turn_it_on(app, tmp_path,
+                                                        monkeypatch):
+    """`0` and `off` are off, the same rule `wish/debugmode.py` follows."""
+    from editor.dosimport import ENV, MENU_IMPORT
+
+    for value in ("", "0", "off", "no"):
+        monkeypatch.setenv(ENV, value)
+        window = _window(tmp_path, monkeypatch)
+        assert MENU_IMPORT not in [a.text()
+                                   for a in _file_menu(window).actions()], value
+        window.close()
+
+
+def test_the_file_menu_carries_the_import(app, tmp_path, monkeypatch):
+    from editor.dosimport import ENV, MENU_DOS_SAVE, MENU_IMPORT
+    from wish.window import WishWindow  # noqa: F401
+
+    monkeypatch.setenv(ENV, "1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     # Nothing answering, and nothing looked for: a menu test must not go

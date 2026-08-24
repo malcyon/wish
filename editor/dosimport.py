@@ -52,6 +52,31 @@ _log = logging.getLogger("wish.editor.dosimport")
 # Every string below is Donald's, approved 2026-08-24. Changing one is his
 # call, not a refactor.
 
+#: **Off unless `WISH_DOS_IMPORT=1`.** The conversion works and is proven --
+#: a C64 party built from a DOS save loads and walks -- but what it cannot
+#: carry is still being closed out: the sheet portrait (#57) and the clock
+#: (#58) are dropped in this direction too. Until those land the menu entry
+#: is not built at all, so a player cannot reach a conversion that quietly
+#: loses two things.
+#:
+#: An environment variable and no preference, which is deliberate. The same
+#: shape as `WISH_DEBUG` and `WISH_NATIVE_LOG`: a checkbox would need a label
+#: and a sentence explaining what "experimental" meant, and this interface has
+#: had several such sentences removed already.
+ENV = "WISH_DOS_IMPORT"
+
+#: Anything else -- an empty string, `0`, `off` -- is off, matching
+#: `wish/debugmode.py`. A variable somebody exported once and forgot should
+#: not put an unfinished menu in front of them.
+TRUE = ("1", "true", "yes", "on")
+
+
+def enabled() -> bool:
+    """Is the DOS import offered in this run?"""
+    import os
+    return os.environ.get(ENV, "").strip().lower() in TRUE
+
+
 #: The File menu entry and the submenu it hangs under.
 MENU_IMPORT = "&Import"
 MENU_DOS_SAVE = "&DOS save…"
