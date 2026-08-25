@@ -30,7 +30,25 @@ posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 
 
 @pytest.fixture
-def pool(tmp_path, monkeypatch):
+def ports(monkeypatch):
+    """The set of ports the pool should believe are in use. Empty by default.
+
+    `POR_INST` isolates the lease directory, but a slot's ports are arithmetic
+    on a global number and cannot be isolated the same way.  So with a human's
+    emulator on 6520, `claim()` inside an empty temporary pool declined slot 0
+    and handed out slot 1 -- correctly, and every assertion that said `0` went
+    red anyway (#45).  A temporary pool has no emulators in it by construction,
+    so the probe answers from this set rather than from the machine's sockets,
+    and a test that wants a busy port says which.
+    """
+    busy: set[int] = set()
+    monkeypatch.setattr(instance, "_listening", lambda port, *a, **kw: port in busy)
+    monkeypatch.setattr(instance, "_greets", lambda port, *a, **kw: port in busy)
+    return busy
+
+
+@pytest.fixture
+def pool(tmp_path, monkeypatch, ports):
     monkeypatch.setenv("POR_INST", str(tmp_path / "inst"))
     return tmp_path
 
@@ -81,6 +99,19 @@ def test_claim_hands_out_slots_in_order_and_release_frees_them(pool):
 
 
 @posix
+def test_claim_steps_over_a_slot_whose_port_is_in_use(pool, ports):
+    """The rule that keeps an agent off a human's emulator, asserted at last.
+
+    It was untested, and its side effect -- every claim moving up a slot -- was
+    what made seven tests read as defects whenever the pool was in use (#45).
+    """
+    ports.add(instance.BIN_BASE)
+    with instance.claim() as slot:
+        assert slot.n == 1
+    assert instance.inspect(0) == instance.ORPHAN
+
+
+@posix
 def test_the_lease_records_who_holds_it(pool):
     with instance.claim(game="curse", note="P46") as slot:
         info = json.loads((slot.dir / "lease").read_text())
@@ -108,6 +139,7 @@ HOLDER = textwrap.dedent("""
     import sys, time
     sys.path.insert(0, {tools!r})
     import instance
+    instance._listening = lambda *a, **kw: False   # the `ports` fixture, out here
     slot = instance.claim(note="holder")
     print(slot.n, flush=True)
     time.sleep(120)
@@ -200,7 +232,7 @@ def test_status_reports_every_slot(pool):
         assert len(rows) == instance.SLOTS
         assert rows[slot.n]["state"] == instance.HELD
         assert rows[slot.n]["pid"] == os.getpid()
-        assert rows[1]["state"] == instance.CLEAN
+        assert rows[slot.n + 1]["state"] == instance.CLEAN
 
 
 # -- the seeded vicerc ------------------------------------------------------
