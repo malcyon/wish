@@ -660,14 +660,15 @@ def test_a_roster_disk_still_opens_and_has_no_items(app, tmp_path):
 
 # --- the sheet is three tabs under the roster -------------------------------
 
-BOXES = ("box_identity", "box_record", "box_abilities", "box_saves",
-         "box_levels", "box_thief_skills", "box_money", "box_appearance",
-         "box_inventory", "box_spells", "box_traits", "box_effects")
+BOXES = ("box_identity", "box_combat", "box_roster", "box_abilities",
+         "box_saves", "box_levels", "box_thief_skills", "box_money",
+         "box_appearance", "box_inventory", "box_spells", "box_traits",
+         "box_effects")
 
 #: Above the tabs, on every one of them: the roster, Character and the combat
 #: icon. Character is up there because 23 fields stacked in a column were
-#: 672px tall and the tab could not hold them; ten of them are up there in two
-#: columns.
+#: 672px tall and the tab could not hold them; eleven of them are up there in
+#: two columns.
 #:
 #: The icon came back in round six, having spent round five on the Stats tab.
 #: It is the one per-character box in this program whose size is fixed in
@@ -679,30 +680,36 @@ HEADER_BOXES = ("box_identity", "box_appearance")
 
 #: Donald's grouping, and the whole of it. `box_levels` -- Experience and
 #: levels -- was not in the grouping he wrote and is here because it is a
-#: stats box; it is the one placement to check with him. `box_record` --
-#: Miscellaneous -- is the other thirteen fields of Character, split off so
-#: the header box fits a desktop.
+#: stats box; it is the one placement to check with him.
+#:
+#: Round seven dissolved `box_record` -- Miscellaneous -- which was thirteen
+#: unrelated fields and a title that admitted it. `box_combat` took the six
+#: that decide a fight, including the Armour class pair the header used to
+#: carry; `box_roster` took the six read-only housekeeping fields nobody
+#: edits.
 TABS = {
-    "Stats": ("box_record", "box_abilities", "box_money", "box_saves",
-              "box_thief_skills", "box_effects", "box_levels"),
+    "Stats": ("box_combat", "box_roster", "box_abilities", "box_money",
+              "box_saves", "box_thief_skills", "box_effects", "box_levels"),
     "Inventory": ("box_inventory", "box_traits"),
     "Spells": ("box_spells",),
 }
 
 #: Left to right across the Stats tab. Donald asked for Abilities and Saving
-#: throws on the left of the window, and the combat icon to the right of
-#: Money with Miscellaneous under it. That is a fact about order and not about
-#: grouping, so it is pinned separately: a repack that put Miscellaneous back
-#: on the left would still satisfy `TABS`.
+#: throws on the left of the window. That is a fact about order and not about
+#: grouping, so it is pinned separately: a repack that put the housekeeping
+#: fields back on the left would still satisfy `TABS`.
 #:
-#: The fourth column is Miscellaneous on its own since the combat icon went
-#: back up to the header. His order is otherwise unchanged; what changed is
-#: where the spare width goes -- see
-#: `test_the_stats_columns_share_the_spare_width`.
+#: Character Traits is last and alone, which is round seven's answer to the
+#: hole Donald drew a box round: it is the only box on the tab that can use
+#: spare width, so it gets a column to itself and all of the stretch, and the
+#: four columns of fields hug their own contents. Packed so no column is
+#: taller than Experience and levels over Thief skills, which is what decides
+#: whether the tab scrolls on his screen.
 STATS_COLUMNS = (("box_abilities", "box_saves"),
                  ("box_levels", "box_thief_skills"),
-                 ("box_money", "box_effects"),
-                 ("box_record",))
+                 ("box_money", "box_combat"),
+                 ("box_roster",),
+                 ("box_effects",))
 
 
 @game_disks
@@ -730,14 +737,15 @@ def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
 
 @game_disks
 def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
-    """Abilities and Saving throws on the left of the window, the combat icon
-    to the right of Money.
+    """Abilities and Saving throws on the left of the window, Character Traits
+    alone on the right.
 
-    Left to right and not merely present, because the four columns pack seven
-    boxes and the tallest of them decides how much of the tab scrolls --
-    Miscellaneous is the tallest and the icon above it is the shortest. A
+    Left to right and not merely present, because the five columns pack eight
+    boxes and the tallest of them decides how much of the tab scrolls. A
     repack that balanced better and ignored the order would pass
-    `test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them`.
+    `test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them`, and a
+    repack that put a narrow box in the stretching column would put the hole
+    back.
 
     No column heights are quoted here on purpose. Three measurements of them
     during round four disagreed by up to 30px, because a box's minimum depends
@@ -762,42 +770,62 @@ def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
 
 
 @game_disks
-def test_the_stats_columns_share_the_spare_width(app, save):
+def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
     """The hole Donald drew a box round, and why it was there.
 
-    Only Character Traits can use spare width on this tab, and with the whole
-    stretch on the column it shares with Money the slack piled up beside
-    Money -- about 490x230 of nothing between it and the next column. Shared
-    equally, the four columns spread across the tab and the slack has nowhere
-    to pile.
+    Character Traits is the only box on this tab that can use spare width.
+    Round six shared the stretch equally between four columns, which turned
+    one 490x230 hole beside Money into a gap beside every column; round seven
+    gives Traits a column of its own and all of the stretch, and the columns
+    of fields are sized to their own contents with nothing between them.
 
-    Equal and non-zero is the assertion, not four particular numbers: what
-    would be wrong again is one column holding the lot.
+    The assertion is that exactly one column stretches and it is the one
+    holding Traits -- not five particular numbers.
     """
+    from PyQt6.QtWidgets import QGroupBox
+
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     columns = w.ui.sheet_columns
     stretches = [columns.stretch(i) for i in range(columns.count())]
     assert len(stretches) == len(STATS_COLUMNS)
-    assert all(s == stretches[0] and s > 0 for s in stretches), stretches
+    stretched = [i for i, s in enumerate(stretches) if s]
+    assert len(stretched) == 1, stretches
+    column = columns.itemAt(stretched[0]).layout()
+    boxes = [column.itemAt(j).widget().objectName()
+             for j in range(column.count())
+             if isinstance(column.itemAt(j).widget(), QGroupBox)]
+    assert boxes == ["box_effects"], boxes
 
 
 @game_disks
-def test_the_header_s_spare_width_goes_to_character(app, save):
-    """The roster is sized to its five columns and the combat icon to a fixed
-    144px of pixels, so neither can use a wider window; the spacer at the end
-    of the row took it all and the header was 540px of nothing. Character
-    takes it now, and its two columns share what it is given rather than
-    huddling at its left edge."""
+def test_the_header_s_spare_width_goes_to_the_roster(app, save):
+    """Every field in Character is sized to the widest value its bytes can
+    hold, and the combat icon is 144px of fixed pixels, so neither of them can
+    read a wider window. The roster can: its `Name` column stretches.
+
+    Round six gave the slack to Character and shared it 1:1 between its two
+    form columns, which each took half and each huddled at its own left edge
+    -- the gutter down the middle of Character and the gap between it and the
+    icon, both of which Donald marked. Handing it to the fields instead of the
+    forms only moved it: a drop-down 890px wide with `2  ELF` in it.
+
+    One thing takes it and it is the roster; nothing else in the row stretches,
+    and there is no spacer for it to fall into.
+    """
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     row = w.ui.header_row
     stretched = [i for i in range(row.count()) if row.stretch(i)]
     assert len(stretched) == 1, "one thing takes the slack, not none and not two"
-    assert row.itemAt(stretched[0]).widget().objectName() == "box_identity"
+    assert row.itemAt(stretched[0]).widget() is w.ui.roster
+    assert all(row.itemAt(i).widget() is not None for i in range(row.count())), (
+        "a spacer in the header is slack that nothing reads")
     columns = w.ui.form_identity
-    shares = [columns.stretch(i) for i in range(columns.count())]
-    assert shares == [1, 1], shares
+    assert not any(columns.stretch(i) for i in range(columns.count()))
+    header = w.ui.roster.horizontalHeader()
+    from editor.window import NAME_COLUMN
+    assert header.sectionResizeMode(NAME_COLUMN) == header.ResizeMode.Stretch
 
 
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one
@@ -813,16 +841,17 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
     Four columns in one scroll area asked for 2001x1127 and collapsed to
     421x141, so the sheet was unreadable at any window anybody would open.
-    Measured here in round six: the editor's minimum is 957x374 with a save
-    open and 680x374 without one, and the widest tab -- Stats -- scrolls when
-    it cannot have the room it asks for.
+    Measured here in round seven: the editor's minimum is 1025x400 with a save
+    open, and the widest tab -- Stats -- scrolls when it cannot have the room
+    it asks for.
 
     The width is the header. The header does not scroll, so the window can
     never be narrower than what stands in it side by side: 683 with nothing
     but the roster, 1883 with all 23 of Character's fields down one row, 992
     with the five it kept in round four, 892 once the combat icon left and
-    Character was given ten fields in two columns, and 957 now that Character
-    Traits is up there too and Character is held to a constant 520.
+    Character was given ten fields in two columns, 957 in round six with
+    Character held to a constant 520, and 1025 now -- the constant is 480 and
+    the roster is what grew, because it is sized from the names in the party.
 
     Ten fields and not five because the icon was 310px of header at any font
     size, and that is what paid for the second column -- see
@@ -831,10 +860,10 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     shape.
 
     What is left tracking the font is the roster, which is sized from the
-    names it holds: 349px at the default UI font and 446 at three points more,
-    and that is the whole of the 957-to-1054 difference. It is #70's half of
-    the problem and it is not measured by CI, because every test that opens a
-    save skips without the disks.
+    names it holds: 349px at the default UI font, 446 at three points more and
+    669 at ten. That is #70's half of the problem, it is the whole of the
+    difference between the numbers above, and it is not measured by CI,
+    because every test that opens a save skips without the disks.
 
     The floor is not zero because a box of spin boxes cannot shrink, which is
     why the scroll area survived the tabs and merely moved inside them.
@@ -852,9 +881,13 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     floor = w.minimumSizeHint()
     assert floor.width() <= SMALL_LAPTOP[0]
     assert floor.height() <= SMALL_LAPTOP[1]
-    # The tallest box on the sheet is taller than the whole window's minimum,
-    # so the scroll areas are still doing the work.
-    tallest = max(w._child(name).minimumSizeHint().height() for name in BOXES)
+    # The tallest tab page wants more height than the whole window's floor
+    # gives it, so the scroll areas are still doing the work. Measured against
+    # the page and not against the tallest single box since round seven:
+    # Miscellaneous was 397px of one box and dissolving it left nothing on the
+    # sheet taller than the header, which is 202 of the floor's 400.
+    pages = ("page_stats", "page_inventory", "page_spells")
+    tallest = max(w._child(name).minimumSizeHint().height() for name in pages)
     assert floor.height() < tallest
     # Every box is still on the form -- a split that dropped one would be
     # silent, since a field with no widget is simply not shown.
@@ -863,33 +896,124 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
 #: Donald's arrangement, left column beside right. Pinned as a shape rather
 #: than as a height: the header does not scroll, so a Character reflowed back
-#: into one column of ten would be twice as tall for no measurement to catch.
+#: into one column of eleven would be twice as tall for no measurement to
+#: catch.
+#:
+#: The Armour class pair left for `Combat` in round seven, which is what made
+#: the header cheaper; `Sex`, `Age` and `Size` came up from Miscellaneous,
+#: which is what it cost. Both moves are measured in
+#: `test_the_header_fits_its_width_budget`.
 IDENTITY_COLUMNS = (("name", "race", "char_class", "class_bits", "alignment"),
                     ("hp_max", "hp_rolled", "hp_current",
-                     "armour_class_base", "armour_class"))
+                     "sex", "age", "size_small"))
+
+#: The six that decide a fight, and the six nobody edits. What used to be
+#: `Miscellaneous`, which was neither.
+COMBAT_FIELDS = ("thac0_base", "thac0", "armour_class_base", "armour_class",
+                 "movement", "infravision")
+ROSTER_FIELDS = ("roster_in_use", "party_order", "roster_movement",
+                 "roster_tail", "turn_class", "flags_0b8")
+
+
+def _form_fields(form) -> tuple[str, ...]:
+    from PyQt6.QtWidgets import QFormLayout
+
+    from editor.binding import field_name
+    return tuple(
+        field_name(form.itemAt(r, QFormLayout.ItemRole.FieldRole)
+                   .widget().objectName())
+        for r in range(form.rowCount()))
 
 
 @game_disks
 def test_character_is_two_columns_the_way_donald_drew_it(app, save):
-    """Every derived field is beside its source -- `Hp current` under `Hp max`,
-    `Armour class` under its base -- which is the rule the round-two repack
-    broke when it packed for width alone."""
+    """Every derived field is beside its source -- `Hp current` under `Hp max`
+    -- which is the rule the round-two repack broke when it packed for width
+    alone.
+
+    The two columns are inside a container of their own since round seven,
+    so that a header too narrow for them clips instead of drawing one column
+    over the other -- #71, and `EditorWindow._pin_identity_columns`.
+    """
     from PyQt6.QtWidgets import QFormLayout, QHBoxLayout
 
-    from editor.binding import field_name
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     box = w._child("box_identity")
-    assert isinstance(box.layout(), QHBoxLayout), "one column, not two"
+    columns = w._child("columns_identity")
+    assert box.isAncestorOf(columns), "the columns are not inside Character"
+    assert isinstance(columns.layout(), QHBoxLayout), "one column, not two"
     got = []
-    for i in range(box.layout().count()):
-        form = box.layout().itemAt(i).layout()
+    for i in range(columns.layout().count()):
+        form = columns.layout().itemAt(i).layout()
         assert isinstance(form, QFormLayout)
-        got.append(tuple(
-            field_name(form.itemAt(r, QFormLayout.ItemRole.FieldRole)
-                       .widget().objectName())
-            for r in range(form.rowCount())))
+        got.append(_form_fields(form))
     assert tuple(got) == IDENTITY_COLUMNS
+
+
+@game_disks
+def test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
+    """`Miscellaneous` was thirteen unrelated fields and a title that said so.
+
+    Every one of them is still on the sheet, in a box named for what it holds:
+    the Armour class pair came down out of the header to sit with Thac0, and
+    `Sex`, `Age` and `Size` went up to Character because they are identity.
+    """
+    from PyQt6.QtWidgets import QGroupBox
+
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    assert w.findChild(QGroupBox, "box_record") is None
+    assert _form_fields(w.ui.form_combat) == COMBAT_FIELDS
+    assert _form_fields(w.ui.form_roster) == ROSTER_FIELDS
+
+
+@game_disks
+def test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
+    """#71, and the test the issue asked for.
+
+    The header is capped so the window's floor stops following the UI font,
+    and at a Windows-sized font Character wants nearly twice the cap. Round
+    six let the layout squeeze both form columns below their own minimums:
+    the left column's labels lost all their width and vanished, and the right
+    column's labels were drawn over the left column's fields -- `Hp max` on
+    top of the name box, `Armour class` reading `Armour c`.
+
+    It clips at the box's edge instead now. What is off the edge is not
+    readable either, and that is still #71's remaining half -- the header
+    costs 880px at ten points of extra font against a 1280 screen -- but a
+    field that is off the edge is a window that is too narrow, and a field
+    with another field drawn on top of it is a broken program.
+
+    At +0 and at +10, which is roughly where Windows' base UI font measures.
+    """
+    from PyQt6.QtGui import QFont
+    from PyQt6.QtWidgets import QComboBox, QLabel, QLineEdit, QSpinBox
+
+    from editor.window import EditorWindow
+    base = app.font()
+    try:
+        for extra in (0, 10):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            w = EditorWindow(str(save))
+            w.show()
+            columns = w._child("columns_identity")
+            w.resize(w.minimumSizeHint())
+            app.processEvents()
+            # Direct children only: a spin box's own line edit is a child of
+            # the spin box and its geometry is in the spin box's coordinates.
+            kinds = (QLabel, QLineEdit, QSpinBox, QComboBox)
+            boxes = [(c.objectName(), c.geometry())
+                     for c in columns.children()
+                     if isinstance(c, kinds) and c.objectName()]
+            for i, (name, one) in enumerate(boxes):
+                for other_name, other in boxes[i + 1:]:
+                    assert not one.intersects(other), (
+                        f"+{extra}pt: {name} and {other_name} overlap")
+    finally:
+        app.setFont(base)
 
 
 #: What the boxes in the header may cost between them, at three points of
@@ -929,11 +1053,20 @@ def test_the_header_fits_its_width_budget(app, save):
 
     Round six is the first one where the budget is *enforced* rather than
     checked: what is measured here is the explicit minimum each box is held
-    to, 520 for Character and 166 for the combat icon, and the sum is 686
+    to, 480 for Character and 166 for the combat icon, and the sum is 646
     against 808 at any font at all. Round five's 648 was a measurement, it was
     true on Linux, and on Windows the same box measured 876 -- see
     `test_the_header_boxes_do_not_widen_with_the_ui_font`. A budget checked
     against one platform's font metrics is not a budget.
+
+    What the budget does not say is what Character *wants*, which is the
+    other half of #71 and is not fixed. Round seven moved the Armour class
+    pair down to `Combat` and brought `Sex`, `Age` and `Size` up from
+    Miscellaneous, and Character went from 939 to 880 at ten points of extra
+    font and from 1207 to 1120 at sixteen. Against a 1280 screen with the
+    roster's 669 beside it, both still overrun; what is capped clips rather
+    than overlapping -- `test_no_two_widgets_in_character_overlap_at_its_floor`
+    -- and the roster is the next thing that would have to give.
 
     Both boxes and not just Character, because the budget is what the header
     costs and the header is now two boxes. A second one added without a floor

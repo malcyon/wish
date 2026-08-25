@@ -55,6 +55,13 @@ def _size_combo(combo: QComboBox) -> None:
 
     Re-applied whenever an item is added, because `_select` adds one for a code
     the game's table does not name and an elided box would hide the number.
+
+    The longest *item*, not the current one: this box exists because
+    `magic-user/thief` came out as `magic-user`. It is also the most expensive
+    widget in the header -- `15  magic-user/cleric/thief/fighter` is 225px at
+    the default UI font here and 423 at ten points more, which is half of what
+    Character costs -- and there is nothing to take off it that is not one of
+    Donald's words.
     """
     combo.setSizeAdjustPolicy(
         QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
@@ -99,24 +106,27 @@ TABLE_ROW_HEIGHT = 20
 TOOLBAR_ICON = 16
 MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
-# Character is here for a different reason: it is the one box in the header
-# that can spread, and the header is 540px wider than the roster and the
-# combat icon need. Capped to its own contents it left that as a hole.
-WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells",
-              "box_identity")
+WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # Which item in a horizontal row is allowed to grow. `header_row` is the
-# roster, Character and the combat icon above the tabs: the roster is sized to
-# its own five columns and the icon is 144px of fixed pixels, so Character
-# takes the slack and the spacer at the end gets none. `form_identity` is
-# Character's own two columns, which share what Character is given rather than
-# huddling at its left edge.
+# roster, Character and the combat icon above the tabs, and the roster is the
+# one of the three that can use a wider window: its `Name` column stretches
+# (`_size_roster`), so the slack becomes room for a name rather than a hole.
 #
-# `sheet_columns` is the Stats tab. Nothing on it can use spare width except
-# Character Traits, and a single stretch on the column Traits shares with
-# Money put 490px of nothing beside Money. Shared equally the columns spread
-# across the tab and there is no hole for the slack to make.
-ROW_STRETCH = {"sheet_columns": (1, 1, 1, 1), "header_row": (0, 1, 0, 0),
-               "form_identity": (1, 1)}
+# Round six gave it to Character instead, which cannot use it -- every field
+# there is sized to the widest value its bytes can hold and a pixel more is a
+# pixel of nothing. Shared 1:1 between Character's two form columns it came
+# out as a gutter down the middle of Character and a gap between Character and
+# the combat icon, both of which Donald marked; handed to the fields instead
+# it came out as a drop-down 890px wide with `2  ELF` in it. Character is
+# sized to its own contents now and the icon sits directly beside it.
+#
+# `sheet_columns` is the Stats tab, and the same rule: Character Traits is the
+# only box on it that can use spare width, so it gets a column of its own at
+# the right and all of the stretch. Shared four ways the slack came out as a
+# gap beside every column; on the column Traits used to share with Money it
+# was 490px of nothing.
+ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (1, 0, 0),
+               "form_identity": (0, 0)}
 ROSTER_SLACK = 6
 #: The old 300 cap scaled by the same half the icon itself shrank by (`ZOOM`
 #: 6 to 3), which leaves six pixels over `IconEditor`'s own 144px minimum.
@@ -152,22 +162,28 @@ TRIMMED = {"name": 0.7}
 LIST_FLOOR = {"box_inventory": 240, "box_traits": 240}
 #: What Character may be squeezed to.
 #:
-#: Ten fields, ten labels and three combo boxes are every one of them sized
-#: from font metrics, and they sit in a header that does not scroll, so the
-#: box's own minimum *is* the window's floor and it *is* a font-metric number.
-#: Measured here: 521px at the default UI font, 648 at three points more, 874
-#: at eight. On Windows CI the same box took the whole window from 1036 to
-#: 1304 -- #41's guarantee broken twice over, because the floor followed the
-#: font and because 1304 does not fit a 1280 screen either.
+#: Eleven fields, eleven labels and four combo boxes are every one of them
+#: sized from font metrics, and they sit in a header that does not scroll, so
+#: the box's own minimum *is* the window's floor and it *is* a font-metric
+#: number. Measured here in round seven, with the Armour class pair gone to
+#: `Combat`: 491px at the default UI font, 608 at three points more, 819 at
+#: eight and 880 at ten -- against 521, 648, 874 and 939 in round six. On
+#: Windows CI the round-five box took the whole window from 1036 to 1304 --
+#: #41's guarantee broken twice over, because the floor followed the font and
+#: because 1304 does not fit a 1280 screen either.
 #:
-#: 520 is what the two columns come to at the default UI font on this machine,
-#: and it is written down as a constant on purpose: the floor has to be the
-#: same number on every machine, and no measurement taken here is true of
-#: Windows. The cost is that a window dragged narrower than Character really
-#: wants clips its right-hand column. That is the trade #41 asks for -- a
-#: window that can be made to fit the screen, rather than fields that stay
-#: readable in a window that cannot.
-HEADER_IDENTITY_MIN_WIDTH = 520
+#: 480 is written down as a constant on purpose: the floor has to be the same
+#: number on every machine, and no measurement taken here is true of Windows.
+#: It sits eleven pixels under what the two columns come to at the default UI
+#: font here, because the floor is applied as `min(this, what the box wants)`
+#: and a constant *above* the hint on some other machine's default font would
+#: start following the font again. Round six left itself one pixel of that
+#: margin.
+#:
+#: The cost is that a window dragged narrower than Character really wants
+#: squeezes its columns -- #71. That is the trade #41 asks for, and the
+#: squeeze is what `_pin_identity_columns` below makes survivable.
+HEADER_IDENTITY_MIN_WIDTH = 480
 #: And the combat icon, which needs no cap and is given one anyway.
 #:
 #: `IconEditor` is `FRAME_WIDE * ZOOM` -- 48 squares at 3 pixels, 144px at
@@ -303,11 +319,25 @@ def _content_height(view) -> int:
             + 2 * view.frameWidth())
 
 
-def _fit_height(view) -> None:
+def _fit_height(view, fixed: bool = False) -> None:
     """Show every row rather than scrolling. Ten effects and a dozen traits
     are short lists, and a scrollbar over four visible rows hides most of a
-    list whose whole point is that you can see it."""
-    view.setMinimumHeight(_content_height(view))
+    list whose whole point is that you can see it.
+
+    `fixed` makes it a ceiling as well, for a table whose row count never
+    changes. Character Traits is always its ten slots -- XAVIER proved the
+    tenth is real -- and left free it stretched to nearly twice that in the
+    column that takes the Stats tab's spare height: empty space in the middle
+    of a box, which is the thing Donald asked for none of.
+
+    The item traits table is not fixed and must not be: its row count is
+    whatever the selected item carries, and a ceiling there would make the
+    Inventory page jump every time you clicked a different item.
+    """
+    height = _content_height(view)
+    view.setMinimumHeight(height)
+    if fixed:
+        view.setMaximumHeight(height)
 
 # Which class bits a group box applies to, and what to say when it does not.
 # These two used to be hidden for a character without the class, and Donald:
@@ -565,15 +595,24 @@ class EditorWindow(QMainWindow):
             form.setVerticalSpacing(FORM_VERTICAL_SPACING)
             form.setHorizontalSpacing(FORM_HORIZONTAL_SPACING)
             form.setContentsMargins(*FORM_MARGINS)
+            # No field on this sheet can use a pixel more than the widest
+            # value its bytes can hold, so none of them is allowed to take
+            # one. Spare width goes to the roster and to Character Traits,
+            # which are the two things on the form that can read it.
+            form.setFieldGrowthPolicy(
+                QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         for box in self.findChildren(QGroupBox):
             box.setFlat(True)
-            # Character is two form layouts side by side, so its own layout
-            # holds nothing but layouts. Left alone it pays Qt's 9px margins
-            # on top of the forms' own, which is 18px of the header's width
-            # and height spent on nothing.
+            # Character is two form layouts side by side inside a bare
+            # container widget, so its own layout holds nothing that draws.
+            # Left alone it pays Qt's 9px margins on top of the forms' own,
+            # which is 18px of the header's width and height spent on nothing.
+            # A bare `QWidget` counts and a `QGroupBox` or a table does not:
+            # those have a frame of their own that the margin is there for.
             inner = box.layout()
             if inner is not None and inner.count() and all(
                     inner.itemAt(i).layout() is not None
+                    or type(inner.itemAt(i).widget()) is QWidget
                     for i in range(inner.count())):
                 inner.setContentsMargins(0, 0, 0, 0)
             # Stop a box widening past its own fields. Left to stretch, the
@@ -607,6 +646,7 @@ class EditorWindow(QMainWindow):
             button = self._child(name)
             if button is not None:
                 button.setMinimumWidth(TOOLBAR_BUTTON_MIN_WIDTH)
+        self._pin_identity_columns()
 
         for table in self.findChildren(QAbstractItemView):
             head = getattr(table, "verticalHeader", lambda: None)()
@@ -614,17 +654,60 @@ class EditorWindow(QMainWindow):
                 head.setDefaultSectionSize(TABLE_ROW_HEIGHT)
                 head.setMinimumSectionSize(TABLE_ROW_HEIGHT)
 
+    def _pin_identity_columns(self) -> None:
+        """Hold Character's two columns to what they need, and let the box clip.
+
+        #71: the header is capped at `HEADER_IDENTITY_MIN_WIDTH` so the
+        window's floor stops following the UI font, and at a Windows-sized
+        font Character wants nearly twice that. A layout given less than the
+        sum of its items' minimums does not refuse -- it shrinks them below
+        their minimums, in proportion -- so both form columns were squeezed,
+        the labels went first because the fields are pinned to their own text,
+        and the right column's labels ended up drawn over the left column's
+        fields.
+
+        The two columns sit in one bare container instead. `QWidget.setGeometry`
+        clamps to the widget's own minimum size, so a container with an
+        explicit minimum cannot be squeezed by the layout above it; it
+        overflows the group box and Qt clips it at the box's edge. The left
+        column stays whole and the right one is cut off, which is a window
+        that is too narrow rather than a form drawn on top of itself.
+
+        Called again after a save is opened, because `_fill_combos` is what
+        gives the race and class drop-downs their real widths -- the six games
+        do not share a class table, and a title whose longest name is longer
+        than Pool of Radiance's would otherwise be clipped by the ceiling
+        `_compact` put on the box before the disk was read.
+        """
+        columns = self._child("columns_identity")
+        if columns is None or columns.layout() is None:
+            return
+        columns.layout().setContentsMargins(0, 0, 0, 0)
+        # Cleared first: `minimumSize` of the layout is computed from the
+        # items, but the widget's own explicit minimum from the last call
+        # would otherwise be a floor under the answer and could only grow.
+        columns.setMinimumWidth(0)
+        wanted = columns.layout().minimumSize().width()
+        columns.setMinimumWidth(wanted)
+        box = self._child("box_identity")
+        if box is not None:
+            margins = box.layout().contentsMargins()
+            box.setMaximumWidth(max(box.maximumWidth(),
+                                    wanted + margins.left() + margins.right()))
+
     def _weight_columns(self) -> None:
         """Spare width goes where something can use it.
 
-        Above the tabs the roster is sized to its own five columns and the
-        combat icon is 144px of fixed pixels, so Character takes the slack and
-        spreads its two columns through it -- 540px of header that was empty
-        beside a box capped to its own fields.
+        Above the tabs, Character is sized to the widest value each of its
+        fields can hold and the combat icon is 144px of fixed pixels, so the
+        roster is the only one of the three that can read a wider window --
+        its `Name` column stretches. Round six gave the slack to Character
+        instead and it came out as the gutter and the gap Donald marked.
 
-        On the Stats tab only Character Traits can use spare width, and giving
-        it all to the column Traits shares with Money left 490px of nothing
-        beside Money. The four columns share it equally instead.
+        On the Stats tab, Character Traits is the only box that can use spare
+        width, so it has a column of its own at the right and all of the
+        stretch. Sharing it four ways -- round six -- put a gap beside every
+        column instead of one 490px hole beside Money.
         """
         # A layout is not a QWidget, so `_child` cannot find it. `pyuic6`
         # names every layout on the Ui object, which is cheaper and steadier
@@ -741,6 +824,10 @@ class EditorWindow(QMainWindow):
         self.model.party = party
         self.model.endResetModel()
         self._size_roster()
+        # The race and class drop-downs only get their real widths from
+        # `_fill_combos` above, so what Character's columns need is not known
+        # until a save is open.
+        self._pin_identity_columns()
         if len(party):
             self.ui.roster.selectRow(0)
         self._apply_read_only()
@@ -833,6 +920,15 @@ class EditorWindow(QMainWindow):
         bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
         view.setMinimumWidth(header.length() + view.verticalHeader().width()
                              + 2 * view.frameWidth() + bar)
+        # And now, with that number taken, `Name` is allowed to stretch. The
+        # roster is the only thing in the header that can use a wider window:
+        # Character is sized to the widest value each of its fields can hold
+        # and the icon is 144px of fixed pixels, so with the slack anywhere
+        # else it is a hole. `header.length()` above is read first and while
+        # every column is still `ResizeToContents`, because a stretching
+        # section reports the viewport's width and the minimum would chase
+        # the window.
+        header.setSectionResizeMode(NAME_COLUMN, header.ResizeMode.Stretch)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
@@ -1165,7 +1261,7 @@ class EditorWindow(QMainWindow):
             elif hasattr(w, "set_bytes"):
                 w.set_bytes(record.get_raw(name))
                 if hasattr(w, "codes"):
-                    _fit_height(w)
+                    _fit_height(w, fixed=True)
         self._show_boxes(record)
         self._describe_spells(record)
         self.items.set_inventory(member.inventory)
