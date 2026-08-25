@@ -143,13 +143,16 @@ Addresses are `segment:offset`, hexadecimal, and **the offset wraps at 64K**
 | `BPM <seg>:<ofs>` | **watchpoint**: breaks when that *one byte's value changes*, logging `Memory breakpoint : SSSS:OOOO - old -> new` | CONFIRMED |
 | `BP <seg>:<ofs>` | code breakpoint; stops, but **logs nothing** | CONFIRMED |
 | `BPINT <int> [ah] [al]` | break on an interrupt call | UNTESTED |
+| `BPLM <linear>` | the same watchpoint on a linear address, no segment | UNTESTED |
+| `FM <seg>:<ofs> <byte>` | **freeze**: writes the byte back every time anything changes it | UNTESTED |
 | `BPLIST`, `BPDEL *`, `BPDEL <n>` | list and delete breakpoints | CONFIRMED |
 | `RUN` | resume | CONFIRMED |
 | F11 / F10 | step one instruction / over a `CALL` | CONFIRMED |
 | `LOG`, `LOGS`, `LOGL` | CPU trace to `LOGCPU.TXT` | UNTESTED |
 | `MEMFIND` / `MEMS` | in-emulator memory search | UNTESTED — dumping and searching host-side is easier |
 
-Two quirks that will cost an hour if nobody says them:
+Three quirks that will cost an hour if nobody says them. All three are hidden
+by `tools/dosboxx.py`, so this is the explanation rather than the instruction:
 
 * **`MEMDUMPBIN` cannot read more than 64K in one call.** Ask for `100000` and
   you get 1 MB of the *same* 64K repeated sixteen times — the offset wraps, and
@@ -158,6 +161,19 @@ Two quirks that will cost an hour if nobody says them:
 * **A fresh `BPM` remembers the value 00**, so unless the byte really is zero
   the first hit is spurious and arrives the instant you `RUN`. Absorb it, then
   `RUN` again; the second hit is a real change.
+* **A command is cut at 254 characters in silence** (`MAXCMDLEN` in
+  `src/debug/debug.cpp`). A long `SM` writes the bytes that survived the cut
+  and reports `Memory changed` for them, so a write of a whole record looks
+  like it worked and did not. Keep an `SM` to about sixty bytes.
+
+Two smaller things, both useful:
+
+* `MEMDUMPBIN`'s `Memory dump binary success.` is printed *after* `fclose`, so
+  seeing that line means the file is complete. There is no size to poll and no
+  race.
+* `ParseCommand` upper-cases the whole line, so commands and register names are
+  case-insensitive — and `EV AF` is the auxiliary-carry flag rather than the
+  number `0xAF`. Quote it, `EV "AF"`, to mean the number.
 
 ## Proving it on the game: the DOS clock
 
@@ -188,12 +204,18 @@ is 6.
 6. `BP 2F69:0462` then stops on every tick; `SM 39AC:E 09` writes the byte and
    a re-dump reads `09` back.
 
-Reproduced twice with the same base. **The base address is not a finding to
-reuse** — it is where DOS happened to load this build with this config, and
-`$39940` is CONFIRMED only for the configuration in this document. The finding
-is the *recipe*: dump, then locate the array by matching a save you already
-hold. The scripts are `work/dosboxx/find_clock.py` and `work/dosboxx/probe.py`
-(scratch, gitignored).
+**The base address is not a finding to reuse** — it is where DOS happened to
+load this build with this config, and `$39940` is CONFIRMED only for the
+configuration in this document. The finding is the *recipe*: dump, then locate
+the array by matching a save you already hold.
+
+All six steps are now `python3 tools/dosboxx.py clock`, which runs them
+unattended in about twenty seconds and prints what it found. It has produced
+`$39940`, 62 voting windows, 5118 of 5120 bytes equal, `39AC:000E` live `06`,
+the spurious `00 -> 06`, the tick `06 -> 07` and `2f69 462` on every run so
+far. `tests/test_dosboxx.py` asserts all of that behind `WISH_DOSBOXX_DRIVE=1`
+— everything except the base address, which is exactly the number that is not
+allowed to be a finding.
 
 ## What it cannot do
 
@@ -213,10 +235,35 @@ hold. The scripts are `work/dosboxx/find_clock.py` and `work/dosboxx/probe.py`
 * **It cannot be shared.** One debugger per process, on that process's
   terminal, like VICE's one binary-monitor connection per process.
 
-## A harness, if one is wanted
+## The harness
 
-`tools/dosboxx.py` would be `tools/dosbox.py` with the launch replaced: same
-slot lease, same staged game tree, same `Screen` digests and the same
-`PoolOfRadiance` keystroke protocol, plus the pty, `dbg(cmd) -> str`,
-`read(seg, ofs, n) -> bytes` over the 64K limit, `watch(addr)`, `step()` and a
-`halted()` probe. It is filed as an issue rather than built here.
+`tools/dosboxx.py` is `tools/dosbox.py` with the launch replaced: the same slot
+lease, the same staged game tree, the same `Screen` digests, and
+`PoolOfRadiance` drives it unchanged, which is what gets a run to a loaded save
+before there is anything worth looking at. Displays :40-:47, so the two pools
+and VICE's :10-:17 never collide.
+
+```python
+from tools import dosbox, dosboxx
+
+with dosboxx.claim("what I am doing") as slot:
+    with dosboxx.XSession(slot, dosbox.find_game("POOLRAD")) as s:
+        por = dosbox.PoolOfRadiance(s)
+        por.to_main_menu(); por.load_game("J")
+        s.attach()                       # Alt+Pause; True when it answered
+        image = s.read(0, 0x100000)      # sixteen MEMDUMPBINs, joined
+        base, votes, same = dosboxx.locate(image, save[1:5121])
+        s.watch(base + 0x18E)            # BPM, spurious first hit absorbed
+        hit = s.until_break(timeout=180)  # RUN, then the next real change
+        s.regs("CS", "IP")               # EV, the only way registers come out
+        s.write(base + 0x18E, b"\x09")   # SM, split to fit the 254-char line
+```
+
+The rest: `dbg(cmd, expect=…)` types any command and returns what it added to
+the log, `halted()` is the `EV IP` probe, `brk()` sets a code breakpoint and
+`wait_halt()` notices it firing, `step()` and `step_over()` are F11 and F10,
+`breakpoints()` and `clear_breakpoints()` are `BPLIST` and `BPDEL *`.
+
+Addresses are linear `int`s or `(segment, offset)` tuples everywhere, and
+`linear()`, `seg_off()` and `chunks()` are the arithmetic on their own, so the
+64K rule can be tested without an emulator — and is.
