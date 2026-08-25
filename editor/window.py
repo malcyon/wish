@@ -43,6 +43,10 @@ from .binding import bindings, field_name, value_range, widest_text
 from .enums import tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
+from .rosterview import (
+    NAME_COLUMN,
+    ROSTER_MIN_WIDTH,
+)
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
 
 #: The spellbook bitmask at 0x078, which `por/layout.py` declares as two
@@ -102,7 +106,6 @@ def _select(combo: QComboBox, value) -> None:
 WOUNDED = QColor("#b03a2e")
 NPC = QColor("#7d6608")
 
-NAME_COLUMN = 0
 HP_COLUMN = 4
 # Whitespace. Qt's defaults are laid out for a settings dialog with ten
 # controls; this sheet has sixty-two and they have to be readable together.
@@ -116,18 +119,29 @@ MUTED_INK = QColor("#4a5b6d")
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # Which item in a horizontal row is allowed to grow. `header_row` is the
 # roster and Character, and the roster is the one of the two that can use a
-# wider window: its `Name` column stretches (`_size_roster`), so the slack
-# becomes room for a name rather than a hole.
+# wider window: every field in Character is sized to the widest value its bytes
+# can hold, so a pixel more there is a pixel of nothing.
 #
-# Round six gave it to Character instead, which cannot use it -- every field
-# there is sized to the widest value its bytes can hold and a pixel more is a
-# pixel of nothing. Shared 1:1 between Character's two form columns it came
-# out as a gutter down the middle of Character and a gap between Character and
-# the combat icon, both of which Donald marked; handed to the fields instead
-# it came out as a drop-down 890px wide with `2  ELF` in it. Character is
-# sized to its own contents now.
+# Round six gave it to Character anyway. Shared 1:1 between its two form
+# columns it came out as a gutter down the middle of Character and a gap beside
+# it, both of which Donald marked; handed to the fields instead it came out as
+# a drop-down 890px wide with `2  ELF` in it.
 #
-ROW_STRETCH = {"header_row": (0, 0, 1), "form_identity": (0, 0)}
+# So the roster takes it, and `header_slack` -- the spacer after Character --
+# takes only what the roster cannot use, its maximum being its own five
+# columns. That order is #71's fix at the layout level. A `QBoxLayout` short of
+# room shrinks every item that has anything to give, in proportion, so while
+# the roster hinted its contents Character was squeezed alongside it and drew
+# one form column over the other; the roster hints its *floor* and grows from
+# there (`RosterView.sizeHint`), which keeps the row in the layout's expanding
+# case at every width worth having and leaves Character at its own size until
+# the roster has given everything it has.
+#
+# Giving the spacer a share of the stretch as well was measured and is worse:
+# at 1280 with the base font the two split the slack, and the roster came out
+# 147px short of its own contents -- eliding names beside 250px of empty
+# header.
+ROW_STRETCH = {"header_row": (1, 0, 0), "form_identity": (0, 0)}
 #: The Stats tab is a grid and not five independent columns, because a row of
 #: a grid has one top edge and five `QVBoxLayout`s have five. Donald asked for
 #: `Combat` and the combat icon to start on the same line with the icon in the
@@ -737,7 +751,14 @@ class EditorWindow(QMainWindow):
         box = self._child("box_identity")
         if box is not None:
             margins = box.layout().contentsMargins()
-            box.setMaximumWidth(max(box.maximumWidth(),
+            # The ceiling is the box's own hint, or what the columns need if
+            # that is more -- and it is recomputed rather than only ever
+            # raised. `max(box.maximumWidth(), ...)` kept whichever number was
+            # largest across every call, which left the box 18px wider than it
+            # wants; harmless while nothing in the header could grow into a
+            # wider window, and 18px of Character sliding right the moment the
+            # roster took the row's stretch (#71).
+            box.setMaximumWidth(max(box.sizeHint().width(),
                                     wanted + margins.left() + margins.right()))
 
     def _weight_columns(self) -> None:
@@ -1039,30 +1060,33 @@ class EditorWindow(QMainWindow):
         return note
 
     def _size_roster(self) -> None:
-        """Give the roster exactly the width and height its rows need.
+        """Measure the roster: the height its rows need, and the width they
+        would like, which is not the same as the width it can survive on.
 
         There is no splitter any more. The roster and Character sit above the
         tabs and the sheet scrolls inside whichever tab is showing, because a
         fixed top over a scrolling bottom squeezed the fields into a
         sixty-pixel strip whenever the window was anything short of enormous.
+
+        The width is two numbers since #71 and used to be one. `RosterView` has
+        the rest of it and the reasons.
         """
         view = self.ui.roster
-        view.resizeColumnsToContents()
-        # Name absorbs the slack. Sized to contents alone the five columns come
-        # to about a third of the window and the rest of the strip is empty,
-        # which is most of what "the table takes the whole top" was about.
         header = view.horizontalHeader()
+        # Measured with every column at its contents, and `Name` among them:
+        # what the five come to here is the natural width the table asks for
+        # and is capped at, and it is read before `Name` is made interactive
+        # below, because an interactive section keeps whatever it was last
+        # dragged to rather than reporting its text.
         for column in range(self.model.columnCount()):
             header.setSectionResizeMode(column,
                                         header.ResizeMode.ResizeToContents)
-        # A floor under the width, and no ceiling. `QTableView` hints 256px
-        # whatever is in it, and the row above the tabs takes the hint, so the
-        # five columns did not fit and the table grew a horizontal scroll bar
-        # -- which cost a row off the bottom, which brought up the vertical bar
-        # as well, which took another 14px of width. `header.length()` is what
-        # the columns actually came to; the vertical bar's width is reserved
-        # whether or not it is up, because that loop is what happens when the
-        # table is a few pixels short.
+        view.resizeColumnsToContents()
+        # `header.length()` is what the columns actually came to; the vertical
+        # bar's width is reserved whether or not it is up, because a table a
+        # few pixels short grows a horizontal bar, which costs a row off the
+        # bottom, which brings the vertical bar up as well, which takes another
+        # 14px of width.
         #
         # The width is asked of the style rather than of `verticalScrollBar()`:
         # capping a table's size and reaching for its scroll bar in the same
@@ -1070,30 +1094,33 @@ class EditorWindow(QMainWindow):
         # work hit once already.
         from PyQt6.QtWidgets import QStyle
         bar = view.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
-        view.setMinimumWidth(header.length() + view.verticalHeader().width()
-                             + 2 * view.frameWidth() + bar)
-        # And now, with that number taken, `Name` is allowed to stretch. The
-        # roster is the only other thing in the header, and Character is
-        # sized to the widest value each of its fields can hold, so with the
-        # slack anywhere else it is a hole. `header.length()` above is read
-        # first and while every column is still `ResizeToContents`, because a
-        # stretching section reports the viewport's width and the minimum
-        # would chase the window.
+        natural = (header.length() + view.verticalHeader().width()
+                   + 2 * view.frameWidth() + bar)
         # **No column stretches.** `Name` used to, and a stretching section
         # takes the whole viewport: on a wide window it drew several times the
         # longest name the game can hold. Capping it did not work either --
         # `QHeaderView` ignores `maximumSectionSize` for a section in `Stretch`
         # mode, reproduced on a bare `QTableView` with none of this in it (#90).
         #
-        # So the slack leaves the table altogether. `header_slack` in
-        # `character.ui` is a spacer at the **end** of `header_row` and is the
-        # only item in it with any stretch, so a wider window grows the empty
-        # space to the right of Character and nothing else. It sits after
-        # Character rather than between the two boxes: they are one group and
-        # should read as one, and a gap that opens down the middle of the
-        # header pulls them apart as the window widens. The roster is exactly
-        # its five columns, whatever the window is doing.
-        view.setMaximumWidth(view.minimumWidth())
+        # It is interactive instead, and `RosterView` sets its width from the
+        # width the table was given: its contents when there is room, and the
+        # shortfall taken out of it when there is not (#71). The slack above
+        # the natural width still leaves the table altogether -- `header_slack`
+        # in `character.ui` is a spacer at the **end** of `header_row`, so a
+        # wider window grows the empty space to the right of Character and
+        # nothing else. It sits after Character rather than between the two
+        # boxes: they are one group and should read as one, and a gap that
+        # opens down the middle of the header pulls them apart.
+        header.setSectionResizeMode(NAME_COLUMN,
+                                    header.ResizeMode.Interactive)
+        view.measure(natural, header.sectionSize(NAME_COLUMN))
+        # The floor is a constant and the ceiling is the contents. This pair
+        # used to be one number -- `minimumWidth == maximumWidth == natural` --
+        # which is how the roster came to be the last thing in the header whose
+        # minimum was a font metric, and so the last thing putting the window's
+        # own floor under the UI font (#71, #41).
+        view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
+        view.setMaximumWidth(natural)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))

@@ -909,18 +909,29 @@ def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
 
 
 @game_disks
-def test_the_header_s_spare_width_goes_to_a_spacer(app, save):
-    """Nothing in the header grows into a wider window except the gap.
+def test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save):
+    """Nothing in the header grows past its own contents into a wider window.
 
     Every field in Character is sized to the widest value its bytes can hold,
-    so it cannot read a wider window. The roster could, and that was the fault:
-    a `Stretch` section takes the whole viewport, so `Name` drew several times
-    the longest name the game can hold. Capping it did nothing --
-    `QHeaderView` ignores `maximumSectionSize` for a stretching section (#90).
+    so it cannot read a wider window. The roster can, up to its five columns
+    at their contents and not a pixel further, so it is the item with the
+    stretch (#71) -- and `header_slack`, the spacer after Character, takes
+    whatever is left once the roster is full.
 
-    So the slack leaves the table. `header_slack` is the only item in the row
-    with any stretch, the roster is pinned to exactly its five columns, and a
-    wider window widens the gap between the two boxes and nothing else.
+    That order is the fix, not decoration. A `QBoxLayout` short of room shrinks
+    every item that has anything to give, in proportion, so while the roster
+    hinted its contents Character was squeezed alongside it and drew one form
+    column over the other. The roster hints its floor and grows from there, and
+    the row is in the layout's *expanding* case at every width worth having.
+
+    Giving the spacer the stretch as well was measured and is worse: at 1280
+    with the base font the two split the slack and the roster came out 147px
+    short of its own contents, eliding names beside 250px of empty header.
+
+    `Name` must not be a `Stretch` section whatever else changes -- a
+    stretching section takes the whole viewport, and `QHeaderView` ignores
+    `maximumSectionSize` for one, reproduced on a bare `QTableView` with none
+    of our code in it (#90).
 
     Round six's history is why this is asserted rather than left to the
     layout: the slack was given to Character and shared 1:1 between its two
@@ -934,8 +945,11 @@ def test_the_header_s_spare_width_goes_to_a_spacer(app, save):
     row = w.ui.header_row
     stretched = [i for i in range(row.count()) if row.stretch(i)]
     assert len(stretched) == 1, "one thing takes the slack, not none and not two"
-    assert row.itemAt(stretched[0]).spacerItem() is not None, (
-        "the slack belongs to the spacer, not to a box that would grow into it")
+    assert row.itemAt(stretched[0]).widget() is w.ui.roster, (
+        "the roster takes the slack, and it is the only thing in the header "
+        "that can read it")
+    assert row.itemAt(row.count() - 1).spacerItem() is not None, (
+        "and what the roster cannot use ends up in the gap after Character")
     columns = w.ui.form_identity
     assert not any(columns.stretch(i) for i in range(columns.count()))
 
@@ -943,12 +957,75 @@ def test_the_header_s_spare_width_goes_to_a_spacer(app, save):
     header = view.horizontalHeader()
     from editor.window import NAME_COLUMN
     assert header.sectionResizeMode(NAME_COLUMN) != header.ResizeMode.Stretch
-    assert view.maximumWidth() == view.minimumWidth(), (
-        "the roster is its columns, whatever the window is doing")
+    from editor.rosterview import ROSTER_MIN_WIDTH
+    assert view.minimumWidth() == min(view.maximumWidth(), ROSTER_MIN_WIDTH), (
+        "the roster's ceiling is its own five columns and its floor is a "
+        "constant -- or its columns, when a party is narrower than the floor, "
+        "which this one is")
     # And the column really is a name's width rather than a window's.
     from por.layout import NAME_SIZE
     widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
     assert header.sectionSize(NAME_COLUMN) <= widest * 2
+
+
+def test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
+    """#71, in the one place a user meets it: drag the window narrower than
+    the header wants and a name loses characters. Nothing else moves.
+
+    The roster was the last widget in the header whose minimum was the width
+    of the strings it happened to be holding, and the header does not scroll,
+    so that minimum was a floor under the whole window that followed the UI
+    font: 1093px at the base font here, 1672 at ten points more, against a
+    1280-wide screen. It gives the width up instead.
+
+    What is asserted is the shape Donald approved, in order:
+
+    * wide enough, and the roster is its five columns at their contents, which
+      is what it has always been -- the same pixels, verified against
+      screenshots taken before and after the change;
+    * squeezed, and `Name` alone absorbs the shortfall; `Race`, `Class`, `AC`
+      and `HP` do not move;
+    * and the window's floor does not know any of it happened.
+
+    The party is the synthetic one, so this runs on a machine with no game
+    (#70), and it is the widest a save can hold, so `Name` really is 20
+    capital Ws and really does have something to give.
+    """
+    from editor.rosterview import NAME_COLUMN, ROSTER_MIN_WIDTH
+    from editor.window import EditorWindow
+
+    w = EditorWindow(str(party))
+    w.show()
+    view = w.ui.roster
+    header = view.horizontalHeader()
+    natural = view.maximumWidth()
+    floor = w.minimumSizeHint().width()
+
+    w.resize(natural + 900, 700)
+    app.processEvents()
+    assert view.width() == natural, "a window with room to spare changes nothing"
+    wide = [header.sectionSize(i) for i in range(header.count())]
+
+    w.resize(floor, 700)
+    app.processEvents()
+    assert view.width() == ROSTER_MIN_WIDTH, (
+        "the roster did not give the width up")
+    tight = [header.sectionSize(i) for i in range(header.count())]
+    assert tight[NAME_COLUMN] < wide[NAME_COLUMN], (
+        "Name is the column that gives")
+    assert tight[NAME_COLUMN + 1:] == wide[NAME_COLUMN + 1:], (
+        "Race, Class, AC and HP are readable for as long as there is room")
+    # Narrower than the text it holds, with eliding on, is what draws
+    # `WWWWWWW...` -- there is no string here to get wrong and none to
+    # approve.
+    from PyQt6.QtCore import Qt
+    assert view.textElideMode() == Qt.TextElideMode.ElideRight
+    from por.layout import NAME_SIZE
+    assert tight[NAME_COLUMN] < view.fontMetrics().horizontalAdvance(
+        "W" * NAME_SIZE)
+    assert w.minimumSizeHint().width() == floor, (
+        "the floor moved while the window was being resized")
+    assert w.width() == floor, "the window refused to be made as small as it says"
 
 
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one
@@ -1152,6 +1229,12 @@ def test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #: That 836 is measured with nothing open (#63): with a save loaded the
 #: automapper is not the floor and the editor is, so the screen is the ceiling
 #: that governs and the screen is what this is taken from.
+#:
+#: The 446 is history since #71 -- the roster's floor is a constant 440 at
+#: every font now, so the budget could be derived exactly and would come to
+#: 814. It is left at 808 because six pixels of a budget nothing is near is not
+#: worth a number changing under a reader who goes looking for where 446 came
+#: from.
 IDENTITY_BUDGET = SMALL_LAPTOP[0] - 446 - 26
 
 

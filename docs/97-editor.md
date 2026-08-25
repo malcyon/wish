@@ -320,9 +320,21 @@ current record first**, or an edit made and not tabbed out of is silently lost.
 Keep a dirty flag per slot, not one for the whole file, so the save dialog can
 say which characters changed.
 
-Nothing here is exempt from the Designer rule: the roster is a `QTableView`
-called `roster` on the form, so it can be moved, resized, or put in a dock
-without touching code. Its model is built in `window.py` and attached by name.
+Nothing here is exempt from the Designer rule: the roster is a table called
+`roster` on the form, so it can be moved, resized, or put in a dock without
+touching code. Its model is built in `window.py` and attached by name.
+
+It is promoted rather than plain -- class `RosterView`, header
+`editor.rosterview` -- because it is the header's shock absorber. Everything
+else above the tabs is pinned to the widest value its bytes can hold, so a
+window narrower than the header wants has to be paid for out of the roster:
+above its floor it is exactly its five columns at their contents, below it
+`Name` absorbs the whole shortfall and elides, and only when `Name` has nothing
+left does the table scroll. The floor is a constant, because the header does not
+scroll and the roster's minimum is therefore a floor under the whole window --
+and a minimum measured from the names a party happens to carry is a window floor
+that follows the UI font, which is the bug in issue 41 and the last of it in
+issue 71.
 
 ---
 

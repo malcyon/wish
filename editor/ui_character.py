@@ -35,7 +35,7 @@ class Ui_CharacterWindow(object):
         self.outer.addLayout(self.buttons)
         self.header_row = QtWidgets.QHBoxLayout()
         self.header_row.setObjectName("header_row")
-        self.roster = QtWidgets.QTableView(parent=self.centre)
+        self.roster = RosterView(parent=self.centre)
         self.roster.setObjectName("roster")
         self.header_row.addWidget(self.roster)
         self.box_identity = QtWidgets.QGroupBox(parent=self.centre)
@@ -778,4 +778,5 @@ class Ui_CharacterWindow(object):
         self.sheet_tabs.setTabText(self.sheet_tabs.indexOf(self.tab_spells), _translate("CharacterWindow", "Spells"))
 from editor.effects import EffectsView
 from editor.iconwidget import IconEditor
+from editor.rosterview import RosterView
 from editor.spellwidget import MemorisedEditor, SpellbookEditor

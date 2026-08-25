@@ -248,41 +248,27 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 #: characters of the widest shape the record and Pool of Radiance's own tables
 #: allow.
 #:
-#: | UI font | empty | loaded, round seven | loaded, now | the roster in it |
+#: | UI font | empty | loaded, before #71 | loaded, now | the roster in it |
 #: |---|---|---|---|---|
-#: | base   | 836 x 662 | 1265 x 662 | **1093 x 662** |  587 |
-#: | +3pt   | 836 x 702 | 1442 x 702 | **1270 x 702** |  764 |
-#: | +10pt  | 836 x 805 | 1844 x 805 | **1672 x 805** | 1138 |
+#: | base   | 836 x 662 | 1093 x 662 | **948 x 662** | 440 |
+#: | +3pt   | 836 x 702 | 1270 x 702 | **948 x 702** | 440 |
+#: | +6pt   | 836 x 749 | 1449 x 749 | **948 x 749** | 440 |
+#: | +10pt  | 836 x 805 | 1672 x 805 | **948 x 805** | 440 |
 #:
-#: The 172px between the two loaded columns is the combat icon leaving the
-#: header for the Stats tab -- 166 of box and 6 of the row's spacing, the same
-#: at every font size, because nothing in that box was ever sized from a
-#: string. It is what took the widest party a save can hold inside a 1280
-#: screen at the base font and at three points more, which is the first test
-#: below and used to be an expected failure.
+#: The roster was the whole of the slope: 587, 764, 941 and 1164 at those four
+#: fonts, because its minimum was `header.length()` -- the width of the names,
+#: races and classes it happened to be holding. It is a constant now
+#: (`editor/rosterview.py`), and 948 is that constant plus Character's own cap
+#: of 480 plus 24 of layout margins and spacing plus 4 of window frame, none of
+#: which is measured from a string.
 #:
-#: The roster is the whole of what is left growing: the empty window has no
-#: rows, so nothing in it is sized from a string.
+#: The height still follows the font, which is #77 and is not this.
 
 
-@pytest.mark.xfail(reason=(
-    "passes on the machine this was written on and fails in CI: 1270 here at "
-    "+3pt against 1308 on CI's Linux and 1447 on Windows at the *base* font. "
-    "Not `strict`, deliberately -- a strict expected failure would then fail "
-    "here for passing. The number is a font metric and this test is the only "
-    "place that says so out loud. #71."))
 def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
                                                            monkeypatch):
     """And with a character on screen, which is the case `_floor(None)` above
     has never measured -- #63.
-
-    **This measures a font, and fonts differ between machines.** It was
-    converted from an expected failure to a real assertion in round eight of
-    #43 on a local measurement of 1270 against 1280 -- ten pixels -- and CI
-    then reported 1308 on Linux and 1447 on Windows at the base font. Ten
-    pixels was never a margin; it was the width of a different renderer's
-    idea of the same string. That is exactly the hole #70 was opened about,
-    caught the first time this guarantee was allowed to run in CI at all.
 
     Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
     it: the roster's five columns get their real widths, and none of them were
@@ -292,49 +278,68 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     and it is the *widest* party rather than a plausible one, because a floor
     measured from six-letter names is true of nothing.
 
-    **An expected failure until round eight of #43**, by 162px at three points
-    of extra font. Moving the combat icon out of the header took 172px off
-    every one of these numbers and the widest party fits: 1093 and 1270
-    against 1280. Ten pixels is the whole margin at +3pt, so anything put back
-    in the header takes it -- the header is the roster and Character and
-    nothing else now, deliberately.
+    **An expected failure twice over before #71 closed it.** Round eight of
+    #43 turned it into a real assertion on a local measurement of 1270 against
+    1280 -- ten pixels -- and CI answered 1308 on Linux and 1447 on Windows at
+    the *base* font, so it went back to being expected to fail. Ten pixels was
+    never a margin; it was the width of a different renderer's idea of the same
+    string, and no measurement taken on this machine could have told anyone
+    that.
 
-    Still short of Windows, where the base UI font measures like ten points
-    more than this one and the floor is 1672. That half of #71 is the roster,
-    which is the only thing in the header still sized from the strings it
-    holds -- see the expected failure below.
+    What makes it an assertion again is that the number it measures is no
+    longer a font metric. The roster gives up width instead of demanding it,
+    and its floor is a constant, so the whole window's floor is 948 at every UI
+    font this machine can be made to draw -- 332px of margin under the screen
+    rather than ten. The sibling below is the test that says so directly.
+
+    The width is checked at four fonts and the height at two, and that is not
+    the assertion being trimmed to fit: the height still follows the UI font
+    and 720 does not hold this window at +6pt, which is #77 and is nothing this
+    change touches. The width at +6pt and +10pt is precisely what it does
+    touch, it was 1449 and 1672 before, and without those two rows this test
+    cannot go red on a Linux machine at all -- which is how it came to be an
+    expected failure that CI disagreed with.
     """
     from gamedata import synthetic_save
 
     save = str(synthetic_save(tmp_path))
-    for extra, floor in zip((0, 3), _floors(app, tmp_path, monkeypatch, save)):
+    fonts = (0, 3, 6, 10)
+    floors = _floors(app, tmp_path, monkeypatch, save, fonts=fonts)
+    for extra, floor in zip(fonts, floors):
         assert floor.width() <= SMALL.width(), f"+{extra}pt"
+    for extra, floor in zip(fonts, floors):
+        if extra > 3:
+            continue                                # the height is #77
         assert floor.height() <= SMALL.height(), f"+{extra}pt"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "the loaded floor is 1093px at the base UI font and 1270 at three points "
-    "more -- 177px of the window's minimum following the font, which is what "
-    "#41 was opened to remove and what the empty window no longer does. The "
-    "roster is all of it: 587 against 764. #71."))
 def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
         app, tmp_path, monkeypatch):
     """#41's guarantee, re-asserted against the state that governs a session.
 
     `test_the_windows_minimum_does_not_follow_the_ui_font` above is true of
-    the window it measures and has never covered this one -- the roster is
-    empty there, and the roster is the thing that follows the font.
+    the window it measures and never covered this one -- the roster is empty
+    there, and the roster was the thing that followed the font. #63 is the
+    record of why the empty window was never enough.
 
-    Still expected to fail after round eight of #43. The combat icon was a
-    constant, so taking it off the header moved both numbers by the same 172
-    and changed nothing about the slope. Only the roster giving up width
-    closes this one.
+    Ten points of extra UI font and not three, because Windows' base font
+    measures here like six to ten points more than 9pt, and three points was
+    where the old numbers still looked survivable: 1093, 1270, 1449 and 1672 at
+    +0, +3, +6 and +10 before this, and 948 at all four now.
+
+    An equality and not a tolerance. Every widget left in the header is held to
+    an explicit constant, so there is nothing in the answer that a font could
+    move by a pixel; if these two ever differ at all, something in the header
+    has gone back to measuring a string.
     """
     from gamedata import synthetic_save
 
     save = str(synthetic_save(tmp_path))
-    widths = [f.width() for f in _floors(app, tmp_path, monkeypatch, save)]
-    assert widths[1] == widths[0], "the minimum width grew with the font"
+    fonts = (0, 3, 6, 10)
+    widths = [f.width()
+              for f in _floors(app, tmp_path, monkeypatch, save, fonts=fonts)]
+    assert widths == [widths[0]] * len(fonts), (
+        f"the minimum width grew with the font: {dict(zip(fonts, widths))}")
 
 
 def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
