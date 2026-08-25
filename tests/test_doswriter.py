@@ -116,7 +116,7 @@ def test_a_filled_character_lands_field_for_field():
     """Every value the writer takes reads back off the DOS record through the
     DOS reader's own accessors."""
     char = _filled()
-    rec, itm, rep = dos.write(char)
+    rec, itm, _spc, rep = dos.write(char)
     assert len(rec) == dos_layout.RECORD_SIZE
     back = dos.DosCharacter(rec, items=[dos.DosItem(itm[i:i + 63])
                                         for i in range(0, len(itm), 63)])
@@ -143,15 +143,21 @@ def test_a_filled_character_lands_field_for_field():
     weight = 0x0908 * 10
     assert back.get("encumbrance") == \
         min(sum(back.money.values()) + weight, 0xFFFF)
-    # And every byte of both outputs has a provenance.
-    assert rep.total == dos_layout.RECORD_SIZE + len(itm)
+    # `_filled` carries innate effects 18 and 47 and is race 1, so a `.SPC`
+    # goes beside the record: nine bytes each, id + INNATE_PAYLOAD + a NULL
+    # next pointer.  26 comes first because a dwarf's two situational combat
+    # bonuses are derived from the race byte, and 47 is already carried.
+    assert _spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD + bytes(4)
+                            for e in (26, 18, 47))
+    # And every byte of all three outputs has a provenance.
+    assert rep.total == dos_layout.RECORD_SIZE + len(itm) + len(_spc)
     assert rep.unaccounted == []
 
 
 def test_a_value_graded_unknown_is_not_written_to_dos():
     char = _filled()
     char.set("wisdom", 9, "somewhere", Confidence.UNKNOWN)
-    rec, _, rep = dos.write(char)
+    rec, _, _, rep = dos.write(char)
     assert rec[dos_layout.FIELDS_BY_NAME["wisdom"].offset] == 0
     assert any("wisdom" in d and "UNKNOWN" in d for d in rep.dropped)
 
@@ -161,7 +167,7 @@ def test_a_class_with_no_dos_slot_is_reported():
     monk go the other way -- DOS has their slots, so they carry."""
     char = _filled()
     char.set("levels", {"fighter": 7, "knight": 2, "druid": 4}, "made up")
-    rec, _, rep = dos.write(char)
+    rec, _, _, rep = dos.write(char)
     assert any("knight" in w for w in rep.warnings)
     raw = rec[dos_layout.FIELDS_BY_NAME["class_levels"].span]
     assert raw[2] == 7      # fighter is class number 2
@@ -173,7 +179,7 @@ def test_a_name_too_long_for_dos_is_truncated_and_said():
     char = _filled()
     char.set("name", "ABCDEFGHIJKLMNOPQRST", "made up",
              Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
-    rec, _, rep = dos.write(char)
+    rec, _, _, rep = dos.write(char)
     assert rec[0] == 15
     assert rec[1:16] == b"ABCDEFGHIJKLMNO"
     assert any("truncated" in w for w in rep.warnings)
@@ -224,7 +230,7 @@ def test_a_record_round_trips_through_the_neutral_middle():
     identity balanced (22 of 24 -- the two stale dart stacks)."""
     total = enc_misses = 0
     for char in _records():
-        rec, itm, _ = dos.write(dos.to_neutral(char))
+        rec, itm, spc, _ = dos.write(dos.to_neutral(char))
         outside, enc = _diff_against(char, rec)
         assert outside == set(), (char.name, sorted(hex(i) for i in outside))
         enc_misses += enc
@@ -233,6 +239,13 @@ def test_a_record_round_trips_through_the_neutral_middle():
         for n, item in enumerate(char.items):
             ours = itm[n * 63:(n + 1) * 63]
             assert ours[0x02E:] == item.to_bytes()[0x02E:], (char.name, n)
+        # The `.SPC` is the original's innate records with the next pointers
+        # NULLed -- which is also the claim that every innate record in the
+        # player's own saves carries `INNATE_PAYLOAD` in bytes 1-4.
+        innate = [e for e in char.effects if e[0] in dos.INNATE_EFFECTS]
+        assert spc == b"".join(e[:5] + bytes(4) for e in innate), char.name
+        for e in innate:
+            assert e[1:5] == dos.INNATE_PAYLOAD, (char.name, e.hex())
     assert total >= 24
     assert enc_misses <= 2, f"{enc_misses} encumbrance misses of {total}"
 
@@ -247,7 +260,7 @@ def test_a_record_round_trips_through_the_c64_record():
     for char in _records():
         c64_rec, _ = c64_codec.write(dos.to_neutral(char))
         back = c64_codec.read(c64_rec, source="round trip")
-        rec, _, _ = dos.write(back)
+        rec, _, _, _ = dos.write(back)
         outside, _ = _diff_against(char, rec)
         assert outside == set(), (char.name, sorted(hex(i) for i in outside))
         total += 1
@@ -257,7 +270,7 @@ def test_a_record_round_trips_through_the_c64_record():
 @needs_dos_saves
 def test_the_write_report_accounts_for_every_byte():
     for char in _records():
-        _, _, rep = dos.write(dos.to_neutral(char))
+        _, _, _, rep = dos.write(dos.to_neutral(char))
         assert rep.unaccounted == [], (char.name, rep.unaccounted[:8])
         assert rep.dropped
 
@@ -287,7 +300,7 @@ def test_the_roster_path_speaks_the_stored_encoding():
     # short of it, and the first conversion wrote zeros into the DOS tail.
     assert char.get("roster_tail") == block.raw[0x10:0x19]
     # And through the DOS writer, the stored byte lands verbatim.
-    rec, _, _ = dos.write(char)
+    rec, _, _, _ = dos.write(char)
     assert rec[dos_layout.FIELDS_BY_NAME["armour_class"].offset] == \
         COMBAT_BIAS - block.armour_class
 
@@ -374,6 +387,47 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
                                    save0[0x49C1 - 0x4900],
                                    save0[0x49C2 - 0x4900])
     assert any("retargeted" in c for c in report.carried)
+
+
+@needs_dos_saves
+def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
+    """#61: an elf's sleep resistance is not a spell buff and is carried.
+
+    DOS does not re-derive these from race and constitution -- measured under
+    DOSBox-X, `docs/117-save-conversion.md` -- so without the file the elf
+    arrives with nothing.  The party of six has an elf, a half-elf and a
+    dwarf; the three humans have no innate effect and so get no file at all,
+    which is the state the engine's own save writes.
+
+    The dwarf is the case the C64 record cannot answer on its own: it holds no
+    trait id for him at all, because the C64 works his bonus against orcs out
+    when the blow lands.  `RACE_COMBAT_EFFECTS` is where that comes from.
+    """
+    import pathlib
+
+    from por.savegame import SaveGame0
+    here = pathlib.Path(__file__).resolve().parent / "fixtures"
+    save0 = SaveGame0.from_prg(
+        (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
+    dos.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
+
+    party = dos.read_party(tmp_path, "B")
+    assert [c.name for c in party][:2] == ["MALCYON", "LADY KATHERINE"]
+    assert party[0].effect_ids == [107]      # elf sleep and charm resistance
+    assert party[1].effect_ids == [124]      # the half-elf's
+    assert (tmp_path / "CHRDATB1.SPC").read_bytes() == \
+        bytes((107,)) + dos.INNATE_PAYLOAD + dos.EFFECT_NEXT_NULL
+    # MAGNUS the dwarf: 26 against orcs and 47 against giants, from the race
+    # byte.  90 and 97 are *not* here -- the C64 has already spent the
+    # constitution save bonus inside the five saving-throw bytes this
+    # conversion copies, so writing them too would apply it twice.
+    assert party[4].name == "MAGNUS"
+    assert party[4].effect_ids == [26, 47]
+    # The three humans carry nothing, and an empty file is not how the engine
+    # says so.
+    for n in (3, 4, 6):
+        assert party[n - 1].effect_ids == []
+        assert not (tmp_path / f"CHRDATB{n}.SPC").exists()
 
 
 @needs_dos_saves
@@ -557,7 +611,7 @@ def test_a_character_who_carries_nothing_matches_the_engines_own_record():
     """
     char = _filled()
     char.set("inventory", [], "made up: a character carrying nothing")
-    rec, itm, _ = dos.write(char)
+    rec, itm, _, _ = dos.write(char)
     assert itm == b""
     assert _item_region(rec) == {"item_count": b"\x00",
                                  "item_chain": bytes(56),

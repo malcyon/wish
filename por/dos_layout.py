@@ -262,7 +262,10 @@ _DECLARED: Sequence[Field] = (
        "a four-byte far pointer, and one of the seven runs Curse's importer "
        "refuses to read (0x7F-0x82). The 0x081/0x082 pair moves with the "
        "heap between two saves of the same party; the active effects "
-       "themselves are in the sibling `.SPC` file. LIVE -- drop it"),
+       "themselves are in the sibling `.SPC` file, one node per record, each "
+       "carrying the next in its own last four bytes. LIVE, and NULL is the "
+       "right thing to write: the engine allocates the nodes on load and "
+       "sets this pointer itself, measured under DOSBox-X (#61)"),
     _f(0x083, 5, _RAW, "field_83_87", "unnamed @0x083", _NOPE,
        "zero but for 0x085, which is 1 in all 24. Curse's importer copies "
        "the run verbatim to its own 0xF6-0xFA without naming it either",

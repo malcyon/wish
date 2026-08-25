@@ -300,7 +300,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 | `CHRDAT<slot><1..6>.SAV` | one character of the saved party. **285 bytes** |
 | `<NAME>.CHA` | one *exported* character. **The same 285 bytes, same layout** — the export is the slot copied out, not a reduced form. The only systematic difference is that the item count at `0x0C7` is zeroed |
 | `<stem>.ITM` | that character's items, **63 bytes each**, no header |
-| `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none |
+| `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none. One effect id, four payload bytes and a four-byte far pointer to the next record, which the loader rebuilds -- see "The `.SPC` effects file" |
 | `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
 | `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
 
@@ -722,10 +722,12 @@ checking was better than the question:
   the run either side of it;
 * **the effect id space is shared.** A `.SPC` record's first byte is a
   `por/traits.py` id: 107 is elf sleep resistance and 124 the half-elf's on
-  both ports, and the dwarf carries 26, 47, 90 and 97 — the four racial
-  bonuses `por/traits.py` names. So a character's **innate** abilities survive
-  the trip into the C64's ten trait slots at `0x0AD`, and only the running
-  spells are dropped;
+  both ports, and the DOS dwarf carries 26, 47, 90 and 97 — the four racial
+  bonuses `por/traits.py` names. The C64's ten trait slots at `0x0AD` hold
+  the same numbers, but **only for the elf and the half-elf**: no C64 dwarf
+  in any save on the disks has a trait id at all, because the C64 works his
+  out from the race byte. "The `.SPC` effects file" below is what that costs
+  a conversion and what closes it;
 * **`0x0C7` is load-bearing.** The item count, not the `.ITM` file's length,
   says how many items a character has. The archives hold exports sitting
   beside stale `.ITM` files from an earlier save, and trusting the file length
@@ -1438,11 +1440,67 @@ nothing gets **no `.ITM`**, not an empty one (`ITM_OMITTED_WHEN_EMPTY`). A
 zero-length file is what the engine reads as one item of heap — #62, and the
 one thing about a naked converted character that was actually wrong.
 
-The `.SPC` effects file is never written: its 9-byte record is decoded only
-to the id byte, and writing the other eight would be a guess. A character's
-innate effects are reported as dropped. Whether DOS rederives racial bonuses
-without one is UNKNOWN; the settling experiment is a dwarf's poison save,
-before and after conversion.
+The `.SPC` effects file **is** written now — see "The `.SPC` effects file"
+below, which is where #61 settled the nine bytes and what DOS does without
+them.
+
+### The `.SPC` effects file (#61)
+
+**DOS does not work a racial bonus out from race and constitution when it
+loads a character. It reads it out of the `.SPC` file, and with no file there
+is no bonus.** That was #61's cheap experiment and it came back the expensive
+way. Measured under DOSBox-X: load the archives' slot J, break in, find each
+character's record in the megabyte, and follow the far pointer at record
+`0x07F`. With `CHRDATJ1.SPC` present the dwarf's list holds 90, 97, 26, 47 and
+a running `BLESS`; delete that one file and the same dwarf loads with the head
+pointer **NULL and no nodes at all**, while the halfling beside him, whose file
+was left alone, still has his. So the effects were being dropped, and the file
+has to be written.
+
+The record is nine bytes and only the first was known. The other eight came
+out of the same instrument plus a census of every `.SPC` in the archives:
+
+| bytes | what | grade |
+|---|---|---|
+| 0 | the effect id, in `por/traits.py`'s namespace | CONFIRMED |
+| 1-4 | `00 00 FF 00` for every innate effect in 32 files, over six ids and three races. `BLESS` is the one record that differs, `02 00 01 00`, so `0xFF` is what a permanent effect holds where a spell holds its remaining duration (`INNATE_PAYLOAD`) | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds |
+| 5-8 | a far pointer to the next record, offset word then segment word. The saved value is dead: the engine allocates a node per record on load and relinks them (`EFFECT_NEXT_NULL`) | CONFIRMED |
+
+Three measurements say the pointer is rebuilt rather than relocated, and the
+third is the one that matters to a writer:
+
+1. the nodes of one unchanged slot land at different addresses on two loads;
+2. removing one character's file moves the *next* character's first node to
+   where the removed one's used to be — relocation cannot do that;
+3. zeroing all four pointer bytes in every record of a five-record file still
+   loads all five, correctly relinked. **The record count comes from the
+   file's length, not from a NULL terminator**, so a converter writes zeros.
+
+The last of those was then run forwards: a `.SPC` holding one hand-written
+record, `6b 00 00 ff 00 00 00 00 00` — exactly what the writer emits — loads
+as the elf's sleep resistance with the chain terminated properly.
+
+**What a C64 record can actually hand over is less than it looks.** The ten
+trait slots at `0x0AD` hold 107 for an elf and 124 for a half-elf and nothing
+for anybody else: no dwarf on any of Donald's disks, nor in the game's own
+starting party on `POOL1.D64`, carries a trait id. The two ports split the
+dwarf's four bonuses down the middle:
+
+| effect | C64 | DOS | what the writer does |
+|---|---|---|---|
+| 90, 97 — the constitution bonus to saves | **baked into the five stored saving throws.** HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11` where the class row is `13 12 14 16 15` | not baked: THRENDER GRONE, a fighter 1 with constitution 16, stores the plain class row `14 15 16 17 17` and keeps the bonus in these two records | **does not write them.** The conversion copies the five saving-throw bytes, so the bonus arrives inside them; writing the records too would apply it twice |
+| 26, 47 — THAC0 against orcs, armour class against giants | nowhere. Situational, so no stored number can hold them; the C64 derives them from the race byte when the blow lands | the two records | **derives them from race** (`RACE_COMBAT_EFFECTS`), because otherwise a converted dwarf loses them outright |
+| 107, 124 — elf and half-elf sleep and charm resistance | in the trait slots | the record | **copies** |
+
+The gnome is the hole. 47 is named for gnomes as well as dwarves and 18 is the
+gnome's own, but no gnome appears in any save the archives hold, so both would
+be a guess: a converted gnome gets no record and the report says why.
+
+**Confirmed in the running game.** `PORSAVE.D64` — MALCYON an elf, LADY
+KATHERINE a half-elf, MAGNUS a dwarf with empty trait slots — converted into a
+DOS slot and loaded: the party stands on its square with six names on the
+roster, and the live effect lists read 107, 124 and `26 -> 47` respectively,
+with the three humans at NULL and no `.SPC` written for them at all.
 
 ### The round trip, which is the bar
 
@@ -1460,7 +1518,7 @@ before and after conversion.
 * The `.ITM` tails are the originals record for record; the rendered-line
   cache and the next pointer are left empty.
 
-### Loaded and played, four DOSBox runs
+### Loaded and played, five DOSBox runs
 
 1. **Slot A with every record rewritten by the round trip** (only the
    unsourced bytes differ from the game's own files): loads, all six
@@ -1489,6 +1547,12 @@ before and after conversion.
    does not carry, not its display for any character who owns nothing, and
    a player cannot reach it unaided. CONFIRMED, `docs/50-experiments.md`
    "Why the converted C64 character reached DOS with no items".
+
+5. **The racial bonuses arrive** (#61): `PORSAVE.D64`'s party converted into
+   a DOS slot loads with the elf's sleep resistance, the half-elf's, and the
+   dwarf's two bonuses against orcs and giants live on the heap — the last
+   pair derived from his race byte, because his C64 record holds no trait id
+   at all. See "The `.SPC` effects file".
 
 **Items cross a real conversion intact — CONFIRMED, not merely designed.**
 `PORSAVE4.D64`'s six characters carry 25 items; through `write_dos_save`
@@ -1531,7 +1595,13 @@ did **not** hold for free on the reader beside it: the first real consumer of
 * **The sheet portrait**: `icon_choice` indexes the DOS art set, no other
   port numbers it, and zero draws no portrait. Cosmetic, real, reported.
   (What zero does to the *combat* icon is untested.)
-* **Running spell effects and the innate `.SPC` bonuses** — see above.
+* **Running spell effects.** The innate bonuses are carried now (#61); a
+  spell still running when the party saved is not, which is what the game's
+  own importer does too.
+* **A gnome's bonuses against giants.** Nobody in the archives is a gnome, so
+  the effect ids the DOS engine writes for one have never been seen. A
+  converted gnome is reported rather than guessed at — see "The `.SPC`
+  effects file".
 * **The day and the month.** The clock itself is carried now (#67) — six
   digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
   addresses — but the C64 holds 0 in the sub-minute, day and month digits of

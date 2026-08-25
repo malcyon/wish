@@ -108,8 +108,12 @@ def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
 
     text = DosPlan(one, tmp_path / "out", dos_template, "A").text()
     assert text.startswith(DROPPED_HEADING)
-    for field in ("infravision", "portrait_head", "innate_effects"):
+    for field in ("infravision", "portrait_head"):
         assert field in text
+    # `innate_effects` used to sit here.  Since #61 the racial bonuses are
+    # written to the `.SPC`, so they are not a loss and must not be named as
+    # one.
+    assert "innate_effects" not in text
     # `summary()` also carries a byte count and the `carried` list; neither is
     # a loss and neither belongs under that heading.
     assert "bytes accounted for" not in text
@@ -133,7 +137,12 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
     assert len(dos.read_party(tmp_path, "B")) == 6
 
     plan = DosPlan(one, tmp_path, dos_template, "B")
-    assert plan.removed == [f"CHRDATB{n}.SAV" for n in range(2, 7)]
+    # The elf, the half-elf and the dwarf of the six-party each left a `.SPC`
+    # behind (#61); BRUTUS is human and writes none, so those go with the five
+    # strangers' records.
+    assert plan.removed == sorted(
+        ["CHRDATB1.SPC", "CHRDATB2.SPC", "CHRDATB5.SPC"]
+        + [f"CHRDATB{n}.SAV" for n in range(2, 7)])
     assert plan.replaced == ["CHRDATB1.SAV", "SAVGAMB.DAT"]
     assert REMOVES_HEADING in plan.text()
     for name in plan.removed:

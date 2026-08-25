@@ -212,6 +212,63 @@ def item_to_c64(record: bytes) -> bytes:
 #: constitution bonus to poison and death saves.  PROBABLE.
 INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
 
+#: Bytes 1-4 of a `.SPC` record for an innate effect.  A record is nine bytes:
+#: the effect id, these four, and a four-byte far pointer to the next record.
+#: Every innate specimen in the archives -- 26, 47, 90, 97, 107 and 124, over
+#: three races and 32 files -- reads `00 00 FF 00`, and the only record that
+#: differs is a running spell: `BLESS` carries `02 00 01 00`, so `0xFF` in
+#: byte 3 is what a permanent effect looks like beside a spell's remaining
+#: duration.  18 and 48 have no specimen anywhere -- nobody in the archives is
+#: a gnome -- so those two are this shape by analogy.  PROBABLE.
+INNATE_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x00))
+
+#: The `.SPC` record's last four bytes are the far pointer to the next record,
+#: and **the engine rebuilds them**: nothing on disk survives the load.
+#: Measured three ways under DOSBox-X (`docs/117`, "The `.SPC` effects file"):
+#: a slot loaded twice puts its nodes at different addresses; removing one
+#: character's file moves the *next* character's first node to where the
+#: removed one's used to be, which relocation cannot do; and zeroing all four
+#: bytes in every record of a five-record file still loads all five, correctly
+#: relinked, so the record count comes from the file's length and not from a
+#: NULL terminator.  So this is what a converter writes.  CONFIRMED.
+EFFECT_NEXT_NULL = bytes(4)
+
+#: Race code -> the innate ids a **C64** record cannot hand over, because the
+#: C64 engine works them out at combat time instead of storing them anywhere.
+#:
+#: The DOS engine's own dwarf carries four: 90, 97, 26 and 47.  Two of those
+#: must not be written from a C64 source and two must:
+#:
+#: * **90 and 97 are the constitution save bonus, and the C64 has already
+#:   spent it.**  Measured both ways.  A DOS dwarf's five stored saves are the
+#:   plain class row -- THRENDER GRONE, a fighter 1 with constitution 16,
+#:   stores `14 15 16 17 17`, which is the table's own row with no bonus in it
+#:   -- so DOS keeps the bonus in these two records.  The C64 does the
+#:   opposite: HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11`
+#:   where the class row is `13 12 14 16 15`, four better in every column
+#:   (`por/levels.py`, "the saving-throw rule is the game's own").  The
+#:   conversion copies those five bytes, so the bonus arrives with them, and
+#:   writing 90 and 97 as well would apply it twice.
+#: * **26 and 47 are situational and no stored number can hold them** -- a
+#:   THAC0 bonus against orcs, half-orcs, goblins and hobgoblins, and an
+#:   armour-class bonus against ogres, trolls, ogre magi, giants and titans.
+#:   The C64 dwarf gets them from his race byte when the blow lands; the DOS
+#:   dwarf gets them from these records or not at all.  So they are written.
+#:
+#: **The gnome is not here and that is deliberate**: 47 is named for gnomes
+#: too and 18 is the gnome's own, but nobody in any save the archives hold is
+#: a gnome, so both would be a guess.  A converted gnome is reported instead.
+RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {1: (26, 47)}
+
+#: Races the C64 gives a constitution save bonus to, and so the races whose
+#: innate ids are already inside the five saving-throw bytes.  `por/levels.py`
+#: reads the same three out of the game's own `GEN`.
+STURDY_RACES = (1, 3, 5)
+
+#: The race with an innate effect this conversion cannot name.  Kept apart
+#: from `RACE_COMBAT_EFFECTS` because the entry that is missing is the point.
+UNWITNESSED_RACE = 3
+
 #: DOS class number -> the C64 record field holding that class's level.  DOS
 #: indexes its eight slots by the class *number* and the C64 by the class
 #: *bit*, so this is the permutation between them.  Druid and monk have no C64
@@ -577,8 +634,9 @@ class WriteReport(neutral.Report):
     """A DOS write's provenance: **every** byte of both outputs explained.
 
     Offsets 0 to `RECORD_SIZE - 1` are the 285-byte character record;
-    `RECORD_SIZE` and up are the `.ITM` payload that goes beside it.  `total`
-    is set by :func:`write` once the item count is known.
+    `RECORD_SIZE` and up are the `.ITM` payload that goes beside it, and the
+    `.SPC` payload after that.  `total` is set by :func:`write` once the item
+    and effect counts are known.
     """
 
     total: int = RECORD_SIZE
@@ -720,6 +778,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                   "record; the count and the encumbrance are computed from "
                   "it, and an empty inventory writes no .ITM file at all "
                   "rather than an empty one -- ITM_OMITTED_WHEN_EMPTY"),
+    ("innate_effects", "one nine-byte .SPC record each, id + INNATE_PAYLOAD "
+                       "+ a NULL next pointer the engine rebuilds; only the "
+                       "INNATE_EFFECTS ids are written, the rest reported, "
+                       "and a character with none gets no .SPC file"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -727,9 +789,6 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "DOS does not store it; the DOS engine derives what it "
                     "needs from the race byte"),
-    ("innate_effects", "the 9-byte .SPC effect record is decoded only to its "
-                       "id byte, so writing one would be a guess at the "
-                       "other eight; no .SPC file is written"),
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
@@ -764,9 +823,12 @@ ITM_OMITTED_WHEN_EMPTY = True
 #: the engine's own record for a character who dropped everything in play,
 #: `work/p62/truth/CHRDATD1.SAV`.
 WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
-    ("effect_chain", "live heap pointer; NULL, which is also what an empty "
-                     "effect list looks like. NULL in the engine's own "
-                     "record with items and without"),
+    ("effect_chain", "live heap pointer, and **NULL is right whatever the "
+                     "character carries**: the engine allocates a node per "
+                     ".SPC record on load and writes the head pointer "
+                     "itself. Measured -- a slot loaded twice puts the same "
+                     "party's nodes at different addresses (#61). NULL in "
+                     "the engine's own record with items and without"),
     ("unnamed_0ab", "unattributed, and different for every DOS character. "
                     "The engine neither reads nor rewrites it: it carries "
                     "our zero through a resave, and keeps its own A5 when a "
@@ -848,14 +910,13 @@ def _encode(f: Field, rec: bytearray, value: Any) -> None:
         rec[f.offset:f.end] = data
 
 
-def write(char: NeutralCharacter) -> tuple[bytes, bytes, WriteReport]:
-    """Build a 285-byte DOS record and its `.ITM` payload from a neutral
-    character.
+def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
+    """Build a 285-byte DOS record and its `.ITM` and `.SPC` payloads from a
+    neutral character.
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
-    `(record, itm, report)`; the `.SPC` effects file is never written, because
-    its 9-byte record is decoded only to the id byte -- see `WRITE_DROPPED`.
+    `(record, itm, spc, report)`.
 
     Every byte of both outputs is justified in the report: it came from a
     neutral value, it was computed by a named rule, it is a documented
@@ -984,6 +1045,48 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, WriteReport]:
                          f"item {n}: next pointer left NULL -- the loader "
                          f"rebuilds the chain, measured by its own resave")
 
+    # -- the innate effects become the .SPC file -----------------------------
+    # Running spells are not written, which is what the game's own C64
+    # importer does: it reads a `.spc` and keeps only the racial and
+    # constitutional ids.  A character with none gets no file, the state the
+    # engine itself writes for a party member with nothing running.
+    innate = use("innate_effects")
+    carried = [int(e) for e in innate.value] if innate is not None else []
+    race = int(w.get("race", 0) or 0)
+    derived = [e for e in RACE_COMBAT_EFFECTS.get(race, ())
+               if e not in carried]
+    keep = derived + [e for e in carried if e in INNATE_EFFECTS]
+
+    spc = b"".join(bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
+                   for e in keep)
+    base = RECORD_SIZE + len(itm)
+    for n, e in enumerate(keep):
+        at = base + n * EFFECT_SIZE
+        whence = (f"derived from race {race} -- the C64 works this one out "
+                  f"at combat time and stores it nowhere"
+                  if e in derived else f"{port} innate_effects")
+        rep.note(at, 1, f".SPC record {n}: effect {e} "
+                        f"({traits.describe(e)}), {whence}")
+        rep.note(at + 1, 4,
+                 f".SPC record {n}: INNATE_PAYLOAD, the four bytes every "
+                 f"innate specimen in the archives holds")
+        rep.note(at + 5, 4,
+                 f".SPC record {n}: next pointer NULL -- the loader allocates "
+                 f"a node per record and relinks them, and the count comes "
+                 f"from the file's length")
+    for e in carried:
+        if e not in INNATE_EFFECTS:
+            rep.dropped.append(
+                f"innate_effects {e} ({traits.describe(e)}): not one of the "
+                f"ids the game's own importer keeps, so it is an item power "
+                f"or a running effect rather than an innate one and no .SPC "
+                f"record is written for it")
+    if race == UNWITNESSED_RACE:
+        rep.dropped.append(
+            "a gnome's innate bonuses against giants: no gnome appears in "
+            "any DOS save we hold, so the effect ids the DOS engine writes "
+            "for one are unmeasured and are not guessed at")
+
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)
     rec[FIELDS_BY_NAME["item_count"].offset] = count
@@ -1016,8 +1119,8 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, WriteReport]:
 
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
-    rep.total = RECORD_SIZE + len(itm)
-    return bytes(rec), itm, rep
+    rep.total = RECORD_SIZE + len(itm) + len(spc)
+    return bytes(rec), itm, spc, rep
 
 
 def write_field_disposition() -> dict[str, str]:
@@ -1447,8 +1550,9 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     What is then written: `CHRDAT<slot><n>.SAV` for each character and its
     `.ITM` **only when the character carries something** -- a zero-length
     `.ITM` is not how the engine says "no items", it is how it says "one item,
-    from whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- a `.SPC`
-    never, and `SAVGAM<slot>.DAT` copied from the template and rewritten:
+    from whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- its `.SPC`
+    **only when the character has an innate effect** (#61), and
+    `SAVGAM<slot>.DAT` copied from the template and rewritten:
 
     * the quest flags, from the C64 bytes -- the two ports index them by the
       same ECL address;
@@ -1515,8 +1619,8 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
         char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
                               source=f"C64 slot {char_slot.index}")
-        rec, itm, one = write(char)
-        built.append((char, rec, itm, one, char_slot))
+        rec, itm, spc, one = write(char)
+        built.append((char, rec, itm, spc, one, char_slot))
 
     # The unit a conversion overwrites is the *slot*, not the characters this
     # party happens to fill.  Converting one character into a directory that
@@ -1537,7 +1641,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         report.carried.append(
             f"slot {slot} was already written here: {cleared} stale "
             f"CHRDAT{slot}<n> file(s) from the previous party removed")
-    for n, (char, rec, itm, one, char_slot) in enumerate(built, start=1):
+    for n, (char, rec, itm, spc, one, char_slot) in enumerate(built, start=1):
         stem = out / f"CHRDAT{slot}{n}"
         stem.with_suffix(".SAV").write_bytes(rec)
         # A character carrying nothing gets **no `.ITM` file at all**, and an
@@ -1548,6 +1652,11 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         # cleared above, so "not written" and "not present" are the same.
         if itm:
             stem.with_suffix(".ITM").write_bytes(itm)
+        # A character with no innate effects gets no `.SPC`, which is what the
+        # engine's own save writes for one with nothing running (#61): every
+        # human in the archives' twelve saved parties has no file at all.
+        if spc:
+            stem.with_suffix(".SPC").write_bytes(spc)
         who = char.get("name", f"slot {char_slot.index}")
         report.dropped.extend(d for d in one.dropped
                               if d not in report.dropped)
