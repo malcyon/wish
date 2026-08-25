@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Character editor reorganised onto tabs -- Stats, Inventory and Spells -- with the roster and combat icon shown above them, so the window no longer has to be as wide.
+
+### Fixed
+
+- Live automapper reads party stats and runs its five live actions (heal, store/restore spells, identify, quickfight) from the correct memory on Curse of the Azure Bonds and Secrets of the Silver Blades, instead of Pool of Radiance's addresses.
+- Level Up and Fast Travel now confirm the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
+
 ## [0.1.0] - 2026-08-23
 
 ### Added

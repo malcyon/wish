@@ -86,6 +86,30 @@ looks. The one time this rule was broken, what died was Donald's own window.
 an emulator you did not launch, and do not launch one outside the pool -- an
 instance nobody leased cannot be told from a human's.
 
+**Nothing an agent runs may put a window on Donald's screen.** He works at
+that desktop while agents run, and windows flashing open and closed are not a
+cosmetic annoyance -- one of them was a modal dialog that sat over his editor
+until he dismissed it.
+
+`tests/conftest.py` forces `QT_QPA_PLATFORM=offscreen`, so `pytest` is safe.
+**Everything else is not.** A measurement script, a screenshot script, anything
+that builds a `QApplication` outside the suite inherits his live session unless
+it is told otherwise:
+
+```sh
+env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \
+    GDK_BACKEND=x11 .venv/bin/python your_script.py
+```
+
+`QWidget.grab()` works under `offscreen`, so a screenshot never needs a visible
+window. `tools/iconsheet.py` is the pattern.
+
+**Unsetting `WAYLAND_DISPLAY` is the part that is easy to miss.** His desktop is
+Wayland, and a GTK or Qt child prefers `WAYLAND_DISPLAY` over whatever you set
+for X -- so a private `Xvfb` is not a sandbox. DOSBox-X's file chooser walked
+straight out of one that way and drew on his screen. "Run it on your own X
+display" is not sufficient advice on this machine.
+
 **Never point VICE at Donald's config.** Every pooled instance gets its own
 `vicerc` seeded from his, with `SaveResourcesOnExit=0`, so nothing an agent
 runs can write settings back. His file is read as a template and never opened
