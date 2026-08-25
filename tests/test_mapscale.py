@@ -243,27 +243,28 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
     assert widths[1] == widths[0], "the minimum width grew with the font"
 
 
-#: What the two states actually measure here, so the expected failures below
-#: carry numbers rather than an opinion. `gamedata.synthetic_party` is the
-#: loaded one: six characters of the widest shape the record and Pool of
-#: Radiance's own tables allow.
+#: What the two states actually measure here, so the numbers below are numbers
+#: rather than an opinion. `gamedata.synthetic_party` is the loaded one: six
+#: characters of the widest shape the record and Pool of Radiance's own tables
+#: allow.
 #:
-#: | UI font | empty | loaded | the roster in it |
-#: |---|---|---|---|
-#: | base   | 836 x 662 | 1265 x 662 |  587 |
-#: | +3pt   | 836 x 702 | 1442 x 702 |  764 |
-#: | +10pt  | 836 x 805 | 1816 x 805 | 1138 |
+#: | UI font | empty | loaded, round seven | loaded, now | the roster in it |
+#: |---|---|---|---|---|
+#: | base   | 836 x 662 | 1265 x 662 | **1093 x 662** |  587 |
+#: | +3pt   | 836 x 702 | 1442 x 702 | **1270 x 702** |  764 |
+#: | +10pt  | 836 x 805 | 1844 x 805 | **1672 x 805** | 1138 |
 #:
-#: The roster is the whole of the difference and the whole of the growth: the
-#: empty window has no rows, so nothing in it is sized from a string.
+#: The 172px between the two loaded columns is the combat icon leaving the
+#: header for the Stats tab -- 166 of box and 6 of the row's spacing, the same
+#: at every font size, because nothing in that box was ever sized from a
+#: string. It is what took the widest party a save can hold inside a 1280
+#: screen at the base font and at three points more, which is the first test
+#: below and used to be an expected failure.
+#:
+#: The roster is the whole of what is left growing: the empty window has no
+#: rows, so nothing in it is sized from a string.
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "the loaded window is 1265px wide at the base UI font and 1442 at three "
-    "points more, against a 1280 screen -- and 1816 at ten points, which is "
-    "roughly where Windows' base font measures. The roster is 573, 746 and "
-    "1138 of that and is the only thing in the header still sized from the "
-    "strings it holds. #71 is the decision about what gives."))
 def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
                                                            monkeypatch):
     """And with a character on screen, which is the case `_floor(None)` above
@@ -275,10 +276,19 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
 
     The party is synthetic, so this runs on a machine with no game (#70) --
     and it is the *widest* party rather than a plausible one, because a floor
-    measured from six-letter names is true of nothing. What it says is that
-    the guarantee does not hold: see the reason on the marker above. Left as
-    an expected failure rather than weakened to fit, because a number is worth
-    more than a green tick that measures the wrong window.
+    measured from six-letter names is true of nothing.
+
+    **An expected failure until round eight of #43**, by 162px at three points
+    of extra font. Moving the combat icon out of the header took 172px off
+    every one of these numbers and the widest party fits: 1093 and 1270
+    against 1280. Ten pixels is the whole margin at +3pt, so anything put back
+    in the header takes it -- the header is the roster and Character and
+    nothing else now, deliberately.
+
+    Still short of Windows, where the base UI font measures like ten points
+    more than this one and the floor is 1672. That half of #71 is the roster,
+    which is the only thing in the header still sized from the strings it
+    holds -- see the expected failure below.
     """
     from gamedata import synthetic_save
 
@@ -289,10 +299,10 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "the loaded floor is 1265px at the base UI font and 1442 at three points "
-    "more -- 173px of the window's minimum following the font, which is what "
+    "the loaded floor is 1093px at the base UI font and 1270 at three points "
+    "more -- 177px of the window's minimum following the font, which is what "
     "#41 was opened to remove and what the empty window no longer does. The "
-    "roster is all of it: 573 against 746. #71."))
+    "roster is all of it: 587 against 764. #71."))
 def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
         app, tmp_path, monkeypatch):
     """#41's guarantee, re-asserted against the state that governs a session.
@@ -300,6 +310,11 @@ def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
     `test_the_windows_minimum_does_not_follow_the_ui_font` above is true of
     the window it measures and has never covered this one -- the roster is
     empty there, and the roster is the thing that follows the font.
+
+    Still expected to fail after round eight of #43. The combat icon was a
+    constant, so taking it off the header moved both numbers by the same 172
+    and changed nothing about the slope. Only the roster giving up width
+    closes this one.
     """
     from gamedata import synthetic_save
 

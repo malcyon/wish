@@ -1,4 +1,4 @@
-"""The main window: the roster and the icon across the top, the sheet on
+"""The main window: the roster and Character across the top, the sheet on
 tabs below them.
 
 The form comes from `editor/character.ui`. Widgets are found by `objectName`
@@ -115,9 +115,9 @@ MUTED_INK = QColor("#4a5b6d")
 # The tables and the spell lists want the width; the field forms do not.
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # Which item in a horizontal row is allowed to grow. `header_row` is the
-# roster, Character and the combat icon above the tabs, and the roster is the
-# one of the three that can use a wider window: its `Name` column stretches
-# (`_size_roster`), so the slack becomes room for a name rather than a hole.
+# roster and Character, and the roster is the one of the two that can use a
+# wider window: its `Name` column stretches (`_size_roster`), so the slack
+# becomes room for a name rather than a hole.
 #
 # Round six gave it to Character instead, which cannot use it -- every field
 # there is sized to the widest value its bytes can hold and a pixel more is a
@@ -125,14 +125,14 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # out as a gutter down the middle of Character and a gap between Character and
 # the combat icon, both of which Donald marked; handed to the fields instead
 # it came out as a drop-down 890px wide with `2  ELF` in it. Character is
-# sized to its own contents now and the icon sits directly beside it.
+# sized to its own contents now.
 #
 # `sheet_columns` is the Stats tab, and the same rule: Character Traits is the
 # only box on it that can use spare width, so it gets a column of its own at
 # the right and all of the stretch. Shared four ways the slack came out as a
 # gap beside every column; on the column Traits used to share with Money it
 # was 490px of nothing.
-ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (1, 0, 0),
+ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (1, 0),
                "form_identity": (0, 0)}
 ROSTER_SLACK = 6
 #: A little past the longest name a record can hold, so the column is not
@@ -195,20 +195,17 @@ LIST_FLOOR = {"box_inventory": 240, "box_traits": 240}
 #: squeezes its columns -- #71. That is the trade #41 asks for, and the
 #: squeeze is what `_pin_identity_columns` below makes survivable.
 HEADER_IDENTITY_MIN_WIDTH = 480
-#: And the combat icon, which needs no cap and is given one anyway.
-#:
-#: `IconEditor` is `FRAME_WIDE * ZOOM` -- 48 squares at 3 pixels, 144px at
-#: every UI font on every platform -- which is what makes the icon the one
-#: per-character box that is free against #41. Its group box is not: a
-#: `QGroupBox` will not report a minimum narrower than its own title, and
-#: "Combat icon" passes 166px somewhere between eight and sixteen points of
-#: extra font. So the box is held where the icon holds it and the title is
-#: allowed to clip, and the header's floor is the same number everywhere.
-HEADER_ICON_MIN_WIDTH = 166
 #: Which header boxes are held to a constant, and to what. Keyed by
 #: objectName like everything else on the form.
-HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH,
-                "box_appearance": HEADER_ICON_MIN_WIDTH}
+#:
+#: One box, since round eight. The combat icon was the other, capped at 166
+#: because a `QGroupBox` will not report a minimum narrower than its own title
+#: and "Combat icon" passes 166px somewhere past eight points of extra font --
+#: 166px of floor at every font size on every platform, and pure floor,
+#: because `IconEditor` is `FRAME_WIDE * ZOOM` and cannot read a wider window.
+#: It sits beside `Combat` on the Stats tab now, where the page scrolls and a
+#: group box wider than its contents costs the window nothing.
+HEADER_FLOOR = {"box_identity": HEADER_IDENTITY_MIN_WIDTH}
 #: And the row of buttons above the header, which does not scroll either.
 #:
 #: Each button is as wide as its own text and icon: the four come to 403px at
@@ -738,10 +735,10 @@ class EditorWindow(QMainWindow):
         """Spare width goes where something can use it.
 
         Above the tabs, Character is sized to the widest value each of its
-        fields can hold and the combat icon is 144px of fixed pixels, so the
-        roster is the only one of the three that can read a wider window --
-        its `Name` column stretches. Round six gave the slack to Character
-        instead and it came out as the gutter and the gap Donald marked.
+        fields can hold, so the roster is the one of the two that can read a
+        wider window -- its `Name` column stretches. Round six gave the slack
+        to Character instead and it came out as the gutter and the gap Donald
+        marked.
 
         On the Stats tab, Character Traits is the only box that can use spare
         width, so it has a column of its own at the right and all of the
@@ -1016,7 +1013,7 @@ class EditorWindow(QMainWindow):
     def _size_roster(self) -> None:
         """Give the roster exactly the width and height its rows need.
 
-        There is no splitter any more. The roster and the icon sit above the
+        There is no splitter any more. The roster and Character sit above the
         tabs and the sheet scrolls inside whichever tab is showing, because a
         fixed top over a scrolling bottom squeezed the fields into a
         sixty-pixel strip whenever the window was anything short of enormous.
@@ -1048,13 +1045,12 @@ class EditorWindow(QMainWindow):
         view.setMinimumWidth(header.length() + view.verticalHeader().width()
                              + 2 * view.frameWidth() + bar)
         # And now, with that number taken, `Name` is allowed to stretch. The
-        # roster is the only thing in the header that can use a wider window:
-        # Character is sized to the widest value each of its fields can hold
-        # and the icon is 144px of fixed pixels, so with the slack anywhere
-        # else it is a hole. `header.length()` above is read first and while
-        # every column is still `ResizeToContents`, because a stretching
-        # section reports the viewport's width and the minimum would chase
-        # the window.
+        # roster is the only other thing in the header, and Character is
+        # sized to the widest value each of its fields can hold, so with the
+        # slack anywhere else it is a hole. `header.length()` above is read
+        # first and while every column is still `ResizeToContents`, because a
+        # stretching section reports the viewport's width and the minimum
+        # would chase the window.
         header.setSectionResizeMode(NAME_COLUMN, header.ResizeMode.Stretch)
         # Stretch, but not without end. A record's name is `layout.NAME_SIZE`
         # characters and no more, so past the width of twenty capital Ws the
@@ -1063,6 +1059,12 @@ class EditorWindow(QMainWindow):
         # to go somewhere, so it goes to the column and the column stops:
         # `setMaximumSectionSize` caps every section, and `Name` is the only
         # one that stretches, so it is the only one the cap can reach.
+        #
+        # **And the cap does not bind.** `QHeaderView` ignores
+        # `maximumSectionSize` for a section in `Stretch` mode -- reproduced on
+        # a bare `QTableView` with none of this in it -- so `Name` still grows
+        # to whatever the window gives it. Issue #90; the fix puts the slack
+        # somewhere else in the header, which is a layout decision.
         widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
         header.setMaximumSectionSize(widest + NAME_COLUMN_SLACK)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)

@@ -678,18 +678,19 @@ BOXES = ("box_identity", "box_combat", "box_roster", "box_abilities",
          "box_appearance", "box_inventory", "box_spells", "box_traits",
          "box_effects")
 
-#: Above the tabs, on every one of them: the roster, Character and the combat
-#: icon. Character is up there because 23 fields stacked in a column were
-#: 672px tall and the tab could not hold them; eleven of them are up there in
-#: two columns.
+#: Above the tabs, on every one of them: the roster and Character. Character
+#: is up there because 23 fields stacked in a column were 672px tall and the
+#: tab could not hold them; eleven of them are up there in two columns.
 #:
-#: The icon came back in round six, having spent round five on the Stats tab.
-#: It is the one per-character box in this program whose size is fixed in
-#: pixels rather than derived from font metrics -- `IconEditor` is
-#: `FRAME_WIDE * ZOOM`, 48 squares at 3 pixels -- so it is the one box that
-#: costs the header the same on every platform. Character Traits was tried
-#: here first and Donald turned it down: it made the header far too tall.
-HEADER_BOXES = ("box_identity", "box_appearance")
+#: One box, since round eight. The combat icon spent round five on the Stats
+#: tab, came back in round six and has gone down again: it is 166px of header
+#: at every font size on every platform -- `IconEditor` is `FRAME_WIDE * ZOOM`,
+#: 48 squares at 3 pixels -- and pure floor, because nothing in it can read a
+#: wider window. Taking it off the header took 172px off the whole window's
+#: minimum, which is what brought the widest party a save can hold inside a
+#: 1280 screen at Donald's own font. Character Traits was tried here too and
+#: Donald turned it down: it made the header far too tall.
+HEADER_BOXES = ("box_identity",)
 
 #: Donald's grouping, and the whole of it. `box_levels` -- Experience and
 #: levels -- was not in the grouping he wrote and is here because it is a
@@ -700,9 +701,14 @@ HEADER_BOXES = ("box_identity", "box_appearance")
 #: that decide a fight, including the Armour class pair the header used to
 #: carry; `box_roster` took the six read-only housekeeping fields nobody
 #: edits.
+#:
+#: Round eight brought the combat icon down here, beside `Combat`: Donald's
+#: own proposal, on the grounds that the two belong together and that the
+#: header shrinks. Both are true -- see `HEADER_BOXES` above.
 TABS = {
     "Stats": ("box_combat", "box_roster", "box_abilities", "box_money",
-              "box_saves", "box_thief_skills", "box_effects", "box_levels"),
+              "box_saves", "box_thief_skills", "box_effects", "box_levels",
+              "box_appearance"),
     "Inventory": ("box_inventory", "box_traits"),
     "Spells": ("box_spells",),
 }
@@ -718,10 +724,19 @@ TABS = {
 #: four columns of fields hug their own contents. Packed so no column is
 #: taller than Experience and levels over Thief skills, which is what decides
 #: whether the tab scrolls on his screen.
+#:
+#: The combat icon goes under Roster and so directly right of Combat, which is
+#: the only place on the tab that is both beside Combat and free: Roster is
+#: 298px wide against the icon's 166, and the column had 320px of nothing
+#: under it. Every other slot costs the tab 172px of width -- a column of its
+#: own -- or puts the icon under Combat rather than beside it. Measured at
+#: 1330x940 with a save open, the tab asks for the same 1241px it did in
+#: round seven -- the icon costs no width at all -- and the empty part of
+#: column four goes from 298x323 to an L a fifth smaller.
 STATS_COLUMNS = (("box_abilities", "box_saves"),
                  ("box_levels", "box_thief_skills"),
                  ("box_money", "box_combat"),
-                 ("box_roster",),
+                 ("box_roster", "box_appearance"),
                  ("box_effects",))
 
 
@@ -741,7 +756,7 @@ def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
         page = tabs.widget(i)
         for name in boxes:
             assert page.isAncestorOf(w._child(name)), name
-    # The roster, the icon and Character are above the tabs, on every one.
+    # The roster and Character are above the tabs, on every one of them.
     for i in range(tabs.count()):
         assert not tabs.widget(i).isAncestorOf(w.ui.roster)
         for name in HEADER_BOXES:
@@ -783,6 +798,40 @@ def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
 
 
 @game_disks
+def test_the_combat_icon_sits_beside_combat(app, save):
+    """Donald's own proposal, and round eight's whole change: the icon and the
+    `Combat` box belong together by meaning, and the header shrinks by 172px
+    when the icon leaves it -- which is what takes the widest party a save can
+    hold from 1265px of window to 1093 at the default UI font, and from 1442 to
+    1270 at three points more, against a 1280 screen.
+
+    `STATS_COLUMNS` pins which column it is in. This pins that it is *beside*
+    `Combat` and not merely on the same tab: the next column to the right, and
+    overlapping it vertically, which is the difference between the icon being
+    where he asked for it and the icon being under `Roster` by coincidence.
+
+    Geometry rather than layout indices, because the two are only side by side
+    if the boxes above them leave them level -- `Money` is 232px tall and
+    `Roster` 203, so the icon starts 29px above `Combat` and ends inside it.
+    """
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    w.show()
+    w.resize(1330, 940)
+    app.processEvents()
+    page = w._child("page_stats")
+    combat = w._child("box_combat")
+    icon = w._child("box_appearance")
+    left = combat.mapTo(page, combat.rect().topLeft())
+    right = icon.mapTo(page, icon.rect().topLeft())
+    assert right.x() >= left.x() + combat.width(), "the icon is not to the right"
+    assert right.x() - (left.x() + combat.width()) < 30, "and not far to the right"
+    top, bottom = right.y(), right.y() + icon.height()
+    assert top < left.y() + combat.height() and bottom > left.y(), (
+        "the icon and Combat do not overlap vertically")
+
+
+@game_disks
 def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
     """The hole Donald drew a box round, and why it was there.
 
@@ -814,8 +863,11 @@ def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
 @game_disks
 def test_the_header_s_spare_width_goes_to_the_roster(app, save):
     """Every field in Character is sized to the widest value its bytes can
-    hold, and the combat icon is 144px of fixed pixels, so neither of them can
-    read a wider window. The roster can: its `Name` column stretches.
+    hold, so it cannot read a wider window. The roster can: its `Name` column
+    stretches.
+
+    Two items in the row since round eight, not three: the combat icon is on
+    the Stats tab, beside `Combat`.
 
     Round six gave the slack to Character and shared it 1:1 between its two
     form columns, which each took half and each huddled at its own left edge
@@ -853,24 +905,22 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     """The measurement issue #43 asked for, and the reason for the tabs.
 
     Four columns in one scroll area asked for 2001x1127 and collapsed to
-    421x141, so the sheet was unreadable at any window anybody would open.
-    Measured here in round seven: the editor's minimum is 1025x400 with a save
-    open, and the widest tab -- Stats -- scrolls when it cannot have the room
-    it asks for.
+    421x141, so the sheet was unreadable at any window anybody would open. The
+    editor's minimum is 853x400 with a save open, and the widest tab -- Stats
+    -- scrolls when it cannot have the room it asks for.
 
     The width is the header. The header does not scroll, so the window can
     never be narrower than what stands in it side by side: 683 with nothing
     but the roster, 1883 with all 23 of Character's fields down one row, 992
     with the five it kept in round four, 892 once the combat icon left and
     Character was given ten fields in two columns, 957 in round six with
-    Character held to a constant 520, and 1025 now -- the constant is 480 and
-    the roster is what grew, because it is sized from the names in the party.
+    Character held to a constant 520, 1025 in round seven, and 853 now -- the
+    combat icon has gone to the Stats tab and taken 172px of header with it.
+    The rest is the roster, which is sized from the names in the party.
 
-    Ten fields and not five because the icon was 310px of header at any font
-    size, and that is what paid for the second column -- see
-    `test_the_header_fits_its_width_budget` below, which is the arithmetic,
-    and `test_character_is_two_columns_the_way_donald_drew_it`, which is the
-    shape.
+    See `test_the_header_fits_its_width_budget` below, which is the
+    arithmetic, and `test_character_is_two_columns_the_way_donald_drew_it`,
+    which is the shape.
 
     What is left tracking the font is the roster, which is sized from the
     names it holds: 349px at the default UI font, 446 at three points more and
@@ -1034,6 +1084,12 @@ def test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #: roster is 446 of it at that font, the header's spacings and the window's
 #: own margins 26, which leaves this.
 #:
+#: Derived from a real party's roster, which is why it is a budget and not the
+#: guarantee: against the *widest* party a save can hold the roster is 764 at
+#: that font, and what settles whether the window fits 1280 is
+#: `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`,
+#: which measures the whole window against the whole screen.
+#:
 #: Round four derived the same budget from the automapper's 836 and got 422.
 #: That 836 is measured with nothing open (#63): with a save loaded the
 #: automapper is not the floor and the editor is, so the screen is the ceiling
@@ -1082,9 +1138,10 @@ def test_the_header_fits_its_width_budget(app, party):
 
     Round six is the first one where the budget is *enforced* rather than
     checked: what is measured here is the explicit minimum each box is held
-    to, 480 for Character and 166 for the combat icon, and the sum is 646
-    against 808 at any font at all. Round five's 648 was a measurement, it was
-    true on Linux, and on Windows the same box measured 876 -- see
+    to. That was 480 for Character and 166 for the combat icon, 646 against a
+    budget of 808 at any font at all; round eight sent the icon to the Stats
+    tab and it is 480. Round five's 648 was a measurement, it was true on
+    Linux, and on Windows the same box measured 876 -- see
     `test_the_header_boxes_do_not_widen_with_the_ui_font`. A budget checked
     against one platform's font metrics is not a budget.
 
@@ -1097,9 +1154,10 @@ def test_the_header_fits_its_width_budget(app, party):
     than overlapping -- `test_no_two_widgets_in_character_overlap_at_its_floor`
     -- and the roster is the next thing that would have to give.
 
-    Both boxes and not just Character, because the budget is what the header
-    costs and the header is now two boxes. A second one added without a floor
-    of its own would pass a test that measured only the first.
+    Every box in the header and not Character by name, because the budget is
+    what the header costs. A second one added without a floor of its own would
+    pass a test that measured only the first -- which is how the combat icon's
+    166px went unbudgeted through round five.
 
     The party is synthetic and the test no longer skips: this and
     `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`
@@ -1129,12 +1187,14 @@ def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
     that follows the font -- the mechanism #41 was opened to remove.
 
     Character is 521px wide at the default UI font here, 648 at three points
-    more and 874 at eight. The combat icon is not: `IconEditor` is 144px of
-    fixed pixels at every font, which is why it is the box in the header --
-    but its `QGroupBox` will not report a minimum narrower than the title
-    "Combat icon", which passes 166 somewhere past eight points. Both are
-    given an explicit minimum instead, which `qSmartMinSize` takes in
-    preference to the hint, and the floor stops moving.
+    more and 874 at eight. It is given an explicit minimum instead, which
+    `qSmartMinSize` takes in preference to the hint, and the floor stops
+    moving.
+
+    The combat icon used to be held the same way and is not in the header any
+    more. It was the cheap box -- `IconEditor` is 144px of fixed pixels at
+    every font -- and it was still 166px of floor that nothing could ever read,
+    which is why round eight moved it out rather than capping it again.
 
     Pinned as a relation between font sizes rather than as a number, because
     every number here is a Linux number. Eight points and not three: Windows'
