@@ -55,86 +55,156 @@
     <item>
      <layout class="QHBoxLayout" name="header_row">
       <item>
-       <widget class="QTableView" name="roster">
-        <property name="minimumHeight">
-         <number>60</number>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="box_appearance">
-        <property name="title">
-         <string>Combat icon</string>
-        </property>
-        <layout class="QFormLayout" name="form_appearance">
-         <item row="0" column="0" colspan="2">
-          <widget class="IconEditor" name="field_icon" />
-         </item>
-        </layout>
-       </widget>
+       <widget class="QTableView" name="roster" />
       </item>
       <item>
        <widget class="QGroupBox" name="box_identity">
         <property name="title">
          <string>Character</string>
         </property>
-        <layout class="QFormLayout" name="form_identity">
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_name">
-           <property name="text">
-            <string>Name</string>
-           </property>
-          </widget>
+        <layout class="QHBoxLayout" name="form_identity">
+         <item>
+          <layout class="QFormLayout" name="form_identity_left">
+            <item row="0" column="0">
+             <widget class="QLabel" name="label_name">
+              <property name="text">
+               <string>Name</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLineEdit" name="field_name" />
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="label_race">
+              <property name="text">
+               <string>Race</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QComboBox" name="field_race" />
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="label_char_class">
+              <property name="text">
+               <string>Char class</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QComboBox" name="field_char_class" />
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="label_class_bits">
+              <property name="text">
+               <string>Class bits</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QComboBox" name="field_class_bits" />
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="label_alignment">
+              <property name="text">
+               <string>Alignment</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QComboBox" name="field_alignment" />
+            </item>
+           </layout>
          </item>
-         <item row="0" column="1">
-          <widget class="QLineEdit" name="field_name" />
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="label_race">
-           <property name="text">
-            <string>Race</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <widget class="QComboBox" name="field_race" />
-         </item>
-         <item row="2" column="0">
-          <widget class="QLabel" name="label_sex">
-           <property name="text">
-            <string>Sex</string>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="1">
-          <widget class="QComboBox" name="field_sex" />
-         </item>
-         <item row="3" column="0">
-          <widget class="QLabel" name="label_age">
-           <property name="text">
-            <string>Age</string>
-           </property>
-          </widget>
-         </item>
-         <item row="3" column="1">
-          <widget class="QSpinBox" name="field_age">
-           <property name="minimum">
-            <number>0</number>
-           </property>
-           <property name="maximum">
-            <number>65535</number>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="0">
-          <widget class="QLabel" name="label_size_small">
-           <property name="text">
-            <string>Size</string>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="1">
-          <widget class="QComboBox" name="field_size_small" />
+         <item>
+          <layout class="QFormLayout" name="form_identity_right">
+            <item row="0" column="0">
+             <widget class="QLabel" name="label_hp_max">
+              <property name="text">
+               <string>Hp max</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QSpinBox" name="field_hp_max">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="label_hp_rolled">
+              <property name="text">
+               <string>Hp rolled</string>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QSpinBox" name="field_hp_rolled">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>255</number>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="label_hp_current">
+              <property name="text">
+               <string>Hp current</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QSpinBox" name="field_hp_current">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>65535</number>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="label_armour_class_base">
+              <property name="text">
+               <string>Armour class base</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QSpinBox" name="field_armour_class_base">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>255</number>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="label_armour_class">
+              <property name="text">
+               <string>Armour class</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QSpinBox" name="field_armour_class">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>255</number>
+              </property>
+             </widget>
+            </item>
+           </layout>
          </item>
         </layout>
        </widget>
@@ -173,7 +243,7 @@
               <item>
                <widget class="QGroupBox" name="box_abilities">
                 <property name="title">
-                 <string>Abilities</string>
+                 <string>Ability Scores</string>
                 </property>
                 <layout class="QFormLayout" name="form_abilities">
                  <item row="0" column="0">
@@ -866,9 +936,6 @@
                 <property name="title">
                  <string>Character Traits</string>
                 </property>
-                <property name="minimumHeight">
-                 <number>240</number>
-                </property>
                 <layout class="QVBoxLayout" name="layout_effects">
                  <item>
                   <widget class="EffectsView" name="field_item_effects" />
@@ -894,134 +961,68 @@
             <item>
              <layout class="QVBoxLayout" name="column_four">
               <item>
+               <widget class="QGroupBox" name="box_appearance">
+                <property name="title">
+                 <string>Combat icon</string>
+                </property>
+                <layout class="QFormLayout" name="form_appearance">
+                 <item row="0" column="0" colspan="2">
+                  <widget class="IconEditor" name="field_icon" />
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
                <widget class="QGroupBox" name="box_record">
                 <property name="title">
                  <string>Miscellaneous</string>
                 </property>
                 <layout class="QFormLayout" name="form_record">
                  <item row="0" column="0">
-                  <widget class="QLabel" name="label_char_class">
+                  <widget class="QLabel" name="label_sex">
                    <property name="text">
-                    <string>Char class</string>
+                    <string>Sex</string>
                    </property>
                   </widget>
                  </item>
                  <item row="0" column="1">
-                  <widget class="QComboBox" name="field_char_class" />
+                  <widget class="QComboBox" name="field_sex" />
                  </item>
                  <item row="1" column="0">
-                  <widget class="QLabel" name="label_class_bits">
+                  <widget class="QLabel" name="label_age">
                    <property name="text">
-                    <string>Class bits</string>
+                    <string>Age</string>
                    </property>
                   </widget>
                  </item>
                  <item row="1" column="1">
-                  <widget class="QComboBox" name="field_class_bits" />
+                  <widget class="QSpinBox" name="field_age">
+                   <property name="minimum">
+                    <number>0</number>
+                   </property>
+                   <property name="maximum">
+                    <number>65535</number>
+                   </property>
+                  </widget>
                  </item>
                  <item row="2" column="0">
-                  <widget class="QLabel" name="label_alignment">
+                  <widget class="QLabel" name="label_size_small">
                    <property name="text">
-                    <string>Alignment</string>
+                    <string>Size</string>
                    </property>
                   </widget>
                  </item>
                  <item row="2" column="1">
-                  <widget class="QComboBox" name="field_alignment" />
+                  <widget class="QComboBox" name="field_size_small" />
                  </item>
                  <item row="3" column="0">
-                  <widget class="QLabel" name="label_hp_max">
-                   <property name="text">
-                    <string>Hp max</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="3" column="1">
-                  <widget class="QSpinBox" name="field_hp_max">
-                   <property name="minimum">
-                    <number>0</number>
-                   </property>
-                   <property name="maximum">
-                    <number>65535</number>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="4" column="0">
-                  <widget class="QLabel" name="label_hp_rolled">
-                   <property name="text">
-                    <string>Hp rolled</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="4" column="1">
-                  <widget class="QSpinBox" name="field_hp_rolled">
-                   <property name="minimum">
-                    <number>0</number>
-                   </property>
-                   <property name="maximum">
-                    <number>255</number>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="5" column="0">
-                  <widget class="QLabel" name="label_hp_current">
-                   <property name="text">
-                    <string>Hp current</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="5" column="1">
-                  <widget class="QSpinBox" name="field_hp_current">
-                   <property name="minimum">
-                    <number>0</number>
-                   </property>
-                   <property name="maximum">
-                    <number>65535</number>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="6" column="0">
-                  <widget class="QLabel" name="label_armour_class_base">
-                   <property name="text">
-                    <string>Armour class base</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="6" column="1">
-                  <widget class="QSpinBox" name="field_armour_class_base">
-                   <property name="minimum">
-                    <number>0</number>
-                   </property>
-                   <property name="maximum">
-                    <number>255</number>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="7" column="0">
-                  <widget class="QLabel" name="label_armour_class">
-                   <property name="text">
-                    <string>Armour class</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="7" column="1">
-                  <widget class="QSpinBox" name="field_armour_class">
-                   <property name="minimum">
-                    <number>0</number>
-                   </property>
-                   <property name="maximum">
-                    <number>255</number>
-                   </property>
-                  </widget>
-                 </item>
-                 <item row="8" column="0">
                   <widget class="QLabel" name="label_thac0_base">
                    <property name="text">
                     <string>Thac0 base</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="8" column="1">
+                 <item row="3" column="1">
                   <widget class="QSpinBox" name="field_thac0_base">
                    <property name="minimum">
                     <number>0</number>
@@ -1031,14 +1032,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="9" column="0">
+                 <item row="4" column="0">
                   <widget class="QLabel" name="label_thac0">
                    <property name="text">
                     <string>Thac0</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="9" column="1">
+                 <item row="4" column="1">
                   <widget class="QSpinBox" name="field_thac0">
                    <property name="minimum">
                     <number>0</number>
@@ -1048,14 +1049,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="10" column="0">
+                 <item row="5" column="0">
                   <widget class="QLabel" name="label_infravision">
                    <property name="text">
                     <string>Infravision</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="10" column="1">
+                 <item row="5" column="1">
                   <widget class="QSpinBox" name="field_infravision">
                    <property name="minimum">
                     <number>0</number>
@@ -1065,14 +1066,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="11" column="0">
+                 <item row="6" column="0">
                   <widget class="QLabel" name="label_movement">
                    <property name="text">
                     <string>Movement</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="11" column="1">
+                 <item row="6" column="1">
                   <widget class="QSpinBox" name="field_movement">
                    <property name="minimum">
                     <number>0</number>
@@ -1082,14 +1083,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="12" column="0">
+                 <item row="7" column="0">
                   <widget class="QLabel" name="label_turn_class">
                    <property name="text">
                     <string>Turn class</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="12" column="1">
+                 <item row="7" column="1">
                   <widget class="QSpinBox" name="field_turn_class">
                    <property name="minimum">
                     <number>0</number>
@@ -1099,14 +1100,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="13" column="0">
+                 <item row="8" column="0">
                   <widget class="QLabel" name="label_flags_0b8">
                    <property name="text">
                     <string>Flags 0b8</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="13" column="1">
+                 <item row="8" column="1">
                   <widget class="QSpinBox" name="field_flags_0b8">
                    <property name="minimum">
                     <number>0</number>
@@ -1116,14 +1117,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="14" column="0">
+                 <item row="9" column="0">
                   <widget class="QLabel" name="label_roster_in_use">
                    <property name="text">
                     <string>Roster in use</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="14" column="1">
+                 <item row="9" column="1">
                   <widget class="QSpinBox" name="field_roster_in_use">
                    <property name="minimum">
                     <number>0</number>
@@ -1133,14 +1134,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="15" column="0">
+                 <item row="10" column="0">
                   <widget class="QLabel" name="label_party_order">
                    <property name="text">
                     <string>Party order</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="15" column="1">
+                 <item row="10" column="1">
                   <widget class="QSpinBox" name="field_party_order">
                    <property name="minimum">
                     <number>0</number>
@@ -1150,14 +1151,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="16" column="0">
+                 <item row="11" column="0">
                   <widget class="QLabel" name="label_roster_movement">
                    <property name="text">
                     <string>Roster movement</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="16" column="1">
+                 <item row="11" column="1">
                   <widget class="QSpinBox" name="field_roster_movement">
                    <property name="minimum">
                     <number>0</number>
@@ -1167,14 +1168,14 @@
                    </property>
                   </widget>
                  </item>
-                 <item row="17" column="0">
+                 <item row="12" column="0">
                   <widget class="QLabel" name="label_roster_tail">
                    <property name="text">
                     <string>Roster tail</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="17" column="1">
+                 <item row="12" column="1">
                   <widget class="QLineEdit" name="field_roster_tail" />
                  </item>
                 </layout>
@@ -1217,9 +1218,6 @@
              <widget class="QGroupBox" name="box_inventory">
               <property name="title">
                <string>Inventory</string>
-              </property>
-              <property name="minimumHeight">
-               <number>240</number>
               </property>
               <layout class="QVBoxLayout" name="layout_inventory">
                <item>
@@ -1271,9 +1269,6 @@
               <property name="title">
                <string>Item traits</string>
               </property>
-              <property name="minimumHeight">
-               <number>240</number>
-              </property>
               <layout class="QVBoxLayout" name="layout_traits">
                <item>
                 <widget class="QLabel" name="label_traits">
@@ -1310,9 +1305,6 @@
              <widget class="QGroupBox" name="box_spells">
               <property name="title">
                <string>Spells</string>
-              </property>
-              <property name="minimumHeight">
-               <number>240</number>
               </property>
               <layout class="QVBoxLayout" name="layout_spells">
                <item>

@@ -337,12 +337,24 @@ def test_a_combo_shows_its_longest_name_however_wide_the_arrow_is(app):
 @game_disks
 def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
     """Not one field, all sixty-two, against what `por/layout.py` says each
-    can hold. A form sized field by field grows a field that was missed."""
+    can hold. A form sized field by field grows a field that was missed.
+
+    `editor.window.TRIMMED` is the one exception and is read from there rather
+    than named here: Donald asked for 30% off the `Name` box in round five of
+    #43, because twenty bytes of name is twenty capital Ws, that is 318px at
+    three points of extra UI font, and the box sits in the header, which does
+    not scroll and is therefore a floor under the whole window. A name that
+    long still fits and still edits; it scrolls inside the box. Every other
+    field on the sheet still has to show its widest value whole, and a second
+    entry appearing in `TRIMMED` has to be a decision somebody made here.
+    """
     from PyQt6.QtWidgets import QLineEdit
 
     from editor.binding import widest_text
-    from editor.window import EditorWindow
+    from editor.window import TRIMMED, EditorWindow
     from por.layout import FIELDS_BY_NAME
+
+    assert set(TRIMMED) == {"name"}
 
     src = pathlib.Path(DISKS) / "PORSAVE11.D64"
     disk = tmp_path / "PORSAVE11.D64"
@@ -356,6 +368,7 @@ def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
                 continue
             text = widest_text(field)
             wanted = widget.fontMetrics().horizontalAdvance(text)
+            wanted = round(wanted * TRIMMED.get(name, 1.0))
             assert widget.minimumWidth() >= wanted, f"{name} cannot show {text}"
             assert widget.minimumWidth() == widget.maximumWidth()
             if isinstance(widget, QSpinBox):

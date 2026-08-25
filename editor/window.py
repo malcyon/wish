@@ -102,17 +102,40 @@ MUTED_INK = QColor("#4a5b6d")
 WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # Which item in a horizontal row is allowed to grow. `sheet_columns` is the
 # Stats tab, whose third column ends in Character Traits -- the only table on
-# it; the fourth is Miscellaneous, which is capped to its own fields and can
-# do nothing with the room. `header_row` is the roster, the icon and the
-# Character box above the tabs, where the spacer at the end takes the slack.
-ROW_STRETCH = {"sheet_columns": (0, 0, 1, 0), "header_row": (0, 0, 0, 1)}
+# it; the fourth is the combat icon over Miscellaneous, both capped to their
+# own contents and able to do nothing with the room. `header_row` is the
+# roster and the Character box above the tabs, where the spacer at the end
+# takes the slack.
+ROW_STRETCH = {"sheet_columns": (0, 0, 1, 0), "header_row": (0, 0, 1)}
 ROSTER_SLACK = 6
-ICON_MAX_WIDTH = 300
+#: Twice the icon's own minimum, so it can take a little of a wide column
+#: without the art smearing -- `IconEditor._geometry` only zooms in whole
+#: steps, so the next step up is four times the area and does not fit here.
+ICON_MAX_WIDTH = 150
 STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
 # so a roster sized to this never scrolls and never leaves a fifth of the
 # window empty.
 MAX_ROSTER_ROWS = 8
+#: Fields whose widest possible value is not worth the width it costs. `name`
+#: is twenty bytes and so twenty capital Ws -- 318px at three points of extra
+#: UI font, and it sits in the header, which does not scroll and is therefore a
+#: floor under the whole window. Donald asked for 30% off. A twenty-character
+#: name still fits the bytes and still edits; it scrolls inside the box.
+TRIMMED = {"name": 0.7}
+#: Boxes that must not be squeezed below a readable list. Stated here and not
+#: in `character.ui` because a Qt Designer round-trip silently drops
+#: `minimumHeight` from the form -- Designer does not treat it as designable,
+#: and five of them were lost that way once and had to be put back.
+#:
+#: Only these two. Measured with every floor taken off: `box_effects` and
+#: `box_spells` never reach theirs -- ten fixed effect slots come to 277px and
+#: Spells is the only box on its tab, so the scroll area always gives it its
+#: size hint -- and the roster's was overwritten by `_size_roster` on every
+#: open, empty party included. These two share the Inventory tab and are the
+#: two that lose: without a floor the page stops scrolling and squeezes them
+#: instead, which at a 600px window is 2 of 16 item rows and no trait rows.
+LIST_FLOOR = {"box_inventory": 240, "box_traits": 240}
 
 # Room for the frame and, on a spin box, the two arrows. A guess at this was
 # the bug: 36 px is what Fusion and Breeze want, and Windows draws its up/down
@@ -487,6 +510,15 @@ class EditorWindow(QMainWindow):
             form.setContentsMargins(*FORM_MARGINS)
         for box in self.findChildren(QGroupBox):
             box.setFlat(True)
+            # Character is two form layouts side by side, so its own layout
+            # holds nothing but layouts. Left alone it pays Qt's 9px margins
+            # on top of the forms' own, which is 18px of the header's width
+            # and height spent on nothing.
+            inner = box.layout()
+            if inner is not None and inner.count() and all(
+                    inner.itemAt(i).layout() is not None
+                    for i in range(inner.count())):
+                inner.setContentsMargins(0, 0, 0, 0)
             # Stop a box widening past its own fields. Left to stretch, the
             # form puts the labels and values at the left and the rest of the
             # box is empty, which is where most of the whitespace came from.
@@ -497,6 +529,11 @@ class EditorWindow(QMainWindow):
                                         box.minimumSizeHint().width()))
         # A box narrower than its column would otherwise sit in the middle of
         # it, which trades whitespace on the right for whitespace on both sides.
+
+        for name, floor in LIST_FLOOR.items():
+            box = self._child(name)
+            if box is not None:
+                box.setMinimumHeight(floor)
 
         for table in self.findChildren(QAbstractItemView):
             head = getattr(table, "verticalHeader", lambda: None)()
@@ -545,6 +582,8 @@ class EditorWindow(QMainWindow):
                 text = widest_text(field)
                 width = (_spin_width(w, text) if isinstance(w, QSpinBox)
                          else _line_width(w, text))
+                if name in TRIMMED:
+                    width = round(width * TRIMMED[name])
                 # A floor as well as a ceiling. With only a maximum the layout
                 # is free to squeeze the box below its own text, and a spin box
                 # squeezed that far is two arrows and nothing else -- which is

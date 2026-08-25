@@ -35,7 +35,10 @@ from por.icons import (
 from .palette import COLOURS, NAMES, colour
 from .partspicker import PartsPicker
 
-ZOOM = 6                    # pixel doubling on top of multicolour's own
+ZOOM = 3                    # pixel doubling on top of multicolour's own
+# 3 and not 6 since the icon left the header: on the Stats tab beside Money
+# it is one box among six rather than the thing you look at first, and at 6
+# it was as wide as Money and Character Traits together.
 
 # The two poses are drawn side by side rather than stacked. Stacked, the icon is
 # 24 wide by 48 tall, and a widget that tall pushed the roster strip to 430

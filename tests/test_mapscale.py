@@ -29,9 +29,10 @@ from automap.state import AutomapState
 from automap.window import MapCanvas
 from por.geo import GRID
 
-#: A 1280x800 laptop with a task bar taken off it, and the chrome Windows 11
-#: spends on a title bar. The window has to fit inside this.
-SMALL = QRect(0, 0, 1280, 760)
+#: The screen the whole window has to fit: a 1280x720 laptop, which is what
+#: Donald asked for in round five of #43. It was 1280x760 -- a 1280x800 panel
+#: with a task bar taken off it -- and forty pixels of that were slack.
+SMALL = QRect(0, 0, 1280, 720)
 
 
 @pytest.fixture
@@ -160,8 +161,15 @@ def test_a_fight_does_not_put_the_floor_back(app):
 
 # --- and the window it was all for -------------------------------------------
 
-def _floor(tmp_path, monkeypatch):
-    """The whole window's minimum, built somewhere with no settings file."""
+def _floor(tmp_path, monkeypatch, save=None):
+    """The whole window's minimum, built somewhere with no settings file.
+
+    `save` is the path to a saved game, or None for a window with nothing
+    open. The two are not the same measurement and #63 is the record of why:
+    `EditorWindow._adopt` runs only when a save is opened, and `_size_roster`
+    with it, so a window built with None has never seen the roster's real
+    column widths or the character sheet's real field widths.
+    """
     from wish.session import Session
     from wish.window import WishWindow
 
@@ -170,7 +178,7 @@ def _floor(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "_home", lambda: empty)
     monkeypatch.chdir(empty)
 
-    win = WishWindow(None, maps={}, session=Session(find=lambda pref=None: None))
+    win = WishWindow(save, maps={}, session=Session(find=lambda pref=None: None))
     floor = win.minimumSizeHint()
     win.close()
     return floor
@@ -215,3 +223,40 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
     finally:
         app.setFont(base)
     assert widths[1] == widths[0], "the minimum width grew with the font"
+
+
+def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
+                                                           monkeypatch):
+    """And with a character on screen, which is the case `_floor(None)` above
+    has never measured -- #63.
+
+    Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
+    it: the roster's five columns and the character sheet's fields get their
+    real widths, and none of them were in the 836 the empty window answers.
+    Measured in round five of #43: **896x662** at the default UI font and
+    **1120x702** at three points more. Both fit `SMALL`.
+
+    The width still tracks the font here -- 224px of it -- where the empty
+    window's does not, and that is #63 rather than this test: the guarantee
+    `test_the_windows_minimum_does_not_follow_the_ui_font` gives is real for
+    the state it measures and has never covered this one.
+    """
+    from gamedata import disk_path
+
+    src = disk_path("PORSAVE11")
+    if src is None:
+        pytest.skip("needs the save disks")
+    save = tmp_path / "PORSAVE11.D64"
+    save.write_bytes(src.read_bytes())
+
+    base = app.font()
+    try:
+        for extra in (0, 3):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            floor = _floor(tmp_path, monkeypatch, str(save))
+            assert floor.width() <= SMALL.width(), extra
+            assert floor.height() <= SMALL.height(), extra
+    finally:
+        app.setFont(base)
