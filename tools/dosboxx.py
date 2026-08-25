@@ -503,6 +503,12 @@ def server_on(display: str) -> bool:
     what that looks like afterwards.
     """
     n = display.lstrip(":").split(".")[0]
+    # `AF_UNIX` is POSIX-only and this module imports on Windows, where the
+    # tests run and DOSBox-X does not. Nothing here can start a server on a
+    # platform with no X socket, so "free" is the honest answer rather than an
+    # `AttributeError` from inside a probe.
+    if not hasattr(socket, "AF_UNIX"):
+        return False
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.settimeout(1.0)
