@@ -1378,7 +1378,16 @@ here fails a test. Three kinds of byte have no neutral source:
   uses;
 * **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
   `heap_0c1`, `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`,
-  `icon_choice` — live heap and the unattributed, ~80 bytes.
+  `icon_choice` — live heap and the unattributed, ~80 bytes. Measured
+  survivable for a character carrying items, and, since #62, for one carrying
+  nothing too: the engine's own record for a character who dropped everything
+  in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
+  writes.
+
+And one rule that is about a **file** rather than a byte: a character carrying
+nothing gets **no `.ITM`**, not an empty one (`ITM_OMITTED_WHEN_EMPTY`). A
+zero-length file is what the engine reads as one item of heap — #62, and the
+one thing about a naked converted character that was actually wrong.
 
 The `.SPC` effects file is never written: its 9-byte record is decoded only
 to the id byte, and writing the other eight would be a guess. A character's
@@ -1438,9 +1447,15 @@ the six `.ITM` files match the C64 item area 25 of 25 records
 byte-identical in the shared fields, the in-game item list renders
 character 1's count, order, quantities and readied flag exactly, and the
 engine's own resave re-emits all 25 for all six characters unchanged.
-One residue: a character converted with *zero* items still shows the
-garbage sheet, and the engine invents one heap-garbage item for him on
-resave — see the #56 experiment for the settling diff.
+That residue — a character converted with *zero* items showing the garbage
+sheet, and the engine inventing one heap item for him on resave — was **#62,
+and it is fixed**. It was never a record byte: the engine's own record for a
+character who owns nothing holds `item_count` 0, `item_chain` NULL and
+`hands_used` 0, exactly what the writer already wrote. What was wrong was the
+zero-length `.ITM` beside it, which the engine reads as one item of heap and
+its own save never produces. `write_dos_save` now writes no `.ITM` for a
+character carrying nothing and removes a stale one. See `docs/50-experiments.md`
+"A converted character who owns nothing (#62)".
 
 ### What the second consumer of the C64 reader exposed
 

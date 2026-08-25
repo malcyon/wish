@@ -706,7 +706,8 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                     "roster keeps at -2"),
     ("inventory", "each sixteen-byte record unpacked onto a 63-byte .ITM "
                   "record; the count and the encumbrance are computed from "
-                  "it"),
+                  "it, and an empty inventory writes no .ITM file at all "
+                  "rather than an empty one -- ITM_OMITTED_WHEN_EMPTY"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -725,6 +726,17 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("portrait_body", "see portrait_head"),
 )
 
+#: **A character carrying nothing gets no `.ITM` file at all**, and an empty
+#: file is not the same thing as no file.  Measured, #62: the engine's own
+#: save of a character whose items were all dropped in play writes no
+#: `CHRDAT<slot><n>.ITM`, and handing it a zero-length one instead -- the same
+#: 285 record bytes either way -- is what produced `WEAPON 254 PASSS`,
+#: `DAMAGE 0D8-128`, `THAC0 148` and a phantom item in the next save.  The
+#: only difference between the clean run and the garbage one is this file's
+#: existence: `docs/50-experiments.md`, "A converted character who owns
+#: nothing (#62)".
+ITM_OMITTED_WHEN_EMPTY = True
+
 #: DOS bytes with no source in any neutral field: live heap the engine
 #: rebuilds, and the unattributed.  Zeroed and reported -- and **measured
 #: survivable**: a slot whose records differ from the game's own only in
@@ -732,17 +744,37 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
 #: keeps most of the zeroes (`docs/117-save-conversion.md`, the reverse
 #: direction).  The round-trip test masks exactly this list rather than
 #: whatever happened to differ.
+#:
+#: Each entry says which characters the zero has been measured against.  #62
+#: is why that is written down: the whole list was measured on characters
+#: *carrying items* and read as proven, and "a character carrying none" was a
+#: case nobody had run.  Four entries have now been measured both ways --
+#: the engine's own record for a character who dropped everything in play,
+#: `work/p62/truth/CHRDATD1.SAV`.
 WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
     ("effect_chain", "live heap pointer; NULL, which is also what an empty "
-                     "effect list looks like"),
-    ("unnamed_0ab", "unattributed, and different for every DOS character"),
+                     "effect list looks like. NULL in the engine's own "
+                     "record with items and without"),
+    ("unnamed_0ab", "unattributed, and different for every DOS character. "
+                    "The engine neither reads nor rewrites it: it carries "
+                    "our zero through a resave, and keeps its own A5 when a "
+                    "character empties his pack. Measured both ways"),
     ("icon_choice", "indexes the DOS art set, which no other port numbers; "
-                    "zero leaves the sheet portrait blank"),
-    ("heap_0c1", "live heap pointers"),
+                    "zero leaves the sheet portrait blank. Cosmetic, and the "
+                    "same with items and without"),
+    ("heap_0c1", "live heap pointers. Carried through a resave unread, with "
+                 "items and without"),
     ("item_chain", "live heap pointer block; the items themselves are in "
-                   "the .ITM file"),
-    ("hands_used", "live combat state with no attributed source"),
-    ("heap_104", "live heap"),
+                   "the .ITM file. **Zero is what the engine itself writes "
+                   "for a character carrying nothing** -- measured, #62 -- "
+                   "so the empty case is now right by value, not by luck"),
+    ("hands_used", "live combat state with no attributed source. The engine "
+                   "writes 2 for a fighter holding a weapon and **0 for the "
+                   "same fighter after he drops everything**, so zero is "
+                   "correct for exactly the character we could not source, "
+                   "and #62's prime suspect is refuted"),
+    ("heap_104", "live heap. Carried through a resave unread, with items and "
+                 "without"),
 )
 
 #: DOS fields written as documented constants: `(name, bytes, why)`.  Each is
@@ -1372,9 +1404,12 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     where the new files go, and it must not be the player's own save
     directory -- the template is only ever read.
 
-    What is written: `CHRDAT<slot><n>.SAV` and its `.ITM` for each character,
-    a `.SPC` never (and a stale one in `out` is removed, so it cannot be read
-    as the character's effects), and `SAVGAM<slot>.DAT` copied from the
+    What is written: `CHRDAT<slot><n>.SAV` for each character and its `.ITM`
+    **only when the character carries something** -- a zero-length `.ITM` is
+    not how the engine says "no items", it is how it says "one item, from
+    whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- a `.SPC` never
+    (and a stale `.ITM` or `.SPC` in `out` is removed, so neither can be read
+    as the character's items or effects), and `SAVGAM<slot>.DAT` copied from the
     template with the quest-flag words rewritten from the C64 bytes -- the two
     ports index them by the same ECL address.  The party's square goes in
     only when the C64 party stands in the template's own area; retargeting a
@@ -1408,7 +1443,16 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         rec, itm, one = write(char)
         stem = out / f"CHRDAT{slot}{n}"
         stem.with_suffix(".SAV").write_bytes(rec)
-        stem.with_suffix(".ITM").write_bytes(itm)
+        # A character carrying nothing gets **no `.ITM` file at all**, and an
+        # empty one is not the same thing: the engine reads a zero-length
+        # `.ITM` as one item of whatever the heap held, draws it on the sheet
+        # (`WEAPON 254 PASSS`), and writes it into the save on the next resave.
+        # See ITM_OMITTED_WHEN_EMPTY.
+        items = stem.with_suffix(".ITM")
+        if itm:
+            items.write_bytes(itm)
+        elif items.exists():
+            items.unlink()
         spc = stem.with_suffix(".SPC")
         if spc.exists():
             spc.unlink()

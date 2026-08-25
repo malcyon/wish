@@ -5104,6 +5104,79 @@ but a converted naked character grows a garbage item on his first resave.
 
 Conversions, resaves, runner scripts and screenshots: `work/p56/`.
 
+**Answered by "A converted character who owns nothing (#62)" below: no record
+byte triggers it. The trigger is the zero-length `.ITM` file beside it.**
+
+## A converted character who owns nothing (#62)
+
+**Hypothesis.** The converted zero-item record differs from the engine's own
+somewhere the sheet's derived lines read — candidates `hands_used` at `0x100`
+and the attack-form tail, both written zero because nothing sources them.
+
+**Result 1. No byte of the record is wrong. CONFIRMED, and the hypothesis is
+refuted.** There was no engine-written specimen of a character carrying
+nothing, so one was made: the shipped slot A party loaded, saved to C as a
+baseline, character 1's nine items dropped in play, saved again to D
+(`work/p62/run_n.py`, artefacts in `work/p62/truth/`). The same character
+before and after, in one session, differs at exactly these bytes:
+
+| offset | field | 9 items | 0 items |
+|---|---|---|---|
+| `0x0C7` | `item_count` | 9 | **0** |
+| `0x0C8`–`0x0D7` | `item_chain` | four live far pointers | **all zero** |
+| `0x100` | `hands_used` | 2 | **0** |
+| `0x102` | `encumbrance` | 1241 | 486 |
+| `0x110`–`0x119` | `thac0_current`, `armour_class`, `roster_tail` | armed | unarmed |
+
+`item_count` 0, `item_chain` NULL and `hands_used` 0 are **exactly what the
+writer already produced**. The combat tail comes from the C64 roster, which
+carries the C64's own unarmed numbers. So the record was right all along.
+
+**Result 2. The trigger is the `.ITM` file's existence. CONFIRMED, one
+variable.** The engine wrote **no `CHRDATD1.ITM` at all** for the emptied
+character — every other character in the slot got one. Our writer wrote a
+zero-length file. Six variants of the same converted BRUTUS rode as the six
+characters of one save slot, judged by the `.ITM` each grew on the engine's
+own resave (`work/p62/run_o.py`, `work/p62/out-v1/`):
+
+| n | record | `.ITM` given | `.ITM` after the engine's resave |
+|---|---|---|---|
+| 1 | ours, unchanged | absent | **absent** |
+| 2 | ours, unchanged | zero-length | 63 bytes of heap |
+| 3 | `hands_used` = 2 | zero-length | 63 bytes of heap |
+| 4 | `hands_used` = 2 | absent | **absent** |
+| 5 | ours, unchanged | absent | **absent** |
+| 6 | ours, unchanged | zero-length | 63 bytes of heap |
+
+The file separates them and `hands_used` does not. Character 1's sheet, the
+identical 285 bytes that read `WEAPON 254 PASSS`, `DAMAGE 0D8-128`,
+`THAC0 148`, `ENCUMBRANCE 60540` with the empty file beside them
+(`work/p56/shots/l1_sheet.png`), reads clean with no file: no `WEAPON` line,
+`DAMAGE 1D2+5`, `THAC0 18`, `ENCUMBRANCE 120`, and no `ITEMS` in the VIEW bar
+(`work/p62/out-v1/v1_sheet.png`).
+
+**What the engine is doing** is SPECULATIVE and does not need settling to fix
+this: a zero-length file opens successfully where a missing one does not, and
+the loader ends up with a chain of one record it never read — the 63 bytes it
+then saves are font-shaped heap, `quantity` `0xFE`, which is the `254` on the
+sheet. Settling it would need the overlay disassembled, and nothing turns on
+it.
+
+**The fix**, `por.dos.write_dos_save`: write the `.ITM` only when the
+character carries something, and remove a stale one, the way the stale `.SPC`
+already was (`por.dos.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
+not by hand-edit: the fixture converted by the fixed writer loads, views
+clean and resaves without inventing anything (`work/p62/out-fixed/`).
+
+**The lesson, applied to the rest of the list.** `WRITE_UNSOURCED` had been
+measured survivable on characters *carrying items* only. Four of its seven
+entries are now measured against a character carrying none as well —
+`item_chain` and `hands_used` are the values the engine itself writes, and
+`effect_chain`, `unnamed_0ab`, `heap_0c1` and `heap_104` are carried through
+a resave unread in both cases. `icon_choice` remains a known cosmetic drop.
+
+Runner scripts, conversions, resaves and screenshots: `work/p62/`.
+
 ## Mapping the DOS saved game (#59)
 
 **Hypothesis.** `SAVGAM?.DAT`'s 8016 unattributed bytes can be mapped the way

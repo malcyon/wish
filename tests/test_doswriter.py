@@ -309,7 +309,9 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
     report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     party = dos.read_party(tmp_path, "A")
     assert [c.name for c in party] == ["BRUTUS"]
-    assert (tmp_path / "CHRDATA1.ITM").exists()
+    # The fixture BRUTUS carries nothing, so he gets no `.ITM` at all -- see
+    # `test_a_character_who_carries_nothing_gets_no_itm_file`.
+    assert not (tmp_path / "CHRDATA1.ITM").exists()
     assert not (tmp_path / "CHRDATA1.SPC").exists()
     assert any("clock" in w for w in report.warnings)
 
@@ -357,3 +359,55 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     if dos.area_id(template) != save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]:
         assert any("retargeting" in w for w in report.warnings)
         assert dos.position(savgam) == dos.position(template)
+
+
+# --- the character who carries nothing (#62) ---------------------------------
+
+def _item_region(rec: bytes) -> dict[str, bytes]:
+    """The three fields the sheet's weapon, damage, THAC0 and encumbrance
+    lines are computed from."""
+    return {n: rec[dos_layout.FIELDS_BY_NAME[n].span]
+            for n in ("item_count", "item_chain", "hands_used")}
+
+
+def test_a_character_who_carries_nothing_matches_the_engines_own_record():
+    """#62's byte question, answered by measurement rather than by argument.
+
+    The engine's own save of a character who dropped every item in play
+    (`work/p62/truth/CHRDATD1.SAV`, the diff in `docs/50-experiments.md`)
+    holds `item_count` 0, the whole 56-byte `item_chain` NULL and
+    `hands_used` 0 -- which is exactly what the writer already produces.  So
+    no byte of the record is wrong for an empty character, and `hands_used`,
+    the issue's prime suspect, is refuted: the engine writes 2 for a fighter
+    holding a weapon and 0 for the same fighter once he is empty-handed.
+    """
+    char = _filled()
+    char.set("inventory", [], "made up: a character carrying nothing")
+    rec, itm, _ = dos.write(char)
+    assert itm == b""
+    assert _item_region(rec) == {"item_count": b"\x00",
+                                 "item_chain": bytes(56),
+                                 "hands_used": b"\x00"}
+
+
+@needs_dos_saves
+def test_a_character_who_carries_nothing_gets_no_itm_file(tmp_path):
+    """#62: an empty `.ITM` is not how the engine says "no items".
+
+    Handed a zero-length `CHRDATA1.ITM` beside a record whose item count is
+    0, DOS Pool of Radiance builds a one-item chain out of whatever the heap
+    held and draws it: `WEAPON 254 PASSS`, `DAMAGE 0D8-128`, `THAC0 148`,
+    `ENCUMBRANCE 60540` -- and writes the phantom into a 63-byte `.ITM` on
+    the next save.  With the *same 285 record bytes* and no file at all the
+    sheet is clean and the resave writes none.  Six variants in one save
+    slot separated on this and nothing else (`work/p62/`, run `v1`).
+    """
+    save0, save1 = _fixture_payloads()
+    stale = tmp_path / "CHRDATA1.ITM"
+    stale.write_bytes(b"\x00" * dos_layout.ITEM_SIZE)
+    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    party = dos.read_party(tmp_path, "A")
+    assert party[0].get("item_count") == 0
+    # Not present, and not merely empty -- and a stale one from an earlier
+    # write is removed, the way the stale `.SPC` already was.
+    assert not stale.exists()

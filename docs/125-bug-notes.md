@@ -411,23 +411,30 @@ read from the bytecode, not driven. Same page and same class of mistake as
 `goldbox-bugs.md` #9; it is here rather than there because the consequence is
 a repeated paragraph.
 
-## N18. The DOS sheet renders garbage for a record that claims gear it does not have
+## N18. A zero-length `.ITM` gives a DOS character one item made of heap
 
-**What the game does.** DOS Pool of Radiance, shown a character whose 285-byte
-record disagrees with an empty item list, draws `WEAPON 254 PASSS`,
-`DAMAGE 0D8-128`, `THAC0 148` and a five-digit encumbrance on the view screen —
-and on the next save invents a one-record `.ITM` of heap garbage for him,
-rebuilding the chain-head pointer at `0x0C8`/`0x0CA`/`0x0CB`.
+**What the game does.** DOS Pool of Radiance, handed a character whose item
+count is 0 and whose `.ITM` file exists but is **empty**, builds a chain of one
+item it never read. The view screen draws it — `WEAPON 254 PASSS`,
+`DAMAGE 0D8-128`, `THAC0 148`, `ENCUMBRANCE 60540`, the quantity `254` being
+the heap's `0xFE` — and the next save writes the phantom out as a 63-byte
+`.ITM`, rebuilding the chain-head pointer at `0x0C8`/`0x0CA`/`0x0CB`.
 
-**Why no player sees it.** Both in-game routes to owning nothing render clean:
-a freshly rolled character's sheet has no `WEAPON` line at all, and a character
-who drops every item in play gets the same clean sheet, with the `ITEMS`
-command removed from the VIEW bar. The garbage needs the files edited out from
-under the engine — #26 emptied a `.ITM` by hand — or a record written by our
-own converter for a C64 character who owned nothing, which real played saves
-do not contain. CONFIRMED at the screen both ways, `docs/50-experiments.md`
-"Why the converted C64 character reached DOS with no items (#56)"; which
-record byte triggers it is the open diff named there.
+**What it should do.** Treat an empty file as no items. Its own save writes
+**no `.ITM` at all** for a character carrying nothing, so the empty file is a
+state it never produces and never checks for.
+
+**The evidence.** The same 285 record bytes, run twice, differing only in
+whether the file is there: with it the sheet is garbage, without it there is no
+`WEAPON` line, `DAMAGE 1D2+5`, `THAC0 18`, `ENCUMBRANCE 120` and no `ITEMS` in
+the VIEW bar. Six variants in one save slot separated on the file and not on
+`hands_used`. CONFIRMED, `docs/50-experiments.md` "A converted character who
+owns nothing (#62)".
+
+**Why no player sees it.** Nothing in the game writes an empty `.ITM`: both
+in-game routes to owning nothing — a freshly rolled character, and one who
+drops every item in play — render clean. It takes a file written from outside,
+which is how our own converter reached it (#62, fixed).
 
 ## Not yet confirmed
 
