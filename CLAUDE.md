@@ -389,6 +389,20 @@ true. And every enhancement ends with a `Documentation:` line linking the doc it
 rests on -- that link is what joins the work list to the knowledge base now the
 P codes are gone.
 
+**A bug you find and decide not to fix gets an issue, in the same session you
+found it.** Out of scope is a fine reason not to fix something and not a reason
+to leave it unrecorded -- a defect that exists only in a subagent's report is a
+defect nobody will ever act on, because nobody re-reads reports. #65 sat in a
+sentence of a #59 write-up until it was noticed by hand.
+
+The bar is low on purpose: the issue does not need a diagnosis, only what you
+saw, what you were doing, and why you did not chase it. "Not diagnosed" is a
+legitimate Root cause section. Grade what you know and say what you would look
+at next.
+
+This applies to a bug in **our** code. A defect in the game is research and goes
+where the Documentation section says.
+
 **Comment before you close.** An issue that closes with nothing but a commit
 reference makes the next reader open the diff to find out what happened. Say
 what was actually done, what it now does instead, and anything that was
