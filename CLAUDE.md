@@ -778,6 +778,30 @@ can answer "what should we work on" from the repository alone. If it cannot,
 the gap is the thing to fix, and it is a documentation bug rather than a reason
 to keep a session alive.
 
+## Words to avoid
+
+Plain words, and the ones a person would actually say. These four turn up
+constantly in assistant prose and almost never in human speech:
+
+| instead of | say |
+|---|---|
+| **load-bearing** | what holds it up, what depends on it, what breaks without it |
+| **fair** ("that's fair") | agree or disagree in words: "you're right", "I don't think so, because" |
+| **blast radius** | what else this touches, what it would break |
+| **elide** | truncate, shorten, cut off with an ellipsis |
+
+The list is examples of a habit rather than a blocklist to be satisfied.
+The habit is reaching for a piece of jargon that sounds precise and carries
+less than the plain phrase it replaced -- and "that's fair" is the worst of
+them, because it agrees with nothing in particular and ends a conversation
+that had somewhere to go.
+
+**Code is the exception, and only where the API names it.** Qt's own methods
+are `setTextElideMode` and `ElideRight`, so `elide` in `editor/rosterview.py`
+is the framework's word and changing it would make the code harder to search,
+not easier to read. Use the API's spelling in code and identifiers; use the
+plain word when explaining it to a person.
+
 ## Replies
 
 Lead with the answer. Findings before method. Tables over prose for anything
