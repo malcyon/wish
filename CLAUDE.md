@@ -123,6 +123,79 @@ leave the VICE configs alone.
 Stays in the main window: Donald's questions, short edits, and anything where
 writing the brief costs more than doing the work.
 
+**Which agent, for what.** The definitions are in `.claude/agents/`; this is
+the routing.
+
+| agent | model | when |
+|---|---|---|
+| `reverse-engineering` | Fable | `reverse-engineering` **and** `Priority: High`, one at a time. Expensive; the pair is the filter, not the label |
+| `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
+| `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
+| `code-reviewer` | Sonnet | after **every** subagent that wrote code, before its work is committed |
+| `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands |
+| `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy |
+| `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
+
+**"Easy" is not a category and neither is "unlabelled".** `quick-fix`'s filter
+is a property of the issue body -- does it name the mechanism, or only the
+goal? #71 carried no `reverse-engineering` label and took nine rounds and a
+`QTableView` subclass. #73 named the two candidate shapes and said which was
+smaller, and that is what made it assignable.
+
+**Every agent gets an escape hatch and it is a success, not a failure.** If the
+work turns out to need something the agent is not for, it stops and says so and
+the work is re-routed. An agent that presses on into a decision that was not
+its own costs more than the re-route.
+
+**Scope a reviewer explicitly when more than one agent is in the tree.** A
+`code-reviewer` starts with `git diff`, and with three agents working that diff
+is three people's work. Name the files it owns and name the ones it must
+ignore, or it will report another agent's half-finished change as a finding
+against the one you are reviewing.
+
+## Prioritising the work list
+
+Donald asks for a recommended order regularly, and this is what the
+recommendation is made of. **It is a recommendation.** He recurates the
+`Priority:` labels by hand, so a list that disagrees with a label says so
+out loud and leaves the label alone.
+
+**Lead with what you would do first and why, one line each.** Not an
+exhaustive survey, not a table of everything open. Group by category when
+there are more than a handful, because the categories are what make the shape
+visible.
+
+What moves an issue up:
+
+* **A defect a user can actually hit**, over anything that is only untidy.
+  What does the player see? If the honest answer is "nothing", it is not
+  urgent, however wrong it is.
+* **A guarantee that is asserted and never verified.** #70 was exactly this --
+  the 1280x720 promise was believed by everyone and checked by nobody, and the
+  first time it ran in CI it failed on both platforms. Worse than a missing
+  test, because a missing test is not believed.
+* **Work that unblocks several other issues.** #70's synthetic party unblocked
+  #31, #33 and #34 at once. One issue that frees three beats three that free
+  none.
+* **The smallest thing that removes a blocker**, rather than the whole of what
+  the blocker is in the way of.
+* **A contradiction in the knowledge base.** Two documents disagreeing costs
+  somebody a session, and the fix is usually an hour. #75 was a paragraph.
+
+What moves it down:
+
+* **`blocked` on Donald specifically** -- a choice only he can make, a machine
+  only he has. Work blocked on a measurement we could take ourselves is not
+  blocked and the label should come off.
+* **Anything needing a design decision he has not made.** Do not schedule the
+  building of something whose shape is still his to choose; schedule the
+  question instead.
+* **A `question` with no consequence attached.** If nothing changes when it is
+  answered, it can wait for the session that stumbles over it.
+
+**Say what each issue is waiting on, not just where it ranks.** "Blocked on
+one DOS save made outdoors" is actionable; "medium priority" is not.
+
 ## Commits
 
 **Keep a commit message to one sentence.** That is the whole rule, and it
@@ -672,6 +745,38 @@ earns its lines. Restating the code does not.
 `por/layout.py` is the exception: its notes are the field documentation and are
 generated into `docs/20-character-record.md`. They can be long. Run
 `python3 tools/gendocs.py` after touching them.
+
+## Ending a session, and starting the next one
+
+**The session is not the knowledge base and must never become it.** A fact
+that exists only in a conversation is a fact somebody pays for twice, and
+conversations end -- on a spend limit, on a `/clear`, on a context window.
+Everything above about putting findings on issues when they arrive is what
+makes a session disposable, which is the point.
+
+**Long sessions accumulate stale facts, and that is a cost nobody counts.**
+Twice in one night the assistant answered from something that had been true
+earlier and was not any more: the Amiga disks were reported missing because an
+old search had been too narrow, and #71 was reported closed off a local
+measurement CI then contradicted. A fresh session reading the issue would have
+got both right. Length is not context; it is also drift.
+
+**Before clearing, say what is not written down yet.** Go through what the
+session established and check each fact has a home: a comment on its issue, a
+line in `docs/`, a row in a README. Name anything that does not, and write it
+down before the session ends. Calibrations are the ones that get lost -- "+6pt
+here measures like Windows' base font" is worth more than the fix it enabled,
+and lived nowhere but a conversation until it was put on #71.
+
+**A fresh session reads, in this order:** `CLAUDE.md`, `INDEX.md`, then
+`gh issue list`. For any issue it is about to work, `gh issue view N --comments`
+-- because the description is never rewritten here, so every correction lives
+in the comments.
+
+**The test of whether a session was recorded properly** is whether the next one
+can answer "what should we work on" from the repository alone. If it cannot,
+the gap is the thing to fix, and it is a documentation bug rather than a reason
+to keep a session alive.
 
 ## Replies
 
