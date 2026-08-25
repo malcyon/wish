@@ -132,7 +132,7 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # the right and all of the stretch. Shared four ways the slack came out as a
 # gap beside every column; on the column Traits used to share with Money it
 # was 490px of nothing.
-ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (0, 1, 0),
+ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (0, 0, 1),
                "form_identity": (0, 0),
                "row_combat": (0, 0)}
 ROSTER_SLACK = 6
@@ -1065,10 +1065,13 @@ class EditorWindow(QMainWindow):
         # mode, reproduced on a bare `QTableView` with none of this in it (#90).
         #
         # So the slack leaves the table altogether. `header_slack` in
-        # `character.ui` is a spacer between the roster and Character and is
-        # the only item in `header_row` with any stretch, so a wider window
-        # widens the gap between the two boxes and nothing else. The roster is
-        # exactly its five columns, whatever the window is doing.
+        # `character.ui` is a spacer at the **end** of `header_row` and is the
+        # only item in it with any stretch, so a wider window grows the empty
+        # space to the right of Character and nothing else. It sits after
+        # Character rather than between the two boxes: they are one group and
+        # should read as one, and a gap that opens down the middle of the
+        # header pulls them apart as the window widens. The roster is exactly
+        # its five columns, whatever the window is doing.
         view.setMaximumWidth(view.minimumWidth())
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()

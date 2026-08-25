@@ -58,16 +58,6 @@
        <widget class="QTableView" name="roster" />
       </item>
       <item>
-       <spacer name="header_slack">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size><width>0</width><height>0</height></size>
-        </property>
-       </spacer>
-      </item>
-      <item>
        <widget class="QGroupBox" name="box_identity">
         <property name="title">
          <string>Character</string>
@@ -227,6 +217,16 @@
          </item>
         </layout>
        </widget>
+      </item>
+      <item>
+       <spacer name="header_slack">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size><width>0</width><height>0</height></size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </item>
