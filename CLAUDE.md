@@ -473,6 +473,25 @@ exception is a commit message**, where the Commits section already rules that
 the number goes in parentheses at the end of the one line -- a title there would
 break the sentence, and GitHub hotlinks the number anyway.
 
+**Every finding goes in a comment on its issue, when it arrives.** Not at the
+end of the work, not only in the reply, not only in `docs/` -- on the issue,
+while the agent that found it is still the thing that knows it.
+
+The reason is that a finding recorded nowhere is a finding somebody pays for
+twice. A night's work can produce more than a person can read in one sitting;
+what survives is what is attached to the thing being worked on. A reply
+scrolls away, and a doc records what is *known* rather than what was *learnt
+about this ticket*.
+
+**This includes the findings that are not the answer.** A refuted hypothesis, a
+measurement that came out unremarkable, a claim you checked and could not
+confirm, the thing you could not reach and why -- those are the expensive ones
+to rediscover, and they are the ones that get left out.
+
+**And it includes findings that belong to a *different* issue.** File it or
+comment on it, then say in your own issue that you did. Work that turns up a
+defect in somebody else's area is the commonest way a fact gets lost.
+
 **Comment before you close.** An issue that closes with nothing but a commit
 reference makes the next reader open the diff to find out what happened. Say
 what was actually done, what it now does instead, and anything that was
