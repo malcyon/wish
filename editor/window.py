@@ -896,6 +896,69 @@ class EditorWindow(QMainWindow):
         self._adopt(party, str(conversion.template), note=note, dirty=True)
         return note
 
+    # -- exports ----------------------------------------------------------
+    #
+    # An import lands in this window and reaches a disk through Save, which is
+    # what keeps `editor/files.py`'s backup covering it. An export writes into
+    # a folder we do not own, so the guarantee is the other one
+    # `editor/exports.py` describes: nothing is written until the pane has
+    # named every file the write would replace or remove.
+
+    def export_source(self):
+        """The open save as it stands, edits on screen included.
+
+        `_flush` and `_write_back` are exactly what Save does before it writes,
+        and they touch no file -- so an export carries the same party the
+        window is showing rather than the one last written.
+        """
+        from .exports import NOTHING_OPEN, ExportError, Source
+
+        if self.party is None:
+            raise ExportError(NOTHING_OPEN)
+        self._flush()
+        self._write_back()
+        return Source.from_party(self.party, self.path)
+
+    def export_dos_save(self, destination: str | None = None) -> str:
+        """File > Export > DOS save. Returns what happened, for a test."""
+        from .exports import DosExportDialog
+
+        return self._export(DosExportDialog, destination)
+
+    def export_amiga_party(self, destination: str | None = None) -> str:
+        """File > Export > Amiga characters. Returns what happened."""
+        from .exports import AmigaExportDialog
+
+        return self._export(AmigaExportDialog, destination)
+
+    def _export(self, dialog_class, destination: str | None) -> str:
+        from .exports import FAILED_TITLE, ExportError
+
+        try:
+            source = self.export_source()
+        except ExportError as exc:
+            QMessageBox.warning(self, FAILED_TITLE, str(exc))
+            return "nothing open"
+        dialog = dialog_class(source, destination=destination, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "cancelled"
+        return self.commit_export(dialog.plan)
+
+    def commit_export(self, plan) -> str:
+        """Write a rehearsed export. Separate so a test can call it."""
+        from .exports import FAILED_TITLE
+
+        if plan is None:
+            return "cancelled"
+        try:
+            note = plan.write()
+        except Exception as exc:
+            _log.exception("could not export into %s", plan.destination)
+            QMessageBox.critical(self, FAILED_TITLE, str(exc))
+            return "failed"
+        self.status(note)
+        return note
+
     def _size_roster(self) -> None:
         """Give the roster exactly the width and height its rows need.
 

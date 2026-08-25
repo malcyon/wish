@@ -212,6 +212,29 @@ class WishWindow(QMainWindow):
             imports.addAction(dos_save)
             self.import_dos_action = dos_save
 
+        # Export beside Import rather than one dialog with a source and a
+        # destination: the source is always the save this window already has
+        # open, so a source control would be a control with one sensible
+        # value -- and an import lands in the open document while an export
+        # writes elsewhere and is final, which is a difference a direction
+        # combo box would hide.
+        #
+        # Built only when `WISH_EXPERIMENTAL_EXPORT` says so -- see
+        # `editor/exports.py`, where every string in it is still a placeholder.
+        from editor import exports
+        self.export_dos_action = None
+        self.export_amiga_action = None
+        if exports.enabled():
+            out = menu.addMenu(exports.MENU_EXPORT)
+            for text, slot in (
+                    (exports.MENU_DOS, self.editor.export_dos_save),
+                    (exports.MENU_AMIGA, self.editor.export_amiga_party)):
+                action = QAction(text, self)
+                action.triggered.connect(
+                    lambda _checked=False, s=slot: s())
+                out.addAction(action)
+            self.export_dos_action, self.export_amiga_action = out.actions()
+
         menu.addSeparator()
         prefs = QAction("&Preferences…", self)
         prefs.setShortcut(QKeySequence(SHORTCUT))
