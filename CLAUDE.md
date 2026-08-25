@@ -423,6 +423,17 @@ at next.
 This applies to a bug in **our** code. A defect in the game is research and goes
 where the Documentation section says.
 
+**Name an issue when you cite it: `#59 (Map the DOS saved game, not just the
+character record)`.** A bare `#59` is an opaque number in a commit message, in
+`git blame`, in a terminal and in a reply -- and this project's archaeology
+happens in all four. The title is what makes a reference readable a year later
+without a browser.
+
+This applies to replies, issue bodies, issue comments and documents. **The one
+exception is a commit message**, where the Commits section already rules that
+the number goes in parentheses at the end of the one line -- a title there would
+break the sentence, and GitHub hotlinks the number anyway.
+
 **Comment before you close.** An issue that closes with nothing but a commit
 reference makes the next reader open the diff to find out what happened. Say
 what was actually done, what it now does instead, and anything that was
