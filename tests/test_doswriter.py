@@ -585,3 +585,48 @@ def test_a_character_who_carries_nothing_gets_no_itm_file(tmp_path):
     # Not present, and not merely empty -- and a stale one from an earlier
     # write is removed, the way the stale `.SPC` already was.
     assert not stale.exists()
+
+# --- what the clear may and may not reach ------------------------------------
+
+
+@pytest.mark.parametrize("slot", ["../../evil", "AB", "", "1", "a/b", "."])
+def test_a_slot_that_is_not_one_letter_is_refused(slot, tmp_path):
+    """`slot` is interpolated into the paths this function unlinks.
+
+    `pathlib`'s `/` splits an embedded separator into components, so
+    `out / "CHRDAT../../../x1"` resolves outside `out` and the clear would
+    delete a file that is nobody's business. The engine's own slots are a
+    single letter, so the check costs nothing -- and it closes the
+    case-mismatch with it, since the save is written with `slot.upper()`
+    while the files on disk take `slot` verbatim.
+    """
+    save0, save1 = _fixture_payloads()
+    with pytest.raises(dos.DosRecordError) as caught:
+        dos.write_dos_save(save0, save1, tmp_path, tmp_path / "out", slot)
+    assert "single letter" in str(caught.value)
+
+
+@needs_dos_saves
+def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
+        tmp_path, monkeypatch):
+    """The clear runs for the whole slot; the writes run per character.
+
+    So a `write()` that raises partway through the party used to leave
+    characters 1..N-1 replaced, N..6 deleted, and `SAVGAM<slot>.DAT` still
+    naming all six -- a save pointing at files that are not there, which is
+    #68's fault reached through the write path instead of the leftover path.
+    Everything is converted before anything is unlinked.
+    """
+    save0, save1 = _fixture_payloads()
+    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    assert before, "the first conversion must have written something"
+
+    def boom(char):
+        raise dos.DosRecordError("this character will not encode")
+
+    monkeypatch.setattr(dos, "write", boom)
+    with pytest.raises(dos.DosRecordError):
+        dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    after = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    assert after == before

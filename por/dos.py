@@ -1471,6 +1471,17 @@ def write_dos_save(save0: bytes, save1: bytes | None,
             "the output directory is the template; the template is read-only")
     out.mkdir(parents=True, exist_ok=True)
 
+    # `slot` is interpolated straight into filenames and into the paths this
+    # function *deletes*, and `pathlib`'s `/` splits an embedded separator into
+    # components -- so a slot of `../../x` would unlink outside `out` entirely.
+    # It is also written into the save as `slot.upper()` while the files on
+    # disk take it verbatim, which on a case-insensitive filesystem produces a
+    # save naming `CHRDATA1` beside a file called `CHRDATa1`. One check closes
+    # both: the engine's own slots are a single letter.
+    if len(str(slot)) != 1 or not str(slot).isalpha():
+        raise DosRecordError(
+            f"a save slot is a single letter, not {slot!r}")
+
     sg = SaveGame0.from_bytes(bytes(save0))
     sg1 = SaveGame1(bytes(save1)) if save1 is not None else None
     party = sg.characters
@@ -1489,6 +1500,30 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # from the six filenames in `SAVGAM<slot>.DAT` (#59), so it read five
     # strangers back (#68).  Only the engine's own six names are removed, by
     # enumeration rather than by glob: nothing else in `out` is ours to touch.
+    # **Every character is converted before anything in `out` is touched.**
+    # The clear below removes the slot's six names, and a `write()` that
+    # raises partway through the party -- `_encode` refuses a field whose
+    # length is wrong -- would otherwise leave characters 1..N-1 replaced,
+    # N..6 deleted and gone, and `SAVGAM<slot>.DAT` still naming all six. That
+    # is #68's own failure reached through the write path instead of the
+    # leftover path, and it is worse, because the save then names files that
+    # are not there.
+    report = SaveReport(total=0)
+    built = []
+    for char_slot in party:
+        block = sg1.roster(char_slot.index) if sg1 is not None else None
+        inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
+        char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
+                              source=f"C64 slot {char_slot.index}")
+        rec, itm, one = write(char)
+        built.append((char, rec, itm, one, char_slot))
+
+    # The unit a conversion overwrites is the *slot*, not the characters this
+    # party happens to fill.  Converting one character into a directory that
+    # held six left `CHRDAT<slot>2`-`6` behind, and the engine loads the party
+    # from the six filenames in `SAVGAM<slot>.DAT` (#59), so it read five
+    # strangers back (#68).  Only the engine's own six names are removed, by
+    # enumeration rather than by glob: nothing else in `out` is ours to touch.
     cleared = 0
     for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
         stale = out / f"CHRDAT{slot}{n}"
@@ -1498,17 +1533,11 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                 path.unlink()
                 cleared += 1
 
-    report = SaveReport(total=0)
     if cleared:
         report.carried.append(
             f"slot {slot} was already written here: {cleared} stale "
             f"CHRDAT{slot}<n> file(s) from the previous party removed")
-    for n, char_slot in enumerate(party, start=1):
-        block = sg1.roster(char_slot.index) if sg1 is not None else None
-        inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
-        char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
-                              source=f"C64 slot {char_slot.index}")
-        rec, itm, one = write(char)
+    for n, (char, rec, itm, one, char_slot) in enumerate(built, start=1):
         stem = out / f"CHRDAT{slot}{n}"
         stem.with_suffix(".SAV").write_bytes(rec)
         # A character carrying nothing gets **no `.ITM` file at all**, and an
