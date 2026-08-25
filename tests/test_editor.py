@@ -1705,3 +1705,67 @@ def test_a_silver_blades_spellbook_survives_an_edit_of_its_low_bits(
     after = window._spellbook_raw(record)
     assert after[10:] == before[10:], "the high bytes moved"
     assert after[1] == before[1] | (1 << 5)
+
+
+# --- Castable per level was on screen all along, and unreadable --------------
+
+def test_the_castable_box_shows_its_bytes_whole(app, party):
+    """#42: "Castable per level" read `00 00 00 00 00` for every character.
+
+    Not a wrong read and not a wrong field: the box was 85px for the 98px of
+    `01 00 00 00 00 00` it had to draw. `widest_text` answers "the longest
+    string a field can display", and for six raw bytes every string is the
+    same length, so it picked `ff ff ff ff ff ff` -- barely half the width in
+    the proportional UI font. `setText` leaves the cursor at the end and
+    QLineEdit scrolls to the cursor, so what was on screen was the tail: five
+    groups of `00`, identical for a caster with slots and a fighter without.
+
+    Two assertions, because either alone can pass while the field is wrong.
+    The text is what the record holds; the leftmost character drawn is the
+    first one, which is what says the box is not scrolled.
+    """
+    from PyQt6.QtCore import QPoint
+
+    from editor.window import EditorWindow
+
+    window = EditorWindow(str(party))
+    try:
+        box = window._child("field_spells_castable")
+        for row in range(len(window.party)):
+            window.ui.roster.selectRow(row)
+            record = window.party.member(row).record
+            raw = record.get_raw("spells_castable")
+            assert box.text() == raw.hex(" "), record.name
+            box.grab()          # the scroll offset only moves when it paints
+            assert box.cursorPositionAt(QPoint(1, box.height() // 2)) == 0, (
+                f"{record.name}: {box.text()!r} is scrolled off its left edge")
+            assert (box.fontMetrics().horizontalAdvance(box.text())
+                    <= box.width()), record.name
+    finally:
+        window.close()
+
+
+@game_disks
+def test_a_casters_slots_are_not_a_fighters(app, save):
+    """The other half of #42: zero is a real answer for three of the six.
+
+    A test that only asserted "the box matches the bytes" would pass on a
+    field that was always empty, so one caster and one fighter off the same
+    disk are named here. MALCYON is a magic-user 1 with one first-level slot;
+    ROLAND is a cleric 1, whose slots sit in the high nibbles; SILAS is a
+    fighter and reads all zeros correctly.
+    """
+    from editor.window import EditorWindow
+
+    window = EditorWindow(str(save))
+    try:
+        box = window._child("field_spells_castable")
+        shown = {}
+        for row in range(len(window.party)):
+            window.ui.roster.selectRow(row)
+            shown[window.party.member(row).record.name.strip()] = box.text()
+        assert shown["MALCYON"] == "01 00 00 00 00 00"
+        assert shown["ROLAND"] == "30 00 00 00 00 00"
+        assert shown["SILAS"] == "00 00 00 00 00 00"
+    finally:
+        window.close()

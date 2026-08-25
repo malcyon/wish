@@ -232,6 +232,9 @@ CARET = 6
 # of one measurement at whatever size.
 PROBE_WIDTH = 400
 
+# The hex digits, for `_widest_drawing`.
+HEX_DIGITS = "0123456789abcdef"
+
 # Cell margins either side of an item name.
 ITEM_NAME_PADDING = 16
 
@@ -299,6 +302,21 @@ def _spin_width(box, text: str) -> int:
     return max(box.fontMetrics().horizontalAdvance(text) + _spin_chrome(box)
                + CARET,
                box.sizeHint().width())
+
+
+def _widest_drawing(fm, text: str) -> str:
+    """`text` with every hex digit swapped for the widest this font draws.
+
+    `widest_text` answers "the longest string", and for a RAW field every
+    string is the same length, so it picks `ff ff ff ff ff ff`. Length is not
+    width: in a proportional UI font an `f` is barely half a digit, and the
+    box that came out of it was 85px for the 98px `01 00 00 00 00 00` it had
+    to show. QLineEdit scrolls to the cursor, which `setText` leaves at the
+    end, so what was on screen was the tail -- five groups of `00`, for a
+    caster with slots and a fighter without alike (#42).
+    """
+    widest = max(HEX_DIGITS, key=fm.horizontalAdvance)
+    return "".join(widest if c in HEX_DIGITS else c for c in text)
 
 
 def _line_width(edit, text: str) -> int:
@@ -756,7 +774,7 @@ class EditorWindow(QMainWindow):
                 # invites a value `record.set` would refuse.
                 w.setRange(*span)
             if isinstance(w, (QSpinBox, QLineEdit)):
-                text = widest_text(field)
+                text = _widest_drawing(w.fontMetrics(), widest_text(field))
                 width = (_spin_width(w, text) if isinstance(w, QSpinBox)
                          else _line_width(w, text))
                 if name in TRIMMED:
