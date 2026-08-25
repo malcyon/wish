@@ -43,6 +43,26 @@ the review.
 This does not apply to a subagent that only wrote documentation or only ran
 experiments. It applies to code.
 
+**The `reverse-engineering` subagent is for issues labelled
+`reverse-engineering` *and* `Priority: High`, one at a time.** It runs on
+Fable, which is expensive, so it is a scarce resource rather than the default
+for anything technical. Most of this backlog carries the label -- it is a
+reverse-engineering project -- so the label alone is not the filter; the pair
+is.
+
+**Everything else goes to a general-purpose agent, including work that looks
+like reverse engineering and is not.** Diffing two files against a layout we
+already have, flipping a byte and reloading, driving DOSBox through a
+documented recipe -- that is ordinary work with a hex editor. Decoding a format
+from nothing, reading a disassembly, or finding an address by measurement is
+not.
+
+**The escape hatch, and use it rather than pressing on:** if a general-purpose
+agent finds the task genuinely needs disassembly or memory-level measurement,
+it should stop and say so, and the work gets re-routed. That is a signal, not a
+failure. The reverse is also true -- an issue that turns out to be a lookup
+does not need Fable because somebody labelled it hopefully.
+
 **Emulator work goes through the instance pool.** VICE serves exactly one
 binary-monitor connection *per process*, so running two things at once means
 two emulators, not two connections. `tools/instance.py claim` hands back a
