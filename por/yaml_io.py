@@ -323,16 +323,25 @@ def _consistency(char, block, items, names, types, spell_names, game=None):
                    char.get("wisdom"), game)
     if cap:
         for level in (1, 2, 3):
-            group = [s for s in memorised if _spell_level(s) == level]
+            group = [s for s in memorised
+                     if _spell_level(s, game) == level]
             allowed = max((v[level - 1] for v in cap.values()), default=0)
             if len(group) > allowed:
                 yield (f"{len(group)} spells memorised at level {level}, but "
                        f"only {allowed} may be")
 
 
-def _spell_level(spell_id: int) -> int | None:
+def _spell_level(spell_id: int, game: Game | None = None) -> int | None:
+    """Which spell level an id belongs to, in *this* title's grouping.
+
+    The title matters: Curse and Silver Blades number past Pool of Radiance's
+    56, so without it every later id came back `None` and was dropped from the
+    per-level count in silence -- a consistency check that quietly checked
+    nothing. Two ids the two tables disagree about inside 1-56 were miscounted
+    rather than dropped, which is worse.
+    """
     from .spells import spell_group
-    group = spell_group(spell_id)
+    group = spell_group(spell_id, game)
     return group[1] if group else None
 
 

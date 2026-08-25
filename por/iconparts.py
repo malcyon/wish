@@ -126,6 +126,23 @@ class IconParts:
         #: table offset negative, and a negative index reads the file's tail
         #: rather than raising, so the drawing comes out as plausible rubbish.
         self.base = min(a for a, _ in self.tables.values()) - CLASSES_SIZE
+        # The fit has to be checked, not merely made. It is a rule now rather
+        # than a constant, so it runs against a title nobody has looked at and
+        # against a `SPELLE64`/`SPELLN64` pair that do not belong together --
+        # and a base that is wrong but *in range* is the failure this project
+        # has shipped before: every index lands somewhere and the drawing is
+        # plausible rubbish. `_at` guards the editor blob's own offsets;
+        # `_apply` indexes `self._parts` directly, so the guard belongs here.
+        if self.base < 0 or self.base % 0x100:
+            raise ValueError(
+                f"the icon parts fit to ${self.base:04X}, which is not a page "
+                f"boundary; this is not a SPELLE64/SPELLN64 pair")
+        for (size, kind), (addr, count) in self.tables.items():
+            end = addr - self.base + count * 2
+            if addr < self.base or end > len(parts):
+                raise ValueError(
+                    f"the {size} {kind} table runs to ${end:04X}, past the "
+                    f"{len(parts)} bytes of this file")
         self.classes = parts[0:CLASSES_SIZE]
         self.fillers = self._read_fillers()
 
