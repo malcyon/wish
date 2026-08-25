@@ -605,11 +605,9 @@ def test_a_yaml_export_names_silver_blades_spells_from_its_own_table():
     Without the title it reaches for `SPELLN00`, which Silver Blades does not
     ship, and every spell comes out as a bare number.
 
-    **The export still stops at spell 55**, which is issue #81: the ranger's
-    four druid spells and MORGAINE's fourth- and fifth-level ones are ids 77-94
-    and the seven-byte mask cannot reach them. This test asserts the naming,
-    not the width, and the two assertions at the end are the width defect
-    written down so that fixing it fails here and gets noticed.
+    It now also reaches the whole sixteen-byte mask, which is issue #85: the
+    ranger's four druid spells and MORGAINE's fourth- and fifth-level ones are
+    ids 77-94, and seven bytes stop at 55.
     """
     from por.yaml_io import export_save
 
@@ -620,8 +618,74 @@ def test_a_yaml_export_names_silver_blades_spells_from_its_own_table():
     assert not [n for n in named if n.startswith("spell ")], named[:5]
     assert any("(magic-user 3)" in n for n in named)
     assert any("(cleric 3)" in n for n in named)
-    assert not any("(druid" in n for n in named), "#81 is fixed; update this"
-    assert not any(n.startswith("HOLD MONSTERS") for n in named)
+    assert any("(druid" in n for n in named), "the ranger's 77-80 are missing"
+    assert any(n.startswith("HOLD MONSTERS") for n in named), "id 94 is missing"
+
+
+def test_the_export_and_the_editor_agree_about_the_same_spellbook():
+    """The disagreement #85 is: 24 ids exported where the panel showed 29.
+
+    Both halves are asserted against the same save, because a count on its own
+    proves only that something was read. The editor's number is what
+    `editor/window.py` puts in the widget -- both declared fields of the mask,
+    read as far as the title reaches -- and the export's is the YAML list.
+    """
+    from por.spells import spellbook_raw, spells_known
+    from por.yaml_io import export_save
+
+    sg0, _ = _party()
+    panel = {s.record.name: len([i for i in range(1, 118)
+                                 if spellbook_raw(s.record)[i >> 3]
+                                 & (1 << (i & 7))])
+             for s in sg0.characters}
+    assert panel["MORGAINE"] == 29 and panel["DOMINIC"] == 29
+    assert panel["PAINE"] == 4
+
+    data = export_save(str(_save_disk()))
+    exported = {e["name"]: len(e["spells_known"]) for e in data["party"]}
+    assert exported == panel
+
+    # And the low-seven-byte reading, which is what the export used to do.
+    for slot in sg0.characters:
+        pool = spells_known(slot.record.to_bytes())
+        whole = spells_known(slot.record.to_bytes(), SSB)
+        if slot.record.name in ("MORGAINE", "DOMINIC", "PAINE"):
+            assert len(pool) < len(whole), slot.record.name
+
+
+def test_a_silver_blades_party_survives_a_yaml_round_trip_with_its_spellbook(
+        tmp_path):
+    """Export, import unchanged, and the save is byte for byte what it was.
+
+    The spellbook is the part this is about: the importer used to write seven
+    bytes and leave the other nine alone, which was lossless only because the
+    exporter could not see them either. Now both halves move, so a round trip
+    is the check that they move together.
+    """
+    import shutil
+
+    from por.yaml_io import export_save, import_into
+
+    source = tmp_path / "silver.d64"
+    shutil.copyfile(str(_save_disk()), source)
+    data = export_save(str(source))
+    out = tmp_path / "out.d64"
+    changes = import_into(str(source), data, str(out))
+    assert changes == [], changes
+    assert out.read_bytes() == source.read_bytes()
+
+    # And an edit to a high spell id lands where the mask says it should.
+    for entry in data["party"]:
+        if entry["name"] == "MORGAINE":
+            entry["spells_known"] = sorted(set(entry["spells_known"]) - {94})
+            break
+    edited = tmp_path / "edited.d64"
+    changes = import_into(str(source), data, str(edited))
+    assert any("spells_known" in c for c in changes), changes
+    after = export_save(str(edited))
+    morgaine = next(e for e in after["party"] if e["name"] == "MORGAINE")
+    assert 94 not in morgaine["spells_known"]
+    assert len(morgaine["spells_known"]) == 28
 
 
 def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
@@ -738,7 +802,7 @@ def test_the_ranger_grant_is_the_shipped_rangers_spellbook():
     `GEN` and the character is read off the save, and neither knows about the
     other.
     """
-    grants = _grant_table(_gen(), 0xD0, range(8, 10))     # 0x0D0, ranger
+    grants = _grant_table(_gen(), 0xD0, range(8, 16))     # 0x0D0, ranger
     assert grants[8] == {77, 78, 79, 80}
     assert grants[9] - grants[8] == set(range(9, 22))
 
@@ -750,6 +814,34 @@ def test_the_ranger_grant_is_the_shipped_rangers_spellbook():
         mask = rec.slice(0x078, 16)
         ids = {i for i in range(1, 118) if mask[i >> 3] & (1 << (i & 7))}
         assert ids == grants[rec.get("level_ranger")], rec.name
+
+
+def test_the_ranger_grant_reaches_druid_2():
+    """90, 96 and 98 are one group, and the level-12 row is what says so.
+
+    `por/spells.py` files BARKSKIN, CHARM PERSON OR MAMMAL and CURE LIGHT
+    WOUNDS together as druid 2. Before this the argument was that all three are
+    second-level druid spells in AD&D 1st edition, which is a reading of the
+    names; this is the table. The row hands out exactly those three, one level
+    row after 9-21 and one before 29-35, and a ranger who gets druid 1 at 8,
+    magic-user 1 at 9, druid 2 at 12 and magic-user 2 at 13 is AD&D's ranger
+    verbatim.
+
+    **What is still not read out of anything** is the *number* 2. The table
+    says the three are granted together and when; that they are second-level
+    rather than some other level is the AD&D reading, and Silver Blades' own
+    spell-slot rows -- Curse keeps its equivalent in `ECL65` -- would settle it.
+    """
+    grants = _grant_table(_gen(), 0xD0, range(8, 16))     # 0x0D0, ranger
+    assert grants[12] - grants[11] == {90, 96, 98}
+    assert grants[11] == grants[10] == grants[9]
+    assert grants[13] - grants[12] == set(range(29, 36))
+
+    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+    from por.spells import spell_group
+
+    for sid in sorted(grants[12] - grants[11]):
+        assert spell_group(sid, TABLE) == ("druid", 2), sid
 
 
 def test_the_magic_user_grant_is_morgaines_spellbook():

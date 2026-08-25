@@ -92,6 +92,13 @@ class SpellTable:
     #: uses. Measured per title -- the evidence is the comment above
     #: `POOL_OF_RADIANCE` below.
     spellbook_size: int = 7
+    #: Ids that fall in one of the groups above and that the title's **trainer**
+    #: never hands out, so a level-up must not either. Pool of Radiance has
+    #: none: `GEN $20CF` ORs a whole spell level into the mask rather than
+    #: reading a table, so a cleric who can cast a level knows all of it.
+    #: Curse replaced that with a per-level table and left two ids out of it --
+    #: see `CURSE_OF_THE_AZURE_BONDS` below. CONFIRMED.
+    not_granted: tuple[int, ...] = ()
 
     @property
     def text_end(self) -> int | None:
@@ -197,11 +204,16 @@ _GROUPS_SILVER_BLADES = (
     (90, 90, "druid", 2),
     (91, 94, "magic-user", 5),
     # 90 BARKSKIN, 96 CHARM PERSON OR MAMMAL and 98 CURE LIGHT WOUNDS are one
-    # group, and the ranger grant is why: it hands out all three at the same
-    # level (12), where 77-80 arrive at 8. All three are second-level druid
-    # spells in AD&D 1st edition, which is what a ranger gets at 12. 96 was
-    # read off its name as druid 1 and is corrected here; 98 had no group at
-    # all, so `spell_group` called a spell the game itself grants no spell.
+    # group, and the ranger grant table is why: its level-12 row hands out all
+    # three together, where 77-80 arrive at 8 and 29-35 at 13. **That much is
+    # CONFIRMED** and read out of `GEN` by
+    # `tests/test_silverblades.py::test_the_ranger_grant_reaches_druid_2`.
+    # That the level is *2* is PROBABLE and no better: it is AD&D 1st edition's
+    # ranger, who gets first-level druid spells at 8 and second-level at 12,
+    # read against the table rather than out of it. Curse's `ECL65` spell-slot
+    # rows would settle it if Silver Blades' equivalent were found. 96 was read
+    # off its name as druid 1 and is corrected here; 98 had no group at all, so
+    # `spell_group` called a spell the game itself grants no spell.
     (96, 96, "druid", 2),
     (98, 98, "druid", 2),
     (109, 114, "magic-user", 6),
@@ -280,6 +292,14 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     groups=_GROUPS_CURSE,
     not_a_spell=_NOT_A_SPELL_CURSE,
     spellbook_size=13,
+    # 36 ANIMATE DEAD and 100 BESTOW CURSE. `GEN`'s own cleric grant table --
+    # the one `tests/test_curse.py::_grant_table` reads out of the bytes --
+    # hands out 1-8, 22-28, 37-44, {58, 66-70} and 71-76 at levels 1, 3, 5, 7
+    # and 9, and stops. Both ids are in a cleric group because both are cleric
+    # spells; neither is ever granted at a temple, and a player meets them on a
+    # scroll. Pool of Radiance grants 36 to any cleric who can cast level 3,
+    # which is the difference between ORing a spell level and reading a table.
+    not_granted=(36, 100),
 )
 
 SECRET_OF_THE_SILVER_BLADES = SpellTable(
@@ -464,6 +484,47 @@ def spellbook_bytes(ids, game=None) -> bytes:
                    if table is POOL_OF_RADIANCE else ""))
         out[i >> 3] |= 1 << (i & 7)
     return bytes(out)
+
+
+#: The two `por/layout.py` fields the mask is declared as, in record order:
+#: the seven bytes Pool of Radiance uses, and the nine `0x07F`-`0x087` the
+#: titles after it continue into. Two fields rather than one sixteen-byte one
+#: because seven is a fact about *this* game and the split is where that fact
+#: is recorded. Nothing should read or write either half on its own: the three
+#: functions below are how the mask is reached, and they cross the boundary
+#: because the title decides where the mask ends, not the layout.
+SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
+
+
+def spellbook_raw(record) -> bytes:
+    """Both declared fields of the mask, as one run of bytes."""
+    return b"".join(record.get_raw(f) for f in SPELLBOOK_FIELDS)
+
+
+def set_spellbook_raw(record, raw: bytes) -> bool:
+    """Write `raw` over the front of the mask. True if any byte moved.
+
+    A short `raw` writes only as far as it reaches: thirteen bytes leave
+    `0x085`-`0x087` exactly as they were, which is what a Curse writer must do
+    -- whether those three are mask at all in Curse is UNKNOWN, its `GEN`
+    having no clear loop, and a writer that does not know must not write.
+    """
+    before = spellbook_raw(record)
+    after = bytearray(before)
+    after[:len(raw)] = raw
+    if bytes(after) == before:
+        return False
+    at = 0
+    for name in SPELLBOOK_FIELDS:
+        size = len(record.get_raw(name))
+        record.set_raw(name, bytes(after[at:at + size]))
+        at += size
+    return True
+
+
+def write_spellbook(record, ids, game=None) -> bool:
+    """Set a record's spellbook to exactly `ids`, as wide as the title's mask."""
+    return set_spellbook_raw(record, spellbook_bytes(ids, game))
 
 
 def capacity(class_bits: int, level: int, wisdom: int,

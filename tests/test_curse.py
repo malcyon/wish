@@ -26,6 +26,7 @@ import pytest
 import yaml
 
 from por import games, geo
+from por import spells as por_spells
 from por.d64 import D64, split_load_address
 from por.savegame import SaveGameError, load_save
 from por.yaml_io import ValueError_, export_save, import_into, to_yaml
@@ -58,6 +59,27 @@ def _curse_save_disk() -> pathlib.Path:
         if CURSE.matches_payload(prg):
             return path
     pytest.skip("no Curse disk here carries a whole SAVEAZURE")
+
+
+def _curse_party_disk() -> pathlib.Path:
+    """A Curse side whose save holds a caster, or skip.
+
+    Not `_curse_save_disk`, which takes the first disk that decodes and on this
+    machine finds a player's own save -- three fighters and a magic-user/thief
+    with four spells. SSI's shipped pre-generated party is the one with a
+    cleric in it, and a spellbook test needs a spellbook.
+    """
+    where = gamedata.curse_dir()
+    if where is None:
+        pytest.skip(f"needs the Curse disks; set {gamedata.CURSE_ENV}")
+    for path in sorted(where.glob("CURSE*.[dD]64")):
+        try:
+            _, sg0, _ = load_save(D64.open(path))
+        except Exception:
+            continue
+        if any(s.record.get("class_bits") == 0x02 for s in sg0.characters):
+            return path
+    pytest.skip("no Curse side here carries a party with a cleric")
 
 
 def _copy(path, tmp_path) -> str:
@@ -229,6 +251,63 @@ def test_a_pool_of_radiance_save_disk_survives_yaml_byte_for_byte(tmp_path):
     before, after, changes = _round_trip(src, str(tmp_path / "por-out.d64"))
     assert changes == []
     assert before == after
+
+
+def test_the_curse_export_and_the_editor_agree_about_the_spellbook(tmp_path):
+    """Both read the same thirteen bytes, so both see the same spells.
+
+    The shipped party never sets a bit above id 47, so this cannot be a count
+    that only the wide reading reaches -- the assertion is the agreement, and
+    the width is asserted against `GEN` and `CAMP` further down. The cleric
+    knows 23.
+    """
+    from por.spells import spellbook_raw, spells_known
+
+    src = _copy(_curse_party_disk(), tmp_path)
+    _, sg0, _ = load_save(D64.open(src))
+    panel = {}
+    for slot in sg0.characters:
+        raw = spellbook_raw(slot.record)
+        panel[slot.record.name] = len(
+            [i for i in range(1, 101) if raw[i >> 3] & (1 << (i & 7))])
+    assert panel["CLERIC"] == 23
+
+    exported = {e["name"]: len(e["spells_known"])
+                for e in export_save(src)["party"]}
+    assert exported == panel
+
+    # And the reading is the whole mask, not the low seven bytes that happen to
+    # hold everything this party has.
+    for slot in sg0.characters:
+        assert (spells_known(slot.record.to_bytes(), CURSE)
+                == spells_known(slot.record.to_bytes())), slot.record.name
+
+
+def test_a_curse_import_writes_a_spell_the_seven_byte_mask_cannot_reach(
+        tmp_path):
+    """Id 94 lands in `spells_known_high`, and 0x085-0x087 do not move.
+
+    Curse reads thirteen bytes and whether the last three of the field are mask
+    at all is UNKNOWN there, so an importer that does not know must not write
+    them. This is that rule, asserted on the bytes.
+    """
+    src = _copy(_curse_party_disk(), tmp_path)
+    out = str(tmp_path / "wider.d64")
+    data = yaml.safe_load(to_yaml(export_save(src)))
+    entry = next(e for e in data["party"] if e["name"] == "FEMALE MAGE")
+    entry["spells_known"] = sorted(set(entry["spells_known"]) | {94})
+    changes = import_into(src, data, out)
+    assert any("spells_known" in c for c in changes), changes
+
+    _, sg0, _ = load_save(D64.open(out))
+    rec = sg0.slot(entry["slot"]).record
+    assert 94 in por_spells.spells_known(rec.to_bytes(), CURSE)
+    assert rec.get_raw("spells_known_high")[6:] == bytes(3), (
+        "0x085-0x087 are UNKNOWN in Curse and must not be written")
+
+    after = next(e for e in export_save(out)["party"]
+                 if e["name"] == "FEMALE MAGE")
+    assert 94 in after["spells_known"]
 
 
 def test_a_curse_edit_lands_and_nothing_else_moves(tmp_path):
@@ -799,24 +878,30 @@ def test_curses_grant_tables_write_as_far_as_0x081():
     Silver Blades settles its width in `GEN`, which clears sixteen bytes at
     `$7C78`. Curse's `GEN` has no such loop -- that is the one place the answer
     was expected and it is not there -- so this is the lower bound its writers
-    give: `0x07E` for the magic-user and `0x081` for the cleric. The upper one
-    comes from `CAMP`, in the test below.
+    give: `0x081`, from the cleric's table. The upper one comes from `CAMP`, in
+    the test below.
+
+    **Curse has exactly one grant loop, and it is the cleric's.** Silver Blades
+    has three -- cleric, magic-user and ranger -- so the shape is not shared,
+    and this asserts the count rather than looping over class offsets that
+    might quietly contribute nothing. What Curse's magic-user trainer does
+    instead has not been read.
     """
     payload = _curse_file(b"GEN")
     assert b"\xA2\x0F\xA9\x00\x9D\x78\x7C\xCA\x10\xFA" not in payload, (
         "Curse's GEN does have a spellbook clear loop after all -- read it")
 
+    found = [m.group(1)[0] for m in _GRANT_LOOP.finditer(payload)]
+    assert found == [0xCA], [hex(f) for f in found]
+
     reach = 0
-    for record_offset in (0xC9, 0xCA):
-        for match in _GRANT_LOOP.finditer(payload):
-            if match.group(1)[0] != record_offset:
-                continue
-            offsets = match.group(4)[0] | match.group(4)[1] << 8
-            levels = match.group(3)[0] | match.group(3)[1] << 8
-            base = levels - (match.end() - 1)
-            top = max(payload[levels - base + lv] for lv in range(1, 11))
-            reach = max(reach,
-                        max(payload[offsets - base + y] for y in range(top + 1)))
+    for match in _GRANT_LOOP.finditer(payload):
+        offsets = match.group(4)[0] | match.group(4)[1] << 8
+        levels = match.group(3)[0] | match.group(3)[1] << 8
+        base = levels - (match.end() - 1)
+        top = max(payload[levels - base + lv] for lv in range(1, 11))
+        reach = max(reach,
+                    max(payload[offsets - base + y] for y in range(top + 1)))
     assert reach == 0x081, f"the grant tables reach 0x{reach:03X}"
 
 

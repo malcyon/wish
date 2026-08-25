@@ -75,13 +75,13 @@ from .savegame import (
     store_save,
 )
 from .spells import (
-    LAST_SPELL,
     capacity,
     describe,
     load_spell_names,
-    spellbook_bytes,
     spells_known,
+    write_spellbook,
 )
+from .spells import for_game as spell_table
 
 # `race_table`, `class_table` and `classes_to_names` used to live here and are
 # now `por/games.py`'s, re-exported above so every name still resolves. They
@@ -322,10 +322,16 @@ def _consistency(char, block, items, names, types, spell_names, game=None):
     cap = capacity(char.get("class_bits"), char.get("level"),
                    char.get("wisdom"), game)
     if cap:
-        for level in (1, 2, 3):
+        # As many spell levels as the title's own table has, not Pool of
+        # Radiance's three: Curse's rows are five wide, and stopping at three
+        # left a Curse caster's fourth- and fifth-level spells unchecked in
+        # silence. `editor/spellwidget.py` was generalised the same way in #80.
+        width = max(len(v) for v in cap.values())
+        for level in range(1, width + 1):
             group = [s for s in memorised
                      if _spell_level(s, game) == level]
-            allowed = max((v[level - 1] for v in cap.values()), default=0)
+            allowed = max((v[level - 1] for v in cap.values()
+                           if level <= len(v)), default=0)
             if len(group) > allowed:
                 yield (f"{len(group)} spells memorised at level {level}, but "
                        f"only {allowed} may be")
@@ -1016,17 +1022,20 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
 
         if "spells_known" in entry:
             book = [int(s) for s in (entry["spells_known"] or [])]
+            # The ceiling is the title's, not Pool of Radiance's: the mask has
+            # bits for ids 1-55, 1-100 or 1-117, and refusing MORGAINE's 94 on
+            # the way back in would make the export of #85 unimportable.
+            ceiling = spell_table(game).last_spellbook_spell
             for sid in book:
-                if not 1 <= sid <= LAST_SPELL:
+                if not 1 <= sid <= ceiling:
                     raise ValueError_(
                         f"slot {slot} {who}: {sid} is not a spell id "
-                        f"(1-{LAST_SPELL})")
-            want = spellbook_bytes(book)
-            if want != rec.get_raw("spells_known"):
+                        f"(1-{ceiling})")
+            before = spells_known(rec.to_bytes(), game)
+            if write_spellbook(rec, book, game):
                 changes.append(
                     f"slot {slot} {who}: spells_known "
-                    f"{spells_known(rec.to_bytes())} -> {sorted(book)}")
-                rec.set_raw("spells_known", want)
+                    f"{before} -> {sorted(book)}")
 
         if "spells" in entry:
             ids = [int(s) for s in (entry["spells"] or [])]
@@ -1034,11 +1043,12 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 raise ValueError_(
                     f"slot {slot} {who}: {len(ids)} memorised spells, but only "
                     f"16 fit in the record")
+            last_spell = spell_table(game).last_spell
             for sid in ids:
-                if not 1 <= sid <= LAST_SPELL:
+                if not 1 <= sid <= last_spell:
                     raise ValueError_(
                         f"slot {slot} {who}: {sid} is not a spell id "
-                        f"(1-{LAST_SPELL}); above that the table continues "
+                        f"(1-{last_spell}); above that the table continues "
                         f"with combat messages")
             want = bytes(ids) + bytes(16 - len(ids))
             if want != rec.get_raw("spells_memorised"):

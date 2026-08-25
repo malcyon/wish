@@ -60,10 +60,9 @@ THIEF_FIELDS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
                 "thief_hear_noise", "thief_climb_walls",
                 "thief_read_languages")
 
-#: `0x0EE`-`0x0F0`: one byte a spell level, magic-user in the low nibble and
-#: cleric in the high one. Pool of Radiance reaches three spell levels; `GEN
-#: $20BC` clears nine bytes, so the field is wider than the game can fill.
-SPELLS_CASTABLE_LEVELS = 3
+#: The cleric's bit in the mask at `0x0EB`, for asking `por.spells.capacity`
+#: about a cleric without a record in hand.
+CLASS_CLERIC = {n: b for b, n in CLASS_BITS_CLASSIC}["cleric"]
 
 
 class CannotLevel(Exception):
@@ -74,10 +73,11 @@ class CannotLevel(Exception):
 class Plan:
     """Every field a level-up writes, and what it would write there.
 
-    `fields` is record field name to value; `spellbook` is the seven bytes of
-    `0x078` when they change, and None when they do not. Nothing here has
-    touched a machine: a caller turns it into writes, and a test compares it
-    with what the trainer produced for the same character.
+    `fields` is record field name to value; `spellbook` is the mask at `0x078`
+    when it changes, and None when it does not -- as many bytes of it as the
+    title uses, so seven on Pool of Radiance and thirteen on Curse. Nothing
+    here has touched a machine: a caller turns it into writes, and a test
+    compares it with what the trainer produced for the same character.
     """
 
     class_name: str
@@ -107,6 +107,35 @@ class Plan:
     #: Empty for a single-class character; see `_experience`.
     classes_disqualified: tuple[str, ...] = dc_field(default=())
     notes: tuple[str, ...] = dc_field(default=())
+
+
+def _tables_for(game):
+    """The title's *own* level tables, or a refusal naming the title.
+
+    `levels.for_game` falls back to Pool of Radiance for a title it has no
+    tables for. That is right for reading a spell name and wrong for writing a
+    character record: every number `plan` writes -- thresholds, THAC0, saving
+    throws, the hit die, thief skills, spell slots -- would be another game's,
+    and nothing on the way out would say so. Silver Blades is the live case,
+    and the old guard here (`not tables.thief_skills`) never fired for it,
+    because the fallback has thief skills.
+
+    Refusing is the visible half of the same rule `por.spells.capacity`
+    follows by returning nothing: an unread table shows as unread.
+
+    UNAPPROVED WORDING: the refusal below is a new string and Donald has not
+    seen it. It reaches a user as the level-up button's reason for saying no.
+    """
+    tables = levels.for_game(game)
+    key = getattr(game, "key", game)
+    if game is not None and not isinstance(game, levels.LevelTables) \
+            and key != tables.key:
+        raise CannotLevel(f"{key} has no level tables of its own; only "
+                          f"{', '.join(t.title for t in levels.TITLES)} "
+                          f"have been read")
+    if not tables.thief_skills:
+        raise CannotLevel(f"{tables.title}'s trainer tables have not been read")
+    return tables
 
 
 def classes_of(record) -> list[str]:
@@ -220,11 +249,17 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     """The magic-user spells the trainer would offer, in the order it offers.
 
     **The trainer does not roll and it does not grant.** `GEN $215A` walks the
-    spellbook bitmask, keeps every id from 1 to 55 the character does not
-    already know whose spell level is at or below `(level + 1) // 2`, drops
-    every cleric spell, and puts the survivors on a menu. The player picks one
-    and the level-up does not finish until they do -- which is why a magic-user
-    needs a dialog and a cleric does not.
+    spellbook bitmask, keeps every id the character does not already know whose
+    spell level is at or below `(level + 1) // 2`, drops every cleric spell,
+    and puts the survivors on a menu. The player picks one and the level-up
+    does not finish until they do -- which is why a magic-user needs a dialog
+    and a cleric does not.
+
+    **How far the walk goes is the title's**, `SpellTable.last_spellbook_spell`
+    -- 55, 100 or 117. Pool of Radiance's 55 was the module constant here, so a
+    Curse magic-user reaching 7 was offered no fourth-level spell at all: ids
+    81-90 are past the end of a list nobody told this function had grown
+    (issue #87).
 
     **`level` is the level being trained *to*.** `GEN $1FDE` writes the new
     per-class levels before the menu is built, so a magic-user reaching 3 is
@@ -234,10 +269,11 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     if level is None:
         level = class_level(record, "magic-user")
     castable = (level + 1) // 2
-    known = set(spells.spells_known(bytes(record)))
+    table = spells.for_game(game)
+    known = set(spells.spells_known(bytes(record), game))
     out = []
-    for spell_id in range(1, spells.LAST_SPELLBOOK_SPELL + 1):
-        if spell_id in known:
+    for spell_id in range(1, table.last_spellbook_spell + 1):
+        if spell_id in known or spell_id in table.not_granted:
             continue
         group = spells.spell_group(spell_id, game)
         if group is None:
@@ -249,20 +285,43 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     return out
 
 
-def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
-    """Every cleric spell a cleric of that level knows.
+def _castable_levels(cleric_level: int, game=None) -> int:
+    """How many spell levels a cleric of that level may cast, per title.
 
-    `GEN $20CF` ORs whole spell levels in: the second at cleric 3 and the third
-    at cleric 5. Expressed as "every cleric spell of a level it can cast",
-    which is the same set and does not hard-code a bitmask.
+    The title's own slot table, read through `por.spells.capacity`, and not a
+    ladder: Pool of Radiance's `GEN $222C` gives a new level at cleric 1, 3 and
+    5, Curse's `ECL65` continues to 7 and 9, and both fall straight out of
+    counting the leading non-zero columns of the cleric row.
+
+    **Zero where the title's tables have not been read**, which is Silver
+    Blades and everything after it. `capacity` returns nothing there rather
+    than another game's numbers, and so does this.
     """
-    castable = 1
-    if cleric_level >= 3:
-        castable = 2
-    if cleric_level >= 5:
-        castable = 3
+    row = spells.capacity(CLASS_CLERIC, cleric_level, 0, game).get("cleric")
+    castable = 0
+    for slots in row or ():
+        if not slots:
+            break
+        castable += 1
+    return castable
+
+
+def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
+    """Every cleric spell a cleric of that level is granted.
+
+    `GEN $20CF` ORs whole spell levels in, so on Pool of Radiance this is
+    exactly "every cleric spell of a level it can cast" and does not hard-code
+    a bitmask. Curse replaced that routine with a per-level table and left two
+    of its own cleric spells out of it -- `SpellTable.not_granted`, 36 ANIMATE
+    DEAD and 100 BESTOW CURSE -- so those are skipped here as well; with them
+    the set is Curse's grant table id for id at every level it reaches.
+    """
+    table = spells.for_game(game)
+    castable = _castable_levels(cleric_level, game)
     out = []
-    for spell_id in range(1, spells.LAST_SPELLBOOK_SPELL + 1):
+    for spell_id in range(1, table.last_spellbook_spell + 1):
+        if spell_id in table.not_granted:
+            continue
         group = spells.spell_group(spell_id, game)
         if group and group[0] == "cleric" and group[1] <= castable:
             out.append(spell_id)
@@ -277,6 +336,11 @@ def _spells_castable(record, class_levels: dict[str, int],
     looks at a class, so a fighter's bytes are cleared too. Then the cleric's
     row into the high nibble, with the wisdom bonus added only where the class
     table already gives a slot; then the magic-user's row into the low nibble.
+
+    **As many spell levels as the class row has**, which is the title's: Pool
+    of Radiance's rows stop at three -- `GEN $20BC` clears nine bytes, so the
+    field was always wider than that game can fill -- and Curse's reach five.
+    The field at `0x0EE` is six bytes, so both fit.
     """
     width = len(record.get_raw("spells_castable"))
     out = [0] * width
@@ -285,16 +349,16 @@ def _spells_castable(record, class_levels: dict[str, int],
         row = levels.at_level("cleric", cleric, game)
         slots = list(row.spells) if row else []
         bonus = levels.wisdom_bonus_spells(record.get("wisdom"))
-        for i in range(SPELLS_CASTABLE_LEVELS):
+        for i in range(width):
             have = slots[i] if i < len(slots) else 0
-            if have:
+            if have and i < len(bonus):
                 have += bonus[i]
             out[i] = (have & 0x0F) << 4
     magic_user = class_levels.get("magic-user", 0)
     if magic_user:
         row = levels.at_level("magic-user", magic_user, game)
         slots = list(row.spells) if row else []
-        for i in range(SPELLS_CASTABLE_LEVELS):
+        for i in range(width):
             out[i] += (slots[i] if i < len(slots) else 0) & 0x0F
     return out[:width]
 
@@ -349,9 +413,7 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     derives, so a test that wants to compare every *other* byte hands the roll
     in rather than hoping.
     """
-    tables = levels.for_game(game)
-    if not tables.thief_skills:
-        raise CannotLevel(f"{tables.title}'s trainer tables have not been read")
+    tables = _tables_for(game)
     if not class_name:
         # Nothing ready falls through to the threshold check below, which says
         # which class and what it is short of -- a better answer than "no".
@@ -425,7 +487,7 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     fields["spells_castable"] = bytes(
         _spells_castable(record, class_levels, game))
 
-    known = set(spells.spells_known(bytes(record)))
+    known = set(spells.spells_known(bytes(record), game))
     learned = None
     if class_levels.get("cleric"):
         known |= set(_cleric_spell_ids(class_levels["cleric"], game))
@@ -443,8 +505,11 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
             learned = learn
         else:
             notes.append("no magic-user spell was left to learn")
-    spellbook = spells.spellbook_bytes(sorted(known))
-    if spellbook == record.get_raw("spells_known"):
+    # As wide as the title's mask: seven bytes on Pool of Radiance, thirteen on
+    # Curse. Compared against the same span of the record, so a level-up that
+    # changes nothing above id 55 still reports no change.
+    spellbook = spells.spellbook_bytes(sorted(known), game)
+    if spellbook == spells.spellbook_raw(record)[:len(spellbook)]:
         spellbook = None
 
     before = record.get("experience") or 0
@@ -483,7 +548,9 @@ def apply_to(record, plan_: Plan):
         else:
             out.set(name, value)
     if plan_.spellbook is not None:
-        out.set_raw("spells_known", plan_.spellbook)
+        # Across both fields the mask is declared as, because Curse's thirteen
+        # bytes and Silver Blades' sixteen run past `spells_known`'s seven.
+        spells.set_spellbook_raw(out, plan_.spellbook)
     # `hp_current` at `0x119` is past the 256 bytes a save slot holds, so it
     # exists in a 580-byte export and not in a save. Where it is there, the
     # heal goes in it; live and on disk the roster block's `+0x19` is the only

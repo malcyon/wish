@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import pytest
 
-from por import levels, spells
+from por import levels, levelup, spells
+from por.record import CharacterRecord
 from tests import gamedata
+from tests.test_curse import _grant_table
 
 GEN_BASE = 0x0800
 
@@ -416,3 +418,115 @@ def test_spelln64_is_the_icon_editor_menu_in_both_games():
                     gamedata.curse_file("SPELLN64")[2:]):
         assert b"BLESS" not in payload and b"FIREBALL" not in payload
         assert b"WEAPON" in payload
+
+
+# --- levelling, per title ----------------------------------------------------
+# Issue #87. `por/levelup.py` walked the spellbook to `spells.LAST_SPELLBOOK_
+# SPELL`, which is 55 because that is Pool of Radiance's, so a Curse caster was
+# offered about half its own list. The records below are built rather than read
+# off a disk: what is being checked is the arithmetic, and a blank record with
+# a class and a level in it is the whole input.
+
+CURSE_KEY = "curse-of-the-azure-bonds"
+POOL_KEY = "pool-of-radiance"
+SSB_KEY = "secret-of-the-silver-blades"
+
+
+def _caster(class_bits: int, level: int, experience: int = 1_000_000,
+            wisdom: int = 12):
+    """A blank record with just enough in it to level."""
+    rec = CharacterRecord.blank()
+    rec.set("name", "TESTER")
+    rec.set("class_bits", class_bits)
+    if class_bits & 1:
+        rec.set("level_magic_user", level)
+    if class_bits & 2:
+        rec.set("level_cleric", level)
+    rec.set("level", level)
+    rec.set("experience", experience)
+    rec.set("wisdom", wisdom)
+    rec.set("constitution", 12)
+    rec.set("thac0_base", 40)
+    return rec
+
+
+def test_a_curse_magic_user_reaching_seven_is_offered_fourth_level_spells():
+    """81-90, `CHARM MONSTERS` upward, which Pool of Radiance does not have.
+
+    The control matters more than the claim: the same record read as Pool of
+    Radiance is offered nothing above 55, because 55 is where its list stops.
+    """
+    rec = _caster(0x01, 6)
+    curse = levelup.learnable(rec, CURSE_KEY, level=7)
+    assert set(range(81, 91)) <= set(curse)
+    assert max(curse) == 90
+
+    pool = levelup.learnable(rec, POOL_KEY, level=7)
+    assert max(pool) == 55
+    assert [s for s in curse if s <= 55] == pool
+
+
+def test_a_curse_magic_user_below_seven_is_offered_no_fourth_level_spell():
+    """The ceiling is still `(level + 1) // 2`, which is what makes 81-90
+    a level-7 offer rather than something a level-5 mage sees."""
+    rec = _caster(0x01, 4)
+    assert max(levelup.learnable(rec, CURSE_KEY, level=5)) == 55
+
+
+def test_the_cleric_grant_is_curses_own_table_at_every_level_it_reaches():
+    """`por/levelup.py`'s derivation against `GEN`'s bytes, id for id.
+
+    The derivation is "every cleric spell of a level the title's slot table
+    says it can cast, minus the ids that table never grants". This asserts it
+    equals what the game's own grant routine would OR into the mask, which is
+    the only check worth having: two independent readings of one fact.
+    """
+    grants = _grant_table(_curse_gen(), 0xCA)
+    for level in sorted(grants):
+        assert set(levelup._cleric_spell_ids(level, CURSE_KEY)) == grants[level], (
+            level, sorted(set(levelup._cleric_spell_ids(level, CURSE_KEY))
+                          ^ grants[level]))
+    assert {58, 66, 67, 68, 69, 70} <= grants[7]
+    assert 36 not in grants[9] and 100 not in grants[9]
+
+
+def test_pool_of_radiances_cleric_grant_still_ors_whole_spell_levels():
+    """The control, and the difference between the two titles.
+
+    Pool of Radiance has no grant table: `GEN $20CF` ORs a whole spell level
+    in, so 36 ANIMATE DEAD arrives with the rest of cleric 3. Curse replaced
+    the routine with a table and left 36 out of it.
+    """
+    pool = set(levelup._cleric_spell_ids(5, POOL_KEY))
+    assert 36 in pool
+    assert pool == set(range(1, 9)) | set(range(22, 29)) | set(range(36, 45))
+    assert 36 not in set(levelup._cleric_spell_ids(9, CURSE_KEY))
+
+
+def test_the_castable_row_reaches_curses_fifth_spell_level():
+    """`spells_castable` is six bytes and Pool of Radiance fills three.
+
+    Curse's cleric 9 row is (4, 4, 3, 2, 1), so the fourth and fifth bytes
+    stop being zero -- and they were, because the writer looped three times.
+    """
+    rec = _caster(0x02, 9, wisdom=9)
+    row = levelup._spells_castable(rec, {"cleric": 9}, CURSE_KEY)
+    assert [b >> 4 for b in row] == [4, 4, 3, 2, 1, 0]
+
+    pool = levelup._spells_castable(rec, {"cleric": 6}, POOL_KEY)
+    assert [b >> 4 for b in pool] == [3, 3, 2, 0, 0, 0]
+
+
+def test_levelling_a_title_with_no_tables_of_its_own_refuses():
+    """Silver Blades has no `por/levels.py` entry, so `for_game` hands back
+    Pool of Radiance's. Writing those would be a corrupt record that looks
+    right, so `plan` refuses and names the title instead."""
+    rec = _caster(0x02, 5)
+    with pytest.raises(levelup.CannotLevel) as exc:
+        levelup.plan(rec, "cleric", game=SSB_KEY)
+    assert SSB_KEY in str(exc.value)
+
+    # And the same rule read from the other end: nothing is claimed about how
+    # many spells a Silver Blades cleric may memorise either.
+    assert spells.capacity(0x02, 9, 18, SSB_KEY) == {}
+    assert levelup._cleric_spell_ids(9, SSB_KEY) == []

@@ -212,19 +212,30 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rep.note(0x065, 7, "abilities_second: zero, as in every C64 Pool of "
                        "Radiance specimen")
 
-    # -- the spellbook: 56 bits, ids 1-55 ------------------------------------
+    # -- the spellbook: as many bits as the title's mask has ------------------
+    # Seven bytes on Pool of Radiance, thirteen on Curse, sixteen on Silver
+    # Blades. The title is the neutral record's own, so a Silver Blades
+    # character written back keeps the spells the reader found -- the read half
+    # widened in #85 and this is the other end of it.
+    #
+    # UNAPPROVED WORDING: the warning below is reworded, because "the C64's
+    # seven-byte mask" is not true of every title. Donald has not seen it.
     known = use("spells_known")
     if known is not None:
-        carried = [i for i in known.value if i <= spells.LAST_SPELLBOOK_SPELL]
-        rec.set("spells_known", spells.spellbook_bytes(carried))
-        emit(known, "spells_known", 0x078, 7,
+        table = spells.for_game(char.game)
+        ceiling = table.last_spellbook_spell
+        carried = [i for i in known.value if i <= ceiling]
+        spells.write_spellbook(rec, carried, char.game)
+        emit(known, "spells_known", 0x078, table.spellbook_size,
              " packed to one bit; ids are identical")
         for i in known.value:
-            if i > spells.LAST_SPELLBOOK_SPELL:
+            if i > ceiling:
                 rep.warnings.append(
-                    f"spell id {i} is set in the {port} spellbook and the "
-                    f"C64's seven-byte mask has no bit for it (56 bits hold "
-                    f"ids 0-55 and id 0 does not exist); id 56 is RESTORATION")
+                    f"spell id {i} is set in the {port} spellbook and "
+                    f"{table.title}'s {table.spellbook_size}-byte mask has no "
+                    f"bit for it (ids 1-{ceiling})"
+                    + ("; id 56 is RESTORATION"
+                       if table is spells.POOL_OF_RADIANCE else ""))
 
     # -- memorised spells: sixteen slots, filled from the start --------------
     memorised = use("spells_memorised")
@@ -365,8 +376,9 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("name", "re-padded into the C64's 20 NUL-padded bytes at 0x000"),
     ("levels", "permuted onto the C64's eight slots, which are indexed by the "
                "class bit; a class with no bit is reported"),
-    ("spells_known", "packed into the C64's 56-bit mask; an id past 55 has no "
-                     "bit and is warned about"),
+    ("spells_known", "packed into the C64 mask at 0x078, as many bytes of it "
+                     "as the title uses; an id past the last the mask has a "
+                     "bit for is warned about"),
     ("spells_memorised", "the first sixteen ids, into slots the C64 fills "
                          "from the start"),
     ("spells_castable", "repacked cleric-high/magic-user-low into three "
@@ -437,15 +449,14 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
     | {"name": "read as neutral name",
-       "spells_known": "the 56-bit mask unpacked to neutral spells_known",
-       "spells_known_high": "dropped: the spellbook mask's high nine bytes, "
-                            "0x07F-0x087. Zero throughout Pool of Radiance, "
-                            "and this reader still asks por.spells for Pool "
-                            "of Radiance's seven-byte width whatever title the "
-                            "record is from -- so a Curse or Silver Blades "
-                            "book loses everything above id 55 on the way out. "
-                            "Issue #85; the widths are "
-                            "por.spells.SpellTable.spellbook_size",
+       "spells_known": "the spellbook mask's low seven bytes, unpacked into "
+                       "neutral spells_known",
+       "spells_known_high": "the same mask's high nine bytes, 0x07F-0x087, "
+                            "unpacked into the same neutral spells_known. How "
+                            "far into them the reader goes is the title's "
+                            "por.spells.SpellTable.spellbook_size -- 7, 13 or "
+                            "16 -- so Pool of Radiance reads none of them and "
+                            "Curse stops at 0x084",
        "spells_memorised": "zeroes stripped into neutral spells_memorised",
        "spells_castable": "nibbles unpacked into neutral spells_castable",
        "item_effects": "zeroes stripped into neutral innate_effects",
@@ -537,9 +548,13 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
             "itself counts player characters with", grade("flags_0b8"))
 
-    out.set("spells_known", spells.spells_known(rec.to_bytes()),
-            "the C64's 56-bit spellbook mask @0x078, unpacked to ids",
-            grade("spells_known"))
+    # As wide as the *title's* mask, not as wide as Pool of Radiance's. Seven
+    # bytes stop at id 55, which cost MORGAINE five of her twenty-nine spells
+    # and PAINE all four of his -- issue #85.
+    out.set("spells_known", spells.spells_known(rec.to_bytes(), game),
+            f"the C64's spellbook mask @0x078, "
+            f"{spells.for_game(game).spellbook_size} bytes on this title, "
+            f"unpacked to ids", grade("spells_known"))
     out.set("spells_memorised",
             [b for b in rec.get_raw("spells_memorised") if b],
             "the C64's sixteen slots @0x020, zeroes stripped",
