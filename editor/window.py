@@ -673,6 +673,16 @@ class EditorWindow(QMainWindow):
         column stays whole and the right one is cut off, which is a window
         that is too narrow rather than a form drawn on top of itself.
 
+        **Cut off means gone, not shortened**, and that is worth knowing before
+        anyone calls this a fix. Measured on `box_identity` at the default font
+        plus five points, the right column's labels are sliced to a first
+        letter; **at plus eight and plus ten -- roughly a Windows base font --
+        `Hp current`, `Sex`, `Age` and `Size` draw zero pixels**, with no
+        ellipsis and no scroll bar to say they exist. It is better than a form
+        drawn over itself and it is not a form a user can read. The header
+        still does not fit 1280 at a Windows font and only the roster giving up
+        width closes that -- see issue 71.
+
         Called again after a save is opened, because `_fill_combos` is what
         gives the race and class drop-downs their real widths -- the six games
         do not share a class table, and a title whose longest name is longer
