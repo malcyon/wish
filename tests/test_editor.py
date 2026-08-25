@@ -9,7 +9,7 @@ import os
 import pathlib
 
 import pytest
-from gamedata import disk_dir, disk_path
+from gamedata import disk_dir, disk_path, synthetic_save
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -45,6 +45,17 @@ def save(tmp_path):
     out = tmp_path / "PORSAVE11.D64"
     out.write_bytes(src.read_bytes())
     return out
+
+
+@pytest.fixture
+def party(tmp_path):
+    """A save disk built from the format rather than copied off one.
+
+    Six characters at the widest the record and the title's tables allow, so
+    the width tests that used to skip everywhere run in CI -- #70. The
+    disk-backed twin of each is what proves it representative.
+    """
+    return synthetic_save(tmp_path)
 
 
 # --- read-only rules --------------------------------------------------------
@@ -1038,8 +1049,24 @@ def _floor_width(box) -> int:
     return box.minimumWidth() or box.minimumSizeHint().width()
 
 
-@game_disks
-def test_the_header_fits_its_width_budget(app, save):
+def _header_cost(app, save, extra: int = 3) -> int:
+    """What the header's boxes will not be squeezed below, at a given font."""
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorWindow
+    base = app.font()
+    try:
+        bigger = QFont(base)
+        bigger.setPointSizeF(base.pointSizeF() + extra)
+        app.setFont(bigger)
+        w = EditorWindow(str(save))
+        w.show()
+        return sum(_floor_width(w._child(name)) for name in HEADER_BOXES)
+    finally:
+        app.setFont(base)
+
+
+def test_the_header_fits_its_width_budget(app, party):
     """The header does not scroll, so every pixel in it is a floor under the
     whole window -- and every widget in it is sized from font metrics, which
     is the mechanism #41 was opened to remove.
@@ -1071,21 +1098,26 @@ def test_the_header_fits_its_width_budget(app, save):
     Both boxes and not just Character, because the budget is what the header
     costs and the header is now two boxes. A second one added without a floor
     of its own would pass a test that measured only the first.
-    """
-    from PyQt6.QtGui import QFont
 
-    from editor.window import EditorWindow
-    base = app.font()
-    try:
-        bigger = QFont(base)
-        bigger.setPointSizeF(base.pointSizeF() + 3)
-        app.setFont(bigger)
-        w = EditorWindow(str(save))
-        w.show()
-        cost = sum(_floor_width(w._child(name)) for name in HEADER_BOXES)
-    finally:
-        app.setFont(base)
-    assert cost <= IDENTITY_BUDGET
+    The party is synthetic and the test no longer skips: this and
+    `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`
+    are the two that hold the 1280x720 line, and both used to skip on every CI
+    job there is (#70). What is measured here is a pair of explicit minimums,
+    so the answer does not depend on which party is open -- which is exactly
+    why the disks-only twin below is an equality rather than a bound.
+    """
+    assert _header_cost(app, party) <= IDENTITY_BUDGET
+
+
+@game_disks
+def test_the_header_fits_its_width_budget_on_a_real_save(app, save, party):
+    """The disk-backed twin, and what proves the synthetic party representative.
+
+    An explicit minimum is a constant, so the two must agree exactly. If they
+    ever do not, something in the header has started following the party's own
+    strings again -- and that is a fault in the header, not in this test.
+    """
+    assert _header_cost(app, save) == _header_cost(app, party)
 
 
 @game_disks

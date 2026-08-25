@@ -169,6 +169,9 @@ def _floor(tmp_path, monkeypatch, save=None):
     `EditorWindow._adopt` runs only when a save is opened, and `_size_roster`
     with it, so a window built with None has never seen the roster's real
     column widths or the character sheet's real field widths.
+
+    The save may be `gamedata.synthetic_party`'s, which is why the loaded case
+    runs where there are no disks (#70).
     """
     from wish.session import Session
     from wish.window import WishWindow
@@ -182,6 +185,21 @@ def _floor(tmp_path, monkeypatch, save=None):
     floor = win.minimumSizeHint()
     win.close()
     return floor
+
+
+def _floors(app, tmp_path, monkeypatch, save=None, fonts=(0, 3)):
+    """`_floor` at each of several UI font sizes, base font restored after."""
+    base = app.font()
+    try:
+        out = []
+        for extra in fonts:
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            out.append(_floor(tmp_path, monkeypatch, save))
+        return out
+    finally:
+        app.setFont(base)
 
 
 def test_the_window_can_be_made_short_enough_for_a_small_laptop(app, tmp_path,
@@ -225,45 +243,100 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
     assert widths[1] == widths[0], "the minimum width grew with the font"
 
 
+#: What the two states actually measure here, so the expected failures below
+#: carry numbers rather than an opinion. `gamedata.synthetic_party` is the
+#: loaded one: six characters of the widest shape the record and Pool of
+#: Radiance's own tables allow.
+#:
+#: | UI font | empty | loaded | the roster in it |
+#: |---|---|---|---|
+#: | base   | 836 x 662 | 1251 x 662 |  573 |
+#: | +3pt   | 836 x 702 | 1424 x 702 |  746 |
+#: | +10pt  | 836 x 805 | 1816 x 805 | 1138 |
+#:
+#: The roster is the whole of the difference and the whole of the growth: the
+#: empty window has no rows, so nothing in it is sized from a string.
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "the loaded window is 1251px wide at the base UI font and 1424 at three "
+    "points more, against a 1280 screen -- and 1816 at ten points, which is "
+    "roughly where Windows' base font measures. The roster is 573, 746 and "
+    "1138 of that and is the only thing in the header still sized from the "
+    "strings it holds. #71 is the decision about what gives."))
 def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
                                                            monkeypatch):
     """And with a character on screen, which is the case `_floor(None)` above
     has never measured -- #63.
 
     Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
-    it: the roster's five columns and the character sheet's fields get their
-    real widths, and none of them were in the 836 the empty window answers.
-    Measured in round six of #43, with Character Traits moved into the header
-    and the header held to a constant: **961x662** at the default UI font and
-    **1058x702** at three points more. Both fit `SMALL`.
+    it: the roster's five columns get their real widths, and none of them were
+    in the 836 the empty window answers.
 
-    The 97px between them is the roster, which is sized from the names it
-    holds and is the one thing left in the header that follows the font. At
-    eight points more -- roughly where Windows' base font measures -- it is
-    1225, and at eleven it passes 1280. That is #70, and this test cannot see
-    it because it needs the disks and CI has none.
-
-    The width still tracks the font here -- 224px of it -- where the empty
-    window's does not, and that is #63 rather than this test: the guarantee
-    `test_the_windows_minimum_does_not_follow_the_ui_font` gives is real for
-    the state it measures and has never covered this one.
+    The party is synthetic, so this runs on a machine with no game (#70) --
+    and it is the *widest* party rather than a plausible one, because a floor
+    measured from six-letter names is true of nothing. What it says is that
+    the guarantee does not hold: see the reason on the marker above. Left as
+    an expected failure rather than weakened to fit, because a number is worth
+    more than a green tick that measures the wrong window.
     """
-    from gamedata import disk_path
+    from gamedata import synthetic_save
+
+    save = str(synthetic_save(tmp_path))
+    for extra, floor in zip((0, 3), _floors(app, tmp_path, monkeypatch, save)):
+        assert floor.width() <= SMALL.width(), f"+{extra}pt"
+        assert floor.height() <= SMALL.height(), f"+{extra}pt"
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "the loaded floor is 1251px at the base UI font and 1424 at three points "
+    "more -- 173px of the window's minimum following the font, which is what "
+    "#41 was opened to remove and what the empty window no longer does. The "
+    "roster is all of it: 573 against 746. #71."))
+def test_the_windows_minimum_does_not_follow_the_ui_font_with_a_save_open(
+        app, tmp_path, monkeypatch):
+    """#41's guarantee, re-asserted against the state that governs a session.
+
+    `test_the_windows_minimum_does_not_follow_the_ui_font` above is true of
+    the window it measures and has never covered this one -- the roster is
+    empty there, and the roster is the thing that follows the font.
+    """
+    from gamedata import synthetic_save
+
+    save = str(synthetic_save(tmp_path))
+    widths = [f.width() for f in _floors(app, tmp_path, monkeypatch, save)]
+    assert widths[1] == widths[0], "the minimum width grew with the font"
+
+
+def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
+                                                                  monkeypatch):
+    """The disk-backed half, and what makes the synthetic party evidence.
+
+    The synthetic one is built to be the widest the format allows, so a real
+    party must come in under it at every font. If the two ever disagree it is
+    the synthetic party that has stopped being representative, and it is the
+    one to fix -- not this assertion.
+
+    Kept on the disks on purpose: it is the corroborator, not the guarantee.
+    The guarantee is the two expected failures above, and those run in CI.
+    """
+    from gamedata import disk_path, synthetic_save
 
     src = disk_path("PORSAVE11")
     if src is None:
         pytest.skip("needs the save disks")
-    save = tmp_path / "PORSAVE11.D64"
-    save.write_bytes(src.read_bytes())
+    real = tmp_path / "PORSAVE11.D64"
+    real.write_bytes(src.read_bytes())
 
-    base = app.font()
-    try:
-        for extra in (0, 3):
-            bigger = QFont(base)
-            bigger.setPointSizeF(base.pointSizeF() + extra)
-            app.setFont(bigger)
-            floor = _floor(tmp_path, monkeypatch, str(save))
-            assert floor.width() <= SMALL.width(), extra
-            assert floor.height() <= SMALL.height(), extra
-    finally:
-        app.setFont(base)
+    theirs = _floors(app, tmp_path, monkeypatch, str(real))
+    ours = _floors(app, tmp_path, monkeypatch, str(synthetic_save(tmp_path)))
+    for extra, mine, yours in zip((0, 3), ours, theirs):
+        assert yours.width() <= mine.width(), (
+            f"+{extra}pt: a real party is wider than the synthetic one, "
+            f"{yours.width()} against {mine.width()}")
+        assert yours.height() <= mine.height(), f"+{extra}pt"
+    # And the line #43 round five drew, on the party a player really has:
+    # 1027x662 and 1124x702 here.
+    for extra, floor in zip((0, 3), theirs):
+        assert floor.width() <= SMALL.width(), f"+{extra}pt"
+        assert floor.height() <= SMALL.height(), f"+{extra}pt"

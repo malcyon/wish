@@ -261,6 +261,167 @@ def synthetic_geo() -> bytes:
     return bytes(planes)
 
 
+# --- a party, composed rather than captured ----------------------------------
+# The same reasoning as `synthetic_geo` above, on the save side: a test that
+# needs *a* party rather than a specific one gets one built from the format we
+# documented, so the guarantee it holds runs on a machine with no game.
+#
+# It exists to be measured. The window's floor only appears once a save is open
+# -- `EditorWindow._adopt` runs then, and `_size_roster` with it -- so #63 and
+# #70 both wanted a party CI could open. What sets those widths is the roster's
+# five columns, and every one of them is sized from the strings it holds; hence
+# the widest case rather than a plausible one.
+
+PARTY_SLOTS = 6
+#: A party at its widest: hit points that are three digits both sides, an
+#: armour class that is three characters because it is negative, and abilities
+#: `looks_occupied` will accept (3..25, so 18 is unremarkable).
+WIDEST_HP, WIDEST_AC, PARTY_ABILITY = 255, -10, 18
+
+
+def _widest(strings) -> str:
+    """The longest of a table's labels, ties broken by the label itself.
+
+    Longest, not widest in pixels: the point is to be reproducible on a machine
+    whose font is not this one, and `half-elf` and `halfling` are the same
+    number of characters on all of them.
+    """
+    return max(strings, key=lambda s: (len(s), s))
+
+
+def _blank_disk() -> bytearray:
+    """A formatted 35-track image with an empty directory."""
+    from por import d64
+    data = bytearray(d64.IMAGE_SIZE)
+    bam = d64.sector_offset(d64.DIRECTORY_TRACK, d64.HEADER_SECTOR)
+    data[bam], data[bam + 1] = d64.DIRECTORY_TRACK, d64.DIRECTORY_SECTOR
+    data[bam + 2] = 0x41                                    # DOS version 'A'
+    pad = bytes([d64.NAME_PAD])
+    data[bam + 0x90:bam + 0xA0] = b"SYNTHETIC".ljust(16, pad)
+    data[bam + 0xA0:bam + 0xA2] = pad * 2
+    data[bam + 0xA2:bam + 0xA4] = b"00"                     # disk id
+    data[bam + 0xA4] = d64.NAME_PAD
+    data[bam + 0xA5:bam + 0xA7] = b"2A"                     # DOS type
+    data[bam + 0xA7:bam + 0xAB] = pad * 4
+    first = d64.sector_offset(d64.DIRECTORY_TRACK, d64.DIRECTORY_SECTOR)
+    data[first], data[first + 1] = 0, 0xFF                  # one sector, all of it
+    return data
+
+
+def _disk_with(files) -> bytes:
+    """An image carrying each `(name, prg)` pair as a closed PRG.
+
+    `por/d64.py` has no block allocator on purpose -- it only ever rewrites a
+    file over its own chain -- so the chain is laid down here: consecutive
+    sectors from track 1, skipping the directory track. No 1541 would fill a
+    disk in that order, and nothing that reads one cares.
+    """
+    from por import d64
+    if len(files) > d64.ENTRIES_PER_DIR_SECTOR:
+        raise ValueError("this builder writes one directory sector")
+    data = _blank_disk()
+    free = [(t, s) for t in range(1, d64.TRACK_COUNT + 1)
+            if t != d64.DIRECTORY_TRACK
+            for s in range(d64.sectors_per_track(t))]
+    dir_at = d64.sector_offset(d64.DIRECTORY_TRACK, d64.DIRECTORY_SECTOR)
+    taken = 0
+    for slot, (name, prg) in enumerate(files):
+        chain = free[taken:taken + d64.D64.blocks_needed(len(prg))]
+        taken += len(chain)
+        for i, (track, sector) in enumerate(chain):
+            off = d64.sector_offset(track, sector)
+            chunk = prg[i * d64.PAYLOAD_PER_SECTOR:(i + 1) * d64.PAYLOAD_PER_SECTOR]
+            if i + 1 < len(chain):
+                data[off], data[off + 1] = chain[i + 1]
+            else:
+                # A last sector links to track 0 and names the last valid byte.
+                data[off], data[off + 1] = 0, 1 + len(chunk)
+            data[off + 2:off + 2 + len(chunk)] = chunk
+        entry = dir_at + d64.ENTRY_BASE + slot * d64.ENTRY_SIZE
+        data[entry] = 0x80 | d64.FILE_TYPE_PRG              # closed PRG
+        data[entry + 1], data[entry + 2] = chain[0]
+        data[entry + 3:entry + 3 + d64.NAME_LENGTH] = bytes(name).ljust(
+            d64.NAME_LENGTH, bytes([d64.NAME_PAD]))
+        data[entry + 28] = len(chain) & 0xFF
+        data[entry + 29] = len(chain) >> 8
+    return bytes(data)
+
+
+def synthetic_party(game=None) -> bytes:
+    """A save disk built from the format, not copied from one.
+
+    Six characters, every one of them as wide as the record and the title's own
+    tables allow: a name of `layout.NAME_SIZE` capital Ws, the longest race
+    label in `games.race_table`, the class bitmask whose name in
+    `editor.enums.class_bit_names` is the longest -- all four classic classes
+    at once, `magic-user/cleric/thief/fighter` -- three digits of hit points
+    each side of the slash, and a negative armour class so that column is three
+    characters too.
+
+    Widest and not plausible, because widths are the whole reason this exists.
+    A party of six-letter names produces a floor that is true of nothing, and
+    the roster is the one thing left in the header that is sized from the
+    strings it holds.
+    """
+    from editor.enums import class_bit_names
+    from por import games
+    from por.d64 import attach_load_address
+    from por.encoding import COMBAT_BIAS
+    from por.layout import NAME_SIZE
+    from por.record import CharacterRecord
+    from por.savegame import (
+        HEADER_SIZE,
+        ROSTER_ARMOUR_CLASS,
+        ROSTER_HP_CURRENT,
+        ROSTER_MOVEMENT,
+        ROSTER_SLOT_INDEX,
+        ROSTER_STRIDE,
+        ROSTER_THAC0,
+        SLOT_STRIDE,
+    )
+
+    game = game or games.POOL_OF_RADIANCE
+    races = games.race_table(game)
+    race = _widest(races.values())
+    classes = class_bit_names(game)
+    mask = _widest(classes.values())
+
+    record = CharacterRecord.blank()
+    record.set("name", "W" * NAME_SIZE)
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        record.set(ability, PARTY_ABILITY)
+    record.set("race", next(c for c, n in races.items() if n == race))
+    record.set("class_bits", next(b for b, n in classes.items() if n == mask))
+    record.set("hp_max", 999)
+    head = record.to_bytes()[:SLOT_STRIDE]
+
+    payload = bytearray(game.save_size)
+    roster = bytearray(game.roster_size)
+    for i in range(PARTY_SLOTS):
+        payload[HEADER_SIZE + i * SLOT_STRIDE:
+                HEADER_SIZE + (i + 1) * SLOT_STRIDE] = head
+        at = i * ROSTER_STRIDE
+        roster[at + ROSTER_SLOT_INDEX] = i
+        roster[at + ROSTER_THAC0] = COMBAT_BIAS - 20
+        roster[at + ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - WIDEST_AC
+        roster[at + ROSTER_HP_CURRENT] = WIDEST_HP
+        roster[at + ROSTER_MOVEMENT] = 12
+    return _disk_with([
+        (game.save_file, attach_load_address(game.save_load_address,
+                                             bytes(payload))),
+        (game.roster_file, attach_load_address(game.roster_load_address,
+                                               bytes(roster))),
+    ])
+
+
+def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64"):
+    """`synthetic_party` written where a window can open it."""
+    out = pathlib.Path(tmp_path) / name
+    out.write_bytes(synthetic_party())
+    return out
+
+
 # --- a combat arena, composed rather than captured ---------------------------
 
 COMBAT_MODE = 0x6E11
