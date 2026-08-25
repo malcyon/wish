@@ -250,8 +250,8 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 #:
 #: | UI font | empty | loaded | the roster in it |
 #: |---|---|---|---|
-#: | base   | 836 x 662 | 1251 x 662 |  573 |
-#: | +3pt   | 836 x 702 | 1424 x 702 |  746 |
+#: | base   | 836 x 662 | 1265 x 662 |  587 |
+#: | +3pt   | 836 x 702 | 1442 x 702 |  764 |
 #: | +10pt  | 836 x 805 | 1816 x 805 | 1138 |
 #:
 #: The roster is the whole of the difference and the whole of the growth: the
@@ -259,7 +259,7 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "the loaded window is 1251px wide at the base UI font and 1424 at three "
+    "the loaded window is 1265px wide at the base UI font and 1442 at three "
     "points more, against a 1280 screen -- and 1816 at ten points, which is "
     "roughly where Windows' base font measures. The roster is 573, 746 and "
     "1138 of that and is the only thing in the header still sized from the "
@@ -289,7 +289,7 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "the loaded floor is 1251px at the base UI font and 1424 at three points "
+    "the loaded floor is 1265px at the base UI font and 1442 at three points "
     "more -- 173px of the window's minimum following the font, which is what "
     "#41 was opened to remove and what the empty window no longer does. The "
     "roster is all of it: 573 against 746. #71."))

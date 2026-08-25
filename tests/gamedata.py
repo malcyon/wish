@@ -273,10 +273,25 @@ def synthetic_geo() -> bytes:
 # the widest case rather than a plausible one.
 
 PARTY_SLOTS = 6
-#: A party at its widest: hit points that are three digits both sides, an
-#: armour class that is three characters because it is negative, and abilities
-#: `looks_occupied` will accept (3..25, so 18 is unremarkable).
-WIDEST_HP, WIDEST_AC, PARTY_ABILITY = 255, -10, 18
+#: A party at the **format's** limits, not at plausible ones -- widths are the
+#: only reason this exists, so a value the record can hold beats a value a
+#: player would ever see.
+#:
+#: `hp_max` is two bytes (`por/layout.py` `0x076`), so 65535 rather than a
+#: three-digit total: capping it at 999 understated the window's floor by 14px,
+#: which is 1251 against 1265 at the base font and exactly the number #71 turns
+#: on. The roster's current-hit-points byte is one byte and 255 is its ceiling.
+#:
+#: `armour_class` is stored biased, `60 - AC` in a byte, so the lowest the
+#: editor will let a user set is -195 -- four characters, not three. It happens
+#: not to move the column today, which the `AC` header label already dominates,
+#: and it is used anyway because "widest" should not mean "widest that matters
+#: this week".
+#:
+#: Abilities are whatever `looks_occupied` accepts, 3..25, so 18 is
+#: unremarkable and its width is two digits either way.
+WIDEST_HP_MAX = 65535
+WIDEST_HP, WIDEST_AC, PARTY_ABILITY = 255, -195, 18
 
 
 def _widest(strings) -> str:
@@ -393,7 +408,7 @@ def synthetic_party(game=None) -> bytes:
         record.set(ability, PARTY_ABILITY)
     record.set("race", next(c for c, n in races.items() if n == race))
     record.set("class_bits", next(b for b, n in classes.items() if n == mask))
-    record.set("hp_max", 999)
+    record.set("hp_max", WIDEST_HP_MAX)
     head = record.to_bytes()[:SLOT_STRIDE]
 
     payload = bytearray(game.save_size)
