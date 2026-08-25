@@ -3,7 +3,9 @@
 
 Two tables live on the game disk and neither is in this repo as data:
 
-  ITEMNAMES  the 255-entry word table an item's name is assembled from
+  ITEMNAMES  a 256-entry pointer table, of which 252 carry a word an item's
+             name is assembled from -- index 0 is unused and 62, 63 and 168
+             are real gaps
   ITEMS      128 item *type* records -- damage, protection, class usage
 
 Both are read straight off the disk, so the names here carry no
@@ -17,7 +19,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from por import d64  # noqa: E402
-from por.items import ItemType, load_item_names  # noqa: E402
+from por.items import (  # noqa: E402
+    NAMES_TABLE_ENTRIES,
+    ItemType,
+    load_item_names,
+)
 
 DEFAULT_DISK = "work/POOL1.D64.orig"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "85-item-tables.md"
@@ -59,21 +65,26 @@ def main() -> int:
     w("spellings are the game's own.")
     w("")
     w("An item record does not store a name. It stores three indices into the")
-    w("**word table** below — noun, qualifier, suffix — which the game prints in")
-    w("that order: `CLOAK` + `OF` + `DISPLACEMENT`, `BANDED` + `MAIL` + `+1`.")
-    w("It also stores an index into the **type table**, which is where damage,")
-    w("armour protection and class restrictions come from.")
+    w("**word table** below, at its bytes `+1`, `+2` and `+3`, and the game")
+    w("prints them in the **opposite** order: `+3` is the noun, `+2` the")
+    w("qualifier, `+1` the suffix, so `CLOAK` + `OF` + `DISPLACEMENT` and")
+    w("`BANDED` + `MAIL` + `+1` are stored back to front. It also stores an")
+    w("index into the **type table**, which is where damage, armour protection")
+    w("and class restrictions come from.")
     w("")
     w("## The word table (`ITEMNAMES`)")
     w("")
-    w(f"{len(names)} entries. Indices are **1-based** — the value an item record")
-    w("stores is the key here, with no adjustment.")
-    w("")
     gaps = [i for i in range(1, max(names) + 1) if i not in names]
-    w(f"Three indices carry no name: {', '.join(str(g) for g in gaps)}. They are")
-    w("real gaps in the pointer table, not empty strings, and reading the file")
-    w("by splitting strings in order instead of following its pointers closes")
-    w("them and shifts every later name onto a wrong — but plausible — value.")
+    w(f"{len(names)} words, out of a {NAMES_TABLE_ENTRIES}-entry pointer table "
+      f"whose index 0 is")
+    w("unused. Indices are **1-based** — the value an item record stores is the")
+    w("key here, with no adjustment.")
+    w("")
+    w(f"Indices {', '.join(str(g) for g in gaps)} carry no name. They are real "
+      f"gaps in the pointer")
+    w("table, not empty strings, and reading the file by splitting strings in")
+    w("order instead of following its pointers closes them and shifts every")
+    w("later name onto a wrong — but plausible — value.")
     w("")
     w("| # | word | # | word | # | word | # | word |")
     w("|---|---|---|---|---|---|---|---|")
@@ -91,8 +102,11 @@ def main() -> int:
     w("")
     w("## The type table (`ITEMS`)")
     w("")
-    w("128 records of 16 bytes, loading at `$7B00`. An item record's byte `+0`")
-    w("indexes this table. Only entries something refers to are listed.")
+    w("128 records of 16 bytes, loading at `$7B00` — not the `$7600` its PRG")
+    w("header claims, which is the address `docs/125-bug-notes.md` R51 and")
+    w("`docs/127-community-formats.md` are talking about. An item record's byte")
+    w("`+0` indexes this table. Records that are 16 zero bytes are left out;")
+    w("nothing here checks whether anything refers to the rest.")
     w("")
     w("Layout, in the order the fields appear:")
     w("")

@@ -376,6 +376,70 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert any("retargeted" in c for c in report.carried)
 
 
+@needs_dos_saves
+def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
+        tmp_path):
+    """#68: a party of one into a folder that held six is a party of one.
+
+    The engine loads the party from the six `CHRDAT<slot><n>` filenames in
+    `SAVGAM<slot>.DAT` (#59), so a leftover `CHRDATB2`-`6` is not inert: it is
+    five strangers marching with the converted character.
+    """
+    import pathlib
+
+    from por.savegame import SaveGame0
+    here = pathlib.Path(__file__).resolve().parent / "fixtures"
+    six = SaveGame0.from_prg(
+        (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
+    dos.write_dos_save(six, None, _save_dir(), tmp_path, "B")
+    assert len(dos.read_party(tmp_path, "B")) == 6
+
+    save0, save1 = _fixture_payloads()
+    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
+    assert [c.name for c in dos.read_party(tmp_path, "B")] == ["BRUTUS"]
+    for n in range(2, 7):
+        for suffix in (".SAV", ".ITM", ".SPC"):
+            assert not (tmp_path / f"CHRDATB{n}{suffix}").exists()
+    assert any("removed" in c for c in report.carried)
+
+
+@needs_dos_saves
+def test_clearing_a_slot_leaves_the_other_slots_and_the_user_s_files(tmp_path):
+    """Only the eighteen names the engine reads for this slot are removed."""
+    save0, save1 = _fixture_payloads()
+    keep = {
+        tmp_path / "CHRDATA1.SAV": b"another slot",
+        tmp_path / "SAVGAMA.DAT": b"another slot's save",
+        tmp_path / "CHRDATB7.SAV": b"not a name the engine reads",
+        tmp_path / "notes.txt": b"the user's own file",
+    }
+    for path, body in keep.items():
+        path.write_bytes(body)
+    dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "B")
+    for path, body in keep.items():
+        assert path.read_bytes() == body, path.name
+
+
+@needs_dos_saves
+def test_a_conversion_that_cannot_read_its_template_clears_nothing(tmp_path):
+    """The slot survives a failure: nothing in `out` is touched until the
+    template's `SAVGAM<slot>.DAT` has been read."""
+    import pathlib
+
+    from por.savegame import SaveGame0
+    here = pathlib.Path(__file__).resolve().parent / "fixtures"
+    six = SaveGame0.from_prg(
+        (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
+    dos.write_dos_save(six, None, _save_dir(), tmp_path, "B")
+
+    empty = tmp_path / "no-template"
+    empty.mkdir()
+    save0, save1 = _fixture_payloads()
+    with pytest.raises(FileNotFoundError):
+        dos.write_dos_save(save0, save1, empty, tmp_path, "B")
+    assert len(dos.read_party(tmp_path, "B")) == 6
+
+
 # --- the retarget (#60) ------------------------------------------------------
 
 def _c64_in_the_slums() -> bytes:

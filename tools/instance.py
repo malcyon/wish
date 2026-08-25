@@ -334,23 +334,48 @@ def _reap_held(slot: Slot, timeout: float = 8.0) -> str:
     return state
 
 
+#: Which of the lease file's informational fields are still true of the
+#: present, per row of the table.  The lease JSON is never cleared -- the flock
+#: is the lease, and a release path that writes to disk is a release path that
+#: can fail -- so on a released slot the record is the *last* holder's, and
+#: reporting it unqualified made every idle slot name a dead owner (#74).
+#:
+#: * `held`: the holder is alive by definition, so all four are its own.
+#: * `orphan`, `wreckage`: the *holder* is gone -- the flock is free -- but the
+#:   group it started is still on the port, so the pgid is the live thing
+#:   `reap` kills and `game`/`note` say what it is.  `pid` is not: that process
+#:   is what the kernel dropped the flock for.
+#: * `clean`: nothing is there.  Every field is stale.
+LEASE_FIELDS: dict[str, tuple[str, ...]] = {
+    HELD: ("pid", "pgid", "game", "note"),
+    ORPHAN: ("pgid", "game", "note"),
+    WRECKAGE: ("pgid", "game", "note"),
+    CLEAN: (),
+}
+
+
 def status(slots: int = SLOTS) -> list[dict]:
+    """One row per slot, carrying only what is true of the slot *now*.
+
+    A field the state does not vouch for is `None` rather than the last
+    holder's value; `LEASE_FIELDS` says which those are and why.
+    """
     root = pool_root()
     out = []
     for n in range(slots):
         d = root / str(n)
+        state = inspect(n) if d.is_dir() else CLEAN
         info = _read_lease(d) if d.is_dir() else {}
+        live = LEASE_FIELDS[state]
         out.append({
             "slot": n,
-            "state": inspect(n) if d.is_dir() else CLEAN,
+            "state": state,
             "port": BIN_BASE + n,
             "text_port": TEXT_BASE + n,
             "cmd_port": CMD_BASE + n,
             "display": f":{DISPLAY_BASE + n}",
-            "pid": info.get("pid"),
-            "pgid": info.get("pgid"),
-            "game": info.get("game"),
-            "note": info.get("note"),
+            **{f: info.get(f) if f in live else None
+               for f in ("pid", "pgid", "game", "note")},
         })
     return out
 
@@ -544,11 +569,12 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(rows, indent=2))
         else:
             print(f"{'slot':>4} {'state':<9} {'bin':>5} {'text':>5} {'cmd':>5} "
-                  f"{'disp':>5}  pid      game")
+                  f"{'disp':>5}  {'pid':<8} {'pgid':<8} game")
             for r in rows:
                 print(f"{r['slot']:>4} {r['state']:<9} {r['port']:>5} "
                       f"{r['text_port']:>5} {r['cmd_port']:>5} {r['display']:>5}  "
-                      f"{str(r['pid'] or '-'):<8} {r['game'] or ''}")
+                      f"{str(r['pid'] or '-'):<8} {str(r['pgid'] or '-'):<8} "
+                      f"{r['game'] or '-'}")
         return 0
 
     if args.cmd == "reap":

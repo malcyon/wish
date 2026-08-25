@@ -374,6 +374,67 @@ def test_every_item_file_is_a_whole_number_of_records():
         assert data and len(data) % dosbox.ITEM_SIZE == 0, path
 
 
+def test_every_dax_block_of_every_archive_reaches_its_stated_size():
+    """The check #65 asked for: not just the item archives, all of them.
+
+    `ECL2.DAX` block 9 was reported as raising `IndexError`; it does not, and
+    neither does any other block the player's archives carry.  The claim about
+    "all 843 blocks of all 23 `.dax` files" is about the *Amiga* container,
+    which is a different format read by a different tool.
+    """
+    try:
+        game = dosbox.find_game()
+    except FileNotFoundError:
+        pytest.skip("needs the DOS game files; set FR_ARCHIVES to the archives")
+    archives = sorted(game.glob("*.DAX"))
+    assert len(archives) > 100
+    blocks = 0
+    for path in archives:
+        data = path.read_bytes()
+        sizes = [(bid, raw) for bid, _, raw, _ in dosbox.dax_index(data)]
+        got = list(dosbox.dax_blocks(data, path.name))
+        assert [b for b, _ in got] == [b for b, _ in sizes], path.name
+        for (bid, raw), (_, block) in zip(sizes, got):
+            assert len(block) == raw, (path.name, bid)
+        blocks += len(got)
+    assert blocks > 1000
+
+
+def test_a_truncated_dax_block_is_refused_by_name():
+    """A decoder must not raise `IndexError` on its own input (#65)."""
+    # A repeat opcode as the last byte of the block: the operand is missing.
+    with pytest.raises(dosbox.DaxError) as exc:
+        dosbox.dax_unpack(b"\x00A\xff", 8, "ECL2.DAX block 9")
+    assert "ECL2.DAX block 9" in str(exc.value)
+    assert "operand is missing" in str(exc.value)
+
+    # A copy run that claims more bytes than the block holds.
+    with pytest.raises(dosbox.DaxError) as exc:
+        dosbox.dax_unpack(b"\x07ABC", 8, "ECL2.DAX block 9")
+    assert "past the end" in str(exc.value)
+
+    # A block that simply stops short of its stated size.
+    with pytest.raises(dosbox.DaxError) as exc:
+        dosbox.dax_unpack(b"\x00A", 8, "ECL2.DAX block 9")
+    assert "not the 8 the index states" in str(exc.value)
+
+
+def test_a_file_too_short_for_its_index_is_not_a_dax():
+    with pytest.raises(dosbox.DaxError) as exc:
+        dosbox.dax_index(struct.pack("<H", 900) + b"\x00" * 4, "T.DAX")
+    assert "T.DAX: not a .DAX" in str(exc.value)
+
+
+def test_a_dax_index_pointing_past_the_file_is_refused():
+    """Truncate an archive and the block is named, not sliced short."""
+    data = bytearray(struct.pack("<H", 9) + struct.pack("<BIHH", 9, 0, 2, 3))
+    data += b"\x01AB"                       # copy two bytes: a whole block
+    assert list(dosbox.dax_blocks(bytes(data), "T.DAX")) == [(9, b"AB")]
+    with pytest.raises(dosbox.DaxError) as exc:
+        list(dosbox.dax_blocks(bytes(data[:-1]), "T.DAX"))
+    assert "T.DAX block 9" in str(exc.value)
+
+
 def test_the_item_dax_blocks_are_whole_items():
     """The check that the container reader and the run-length coder are right:
     every block decodes to exactly its stated size and every size is items."""

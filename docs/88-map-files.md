@@ -1,8 +1,9 @@
 # The `GEO` map files
 
 **Generated** by `tools/genmaps.py` — do not edit. Decoded in
-[GEO is solved](50-experiments.md); the reader is `por/geo.py` and
-`tools/geomap.py` renders them.
+[GEO is solved](50-experiments.md); the reader is `por/geo.py`, `tools/geomap.py`
+renders them, and [`por/areas.py`](../por/areas.py) says which area loads which
+file and what it is called.
 
 Four 256-byte planes over a 16×16 grid, indexed `x + (y << 4)` — row-major, y
 southward, origin top-left.
@@ -76,10 +77,15 @@ edges the two adjacent squares agree about — a parse error shows up here first
 | `GEO1F` | 426 | 90 | 0 | 168/256 | 480/480 |
 | `GEO20` | 313 | 30 | 0 | 92/256 | 480/480 |
 
-**Reading the table.** `indoor` separates dungeons from city blocks at a glance:
-a file at 256/256 is entirely under a roof, one at 0/256 entirely open. Phlan has
-nine city blocks and the game has dungeons besides, which is roughly the shape of
-the 29.
+**Reading the table.** The counts are a parse check, not an identification. A
+file at 256/256 is entirely under a roof and one at 0/256 entirely open, and it
+is tempting to read that as dungeon against city block — but the two most
+roofed, doorless files here, `GEO19` and `GEO1B`, are the **wilderness
+windows**, areas 25 and 27, each drawn over its own `SQRDATA`; and the two least
+roofed, `GEO10` and `GEO11`, are the **Lizardman Keep** and the **Nomad Camp**,
+which are outdoor but not wilderness. Both pairs were guessed the other way
+round from these columns alone. What a file *is* comes from the script that
+loads it, and that table is `por/areas.py`.
 
 ## The nine Phlan city blocks
 
@@ -100,11 +106,8 @@ in the matrix scoring above 0.316. See
 | Kuto's Well | `GEO1D` | 0.762 | POOL8 |
 | New Phlan | `GEO00` | 0.733 | POOL3 |
 
-`GEO19` and `GEO1B` are PROBABLE dungeon mazes — fully roofed, no doors at all.
-`GEO10` and `GEO11` are PROBABLE wilderness — barely roofed, hundreds of
-walk-through edges.
-
-**Which map a save is on is `$4BC2`**, the `GEO` file number, inside the
-loader's "what is currently loaded" cache at `$4BC0`-`$4BD8`. Bit 7 is a reload
-marker and must be masked off. `por/savegame.py` exposes it as `SaveGame0.area`
-and `.area_file`.
+**Which map a save is on is `$4BC2`**, the `GEO` file number, in slot 2 of the
+loader's twenty-five-slot "what is currently loaded" cache at `$4BC0`-`$4BD8`
+— [the loaded-files cache](140-loaded-files-cache.md), which is where the other
+twenty-four slots are. Bit 7 is a reload marker and must be masked off.
+`por/savegame.py` exposes it as `SaveGame0.area` and `.area_file`.

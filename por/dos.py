@@ -1438,13 +1438,17 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     directory, the one holding `ECL<n>.DAX`; with none given the template
     directory and its parent are tried, which is where the archives keep it.
 
-    What is written: `CHRDAT<slot><n>.SAV` for each character and its `.ITM`
-    **only when the character carries something** -- a zero-length `.ITM` is
-    not how the engine says "no items", it is how it says "one item, from
-    whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- a `.SPC` never
-    (and a stale `.ITM` or `.SPC` in `out` is removed, so neither can be read
-    as the character's items or effects), and `SAVGAM<slot>.DAT` copied from
-    the template and rewritten:
+    **The slot is cleared first.**  `CHRDAT<slot>1`-`6` and their `.ITM` and
+    `.SPC` are removed from `out` before anything is written, so a party
+    smaller than the one converted here last time does not arrive with the
+    remainder of that one still in it (#68).  Only those eighteen names are
+    touched; whatever else `out` holds is the user's.
+
+    What is then written: `CHRDAT<slot><n>.SAV` for each character and its
+    `.ITM` **only when the character carries something** -- a zero-length
+    `.ITM` is not how the engine says "no items", it is how it says "one item,
+    from whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- a `.SPC`
+    never, and `SAVGAM<slot>.DAT` copied from the template and rewritten:
 
     * the quest flags, from the C64 bytes -- the two ports index them by the
       same ECL address;
@@ -1474,7 +1478,31 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         raise DosRecordError(
             f"a DOS save holds six characters; this save has {len(party)}")
 
+    # Read the template's save before anything in `out` is touched: a missing
+    # `SAVGAM<slot>.DAT` must fail with the slot still as the last conversion
+    # left it, not half cleared.
+    savgam = bytearray((template / f"SAVGAM{slot}.DAT").read_bytes())
+
+    # The unit a conversion overwrites is the *slot*, not the characters this
+    # party happens to fill.  Converting one character into a directory that
+    # held six left `CHRDAT<slot>2`-`6` behind, and the engine loads the party
+    # from the six filenames in `SAVGAM<slot>.DAT` (#59), so it read five
+    # strangers back (#68).  Only the engine's own six names are removed, by
+    # enumeration rather than by glob: nothing else in `out` is ours to touch.
+    cleared = 0
+    for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
+        stale = out / f"CHRDAT{slot}{n}"
+        for suffix in (".SAV", ".ITM", ".SPC"):
+            path = stale.with_suffix(suffix)
+            if path.exists():
+                path.unlink()
+                cleared += 1
+
     report = SaveReport(total=0)
+    if cleared:
+        report.carried.append(
+            f"slot {slot} was already written here: {cleared} stale "
+            f"CHRDAT{slot}<n> file(s) from the previous party removed")
     for n, char_slot in enumerate(party, start=1):
         block = sg1.roster(char_slot.index) if sg1 is not None else None
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
@@ -1487,21 +1515,15 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         # empty one is not the same thing: the engine reads a zero-length
         # `.ITM` as one item of whatever the heap held, draws it on the sheet
         # (`WEAPON 254 PASSS`), and writes it into the save on the next resave.
-        # See ITM_OMITTED_WHEN_EMPTY.
-        items = stem.with_suffix(".ITM")
+        # See ITM_OMITTED_WHEN_EMPTY.  Nothing is unlinked here: the slot was
+        # cleared above, so "not written" and "not present" are the same.
         if itm:
-            items.write_bytes(itm)
-        elif items.exists():
-            items.unlink()
-        spc = stem.with_suffix(".SPC")
-        if spc.exists():
-            spc.unlink()
+            stem.with_suffix(".ITM").write_bytes(itm)
         who = char.get("name", f"slot {char_slot.index}")
         report.dropped.extend(d for d in one.dropped
                               if d not in report.dropped)
         report.warnings.extend(f"{who}: {w}" for w in one.warnings)
 
-    savgam = bytearray((template / f"SAVGAM{slot}.DAT").read_bytes())
     # The engine loads the party from the filenames in the save, not from the
     # slot letter it was loaded under (#59), so the save has to name the files
     # this call actually wrote.  A template whose `SAVGAM` was copied from

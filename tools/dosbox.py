@@ -571,40 +571,87 @@ def area_id(save: bytes) -> int:
 # coded: a lead byte under 128 copies the next `n + 1` bytes, and one at or
 # above 128 repeats the byte after it `256 - n` times.
 #
-# The check that this is right is that all 46 blocks of the eight `ITEM*.DAX`
-# decode to exactly their stated size and every one of those sizes is a whole
+# The check that this is right is that every block of every `.DAX` the player's
+# archives carry -- 1245 of them across the 113 files of Pool of Radiance --
+# decodes to exactly its stated size, and every `ITEM*.DAX` size is a whole
 # number of 63-byte item records.
+#
+# This is *not* the Amiga container.  That one is big-endian, orders the entry
+# `id:u16 offset:u32 compressed:u16 raw:u16`, and is bit-packed rather than
+# run-length coded; `docs/117-save-conversion.md`'s "all 843 blocks of all 23
+# `.dax` files" is a statement about that format and `work/amiga/dax.py`, and
+# says nothing about this one.
 DAX_ENTRY = 9
 
 
-def dax_index(data: bytes) -> list[tuple[int, int, int, int]]:
-    """`(id, offset, raw size, compressed size)` for each block of a `.DAX`."""
-    size = struct.unpack_from("<H", data, 0)[0]
-    return [
-        struct.unpack_from("<BIHH", data, 2 + DAX_ENTRY * i)
-        for i in range(size // DAX_ENTRY)
-    ]
+class DaxError(ValueError):
+    """A `.DAX` block does not decode -- truncated, or not this container."""
 
 
-def dax_unpack(block: bytes, raw_size: int) -> bytes:
+def dax_index(data: bytes, name: str = "dax") -> list[tuple[int, int, int, int]]:
+    """`(id, offset, raw size, compressed size)` for each block of a `.DAX`.
+
+    A file too short for the index it declares is named rather than raising
+    `struct.error` from inside a comprehension -- "this is not a `.DAX`" is an
+    answer, and the exception is not.  `por/dos_savegame.py` carries the same
+    guard for the same reason.
+    """
+    try:
+        size = struct.unpack_from("<H", data, 0)[0]
+        return [
+            struct.unpack_from("<BIHH", data, 2 + DAX_ENTRY * i)
+            for i in range(size // DAX_ENTRY)
+        ]
+    except struct.error as e:
+        raise DaxError(f"{name}: not a .DAX: {e}") from e
+
+
+def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
+    """Decompress one `.DAX` block, or raise `DaxError` saying which.
+
+    Both refusals mean the same thing -- a length that is not this block's --
+    and both used to be silent.  A run whose operand is past the end of the
+    block raised `IndexError` from the subscript, and a block that ran out
+    before `raw_size` returned short and left the caller to notice.
+    """
     out = bytearray()
     i = 0
     while i < len(block) and len(out) < raw_size:
         n = block[i]
         if n < 128:
-            out += block[i + 1:i + 2 + n]
+            run = block[i + 1:i + 2 + n]
+            if len(run) != n + 1:
+                raise DaxError(
+                    f"{name}: copy of {n + 1} bytes at {i} runs "
+                    f"{n + 1 - len(run)} past the end of a {len(block)}-byte "
+                    f"block")
+            out += run
             i += n + 2
         else:
+            if i + 1 >= len(block):
+                raise DaxError(
+                    f"{name}: repeat opcode at {i} is the last byte of a "
+                    f"{len(block)}-byte block, so its operand is missing")
             out += bytes([block[i + 1]]) * (256 - n)
             i += 2
+    if len(out) != raw_size:
+        raise DaxError(
+            f"{name}: unpacked to {len(out)} bytes, not the {raw_size} the "
+            f"index states")
     return bytes(out)
 
 
-def dax_blocks(data: bytes):
+def dax_blocks(data: bytes, name: str = "dax"):
     """Yield `(id, decompressed bytes)` for every block of a `.DAX`."""
+    index = dax_index(data, name)
     base = 2 + struct.unpack_from("<H", data, 0)[0]
-    for bid, off, raw, comp in dax_index(data):
-        yield bid, dax_unpack(data[base + off:base + off + comp], raw)
+    for bid, off, raw, comp in index:
+        chunk = data[base + off:base + off + comp]
+        if len(chunk) != comp:
+            raise DaxError(
+                f"{name} block {bid}: the index states {comp} bytes at "
+                f"{base + off} but the file holds {len(chunk)}")
+        yield bid, dax_unpack(chunk, raw, f"{name} block {bid}")
 
 
 # One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is

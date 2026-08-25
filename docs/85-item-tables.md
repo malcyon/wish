@@ -5,20 +5,23 @@
 spellings are the game's own.
 
 An item record does not store a name. It stores three indices into the
-**word table** below — noun, qualifier, suffix — which the game prints in
-that order: `CLOAK` + `OF` + `DISPLACEMENT`, `BANDED` + `MAIL` + `+1`.
-It also stores an index into the **type table**, which is where damage,
-armour protection and class restrictions come from.
+**word table** below, at its bytes `+1`, `+2` and `+3`, and the game
+prints them in the **opposite** order: `+3` is the noun, `+2` the
+qualifier, `+1` the suffix, so `CLOAK` + `OF` + `DISPLACEMENT` and
+`BANDED` + `MAIL` + `+1` are stored back to front. It also stores an
+index into the **type table**, which is where damage, armour protection
+and class restrictions come from.
 
 ## The word table (`ITEMNAMES`)
 
-252 entries. Indices are **1-based** — the value an item record
-stores is the key here, with no adjustment.
+252 words, out of a 256-entry pointer table whose index 0 is
+unused. Indices are **1-based** — the value an item record stores is the
+key here, with no adjustment.
 
-Three indices carry no name: 62, 63, 168. They are
-real gaps in the pointer table, not empty strings, and reading the file
-by splitting strings in order instead of following its pointers closes
-them and shifts every later name onto a wrong — but plausible — value.
+Indices 62, 63, 168 carry no name. They are real gaps in the pointer
+table, not empty strings, and reading the file by splitting strings in
+order instead of following its pointers closes them and shifts every
+later name onto a wrong — but plausible — value.
 
 | # | word | # | word | # | word | # | word |
 |---|---|---|---|---|---|---|---|
@@ -88,8 +91,11 @@ them and shifts every later name onto a wrong — but plausible — value.
 
 ## The type table (`ITEMS`)
 
-128 records of 16 bytes, loading at `$7B00`. An item record's byte `+0`
-indexes this table. Only entries something refers to are listed.
+128 records of 16 bytes, loading at `$7B00` — not the `$7600` its PRG
+header claims, which is the address `docs/125-bug-notes.md` R51 and
+`docs/127-community-formats.md` are talking about. An item record's byte
+`+0` indexes this table. Records that are 16 zero bytes are left out;
+nothing here checks whether anything refers to the rest.
 
 Layout, in the order the fields appear:
 

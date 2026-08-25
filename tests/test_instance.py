@@ -235,6 +235,67 @@ def test_status_reports_every_slot(pool):
         assert rows[slot.n + 1]["state"] == instance.CLEAN
 
 
+@posix
+def test_a_released_slot_names_nobody(pool):
+    """#74: `clean` means the slot is nobody's, so the row says nobody.
+
+    The lease JSON is deliberately never cleared -- the flock is the lease --
+    so the record on disk is still the last holder's after release.  Reporting
+    it is what let an emulator of ours be read as a human's process.
+    """
+    slot = instance.claim(game="por", note="whoever")
+    n = slot.n
+    slot.record(pgid=99999)
+    slot.release()
+
+    row = instance.status()[n]
+    assert row["state"] == instance.CLEAN
+    assert (row["pid"], row["pgid"], row["game"], row["note"]) == \
+        (None, None, None, None)
+    # The record itself is untouched: release does not write to disk.
+    assert json.loads((pool / "inst" / str(n) / "lease").read_text())["pid"] \
+        == os.getpid()
+
+
+@posix
+def test_an_orphan_keeps_the_pgid_reap_needs_and_drops_the_dead_pid(pool, ports):
+    """On `orphan` the group may still be running; the holder is gone."""
+    slot = instance.claim(game="por")
+    n = slot.n
+    slot.record(pgid=99999)
+    slot.release()
+    ports.add(instance.BIN_BASE + n)          # a healthy VICE nobody owns
+
+    row = instance.status()[n]
+    assert row["state"] == instance.ORPHAN
+    assert row["pgid"] == 99999
+    assert row["game"] == "por"
+    assert row["pid"] is None
+
+
+@posix
+def test_the_status_table_prints_a_dash_for_a_slot_nobody_holds(pool):
+    """The CLI, not just the dict: a stale number in the pid column is what a
+    reader actually sees."""
+    instance.claim().release()
+    out = _capture_status()
+    body = [line for line in out.splitlines()[1:] if line.strip()]
+    assert body, out
+    for line in body:
+        assert " clean " in line
+        assert line.split()[-3:] == ["-", "-", "-"], line
+
+
+def _capture_status() -> str:
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        assert instance.main(["status"]) == 0
+    return buf.getvalue()
+
+
 # -- the seeded vicerc ------------------------------------------------------
 
 
