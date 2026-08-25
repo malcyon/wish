@@ -3798,8 +3798,9 @@ other citation came from reading the file at a base somebody had already fixed.
 ### One correction
 
 **`ITEMS` loads at `$7B00`, not the `$7600` its PRG header claims.**
-`docs/85-item-tables.md` says `$7600`; the string is hardcoded in
-`tools/genitems.py` and the document is generated, so the fix goes there.
+`docs/85-item-tables.md` used to say `$7600`; the string was hardcoded in
+`tools/genitems.py` and the document is generated, so the fix went there --
+done, with the header clause that reconciles the two addresses.
 Nothing depends on it — `por/items.py` indexes the file by record number and
 never by address — but it is the same mistake `$282E` was, still sitting in the
 knowledge base. `docs/125-bug-notes.md` R51's "the DOS file even carries the
