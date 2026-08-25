@@ -996,18 +996,20 @@ def test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
 
     w = EditorWindow(str(party))
     w.show()
-    # `EditorWindow.showEvent` runs `_size_roster`, and Windows delivers that
-    # event a turn later than Linux does. Reading `maximumWidth` before it has
-    # run measures the table `_adopt` left, not the one the user sees: CI
-    # answered 941 here and 921 after settling, and the assertion below is an
-    # equality, so a stale number failed on Windows and passed here (#71).
-    app.processEvents()
+    app.processEvents()          # `showEvent` sizes the roster; measure after
     view = w.ui.roster
     header = view.horizontalHeader()
     natural = view.maximumWidth()
     floor = w.minimumSizeHint().width()
 
-    w.resize(natural + 900, 700)
+    # "Room to spare" has to be measured, not guessed. `natural + 900` was
+    # enough on Linux and not on Windows, where Character's own hint is
+    # several hundred pixels wider -- CI answered 921 against a natural 941,
+    # the roster giving up exactly what the row was short, which is the
+    # feature working rather than failing. The roster is the item with the
+    # stretch, so it is always the one that pays for a row that does not fit.
+    room = natural + w.ui.box_identity.sizeHint().width() + 400
+    w.resize(room, 700)
     app.processEvents()
     assert view.width() == natural, "a window with room to spare changes nothing"
     wide = [header.sectionSize(i) for i in range(header.count())]
