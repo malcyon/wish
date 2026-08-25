@@ -153,6 +153,21 @@ Read the trainer out of GEN (#10)
 where this project's archaeology actually happens. A message that needs GitHub
 to be understood is worse than one that does not.
 
+**Push once the code has been reviewed and the findings dealt with.** The
+sequence is: a subagent reports, the `code-reviewer` runs on what it wrote, the
+findings are fixed or explicitly rejected with a reason, and *then* it goes to
+the remote. Donald has standing approval on that; he does not have to be asked
+each time.
+
+**Do not sit on commits.** A day's work was once held back and pushed in one
+batch of forty-one, and a Windows regression that CI would have caught in
+minutes went undetected for hours because no CI had seen any of it. Local
+commits also silently break `closes #N`, so issues stay open while everything
+looks finished. Push in the batches the reviews land in.
+
+A documentation-only or `CLAUDE.md`-only commit needs no code review and can go
+straight out.
+
 **After a push, check that CI passed.** Not optional and not "later": a red
 `main` is the state everything else is built on, and a failure found an hour
 later has other people's work stacked on top of it.
