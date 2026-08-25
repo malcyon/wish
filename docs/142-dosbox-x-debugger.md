@@ -95,7 +95,10 @@ reads back one flat colour** — X keeps no contents for a window nobody can see
 black frames a finished screen, every `wait_for` on it times out, and
 `load_game` reports a save that loads perfectly as never having loaded.
 
-Three things follow, all of them in `tools/dosboxx.py` now:
+Three things follow. They live in `tools/dosbox.py`, which had the same three
+faults (#88) and now shares one copy of the fix with this harness — and note
+that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
+`_NET_WM_PID`, so on that side the display refusal is what does the work.
 
 * **Choose the window by `_NET_WM_PID`**, which SDL2 sets and which is the only
   thing that told the two apart. Choosing by content is *wrong* here — the
@@ -112,7 +115,7 @@ Three things follow, all of them in `tools/dosboxx.py` now:
 The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are
 started with `start_new_session=True`, so a run whose Python is killed outright
 leaves both alive, holding the display against the next session to claim that
-slot.
+slot. The same is true of plain DOSBox on `:30`-`:37`.
 
 ## Reaching the debugger
 

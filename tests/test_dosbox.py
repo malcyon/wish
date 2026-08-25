@@ -18,6 +18,7 @@ from __future__ import annotations
 import functools
 import os
 import pathlib
+import shutil
 import struct
 import subprocess
 import sys
@@ -240,6 +241,20 @@ def test_the_missing_tool_list_names_only_tools_this_module_uses():
     assert set(dosbox.missing_tools()) <= set(dosbox.TOOLS)
 
 
+def test_a_plain_session_still_asks_for_dosbox(tmp_path, monkeypatch):
+    """The other half of #73: narrowing the list per class, not dropping it.
+
+    `Session` launches DOSBox 0.74 and must keep saying so; only `XSession`,
+    which launches DOSBox-X instead, is entitled to leave it out.
+    """
+    monkeypatch.setattr(
+        shutil, "which",
+        lambda name, *a, **k: None if name == "dosbox" else f"/usr/bin/{name}")
+    with pytest.raises(dosbox.DosboxUnavailable) as e:
+        dosbox.Session(dosbox.Slot(n=0, dir=tmp_path, _fd=-1), tmp_path / "POOLRAD")
+    assert "not installed: dosbox" in str(e.value)
+
+
 def test_a_session_refuses_to_stage_outside_work(tmp_path):
     """The assertion that keeps a copy from ever landing on the player's files."""
     slot = dosbox.Slot(n=0, dir=tmp_path, _fd=-1)
@@ -261,6 +276,140 @@ def test_find_game_says_so_when_the_archives_are_absent(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# Which window, and whether anything is in it
+# --------------------------------------------------------------------------
+#
+# Measured on the DOSBox-X side (#83) and ported here with the code (#88); the
+# specimens in the docstrings are that harness's, because that is where two
+# processes on one display were reproduced.  Nothing here needs an emulator.
+
+
+def _screen(width: int, height: int, pixels: bytes):
+    """A `Screen` built from nothing, so the refusal is testable with no X."""
+    return dosbox.Screen.from_ppm(f"P6\n{width} {height}\n255\n".encode() + pixels)
+
+
+def test_a_capture_of_one_colour_is_recognised_as_showing_nothing():
+    """The signature of a capture of the wrong window: `import` returns flat.
+
+    Black is the one that cost an hour, but the test is one colour, not black:
+    an unmapped window under some drivers comes back white or grey and means
+    exactly the same thing.
+    """
+    assert dosbox.uniform_colour(_screen(4, 2, b"\x00\x00\x00" * 8)) == (0, 0, 0)
+    assert dosbox.uniform_colour(_screen(4, 2, b"\xFF\xFF\xFF" * 8)) == (255, 255, 255)
+    assert dosbox.uniform_colour(_screen(1, 2, b"\x11\x22\x33" * 2)) == (0x11, 0x22, 0x33)
+
+
+def test_a_window_whose_capture_failed_is_not_taken_for_a_good_one():
+    """The two failures read the same through `uniform_colour` alone.
+
+    `grab()` answers None when `import` exits nonzero, and `uniform_colour`
+    answers None for that *and* for a capture with something in it -- so
+    `uniform_colour(grab(wid)) is None` chose a window whose capture had
+    failed.  `xdotool search` can list a window that closes before `import`
+    reaches it, and `boot()` then settled on it and raised
+    `CalledProcessError` out of `capture(check=True)` rather than the named
+    refusal.
+    """
+    assert dosbox.has_content(None) is False
+    assert dosbox.has_content(_screen(4, 2, b"\x00\x00\x00" * 8)) is False
+    px = bytearray(b"\x00\x00\x00" * 8)
+    px[0] = 0xFF
+    assert dosbox.has_content(_screen(4, 2, bytes(px))) is True
+
+
+def test_a_capture_with_one_pixel_lit_is_not_refused():
+    px = bytearray(b"\x00\x00\x00" * 8)
+    px[12] = 1
+    assert dosbox.uniform_colour(_screen(4, 2, bytes(px))) is None
+
+
+def test_a_display_with_no_server_on_it_reads_free():
+    """`xdotool` could not answer this, which is why the check is a socket.
+
+    It exits 1 both for "no windows matched" and for "Can't open display", so
+    the readiness loop that tested its status was satisfied by a display that
+    did not exist -- and the guard against sharing an earlier run's display
+    would have been satisfied by every display.  :62 is outside every pool.
+    """
+    assert dosbox.server_on(":62") is False
+
+
+def test_the_window_belonging_to_this_process_wins():
+    """Two DOSBox processes on one display, and only one window has pixels.
+
+    Reproduced on the DOSBox-X side by starting a second `dosbox-x` on a booted
+    session's display: `0x20000b` and `0x40000b`, same title, same
+    `640x400+80+100`, both `IsViewable`.  `_NET_WM_PID` is the only thing that
+    told them apart.
+    """
+    ids = ["2097163", "4194315"]
+    pids = {"2097163": 582983, "4194315": 582890}
+    assert dosbox.candidate_windows(ids, pids, 582890) == ["4194315"]
+    assert dosbox.candidate_windows(ids, pids, 582983) == ["2097163"]
+
+
+def test_a_window_that_names_another_process_is_never_ours():
+    """Even as the only candidate.  Taking it is how every shot came back black.
+
+    The window with pixels in it is whichever process drew last, so choosing by
+    content would take the intruder's as often as ours.
+    """
+    assert dosbox.candidate_windows(["2097163"], {"2097163": 99}, 7) == []
+
+
+def test_windows_with_no_pid_property_stay_candidates():
+    """A build whose SDL does not set `_NET_WM_PID` still has to be choosable."""
+    ids = ["2097163", "4194315"]
+    assert dosbox.candidate_windows(ids, dict.fromkeys(ids), 7) == ids
+
+
+class _BlankWindow:
+    """A session whose window captures as solid black, and nothing else."""
+
+    display = ":30"
+    window = "4194315"
+
+    def __init__(self, tmp_path):
+        self.dir = tmp_path
+        self.grabs = 0
+
+    def grab(self, window=None):
+        self.grabs += 1
+        return _screen(4, 2, b"\x00\x00\x00" * 8)
+
+    def _env(self):
+        return {}
+
+
+def test_a_screenshot_of_a_blank_window_is_refused_by_name(tmp_path):
+    """`shot()` writes no file rather than one that looks like a dead game."""
+    with pytest.raises(dosbox.BlankCapture) as e:
+        dosbox.Session.shot(_BlankWindow(tmp_path), "loaded")
+    assert "loaded" in str(e.value)
+    assert "0x40000b" in str(e.value) and "#000000" in str(e.value)
+
+
+def test_the_shot_on_the_way_out_of_a_failure_is_written_anyway(tmp_path,
+                                                               monkeypatch):
+    """`leave_camp` takes one to explain itself, and a blank frame is the point.
+
+    Refusing that one would replace the `TimeoutError` that says what went
+    wrong with a `BlankCapture` that says less.
+    """
+    ran = []
+    monkeypatch.setattr(dosbox.subprocess, "run",
+                        lambda argv, **kw: ran.append(argv))
+    stub = _BlankWindow(tmp_path)
+    (tmp_path / "shots").mkdir()
+    out = dosbox.Session.shot(stub, "leave_camp_stuck", allow_blank=True)
+    assert out == tmp_path / "shots" / "leave_camp_stuck.png"
+    assert stub.grabs == 0
+    assert ran and ran[0][:3] == ["import", "-window", stub.window]
+
+
+# --------------------------------------------------------------------------
 # The findings, measured off the player's saves
 # --------------------------------------------------------------------------
 
@@ -276,6 +425,25 @@ def test_the_party_square_reads_as_a_legal_square():
         x, y, facing = dosbox.position(data)
         assert 0 <= x < 16, (letter, x)
         assert 0 <= y < 16, (letter, y)
+        assert facing in dosbox.FACINGS, (letter, facing)
+
+
+def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
+    """The one place the two accessors over one byte map differ (#76).
+
+    `tools/dosbox.py` reports the facing byte as the file carries it, doubled,
+    because a differential between two driven saves is written in file bytes;
+    `por.dos_savegame.position` reports the C64's 0-3 because that is what a
+    conversion writes.  Collapsing the harness onto the other accessor -- the
+    obvious next tidy -- halves every facing a driven run reports, silently.
+    """
+    from por import dos_savegame as sg
+
+    for letter, data in _need_saves().items():
+        x, y, facing = dosbox.position(data)
+        px, py, pf = sg.position(data)
+        assert (x, y) == (px, py), letter
+        assert facing == pf * sg.FACING_SCALE, letter
         assert facing in dosbox.FACINGS, (letter, facing)
 
 

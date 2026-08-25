@@ -281,15 +281,19 @@ def test_a_block_ending_on_a_dangling_run_is_named_not_indexed():
     """
     with pytest.raises(sg.DosSaveError) as caught:
         sg.dax_block(_damaged_dax(bytes([200])), 7)
-    assert "truncated" in str(caught.value)
+    assert "operand is missing" in str(caught.value)
 
 
 def test_a_block_that_unpacks_short_is_still_caught_by_the_length_check():
     """The copy branch's own failure mode, so the guard above did not replace
-    it with a narrower one."""
+    it with a narrower one.
+
+    The wording is the harness decoder's, which is now the only one (#76); the
+    behaviour asserted is what it always was.
+    """
     with pytest.raises(sg.DosSaveError) as caught:
         sg.dax_block(_damaged_dax(bytes([2, 1, 2, 3])), 7)
-    assert "not 64" in str(caught.value)
+    assert "not the 64 the index states" in str(caught.value)
 
 
 @pytest.mark.parametrize("call", [

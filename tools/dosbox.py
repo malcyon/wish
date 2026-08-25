@@ -45,12 +45,13 @@ Everything skips cleanly when they are absent.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
 import shutil
 import signal
-import struct
+import socket
 import subprocess
 import sys
 import time
@@ -86,6 +87,7 @@ TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from por import dos as _por_dos  # noqa: E402
+from por import dos_savegame as _sav  # noqa: E402
 
 
 class DosboxUnavailable(RuntimeError):
@@ -96,12 +98,16 @@ class PoolFull(RuntimeError):
     """Every instance slot is leased by another process."""
 
 
-def missing_tools() -> list[str]:
-    return [t for t in TOOLS if shutil.which(t) is None]
+class BlankCapture(RuntimeError):
+    """A capture came back a single colour, so it is showing nothing."""
 
 
-def require_tools() -> None:
-    absent = missing_tools()
+def missing_tools(tools: tuple[str, ...] = TOOLS) -> list[str]:
+    return [t for t in tools if shutil.which(t) is None]
+
+
+def require_tools(tools: tuple[str, ...] = TOOLS) -> None:
+    absent = missing_tools(tools)
     if absent:
         raise DosboxUnavailable("not installed: " + ", ".join(absent))
 
@@ -261,6 +267,121 @@ class Screen:
 
 
 # --------------------------------------------------------------------------
+# Which window is ours, and whether anything is in it
+# --------------------------------------------------------------------------
+#
+# Three faults with one symptom, found on the DOSBox-X side (#83) and the same
+# here (#88): every screenshot comes back solid black while the game is
+# plainly drawing, `settle()` calls two identical black frames a finished
+# screen, and `load_game` reports a save that loaded perfectly as never having
+# loaded.  Both harnesses use these, so there is one copy of them.
+
+
+def has_content(screen: Screen | None) -> bool:
+    """True when a capture was taken *and* it is not one flat colour.
+
+    The two failures read the same through `uniform_colour` alone and must
+    not: it answers None both for a capture with something in it and for no
+    capture at all, because `grab()` returns None when `import` exits nonzero.
+    So `uniform_colour(grab(wid)) is None` accepted a window whose capture had
+    failed -- a real race, since `xdotool search` lists a window that can close
+    or be unmapped before `import` reaches it -- and `settle()` then ran
+    `capture(check=True)` against it and raised `CalledProcessError` instead of
+    the named refusal this exists to give.
+    """
+    return screen is not None and uniform_colour(screen) is None
+
+
+def uniform_colour(screen: Screen | None) -> tuple[int, int, int] | None:
+    """The single colour a capture is made of, or None if it has two.
+
+    A capture of the wrong window is not an error -- `import` takes it happily
+    and returns one flat colour -- so nothing downstream notices.  One colour
+    is the signature, and refusing it by name is what stops that reading as
+    "the game did nothing".
+    """
+    if screen is None:
+        return None
+    px = screen.px
+    if len(px) < 6:
+        return None
+    first = px[:3]
+    whole = len(px) - len(px) % 3
+    if px[:whole] != first * (whole // 3):
+        return None
+    return (first[0], first[1], first[2])
+
+
+def candidate_windows(ids: list[str], pids: dict[str, int | None],
+                      pid: int) -> list[str]:
+    """The windows in `ids` that process `pid` could plausibly own, best first.
+
+    Two DOSBox processes on one display leave two top-level windows with the
+    same title, the same geometry and the same `IsViewable` map state; nothing
+    about the windows themselves separates them, and only one has pixels in
+    it.  `_NET_WM_PID` does separate them, so a window that names another
+    process is dropped outright.  Windows naming no process at all are kept as
+    a fallback, for a build whose SDL does not set the property -- there the
+    caller still has to choose by content.
+
+    **Not by content alone.**  The window with pixels in it is whichever
+    process drew last, which is the intruder as often as ours: they overlap
+    exactly, `Backing Store State` is `NotUseful` and there is no compositor
+    under a bare `Xvfb`, so X keeps no contents for a window nobody can see.
+
+    **`_NET_WM_PID` is SDL2's, and DOSBox 0.74 is SDL 1.2** -- the string does
+    not appear in `libSDL-1.2.so.0` at all, where `libSDL2-2.0.so.0` carries
+    it -- so for this harness every window takes the no-pid fallback and the
+    choice is the content one.  What keeps that safe here is `boot()` refusing
+    a display something already answers on: on a display this session created,
+    the only client that can have a window is the DOSBox it started.  The
+    filter is the belt to that brace, and it goes live the day 0.74 is built
+    against SDL2.
+    """
+    mine = [w for w in ids if pids.get(w) == pid]
+    return mine or [w for w in ids if pids.get(w) is None]
+
+
+def server_on(display: str) -> bool:
+    """Whether an X server is listening on that display, by its own socket.
+
+    Not by running `xdotool`: it exits 1 both for "no windows matched" and for
+    "Can't open display", so the readiness loop that tested its status was
+    satisfied by a display that did not exist -- and never waited for anything.
+    Connecting to `/tmp/.X11-unix/X<n>` cannot be read two ways; a socket left
+    behind by a dead server refuses the connection.
+
+    Asked before `Xvfb` is started as well as after.  A second `Xvfb` on a busy
+    display does exit with "Server is already active", but it takes a moment,
+    and by then the session has already launched DOSBox against the server that
+    was already there.
+    """
+    n = display.lstrip(":").split(".")[0]
+    # `AF_UNIX` is POSIX-only and this module imports on Windows, where the
+    # tests run and DOSBox does not.  Nothing here can start a server on a
+    # platform with no X socket, so "free" is the honest answer rather than an
+    # `AttributeError` from inside a probe.
+    if not hasattr(socket, "AF_UNIX"):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1.0)
+        sock.connect(f"/tmp/.X11-unix/X{n}")
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def window_pid(wid: str, env: dict[str, str]) -> int | None:
+    """`_NET_WM_PID` of a window, or None where it carries none."""
+    out = subprocess.run(["xdotool", "getwindowpid", wid],
+                         env=env, capture_output=True).stdout.strip()
+    return int(out) if out.isdigit() else None
+
+
+# --------------------------------------------------------------------------
 # The session
 # --------------------------------------------------------------------------
 
@@ -319,6 +440,17 @@ class Session:
     two groups this instance started.
     """
 
+    #: What has to be on `PATH` before this class can run.  A class attribute
+    #: rather than the module constant so a subclass can narrow it: DOSBox-X's
+    #: `XSession` is this class with the launch replaced, and demanding DOSBox
+    #: 0.74 of a machine carrying only the debugger build refused it a session
+    #: over an emulator that harness never starts (#73).
+    TOOLS = TOOLS
+
+    #: What `xdotool search --name` looks for.  DOSBox 0.74 titles its window
+    #: "DOSBox 0.74-3"; `XSession` sets a title of its own and overrides this.
+    TITLE = "DOSBox"
+
     def __init__(
         self,
         slot: Slot,
@@ -327,7 +459,7 @@ class Session:
         cycles: int = 20000,
         geometry: str = "800x600x24",
     ):
-        require_tools()
+        require_tools(self.TOOLS)
         self.slot = slot
         self.dir = slot.dir
         self.display = slot.display
@@ -380,10 +512,28 @@ class Session:
         which is how a run gets back to the main menu: quitting the game ends
         the autoexec, so restarting the emulator is cheaper and far more
         deterministic than typing at a DOS prompt.
+
+        **The window is chosen by `_NET_WM_PID` and then proved to have pixels
+        in it** (#88).  A display an earlier run's DOSBox is still holding
+        carries two top-level windows with this title, and whichever is
+        underneath captures as solid black -- see `candidate_windows`.  Two
+        smaller faults fed it and are fixed here too: the readiness wait now
+        asks the X socket rather than `xdotool`'s exit status, which cannot
+        distinguish "no windows matched" from "cannot open display"; and a
+        display something already answers on is refused rather than shared,
+        which is how two DOSBoxes came to be on one display at all.
         """
         self.stage(fresh=fresh)
         env = dict(os.environ, DISPLAY=self.display, SDL_AUDIODRIVER="dummy")
         env.pop("XAUTHORITY", None)
+        if server_on(self.display):
+            raise RuntimeError(
+                f"{self.display} already has an X server on it, so this "
+                f"session would share it.  A DOSBox or Xvfb from an earlier "
+                f"run is still holding the display -- two DOSBox windows with "
+                f"the same title, and `import` returns solid black for "
+                f"whichever is underneath.  Kill that run's process group."
+            )
         self.xvfb = subprocess.Popen(
             ["Xvfb", self.display, "-screen", "0", self.geometry, "-nolisten", "tcp"],
             stdout=(self.dir / "xvfb.log").open("wb"),
@@ -392,12 +542,20 @@ class Session:
         )
         deadline = time.time() + timeout
         while time.time() < deadline:
-            probe = subprocess.run(
-                ["xdotool", "search", "--name", "."], env=env, capture_output=True
-            )
-            if probe.returncode in (0, 1):
+            if server_on(self.display):
                 break
+            if self.xvfb.poll() is not None:
+                why = (self.dir / "xvfb.log").read_text(errors="replace").strip()
+                self.close()
+                raise RuntimeError(
+                    f"Xvfb exited without serving {self.display}: "
+                    f"{why.splitlines()[-1] if why else 'no output'}"
+                )
             time.sleep(0.2)
+        else:
+            self.close()
+            raise TimeoutError(f"Xvfb never came up on {self.display}")
+
         self.dosbox = subprocess.Popen(
             ["dosbox", "-conf", str(self.dir / "dosbox.conf"), "-noconsole"],
             env=env,
@@ -405,17 +563,33 @@ class Session:
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        # `_env()`, not the launch environment: it is what `capture()` and
+        # `key()` use, so the window is found and read through one view of X.
+        look = self._env()
+        pid, seen = self.dosbox.pid, {}
         while time.time() < deadline:
-            ids = subprocess.run(
-                ["xdotool", "search", "--name", "DOSBox"], env=env, capture_output=True
-            ).stdout.split()
-            if ids:
-                self.window = ids[0].decode()
-                break
-            time.sleep(0.3)
+            ids = [w.decode() for w in subprocess.run(
+                ["xdotool", "search", "--name", self.TITLE],
+                env=look, capture_output=True).stdout.split()]
+            seen = {w: window_pid(w, look) for w in ids}
+            for wid in candidate_windows(ids, seen, pid):
+                if has_content(self.grab(wid)):
+                    self.window = wid
+                    break
+            else:
+                time.sleep(0.3)
+                continue
+            break
         else:
             self.close()
-            raise TimeoutError("DOSBox window never appeared")
+            if not seen:
+                raise TimeoutError("DOSBox window never appeared")
+            raise BlankCapture(
+                f"no window on {self.display} titled {self.TITLE!r} both "
+                f"belongs to pid {pid} and has anything in it; the windows "
+                f"there are " + ", ".join(
+                    f"{int(w):#x} (pid {theirs})" for w, theirs in seen.items())
+            )
         self.settle()
 
     def close(self) -> None:
@@ -430,6 +604,11 @@ class Session:
                 p.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                # Reaped, not merely signalled: `boot()` now refuses a display
+                # something still answers on, so `restart()` would race its own
+                # `Xvfb` out of existence and be told the slot is somebody's.
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    p.wait(timeout=5)
         self.dosbox = self.xvfb = None
 
     def restart(self) -> None:
@@ -469,8 +648,41 @@ class Session:
         )
         return Screen.from_ppm(r.stdout)
 
-    def shot(self, name: str) -> Path:
-        """Write a PNG of the window into the instance's `shots/`."""
+    def grab(self, window: str | None = None) -> Screen | None:
+        """One capture of any window, or None if `import` could not take it.
+
+        `capture()` is this with `check=True` on the session's own window.
+        This form is for the moment before there is one, when several windows
+        carry the title and the choice between them is being made.
+        """
+        r = subprocess.run(
+            ["import", "-window", window or self.window, "-depth", "8", "ppm:-"],
+            env=self._env(), capture_output=True)
+        if r.returncode != 0 or not r.stdout.startswith(b"P6"):
+            return None
+        return Screen.from_ppm(r.stdout)
+
+    def shot(self, name: str, allow_blank: bool = False) -> Path:
+        """Write a PNG of the window, refusing to write one that is blank.
+
+        A screenshot of the wrong window is a file that looks like the game
+        drew nothing, which is the most expensive way for this harness to fail
+        (#88).  `allow_blank=True` is for the caller that wants the frame
+        whatever it holds -- the shot taken on the way out of a failure.
+
+        `capture()` is deliberately not guarded this way: Pool of Radiance
+        draws genuinely black frames between screens, and every `settle()` and
+        `wait_for()` polls through them.
+        """
+        if not allow_blank:
+            colour = uniform_colour(self.grab())
+            if colour is not None:
+                raise BlankCapture(
+                    f"{name}: window {int(str(self.window), 0):#x} on "
+                    f"{self.display} "
+                    f"is entirely #{colour[0]:02X}{colour[1]:02X}"
+                    f"{colour[2]:02X}, so there is nothing to write"
+                )
         out = self.dir / "shots" / f"{name}.png"
         subprocess.run(
             ["import", "-window", self.window, "-depth", "8", str(out)],
@@ -534,124 +746,52 @@ class Session:
 BAR = (0, 192, 320, 7)
 STATUS = (128, 120, 128, 8)
 
-# Where the party's square and its area live in `SAVGAM<slot>.DAT`.
-# Established by driving the game; see `docs/117-save-conversion.md`.
-POS_X = 12801
-POS_Y = 12802
-POS_FACING = 12803
+#: **The byte map is `por/dos_savegame.py`'s and only its** (#76).  This
+#: harness held a second copy -- and `AREA_ID` had already drifted out of the
+#: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
+#: reader who fixed `$49C5` on one side would never have found 395 on the
+#: other.  Re-exported, the way `item_to_c64` is, so the measurements in
+#: `tests/test_dosbox.py` keep reading them from where they were written.
+POS_X = _sav.POS_X
+POS_Y = _sav.POS_Y
+POS_FACING = _sav.POS_FACING
+AREA_ID = _sav.word_offset(_sav.AREA)
+AREA_FILE = _sav.DAX_NUMBER
 
-# The area id, as a `u16le` in the engine's variable array, at the array entry
-# for `$49C5`.  `$49F2` (offset 485) carries the same value.  Byte 0 of the
-# file -- the "header byte" -- is only the *file* number of the `GEO`/`ECL`
-# `.DAX` pair that holds this area, 1 to 8, and several areas share one.
-AREA_ID = 395
-AREA_FILE = 0
-
-# The DOS facing byte is the C64's doubled: C64 `$49C2` is 0 N, 1 E, 2 S, 3 W.
-FACINGS = {0: "N", 2: "E", 4: "S", 6: "W"}
+#: The facing byte as the *file* carries it: the C64's 0-3 doubled.
+#: `por.dos_savegame.position` halves it and this harness does not, because
+#: what a driven run wants to see is the byte that moved.
+FACINGS = {i * _sav.FACING_SCALE: d for i, d in enumerate("NESW")}
 
 
 def position(save: bytes) -> tuple[int, int, int]:
-    """`(x, y, facing)` out of a `SAVGAM<slot>.DAT`."""
+    """`(x, y, facing)` out of a `SAVGAM<slot>.DAT`, facing doubled.
+
+    `por.dos_savegame.position` returns the same square with the facing in the
+    C64's 0-3; this one is the file's own byte, which is what a differential
+    between two saves is written in.
+    """
     return save[POS_X], save[POS_Y], save[POS_FACING]
 
 
 def area_id(save: bytes) -> int:
     """The current area, in the numbering `por/areas.py` uses."""
-    return save[AREA_ID] | save[AREA_ID + 1] << 8
+    return _sav.area_id(save)
 
 
 # --------------------------------------------------------------------------
 # The `.DAX` container, and the 63-byte item record inside `.ITM`
 # --------------------------------------------------------------------------
 
-# A DOS Gold Box `.DAX` is a `u16le` index size, then `size // 9` entries of
-# `id:u8, offset:u32le, raw:u16le, compressed:u16le`, then the block data,
-# entry offsets relative to its start.  Blocks are byte-level run-length
-# coded: a lead byte under 128 copies the next `n + 1` bytes, and one at or
-# above 128 repeats the byte after it `256 - n` times.
-#
-# The check that this is right is that every block of every `.DAX` the player's
-# archives carry -- 1245 of them across the 113 files of Pool of Radiance --
-# decodes to exactly its stated size, and every `ITEM*.DAX` size is a whole
-# number of 63-byte item records.
-#
-# This is *not* the Amiga container.  That one is big-endian, orders the entry
-# `id:u16 offset:u32 compressed:u16 raw:u16`, and is bit-packed rather than
-# run-length coded; `docs/117-save-conversion.md`'s "all 843 blocks of all 23
-# `.dax` files" is a statement about that format and `work/amiga/dax.py`, and
-# says nothing about this one.
-DAX_ENTRY = 9
-
-
-class DaxError(ValueError):
-    """A `.DAX` block does not decode -- truncated, or not this container."""
-
-
-def dax_index(data: bytes, name: str = "dax") -> list[tuple[int, int, int, int]]:
-    """`(id, offset, raw size, compressed size)` for each block of a `.DAX`.
-
-    A file too short for the index it declares is named rather than raising
-    `struct.error` from inside a comprehension -- "this is not a `.DAX`" is an
-    answer, and the exception is not.  `por/dos_savegame.py` carries the same
-    guard for the same reason.
-    """
-    try:
-        size = struct.unpack_from("<H", data, 0)[0]
-        return [
-            struct.unpack_from("<BIHH", data, 2 + DAX_ENTRY * i)
-            for i in range(size // DAX_ENTRY)
-        ]
-    except struct.error as e:
-        raise DaxError(f"{name}: not a .DAX: {e}") from e
-
-
-def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
-    """Decompress one `.DAX` block, or raise `DaxError` saying which.
-
-    Both refusals mean the same thing -- a length that is not this block's --
-    and both used to be silent.  A run whose operand is past the end of the
-    block raised `IndexError` from the subscript, and a block that ran out
-    before `raw_size` returned short and left the caller to notice.
-    """
-    out = bytearray()
-    i = 0
-    while i < len(block) and len(out) < raw_size:
-        n = block[i]
-        if n < 128:
-            run = block[i + 1:i + 2 + n]
-            if len(run) != n + 1:
-                raise DaxError(
-                    f"{name}: copy of {n + 1} bytes at {i} runs "
-                    f"{n + 1 - len(run)} past the end of a {len(block)}-byte "
-                    f"block")
-            out += run
-            i += n + 2
-        else:
-            if i + 1 >= len(block):
-                raise DaxError(
-                    f"{name}: repeat opcode at {i} is the last byte of a "
-                    f"{len(block)}-byte block, so its operand is missing")
-            out += bytes([block[i + 1]]) * (256 - n)
-            i += 2
-    if len(out) != raw_size:
-        raise DaxError(
-            f"{name}: unpacked to {len(out)} bytes, not the {raw_size} the "
-            f"index states")
-    return bytes(out)
-
-
-def dax_blocks(data: bytes, name: str = "dax"):
-    """Yield `(id, decompressed bytes)` for every block of a `.DAX`."""
-    index = dax_index(data, name)
-    base = 2 + struct.unpack_from("<H", data, 0)[0]
-    for bid, off, raw, comp in index:
-        chunk = data[base + off:base + off + comp]
-        if len(chunk) != comp:
-            raise DaxError(
-                f"{name} block {bid}: the index states {comp} bytes at "
-                f"{base + off} but the file holds {len(chunk)}")
-        yield bid, dax_unpack(chunk, raw, f"{name} block {bid}")
+#: The container reader is `por/dos_savegame.py`'s (#76): one index, one
+#: run-length decode, one set of refusals.  `por/` may not import from
+#: `tools/`, so the shared copy lives there and this is the re-export.
+DAX_ENTRY = _sav.DAX_ENTRY
+DaxError = _sav.DaxError
+dax_index = _sav.dax_index
+dax_unpack = _sav.dax_unpack
+dax_blocks = _sav.dax_blocks
+dax_block = _sav.dax_block
 
 
 # One item, in a `.ITM` file or an `ITEM<n>.DAX` block.  The file is
@@ -862,7 +1002,7 @@ class PoolOfRadiance:
             if self.bar() == was:
                 self.s.key("n")
                 self.s.settle()
-        self.s.shot("leave_camp_stuck")
+        self.s.shot("leave_camp_stuck", allow_blank=True)
         raise TimeoutError("could not get back to the map from camp")
 
 

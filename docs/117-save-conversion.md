@@ -497,8 +497,11 @@ write the C64 byte.
 filesystem, `dax.py` the container — a big-endian index of `id:u16
 offset:u32 compSize:u16 rawSize:u16` entries, and a ByteKiller-style backwards
 bit-cruncher transcribed from the routine at `program` hunk27`+$7346`. All 843
-blocks of all 23 `.dax` files decompress to their stated size with a zero
-checksum. There is no `DAxF` magic and no `POOLDATA` volume; that was invented.
+blocks of all 23 **Amiga** `.dax` files decompress to their stated size with a
+zero checksum — the DOS container is a different format read by
+`por.dos_savegame`, and that sentence read as a claim about both until #65
+spent an investigation on the contradiction. There is no `DAxF` magic and no
+`POOLDATA` volume; that was invented.
 
 **2. Area numbering and coordinates — CLOSED, and the numbering agrees.**
 The position is not in the variable array — `$49C0`, `$49C1`, `$49C2` and

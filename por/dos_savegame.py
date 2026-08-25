@@ -52,7 +52,18 @@ class DosSaveError(ValueError):
     catches either.
     """
 
+
+class DaxError(DosSaveError):
+    """A `.DAX` block does not decode -- truncated, or not this container.
+
+    A subclass so that `por.dos.write_dos_save`, which catches `DosSaveError`
+    around the block it lifts the target area's script out of, keeps catching
+    it.
+    """
+
+
 SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469
+DAX_NUMBER = 0               # byte 0: which GEO/ECL container holds the area
 VAR_BASE = 0x4900
 VAR_WORDS = 2560             # $4900-$52FF
 VAR_OFFSET = 1
@@ -122,7 +133,7 @@ def word(save: bytes, address: int) -> int:
 
 def dax_number(save: bytes) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
-    return _whole(save)[0]
+    return _whole(save)[DAX_NUMBER]
 
 
 def area_id(save: bytes) -> int:
@@ -202,19 +213,28 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The `.DAX` container, enough of it to lift one ECL block
+# The `.DAX` container
 # ---------------------------------------------------------------------------
 #: A `.DAX` is a `u16le` index size, `size // 9` entries of
 #: `id:u8, offset:u32le, raw:u16le, compressed:u16le`, then the block data with
 #: each entry's offset relative to its start.  Blocks are byte run-length
 #: coded: a lead byte under 128 copies the next `n + 1` bytes, one at or above
-#: it repeats the next byte `256 - n` times.  `tools/dosbox.py` carries the
-#: same decode for the harness; this copy exists because a retarget needs one
-#: ECL block and `por/` may not import from `tools/`.
+#: it repeats the next byte `256 - n` times.
+#:
+#: **One copy, here** (#76).  `tools/dosbox.py` carried a second and re-exports
+#: this one; a retarget needs one ECL block out of the player's own archive and
+#: `por/` may not import from `tools/`, so the shared copy has to be this side
+#: of the edge.
+#:
+#: This is *not* the Amiga container.  That one is big-endian, orders the entry
+#: `id:u16 offset:u32 compressed:u16 raw:u16`, and is bit-packed rather than
+#: run-length coded; `docs/117-save-conversion.md`'s "all 843 blocks of all 23
+#: `.dax` files" is a statement about that format and `work/amiga/dax.py`, and
+#: says nothing about this one (#65).
 DAX_ENTRY = 9
 
 
-def dax_index(data: bytes) -> list[tuple[int, int, int, int]]:
+def dax_index(data: bytes, name: str = "dax") -> list[tuple[int, int, int, int]]:
     """`(id, offset, raw size, compressed size)` for each block of a `.DAX`.
 
     A file too short for the index it declares is named as such rather than
@@ -227,42 +247,76 @@ def dax_index(data: bytes) -> list[tuple[int, int, int, int]]:
         return [struct.unpack_from("<BIHH", data, 2 + DAX_ENTRY * i)
                 for i in range(size // DAX_ENTRY)]
     except struct.error as e:
-        raise DosSaveError(f"not a .DAX: {e}") from e
+        raise DaxError(f"{name}: not a .DAX: {e}") from e
 
 
-def dax_block(data: bytes, block_id: int) -> bytes:
+def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
+    """Decompress one `.DAX` block, or raise `DaxError` saying which.
+
+    All three refusals mean the same thing -- a length that is not this
+    block's -- and all three used to be silent (#65).  A run whose operand is
+    past the end of the block raised `IndexError` from the subscript, and a
+    block that ran out before `raw_size` returned a plausible prefix and left
+    the caller to notice.  `por.dos.write_dos_save` catches `DosSaveError` and
+    keeps the template's square; an `IndexError` took the whole conversion down
+    with a traceback instead.
+    """
+    out = bytearray()
+    i = 0
+    while i < len(block) and len(out) < raw_size:
+        n = block[i]
+        if n < 128:
+            run = block[i + 1:i + 2 + n]
+            if len(run) != n + 1:
+                raise DaxError(
+                    f"{name}: copy of {n + 1} bytes at {i} runs "
+                    f"{n + 1 - len(run)} past the end of a {len(block)}-byte "
+                    f"block")
+            out += run
+            i += n + 2
+        else:
+            if i + 1 >= len(block):
+                raise DaxError(
+                    f"{name}: repeat opcode at {i} is the last byte of a "
+                    f"{len(block)}-byte block, so its operand is missing")
+            out += bytes([block[i + 1]]) * (256 - n)
+            i += 2
+    if len(out) != raw_size:
+        raise DaxError(
+            f"{name}: unpacked to {len(out)} bytes, not the {raw_size} the "
+            f"index states")
+    return bytes(out)
+
+
+def _dax_chunk(data: bytes, base: int, off: int, comp: int, name: str) -> bytes:
+    """The stored bytes of one block, or a refusal naming what is short."""
+    chunk = data[base + off:base + off + comp]
+    if len(chunk) != comp:
+        raise DaxError(
+            f"{name}: the index states {comp} bytes at {base + off} but the "
+            f"file holds {len(chunk)}")
+    return chunk
+
+
+def dax_blocks(data: bytes, name: str = "dax"):
+    """Yield `(id, decompressed bytes)` for every block of a `.DAX`."""
+    index = dax_index(data, name)
+    base = 2 + struct.unpack_from("<H", data, 0)[0]
+    for bid, off, raw, comp in index:
+        chunk = _dax_chunk(data, base, off, comp, f"{name} block {bid}")
+        yield bid, dax_unpack(chunk, raw, f"{name} block {bid}")
+
+
+def dax_block(data: bytes, block_id: int, name: str = "dax") -> bytes:
     """One block of a `.DAX`, decompressed.  Raises if it is not there."""
-    index = dax_index(data)
+    index = dax_index(data, name)
     base = 2 + struct.unpack_from("<H", data, 0)[0]
     for bid, off, raw, comp in index:
         if bid != block_id:
             continue
-        out = bytearray()
-        chunk = data[base + off:base + off + comp]
-        i = 0
-        while i < len(chunk) and len(out) < raw:
-            n = chunk[i]
-            if n < 128:
-                out += chunk[i + 1:i + 2 + n]
-                i += n + 2
-            else:
-                # A dangling lead byte -- a truncated or half-copied archive --
-                # would index past the end here, where the copy branch above
-                # degrades to a short slice and is caught by the length check.
-                # `write_dos_save` catches `DosSaveError` and keeps the
-                # template's square; an `IndexError` would take the whole
-                # conversion down with a traceback instead.
-                if i + 1 >= len(chunk):
-                    raise DosSaveError(
-                        f"block {block_id} ends on a run of {256 - n} with "
-                        f"nothing to repeat; the .DAX is truncated")
-                out += bytes([chunk[i + 1]]) * (256 - n)
-                i += 2
-        if len(out) != raw:
-            raise DosSaveError(
-                f"block {block_id} unpacked to {len(out)} bytes, not {raw}")
-        return bytes(out)
-    raise DosSaveError(f"no block {block_id} in this .DAX")
+        where = f"{name} block {block_id}"
+        return dax_unpack(_dax_chunk(data, base, off, comp, where), raw, where)
+    raise DaxError(f"{name}: no block {block_id} in this .DAX")
 
 
 # ---------------------------------------------------------------------------
