@@ -254,3 +254,51 @@ def test_a_block_that_unpacks_short_is_refused():
     index = struct.pack("<BIHH", 3, 0, 99, len(body))
     with pytest.raises(sg.DosSaveError):
         sg.dax_block(struct.pack("<H", len(index)) + index + body, 3)
+
+# --- what a damaged .DAX does ------------------------------------------------
+
+
+def _damaged_dax(body: bytes, block_id: int = 7, raw: int = 64) -> bytes:
+    """A one-block `.DAX` whose block body is exactly `body`.
+
+    Distinct from `_dax` above, which builds a well-formed archive from whole
+    blocks; this one exists to hand the unpacker a body that is wrong.
+    """
+    import struct
+    entry = struct.pack("<BIHH", block_id, 0, raw, len(body))
+    return struct.pack("<H", len(entry)) + entry + body
+
+
+def test_a_block_ending_on_a_dangling_run_is_named_not_indexed():
+    """A truncated archive must reach `write_dos_save` as a refusal.
+
+    The run branch of the unpacker indexes `chunk[i + 1]`, where the copy
+    branch beside it takes a slice and degrades to something the length check
+    catches. A half-copied `.DAX` used to raise `IndexError` from inside, and
+    `por.dos.write_dos_save` catches only `DosSaveError` -- so the whole
+    conversion came down with a traceback instead of keeping the template's
+    square and saying why.
+    """
+    with pytest.raises(sg.DosSaveError) as caught:
+        sg.dax_block(_damaged_dax(bytes([200])), 7)
+    assert "truncated" in str(caught.value)
+
+
+def test_a_block_that_unpacks_short_is_still_caught_by_the_length_check():
+    """The copy branch's own failure mode, so the guard above did not replace
+    it with a narrower one."""
+    with pytest.raises(sg.DosSaveError) as caught:
+        sg.dax_block(_damaged_dax(bytes([2, 1, 2, 3])), 7)
+    assert "not 64" in str(caught.value)
+
+
+@pytest.mark.parametrize("call", [
+    lambda save: sg.put_word(save, sg.AREA, 5),
+    lambda save: sg.put_clock(save, [0, 0, 0, 0, 0, 0]),
+])
+def test_the_writers_refuse_a_short_buffer_like_the_readers_do(call):
+    """`put_word` and `put_clock` skipped `_whole`, so a short buffer reached
+    `struct.pack_into` and came back as `struct.error` -- the unhelpful raw
+    error the guard exists to replace."""
+    with pytest.raises(sg.DosSaveError):
+        call(bytearray(10))

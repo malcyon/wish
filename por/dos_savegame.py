@@ -246,6 +246,16 @@ def dax_block(data: bytes, block_id: int) -> bytes:
                 out += chunk[i + 1:i + 2 + n]
                 i += n + 2
             else:
+                # A dangling lead byte -- a truncated or half-copied archive --
+                # would index past the end here, where the copy branch above
+                # degrades to a short slice and is caught by the length check.
+                # `write_dos_save` catches `DosSaveError` and keeps the
+                # template's square; an `IndexError` would take the whole
+                # conversion down with a traceback instead.
+                if i + 1 >= len(chunk):
+                    raise DosSaveError(
+                        f"block {block_id} ends on a run of {256 - n} with "
+                        f"nothing to repeat; the .DAX is truncated")
                 out += bytes([chunk[i + 1]]) * (256 - n)
                 i += 2
         if len(out) != raw:
@@ -259,6 +269,7 @@ def dax_block(data: bytes, block_id: int) -> bytes:
 # Writing: the retarget, and the two fields a conversion carries
 # ---------------------------------------------------------------------------
 def put_word(save: bytearray, address: int, value: int) -> None:
+    _whole(save)
     struct.pack_into("<H", save, word_offset(address), value & 0xFFFF)
 
 
@@ -271,6 +282,7 @@ def put_position(save: bytearray, x: int, y: int, facing: int) -> None:
 
 def put_clock(save: bytearray, digits) -> None:
     """The six digit words, in the C64's own order and encoding."""
+    _whole(save)
     digits = list(digits)
     if len(digits) != CLOCK_DIGITS:
         raise DosSaveError(f"the clock is {CLOCK_DIGITS} digits, not "
