@@ -42,7 +42,7 @@ The C64 side is untouched: no VICE or FS-UAE configuration was changed.
 
 ## Starting it so it cannot draw on the user's desktop
 
-Two traps, both hit during this work.
+Three traps, all hit during this work.
 
 **The Wayland trap.** DOSBox-X asks for a working directory with a `zenity`
 folder chooser when it has no configured one. `zenity` is GTK, GTK prefers
@@ -76,6 +76,43 @@ debuggerrun = debugger
 ```
 
 `logfile` is what makes this scriptable at all — see below.
+
+**The window trap.** A session that shares another run's display captures the
+wrong window, and every screenshot comes back solid black (#83). Two DOSBox-X
+processes on one display leave two top-level windows with the same title, the
+same `640x400+80+100`, both `IsViewable`, and both returned by `xdotool search`:
+
+```
+0x20000b "wishdbg - DOSBox-X 2026.08.02: START - 30000 cycles/ms"  640x400+80+100
+0x40000b "wishdbg - DOSBox-X 2026.08.02: START - 30000 cycles/ms"  640x400+80+100
+```
+
+Nothing about the windows separates them. What makes one of them black is the
+stacking: they overlap exactly, `Backing Store State: NotUseful`, and there is
+no compositor under a bare `Xvfb`, so **`import -window` on the obscured window
+reads back one flat colour** — X keeps no contents for a window nobody can see.
+`import` succeeds, so nothing downstream notices: `settle()` calls two identical
+black frames a finished screen, every `wait_for` on it times out, and
+`load_game` reports a save that loads perfectly as never having loaded.
+
+Three things follow, all of them in `tools/dosboxx.py` now:
+
+* **Choose the window by `_NET_WM_PID`**, which SDL2 sets and which is the only
+  thing that told the two apart. Choosing by content is *wrong* here — the
+  window with pixels in it is whichever process drew last, not ours.
+* **Never share a display.** `boot()` refuses to start when an X server is
+  already listening on the slot's display, because that is the condition the
+  two windows need. The check connects to `/tmp/.X11-unix/X<n>`: `xdotool`
+  cannot answer it, as it exits 1 both for "no windows matched" and for "Can't
+  open display", which is also why the old readiness loop never waited for
+  anything.
+* **Refuse a capture of one colour by name.** `shot()` raises `BlankCapture`
+  rather than writing a PNG that looks like a game drawing nothing.
+
+The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are
+started with `start_new_session=True`, so a run whose Python is killed outright
+leaves both alive, holding the display against the next session to claim that
+slot.
 
 ## Reaching the debugger
 

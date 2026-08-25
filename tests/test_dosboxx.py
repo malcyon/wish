@@ -235,6 +235,87 @@ def test_the_clock_lives_where_the_save_format_says_it_does():
 
 
 # --------------------------------------------------------------------------
+# Which window, and whether anything is in it
+# --------------------------------------------------------------------------
+
+
+def ppm(width: int, height: int, pixels: bytes):
+    """A `Screen` built from nothing, so the refusal is testable with no X."""
+    from tools.dosbox import Screen
+
+    return Screen.from_ppm(f"P6\n{width} {height}\n255\n".encode() + pixels)
+
+
+def test_a_capture_of_one_colour_is_recognised_as_showing_nothing():
+    """The signature of a capture of the wrong window: `import` returns flat.
+
+    Black is the one that cost an hour, but the test is one colour, not black:
+    an unmapped window under some drivers comes back white or grey and means
+    exactly the same thing.
+    """
+    assert dosboxx.uniform_colour(ppm(4, 2, b"\x00\x00\x00" * 8)) == (0, 0, 0)
+    assert dosboxx.uniform_colour(ppm(4, 2, b"\xFF\xFF\xFF" * 8)) == (255, 255, 255)
+    assert dosboxx.uniform_colour(ppm(1, 2, b"\x11\x22\x33" * 2)) == (0x11, 0x22, 0x33)
+
+
+def test_a_capture_with_one_pixel_lit_is_not_refused():
+    px = bytearray(b"\x00\x00\x00" * 8)
+    px[12] = 1
+    assert dosboxx.uniform_colour(ppm(4, 2, bytes(px))) is None
+
+
+def test_a_display_with_no_server_on_it_reads_free():
+    """`xdotool` could not answer this, which is why the check is a socket.
+
+    It exits 1 both for "no windows matched" and for "Can't open display", so
+    the readiness loop that tested its status was satisfied by a display that
+    did not exist -- and the guard against sharing an earlier run's display
+    would have been satisfied by every display.  :63 is outside every pool.
+    """
+    assert dosboxx.server_on(":63") is False
+
+
+def test_a_screenshot_of_a_blank_window_is_refused_by_name():
+    """`shot()` writes no file rather than one that looks like a dead game."""
+
+    class Stub:
+        display = ":40"
+        window = "4194315"
+
+        def grab(self, window=None):
+            return ppm(4, 2, b"\x00\x00\x00" * 8)
+
+    with pytest.raises(dosboxx.BlankCapture) as e:
+        dosboxx.XSession.shot(Stub(), "loaded")
+    assert "loaded" in str(e.value)
+    assert "0x40000b" in str(e.value) and "#000000" in str(e.value)
+
+
+def test_the_window_belonging_to_this_process_wins():
+    """Two DOSBox-X processes on one display, and only one window has pixels.
+
+    Reproduced by starting a second `dosbox-x` on a booted session's display:
+    `0x20000b` and `0x40000b`, same title, same `640x400+80+100`, both
+    `IsViewable`.  `_NET_WM_PID` is the only thing that told them apart.
+    """
+    ids = ["2097163", "4194315"]
+    pids = {"2097163": 582983, "4194315": 582890}
+    assert dosboxx.candidate_windows(ids, pids, 582890) == ["4194315"]
+    assert dosboxx.candidate_windows(ids, pids, 582983) == ["2097163"]
+
+
+def test_a_window_that_names_another_process_is_never_ours():
+    """Even as the only candidate.  Taking it is how every shot came back black."""
+    assert dosboxx.candidate_windows(["2097163"], {"2097163": 99}, 7) == []
+
+
+def test_windows_with_no_pid_property_stay_candidates():
+    """A build whose SDL does not set `_NET_WM_PID` still has to be choosable."""
+    ids = ["2097163", "4194315"]
+    assert dosboxx.candidate_windows(ids, dict.fromkeys(ids), 7) == ids
+
+
+# --------------------------------------------------------------------------
 # Keeping the emulator off the user's desktop
 # --------------------------------------------------------------------------
 

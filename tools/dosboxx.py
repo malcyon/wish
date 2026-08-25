@@ -60,6 +60,7 @@ import os
 import re
 import select
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -118,6 +119,10 @@ class DebuggerUnavailable(RuntimeError):
 
 class NotHalted(RuntimeError):
     """The command went nowhere: the debugger reads input only while stopped."""
+
+
+class BlankCapture(RuntimeError):
+    """A capture came back a single colour, so it is showing nothing."""
 
 
 # --------------------------------------------------------------------------
@@ -439,6 +444,83 @@ def debug_env(display: str | None, **extra: str) -> dict[str, str]:
     return env
 
 
+# --------------------------------------------------------------------------
+# Which window is ours
+# --------------------------------------------------------------------------
+
+
+def uniform_colour(screen: dosbox.Screen | None) -> tuple[int, int, int] | None:
+    """The single colour a capture is made of, or None if it has two.
+
+    A capture of the wrong window is not an error -- `import` takes it happily
+    and returns one flat colour -- so nothing downstream notices.  `settle()`
+    calls two identical black frames a finished screen, every `wait_for` on it
+    times out, and `load_game` reports a save that loaded perfectly as never
+    having loaded.  One colour is the signature, and refusing it by name is
+    what stops that reading as "the game did nothing".
+    """
+    if screen is None:
+        return None
+    px = screen.px
+    if len(px) < 6:
+        return None
+    first = px[:3]
+    whole = len(px) - len(px) % 3
+    if px[:whole] != first * (whole // 3):
+        return None
+    return (first[0], first[1], first[2])
+
+
+def candidate_windows(ids: list[str], pids: dict[str, int | None],
+                      pid: int) -> list[str]:
+    """The windows in `ids` that process `pid` could plausibly own, best first.
+
+    Two DOSBox-X processes on one display leave two top-level windows with the
+    same title, the same 640x400+80+100 geometry and the same `IsViewable` map
+    state; nothing about the windows themselves separates them, and only one
+    has pixels in it.  `_NET_WM_PID` does separate them, and SDL2 sets it, so a
+    window that names another process is dropped outright.  Windows naming no
+    process at all are kept as a fallback, for a build whose SDL does not set
+    the property -- there the caller still has to choose by content.
+    """
+    mine = [w for w in ids if pids.get(w) == pid]
+    return mine or [w for w in ids if pids.get(w) is None]
+
+
+def server_on(display: str) -> bool:
+    """Whether an X server is listening on that display, by its own socket.
+
+    Not by running `xdotool`: it exits 1 both for "no windows matched" and for
+    "Can't open display", so the readiness loop that tested its status was
+    satisfied by a display that did not exist.  Connecting to
+    `/tmp/.X11-unix/X<n>` cannot be read two ways -- a socket left behind by a
+    dead server refuses the connection.
+
+    Asked before `Xvfb` is started as well as after.  A second `Xvfb` on a busy
+    display does exit with "Server is already active", but it takes a moment,
+    and by then the session has already gone on to launch DOSBox-X against the
+    server that was already there.  Two DOSBox-X windows with the same title is
+    what that looks like afterwards.
+    """
+    n = display.lstrip(":").split(".")[0]
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1.0)
+        sock.connect(f"/tmp/.X11-unix/X{n}")
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def window_pid(wid: str, env: dict[str, str]) -> int | None:
+    """`_NET_WM_PID` of a window, or None where it carries none."""
+    out = subprocess.run(["xdotool", "getwindowpid", wid],
+                         env=env, capture_output=True).stdout.strip()
+    return int(out) if out.isdigit() else None
+
+
 class XSession(dosbox.Session):
     """A booted DOSBox-X with the debugger on a pty.
 
@@ -480,9 +562,21 @@ class XSession(dosbox.Session):
         launched the process, so a session with no controlling tty has no
         debugger at all -- and `pty.openpty()` is a terminal for this purpose
         as long as it is given a size, because ncurses draws nothing in a 0x0.
+
+        The window is chosen by `_NET_WM_PID` and then proved to have pixels
+        in it, because a display that another run's DOSBox-X is still holding
+        carries two windows with this one's title and only one of them draws.
         """
         self.stage(fresh=fresh)
         env = debug_env(self.display)
+        if server_on(self.display):
+            raise RuntimeError(
+                f"{self.display} already has an X server on it, so this "
+                f"session would share it.  A DOSBox-X or Xvfb from an earlier "
+                f"run is still holding the display -- two DOSBox-X windows "
+                f"with the same title, and `import` returns solid black for "
+                f"whichever is underneath.  Kill that run's process group."
+            )
 
         self.xvfb = subprocess.Popen(
             ["Xvfb", self.display, "-screen", "0", self.geometry, "-nolisten", "tcp"],
@@ -492,11 +586,19 @@ class XSession(dosbox.Session):
         )
         deadline = time.time() + timeout
         while time.time() < deadline:
-            probe = subprocess.run(["xdotool", "search", "--name", "."],
-                                   env=env, capture_output=True)
-            if probe.returncode in (0, 1):
+            if server_on(self.display):
                 break
+            if self.xvfb.poll() is not None:
+                why = (self.dir / "xvfb.log").read_text(errors="replace").strip()
+                self.close()
+                raise RuntimeError(
+                    f"Xvfb exited without serving {self.display}: "
+                    f"{why.splitlines()[-1] if why else 'no output'}"
+                )
             time.sleep(0.2)
+        else:
+            self.close()
+            raise TimeoutError(f"Xvfb never came up on {self.display}")
 
         self.log.unlink(missing_ok=True)
         (self.dir / "MEMDUMP.BIN").unlink(missing_ok=True)
@@ -513,16 +615,30 @@ class XSession(dosbox.Session):
         os.close(slave)
         self._start_reader()
 
+        pid, seen = self.dosbox.pid, {}
         while time.time() < deadline:
-            ids = subprocess.run(["xdotool", "search", "--name", TITLE],
-                                 env=env, capture_output=True).stdout.split()
-            if ids:
-                self.window = ids[-1].decode()
-                break
-            time.sleep(0.3)
+            ids = [w.decode() for w in subprocess.run(
+                ["xdotool", "search", "--name", TITLE],
+                env=env, capture_output=True).stdout.split()]
+            seen = {w: window_pid(w, env) for w in ids}
+            for wid in candidate_windows(ids, seen, pid):
+                if uniform_colour(self.grab(wid)) is None:
+                    self.window = wid
+                    break
+            else:
+                time.sleep(0.3)
+                continue
+            break
         else:
             self.close()
-            raise TimeoutError("the DOSBox-X window never appeared")
+            if not seen:
+                raise TimeoutError("the DOSBox-X window never appeared")
+            raise BlankCapture(
+                f"no window on {self.display} titled {TITLE!r} both belongs to "
+                f"pid {pid} and has anything in it; the windows "
+                f"there are " + ", ".join(
+                    f"{int(w):#x} (pid {theirs})" for w, theirs in seen.items())
+            )
         subprocess.run(["xdotool", "windowfocus", self.window],
                        env=env, capture_output=True)
         self.settle()
@@ -584,6 +700,41 @@ class XSession(dosbox.Session):
             subprocess.run(["xdotool", "key", "--clearmodifiers", k],
                            env=env, check=True, capture_output=True)
             time.sleep(gap)
+
+    # -- output ----------------------------------------------------------
+
+    def grab(self, window: str | None = None) -> dosbox.Screen | None:
+        """One capture of any window, or None if `import` could not take it.
+
+        `capture()` is this with `check=True` on the session's own window.
+        This form is for the moment before there is one, when several windows
+        carry the title and the choice between them is being made.
+        """
+        r = subprocess.run(
+            ["import", "-window", window or self.window, "-depth", "8", "ppm:-"],
+            env=self._env(), capture_output=True)
+        if r.returncode != 0 or not r.stdout.startswith(b"P6"):
+            return None
+        return dosbox.Screen.from_ppm(r.stdout)
+
+    def shot(self, name: str, allow_blank: bool = False) -> Path:
+        """Write a PNG of the window, refusing to write one that is blank.
+
+        A screenshot of the wrong window is a file that looks like the game
+        drew nothing, which is the most expensive way for this harness to
+        fail.  `allow_blank=True` is for the caller that wants the frame
+        whatever it holds -- the shot taken on the way out of a failure.
+        """
+        if not allow_blank:
+            colour = uniform_colour(self.grab())
+            if colour is not None:
+                raise BlankCapture(
+                    f"{name}: window {int(str(self.window), 0):#x} on "
+                    f"{self.display} "
+                    f"is entirely #{colour[0]:02X}{colour[1]:02X}"
+                    f"{colour[2]:02X}, so there is nothing to write"
+                )
+        return super().shot(name)
 
     # -- the log ---------------------------------------------------------
 
