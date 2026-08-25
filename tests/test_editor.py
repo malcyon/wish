@@ -733,10 +733,14 @@ TABS = {
 #: 1330x940 with a save open, the tab asks for the same 1241px it did in
 #: round seven -- the icon costs no width at all -- and the empty part of
 #: column four goes from 298x323 to an L a fifth smaller.
+#: Column three's second item is a *row*, `row_combat`, holding `Combat` and
+#: the combat icon side by side and top-aligned -- Donald asked for the icon's
+#: top to meet Combat's top line, and matching two boxes of different heights
+#: with a spacer would come apart the first time either gained a field.
 STATS_COLUMNS = (("box_abilities", "box_saves"),
                  ("box_levels", "box_thief_skills"),
-                 ("box_money", "box_combat"),
-                 ("box_roster", "box_appearance"),
+                 ("box_money", ("box_combat", "box_appearance")),
+                 ("box_roster",),
                  ("box_effects",))
 
 
@@ -791,9 +795,20 @@ def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
         column = columns.itemAt(i).layout()
         if column is None:
             continue
-        got.append(tuple(column.itemAt(j).widget().objectName()
-                         for j in range(column.count())
-                         if isinstance(column.itemAt(j).widget(), QGroupBox)))
+        entries = []
+        for j in range(column.count()):
+            widget = column.itemAt(j).widget()
+            if isinstance(widget, QGroupBox):
+                entries.append(widget.objectName())
+                continue
+            row = column.itemAt(j).layout()
+            if row is not None:
+                inner = tuple(row.itemAt(k).widget().objectName()
+                              for k in range(row.count())
+                              if isinstance(row.itemAt(k).widget(), QGroupBox))
+                if inner:
+                    entries.append(inner)
+        got.append(tuple(entries))
     assert got == list(STATS_COLUMNS)
 
 
@@ -861,36 +876,46 @@ def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
 
 
 @game_disks
-def test_the_header_s_spare_width_goes_to_the_roster(app, save):
-    """Every field in Character is sized to the widest value its bytes can
-    hold, so it cannot read a wider window. The roster can: its `Name` column
-    stretches.
+def test_the_header_s_spare_width_goes_to_a_spacer(app, save):
+    """Nothing in the header grows into a wider window except the gap.
 
-    Two items in the row since round eight, not three: the combat icon is on
-    the Stats tab, beside `Combat`.
+    Every field in Character is sized to the widest value its bytes can hold,
+    so it cannot read a wider window. The roster could, and that was the fault:
+    a `Stretch` section takes the whole viewport, so `Name` drew several times
+    the longest name the game can hold. Capping it did nothing --
+    `QHeaderView` ignores `maximumSectionSize` for a stretching section (#90).
 
-    Round six gave the slack to Character and shared it 1:1 between its two
-    form columns, which each took half and each huddled at its own left edge
-    -- the gutter down the middle of Character and the gap between it and the
-    icon, both of which Donald marked. Handing it to the fields instead of the
-    forms only moved it: a drop-down 890px wide with `2  ELF` in it.
+    So the slack leaves the table. `header_slack` is the only item in the row
+    with any stretch, the roster is pinned to exactly its five columns, and a
+    wider window widens the gap between the two boxes and nothing else.
 
-    One thing takes it and it is the roster; nothing else in the row stretches,
-    and there is no spacer for it to fall into.
+    Round six's history is why this is asserted rather than left to the
+    layout: the slack was given to Character and shared 1:1 between its two
+    form columns, which each took half and huddled at their own left edge --
+    the gutter down the middle of Character and the gap beside it, both of
+    which Donald marked. Handing it to the fields instead only moved it: a
+    drop-down 890px wide with `2  ELF` in it.
     """
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
     row = w.ui.header_row
     stretched = [i for i in range(row.count()) if row.stretch(i)]
     assert len(stretched) == 1, "one thing takes the slack, not none and not two"
-    assert row.itemAt(stretched[0]).widget() is w.ui.roster
-    assert all(row.itemAt(i).widget() is not None for i in range(row.count())), (
-        "a spacer in the header is slack that nothing reads")
+    assert row.itemAt(stretched[0]).spacerItem() is not None, (
+        "the slack belongs to the spacer, not to a box that would grow into it")
     columns = w.ui.form_identity
     assert not any(columns.stretch(i) for i in range(columns.count()))
-    header = w.ui.roster.horizontalHeader()
+
+    view = w.ui.roster
+    header = view.horizontalHeader()
     from editor.window import NAME_COLUMN
-    assert header.sectionResizeMode(NAME_COLUMN) == header.ResizeMode.Stretch
+    assert header.sectionResizeMode(NAME_COLUMN) != header.ResizeMode.Stretch
+    assert view.maximumWidth() == view.minimumWidth(), (
+        "the roster is its columns, whatever the window is doing")
+    # And the column really is a name's width rather than a window's.
+    from por.layout import NAME_SIZE
+    widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
+    assert header.sectionSize(NAME_COLUMN) <= widest * 2
 
 
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one

@@ -33,7 +33,7 @@ from por import games as por_games
 from por.iconparts import IconParts
 from por.icons import load_icon_charset
 from por.items import load_item_names, load_item_templates, load_item_types
-from por.layout import FIELDS_BY_NAME, NAME_SIZE
+from por.layout import FIELDS_BY_NAME
 from por.savegame import store_save
 from por.spells import capacity, load_spell_names
 from por.spells import for_game as spell_table
@@ -132,13 +132,10 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # the right and all of the stretch. Shared four ways the slack came out as a
 # gap beside every column; on the column Traits used to share with Money it
 # was 490px of nothing.
-ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (1, 0),
-               "form_identity": (0, 0)}
+ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (0, 1, 0),
+               "form_identity": (0, 0),
+               "row_combat": (0, 0)}
 ROSTER_SLACK = 6
-#: A little past the longest name a record can hold, so the column is not
-#: painted flush against a twenty-character name. Donald: growing to the width
-#: of the window looked wrong, and a little over the maximum is fine.
-NAME_COLUMN_SLACK = 24
 #: The old 300 cap scaled by the same half the icon itself shrank by (`ZOOM`
 #: 6 to 3), which leaves six pixels over `IconEditor`'s own 144px minimum.
 #: A cap it can take a little of a wide column without the art smearing:
@@ -748,6 +745,16 @@ class EditorWindow(QMainWindow):
         # A layout is not a QWidget, so `_child` cannot find it. `pyuic6`
         # names every layout on the Ui object, which is cheaper and steadier
         # than a `findChild` walk of the whole form.
+        # `Combat` and the combat icon share one row so their top edges line
+        # up by construction rather than by arithmetic: they are different
+        # heights, and anything that matched them by adding a spacer would
+        # come apart the first time either box gained a field. Donald asked
+        # for the icon's top to meet Combat's top line, and a top-aligned
+        # row is the only version of that which stays true.
+        row = self._child("row_combat")
+        if row is not None and row.layout() is not None:
+            row.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+
         for name, stretch in ROW_STRETCH.items():
             row = getattr(self.ui, name, None)
             if row is None:
@@ -1051,22 +1058,18 @@ class EditorWindow(QMainWindow):
         # first and while every column is still `ResizeToContents`, because a
         # stretching section reports the viewport's width and the minimum
         # would chase the window.
-        header.setSectionResizeMode(NAME_COLUMN, header.ResizeMode.Stretch)
-        # Stretch, but not without end. A record's name is `layout.NAME_SIZE`
-        # characters and no more, so past the width of twenty capital Ws the
-        # column is drawing space no name can ever occupy -- on a wide window
-        # it grew to several times the longest name in the game. The slack has
-        # to go somewhere, so it goes to the column and the column stops:
-        # `setMaximumSectionSize` caps every section, and `Name` is the only
-        # one that stretches, so it is the only one the cap can reach.
+        # **No column stretches.** `Name` used to, and a stretching section
+        # takes the whole viewport: on a wide window it drew several times the
+        # longest name the game can hold. Capping it did not work either --
+        # `QHeaderView` ignores `maximumSectionSize` for a section in `Stretch`
+        # mode, reproduced on a bare `QTableView` with none of this in it (#90).
         #
-        # **And the cap does not bind.** `QHeaderView` ignores
-        # `maximumSectionSize` for a section in `Stretch` mode -- reproduced on
-        # a bare `QTableView` with none of this in it -- so `Name` still grows
-        # to whatever the window gives it. Issue #90; the fix puts the slack
-        # somewhere else in the header, which is a layout decision.
-        widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
-        header.setMaximumSectionSize(widest + NAME_COLUMN_SLACK)
+        # So the slack leaves the table altogether. `header_slack` in
+        # `character.ui` is a spacer between the roster and Character and is
+        # the only item in `header_row` with any stretch, so a wider window
+        # widens the gap between the two boxes and nothing else. The roster is
+        # exactly its five columns, whatever the window is doing.
+        view.setMaximumWidth(view.minimumWidth())
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
