@@ -996,6 +996,12 @@ def test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
 
     w = EditorWindow(str(party))
     w.show()
+    # `EditorWindow.showEvent` runs `_size_roster`, and Windows delivers that
+    # event a turn later than Linux does. Reading `maximumWidth` before it has
+    # run measures the table `_adopt` left, not the one the user sees: CI
+    # answered 941 here and 921 after settling, and the assertion below is an
+    # equality, so a stale number failed on Windows and passed here (#71).
+    app.processEvents()
     view = w.ui.roster
     header = view.horizontalHeader()
     natural = view.maximumWidth()
