@@ -430,6 +430,19 @@ deliberately left undone -- a few sentences, in the issue, before or as it
 closes. The commit message is one line; the comment is where the explanation
 goes.
 
+**`closes #N` fires when the commit reaches `main`, and not before.** While
+work sits unpushed the issue is still open, however finished it is -- and this
+project routinely carries dozens of unpushed commits, so that gap is the normal
+state rather than a corner case.
+
+So: **when the finishing commit is not pushed, close the issue by hand** with
+`gh issue close`, and say in the closing note that the keyword will be a no-op
+by the time the commit lands. And **never report an issue as closed without
+checking `gh issue view N --json state`.** Saying "closed" of an issue that is
+open has happened twice here, both times because a `closes #N` was written into
+a commit that had gone nowhere. The keyword still belongs in the message; it is
+simply not what does the closing today.
+
 **Close an issue in the commit that finishes it**, and say which issue in the
 commit message only when it needs saying -- one sentence is still the rule.
 
