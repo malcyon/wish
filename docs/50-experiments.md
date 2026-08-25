@@ -3056,7 +3056,10 @@ lie) and it is the entire outer loop: `LDA $6E11`, index the name table at
 Every write agrees: `COM.PREP $0936` writes 2, `COMBAT $090C` writes 5,
 `INIT $09D8` writes 1, `DUNGEON $10B1` writes 9. Sampled live across one driven
 session: menu `00`, New Phlan `01`, combat map drawn `02`, post-fight `05`, back
-in the world `01`. `04` was never seen live — that row is disassembly only.
+in the world `01`. `04` was never seen live *in this title* — that row was
+disassembly only until Silver Blades' `$7F11` was watched sitting on `4` while
+`COM.PREP` loaded (see "the later titles' mode flag is `$7F11`" below), which is
+the same dispatch table and settles the meaning.
 
 `$6E11` sits in the loader's resident page beside the file cache at `$6E13`, so
 no overlay moves it.
@@ -3122,7 +3125,7 @@ are combat scratch and must not appear in a party list.
 * **One monster, observed twice.** Both fights were training-hall duels with a
   single opponent at index 8. Monsters at 9, 10, 11 and slot sharing follow from
   the code, not from observation. A multi-monster fight is the next check.
-* `$6E11 == 4` was never sampled live.
+* `$6E11 == 4` was never sampled live *here*. Its counterpart `$7F11 == 4` was, on Silver Blades — see "the later titles' mode flag is `$7F11`".
 * Position byte `+3` is always 0 and unexplained; `+2 = i*4 | pose` is PROBABLE
   on three samples.
 * The combat map's terrain format is untouched. `SQRPACI01` loads at `$0400`–
@@ -5263,3 +5266,85 @@ skipping the block, not fixed here.
 `$4FC0`-`$4FD3`, `$5200`-`$520F`), bytes 12804-12807, outdoor saves
 (no specimen), #57's portrait path. Each carries its settling experiment in
 `docs/141-dos-savegame.md`.
+
+## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
+
+**`$7F11` is the loader's dispatch byte in Curse of the Azure Bonds and in
+Secret of the Silver Blades, and `2` is COMBAT there exactly as `$6E11 = 2` is
+in Pool of Radiance.** CONFIRMED for Curse, PROBABLE for Silver Blades. It is
+the last address `automap/actions.py` needed and the reason all five live
+action buttons refused on both titles (#29).
+
+**It is not derivable and it was never going to be.** The save image moved
+`$4900` → `$4B00` between the two games; the flag moved `$6E11` → `$7F11`,
+which is `+$1100`. `LINKER` is its own resident and owes nothing to where the
+save loads.
+
+**Where it came from: the loader's own first instruction.** `LINKER` on
+`CURSE_A.D64` is 146 bytes and begins `AD 11 7F` — `LDA $7F11`. That operand is
+absolute, so it says what the flag is **without anyone having to work out where
+`LINKER` runs**, and it can be read off the disk with no emulator at all. The
+same file on `SILVER-1.D64` is 149 bytes and begins with the same three bytes.
+Pool of Radiance's is 136 bytes and begins `AD 11 6E`. The rest of the routine
+is the same outer loop in all three: index a name table by the flag, load that
+overlay at `$0800`, `JSR $0800`, `JMP` back to the top.
+
+**The name table is the same table, entry for entry**, which is what settles
+`2`:
+
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6, 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| | `GEN` | `DUNGEON` | **`COMBAT`** | `INIT` | `COM.PREP` | `POST.COM` | dead | `FINAL` | `CAMP` |
+
+Pool of Radiance pads the two dead slots with `@@` inside the string pool;
+Curse and Silver Blades leave their pointers aimed at `FINAL` with lengths that
+run past it. Different padding, identical indices — so `automap.actions.COMBAT`
+stays one constant for the family and only the address is per title.
+
+**Live corroboration, on Curse, one driven session on pool slot 2.** The same
+code is resident at `$2D00` (Pool of Radiance's `LINKER` is at `$2B80`), the
+name table at `$2D42`, and `$7F11` was sampled across four overlay changes:
+
+| when | `$7F11` | predicted first? |
+|---|---|---|
+| party in Tilverton, `MOVE VIEW CAST …` on screen | `1` `DUNGEON` | — |
+| `ENCAMP` | `9` `CAMP` | yes |
+| `EXIT` back to the world | `1` | yes |
+| answered `DO YOU WANT TO TRAIN?` with YES | `0` `GEN` | no |
+| `BEGIN ADVENTURING` | `1` | yes |
+
+And the writer is where Pool of Radiance's is: `LDA #$09 / STA $7F11` at
+`$100E` in the resident `DUNGEON`, against `DUNGEON $10B1` writing `9` in Pool
+of Radiance. The live cache sits two bytes above it at `$7F13`, the same
+`+2` as Pool of Radiance's `$6E11`/`$6E13`, and `$7F15` read `01` for a machine
+with `GEO01` resident at `$0400` — which is the loaded-files cache's slot 2
+saying which map is loaded, and is a second, independent fix on the loader's
+resident page.
+
+**Silver Blades then gave the fight, and the whole chain with it.** One driven
+session on the shipped `SAVEDBASH` party, 228 steps out of New Verdigris, and
+the flag went
+
+    1 DUNGEON  ->  4 COM.PREP  ->  2 COMBAT
+
+with `MOVE VIEW AIM TURN QUICK DONE` on the command bar at `2`. `COM.PREP` held
+for at least twenty samples while it loaded, which is **the first live sighting
+of `4` in any title** — the Pool of Radiance row above says of it "never
+sampled live; that row is disassembly only", and it can come off that footing
+now. The gate was exercised in the same breath: `actions.in_combat` answered
+True, `heal` stayed legal and `identify`, `store-spells` and `restore-spells`
+all refused with "refused during a fight (`$7F11` is 2)".
+
+**Curse did not give one**, and that is the one thing this pair of sittings did
+not get. About 250 driven steps through Tilverton produced scripted text, a
+locked door and the training hall; five days of camp rest produced `YOUR REST
+IS RUDELY INTERRUPTED!` twice and both times the flag went `9` → `1` and the
+party was handed back to the world with no combat. So `2` on Curse rests on the
+dispatch table alone. It is the same table as the one Silver Blades has now
+been watched running, which is why this is a footnote and not a blocker.
+
+**What this is worth to the program.** `Game.mode_flag` is `$7F11` for both
+later titles, so the five live actions no longer refuse there and
+`docs/139`'s C16–C19 leave `R`. The three Krynn-era titles keep `None`: their
+`LINKER` has not been read, and a title with no gate must refuse rather than
+read somebody else's byte and call whatever it finds "not combat".

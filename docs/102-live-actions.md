@@ -7,8 +7,9 @@ row of buttons under the map on the automapper tab.
 Everything here writes to a running machine. Reading is safe and reversible;
 writing is neither, so each action states **when it is legal** as well as what
 it does. `automap/target.py` carries `write`, so the Commodore 64 Ultimate
-backend inherits all of it, and the mode flag at `$6E11` is what decides
-legality — `2` is combat.
+backend inherits all of it, and the loader's mode flag is what decides
+legality — `2` is combat, at `$6E11` in Pool of Radiance and `$7F11` in Curse
+and Silver Blades.
 
 **Nothing here writes to a disk.** These change the machine's memory, and the
 player saves in the game as usual. That keeps the losslessness promise intact:
@@ -25,19 +26,26 @@ the descriptor and reads through the same `live.read_blocks` the roster cards
 use, so the write side and the read side cannot come to disagree about where a
 title lives.
 
-**The mode flag is the exception, and it is what holds the buttons.** `$6E11`
-is a byte of `LINKER`'s own resident page rather than of the save image, so it
-neither follows the load address nor transfers, and no other title's loader has
-been disassembled here. It is `Game.mode_flag` — CONFIRMED for Pool of
-Radiance, None for the other five — and an action whose title has None
-**refuses**, with the reason in its tooltip and in the `Outcome`. Reading Pool
-of Radiance's byte on a Curse machine would answer "not combat" whatever the
-game was doing, which is a gate that is open rather than a gate that is
-missing.
+**The mode flag is the exception, and it is read out of each title's loader.**
+It is a byte of `LINKER`'s own resident page rather than of the save image, so
+it neither follows the load address nor transfers: `$6E11` in Pool of Radiance,
+`$7F11` in Curse and Silver Blades, `+$1100` where the save image moved
+`+$200`. `LINKER`'s first instruction names it — `LDA $7F11` on both later
+titles' disks — and its overlay name table is the same table entry for entry,
+so `2` is COMBAT in all three and only the address is per title.
 
-What would lift it, per title: sit in the world and dump memory, start a fight
-and dump again, and find the byte in the loader's resident page that goes to 2
-and back. Then one row in `por/games.py`.
+It is `Game.mode_flag` — CONFIRMED for Pool of Radiance, Curse and Silver
+Blades, None for the three Krynn-era titles, whose loaders have not been read.
+Silver Blades has been watched through a real fight: `1` `DUNGEON` → `4`
+`COM.PREP` → `2` `COMBAT`, with the three combat-illegal actions refusing on
+the `2`. An action whose title has None **refuses**, with the reason in its
+tooltip and in the `Outcome`: reading Pool of Radiance's byte on a Curse
+machine would answer "not combat" whatever the game was doing, which is a gate
+that is open rather than a gate that is missing.
+
+What would lift the remaining three, per title: read `LINKER` off the disk and
+take the operand of its first instruction. `docs/50-experiments.md`, "the later
+titles' mode flag is `$7F11`".
 
 ---
 

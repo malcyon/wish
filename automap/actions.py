@@ -15,12 +15,15 @@ slot area, the item area and the roster page all follow `save_load_address`,
 so Curse and Silver Blades are written at `$4F00`, `$5B00` and `$6700` and not
 at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
 
-**The mode flag is the one address that does not follow it.** `$6E11` is a byte
-of `LINKER`'s own resident page, not of the save image, and no other title's
-loader has been disassembled here -- so `Game.mode_flag` is None everywhere but
-Pool of Radiance and every action refuses on those titles rather than write with
-no way to see a fight. One measurement per title lifts it, and it is one row in
-`por/games.py`.
+**The mode flag is the one address that does not follow it.** It is a byte of
+`LINKER`'s own resident page, not of the save image, so it had to be read out of
+each title's loader: `$6E11` in Pool of Radiance, `$7F11` in Curse and Silver
+Blades, and `2` is COMBAT in all three because their overlay name tables are the
+same table entry for entry (#29). The three Krynn-era titles have never been
+read, so `Game.mode_flag` is None there and every action refuses rather than
+write with no way to see a fight -- an unmeasured address answers "not combat"
+whatever the machine is doing, which is a gate that is open rather than one that
+is missing.
 
 **Nothing here writes to a disk.** These change the machine's memory; the player
 saves in the game as usual, which is what keeps the losslessness promise intact.
@@ -107,10 +110,11 @@ def mode(target, game: games.Game | None = None) -> int | None:
 
     Two ways it comes back None and the caller has to separate them itself:
     the machine could not be read, and **this title has no mode flag**.
-    `Game.mode_flag` is `LINKER`'s dispatch byte, measured on Pool of Radiance
-    and nowhere else, so a title with None here has no gate at all -- see
-    `Action.legality`, which refuses rather than reading somebody else's
-    address and calling whatever it finds "not combat".
+    `Game.mode_flag` is `LINKER`'s dispatch byte, read out of the loader on
+    Pool of Radiance, Curse and Silver Blades and on no other title, so a title
+    with None here has no gate at all -- see `Action.legality`, which refuses
+    rather than reading somebody else's address and calling whatever it finds
+    "not combat".
     """
     game = game or games.DEFAULT
     if game.mode_flag is None:
@@ -334,9 +338,9 @@ class Action:
         if game.mode_flag is None:
             # No gate, so no writes. `mode` would answer None here and that
             # reads as "unreadable", which is the wrong sentence: the machine
-            # is fine and it is the address that is missing. Pool of Radiance's
-            # `$6E11` is `LINKER`'s own byte and no other title's loader has
-            # been read, so on those titles this is a fight we cannot see.
+            # is fine and it is the address that is missing. The flag is
+            # `LINKER`'s own byte and only three titles' loaders have been
+            # read, so on the rest this is a fight we cannot see.
             return Verdict(False, UNSUPPORTED.format(title=game.title))
         state = mode(target, game)
         if state is None:

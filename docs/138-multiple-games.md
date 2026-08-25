@@ -198,13 +198,15 @@ here. Across *titles*, the five writes fall into three classes:
 |---|---|---|---|
 | the live party triple `$C04B`–`$C04D` | measured | **measured in Curse and in Silver Blades, unchanged** (`docs/120` §4, `docs/121` §5) | CONFIRMED for three titles |
 | payload-relative bytes — `$49F2` came-from (payload `+$0F2`), `$4A00` scratch (`+$100`) | measured | should move with `Game.save_load_address`: `$4900` → `$4B00` for Curse and Silver Blades, so `$4BF2` and `$4C00`. The one payload address actually re-measured, the area byte, did exactly this: `$4BC2` → `$4DC2` | PROBABLE |
-| loader and overlay addresses — `$6E11` resident-overlay flag, `$6E12` disk, `$6E1B` cache slot, the `NEWECL` tail `$2034`, the key-wait window `$10C2`–`$10EC`, `$2E4E`–`$2E6B` | measured | **UNKNOWN.** These are `DUNGEON`'s and `LIBRARY`'s own code, and no other title's overlays have been disassembled here | UNKNOWN |
+| loader and overlay addresses — `$6E11` resident-overlay flag, `$6E12` disk, `$6E1B` cache slot, the `NEWECL` tail `$2034`, the key-wait window `$10C2`–`$10EC`, `$2E4E`–`$2E6B` | measured | the **loader's page is now read**: `LINKER` in Curse and Silver Blades is resident at `$2D00` and dispatches on `$7F11`, with the disk byte at `$7F12` and the cache from `$7F13` — the same `+1`/`+2` layout Pool of Radiance has at `$6E11`–`$6E13` (#29). The rest are `DUNGEON`'s and `LIBRARY`'s own code and remain **UNKNOWN** | CONFIRMED for the flag in both; UNKNOWN for the rest |
 | the opcode: `$20` is `NEWECL` | CONFIRMED | Curse's DOS opcode table has `20 1 NEWECL`, and Pools of Darkness's independently produced listing agrees on fourteen opcodes (`work/reports/forum-sweep-2.md` §1) | PROBABLE for Curse, and it is the *opcode*, not the handler's address |
 
-**The first experiment is therefore not a UI question.** It is: in a running
-Curse, is `$6E11` still the resident-overlay flag, is there a `NEWECL` handler
-whose tail can be entered, and where is the key-wait loop? One emulator session
-with the disassembler answers whether fast travel is possible for Curse at all.
+**The first experiment is therefore not a UI question.** Half of it is now
+answered: Curse's resident-overlay flag is `$7F11` and its disk byte `$7F12`,
+read out of `LINKER`'s own first six bytes (#29). What is still open is whether
+there is a `NEWECL` handler whose tail can be entered, and where the key-wait
+loop is. One emulator session with the disassembler answers whether fast travel
+is possible for Curse at all.
 Until it does, a Curse tab is an empty tab whatever the data says.
 
 Also note that `Warp` writes the `POOL` disk number to `$6E12`, and *Curse's
@@ -218,7 +220,7 @@ disk column of a Curse area table is a separate measurement.
 | 1 | **Done.** **Say the dropdown is Pool of Radiance's.** When `AutomapState.title` is not Pool of Radiance, the Fast Travel row offers nothing and says why — *"No areas are known for Curse of the Azure Bonds."* — with the button disabled, the way `NOTHING_TICKED` already does. It must never fall back to Pool of Radiance's ids | nothing. This is the only change that is a **correctness** fix rather than a feature: today a Curse session gets Pool of Radiance's areas, and warping on them writes Pool of Radiance disk numbers and `ECL` ids into a Curse machine |
 | 2 | **Done.** **Key the setting by game.** `fast_travel_targets` becomes `{game key: [ids]}`, with the list-to-dict migration in `Settings.load` and the per-title default table. No visible change | nothing. Do it before any second table exists, so no config is ever written in a shape that has to be migrated twice |
 | 3 | **Label the tick table with the title**, and build its rows from a per-title area table looked up by key — a table that has one entry today. Still one table, still no selector | task 2 |
-| 4 | **Measure whether Curse can warp at all.** One emulator session: `$6E11`, a `NEWECL` handler and its tail, the key-wait window, and whether the payload-relative writes land where §6 predicts | an emulator slot, and a Curse disk set — both present |
+| 4 | **Measure whether Curse can warp at all.** The flag is done — `$7F11`, #29. What is left in that session: a `NEWECL` handler and its tail, the key-wait window, and whether the payload-relative writes land where §6 predicts | an emulator slot, and a Curse disk set — both present |
 | 5 | **Build Silver Blades' area table.** The cheap one: 17 maps, disk side free from the id's high nibble, names blank. Enough for a dropdown that says `GEO32` | task 3 for somewhere to put it; task 4's answer for whether it can be acted on |
 | 6 | **Name Curse's sixteen maps.** Needs somebody who has played it, or the `ECL` decode. This is the item with no engineering answer | a human |
 | 7 | **The game selector in Preferences.** One row above the table, defaulting to the automapper's title, with the empty-title sentence in the body | a second real table — task 5 |

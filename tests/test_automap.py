@@ -2376,7 +2376,6 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
 def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     """The window resolves the title off the disks and tells the row; the row
     is what carries the descriptor into every address the buttons write."""
-    from automap import actions
     from automap.actionbar import ActionBar
 
     bar = ActionBar()
@@ -2384,9 +2383,28 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     bar.set_game(CURSE)
     assert all(a.game is CURSE for a in bar.actions)
     assert bar.watcher.game is CURSE
-    # Every button is refused, with the reason, rather than silently inert.
-    bar.attach(curse_machine())
+    # And the gate it reads is Curse's own `LINKER` byte, not $6E11 (#29).
+    machine = curse_machine()
+    machine.memory[CURSE.mode_flag] = b"\x01"
+    bar.attach(machine)
+    assert [r for r in machine.reads if r[0] == 0x7F11] == [(0x7F11, 1)]
+    assert all(b.isEnabled() for b in bar.buttons.values())
+
+
+def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
+    """Champions of Krynn has no measured mode flag, so there is no way to tell
+    a fight from the map and no button may write. The reason is in the tooltip
+    rather than the button being silently inert."""
+    from automap import actions
+    from automap.actionbar import ActionBar
+
+    krynn = games.CHAMPIONS_OF_KRYNN
+    assert krynn.mode_flag is None
+    bar = ActionBar()
+    bar.set_game(krynn)
+    save0, roster = captured()
+    bar.attach(MemoryTarget({krynn.save_load_address: save0 + roster}))
     for name, button in bar.buttons.items():
         assert not button.isEnabled(), name
         assert button.toolTip() == actions.UNSUPPORTED.format(
-            title=CURSE.title), name
+            title=krynn.title), name

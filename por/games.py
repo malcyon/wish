@@ -159,14 +159,44 @@ LIVE_POSITION_GOLDBOX = 0xC04B
 #: `LINKER`'s dispatch byte in Pool of Radiance: which overlay is running, and
 #: `2` is COMBAT. Outside the save image like `live_position`, and like it a
 #: measurement of one title rather than a family constant -- `LINKER` is
-#: 136 bytes of resident code and no other title's loader has been
-#: disassembled here (`docs/138-multiple-games.md`; `docs/120` tier 3's
-#: resident-address table records it as "not looked for").
+#: 136 bytes of resident code at `$2B80`.
 #:
-#: CONFIRMED for Pool of Radiance: "`$6E11` is the mode flag" in
-#: `docs/50-experiments.md` reads the outer loop itself -- `LDA $6E11`, index
-#: the overlay name table, load it at `$0800`, call it.
+#: CONFIRMED: "`$6E11` is the mode flag" in `docs/50-experiments.md` reads the
+#: outer loop itself -- `LDA $6E11`, index the overlay name table, load it at
+#: `$0800`, call it.
 MODE_FLAG_POOL = 0x6E11
+
+#: The same byte in Curse of the Azure Bonds and Secret of the Silver Blades,
+#: and it is **not** Pool of Radiance's plus anything the save image moved by:
+#: `LINKER` is its own resident, so the flag went `$6E11` -> `$7F11` while the
+#: save image went `$4900` -> `$4B00`.
+#:
+#: Read out of the loader's own first instruction, which is where the address
+#: is an absolute operand and so does not depend on where `LINKER` loads:
+#: `LINKER` on `CURSE_A.D64` and on `SILVER-1.D64` both begin `AD 11 7F`,
+#: `LDA $7F11`, then index a name table of ten entries and `JSR $0800`. **The
+#: name table is Pool of Radiance's, entry for entry** -- `GEN`, `DUNGEON`,
+#: `COMBAT`, `INIT`, `COM.PREP`, `POST.COM`, two dead slots, `FINAL`, `CAMP` --
+#: so `2` is COMBAT in all three titles and `automap.actions.COMBAT` needs no
+#: per-title value.
+#:
+#: CONFIRMED for both, each in its own driven session on pool slot 2. `LINKER`
+#: is resident at `$2D00` in both -- byte-identical to the disk copy -- and the
+#: flag was sampled across every overlay change the session made: Curse world
+#: `1`, camp `9`, world `1`, roster `0`, world `1`; Silver Blades credits `3`
+#: `INIT`, roster `0` `GEN`, world `1`, treasure `5` `POST.COM`, world `1`.
+#: `LDA #$09 / STA $7F11` sits at `$100E` in Curse's resident `DUNGEON`, where
+#: Pool of Radiance's `DUNGEON $10B1` writes `9`.
+#:
+#: **`2` was sampled live on Silver Blades**, at the end of 228 driven steps:
+#: `1` -> `4` `COM.PREP` -> `2` with `MOVE VIEW AIM TURN QUICK DONE` on the
+#: command bar, and `identify` refusing because `$7F11` is 2. That is also the
+#: first live sighting of `4` in any title. On Curse it was not: no session has
+#: reached a fight there, so `2` rests on the dispatch table alone -- which is
+#: the same table, so the risk is small and it is written down rather than
+#: glossed. `docs/50-experiments.md`, "the later titles' mode flag is `$7F11`";
+#: issue #29.
+MODE_FLAG_LATER = 0x7F11
 
 
 @dataclass(frozen=True)
@@ -321,9 +351,7 @@ CURSE_OF_THE_AZURE_BONDS = Game(
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
     live_position=LIVE_POSITION_GOLDBOX,
-    # `mode_flag` stays None: `$6E11` is Pool of Radiance's `LINKER`, and
-    # nobody has looked for this title's (`docs/120` tier 3). Every live
-    # action refuses until somebody does.
+    mode_flag=MODE_FLAG_LATER,
 )
 
 SECRET_OF_THE_SILVER_BLADES = Game(
@@ -338,9 +366,7 @@ SECRET_OF_THE_SILVER_BLADES = Game(
     class_bits=CLASS_BITS_WITH_PALADIN_RANGER,
     item_names_load_address=NAMES_LOAD_ADDRESS_LATER,
     live_position=LIVE_POSITION_GOLDBOX,
-    # `mode_flag` stays None: `$6E11` is Pool of Radiance's `LINKER`, and
-    # nobody has looked for this title's (`docs/120` tier 3). Every live
-    # action refuses until somebody does.
+    mode_flag=MODE_FLAG_LATER,
 )
 
 CHAMPIONS_OF_KRYNN = Game(

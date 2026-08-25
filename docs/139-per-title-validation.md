@@ -94,16 +94,16 @@ applicable.
 | C7 | map drawing, reveal, exploration | V | **U** | **U** | pure `Geo`, so it ought to transfer; nothing has drawn a Curse or SSB map in the shipped window |
 | C8 | area names on the map | V | — | — | `por/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
 | C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
-| C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
+| C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Only the first of those is known for the later titles (`$7F11`, #29), and it is deliberately **not** threaded through here: making the view open on Curse would only let it draw the other two addresses' garbage. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
 | C11 | combat log | V | **U**, expected broken | **U**, expected broken | `automap/combatlog.py` is built on `COMBAT $2983`, a PoR address in a PoR overlay |
-| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | **U** | **U** | the addresses are right now — `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29). No real Curse or SSB roster has ever been read through it; that is G6 |
-| C13 | condition badges | V | **U** | **U** | rides C12 |
-| C14 | quickfight badge | V | **U** | **U** | rides C12 |
+| C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | V | V | `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29) — **and both have now been read for real**: Curse's BRUTUS/MAGNUS/LADY KATHERINE and Silver Blades' six, names and hit point maxima matching each game's own panel (`docs/120` tier 3, `docs/121` §4). One hazard fell out: while a full-screen picture is up the roster page is scrap and the cards read zeroes — issue #82 |
+| C13 | condition badges | V | **U** | **U** | rides C12, which is now V on both -- but no badge has been *drawn* from a real Curse or SSB roster, only the numbers behind it read |
+| C14 | quickfight badge | V | **U** | **U** | rides C12. `quickfight_flag` resolved to `$670C` on both live machines (#29) and nobody was on quickfight, so the bit has never been seen set on either |
 | C15 | commissions panel | V | — | — | `por/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
-| C16 | heal party | V | **R** | **R** | Addresses done (#29): `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `$4F00`/`$5B00`/`$6700` on Curse -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own`. The **gate** is not: `$6E11` is `LINKER`'s own byte and no other title's loader has been read, so `Game.mode_flag` is None there and every action refuses -- `…::test_a_title_with_no_measured_mode_flag_writes_nothing` |
-| C17 | store / restore spells | V | **R** | **R** | rides C16 |
-| C18 | identify items | V | **R** | **R** | rides C16; the payload offset now comes off `Game.save_load_address` and `live.BLOCKS` is gone |
-| C19 | clear quickfight, and the watcher | V | **R** | **R** | rides C16; `actions.quickfight_flag(game)` builds the address from `Game.roster_base` -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page` |
+| C16 | heal party | V | **U** | V | Addresses and gate both done (#29). `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own` -- and `Game.mode_flag` is `$7F11` on both later titles, `…::test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances`. **V for Silver Blades because it was done to a real party**: `HealParty` wrote `$6719`/`$6739` on a live machine and MORGAINE and MALACHITE came back to 35/35 and 58/58 (`docs/121` §4). On Curse the same call ran and legitimately had nothing to heal, so the write half is untried there. The combat gate was exercised for real on Silver Blades: `1` -> `4` -> `2` on a wandering encounter, `heal` legal, `identify` refused |
+| C17 | store / restore spells | V | **U** | **U** | rides C16 -- the gate passes on both titles now (#29), but no spell block has been written on either |
+| C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29). Neither party carried an item, so nothing has been identified on either title |
+| C19 | clear quickfight, and the watcher | V | **U** | **U** | rides C16; `actions.quickfight_flag(game)` builds the address from `Game.roster_base` and read `$670C` on both live machines -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page`. Nobody was on quickfight, so no bit has been cleared on either title |
 | C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
 | C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `warp_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
 | C22 | the *running* title is **checked against** the machine | V | V | V | issue #21, closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
@@ -192,14 +192,15 @@ descriptor, so the slot area, the item area and the roster page all follow
 takes a game and the window hands it the one it resolved, alongside the Fast
 Travel row and the Level up button.
 
-**One address in that file does not follow the save image, and it stops the
-buttons.** `$6E11` is a byte of `LINKER`'s own resident page -- the flag every
-action reads before it writes, because `2` is combat -- and no other title's
-loader has been disassembled here. It is `Game.mode_flag`, None on all five
-later titles, and an action whose title has None refuses rather than write with
-no way to see a fight. So C16-C19 are `R` and not `V`, and **one measurement
-per title lifts all four**: find the loader's dispatch byte, put it in the
-table row. That measurement is the first thing G6 should take.
+**One address in that file does not follow the save image, and it used to stop
+the buttons.** The flag every action reads before it writes, because `2` is
+combat, is a byte of `LINKER`'s own resident page. It is now measured on three
+titles: `$6E11` in Pool of Radiance, **`$7F11` in Curse and Silver Blades**,
+read out of `LINKER`'s own first instruction and confirmed live at `$2D00` in
+both (#29). Their overlay name tables are the same table entry for entry, so
+`2` is COMBAT in all three. `Game.mode_flag` is None only on the three
+Krynn-era titles now, and an action whose title has None still refuses rather
+than write with no way to see a fight.
 
 ### G3 — namespace the notes by title · code, no emulator
 
@@ -237,21 +238,26 @@ already proved the disk-flush hazard; `docs/121` §5 has the list.
 ### G6 — one Curse and one Silver Blades session for the live tab · needs G2
 
 Closes C6, C7, C12–C19 for both titles — twenty cells between them, and they
-share one prerequisite and one kind of run. G2 has landed, so C12–C14 are ready
-for it and C16–C19 need one measurement first.
+share one prerequisite and one kind of run.
 
-**Take the mode flag first, because everything else in the sitting is free
-afterwards.** The loader's dispatch byte is what the five action buttons gate
-on, and until it is a row in `por/games.py` they all refuse. It is a
-differential read like any other: sit in the world, dump; start a fight, dump;
-one byte in the loader's resident page goes to 2 and back. Then the four `R`
-cells can be tried.
+**Part of it is done (#29).** The mode flag — the loader's dispatch byte, which
+is what the five action buttons gate on — is `$7F11` on both later titles, and
+it did not need a differential read at all: it is the absolute operand of
+`LINKER`'s own first instruction and can be taken off the disk. With it in
+`por/games.py` the four `R` cells stop refusing, and one sitting per title read
+a real party through the shipped code, which is C12. Silver Blades' heal was
+done to a real wounded party, which is C16 for that title.
 
-Then, in the same pass: draw the map (C7), cross an area boundary and read the
-area byte either side (C6 — the negative example `docs/120` tier 3 says is
-missing), check the roster panel shows the party and the badges match the
-sheet, and finally that each of the five live actions does what it says. Two
-sittings, one per title.
+**What the sitting still owes**, and it is the same pass for either title:
+draw the map (C7); cross an area boundary and read the area byte either side
+(C6 — the negative example `docs/120` tier 3 says is missing); check the badges
+against the character sheet (C13, C14) and mind issue #82 while doing it; and
+put an item and a spellbook in front of the remaining three action buttons,
+because neither party carried anything for them to work on (C17, C18, C19).
+The gate itself is done for Silver Blades — a wandering encounter 228 steps out
+of New Verdigris took the flag `1` → `4` → `2` and the three combat-illegal
+actions refused as they should. Curse has still never been watched in a fight;
+two sessions of walking and camp resting produced none.
 
 ### G7 — decide what the combat features mean on a later title
 

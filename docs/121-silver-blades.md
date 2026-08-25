@@ -224,6 +224,39 @@ the marker is an identifier out of some list rather than a count of sequels.
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
 | `por/levels.py`'s caps for this title | table data on the disks; no emulator needed |
 
+**The loader's mode flag is `$7F11` (#29).** `LINKER` is 149 bytes on
+`SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and
+begins `LDA $7F11` — the operand is absolute, so it names the flag without
+anyone having to fit the load address. The overlay name table at `$2D42` is
+Pool of Radiance's entry for entry, so `2` is COMBAT here too. Sampled live
+across the whole of one session: `3` `INIT` on the credits, `0` `GEN` at the
+roster menu, `1` `DUNGEON` in the world, `5` `POST.COM` on the treasure bar
+after the opening fight, `1` again, and finally `4` `COM.PREP` → `2` `COMBAT`
+when a wandering encounter fired 228 steps later. CONFIRMED, every value in the
+table's used range but `8` `FINAL`.
+
+**A real six-character Silver Blades party reads and heals through the shipped
+code.** `actions.read_party` at `$4B00` gave GUY DE VALOIS, EPONA, PAINE,
+DOMINIC, MALACHITE and MORGAINE with their records at `$4F00`+`n·$100` and hit
+point maxima matching the game's own panel; `HealParty` wrote `$6719` and
+`$6739` — the roster page at `$6700` — and MORGAINE and MALACHITE came back to
+35/35 and 58/58. That is `docs/139` C12 and C16 measured on this title rather
+than inferred.
+
+**And the gate was exercised in a real fight.** 228 driven steps out of New
+Verdigris reached a wandering encounter; the flag went `1` `DUNGEON` → `4`
+`COM.PREP` → `2` `COMBAT`, with `MOVE VIEW AIM TURN QUICK DONE` on the command
+bar. `actions.in_combat` answered True, `heal` stayed legal, and `identify`,
+`store-spells` and `restore-spells` each refused with "refused during a fight
+(`$7F11` is 2)". The roster read correctly *during* the fight too. `4` had
+never been sampled live in any title before this.
+
+**One hazard found while doing it:** while a full-screen picture is on the
+screen, the roster page at `$6700` holds something else entirely and reads as
+graphics data. Character *names* still come out right, because those are read
+from the record slots, so a reader that sanity-checks the party will pass and
+then show nonsense hit points. Issue #82.
+
 Phases 1, 2 and 6 needed no emulator, which is the whole reason they were
 ordered first — and phases 3 to 5 then cost one session between them because
 the artefacts they needed were already on disk.

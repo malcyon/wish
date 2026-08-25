@@ -272,16 +272,21 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     THAC0, saving throws, hit die and thresholds."""
     from por import games
 
-    target = with_experience(2001)
+    # A Curse-shaped machine, so the refusal is the trainer's and not an
+    # accident of reading Curse's addresses on Pool of Radiance's memory. Since
+    # #29 Curse *has* a combat flag, so `Action.legality` lets this through and
+    # the gate that stops it is `level_up_blockers`, which is the right one.
+    save0, roster = captured()
+    at = games.CURSE_OF_THE_AZURE_BONDS.slot_area_base - 0x4B00 + 0x0E8
+    save0[at:at + 3] = (2001).to_bytes(3, "little")
+    target = MemoryTarget({
+        games.CURSE_OF_THE_AZURE_BONDS.save_load_address: bytes(save0 + roster),
+        games.CURSE_OF_THE_AZURE_BONDS.mode_flag: bytes([WORLD])})
     before = dict(target.memory)
     outcome = actions.LevelUp(games.CURSE_OF_THE_AZURE_BONDS).apply(target,
                                                                     slot=0)
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before
-    # Message or notes: since #29 the title is refused one gate earlier, at
-    # `Action.legality`, because Curse's combat flag has never been measured
-    # either -- so the refusal that reaches the player is the message rather
-    # than `run`'s list. Both name the title, which is what this test is about.
     said = " ".join((outcome.message,) + outcome.notes)
     assert "Curse of the Azure Bonds" in said
 
@@ -624,16 +629,16 @@ def curse_machine(mode: int | None = None, hp: int | None = None
                   ) -> MemoryTarget:
     """The captured party laid out the way Curse lays a save out.
 
-    `mode` writes a byte at Pool of Radiance's `$6E11` on purpose: it is there
-    to prove that an action on a Curse machine refuses *whatever* is at that
-    address, because on Curse that address is somebody else's.
+    `mode` goes to Curse's own `$7F11` and not to Pool of Radiance's `$6E11`:
+    the flag is `LINKER`'s byte, and `LINKER` is a different resident in each
+    title even though the dispatch it does is the same (#29).
     """
     save0, roster = captured()
     if hp is not None:
         roster[ROSTER_HP_CURRENT] = hp
     memory = {CURSE.save_load_address: bytes(save0 + roster)}
     if mode is not None:
-        memory[0x6E11] = bytes([mode])
+        memory[CURSE.mode_flag] = bytes([mode])
     return MemoryTarget(memory)
 
 
@@ -669,26 +674,57 @@ def test_the_quickfight_flag_follows_the_roster_page():
 
 
 def test_a_title_with_no_measured_mode_flag_writes_nothing():
-    """The gate is the one address that does not follow the save image. `$6E11`
-    is `LINKER`'s own byte, measured on Pool of Radiance and looked for on no
-    other title, so on Curse there is no way to tell a fight from the map --
+    """The gate is the one address that does not follow the save image: it is
+    `LINKER`'s own byte, and `LINKER` is a separate resident in every title.
+    Three have been read -- `$6E11`, `$7F11`, `$7F11` -- and the Krynn-era
+    titles have not, so on those there is no way to tell a fight from the map
     and every action refuses rather than write blind.
 
     A wounded party is used deliberately: on Pool of Radiance's machine this
     same call heals, so what is asserted is the refusal and not an empty one.
     """
-    assert CURSE.mode_flag is None
+    krynn = games.CHAMPIONS_OF_KRYNN
+    assert krynn.mode_flag is None
+    save0, roster = captured()
+    roster[ROSTER_HP_CURRENT] = 1
     for name in ("heal", "identify", "store-spells", "restore-spells",
                  "clear-quickfight"):
-        action = next(a for a in actions.actions(game=CURSE) if a.name == name)
-        target = curse_machine(mode=WORLD, hp=1)
+        action = next(a for a in actions.actions(game=krynn) if a.name == name)
+        target = MemoryTarget({krynn.save_load_address: bytes(save0 + roster),
+                               0x6E11: bytes([WORLD]), 0x7F11: bytes([WORLD])})
         before = dict(target.memory)
         outcome = action.apply(target)
         assert not outcome.ok, name
         assert outcome.writes == () and target.memory == before, name
         assert outcome.message == actions.UNSUPPORTED.format(
-            title=CURSE.title), name
+            title=krynn.title), name
     # And the same machine on the title whose flag *was* measured does heal,
     # so the refusal is about the title and not about these bytes.
     healed = find("heal").apply(machine(hp=1))
     assert healed.ok and healed.writes
+
+
+def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
+    """`$6E11` is Pool of Radiance's `LINKER`; Curse's is `$7F11`, read out of
+    the first instruction of `LINKER` on `CURSE_A.D64` and confirmed live at
+    `$2D00` (#29). A wounded Curse party heals, and the read that decided it
+    went to `$7F11`.
+
+    The control is the same machine with a `2` at `$7F11` and a `1` at
+    Pool of Radiance's address: an action that is illegal in combat has to
+    refuse, which it cannot do if it is reading the wrong byte.
+    """
+    assert CURSE.mode_flag == 0x7F11
+    target = curse_machine(mode=WORLD, hp=1)
+    target.memory[0x6E11] = bytes([COMBAT])       # PoR's byte says "fight"
+    outcome = next(a for a in actions.actions(game=CURSE)
+                   if a.name == "heal").apply(target)
+    assert outcome.ok and outcome.writes
+    assert (0x7F11, 1) in target.reads and not any(
+        r[0] == 0x6E11 for r in target.reads)
+
+    fighting = curse_machine(mode=COMBAT, hp=1)
+    fighting.memory[0x6E11] = bytes([WORLD])      # PoR's byte says "no fight"
+    verdict = next(a for a in actions.actions(game=CURSE)
+                   if a.name == "identify").legality(fighting)
+    assert not verdict and "$7F11 is 2" in verdict.reason
