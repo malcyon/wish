@@ -51,10 +51,9 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-import struct
 from typing import Any, Sequence
 
-from . import areas, c64_codec, neutral, traits
+from . import areas, c64_codec, dos_savegame, neutral, traits
 from .c64_codec import Report
 from .dos_layout import (
     EFFECT_SIZE,
@@ -83,11 +82,7 @@ __all__ = [
     "slots_available",
     "to_c64_record",
     "export_party",
-    "savgam_word",
     "quest_flags",
-    "position",
-    "area_id",
-    "area_file",
     "apply_position",
     "apply_quest_flags",
     "apply_file_cache",
@@ -599,6 +594,23 @@ class WriteReport(neutral.Report):
         return []
 
 
+@dataclasses.dataclass
+class SaveReport(neutral.Report):
+    """A whole-save conversion's report: what was carried, and what was not.
+
+    `neutral.Report` says where each byte of a *record* came from; a save
+    conversion is coarser than that -- it copies a template and rewrites named
+    fields -- so what a reader wants is the list of fields it rewrote.
+    `warnings` is still only for what could not be done.
+    """
+
+    #: One line per field taken from the C64 save and written into the DOS one.
+    carried: list[str] = dataclasses.field(default_factory=list)
+
+    def summary_notes(self) -> list[str]:
+        return [f"  carried: {c}" for c in self.carried]
+
+
 def item_from_c64(record: bytes) -> bytes:
     """Project one C64 sixteen-byte item onto the DOS 63 bytes.
 
@@ -1091,47 +1103,17 @@ def export_party(folder: str | pathlib.Path, slot: str,
 # ---------------------------------------------------------------------------
 # `SAVGAM<slot>.DAT` -- the saved game
 # ---------------------------------------------------------------------------
-#: One header byte, then the engine's whole variable space as u16le, indexed
-#: by the address the ECL bytecode itself uses:
+#: **The byte map is `por/dos_savegame.py`'s and only its** (#64). This module
+#: used to restate the base, the stride, the word accessor and the position
+#: offsets, and the two copies had already begun to disagree about bounds
+#: checking within one commit of the second existing. `dos_savegame` depends on
+#: nothing but `struct`, so the edge runs this way and not the other.
 #:
-#:     file offset of ECL address A = 1 + 2 * (A - $4900)
-#:
-#: The mechanism is Curse's `vm_SetMemoryValue`, which ends in
-#: `field_6A00_Set(0x6A00 + location * 2, value)` -- the operand address
-#: doubled -- and `ovr021.cs` annotates the array `// as WORD[]`.
-SAVGAM_SIZE = 13137
-SAVGAM_BASE = 0x4900
-SAVGAM_WORDS = 2560
-
 #: The persistent quest flags. `work/reports/quest-flags.md` gives all 352
 #: bytes of $4A20-$4B7F a disposition; $4AF9 upwards is provably not flag
 #: storage, so only this window transfers.
-FLAGS_FIRST = 0x4A20
-FLAGS_LAST = 0x4AF8
-
-#: The party's square. Not in the variable array -- $49C0-$49C2 read zero in
-#: every DOS save -- so these were found by driving the game and diffing saves
-#: one action apart.
-POS_X, POS_Y, POS_FACING = 12801, 12802, 12803
-
-#: Facing is the C64's value doubled: 0 N, 2 E, 4 S, 6 W.
-FACING_SCALE = 2
-
-#: The current area, as the entry for $49C5, in `por/areas.py`'s own
-#: numbering; and again at the entry for $49F2.
-AREA_ID = 395
-AREA_ID_ALT = 485
-#: Byte 0 is the `GEO`/`ECL` `.DAX` file number, 1-8 -- the *container*, not
-#: the map: GEO3.DAX holds areas 0 and 14, so it narrows the area and no more.
-AREA_FILE = 0
-
-
-def savgam_word(save: bytes, address: int) -> int:
-    """The engine variable at an ECL address."""
-    off = 1 + 2 * (address - SAVGAM_BASE)
-    if not 0 <= off <= len(save) - 2:
-        raise DosRecordError(f"{address:#06x} is outside this saved game")
-    return struct.unpack_from("<H", save, off)[0]
+FLAGS_FIRST = dos_savegame.FLAGS_FIRST
+FLAGS_LAST = dos_savegame.FLAGS_LAST
 
 
 def quest_flags(save: bytes) -> bytes:
@@ -1144,25 +1126,8 @@ def quest_flags(save: bytes) -> bytes:
     """
     out = bytearray()
     for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
-        word = savgam_word(save, addr)
-        out.append(word & 0xFF)
+        out.append(dos_savegame.word(save, addr) & 0xFF)
     return bytes(out)
-
-
-def position(save: bytes) -> tuple[int, int, int]:
-    """`(x, y, facing)` with facing in the C64's 0-3, not the DOS 0-6."""
-    facing = save[POS_FACING]
-    return save[POS_X], save[POS_Y], facing // FACING_SCALE
-
-
-def area_id(save: bytes) -> int:
-    """The current area, in `por/areas.py`'s numbering."""
-    return savgam_word(save, 0x49C5)
-
-
-def area_file(save: bytes) -> int:
-    """Which `GEO`/`ECL` `.DAX` file holds that area, 1-8."""
-    return save[AREA_FILE]
 
 
 def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
@@ -1172,7 +1137,7 @@ def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
     an address is the address less `$4900`.
     """
     flags = quest_flags(savgam)
-    base = FLAGS_FIRST - SAVGAM_BASE
+    base = FLAGS_FIRST - SAVE0_BASE
     changed = sum(1 for i, b in enumerate(flags) if save0[base + i] != b)
     save0[base:base + len(flags)] = flags
     return changed
@@ -1185,10 +1150,10 @@ def apply_position(save0: bytearray, savgam: bytes) -> None:
     cache, not a field beside it, so it belongs to `apply_file_cache` with the
     other twenty-four slots and the three bytes that make them findable.
     """
-    x, y, facing = position(savgam)
-    save0[0x49C0 - SAVGAM_BASE] = x
-    save0[0x49C1 - SAVGAM_BASE] = y
-    save0[0x49C2 - SAVGAM_BASE] = facing
+    x, y, facing = dos_savegame.position(savgam)
+    save0[PARTY_X - SAVE0_BASE] = x
+    save0[PARTY_Y - SAVE0_BASE] = y
+    save0[PARTY_FACING - SAVE0_BASE] = facing
 
 
 # ---------------------------------------------------------------------------
@@ -1198,6 +1163,9 @@ def apply_position(save0: bytearray, savgam: bytes) -> None:
 #: `$8300`-`$8AFF`. Every offset below is an address less `$4900` (or `$8300`).
 SAVE0_BASE = 0x4900
 SAVE1_BASE = 0x8300
+#: Where the C64 keeps the party's square -- `por/savegame.py`'s own names for
+#: these, read here as offsets into a raw payload.
+PARTY_X, PARTY_Y, PARTY_FACING = 0x49C0, 0x49C1, 0x49C2
 SLOT_AREA = 0x4D00
 SLOT_STRIDE = 0x100
 ITEM_AREA = 0x5900
@@ -1231,6 +1199,15 @@ FILE_CACHE_RELOAD = 0x80
 #: Which slot is which kind, for the two a converted save writes.
 CACHE_GEO = 2
 CACHE_ECL = 8
+#: And the three a *DOS* save needs: slots 15-17 are the `WALLSET` pieces, and
+#: the same three numbers are the DOS save's wallset triple at `$4AFA` -- the
+#: Slums is (2,4,1) on both ports and Sokol Keep (1,5,9).  So the C64 save
+#: being converted is the source, and no DOS table is needed.
+CACHE_WALLSET = 15
+CACHE_WALLSET_PIECES = 3
+#: A masked slot reading `$7F` is empty -- `$FF` and `$7F` both mean "nothing
+#: loaded" to `LIBRARY $4225`.
+CACHE_UNSET = 0x7F
 
 #: The disk hint.  `GEN $08BD` is `LDA $49EA / STA $6E12`, and `$6E12` is the
 #: `POOL` side the loader asks for by number.  It is not part of the cache but
@@ -1278,7 +1255,7 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     slot 4 for `SQRDATA` in place of slot 2 and nothing has tested it.
     """
     at = FILE_CACHE[0] - SAVE0_BASE
-    there = area_id(savgam)
+    there = dos_savegame.area_id(savgam)
     here = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD
     if here == there:
         return ("loaded-files cache: the template's own, untouched -- it "
@@ -1357,7 +1334,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "per-script scratch: zeroed, as DUNGEON $202A does on every "
                 "area change")
     at = FILE_CACHE[0] - SAVE0_BASE
-    retargeted = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != area_id(savgam)
+    there = dos_savegame.area_id(savgam)
+    retargeted = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != there
     report.note(at, FILE_CACHE[1], apply_file_cache(save0, savgam))
     if retargeted:
         for address, what in (
@@ -1393,29 +1371,91 @@ def convert_save(folder: str | pathlib.Path, slot: str,
 # ---------------------------------------------------------------------------
 # The whole save, the other way: a C64 save becomes DOS files (#26)
 # ---------------------------------------------------------------------------
+#: Where a retarget looks for `ECL<n>.DAX` when the caller names no game
+#: directory: the save directory itself, then its parent, which is where the
+#: archives keep it (`GAME/POOLRAD/SAVE` inside `GAME/POOLRAD`).
+ECL_DAX = "ECL{dax}.DAX"
+
+
+def c64_wall_triple(save0: bytes) -> tuple[int, int, int]:
+    """The wallset triple a DOS save wants, out of the C64 loaded-files cache.
+
+    Cache slots 15-17 hold the three `WALLSET` pieces, and the DOS save holds
+    the same three numbers as words -- PORSAVE13's Slums (2,4,1) is DOS slot
+    J's, PORSAVE's Sokol Keep (1,5,9) is slot B's.  An empty C64 slot becomes
+    an empty DOS word.
+
+    **New Phlan is the exception**: the C64 loads no `WALLSET` there at all
+    and every slot reads `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`.
+    So this returns three empties for a New Phlan save, which is not what the
+    DOS engine's own save says -- and is measured to draw the identical view
+    anyway, `work/p60/run3` Z0.
+    """
+    at = FILE_CACHE[0] - SAVE0_BASE + CACHE_WALLSET
+    out = []
+    for b in save0[at:at + CACHE_WALLSET_PIECES]:
+        v = b & ~FILE_CACHE_RELOAD & 0xFF
+        out.append(dos_savegame.EMPTY if v == CACHE_UNSET else v)
+    return tuple(out)
+
+
+def retarget_reason(area: int) -> str | None:
+    """Why this area cannot be a retarget target, or `None` if it can.
+
+    The same three kinds the C64 converter refuses in the other direction: an
+    area this project has no row for, one whose script picks its map at run
+    time or loads none at all, and the travel grid, where no DOS specimen
+    exists at all.  Unapproved wording, except `WILDERNESS`, which is
+    Donald's and is reused verbatim.
+
+    **An empty wallset triple is not a reason.**  New Phlan is the one area
+    the C64 loads no `WALLSET` for, and a save retargeted there with all
+    three words empty draws a view pixel-identical to one carrying DOS's own
+    `(0, $FFFF, $FFFF)` -- `work/p60/run3`, Z0 against `run2`'s X3.
+    """
+    where = areas.area(area)
+    if where is None:
+        return (f"area {area} is not an area of Pool of Radiance, so there is "
+                f"no map file and no script to name")
+    if where.outdoors:
+        return WILDERNESS
+    if where.dynamic_geo or not where.geos:
+        return UNSUPPORTED_LOCATION
+    return None
+
+
 def write_dos_save(save0: bytes, save1: bytes | None,
                    template: str | pathlib.Path, out: str | pathlib.Path,
-                   slot: str = "A") -> neutral.Report:
+                   slot: str = "A",
+                   game: str | pathlib.Path | None = None) -> "SaveReport":
     """Write a C64 save into a DOS save directory.
 
     `save0` and `save1` are the C64 `SAVEDGAME0`/`SAVEDGAME1` payloads;
     `template` is an existing DOS save directory whose `SAVGAM<slot>.DAT`
     supplies the 8016 resident-state bytes nothing has attributed; `out` is
     where the new files go, and it must not be the player's own save
-    directory -- the template is only ever read.
+    directory -- the template is only ever read.  `game` is the DOS game
+    directory, the one holding `ECL<n>.DAX`; with none given the template
+    directory and its parent are tried, which is where the archives keep it.
 
     What is written: `CHRDAT<slot><n>.SAV` for each character and its `.ITM`
     **only when the character carries something** -- a zero-length `.ITM` is
     not how the engine says "no items", it is how it says "one item, from
     whatever the heap held" (`ITM_OMITTED_WHEN_EMPTY`, #62) -- a `.SPC` never
     (and a stale `.ITM` or `.SPC` in `out` is removed, so neither can be read
-    as the character's items or effects), and `SAVGAM<slot>.DAT` copied from the
-    template with the quest-flag words rewritten from the C64 bytes -- the two
-    ports index them by the same ECL address.  The party's square goes in
-    only when the C64 party stands in the template's own area; retargeting a
-    DOS save's area has no measured recipe, so a mismatch keeps the
-    template's square and says so.  The clock stays the template's: the DOS
-    clock format is undecoded.
+    as the character's items or effects), and `SAVGAM<slot>.DAT` copied from
+    the template and rewritten:
+
+    * the quest flags, from the C64 bytes -- the two ports index them by the
+      same ECL address;
+    * **the clock** (#67), the same unconditional copy: six digit words at
+      `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses;
+    * **the party size** (#67), into both the word at `$503E` and byte 12808;
+    * **the area** (#60), when the C64 party stands somewhere the template's
+      party does not: every write `dos_savegame.RETARGET_WRITES` lists,
+      including the target area's script lifted out of `ECL<n>.DAX`.  Without
+      a game directory to lift it from, or for an area with no legal answer,
+      the party keeps the template's square and the report says why.
     """
     from .items import items_for_slot
     from .savegame import SaveGame0, SaveGame1
@@ -1434,7 +1474,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         raise DosRecordError(
             f"a DOS save holds six characters; this save has {len(party)}")
 
-    report = neutral.Report(total=0)
+    report = SaveReport(total=0)
     for n, char_slot in enumerate(party, start=1):
         block = sg1.roster(char_slot.index) if sg1 is not None else None
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
@@ -1461,33 +1501,88 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                               if d not in report.dropped)
         report.warnings.extend(f"{who}: {w}" for w in one.warnings)
 
-    savgam = bytearray(
-        (template / f"SAVGAM{slot}.DAT").read_bytes())
+    savgam = bytearray((template / f"SAVGAM{slot}.DAT").read_bytes())
+    # The engine loads the party from the filenames in the save, not from the
+    # slot letter it was loaded under (#59), so the save has to name the files
+    # this call actually wrote.  A template whose `SAVGAM` was copied from
+    # another slot carries that slot's letters and would load its party.
+    dos_savegame.put_character_files(savgam, slot)
+    report.carried.append(
+        f"the party's filenames: CHRDAT{slot.upper()}1-"
+        f"{dos_savegame.PARTY_ENTRIES}, which is what the engine loads from")
     for addr in range(FLAGS_FIRST, FLAGS_LAST + 1):
-        off = 1 + 2 * (addr - SAVGAM_BASE)
-        savgam[off:off + 2] = bytes(
-            (save0[addr - SAVE0_BASE], 0))
+        dos_savegame.put_word(savgam, addr, save0[addr - SAVE0_BASE])
+    report.carried.append(
+        f"quest flags: {FLAGS_LAST - FLAGS_FIRST + 1} C64 bytes widened to "
+        f"words at the same ECL addresses")
+
+    # The clock and the party size are unconditional copies, like the flags.
+    digits = [save0[dos_savegame.CLOCK + i - SAVE0_BASE]
+              for i in range(dos_savegame.CLOCK_DIGITS)]
+    dos_savegame.put_clock(savgam, digits)
+    hour, minute, day, month = dos_savegame.clock(bytes(savgam))
+    report.carried.append(
+        f"the clock: {hour}:{minute:02d}, day {day} month {month} -- the "
+        f"C64's own six digit bytes at $49C6-$49CB")
+    dos_savegame.put_party_size(savgam, len(party))
+    report.carried.append(
+        f"the party size, {len(party)}, into both $503E and byte "
+        f"{dos_savegame.PARTY_SIZE_BYTE}")
+
+    x, y, facing = (save0[PARTY_X - SAVE0_BASE], save0[PARTY_Y - SAVE0_BASE],
+                    save0[PARTY_FACING - SAVE0_BASE])
     c64_area = save0[CURRENT_SCRIPT - SAVE0_BASE]
-    if c64_area == area_id(bytes(savgam)):
-        savgam[POS_X] = save0[0x49C0 - SAVE0_BASE]
-        savgam[POS_Y] = save0[0x49C1 - SAVE0_BASE]
-        savgam[POS_FACING] = save0[0x49C2 - SAVE0_BASE] * FACING_SCALE
+    here = dos_savegame.area_id(bytes(savgam))
+    if c64_area == here:
+        dos_savegame.put_position(savgam, x, y, facing)
+        report.carried.append(
+            f"the square ({x},{y}) facing {facing}: both parties stand in "
+            f"area {c64_area}, so nothing had to be retargeted")
     else:
-        report.warnings.append(
-            f"the C64 party stands in area {c64_area} and the template's "
-            f"DOS party in area {area_id(bytes(savgam))}; retargeting a DOS "
-            f"save has no measured recipe, so the party will stand on the "
-            f"template's square")
-    report.warnings.append(
-        "the clock is the template's; the DOS clock format is undecoded")
-    template_count = len(list(template.glob(f"CHRDAT{slot}?.SAV")))
-    if template_count != len(party):
-        report.warnings.append(
-            f"the template's party has {template_count} characters and this "
-            f"one {len(party)}; whether SAVGAM records the count is "
-            f"unmeasured")
+        why = retarget_reason(c64_area)
+        where = areas.area(c64_area)
+        script = None
+        if why is None:
+            data = _read_ecl_dax(template, game, where.disk)
+            if data is None:
+                why = (f"no {ECL_DAX.format(dax=where.disk)} beside the "
+                       f"template; a retarget needs the target area's own "
+                       f"script and the game's files are the only copy")
+            else:
+                # A container that does not hold the block, or that unpacks
+                # short, is a broken install rather than a bad conversion --
+                # report it and leave the party where the template had it.
+                try:
+                    script = dos_savegame.dax_block(data, c64_area)
+                except dos_savegame.DosSaveError as e:
+                    why = f"{ECL_DAX.format(dax=where.disk)} is unreadable: {e}"
+        if why is None:
+            dos_savegame.retarget(savgam, area=c64_area, dax=where.disk,
+                                  wallset=c64_wall_triple(save0),
+                                  script=script)
+            dos_savegame.put_position(savgam, x, y, facing)
+            report.carried.append(
+                f"the area: retargeted from {here} to {c64_area}, "
+                f"{where.name}, at ({x},{y}) facing {facing}")
+        else:
+            report.warnings.append(
+                f"the C64 party stands in area {c64_area} and the template's "
+                f"DOS party in area {here}, and {why}; so the party will "
+                f"stand on the template's square")
     (out / f"SAVGAM{slot}.DAT").write_bytes(bytes(savgam))
     return report
+
+
+def _read_ecl_dax(template: pathlib.Path,
+                  game: str | pathlib.Path | None, dax: int) -> bytes | None:
+    """`ECL<n>.DAX` from the game directory, or from beside the template."""
+    name = ECL_DAX.format(dax=dax)
+    roots = [pathlib.Path(game)] if game else [template, template.parent]
+    for root in roots:
+        path = root / name
+        if path.is_file():
+            return path.read_bytes()
+    return None
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience

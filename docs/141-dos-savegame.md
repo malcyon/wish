@@ -16,7 +16,7 @@ saved game".
 |---|---|---|---|
 | 0 | 1 | the current area's `.DAX` container number, 1-8 — numerically the C64 `POOL` disk side that carries the same area (A/B/J = 3/4/2 = the C64 disks for New Phlan, Sokol Keep, the Slums) | CONFIRMED |
 | 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: 2407 of 2560 words are zero in all nine specimens | CONFIRMED |
-| 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from an interior offset K on (K = 39 for area 0, 28 for area 20, 148 for area 21 — the block's own header, kept elsewhere). Bytes past the script's end are stale remnants of longer previous scripts. **Dead on load**: the engine reloads from the DAX file, proven by a retargeted save whose buffer still held another area's bytes | CONFIRMED |
+| 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are stale remnants of longer previous scripts. **Live on load**: a retarget that leaves the template's script staged dies in `Load3DMap` however many variables it writes, so staging the target's script is one of the writes of the recipe below | CONFIRMED — #60, `work/p60/run2` variant X1 |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
 | 12809-13136 | 328 | six 41-byte character entries, then 82 bytes of UI scratch (menu-text fragments, heap pointers). Each entry is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters | CONFIRMED |
 
@@ -45,7 +45,7 @@ quest flags convert unconditionally.
 | `$49E6` | 1 in all three indoor specimens — the C64's indoors flag | PROBABLE — no outdoor DOS specimen held |
 | `$49F2` | the area script id | CONFIRMED as the field; carried in every working retarget, never tested absent |
 | `$4A20`-`$4AF8` | the quest flags, byte-to-word at the C64's addresses | CONFIRMED — prior work, #26 |
-| `$4AFA`-`$4AFC` | **the wallset triple**: up to three `WALLDEF<n>.DAX` / `8X8D<n>.DAX` block ids, `$FFFF` = empty. Byte-identical to the C64 loaded-files cache slots 15-17 for the same area — PORSAVE13's Slums triple (2,4,1) is slot J's. Without it a retarget dies in `LoadWallSet` | CONFIRMED |
+| `$4AFA`-`$4AFC` | **the wallset triple**: up to three `WALLDEF<n>.DAX` / `8X8D<n>.DAX` block ids, `$FFFF` = empty. Byte-identical to the C64 loaded-files cache slots 15-17 for the same area — PORSAVE13's Slums triple (2,4,1) is slot J's, PORSAVE's Sokol Keep (1,5,9) is slot B's. **New Phlan is the exception**: the C64 loads no `WALLSET` there and all three slots read `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`. Without the triple a retarget dies in `LoadWallSet` | CONFIRMED |
 | `$4AFD`-`$4AFF` | (1,2,3) with three sets loaded, (1,$FFFF,$FFFF) with one — read as the wall-index map | PROBABLE |
 | `$4FE1` | 255 in all three | UNKNOWN |
 | `$503E` | **party size** as a VM word; 6→1 in the one-member resave, 6 in Curse's and Secret's six-member defaults | CONFIRMED |
@@ -55,22 +55,48 @@ quest flags convert unconditionally.
 
 ## The retarget recipe (#60)
 
-The naive recipe — header byte, `$49C5`, `$49F2`, square — is **refuted**: it
-exits to DOS with `Unable to load geo in Load3DMap.` The working recipe,
-found by bisection and proven by loading, walking and engine-resaving a New
-Phlan save retargeted into the Slums:
+Two recipes are **refuted**. The naive one — header byte, `$49C5`, `$49F2`,
+square — exits to DOS with `Unable to load geo in Load3DMap.`, and so does
+#59's seven-write recipe when it is run on a template it was not found on:
+every one of #59's twelve variants happened to carry the *target's* ECL
+buffer, so the buffer was never a variable and "dead on load" was a reading
+of that accident. `work/p60/run2` variant X1 is the control it lacked —
+slot A, all seven writes, its own buffer left staged — and it dies in
+`Load3DMap`.
 
-1. byte 0 = the target area's DAX number;
-2. `$49C5` = `$49F2` = the target area id;
-3. `$5012` = the target area's DAX number;
-4. `$4AFA`-`$4AFC` = the target's wallset triple (sourceable from the C64
+The writes. The first seven are what the load path checks — take any one
+away and the game exits to DOS — and the last two are the party rather than
+the place:
+
+1. byte 0 = the target area's DAX number (`por/areas.py`'s `Area.disk`);
+2. `$49C5` = the target area id;
+3. `$49F2` = the target area id;
+4. `$5012` = the target area's DAX number;
+5. `$4AFA`-`$4AFC` = the target's wallset triple (sourceable from the C64
    save's cache slots 15-17, which carry the same numbers);
-5. `$4AFD`-`$4AFF` = (1,2,3) or (1,$FFFF,$FFFF) to match;
-6. 12801-12803 = x, y, facing×2.
+6. `$4AFD`-`$4AFF` = (1,2,3) or (1,$FFFF,$FFFF) to match;
+7. **5121-12800 = the target's `ECL<dax>.DAX` block, from byte 2 on**;
+8. 12801-12803 = x, y, facing×2;
+9. `$503E` and byte 12808 = the party size.
 
-The ECL buffer, the flags and everything else may stay the template's.
-CONFIRMED for one area pair in one direction (area 0 → area 20); a second
-pair, and an area with a one-set wallset as the *target*, would firm it up.
+The flags and everything else may stay the template's. `por.dos_savegame`'s
+`retarget` is the machine-readable form and `RETARGET_WRITES` the list.
+
+**CONFIRMED for three area pairs**, each loaded and walked: 0 → 20 (#59 run
+9), 21 → 20 and 20 → 0 (`work/p60/run2`, X2 and X3). The script buffer is why
+a converter needs the DOS **game** directory and not only a template save:
+`ECL<n>.DAX` is the only copy of the target's script.
+
+**An empty wallset triple is legal**, which matters because New Phlan is the
+one area a C64 save can offer nothing better for. Retargeted into area 0 with
+`($FFFF, $FFFF, $FFFF)` the game draws a view **pixel-identical** to the same
+retarget carrying DOS's own `(0, $FFFF, $FFFF)` — `work/p60/run3` Z0 against
+`run2` X3, the only differing pixels being the colour-cycling command bar.
+
+And end to end through `por.dos.write_dos_save`, both walked: `PORSAVE13` in
+the Slums onto template A comes up at 15,4 W 21:15, and `PORSAVE12` in New
+Phlan onto template J at 0,4 W 16:58 — each party's own square, facing and
+clock, with six characters on the roster (`work/p60/run3` and `run4`).
 
 ## Per-title sizes
 

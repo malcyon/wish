@@ -25,6 +25,7 @@ import yaml
 from test_dossave import _save_dir, needs_dos_saves
 
 from por import areas, dos, dos_layout, spells
+from por import dos_savegame as sg
 from por.layout import RECORD_SIZE as C64_RECORD_SIZE
 
 # --- the tables, which need no save -----------------------------------------
@@ -311,7 +312,7 @@ def test_the_quest_flags_narrow_to_bytes():
         flags = dos.quest_flags(save)
         assert len(flags) == dos.FLAGS_LAST - dos.FLAGS_FIRST + 1
         for addr in range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1):
-            word = dos.savgam_word(save, addr)
+            word = sg.word(save, addr)
             assert word <= 0xFF, (slot, hex(addr), word)
         counts[slot] = flags[0x4AC1 - dos.FLAGS_FIRST]
     assert counts["J"] < counts["B"] < counts["A"]
@@ -325,7 +326,7 @@ def test_the_sokal_keep_flags_are_set_together_or_not_at_all():
     states = set()
     for slot in "JBA":
         save = _savgam(slot)
-        values = {dos.savgam_word(save, a) for a in addresses}
+        values = {sg.word(save, a) for a in addresses}
         assert values in ({0}, {255}), (slot, values)
         states.add(frozenset(values))
     assert len(states) == 2, "no save differs, so this proves nothing"
@@ -336,14 +337,14 @@ def test_the_party_square_and_area_read_out():
     """Four reads and a halving. Facing is the C64's value doubled on DOS."""
     for slot in "JBA":
         save = _savgam(slot)
-        x, y, facing = dos.position(save)
+        x, y, facing = sg.position(save)
         assert 0 <= x < 32 and 0 <= y < 32
         assert facing in (0, 1, 2, 3)
-        assert save[dos.POS_FACING] in (0, 2, 4, 6)
-        assert 0 <= dos.area_id(save) < 32
-        assert 1 <= dos.area_file(save) <= 8
+        assert save[sg.POS_FACING] in (0, 2, 4, 6)
+        assert 0 <= sg.area_id(save) < 32
+        assert 1 <= sg.dax_number(save) <= 8
         # The engine keeps the same area id twice, at $49C5 and $49F2.
-        assert dos.savgam_word(save, 0x49F2) == dos.area_id(save)
+        assert sg.word(save, sg.SCRIPT) == sg.area_id(save)
 
 
 @needs_dos_saves
@@ -355,7 +356,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     changed = dos.apply_quest_flags(payload, save)
     assert changed == sum(1 for b in dos.quest_flags(save) if b)
     dos.apply_position(payload, save)
-    x, y, facing = dos.position(save)
+    x, y, facing = sg.position(save)
     assert payload[0x49C0 - 0x4900] == x
     assert payload[0x49C1 - 0x4900] == y
     assert payload[0x49C2 - 0x4900] == facing
@@ -365,7 +366,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
     dos.apply_position(payload, save)
     assert payload[0x4BC2 - 0x4900] == 0xFF
     dos.apply_file_cache(payload, save)
-    assert payload[0x4BC2 - 0x4900] == dos.area_id(save)
+    assert payload[0x4BC2 - 0x4900] == sg.area_id(save)
     # Nothing outside the two regions was touched.
     assert payload[:0x49C0 - 0x4900] == bytes(0xC0)
 
@@ -416,7 +417,7 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
     `INSERT SIDE # N` hunting a file that is not on the side it asked for.
     """
     savgam = _savgam("A")
-    there = dos.area_id(savgam)
+    there = sg.area_id(savgam)
     where = areas.area(there)
     save0 = bytearray(0x1C00)
     save0[0x4BC2 - dos.SAVE0_BASE] = (there + 1) & 0x7F
@@ -439,7 +440,7 @@ def test_a_template_already_in_the_area_keeps_its_own_cache():
     game itself wrote, naming every file it had resident. That is strictly
     more than the two slots a converted save needs, so it is kept."""
     savgam = _savgam("A")
-    there = dos.area_id(savgam)
+    there = sg.area_id(savgam)
     save0 = bytearray(0x1C00)
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     save0[at:at + dos.FILE_CACHE[1]] = bytes(range(0x20, 0x39))
@@ -459,9 +460,8 @@ def test_an_area_whose_map_we_cannot_name_is_refused():
     savgam = bytearray(_savgam("A"))
     save0 = bytearray(0x1C00)
     for id in (3, 8, 25):
-        off = 1 + 2 * (0x49C5 - dos.SAVGAM_BASE)
-        savgam[off:off + 2] = id.to_bytes(2, "little")
-        assert dos.area_id(bytes(savgam)) == id
+        sg.put_word(savgam, sg.AREA, id)
+        assert sg.area_id(bytes(savgam)) == id
         with pytest.raises(dos.DosRecordError):
             dos.apply_file_cache(save0, bytes(savgam))
 

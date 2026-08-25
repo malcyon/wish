@@ -22,6 +22,7 @@ from test_dossave import _save_dir, needs_dos_saves
 from test_neutral import _filled
 
 from por import c64_codec, dos, dos_layout, neutral
+from por import dos_savegame as sg
 from por.layout import Confidence
 
 # --- the tables, which need no save -----------------------------------------
@@ -313,21 +314,31 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
     # `test_a_character_who_carries_nothing_gets_no_itm_file`.
     assert not (tmp_path / "CHRDATA1.ITM").exists()
     assert not (tmp_path / "CHRDATA1.SPC").exists()
-    assert any("clock" in w for w in report.warnings)
 
     savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
     # The quest flags are the C64 bytes, widened to words.
     for addr in range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1):
-        assert dos.savgam_word(savgam, addr) == save0[addr - dos.SAVE0_BASE], \
+        assert sg.word(savgam, addr) == save0[addr - dos.SAVE0_BASE], \
             hex(addr)
     # Both parties stand in area 0, so the square converts too.
-    assert dos.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]
-    x, y, facing = dos.position(savgam)
+    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]
+    x, y, facing = sg.position(savgam)
     assert (x, y) == (save0[0x49C0 - 0x4900], save0[0x49C1 - 0x4900])
-    # `dos.position` halves the facing back to the C64's 0-3; the stored
+    # `sg.position` halves the facing back to the C64's 0-3; the stored
     # byte is the C64's doubled.
     assert facing == save0[0x49C2 - 0x4900]
-    assert savgam[dos.POS_FACING] == save0[0x49C2 - 0x4900] * 2
+    assert savgam[sg.POS_FACING] == save0[0x49C2 - 0x4900] * 2
+    # #67: the clock and the party size are carried, not left the template's.
+    for i in range(sg.CLOCK_DIGITS):
+        assert sg.word(savgam, sg.CLOCK + i) == \
+            save0[sg.CLOCK + i - dos.SAVE0_BASE], i
+    assert sg.party_size(savgam) == len(party) == 1
+    assert sg.word(savgam, sg.PARTY_SIZE) == len(party)
+    assert any("the clock" in c for c in report.carried)
+    assert any("party size" in c for c in report.carried)
+    # #59: the engine loads the party from these names, so they name this
+    # save's own files rather than the template's.
+    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
 
 
 @needs_dos_saves
@@ -351,14 +362,113 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert len(party) == 6
     assert party[0].name == "MALCYON"
     assert (tmp_path / "SAVGAMB.DAT").exists()
-    # This C64 party stands in New Phlan and the template's slot B does not;
-    # retargeting a DOS save has no measured recipe, so the square is the
-    # template's and the report says so rather than writing one anyway.
     savgam = (tmp_path / "SAVGAMB.DAT").read_bytes()
-    template = (_save_dir() / "SAVGAMB.DAT").read_bytes()
-    if dos.area_id(template) != save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]:
-        assert any("retargeting" in w for w in report.warnings)
-        assert dos.position(savgam) == dos.position(template)
+    assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 7)]
+    assert sg.party_size(savgam) == 6
+    # This C64 party stands in New Phlan and the template's slot B in Sokol
+    # Keep, so the save is retargeted -- with the empty wallset triple the
+    # C64 carries for New Phlan, which draws it correctly.
+    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 0
+    assert sg.wall_triple(savgam) == (sg.EMPTY,) * 3
+    assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
+                                   save0[0x49C1 - 0x4900],
+                                   save0[0x49C2 - 0x4900])
+    assert any("retargeted" in c for c in report.carried)
+
+
+# --- the retarget (#60) ------------------------------------------------------
+
+def _c64_in_the_slums() -> bytes:
+    """The six-character fixture, moved into the Slums.
+
+    A C64 save standing somewhere the DOS templates do not, built rather than
+    committed: the area id at `$49F2`, the map at `$49C5` and the three
+    `WALLSET` cache slots, which is everything the conversion reads to decide
+    where the party is.  The numbers are PORSAVE13's, off Donald's own disk.
+    """
+    import pathlib
+
+    from por.savegame import SaveGame0
+    here = pathlib.Path(__file__).resolve().parent / "fixtures"
+    save0 = bytearray(SaveGame0.from_prg(
+        (here / "party6_savedgame0.bin").read_bytes()).to_bytes())
+    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = 20
+    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = 20
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_WALLSET
+    save0[at:at + dos.CACHE_WALLSET_PIECES] = bytes((2, 4, 1))
+    return bytes(save0)
+
+
+def _game_dir():
+    """The DOS game directory, which is the save directory's parent."""
+    return _save_dir().parent
+
+
+@needs_dos_saves
+def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
+    """#60, the whole point: the party ends up where it stood.
+
+    The template stands in New Phlan and this party in the Slums, and every
+    write of `dos_savegame.RETARGET_WRITES` has to land or the game exits to
+    DOS with `Unable to load geo in Load3DMap.`
+    """
+    from por import dos_savegame
+
+    save0 = _c64_in_the_slums()
+    report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "A")
+    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    assert sg.area_id(savgam) == 20
+    assert sg.word(savgam, sg.SCRIPT) == 20
+    assert sg.dax_number(savgam) == 2 == sg.word(savgam, sg.DISK)
+    assert sg.wall_triple(savgam) == (2, 4, 1)
+    assert [sg.word(savgam, sg.WALLMAP + i) for i in range(3)] == [1, 2, 3]
+    assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
+                                   save0[0x49C1 - 0x4900],
+                                   save0[0x49C2 - 0x4900])
+    # The buffer holds the Slums' own script, not New Phlan's, and the game
+    # will not load the map without it.
+    script = dos_savegame.dax_block((_game_dir() / "ECL2.DAX").read_bytes(), 20)
+    body = script[dos_savegame.ECL_HEADER:]
+    start = dos_savegame.ECL_BUFFER[0]
+    assert savgam[start:start + len(body)] == body
+    assert not report.warnings or not any(
+        "stand on the template's square" in w for w in report.warnings)
+    assert any("retargeted" in c for c in report.carried)
+
+
+@needs_dos_saves
+def test_a_retarget_with_no_game_directory_keeps_the_template_s_square(
+        tmp_path):
+    """The script has to come from the game's own files, and if they are not
+    there the honest answer is the template's square and a line saying so."""
+    save0 = _c64_in_the_slums()
+    empty = tmp_path / "no-game"
+    empty.mkdir()
+    report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "A",
+                                game=empty)
+    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    template = (_save_dir() / "SAVGAMA.DAT").read_bytes()
+    assert sg.area_id(savgam) == sg.area_id(template)
+    assert sg.position(savgam) == sg.position(template)
+    assert any("ECL2.DAX" in w for w in report.warnings)
+
+
+@pytest.mark.parametrize("area, wanted", [
+    (25, "wilderness"),          # the travel grid: no DOS specimen exists
+    (3, "not supported"),        # dynamic_geo -- the script picks its map
+    (8, "not supported"),        # Phlan City Hall loads no map at all
+    (31, "not an area"),         # no such script on any disk
+])
+def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
+                                                                   wanted):
+    assert wanted in dos.retarget_reason(area)
+
+
+def test_the_areas_with_a_legal_answer_are_not_refused():
+    """New Phlan among them: the C64 loads no WALLSET there, and a retarget
+    carrying an empty triple draws it identically -- `work/p60/run3` Z0."""
+    for area in (0, 20, 21):
+        assert dos.retarget_reason(area) is None
 
 
 # --- the character who carries nothing (#62) ---------------------------------

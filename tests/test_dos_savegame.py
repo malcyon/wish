@@ -139,3 +139,118 @@ def test_the_retarget_recipe_names_the_addresses_the_map_names():
     for address in (sg.AREA, sg.SCRIPT, sg.DISK, sg.WALLSET, sg.WALLMAP,
                     sg.PARTY_SIZE):
         assert f"${address:04X}" in recipe
+    # The write #59 recorded as unnecessary and `work/p60` proved is not:
+    # the target area's own script.
+    assert f"{sg.ECL_BUFFER[0]}-{sg.ECL_BUFFER[1] - 1}" in recipe
+
+
+# --- writing -----------------------------------------------------------------
+
+
+def test_the_clock_goes_back_the_way_it_came():
+    save = blank()
+    sg.put_clock(save, (0, 3, 2, 10, 21, 6))
+    assert sg.clock(bytes(save)) == (10, 23, 21, 6)
+
+
+def test_a_clock_of_the_wrong_length_is_refused():
+    with pytest.raises(sg.DosSaveError):
+        sg.put_clock(blank(), (0, 3, 2))
+
+
+def test_the_party_size_is_written_to_both_places_that_carry_it():
+    """They move together in the engine's own save, so they do here."""
+    save = blank()
+    sg.put_party_size(save, 4)
+    assert sg.party_size(bytes(save)) == 4
+    assert sg.word(bytes(save), sg.PARTY_SIZE) == 4
+
+
+def test_a_position_is_written_with_the_facing_doubled():
+    save = blank()
+    sg.put_position(save, 8, 14, 3)
+    assert sg.position(bytes(save)) == (8, 14, 3)
+    assert save[sg.POS_FACING] == 3 * sg.FACING_SCALE
+
+
+def test_the_party_filenames_are_rewritten_for_the_slot():
+    """The engine loads the party from these, not from the slot letter."""
+    save = blank()
+    sg.put_character_files(save, "C")
+    assert sg.character_files(bytes(save)) == [
+        f"CHRDATC{n}" for n in range(1, 7)]
+
+
+def test_the_wall_map_marks_the_slots_the_triple_fills():
+    assert sg.wall_map((2, 4, 1)) == (1, 2, 3)
+    assert sg.wall_map((0, sg.EMPTY, sg.EMPTY)) == (1, sg.EMPTY, sg.EMPTY)
+
+
+def test_a_retarget_writes_the_place_and_stages_the_script():
+    save = blank()
+    script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
+    sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
+    save = bytes(save)
+    assert save[0] == 2
+    assert sg.area_id(save) == 20
+    assert sg.word(save, sg.SCRIPT) == 20
+    assert sg.word(save, sg.DISK) == 2
+    assert sg.wall_triple(save) == (2, 4, 1)
+    assert [sg.word(save, sg.WALLMAP + i) for i in range(3)] == [1, 2, 3]
+    # The buffer holds the block from byte 2 on -- the `88 13` header stays
+    # in the DAX.
+    body = script[sg.ECL_HEADER:]
+    assert save[sg.ECL_BUFFER[0]:sg.ECL_BUFFER[0] + len(body)] == body
+
+
+def test_a_script_too_long_for_the_buffer_is_refused():
+    room = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
+    with pytest.raises(sg.DosSaveError):
+        sg.retarget(blank(), area=20, dax=2, wallset=(2, 4, 1),
+                    script=bytes(room + sg.ECL_HEADER + 1))
+
+
+# --- the .DAX container ------------------------------------------------------
+
+
+def _dax(blocks: dict[int, bytes]) -> bytes:
+    """A `.DAX` with each block stored as literal runs."""
+    import struct
+    index, data = bytearray(), bytearray()
+    for bid, raw in sorted(blocks.items()):
+        packed = bytearray()
+        for i in range(0, len(raw), 128):
+            piece = raw[i:i + 128]
+            packed += bytes([len(piece) - 1]) + piece
+        index += struct.pack("<BIHH", bid, len(data), len(raw), len(packed))
+        data += packed
+    return struct.pack("<H", len(index)) + bytes(index) + bytes(data)
+
+
+def test_a_dax_block_comes_back_at_its_stated_size():
+    raw = bytes(range(256)) * 3
+    assert sg.dax_block(_dax({20: raw, 0: b"other"}), 20) == raw
+
+
+def test_a_run_length_repeat_expands():
+    """A lead byte at or above 128 repeats; 128 is the longest run it can ask
+    for, which is where an off-by-one in `256 - n` would show."""
+    import struct
+    body = bytes([256 - 128, 0])
+    index = struct.pack("<BIHH", 1, 0, 128, len(body))
+    data = struct.pack("<H", len(index)) + index + body
+    assert sg.dax_block(data, 1) == bytes(128)
+
+
+def test_a_block_that_is_not_there_is_named_rather_than_returned_empty():
+    with pytest.raises(sg.DosSaveError):
+        sg.dax_block(_dax({0: b"only this one"}), 20)
+
+
+def test_a_block_that_unpacks_short_is_refused():
+    """A truncated container would otherwise hand back a plausible prefix."""
+    import struct
+    body = bytes([1, 0x41, 0x42])
+    index = struct.pack("<BIHH", 3, 0, 99, len(body))
+    with pytest.raises(sg.DosSaveError):
+        sg.dax_block(struct.pack("<H", len(index)) + index + body, 3)

@@ -20,7 +20,7 @@ import pytest
 from gamedata import disk_path
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import dos
+from por import dos, dos_savegame
 
 # `PORSAVE11` stands in New Phlan, which is where the archives' slot A party
 # stands; `PORSAVE13` stands in the Slums. Since the loaded-files cache was
@@ -139,7 +139,8 @@ def test_a_template_from_another_area_converts(app, dos_save, elsewhere):
         QDialogButtonBox.StandardButton.Ok).isEnabled()
     payload = dialog.conversion.save0.to_bytes()
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
-    there = dos.area_id((dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
+    there = dos_savegame.area_id(
+        (dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
     want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
     want[dos.CACHE_GEO] = want[dos.CACHE_ECL] = there
     assert payload[at:at + dos.FILE_CACHE[1]] == bytes(want)

@@ -761,8 +761,8 @@ answer.
 5. **The quest flags — done.** `por.dos.quest_flags` reads the 217 words and
    `apply_quest_flags` writes the bytes. Every nonzero word in the window fits
    in a byte, so narrowing loses nothing.
-6. **The party's square and area — done.** `por.dos.position` and `area_id`;
-   the facing is halved.
+6. **The party's square and area — done.** `por.dos_savegame.position` and
+   `area_id`; the facing is halved.
 7. **An editor menu item.** Not started. `por.dos.convert_save` is the whole
    of what it needs to call: hand it a DOS save directory, a slot letter and a
    C64 save's two payloads and it rewrites them in place.
@@ -1267,6 +1267,7 @@ graph LR
   dos --> areas
   dos --> c64_codec
   dos --> dos_layout
+  dos --> dos_savegame
   dos -.->|deferred| icons
   dos -.->|deferred| items
   dos --> layout
@@ -1359,6 +1360,54 @@ projection; `por.dos.write_dos_save` writes a whole C64 save into a DOS save
 directory. The player's own DOS files are still never written — the template
 is read, the output goes where the caller says, and the two may not be the
 same directory.
+
+### What the whole-save writer carries
+
+`SAVGAM<slot>.DAT` is the template's, with six things rewritten from the C64
+save. Every one is reported in the `SaveReport`'s `carried` list, and
+`warnings` is only for what could not be done.
+
+| what | where | grade |
+|---|---|---|
+| the quest flags | `$4A20`-`$4AF8`, 217 C64 bytes widened to words at the same ECL addresses | CONFIRMED |
+| the clock (#67) | six digit words at `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses | CONFIRMED — read back in the game as 21:15 and 16:58, the two C64 saves' own times |
+| the party size (#67) | the word at `$503E` **and** byte 12808; they move together | CONFIRMED |
+| the party's filenames | six entries from 12809, named for the slot being written — the engine loads the party from these, not from the letter chosen at the LOAD menu | CONFIRMED — #59 |
+| the square | 12801-12803, facing doubled | CONFIRMED |
+| **the area** (#60) | every write of `por.dos_savegame.RETARGET_WRITES` | CONFIRMED — three area pairs, loaded and walked |
+
+**The party lands where it stood, not where the template stood.** #59's
+seven-write recipe was not enough, and what it was missing is the one thing
+it recorded as unnecessary: the **ECL text buffer at 5121-12800 is live**,
+and a retarget that leaves the template's script staged dies with `Unable to
+load geo in Load3DMap.` however many variables it writes. All twelve of #59's variants
+happened to carry the target area's buffer, so it was never a variable in
+that bisection; `work/p60/run2`'s X1 is the control, and it fails. The buffer
+is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
+`88 13` — which is why `write_dos_save` takes a `game` directory as well as a
+template, and falls back to the template's own directory and its parent.
+
+Two DOSBox runs, both through the real converter, both walked:
+
+* `PORSAVE13`, standing in the Slums, onto template A, which stands in New
+  Phlan: comes up at **15,4 W 21:15** with all six characters — PORSAVE13's
+  own square, facing and clock;
+* `PORSAVE12`, standing in New Phlan, onto template J, which stands in the
+  Slums: comes up at **0,4 W 16:58** and steps to 0,3 N 16:59.
+
+**An empty wallset triple is legal.** New Phlan is the one area the C64 loads
+no `WALLSET` for — all three cache slots read `$FF` — where DOS's own slot A
+holds `(0, $FFFF, $FFFF)`. A save retargeted there with three empty words
+draws a view **pixel-identical** to one carrying DOS's own triple, so the
+converter sources the triple from the C64 and does not refuse the empty case
+(`work/p60/run3` Z0 against `run2` X3, 229 differing pixels and every one of
+them in the colour-cycling command bar).
+
+Three kinds of area are still refused, each because there is no legal answer
+rather than because it is untested: an area this project has no row for, an
+area whose script picks its map at run time or loads none at all, and the
+travel grid, where no DOS specimen exists at all (#50). A retarget with no
+`ECL<n>.DAX` to read keeps the template's square and says so.
 
 ### Where every DOS byte comes from
 
@@ -1483,19 +1532,12 @@ did **not** hold for free on the reader beside it: the first real consumer of
   port numbers it, and zero draws no portrait. Cosmetic, real, reported.
   (What zero does to the *combat* icon is untested.)
 * **Running spell effects and the innate `.SPC` bonuses** — see above.
-* **The clock** stays the template's today, but the format is no longer
-  unknown: it is the C64's six digit bytes as VM words at the same addresses,
-  `$49C6`-`$49CB` (#59, `141-dos-savegame.md`). What remains is carrying
-  them in `write_dos_save`, the same unconditional copy the flags get.
-* **The area**: quest flags convert unconditionally (same ECL addresses,
-  byte to word), but the party's square converts only when the C64 party
-  stands in the template's own area. #59 ran the settling experiment: the
-  naive recipe (header byte, `$49C5`, `$49F2`, square) is **refuted** —
-  `Unable to load geo in Load3DMap.`, exit to DOS — and the working recipe
-  adds `$5012` (the DAX number as a VM word) and the wallset triple at
-  `$4AFA`-`$4AFF`, which the C64 save's cache slots 15-17 carry verbatim.
-  Driven once, area 0 → area 20, walked and engine-resaved. What remains is
-  writing it into `write_dos_save`.
+* **The day and the month.** The clock itself is carried now (#67) — six
+  digit words at `$49C6`-`$49CB`, the C64's own six bytes at the C64's own
+  addresses — but the C64 holds 0 in the sub-minute, day and month digits of
+  every save on Donald's disks, so a converted party arrives on day 0 of
+  month 0 where the template may have said day 16. DOS slot J reads day 0
+  too, so the value is legal; it is simply not information the C64 has.
 * **Current combat numbers need `SAVEDGAME1`.** A C64 save without the
   roster file (the game disks' own `SAVEDGAME0`-only saves) has no current
   hit points to give; the writer refuses and reports rather than writing
@@ -1531,6 +1573,12 @@ And for the reverse direction, `tests/test_doswriter.py`:
 * **Every byte of the record and the `.ITM` has a provenance**
   (`WriteReport.unaccounted` empty).
 * **A written save is read back by our own reader**, and the quest flags,
-  square and facing land where `SAVGAM` keeps them.
+  square, facing, clock, party size and party filenames land where `SAVGAM`
+  keeps them.
+* **A party from another area is retargeted**, every write checked against
+  the byte map and the staged script against the `ECL<n>.DAX` block it came
+  from; and with no game directory to read, the template's square is
+  kept and the report says which file was missing.
 * **A converted save loads and plays in DOS Pool of Radiance** under
-  DOSBox — the four driven runs above.
+  DOSBox — the four driven runs above, and the two retargeted parties of
+  #60.
