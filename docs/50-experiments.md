@@ -4941,7 +4941,8 @@ number, `$49E6` = 0, disk from `por/areas.py`, position into `$49C3`/`$49C4`).
 The **DOS side is not**: none of the three DOS specimen saves is outdoors, so
 where a DOS save keeps the travel square is unmeasured. PROBABLE by the
 variable-array mapping that already carried `$49C5` and `$49F2`, it is
-`savgam_word` at `$49C3`/`$49C4`; the experiment is one DOS save made on the
+`por.dos_savegame.word` at `$49C3`/`$49C4` (it was `savgam_word` when this
+was written; #64 renamed it); the experiment is one DOS save made on the
 overland map, its words at those addresses against the on-screen position.
 
 Build scripts, runner, logs and screenshots: `work/p47/`.
@@ -5193,15 +5194,19 @@ resaves of converted parties from #56; and nine hand-built variants V1-V12.
 All artefacts in `work/p59/`. `docs/141-dos-savegame.md` is the resulting
 layout; `por/dos_savegame.py` reads it.
 
-**Result 1. The file is five fixed regions**, and the biggest is dead
-weight. Bytes 5121-12800 are the current area's ECL script, byte-identical
-to its `ECL<n>.DAX` block from interior offset K on (K = 39/148/28 for
-A/B/J — the block's parsed-out header). What first read as a floating image
-at "shift 5082/4973/5093" was this: one fixed buffer at 5121, differently
-sized scripts, stale bytes of longer previous scripts past the end. The
-engine **reloads the script from the DAX on every load** — V11 stood in the
-Slums with area 0's bytes still staged — and its own resave refills the
-buffer: run 9's resave is 0 mismatches over 7511 bytes against `ECL2:20`.
+**Result 1. The file is five fixed regions**, and the biggest is the
+current area's ECL script — **live, not dead weight**. Bytes 5121-12800 are
+byte-identical to the area's `ECL<n>.DAX` block **from interior offset 2
+on**: every block on all three specimens opens `88 13` (`u16le` 5000), and
+the save carries everything after it. What first read as a floating image
+at "shift 5082/4973/5093" was one fixed buffer at 5121, differently sized
+scripts, and stale bytes of longer previous scripts past the end.
+
+**This section originally said the engine reloads the script from the DAX
+on every load, and that is refuted** — see Result 4. The offsets 39/148/28
+it gave for K were the blocks' parsed-out headers, not what the save
+carries. What is true is that the engine's *own resave* writes the current
+script: run 9's resave is 0 mismatches over 7511 bytes against `ECL2:20`.
 
 **Result 2. One action, one delta** (run 1, saves C/D/E/F, screenshots for
 ground truth):
@@ -5222,14 +5227,15 @@ the engine changed when a six-member template carried a one-member party was
 `$503E` (6→1), with byte 12808 alongside; Curse's and Secret's six-member
 defaults both read 6. Not a C64 address — C64 saves hold 0 there.
 
-**Result 4. The naive #60 recipe is refuted; the real one is seven writes.**
-Header byte + `$49C5` + `$49F2` + square dies with `Unable to load geo in
-Load3DMap.` and an exit to DOS. Bisection (V1-V12, one boot per pair):
+**Result 4. The naive #60 recipe is refuted; the real one is nine
+writes, and this bisection found seven of them.** Header byte + `$49C5` +
+`$49F2` + square dies with `Unable to load geo in Load3DMap.` and an exit to
+DOS. Bisection (V1-V12, one boot per pair):
 
 | variant | carried from the target save | result |
 |---|---|---|
 | V1 | everything (J's file verbatim) | loads — and loads **J's party**: the engine reads the `CHRDAT` filenames from the save's own table at 12809, not the slot letter |
-| V2 | naive fields + ECL buffer | `Unable to load geo` — the buffer is not the missing piece |
+| V2 | naive fields + ECL buffer | `Unable to load geo` — the buffer alone does not close the gap. **Read at the time as "the buffer is not needed", which does not follow and is wrong** |
 | V4 | naive + whole word array | works |
 | V6 | naive + words `$4B80`-`$58FF` | `Unable to load wallset in LoadWallSet.` — the geo gate is in this half, the wallset gate elsewhere |
 | V7 | V6 + words `$4AFA`-`$4AFF` | **works** |
@@ -5246,6 +5252,18 @@ save**. Run 9 played the retargeted party and let the engine resave it:
 dax 2, area 20, `$5012` = 2, triple (2,4,1), CHRDAT letters rewritten,
 buffer refilled. CONFIRMED for area 0 → area 20; a second pair would firm
 the general claim.
+
+**The blind spot, found by #60 on 2026-08-25.** Every one
+of V1-V12 was built on slot J and carried **J's** ECL buffer — 0 bytes
+differ over 5121-12800 in all twelve, against 7439 differing from A. So the
+buffer was never a variable in this bisection and no variant could have
+shown it mattered; V11 stood in the Slums with the *Slums'* script staged,
+not area 0's. The control this run lacked is `work/p60/run2` X1 — slot A,
+all seven writes above, its own buffer left alone — which dies in
+`Load3DMap`. The buffer is write **7** of nine, and #60 was implemented
+against the seven and its first retarget onto a fresh template died exactly
+there. The recipe as it stands is in `docs/141-dos-savegame.md` "The
+retarget recipe (#60)", formatted from `por.dos_savegame.RETARGET_WRITES`.
 
 **Result 5. The variable array is sparse and the tail is mostly not state.**
 2407 of 2560 words are zero in all nine specimens. `$5227`+ is the
