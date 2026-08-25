@@ -108,9 +108,11 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # takes the slack.
 ROW_STRETCH = {"sheet_columns": (0, 0, 1, 0), "header_row": (0, 0, 1)}
 ROSTER_SLACK = 6
-#: Twice the icon's own minimum, so it can take a little of a wide column
-#: without the art smearing -- `IconEditor._geometry` only zooms in whole
-#: steps, so the next step up is four times the area and does not fit here.
+#: The old 300 cap scaled by the same half the icon itself shrank by (`ZOOM`
+#: 6 to 3), which leaves six pixels over `IconEditor`'s own 144px minimum.
+#: A cap it can take a little of a wide column without the art smearing:
+#: `IconEditor._geometry` only zooms in whole steps, so the next step up is
+#: four times the area and does not fit here.
 ICON_MAX_WIDTH = 150
 STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
@@ -128,13 +130,15 @@ TRIMMED = {"name": 0.7}
 #: `minimumHeight` from the form -- Designer does not treat it as designable,
 #: and five of them were lost that way once and had to be put back.
 #:
-#: Only these two. Measured with every floor taken off: `box_effects` and
-#: `box_spells` never reach theirs -- ten fixed effect slots come to 277px and
-#: Spells is the only box on its tab, so the scroll area always gives it its
-#: size hint -- and the roster's was overwritten by `_size_roster` on every
-#: open, empty party included. These two share the Inventory tab and are the
-#: two that lose: without a floor the page stops scrolling and squeezes them
-#: instead, which at a 600px window is 2 of 16 item rows and no trait rows.
+#: Only these two. Measured with every floor taken off: `box_effects` comes to
+#: 277px from its ten fixed effect slots and so never reaches a 240 floor;
+#: `box_spells` measures 235 and is five pixels shorter than its old floor
+#: made it, which nothing can see, and being the only box on its tab it cannot
+#: be squeezed below that; and the roster's was overwritten by `_size_roster`
+#: on every open, empty party included. These two share the Inventory tab and
+#: are the two that lose: without a floor the page stops scrolling and squeezes
+#: them instead, which at a 600px window is 2 of 16 item rows and no trait
+#: rows, against 5 and 7 with it.
 LIST_FLOOR = {"box_inventory": 240, "box_traits": 240}
 
 # Room for the frame and, on a spin box, the two arrows. A guess at this was
