@@ -33,7 +33,7 @@ from por import games as por_games
 from por.iconparts import IconParts
 from por.icons import load_icon_charset
 from por.items import load_item_names, load_item_templates, load_item_types
-from por.layout import FIELDS_BY_NAME
+from por.layout import FIELDS_BY_NAME, NAME_SIZE
 from por.savegame import store_save
 from por.spells import capacity, load_spell_names
 from por.spells import for_game as spell_table
@@ -135,6 +135,10 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (1, 0, 0),
                "form_identity": (0, 0)}
 ROSTER_SLACK = 6
+#: A little past the longest name a record can hold, so the column is not
+#: painted flush against a twenty-character name. Donald: growing to the width
+#: of the window looked wrong, and a little over the maximum is fine.
+NAME_COLUMN_SLACK = 24
 #: The old 300 cap scaled by the same half the icon itself shrank by (`ZOOM`
 #: 6 to 3), which leaves six pixels over `IconEditor`'s own 144px minimum.
 #: A cap it can take a little of a wide column without the art smearing:
@@ -1052,6 +1056,15 @@ class EditorWindow(QMainWindow):
         # section reports the viewport's width and the minimum would chase
         # the window.
         header.setSectionResizeMode(NAME_COLUMN, header.ResizeMode.Stretch)
+        # Stretch, but not without end. A record's name is `layout.NAME_SIZE`
+        # characters and no more, so past the width of twenty capital Ws the
+        # column is drawing space no name can ever occupy -- on a wide window
+        # it grew to several times the longest name in the game. The slack has
+        # to go somewhere, so it goes to the column and the column stops:
+        # `setMaximumSectionSize` caps every section, and `Name` is the only
+        # one that stretches, so it is the only one the cap can reach.
+        widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
+        header.setMaximumSectionSize(widest + NAME_COLUMN_SLACK)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))

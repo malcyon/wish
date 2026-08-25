@@ -55,24 +55,22 @@ _log = logging.getLogger("wish.editor.exports")
 
 
 # ===========================================================================
-# NOT APPROVED. Every string between here and the end of this block is a
-# placeholder written by an agent, and Donald has ruled on none of them --
-# menu entries, dialog titles, row labels, button text, picker titles, the
-# headings in the report pane, the refusals and the status lines. They exist
-# so the shape can be built and tested; they are not the wording.
+# Every string between here and the end of this block is Donald's, approved
+# 2026-08-25 -- menu entries, dialog titles, row labels, button text, picker
+# titles, the headings in the report pane, the refusals and the status lines.
+# Changing one is his call, not a refactor. `editor/dosimport.py` carries the
+# same block for the import direction.
 #
-# `editor/dosimport.py` carries the same block with "approved 2026-08-24" on
-# it. This one does not, and the feature flag below is what keeps these words
-# off a user's screen until it can.
+# He also settled the two choices that are not words:
+#   * **the report pane leads with what the conversion cannot carry**, and
+#     then says what the write will replace and remove. Losses first.
+#   * **`MENU_AMIGA` names the port and not the game.** "&Amiga characters…"
+#     is deliberate: the export is meant to reach every Amiga Gold Box title
+#     in time, and naming one game in the menu would have to be undone. If
+#     that costs work later, that is the trade he chose.
 #
-# Two choices in here are his as much as the words are, and are called out
-# rather than buried:
-#   * the report pane leads with what the conversion cannot carry and then
-#     says what the write will replace and remove. The other order is just as
-#     defensible and is one line to swap.
-#   * `MENU_AMIGA` names the target port and not the game. "&Amiga Pools of
-#     Darkness characters…" is the accurate spelling and is too long for a
-#     submenu; this is the short one.
+# The feature flag below stays until #52 closes. The words are settled; the
+# direction is not yet proven end to end for a user.
 # ===========================================================================
 
 #: The File menu entry and the two ports under it.
@@ -149,8 +147,11 @@ FAILED_TITLE = "Cannot export"
 #: a label, and a label saying "experimental" would need a sentence saying
 #: what that meant for the folder being written into.
 #:
-#: **Comes off when Donald has ruled on every string in the block above and
-#: #52 closes.** That is the whole condition.
+#: **Half the condition is met: the strings are approved as of 2026-08-25.**
+#: What remains is #52 closing -- the export direction proven end to end by
+#: somebody using it, and #79's Amiga filename collision settled, since a
+#: character that leaves the window and does not arrive is the failure this
+#: dialog exists to prevent.
 ENV = "WISH_EXPERIMENTAL_EXPORT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
