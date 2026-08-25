@@ -35,6 +35,16 @@ why `legal_shapes` explores both pairs together rather than one at a time.
 
 Reconstruction is the evidence: 17 of the 18 distinct shapes on our disks come
 out of a (weapon, head) pair exactly, and the 18th is HOGARTH's mixed-size one.
+
+**`SPELLE64` is byte-identical in Pool of Radiance, Curse of the Azure Bonds
+and Secret of the Silver Blades**, and so are the four counts; what moves is
+where it loads. The later two put it at `$8E00`, `$1900` below Pool of
+Radiance's `$A700`, so their pointers read `$8F00`/`$8FF0`/`$90E0`/`$91D0`.
+That is why the base is *fitted from the pointers* rather than named here: the
+class table is the file's first page and the first option table follows it, so
+`base = lowest pointer - 0x100`. Every one of the eight shipped icons in Curse
+and in Silver Blades then reconstructs from a (weapon, head) pair, where the
+hardcoded `$A700` raised `IndexError` on both.
 """
 
 from __future__ import annotations
@@ -45,12 +55,26 @@ from .d64 import D64, load_payload
 
 PARTS_FILE = b"SPELLE64"
 EDITOR_FILE = b"SPELLN64"
-PARTS_BASE = 0xA700             # where SPELLE64 loads
-EDITOR_BASE = 0xAF00            # where SPELLN64 loads
+PARTS_BASE = 0xA700             # where SPELLE64 loads in Pool of Radiance
+EDITOR_BASE = 0xAF00            # where SPELLN64 loads in Pool of Radiance
 
 COUNTS = 0xB0DA                 # four bytes, indexed by size*2 + (0 weapon, 1 head)
 POINTERS = 0xB0DE               # four little-endian addresses, same order
 FILLERS = 0xABC0                # 81 zero-terminated strings
+
+#: `SPELLE64`'s own shape, as **file** offsets, which is what transfers. The
+#: class byte per glyph fills the first page; the four option tables follow at
+#: `$F0` apart; the filler strings follow those. All three hold in every title
+#: that ships the file, because the file is the same bytes in each.
+CLASSES_SIZE = 0x100            # PARTS_BASE + this is the first option table
+FILLERS_OFFSET = FILLERS - PARTS_BASE
+
+#: Where the counts and the four pointers sit **in `SPELLN64`**, rather than in
+#: the address space it is relocated into. Pool of Radiance, Curse and Silver
+#: Blades all carry `1C 0E 23 17` here, though the three overlays differ in
+#: length and in 285 of the bytes around it.
+COUNTS_OFFSET = COUNTS - EDITOR_BASE
+POINTERS_OFFSET = POINTERS - EDITOR_BASE
 
 #: One option table: six 40-entry arrays, pose 1 then pose 2 of each.
 TABLE_STRIDE = 0x28
@@ -87,8 +111,8 @@ class IconParts:
     def __init__(self, parts: bytes, editor: bytes):
         self._parts = parts
         self._editor = editor
-        counts = self._at(editor, EDITOR_BASE, COUNTS, 4)
-        addrs = self._at(editor, EDITOR_BASE, POINTERS, 8)
+        counts = self._at(editor, COUNTS_OFFSET, 4)
+        addrs = self._at(editor, POINTERS_OFFSET, 8)
         self.tables: dict[tuple[str, str], tuple[int, int]] = {}
         # Order in both tables is small-weapon, small-head, large-weapon,
         # large-head -- `$A9E0` first, and `$A9E0` is the set with the smaller
@@ -97,7 +121,12 @@ class IconParts:
                                           ("large", "weapon"), ("large", "head"))):
             self.tables[(size, kind)] = (addrs[i * 2] | (addrs[i * 2 + 1] << 8),
                                          counts[i])
-        self.classes = parts[0:0x100]
+        #: Where `SPELLE64` loads in *this* title, fitted from the pointers the
+        #: editor overlay carries. Never assumed: a wrong base makes every
+        #: table offset negative, and a negative index reads the file's tail
+        #: rather than raising, so the drawing comes out as plausible rubbish.
+        self.base = min(a for a, _ in self.tables.values()) - CLASSES_SIZE
+        self.classes = parts[0:CLASSES_SIZE]
         self.fillers = self._read_fillers()
 
     # -- construction ----------------------------------------------------
@@ -109,15 +138,14 @@ class IconParts:
                    load_payload(disk, EDITOR_FILE))
 
     @staticmethod
-    def _at(blob: bytes, base: int, address: int, length: int) -> bytes:
-        start = address - base
+    def _at(blob: bytes, start: int, length: int) -> bytes:
         if start < 0 or start + length > len(blob):
-            raise ValueError(f"${address:04X} is outside this file")
+            raise ValueError(f"offset ${start:04X} is outside this file")
         return blob[start:start + length]
 
     def _read_fillers(self) -> list[bytes]:
         out, current = [], bytearray()
-        for byte in self._parts[FILLERS - PARTS_BASE:]:
+        for byte in self._parts[FILLERS_OFFSET:]:
             if byte:
                 current.append(byte)
             else:
@@ -161,7 +189,7 @@ class IconParts:
         base, count = self.tables[(size, kind)]
         if not 0 <= option < count:
             raise ValueError(f"{size} {kind} {option} is not one of {count}")
-        start = base - PARTS_BASE
+        start = base - self.base
         for pose in range(2):
             first = pose * CELLS_PER_POSE
             off = start + pose * TABLE_STRIDE

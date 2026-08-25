@@ -297,7 +297,7 @@ def _set_u24(rec: CharacterRecord, value: int) -> None:
     rec.set("experience", value)
 
 
-def _consistency(char, block, items, names, types, spell_names):
+def _consistency(char, block, items, names, types, spell_names, game=None):
     """Everything about this character that does not add up.
 
     Two kinds. The combat numbers are **cached** by the game and go stale when
@@ -317,10 +317,10 @@ def _consistency(char, block, items, names, types, spell_names):
     book = set(char.get("spells_known") or ())
     memorised = list(char.get("spells_memorised") or ())
     for sid in sorted(set(memorised) - book):
-        yield (f"{describe(sid, spell_names)} is memorised but is not in the "
-               f"spellbook")
+        yield (f"{describe(sid, spell_names, game)} is memorised but is not "
+               f"in the spellbook")
     cap = capacity(char.get("class_bits"), char.get("level"),
-                   char.get("wisdom"))
+                   char.get("wisdom"), game)
     if cap:
         for level in (1, 2, 3):
             group = [s for s in memorised if _spell_level(s) == level]
@@ -357,7 +357,7 @@ def export_save(path: str, game_disk: str | None = None,
         except Exception:
             types = None
         try:
-            spell_names = load_spell_names(game_disk)
+            spell_names = load_spell_names(game_disk, game)
         except Exception:
             spell_names = None
 
@@ -446,18 +446,19 @@ def entry_for(char, slot_index: int, items, icon, game: Game | None = None,
     ids = list(char.get("spells_memorised") or ())
     entry["spells"] = ids
     if ids:
-        entry["_spells_named"] = [describe(i, spell_names) for i in ids]
+        entry["_spells_named"] = [describe(i, spell_names, game) for i in ids]
     book = list(char.get("spells_known") or ())
     entry["spells_known"] = book
     if book:
-        entry["_spells_known_named"] = [describe(i, spell_names) for i in book]
-    cap = capacity(class_bits, char.get("level"), char.get("wisdom"))
+        entry["_spells_known_named"] = [describe(i, spell_names, game)
+                                        for i in book]
+    cap = capacity(class_bits, char.get("level"), char.get("wisdom"), game)
     if cap:
         entry["_spell_capacity"] = "; ".join(
             "%s %s" % (k, "/".join(str(n) for n in v)) for k, v in cap.items())
     if block is not None:
         warnings = list(_consistency(char, block, items, names, types,
-                                     spell_names))
+                                     spell_names, game))
         if warnings:
             entry["_warnings"] = warnings
         entry["combat"] = {

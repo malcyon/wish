@@ -27,6 +27,7 @@ is what confirmed the field meanings.
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 
 from .d64 import D64, load_payload, split_load_address
@@ -457,6 +458,20 @@ class Item:
 # already holds whatever the game puts there.
 ITEM_FILE_PREFIX = b"ITEMFILE"
 
+# **Secret of the Silver Blades drops the FILE.** Its lists are `ITEM10`,
+# `ITEM4A`, `ITEM63` -- the same 16-byte records, the same two-hex-digit id, and
+# 38 of them across the six sides. Matching on a bare `ITEM` prefix instead is
+# not the fix: `ITEMS` is the 128-entry type table and `ITEMNAMES` the word
+# pool, and both would be read as item records and yield nonsense names.
+# The pattern is the stem plus exactly two hex digits, which admits both
+# spellings and excludes those two.
+ITEM_FILE_PATTERN = re.compile(rb"^ITEM(FILE)?[0-9A-F]{2}$")
+
+
+def is_item_list(name: bytes) -> bool:
+    """Is this directory entry one of the game's own item lists?"""
+    return ITEM_FILE_PATTERN.match(bytes(name).upper()) is not None
+
 
 def load_item_templates(disk: D64 | str,
                         names: dict[int, str] | None = None,
@@ -488,7 +503,7 @@ def load_item_templates(disk: D64 | str,
     out: dict[str, bytes] = {}
     for img in disks:
         for entry in img.directory():
-            if not bytes(entry.name).upper().startswith(ITEM_FILE_PREFIX):
+            if not is_item_list(entry.name):
                 continue
             try:
                 _, payload = split_load_address(img.read_file(entry))

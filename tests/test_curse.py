@@ -629,3 +629,191 @@ def test_a_curse_character_export_round_trips_byte_for_byte():
         record = CharacterRecord.from_prg(prg, 0x7C00)
         _sane_character(record)
         assert record.to_prg(0x7C00) == prg
+
+
+# --- issue #31: the fields the editor shows ---------------------------------
+
+
+def _curse_file(name: bytes) -> bytes:
+    """One payload off whichever Curse side carries it, or skip."""
+    for disk in gamedata.curse_disks():
+        entry = disk.find(name)
+        if entry is not None:
+            return split_load_address(disk.read_file(entry))[1]
+    pytest.skip(f"no Curse side here carries {name.decode()}")
+
+
+def _curse_disk_with(name: bytes) -> pathlib.Path:
+    where = gamedata.curse_dir()
+    if where is None:
+        pytest.skip("needs the Curse disks")
+    for path in sorted(where.glob("CURSE*.[dD]64")):
+        try:
+            if D64.open(str(path)).find(name) is not None:
+                return path
+        except Exception:
+            continue
+    pytest.skip(f"no Curse side here carries {name.decode()}")
+
+
+def test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte():
+    """`CHARPIC00` is on every Curse side and is the same 2030 bytes.
+
+    So the icon editor's charset needs no per-title anything for this title;
+    Silver Blades redraws three glyphs and that is the whole family's variation.
+    """
+    from por.icons import load_icon_charset
+
+    por = load_icon_charset(str(gamedata.game_disk("POOL1")))
+    seen = 0
+    for disk in gamedata.curse_disks():
+        if disk.find(b"CHARPIC00") is None:
+            continue
+        assert load_icon_charset(disk) == por
+        seen += 1
+    assert seen >= 5, f"only {seen} Curse sides carry CHARPIC00"
+
+
+def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
+    """`SPELLE64` is Pool of Radiance's bytes at `$8E00` rather than `$A700`.
+
+    `IconParts` fits the base out of the editor's own pointer table. Before
+    #31 it named `$A700`, every table offset came out negative, and composing
+    an icon raised `IndexError` -- so the parts picker could not be opened on
+    this title at all.
+    """
+    from por.iconparts import IconParts
+    from por.icons import ICON_COUNT, ICON_SIZE
+
+    parts = IconParts.load(str(_curse_disk_with(b"SPELLE64")))
+    assert parts.base == 0x8E00
+    assert parts.count("large", "weapon") == 35
+
+    reachable = set()
+    for weapon_size in ("small", "large"):
+        for head_size in ("small", "large"):
+            for w in range(parts.count(weapon_size, "weapon")):
+                shape = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
+                for h in range(parts.count(head_size, "head")):
+                    reachable.add(parts.apply(shape, head_size, "head", h))
+
+    # SSI's own pre-generated party, not the player's: an icon a person has
+    # hand-edited need not be one pair, because a weapon change preserves the
+    # head and the two menus can be walked in any order. `legal_shapes` is the
+    # question that asks about those; this one asks about the tables.
+    payload = None
+    for disk in gamedata.curse_disks():
+        entry = disk.find(CURSE.save_file)
+        if entry is not None and CURSE.matches_payload(disk.read_file(entry)):
+            payload = split_load_address(disk.read_file(entry))[1]
+            break
+    if payload is None:              # side B's SAVEAZURE is a 2032-byte stub
+        pytest.skip("no Curse side here carries a whole SAVEAZURE")
+    base = games.ICON_TABLE_OFFSET
+    unmade = [payload[base + i * ICON_SIZE:][:18].hex()
+              for i in range(ICON_COUNT)
+              if any(payload[base + i * ICON_SIZE:][:18])
+              and bytes(payload[base + i * ICON_SIZE:][:18]) not in reachable]
+    assert not unmade, unmade
+
+
+def test_curses_item_lists_still_carry_the_file_in_their_name():
+    """`ITEMFILE01`, not Silver Blades' `ITEM10` -- and `ITEMS` is neither."""
+    from por.items import is_item_list
+
+    stems = {bytes(e.name).upper()
+             for disk in gamedata.curse_disks() for e in disk.directory()}
+    lists = {n for n in stems if is_item_list(n)}
+    assert len(lists) >= 10, sorted(lists)
+    assert all(n.startswith(b"ITEMFILE") for n in lists), sorted(lists)
+    assert not ({b"ITEMS", b"ITEMNAMES"} & lists)
+
+
+# The cleric's spell grant, read out of `GEN` rather than guessed from the
+# names. The routine is `LDX <cleric level> / BEQ out / LDY levels,X /
+# LDX offsets,Y / LDA masks,Y / ORA record,X / STA record,X / DEY / BPL`, and
+# the `BEQ` target is the `RTS` that the level table's own index 0 sits on --
+# which is what fixes the overlay's base without fitting anything.
+_GRANT_LOOP = re.compile(
+    rb"\xAE(.)\x7C\xF0(.)\xBC(..)\xBE(..)\xB9(..)\x1D\x00\x7C\x9D\x00\x7C"
+    rb"\x88\x10\xF1\x60", re.DOTALL)
+
+
+def _grant_table(payload: bytes, record_offset: int):
+    """(level -> set of spell ids) for one of `GEN`'s grant routines."""
+    for match in _GRANT_LOOP.finditer(payload):
+        if match.group(1)[0] != record_offset:
+            continue
+        levels, offsets, masks = (
+            g[0] | g[1] << 8 for g in match.group(3, 4, 5))
+        rts = match.end() - 1                        # file offset of the RTS
+        base = levels - rts                          # the overlay's load address
+        assert base == 0x0800, f"${base:04X} is not the overlay base"
+        out, granted = {}, set()
+        for level in range(1, 11):
+            top = payload[levels - base + level]
+            granted = set()
+            for y in range(top + 1):
+                byte = payload[offsets - base + y]
+                mask = payload[masks - base + y]
+                assert 0x078 <= byte <= 0x087, f"${byte:02X} is not the mask"
+                granted |= {(byte - 0x078) * 8 + bit
+                            for bit in range(8) if mask & (1 << bit)}
+            out[level] = granted
+        return out
+    pytest.skip("GEN carries no grant loop for that class")
+
+
+def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
+    """`por/spells.py`'s Curse cleric groups were inferred from the names.
+    This is the game's own table saying the same thing.
+
+    It also carries an AD&D check of its own: the levels at which a new spell
+    level appears are 1, 3, 5, 7 and 9, which is the 1st edition cleric
+    progression exactly.
+    """
+    from por.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
+
+    grants = _grant_table(_curse_file(b"GEN"), 0xCA)      # 0x0CA, cleric level
+    expected = {}
+    for low, high, cls, level in TABLE.groups:
+        if cls == "cleric":
+            expected.setdefault(level, set()).update(range(low, high + 1))
+
+    got_new = {level: grants[level] - grants.get(level - 1, set())
+               for level in sorted(grants) if grants[level] != grants.get(level - 1)}
+    assert sorted(got_new) == [1, 3, 5, 7, 9], sorted(got_new)
+    for spell_level, (game_level, ids) in enumerate(sorted(got_new.items()), 1):
+        want = expected[spell_level]
+        # Everything the trainer grants is inside the group `por/spells.py`
+        # claims -- that is the direction that matters. Two ids the group
+        # claims are never granted: 36 ANIMATE DEAD and 100 BESTOW CURSE, both
+        # of which a player meets on a scroll rather than at a temple.
+        assert ids <= want, (spell_level, sorted(ids - want))
+        assert want - ids <= {36, 100}, (spell_level, sorted(want - ids))
+
+
+def test_curses_magic_user_grant_writes_no_further_than_0x07e():
+    """What is actually measured about Curse's spellbook width, and no more.
+
+    Silver Blades' width is settled -- `GEN` clears sixteen bytes at `$7C78`.
+    Curse's `GEN` has no such loop, so the only measurement available is where
+    its own grant tables write: `0x07E` for the magic-user, `0x081` for the
+    cleric. Ten bytes, not seven and not proven to be sixteen.
+    """
+    payload = _curse_file(b"GEN")
+    assert b"\xA2\x0F\xA9\x00\x9D\x78\x7C\xCA\x10\xFA" not in payload, (
+        "Curse's GEN does have a spellbook clear loop after all -- read it")
+
+    reach = 0
+    for record_offset in (0xC9, 0xCA):
+        for match in _GRANT_LOOP.finditer(payload):
+            if match.group(1)[0] != record_offset:
+                continue
+            offsets = match.group(4)[0] | match.group(4)[1] << 8
+            levels = match.group(3)[0] | match.group(3)[1] << 8
+            base = levels - (match.end() - 1)
+            top = max(payload[levels - base + lv] for lv in range(1, 11))
+            reach = max(reach,
+                        max(payload[offsets - base + y] for y in range(top + 1)))
+    assert reach == 0x081, f"the grant tables reach 0x{reach:03X}"

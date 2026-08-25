@@ -328,3 +328,305 @@ def test_the_roster_is_the_last_page_of_the_save():
     assert [b.slot_index for b in live] == list(range(len(live)))
     assert sg1.roster(0).address == 0x6700
     assert sg1.to_bytes() == sg0.roster_page()
+
+
+# --- issue #31: the fields the editor shows ---------------------------------
+# Every check below is a cold read -- no emulator, no running game -- and each
+# one is paired with the thing that depends on it coming out right, because a
+# table read off a disk that nothing consumes is not evidence that it was read
+# correctly.
+
+
+def _game_disk_with(name: bytes) -> pathlib.Path:
+    """The Silver Blades side carrying `name`, or skip."""
+    where = ssb_dir()
+    if where is None:
+        pytest.skip(f"needs the Silver Blades disks; set {SSB_ENV}")
+    for path in sorted(where.glob("SILVER*.[dD]64")):
+        try:
+            if D64.open(str(path)).find(name) is not None:
+                return path
+        except Exception:
+            continue
+    pytest.skip(f"no Silver Blades side here carries {name.decode()}")
+
+
+def test_silver_blades_keeps_its_spell_names_in_combat2_like_curse():
+    """Same file, same shape, a longer text block: 194 entries at `$E000`.
+
+    The geometry is fitted by asking which entry count makes every pointer land
+    inside the text -- and the same fit run against Curse recovers Curse's
+    already-known 170, `$07DB`, `$0885`, which is what makes the answer here
+    worth believing.
+    """
+    from por import spells
+
+    table = spells.SECRET_OF_THE_SILVER_BLADES
+    assert table.file == spells.CURSE_OF_THE_AZURE_BONDS.file == b"COMBAT2"
+    disk = _game_disk_with(table.file)
+    _, payload = split_load_address(D64.open(str(disk)).read_file(table.file))
+
+    starts = {0} | {i + 1 for i, b in enumerate(payload[:table.text_offset
+                                                        + table.high_offset])
+                    if b == 0}
+    inside = on_start = 0
+    for i in range(table.entries):
+        addr = (payload[table.low_offset + i]
+                | payload[table.high_offset + i] << 8)
+        off = addr - table.resident_base
+        if 0 <= off < table.high_offset:
+            inside += 1
+            on_start += off in starts
+    assert inside >= table.entries - 1, "a pointer lands outside the text"
+    assert on_start >= 186, f"only {on_start} pointers start a string"
+
+
+def test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm():
+    """The two SSI moved, and nothing else -- so no stride is off by one.
+
+    An off-by-one anywhere in the fit would disagree on nearly all 56, not on
+    two isolated ids. 36 and 56 are `HEAL` and `HARM` here where the earlier
+    two titles have `ANIMATE DEAD` and `RESTORATION`.
+    """
+    from por import spells
+
+    ssb = spells.load_spell_names(str(_game_disk_with(b"COMBAT2")),
+                                  spells.SECRET_OF_THE_SILVER_BLADES)
+    por = spells.load_spell_names(str(gamedata.game_disk("POOL1")),
+                                  spells.POOL_OF_RADIANCE)
+    moved = {i for i in range(1, 57) if ssb.get(i) != por.get(i)}
+    assert moved == {36, 56}, moved
+    assert (ssb[36], ssb[56]) == ("HEAL", "HARM")
+    assert ssb[20] == por[20] == "SHOCKING GRASP"
+
+
+def test_the_shipped_ranger_knows_the_four_first_level_druid_spells():
+    """The corroboration the spell table needed, and it is an AD&D rule.
+
+    A ranger gets druid spells and no others until ninth level. PAINE's
+    spellbook holds exactly four bits, and all four fall in the druid group
+    `por/spells.py` reads out of `GEN`'s own grant table.
+    """
+    from por import spells
+
+    table = spells.SECRET_OF_THE_SILVER_BLADES
+    names = spells.load_spell_names(str(_game_disk_with(b"COMBAT2")), table)
+    sg0, _ = _party()
+    rangers = [s.record for s in sg0.characters
+               if s.record.get("class_bits") == 0x80]
+    assert rangers, "the shipped party should include a ranger"
+    for rec in rangers:
+        mask = rec.slice(0x078, 16)
+        ids = [i for i in range(1, table.last_spell + 1)
+               if mask[i >> 3] & (1 << (i & 7))]
+        assert ids, f"{rec.name} knows nothing"
+        assert all(spells.spell_group(i, table) == ("druid", 1) for i in ids), (
+            [(i, names.get(i)) for i in ids])
+
+
+def test_every_spell_a_shipped_caster_knows_is_one_its_class_may_cast():
+    """No cleric holds an arcane id and no magic-user a clerical one."""
+    from por import spells
+
+    table = spells.SECRET_OF_THE_SILVER_BLADES
+    allowed = {0x01: {"magic-user"}, 0x02: {"cleric"}, 0x80: {"druid"}}
+    sg0, _ = _party()
+    checked = 0
+    for slot in sg0.characters:
+        rec = slot.record
+        want = allowed.get(rec.get("class_bits"))
+        if want is None:
+            continue
+        mask = rec.slice(0x078, 16)
+        ids = [i for i in range(1, table.last_spell + 1)
+               if mask[i >> 3] & (1 << (i & 7))]
+        for i in ids:
+            group = spells.spell_group(i, table)
+            assert group is not None, f"{rec.name} knows non-spell {i}"
+            assert group[0] in want, f"{rec.name} ({want}) knows {i} {group}"
+        checked += len(ids)
+    assert checked > 50, "too few spells known to be a real check"
+
+
+def test_no_shipped_caster_knows_a_spell_past_the_last_one():
+    """117 is the last spell; the table past it is combat messages."""
+    from por import spells
+
+    last = spells.SECRET_OF_THE_SILVER_BLADES.last_spell
+    sg0, _ = _party()
+    for slot in sg0.characters:
+        mask = slot.record.slice(0x078, 16)
+        over = [i for i in range(last + 1, 128)
+                if mask[i >> 3] & (1 << (i & 7))]
+        assert not over, f"{slot.record.name} knows {over}, past spell {last}"
+
+
+def test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs():
+    """`CHARPIC00` exists, is the same 2030 bytes, and is nearly the same art.
+
+    Curse's copy is byte-identical to Pool of Radiance's on all fourteen sides.
+    Silver Blades redraws three glyphs and changes nothing else, so the icon
+    editor's eight-bytes-per-glyph reading transfers untouched.
+    """
+    from por.icons import load_icon_charset
+
+    ssb = load_icon_charset(str(_game_disk_with(b"CHARPIC00")))
+    por = load_icon_charset(str(gamedata.game_disk("POOL1")))
+    assert len(ssb) == len(por) == 2030
+    differing = {i // 8 for i, (a, b) in enumerate(zip(ssb, por)) if a != b}
+    assert differing == {132, 133, 207}, differing
+
+
+def test_every_shipped_icon_is_a_weapon_and_a_head_from_the_editors_lists():
+    """`SPELLE64` is the same file at a different address, and this proves it.
+
+    The parts data is byte-identical to Pool of Radiance's; only the load
+    address moves, to `$8E00`. `IconParts` fits that base out of the pointers
+    rather than naming it, and the test of the fit is that all eight shipped
+    shapes come back out of a (weapon, head) pair -- where the hardcoded
+    `$A700` raised `IndexError` before #31.
+    """
+    from por.iconparts import IconParts
+    from por.icons import ICON_COUNT, ICON_SIZE
+
+    parts = IconParts.load(str(_game_disk_with(b"SPELLE64")))
+    assert parts.base == 0x8E00
+
+    reachable = {}
+    for weapon_size in ("small", "large"):
+        for head_size in ("small", "large"):
+            for w in range(parts.count(weapon_size, "weapon")):
+                shape = parts.apply(bytes([0x20] * 18), weapon_size, "weapon", w)
+                for h in range(parts.count(head_size, "head")):
+                    reachable.setdefault(
+                        parts.apply(shape, head_size, "head", h),
+                        (weapon_size, w, head_size, h))
+
+    payload = D64.open(str(_save_disk())).read_file(SSB.save_file)[2:]
+    base = games.ICON_TABLE_OFFSET
+    shapes = [bytes(payload[base + i * ICON_SIZE:][:18]) for i in range(ICON_COUNT)]
+    unmade = [s.hex() for s in shapes if any(s) and s not in reachable]
+    assert not unmade, unmade
+
+
+def test_the_parts_file_is_the_same_bytes_in_all_three_titles():
+    """Which is why only its address had to be found."""
+    from por.iconparts import PARTS_FILE
+
+    def payload(path):
+        return split_load_address(D64.open(str(path)).read_file(PARTS_FILE))[1]
+
+    assert payload(_game_disk_with(PARTS_FILE)) == payload(
+        gamedata.game_disk("POOL3"))
+
+
+def test_the_item_lists_are_named_item_rather_than_itemfile():
+    """Silver Blades drops the `FILE`, and `ITEMS` must not be swept up.
+
+    Matching on a bare `ITEM` prefix would read the 128-entry type table and
+    the word pool as item records and name them nonsense.
+    """
+    from por.items import is_item_list
+
+    stems = {bytes(e.name).upper()
+             for disk in ssb_disks() for e in disk.directory()}
+    lists = {n for n in stems if is_item_list(n)}
+    assert len(lists) >= 30, sorted(lists)
+    assert all(n.startswith(b"ITEM") and not n.startswith(b"ITEMFILE")
+               for n in lists), sorted(lists)
+    assert b"ITEMS" in stems and b"ITEMNAMES" in stems
+    assert not ({b"ITEMS", b"ITEMNAMES"} & lists)
+
+
+def test_the_item_lists_decode_to_named_items_with_ad_and_d_statistics():
+    """Every template names itself out of `ITEMNAMES`, and its type record
+    holds the AD&D 1st edition line for that item.
+
+    Banded mail AC 4 at 35 lb and 90 gp, leather AC 8 at 15 lb and 5 gp, a
+    shield at +1 -- the same rule table that confirmed the field meanings on
+    Pool of Radiance, read here off a wholly different `ITEMS` file.
+    """
+    from por.items import Item, load_item_names, load_item_templates, load_item_types
+
+    disk = _game_disk_with(b"ITEMS")
+    names = load_item_names(str(disk), SSB)
+    types = load_item_types(str(disk))
+    templates = load_item_templates(str(disk), names, game=SSB)
+
+    assert len(templates) > 80, len(templates)
+    assert not [n for n in templates if not n or "?" in n]
+    assert not ({Item(r).type_index for r in templates.values()}
+                - set(types) - {0})
+
+    def line(name):
+        item = Item(templates[name], names)
+        kind = types[item.type_index]
+        return kind.armour_class, item.weight_lb, item.cost_gp
+
+    assert line("LEATHER ARMOR") == (8, 15.0, 5)
+    assert line("BANDED MAIL") == (4, 35.0, 90)
+    assert line("SHIELD") == (1, 5.0, 10)
+    assert types[Item(templates["LONG BOW"]).type_index].damage_vs_medium == "1d6"
+
+
+def test_races_classes_and_alignments_are_named_from_itemnames():
+    """Silver Blades has no race table in `LIBRARY`: it folds the labels into
+    `ITEMNAMES`'s own string pool, at `140 + race`.
+
+    The corroboration is the rule cases in the shipped party -- the paladin is
+    lawful good and the ranger is good, which AD&D 1st edition requires -- and
+    those two facts also say the alignment codes are Pool of Radiance's,
+    unchanged, at pool index `158 + alignment`.
+    """
+    from por.items import load_item_names
+
+    names = load_item_names(str(_game_disk_with(b"ITEMNAMES")), SSB)
+    assert {code: names[140 + code] for code, _ in SSB.races} == {
+        code: label.upper() for code, label in SSB.races}
+    assert names[140] == "ELF", "race 0 shares elf's label"
+
+    alignments = [names[158 + i] for i in range(9)]
+    assert alignments[0] == "LAWFUL GOOD" and alignments[8] == "CHAOTIC EVIL"
+
+    sg0, _ = _party()
+    for slot in sg0.characters:
+        rec = slot.record
+        bits = rec.get("class_bits")
+        if bits == 0x40:                       # paladin: lawful good, always
+            assert alignments[rec.get("alignment")] == "LAWFUL GOOD"
+        if bits == 0x80:                       # ranger: good, always
+            assert alignments[rec.get("alignment")].endswith("GOOD")
+
+
+def test_a_yaml_export_names_silver_blades_spells_from_its_own_table():
+    """The export path reads `COMBAT2` because it is told which title this is.
+
+    Without the title it reaches for `SPELLN00`, which Silver Blades does not
+    ship, and every spell comes out as a bare number.
+
+    **The export still stops at spell 55**, which is issue #81: the ranger's
+    four druid spells and MORGAINE's fourth- and fifth-level ones are ids 77-94
+    and the seven-byte mask cannot reach them. This test asserts the naming,
+    not the width, and the two assertions at the end are the width defect
+    written down so that fixing it fails here and gets noticed.
+    """
+    from por.yaml_io import export_save
+
+    data = export_save(str(_save_disk()), str(_game_disk_with(b"COMBAT2")))
+    named = [line for entry in data["party"]
+             for line in entry.get("_spells_known_named", ())]
+    assert named, "no character exported a named spellbook"
+    assert not [n for n in named if n.startswith("spell ")], named[:5]
+    assert any("(magic-user 3)" in n for n in named)
+    assert any("(cleric 3)" in n for n in named)
+    assert not any("(druid" in n for n in named), "#81 is fixed; update this"
+    assert not any(n.startswith("HOLD MONSTERS") for n in named)
+
+
+def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
+    """Silver Blades' progression tables have not been read, so nothing is
+    claimed about them -- the same rule an unknown race table follows."""
+    from por.spells import capacity
+
+    assert capacity(0x02, 9, 18, SSB) == {}
+    assert capacity(0x02, 9, 18, games.POOL_OF_RADIANCE)["cleric"]

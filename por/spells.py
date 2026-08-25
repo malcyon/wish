@@ -6,19 +6,23 @@ one thing that does not transfer between titles, so this module is a table per
 title -- the shape `por/games.py` settled on -- and every entry point takes an
 optional `game`.
 
-| | Pool of Radiance | Curse of the Azure Bonds |
-|---|---|---|
-| file | `SPELLN00` | `COMBAT2` |
-| resident at | `$B000` | `$E000` |
-| entries | 128 | 170 |
-| order | 128 low bytes, 128 high bytes, then the strings | the strings, then 170 high bytes, then 170 low bytes |
-| index of spell *n* | *n* | *n - 1* |
-| spells run to | 56 | 100 |
+| | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
+|---|---|---|---|
+| file | `SPELLN00` | `COMBAT2` | `COMBAT2` |
+| resident at | `$B000` | `$E000` | `$E000` |
+| entries | 128 | 170 | 194 |
+| order | 128 low bytes, 128 high bytes, then the strings | the strings, then 170 high bytes, then 170 low bytes | the same as Curse |
+| index of spell *n* | *n* | *n - 1* | *n - 1* |
+| spells run to | 56 | 100 | 117 |
 
 Neither file's PRG header helps: `SPELLN00` declares `$2710`, which is a
 scratch buffer. Curse's base needs no fitting at all -- the pointer for index 0
 is `$E000` and the text runs `$E000`-`$E7DA`, exactly the range of high bytes
-the array holds.
+the array holds. Silver Blades' is the same file in the same shape with a
+longer text block: `$E000`-`$E877`, 194 entries, and 193 of its 194 pointers
+land on a string start where no neighbouring entry count scores better than
+167. **The method was validated on Curse first**, where it recovers the
+already-known 170 / `$07DB` / `$0885` exactly.
 
 **Read through the pointers, never by splitting on NULs.** The strings overlap.
 `CURE LIGHT WOUNDS` and `CAUSE LIGHT WOUNDS` share one copy of ` LIGHT WOUNDS`
@@ -31,7 +35,16 @@ rather than inferred, which is what makes an imported spellbook mean what it
 said: bit 20 is `SHOCKING GRASP` either side. Past its own last spell each
 table continues with combat message fragments -- `AND MISSES...`,
 `POINTS OF DAMAGE` -- which share the mechanism and not the meaning: Pool of
-Radiance from 57, Curse from 101.
+Radiance from 57, Curse from 101, Silver Blades from 118.
+
+**Silver Blades keeps 54 of those 56 and reassigns two**: 36 is `HEAL` where
+the other two have `ANIMATE DEAD`, and 56 is `HARM` where they have
+`RESTORATION`. That is the game's own doing and not a misread stride -- its
+`GEN` spell-grant table sets exactly those two bits, and only those two, when a
+cleric reaches level 11 with wisdom 17 or better, which is when and how AD&D
+1st edition grants sixth-level clerical spells. An import from another title
+therefore carries a spellbook whose bits 36 and 56 change meaning, and nothing
+here rewrites them.
 
 **`SPELLN64` is not a spell-name table in either game**, whatever its stem
 suggests. It is 1878 bytes of icon-editor menu strings, and both titles ship
@@ -120,6 +133,53 @@ _GROUPS_CURSE = _GROUPS_POOL + (
 #: `IS DYING` are messages, and 100, the one after them, is `BESTOW CURSE`.
 _NOT_A_SPELL_CURSE = (57, 59, 60, 61, 62, 63, 64, 65, 95, 96, 97, 98, 99)
 
+#: Silver Blades, and these are **read out of the game's own grant tables**
+#: rather than off the names. `GEN` carries three of them, each a (mask byte
+#: index, bit mask) pair list walked backwards from a per-level ceiling:
+#:
+#: * the cleric's, entered on record `0x0CA`, gives 1-8, 22-28, 37-44,
+#:   {58, 66-70}, 71-76 at levels 1, 3, 5, 7, 9 -- AD&D's cleric progression
+#:   exactly -- and {36, 56} at level 11 behind a wisdom-17 check;
+#: * the ranger's, entered on record `0x0D0` and gated at `CPX #$08`, gives
+#:   77-80 at level 8 and 9-21 at level 9. A ranger getting druid spells at 8
+#:   and magic-user spells at 9 is AD&D 1st edition verbatim, and the shipped
+#:   PAINE holds precisely those four druid bits and nothing else;
+#: * the magic-user's, entered on record `0x0C9`, is a learn-list rather than a
+#:   whole level, because magic-users learn by roll.
+#:
+#: The magic-user levels below are therefore the weaker claim -- PROBABLE, read
+#: off the names against AD&D as Curse's were.
+_GROUPS_SILVER_BLADES = (
+    (1, 8, "cleric", 1),
+    (9, 21, "magic-user", 1),
+    (22, 28, "cleric", 2),
+    (29, 35, "magic-user", 2),
+    (36, 36, "cleric", 6),
+    (37, 44, "cleric", 3),
+    (45, 55, "magic-user", 3),
+    (56, 56, "cleric", 6),
+    (58, 58, "cleric", 4),
+    (66, 70, "cleric", 4),
+    (71, 76, "cleric", 5),
+    (77, 80, "druid", 1),
+    (81, 89, "magic-user", 4),
+    (90, 90, "druid", 2),
+    (91, 94, "magic-user", 5),
+    (96, 96, "druid", 1),
+    (109, 114, "magic-user", 6),
+    (115, 117, "magic-user", 7),
+)
+
+#: Ids inside 1-117 that name no spell. Two kinds, and the tail of the table
+#: tells them apart: 59-62, 97 and 99 are combat messages -- `IS BERSERKING`,
+#: `IS ALIVE`, `IS DYING` -- and the rest are unused slots whose pointer
+#: duplicates a real entry's, so they read back as a spell that is already
+#: somewhere else. 101-108 are eight consecutive slots all reading `TRIP`.
+#: 98 is deliberately **not** here: the ranger grant sets it, so it is the
+#: druid's own `CURE LIGHT WOUNDS` and not a duplicate of id 3.
+_NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
+                              101, 102, 103, 104, 105, 106, 107, 108)
+
 POOL_OF_RADIANCE = SpellTable(
     key="pool-of-radiance",
     title="Pool of Radiance",
@@ -149,7 +209,23 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     not_a_spell=_NOT_A_SPELL_CURSE,
 )
 
-TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)
+SECRET_OF_THE_SILVER_BLADES = SpellTable(
+    key="secret-of-the-silver-blades",
+    title="Secret of the Silver Blades",
+    file=b"COMBAT2",
+    entries=194,
+    resident_base=0xE000,
+    text_offset=0x000,
+    high_offset=0x878,
+    low_offset=0x93A,
+    first_id=1,
+    last_spell=117,
+    groups=_GROUPS_SILVER_BLADES,
+    not_a_spell=_NOT_A_SPELL_SILVER_BLADES,
+)
+
+TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+                                  SECRET_OF_THE_SILVER_BLADES)
 BY_KEY = {t.key: t for t in TITLES}
 
 #: What a caller gets when it says nothing. Every caller predates the second
@@ -253,12 +329,20 @@ SPELLBOOK_SIZE = 7
 # 0x07D-0x07F, four of them holding 0x07F = 0x04, so on the later engine the
 # mask is at least eight bytes -- see work/reports/goldbox-inventory.md.
 #
+# **Silver Blades is settled: sixteen.** `GEN` clears sixteen bytes at `$7C78`
+# -- `LDX #$0F / LDA #$00 / STA $7C78,X / DEX / BPL` -- and its spell-grant
+# tables index the mask as far as byte 13 (`0x085`) for a high-level ranger.
+# The shipped MORGAINE reaches byte 11, id 94.
+#
 # **Curse is the open case and it is not settled here.** Its spell list runs to
-# 100, which would need thirteen bytes, but the highest bit any Curse specimen
-# on the player's disks sets is id 44 -- SSI's own level-5 CLERIC -- so seven
-# bytes has never been exceeded and nothing has been observed that a wider mask
-# would explain. `por/layout.py` declares the field 7 wide for that reason and
-# a Curse caster carrying a fourth-level spell would settle it in one read.
+# 100, which would need thirteen bytes. Curse's `GEN` has no such clear loop --
+# it is the one place the answer was expected and it is not there -- so what is
+# actually measured is where its own grant tables write: the cleric's reaches
+# `0x081` and the magic-user's `0x07E`, so **at least ten bytes**. The shipped
+# party never exceeds seven, its highest bit being id 47, FIREBALL, on both
+# mages. Sixteen is likely by engine sharing and is not proven.
+# `por/layout.py` declares the field 7 wide because that is Pool of Radiance's
+# width and what `spellbook_bytes` writes.
 LAST_SPELLBOOK_SPELL = SPELLBOOK_SIZE * 8 - 1        # 55
 
 # Spells castable per level, before Wisdom bonuses, from the game's own tables:
@@ -332,7 +416,14 @@ def capacity(class_bits: int, level: int, wisdom: int,
     Returned per class, because a multi-class character memorises from each
     list separately.
     """
-    magic_user, cleric = _SLOTS[for_game(game).key]
+    rows = _SLOTS.get(for_game(game).key)
+    if rows is None:
+        # Silver Blades' progression tables have not been read off its disks,
+        # and neither have the Krynn titles' or Gateway's. Nothing here, so a
+        # caller shows no number rather than another game's -- the same rule
+        # `por/games.py` applies to a race table it does not have. Issue #31.
+        return {}
+    magic_user, cleric = rows
     level = max(1, min(int(level or 1), len(magic_user)))
     out: dict[str, tuple[int, ...]] = {}
     if class_bits & 1:
