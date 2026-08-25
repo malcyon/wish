@@ -233,8 +233,15 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
     it: the roster's five columns and the character sheet's fields get their
     real widths, and none of them were in the 836 the empty window answers.
-    Measured in round five of #43: **896x662** at the default UI font and
-    **1120x702** at three points more. Both fit `SMALL`.
+    Measured in round six of #43, with Character Traits moved into the header
+    and the header held to a constant: **961x662** at the default UI font and
+    **1058x702** at three points more. Both fit `SMALL`.
+
+    The 97px between them is the roster, which is sized from the names it
+    holds and is the one thing left in the header that follows the font. At
+    eight points more -- roughly where Windows' base font measures -- it is
+    1225, and at eleven it passes 1280. That is #70, and this test cannot see
+    it because it needs the disks and CI has none.
 
     The width still tracks the font here -- 224px of it -- where the empty
     window's does not, and that is #63 rather than this test: the guarantee

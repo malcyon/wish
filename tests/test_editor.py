@@ -664,12 +664,18 @@ BOXES = ("box_identity", "box_record", "box_abilities", "box_saves",
          "box_levels", "box_thief_skills", "box_money", "box_appearance",
          "box_inventory", "box_spells", "box_traits", "box_effects")
 
-#: Above the tabs, on every one of them: the roster and Character. Character
-#: is up there because 23 fields stacked in a column were 672px tall and the
-#: tab could not hold them; ten of them are up there in two columns, which is
-#: what the combat icon leaving the header bought -- see
-#: `test_the_sheet_is_not_a_floor_under_the_window`.
-HEADER_BOXES = ("box_identity",)
+#: Above the tabs, on every one of them: the roster, Character and the combat
+#: icon. Character is up there because 23 fields stacked in a column were
+#: 672px tall and the tab could not hold them; ten of them are up there in two
+#: columns.
+#:
+#: The icon came back in round six, having spent round five on the Stats tab.
+#: It is the one per-character box in this program whose size is fixed in
+#: pixels rather than derived from font metrics -- `IconEditor` is
+#: `FRAME_WIDE * ZOOM`, 48 squares at 3 pixels -- so it is the one box that
+#: costs the header the same on every platform. Character Traits was tried
+#: here first and Donald turned it down: it made the header far too tall.
+HEADER_BOXES = ("box_identity", "box_appearance")
 
 #: Donald's grouping, and the whole of it. `box_levels` -- Experience and
 #: levels -- was not in the grouping he wrote and is here because it is a
@@ -678,8 +684,7 @@ HEADER_BOXES = ("box_identity",)
 #: the header box fits a desktop.
 TABS = {
     "Stats": ("box_record", "box_abilities", "box_money", "box_saves",
-              "box_thief_skills", "box_effects", "box_levels",
-              "box_appearance"),
+              "box_thief_skills", "box_effects", "box_levels"),
     "Inventory": ("box_inventory", "box_traits"),
     "Spells": ("box_spells",),
 }
@@ -689,10 +694,15 @@ TABS = {
 #: Money with Miscellaneous under it. That is a fact about order and not about
 #: grouping, so it is pinned separately: a repack that put Miscellaneous back
 #: on the left would still satisfy `TABS`.
+#:
+#: The fourth column is Miscellaneous on its own since the combat icon went
+#: back up to the header. His order is otherwise unchanged; what changed is
+#: where the spare width goes -- see
+#: `test_the_stats_columns_share_the_spare_width`.
 STATS_COLUMNS = (("box_abilities", "box_saves"),
                  ("box_levels", "box_thief_skills"),
                  ("box_money", "box_effects"),
-                 ("box_appearance", "box_record"))
+                 ("box_record",))
 
 
 @game_disks
@@ -751,6 +761,45 @@ def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
     assert got == list(STATS_COLUMNS)
 
 
+@game_disks
+def test_the_stats_columns_share_the_spare_width(app, save):
+    """The hole Donald drew a box round, and why it was there.
+
+    Only Character Traits can use spare width on this tab, and with the whole
+    stretch on the column it shares with Money the slack piled up beside
+    Money -- about 490x230 of nothing between it and the next column. Shared
+    equally, the four columns spread across the tab and the slack has nowhere
+    to pile.
+
+    Equal and non-zero is the assertion, not four particular numbers: what
+    would be wrong again is one column holding the lot.
+    """
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    columns = w.ui.sheet_columns
+    stretches = [columns.stretch(i) for i in range(columns.count())]
+    assert len(stretches) == len(STATS_COLUMNS)
+    assert all(s == stretches[0] and s > 0 for s in stretches), stretches
+
+
+@game_disks
+def test_the_header_s_spare_width_goes_to_character(app, save):
+    """The roster is sized to its five columns and the combat icon to a fixed
+    144px of pixels, so neither can use a wider window; the spacer at the end
+    of the row took it all and the header was 540px of nothing. Character
+    takes it now, and its two columns share what it is given rather than
+    huddling at its left edge."""
+    from editor.window import EditorWindow
+    w = EditorWindow(str(save))
+    row = w.ui.header_row
+    stretched = [i for i in range(row.count()) if row.stretch(i)]
+    assert len(stretched) == 1, "one thing takes the slack, not none and not two"
+    assert row.itemAt(stretched[0]).widget().objectName() == "box_identity"
+    columns = w.ui.form_identity
+    shares = [columns.stretch(i) for i in range(columns.count())]
+    assert shares == [1, 1], shares
+
+
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one
 #: Donald asked for in round five: a 1280x720 laptop, forty pixels shorter than
 #: the 1280x760 the earlier rounds allowed themselves. The editor has to fit
@@ -764,21 +813,28 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
 
     Four columns in one scroll area asked for 2001x1127 and collapsed to
     421x141, so the sheet was unreadable at any window anybody would open.
-    Measured here in round five: the editor's minimum is 892x374 at the
-    default UI font and 1116x419 at three points more, and the widest tab --
-    Stats -- scrolls when it cannot have the room it asks for.
+    Measured here in round six: the editor's minimum is 957x374 with a save
+    open and 680x374 without one, and the widest tab -- Stats -- scrolls when
+    it cannot have the room it asks for.
 
     The width is the header. The header does not scroll, so the window can
-    never be narrower than the roster and Character side by side: 683 with no
-    Character at all, 1883 with all 23 of its fields down one row, 992 with
-    the five it kept in round four, 892 now that the combat icon has left the
-    header and Character has been given ten fields in two columns.
+    never be narrower than what stands in it side by side: 683 with nothing
+    but the roster, 1883 with all 23 of Character's fields down one row, 992
+    with the five it kept in round four, 892 once the combat icon left and
+    Character was given ten fields in two columns, and 957 now that Character
+    Traits is up there too and Character is held to a constant 520.
 
-    Ten and not five because the icon was 310px of header at any font size,
-    and that is what paid for the second column -- see
-    `test_character_fits_the_header_s_width_budget` below, which is the
-    arithmetic, and `test_character_is_two_columns_the_way_donald_drew_it`,
-    which is the shape.
+    Ten fields and not five because the icon was 310px of header at any font
+    size, and that is what paid for the second column -- see
+    `test_the_header_fits_its_width_budget` below, which is the arithmetic,
+    and `test_character_is_two_columns_the_way_donald_drew_it`, which is the
+    shape.
+
+    What is left tracking the font is the roster, which is sized from the
+    names it holds: 349px at the default UI font and 446 at three points more,
+    and that is the whole of the 957-to-1054 difference. It is #70's half of
+    the problem and it is not measured by CI, because every test that opens a
+    save skips without the disks.
 
     The floor is not zero because a box of spin boxes cannot shrink, which is
     why the scroll area survived the tabs and merely moved inside them.
@@ -836,9 +892,10 @@ def test_character_is_two_columns_the_way_donald_drew_it(app, save):
     assert tuple(got) == IDENTITY_COLUMNS
 
 
-#: What Character may cost, at three points of extra UI font, before the whole
-#: window stops fitting `SMALL_LAPTOP`. The roster is 446 of it at that font,
-#: the header's spacings and the window's own margins 26, which leaves this.
+#: What the boxes in the header may cost between them, at three points of
+#: extra UI font, before the whole window stops fitting `SMALL_LAPTOP`. The
+#: roster is 446 of it at that font, the header's spacings and the window's
+#: own margins 26, which leaves this.
 #:
 #: Round four derived the same budget from the automapper's 836 and got 422.
 #: That 836 is measured with nothing open (#63): with a save loaded the
@@ -847,8 +904,18 @@ def test_character_is_two_columns_the_way_donald_drew_it(app, save):
 IDENTITY_BUDGET = SMALL_LAPTOP[0] - 446 - 26
 
 
+def _floor_width(box) -> int:
+    """What a layout will not squeeze a box below.
+
+    `qSmartMinSize` takes an explicit `minimumSize` in preference to
+    `minimumSizeHint`, which is how Character Traits is allowed to be narrower
+    than its own title.
+    """
+    return box.minimumWidth() or box.minimumSizeHint().width()
+
+
 @game_disks
-def test_character_fits_the_header_s_width_budget(app, save):
+def test_the_header_fits_its_width_budget(app, save):
     """The header does not scroll, so every pixel in it is a floor under the
     whole window -- and every widget in it is sized from font metrics, which
     is the mechanism #41 was opened to remove.
@@ -858,12 +925,19 @@ def test_character_fits_the_header_s_width_budget(app, save):
     against a 422 budget -- impossible by 250. Round five moved the combat
     icon out of the header, which was 310px of it at every font size, and
     trimmed the `Name` box by 30% -- it was 318 wide because twenty bytes of
-    name is twenty capital Ws. The two columns now cost 648 against 808, and
-    the whole window's floor with a save open is 1120x702.
+    name is twenty capital Ws.
 
-    Three extra points and not Windows, because that is the proxy
-    `tests/test_mapscale.py` already uses and neither of us has a Windows
-    machine to hand.
+    Round six is the first one where the budget is *enforced* rather than
+    checked: what is measured here is the explicit minimum each box is held
+    to, 520 for Character and 166 for the combat icon, and the sum is 686
+    against 808 at any font at all. Round five's 648 was a measurement, it was
+    true on Linux, and on Windows the same box measured 876 -- see
+    `test_the_header_boxes_do_not_widen_with_the_ui_font`. A budget checked
+    against one platform's font metrics is not a budget.
+
+    Both boxes and not just Character, because the budget is what the header
+    costs and the header is now two boxes. A second one added without a floor
+    of its own would pass a test that measured only the first.
     """
     from PyQt6.QtGui import QFont
 
@@ -875,10 +949,90 @@ def test_character_fits_the_header_s_width_budget(app, save):
         app.setFont(bigger)
         w = EditorWindow(str(save))
         w.show()
-        cost = w._child("box_identity").minimumSizeHint().width()
+        cost = sum(_floor_width(w._child(name)) for name in HEADER_BOXES)
     finally:
         app.setFont(base)
     assert cost <= IDENTITY_BUDGET
+
+
+@game_disks
+def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
+    """Every box in the header is sized from font metrics, and the header does
+    not scroll, so left alone each of them is a floor under the whole window
+    that follows the font -- the mechanism #41 was opened to remove.
+
+    Character is 521px wide at the default UI font here, 648 at three points
+    more and 874 at eight. The combat icon is not: `IconEditor` is 144px of
+    fixed pixels at every font, which is why it is the box in the header --
+    but its `QGroupBox` will not report a minimum narrower than the title
+    "Combat icon", which passes 166 somewhere past eight points. Both are
+    given an explicit minimum instead, which `qSmartMinSize` takes in
+    preference to the hint, and the floor stops moving.
+
+    Pinned as a relation between font sizes rather than as a number, because
+    every number here is a Linux number. Eight points and not three: Windows'
+    base UI font measures like eight to ten points more than this one, which
+    is why round five passed here and failed there.
+    """
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorWindow
+    base = app.font()
+    got = {name: [] for name in HEADER_BOXES}
+    try:
+        for extra in (0, 8):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            w = EditorWindow(str(save))
+            w.show()
+            for name in HEADER_BOXES:
+                box = w._child(name)
+                got[name].append(_floor_width(box))
+                # Explicitly set, not merely hinted: it is the explicit one
+                # that `qSmartMinSize` takes, and a box left to its hint is
+                # exactly what failed on Windows.
+                assert box.minimumWidth() > 0, f"{name} has no floor of its own"
+    finally:
+        app.setFont(base)
+    for name, widths in got.items():
+        assert widths[0] == widths[1], f"{name} widened with the font"
+
+
+def test_the_editors_own_floor_does_not_follow_the_ui_font(app):
+    """The Linux-runnable half of `tests/test_mapscale.py`'s #41 guarantee,
+    and the test that would have caught round five.
+
+    That one measures the whole window, where the automapper's own floor is
+    usually the larger of the two and hides what the editor is doing. This
+    one measures the editor alone, with nothing open -- which is the state CI
+    can reach without the disks -- and at eight points of extra font, which is
+    roughly where Windows' base UI font measures.
+
+    Round five put ten fields and their labels in a header that does not
+    scroll, and on Windows CI the whole window's floor went from 1036 to 1304
+    with three points of font: #41's guarantee broken, and 1304 over the
+    1280 screen as well. Here the same box goes from 521 to 874 and the
+    editor's floor does not move, because the header and the button row above
+    it are both held to constants.
+
+    No save, so no `@game_disks`: this has to run on a machine without the
+    game, because that machine is CI and CI is where round five got through.
+    """
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorWindow
+    base = app.font()
+    got = []
+    try:
+        for extra in (0, 8):
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            got.append(EditorWindow(None).minimumSizeHint().width())
+    finally:
+        app.setFont(base)
+    assert got[0] == got[1], f"the editor's floor followed the font: {got}"
 
 
 @game_disks

@@ -210,6 +210,18 @@
        </widget>
       </item>
       <item>
+       <widget class="QGroupBox" name="box_appearance">
+        <property name="title">
+         <string>Combat icon</string>
+        </property>
+        <layout class="QFormLayout" name="form_appearance">
+         <item row="0" column="0" colspan="2">
+          <widget class="IconEditor" name="field_icon" />
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
        <spacer name="header_spacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -960,18 +972,6 @@
             </item>
             <item>
              <layout class="QVBoxLayout" name="column_four">
-              <item>
-               <widget class="QGroupBox" name="box_appearance">
-                <property name="title">
-                 <string>Combat icon</string>
-                </property>
-                <layout class="QFormLayout" name="form_appearance">
-                 <item row="0" column="0" colspan="2">
-                  <widget class="IconEditor" name="field_icon" />
-                 </item>
-                </layout>
-               </widget>
-              </item>
               <item>
                <widget class="QGroupBox" name="box_record">
                 <property name="title">
