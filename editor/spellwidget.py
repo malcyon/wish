@@ -34,14 +34,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por.spells import LAST_SPELL, SPELL_GROUPS, SPELLBOOK_SIZE, describe, spell_group
+from por.spells import SpellTable, describe, for_game, spell_group
 
 MEMORISED_SIZE = 16          # the packed list at 0x020
 
-# The spellbook is seven bytes, so it has a bit for ids 0-55 and none for 56.
-# RESTORATION is id 56: the game can memorise it and cannot record knowing it.
-IN_SPELLBOOK = range(1, SPELLBOOK_SIZE * 8)
 UNKNOWN = QColor("#b03a2e")  # memorised but not in the spellbook
+
+#: What a widget shows before a save is open. Every title's own table arrives
+#: with `set_names`, which the window calls as soon as it knows which game this
+#: is -- with or without a game disk to read the names off.
+DEFAULT_TABLE = for_game(None)
 
 # The Spells box is shown for every character, caster or not, because the
 # sheet's boxes may not come and go as the roster moves. So the box has to say
@@ -49,8 +51,9 @@ UNKNOWN = QColor("#b03a2e")  # memorised but not in the spellbook
 NO_SPELLS = "This character casts no spells."
 
 
-def _spell_text(sid: int, names: dict[int, str] | None) -> str:
-    return describe(sid, names or {})
+def _spell_text(sid: int, names: dict[int, str] | None,
+                table: SpellTable) -> str:
+    return describe(sid, names or {}, table)
 
 
 def fit_to_names(view: QListWidget, texts, checkable: bool) -> None:
@@ -89,20 +92,26 @@ def fit_to_names(view: QListWidget, texts, checkable: bool) -> None:
     view.setMinimumWidth(row + bar + 2 * view.frameWidth())
 
 
-def _ordered() -> list[tuple[str, int, list[int]]]:
-    """Every spell id, grouped the way the game's own table runs.
+def _ordered(table: SpellTable) -> list[tuple[str, int, list[int]]]:
+    """Every spell id of one title, grouped the way its own table runs.
 
-    The last group is the leftovers -- RESTORATION is a real spell id that
-    belongs to no class list -- because a spellbook widget that cannot show a
-    bit is a spellbook widget that will one day silently clear it.
+    The last group is the leftovers -- RESTORATION is a real Pool of Radiance
+    spell id that belongs to no class list -- because a spellbook widget that
+    cannot show a bit is a spellbook widget that will one day silently clear
+    it. Ids the title's name table calls something other than a spell (a combat
+    message, an unused slot) are left out: they have no name to show and no
+    class to file them under.
     """
     out = []
     seen = set()
-    for low, high, cls, level in SPELL_GROUPS:
-        ids = list(range(low, high + 1))
+    for low, high, cls, level in table.groups:
+        ids = [i for i in range(low, high + 1) if i not in table.not_a_spell]
+        if not ids:
+            continue
         seen.update(ids)
         out.append((cls, level, ids))
-    rest = [i for i in range(1, LAST_SPELL + 1) if i not in seen]
+    rest = [i for i in range(1, table.last_spell + 1)
+            if i not in seen and i not in table.not_a_spell]
     if rest:
         out.append(("no class list", 0, rest))
     return out
@@ -132,7 +141,8 @@ class SpellEditor(QWidget):
 
     changed = pyqtSignal()
 
-    def set_names(self, names: dict[int, str] | None) -> None:
+    def set_names(self, names: dict[int, str] | None,
+                  table: SpellTable | None = None) -> None:
         raise NotImplementedError
 
     def set_bytes(self, raw: bytes) -> None:
@@ -143,13 +153,20 @@ class SpellEditor(QWidget):
 
 
 class SpellbookEditor(SpellEditor):
-    """The bitmask at 0x078, as fifty-six named tick boxes."""
+    """The bitmask at 0x078, as one named tick box per spell the title has.
+
+    Fifty-five of them on Pool of Radiance, a hundred on Curse, a hundred and
+    seventeen on Silver Blades -- `SpellTable.last_spellbook_spell` is the
+    ceiling, and it is the lower of what the mask has bits for and what the
+    title has spells for.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._names: dict[int, str] | None = None
+        self._table = DEFAULT_TABLE
         self._loading = False
-        self._raw = bytes(SPELLBOOK_SIZE)
+        self._raw = bytes(self._table.spellbook_size)
         self.list = QListWidget(self)
         self.list.itemChanged.connect(self._ticked)
         layout = QVBoxLayout(self)
@@ -162,8 +179,8 @@ class SpellbookEditor(SpellEditor):
         self._loading = True
         self.list.clear()
         self._rows.clear()
-        for cls, level, ids in _ordered():
-            ids = [i for i in ids if i in IN_SPELLBOOK]
+        for cls, level, ids in _ordered(self._table):
+            ids = [i for i in ids if self._table.in_spellbook(i)]
             if not ids:
                 continue
             head = QListWidgetItem(f"— {cls} {level} —" if level
@@ -171,7 +188,8 @@ class SpellbookEditor(SpellEditor):
             head.setFlags(Qt.ItemFlag.NoItemFlags)
             self.list.addItem(head)
             for sid in ids:
-                row = QListWidgetItem(_spell_text(sid, self._names))
+                row = QListWidgetItem(
+                    _spell_text(sid, self._names, self._table))
                 row.setFlags(Qt.ItemFlag.ItemIsEnabled
                              | Qt.ItemFlag.ItemIsUserCheckable)
                 row.setCheckState(Qt.CheckState.Unchecked)
@@ -185,23 +203,34 @@ class SpellbookEditor(SpellEditor):
 
     # -- the protocol -----------------------------------------------------
 
-    def set_names(self, names: dict[int, str] | None) -> None:
+    def set_names(self, names: dict[int, str] | None,
+                  table: SpellTable | None = None) -> None:
         self._names = names
+        if table is not None:
+            self._table = table
         known = self.known()
         self._fill()
         self.set_ids(known)
 
     def set_bytes(self, raw: bytes) -> None:
+        """The mask, as many bytes of it as the caller has.
+
+        A short `raw` is not an error -- a Pool of Radiance record hands over
+        seven -- so the ids read are the ones the bytes actually cover.
+        """
         self._raw = bytes(raw)
-        self.set_ids(i for i in IN_SPELLBOOK
-                     if raw[i >> 3] & (1 << (i & 7)))
+        self.set_ids(i for i in range(1, len(self._raw) * 8)
+                     if self._table.in_spellbook(i)
+                     and self._raw[i >> 3] & (1 << (i & 7)))
 
     def to_bytes(self) -> bytes:
         """The mask with only the bits this widget shows rewritten.
 
-        Bit 0 and the bits above the last spell id belong to nothing, and are
-        left exactly as they were read: an editor rewriting the file it opened
-        must not touch a byte it does not understand.
+        Bit 0, the bits above the title's last spell and every byte past its
+        mask are left exactly as they were read: an editor rewriting the file
+        it opened must not touch a bit it does not understand. That is what
+        keeps a Curse book -- thirteen bytes read, sixteen handed over --
+        from clearing whatever the last three hold.
         """
         out = bytearray(self._raw)
         for sid, row in self._rows.items():
@@ -243,6 +272,8 @@ class MemorisedEditor(SpellEditor):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._names: dict[int, str] | None = None
+        self._table = DEFAULT_TABLE
+        self._casts = False
         self._known: set[int] = set()
         self._cap: dict[str, tuple[int, ...]] = {}
         self._raw = bytes(MEMORISED_SIZE)
@@ -274,9 +305,10 @@ class MemorisedEditor(SpellEditor):
 
     def _fill_choices(self) -> None:
         self.choice.clear()
-        for _cls, _level, ids in _ordered():
+        for _cls, _level, ids in _ordered(self._table):
             for sid in ids:
-                self.choice.addItem(_spell_text(sid, self._names), sid)
+                self.choice.addItem(
+                    _spell_text(sid, self._names, self._table), sid)
         # Any of them can end up in the list, so the list is sized for the
         # longest of them and not for the handful memorised right now.
         fit_to_names(self.list,
@@ -286,8 +318,11 @@ class MemorisedEditor(SpellEditor):
 
     # -- the protocol -----------------------------------------------------
 
-    def set_names(self, names: dict[int, str] | None) -> None:
+    def set_names(self, names: dict[int, str] | None,
+                  table: SpellTable | None = None) -> None:
         self._names = names
+        if table is not None:
+            self._table = table
         ids = self.ids()
         self._fill_choices()
         self.set_ids(ids)
@@ -327,14 +362,22 @@ class MemorisedEditor(SpellEditor):
             self._paint(self.list.item(i))
         self._describe()
 
-    def set_capacity(self, cap: dict[str, tuple[int, ...]]) -> None:
+    def set_capacity(self, cap: dict[str, tuple[int, ...]],
+                     casts: bool = False) -> None:
+        """How many spells of each level may be memorised, and whether any may.
+
+        The two are separate because they disagree: `por.spells.capacity`
+        returns nothing for a title whose progression tables have not been
+        read, and "we do not know how many" is not "none".
+        """
         self._cap = cap
+        self._casts = casts
         self._describe()
 
     # -- editing ----------------------------------------------------------
 
     def _row(self, sid: int) -> QListWidgetItem:
-        row = QListWidgetItem(_spell_text(sid, self._names))
+        row = QListWidgetItem(_spell_text(sid, self._names, self._table))
         row.setData(Qt.ItemDataRole.UserRole, sid)
         self._paint(row)
         return row
@@ -351,13 +394,17 @@ class MemorisedEditor(SpellEditor):
             return
         self.add_spell(int(sid))
 
+    def _level(self, sid: int) -> int:
+        """The spell level of an id in the open title, or 0 for no group."""
+        return (spell_group(sid, self._table) or ("", 0))[1]
+
     def add_spell(self, sid: int) -> bool:
         if self.list.count() >= MEMORISED_SIZE:
             return False
-        level = (spell_group(sid) or ("", 0))[1]
+        level = self._level(sid)
         at = self.list.count()
         for i, other in enumerate(self.ids()):
-            if (spell_group(other) or ("", 0))[1] < level:
+            if self._level(other) < level:
                 at = i
                 break
         self.list.insertItem(at, self._row(sid))
@@ -381,19 +428,34 @@ class MemorisedEditor(SpellEditor):
     # -- the note beside the list -----------------------------------------
 
     def _describe(self) -> None:
+        """The line under the list: how many are prepared against how many fit.
+
+        Three shapes, because there are three things that can be true. A
+        capacity to compare against; a caster whose title's progression tables
+        we have not read, where the count is all that can honestly be said; and
+        a character who casts nothing.
+
+        UNAPPROVED WORDING: the middle case is a new string and Donald has not
+        seen it. Before it, a Silver Blades caster was shown Pool of Radiance's
+        slot counts, which was worse; after `capacity` learned about titles it
+        would have read "This character casts no spells", which is worse still.
+        """
         cap = self._cap
         ids = self.ids()
-        counts = [sum(1 for s in ids if (spell_group(s) or ("", 0))[1] == lv)
-                  for lv in (1, 2, 3)]
-        if not cap:
-            text = NO_SPELLS if not ids else f"{len(ids)} memorized. {NO_SPELLS}"
-        else:
+        if cap:
+            width = max(len(a) for a in cap.values())
+            counts = [sum(1 for s in ids if self._level(s) == lv)
+                      for lv in range(1, width + 1)]
             parts = []
             for cls, allowed in cap.items():
                 shown = ", ".join(f"L{lv} {counts[lv - 1]}/{allowed[lv - 1]}"
-                                  for lv in (1, 2, 3))
+                                  for lv in range(1, len(allowed) + 1))
                 parts.append(f"{cls}: {shown}")
             text = "  ".join(parts)
+        elif self._casts:
+            text = f"{len(ids)} memorized."
+        else:
+            text = NO_SPELLS if not ids else f"{len(ids)} memorized. {NO_SPELLS}"
         stray = [s for s in ids if self._known and s not in self._known]
         if stray:
             text += f"  ({len(stray)} not in the spellbook)"

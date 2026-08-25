@@ -149,6 +149,11 @@ NOT_ON_THE_SHEET = (
     "level_ranger",
     "abilities_second",   # Curse's second ability block, zero in this game
     "inventory",          # editor/inventory.py edits the item slots
+    # The high nine bytes of the spellbook bitmask. Not a field of its own on
+    # the sheet: `field_spells_known` reads and writes both halves as one mask,
+    # because which of them a spell id falls in is the title's business and not
+    # the form's.
+    "spells_known_high",
 )
 
 

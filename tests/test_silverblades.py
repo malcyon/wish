@@ -24,6 +24,7 @@ from __future__ import annotations
 import functools
 import os
 import pathlib
+import re
 import statistics
 
 import pytest
@@ -630,3 +631,184 @@ def test_castable_per_level_is_blank_rather_than_pool_of_radiances_numbers():
 
     assert capacity(0x02, 9, 18, SSB) == {}
     assert capacity(0x02, 9, 18, games.POOL_OF_RADIANCE)["cleric"]
+
+
+# --- the spellbook, and how wide it is --------------------------------------
+# Issue #81. Everything here is read out of Silver Blades' own code: the width
+# of the bitmask, and the grant tables `por/spells.py` claims its spell groups
+# come from. Curse's equivalents are in `tests/test_curse.py`, and the two are
+# deliberately the same shape.
+
+#: The grant loop, Silver Blades' spelling of it. `LDX record / ... /
+#: LDY levels,X / LDX offsets,Y / LDA masks,Y / ORA $7C78,X / STA $7C78,X /
+#: DEY / BPL / RTS`. **The one difference from Curse** is the indexing: Curse
+#: writes `$7C00,X` and its offsets table holds record offsets 0x078-0x087,
+#: where Silver Blades writes `$7C78,X` and holds byte numbers 0-15.
+_GRANT_LOOP = re.compile(
+    rb"\xAE(.)\x7C(.{2,24}?)\xBC(..)\xBE(..)\xB9(..)\x1D\x78\x7C\x9D\x78\x7C"
+    rb"\x88\x10\xF1\x60", re.DOTALL)
+
+#: Where `GEN` runs, which is not where it loads. The file declares `$4000` and
+#: the grant routines reference `$0F16` and jump to `$0EFC`, so this part of it
+#: is relocated low. 0x0800 is Curse's overlay base as well -- `tests/
+#: test_curse.py::_grant_table` asserts it there -- and it is what makes the
+#: ranger table read as the four druid spells the shipped PAINE holds. Any
+#: other base gives byte numbers outside 0-15 or a spell set nobody has.
+_GEN_BASE = 0x0800
+
+
+def _gen() -> bytes:
+    """Silver Blades' `GEN` payload, or skip."""
+    disk = _game_disk_with(b"GEN")
+    return split_load_address(D64.open(str(disk)).read_file(b"GEN"))[1]
+
+
+def _grant_table(payload: bytes, record_offset: int,
+                 rows) -> dict[int, set[int]]:
+    """(class level -> set of spell ids granted by then) for one grant routine.
+
+    `rows` is which level rows the routine can actually reach, because each one
+    clamps its index before indexing: the ranger is gated at `CPX #$08`, the
+    magic-user is floored at 5 and capped at 9, and the cleric is capped at 10
+    unless it passes the Wisdom check. Reading a row the game never reads gives
+    a byte number outside the mask, which is what the assertion below catches.
+    """
+    for match in _GRANT_LOOP.finditer(payload):
+        if match.group(1)[0] != record_offset:
+            continue
+        levels, offsets, masks = (
+            g[0] | g[1] << 8 for g in match.group(3, 4, 5))
+        out: dict[int, set[int]] = {}
+        for level in rows:
+            top = payload[levels - _GEN_BASE + level]
+            granted = set()
+            for y in range(top + 1):
+                byte = payload[offsets - _GEN_BASE + y]
+                mask = payload[masks - _GEN_BASE + y]
+                assert byte <= 0x0F, f"byte {byte} is outside the 16-byte mask"
+                granted |= {byte * 8 + bit
+                            for bit in range(8) if mask & (1 << bit)}
+            out[level] = granted
+        return out
+    pytest.skip("GEN carries no grant loop for that class")
+
+
+def test_silver_blades_cleric_groups_are_read_out_of_gens_own_grant_table():
+    """The claim `por/spells.py` makes about its cleric groups, mechanically.
+
+    It carries an AD&D check of its own: a new spell level appears at 1, 3, 5,
+    7 and 9, which is the 1st edition cleric progression exactly, and then
+    `HEAL` and `HARM` at 11 -- sixth-level clerical spells, granted at the
+    level and behind the Wisdom the rulebook gives them.
+    """
+    from por import spells
+
+    grants = _grant_table(_gen(), 0xCA, range(1, 12))     # 0x0CA, cleric
+    new = {level: grants[level] - grants.get(level - 1, set())
+           for level in sorted(grants) if grants[level] != grants.get(level - 1)}
+    assert sorted(new) == [1, 3, 5, 7, 9, 11], sorted(new)
+    assert new[11] == {36, 56}                       # HEAL and HARM
+
+    expected: dict[int, set[int]] = {}
+    for low, high, cls, level in spells.SECRET_OF_THE_SILVER_BLADES.groups:
+        if cls == "cleric":
+            expected.setdefault(level, set()).update(range(low, high + 1))
+    for spell_level, (_game_level, ids) in enumerate(sorted(new.items()), 1):
+        assert ids == expected[spell_level], (spell_level, sorted(ids))
+
+
+def test_the_cleric_grant_is_gated_on_wisdom_seventeen():
+    """The other half of the level-11 claim, and it is four instructions.
+
+    `LDA $7C67 / CMP #$11 / BCS` -- record 0x067, which is the *second* ability
+    array's Wisdom, zero throughout Pool of Radiance and live here. A cleric
+    below 17 is clamped back to the level-10 row, so HEAL and HARM are the only
+    spells in the table nobody gets by levelling alone.
+    """
+    payload = _gen()
+    match = _GRANT_LOOP.search(payload[payload.index(b"\xAE\xCA\x7C"):])
+    assert match is not None, "no cleric grant loop"
+    assert b"\xAD\x67\x7C\xC9\x11" in match.group(2), match.group(2).hex(" ")
+
+
+def test_the_ranger_grant_is_the_shipped_rangers_spellbook():
+    """A ranger gets druid spells at 8 and magic-user spells at 9. PAINE is 8.
+
+    This is the corroboration the extraction needs: the table is read out of
+    `GEN` and the character is read off the save, and neither knows about the
+    other.
+    """
+    grants = _grant_table(_gen(), 0xD0, range(8, 10))     # 0x0D0, ranger
+    assert grants[8] == {77, 78, 79, 80}
+    assert grants[9] - grants[8] == set(range(9, 22))
+
+    sg0, _ = _party()
+    rangers = [s.record for s in sg0.characters
+               if s.record.get("class_bits") == 0x80]
+    assert rangers, "the shipped party should include a ranger"
+    for rec in rangers:
+        mask = rec.slice(0x078, 16)
+        ids = {i for i in range(1, 118) if mask[i >> 3] & (1 << (i & 7))}
+        assert ids == grants[rec.get("level_ranger")], rec.name
+
+
+def test_the_magic_user_grant_is_morgaines_spellbook():
+    """The magic-user table is a learn-list rather than a whole spell level,
+    and the shipped MORGAINE is its ninth row exactly, id for id."""
+    grants = _grant_table(_gen(), 0xC9, range(5, 10))     # 0x0C9, magic-user
+    sg0, _ = _party()
+    mages = [s.record for s in sg0.characters
+             if s.record.get("class_bits") == 0x01]
+    assert mages, "the shipped party should include a magic-user"
+    for rec in mages:
+        mask = rec.slice(0x078, 16)
+        ids = {i for i in range(1, 118) if mask[i >> 3] & (1 << (i & 7))}
+        assert ids == grants[rec.get("level_magic_user")], rec.name
+
+
+def test_the_spellbook_mask_is_sixteen_bytes_and_gen_says_so():
+    """#81's measurement, and the one that is not shared with Curse.
+
+    `GEN` clears sixteen bytes at `$7C78`: LDX #$0F / LDA #$00 / STA $7C78,X /
+    DEX / BPL. Pool of Radiance's is seven, so this is the engine growing and
+    not a reading of the same bytes.
+    """
+    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+
+    assert TABLE.spellbook_size == 16
+    assert b"\xA2\x0F\xA9\x00\x9D\x78\x7C\xCA\x10\xFA" in _gen(), (
+        "GEN no longer clears sixteen bytes at $7C78")
+
+
+def test_camp_reads_the_mask_as_far_as_spell_one_hundred_and_seventeen():
+    """The second witness, and the one that says which *ids* are in the mask.
+
+    `CAMP` builds the list of spells a character may memorise by walking spell
+    ids from 1 with INY / CPY #$76 / BCC -- so it stops after 117 -- and reads
+    the mask as TYA / LSR x3 / TAX / LDA $7C78,X. Id 117 puts X at 14, so the
+    game itself reads 0x078-0x086.
+    """
+    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+
+    disk = _game_disk_with(b"CAMP")
+    camp = split_load_address(D64.open(str(disk)).read_file(b"CAMP"))[1]
+    loop = re.search(rb"\x98\x4A\x4A\x4A\xAA\xBD\x78\x7C.{0,40}?"
+                     rb"\xC8\xC0(.)\x90", camp, re.DOTALL)
+    assert loop is not None, "CAMP no longer walks the spellbook"
+    last = loop.group(1)[0] - 1
+    assert last == TABLE.last_spell == 117, last
+    assert last >> 3 == 14, "the ceiling no longer reaches byte 14"
+
+
+def test_a_shipped_casters_spellbook_is_read_whole():
+    """MORGAINE knows 29 spells. Seven bytes showed 24, which is issue #81."""
+    from por.spells import POOL_OF_RADIANCE, spells_known
+    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+
+    sg0, _ = _party()
+    by_name = {s.record.name.strip(): s.record for s in sg0.characters}
+    morgaine = by_name["MORGAINE"]
+    ids = spells_known(morgaine.to_bytes(), TABLE)
+    assert len(ids) == 29
+    assert {82, 85, 88, 94} <= set(ids)
+    assert len(spells_known(morgaine.to_bytes(), POOL_OF_RADIANCE)) == 24

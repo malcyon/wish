@@ -438,6 +438,14 @@ READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
     | {"name": "read as neutral name",
        "spells_known": "the 56-bit mask unpacked to neutral spells_known",
+       "spells_known_high": "dropped: the spellbook mask's high nine bytes, "
+                            "0x07F-0x087. Zero throughout Pool of Radiance, "
+                            "and this reader still asks por.spells for Pool "
+                            "of Radiance's seven-byte width whatever title the "
+                            "record is from -- so a Curse or Silver Blades "
+                            "book loses everything above id 55 on the way out. "
+                            "Issue #85; the widths are "
+                            "por.spells.SpellTable.spellbook_size",
        "spells_memorised": "zeroes stripped into neutral spells_memorised",
        "spells_castable": "nibbles unpacked into neutral spells_castable",
        "item_effects": "zeroes stripped into neutral innate_effects",

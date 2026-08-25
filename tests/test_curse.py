@@ -793,13 +793,14 @@ def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
         assert want - ids <= {36, 100}, (spell_level, sorted(want - ids))
 
 
-def test_curses_magic_user_grant_writes_no_further_than_0x07e():
-    """What is actually measured about Curse's spellbook width, and no more.
+def test_curses_grant_tables_write_as_far_as_0x081():
+    """Where Curse's own grant tables reach, which is one of two measurements.
 
-    Silver Blades' width is settled -- `GEN` clears sixteen bytes at `$7C78`.
-    Curse's `GEN` has no such loop, so the only measurement available is where
-    its own grant tables write: `0x07E` for the magic-user, `0x081` for the
-    cleric. Ten bytes, not seven and not proven to be sixteen.
+    Silver Blades settles its width in `GEN`, which clears sixteen bytes at
+    `$7C78`. Curse's `GEN` has no such loop -- that is the one place the answer
+    was expected and it is not there -- so this is the lower bound its writers
+    give: `0x07E` for the magic-user and `0x081` for the cleric. The upper one
+    comes from `CAMP`, in the test below.
     """
     payload = _curse_file(b"GEN")
     assert b"\xA2\x0F\xA9\x00\x9D\x78\x7C\xCA\x10\xFA" not in payload, (
@@ -817,3 +818,45 @@ def test_curses_magic_user_grant_writes_no_further_than_0x07e():
             reach = max(reach,
                         max(payload[offsets - base + y] for y in range(top + 1)))
     assert reach == 0x081, f"the grant tables reach 0x{reach:03X}"
+
+
+def test_camp_reads_curses_mask_as_far_as_spell_one_hundred():
+    """Curse's spellbook is **thirteen** bytes, and `CAMP` is what says so.
+
+    The memorise screen builds the list of spells a character may prepare by
+    walking spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id
+    100, and reads the mask as `TYA / LSR / LSR / LSR / TAX / LDA $7C78,X`. Id
+    100 puts X at 12, so the game itself reads `0x078`-`0x084`. Thirteen bytes,
+    not seven, and not ten -- and whether `0x085`-`0x087` are mask as well is
+    still UNKNOWN in Curse, which is why `spellbook_size` says 13 and not 16.
+
+    **The near-miss that is not evidence**, kept here because it is the thing a
+    reader will find first: `GEN $2C2F` copies 32 bytes out of `$7C78`. Pool of
+    Radiance's `GEN $296B` copies the identical 32 out of `$6B78`, where the
+    mask is seven bytes. A copy wider than the field says nothing about the
+    field, so both are asserted together.
+    """
+    from por.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
+
+    assert TABLE.spellbook_size == 13
+
+    camp = _curse_file(b"CAMP")
+    loop = re.search(rb"\x98\x4A\x4A\x4A\xAA\xBD\x78\x7C.{0,40}?"
+                     rb"\xC8\xC0(.)\x90", camp, re.DOTALL)
+    assert loop is not None, "CAMP no longer walks the spellbook"
+    last = loop.group(1)[0] - 1
+    assert last == TABLE.last_spell == 100, last
+    assert last >> 3 == 12, "the ceiling no longer reaches byte 12"
+
+    # The 32-byte copy, in both games, proving nothing in either.
+    assert b"\xA2\x1F\xBD\x78\x7C" in _curse_file(b"GEN")
+    assert b"\xA2\x1F\xBD\x78\x6B" in gamedata.game_file("GEN")
+
+
+def test_curses_druid_grant_writes_into_the_eleventh_mask_byte():
+    """`GEN $2D4A` is the sharpest single write: it ORs `$E0` into `$7C81` and
+    `$01` into `$7C82`, which is spell ids 77-80, the four first-level druid
+    spells. `0x082` is byte ten, so the mask is at least eleven bytes on that
+    line alone."""
+    assert (b"\xAD\x81\x7C\x09\xE0\x8D\x81\x7C"
+            b"\xAD\x82\x7C\x09\x01\x8D\x82\x7C") in _curse_file(b"GEN")

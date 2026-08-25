@@ -42,8 +42,9 @@ from por.items import (
     ItemType,
 )
 from por.savegame import SAVE0_LOAD_ADDRESS
-from por.spells import LAST_SPELL
+from por.spells import POOL_OF_RADIANCE, SpellTable
 from por.spells import describe as describe_spell
+from por.spells import for_game as spell_table
 
 EMPTY = bytes(ITEM_SIZE)
 
@@ -428,11 +429,15 @@ class ItemTraitsModel(QAbstractTableModel):
         self.rows: list[tuple[str, str]] = []
         self.types: dict[int, ItemType] = {}
         self.spell_names: dict[int, str] = {}
+        self.spells: SpellTable = spell_table(None)
 
     def set_tables(self, types: dict[int, ItemType],
-                   spell_names: dict[int, str]) -> None:
+                   spell_names: dict[int, str],
+                   spells: SpellTable | None = None) -> None:
         self.types = types or {}
         self.spell_names = spell_names or {}
+        if spells is not None:
+            self.spells = spells
 
     def set_item(self, item: Item | None) -> None:
         self.beginResetModel()
@@ -468,13 +473,23 @@ class ItemTraitsModel(QAbstractTableModel):
     def _spell(self, sid: int) -> str:
         """A real spell by name; an item-only effect by number.
 
-        Past RESTORATION the ids continue as an item-only run, and `SPELLN00`
-        has combat messages at those indices rather than effect names. Naming
-        POTION OF HEALING's 62 "IS POISONED" would be worse than a number.
+        Past the title's last spell the ids continue as an item-only run, and
+        the name table has combat messages at those indices rather than effect
+        names. Naming POTION OF HEALING's 62 "IS POISONED" would be worse than
+        a number -- and where that starts is the title's, 56 on Pool of
+        Radiance and 117 on Silver Blades.
+
+        UNAPPROVED WORDING for the second line: the Pool of Radiance one is
+        Donald's and is kept exactly, because RESTORATION is the name of its
+        last spell and a number is worse. The later titles have no such
+        landmark, so they get the number.
         """
-        if sid <= LAST_SPELL:
-            return describe_spell(sid, self.spell_names)
-        return f"effect {sid} — the item-only range past RESTORATION"
+        if sid <= self.spells.last_spell:
+            return describe_spell(sid, self.spell_names, self.spells)
+        if self.spells.last_spell == POOL_OF_RADIANCE.last_spell:
+            return f"effect {sid} — the item-only range past RESTORATION"
+        return (f"effect {sid} — the item-only range past spell "
+                f"{self.spells.last_spell}")
 
     def _describe(self, item: Item) -> list[tuple[str, str]]:
         kind = self.types.get(item.type_index)

@@ -14,6 +14,7 @@ optional `game`.
 | order | 128 low bytes, 128 high bytes, then the strings | the strings, then 170 high bytes, then 170 low bytes | the same as Curse |
 | index of spell *n* | *n* | *n - 1* | *n - 1* |
 | spells run to | 56 | 100 | 117 |
+| spellbook mask | 7 bytes | 13 | 16 |
 
 Neither file's PRG header helps: `SPELLN00` declares `$2710`, which is a
 scratch buffer. Curse's base needs no fitting at all -- the pointer for index 0
@@ -87,6 +88,10 @@ class SpellTable:
     #: Ids inside the spell range that are not spells: unused slots, and the
     #: handful of combat messages Curse mixes in among its new spells.
     not_a_spell: tuple[int, ...] = ()
+    #: How many bytes of the spellbook bitmask at record `0x078` this title
+    #: uses. Measured per title -- the evidence is the comment above
+    #: `POOL_OF_RADIANCE` below.
+    spellbook_size: int = 7
 
     @property
     def text_end(self) -> int | None:
@@ -94,6 +99,22 @@ class SpellTable:
         after = [o for o in (self.low_offset, self.high_offset)
                  if o >= self.text_offset]
         return min(after) if after else None
+
+    @property
+    def last_spellbook_spell(self) -> int:
+        """The highest id the mask has a bit for *and* the title has a spell for.
+
+        Two ceilings, and the lower wins. Pool of Radiance's mask stops one id
+        short of its own spell list -- seven bytes is 56 bits, ids 0-55, and id
+        56 is RESTORATION, which the game can memorise and cannot record
+        knowing. The two later titles have bits to spare instead.
+        """
+        return min(self.spellbook_size * 8 - 1, self.last_spell)
+
+    def in_spellbook(self, spell_id: int) -> bool:
+        """Can this id be in a spellbook at all? Bit 0 is not a spell."""
+        return (1 <= spell_id <= self.last_spellbook_spell
+                and spell_id not in self.not_a_spell)
 
 
 #: The table runs cleric level 1, magic-user level 1, cleric level 2, and so
@@ -139,16 +160,26 @@ _NOT_A_SPELL_CURSE = (57, 59, 60, 61, 62, 63, 64, 65, 95, 96, 97, 98, 99)
 #:
 #: * the cleric's, entered on record `0x0CA`, gives 1-8, 22-28, 37-44,
 #:   {58, 66-70}, 71-76 at levels 1, 3, 5, 7, 9 -- AD&D's cleric progression
-#:   exactly -- and {36, 56} at level 11 behind a wisdom-17 check;
+#:   exactly -- and {36, 56} at level 11 behind a wisdom-17 check
+#:   (`LDA $7C67 / CMP #$11`, the *second* ability array's wisdom, and a
+#:   character below it is clamped back to the level-10 row);
 #: * the ranger's, entered on record `0x0D0` and gated at `CPX #$08`, gives
 #:   77-80 at level 8 and 9-21 at level 9. A ranger getting druid spells at 8
 #:   and magic-user spells at 9 is AD&D 1st edition verbatim, and the shipped
 #:   PAINE holds precisely those four druid bits and nothing else;
 #: * the magic-user's, entered on record `0x0C9`, is a learn-list rather than a
-#:   whole level, because magic-users learn by roll.
+#:   whole level, because magic-users learn by roll. Its level-9 row is the
+#:   shipped MORGAINE's spellbook exactly, id for id.
 #:
-#: The magic-user levels below are therefore the weaker claim -- PROBABLE, read
-#: off the names against AD&D as Curse's were.
+#: All three are read mechanically out of `GEN` by
+#: `tests/test_silverblades.py::_grant_table`, which is Curse's extraction with
+#: the one difference that Silver Blades indexes `$7C78,X` by *byte number*
+#: where Curse indexes `$7C00,X` by record offset. **CONFIRMED**: the cleric
+#: and ranger rows are the game's own table, not a reading of the names.
+#:
+#: The magic-user *levels* below are still the weaker claim -- PROBABLE, read
+#: off the names against AD&D as Curse's were. The grant list says which ids a
+#: magic-user may learn; it does not say which AD&D spell level each is.
 _GROUPS_SILVER_BLADES = (
     (1, 8, "cleric", 1),
     (9, 21, "magic-user", 1),
@@ -165,7 +196,14 @@ _GROUPS_SILVER_BLADES = (
     (81, 89, "magic-user", 4),
     (90, 90, "druid", 2),
     (91, 94, "magic-user", 5),
-    (96, 96, "druid", 1),
+    # 90 BARKSKIN, 96 CHARM PERSON OR MAMMAL and 98 CURE LIGHT WOUNDS are one
+    # group, and the ranger grant is why: it hands out all three at the same
+    # level (12), where 77-80 arrive at 8. All three are second-level druid
+    # spells in AD&D 1st edition, which is what a ranger gets at 12. 96 was
+    # read off its name as druid 1 and is corrected here; 98 had no group at
+    # all, so `spell_group` called a spell the game itself grants no spell.
+    (96, 96, "druid", 2),
+    (98, 98, "druid", 2),
     (109, 114, "magic-user", 6),
     (115, 117, "magic-user", 7),
 )
@@ -180,6 +218,39 @@ _GROUPS_SILVER_BLADES = (
 _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
                               101, 102, 103, 104, 105, 106, 107, 108)
 
+#: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
+#: in each game's own code, not carried across from another one.** The one
+#: thing that looks like proof and is not: Curse's `GEN $2C2F` copies 32 bytes
+#: out of `$7C78` -- and Pool of Radiance's `GEN $296B` copies the identical 32
+#: out of `$6B78`, where the mask is seven. A copy that is wider than the field
+#: says nothing about the field.
+#:
+#: What each title's own code does with the mask:
+#:
+#: * **Pool of Radiance, 7 -- CONFIRMED.** Seven bytes is 56 bits and its spell
+#:   list runs to 56, of which id 56 (`RESTORATION`) has no bit. The QUANTUM
+#:   LEAPER trainer's LEARN ALL SPELLS writes `$FE` and six `$FF`, which is the
+#:   same claim in somebody else's hand, and no character in any Pool of
+#:   Radiance save sets `0x07D`, `0x07E` or `0x07F`.
+#: * **Curse of the Azure Bonds, 13 -- CONFIRMED.** `CAMP $5225` builds the
+#:   list of spells a character may memorise by walking spell ids from 1 with
+#:   `INY / CPY #$65 / BCC`, so it stops after id 100, and it reads the mask as
+#:   `TYA / LSR / LSR / LSR / TAX / LDA $7C78,X`. Id 100 puts X at 12, so the
+#:   game itself reads `0x078`-`0x084`. `GEN $2D4A` writes there too, ORing
+#:   `$E0` into `$7C81` and `$01` into `$7C82` to grant the four first-level
+#:   druid spells 77-80. Curse's `GEN` has no clear loop, so **whether bytes
+#:   `0x085`-`0x087` are also the mask is UNKNOWN**; thirteen is what the game
+#:   reads, and no more is claimed.
+#: * **Secret of the Silver Blades, 16 -- CONFIRMED**, and by three
+#:   independent sightings. `GEN $41DC` clears sixteen bytes --
+#:   `LDX #$0F / LDA #$00 / STA $7C78,X / DEX / BPL`. `GEN $50C9` walks the
+#:   same sixteen. `CAMP $6071` is Curse's memorise loop with the ceiling moved
+#:   to `CPY #$76`, id 117, which reads as far as `0x086`.
+#:
+#: The pattern is ceil(last spell / 8) rounded up to what the title cleared:
+#: Curse needs 13 for its 100 and Silver Blades 15 for its 117, and Silver
+#: Blades zeroes 16.
+
 POOL_OF_RADIANCE = SpellTable(
     key="pool-of-radiance",
     title="Pool of Radiance",
@@ -192,6 +263,7 @@ POOL_OF_RADIANCE = SpellTable(
     first_id=0,
     last_spell=56,
     groups=_GROUPS_POOL,
+    spellbook_size=7,
 )
 
 CURSE_OF_THE_AZURE_BONDS = SpellTable(
@@ -207,6 +279,7 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     last_spell=100,
     groups=_GROUPS_CURSE,
     not_a_spell=_NOT_A_SPELL_CURSE,
+    spellbook_size=13,
 )
 
 SECRET_OF_THE_SILVER_BLADES = SpellTable(
@@ -222,6 +295,7 @@ SECRET_OF_THE_SILVER_BLADES = SpellTable(
     last_spell=117,
     groups=_GROUPS_SILVER_BLADES,
     not_a_spell=_NOT_A_SPELL_SILVER_BLADES,
+    spellbook_size=16,
 )
 
 TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
@@ -309,41 +383,23 @@ def describe(spell_id: int, names: dict[int, str] | None = None,
 
 
 # --- the spellbook -----------------------------------------------------------
-# Record offsets 0x078-0x07E are a bitmask of the spells a character *knows*,
-# indexed by spell id: bit (id & 7) of byte 0x078 + (id >> 3).
+# The bitmask at record 0x078 of the spells a character *knows*, indexed by
+# spell id: bit (id & 7) of byte 0x078 + (id >> 3). How many bytes long it is
+# is the title's business and is `SpellTable.spellbook_size`; the constants
+# here are Pool of Radiance's, for the callers that predate the second title.
 #
 # Confirmed on every caster we hold. Clerics know every spell of every level
 # they can cast -- eight at level 1, twenty-four at level 6 -- and magic-users
 # know a subset, which is exactly how AD&D 1st edition works. Every id set for
 # a cleric falls in a cleric group and every id set for a magic-user in a
 # magic-user group, with no crossover anywhere.
-SPELLBOOK_OFFSET = 0x078
-SPELLBOOK_SIZE = 7
-
+#
 # Bit 0 of 0x078 is deliberately unused -- spell id 0 does not exist. The
 # QUANTUM LEAPER trainer's LEARN ALL SPELLS writes $FE to 0x078 and $FF to the
 # other six, which is that fact in someone else's hand.
-#
-# Seven bytes is *this game's* width, and it is 56 bits, which is exactly Pool
-# of Radiance's spell count. Silver Blades and Death Knights casters set
-# 0x07D-0x07F, four of them holding 0x07F = 0x04, so on the later engine the
-# mask is at least eight bytes -- see work/reports/goldbox-inventory.md.
-#
-# **Silver Blades is settled: sixteen.** `GEN` clears sixteen bytes at `$7C78`
-# -- `LDX #$0F / LDA #$00 / STA $7C78,X / DEX / BPL` -- and its spell-grant
-# tables index the mask as far as byte 13 (`0x085`) for a high-level ranger.
-# The shipped MORGAINE reaches byte 11, id 94.
-#
-# **Curse is the open case and it is not settled here.** Its spell list runs to
-# 100, which would need thirteen bytes. Curse's `GEN` has no such clear loop --
-# it is the one place the answer was expected and it is not there -- so what is
-# actually measured is where its own grant tables write: the cleric's reaches
-# `0x081` and the magic-user's `0x07E`, so **at least ten bytes**. The shipped
-# party never exceeds seven, its highest bit being id 47, FIREBALL, on both
-# mages. Sixteen is likely by engine sharing and is not proven.
-# `por/layout.py` declares the field 7 wide because that is Pool of Radiance's
-# width and what `spellbook_bytes` writes.
-LAST_SPELLBOOK_SPELL = SPELLBOOK_SIZE * 8 - 1        # 55
+SPELLBOOK_OFFSET = 0x078
+SPELLBOOK_SIZE = POOL_OF_RADIANCE.spellbook_size                      # 7
+LAST_SPELLBOOK_SPELL = POOL_OF_RADIANCE.last_spellbook_spell          # 55
 
 # Spells castable per level, before Wisdom bonuses, from the game's own tables:
 # Pool of Radiance `GEN` $222C (cleric) and $224C (magic-user), eight rows of
@@ -378,21 +434,34 @@ _SLOTS = {
 }
 
 
-def spells_known(record_bytes: bytes) -> list[int]:
-    """Every spell id the bitmask at 0x078 has set. Ids 1-55."""
-    return [i for i in range(1, LAST_SPELLBOOK_SPELL + 1)
+def spells_known(record_bytes: bytes, game=None) -> list[int]:
+    """Every spell id the bitmask at 0x078 has set, for one title.
+
+    How far this reads is the title's mask width: ids 1-55 on Pool of Radiance,
+    1-100 on Curse, 1-117 on Silver Blades. Reading a Silver Blades caster with
+    no `game` costs five of MORGAINE's twenty-nine spells, which is issue #81.
+
+    Ids the title's name table calls something other than a spell -- a combat
+    message, an unused slot -- are still reported. A bit that is set is set,
+    and hiding it would lose it on a rewrite.
+    """
+    table = for_game(game)
+    return [i for i in range(1, table.last_spellbook_spell + 1)
             if record_bytes[SPELLBOOK_OFFSET + (i >> 3)] & (1 << (i & 7))]
 
 
-def spellbook_bytes(ids) -> bytes:
-    """The 7-byte bitmask for a set of spell ids."""
-    out = bytearray(SPELLBOOK_SIZE)
+def spellbook_bytes(ids, game=None) -> bytes:
+    """The bitmask for a set of spell ids, as wide as the title's mask."""
+    table = for_game(game)
+    out = bytearray(table.spellbook_size)
     for i in ids:
         i = int(i)
-        if not 1 <= i <= LAST_SPELLBOOK_SPELL:
+        if not 1 <= i <= table.last_spellbook_spell:
             raise ValueError(
-                f"{i} cannot be in a spellbook (1-{LAST_SPELLBOOK_SPELL}); "
-                f"56 is RESTORATION, which is a scroll spell")
+                f"{i} cannot be in a {table.title} spellbook "
+                f"(1-{table.last_spellbook_spell})"
+                + ("; 56 is RESTORATION, which is a scroll spell"
+                   if table is POOL_OF_RADIANCE else ""))
         out[i >> 3] |= 1 << (i & 7)
     return bytes(out)
 

@@ -429,7 +429,9 @@ def test_an_untouched_spell_field_is_written_back_byte_for_byte(editor):
     editor.ui.roster.selectRow(2)
     book, memorised = editor._spell_widgets()
     record = editor.party.member(2).record
-    assert book.to_bytes() == record.get_raw("spells_known")
+    # The widget holds the whole mask, both declared fields of it, because how
+    # far into it a title reaches is the title's business.
+    assert book.to_bytes() == editor._spellbook_raw(record)
     assert memorised.to_bytes() == record.get_raw("spells_memorised")
 
 
@@ -1540,3 +1542,166 @@ def test_the_sheet_keeps_its_shape_across_the_roster(editor):
         for i, s in enumerate(shapes) if s != first]
     assert "box_spells" in first[0]
     assert "box_thief_skills" in first[0]
+
+
+# --- the later titles' spells -----------------------------------------------
+# Issues #80 and #81. The editor read Pool of Radiance's `SPELLN00` whatever
+# save was open and Pool of Radiance's seven-byte mask whatever title it
+# belonged to, so on Curse and Silver Blades the Spells tab showed numbers, and
+# on Silver Blades it showed two thirds of the numbers there were.
+#
+# The disks are the player's own, found the way the rest of the suite finds
+# them, and every test here skips when they are absent.
+
+def _copy_disks(source, pattern, into):
+    import shutil
+    for disk in sorted(source.glob(pattern)):
+        shutil.copy(disk, into / disk.name)
+
+
+def _title_save(where, pattern, game, into):
+    """A throwaway copy of a whole save disk of one title, or skip.
+
+    Copied because a test must never write to the player's disks, and the
+    editor is a program that writes.
+    """
+    from por.d64 import D64
+    if where is None:
+        pytest.skip(f"needs the {game.title} disks")
+    _copy_disks(where, pattern, into)
+    for path in sorted(into.glob(pattern)):
+        try:
+            disk = D64.open(path)
+            entry = disk.find(game.save_file)
+            if entry is not None and game.matches_payload(disk.read_file(entry)):
+                return path
+        except Exception:
+            continue
+    pytest.skip(f"no {game.title} disk here carries a whole save")
+
+
+def _curse_window(app, tmp_path):
+    from gamedata import curse_dir
+
+    from editor.window import EditorWindow
+    from por import games
+    save = _title_save(curse_dir(), "CURSE*.[dD]64",
+                       games.CURSE_OF_THE_AZURE_BONDS, tmp_path)
+    return EditorWindow(str(save))
+
+
+def _silver_blades_window(app, tmp_path):
+    from editor.window import EditorWindow
+    from por import games
+    ssb_dir = pytest.importorskip("tests.test_silverblades").ssb_dir
+    save = _title_save(ssb_dir(), "SILVER*.[dD]64",
+                       games.SECRET_OF_THE_SILVER_BLADES, tmp_path)
+    return EditorWindow(str(save))
+
+
+def _rows(book):
+    """Every tick box in a spellbook widget, by spell id."""
+    return {sid: row.text() for sid, row in book._rows.items()}
+
+
+def test_a_curse_spellbook_names_its_spells_rather_than_numbering_them(
+        app, tmp_path):
+    """#80. `SHOCKING GRASP` is id 20 in both titles, so the number is the same
+    and only the table it is looked up in differs.
+
+    Curse ships no `SPELLN00`; its names are in `COMBAT2` at `$E000`. Asking
+    for the wrong file raised, the exception was logged and swallowed, and an
+    empty name table looks exactly like a missing game disk.
+    """
+    from por import games
+    window = _curse_window(app, tmp_path)
+    assert window.party.game is games.CURSE_OF_THE_AZURE_BONDS
+    assert window.spell_names, "no spell names off a Curse disk"
+
+    book, _ = window._spell_widgets()
+    rows = _rows(book)
+    assert rows[20].startswith("SHOCKING GRASP")
+    assert not [t for t in rows.values() if t.startswith("spell ")], (
+        [t for t in rows.values() if t.startswith("spell ")][:5])
+
+
+def test_a_silver_blades_spellbook_names_its_spells_too(app, tmp_path):
+    """#80, third title. Silver Blades moves two of the fifty-six -- 36 is
+    `HEAL` where Pool of Radiance has `ANIMATE DEAD` -- so a spellbook read
+    against the wrong table would be wrong even where it was not blank."""
+    from por import games
+    window = _silver_blades_window(app, tmp_path)
+    assert window.party.game is games.SECRET_OF_THE_SILVER_BLADES
+    rows = _rows(window._spell_widgets()[0])
+    assert rows[20].startswith("SHOCKING GRASP")
+    assert rows[36].startswith("HEAL")
+    assert not [t for t in rows.values() if t.startswith("spell ")]
+
+
+def test_the_editor_and_the_automapper_name_the_same_spells(app, tmp_path):
+    """The disagreement was the clearest evidence of #80 and is the test.
+
+    `automap/window.py::_names_for_spells` calls
+    `por.spells.load_spell_names(path, game)` -- with the title. The editor
+    called it without, so the two windows named the same character's spells
+    differently: the map said `STINKING CLOUD` and the sheet said `spell 34`.
+    """
+    from por.spells import load_spell_names
+    for build in (_curse_window, _silver_blades_window):
+        window = build(app, tmp_path)
+        disk = window._find_game_disk()
+        automapper = load_spell_names(disk, window.party.game)
+        assert automapper, "the automapper's own call found no names"
+        assert window.spell_names == automapper
+        # And what the missing title cost, in the same breath: neither title
+        # ships `SPELLN00`, so the untitled call raises, the window logged the
+        # exception and carried on, and the panel numbered every spell.
+        with pytest.raises(Exception, match="SPELLN00"):
+            load_spell_names(disk)
+
+
+def test_a_silver_blades_casters_spellbook_reaches_past_spell_fifty_five(
+        app, tmp_path):
+    """#81. MORGAINE knows twenty-nine spells and the sheet showed twenty-four.
+
+    Seven bytes is 56 bits, which is Pool of Radiance's spell count and nothing
+    else's. Silver Blades' mask is sixteen bytes -- `GEN $41DC` clears exactly
+    that many -- so `CONFUSION`, `FIRE SHIELD`, `MINOR GLOBE OF INVULNERABLITY`
+    and `HOLD MONSTERS`, ids 82, 85, 88 and 94, had no tick box to appear in.
+    """
+    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+    from por.spells import spells_known
+
+    window = _silver_blades_window(app, tmp_path)
+    row = next(r for r in range(window.model.rowCount())
+               if window.party.member(r).record.name.strip() == "MORGAINE")
+    window.ui.roster.selectRow(row)
+    record = window.party.member(row).record
+
+    book, _ = window._spell_widgets()
+    assert book.known() == spells_known(record.to_bytes(), TABLE)
+    assert len(book.known()) == 29
+    assert 94 in book.known()
+    assert _rows(book)[94].startswith("HOLD MONSTERS")
+
+
+def test_a_silver_blades_spellbook_survives_an_edit_of_its_low_bits(
+        app, tmp_path):
+    """Ticking a first-level spell must not clear the fourth-level ones.
+
+    The mask spans two declared fields now, and this is the failure that would
+    follow from writing only one of them.
+    """
+    window = _silver_blades_window(app, tmp_path)
+    row = next(r for r in range(window.model.rowCount())
+               if window.party.member(r).record.name.strip() == "MORGAINE")
+    window.ui.roster.selectRow(row)
+    record = window.party.member(row).record
+    before = window._spellbook_raw(record)
+
+    book, _ = window._spell_widgets()
+    book.set_ids(sorted(set(book.known()) | {13}))
+    window._flush()
+    after = window._spellbook_raw(record)
+    assert after[10:] == before[10:], "the high bytes moved"
+    assert after[1] == before[1] | (1 << 5)

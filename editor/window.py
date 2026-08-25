@@ -36,6 +36,7 @@ from por.items import load_item_names, load_item_templates, load_item_types
 from por.layout import FIELDS_BY_NAME
 from por.savegame import store_save
 from por.spells import capacity, load_spell_names
+from por.spells import for_game as spell_table
 
 from . import changes, files, inventory
 from .binding import bindings, field_name, value_range, widest_text
@@ -43,6 +44,12 @@ from .enums import tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
+
+#: The spellbook bitmask at 0x078, which `por/layout.py` declares as two
+#: fields: the seven bytes Pool of Radiance uses, and the nine the titles after
+#: it continue into. In record order, because they are read and written as one
+#: run of bytes.
+SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off -- and
@@ -782,6 +789,31 @@ class EditorWindow(QMainWindow):
             book.changed.connect(
                 lambda: memorised.set_known(book.known()))
 
+    def _spellbook_raw(self, record) -> bytes:
+        """The whole mask at 0x078, both declared fields of it.
+
+        `por/layout.py` splits it: `spells_known` is the seven bytes Pool of
+        Radiance uses and every writer in the project encodes, and
+        `spells_known_high` is the nine the later titles continue into. The
+        widget wants one run of bytes and decides for itself how far its title
+        reaches into them.
+        """
+        return b"".join(record.get_raw(f) for f in SPELLBOOK_FIELDS)
+
+    def _set_spellbook_raw(self, record, raw: bytes) -> None:
+        """The inverse, writing back only the halves that actually moved.
+
+        A short `raw` writes only the fields it fills, so a widget that was
+        never given the high bytes cannot zero them.
+        """
+        at = 0
+        for name in SPELLBOOK_FIELDS:
+            size = FIELDS_BY_NAME[name].size
+            chunk = raw[at:at + size]
+            if len(chunk) == size and chunk != record.get_raw(name):
+                record.set_raw(name, chunk)
+            at += size
+
     def _spell_widgets(self) -> tuple[SpellbookEditor | None, MemorisedEditor | None]:
         book = self._widgets.get("spells_known")
         memorised = self._widgets.get("spells_memorised")
@@ -1084,7 +1116,12 @@ class EditorWindow(QMainWindow):
         found = self._find_game_disk()
         self.game_disk_found = found
         if found is None:
-            self.traits.set_tables({}, {})
+            # Which title this is does not depend on having a disk to read the
+            # names off, and the widgets need it either way: without it a
+            # Silver Blades spellbook is offered Pool of Radiance's spell list
+            # and stops at 55.
+            self._apply_spell_table()
+            self.traits.set_tables({}, {}, self._spell_table())
             return
         # Item names live at $6F00 on Pool of Radiance and $9E00 on every
         # title after it, so the reader needs to be told which save is open --
@@ -1096,7 +1133,8 @@ class EditorWindow(QMainWindow):
                            ("templates",
                             lambda d: load_item_templates(d, game=game)),
                            ("item_types", load_item_types),
-                           ("spell_names", load_spell_names)):
+                           ("spell_names",
+                            lambda d: load_spell_names(d, game))):
             try:
                 setattr(self, attr, read(found))
             except Exception:
@@ -1105,13 +1143,23 @@ class EditorWindow(QMainWindow):
                 _log.exception("could not read %s off %s", attr, found)
         # Damage, protection and the class mask are in the ITEMS type table,
         # not in the item record, so the traits table needs the game disk too.
-        self.traits.set_tables(self.item_types, self.spell_names)
+        self.traits.set_tables(self.item_types, self.spell_names,
+                               self._spell_table())
         for member in (self.party.members if self.party else []):
             if member.inventory is not None:
                 member.inventory.names = self.item_names
+        self._apply_spell_table()
+
+    def _spell_table(self):
+        """The open title's spell table -- names, groups and mask width."""
+        return spell_table(self.party.game if self.party is not None else None)
+
+    def _apply_spell_table(self) -> None:
+        """Give every spell widget the open title's names and its own table."""
+        table = self._spell_table()
         for w in self._widgets.values():
             if isinstance(w, SpellEditor):
-                w.set_names(self.spell_names)
+                w.set_names(self.spell_names, table)
 
     def set_backup_folder(self, folder: str | None) -> None:
         """Where a copy of the save goes before it is overwritten.
@@ -1290,6 +1338,8 @@ class EditorWindow(QMainWindow):
                 elif isinstance(w, QComboBox):
                     if record.get(name) != w.currentData():
                         record.set(name, w.currentData())
+                elif isinstance(w, SpellbookEditor):
+                    self._set_spellbook_raw(record, w.to_bytes())
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
@@ -1332,7 +1382,9 @@ class EditorWindow(QMainWindow):
             elif isinstance(w, QComboBox):
                 _select(w, value)
             elif hasattr(w, "set_bytes"):
-                w.set_bytes(record.get_raw(name))
+                w.set_bytes(self._spellbook_raw(record)
+                            if isinstance(w, SpellbookEditor)
+                            else record.get_raw(name))
                 if hasattr(w, "codes"):
                     _fit_height(w, fixed=True)
         self._show_boxes(record)
@@ -1418,8 +1470,11 @@ class EditorWindow(QMainWindow):
             return
         if book is not None:
             memorised.set_known(book.known())
-        memorised.set_capacity(capacity(record.class_bits, record.get("level"),
-                                        record.get("wisdom")))
+        game = self.party.game if self.party is not None else None
+        memorised.set_capacity(
+            capacity(record.class_bits, record.get("level"),
+                     record.get("wisdom"), game),
+            casts=bool(record.class_bits & (CLASS_MAGIC_USER | CLASS_CLERIC)))
 
     # -- items ------------------------------------------------------------
 
