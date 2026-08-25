@@ -127,14 +127,26 @@ WIDE_BOXES = ("box_inventory", "box_traits", "box_effects", "box_spells")
 # it came out as a drop-down 890px wide with `2  ELF` in it. Character is
 # sized to its own contents now.
 #
-# `sheet_columns` is the Stats tab, and the same rule: Character Traits is the
-# only box on it that can use spare width, so it gets a column of its own at
-# the right and all of the stretch. Shared four ways the slack came out as a
-# gap beside every column; on the column Traits used to share with Money it
-# was 490px of nothing.
-ROW_STRETCH = {"sheet_columns": (0, 0, 0, 0, 1), "header_row": (0, 0, 1),
-               "form_identity": (0, 0),
-               "row_combat": (0, 0)}
+ROW_STRETCH = {"header_row": (0, 0, 1), "form_identity": (0, 0)}
+#: The Stats tab is a grid and not five independent columns, because a row of
+#: a grid has one top edge and five `QVBoxLayout`s have five. Donald asked for
+#: `Combat` and the combat icon to start on the same line with the icon in the
+#: roster's column; stacked columns put them 29px apart, since `Money` is 232
+#: tall and `Roster` 203, and matching them with a spacer is arithmetic that
+#: comes apart the first time either box gains a field.
+#:
+#: Character Traits is the only box on the tab that can use spare width -- it
+#: is a table and every other box is fields sized to the widest value their
+#: bytes can hold -- so it takes the one stretching column and spans both
+#: rows. Shared four ways -- round six -- the slack came out as a gap beside
+#: every column.
+STATS_COLUMN_STRETCH = (0, 0, 0, 0, 1)
+#: The spare *height* goes to row 2, which holds nothing. Nothing on the tab
+#: can use it: Character Traits is ten fixed effect slots and `_fit_height`
+#: caps its table at them, so height given to that box only floats the table
+#: in the middle of its own frame. An empty stretching row keeps the two rows
+#: of boxes as tall as their own contents and puts the slack underneath.
+STATS_ROW_STRETCH = (0, 0, 1)
 ROSTER_SLACK = 6
 #: The old 300 cap scaled by the same half the icon itself shrank by (`ZOOM`
 #: 6 to 3), which leaves six pixels over `IconEditor`'s own 144px minimum.
@@ -741,19 +753,28 @@ class EditorWindow(QMainWindow):
         width, so it has a column of its own at the right and all of the
         stretch. Sharing it four ways -- round six -- put a gap beside every
         column instead of one 490px hole beside Money.
+
+        The tab is a `QGridLayout` since round nine, so this sets column and
+        row stretches rather than item stretches. Nothing here lines two boxes
+        up: a grid row has one top edge, which is what Donald asked for and
+        what five stacked columns could not give.
         """
         # A layout is not a QWidget, so `_child` cannot find it. `pyuic6`
         # names every layout on the Ui object, which is cheaper and steadier
         # than a `findChild` walk of the whole form.
-        # `Combat` and the combat icon share one row so their top edges line
-        # up by construction rather than by arithmetic: they are different
-        # heights, and anything that matched them by adding a spacer would
-        # come apart the first time either box gained a field. Donald asked
-        # for the icon's top to meet Combat's top line, and a top-aligned
-        # row is the only version of that which stays true.
-        row = self._child("row_combat")
-        if row is not None and row.layout() is not None:
-            row.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
+        grid = getattr(self.ui, "sheet_columns", None)
+        if grid is not None:
+            # Character Traits spans both rows, so its cell is taller than its
+            # ten capped slots. `AlignTop` is it declining the difference
+            # rather than centring the table in it -- not alignment holding
+            # anything together, which on this tab is the grid's job alone.
+            traits = self._child("box_effects")
+            if traits is not None:
+                grid.setAlignment(traits, Qt.AlignmentFlag.AlignTop)
+            for i, stretch in enumerate(STATS_COLUMN_STRETCH):
+                grid.setColumnStretch(i, stretch)
+            for i, stretch in enumerate(STATS_ROW_STRETCH):
+                grid.setRowStretch(i, stretch)
 
         for name, stretch in ROW_STRETCH.items():
             row = getattr(self.ui, name, None)

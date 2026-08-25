@@ -725,23 +725,35 @@ TABS = {
 #: taller than Experience and levels over Thief skills, which is what decides
 #: whether the tab scrolls on his screen.
 #:
-#: The combat icon goes under Roster and so directly right of Combat, which is
-#: the only place on the tab that is both beside Combat and free: Roster is
-#: 298px wide against the icon's 166, and the column had 320px of nothing
-#: under it. Every other slot costs the tab 172px of width -- a column of its
-#: own -- or puts the icon under Combat rather than beside it. Measured at
-#: 1330x940 with a save open, the tab asks for the same 1241px it did in
-#: round seven -- the icon costs no width at all -- and the empty part of
-#: column four goes from 298x323 to an L a fifth smaller.
-#: Column three's second item is a *row*, `row_combat`, holding `Combat` and
-#: the combat icon side by side and top-aligned -- Donald asked for the icon's
-#: top to meet Combat's top line, and matching two boxes of different heights
-#: with a spacer would come apart the first time either gained a field.
-STATS_COLUMNS = (("box_abilities", "box_saves"),
-                 ("box_levels", "box_thief_skills"),
-                 ("box_money", ("box_combat", "box_appearance")),
-                 ("box_roster",),
-                 ("box_effects",))
+#: Round nine made the tab a `QGridLayout` rather than five `QVBoxLayout`s
+#: side by side, and that is the whole of what holds the arrangement below
+#: together. Five independent columns stack independently: `Money` is 232px
+#: tall and `Roster` 203, so `Combat` and the combat icon -- one in each -- sat
+#: 29px apart however they were ordered. A row of a grid has one top edge.
+#:
+#: Donald asked for three things at once and they are not separable: the icon
+#: in the roster's column, its top level with `Combat`'s in the column to its
+#: left, and no blank space in the middle of the tab. Round eight satisfied
+#: the first and failed the second; pairing `Combat` and the icon in one row
+#: inside column three satisfied the second and opened a 218x232 hole between
+#: `Money` and `Roster`, which is the hole he then reported. The grid gives
+#: all three with no spacer, no fixed height and no computed offset anywhere:
+#: it holds nine boxes and not one spacer item.
+#:
+#: One tuple per row, left to right. `box_effects` -- Character Traits -- is
+#: at the right of the top row and spans down through the second, because it
+#: is the only box on the tab that can read a wider window and so takes the
+#: one stretching column.
+STATS_GRID = (("box_abilities", "box_levels", "box_money", "box_roster",
+               "box_effects"),
+              ("box_saves", "box_thief_skills", "box_combat",
+               "box_appearance"))
+#: Which column the tab's spare width goes to, and which row its spare height
+#: goes to. Row 2 holds nothing: an empty stretching row is how the eight
+#: field boxes stay as tall as their own contents and the slack falls below
+#: them, rather than every row growing.
+STATS_STRETCH_COLUMN = 4
+STATS_STRETCH_ROW = 2
 
 
 @game_disks
@@ -768,66 +780,70 @@ def test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them(app, save):
 
 
 @game_disks
-def test_the_stats_columns_are_in_the_order_donald_asked_for(app, save):
-    """Abilities and Saving throws on the left of the window, Character Traits
-    alone on the right.
+def test_the_stats_boxes_are_in_the_grid_donald_asked_for(app, save):
+    """Left to right and top to bottom, by grid position and not by order in
+    a list.
 
-    Left to right and not merely present, because the five columns pack eight
-    boxes and the tallest of them decides how much of the tab scrolls. A
-    repack that balanced better and ignored the order would pass
+    Abilities and Saving throws on the left of the window, Character Traits
+    alone on the right. The five columns pack nine boxes and the arrangement
+    has been asked for three rounds running, so this pins where each one is
+    rather than merely that it is on the tab: a repack that balanced better
+    and ignored the order would still satisfy
     `test_the_sheet_is_three_tabs_and_every_box_is_on_one_of_them`, and a
-    repack that put a narrow box in the stretching column would put the hole
-    back.
+    repack that put a narrow box in the stretching column would put back the
+    hole Donald drew a box round.
 
-    No column heights are quoted here on purpose. Three measurements of them
-    during round four disagreed by up to 30px, because a box's minimum depends
-    on whether a save is open, whether the widget has been shown, and the UI
-    font -- so a number written down here is true of one run and misleading in
-    the next. The order is what this test is about, and the order is stable.
+    Nothing but boxes: an empty grid cell or a spacer between two of them
+    would be the arithmetic this layout exists to avoid, so the item count is
+    asserted too. Row 2 is the empty stretching row and holds nothing at all,
+    which is why it does not appear here.
+
+    No column heights or widths are quoted on purpose. Three measurements of
+    them during round four disagreed by up to 30px, because a box's minimum
+    depends on whether a save is open, whether the widget has been shown, and
+    the UI font -- so a number written down here is true of one run and
+    misleading in the next.
     """
-    from PyQt6.QtWidgets import QGroupBox
+    from PyQt6.QtWidgets import QGridLayout
 
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
-    columns = w.ui.sheet_columns
-    got = []
-    for i in range(columns.count()):
-        column = columns.itemAt(i).layout()
-        if column is None:
-            continue
-        entries = []
-        for j in range(column.count()):
-            widget = column.itemAt(j).widget()
-            if isinstance(widget, QGroupBox):
-                entries.append(widget.objectName())
-                continue
-            row = column.itemAt(j).layout()
-            if row is not None:
-                inner = tuple(row.itemAt(k).widget().objectName()
-                              for k in range(row.count())
-                              if isinstance(row.itemAt(k).widget(), QGroupBox))
-                if inner:
-                    entries.append(inner)
-        got.append(tuple(entries))
-    assert got == list(STATS_COLUMNS)
+    grid = w.ui.sheet_columns
+    assert isinstance(grid, QGridLayout), (
+        "the Stats tab is a grid; five stacked columns cannot line a row up")
+    seen = {}
+    for i in range(grid.count()):
+        item = grid.itemAt(i)
+        assert item.widget() is not None, "a spacer or a nested layout crept in"
+        seen[grid.getItemPosition(i)[:2]] = (item.widget().objectName(),
+                                             *grid.getItemPosition(i)[2:])
+    want = {}
+    for row, boxes in enumerate(STATS_GRID):
+        for column, name in enumerate(boxes):
+            want[(row, column)] = (name, 1, 1)
+    # Character Traits spans down through the second row: it is the only box
+    # on the tab that can use a wider window, and it holds the column that
+    # takes the slack.
+    want[(0, 4)] = ("box_effects", 2, 1)
+    assert seen == want
 
 
 @game_disks
-def test_the_combat_icon_sits_beside_combat(app, save):
-    """Donald's own proposal, and round eight's whole change: the icon and the
-    `Combat` box belong together by meaning, and the header shrinks by 172px
-    when the icon leaves it -- which is what takes the widest party a save can
-    hold from 1265px of window to 1093 at the default UI font, and from 1442 to
-    1270 at three points more, against a 1280 screen.
+def test_combat_and_the_combat_icon_start_on_the_same_line(app, save):
+    """Donald, three rounds running and in his own words: the icon belongs in
+    the roster's column, its top has to meet `Combat`'s top, and there must be
+    no blank space in the middle of the tab.
 
-    `STATS_COLUMNS` pins which column it is in. This pins that it is *beside*
-    `Combat` and not merely on the same tab: the next column to the right, and
-    overlapping it vertically, which is the difference between the icon being
-    where he asked for it and the icon being under `Roster` by coincidence.
+    Round eight put the icon under `Roster` and the tops came out 29px apart,
+    because `Money` above `Combat` is 232px tall and `Roster` is 203 and each
+    column stacked on its own. Pairing the two in a row inside `Money`'s
+    column lined them up and opened a 218x232 hole between `Money` and
+    `Roster` instead. A grid row has one top edge, so both hold at once.
 
-    Geometry rather than layout indices, because the two are only side by side
-    if the boxes above them leave them level -- `Money` is 232px tall and
-    `Roster` 203, so the icon starts 29px above `Combat` and ends inside it.
+    Asserted as geometry rather than as layout indices, because a grid
+    position is what the form says and a top edge is what Donald sees. Equal
+    and not merely overlapping: an approximation here is what round eight
+    shipped.
     """
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
@@ -835,44 +851,61 @@ def test_the_combat_icon_sits_beside_combat(app, save):
     w.resize(1330, 940)
     app.processEvents()
     page = w._child("page_stats")
-    combat = w._child("box_combat")
-    icon = w._child("box_appearance")
-    left = combat.mapTo(page, combat.rect().topLeft())
-    right = icon.mapTo(page, icon.rect().topLeft())
-    assert right.x() >= left.x() + combat.width(), "the icon is not to the right"
-    assert right.x() - (left.x() + combat.width()) < 30, "and not far to the right"
-    top, bottom = right.y(), right.y() + icon.height()
-    assert top < left.y() + combat.height() and bottom > left.y(), (
-        "the icon and Combat do not overlap vertically")
+
+    def corner(name):
+        box = w._child(name)
+        at = box.mapTo(page, box.rect().topLeft())
+        return at.x(), at.y(), box.width()
+
+    combat_x, combat_y, combat_w = corner("box_combat")
+    icon_x, icon_y, _ = corner("box_appearance")
+    roster_x, roster_y, _ = corner("box_roster")
+    money_x, money_y, money_w = corner("box_money")
+
+    assert icon_y == combat_y, "the icon and Combat do not start on one line"
+    assert icon_x == roster_x, "the icon is not in the roster's column"
+    assert money_x == combat_x, "Combat is not in Money's column"
+    assert roster_y == money_y, "Roster and Money do not start on one line"
+    assert combat_x + combat_w < roster_x, "Combat is not left of the roster"
+    # And the hole he reported: between the right edge of Money and the left
+    # edge of Roster there is a column gutter and nothing else. It was 218px
+    # when Money's column also had to hold the icon.
+    assert roster_x - (money_x + money_w) < 60, "the hole is back"
 
 
 @game_disks
 def test_the_stats_spare_width_goes_to_the_one_box_that_can_use_it(app, save):
     """The hole Donald drew a box round, and why it was there.
 
-    Character Traits is the only box on this tab that can use spare width.
-    Round six shared the stretch equally between four columns, which turned
-    one 490x230 hole beside Money into a gap beside every column; round seven
-    gives Traits a column of its own and all of the stretch, and the columns
-    of fields are sized to their own contents with nothing between them.
+    Character Traits is the only box on this tab that can use spare width --
+    it is a table and the rest are boxes of fields sized to the widest value
+    their bytes can hold. Round six shared the stretch equally between four
+    columns, which turned one 490x230 hole beside Money into a gap beside
+    every column; the stretch has been one column's since round seven.
 
-    The assertion is that exactly one column stretches and it is the one
-    holding Traits -- not five particular numbers.
+    The spare *height* is the other half and goes to an empty row under the
+    boxes. Character Traits cannot use that either -- its ten effect slots are
+    a fixed list and `_fit_height(fixed=True)` caps the table at them -- so
+    spanning it down the tab would only float the table in the middle of its
+    own box, which is the thing `_fit_height` was written to stop.
+
+    Exactly one column stretches and exactly one row does, and neither is
+    five particular numbers.
     """
-    from PyQt6.QtWidgets import QGroupBox
-
     from editor.window import EditorWindow
     w = EditorWindow(str(save))
-    columns = w.ui.sheet_columns
-    stretches = [columns.stretch(i) for i in range(columns.count())]
-    assert len(stretches) == len(STATS_COLUMNS)
-    stretched = [i for i, s in enumerate(stretches) if s]
-    assert len(stretched) == 1, stretches
-    column = columns.itemAt(stretched[0]).layout()
-    boxes = [column.itemAt(j).widget().objectName()
-             for j in range(column.count())
-             if isinstance(column.itemAt(j).widget(), QGroupBox)]
-    assert boxes == ["box_effects"], boxes
+    grid = w.ui.sheet_columns
+    columns = [i for i in range(grid.columnCount()) if grid.columnStretch(i)]
+    rows = [i for i in range(grid.rowCount()) if grid.rowStretch(i)]
+    assert columns == [STATS_STRETCH_COLUMN]
+    assert rows == [STATS_STRETCH_ROW]
+    assert grid.columnCount() == len(STATS_GRID[0])
+    assert grid.rowCount() == len(STATS_GRID) + 1, "the slack row is missing"
+    at = grid.itemAtPosition(0, STATS_STRETCH_COLUMN)
+    assert at.widget().objectName() == "box_effects"
+    for column in range(grid.columnCount()):
+        assert grid.itemAtPosition(STATS_STRETCH_ROW, column) is None, (
+            "the row that takes the slack is meant to be empty")
 
 
 @game_disks
@@ -1354,20 +1387,21 @@ def test_moving_a_box_in_designer_needs_no_code_change(app, tmp_path):
     from editor.binding import field_name
 
     tree = ET.parse(_p.Path("editor/character.ui"))
-    # Any two columns: naming them would make this test fail whenever the
-    # sheet is rearranged, which is the very thing it exists to permit.
-    columns = [w for w in tree.iter("layout")
-               if (w.get("name") or "").startswith("column_")]
-    source = next(c for c in columns
-                  if any(i.find("widget") is not None
-                         and i.find("widget").get("name") == "box_thief_skills"
-                         for i in c))
-    target = next(c for c in columns if c is not source)
-    item = next(i for i in source
-                if i.find("widget") is not None
-                and i.find("widget").get("name") == "box_thief_skills")
-    source.remove(item)
-    target.insert(0, item)
+    grid = next(w for w in tree.iter("layout")
+                if w.get("name") == "sheet_columns")
+    # Two boxes trade cells, which is what dragging one in Designer comes to
+    # now the Stats tab is a grid. Naming the cells would make this test fail
+    # whenever the sheet is rearranged, which is the very thing it permits.
+    def cell(name):
+        return next(i for i in grid
+                    if i.find("widget") is not None
+                    and i.find("widget").get("name") == name)
+
+    source, target = cell("box_thief_skills"), cell("box_abilities")
+    swap = {k: (source.get(k), target.get(k)) for k in ("row", "column")}
+    for key, (mine, theirs) in swap.items():
+        source.set(key, theirs)
+        target.set(key, mine)
     out = tmp_path / "rearranged.ui"
     tree.write(out, encoding="unicode")
 
