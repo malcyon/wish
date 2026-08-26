@@ -32,7 +32,7 @@ says only while the overlay that owns it is resident.
 | `$4900`–`$493F` | **effect ids** | SAVEDGAME0 | PROBABLE | 64 timed effects; 0 means the slot is free. Expiry clears only the id, so filter on it or you will show effects that have already ended |
 | `$4940`–`$497F` | **effect owner** | SAVEDGAME0 | PROBABLE | 0-7 a party member by slot, 8+ a monster, $FF the whole party. This encoding is what led to the combatant table |
 | `$4980`–`$49BF` | **effect duration** | SAVEDGAME0 | PROBABLE | bits 6-7 select the time unit |
-| `$49C0` | **party x** | SAVEDGAME0 | CONFIRMED | lags a move; the game's own status line is authoritative |
+| `$49C0` | **party x** | SAVEDGAME0 | CONFIRMED | lags a move on Pool of Radiance, where the status line is the live copy; Silver Blades is the other way round, so find which copy is live on a given title by moving and watching rather than assuming (docs/144-decoding-a-new-title.md) |
 | `$49C1` | **party y** | SAVEDGAME0 | CONFIRMED |  |
 | `$49C2` | **party facing** | SAVEDGAME0 | CONFIRMED | 0 north, 1 east, 2 south, 3 west |
 | `$49C6`–`$49CB` | **clock** | SAVEDGAME0 | CONFIRMED | six digits, not three: limits 0A 0A 06 18 1E 0C at $A83C. $49C7 minutes, $49C8 tens of minutes, $49C9 the HOUR -- DUNGEON $09F7 prints those three -- then $49CA and $49CB carry the day and the month. Read as plain 'minutes' for a while, which made PORSAVE11 come out at 27:27 |

@@ -66,7 +66,10 @@ MAP: tuple[Region, ...] = (
     Region(0x4980, 0x40, "effect duration", MAYBE, saved_in="SAVEDGAME0",
            note="bits 6-7 select the time unit"),
     Region(0x49C0, 1, "party x", OK, saved_in="SAVEDGAME0",
-           note="lags a move; the game's own status line is authoritative"),
+           note="lags a move on Pool of Radiance, where the status line is "
+                "the live copy; Silver Blades is the other way round, so "
+                "find which copy is live on a given title by moving and "
+                "watching rather than assuming (docs/144-decoding-a-new-title.md)"),
     Region(0x49C1, 1, "party y", OK, saved_in="SAVEDGAME0"),
     Region(0x49C2, 1, "party facing", OK, saved_in="SAVEDGAME0",
            note="0 north, 1 east, 2 south, 3 west"),
