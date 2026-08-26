@@ -84,8 +84,14 @@ MAP: tuple[Region, ...] = (
     Region(0x49F0, 2, "previous square", MAYBE, saved_in="SAVEDGAME0",
            note="the square occupied before the last move; tracked from the "
                 "walk saves, never confirmed against the game's own use"),
-    Region(0x49FC, 1, "party count", MAYBE, saved_in="SAVEDGAME0",
-           note="CAMP increments and decrements it"),
+    Region(0x49FC, 1, "not the party count", GUESS, saved_in="SAVEDGAME0",
+           note="REFUTED as a party count, and named here so the reading is "
+                "not made a third time. PORSAVE.D64 with one character and "
+                "PORSAVE-6char.D64 with six both read 2; E003-slots.D64 with "
+                "two reads 6. No byte of $4900-$4CFF equals the party size in "
+                "any of 190 saves -- the C64 does not store one, and the "
+                "engine's own DROP CHARACTER instead zeroes the first byte "
+                "of the dropped character's name (#104)"),
     Region(0x49FD, 2, "wall colour by roofed bit", MAYBE, saved_in="SAVEDGAME0",
            note="a two-entry table indexed by the roofed bit of the square you "
                 "stand on; every ECL writes both"),

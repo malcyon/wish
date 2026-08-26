@@ -232,7 +232,7 @@ two is named as a cheap job for whoever next touches `por/commissions.py`.
 
 | address | offset | PORSAVE | note |
 |---|---|---|---|
-| `$49FC` | `+$0FC` | 2 | read 2 for a whole driven fight, set by `INIT $09AC`. The "party count" reading is a **GUESS** and nothing supports it |
+| `$49FC` | `+$0FC` | 2 | read 2 for a whole driven fight, set by `INIT $09AC`. The "party count" reading is **REFUTED**: one save with one character and another with six both read 2, and a save with two reads 6. **The C64 stores no party count at all** — no byte of `$4900`-`$4CFF` equals the party size in any of 190 saves; `DROP CHARACTER` zeroes the first byte of the dropped name instead ([#104](https://github.com/malcyon/wish/issues/104)) |
 | `$4A07`, `$4BC6` | | | moved only on leaving the inn, and `$4A07` is inside the per-script scratch page, so it is whatever `ECL00` was using that byte for |
 
 What is left in `$4900`–`$4BDF` after the table above is a scatter of single
