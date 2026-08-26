@@ -32,62 +32,18 @@ So, absolutely:
   because it often is. The safe assumption costs you nothing; the unsafe one
   cost a session.
 
-**Check the commit you were given is actually in your worktree.** A worktree is
-cut at some point in the branch's history, and that may be *before* the commit
-you were asked to review — on 2026-08-26 a reviewer was handed `1affc5e` and
-its worktree sat on a sibling commit, so `por/amiga.py` on disk had none of the
-code under review.
+**You run in the shared working tree** -- the same checkout as every other
+agent, and the same one holding whatever the maintainer has not committed yet.
+There is no private copy to absorb a mistake, which is why the rules above are
+absolute rather than cautionary.
 
-That failure is silent and it is the reason this paragraph exists: `Read` shows
-a **plausible but stale** file rather than an error, so a review can be written
-confidently against code that is not the code. Verify first:
+`work/` is in that tree at its ordinary path: every disk image, specimen, dump
+and run artefact, 1.6 GB of it, gitignored. **Read it, never write to it** -- a
+write there lands in another agent's lap.
 
-```sh
-git merge-base --is-ancestor <sha> HEAD && echo "in this worktree" || echo "NOT here"
-```
-
-`git show` and `git log` read the object database and work regardless. If the
-commit is **not** in your worktree and you need to *run* anything, extract it
-rather than moving your branch:
-
-```sh
-mkdir -p "$SCRATCH/review-<sha>" && git archive <sha> | tar -x -C "$SCRATCH/review-<sha>"
-```
-
-Work from that untracked copy. **Never `git checkout` the commit** — that is
-the rule above, and it applies to your own worktree too.
-
-**Say in the first line of your report whether you are isolated.** Run:
-
-```sh
-git rev-parse --git-dir --git-common-dir
-```
-
-If the two paths differ you are in your own worktree; if they are the same you
-are in the shared tree with every other agent. **Report which, every time.**
-
-Isolation is passed when you are launched, not set in your own definition, so
-it can be forgotten — and a forgotten flag is invisible unless you say so. If
-you are **not** isolated, say that plainly and treat every rule above as
-doubly binding: an accident in the shared tree destroys whatever anybody else
-has uncommitted.
-
-**You may be running in your own git worktree**, a separate checkout of this
-repository made for you. When you are, `git` commands touch only your copy —
-but do not take that as permission: the rules above hold either way, because
-you cannot tell from inside which case you are in, and being wrong once costs
-somebody's day.
-
-**A worktree has no `work/` directory.** That is where every disk image,
-specimen, dump and run artefact lives, and it is gitignored, so it is not part
-of what a worktree copies. It is 1.6 GB and is not copied per review. Read it
-**by absolute path** at `/home/donald/src/wish/work/...`, and **read only** —
-that path is the real one, shared with every running agent, and a write there
-lands in their laps.
-
-The archives outside the repository are unaffected either way:
-`~/Downloads/fr-archives/` and `/home/donald/c64/Pool of Radiance Disks/`, both
-read-only, always.
+The archives outside the repository are read-only too:
+`~/Downloads/fr-archives/` and `/home/donald/c64/Pool of Radiance Disks/`,
+always.
 
 If you cannot establish something without modifying the tree, **say so in the
 report as an unverified claim.** That is a useful finding. A destroyed working
