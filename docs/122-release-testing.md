@@ -85,7 +85,7 @@ Wine is not worth the trouble. That leaves two ways to get one:
 2. Wait for it. The `windows build` job is the one you want.
 3. Download the **`frozen-windows`** artefact from the run's summary page. It
    is a zip containing `wish-<version>-windows-x86_64.zip`.
-4. Copy that to the laptop and start at **W1**.
+4. Copy that to the laptop and start at **W1**, or to the VM by `§0c`.
 
 A manual run **builds and stops** — it does not make a release page. Only a
 `v*` tag does that. The version will be a development one like
@@ -221,6 +221,44 @@ took 9.4 s and came to 158 MB unpacked, the wheel to 386 KB, the tarball to
 60 MB. B6 was rewritten in the course of the run — see the note on it.
 B7 is CI's own Windows recipe, and is unverified by hand — you are the first
 person to run it.*
+
+---
+
+## 0c. Getting it onto the Windows VM
+
+The laptop is not the only Windows there is. The `win11` domain under libvirt
+runs the same build, and `winvm` carries the non-interactive SSH options, so a
+failed copy is an error on stderr rather than a credential dialog on the
+desktop.
+
+```sh
+winvm acquire wish-test
+winvm scp ~/Downloads/wish-win/'wish-<version>-windows-x86_64.zip' \
+          donald@192.168.123.50:'C:/Users/donald/Desktop/'
+winvm release wish-test        # when you are done
+```
+
+`winvm scp` hands its arguments straight to `scp`, so the destination needs the
+full `donald@192.168.123.50:` prefix — unlike `winvm ssh`, which fills the guest
+in for you. Quote the filename: a development version carries a `+`.
+
+To unpack without opening Explorer:
+
+```sh
+winvm ssh 'powershell -NoProfile -Command "Expand-Archive -Force -Path C:\Users\donald\Desktop\wish-<version>-windows-x86_64.zip -DestinationPath C:\wish"'
+```
+
+**Starting `wish.exe` over `winvm ssh` will show you nothing.** That shell lands
+in Windows session 0 and the VM's screen is session 1, so the window appears on
+neither and `winvm shot` cannot capture it. Start it from the VM's own desktop.
+`143-winuae-debugger.md` has the detail, the lease model and the scheduled-task
+workaround, and is the reference for `winvm` generally — this section is only
+how a release package gets across.
+
+**The VM is a second environment, not a substitute for the laptop.** It is the
+same build on different hardware, drivers and display stack, and §7's table has
+one Windows column — so say which machine a result came from when you fill it
+in.
 
 ---
 
@@ -528,6 +566,12 @@ Silver Blades remains untested: the disks are there, a save is not.
 
 Assume a machine with no Python, no VICE, and no game files. Copy the game
 disks, `TESTSAVE.D64`, and all five downloads over first.
+
+On the VM, `winvm revert` restores the golden base, so "from nothing" is
+repeatable: install, test, revert, test again. The laptop gives you one clean
+run per reinstall. Do **not** `winvm promote` — that makes the state you have
+just been testing the new baseline, which is the opposite of what this section
+is for.
 
 Put the game disks somewhere `automap/paths.py` looks — the simplest is
 `%USERPROFILE%\Documents\Pool of Radiance Disks\`. Anywhere else and you will
