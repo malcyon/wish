@@ -151,7 +151,7 @@ for writing.
 `git clean` against a file in this repository.** Several agents share one
 working tree, so a revert is never local to the agent doing it: it discards
 whatever anybody else has uncommitted, silently and unrecoverably. That is how
-580 lines of `goldbox/amiga.py` went on 2026-08-26 -- a reviewer undoing a
+580 lines of `por/amiga.py` went on 2026-08-26 -- a reviewer undoing a
 throwaway edit of its own.
 
 To test whether a change is load-bearing, **copy the file aside and copy it

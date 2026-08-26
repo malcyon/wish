@@ -16,7 +16,7 @@ you never edit.
 
 **You have `Bash`, and `Bash` is write access.** Your tool list has no `Write`
 and no `Edit`, which is deliberate — but a shell can do everything they can and
-more, and on 2026-08-26 a review of `goldbox/amiga.py` ran `git checkout -- ` on it
+more, and on 2026-08-26 a review of `por/amiga.py` ran `git checkout -- ` on it
 to undo a throwaway edit of its own and **destroyed 580 lines of uncommitted
 work** that no transcript could rebuild. The review had found real defects; it
 cost more than it found.
