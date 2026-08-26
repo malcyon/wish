@@ -1,6 +1,6 @@
 ---
 name: backlog-auditor
-description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, and facts discovered in one ticket that were never reflected in others. Use before refinement or when the backlog has grown unwieldy.
+description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon CLAUDE.md has ruled out of prose — currently load-bearing, "that's fair", blast radius, elide, retarget, "X follows Y" and "the test bites". Use before refinement or when the backlog has grown unwieldy.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: high
@@ -63,6 +63,8 @@ Here, blocking is the `blocked` label plus prose. `CLAUDE.md` defines the label 
 **6. Decayed context.** Tickets whose description references code paths, config keys, function names or file paths that no longer exist. **Grep every referenced identifier against the repository and report what no longer resolves.**
 
 **7. Banned language.** `CLAUDE.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
+
+The entries as at 2026-08-26 are **load-bearing**, **"that's fair"**, **blast radius**, **elide**, **retarget**, **"X follows Y"** and **"the test bites"**. That list is a convenience for spotting them, not the authority: **`CLAUDE.md`'s table is the authority, and if the two disagree the table wins and this line is the stale one.** Say so in your report if you find them out of step — two lists of the same thing drifting apart is the exact defect the rest of this file hunts for.
 
 Report every hit with its issue number and the sentence it sits in, and **say what the sentence is actually trying to say**, because that is the useful half. A title is what a reader sees first and never opens; one that needs the jargon explained is a title that fails.
 

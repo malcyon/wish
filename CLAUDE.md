@@ -303,7 +303,7 @@ assert that. `tests/test_mapscale.py` pins a window minimum because a window
 that does not fit the screen is what the user hits; it does not assert that a
 function returns what the function returns.
 
-**Prove a regression test bites.** Revert the fix, watch the test fail, put the
+**Prove a regression test fails without the fix.** Revert the fix, watch the test fail, put the
 fix back. A test written against a bug that has already been fixed is a guess
 until you have seen it red. This has gone wrong here twice: a test that filtered
 on `not isWindow()` passed with the fix reverted, because the fault *was* a
@@ -802,7 +802,7 @@ including an empty string, `0` and `off` -- is off. `wish/debugmode.py` has it
 first; copy that tuple rather than inventing another. A variable somebody
 exported once and forgot must not put an unfinished feature in front of them.
 
-**Test both directions, and prove the test bites.** One test that the feature
+**Test both directions, and prove each test fails without the gate.** One test that the feature
 is absent by default, one that a forgotten `0` or `off` does not turn it on,
 one that it appears when asked for. Force the flag on and watch the first two
 fail; a gate that cannot fail is not a gate.
@@ -896,6 +896,7 @@ constantly in assistant prose and almost never in human speech:
 | **elide** | truncate, shorten, cut off with an ellipsis |
 | **retarget** | move the party to where it actually was, point the save at the right map |
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
+| **"the test bites"** | the test fails without the fix; it catches the bug; it goes red when the guard is removed |
 
 **"Follows" is the worst of these for a reader who was not there**, and it went
 into two issue titles before Donald said so: *"I see this a lot, where you say

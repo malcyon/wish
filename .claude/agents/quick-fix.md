@@ -70,7 +70,7 @@ something. An issue that says "read #65 first" means it.
 
 ## Testing
 
-**Prove the regression test bites.** Revert your fix, watch the test fail, put
+**Prove the regression test fails without your fix.** Revert your fix, watch the test fail, put
 the fix back. Say in your report that you saw it red. A test written against a
 bug that is already fixed is a guess until you have seen it fail — this
 repository has shipped two tests that could not fail, and both times the reason
