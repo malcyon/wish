@@ -20,7 +20,7 @@ Read straight out of `LIBRARY`: `$4209,X` maps a slot to a stem, the stem is at
 | 0 | `GDRIVE` | `$C000` | the movement driver: `GDRIVE01` indoors, `GDRIVE00` on the travel grid |
 | 1 | `SQRPACI` | `$0400` | overland square graphics, the travel grid's map block |
 | 2 | **`GEO`** | `$0400` | **the resident map** — the area id |
-| 3 | `SECSET` | `$6500` | per-area set, from `LOADFILES`' second operand |
+| 3 | `SECSET` | `$6500` | **a character set** — 8x8 glyphs for the 3D view, from `LOADFILES`' second operand. See below |
 | 4 | `SQRDATA` | `$8C00` | the overland square data — the travel grid's "map" |
 | 5 | `PIC` | `$8C00` | a full-screen picture |
 | 6 | `SPELLN` | `$AF00` | spell names |
@@ -48,6 +48,47 @@ Twenty slots, twenty stems, three kinds taking more than one slot: `WALLSET` and
 and `CHARPIC` takes two. The three `WALLSET` load addresses are 400 bytes apart
 and every `WALLSET` file on the disks is exactly 400 bytes, ending at `$6B00`
 where the character record begins.
+
+## Slot 3, `SECSET`: it is a character set, and it shares its space with the walls
+
+`#48` asked what is in a `SECSET` file. **It is character-generator data** --
+8×8 multicolour glyphs, one every eight bytes -- and the region it lands in is
+shared with the three `WALLSET` pieces.
+
+**The arithmetic says so first.** `SECSET` loads at `$6500`, `WALLSET` piece 0
+at `$6650`, and the character record begins at `$6B00`. `SECSET02`, which
+almost every area loads, is **exactly 336 bytes** and ends at `$6650` -- where
+piece 0 starts. The four 1536-byte files fill `$6500`-`$6AFF`, which is
+`SECSET` **and all three wall pieces**.
+
+**Rendering them settles it.** Every one is 8×8 multicolour tiles: brick,
+arches, diagonal edges, floor dither. `work/p48/render.py` draws the contact
+sheets.
+
+**And the scripts prove the overlap is real rather than arithmetic.** Every
+`PROTECTION` opcode in the thirty-script corpus -- twelve of them, in four
+scripts -- sits inside the same bracket:
+
+```
+LOADFILES 255, 16, 255     load SECSET10, 1500 bytes: over the wall pieces
+PROTECTION ...             the copy-protection screen
+LOADFILES 255, 2, 255      put the 336-byte SECSET02 back
+LOADPIECES 24, 25, 1       and reload the three wall pieces it clobbered
+```
+
+**5 of 5** `LOADFILES 255, 16, 255` sites are followed by a `LOADPIECES`.
+`255` in an operand means "leave that slot alone", so these calls change slot 3
+and nothing else -- and the script has to repair the walls itself afterwards.
+
+`SECSET10` is that screen's own set: 187 glyphs, the runes as 2×2 blocks
+followed by a full A-Z and 0-9 alphabet. The rest are scenery. Where an area
+has its own, the numbers match its map -- `LOADFILES 4, 4, 0`, `5, 5, 0`,
+`6, 6, 0`.
+
+`SECSET64` is the odd one and is **not** graphics: its body is 6502 code.
+`64` is the machine, not an area.
+
+The name is nothing to do with secrets.
 
 ## The rule for a filename
 
