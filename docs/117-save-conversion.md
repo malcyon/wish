@@ -1269,6 +1269,7 @@ the edge somebody adds without noticing.
 graph LR
   amiga -.->|deferred| c64_codec
   amiga -.->|deferred| d64
+  amiga -.->|deferred| dos
   amiga --> dos_layout
   amiga --> games
   amiga --> layout

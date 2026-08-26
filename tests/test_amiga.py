@@ -793,3 +793,246 @@ def test_garwans_sheet_matches_field_for_field():
         assert c.money["silver"] == 24
         return
     pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
+
+
+# ---------------------------------------------------------------------------
+# The item file, the effect file, and the neutral bridge (#27)
+# ---------------------------------------------------------------------------
+def amiga_por_with_items() -> list[pathlib.Path]:
+    """The specimens that have a `.itm` beside them.
+
+    Six of the twenty: the party shipped on Amiga disk 1.  The fourteen
+    staged on the Curse save disk carry no item file, so a run whose
+    `$AMIGA_POR_SAVES` holds only those skips rather than passing vacuously.
+    """
+    found = [p for p in amiga_por_records()
+             if p.with_suffix(".itm").exists()]
+    if not found:
+        pytest.skip("no .itm beside any record under $AMIGA_POR_SAVES")
+    return found
+
+
+def test_the_item_file_is_a_whole_number_of_sixty_five_byte_nodes():
+    for path in amiga_por_with_items():
+        size = path.with_suffix(".itm").stat().st_size
+        assert size % amiga.AMIGA_POR_ITEM_SIZE == 0, (path, size)
+
+
+def test_the_record_item_count_matches_the_item_file_length():
+    """Two independent numbers: a byte in the record and a file's size.
+
+    They agree 6 of 6 -- 3, 3, 3, 3, 3 and 2 against 195, 195, 195, 195, 195
+    and 130 bytes.  A stride of 63 or 66 fails this, and so does a count read
+    at the DOS offset instead of the shifted one.
+    """
+    for path in amiga_por_with_items():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        size = path.with_suffix(".itm").stat().st_size
+        assert c.get("item_count") == size // amiga.AMIGA_POR_ITEM_SIZE, path
+
+
+def test_the_encumbrance_identity_balances_for_every_specimen():
+    """`money + sum(weight x quantity)` equals the record's own encumbrance.
+
+    The strongest single check in this file, because it is arithmetic across
+    three structures at once: the seven money words in the record, the
+    65-byte stride of the item file, the item weight and quantity offsets,
+    the big-endian byte order of both, and one derived word.  It balances
+    for all six characters, and GARWAN's 543 is the number the game itself
+    drew beside `MOVEMENT 9`.
+
+    A shift map that puts weight at the DOS offset gives 0 for every item
+    and this fails on the first character.
+    """
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        total = sum(c.money.values())
+        for it in c.items:
+            total += it.get("weight") * (it.get("quantity") or 1)
+        assert total == c.get("encumbrance"), (path, total, c.get("encumbrance"))
+
+
+def test_the_item_chain_ends_null_and_ascends():
+    """A `next` read little-endian gives a wild address and fails this."""
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        pointers = [it.next_node for it in c.items]
+        assert pointers[-1] == 0, (path, pointers)
+        for p in pointers[:-1]:
+            assert 0x100 < p < 0x1000000, (path, pointers)
+        assert pointers[:-1] == sorted(pointers[:-1]), (path, pointers)
+
+
+#: What the game's own item table says these weigh and cost, which is also
+#: what the AD&D Players Handbook says.  Nine distinct items over seventeen
+#: nodes; the value is independently checkable against the price the item's
+#: own cached display line carries.
+AMIGA_POR_ITEMS = {
+    36: ("Long Sword", 60, 15),
+    57: ("Banded Mail", 350, 90),
+    59: ("Shield", 100, 15),
+    35: ("Broad Sword", 75, 10),
+    50: ("Leather Armor", 150, 5),
+    12: ("Flail", 150, 3),
+    55: ("Chain Mail", 300, 75),
+    33: ("Quarter Staff", 50, 1),
+    9: ("Darts", 5, 1),
+}
+
+
+def test_every_item_weighs_and_costs_what_the_game_says_it_does():
+    seen = set()
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        for it in c.items:
+            kind = it.get("type_index")
+            want = AMIGA_POR_ITEMS.get(kind)
+            if want is None:
+                continue
+            seen.add(kind)
+            name, weight, value = want
+            assert it.get("weight") == weight, (path, name, it.get("weight"))
+            assert it.get("value") == value, (path, name, it.get("value"))
+    assert seen, "no known item type in the corpus"
+
+
+def test_the_readied_flag_is_the_one_the_display_line_agrees_with():
+    """The flag `#55` could not confirm on Curse, where everything was
+    readied.  Here the darts are not: they read 0 and draw ` No `."""
+    seen = 0
+    for path in amiga_por_with_items():
+        for it in amiga.read_amiga_por(path).items:
+            line = it.display_line
+            if line.startswith(" Yes"):
+                assert it.get("readied") == 1, (path, line)
+                seen += 1
+            elif line.startswith(" No"):
+                assert it.get("readied") == 0, (path, line)
+                seen += 1
+    assert seen, "no item in the corpus carries the ready column"
+
+
+def test_an_item_of_the_wrong_length_is_refused_by_name():
+    with pytest.raises(AmigaRecordError):
+        amiga.AmigaPorItem.from_bytes(bytes(dos_layout.ITEM_SIZE))
+    with pytest.raises(AmigaRecordError):
+        amiga.AmigaPorItem.from_bytes(bytes(66))
+
+
+def test_the_effect_node_transposes_onto_the_dos_payload():
+    """`por/dos.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
+    effect; the Amiga writes the same four bytes one later, behind the pad
+    at offset 1.  So a transposed node has to reproduce it exactly."""
+    from por.dos import EFFECT_NEXT_NULL, INNATE_PAYLOAD
+
+    node = bytes((107, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xC5, 0x7C, 0x0C))
+    out = amiga.amiga_por_effect_to_dos(node)
+    assert len(out) == dos_layout.EFFECT_SIZE
+    assert out[0] == 107
+    assert out[1:5] == INNATE_PAYLOAD
+    assert out[5:] == EFFECT_NEXT_NULL
+
+
+def test_an_effect_node_of_the_wrong_length_is_refused():
+    with pytest.raises(AmigaRecordError):
+        amiga.amiga_por_effect_to_dos(bytes(dos_layout.EFFECT_SIZE))
+
+
+#: The fields `to_dos_record` deliberately does not carry across, each with
+#: the reason it is on this list.  A field that stopped round-tripping and is
+#: not named here is a bug, which is what the test below catches.
+NOT_TRANSPOSED = {
+    "name_length": "re-cut from 16 NUL-padded bytes to a count and fifteen",
+    "name_text": "re-cut from 16 NUL-padded bytes to a count and fifteen",
+    "effect_chain": "a live Amiga heap address; written NULL",
+    "field_83_87": "the unplaced window; written zero rather than guessed",
+    "experience": "one u32 on the Amiga, spanning this field and gap_0af",
+    "gap_0af": "experience's fourth byte on the Amiga",
+}
+
+
+def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
+    """Read the re-cut record back through `por/dos.py` and compare.
+
+    The two readers are independent -- one applies the shift map to the
+    Amiga bytes, the other reads a DOS record straight -- so this fails if
+    the re-cut loses a field, mis-orders a `u16`, or drifts by a byte.
+    """
+    from por.dos import DosCharacter
+
+    for path in amiga_por_records():
+        a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        d = DosCharacter(amiga.to_dos_record(a))
+        for f in dos_layout.LAYOUT:
+            if f.name in NOT_TRANSPOSED:
+                continue
+            assert d.get(f.name) == a.get(f.name), (path, f.name)
+        assert d.name == a.name, path
+        assert d.get("experience") + (d.raw("gap_0af")[0] << 24) == a.experience
+
+
+def test_the_recut_refuses_to_invent_the_unplaced_window():
+    """DOS holds `00 00 01 00 00` there in 24 of 24 specimens and the Amiga's
+    own bytes are zero.  Copying the DOS constant in would be putting a DOS
+    value into a record built from an Amiga one, which is the thing
+    `CLAUDE.md` forbids -- so the re-cut writes zero and says so."""
+    for path in amiga_por_records():
+        a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        record = amiga.to_dos_record(a)
+        window = dos_layout.FIELDS_BY_NAME["field_83_87"]
+        assert record[window.span] == bytes(window.size), path
+
+
+def test_the_neutral_record_carries_the_amiga_port_and_its_items():
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        n = amiga.to_neutral(c)
+        assert n.port == "Amiga"
+        assert n.source == str(path)
+        assert len(n.get("inventory")) == len(c.items)
+        # The C64 projection puts the type index first, so a lost item file
+        # or a mis-strided one shows up here as the wrong item entirely.
+        assert [it[0] for it in n.get("inventory")] == \
+            [it.get("type_index") for it in c.items]
+        assert any("por.amiga.to_dos_record" in w for w in n.warnings)
+
+
+def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
+    """The whole point of the bridge: the sheet's own numbers come out the
+    other side of it.  Not the reader agreeing with itself -- the neutral
+    record agreeing with a photograph."""
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        if c.name != "GARWAN":
+            continue
+        n = amiga.to_neutral(c)
+        assert n.get("name") == "GARWAN"
+        assert n.get("hp_max") == 14
+        assert 60 - n.get("armour_class") == 1
+        assert n.get("experience") == 17
+        assert n.get("exceptional_strength") == 100
+        assert n.get("movement_current") == 9
+        # Encumbrance is derived, so `por/dos.py` drops it rather than
+        # carrying it -- the identity that proves the item file is decoded
+        # is asserted on the reader above, not here.
+        assert n.get("encumbrance") is None
+        assert any("encumbrance" in d for d in n.dropped)
+        assert n.get("strength") == 18
+        assert n.get("age") == 18
+        return
+    pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
+
+
+def test_the_innate_effects_reach_the_neutral_record():
+    """The dwarf's four racial ids and the elf's one, through the ten-byte
+    Amiga node and the nine-byte DOS one that `por/dos.py` filters."""
+    seen = 0
+    for path in amiga_por_records():
+        c = amiga.read_amiga_por(path)
+        if not c.effects:
+            continue
+        seen += 1
+        n = amiga.to_neutral(c)
+        assert n.get("innate_effects") == [e[0] for e in c.effects], path
+    if not seen:
+        pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")

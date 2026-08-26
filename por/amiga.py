@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, field
+from typing import Sequence
 
 from . import dos_layout, games, neutral
 from .layout import Kind
@@ -1060,20 +1061,28 @@ def amiga_por_offset(dos_offset: int) -> int:
 
 @dataclass(frozen=True)
 class AmigaPorCharacter:
-    """One Amiga Pool of Radiance character, read through the DOS table."""
+    """One Amiga Pool of Radiance character, read through the DOS table.
+
+    `items` and `effects` are the sibling `.itm` and `.spc` files when there
+    are any; an exported `.cha` normally has neither, and the record's own
+    `item_count` is what says how much of a `.itm` belongs here.
+    """
 
     raw: bytes
     source: str = ""
+    items: tuple["AmigaPorItem", ...] = ()
+    effects: tuple[bytes, ...] = ()
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray,
-                   source: str = "") -> "AmigaPorCharacter":
+    def from_bytes(cls, data: bytes | bytearray, source: str = "",
+                   items: Sequence["AmigaPorItem"] = (),
+                   effects: Sequence[bytes] = ()) -> "AmigaPorCharacter":
         if len(data) != AMIGA_POR_RECORD_SIZE:
             raise AmigaRecordError(
                 f"an Amiga Pool of Radiance record is "
                 f"{AMIGA_POR_RECORD_SIZE} bytes, got {len(data)}; the Amiga "
                 f"Curse record is 428 and Pools of Darkness's .pc is 484")
-        return cls(bytes(data), source)
+        return cls(bytes(data), source, tuple(items), tuple(effects))
 
     @property
     def name(self) -> str:
@@ -1133,8 +1142,306 @@ def dos_experience_offset() -> int:
 
 
 def read_amiga_por(path) -> AmigaPorCharacter:
-    """One Amiga Pool of Radiance `.cha` or `CHRDATA<n>.sav`."""
+    """One Amiga Pool of Radiance `.cha` or `CHRDATA<n>.sav`.
+
+    The sibling `.itm` and `.spc` are read too where they are there.  The
+    record's own `item_count` is what says how many of the `.itm` belong to
+    this character -- an export zeroes it, and a stale `.itm` left beside one
+    would otherwise hand it somebody else's gear.  `por/dos.py` reads the DOS
+    files the same way and for the same reason.
+    """
     import pathlib
 
     path = pathlib.Path(path)
-    return AmigaPorCharacter.from_bytes(path.read_bytes(), source=str(path))
+    data = path.read_bytes()
+    char = AmigaPorCharacter.from_bytes(data, source=str(path))
+    itm = _sibling_bytes(path, ".itm")
+    spc = _sibling_bytes(path, ".spc")
+    count = min(char.get("item_count"), len(itm) // AMIGA_POR_ITEM_SIZE)
+    items = [AmigaPorItem.from_bytes(
+        itm[i * AMIGA_POR_ITEM_SIZE:(i + 1) * AMIGA_POR_ITEM_SIZE])
+        for i in range(count)]
+    effects = [spc[i:i + AMIGA_POR_EFFECT_SIZE]
+               for i in range(0, len(spc), AMIGA_POR_EFFECT_SIZE)
+               if len(spc[i:i + AMIGA_POR_EFFECT_SIZE]) == AMIGA_POR_EFFECT_SIZE]
+    return AmigaPorCharacter.from_bytes(data, str(path), items, effects)
+
+
+def _sibling_bytes(path, suffix: str) -> bytes:
+    """A `.itm` or `.spc` beside the record, on either case of the name."""
+    for candidate in (path.with_suffix(suffix), path.with_suffix(suffix.upper())):
+        if candidate.exists() and candidate != path:
+            return candidate.read_bytes()
+    return b""
+
+
+# ---------------------------------------------------------------------------
+# The Amiga Pool of Radiance item file: 65 bytes where DOS spends 63
+# ---------------------------------------------------------------------------
+#
+# `CHRDATA<n>.itm` beside the record, one 65-byte node per item, and the
+# record's own `item_count` says how many belong to that character -- 3, 3, 3,
+# 3, 3 and 2 against files of 195, 195, 195, 195, 195 and 130 bytes on the
+# party shipped on Amiga disk 1, which is 6 of 6 exact.
+#
+# It is the DOS 63-byte record with **two insertions**, and the whole of the
+# decode is one arithmetic identity that cannot be satisfied by accident:
+# `money + sum(weight x quantity)` equals the record's own derived
+# encumbrance word for **all six characters**, which fixes the money offsets,
+# the 65-byte stride, the weight and quantity offsets and the byte order
+# together.  Seventeen item nodes, nine distinct items; every weight is the
+# published AD&D one (Long Sword 60, Chain Mail 300, Shield 100, Darts 5) and
+# every value matches the price the item's own cached display line carries.
+#
+#   * DOS's count byte is gone.  The Amiga writes **NUL-separated text** from
+#     offset 0 -- `Chain Mail\0Mail\0          75\0` -- so the display line is
+#     the first NUL-terminated run, and 42 bytes serve where DOS spends a
+#     length byte and 41.
+#   * One pad in DOS `0x035`-`0x037`, which even-aligns the `u16` weight at
+#     Amiga `0x038`.  Zero in all 17, so which of the three is UNKNOWN.
+#   * One pad at Amiga `0x03B`, and this one **is** located to the byte:
+#     quantity is measured at `0x03A` (60, on the only stack in the corpus,
+#     against a display line reading `60 Darts`) and value at `0x03C`.
+#
+# `readied` at `0x034` is the flag `#55 (Decode the Amiga Curse and Silver
+# Blades records)` could not confirm on Curse, where every specimen was
+# readied: the un-readied darts read 0 here and their display line reads
+# ` No `, and every other item reads 1 and draws ` Yes `.
+AMIGA_POR_ITEM_SIZE = 65
+#: Bytes of NUL-separated display text before the `next` pointer.
+AMIGA_POR_ITEM_TEXT = 0x02A
+#: `(first DOS item offset, bytes inserted before it)`, ascending.
+AMIGA_POR_ITEM_SHIFTS = ((0x000, 0), (0x037, 1), (0x03A, 2))
+#: The first insertion is one byte somewhere in here; all three read zero.
+AMIGA_POR_ITEM_PAD_WINDOW = range(0x035, 0x038)
+#: The second insertion, located to the byte between quantity and value.
+AMIGA_POR_ITEM_PAD = 0x03B
+
+
+def amiga_por_item_offset(dos_offset: int) -> int:
+    """Where a DOS item offset lands in the Amiga one.
+
+    Unlike the record's map this one never refuses: both insertions sit past
+    the last field a caller reads by DOS offset, and the text field is
+    re-cut rather than shifted.
+    """
+    shift = 0
+    for first, amount in AMIGA_POR_ITEM_SHIFTS:
+        if dos_offset >= first:
+            shift = amount
+    return dos_offset + shift
+
+
+@dataclass(frozen=True)
+class AmigaPorItem:
+    """One 65-byte node of an Amiga Pool of Radiance `.itm` file."""
+
+    raw: bytes
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray) -> "AmigaPorItem":
+        if len(data) != AMIGA_POR_ITEM_SIZE:
+            raise AmigaRecordError(
+                f"an Amiga Pool of Radiance item is {AMIGA_POR_ITEM_SIZE} "
+                f"bytes, got {len(data)}; the Amiga Curse item is 66 and the "
+                f"DOS item is {dos_layout.ITEM_SIZE}")
+        return cls(bytes(data))
+
+    def get(self, field_name: str):
+        """One field, by its `por/dos_layout.py` item name, big-endian."""
+        f = dos_layout.ITEM_FIELDS_BY_NAME.get(field_name)
+        if f is None:
+            raise AmigaRecordError(f"no item field called {field_name!r}")
+        at = amiga_por_item_offset(f.offset)
+        chunk = self.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            return int.from_bytes(chunk, "big")
+        if f.kind is Kind.I8:
+            return int.from_bytes(chunk, "big", signed=True)
+        if f.kind is Kind.U8:
+            return chunk[0]
+        return chunk
+
+    @property
+    def display_line(self) -> str:
+        """The line the game last drew -- **never a source**.
+
+        Stale by construction on both ports: the buffer is written over in
+        place, so `Chain Mail\\0Mail\\0` is a short name sitting on the tail of
+        a longer one, and the ` Yes `/` No ` column appears only on the items
+        the ITEMS screen last painted it onto.  `por/dos.py` records the same
+        of the DOS buffer, where a stack of darts reads `11 Darts` over a
+        quantity of 8.
+        """
+        return self.raw[:AMIGA_POR_ITEM_TEXT].split(b"\0")[0].decode(
+            "ascii", "replace")
+
+    @property
+    def next_node(self) -> int:
+        """The heap address of the next item, `u32` big-endian, NULL last."""
+        return int.from_bytes(self.raw[0x02A:0x02E], "big")
+
+    def to_dos_bytes(self) -> bytes:
+        """This item as the 63 bytes `por/dos_layout.py` describes.
+
+        The `next` far pointer is written NULL rather than carried: it is a
+        live Amiga heap address, and the DOS engine rebuilds its own chain
+        from the file's length regardless (`por/dos.py`, `EFFECT_NEXT_NULL`
+        records the same measurement for the effect chain).
+        """
+        out = bytearray(dos_layout.ITEM_SIZE)
+        text = self.raw[:AMIGA_POR_ITEM_TEXT]
+        line = text.split(b"\0")[0]
+        size = dos_layout.ITEM_FIELDS_BY_NAME["text"].size
+        out[0] = min(len(line), size)
+        out[1:1 + size] = text[:size].ljust(size, b"\0")
+        for f in dos_layout.ITEM_LAYOUT:
+            if f.name in ("text_length", "text", "next"):
+                continue
+            at = amiga_por_item_offset(f.offset)
+            chunk = self.raw[at:at + f.size]
+            if f.kind in (Kind.U16LE, Kind.UINT_LE):
+                chunk = chunk[::-1]
+            out[f.offset:f.offset + f.size] = chunk
+        return bytes(out)
+
+
+# ---------------------------------------------------------------------------
+# The Amiga Pool of Radiance effect file: 10 bytes where DOS spends 9
+# ---------------------------------------------------------------------------
+#: One `.spc` node.  `#55` located the extra byte at offset 1, on 62 records;
+#: the party shipped on Amiga disk 1 agrees on 6 more, and its payload bytes
+#: 2-5 read `00 00 FF 00` -- `por/dos.py`'s `INNATE_PAYLOAD` exactly, which is
+#: DOS's bytes 1-4.  So the pad is at 1 and everything after it is DOS's four
+#: payload bytes and four pointer bytes in order.
+AMIGA_POR_EFFECT_SIZE = 10
+AMIGA_POR_EFFECT_PAD = 1
+
+
+def amiga_por_effect_to_dos(node: bytes) -> bytes:
+    """One 10-byte Amiga `.spc` node as DOS's nine bytes.
+
+    The duration is a `u16` big-endian at 2 where DOS keeps it little-endian
+    at 1, and the four-byte next pointer is written NULL: it is a live heap
+    address, and the DOS engine rebuilds the chain from the file's length --
+    measured three ways under DOSBox-X, `por/dos.py`'s `EFFECT_NEXT_NULL`.
+    """
+    if len(node) != AMIGA_POR_EFFECT_SIZE:
+        raise AmigaRecordError(
+            f"an Amiga effect node is {AMIGA_POR_EFFECT_SIZE} bytes, "
+            f"got {len(node)}")
+    return bytes((node[0], node[3], node[2], node[4], node[5])) + bytes(4)
+
+
+# ---------------------------------------------------------------------------
+# Amiga Pool of Radiance -> the neutral record (#27)
+# ---------------------------------------------------------------------------
+#
+# The reader's last mile, and it is a transposition rather than a second
+# codec.  `to_dos_record` re-cuts the 288 bytes into the 285 `por/dos.py`
+# already knows how to read, and `por.dos.to_neutral` does the rest -- so
+# every grade, every drop and every provenance line the DOS side earned on 24
+# specimens carries over, and there is no second neutral bridge to drift.
+#
+# What the re-cut has to do, and nothing else:
+#
+#   * the name -- 16 NUL-padded bytes become DOS's count byte and fifteen;
+#   * the `u16` and `u32` fields -- big-endian becomes little-endian;
+#   * experience -- one `u32` on the Amiga, spanning DOS's 24-bit field *and*
+#     the byte `por/dos_layout.py` calls `gap_0af`.  PROBABLE: the DOS field
+#     is a `u32le` and the gap is its fourth byte.  Written that way, which
+#     is lossless either way round because the fourth byte is zero below
+#     16 777 216 experience and no Gold Box character reaches it;
+#   * the two live pointers -- the effect chain and each item's `next` -- are
+#     written NULL rather than carried.  They are Amiga heap addresses.
+#
+# Two regions are **not** transposed and are reported instead of guessed:
+#
+#   * DOS `0x083`-`0x087`, where the second insertion has not been located.
+#     Those five bytes are written zero, which is what the Amiga's own six
+#     read in 11 of the 14 that could show anything.  DOS's own specimens
+#     hold `00 00 01 00 00` in 24 of 24, and copying that constant in would
+#     be putting a DOS value into a record built from an Amiga one --
+#     inheriting rather than measuring.  `por/dos.py` drops the field anyway;
+#   * the Amiga's trailing byte at `0x11F`, which DOS does not have.
+DOS_RECORD_SIZE = dos_layout.RECORD_SIZE
+
+
+def _amiga_por_name(raw: bytes) -> tuple[int, bytes]:
+    """The 16 NUL-padded bytes as DOS's count byte and fifteen."""
+    text = raw[:AMIGA_POR_NAME_SIZE]
+    line = text.split(b"\0")[0]
+    size = dos_layout.FIELDS_BY_NAME["name_text"].size
+    return min(len(line), size), text[:size].ljust(size, b"\0")
+
+
+def to_dos_record(char: AmigaPorCharacter) -> bytes:
+    """The 288-byte Amiga record re-cut as the 285-byte DOS one.
+
+    Not a conversion between games -- the same record in the other port's
+    shape, so that `por/dos.py` can read it.  Every byte written came from a
+    named Amiga field or is a documented zero; see the note above this
+    function for the four rules and the two regions left blank.
+    """
+    out = bytearray(DOS_RECORD_SIZE)
+    count, text = _amiga_por_name(char.raw)
+    out[0] = count
+    out[1:1 + len(text)] = text
+
+    exp = dos_layout.FIELDS_BY_NAME["experience"]
+    at = amiga_por_offset(exp.offset)
+    out[exp.offset:exp.offset + 4] = int.from_bytes(
+        char.raw[at:at + 4], "big").to_bytes(4, "little")
+
+    skip = {"name_length", "name_text", "experience", "gap_0af",
+            "field_83_87", "effect_chain"}
+    for f in dos_layout.LAYOUT:
+        if f.name in skip:
+            continue
+        at = amiga_por_offset(f.offset)
+        chunk = char.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            chunk = chunk[::-1]
+        out[f.offset:f.offset + f.size] = chunk
+    return bytes(out)
+
+
+def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
+    """One Amiga Pool of Radiance character in the neutral record.
+
+    The Amiga third of `por/neutral.py`'s reader set, beside
+    `por.c64_codec.read` and `por.dos.to_neutral`.  It reports what it could
+    not carry rather than filling it in: an item file the record's own count
+    disagrees with, a name that fills all sixteen bytes, and the unplaced
+    window.
+    """
+    # Deferred: `por.dos` is the heavier module and this is its only caller.
+    from . import dos as _dos
+
+    record = to_dos_record(char)
+    items = [_dos.DosItem(it.to_dos_bytes()) for it in char.items]
+    effects = [amiga_por_effect_to_dos(e) for e in char.effects]
+    out = _dos.to_neutral(
+        _dos.DosCharacter(record, items, effects, source=char.source))
+    out.port = "Amiga"
+    out.source = char.source
+    out.warnings.append(
+        "read from a 288-byte Amiga Pool of Radiance record re-cut to the "
+        "285-byte DOS one by por.amiga.to_dos_record; the provenance lines "
+        "name the DOS field table, which is the table both ports share")
+
+    line, _ = _amiga_por_name(char.raw)
+    if line >= dos_layout.FIELDS_BY_NAME["name_text"].size:
+        out.warnings.append(
+            f"the Amiga name fills all {AMIGA_POR_NAME_SIZE} bytes with no "
+            f"terminator; DOS holds fifteen, so it was truncated")
+    stored = char.get("item_count")
+    if stored != len(char.items):
+        out.warnings.append(
+            f"the record counts {stored} items and {len(char.items)} were "
+            f"read from the .itm file; the shorter of the two was used")
+    out.drop("Amiga 0x083-0x087: the second insertion is not located, so "
+             "those bytes were written zero rather than guessed")
+    out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
+             "room for")
+    return out

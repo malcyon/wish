@@ -284,12 +284,60 @@ tail:
 It exists to align the u16 duration and the u32 pointer on even addresses,
 which a nine-byte record cannot do.
 
+**The DOS Curse -> Amiga Curse shift map, on 27 specimens.** Twelve DOS
+records (the archives' `Default files/Saves`), eleven Amiga `.guy` pregens and
+the four character blocks embedded in the Amiga Curse saved game -- and the
+last four are what place two of the anchors, because they are a *played* party
+where the pregens are not. `work/amiga/p55/shiftmap.py`.
+
+| DOS | Amiga | shift | anchor |
+|---|---|---|---|
+| `0x000`-`0x0F8` | same | **0** | `0x0DE`=1 (27/27); movement 12 at `0x0E4` (26/27); thief skills `0x0EA`-`0x0F1`; the **far pointer** at DOS `0x0F2`-`0x0F5` onto the Amiga's `u32be` at the same offset; the party flag at `0x0F8` |
+| | one insertion in Amiga `0x0F9`-`0x0FB` | | |
+| `0x0FB` | `0x0FC` | **+1** | the seven-word money block |
+| `0x127` | `0x128` | **+1** | experience, `u32le` onto `u32be` -- 25000 single-class, 12500 dual, 8333 triple |
+| | **two** insertions in DOS `0x130`-`0x136` | | zero on both sides |
+| `0x137`-`0x139` | `0x13A`-`0x13C` | **+3** | the magic-user spell-slot triple, non-zero in exactly the mages |
+| | one insertion in DOS `0x13A`-`0x140` | | zero on both sides |
+| `0x145`-`0x14A` | `0x149`-`0x14E` | **+4** | the six-byte table `145 162 179 196 230 247`, matched byte for byte in 3 of 15 |
+| | one insertion in DOS `0x14B`-`0x186` | | the item region; blank on DOS because no DOS specimen carries an item |
+| `0x187` | `0x18C` | **+5** | encumbrance, `u16le` onto `u16be`; then `0x196`, `0x19B`, `0x19E`, `0x1A0`, `0x1A5` all at +5 |
+| | Amiga `0x1AB` | | the trailing pad; 422 + 6 = 428 |
+
+**The identity that fixes the money block and the item stride together**:
+`money + Σ(weight × quantity)` equals the stored encumbrance in **12 of 12 DOS
+and 15 of 15 Amiga** specimens -- 300 for every characterless pregen, and 683,
+683, 782 and 682 for the four played blocks whose items are a Chain Mail and a
+weapon apiece. Which slot of the seven is copper and which platinum is
+**UNKNOWN**: every specimen holds money in one slot.
+
+**`0x0F8` is a party flag** -- 1 in all twelve DOS records and all four Amiga
+in-save blocks, 0 in all eleven pregens, same offset on both ports. CONFIRMED,
+27 of 27, and it is what fixes shift 0 that far in.
+
+**Refuted, and it was ours**: an earlier reading put an insertion inside DOS
+`0x0F2`-`0x0F4`. That region is a *normalised* far pointer -- its offset word
+reads 9, 1, 11, 15, 8, 8, 8, 8 across the twelve, every one at most 15 -- and
+it maps four bytes onto the Amiga's four with no shift at all.
+
+**What settles the three remaining insertions is a save, not a probe.** All
+three windows are zero on both sides for the same reason: every specimen is
+level 4 or 5 and none carries an item, so the high spell-slot bytes and the
+whole item region are blank. A DOS Curse party a few levels higher with
+something bought fills all three at once. A ramp probe under Amiga Curse
+cannot help -- the character sheet draws none of these bytes, and the Amiga
+offsets such a probe would report are already measured on 15 specimens.
+
 ### 1.7 The Amiga saved game is the DOS file with its last region replaced
 
 `SAVE/savgamA.dat` (Curse, 15221, byte 0 `02`) and `SAVE/savgamA.sav` (Silver
 Blades, 7233, byte 0 `01`), against [`141-dos-savegame.md`](141-dos-savegame.md).
 The five regions are the DOS ones at the DOS offsets; only the last is a
 different object.
+
+**Pool of Radiance's is not, and §1.9a below is the correction** -- it has no
+container byte and its whole array sits one byte lower. Read the title before
+reading the file.
 
 **The variable array is `docs/141`'s, unchanged, big-endian.** CONFIRMED, and
 by a whole-array match rather than spot checks: listing every non-zero word at
@@ -336,11 +384,11 @@ Curse and 22 on Silver Blades against 20 in both DOS files. Silver Blades is a
 clean diff and gives **x, y and facing as single bytes at the DOS offsets**
 (`0x1401`-`0x1403` = 7, 13, 0 in both files) with one byte inserted in
 `0x1404`-`0x140a` and the party size preceded by a `00`. **Curse does not
-agree**: its region is +4, its contents differ from DOS's everywhere because it
-is a mid-game save, and it reads either as `x=0, y=3, facing=0` or as widened
-big-endian words giving **`x=3, y=14, facing=2`**. The array holds `$49F0`=2
-and `$49F1`=14, which favours the second from an independent part of the file
-but does not prove it. PROBABLE, one specimen.
+agree**: its region is +4, and **§1.11 settles it on the screen** — `x = 3`
+and `y = 14` as `u16be` at `0x3201` and `0x3203`, facing a byte at `0x3205`.
+The `$49F0`=2 / `$49F1`=14 pair that once looked like corroboration is engine
+scratch and was a coincidence; §1.9b measured it moving on a step that changed
+neither coordinate.
 
 The encounter message is in the Curse save **twice**: unpacked at `$5289`, one
 character per word, which is `docs/141`'s buffer; and **packed two characters
@@ -408,6 +456,283 @@ directory named by `$AMIGA_POR_SAVES`, skipping without one.
 `por/dos_layout.py`; the Amiga's counterpart is drawn on the sheet as
 `MOVEMENT 9` beside a base of 12, which settles the field and independently
 refutes the third-party claim that the byte is an AD&D class group (#59).
+
+### 1.9 The Amiga Pool of Radiance item and effect files, and the neutral bridge (#27)
+
+The record was only two thirds of the reader. `CHRDATA<n>.itm` and
+`CHRDATA<n>.spc` beside it hold the gear and the innate effects, and both are
+now decoded — so `por.amiga.to_neutral` turns an Amiga character into
+`por/neutral.py`'s record, which is the Amiga cell of the reader row #51
+tracks.
+
+**The item node is 65 bytes: the DOS 63 with two insertions.** Seventeen
+nodes over nine distinct items, from the party shipped on disk 1.
+
+| DOS | Amiga | field |
+|---|---|---|
+| `0x000` count byte + `0x001`-`0x029` text | `0x000`-`0x029`, **NUL-separated, no count byte** | the cached display line — `Chain Mail\0Mail\0          75\0` |
+| `0x02A` | `0x02A`, `u32` big-endian | `next`, NULL on the last item, ascending by `0x48` |
+| `0x02E`-`0x034` | same | type index, three name-table words, plus, plus save, **readied** |
+| `0x035`-`0x036` | `0x035`-`0x037`, one of the three a pad | hidden, cursed |
+| `0x037` | `0x038`, `u16` big-endian | weight |
+| `0x039` | `0x03A` | quantity |
+| — | `0x03B` | **pad, located to the byte**: quantity is measured at `0x03A` and value at `0x03C` |
+| `0x03A` | `0x03C`, `u16` big-endian | value in gold |
+| `0x03C`-`0x03E` | `0x03E`-`0x040` | charges, effect, power |
+
+**The evidence is one identity, and it cannot be satisfied by accident:**
+`money + Σ(weight × quantity)` equals the record's own derived encumbrance
+word for **all six characters** — GARWAN's 543 being the number the game drew
+on screen beside `MOVEMENT 9`. That fixes the seven money offsets, the 65-byte
+stride, the weight and quantity offsets and the byte order of both, together.
+Beside it: every weight is the published AD&D one (Long Sword 60, Chain Mail
+300, Shield 100, Darts 5), every value matches the price the item's own
+display line carries, the record's `item_count` equals the file's length over
+65 in 6 of 6, and the `next` chain terminates NULL in 6 of 6.
+
+**`readied` is at `0x034`** — the flag #55 could not confirm on Amiga Curse,
+where every specimen was readied. Here the darts read 0 and their display
+line reads ` No `; everything else reads 1 and draws ` Yes `.
+
+**The display line is a cached render on both ports, not a canonical string.**
+#55 left this UNKNOWN, wondering whether Amiga Curse's `" Yes  Shield "` meant
+the ready column lived in the text. It does — and so it does on **DOS**: the
+DOS `.ITM` files in `work/dos-saves` carry ` No   Long Sword +1 `,
+` Yes  * Shield +1 ` and, on the same character, a plain `Plate Mail ` with
+stale bytes (`Mail           400`) past its own length byte. So a writer must
+compose the line, never trust it — which is what `por/dos.py` already says of
+the DOS buffer.
+
+**The effect node is 10 bytes with the pad at offset 1**, which #55 measured
+on 62 records; disk 1's six agree, and their payload bytes `0x02`-`0x05` read
+`00 00 FF 00` — exactly `por/dos.py`'s `INNATE_PAYLOAD`, which is DOS's bytes
+1-4. So the pad is at 1 and everything after it is DOS's four payload bytes
+and four pointer bytes in order.
+
+**The neutral bridge is a transposition, not a second codec.**
+`por.amiga.to_dos_record` re-cuts the 288 bytes into the 285 `por/dos.py`
+already reads, and `por.dos.to_neutral` does the rest — so every grade, drop
+and provenance line the DOS side earned on 24 specimens carries over, and
+there is no second bridge to drift. Four rules and nothing else: the name is
+re-cut from 16 NUL-padded bytes to a count and fifteen; `u16` and `u32` fields
+are byte-swapped; experience is one Amiga `u32` spanning DOS's 24-bit field
+*and* `gap_0af`; and the two live heap pointers — the effect chain and each
+item's `next` — are written NULL rather than carried.
+
+**Two regions are reported rather than guessed.** DOS `0x083`-`0x087`, where
+the second insertion is still unplaced, is written **zero** — DOS's own
+specimens hold `00 00 01 00 00` in 24 of 24, and copying that in would be
+putting a DOS value into a record built from an Amiga one. And the Amiga's
+trailing byte at `0x11F` has no DOS home. Both are named in the report.
+
+### 1.9a The Amiga Pool of Radiance saved game is a byte out (#28)
+
+`save/savgamA.dat` on Pool of Radiance disk 1, **13141 bytes**, and it is *not*
+the shape §1.7 describes.
+
+| region | DOS, 13137 | **Amiga Pool of Radiance, 13141** |
+|---|---|---|
+| container byte | 0 | **absent** |
+| VM variable array | 1-5120, `1 + 2*(addr − $4900)` | **0-5119, `2*(addr − $4900)`** |
+| ECL text buffer | 5121-12800, 7680 | **5120-12799, 7680** |
+| square and party | 12801-12808, **8** | **12800-12812, 13** |
+| character table | 12809-13136, 328 | **12813-13140, 328** |
+
+`13137 = 1 + 5120 + 7680 + 8 + 328`; `13141 = 0 + 5120 + 7680 + 13 + 328`. The
++4 is **−1 for the missing container byte and +5 for the square block**, and
+all four boundaries are measured.
+
+**Six readings fix the array's base**, and the wrong one multiplies every
+value by 256: `$5012`=3 (New Phlan's container number, `docs/141` slot A),
+`$503E`=6 (the six `CHRDATA<n>.sav` beside it), `$49E6`=1 (indoors),
+`$4AFA`-`$4AFC`=(0, `$FFFF`, `$FFFF`) — **byte-identical to DOS slot A's New
+Phlan wallset triple**, `$5200`=25 (and file byte 12804 reads 25, the same copy
+DOS keeps at its 12805), and the clock at `$49C6` reading 05:48.
+
+**The ECL buffer starts at 5120, one byte before DOS's.** The Amiga's buffer
+and the DOS save's open with the same twenty bytes and **3916 of 7680 are
+identical**, against **574** when the two are lined up at the same offset. Both
+files are New Phlan. Script data runs to 12587 (7468 bytes) with zeros after,
+the same fill `docs/141` records.
+
+**The character table names files, it does not embed records** — six 41-byte
+entries holding `CHRDATA1`…`CHRDATA6` as **8 plain bytes with no count byte**,
+then 33 bytes of heap junk. DOS spends a count byte, 8 name bytes and 32 of
+junk. That is the third place the Amiga trades DOS's count byte for a NUL or
+for nothing, after the character name and the item display text. So §1.7's
+"where DOS names six files, the Amiga embeds the records" is **Curse and Silver
+Blades only**.
+
+**The square block is 13 bytes and four of them are settled**: 12812 = party
+size 6 (agrees with `$503E`), 12811 = the constant 2, 12810 = view mode 1
+(agrees with `$49E6`), 12804 = the low byte of `$5200`. `12801`-`12803` = 4, 6,
+1 sits where DOS puts x, y and facing — **but 1 is not a legal DOS facing**,
+which stores the C64's value doubled. Either the Amiga stores facing
+undoubled, the way the C64 itself does, or the square is among the five zeros
+at 12805-12809. UNKNOWN, one specimen; a save one step apart settles it, and
+the same session settles Curse's.
+
+### 1.9b The Amiga Pool of Radiance square, measured one step apart (#28)
+
+A WinUAE run on 2026-08-26 loaded `SAVE/` slot A on disk 1 — status line
+**`0,4 W 05:48`** — turned right, stepped forward to **`0,3 N 05:49`**, and
+saved to slot B. Two files one action apart, in the same drawer.
+
+```
+A (0,4 W 05:48)   12800:  00 04 06 01 19 00 00 00 00 00 01 02 06
+B (0,3 N 05:49)   12800:  00 03 00 00 00 00 00 00 00 00 01 02 06
+```
+
+| offset | A | B | what |
+|---|---|---|---|
+| 12800 | 0 | 0 | **x** |
+| 12801 | 4 | 3 | **y** — the step north |
+| 12802 | 6 | 0 | **facing, DOS's doubled encoding**: 6 W, 0 N |
+| 12803 | 1 | 0 | DOS's unnamed engine-maintained byte |
+| 12804 | 25 | 0 | **the low byte of `$5200`**, which moved 25 → 0 in the same save |
+| 12805-12809 | 0 | 0 | five bytes DOS does not have |
+| 12810-12812 | 1, 2, 6 | 1, 2, 6 | view mode, the constant 2, party size |
+
+**The clock moved by one minute at `docs/141`'s own addresses**: `$49C7`, the
+minute-units digit, 8 → 9 against `05:48` → `05:49` on screen.
+
+**Four of `docs/141`'s nine engine-rebuilt words are rebuilt here too** —
+`$49F0` 14 → 0, `$5079` 14 → 7, `$5082` 25 → 0, `$5200` 25 → 0 — and
+**the character-table filenames are live**: saving to slot B rewrote all six
+entries from `CHRDATA<n>` to `CHRDATB<n>`. **The ECL buffer did not change**,
+not one byte of 5120-12799.
+
+**`$49F0` is engine scratch and not a coordinate**: it went 14 → 0 across a
+step that moved y and not x, and `docs/141` lists it among the nine words the
+engine rewrites by itself. §1.7 cited it as corroboration for Curse's square;
+that was an accident.
+
+**It did not follow that Curse's square is single bytes, and §1.11 shows it is
+not.** The square is a per-title object.
+
+**The route into Amiga Pool of Radiance, complete.** §1.8 had it as far as the
+roster; two more steps are not guessable:
+
+1. code wheel — bare **RETURN**;
+2. intro — **ESC**, four times at fifteen-second intervals;
+3. `CHOOSE A FUNCTION` — **`L`**. Every menu in this engine picks by first
+   letter, and **RETURN selects nothing**;
+4. `PATH FOR SAVE  RETURN = POOLSAVE:` — type **`SAVE/`**;
+5. `LOAD WHICH GAME: A` — **type the letter**, then RETURN. RETURN alone
+   leaves the prompt sitting there;
+6. **movement is the number keys `4`, `6`, `8`.** The arrow keys and the
+   numeric keypad do nothing — `VK_LEFT`, `VK_RIGHT`, `VK_UP`, `VK_DOWN`,
+   `VK_NUMPAD6` and `VK_NUMPAD8` all left the status line where it was;
+7. saving — **`E`** ENCAMP, **`S`** SAVE, the slot letter, RETURN, then
+   **`N`** to `QUIT TO WORKBENCH  YES  NO`.
+
+**Amiga Curse cannot be driven this way.** Its rip still asks the code wheel:
+`P` at the option bar reaches *"TYPE THE CHARACTER IN BOX NUMBER 3 UNDER THE
+____ PATH"* and a bare RETURN does not satisfy it. `#108 (Amiga Curse asks its
+code wheel, so the title cannot be driven unattended)`.
+
+### 1.10 Writing an Amiga disk, and the block that is free but not free (#36)
+
+`por/amiga_adf.py` writes the AmigaDOS filesystem: allocate from the bitmap,
+write OFS data blocks, build a file header, thread it into the parent drawer's
+hash chain, fix every checksum. Until it existed a converted character reached
+an Amiga disk only by overwriting an existing file's bytes.
+
+**Proved in the running game.** Sixteen files -- a whole save slot, six
+`CHRDATB<n>.sav` with their `.itm` and `.spc`, and a 13141-byte
+`savgamB.dat` -- were written onto a copy of Pool of Radiance disk 1 as **new
+files**, and Amiga Pool of Radiance listed slot B in `LOAD WHICH GAME: A  B`
+and loaded it: the six-character roster with its own AC and HP, standing at
+`0,3 N 05:49`, which is the state the save holds.
+`work/amiga/p36/shots/slotb-final.png`.
+
+**`save/save` is the slot list, not a note about the current slot.** Ten bytes;
+`"A         "` on the shipped disk and `"AB        "` after the game saved to
+B. A disk carrying a complete slot B that does not name B here is offered only
+`A` at the picker — measured, one run wasted on it. §1.1's "which save letter
+is current" is superseded.
+
+**A cracked release reads blocks the bitmap says are free, and this cost two
+runs.** On Pool of Radiance disk 1:
+
+| what was written | where it landed | what the game did |
+|---|---|---|
+| one small file | header 917, data 991 | boots to the code wheel |
+| a second small file | header 992, data 993 | **hangs on a white screen**, drive still seeking |
+
+No existing file was touched, every checksum was right and the filesystem
+verified. Blocks 992-993 sit between the bitmap at 990 and the `save` drawer at
+996 — where a loader would keep its own scratch. So `_allocate` **counts down
+from the top of the disk**: the high end of a Gold Box disk is the game's own
+data and is allocated, so the free runs there are genuinely unused.
+
+**And a checksum one longword low validates.** The first version of the writer
+put the block checksum at `0x010` instead of `0x014`. Every block still summed
+to zero, so it passed both a checksum recomputation and a sum test — the field
+being compared held zero on both sides — and `verify()` called the disk clean.
+Kickstart said `Not a DOS disk in unit 0`. What catches it is a *structural*
+invariant: `first_data` at `0x010` names the same block as the first entry of
+the data table, on **211 of 211** files across four real disks.
+
+Three more things the real disks taught, each of which would have made a
+reader refuse a genuine disk:
+
+* **the root block is 880 even on the 1804-block Curse save disk**, whose
+  middle block, 902, is `ADDERLY.cha`;
+* **the second bitmap-page pointer is junk.** A floppy needs one page (4064
+  bits against 1758 blocks); Pools of Darkness disk 2 names block 955 *twice*
+  and disk 3 names 1352 and 1360;
+* **`bm_flag` is not always -1.** Both Silver Blades disks hold 1.
+
+### 1.11 Amiga Curse, read on screen (#55, #28, #108)
+
+The Curse rip still asks its code wheel, so this title could not be driven
+unattended at all until the challenge was answered from Donald's separate
+copy-protection repository. **Nothing about that is recorded here**, per
+`CLAUDE.md`; what matters is that the game now boots, loads and draws, and that
+one answer computed from the C64 tables was accepted on the Amiga — CONFIRMED,
+one challenge.
+
+**The route in**: title art takes RETURN; the `PLAY / DEMO / TRANSFER / QUIT`
+bar **does not respond to RETURN** and has to be picked by first letter, `P` —
+a second RETURN falls into the attract-mode combat demo, which looks exactly
+like a wedge; then the challenge, one character and RETURN. The party menu
+picks by first letter throughout, and `LOAD WHICH GAME:` wants the letter with
+no path prompt. **Movement did not respond to the number keys that work in
+Pool of Radiance**, nor to the arrow keys.
+
+**GALAIN's whole sheet, against the record** — the block at `0x3219` of
+`SAVE/savgamA.dat`:
+
+| screen | record | offset |
+|---|---|---|
+| `MALE ELF AGE 180` | race 2, age 180 | `0x074`, `0x076` `u16be` |
+| `FIGHTER/MAGIC-USER`, `LEVEL 4/4` | class 13; 4 at slots 2 and 5 | `0x075`, `0x10A` |
+| `STR 18(75)` and five more | `18 18` … `19 19` …, `75 75` | `0x010`, `0x01C`, as current/max pairs |
+| `PLATINUM 282  GOLD 1` | `[0, 0, 0, 1, 282, 0, 0]` | **`0x0FC`, seven `u16be`** |
+| `EXP 12500`, `MAX HP 32`, `HP 32` | 12500, 32, 32 | `0x128` `u32be`, `0x078`, `0x1A9` |
+| `AC 1` | 59 | **`0x19F`, stored `60 − value`** |
+| `THAC0 15` | `60 − 43` = 17 | `0x073` — **derived**, +2 for 18/75 |
+| `ENCUMBRANCE 683`, `MOVEMENT 9` | 683, base 12 and current 9 | `0x18C`, `0x0E4`, `0x1AA` |
+
+Three things this settles that §1.6 could not:
+
+* **armour class is at `0x19F`** — the only byte in `0x100`-`0x1AB` reading
+  `60 − AC` for all four in-save characters;
+* **the money block is at `0x0FC` in Pool of Radiance's order** — gold at slot
+  3 and platinum at slot 4, named by a character who holds both;
+* **`0x1AA` is `movement_current` and it is not the constant 12** that eleven
+  pregens made it look. They carry nothing; GALAIN carries 400 and the sheet
+  draws 9.
+
+**The square is `x = 3, y = 14, facing East`** — status line `3,14 E 01:15`.
+`0x3201` and `0x3203` are `u16be`, `0x3205` is the facing byte in DOS's doubled
+encoding, and the clock at `$49C6` reads 01:15 as `docs/141`'s six digit words.
+
+**So the square is a per-title object**: Pool of Radiance keeps DOS's three
+single bytes (§1.9b), Curse widens x and y. That is the third per-title
+difference in the Amiga port, after the saved game's missing container byte and
+the item record's size. **Read the title before reading the file.**
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 
