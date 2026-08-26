@@ -729,6 +729,31 @@ def pc_filename(name: str) -> str:
     return f"{stem}.pc"
 
 
+#: A trailing digit, tried in the eighth character's place, for a name that
+#: collides with one already claimed in the same export (#79). The genuine
+#: disks have no collision to learn a scheme from, so this one is ours.
+_DISAMBIGUATING_DIGITS = "23456789"
+
+
+def _unique_pc_filename(base: str, used: set[str]) -> str:
+    """`base`, if it is not already in `used`; otherwise a variant that is not.
+
+    `LADY KATHERINE` and `LADY KATHRYN` both give the base `LADYKATH.pc`; the
+    second one written gets `LADYKAT2.pc` instead of silently overwriting the
+    first. The name is shortened rather than the `.pc` extension dropped, so
+    the result is still an AmigaDOS name of the length `pc_filename` promises.
+    """
+    if base not in used:
+        return base
+    stem = base[:-len(".pc")]
+    for digit in _DISAMBIGUATING_DIGITS:
+        candidate = f"{stem[:FILENAME_LENGTH - 1]}{digit}.pc"
+        if candidate not in used:
+            return candidate
+    raise ConversionError(
+        f"no AmigaDOS file name distinct from {base!r} is left to try")
+
+
 def _classes_of(names) -> tuple[list[str], list[str]]:
     """The character's classes as PoD names them, plus any substitutions."""
     warnings: list[str] = []
@@ -948,6 +973,11 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
     game, sg0, sg1 = load_save(img)
     root = pathlib.Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
+
+    # Every name in the party is decided before anything is written, so a
+    # collision is disambiguated rather than the second character silently
+    # overwriting the first one's file (#79).
+    used: set[str] = set()
     out = []
     for slot in sg0.characters:
         char = c64_codec.read(
@@ -955,7 +985,14 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
             roster=sg1.roster(slot.index) if sg1 is not None else None,
             game=game, source=str(save_path))
         record, rep = to_pc(char)
-        path = root / pc_filename(str(char.get("name")))
+        base = pc_filename(str(char.get("name")))
+        filename = _unique_pc_filename(base, used)
+        if filename != base:
+            rep.warnings.append(
+                f"the file name {base!r} is already used by another "
+                f"character in this export; written instead as {filename!r}")
+        used.add(filename)
+        path = root / filename
         path.write_bytes(record)
         out.append((path, rep))
     return out

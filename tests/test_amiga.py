@@ -514,3 +514,113 @@ def test_a_built_filename_is_uppercase_and_eight_characters():
     assert amiga.pc_filename("MAGIC JHONSON") == "MAGICJHO.pc"
     assert amiga.pc_filename("TRIPEL TURBO") == "TRIPELTU.pc"
     assert amiga.pc_filename("?T") == "T.pc"
+
+
+def test_a_repeated_stem_gets_a_trailing_digit_rather_than_overwriting():
+    """LADY KATHERINE and LADY KATHRYN both give `LADYKATH.pc` (#79); the
+    second one claimed keeps the length `pc_filename` promises."""
+    from por.amiga import _unique_pc_filename
+
+    used: set[str] = set()
+    first = _unique_pc_filename(amiga.pc_filename("LADY KATHERINE"), used)
+    used.add(first)
+    second = _unique_pc_filename(amiga.pc_filename("LADY KATHRYN"), used)
+
+    assert first == "LADYKATH.pc"
+    assert second == "LADYKAT2.pc"
+    assert len(second) == len(".pc") + amiga.FILENAME_LENGTH
+
+
+def test_a_name_already_used_is_left_alone():
+    used = {"LADYKATH.pc"}
+    assert amiga._unique_pc_filename("BJORK.pc", used) == "BJORK.pc"
+
+
+def _six_identical_names_disk(tmp_path) -> pathlib.Path:
+    """A save disk with six occupied slots, every one the same 20-character
+    name and otherwise convertible (human fighter) -- the extreme case of
+    #79, where a two-way collision becomes a six-way one.
+
+    Built from the format like `gamedata.synthetic_party`, but with a single
+    class Pools of Darkness has a code for: `synthetic_party`'s all-four-class
+    combination has none, which `to_pc` refuses.
+    """
+    import gamedata
+
+    from por import games
+    from por.d64 import attach_load_address
+    from por.encoding import COMBAT_BIAS
+    from por.layout import NAME_SIZE
+    from por.record import CharacterRecord
+    from por.savegame import (
+        HEADER_SIZE,
+        ROSTER_ARMOUR_CLASS,
+        ROSTER_HP_CURRENT,
+        ROSTER_MOVEMENT,
+        ROSTER_SLOT_INDEX,
+        ROSTER_STRIDE,
+        ROSTER_THAC0,
+        SLOT_STRIDE,
+    )
+
+    game = games.POOL_OF_RADIANCE
+    record = CharacterRecord.blank()
+    record.set("name", "W" * NAME_SIZE)
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        record.set(ability, 15)
+    record.set("race", 7)          # human, RACES_FORGOTTEN_REALMS
+    record.set("class_bits", 8)    # fighter alone -- a code PoD has
+    record.set("hp_max", 20)
+    head = record.to_bytes()[:SLOT_STRIDE]
+
+    payload = bytearray(game.save_size)
+    roster = bytearray(game.roster_size)
+    for i in range(gamedata.PARTY_SLOTS):
+        payload[HEADER_SIZE + i * SLOT_STRIDE:
+                HEADER_SIZE + (i + 1) * SLOT_STRIDE] = head
+        at = i * ROSTER_STRIDE
+        roster[at + ROSTER_SLOT_INDEX] = i
+        roster[at + ROSTER_THAC0] = COMBAT_BIAS - 10
+        roster[at + ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - 10
+        roster[at + ROSTER_HP_CURRENT] = 20
+        roster[at + ROSTER_MOVEMENT] = 12
+    disk = gamedata._disk_with([
+        (game.save_file, attach_load_address(game.save_load_address,
+                                             bytes(payload))),
+        (game.roster_file, attach_load_address(game.roster_load_address,
+                                               bytes(roster))),
+    ])
+    out = tmp_path / "SIX_IDENTICAL.D64"
+    out.write_bytes(disk)
+    return out
+
+
+def test_export_party_disambiguates_a_six_way_collision(tmp_path):
+    """Before the fix, `export_party` returned six `(path, Report)` pairs
+    that all pointed at the one file the last write left behind; only one
+    `.pc` ever reached disk."""
+    from por.amiga import export_party
+
+    save = _six_identical_names_disk(tmp_path)
+    out_dir = tmp_path / "out"
+    written = export_party(save, out_dir)
+
+    assert len(written) == 6
+    names = [path.name for path, _rep in written]
+    assert len(set(names)) == 6, names
+    assert sorted(out_dir.glob("*.pc")) == sorted(out_dir / n for n in names)
+    assert names[0] == "WWWWWWWW.pc"
+    assert names[1:] == [f"WWWWWWW{d}.pc" for d in "23456"]
+
+    # every file actually exists and holds a real record, not a name clash
+    # papered over with an empty write
+    for path, _rep in written:
+        assert len(path.read_bytes()) == RECORD_LENGTH
+
+    # the rename is said, not done in silence -- first character keeps its
+    # name outright and has nothing to report; the rest do
+    assert written[0][1].warnings == [] or not any(
+        "already used" in w for w in written[0][1].warnings)
+    for path, rep in written[1:]:
+        assert any("already used" in w for w in rep.warnings), rep.warnings

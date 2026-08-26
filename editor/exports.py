@@ -115,10 +115,11 @@ WRITES_HEADING = "This writes:"
 REPLACES_HEADING = "It replaces these, already there:"
 REMOVES_HEADING = "It removes these, left by an earlier export:"
 
-#: Two characters coming out as one file, because `por.amiga.pc_filename` cuts
-#: a name to eight AmigaDOS characters and two names can survive that as one.
-#: Shown among the losses, because a character that does not arrive is one.
-#: The defect itself is `por/amiga.py`'s and is #79.
+#: Defensive: `por.amiga.export_party` disambiguates a repeated eight-character
+#: stem itself since #79, so this should never fire from that caller any more.
+#: Kept because `_amiga_losses` takes any `(path, Report)` list, not only
+#: `export_party`'s, and a character that does not arrive would be worse
+#: unreported than reported.
 COLLIDES = ("{file}: two characters have this Amiga file name, and only "
             "the last of them is written")
 
@@ -351,11 +352,13 @@ def _amiga_losses(written) -> str:
     a report printed by `tools/toamiga.py` cannot become two accounts of the
     same conversion.
 
-    The one line that is not a codec's is the name collision.
-    `por.amiga.pc_filename` cuts a name to eight AmigaDOS characters, so two
-    party members can come out as one file and `export_party` writes the
-    second over the first without saying so -- a character that leaves the
-    window and does not arrive. It is a loss and it is reported as one.
+    The one line that is not a codec's is the name collision. Two party
+    members can still share an eight-character stem, but `export_party`
+    disambiguates the second one's file name rather than overwriting (#79)
+    and says so in its own report -- which reaches the pane through the
+    second loop below, the same as any other warning. `COLLIDES` is a
+    defensive line for a `written` list from anywhere else that still holds a
+    genuine duplicate path.
     """
     out = []
     seen = set()
