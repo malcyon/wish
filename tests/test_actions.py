@@ -102,6 +102,37 @@ def test_a_machine_with_no_party_in_it_refuses_at_apply():
     assert not outcome.ok and outcome.writes == ()
 
 
+def test_read_party_refuses_a_roster_page_borrowed_by_a_picture():
+    """#82: on Silver Blades, a full-screen picture leaves the roster page
+    reading as graphics data while the record slots -- read from a different
+    page -- are unaffected. `read_party`'s other checks would pass; only the
+    roster page is scrap, and `roster_page_plausible` is what catches it."""
+    from por.savegame import ROSTER_SLOT_INDEX
+    save0, save1 = captured()
+    graphics = bytearray(save1)
+    graphics[ROSTER_SLOT_INDEX] = 9          # BRUTUS is slot 0; this is not
+    borrowed = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(graphics),
+                             0x6E11: bytes([WORLD])})
+    assert actions.read_party(borrowed) is None
+
+    # dismissed: the same page restored, and it reads normally again
+    restored = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
+                             0x6E11: bytes([WORLD])})
+    party = actions.read_party(restored)
+    assert party is not None and party.by_slot(0).name == "BRUTUS"
+
+
+def test_read_party_refuses_hit_points_above_the_recorded_maximum():
+    """The second, independent check #82 names: BRUTUS's maximum is 11."""
+    from por.savegame import ROSTER_HP_CURRENT
+    save0, save1 = captured()
+    over = bytearray(save1)
+    over[ROSTER_HP_CURRENT] = 255
+    target = MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(over),
+                          0x6E11: bytes([WORLD])})
+    assert actions.read_party(target) is None
+
+
 # --- healing -----------------------------------------------------------------
 
 

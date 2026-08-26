@@ -886,6 +886,28 @@ def test_an_impossible_position_is_refused():
     assert live.snapshot_from_bytes(bytes(broken), save1) is None
 
 
+def test_a_roster_page_borrowed_by_a_picture_is_refused():
+    """#82: on Silver Blades, a full-screen picture leaves the roster page
+    reading as graphics data while the record slots are fine, so the position
+    and the records both pass -- only `roster_page_plausible` catches this."""
+    from por.savegame import ROSTER_SLOT_INDEX
+    save0, save1 = captured()
+    graphics = bytearray(save1)
+    graphics[ROSTER_SLOT_INDEX] = 9          # BRUTUS is slot 0; this is not
+    assert live.snapshot_from_bytes(save0, bytes(graphics)) is None
+    # dismissed: the same page restored, and it reads normally again
+    assert live.snapshot_from_bytes(save0, save1) is not None
+
+
+def test_hit_points_above_the_recorded_maximum_refuse_the_roster_too():
+    """The second, independent check #82 names: BRUTUS's maximum is 11."""
+    from por.savegame import ROSTER_HP_CURRENT
+    save0, save1 = captured()
+    over = bytearray(save1)
+    over[ROSTER_HP_CURRENT] = 255
+    assert live.snapshot_from_bytes(save0, bytes(over)) is None
+
+
 def test_the_whole_tab_costs_two_reads():
     """The cost of a poll is the round trip, not the bytes -- 14.3 ms either
     way under VICE -- so this number is the one that matters."""

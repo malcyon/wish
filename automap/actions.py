@@ -259,7 +259,9 @@ def read_party(target, game: games.Game | None = None) -> Party | None:
     Same blocks as `live.read_snapshot`, read through the same
     `live.read_blocks`, and the same validate-before-trust rule: at the title
     screen, mid-load or in a menu the bytes simply are not there, and that is
-    ordinary rather than an error.
+    ordinary rather than an error. `live.roster_page_plausible` guards a
+    fourth case, where the position and the record slots are both fine and
+    only the roster page has something else's bytes on it (#82).
 
     `game` says where to read and how to decode. One read for a title that
     keeps its roster in the payload's last page, two for Pool of Radiance,
@@ -278,6 +280,8 @@ def read_party(target, game: games.Game | None = None) -> Party | None:
         # sum for the same reason.
         save1 = SaveGame1(bytes(roster_bytes[:live.ROSTER_PAGE])
                           + bytes(game.roster_size - live.ROSTER_PAGE), game)
+        if not live.roster_page_plausible(save0, save1):
+            return None
         members = tuple(
             Member(slot=s.index, record=s.record,
                    roster=save1.roster(s.index).raw, game=game)

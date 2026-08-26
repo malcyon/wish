@@ -439,6 +439,44 @@ def characters(save0: SaveGame0, save1: SaveGame1,
     return tuple(out)
 
 
+def roster_page_plausible(save0: SaveGame0, save1: SaveGame1) -> bool:
+    """Whether the roster page still holds a roster, and not something else
+    that happens to be sitting on its address.
+
+    #82: a full-screen picture on Silver Blades leaves the roster page
+    reading as graphics data, and `SaveGame1` decodes it anyway -- `_get`
+    does not know what put the bytes there, only that they are there. The
+    record slots this page is checked against come from a different page and
+    are unaffected, so the two can be compared. Either check below is enough
+    to refuse:
+
+    * `RosterBlock.slot_index` is the game's own back-reference to the slot
+      it lives in, and is always that slot's index on every save read so far
+      (`tests/test_savegame.py`, `tests/test_silverblades.py`, `tests/
+      test_curse.py`) -- a picture's bytes have no reason to land on that
+      pattern.
+    * no living character's current hit points can exceed the maximum the
+      record side of the same slot carries.
+
+    Called before a card is drawn from the page; the caller holds its last
+    good snapshot rather than redraw from this one.
+    """
+    for slot in save0.characters:
+        block = save1.roster(slot.index)
+        if not block.occupied:
+            continue
+        if block.slot_index != slot.index:
+            return False
+        record = slot.record
+        try:
+            hp_max = record.get("hp_max") if record else None
+        except FieldNotStored:
+            hp_max = None
+        if hp_max is not None and block.hit_points > hp_max:
+            return False
+    return True
+
+
 def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
                         names: dict[int, str] | None = None,
                         game: games.Game | None = None) -> Snapshot | None:
@@ -447,7 +485,9 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
     The checks are the ones `docs/100-live-view.md` asks for: a position inside
     the grid, a plausible party, records that decode. All three fail routinely
     and none of them is an error -- at the title screen, mid-load, in a menu,
-    the bytes simply are not there yet.
+    the bytes simply are not there yet. `roster_page_plausible` is a fourth,
+    for when the position and the records are fine and only the roster page
+    itself is scrap (#82).
     """
     game = game or games.DEFAULT
     if len(save0_bytes) != game.save_size or len(roster_bytes) < ROSTER_PAGE:
@@ -463,6 +503,8 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
         position = save0.party
         if not (0 <= position.x < GRID and 0 <= position.y < GRID
                 and 0 <= position.facing < 4):
+            return None
+        if not roster_page_plausible(save0, save1):
             return None
         effects = active_effects(bytes(save0_bytes))
         people = characters(save0, save1, effects, names)
