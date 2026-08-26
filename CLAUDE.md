@@ -43,25 +43,27 @@ the review.
 This does not apply to a subagent that only wrote documentation or only ran
 experiments. It applies to code.
 
-**The `reverse-engineering` subagent is for issues labelled
-`reverse-engineering` *and* `Priority: High`, one at a time.** It runs on
-Fable, which is expensive, so it is a scarce resource rather than the default
-for anything technical. Most of this backlog carries the label -- it is a
-reverse-engineering project -- so the label alone is not the filter; the pair
-is.
+**The `reverse-engineering` subagent runs on Fable and is not to be used
+unless the work genuinely cannot be done without it.** It is not the default
+for anything technical, and the `reverse-engineering` label is not a reason to
+reach for it -- most of this backlog carries that label, because this is a
+reverse-engineering project. **Do not launch it without asking Donald first.**
+It exhausted a monthly spend limit in one night on 2026-08-26, and what it had
+produced by then a general-purpose agent went on to match.
 
-**Everything else goes to a general-purpose agent, including work that looks
-like reverse engineering and is not.** Diffing two files against a layout we
-already have, flipping a byte and reloading, driving DOSBox through a
-documented recipe -- that is ordinary work with a hex editor. Decoding a format
-from nothing, reading a disassembly, or finding an address by measurement is
-not.
+**Reverse-engineering work goes to a general-purpose agent, and most of it
+turns out to be ordinary work.** Diffing two files against a layout we already
+have, flipping a byte and reloading, driving DOSBox or WinUAE through a
+documented recipe, walking a save with a hex editor -- all of that is
+general-purpose work, and it is how the DOS saved game's inherit list went
+from 8016 bytes to 444 and how the Amiga Pool of Radiance record was read.
 
 **The escape hatch, and use it rather than pressing on:** if a general-purpose
-agent finds the task genuinely needs disassembly or memory-level measurement,
-it should stop and say so, and the work gets re-routed. That is a signal, not a
-failure. The reverse is also true -- an issue that turns out to be a lookup
-does not need Fable because somebody labelled it hopefully.
+agent finds the task genuinely needs a disassembly -- reading 68000 or 6502
+code rather than watching an address or diffing a file -- it should stop and
+say so, and the work comes back to Donald to decide whether it is worth Fable.
+That is a signal, not a failure. Stopping is cheap; an agent grinding at a
+disassembly on the wrong model is not.
 
 **Emulator work goes through the instance pool.** VICE serves exactly one
 binary-monitor connection *per process*, so running two things at once means
@@ -146,7 +148,7 @@ the routing.
 
 | agent | model | when |
 |---|---|---|
-| `reverse-engineering` | Fable | `reverse-engineering` **and** `Priority: High`, one at a time. Expensive; the pair is the filter, not the label |
+| `reverse-engineering` | Fable | **Ask Donald before launching it.** Only when the work needs a disassembly read, not merely a measurement. Exhausted a monthly limit in one night; the label is not a reason to use it |
 | `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | after **every** subagent that wrote code, before its work is committed |
