@@ -42,7 +42,7 @@ gh issue list --state all --limit 200 \
 
 **Report the corpus size and the exact query you used.** A finding from an unstated corpus cannot be reproduced.
 
-## Six checks, in yield order
+## Seven checks, in yield order
 
 **1. Description–comment contradiction.** Read the description as the original claim and the comment thread as subsequent findings. Flag where a comment establishes something the description still contradicts: a root cause that turned out different, scope that changed, an approach abandoned, an acceptance criterion overtaken by a decision.
 
@@ -61,6 +61,14 @@ Here, blocking is the `blocked` label plus prose. `CLAUDE.md` defines the label 
 **5. Structural inconsistency.** Here that means: an umbrella ticket whose referenced children are all closed but which remains open, and the reverse; a ticket referencing a `fixVersion` that already shipped; a ticket whose cross-references point at issues that were closed, renumbered or never existed. **A cross-reference to a nonexistent issue is a real finding** — it has happened in this repository.
 
 **6. Decayed context.** Tickets whose description references code paths, config keys, function names or file paths that no longer exist. **Grep every referenced identifier against the repository and report what no longer resolves.**
+
+**7. Banned language.** `CLAUDE.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
+
+Report every hit with its issue number and the sentence it sits in, and **say what the sentence is actually trying to say**, because that is the useful half. A title is what a reader sees first and never opens; one that needs the jargon explained is a title that fails.
+
+Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `CLAUDE.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
+
+This check exists because the words got into the backlog faster than into the documentation: `#97` and `#102` were both filed by agents carrying language `CLAUDE.md` had already ruled out, and nobody noticed until Donald read them.
 
 **Never infer staleness from age alone.** An old ticket describing work nobody has started is not stale; it is unbuilt.
 

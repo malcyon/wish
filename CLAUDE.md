@@ -895,6 +895,17 @@ constantly in assistant prose and almost never in human speech:
 | **blast radius** | what else this touches, what it would break |
 | **elide** | truncate, shorten, cut off with an ellipsis |
 | **retarget** | move the party to where it actually was, point the save at the right map |
+| **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
+
+**"Follows" is the worst of these for a reader who was not there**, and it went
+into two issue titles before Donald said so: *"I see this a lot, where you say
+'X follows Y'. It doesn't make sense to me, and it results in me not
+understanding what's going on."* It is doing the work of at least three
+different sentences -- grows with, is derived from, is recomputed after -- and
+the reader cannot tell which. Say the one you mean. "The window's minimum height
+follows the UI font" is "the window gets taller as the UI font grows, so a large
+font stops it fitting the screen", and the second version is the one somebody
+can act on.
 
 The list is examples of a habit rather than a blocklist to be satisfied.
 The habit is reaching for a piece of jargon that sounds precise and carries
