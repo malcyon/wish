@@ -135,9 +135,25 @@ multi-byte fields byte-swapped.** That corroborates the earlier finding in
 `117-save-conversion.md` from an independent direction and makes **DOS the
 Rosetta stone for every Amiga question in this document**.
 
-Where the +3 comes from is **one pad byte at `0x07F`, ahead of the effect
-pointer, and a second insertion inside DOS `0x083`-`0x087`** — §1.6, measured
-on fourteen specimens. The second is located to a window, not to a byte.
+Where the +3 comes from is **three separate insertions**, measured on
+fourteen specimens (#27) and reproduced by `por.amiga.amiga_por_offset`:
+
+1. one pad byte at `0x07F`, ahead of the effect pointer — zero in 14 of 14,
+   and it is there because the Amiga keeps one `u32` where DOS keeps an
+   offset word and a segment word, so a 68000 compiler even-aligns it;
+2. a second insertion **inside DOS `0x083`-`0x087`**, located to a window and
+   not to a byte: that region is zero in 12 of the 14, so no file
+   differential can place it. A ramp probe under the emulator is what would;
+3. **one trailing byte at `0x11F`**, past DOS's last field. 285 + 2 is odd
+   and the struct is padded to an even size; the byte is junk in 3 of 14 and
+   zero in the rest, which is what an uninitialised pad looks like.
+
+An earlier reading had the cumulative shift accounting for all three, which
+is arithmetically a byte short: the shift is **+2 at the end of the record**,
+not +3, and `movement_current` — DOS's last field, 12 unencumbered — sits at
+Amiga `0x11E` with one byte after it. That is measured: 12 in 13 of the 14
+(9 and 3 on the two carrying most weight) at `0x11E`, and nothing coherent
+at `0x11F`.
 
 ### 1.4 But the DOS/Amiga record is not one record across the family
 
@@ -188,6 +204,7 @@ Two things fall straight out:
 Caveat on the specimens: **all twelve have every ability at 18.** They are a
 maxed party, so they give layout and give almost no value variation. Real
 variation has to be manufactured (phase 4).
+
 
 ### 1.6 Curse and Silver Blades, read off the shipped disks
 
@@ -345,6 +362,52 @@ which needs a second specimen; and whether Curse's ECL buffer is 7680 or 7684,
 since the boundary is zero on both sides.
 
 ---
+
+### 1.8 Amiga Pool of Radiance, read on screen (#27)
+
+The record is decoded and **confirmed by the instrument**, not only by
+file-internal consistency. `por.amiga.AmigaPorCharacter` reads the DOS field
+table in `por/dos_layout.py` through `amiga_por_offset`, big-endian; there is
+no second table, so the two cannot drift apart.
+
+**Twenty specimens.** Fourteen 288-byte `.cha` files on the Curse save disk
+(a Pool of Radiance party somebody staged for import) and **six more nobody
+had counted**: `CHRDATA1`-`6.sav` in the `save/` drawer of Pool of Radiance
+disk 1 itself, with their `.itm`, their `.spc` and a 13141-byte
+`savgamA.dat`.
+
+**Driving the game to a sheet.** The Skid Row rip boots unattended, and the
+route is worth writing down because two steps of it are not guessable:
+
+1. the code-wheel screen takes a bare **RETURN** — the crack does not enforce
+   it, so nothing here has to answer the wheel;
+2. `LOAD SAVED GAME` prompts `PATH FOR SAVE  RETURN = POOLSAVE:`, and
+   **the default is wrong for this disk**: `POOLSAVE:` is a volume the game
+   disk does not carry, so RETURN raises an AmigaDOS *please insert volume
+   POOLSAVE* requester that no keystroke dismisses. Typing **`SAVE/`** reaches
+   the drawer on the game disk. That is also where a converted party would
+   have to go.
+
+**What the game drew, against what the reader says** — six of six on the
+roster, and every field of the one sheet photographed:
+
+| | on screen | from the file |
+|---|---|---|
+| GARWAN / STONEBEARD / GOLDLEAF / LAURANN / CONLY / MELCAR | AC 1/2/3/3/4/7, HP 14/14/8/10/8/6 | identical, 6 of 6, armour class through the `60 − value` bias |
+| GARWAN | `MALE HUMAN AGE 18`, `CHAOTIC GOOD`, `FIGHTER` | sex 0, race 7, age 18 (`u16be`), alignment 6, class 2 |
+| | `STR 18(00) INT 9 WIS 11 DEX 16 CON 18 CHA 16` | `[18, 9, 11, 16, 18, 16]`, exceptional strength 100 |
+| | `LEVEL 1  EXP 17` | level 1, experience 17 as a **`u32be`** |
+| | `AC 1  HP 14  ENCUMBRANCE 543  MOVEMENT 9` | 60−59, 14, 543 (`u16be`), `movement_current` 9 against a base movement of 12 |
+| | `PLATINUM 8  GOLD 1  SILVER 24` | the `u16be` money block |
+| | `THAC0 17` | **derived**: the record holds 60−40 = 20 and the game applies the +3 for 18/00 |
+
+`tests/test_amiga.py` pins those numbers, and reads its specimens from a
+directory named by `$AMIGA_POR_SAVES`, skipping without one.
+
+**A DOS-side consequence.** `movement_current` at DOS `0x11C` is PROBABLE in
+`por/dos_layout.py`; the Amiga's counterpart is drawn on the sheet as
+`MOVEMENT 9` beside a base of 12, which settles the field and independently
+refutes the third-party claim that the byte is an AD&D class group (#59).
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

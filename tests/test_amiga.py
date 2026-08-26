@@ -624,3 +624,170 @@ def test_export_party_disambiguates_a_six_way_collision(tmp_path):
         "already used" in w for w in written[0][1].warnings)
     for path, rep in written[1:]:
         assert any("already used" in w for w in rep.warnings), rep.warnings
+
+
+# -- Amiga Pool of Radiance: the 288-byte record (#27) ----------------------
+
+from por.amiga import (AMIGA_POR_RECORD_SIZE, AMIGA_POR_UNPLACED,
+                       AmigaPorCharacter, AmigaRecordError, amiga_por_offset)
+from por import dos_layout
+
+
+def test_the_shift_map_places_the_three_regions_at_their_measured_offsets():
+    """The whole claim in six numbers, checked at the seams rather than the
+    middle: nothing moves below the pad, the effect pointer moves one, and
+    everything from the money block moves two."""
+    assert amiga_por_offset(0x000) == 0x000
+    assert amiga_por_offset(0x07E) == 0x07E      # last thief skill
+    assert amiga_por_offset(0x07F) == 0x080      # effect chain, past the pad
+    assert amiga_por_offset(0x088) == 0x08A      # copper
+    assert amiga_por_offset(0x11C) == 0x11E      # movement_current, DOS's last
+
+
+def test_the_unplaced_window_refuses_rather_than_guessing():
+    """The second insertion is somewhere in DOS 0x083-0x087 and 12 of the 14
+    specimens are zero across it, so no offset there can be given. A map that
+    answered anyway would be believed."""
+    for dos_offset in AMIGA_POR_UNPLACED:
+        with pytest.raises(AmigaRecordError):
+            amiga_por_offset(dos_offset)
+
+
+def test_the_record_size_is_the_dos_record_plus_three():
+    """285 + one pad at 0x07F + one in the unplaced window + one trailing."""
+    assert AMIGA_POR_RECORD_SIZE == dos_layout.RECORD_SIZE + 3
+
+
+@pytest.mark.parametrize("length", [285, 287, 289, 428, 484])
+def test_a_record_of_the_wrong_length_is_refused_by_name(length):
+    with pytest.raises(AmigaRecordError):
+        AmigaPorCharacter.from_bytes(bytes(length))
+
+
+def amiga_por_records() -> list[pathlib.Path]:
+    where = os.environ.get("AMIGA_POR_SAVES")
+    if not where:
+        pytest.skip("no Amiga Pool of Radiance records; set $AMIGA_POR_SAVES")
+    found = sorted(p for p in pathlib.Path(where).rglob("*")
+                   if p.is_file() and p.suffix.lower() in (".cha", ".sav")
+                   and p.stat().st_size == AMIGA_POR_RECORD_SIZE)
+    if not found:
+        pytest.skip(f"no 288-byte .cha or .sav records under {where}")
+    return found
+
+
+def test_every_specimen_decodes_to_a_coherent_character():
+    """The cross-checks that would fail on a wrong offset or byte order.
+
+    Each is arithmetic between two fields rather than a restatement of one:
+    the class bitmask has to decompose to the class byte, a level-1 character
+    has to hold no experience, and every ability has to be in 3-18. A shift
+    off by one puts a heap pointer in an ability and this fails.
+    """
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        assert c.name and c.name.isprintable(), path
+        # 19 is reachable: a racial adjustment takes a rolled 18 one past
+        # the human cap, and the shipped party has a dwarf on CON 19 and an
+        # elf on DEX 19. A ceiling of 18 here would have failed on them.
+        assert all(3 <= a <= 19 for a in c.abilities), (path, c.abilities)
+        assert c.get("movement") == 12, path
+        assert 1 <= c.get("level") <= 9, path
+        assert c.get("race") < len(dos_layout.RACE_NUMBERS), path
+        if c.get("level") == 1:
+            # Not "zero": the party shipped on disk 1 is level 1 with 17
+            # experience apiece, having fought something. The invariant is
+            # the level-2 threshold, and 1250 is the lowest of them (thief).
+            # A byte-swapped read of 17 is 285212672 and fails this.
+            assert c.experience < 1250, (path, c.experience)
+
+
+def test_exceptional_strength_appears_only_on_an_eighteen_strength_fighter():
+    """A cross-field identity AD&D guarantees, and a byte-order canary: the
+    percentile roll is only made for a fighter with STR 18."""
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        if c.get("exceptional_strength"):
+            assert c.abilities[0] == 18, path
+            assert c.get("class_bits") & 0x08, path
+
+
+def test_the_class_bitmask_decomposes_to_the_class_byte():
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        name = dos_layout.CLASS_NUMBERS[c.get("char_class")]
+        bits = c.get("class_bits")
+        wanted = {"mage": 1, "cleric": 2, "thief": 4, "fighter": 8}
+        expected = sum(wanted[part] for part in name.split("/") if part in wanted)
+        if expected:
+            assert bits == expected, (path, name, bits)
+
+
+def test_the_effect_pointer_is_set_exactly_when_a_spc_chain_exists():
+    """Nonzero for the characters with effects and zero for the rest -- the
+    field is a big-endian u32 where DOS keeps an offset word and a segment
+    word, so a little-endian read gives a wild address here."""
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        if c.effect_chain:
+            assert 0x100 < c.effect_chain < 0x1000000, (path, c.effect_chain)
+
+
+#: What Amiga Pool of Radiance itself drew for the party shipped on disk 1,
+#: read off the screen under WinUAE on 2026-08-26 (#27,
+#: `work/amiga/p27/shots/m6.png` and `v1.png`). The roster gave AC and HP for
+#: all six; GARWAN's sheet gave the rest. These are the instrument, and the
+#: reader has to agree with them -- not with itself.
+AMIGA_POR_ON_SCREEN = {
+    "GARWAN":     {"armour_class": 1, "hp_max": 14},
+    "STONEBEARD": {"armour_class": 2, "hp_max": 14},
+    "GOLDLEAF":   {"armour_class": 3, "hp_max": 8},
+    "LAURANN":    {"armour_class": 3, "hp_max": 10},
+    "CONLY":      {"armour_class": 4, "hp_max": 8},
+    "MELCAR":     {"armour_class": 7, "hp_max": 6},
+}
+GARWAN_ON_SCREEN = {
+    "age": 18, "sex": 0, "alignment": 6, "level": 1, "hp_max": 14,
+    "exceptional_strength": 100, "encumbrance": 543, "movement_current": 9,
+}
+
+
+def test_the_reader_agrees_with_what_the_game_drew_for_the_shipped_party():
+    """Armour class off the roster, for as many of the six as are present.
+
+    Armour class is stored biased -- `60 - value` -- so this fails both ways
+    round: a reader that forgot the bias reports 59 where the game drew 1.
+    """
+    seen = 0
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        want = AMIGA_POR_ON_SCREEN.get(c.name)
+        if want is None:
+            continue
+        seen += 1
+        assert 60 - c.get("armour_class") == want["armour_class"], path
+        assert c.get("hp_max") == want["hp_max"], path
+    if not seen:
+        pytest.skip("none of the shipped disk-1 party is in $AMIGA_POR_SAVES")
+
+
+def test_garwans_sheet_matches_field_for_field():
+    """The one character whose whole sheet was photographed.
+
+    `movement_current` is 9 against a base movement of 12: the game draws the
+    encumbered figure and the record stores both, which is why DOS's byte at
+    `0x11C` is that field and not the class group a third-party note claims.
+    """
+    for path in amiga_por_records():
+        c = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
+        if c.name != "GARWAN":
+            continue
+        for name, value in GARWAN_ON_SCREEN.items():
+            assert c.get(name) == value, (name, c.get(name), value)
+        assert c.abilities == [18, 9, 11, 16, 18, 16]
+        assert c.experience == 17
+        assert c.money["platinum"] == 8
+        assert c.money["gold"] == 1
+        assert c.money["silver"] == 24
+        return
+    pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")

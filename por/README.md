@@ -8,7 +8,7 @@ test's own array.
 | file | purpose |
 |---|---|
 | `__init__.py` | Empty. |
-| `amiga.py` | Amiga *Pools of Darkness* `Save/NAME.pc` character files, big-endian, and the writer that turns a `NeutralCharacter` into one. Every offset was read off the screen by writing probe payloads onto a copy of disk 3; the record holds base values only, because the game rederives THAC0, encumbrance and movement on load. |
+| `amiga.py` | Amiga *Pools of Darkness* `Save/NAME.pc` character files, big-endian, and the writer that turns a `NeutralCharacter` into one. Every offset was read off the screen by writing probe payloads onto a copy of disk 3; the record holds base values only, because the game rederives THAC0, encumbrance and movement on load. Also the Amiga *Pool of Radiance* 288-byte record, which is not a second field table: it reads the DOS one in `dos_layout.py` through a shift map and big-endian, so the two cannot drift apart. |
 | `areas.py` | The single source of truth for the thirty Pool of Radiance areas, keyed by **area id** rather than by map file — `ECL0C` does not exist, and four areas never put a `GEO` on the screen at all. |
 | `c64_codec.py` | The C64 codec: a `NeutralCharacter` becomes 580 C64 bytes and back again. Every byte written is justified as sourced, computed by a named rule, or a documented constant; the reader takes the roster block and the item page separately, because a save slot holds only 256 of the 580. |
 | `commissions.py` | The City Council's reward ledger, offer board and summons, read out of the 224 persistent flag bytes at `$4A20`. No transport, so it works from a save file or a live read alike. |

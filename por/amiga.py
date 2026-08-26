@@ -37,7 +37,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
-from . import games, neutral
+from . import dos_layout, games, neutral
+from .layout import Kind
 from .neutral import NeutralCharacter
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
@@ -996,3 +997,144 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
         path.write_bytes(record)
         out.append((path, rep))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Amiga Pool of Radiance: the same record as DOS, big-endian, three bytes wider
+# ---------------------------------------------------------------------------
+#
+# `CHRDATA<n>.sav` on an Amiga Pool of Radiance save disk, and `<NAME>.cha`
+# where a party has been exported, is **288 bytes**: the 285-byte DOS record
+# of `por/dos_layout.py` with the multi-byte fields byte-swapped, the name
+# re-encoded, and three insertions.  Nothing here is a second field table --
+# the DOS one is read through a shift map, so the two cannot drift apart.
+#
+# The three insertions, measured on fourteen specimens (#27):
+#
+#   * `0x07F` -- one pad byte, zero in 14 of 14, ahead of the effect-chain
+#     pointer.  DOS keeps an offset word and a segment word there; the Amiga
+#     keeps one `u32` and a 68000 compiler even-aligns it.
+#   * somewhere in DOS `0x083`-`0x087` -- **located to a window, not a byte**.
+#     That region is zero in 12 of the 14, so no file differential can place
+#     it; what would is a ramp probe under the emulator.  The money block
+#     that follows is `u16`, so alignment says the pad is at the end of the
+#     window, but that is inference and is not graded.
+#   * `0x11F`, the last byte -- 285 + 2 is odd, and the struct is padded to an
+#     even size.  Junk in 3 of 14 and zero in the rest, which is what an
+#     uninitialised pad looks like.
+#
+# So a DOS offset maps to an Amiga offset by adding 0 below `0x07F`, 1 through
+# the effect pointer, and 2 from the money block on.
+AMIGA_POR_RECORD_SIZE = 288
+AMIGA_POR_NAME_SIZE = 16          # NUL-padded, where DOS has a count byte
+AMIGA_POR_PAD = 0x07F             # the first insertion
+AMIGA_POR_TAIL_PAD = 0x11F        # the third
+#: `(first DOS offset, bytes inserted before it)`, ascending.
+AMIGA_POR_SHIFTS = ((0x000, 0), (0x07F, 1), (0x088, 2))
+#: DOS offsets whose Amiga counterpart cannot be placed: the second insertion
+#: is somewhere inside this run, so every byte of it is suspect.
+AMIGA_POR_UNPLACED = range(0x083, 0x088)
+
+
+class AmigaRecordError(ValueError):
+    """A buffer that is not an Amiga Pool of Radiance character record."""
+
+
+def amiga_por_offset(dos_offset: int) -> int:
+    """Where a DOS record offset lands in the Amiga one.
+
+    Raises for the unplaced window rather than guessing: a caller that wants
+    those bytes has to say so and read them raw.
+    """
+    if dos_offset in AMIGA_POR_UNPLACED:
+        raise AmigaRecordError(
+            f"DOS offset {dos_offset:#05x} is inside {AMIGA_POR_UNPLACED.start:#05x}"
+            f"-{AMIGA_POR_UNPLACED.stop - 1:#05x}, where the second insertion "
+            f"has not been located; there is no Amiga offset to give")
+    shift = 0
+    for first, amount in AMIGA_POR_SHIFTS:
+        if dos_offset >= first:
+            shift = amount
+    return dos_offset + shift
+
+
+@dataclass(frozen=True)
+class AmigaPorCharacter:
+    """One Amiga Pool of Radiance character, read through the DOS table."""
+
+    raw: bytes
+    source: str = ""
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray,
+                   source: str = "") -> "AmigaPorCharacter":
+        if len(data) != AMIGA_POR_RECORD_SIZE:
+            raise AmigaRecordError(
+                f"an Amiga Pool of Radiance record is "
+                f"{AMIGA_POR_RECORD_SIZE} bytes, got {len(data)}; the Amiga "
+                f"Curse record is 428 and Pools of Darkness's .pc is 484")
+        return cls(bytes(data), source)
+
+    @property
+    def name(self) -> str:
+        raw = self.raw[:AMIGA_POR_NAME_SIZE]
+        return raw.split(b"\0")[0].decode("latin1")
+
+    def get(self, field_name: str):
+        """One field, by its `por/dos_layout.py` name.
+
+        `U16LE` and `UINT_LE` fields are read big-endian, which is the whole
+        of the difference outside the name and the shifts.
+        """
+        f = dos_layout.FIELDS_BY_NAME.get(field_name)
+        if f is None:
+            raise AmigaRecordError(f"no field called {field_name!r}")
+        at = amiga_por_offset(f.offset)
+        chunk = self.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            return int.from_bytes(chunk, "big")
+        if f.kind is Kind.I8:
+            return int.from_bytes(chunk, "big", signed=True)
+        if f.kind is Kind.U8:
+            return chunk[0]
+        return chunk
+
+    @property
+    def abilities(self) -> list[int]:
+        return [self.get(k) for k in ("strength", "intelligence", "wisdom",
+                                      "dexterity", "constitution", "charisma")]
+
+    @property
+    def experience(self) -> int:
+        """Four bytes big-endian, spanning DOS's 24-bit field and `gap_0af`.
+
+        The Amiga's field is `u32`, and the shift stays at +2 across it -- so
+        DOS's unexplained `gap_0af` is experience's fourth byte and the DOS
+        field is a `u32le`.  PROBABLE: 14 of 14 Amiga specimens decode to
+        experience totals in their class's band or just past a level cap.
+        """
+        at = amiga_por_offset(dos_experience_offset())
+        return int.from_bytes(self.raw[at:at + 4], "big")
+
+    @property
+    def effect_chain(self) -> int:
+        """The `.spc` chain head, `u32` big-endian where DOS keeps two words."""
+        return int.from_bytes(self.raw[0x080:0x084], "big")
+
+    @property
+    def money(self) -> dict[str, int]:
+        return {k: self.get(k) for k in
+                ("copper", "silver", "electrum", "gold", "platinum", "gems",
+                 "jewelry")}
+
+
+def dos_experience_offset() -> int:
+    return dos_layout.FIELDS_BY_NAME["experience"].offset
+
+
+def read_amiga_por(path) -> AmigaPorCharacter:
+    """One Amiga Pool of Radiance `.cha` or `CHRDATA<n>.sav`."""
+    import pathlib
+
+    path = pathlib.Path(path)
+    return AmigaPorCharacter.from_bytes(path.read_bytes(), source=str(path))
