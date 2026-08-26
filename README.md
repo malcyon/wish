@@ -131,3 +131,5 @@ in `ui/icons.py`; the licence is in
 [`docs/README.md`](docs/README.md) is the index. The knowledge base covers the
 D64 container, the character record, the save game layout, and an append-only
 log of every experiment — including the ones that failed.
+
+API Reference is at [https://wish-goldbox.readthedocs.io](https://wish-goldbox.readthedocs.io).
