@@ -333,10 +333,19 @@ def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     capped the widths, so the page's floor is 580 at every UI font this
     machine can be made to draw -- 580, 605, 635 and 670 before.
 
-    An equality and not a tolerance, for the same reason the width one is:
-    everything left in the page's floor is either a constant or the map's own
-    square, and if these ever differ something has gone back to measuring a
-    string.
+    **What is asserted is that the floor stops growing, not that it is the
+    same at every font.** Those are the same statement only on a machine whose
+    base font is already large enough to reach the caps, and this one's is:
+    580 at +0 here, where CI's Linux measures 561 and Windows 551 and both
+    climb to their cap a few points later. The first version of this test
+    asserted equality across all four fonts, passed here, and went red on both
+    CI platforms -- the caps are constants, so a smaller base font sits under
+    them and rises until it meets them. The cap is doing its job in all three
+    cases; only the machine it was written on could not see the climb.
+
+    So: non-decreasing, and flat by +6pt. Without the caps this machine's
+    floor runs 580, 605, 635, 670 and the last two differ, which is what makes
+    this bite.
 
     The roster panel and the notes/commissions/messages column are not capped.
     They do follow the font -- 89 to 132 and 281 to 410 between +0 and +24 --
@@ -347,9 +356,12 @@ def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     fonts = (0, 3, 6, 10)
     pages = [page for _win, page, _chrome
              in _heights(app, tmp_path, monkeypatch, fonts)]
-    assert pages == [pages[0]] * len(fonts), (
-        f"the automapper page's floor grew with the font: "
-        f"{dict(zip(fonts, pages))}")
+    seen = dict(zip(fonts, pages))
+    assert pages == sorted(pages), (
+        f"the automapper page's floor moved about with the font: {seen}")
+    assert pages[-1] == pages[-2], (
+        f"the automapper page's floor was still following the font at the "
+        f"largest sizes, so the caps are not holding it: {seen}")
 
 
 def test_what_is_left_following_the_font_is_the_windows_own_chrome(
@@ -365,8 +377,15 @@ def test_what_is_left_following_the_font_is_the_windows_own_chrome(
     Measured here, empty window: 662, 677, 694, 707 and 715 at +0, +3, +6, +8
     and +10, where before #77 it was 662, 702, 749, 782 and 805. The 720-high
     screen is cleared to about ten points of extra font instead of failing at
-    six -- but the numbers are this machine's and the assertion is not: it is
-    that the two grow together, which is true wherever it runs.
+    six.
+
+    **The numbers are this machine's and so was the first version of this
+    assertion**, which required the remainder to be identical at every font
+    and went red on both CI platforms for the reason its sibling above
+    explains: a smaller base font sits under the caps and climbs to meet them,
+    so the remainder grows until it settles. What is true wherever it runs is
+    that it *does* settle -- once the caps hold the page, every further pixel
+    the window's floor gains is one its chrome gained too.
 
     Above roughly +13 the *editor* page overtakes the automapper page and
     starts setting the height itself (378 to 630 between +0 and +16). That is
@@ -375,9 +394,13 @@ def test_what_is_left_following_the_font_is_the_windows_own_chrome(
     fonts = (0, 3, 6, 10)
     parts = _heights(app, tmp_path, monkeypatch, fonts)
     slack = [window - chrome for window, _page, chrome in parts]
-    assert slack == [slack[0]] * len(fonts), (
-        "the window's floor grew by more than its menu bar, tab bar and "
-        f"status bar did: {dict(zip(fonts, parts))}")
+    seen = dict(zip(fonts, parts))
+    assert slack == sorted(slack), (
+        "the window's floor moved about against its menu bar, tab bar and "
+        f"status bar: {seen}")
+    assert slack[-1] == slack[-2], (
+        "the window's floor was still growing by more than its menu bar, tab "
+        f"bar and status bar at the largest sizes: {seen}")
 
 
 def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
