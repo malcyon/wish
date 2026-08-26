@@ -64,7 +64,7 @@ Here, blocking is the `blocked` label plus prose. `CLAUDE.md` defines the label 
 
 **7. Banned language.** `CLAUDE.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
 
-**The entries are not copied here on purpose.** `CLAUDE.md`'s table is the only list, so go and read it; a second copy in this file would drift out of step with the first, which is the exact defect the other six checks hunt for. Report the table's contents at the top of your findings so the run says which version it was checking against.
+**The entries are not copied here on purpose.** `CLAUDE.md`'s table is the only list, so go and read it; a second copy in this file would drift out of step with the first, which is the exact defect the other seven checks hunt for. Report the table's contents at the top of your findings so the run says which version it was checking against.
 
 Report every hit with its issue number and the sentence it sits in, and **say what the sentence is actually trying to say**, because that is the useful half. A title is what a reader sees first and never opens; one that needs the jargon explained is a title that fails.
 
