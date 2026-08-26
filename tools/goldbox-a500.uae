@@ -1,0 +1,64 @@
+config_description=Gold Box, A500 with Kickstart 1.3
+config_hardware=true
+config_host=true
+
+; Host side. use_gui=no is the line that makes an unattended run possible at
+; all: without it WinUAE opens its settings dialog and waits for a human.
+use_gui=no
+win32.start_not_captured=true
+win32.inactive_pause=false
+win32.inactive_nosound=true
+win32.iconified_pause=false
+win32.ctrl_F11_is_quit=false
+sound_output=none
+gfx_display=0
+gfx_framerate=1
+gfx_width_windowed=720
+gfx_height_windowed=568
+gfx_fullscreen_amiga=false
+gfx_fullscreen_picasso=false
+gfx_lores=false
+gfx_linemode=double
+gfx_colour_mode=32bit
+gfx_vsync=false
+
+; Amiga side: a stock A500 -- OCS, 68000, 512K chip plus 512K slow, Kickstart
+; 1.3. Every Gold Box Amiga title is a 1989-1992 floppy release and boots from
+; its own bootblock, so nothing later is needed and a later Kickstart only adds
+; ways to fail.
+kickstart_rom_file=C:\Amiga\Kickstarts\kick34005.A500
+chipset=ocs
+chipset_compatible=A500
+cpu_type=68000
+cpu_model=68000
+cpu_speed=real
+cpu_compatible=true
+cpu_cycle_exact=false
+blitter_cycle_exact=false
+chipmem_size=1
+bogomem_size=2
+fastmem_size=0
+z3mem_size=0
+immediate_blits=false
+collision_level=playfields
+
+; Two drives, both turbo. floppy_speed=800 is not cosmetic: at the real 100
+; Curse was still a blank white screen 35 seconds in, which reads as a hang to
+; anything watching by screenshot.
+nr_floppies=2
+floppy0type=0
+floppy1type=0
+floppy_speed=800
+floppy0=C:\Amiga\Disks\Curse_Of_The_Azure_Bonds\CurseOfTheAzureBonds_A.adf
+floppy1=C:\Amiga\Disks\Curse_Of_The_Azure_Bonds\CurseOfTheAzureBonds_B.adf
+
+; F11 opens WinUAE's debugger. There is no other way in on the Windows port:
+; od-win32/win32.cpp's debuggable() returns 0 unconditionally, so main.cpp's
+; `if (currprefs.start_debugger && debuggable()) activate_debugger()` never
+; fires and use_debugger=true does nothing. The only caller left is the
+; SPC_ENTERDEBUGGER input event, which has no default binding.
+input.config=1
+input.1.keyboard.0.friendlyname=WinUAE keyboard
+input.1.keyboard.0.name=NULLKEYBOARD
+input.1.keyboard.0.empty=false
+input.1.keyboard.0.button.87.0=SPC_ENTERDEBUGGER
