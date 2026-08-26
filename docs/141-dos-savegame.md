@@ -190,7 +190,7 @@ experiment that would remove it.
 | `$49FC`, `$49FF` | 4 | ECL-visible, but the ports disagree — DOS reads (6/4, 3) where the C64 reads (2, 129/1). A read-watch on either in DOSBox-X |
 | `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507A`-`$507D`, `$507F`-`$5080` | 30 | DOS-only engine state. `$507A`-`$507D` are zero in all nine indoor specimens, so zero is measured for an indoor conversion; the rest partition by area. Read-watches, one per word |
 | `$5202`-`$5207`, `$520A`-`$520F` and the encounter-text buffer `$5227`+ | 154 | they change together and sit immediately before a readable encounter message, so PROBABLE the pending-encounter record. A converted party has no encounter pending; the experiment is a hand-built save with the block zeroed, loaded and walked |
-| the character table's 29 junk bytes per entry and the 82 bytes of UI scratch after it | 246 | PROBABLE display scratch — the bytes contain readable fragments of menu words ("camping"), and the engine rewrote 55 of them on its own resave with no visible effect. Same experiment: zero them, load, look |
+| the character table's **32** junk bytes per entry and the 82 bytes of UI scratch after it | **274** | PROBABLE display scratch — the bytes contain readable fragments of menu words ("camping"), and the engine rewrote 55 of them on its own resave with no visible effect. Same experiment: zero them, load, look |
 | byte 12804 | 1 | in group 1, not a blocker; naming it needs a write-watch on the save routine |
 
 `$49EB` and `$4A00`-`$4A1F` used to head that table and have come off it.
@@ -205,9 +205,21 @@ is right on a retarget too, and that is the case that matters — the C64
 party's scratch belongs to the area it is standing in, which is the area the
 DOS save is being moved to.
 
-**430 bytes of 13137**, 3.3% of the file, would still be inherited after
-every finding above is acted on — down from 444, and from the whole of the
-8016 bytes this issue opened with. None of it is party or place data.
+**458 bytes of 13137**, 3.5% of the file, would still be inherited after
+every finding above is acted on — and from the whole of the 8016 bytes this
+issue opened with. None of it is party or place data.
+
+**That number was 430 and the correction is this row's** (#59). This document
+gave two counts for the same region: the file map above says each 41-byte
+character entry is a length-prefixed filename **then 32 bytes of heap junk**,
+and the blocker table said 29. Neither 29 nor the 246 beside it is right.
+`por/dos_savegame.put_character_files` writes one length byte and eight of
+name — `PARTY_NAME_LEN` is 9 — so **32** bytes an entry are inherited, and
+246 is 6 × 41, the whole table including the filenames the writer does source.
+Measured over six engine-written `SAVGAM` files: every one of those 32 bytes,
+and every one of the 82 UI bytes, is non-zero in at least one of them, so
+none of the 274 is inherited-but-always-zero. 6 × 32 + 82 = 274, and
+274 + 154 + 30 = 458.
 
 ## What this leaves open
 

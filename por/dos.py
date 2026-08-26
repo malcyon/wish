@@ -56,13 +56,19 @@ from typing import Any, Sequence
 from . import areas, c64_codec, dos_savegame, neutral, traits
 from .c64_codec import Report
 from .dos_layout import (
+    CLASS_NUMBERS,
     EFFECT_SIZE,
     FIELDS_BY_NAME,
+    FIELDS_BY_NAME_FOR,
     ITEM_FIELDS_BY_NAME,
     ITEM_SIZE,
     LAYOUT,
+    POOL_OF_RADIANCE,
     RECORD_SIZE,
     SPELLBOOK_SPELLS,
+    DosShape,
+    DosShapeError,
+    shape_for,
 )
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
@@ -70,6 +76,10 @@ from .record import CharacterRecord
 
 __all__ = [
     "DosRecordError",
+    "WrongTitleError",
+    "CLASS_SLOTS_FOR_CLASS",
+    "CLASS_BIT_FOR_SLOT",
+    "class_bits_for",
     "INFRAVISION",
     "to_neutral",
     "DosCharacter",
@@ -98,7 +108,17 @@ __all__ = [
 
 
 class DosRecordError(ValueError):
-    """A file that is not a DOS Pool of Radiance record."""
+    """A file that is not a DOS Gold Box character record."""
+
+
+class WrongTitleError(DosRecordError):
+    """A record from a title this operation does not handle.
+
+    Reading is per title and works for all four; **converting to the C64 is
+    Pool of Radiance's alone**, because that is the only pair whose two ports
+    have been measured against each other.  Raising here is the difference
+    between "not yet" and a conversion that silently reads the wrong bytes.
+    """
 
 
 #: Race -> infravision range.  The table lives with the C64 writer, which is
@@ -125,11 +145,16 @@ class _Fielded:
 
     _TABLE: dict[str, Field] = {}
 
-    def __init__(self, data: bytes, size: int, what: str) -> None:
+    def __init__(self, data: bytes, size: int, what: str,
+                 table: dict[str, Field] | None = None) -> None:
         if len(data) != size:
             raise DosRecordError(
                 f"a DOS {what} is {size} bytes; got {len(data)}")
         self._data = bytes(data)
+        if table is not None:
+            # Per instance, because the table is per title and one process
+            # reads more than one title.
+            self._TABLE = table
 
     def to_bytes(self) -> bytes:
         """The record exactly as it was read. Nothing here ever rewrites it."""
@@ -141,6 +166,11 @@ class _Fielded:
     def __len__(self) -> int:
         return len(self._data)
 
+    @property
+    def fields(self) -> dict[str, Field]:
+        """This record's own field table -- the title's, not the class's."""
+        return self._TABLE
+
     def get(self, name: str) -> Any:
         f = self._TABLE[name]
         return _decode(f, self._data[f.span])
@@ -149,7 +179,11 @@ class _Fielded:
         return self._data[self._TABLE[name].span]
 
     def __getattr__(self, name: str) -> Any:
-        table = type(self)._TABLE
+        # `_TABLE` is a class attribute on `DosItem` and an instance one on a
+        # `DosCharacter`, because the table is per title; ordinary attribute
+        # lookup picks whichever is there.  `__getattr__` runs only for names
+        # that are not attributes at all, so this cannot recurse.
+        table = self._TABLE
         if name in table:
             return self.get(name)
         raise AttributeError(name)
@@ -287,28 +321,104 @@ CLASS_LEVEL_SLOTS: tuple[tuple[int, str, str | None], ...] = (
     (7, "monk", None),
 )
 
+#: Class number -> the level-array slots that class fills, derived from the
+#: 18-entry combined-class table by name.  A single-class character fills one
+#: slot; `fighter/mage/thief` fills three.  What makes this worth a table is
+#: that it is a **check**: a spellbook or a memorised region one byte out
+#: moves the array, and then the slots that are set stop matching the class
+#: byte -- which is `tests/test_dosconvert.py`'s test of every title's shape.
+CLASS_SLOTS_FOR_CLASS: dict[int, tuple[int, ...]] = {
+    number: tuple(
+        slot for slot, name, _ in CLASS_LEVEL_SLOTS
+        if name in {"magic-user" if p == "mage" else p
+                    for p in combined.split("/")})
+    for number, combined in enumerate(CLASS_NUMBERS)
+    if combined != "monster"
+}
+
+
+#: Class number -> the bit that class sets in `class_bits`.  Magic-user,
+#: cleric, thief and fighter are the C64's own bit order; **paladin and ranger
+#: share bit 6**, where the C64 gives the ranger bit 7 of its own.  Measured on
+#: three characters across two titles -- Curse's MATHEW (paladin 5) and ARGORA
+#: (ranger 5) both read 0x40, and Pools of Darkness' PAINE, a magic-user 13 who
+#: was a ranger 9, reads 0x41.  So the mask does not tell a paladin from a
+#: ranger on DOS and the class *number* must be read instead.
+CLASS_BIT_FOR_SLOT: dict[int, int] = {0: 0x02, 2: 0x08, 3: 0x40, 4: 0x40,
+                                      5: 0x01, 6: 0x04}
+
+
+def class_bits_for(char: "DosCharacter") -> int:
+    """The class bitmask a record's level arrays imply.
+
+    The OR of `CLASS_BIT_FOR_SLOT` over every slot set in the current
+    per-class level array **and** in the former one, where the title has a
+    former one.  Equal to the stored `class_bits` in 54 of 54 shipped records
+    across all four titles, which is what makes it a check on the layout: a
+    shape one byte out moves one array or the other and the two stop agreeing.
+    """
+    slots = {n for n, v in enumerate(char.raw("class_levels")) if v}
+    if "former_class_levels" in char.fields:
+        slots |= {n for n, v in enumerate(char.raw("former_class_levels"))
+                  if v}
+    bits = 0
+    for slot in slots:
+        bits |= CLASS_BIT_FOR_SLOT.get(slot, 0)
+    return bits
+
+
 class DosCharacter(_Fielded):
-    """One 285-byte DOS Pool of Radiance character, saved or exported.
+    """One DOS Gold Box character record, saved or exported.
 
     A save slot and a `.CHA` export are the same record in the same order;
     the only systematic difference is that an export zeroes the item count,
     so one reader serves both.
+
+    **The title comes from the length.** 285, 422, 439 and 510 bytes are Pool
+    of Radiance, Curse of the Azure Bonds, Secret of the Silver Blades and
+    Pools of Darkness, and no two are the same size, so a record identifies
+    its own title with nothing else to go on. Pass `shape` to override that.
     """
 
     _TABLE = FIELDS_BY_NAME
 
     def __init__(self, data: bytes, items: Sequence[DosItem] = (),
-                 effects: Sequence[bytes] = (), source: str | None = None):
-        super().__init__(data, RECORD_SIZE, "character record")
+                 effects: Sequence[bytes] = (), source: str | None = None,
+                 shape: "int | str | DosShape | None" = None):
+        try:
+            self.shape = shape_for(len(data) if shape is None else shape)
+        except DosShapeError as e:
+            raise DosRecordError(str(e)) from None
+        super().__init__(data, self.shape.record_size, "character record",
+                         FIELDS_BY_NAME_FOR[self.shape.key])
         self.items = tuple(items)
         self.effects = tuple(effects)
         self.source = source
 
     @property
+    def is_pool_of_radiance(self) -> bool:
+        return self.shape is POOL_OF_RADIANCE
+
+    def rebuild(self) -> bytes:
+        """Re-encode every field from its decoded value.
+
+        The round trip a read-only decoder can actually make: decode the whole
+        table, encode it back, and compare with what was read.  It bites on a
+        wrong width and on a wrong kind -- a field declared one byte wide that
+        is really two comes back with the second byte zeroed -- which is the
+        failure a reader that only hands the bytes back can never see.
+        """
+        out = bytearray(len(self._data))
+        for f in self._TABLE.values():
+            _encode(f, out, self.get(f.name))
+        return bytes(out)
+
+    @property
     def name(self) -> str:
+        width = self._TABLE["name_text"].size
         n = self.get("name_length")
-        if not 0 <= n <= 15:
-            raise DosRecordError(f"name length {n} is not 0-15")
+        if not 0 <= n <= width:
+            raise DosRecordError(f"name length {n} is not 0-{width}")
         return self.raw("name_text")[:n].decode("ascii", "replace")
 
     @property
@@ -338,11 +448,14 @@ class DosCharacter(_Fielded):
         raw = self.raw("class_levels")
         return {name: raw[n] for n, name, _ in CLASS_LEVEL_SLOTS if raw[n]}
 
+    #: The coin slots, richest last.  Pools of Darkness has only the last
+    #: three; every earlier title has all seven.
+    COINS = ("copper", "silver", "electrum", "gold", "platinum", "gems",
+             "jewelry")
+
     @property
     def money(self) -> dict[str, int]:
-        return {k: self.get(k) for k in
-                ("copper", "silver", "electrum", "gold", "platinum", "gems",
-                 "jewelry")}
+        return {k: self.get(k) for k in self.COINS if k in self._TABLE}
 
     @property
     def effect_ids(self) -> list[int]:
@@ -379,28 +492,30 @@ def _sibling(path: pathlib.Path, suffix: str) -> bytes:
 def read_character(path: str | pathlib.Path) -> DosCharacter:
     """One character from a `CHRDAT<slot><n>.SAV` or a `<NAME>.CHA`.
 
-    The sibling `.ITM` and `.SPC` are read too when they are there; an export
-    normally has neither.
+    Any of the four titles: the record's length names it, and the sibling
+    item and effect files are whatever that title calls them -- `.ITM`/`.SPC`
+    for Pool of Radiance, `.ITM`/`.FX` for Curse, `.ITM`/`.SFX` for Silver
+    Blades, `.THG`/`.EFX` for Pools of Darkness.  An export normally has
+    neither.
     """
     path = pathlib.Path(path)
     data = path.read_bytes()
-    if len(data) != RECORD_SIZE:
-        raise DosRecordError(
-            f"{path.name} is {len(data)} bytes, not a {RECORD_SIZE}-byte Pool "
-            f"of Radiance record. Curse is 422, Silver Blades 439, Pools of "
-            f"Darkness 510, and each needs its own table")
-    itm = _sibling(path, ".ITM")
-    spc = _sibling(path, ".SPC")
-    # The record's own item count is what says how many of the `.ITM` file
+    try:
+        shape = shape_for(len(data))
+    except DosShapeError as e:
+        raise DosRecordError(f"{path.name}: {e}") from None
+    itm = _sibling(path, shape.item_suffix)
+    spc = _sibling(path, shape.effect_suffix)
+    # The record's own item count is what says how many of the item file
     # belong to this character. It is zeroed in an export, and an export that
     # sits beside a stale `.ITM` from an earlier save would otherwise be given
     # items it does not carry -- which is exactly what the archives hold.
-    count = data[FIELDS_BY_NAME["item_count"].offset]
+    count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
     items = [DosItem(itm[i * ITEM_SIZE:(i + 1) * ITEM_SIZE])
              for i in range(min(count, len(itm) // ITEM_SIZE))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
                if len(spc[i:i + EFFECT_SIZE]) == EFFECT_SIZE]
-    return DosCharacter(data, items, effects, source=str(path))
+    return DosCharacter(data, items, effects, source=str(path), shape=shape)
 
 
 def slots_available(folder: str | pathlib.Path) -> list[str]:
@@ -488,13 +603,19 @@ DROPPED: tuple[tuple[str, str], ...] = (
                     "field and recomputes what it needs"),
     ("item_chain", "live heap state: the DOS item list is a chain of far "
                    "pointers, the C64 has sixteen fixed slots"),
-    ("heap_0c1", "live heap pointers"),
+    ("icon_colours", "six pairs of 4-bit colour indices for the DOS combat "
+                     "icon; the C64 draws its own 36-byte icon and numbers "
+                     "no such thing"),
     ("heap_104", "live heap pointers"),
     ("effect_chain", "live pointer to the effect list; the effects "
                      "themselves come from the .SPC file"),
     ("item_count", "implied by the C64's sixteen fixed slots"),
-    ("icon_choice", "DOS art: a different set from CHARPIC00 and "
-                    "HEADnn/BODYnn, with different numbering"),
+    ("portrait_head", "DOS art: HEAD<n>.DAX, a different set from the C64's "
+                      "HEADnn with different numbering (#57)"),
+    ("portrait_body", "DOS art: BODY<n>.DAX, likewise"),
+    ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. The C64 "
+                  "stores the drawn 36-byte icon instead of an index"),
+    ("icon_body", "DOS art: CBODY.DAX, likewise"),
     ("icon_dimension", "the C64 has one size byte where DOS has two fields; "
                        "the C64's carries the other one"),
     ("strength_bonus", "a boolean on DOS; the C64's aligned byte is a "
@@ -546,6 +667,11 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
     the DOS record holds that no neutral field does; what becomes of them
     afterwards is a writer's business.
     """
+    if not dos.is_pool_of_radiance:
+        raise WrongTitleError(
+            f"{dos.shape.title} records read, but only Pool of Radiance "
+            f"converts: no other pair of ports has been measured against "
+            f"each other (#53)")
     out = NeutralCharacter("DOS", source=dos.source)
 
     # -- the name: a count byte and fifteen characters -----------------------
@@ -795,8 +921,9 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
-    ("portrait_head", "the DOS icon_choice indexes the DOS art set, which "
-                      "no other port numbers; left zero"),
+    ("portrait_head", "the DOS record has a portrait head of its own at "
+                      "0x0BB, and it indexes the DOS art set, which no other "
+                      "port numbers; left zero until #57 chooses a mapping"),
     ("portrait_body", "see portrait_head"),
 )
 
@@ -836,11 +963,17 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
                     "The engine neither reads nor rewrites it: it carries "
                     "our zero through a resave, and keeps its own A5 when a "
                     "character empties his pack. Measured both ways"),
-    ("icon_choice", "indexes the DOS art set, which no other port numbers; "
-                    "zero leaves the sheet portrait blank. Cosmetic, and the "
-                    "same with items and without"),
-    ("heap_0c1", "live heap pointers. Carried through a resave unread, with "
-                 "items and without"),
+    ("portrait_head", "indexes the DOS art set, which no other port "
+                      "numbers; zero leaves the sheet portrait blank. "
+                      "Cosmetic, and the same with items and without (#57)"),
+    ("portrait_body", "see portrait_head"),
+    ("icon_head", "see portrait_head; this pair is the combat icon"),
+    ("icon_body", "see portrait_head"),
+    ("icon_colours", "the combat icon's six colour pairs. **Zero is not "
+                     "obviously right**: the engine does not rebuild them -- "
+                     "its own resave kept our zeros -- so a converted "
+                     "character's icon is drawn with no colours and nobody "
+                     "has looked at one (#57)"),
     ("item_chain", "live heap pointer block; the items themselves are in "
                    "the .ITM file. **Zero is what the engine itself writes "
                    "for a character carrying nothing** -- measured, #62 -- "
@@ -1348,6 +1481,25 @@ SAVE1_BASE = 0x8300
 PARTY_X, PARTY_Y, PARTY_FACING = 0x49C0, 0x49C1, 0x49C2
 SLOT_AREA = 0x4D00
 SLOT_STRIDE = 0x100
+#: `$4D00`-`$54FF` is eight party slots.  Slots 8-11 from `$5500` are combat
+#: scratch and are not the party.
+SLOT_COUNT = 8
+
+#: How the engine empties a slot, **measured on its own `DROP CHARACTER`**
+#: (#104): one byte in each of two places, and nothing else.
+#:
+#: Dropping BRUTUS from a six-character party changed seven bytes of
+#: `SAVEDGAME0` -- five of them the file cache's dirty bits -- and the only one
+#: inside his slot was the first byte of his name, `42` to `00`, leaving
+#: `\0RUTUS` and every ability, hit point and item exactly where they were.
+#: `SAVEDGAME1` changed one byte, roster +0x00.  **There is no party count to
+#: decrement**: no byte of `$4900`-`$4CFF` holds one, in 190 saves.
+#:
+#: So a conversion empties a slot the same way rather than zeroing it: a state
+#: the engine is known to produce is worth more than a tidier one nobody has
+#: seen it write.
+EMPTY_RECORD_BYTE = 0x000    # the first byte of the name
+EMPTY_ROSTER_BYTE = 0x000    # `roster_in_use`, `por/layout.py` 0x100
 ITEM_AREA = 0x5900
 ICON_TABLE = 0x4BE0
 ICON_SIZE = 36
@@ -1591,6 +1743,22 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             save1[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
+
+    # The party fills slots `len(party) - 1` down to 0, so anything above it is
+    # the template's and would otherwise walk into the converted party (#104).
+    for place in range(len(party), SLOT_COUNT):
+        at = SLOT_AREA - SAVE0_BASE + place * SLOT_STRIDE + EMPTY_RECORD_BYTE
+        save0[at] = 0
+        report.note(at, 1,
+                    f"slot {place}: emptied the way the engine's own DROP "
+                    f"does -- one byte, and the rest of the template's slot "
+                    f"left where it was")
+        if save1 is not None:
+            save1[place * ROSTER_STRIDE + EMPTY_ROSTER_BYTE] = 0
+    if len(party) < SLOT_COUNT:
+        report.warnings.append(
+            f"slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
+            f"six characters and a C64 save eight")
 
     for base, size in EFFECT_ARRAYS:
         at = base - SAVE0_BASE

@@ -65,7 +65,10 @@ class DaxError(DosSaveError):
     """
 
 
-SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469
+SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469,
+                             # and Pools of Darkness has no SAVGAM?.DAT at all
+                             # -- 1364 bytes of SAVGAM?.PTY beside a 12-byte
+                             # VAULT?.DAT (#53). Only this one is decoded.
 DAX_NUMBER = 0               # byte 0: which GEO/ECL container holds the area
 VAR_BASE = 0x4900
 VAR_WORDS = 2560             # $4900-$52FF

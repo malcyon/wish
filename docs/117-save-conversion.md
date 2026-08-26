@@ -333,6 +333,59 @@ after shifts by `0x46`. A DOS reader is per title. What does hold across the
 family is the item stride (63) and the effect stride (9), Pool of Radiance
 through Pools of Darkness and across into the Savage Frontier pair.
 
+### All four titles read, one row each (#53)
+
+The four records are **the same field sequence at four widths**. Nothing is
+reordered and nothing is inserted out of turn; what changes is how wide a
+field is, whether it is there at all, and how much undecoded space sits
+between two named ones. So `por/dos_layout.py` carries one `DosShape` per
+title — a set of width overrides against Pool of Radiance's table — and
+`layout_for` accumulates the offsets. **A width that is wrong stops the record
+adding up to its own size**, and that raises at import rather than reading
+rubbish.
+
+| | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
+|---|---|---|---|---|
+| record | 285 | 422 | 439 | 510 |
+| item / effect file | `.ITM` / `.SPC` | `.ITM` / `.FX` | `.ITM` / `.SFX` | `.THG` / `.EFX` |
+| bytes per ability | 1 | 2 | 2 | 2 |
+| memorised-spell region | 21 | 84 | 75 | 141 |
+| spellbook entries | 56 | 100 | 117 | 125 |
+| spell-slot arrays × levels | 2 × 3 | 3 × 5 | 4 × 7 | 3 × 9 |
+| per-class level arrays | 1 × 8 | 2 × 8 | 2 × 7 | 3 × 7 |
+| coin slots | 7 | 7 | 7 | **3** |
+| saved game | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 |
+
+The spellbook widths are not guesses: 100 and 117 are `por/spells.py`'s own
+Curse and Silver Blades id spaces, measured on the **C64** long before any DOS
+record was read, and they land exactly.
+
+**The evidence, and it is content rather than arithmetic.** 54 shipped records
+across the four titles, and every one of them:
+
+* rebuilds byte for byte through `_decode`/`_encode` — 54 of 54;
+* balances `money + Σ(weight × quantity)` against its stored encumbrance —
+  54 of 54, which is what says Pools of Darkness really does keep three coin
+  slots where the others keep seven;
+* sets exactly the per-class level slots its class byte names, indexed by
+  class *number* — 54 of 54;
+* agrees with its own `class_bits`, computed from the level arrays — 54 of 54.
+
+And the sharpest of them, because neither side knew about the other: DOS
+Silver Blades' three shipped rangers hold **exactly** the level-8 row of the
+ranger grant table `tests/test_silverblades.py` reads mechanically out of the
+**C64** `GEN` file — 77, 78, 79, 80 and nothing else, 3 of 3, at a 117-byte
+spellbook `0x071` bytes into a 439-byte record. Its two clerics hold the
+cleric grant's levels 1–4 the same way.
+
+### What the other three titles cost to *convert*, which is not the same thing
+
+Reading is per title and now works for all four. **Converting is Pool of
+Radiance's alone** and `dos.to_neutral` raises `WrongTitleError` for the rest,
+because no other pair of ports has been measured against each other. Pools of
+Darkness never shipped on the C64 at all, so its only counterpart is the Amiga
+(`docs/124-amiga-port.md`).
+
 ---
 
 ## The shape of it
@@ -929,7 +982,7 @@ sequenceDiagram
     Reader->>Char: set(name, value, origin, confidence, how, dropped)
     Note over Char: a name outside FIELDS raises NeutralError here.<br/>The vocabulary refuses a typo at the reader,<br/>not at the writer that would never see the field
   end
-  Reader->>Char: drop("DOS heap_0c1 @0x0c1: live heap pointers") x 12
+  Reader->>Char: drop("DOS icon_colours @0x0c1: the combat icon colours") x 12
   Note over Reader,Char: the reader says only where a value came from,<br/>and what it could not carry at all
   Reader-->>Caller: char
 
@@ -1267,6 +1320,7 @@ the edge somebody adds without noticing.
 
 ```mermaid
 graph LR
+  amiga --> amiga_adf
   amiga -.->|deferred| c64_codec
   amiga -.->|deferred| d64
   amiga -.->|deferred| dos
@@ -1446,8 +1500,9 @@ here fails a test. Three kinds of byte have no neutral source:
   from money plus item weight × quantity, the identity the engine itself
   uses;
 * **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
-  `heap_0c1`, `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`,
-  `icon_choice` — live heap and the unattributed, ~80 bytes. Measured
+  `icon_colours`, `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`,
+  `portrait_head`, `portrait_body`, `icon_head`, `icon_body` — live heap,
+  the art ids and the unattributed, ~80 bytes. Measured
   survivable for a character carrying items, and, since #62, for one carrying
   nothing too: the engine's own record for a character who dropped everything
   in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
@@ -1544,8 +1599,12 @@ with the three humans at NULL and no `.SPC` written for them at all.
    square. **CONFIRMED: DOS accepts a save it did not write** — issue #26's
    question 2, answered yes. Re-saving from inside the game showed the
    engine rebuilding the item chain-head pointer itself and keeping most of
-   our zeros: its own resave zeroes `heap_0c1`, the extra item pointers,
-   `hands_used` and `unnamed_0ab` too.
+   our zeros: its own resave zeroes `icon_colours`, the extra item pointers,
+   `hands_used` and `unnamed_0ab` too. **For `icon_colours` that is a
+   defect and not a convenience** — those six bytes are the combat icon's
+   colours (#57), the engine does not put them back, and nobody has looked
+   at a converted character in a fight. Filed as
+   `#112 (A converted DOS character's combat icon has no colours)`.
 2. **The item list renders** from the fields, readied flags and quantities
    right, and the game refills the rendered-line cache after drawing it
    once — the empty cache is harmless.
@@ -1610,7 +1669,10 @@ did **not** hold for free on the reader beside it: the first real consumer of
 
 ### What a converted party loses, said out loud
 
-* **The sheet portrait**: `icon_choice` indexes the DOS art set, no other
+* **The sheet portrait**: `portrait_head` and `portrait_body` index the DOS
+  art set — `HEAD<n>.DAX` and `BODY<n>.DAX`, **CONFIRMED in DOSBox** by
+  changing one byte at a time and photographing the sheet (#57) — and no
+  other
   port numbers it, and zero draws no portrait. Cosmetic, real, reported.
   (What zero does to the *combat* icon is untested.)
 * **Running spell effects.** The innate bonuses are carried now (#61); a
@@ -1681,3 +1743,26 @@ blocker list of what nobody has decoded, with the experiment against each — is
 `141-dos-savegame.md`. After #59's file-level pass it is **444 bytes of
 13137**, none of it party or place data; the 8016 resident-state bytes this
 document once called unattributed are attributed.
+
+## The template's spare characters (#104)
+
+A DOS save holds six characters and a C64 save eight, so **every** conversion
+leaves at least two of the template's slots unwritten. Until #104 they stayed
+occupied: converting DOS slot J over an eight-character template left
+`BRUTUS BRUTUS` in slots 6 and 7 with their inventories and roster blocks.
+
+The fix was blocked on a measurement rather than on code, and the measurement
+is in `docs/50-experiments.md` §"What the C64 engine writes when a character is
+dropped": **there is no party count anywhere, and the engine empties a slot by
+writing one byte in each of two places** — the first byte of the record, and
+`roster_in_use` at roster +0x00. It leaves everything else in the slot exactly
+where it was.
+
+`convert_save` now does the same, for every slot from `len(party)` to 7.
+Zeroing the whole slot would be tidier and nobody has seen the engine do it;
+`\0RUTUS` with his abilities still behind him is a state the engine is known to
+produce and known to read back as empty.
+
+**The inventory page at `$5900 + n*$100` is deliberately untouched.** The
+engine left a dropped character's items in the file, and whether it ever looks
+at an empty slot's page is untested.

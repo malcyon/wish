@@ -5179,8 +5179,19 @@ clean and resaves without inventing anything (`work/p62/out-fixed/`).
 measured survivable on characters *carrying items* only. Four of its seven
 entries are now measured against a character carrying none as well —
 `item_chain` and `hands_used` are the values the engine itself writes, and
-`effect_chain`, `unnamed_0ab`, `heap_0c1` and `heap_104` are carried through
-a resave unread in both cases. `icon_choice` remains a known cosmetic drop.
+`effect_chain`, `unnamed_0ab`, `icon_colours` and `heap_104` are carried
+through a resave unread in both cases. The portrait ids remain a known
+cosmetic drop.
+
+**Two of those names were wrong and are corrected here (#57).** What this
+paragraph called `heap_0c1` is `icon_colours`, the combat icon's six colour
+pairs; what it called `icon_choice` is four bytes, `portrait_head` and
+`portrait_body` for the sheet portrait and `icon_head` and `icon_body` for the
+combat icon. "Carried through a resave unread" is still the measurement — but
+for `icon_colours` it is now evidence of a **defect** rather than of safety,
+because the engine not rewriting them means a converted character's icon keeps
+whatever colour index 0 draws as. `#112 (A converted DOS character's combat
+icon has no colours)`.
 
 Runner scripts, conversions, resaves and screenshots: `work/p62/`.
 
@@ -5501,3 +5512,82 @@ rebuilt, not carried. `$49EB` and `$4A00` read the same way on both ports too
 The inherit list this leaves — 444 bytes of 13137, in three groups with an
 experiment against each — is the table in `141-dos-savegame.md`. Scripts:
 `work/p59-vars/corr.py`, `partition.py`, `inherit.py`, `crossport.py`.
+
+## What the C64 engine writes when a character is dropped (#104)
+
+**There is no party count. A slot is empty exactly when the first byte of its
+record is zero, and dropping a character writes that one byte.**
+
+The question mattered because a DOS save holds six characters and a C64 save
+eight, so every conversion leaves at least two of the template's slots
+unwritten — and `#104` could not be fixed until somebody knew what "unwritten"
+should look like. Writing zeros over the whole slot was the obvious guess, and
+`CLAUDE.md`'s conversion standard forbids exactly that guess.
+
+### The static half: no header byte holds a count
+
+190 `.d64` images under `work/` carry a readable `SAVEDGAME0` — party sizes 1,
+2, 6 (×187) and 8. For every byte of the 1024-byte header `$4900`-`$4CFF`,
+none equals the party size in all 190; nor the size minus one, nor the highest
+occupied slot index, nor twice the size. `$49FC` behaves as `#104` says: 2 in
+the one-character save, 2 in the six-character ones, 6 in the two-character
+one.
+
+Against the rule *"the record's first byte is non-zero"*, `looks_occupied`
+agrees on **1520 of 1520 slots**. Half of that is trivial — a zero first byte
+fails the `A`-`Z` test by construction — and the half that is not is the
+finding: no slot anywhere has a live first byte and fails the ability check, so
+the engine never leaves a half-scrubbed record that reads as occupied.
+
+`work/p104/countsearch.py` and `work/p104/namebyte.py`.
+
+### The measured half: the engine's own DROP
+
+`PORSAVE-6char.D64` (MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS, BRUTUS)
+booted on the instance pool, headless, disks copied into the slot's own
+directory. `LOAD SAVED GAME`, then the party menu's `DROP CHARACTER`, then
+`SAVE CURRENT GAME`. Diffed against the pristine image:
+
+| address | before → after | what |
+|---|---|---|
+| `$5200` | `42` → `00` | **slot 5's record byte 0** — the `B` of BRUTUS |
+| `$83A0` | `01` → `00` | **roster slot 5 +0x00** — `roster_in_use` |
+| `$4BC0`, `$4BC2`, `$4BC3`, `$4BC5`, `$4BC8`, `$4BCB` | bit 7 set | the loaded-files cache's dirty bits, from the load-and-save cycle |
+
+**One byte of slot 5's 256 changed.** BRUTUS's abilities, hit points, class
+levels and items are all still there:
+
+```
+before  42 52 55 54 55 53 ...     BRUTUS
+after   00 52 55 54 55 53 ...     \0RUTUS
+```
+
+Seven bytes changed as the party went from six to five and **not one of them is
+a 6 becoming a 5**.
+
+This also explains two saves this project has puzzled over: `PORSAVE-6char.D64`
+and `PORSAVE11.D64` hold `00 52 55 54 55 53` in slots 6 and 7, which
+`docs/30-savegame-layout.md` called remnants with a zeroed name-length byte.
+There is no name-length byte in a C64 record — the name is 20 NUL-padded bytes
+— and those are not remnants: **those saves were made by dropping BRUTUS**, and
+that is byte for byte what it leaves.
+
+`work/p104/drop2.py`, payloads in `work/p104/*.bin`.
+
+### Two harness faults, both of which produce a run that looks fine and saves nothing
+
+* **The drop list does not close itself.** The name disappears and the list
+  stays up with `DROP (ERASE) WHO ?` on row 24, so a driver that goes straight
+  for `SAVE CURRENT GAME` never finds it. `EXIT` in the list returns to the
+  menu.
+* **`SAVE CURRENT GAME` puts up `SAVE GAME: YES NO`** on the command bar, and
+  `tools/session.py`'s `handle_prompt` does not answer it. The first run
+  exited cleanly having written nothing and reported "0 bytes differ" as
+  though the engine had made no change.
+
+### What this leaves for somebody else
+
+`docs/30-savegame-layout.md` and `docs/41-memory-regions.md` both still grade
+`$49FC` as a party count — PROBABLE in one, GUESS in the other — and both
+should now say refuted, with this measurement as the reason. **Flagged, not
+edited**: those files belong to another lane.

@@ -22,7 +22,7 @@ import pathlib
 
 import pytest
 import yaml
-from test_dossave import _save_dir, needs_dos_saves
+from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 
 from por import areas, dos, dos_layout, savegame, spells
 from por import dos_savegame as sg
@@ -686,3 +686,261 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
         who = sg0.slots[place].record.name
         carried = list(items.items_for_slot(bytes(save0), place))
         assert len(carried) == want[who], (who, place)
+
+
+# --- the other three titles (#53) -------------------------------------------
+#
+# Reading is per title and the title is the record's own length.  These tests
+# are the evidence that `por/dos_layout.py`'s four shapes are right: a shape
+# one byte out fails several of them at once, because each check is a fact
+# about the *content* of a field rather than about the table that names it.
+
+#: The archive folder name for each shape, so a test can find that title's
+#: shipped party.
+_TITLE_FOLDER = {
+    "pool-of-radiance": "POOLRAD",
+    "curse-of-the-azure-bonds": "CURSE",
+    "secret-of-the-silver-blades": "SECRET",
+    "pools-of-darkness": "Pools of Darkness",
+}
+
+
+def _title_records(shape):
+    """Every shipped record of one title, or a skip."""
+    where = _game_dirs().get(_TITLE_FOLDER[shape.key])
+    if where is None:
+        pytest.skip(f"no DOS {shape.title} here; set FR_ARCHIVES")
+    out = [dos.read_character(p) for p in sorted(where.glob("CHRDAT*.SAV"))
+           if p.stat().st_size == shape.record_size]
+    if not out:
+        pytest.skip(f"no DOS {shape.title} records here")
+    return out
+
+
+def _all_titles():
+    return pytest.mark.parametrize(
+        "shape", dos_layout.SHAPES, ids=[s.key for s in dos_layout.SHAPES])
+
+
+def test_each_shape_tiles_its_own_record():
+    """Every byte of all four records belongs to exactly one entry, and the
+    widths add up to the size the file actually is.  `layout_for` raises on a
+    shape that does not, so this is the other half."""
+    for shape in dos_layout.SHAPES:
+        table = dos_layout.layout_for(shape)
+        assert sum(f.size for f in table) == shape.record_size, shape.key
+        assert [f.offset for f in table] == sorted(f.offset for f in table)
+    # No two titles are the same length, which is what lets a record name its
+    # own title with nothing else to go on.
+    assert len(dos_layout.SHAPES_BY_SIZE) == len(dos_layout.SHAPES)
+
+
+def test_the_pool_of_radiance_shape_is_the_table_it_was_read_from():
+    """The generator must reproduce the hand-written table exactly -- offsets,
+    widths, kinds and notes.  Without this the other three shapes would be
+    free to drift the one that is measured against 24 specimens."""
+    assert dos_layout.layout_for(dos_layout.POOL_OF_RADIANCE) \
+        == dos_layout.LAYOUT
+
+
+def test_a_record_of_an_unknown_length_is_refused():
+    """A file that is not one of the four sizes names no title, and guessing
+    is how a reader hands back rubbish that looks like a character."""
+    with pytest.raises(dos.DosRecordError):
+        dos.DosCharacter(bytes(300))
+
+
+@_all_titles()
+def test_every_record_of_every_title_rebuilds_byte_for_byte(shape):
+    """Decode every field through the title's table, encode it back, compare.
+
+    This is the round trip a read-only decoder can make, and it is not the
+    trivial one: `to_bytes` hands the bytes back untouched, where this goes
+    through `_decode`/`_encode` for every entry.  A field declared one byte
+    wide that is really two comes back with its second byte zeroed.
+    """
+    records = _title_records(shape)
+    for char in records:
+        assert char.rebuild() == bytes(char), (shape.key, char.name)
+    assert len(records) >= 6, shape.key
+
+
+@_all_titles()
+def test_the_encumbrance_identity_balances_in_every_title(shape):
+    """`money + sum(item weight x quantity)` against the stored encumbrance.
+
+    Self-contained arithmetic across three structures, so it confirms the
+    money block, the 63-byte item stride, the weight offset and the byte
+    order together -- and it is what says Pools of Darkness really does keep
+    **three** coin slots where every earlier title keeps seven.
+    """
+    for char in _title_records(shape):
+        assert char.expected_encumbrance() == char.get("encumbrance"), \
+            (shape.key, char.name)
+
+
+@_all_titles()
+def test_the_level_array_is_indexed_by_class_number_in_every_title(shape):
+    """DOS indexes its per-class levels by the class *number*, and the class
+    byte says which slots may be set.  A spellbook or a memorised region one
+    byte out moves this array and the check fails."""
+    for char in _title_records(shape):
+        number = char.get("char_class")
+        assert number in dos.CLASS_SLOTS_FOR_CLASS, (shape.key, char.name,
+                                                    number)
+        levels = char.raw("class_levels")
+        want = {n for n in dos.CLASS_SLOTS_FOR_CLASS[number]
+                if n < len(levels)}
+        assert {n for n, v in enumerate(levels) if v} == want, \
+            (shape.key, char.name, char.get("char_class"), list(levels))
+        assert char.get("level") == max(levels), (shape.key, char.name)
+
+
+@_all_titles()
+def test_no_title_converts_but_pool_of_radiance(shape):
+    """Reading is per title; converting is not.  Handing a Curse record to
+    the C64 writer would read Pool of Radiance's offsets out of a 422-byte
+    record, so it raises instead."""
+    char = _title_records(shape)[0]
+    if shape is dos_layout.POOL_OF_RADIANCE:
+        dos.to_neutral(char)
+        return
+    with pytest.raises(dos.WrongTitleError):
+        dos.to_neutral(char)
+
+
+@_all_titles()
+def test_the_class_bitmask_is_what_the_level_arrays_imply(shape):
+    """`class_bits` against the classes the level arrays actually name.
+
+    The check that bites hardest on a wrong shape, because the two sit at
+    opposite ends of the undecoded middle: move either and they disagree.
+    54 of 54 shipped records across the four titles.
+    """
+    for char in _title_records(shape):
+        assert char.get("class_bits") == dos.class_bits_for(char), \
+            (shape.key, char.name, hex(char.get("class_bits")))
+
+
+@_all_titles()
+def test_the_shipped_party_reads_as_characters(shape):
+    """The cheap sanity of a record that decoded: abilities in range, a
+    printable name, hit points inside their maximum, five saving throws that
+    are d20 rolls, a size that is small or medium, a party slot."""
+    for char in _title_records(shape):
+        who = (shape.key, char.name)
+        assert char.name.isprintable() and char.name, who
+        for stat in ("strength", "intelligence", "wisdom", "dexterity",
+                     "constitution", "charisma"):
+            assert all(3 <= b <= 25 for b in char.raw(stat)), (who, stat)
+        assert 0 < char.get("hp_current") <= char.get("hp_max"), who
+        saves = [char.get(n) for n in ("save_paralysis", "save_petrification",
+                                       "save_wands", "save_breath",
+                                       "save_spell")]
+        assert all(1 <= v <= 20 for v in saves), (who, saves)
+        assert char.get("size") in (1, 2), who
+        assert 0 <= char.get("party_order") <= 7, who
+        assert char.get("movement") in (6, 9, 12), who
+
+
+def test_a_dual_classed_character_carries_the_class_it_was():
+    """Pools of Darkness keeps a second level array for the class a
+    dual-classed character left behind, indexed the same way: ABAGAIL is a
+    magic-user 12 who was a cleric 11, and her class bitmask carries both."""
+    shape = dos_layout.SHAPES_BY_SIZE[510]
+    by_name = {c.name: c for c in _title_records(shape)}
+    abagail = by_name.get("ABAGAIL")
+    if abagail is None:
+        pytest.skip("this Pools of Darkness party has no ABAGAIL")
+    assert abagail.get("char_class") == 5                    # magic-user
+    assert list(abagail.raw("class_levels"))[5] == 12
+    assert list(abagail.raw("former_class_levels"))[0] == 11  # cleric
+    assert abagail.get("class_bits") == 0x03                 # both
+
+
+def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
+    """The strongest single check on a shape this project did not measure
+    itself: `por/spells.py`'s ranger grant table was read mechanically out of
+    the **C64** `GEN` file, and DOS Silver Blades' three shipped rangers hold
+    its level-8 row -- 77, 78, 79, 80 -- and nothing else.
+
+    Three of three, on a 117-byte spellbook 0x071 bytes into a 439-byte
+    record neither port's table knew about the other.
+    """
+    shape = dos_layout.SHAPES_BY_SIZE[439]
+    want = set(dict(spells._RANGER_GRANT_SILVER_BLADES)[8])
+    rangers = [c for c in _title_records(shape) if c.get("char_class") == 4]
+    assert len(rangers) == 3
+    for char in rangers:
+        assert set(char.spells_known) == want, char.name
+
+
+def test_the_silver_blades_clerics_hold_the_cleric_grant_levels():
+    """The level-8 clerics know cleric levels 1-4 and nothing else, which is
+    `por/spells.py`'s Silver Blades groups 1-8, 22-28, 37-44, {58, 66-70}."""
+    shape = dos_layout.SHAPES_BY_SIZE[439]
+    want = (set(range(1, 9)) | set(range(22, 29)) | set(range(37, 45))
+            | {58} | set(range(66, 71)))
+    clerics = [c for c in _title_records(shape) if c.get("char_class") == 0]
+    assert len(clerics) == 2
+    for char in clerics:
+        assert set(char.spells_known) == want, char.name
+
+
+# --- the template's spare characters (#104) ---------------------------------
+
+def _plant(save0: bytearray, save1: bytearray, place: int, name: bytes) -> None:
+    """Put something in a slot that `looks_occupied` agrees is a character.
+
+    A synthetic template rather than a real save, because what is being tested
+    is a rule -- no slot the converted party did not fill may still read as
+    occupied -- and a synthetic one can hold **eight**, which is the case a
+    six-character DOS party cannot cover and no engine-written save on this
+    machine happens to be.
+    """
+    at = savegame.SLOT_AREA_BASE - savegame.SAVE0_LOAD_ADDRESS \
+        + place * savegame.SLOT_STRIDE
+    save0[at:at + len(name)] = name
+    save0[at + 0x14:at + 0x1A] = bytes([12] * 6)   # six abilities, 3..25
+    save1[place * savegame.ROSTER_STRIDE] = 1      # roster_in_use
+
+
+@needs_dos_saves
+def test_no_spare_character_survives_a_conversion():
+    """A DOS save holds six characters and a C64 save eight, so a conversion
+    always leaves at least two of the template's slots unwritten. They must
+    not still read as characters: the party would arrive with strangers in it,
+    carrying items that are not theirs and sharing the experience.
+
+    **Emptied the way the engine does it**, which is one byte: `#104`'s
+    measurement of the game's own `DROP CHARACTER` changed the first byte of
+    the name and the roster's `roster_in_use`, and left the rest of the slot
+    alone. So this asserts the slot reads empty, not that it reads zero.
+    """
+    save0 = bytearray(0x1C00)
+    save1 = bytearray(0x0800)
+    # Names no DOS party can be carrying, so the assertion below cannot pass
+    # or fail by coincidence -- the shipped party has a BRUTUS and a MAGNUS.
+    for place, name in ((6, b"XYZZY"), (7, b"PLUGH")):
+        _plant(save0, save1, place, name)
+    planted = savegame.SaveGame0.from_bytes(bytes(save0))
+    assert [s.index for s in planted.slots if s.occupied] == [6, 7], \
+        "the synthetic template must start out holding those two"
+
+    party = dos.read_party(_save_dir(), "A")
+    report = dos.convert_save(_save_dir(), "A", save0, save1)
+    sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
+    filled = {s.index for s in sg0.slots if s.occupied}
+    assert filled == set(range(len(party))), sorted(filled)
+    names = {s.record.name for s in sg0.slots if s.occupied}
+    assert "XYZZY" not in names and "PLUGH" not in names, sorted(names)
+    # The roster block says the same thing, and both have to agree or the
+    # engine reads one structure as full and the other as empty.
+    for place in range(len(party), 8):
+        assert save1[place * savegame.ROSTER_STRIDE] == 0, place
+    assert report.unaccounted == []
+    # Not zeroed: the engine leaves the rest of a dropped character's slot
+    # where it was, and imitating it is what keeps this a measured state.
+    at = savegame.SLOT_AREA_BASE - savegame.SAVE0_LOAD_ADDRESS \
+        + 6 * savegame.SLOT_STRIDE
+    assert bytes(save0[at:at + 5]) == b"\x00YZZY"

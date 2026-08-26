@@ -89,12 +89,19 @@ def test_the_conversion_is_rehearsed_and_writes_nothing(dos_save, template):
 @needs_disks
 def test_the_report_names_the_fields_with_no_c64_home(dos_save, template):
     """The list `docs/117-save-conversion.md` requires: encumbrance, the item
-    count, the icon choice and the strength-bonus boolean, by name."""
+    count, the portrait and icon ids, the icon colours and the strength-bonus
+    boolean, by name.
+
+    The portrait entry used to be one field called `icon_choice`; #57 split it
+    into the four the record actually has, so the report names four.
+    """
     from editor.dosimport import dropped_text, rehearse
 
     text = dropped_text(rehearse(dos_save, "A", template).report)
-    for field in ("encumbrance", "item_count", "icon_choice", "strength_bonus"):
-        assert field in text
+    for field in ("encumbrance", "item_count", "strength_bonus",
+                  "portrait_head", "portrait_body", "icon_head", "icon_body",
+                  "icon_colours"):
+        assert field in text, field
 
 
 # --- the window -------------------------------------------------------------
