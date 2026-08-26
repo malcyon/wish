@@ -848,13 +848,18 @@ for. `$49C5` is the map `LOADFILES` reloads and `$49F2` the script id;
 `por/areas.py` has the disk and the `GEO` for every area.
 
 **So the template no longer has to stand in the DOS party's area.** What
-`convert_save` still refuses is nine areas of the thirty, where the answer
-would be a guess: the four that load no map, the two whose script picks its map
-at run time, and the three travel-grid windows. The C64 side of the outdoor
-recipe is now CONFIRMED — slot 4 = the `SQRDATA` number in place of slot 2, the
-travel square in `$49C3`/`$49C4`, `docs/140-loaded-files-cache.md` — but where
-a **DOS** save keeps the travel square is unmeasured, none of the DOS specimens
-being outdoors, so the refusal stands until that is read.
+`convert_save` still refuses is six areas of the thirty, where the answer
+would be a guess: the four that load no map and the two whose script picks its
+map at run time. The travel-grid refusal came off in #50: the C64 side of the
+outdoor recipe was already CONFIRMED — slot 4 = the `SQRDATA` number in place
+of slot 2, the travel square in `$49C3`/`$49C4`,
+`docs/140-loaded-files-cache.md` — and #59's outdoor pass measured the DOS
+side against three engine-written overland saves: the DOS travel square is
+the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
+`$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
+`dos_savegame.current_area`). The converted outdoor shape follows #47's
+live-proven cold-boot recipe exactly, but **the conversion itself has not
+been loaded on a C64 end to end** — that run is the remaining proof.
 A template already standing in the target area keeps its own cache untouched:
 that one is real, written by the game, and names more than the two slots.
 

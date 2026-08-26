@@ -306,3 +306,34 @@ def test_the_writers_refuse_a_short_buffer_like_the_readers_do(call):
     error the guard exists to replace."""
     with pytest.raises(sg.DosSaveError):
         call(bytearray(10))
+
+
+# --- the outdoor form (#59's outdoor half) -----------------------------------
+
+
+def test_the_travel_square_round_trips_through_its_vm_words():
+    save = blank()
+    sg.put_travel_square(save, 7, 29)
+    assert sg.travel_square(bytes(save)) == (7, 29)
+    assert sg.word(bytes(save), sg.TRAVEL_X) == 7
+    assert sg.word(bytes(save), sg.TRAVEL_Y) == 29
+
+
+def test_an_all_zero_save_reads_as_outdoors_because_49e6_is_zero():
+    """The flag is 1 indoors; a blank buffer is 0 everywhere, so outdoors.
+
+    That is the measured meaning (3 of 3 each way, #59), not a default a
+    writer may lean on: a conversion writes the flag it means.
+    """
+    save = blank()
+    assert sg.outdoors(bytes(save))
+    sg.put_word(save, sg.INDOORS, 1)
+    assert not sg.outdoors(bytes(save))
+
+
+def test_the_window_offsets_cover_the_three_outdoor_areas_and_step_by_13():
+    """World x = local x + offset; window 26 was measured on screen (20 = 7
+    + 13), 25 and 27 are the C64 seam arithmetic."""
+    assert set(sg.WINDOW_X_OFFSET) == {25, 26, 27}
+    assert sg.WINDOW_X_OFFSET[26] == 13
+    assert [sg.WINDOW_X_OFFSET[a] for a in (25, 26, 27)] == [0, 13, 26]

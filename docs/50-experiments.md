@@ -5277,14 +5277,89 @@ counters that first looked like state were the slot letter in `CHRDATC1` →
 are zero words on DOS — the cache's DOS descendants are `$4AFA`-`$4AFF` +
 `$5012`. No GEO image is stored in the save. No pointer to the ECL buffer
 exists in the file (none needed; the buffer is at a fixed offset).
-`tools/dosbox.py`'s `dax_unpack` IndexErrors on `ECL2.DAX` block 9 — a
-run-length record that ends mid-pair; latent tool bug, worked around by
-skipping the block, not fixed here.
+`tools/dosbox.py`'s `dax_unpack` IndexErrored on `ECL2.DAX` block 9 during
+this run and the block was skipped — since diagnosed and fixed (#65: two
+real faults in the reader, zero failures over 11 654 blocks after; the block
+itself was always well-formed).
 
 **Left open.** ~30 live words unnamed (`$49F0`, `$49FC`-`$49FF`,
 `$4FC0`-`$4FD3`, `$5200`-`$520F`), bytes 12804-12807, outdoor saves
-(no specimen), #57's portrait path. Each carries its settling experiment in
-`docs/141-dos-savegame.md`.
+(no specimen at the time — see the next entry), #57's portrait path.
+
+## The DOS saved game outdoors (#59, the outdoor half)
+
+**Hypothesis.** A DOS save made on the overland travel map differs from an
+indoor one the way the C64's does (#47): `$49E6` = 0, the square in
+`$49C3`/`$49C4`, and some analogue of the SQRDATA substitution in whatever
+the DOS load path keys on.
+
+**Getting there, without a warp.** The DOS engine has no debug warp, so the
+party went by play. The route was read out of `ECL00` (the DOS `ECL3.DAX`
+block 0 — the DOS blocks still carry the C64's `$9900` base internally, so
+`work/analysis/ecl.py` disassembles them unchanged): the harbor master at
+(11,1), entered heading north with quest word `$4AA7` ≥ 254, offers
+`HORIZMENU [$4AC4]`: SOKAL / EAST / WEST / BAY / NONE; any purchase sets
+`$4A01` = 1; boarding at the pier end (15,1) then runs, for WEST,
+`SAVE 7,[$49C3] / SAVE 29,[$49C4] / SAVE 7,[$6E12] / NEWECL 26`. Slot A
+stands at (4,3) with `$4AA7` = 255, and a BFS over `GEO00`'s own
+passability gives the walk. Two traps, both read off screenshots: the fare
+wants `WHO WILL PAY? SELECT` answered (Return does), and the WEST landing
+square, world (20,29), is the overland's own "boat back to Phlan" event,
+whose TAKE BOAT / STAY menu ignores Return and wants the letter.
+
+**Specimens.** `work/p59-outdoor/`: SAVGAMC (at the landing, screen
+`20,29 E 10:15`), SAVGAMD (one step north, `20,28 N 22:15`), SAVGAME (one
+step east, `21,28 E 10:15` next day), with the engine's `CHRDAT` files, the
+screenshots and `run1.py`. `run2.py` is the DOSBox-X debugger pass on save
+D; `run2.log` its output.
+
+**Result 1. The travel square is `$49C3`/`$49C4`, window-local — the #50
+blocker, settled.** (7,29) → (7,28) → (8,28) against the three screens;
+world x = local x + 13 for window 26, y unchanged, exactly the C64 seam
+arithmetic. Live corroboration: `BPM` on `$49C3`'s low byte, one east step,
+`07 -> 08`, writer `2E33:095E`. Meanwhile file bytes 12801/12802 sit at the
+pier square (15,1) in all three — stale — while the facing byte 12803 stays
+live (2/0/2 = E/N/E, matching the screen). The C64's stale-copy
+relationship, mirrored.
+
+**Result 2. `$49E6` is the indoors flag, now CONFIRMED both ways.** 1 in
+A/B/J, 0 in C/D/E, and the boat back to Phlan was caught writing it 0 → 1
+live (writer `30F6:0CA1`), with `$5200` written 1 → 0 → 1 by `30F6:0CF2` in
+the same transition.
+
+**Result 3. `$49C5` is 0 outdoors — the C64 analogy breaks here.** The C64
+carries the SQRDATA number (5, for window 26); DOS carries 0. The DOS
+game directory has no SQRDATA files at all — the windows are ordinary GEO
+blocks 25-27 in `GEO6`-`GEO8.DAX` — so there may be nothing for `$49C5`
+to name. Header byte 0 and `$5012` hold the DAX number (7) and `$49F2` the
+area id (26), the indoor mechanism unchanged.
+
+**Result 4. The ECL buffer rule holds outdoors, and the tail-fill claim
+falls.** C's buffer is `ECL7.DAX` block 26 from byte 2 on, 6567 of 6567.
+Past the script's end the buffer is *all zeros* — and re-checking A/B/J
+found their remnants (209/1972/3 bytes) all zero too, refuting
+`docs/141`'s "stale remnants of longer previous scripts". 6 of 6 zero-fill.
+
+**Result 5. New correlations in the unnamed bytes.** File byte 12805
+equals VM word `$5200` in all six specimens (26/0/0/1/1/1). File byte
+12806 is 1 in the three indoor saves and 3 in the three outdoor ones —
+PROBABLE view-mode byte. One overland step costs 12 hours.
+
+**Negative results, named.** `$49F0` moved 14 → 15 on the C→D step and
+then sat still through two watched steps (`BPM` armed, no hit in 45 s
+each; live 15 indoors and out) — not a step counter. `$507A` held the
+travel y in C and D but did not track x in E. `$49FC`-`$49FF` are
+(6,11,10,3) in five specimens, (4,11,9,3) in J — constant across modes, so
+not mode state. And the file tail 12801-12817 (stale square + `CHRDATD1`)
+exists nowhere in the first megabyte of the running game — `find` and
+`count` both 0 — so the save writer assembles it from scattered state and
+bytes 12804-12807 have no single live address to watch.
+
+**Left open.** The wallset triple outdoors reads (0,$FFFF,$FFFF) but the
+departure template's was the same, so live-versus-stale needs a sail from
+Sokol Keep (triple 1,5,9). An outdoor retarget has not been driven; #50
+owns the converter form. `$49F0`, `$5079`-`$507D`, 12804/12805/12807
+remain unnamed.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
 
