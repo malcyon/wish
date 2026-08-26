@@ -5,11 +5,16 @@ onto the tab each name implies. The build report is
 `work/reports/one-window.md`; the Ultimate backend in `wish/ultimate.py` is the
 one part that is **unverified**, because nobody has the hardware.
 
-Two programs today: `wish-editor` (a file tool) and `wish-automap` (a live map).
-They share `por/`, a toolkit and a purpose, and nothing else. This merges them
-into one application with tabs, and reshapes the character sheet.
+Two programs when this was written: `wish-editor` (a file tool) and
+`wish-automap` (a live map). They shared `por/`, a toolkit and a purpose, and
+nothing else. This merges them into one application with tabs, and reshapes the
+character sheet.
 
-The command is **`wish`** — free again since the CLI became `wish-cli`.
+The command is **`wish`**, and it is the only one — `wish-editor`,
+`wish-automap` and `wish-cli` were all dropped, and `pyproject.toml` declares
+a single script. `wish --tab editor` is what the first two did; `wish export`
+and `wish import` are what the third did. See
+[`129-one-binary.md`](129-one-binary.md), which supersedes this paragraph.
 
 ---
 

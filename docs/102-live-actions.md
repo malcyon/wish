@@ -255,6 +255,6 @@ otherwise.
 * Each action's effect is visible in the game's own display without reloading —
   **done for `heal`**, and the party list is where it shows.
 * Each action refuses in combat where it should, and says why — tested.
-* A save taken after an action loads clean, and `wish-cli --export` on it
+* A save taken after an action loads clean, and `wish export` on it
   round-trips byte-identical — **not yet run**.
 * With no emulator attached the buttons are disabled, not merely inert.

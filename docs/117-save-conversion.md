@@ -3,8 +3,10 @@
 **Status: the converter is written.** `por/dos_layout.py` is the DOS field
 table and `por/dos.py` reads a DOS save, exports it as the editor's own YAML,
 and builds a C64 `SAVEDGAME0`/`SAVEDGAME1` pair from it. **Steps 1 to 6 of the
-order of work below are closed**; step 7, the editor menu item, is what is
-left. Everything the plan said had to be found out first has been found out —
+order of work below are closed**, and so is step 7: `File > Import` and
+`File > Export` are wired, behind `WISH_EXPERIMENTAL_DOS_IMPORT` and
+`WISH_EXPERIMENTAL_EXPORT` until the conversion is proven end to end.
+Everything the plan said had to be found out first has been found out —
 the spell tables agree exactly, nothing DOS stores is lost that matters, and
 the clock is the one loose end.
 
@@ -768,7 +770,11 @@ answer.
    in a byte, so narrowing loses nothing.
 6. **The party's square and area — done.** `por.dos_savegame.position` and
    `area_id`; the facing is halved.
-7. **An editor menu item.** Not started. `por.dos.convert_save` is the whole
+7. **An editor menu item.** Built, 2026-08-24, behind
+   `WISH_EXPERIMENTAL_DOS_IMPORT` and `WISH_EXPERIMENTAL_EXPORT` — `#23`'s
+   dialog is `editor/dosimport.py`, the export side is `editor/exports.py`,
+   and `wish/window.py` builds the submenu inside the flag's `if` rather than
+   greying it out. `por.dos.convert_save` is the whole
    of what it needs to call: hand it a DOS save directory, a slot letter and a
    C64 save's two payloads and it rewrites them in place.
 
