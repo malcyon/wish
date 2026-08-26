@@ -337,3 +337,69 @@ def test_the_window_offsets_cover_the_three_outdoor_areas_and_step_by_13():
     assert set(sg.WINDOW_X_OFFSET) == {25, 26, 27}
     assert sg.WINDOW_X_OFFSET[26] == 13
     assert [sg.WINDOW_X_OFFSET[a] for a in (25, 26, 27)] == [0, 13, 26]
+
+
+# --- the tail bytes between the facing and the party size (#59) --------------
+
+
+def test_put_tail_state_writes_the_measured_values_not_the_templates():
+    """The four bytes 12804-12807 are written, not inherited.
+
+    A template's tail belongs to another party in another place, so the test
+    starts from values that are all wrong and checks every one of them moves:
+    a writer that skipped any byte would leave the stale value visible here.
+    """
+    save = blank()
+    for off in (sg.SCRATCH_BYTE, sg.VM_COPY_BYTE,
+                sg.VIEW_MODE_BYTE, sg.TAIL_CONSTANT_BYTE):
+        save[off] = 0xEE
+    sg.put_word(save, sg.VM_SCRATCH, 26)
+    sg.put_tail_state(save, indoors=True)
+    assert save[sg.SCRATCH_BYTE] == sg.SCRATCH_INDOORS
+    assert save[sg.VM_COPY_BYTE] == 26          # the low byte of $5200
+    assert save[sg.VIEW_MODE_BYTE] == sg.VIEW_MODE_INDOORS
+    assert save[sg.TAIL_CONSTANT_BYTE] == sg.TAIL_CONSTANT
+
+
+def test_the_outdoor_tail_is_the_outdoor_measurement_not_the_indoor_one():
+    """12804 reads 0 in every indoor specimen and 14 in every outdoor one.
+
+    Both bytes that vary with where the party stands have to vary together.
+    Writing the indoor 0 into an outdoor save is inheriting a value measured
+    somewhere else, which is the whole thing `put_tail_state` exists to stop --
+    and it is invisible, because the engine maintains this byte and the save
+    still loads.
+    """
+    save = blank()
+    sg.put_tail_state(save, indoors=False)
+    assert save[sg.SCRATCH_BYTE] == sg.SCRATCH_OUTDOORS
+    assert save[sg.VIEW_MODE_BYTE] == sg.VIEW_MODE_OUTDOORS
+    assert sg.SCRATCH_INDOORS != sg.SCRATCH_OUTDOORS
+
+
+def test_the_view_mode_byte_follows_the_indoors_argument():
+    """1 indoors and 3 outdoors, the only two values twelve specimens hold."""
+    for indoors, expected in ((True, 1), (False, 3)):
+        save = blank()
+        sg.put_tail_state(save, indoors=indoors)
+        assert save[sg.VIEW_MODE_BYTE] == expected
+
+
+def test_the_vm_copy_byte_takes_the_low_byte_of_5200_not_the_whole_word():
+    """`$5200` is a word and 12805 is a byte; 13 of 13 files agree on the low
+    half. A writer that packed the word would corrupt 12806 beside it."""
+    save = blank()
+    sg.put_word(save, sg.VM_SCRATCH, 0x1234)
+    sg.put_tail_state(save)
+    assert save[sg.VM_COPY_BYTE] == 0x34
+    assert save[sg.VIEW_MODE_BYTE] == sg.VIEW_MODE_INDOORS
+
+
+def test_the_shared_ecl_space_stops_at_the_last_quest_flag():
+    """Above `$4AF8` the DOS variable array has no C64 counterpart at all, so
+    nothing there may be sourced from a C64 save. The boundary is the fact;
+    the constant exists so a converter cannot drift past it by accident."""
+    assert sg.ECL_SHARED_LAST == 0x4AF8
+    for dos_only in (sg.WALLSET, sg.DISK, sg.PARTY_SIZE, sg.VM_SCRATCH,
+                     sg.ENCOUNTER_TEXT):
+        assert dos_only > sg.ECL_SHARED_LAST

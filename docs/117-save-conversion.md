@@ -1269,7 +1269,9 @@ the edge somebody adds without noticing.
 graph LR
   amiga -.->|deferred| c64_codec
   amiga -.->|deferred| d64
+  amiga --> dos_layout
   amiga --> games
+  amiga --> layout
   amiga --> neutral
   amiga -.->|deferred| savegame
   areas -.->|deferred| geo
@@ -1667,3 +1669,14 @@ And for the reverse direction, `tests/test_doswriter.py`:
 * **A converted save loads and plays in DOS Pool of Radiance** under
   DOSBox — the four driven runs above, and the two area-moved parties of
   #60.
+
+## What a converted DOS save still inherits (#59)
+
+`write_dos_save` builds on a template, so every byte it does not write keeps a
+value belonging to another party in another place. The full accounting — what
+the engine rebuilds, what the C64 format has no counterpart for, and the
+blocker list of what nobody has decoded, with the experiment against each — is
+["What a conversion still has to inherit"](141-dos-savegame.md) in
+`141-dos-savegame.md`. After #59's file-level pass it is **444 bytes of
+13137**, none of it party or place data; the 8016 resident-state bytes this
+document once called unattributed are attributed.

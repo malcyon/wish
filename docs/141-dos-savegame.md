@@ -4,11 +4,15 @@ The DOS counterpart of [`30-savegame-layout.md`](30-savegame-layout.md): what
 is at each offset of the 13137-byte `SAVGAM<slot>.DAT`, with a grade per
 claim. Established in #59 by differential analysis under DOSBox — one known
 in-game change per save pair, then bisection with hand-built saves the game
-was made to load — against twelve Pool of Radiance specimens: Donald's slots
-A, B and J, four saves taken one action apart, two engine resaves of
-converted parties, and three saves made on the overland travel map by
-playing there (`work/p59-outdoor`), plus a DOSBox-X debugger pass on the
-live outdoor game. `por/dos_savegame.py` is the machine-readable form and the
+was made to load — against **twelve genuine engine-written Pool of Radiance
+specimens**: Donald's slots A, B and J, the archives' own
+`games/POOLRAD/Default files/Saves/SAVGAMA.DAT` (a Slums save, and *not* the
+same file as Donald's slot A), four saves taken one action apart, an engine
+resave of a converted party, and three saves made on the overland travel map
+by playing there (`work/p59-outdoor`), plus a DOSBox-X debugger pass on the
+live outdoor game. A thirteenth file, `Default files/Saves/SAVGAMB.DAT`, is a
+**stub and is excluded from every count**: its ECL buffer is 7680 zero bytes,
+it holds nine nonzero VM words, no quest flags and a 00:00 clock. `por/dos_savegame.py` is the machine-readable form and the
 reasoning is in [`50-experiments.md`](50-experiments.md) "Mapping the DOS
 saved game" and "The DOS saved game outdoors".
 
@@ -17,7 +21,7 @@ saved game" and "The DOS saved game outdoors".
 | offset | size | what | grade |
 |---|---|---|---|
 | 0 | 1 | the current area's `.DAX` container number, 1-8 — numerically the C64 `POOL` disk side that carries the same area (A/B/J = 3/4/2 = the C64 disks for New Phlan, Sokol Keep, the Slums) | CONFIRMED |
-| 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: 2407 of 2560 words are zero in all nine specimens | CONFIRMED |
+| 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2401 of 2560 words are zero in all twelve specimens** | CONFIRMED |
 | 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60, `work/p60/run2` variant X1; zero-fill measured in #59's outdoor pass |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
 | 12809-13136 | 328 | six 41-byte character entries, then 82 bytes of UI scratch (menu-text fragments, heap pointers). Each entry is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters | CONFIRMED |
@@ -28,10 +32,10 @@ saved game" and "The DOS saved game outdoors".
 |---|---|---|
 | 12801, 12802 | x, y — **indoors**. Outdoors both freeze at the last indoor square (the pier, 15,1, in all three overland saves) and the live square is `$49C3`/`$49C4` | CONFIRMED — #6, re-proven by the step diff (4→5 on one step east); staleness 3 of 3 outdoor specimens |
 | 12803 | facing, the C64's value doubled: 0 N, 2 E, 4 S, 6 W — and **still live outdoors** (2/0/2 = E/N/E against the screen while x,y sat stale) | CONFIRMED — turn diff, 0→2 on one right turn; outdoors 3 of 3 |
-| 12804 | unknown; 0 in A/J, 14 in B **and** in all three outdoor saves | UNKNOWN |
-| 12805 | equals VM word `$5200` in **all six** specimens (26/0/0 indoors, 1/1/1 outdoors); volatile indoors | PROBABLE that one copies the other; which way, unknown |
-| 12806 | **1 in the three indoor saves, 3 in the three outdoor ones** — reads as the engine's view-mode byte | PROBABLE — perfect 6-specimen correlation, no live watch (the tail is not resident contiguously, see below) |
-| 12807 | 2 in every specimen | UNKNOWN |
+| 12804 | **unnamed, and engine-maintained.** 0 in the eight walked-in indoor saves, 14 in B and in all three outdoor saves, 9 in the run-9 resave. No byte offset and no VM word anywhere in the file carries its value vector, and none shares its partition — searched exhaustively over 13 files. It is computed at save time from state the save does not otherwise hold. **The engine writes it itself**: a hand-built save carrying 0 came back from the engine's own resave holding 9. Refuted: `$49F0`, `$49F1`, `$49FE`, `$4AC4`, a step counter (flat across a turn, an indoor step and two overland steps) | UNKNOWN as a meaning; CONFIRMED engine-maintained, and the value depends on where the party stands, so **0 indoors and 14 outdoors are the measured values to write** -- neither is inherited, and writing the indoor 0 into an outdoor save would be |
+| 12805 | **the low byte of VM word `$5200`** — equal in **13 of 13** files, including a pair that moved together 26→0 on one indoor step and 26→1 across the boat, and the engine's resave (26→0 in both places at once) | CONFIRMED as a copy; which direction, unknown |
+| 12806 | **1 in the nine indoor specimens, 3 in the three outdoor ones** — but it is *perfectly* correlated with `$49E6`, so nothing in the corpus separates "view mode" from a second encoding of the indoors flag. A converter can write it from `$49E6`, which it already knows | PROBABLE as view mode; CONFIRMED as a function of `$49E6`, 12 of 12 |
+| 12807 | **2 in all 12 genuine specimens**, indoors and out, before and after the engine's resave (0 only in the stub) | CONFIRMED as a constant to write; its meaning UNKNOWN |
 | 12808 | **party size**, one byte; 6→1 when a six-member template carried a one-member party through the engine's own resave | CONFIRMED |
 
 **The tail is assembled at save time, not dumped from a struct**: the byte
@@ -56,12 +60,16 @@ quest flags convert unconditionally.
 | `$4A20`-`$4AF8` | the quest flags, byte-to-word at the C64's addresses | CONFIRMED — prior work, #26 |
 | `$4AFA`-`$4AFC` | **the wallset triple**: up to three `WALLDEF<n>.DAX` / `8X8D<n>.DAX` block ids, `$FFFF` = empty. Byte-identical to the C64 loaded-files cache slots 15-17 for the same area — PORSAVE13's Slums triple (2,4,1) is slot J's, PORSAVE's Sokol Keep (1,5,9) is slot B's. **New Phlan is the exception**: the C64 loads no `WALLSET` there and all three slots read `$FF`, where DOS slot A holds `(0, $FFFF, $FFFF)`. Without the triple, a save moved to a new area dies in `LoadWallSet` | CONFIRMED |
 | `$4AFD`-`$4AFF` | (1,2,3) with three sets loaded, (1,$FFFF,$FFFF) with one — read as the wall-index map | PROBABLE |
-| `$4FE1` | 255 in all three | UNKNOWN |
 | `$503E` | **party size** as a VM word; 6→1 in the one-member resave, 6 in Curse's and Secret's six-member defaults | CONFIRMED |
 | `$5012` | the DAX container number again, as a VM word. **The geo load reads this, not the header byte**: a save carrying every other write of the recipe below still dies with `Unable to load geo in Load3DMap.` until this word is written | CONFIRMED |
 | `$5200` | equals file byte 12805 in all six specimens; written 1→0→1 by the boat-back transition (writer `30F6:0CF2`) | PROBABLE scratch; unnamed |
 | `$5227`+ | the encounter-message string buffer, one ASCII character per word — "YOU SPY A GROUP OF SEEDY-LOOKING GOBLINS." in J | PROBABLE |
-| the rest | ~30 more live words (`$49F0`, `$49FC`-`$49FF`, `$4FC0`-`$4FD3`, `$5079`-`$507D`, `$5201`-`$520F`, …) hold small values that move with area and play; none is needed by the load path (bisected out) and none is named. Outdoor evidence so far: `$49F0` moved 14→15 on the one step that crossed 10:15→22:15 and then sat still through two watched steps (no `BPM` hit); `$507A` held the travel y twice but did not track x; `$49FC`-`$49FF` are (6,11,10,3) in five specimens and (4,11,9,3) in J, indoors and out alike; `$4FD2`/`$4FD3` differ in every save and read 0 live (a seed?) | UNKNOWN |
+| `$49EB` | a script variable: 0 in New Phlan, 1 in the Slums, Sokol Keep and outdoors — **and the C64's byte at the same address reads the same way** (0 in ten New Phlan saves, 1 in both Slums saves). ECL00 writes 1 into it when the party boards a boat | CONFIRMED as the same field on both ports; what it gates, UNKNOWN |
+| `$49FD`, `$49FE` | **per-area constants the area's own ECL prologue writes.** `ECL00` (New Phlan) opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]`; `ECL14` (the Slums) opens `SAVE [$6E7D],[$49FD] / SAVE 9,[$49FE]`. Every DOS specimen agrees (10 New Phlan, 9 Slums) and so does every C64 save. Sokol Keep's `ECL15` never writes `$49FE`, which is why slot B stands there still holding New Phlan's 10. The engine rewrote 10→9 by itself after loading a save retargeted into the Slums | CONFIRMED — the script text and 12 specimens on two ports |
+| `$4A00`-`$4A1F` | the per-script scratch, the C64's `SCRIPT_SCRATCH` at the same addresses, zeroed on every area change. Six words are live here and they partition cleanly by area; `$4A00` is 255 in both ports' Slums saves and 0 in both ports' New Phlan saves | CONFIRMED as the same region; the individual words UNKNOWN |
+| `$49FC`, `$49FF` | ECL-visible, but the two ports **disagree**: DOS reads (6, 3) — 4 for `$49FC` in the Slums — where the C64 reads (2, 129/1). So they are not copyable across even though the address is shared. `$49FC` is not the party count: J holds 4 with six live characters | UNKNOWN, and refuted as party count |
+| `$4B00`-`$52FF` | **DOS engine state with no C64 counterpart.** No ECL script in the 30-script corpus references any address at or above `$4AF9` (2544 distinct bracketed addresses checked), and on the C64 `$4D00` upwards is the twelve character slots, not variables. So nothing here can be sourced from a C64 save; it has to be measured. Live and still unnamed: `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507A`-`$507D`, `$507F`-`$5080`, `$5202`-`$5207`, `$520A`-`$520F`. Constant in all twelve: `$4FE1` = 255, `$506D` = 16, `$50F6` = 1 | UNKNOWN individually; the boundary CONFIRMED |
+| engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`work/p59/retarget-C.DAT` against `work/p59/run9/SAVGAMD.DAT`). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
 
 ## The recipe for moving a save to a different area (#60)
 
@@ -148,12 +156,55 @@ One overland step costs 12 hours on the clock. The DOS overland has no
 in `GEO6`-`GEO8.DAX` plus `SQRPACI.DAX`/`WILDCOM.DAX`, which is presumably
 why `$49C5` has nothing to carry out there.
 
+## What a conversion still has to inherit
+
+The rule in `CLAUDE.md` is **measured versus inherited**: a value we
+established is fine at any number, and a value taken from somebody else's
+save is not. This is the list, in the three legitimate groups, measured over
+the twelve genuine specimens. `por.dos.write_dos_save` writes the quest
+flags, the clock, the party size, the square, the six character filenames
+and — when the areas differ — the nine retarget writes and the ECL buffer.
+Everything else in the file it copies from the template.
+
+**1. The engine rebuilds it, so writing anything is pointless.** Nine VM
+words came back rewritten when the engine loaded a hand-built save and the
+party moved (`work/p59/retarget-C.DAT` against `work/p59/run9/SAVGAMD.DAT`),
+and the load path was already bisected as not reading them:
+`$49F0`, `$49F1` (the previous square), `$49FE` (the area's ECL prologue
+writes it), `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208`. Byte 12804
+is in this group too — the engine replaced our 0 with 9.
+
+**2. The C64 save has no such field.** Everything at `$4AF9` and above:
+no ECL script references any address there (2544 distinct addresses across
+30 scripts), and on the C64 that range is `$4B00`-`$4CFF` header remainder
+and then the twelve character slots from `$4D00`. There is nothing to copy
+from. These have to be measured on the DOS side or left to the engine, and
+some already are: `$4FE1` = 255, `$506D` = 16, `$50F6` = 1 and byte 12807 = 2
+in all twelve, so those are constants a converter can write outright.
+
+**3. Nobody has decoded it — the blocker list.** Every entry here carries the
+experiment that would remove it.
+
+| what | bytes | what would settle it |
+|---|---|---|
+| `$49FC`, `$49FF` | 4 | ECL-visible, but the ports disagree — DOS reads (6/4, 3) where the C64 reads (2, 129/1). A read-watch on either in DOSBox-X |
+| `$49EB`, `$4A00`, `$4A02`, `$4A13`, `$4A16`-`$4A18` | 14 | ECL-visible script scratch, and the C64 holds the same values for the same area (`$4A00` = 255 in both ports' Slums saves, 0 in both ports' New Phlan). **Copyable from the C64 by the quest-flag mechanism** — the work is the code change and a load, not more measurement |
+| `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507A`-`$507D`, `$507F`-`$5080` | 30 | DOS-only engine state. `$507A`-`$507D` are zero in all nine indoor specimens, so zero is measured for an indoor conversion; the rest partition by area. Read-watches, one per word |
+| `$5202`-`$5207`, `$520A`-`$520F` and the encounter-text buffer `$5227`+ | 154 | they change together and sit immediately before a readable encounter message, so PROBABLE the pending-encounter record. A converted party has no encounter pending; the experiment is a hand-built save with the block zeroed, loaded and walked |
+| the character table's 29 junk bytes per entry and the 82 bytes of UI scratch after it | 246 | PROBABLE display scratch — the bytes contain readable fragments of menu words ("camping"), and the engine rewrote 55 of them on its own resave with no visible effect. Same experiment: zero them, load, look |
+| byte 12804 | 1 | in group 1, not a blocker; naming it needs a write-watch on the save routine |
+
+**444 bytes of 13137**, 3.4% of the file, would still be inherited after
+every finding above is acted on — down from the whole of the 8016 bytes this
+issue opened with. None of it is party or place data.
+
 ## What this leaves open
 
-* `$49F0`, `$49FC`-`$49FF`, `$4FC0`-`$4FD3`, `$5079`-`$507D`,
-  `$5200`-`$520F`, 12804-12807 — live, unnamed. Each needs its own
-  one-change differential; the negative results so far are in the tables
-  above.
+* The blocker list above. `$49F0`/`$49F1`, `$49FE`, `$5200` and bytes
+  12805-12807 came off it in #59's file-level pass; what is left is in the
+  table. The negative results are in the tables above so nobody re-runs them:
+  12804 has no copy anywhere in the file, `$49F0` is not a step counter, and
+  `$49FC` is not the party count.
 * Whether the wallset triple is live or stale outdoors. Settling experiment:
   sail out from an area with a different triple (Sokol Keep's boat, 1,5,9)
   and read `$4AFA`-`$4AFC` in the overland save.

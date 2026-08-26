@@ -5446,3 +5446,58 @@ later titles, so the five live actions no longer refuse there and
 `docs/139`'s C16–C19 leave `R`. The three Krynn-era titles keep `None`: their
 `LINKER` has not been read, and a title with no gate must refuse rather than
 read somebody else's byte and call whatever it finds "not combat".
+
+## Measured versus inherited: the DOS saved game's last unnamed bytes (#59)
+
+Donald's ruling — no template, block on not understanding — turns every
+undecoded byte of `SAVGAM?.DAT` into a blocker, so the question stopped being
+"what is this byte for" and became "may a converter write it, and on what
+evidence". A file-level pass over the whole corpus answered most of it.
+
+**Two specimens nobody had counted.** The archives ship a second copy of the
+save directory at `games/POOLRAD/Default files/Saves/`, and its `SAVGAMA.DAT`
+and `SAVGAMB.DAT` are **not** the files in Donald's `SavesDir` (`GAME/POOLRAD/
+SAVE/` is byte-identical to his; `Default files` is not). The A there is a
+genuine engine-written Slums save at the entrance square (15,4) with the
+right wallset triple — a twelfth specimen for nothing. The B is a stub, ECL
+buffer all zeros and nine live words, and is excluded from every count.
+
+**Byte 12805 is a copy of `$5200`, 13 of 13** — including two files where the
+pair moved together (26→0 on one indoor step; 26→1 across the boat) and the
+engine's own resave. Byte 12807 is 2 in all twelve genuine files. Byte 12806
+is 1 indoors and 3 outdoors, but it is *perfectly* correlated with `$49E6`,
+so the corpus cannot separate "view mode" from a second encoding of the
+indoors flag; either way a converter writes it from a value it already has.
+
+**Byte 12804 resisted, and the negative result is the useful part.** An
+exhaustive search — 13 files × 13137 byte offsets and all 2560 VM words —
+found no field carrying its value vector and none even sharing its
+*partition*. Refuted: `$49F0`, `$49F1`, `$49FE`, `$4AC4`, and any step
+counter (it is flat across a turn, an indoor step and two overland steps).
+The only structure in the vector is that its 14 appears in exactly the two
+lineages that arrived by boat. It does not block a conversion, because the
+engine writes it: a hand-built save carrying 0 came back from the engine's
+resave holding 9.
+
+**The boundary that reorganised the rest.** Grepping every bracketed address
+out of the thirty ECL disassemblies in `work/ecl-scripts` gives 2544 distinct
+addresses and **not one at or above `$4AF9`**. So the shared, cross-port ECL
+variable space is `$4900`-`$4AF8` and no further — and on the C64 `$4D00`
+upwards is the twelve character slots, so the DOS VM array above `$4AF8` has
+no C64 counterpart at all. That splits the unnamed words into "could be
+copied from the C64" and "must be measured on DOS", and it is why the
+addresses that look tempting (`$4FC0`, `$5079`, `$5200`) can never be sourced
+from a C64 save.
+
+**Two words fell to the scripts themselves.** Every area's ECL opens by
+writing `$49FD` and `$49FE`: `ECL00` does `SAVE 10,[$49FE]`, `ECL14` does
+`SAVE 9,[$49FE]`, and Sokol Keep's `ECL15` writes neither — which is exactly
+why slot B stands in Sokol Keep still holding New Phlan's 10. Both ports
+agree save for save. The engine rewrote 10→9 by itself after loading a save
+retargeted into the Slums, so the prologue runs on load and these are
+rebuilt, not carried. `$49EB` and `$4A00` read the same way on both ports too
+(`$4A00` = 255 in both Slums saves, 0 in both New Phlan ones).
+
+The inherit list this leaves — 444 bytes of 13137, in three groups with an
+experiment against each — is the table in `141-dos-savegame.md`. Scripts:
+`work/p59-vars/corr.py`, `partition.py`, `inherit.py`, `crossport.py`.

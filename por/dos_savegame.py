@@ -88,6 +88,25 @@ ECL_HEADER = 2
 
 POS_X, POS_Y, POS_FACING = 12801, 12802, 12803
 FACING_SCALE = 2             # 0 N, 2 E, 4 S, 6 W
+# The four bytes between the facing and the party size, measured over the
+# twelve genuine engine-written specimens (#59). None of them is party or
+# place data and none is read by the load path, but a conversion that leaves
+# them at the template's values is inheriting somebody else's state, so each
+# has a measured value to write instead.
+SCRATCH_BYTE = 12804         # unnamed, and the value depends on where the
+                             # party stands: 0 in the eight walked-in indoor
+                             # saves, 14 in B and in all three outdoor ones.
+                             # The engine replaced a hand-built 0 with 9 by
+                             # itself, so it maintains this -- but a writer
+                             # still puts the value measured for the situation
+                             # it is writing, not the one measured elsewhere
+SCRATCH_INDOORS, SCRATCH_OUTDOORS = 0, 14
+VM_COPY_BYTE = 12805         # the low byte of $5200, equal in 13 of 13 files
+VIEW_MODE_BYTE = 12806       # 1 indoors, 3 outdoors -- perfectly correlated
+                             # with $49E6 in 12 of 12, so write it from that
+TAIL_CONSTANT_BYTE = 12807   # 2 in all twelve genuine specimens
+TAIL_CONSTANT = 2
+VIEW_MODE_INDOORS, VIEW_MODE_OUTDOORS = 1, 3
 PARTY_SIZE_BYTE = 12808      # the same count the word at $503E carries
 
 PARTY_TABLE = 12809          # six entries of 41 bytes
@@ -118,6 +137,13 @@ PARTY_SIZE = 0x503E          # 6 -> 1 when a six-member save became one member
 DISK = 0x5012                # the DAX container number again, as a VM word;
                              # the geo load fails without it
 ENCOUNTER_TEXT = 0x5227      # string buffer, one ASCII character per word
+VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
+# The shared, cross-port ECL variable space ends here. No ECL script in the
+# thirty-script corpus references an address at or above $4AF9 (2544 distinct
+# bracketed addresses), and on the C64 $4D00 upwards is the twelve character
+# slots -- so nothing the DOS save holds above this can be sourced from a C64
+# save, however tempting the address looks (#59).
+ECL_SHARED_LAST = FLAGS_LAST
 
 
 def word_offset(address: int) -> int:
@@ -395,6 +421,28 @@ def put_position(save: bytearray, x: int, y: int, facing: int) -> None:
     _whole(save)
     save[POS_X], save[POS_Y] = x, y
     save[POS_FACING] = facing * FACING_SCALE
+
+
+def put_tail_state(save: bytearray, *, indoors: bool = True) -> None:
+    """Bytes 12804-12807, from measurement rather than from the template.
+
+    `indoors` sets **two** of them, not one: the view-mode byte, and the
+    scratch byte at 12804, which reads 0 in every indoor specimen and 14 in
+    every outdoor one.  Writing 0 outdoors would put a value measured indoors
+    into a save that stands outdoors -- inheriting a different situation's
+    state, which is the thing this function exists to stop.  The engine
+    maintains 12804 itself, so it is probably harmless either way; "probably
+    harmless" is not a reason to write the wrong one.
+
+    `TAIL_CONSTANT_BYTE` is 2 in all twelve genuine specimens regardless.
+    `VM_COPY_BYTE` is written from `$5200` as it stands in this save, which is
+    the relationship 13 of 13 files show.
+    """
+    _whole(save)
+    save[SCRATCH_BYTE] = SCRATCH_INDOORS if indoors else SCRATCH_OUTDOORS
+    save[VM_COPY_BYTE] = word(bytes(save), VM_SCRATCH) & 0xFF
+    save[VIEW_MODE_BYTE] = VIEW_MODE_INDOORS if indoors else VIEW_MODE_OUTDOORS
+    save[TAIL_CONSTANT_BYTE] = TAIL_CONSTANT
 
 
 def put_travel_square(save: bytearray, x: int, y: int) -> None:
