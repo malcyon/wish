@@ -19,10 +19,12 @@ import pathlib
 
 import pytest
 
-from por import amiga
+from por import amiga, dos_layout
 from por.amiga import (
     ABILITIES,
     ALIGNMENTS,
+    AMIGA_POR_RECORD_SIZE,
+    AMIGA_POR_UNPLACED,
     ARMOUR_CLASS,
     CLASS_LEVEL_COUNT,
     CLASSES,
@@ -30,8 +32,11 @@ from por.amiga import (
     NAME,
     RACES,
     RECORD_LENGTH,
+    AmigaPorCharacter,
+    AmigaRecordError,
     PodCharacter,
     PodWriter,
+    amiga_por_offset,
 )
 
 RECORD = 582            # the C64 export PoD accepts, load address included
@@ -628,9 +633,6 @@ def test_export_party_disambiguates_a_six_way_collision(tmp_path):
 
 # -- Amiga Pool of Radiance: the 288-byte record (#27) ----------------------
 
-from por.amiga import (AMIGA_POR_RECORD_SIZE, AMIGA_POR_UNPLACED,
-                       AmigaPorCharacter, AmigaRecordError, amiga_por_offset)
-from por import dos_layout
 
 
 def test_the_shift_map_places_the_three_regions_at_their_measured_offsets():
