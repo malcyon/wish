@@ -32,6 +32,31 @@ So, absolutely:
   because it often is. The safe assumption costs you nothing; the unsafe one
   cost a session.
 
+**Check the commit you were given is actually in your worktree.** A worktree is
+cut at some point in the branch's history, and that may be *before* the commit
+you were asked to review — on 2026-08-26 a reviewer was handed `1affc5e` and
+its worktree sat on a sibling commit, so `por/amiga.py` on disk had none of the
+code under review.
+
+That failure is silent and it is the reason this paragraph exists: `Read` shows
+a **plausible but stale** file rather than an error, so a review can be written
+confidently against code that is not the code. Verify first:
+
+```sh
+git merge-base --is-ancestor <sha> HEAD && echo "in this worktree" || echo "NOT here"
+```
+
+`git show` and `git log` read the object database and work regardless. If the
+commit is **not** in your worktree and you need to *run* anything, extract it
+rather than moving your branch:
+
+```sh
+mkdir -p "$SCRATCH/review-<sha>" && git archive <sha> | tar -x -C "$SCRATCH/review-<sha>"
+```
+
+Work from that untracked copy. **Never `git checkout` the commit** — that is
+the rule above, and it applies to your own worktree too.
+
 **Say in the first line of your report whether you are isolated.** Run:
 
 ```sh
