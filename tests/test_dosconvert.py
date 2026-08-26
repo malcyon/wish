@@ -452,18 +452,75 @@ def test_a_template_already_in_the_area_keeps_its_own_cache():
 
 @needs_dos_saves
 def test_an_area_whose_map_we_cannot_name_is_refused():
-    """Nine of the thirty areas: the four that load no map, the two whose
-    script picks one at run time, and the three travel-grid windows, where the
-    cache names a `SQRDATA` in slot 4 instead of a `GEO` in slot 2 and nothing
-    has tested it. Guessing there is what wrote a save that loads and hangs.
+    """Six of the thirty areas: the four that load no map and the two whose
+    script picks one at run time. Guessing there is what wrote a save that
+    loads and hangs.  The travel-grid windows used to be refused here too;
+    #50 lifted that once #59's outdoor saves settled their fields.
     """
     savgam = bytearray(_savgam("A"))
     save0 = bytearray(0x1C00)
-    for id in (3, 8, 25):
+    for id in (3, 8):
         sg.put_word(savgam, sg.AREA, id)
         assert sg.area_id(bytes(savgam)) == id
         with pytest.raises(dos.DosRecordError):
             dos.apply_file_cache(save0, bytes(savgam))
+
+
+def _outdoor_savgam() -> bytes:
+    """An overland save in the measured shape of `work/p59-outdoor`'s three:
+    `$49E6` = 0, `$49C5` = 0, the area id in `$49F2` alone, the square in
+    `$49C3`/`$49C4`, and the stale indoor square left in 12801-12803."""
+    savgam = bytearray(_savgam("A"))
+    sg.put_word(savgam, sg.INDOORS, 0)
+    sg.put_word(savgam, sg.AREA, 0)
+    sg.put_word(savgam, sg.SCRIPT, 26)
+    sg.put_travel_square(savgam, 7, 29)
+    return bytes(savgam)
+
+
+@needs_dos_saves
+def test_an_overland_save_writes_the_outdoor_cache_recipe():
+    """#47's outdoor form: slot 4 = the SQRDATA number where slot 2 would
+    hold the GEO, slot 2 left `$FF`, `$49E6` = 0, `$49C5` = the SQRDATA
+    number, and the disk hint naming the side that carries `ECL1A`."""
+    savgam = _outdoor_savgam()
+    save0 = bytearray(0x1C00)
+    line = dos.apply_file_cache(save0, savgam)
+    assert "SQRDATA05" in line
+    at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
+    assert save0[at + dos.CACHE_SQRDATA] == 5
+    assert save0[at + dos.CACHE_ECL] == 26
+    assert save0[at + dos.CACHE_GEO] == dos.FILE_CACHE_EMPTY
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 0
+    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == 5
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == 26
+    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == 7
+
+
+@needs_dos_saves
+def test_an_overland_save_places_the_party_on_the_travel_pair():
+    """Outdoors the square goes to `$49C3`/`$49C4` and `$49C0`-`$49C2` is
+    left the template's -- the DOS file's own 12801/12802 are the stale
+    square the party left the grid on, not where it stands."""
+    savgam = _outdoor_savgam()
+    save0 = bytearray(0x1C00)
+    save0[0x49C0 - 0x4900:0x49C3 - 0x4900] = b"\x11\x22\x33"
+    notes = dos.apply_position(save0, savgam)
+    assert save0[0x49C3 - 0x4900] == 7
+    assert save0[0x49C4 - 0x4900] == 29
+    assert bytes(save0[0x49C0 - 0x4900:0x49C3 - 0x4900]) == b"\x11\x22\x33"
+    assert {a for a, _ in notes} == {0x49C3, 0x49C4}
+
+
+@needs_dos_saves
+def test_an_outdoor_area_id_is_read_from_the_script_word():
+    """`$49C5` is 0 on the travel grid (3 of 3 outdoor specimens), so a
+    reader keying on it would take an overland party for one in New Phlan."""
+    savgam = _outdoor_savgam()
+    assert sg.area_id(savgam) == 0
+    assert sg.current_area(savgam) == 26
+    indoor = _savgam("A")
+    assert sg.current_area(indoor) == sg.area_id(indoor)
 
 
 @needs_dos_saves

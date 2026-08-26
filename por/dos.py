@@ -1246,17 +1246,36 @@ def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
     return changed
 
 
-def apply_position(save0: bytearray, savgam: bytes) -> None:
+def apply_position(save0: bytearray, savgam: bytes) -> tuple:
     """Write the party's square and facing into `SAVEDGAME0`.
 
     The area is **not** written here.  `$4BC2` is slot 2 of the loaded-files
     cache, not a field beside it, so it belongs to `apply_file_cache` with the
     other twenty-four slots and the three bytes that make them findable.
+
+    Outdoors the square is the travel pair `$49C3`/`$49C4` -- window-local on
+    both ports, measured on DOS in #59 and on the C64 in #47 -- and
+    `$49C0`-`$49C2` is **left the template's**: the DOS file's 12801-12803
+    x,y are the stale square the party left the grid on, the C64 keeps its
+    own stale copy there too, and the one proven live shape (#47 test D)
+    wrote the travel pair alone.
+
+    Returns the `(address, what)` notes for the report, because which pair
+    was written is exactly what its reader wants to know.
     """
+    if dos_savegame.outdoors(savgam):
+        x, y = dos_savegame.travel_square(savgam)
+        save0[dos_savegame.TRAVEL_X - SAVE0_BASE] = x
+        save0[dos_savegame.TRAVEL_Y - SAVE0_BASE] = y
+        return ((dos_savegame.TRAVEL_X, "travel-grid x, from SAVGAM $49C3"),
+                (dos_savegame.TRAVEL_Y, "travel-grid y, from SAVGAM $49C4"))
     x, y, facing = dos_savegame.position(savgam)
     save0[PARTY_X - SAVE0_BASE] = x
     save0[PARTY_Y - SAVE0_BASE] = y
     save0[PARTY_FACING - SAVE0_BASE] = facing
+    return ((PARTY_X, "party x, from SAVGAM"),
+            (PARTY_Y, "party y, from SAVGAM"),
+            (PARTY_FACING, "facing, the DOS value halved, from SAVGAM"))
 
 
 # ---------------------------------------------------------------------------
@@ -1302,6 +1321,11 @@ FILE_CACHE_RELOAD = 0x80
 #: Which slot is which kind, for the two a converted save writes.
 CACHE_GEO = 2
 CACHE_ECL = 8
+#: Outdoors, slot 4 (`SQRDATA`) does slot 2's job and slot 2 stays `$FF` --
+#: no `GEO` loads on the travel grid at all.  Proven live twice in #47,
+#: including an indoor Slums template retargeted onto the grid from a cold
+#: boot with exactly slot 4 + slot 8 written.
+CACHE_SQRDATA = 4
 #: And the three a *DOS* save needs: slots 15-17 are the `WALLSET` pieces, and
 #: the same three numbers are the DOS save's wallset triple at `$4AFA` -- the
 #: Slums is (2,4,1) on both ports and Sokol Keep (1,5,9).  So the C64 save
@@ -1326,15 +1350,27 @@ CURRENT_SCRIPT = 0x49F2
 INDOORS = 0x49E6
 
 
-#: The three refusals `apply_file_cache` raises, which reach the player through
-#: the import dialog's generic handler. Donald's wording, approved 2026-08-24.
-#: Each fires on where the *DOS* party stood, not on the C64 template -- and
-#: none of them fires at all when the template already stands in that same
-#: area, because then its own cache is real and is kept.
+#: The refusals, which reach the player through the import dialog's generic
+#: handler. Donald's wording, approved 2026-08-24.  Each fires on where the
+#: *DOS* party stood, not on the C64 template -- and none of them fires at all
+#: when the template already stands in that same area, because then its own
+#: cache is real and is kept.
+#:
+#: `apply_file_cache` raises the first and third; the wilderness refusal came
+#: off it in #50, once #59's outdoor saves settled where a DOS save keeps the
+#: travel square.  `WILDERNESS` itself survives in one place only:
+#: `retarget_reason`, the *other* direction, where a C64 party standing
+#: outdoors still cannot be written into a DOS save because no outdoor DOS
+#: retarget has ever been driven.
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of Pool "
                "of Radiance, so there is no map file and no disk to name")
 WILDERNESS = "Saves from wilderness locations are not yet supported."
 UNSUPPORTED_LOCATION = "Saves from this location are not supported."
+
+
+def _sqrdata_number(name: str) -> int:
+    """`SQRDATA05` -> 5.  Hex digits, like `geo_number`'s."""
+    return int(name[len("SQRDATA"):], 16)
 
 
 def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
@@ -1352,15 +1388,17 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
       the disk hint `$49EA`, the map `$49C5` and the script id `$49F2`.
 
     The second is `docs/140-loaded-files-cache.md`'s recipe and is the shape
-    both live tests used.  It refuses rather than guesses for three kinds of
-    area: one this project has no row for, one whose script picks its map at
-    run time or loads none at all, and the travel grid, where the cache uses
-    slot 4 for `SQRDATA` in place of slot 2 and nothing has tested it.
+    both live tests used.  Outdoors the same recipe with slot 4 in slot 2's
+    role -- `SQRDATA` where a dungeon has a `GEO` -- which is the outdoor form
+    #47 proved live twice, plus `$49E6` = 0, which is on its own what boots
+    the engine into travel mode.  It still refuses rather than guesses for
+    two kinds of area: one this project has no row for, and one whose script
+    picks its map at run time or loads none at all.
     """
     at = FILE_CACHE[0] - SAVE0_BASE
-    there = dos_savegame.area_id(savgam)
+    there = dos_savegame.current_area(savgam)
     here = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD
-    if here == there:
+    if here == there and not dos_savegame.outdoors(savgam):
         return ("loaded-files cache: the template's own, untouched -- it "
                 "stands where the DOS party stands, so it already names the "
                 "right files")
@@ -1369,7 +1407,18 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     if where is None:
         raise DosRecordError(NOT_AN_AREA.format(area=there))
     if where.outdoors:
-        raise DosRecordError(WILDERNESS)
+        sqr = _sqrdata_number(where.sqrdata)
+        save0[at:at + FILE_CACHE[1]] = (
+            bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1])
+        save0[at + CACHE_SQRDATA] = sqr
+        save0[at + CACHE_ECL] = there
+        save0[DISK_HINT - SAVE0_BASE] = where.disk
+        save0[CURRENT_GEO - SAVE0_BASE] = sqr   # $49C5 holds the SQRDATA
+        save0[CURRENT_SCRIPT - SAVE0_BASE] = there   # number outdoors (#47)
+        save0[INDOORS - SAVE0_BASE] = 0
+        return (f"loaded-files cache: $FF in all twenty-five, then slot 4 = "
+                f"{where.sqrdata} and slot 8 = {where.ecl}; outdoors no GEO "
+                f"loads at all, and $49E6 = 0 is what boots into travel mode")
     if where.dynamic_geo or len(where.geos) < 1:
         raise DosRecordError(UNSUPPORTED_LOCATION)
 
@@ -1437,25 +1486,27 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "per-script scratch: zeroed, as DUNGEON $202A does on every "
                 "area change")
     at = FILE_CACHE[0] - SAVE0_BASE
-    there = dos_savegame.area_id(savgam)
-    retargeted = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != there
+    outdoors = dos_savegame.outdoors(savgam)
+    there = dos_savegame.current_area(savgam)
+    retargeted = outdoors or (
+        save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != there)
     report.note(at, FILE_CACHE[1], apply_file_cache(save0, savgam))
     if retargeted:
         for address, what in (
                 (DISK_HINT, "the POOL side the loader will ask for"),
-                (CURRENT_GEO, "the map LOADFILES reloads"),
+                (CURRENT_GEO, "the SQRDATA number LOADFILES reloads" if
+                 outdoors else "the map LOADFILES reloads"),
                 (CURRENT_SCRIPT, "the script id"),
-                (INDOORS, "indoors, which is where every convertible area is")):
+                (INDOORS, "outdoors -- 0 boots into travel mode" if outdoors
+                 else "indoors")):
             report.note(address - SAVE0_BASE, 1,
                         f"{what}, from the area the DOS party is in")
 
     changed = apply_quest_flags(save0, savgam)
     report.note(FLAGS_FIRST - SAVE0_BASE, FLAGS_LAST - FLAGS_FIRST + 1,
                 "quest flags: the DOS word array, narrowed to bytes")
-    apply_position(save0, savgam)
-    for address, what in ((0x49C0, "party x"), (0x49C1, "party y"),
-                          (0x49C2, "facing, the DOS value halved")):
-        report.note(address - SAVE0_BASE, 1, what + ", from SAVGAM")
+    for address, what in apply_position(save0, savgam):
+        report.note(address - SAVE0_BASE, 1, what)
     report.warnings.append(
         f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "
         f"differed from the template's")

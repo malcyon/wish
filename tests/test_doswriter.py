@@ -572,7 +572,7 @@ def test_a_retarget_with_no_game_directory_keeps_the_template_s_square(
 
 
 @pytest.mark.parametrize("area, wanted", [
-    (25, "wilderness"),          # the travel grid: no DOS specimen exists
+    (25, "wilderness"),          # the travel grid: outdoor retarget undriven
     (3, "not supported"),        # dynamic_geo -- the script picks its map
     (8, "not supported"),        # Phlan City Hall loads no map at all
     (31, "not an area"),         # no such script on any disk
