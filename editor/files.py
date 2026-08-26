@@ -37,6 +37,25 @@ def automatic_dir(target: str | pathlib.Path) -> pathlib.Path:
     return pathlib.Path(target).parent / BACKUP_DIR
 
 
+def open_start_dir(remembered: str, current: str | pathlib.Path | None) -> str:
+    """Where `File > Open` should start (#66).
+
+    Beside the currently open save if there is one -- unchanged from before
+    this remembered anything. Otherwise `remembered`, the folder a save was
+    last opened from, but only if it still exists: a remembered path always
+    eventually hits a folder that has since been moved, renamed or deleted,
+    and the fallback is to let the dialog decide for itself rather than open
+    on a path that is not there. `""` is that fallback -- what this returned
+    for every user before there was anything to remember.
+    """
+    if current:
+        return str(pathlib.Path(current).parent)
+    remembered = (remembered or "").strip()
+    if remembered and pathlib.Path(remembered).is_dir():
+        return remembered
+    return ""
+
+
 def back_up(target: str | pathlib.Path,
             into: str | pathlib.Path) -> pathlib.Path | None:
     """Copy `target` into `into`, timestamped. None if there is nothing to copy."""

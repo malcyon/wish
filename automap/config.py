@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
+import pathlib
 from dataclasses import asdict, dataclass, fields
 
-from .paths import config_dir
+from .paths import config_dir, titles_in
 
 FILE = "automap.json"
 
@@ -52,6 +53,22 @@ def game_key(game=None) -> str:
     return key if isinstance(key, str) and key else POOL_OF_RADIANCE
 
 
+def migrate_game_folder(folder: str) -> dict[str, str]:
+    """What `Settings.disks` becomes once there is a folder per title (#22).
+
+    `titles_in` names every title actually found in `folder`, in the same
+    order `locate_disks` searches it -- Pool of Radiance first -- so the first
+    one is the title this single shared folder was always answering for. A
+    folder that no longer exists, is empty, or holds nothing this project
+    recognises migrates to nothing: there is no title to key it under, and
+    `disks` stays exactly as it was, still tried as the fallback.
+    """
+    if not folder:
+        return {}
+    found = titles_in(pathlib.Path(folder))
+    return {found[0].key: folder} if found else {}
+
+
 #: Keys an older build wrote, and the field each is now called. Read, never
 #: written: a file saved by this build carries the new name only, so the rename
 #: finishes rather than being carried forever. The cost of that is one-way --
@@ -84,6 +101,21 @@ class Settings:
     # overrides it for one run -- see `paths.resolve_disks`, which is the only
     # thing that reads this.
     disks: str = ""
+    # The folder `File > Open` last opened a save from, so the daily
+    # navigation through several subdirectories is only ever done once (#66).
+    # Read by `editor.files.open_start_dir`, which is also where the fallback
+    # for a folder that has since been moved or deleted lives -- this field
+    # only ever holds what was last seen to work, never a guess.
+    last_save_folder: str = ""
+    # Per-title disk folders, keyed by `Game.key` (#22): the shared `disks`
+    # folder above answers "Pool of Radiance" for a machine that holds several
+    # titles, whatever is actually being played, because that title is first
+    # in `games.GAMES`. Optional per title -- `paths.resolve_disks` tries a
+    # title's own entry first, then `disks`, then the search, so a player who
+    # keeps every title in one folder is no worse off. `None` is a file from
+    # before this existed; `load` migrates `disks` into it once, for whichever
+    # title's disks that folder turns out to hold.
+    game_folders: dict[str, str] | None = None
     # The Commodore 64 Ultimate's host, or `host:port`. Empty means "no device
     # named", which is what keeps a network with no Ultimate on it from being
     # probed at all. The *password* is deliberately not here: this file is
@@ -182,6 +214,12 @@ class Settings:
         if isinstance(values.get("fast_travel_targets"), list):
             values["fast_travel_targets"] = {
                 POOL_OF_RADIANCE: values["fast_travel_targets"]}
+        # A file from before `game_folders` existed has no key for it at all,
+        # which `values.get` reads as `None` -- distinct from `{}`, a player
+        # who has used the per-title folders and cleared every one of them.
+        # Only the former migrates.
+        if values.get("game_folders") is None and values.get("disks"):
+            values["game_folders"] = migrate_game_folder(values["disks"])
         return cls(**values)
 
     def save(self) -> None:

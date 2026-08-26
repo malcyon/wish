@@ -141,6 +141,7 @@ def find_disks(game: games.Game | None = None) -> pathlib.Path | None:
 # documentation. Nobody who uses the window ever meets it.
 
 FLAG = "--disks"
+GAME_PREFERENCE = "preferences (this title)"
 PREFERENCE = "preferences"
 ENVIRONMENT = "$POR_DISKS"
 BESIDE = "beside the save"
@@ -161,6 +162,11 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
     `beside` is the open save, as a file or its directory, and is only taken
     when disks are actually there. `settings` lets a window pass the copy it
     holds; without one the file is read, which is a few hundred bytes.
+
+    A title's own folder in `settings.game_folders` (#22) wins over the shared
+    `disks` folder, but only when `game` says which title is wanted -- with no
+    game there is nothing to look up, and the shared folder and the search are
+    what they always were.
     """
     # Imported here, not at module scope: `config` imports this module, and the
     # reverse at the top of the file is a cycle. `live.py` does the same.
@@ -169,6 +175,11 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
         return pathlib.Path(flag), FLAG
     if settings is None:
         settings = Settings.load()
+    if game is not None:
+        per_game = getattr(settings, "game_folders", None) or {}
+        own = (per_game.get(game.key, "") or "").strip()
+        if own:
+            return pathlib.Path(own), GAME_PREFERENCE
     chosen = (getattr(settings, "disks", "") or "").strip()
     if chosen:
         return pathlib.Path(chosen), PREFERENCE

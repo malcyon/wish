@@ -122,6 +122,89 @@ def test_a_folder_that_holds_no_disks_is_still_the_answer(tmp_path,
     assert (where, source) == (empty, paths.PREFERENCE)
 
 
+# --- a folder per title (#22, steps 1 and 3) ---------------------------------
+#
+# Step 2 -- a row per title in Preferences -- needs a label, which is
+# Donald's, and is deliberately not built here.
+
+def test_a_titles_own_folder_wins_over_the_shared_one(tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    shared = disks(tmp_path / "shared", "POOL1.D64")
+    curses_own = disks(tmp_path / "curse-only", "CURSE1.D64")
+    settings = Settings(disks=str(shared),
+                        game_folders={CURSE.key: str(curses_own)})
+    assert paths.resolve_disks(settings=settings, game=CURSE) == (
+        curses_own, paths.GAME_PREFERENCE)
+    # A title with no entry of its own still gets the shared folder.
+    assert paths.resolve_disks(settings=settings, game=games.POOL_OF_RADIANCE) == (
+        shared, paths.PREFERENCE)
+
+
+def test_with_no_game_named_the_per_title_folders_are_not_consulted(
+        tmp_path, monkeypatch):
+    """`resolve_disks` cannot look a title up in `game_folders` when nothing
+    says which title is wanted (#21 is that problem, not this one)."""
+    nowhere(tmp_path, monkeypatch)
+    shared = disks(tmp_path / "shared", "POOL1.D64")
+    curses_own = disks(tmp_path / "curse-only", "CURSE1.D64")
+    settings = Settings(disks=str(shared),
+                        game_folders={CURSE.key: str(curses_own)})
+    assert paths.resolve_disks(settings=settings) == (shared, paths.PREFERENCE)
+
+
+def test_the_report_names_a_titles_own_preference_and_the_shared_one_it_beat(
+        tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    shared = disks(tmp_path / "shared", "CURSE1.D64")
+    own = disks(tmp_path / "curse-only", "CURSE1.D64")
+    settings = Settings(disks=str(shared), game_folders={CURSE.key: str(own)})
+    rows = dict(report(settings, game=CURSE))
+    assert rows["In use"] == str(own)
+    assert rows["Set by"].startswith("this title's own preference")
+    assert str(shared) in rows["Set by"]
+
+
+def test_an_old_settings_file_migrates_its_one_folder_to_the_title_in_it(
+        tmp_path, monkeypatch):
+    """The one-step migration must not lose anybody's existing setting: the
+    shared folder is kept exactly as it was, and gains an entry for whichever
+    title turns out to be in it."""
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    only = disks(tmp_path / "my-curse-disks", "CURSE1.D64", "CURSE2.D64")
+    Settings(disks=str(only)).save()
+    again = Settings.load()
+    assert again.disks == str(only)
+    assert again.game_folders == {CURSE.key: str(only)}
+
+
+def test_a_folder_recognising_nothing_migrates_to_no_title(tmp_path,
+                                                           monkeypatch):
+    """A folder that is gone, empty, or holds nothing this project recognises
+    has no title to key it under -- `disks` is untouched and still the
+    fallback `resolve_disks` tries."""
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    empty = tmp_path / "nothing-here"
+    empty.mkdir()
+    Settings(disks=str(empty)).save()
+    again = Settings.load()
+    assert again.disks == str(empty)
+    assert again.game_folders == {}
+
+
+def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
+                                                                 monkeypatch):
+    """`game_folders` present -- even empty, a player who cleared every entry
+    -- is a file this build already wrote, and migration must not overwrite a
+    deliberate choice with a fresh guess."""
+    nowhere(tmp_path, monkeypatch)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    shelf = disks(tmp_path / "shelf", "CURSE1.D64")
+    Settings(disks=str(shelf), game_folders={}).save()
+    assert Settings.load().game_folders == {}
+
+
 # --- the report --------------------------------------------------------------
 
 def test_the_report_names_the_folder_the_source_and_the_titles(tmp_path,
@@ -305,6 +388,56 @@ def test_a_chosen_folder_survives_a_restart(app, tmp_path, monkeypatch):
     again = Settings.load()
     assert again.backup_folder == str(tmp_path / "my backups")
     assert again.backup_folder_chosen is True
+
+
+# --- the remembered `File > Open` folder (#66, steps 1 and 4) ---------------
+#
+# Steps 2 and 3 -- a Preferences row for this, and the preference winning over
+# it -- need a label, which is Donald's to word, and are deliberately not
+# built here.
+
+def test_the_open_folder_is_remembered_and_used_with_nothing_open(tmp_path):
+    from editor import files
+
+    remembered = tmp_path / "saves" / "party one"
+    remembered.mkdir(parents=True)
+    assert files.open_start_dir(str(remembered), None) == str(remembered)
+    assert files.open_start_dir("", None) == ""
+
+
+def test_the_currently_open_save_still_wins_over_the_remembered_folder(
+        tmp_path):
+    """Unchanged from before this remembered anything: beside the save that
+    is already open, not wherever the one before it was."""
+    from editor import files
+
+    remembered = tmp_path / "old-party"
+    remembered.mkdir()
+    current = tmp_path / "new-party" / "PORSAVE11.D64"
+    assert (files.open_start_dir(str(remembered), str(current))
+            == str(current.parent))
+
+
+def test_a_remembered_folder_that_no_longer_exists_falls_back_to_nothing(
+        tmp_path):
+    """A remembered path always eventually hits one that moved or was deleted
+    (#66 step 4) -- the dialog is left to decide for itself, same as a fresh
+    config with nothing remembered yet."""
+    from editor import files
+
+    gone = tmp_path / "moved-away"
+    assert not gone.exists()
+    assert files.open_start_dir(str(gone), None) == ""
+
+
+def test_the_remembered_folder_is_a_setting_and_survives_a_restart(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    settings = Settings()
+    assert settings.last_save_folder == ""
+    settings.last_save_folder = str(tmp_path / "saves")
+    settings.save()
+    assert Settings.load().last_save_folder == str(tmp_path / "saves")
 
 
 def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,

@@ -238,6 +238,7 @@ def _set_by(source: str, settings) -> str:
     """Who named the folder in use, and what was overridden to say so."""
     words = {
         paths.FLAG: "--disks, this run only",
+        paths.GAME_PREFERENCE: "this title's own preference",
         paths.PREFERENCE: "this preference",
         paths.ENVIRONMENT: "$POR_DISKS",
         paths.BESIDE: "beside the open save",
@@ -251,6 +252,9 @@ def _set_by(source: str, settings) -> str:
     if source == paths.FLAG and (getattr(settings, "disks", "") or ""):
         extra.append(f"the saved preference {settings.disks} is not used "
                      "for this run")
+    if source == paths.GAME_PREFERENCE and (getattr(settings, "disks", "") or ""):
+        extra.append(f"the shared folder {settings.disks} is not used for "
+                     "this title")
     return text + (f"  ({'; '.join(extra)})" if extra else "")
 
 
