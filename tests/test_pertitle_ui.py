@@ -74,6 +74,144 @@ def test_the_class_table_gains_the_later_titles_classes():
     assert class_bit_names(CURSE)[15] == "magic-user/cleric/thief/fighter"
 
 
+# --- who casts ---------------------------------------------------------------
+#
+# The Spells box was gated on magic-user and cleric as a module constant --
+# Pool of Radiance's only two casting classes -- so a Silver Blades ranger was
+# greyed out as if he cast nothing, and the greying rule is also the write
+# rule, so his spell bytes were read-only besides (#86).
+
+
+def test_the_caster_mask_follows_the_title():
+    from editor.enums import caster_bits
+
+    # Pool of Radiance has no class above the classic four, so its answer is
+    # what it always was and this is the line that must not move.
+    assert caster_bits(POOL) == 0x03
+    # The ranger casts; the paladin does not.
+    assert caster_bits(CURSE) == 0x83
+    assert caster_bits(SSB) == 0x83
+    # Krynn adds the Knight of Solamnia at 0x10, and nobody has read Krynn's
+    # GEN, so it is left out rather than guessed at.
+    assert caster_bits(KRYNN) == 0x83
+    # A title whose class list we do not have names no caster, which greys the
+    # box -- the same rule the race and class tables follow.
+    assert caster_bits(UNTABLED) == 0
+    assert caster_bits(None) == 0x03
+
+
+def test_the_spells_box_is_gated_on_the_open_titles_casters(window):
+    """The greying rule itself, without needing a save on the machine.
+
+    `_show_boxes` reads the title off `EditorWindow.party`, so a stub party is
+    all this needs -- and the box's enabled state is also what decides whether
+    `_flush` writes the spell bytes back, which is why one mask answers both.
+    """
+    from por.record import CharacterRecord
+
+    class _Party:
+        def __init__(self, game):
+            self.game = game
+
+    def shown(game, class_bits):
+        record = CharacterRecord.blank()
+        record.set("class_bits", class_bits)
+        window.party = _Party(game)
+        window._show_boxes(record)
+        return window._child("box_spells")
+
+    try:
+        assert shown(SSB, 0x80).isEnabled(), "a Silver Blades ranger casts"
+        assert shown(CURSE, 0x80).isEnabled(), "a Curse ranger casts"
+        assert not shown(SSB, 0x40).isEnabled(), "a paladin does not"
+        assert not shown(SSB, 0x08).isEnabled(), "and neither does a fighter"
+        assert shown(SSB, 0x01).isEnabled(), "a magic-user still does"
+        # Pool of Radiance has no bit 7; a record carrying one anyway is not a
+        # caster there, because that title has no class to be.
+        assert not shown(POOL, 0x80).isEnabled()
+        # And the wording a non-caster is shown is unchanged.
+        assert "casts no spells" in shown(POOL, 0x08).toolTip()
+        assert shown(SSB, 0x80).toolTip() == ""
+    finally:
+        window.party = None
+
+
+# --- the roster's two columns ------------------------------------------------
+#
+# The sheet's dropdowns were made per-title first and the party list was left
+# behind: `Member.race_name` and `Member.class_name` went through Pool of
+# Radiance's tables whatever `Party.game` said, so a Krynn party's races were
+# unnameable and a Silver Blades human read as HALF-ORC (#78).
+
+
+def _member(game, race=None, class_bits=None):
+    """One roster row, built from a blank record rather than from a disk."""
+    from editor.roster import Member
+    from por.record import CharacterRecord
+
+    record = CharacterRecord.blank()
+    record.set("name", "TESTER")
+    if race is not None:
+        record.set("race", race)
+    if class_bits is not None:
+        record.set("class_bits", class_bits)
+    return Member(0, record, record.name, game=game)
+
+
+def test_the_rosters_race_column_follows_the_open_title():
+    """The three the tables disagree about, and the one they agree on."""
+    # Krynn's list is its own, and 0 is a race there rather than "monster".
+    assert _member(KRYNN, race=0).race_name == "silvanesti elf"
+    assert _member(KRYNN, race=3).race_name == "mountain dwarf"
+    # Silver Blades moved human to 6, where Pool of Radiance has half-orc.
+    assert _member(SSB, race=6).race_name == "human"
+    assert _member(POOL, race=6).race_name == "half-orc"
+    # Curse names neither 6 nor anything else it has no word for: the raw
+    # number is the honest answer and is what the sheet shows too.
+    assert _member(CURSE, race=6).race_name == "6"
+    # And the Realms note on race 0 stays where it belongs.
+    assert _member(POOL, race=0).race_name == "monster"
+    assert _member(CURSE, race=0).race_name == "monster"
+
+
+def test_the_rosters_class_column_follows_the_open_title():
+    """Curse and Silver Blades add classes above Pool of Radiance's four."""
+    assert _member(CURSE, class_bits=0x80).class_name == "ranger"
+    assert _member(SSB, class_bits=0x40).class_name == "paladin"
+    assert _member(KRYNN, class_bits=0x10).class_name == "knight"
+    # Pool of Radiance has no bit 7 at all, so it shows the mask unnamed.
+    assert _member(POOL, class_bits=0x80).class_name == "128"
+    # The classic four are the same in every title.
+    for game in (POOL, CURSE, SSB, KRYNN):
+        assert _member(game, class_bits=8).class_name == "fighter"
+
+
+def test_a_member_with_no_title_is_still_pool_of_radiance():
+    """What every `Member` meant before there was a second title, kept."""
+    assert _member(None, race=7).race_name == "human"
+    assert _member(None, class_bits=1).class_name == "magic-user"
+
+
+def test_a_title_with_no_tables_names_no_race_or_class_in_the_roster():
+    assert _member(UNTABLED, race=7).race_name == "7"
+    assert _member(UNTABLED, class_bits=8).class_name == "8"
+
+
+def test_every_row_a_party_builds_carries_the_partys_title(tmp_path):
+    """The lookups are only per-title if the `Game` actually reaches the row.
+
+    Both loaders build `Member`s -- a save disk and a roster disk -- and either
+    one forgetting to pass the title puts Pool of Radiance's names back.
+    """
+    from gamedata import synthetic_save
+
+    from editor.roster import Party
+
+    party = Party(str(synthetic_save(tmp_path)))
+    assert party.members, "the synthetic save has characters in it"
+    assert all(m.game is party.game for m in party.members)
+
+
 # --- the dropdowns ----------------------------------------------------------
 
 @pytest.fixture

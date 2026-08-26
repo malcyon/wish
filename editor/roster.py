@@ -50,6 +50,11 @@ class Member:
     icon: Icon | None = None             # from the shared table at $4BE0
     icon_original: Icon | None = None
     record_original: bytes | None = None  # as read, for the change preview
+    #: Which title this character's save came from, so the two names below are
+    #: looked up in that title's tables rather than Pool of Radiance's. **None
+    #: means Pool of Radiance**, which is what a `Member` built without one
+    #: meant before there was a second title (#78).
+    game: Game | None = None
 
     @property
     def is_npc(self) -> bool:
@@ -57,9 +62,14 @@ class Member:
 
     @property
     def race_name(self) -> str:
-        """The race spelled out. Race 0 is real -- 75 monster records carry it
-        and the game prints MONSTER -- so it is named, not blanked."""
-        from por.yaml_io import RACES
+        """The race spelled out, in the open title's own list.
+
+        Race 0 is real -- 75 monster records carry it and the Realms titles
+        print MONSTER -- so it is named, not blanked. Krynn's 0 is a race in
+        its own right (`silvanesti elf`), which is why the note belongs to the
+        table rather than to this lookup.
+        """
+        from .enums import race_labels
         try:
             code = int(self.record.get("race"))
         except Exception as exc:
@@ -68,7 +78,7 @@ class Member:
             # a reason to stop drawing the table.
             _log.debug("no race for %s: %s", self.name, exc)
             return ""
-        return RACES.get(code, "monster" if code == 0 else str(code))
+        return race_labels(self.game).get(code, str(code))
 
     @property
     def class_name(self) -> str:
@@ -76,15 +86,18 @@ class Member:
 
         `char_class` at 0x073 says the same thing a second way and the two are
         allowed to disagree; the roster shows the one the game acts on.
+
+        The bits are per title: Curse and Silver Blades add a paladin and a
+        ranger above the classic four, and Krynn a Knight of Solamnia.
         """
-        from .enums import CHAR_CLASS, CLASS_BIT_NAMES
+        from .enums import CHAR_CLASS, class_bit_names
         try:
             bits = int(self.record.get("class_bits"))
         except Exception as exc:
             _log.debug("no class_bits for %s: %s", self.name, exc)
             return ""
         if bits:
-            return CLASS_BIT_NAMES.get(bits, str(bits))
+            return class_bit_names(self.game).get(bits, str(bits))
         try:
             return CHAR_CLASS.get(int(self.record.get("char_class")), "")
         except Exception as exc:
@@ -149,7 +162,8 @@ class Party:
             member = Member(slot.index, record, record.name,
                             inventory=Inventory(payload, slot.index),
                             icon=icon, icon_original=icon,
-                            record_original=record.to_bytes())
+                            record_original=record.to_bytes(),
+                            game=self.game)
             if self.save1 is not None:
                 block = self.save1.roster(slot.index)
                 if block.occupied:
@@ -177,7 +191,7 @@ class Party:
                 continue
             self.members.append(
                 Member(i, record, record.name, source=entry.name,
-                       record_original=record.to_bytes()))
+                       record_original=record.to_bytes(), game=self.game))
 
     # -- what the window asks ---------------------------------------------
 

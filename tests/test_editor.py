@@ -570,8 +570,11 @@ def test_race_zero_is_named_rather_than_left_blank():
     Character box's width -- and so the header's, which is a floor under the
     whole window (#41, #43).
     """
-    from editor.enums import RACE
-    assert RACE[0] == "MONSTER" and RACE[8] == "MONSTER"
+    from editor.enums import race_names
+    from por import games
+
+    race = race_names(games.POOL_OF_RADIANCE)
+    assert race[0] == "MONSTER" and race[8] == "MONSTER"
 
 
 @game_disks
@@ -1443,6 +1446,70 @@ def test_a_fighter_is_shown_no_spellbook_and_no_thief_skills(app, save):
     assert spells.isEnabled()
 
 
+def _silver_blades_save(tmp_path):
+    """A throwaway copy of the shipped Silver Blades party, or skip.
+
+    The disks are found the way `tests/test_silverblades.py` finds them -- that
+    lookup lives there because `tests/gamedata.py` has no Silver Blades hook --
+    and copied, because the player's own disks are never opened by a test.
+    """
+    from por.d64 import D64
+    from tests.test_silverblades import SSB, ssb_dir
+
+    where = ssb_dir()
+    if where is None:
+        pytest.skip("needs the Silver Blades disks; set SSB_DISKS")
+    for path in sorted(where.glob("SILVER*.[dD]64")):
+        try:
+            prg = D64.open(str(path)).read_file(SSB.save_file)
+        except Exception:
+            continue
+        if SSB.matches_payload(prg):
+            out = tmp_path / "SILVER.D64"
+            out.write_bytes(path.read_bytes())
+            return out
+    pytest.skip("no Silver Blades side here carries a whole SAVEDBASH")
+
+
+def test_a_silver_blades_ranger_is_shown_his_spellbook(app, tmp_path):
+    """#86, in the running editor on the party the game ships.
+
+    PAINE is a level-8 ranger and his record holds four spells at `0x081`-
+    `0x082`: 77-80, `DETECT MAGIC`, `ENTANGLE`, `FAERIE FIRE` and `INVISIBILITY
+    TO ANIMALS`, which is what `GEN`'s ranger grant hands out at level 8. The
+    box was disabled for him because its mask was Pool of Radiance's two
+    casting classes, and a disabled box is one `_flush` never writes -- so the
+    spellbook was invisible and read-only at once.
+
+    GUY DE VALOIS is the other half of the assertion and the reason the mask is
+    not simply "anything above the classic four": Silver Blades' `GEN` has
+    three grant routines and no fourth, so the paladin stays greyed and keeps
+    the wording a non-caster has always been shown.
+    """
+    from editor.window import EditorWindow
+
+    w = EditorWindow(str(_silver_blades_save(tmp_path)))
+    assert w.party.game.title == "Secret of the Silver Blades"
+    by_name = {m.name: i for i, m in enumerate(w.party.members)}
+
+    w.ui.roster.selectRow(by_name["PAINE"])
+    box = w._child("box_spells")
+    book, memorised = w._spell_widgets()
+    assert box.isEnabled(), "a ranger has a spellbook"
+    assert box.toolTip() == ""
+    assert book.known() == [77, 78, 79, 80]
+    assert memorised.capacity.text() == "0 memorized."
+
+    w.ui.roster.selectRow(by_name["GUY DE VALOIS"])
+    assert not box.isEnabled(), "the paladin is granted nothing and stays grey"
+    assert "casts no spells" in box.toolTip()
+
+    # The two that cast in every title are unaffected either way.
+    for who in ("MORGAINE", "DOMINIC"):
+        w.ui.roster.selectRow(by_name[who])
+        assert box.isEnabled() and book.known(), who
+
+
 @game_disks
 def test_a_non_caster_s_spells_box_says_why_it_is_empty(app, editor):
     """A disabled box with nothing in it and nothing to read is a broken box."""
@@ -1550,15 +1617,82 @@ def test_the_roster_names_the_race_and_class(app, save):
 
 @game_disks
 def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
-    """Six characters used to fill a quarter of the window."""
-    from editor.window import EditorWindow, _content_height
+    """Six characters used to fill a quarter of the window.
+
+    The cap is its rows plus exactly two things and no third: `ROSTER_SLACK`,
+    and one horizontal scroll bar's height, which is reserved whether or not
+    the bar is up (#92). An equality rather than a bound, so a third thing
+    creeping into the roster's height has to say so here.
+    """
+    from PyQt6.QtWidgets import QStyle
+
+    from editor.window import ROSTER_SLACK, EditorWindow, _content_height
     w = EditorWindow(str(save))
     w.resize(1200, 900)
     w.show()                       # heights are wrong until the table is shown
     # No splitter: the roster and the icon are a row above the tabs.
     # The table is capped at its own rows and never stretches to the window.
-    assert w.ui.roster.maximumHeight() <= _content_height(w.ui.roster) + 8
+    bar = w.ui.roster.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+    assert w.ui.roster.maximumHeight() == (_content_height(w.ui.roster)
+                                           + ROSTER_SLACK + bar)
     assert _content_height(w.ui.roster) < 300
+
+
+@pytest.mark.parametrize("extra", [0, 6, 10])
+def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
+    """#92, at the fonts and the width where it bit.
+
+    `_size_roster` pinned the roster to exactly `header + rows + frame +
+    ROSTER_SLACK`, and a horizontal scroll bar is drawn *inside* that. So the
+    sixth character lost most of a row -- eight pixels of it, the bar's
+    fourteen less the six of slack -- the table then found it could not show
+    all its rows and brought the **vertical** bar up as well, and that took
+    another 14px of width and made the horizontal overflow slightly worse.
+
+    Six points of extra UI font is where it starts here and ten is roughly a
+    Windows base font. It cannot happen at the base font at any width the
+    layout permits, which is why the +0 case is a control rather than the
+    test: the roster's floor of 440 clears its four fixed columns' 356.
+
+    **The window is squeezed to its own floor rather than to 1280.** The issue
+    measured it in a 1280-wide window, and 1280 is a measurement of this
+    machine's fonts as much as of the screen; asking Qt to clamp a width of 1
+    puts the roster on `ROSTER_MIN_WIDTH` wherever this runs, which is the
+    state the bug needs and is the same state on every platform.
+
+    The horizontal bar itself is not the bug and is asserted to still be up:
+    it is the last resort #71 approved, after `Name` has elided and given
+    everything it has.
+    """
+    from PyQt6.QtGui import QFont
+
+    from editor.window import EditorWindow
+
+    base = app.font()
+    try:
+        bigger = QFont(base)
+        bigger.setPointSizeF(base.pointSizeF() + extra)
+        app.setFont(bigger)
+        w = EditorWindow(str(party))
+        w.resize(1, 900)               # Qt clamps to the window's own floor
+        w.show()
+        app.processEvents()
+        view = w.ui.roster
+        room = view.viewport().height()
+        for row in range(w.model.rowCount()):
+            bottom = view.rowViewportPosition(row) + view.rowHeight(row)
+            assert bottom <= room, (
+                f"+{extra}pt: row {row} runs {bottom - room}px past the "
+                f"roster's viewport")
+        assert not view.verticalScrollBar().isVisible(), (
+            f"+{extra}pt: every row fits, so nothing should scroll vertically")
+        if extra:
+            assert view.horizontalScrollBar().isVisible(), (
+                f"+{extra}pt: the roster is meant to be squeezed here, and "
+                f"this test proves nothing if it is not")
+        w.close()
+    finally:
+        app.setFont(base)
 
 
 @game_disks

@@ -40,7 +40,7 @@ from por.spells import for_game as spell_table
 
 from . import changes, files, inventory
 from .binding import bindings, field_name, value_range, widest_text
-from .enums import tables_for
+from .enums import caster_bits, tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
 from .rosterview import (
@@ -388,23 +388,45 @@ def _fit_height(view, fixed: bool = False) -> None:
     if fixed:
         view.setMaximumHeight(height)
 
-# Which class bits a group box applies to, and what to say when it does not.
-# These two used to be hidden for a character without the class, and Donald:
-# "The layout of the form should not change when we navigate the roster. It
-# should stay the same, so people know where to look for things at all times."
-# So they are always on the sheet and greyed instead -- a fighter's eight
-# thief-skill zeros still must not read as data somebody should type in.
-# Keyed by objectName like everything else on the form, so the boxes can be
-# moved in Designer.
-CLASS_MAGIC_USER, CLASS_CLERIC, CLASS_THIEF = 1, 2, 4
-BOX_NEEDS_CLASS = {
-    "box_thief_skills": (CLASS_THIEF,
-                         "Thief skills belong to a thief; this character is "
-                         "not one, and the game never reads these bytes."),
-    "box_spells": (CLASS_MAGIC_USER | CLASS_CLERIC,
-                   "This character casts no spells, so there is no spellbook "
-                   "and nothing to memorize."),
-}
+
+#: 0x0EB bit 2. The one class bit this file still names for itself; magic-user
+#: and cleric were named here too, as the whole of the spellbook's gate, and
+#: that is what `enums.caster_bits` replaced (#86).
+CLASS_THIEF = 4
+
+
+def boxes_needing_class(game=None) -> dict[str, tuple[int, str]]:
+    """Which class bits a group box applies to, and what to say when it does
+    not: `{objectName: (bits, why)}`.
+
+    These two used to be hidden for a character without the class, and Donald:
+    "The layout of the form should not change when we navigate the roster. It
+    should stay the same, so people know where to look for things at all
+    times." So they are always on the sheet and greyed instead -- a fighter's
+    eight thief-skill zeros still must not read as data somebody should type
+    in. Keyed by objectName like everything else on the form, so the boxes can
+    be moved in Designer.
+
+    **The masks are the open title's, not one game's.** `box_spells` was gated
+    on magic-user and cleric as a module constant, which are the only two
+    classes in Pool of Radiance that cast -- so a Silver Blades ranger, who has
+    a spellbook and whose shipped PAINE knows four spells, was greyed out as if
+    he cast nothing (#86). `editor/enums.py::caster_bits` is where the evidence
+    for each class lives. Thief skills are the thief's in every title.
+
+    One answer for both jobs it has: greying a box is also what keeps `_flush`
+    off it, since a child of a disabled box is itself disabled, so a box that
+    is wrongly greyed is a box whose bytes are silently read-only.
+    """
+    return {
+        "box_thief_skills": (CLASS_THIEF,
+                             "Thief skills belong to a thief; this character "
+                             "is not one, and the game never reads these "
+                             "bytes."),
+        "box_spells": (caster_bits(game),
+                       "This character casts no spells, so there is no "
+                       "spellbook and nothing to memorize."),
+    }
 
 
 class RosterModel(QAbstractTableModel):
@@ -1122,9 +1144,22 @@ class EditorWindow(QMainWindow):
         view.setMinimumWidth(min(natural, ROSTER_MIN_WIDTH))
         view.setMaximumWidth(natural)
         rows = min(self.model.rowCount(), MAX_ROSTER_ROWS)
+        # The horizontal bar's height is reserved whether or not it is up, for
+        # the same reason and out of the same metric as the vertical bar's
+        # width above: a table pinned to exactly its rows draws the bar *inside*
+        # that, so the last character lost most of a row, the table then found
+        # it could not show all its rows and brought the vertical bar up too,
+        # and that took another 14px of width and made the overflow worse (#92).
+        #
+        # Reserved unconditionally because whether the bar is up depends on the
+        # width the roster is given, and a height that moved with the width
+        # would make `WishWindow.minimumSizeHint()` depend on when it was asked
+        # -- three tests measure it on an unshown window. The cost is `bar`
+        # pixels of empty grid under the last row when no bar is up, which is
+        # what `ROSTER_SLACK` already spends six of.
         height = (view.horizontalHeader().height()
                   + sum(view.rowHeight(r) for r in range(rows))
-                  + 2 * view.frameWidth())
+                  + 2 * view.frameWidth() + bar)
         # The table stops at its rows rather than stretching, or a six-character
         # party leaves 300 pixels of empty grid at the top of the window.
         #
@@ -1501,6 +1536,9 @@ class EditorWindow(QMainWindow):
 
         A box that Designer no longer has is simply not there -- the same rule
         as every other optional widget on the form.
+
+        Which classes a box applies to is the **open title's** answer: a
+        ranger casts and Pool of Radiance has no ranger (#86).
         """
         try:
             bits = int(record.get("class_bits") or 0)
@@ -1509,7 +1547,8 @@ class EditorWindow(QMainWindow):
             # round: a box `_flush` cannot reach cannot corrupt a record.
             _log.debug("no class_bits, so every class box is greyed: %s", exc)
             bits = 0
-        for name, (needed, why) in BOX_NEEDS_CLASS.items():
+        game = self.party.game if self.party is not None else None
+        for name, (needed, why) in boxes_needing_class(game).items():
             box = self._child(name)
             if box is None:
                 continue
@@ -1558,10 +1597,12 @@ class EditorWindow(QMainWindow):
         if book is not None:
             memorised.set_known(book.known())
         game = self.party.game if self.party is not None else None
+        # The same mask that greys the box, so the line under the list and the
+        # box itself cannot disagree about whether this character casts (#86).
         memorised.set_capacity(
             capacity(record.class_bits, record.get("level"),
                      record.get("wisdom"), game),
-            casts=bool(record.class_bits & (CLASS_MAGIC_USER | CLASS_CLERIC)))
+            casts=bool(record.class_bits & caster_bits(game)))
 
     # -- items ------------------------------------------------------------
 

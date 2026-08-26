@@ -67,6 +67,14 @@ Consequences worth stating, because they are what make this work:
   the boxes are refilled from `editor/enums.py::tables_for(game)` on every
   open. A code the title does not name, like Curse's 6, shows as its raw
   number rather than under a name we would be guessing at.
+  **So does the party list beside them**, since #78 (The roster shows Pool of
+  Radiance's race and class names whatever title is open). `Member.race_name`
+  and `Member.class_name` read the same per-title tables through
+  `race_labels(game)` and `class_bit_names(game)`; they went through Pool of
+  Radiance's whatever the save was, so a Krynn party's races could not be
+  named at all and a Silver Blades human read as `half-orc`. Every `Member`
+  carries the `Game` its `Party` detected, and None still means Pool of
+  Radiance.
 * **Width comes from the layout too.** The kind and the byte count give the
   widest value a field can hold -- `255` for a `u8`, `65535` for a coin count,
   `-128` for a thief skill, twenty characters for the name -- and the box is
@@ -120,8 +128,19 @@ moved everything under them -- the Spells box vanishing for a fighter made
 Character Traits jump up the column. They are now shown for everyone and
 **greyed** when the class cannot use them, with the reason in the box's
 tooltip; a non-caster's Spells box reads `This character casts no spells.`
-where the capacity line goes. Greying is a display decision only -- the bytes
-behind a greyed box are written back untouched, which
+where the capacity line goes.
+
+**Which classes can use them is the open title's answer, not one game's** --
+#86 (A Silver Blades ranger's spellbook is greyed out as if he cast nothing).
+Magic-user and cleric are the only two classes in Pool of Radiance that cast,
+and the Spells box was gated on that pair as a module constant, so a ranger --
+who has a spellbook, and whose shipped PAINE knows four spells -- was greyed
+out as if he cast nothing. `editor/enums.py::caster_bits` takes the `Game` and
+carries the evidence for each class beside it; the ranger casts and the paladin
+does not. Thief skills are the thief's in every title.
+
+**Greying is a display decision only** -- the bytes behind a greyed box are
+written back untouched, which
 `tests/test_editor.py::test_a_disabled_box_is_still_written_back_untouched`
 pins, and the invariant itself is
 `test_the_sheet_keeps_its_shape_across_the_roster`: same set of visible boxes,

@@ -7,8 +7,10 @@ the CLI and the editor cannot drift apart, and from the field notes in
 **Race and class are per-title and so are functions, not constants.** Silver
 Blades moves human from 7 to 6, the Krynn titles use a different race list
 altogether, and Curse's 6 is deliberately unnamed. `tables_for(game)` is what
-the editor calls once it knows which save is open; the module-level `TABLES` is
-Pool of Radiance's, for a caller with no `Game` in hand.
+the editor calls once it knows which save is open, and `race_labels` and
+`class_bit_names` are what the roster calls for the same reason. **There is no
+module-level default any more**: one existed, `editor/roster.py` used it, and
+naming a Krynn party out of Pool of Radiance's tables was #78.
 
 **`char_class` and `class_bits` are two separate dropdowns and are never
 reconciled.** They say the same thing two ways -- `0x073` a single code,
@@ -27,28 +29,37 @@ from por.games import Game
 from por.yaml_io import ALIGNMENTS, SEXES, class_table, race_table
 
 
-def race_names(game: Game | None = None) -> dict[int, str]:
-    """0x072. Race code -> label, for one title.
+def race_labels(game: Game | None = None) -> dict[int, str]:
+    """0x072. Race code -> name, in the table's own spelling, for one title.
 
     Empty when the title's list is unknown, and a code that list does not name
-    is left out: the combo then prints the raw number, which is the honest
+    is left out: the caller then prints the raw number, which is the honest
     answer where a name would be a guess. Curse's 6 is the case that matters --
     its own label table points both 6 and 7 at HUMAN, so `por/games.py` names
     neither and a Pool of Radiance half-orc carried across shows as a bare 6.
+
+    The sheet's dropdown wants these in capitals (`race_names`); the roster
+    wants them as the tables spell them (`editor/roster.py`). One table, two
+    renderings, so the two cannot name the same code differently (#78).
     """
-    table = {code: name.upper() for code, name in race_table(game).items()}
+    table = dict(race_table(game))
     # 0 and 8 belong to no generation menu, and only the Realms titles, which
-    # are the ones that enumerate MONSTER at 8, treat 0 the way Pool of
+    # are the ones that enumerate monster at 8, treat 0 the way Pool of
     # Radiance does. Silver Blades prints ELF for 0 and Krynn's 0 is a real
     # race, so neither gets these notes.
-    if table.get(8) == "MONSTER":
+    if str(table.get(8, "")).lower() == "monster":
         # Both are named MONSTER and neither is annotated: Donald's wording,
         # approved 2026-08-24. The note that used to ride on each was three
         # times the width of the longest real race, and `Race` sets the
         # Character box's width -- which sets the header's, which is a floor
         # under the whole window (#41, #43).
-        table.setdefault(0, "MONSTER")
+        table.setdefault(0, "monster")
     return table
+
+
+def race_names(game: Game | None = None) -> dict[int, str]:
+    """`race_labels`, in the capitals the generation menu prints."""
+    return {code: name.upper() for code, name in race_labels(game).items()}
 
 
 def class_bit_names(game: Game | None = None) -> dict[int, str]:
@@ -91,6 +102,42 @@ SEX = dict(SEXES)
 SIZE = {0: "small", 1: "large"}
 
 
+#: Which classes hold a spellbook, by the name the title's own class table
+#: gives them. The mask itself is per title, because the *classes* are: Pool of
+#: Radiance has only the classic four, and Curse, Silver Blades, Gateway and
+#: the two Krynn titles add a paladin and a ranger above them (#86).
+#:
+#: * **magic-user and cleric** cast in every title, and are the whole of Pool
+#:   of Radiance's answer. CONFIRMED.
+#: * **the ranger** casts. CONFIRMED in Silver Blades, whose `GEN` carries a
+#:   third grant routine entered on record `0x0D0` that hands out ids 77-80 at
+#:   level 8 and the thirteen first-level magic-user spells at 9 -- AD&D 1st
+#:   edition verbatim -- and whose shipped PAINE holds exactly those four
+#:   (`tests/test_silverblades.py::test_the_ranger_grant_is_the_shipped_rangers_spellbook`).
+#:   PROBABLE in Curse and the rest: Curse's `GEN` has exactly one grant loop
+#:   and it is the cleric's (`tests/test_curse.py::test_curses_grant_tables_write_as_far_as_0x081`),
+#:   but its magic-user's is missing from `GEN` too, so an absent loop is not
+#:   evidence of an absent class -- and Curse's own spell table carries the
+#:   druid group 77-80 that Silver Blades' ranger is granted.
+#: * **the paladin does not.** Silver Blades' `GEN` has three grant routines
+#:   and no fourth, and the shipped GUY DE VALOIS holds an empty mask.
+#: * **the Knight of Solamnia does not.** Nobody has read Krynn's `GEN`; the
+#:   knight is left out because a class nobody has evidence for is greyed, the
+#:   way a race nobody has a name for shows its number.
+CASTING_CLASSES = frozenset({"magic-user", "cleric", "ranger"})
+
+
+def caster_bits(game: Game | None = None) -> int:
+    """0x0EB. The class bits that can hold a spellbook, for one title.
+
+    Zero for a title whose class list is unknown, which greys the box -- the
+    same rule the tables above follow: show nothing rather than another game's
+    answer.
+    """
+    return sum(bit for bit, name in class_table(game)
+               if name in CASTING_CLASSES)
+
+
 def tables_for(game: Game | None = None) -> dict[str, dict[int, str]]:
     """Which field each table belongs to, for one title.
 
@@ -107,8 +154,8 @@ def tables_for(game: Game | None = None) -> dict[str, dict[int, str]]:
     }
 
 
-#: Pool of Radiance's, for a caller with no `Game` in hand. `editor/roster.py`
-#: is one: it names a class for the roster strip without a `Game` to hand.
-TABLES = tables_for()
-RACE = TABLES["race"]
-CLASS_BIT_NAMES = TABLES["class_bits"]
+# `TABLES`, `RACE` and `CLASS_BIT_NAMES` used to sit here: Pool of Radiance's
+# lists, for a caller with no `Game` in hand. `editor/roster.py` was the last
+# one, and naming every title's characters out of Pool of Radiance's tables is
+# exactly what #78 was. Nothing reads them now, so they are gone rather than
+# left as a second answer to a question that has one -- `tables_for(game)`.
