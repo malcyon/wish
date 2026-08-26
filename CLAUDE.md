@@ -27,11 +27,24 @@ collide. Assign non-overlapping areas, and say which in the brief.
 **Subagents do not commit.** As things stand the main window makes the commits,
 so nothing races the index.
 
-**Every subagent that wrote code gets reviewed before its work is committed.**
-Run the `code-reviewer` subagent on what it changed, read the findings, and act
-on them -- or say why not. The reason is not ceremony: an agent that has spent
-two hours inside a problem is the worst possible judge of whether its own answer
-is right, and the reviewer has already caught things the author could not see.
+**Commit a subagent's work before you review it, and push only after.** The
+sequence is: the agent reports, the main window **commits locally**, the
+`code-reviewer` runs, the findings are fixed or rejected with a reason, and
+*then* it is pushed. Reviewing before committing is what this project used to
+do, and on 2026-08-26 a reviewer ran `git checkout` on the file it was
+reviewing and **destroyed 580 lines that existed nowhere else**. A local commit
+costs nothing, is never pushed unreviewed, and turns that class of accident
+into `git revert`.
+
+If the review then rejects the work outright, the commit is reverted or the
+branch reset -- deliberately, by the main window, which is a different thing
+from losing it.
+
+**Every subagent that wrote code gets reviewed.** Run the `code-reviewer`
+subagent on what it changed, read the findings, and act on them -- or say why
+not. The reason is not ceremony: an agent that has spent two hours inside a
+problem is the worst possible judge of whether its own answer is right, and the
+reviewer has already caught things the author could not see.
 
 **Verify a finding before acting on it.** The reviewer is a reader, not an
 oracle. It once reported a dead code path in `automap/actions.py` that turned
@@ -135,10 +148,21 @@ else's desktop, waiting on somebody who did not ask for it.
 runs can write settings back. His file is read as a template and never opened
 for writing.
 
+**No agent runs `git checkout`, `git restore`, `git reset`, `git stash` or
+`git clean` against a file in this repository.** Several agents share one
+working tree, so a revert is never local to the agent doing it: it discards
+whatever anybody else has uncommitted, silently and unrecoverably. That is how
+580 lines of `por/amiga.py` went on 2026-08-26 -- a reviewer undoing a
+throwaway edit of its own.
+
+To test whether a change is load-bearing, **copy the file aside and copy it
+back**, and `diff` to confirm the restore. Only the main window touches git's
+history, and only deliberately.
+
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the
-game's code, art or data ("What must never enter this repository"), and
-leave the VICE configs alone.
+game's code, art or data ("What must never enter this repository"), never run
+the git commands above, and leave the VICE configs alone.
 
 Stays in the main window: Donald's questions, short edits, and anything where
 writing the brief costs more than doing the work.
