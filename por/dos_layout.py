@@ -42,12 +42,23 @@ converter must ignore them; the C64 has fixed slots and no heap.
 
 from __future__ import annotations
 
-from typing import Iterable, Iterator, Sequence
+import dataclasses
+from typing import Iterable, Iterator, Mapping, Sequence
 
 from .layout import Confidence, Field, Kind
 
 __all__ = [
     "RECORD_SIZE",
+    "DosShape",
+    "SHAPES",
+    "SHAPES_BY_SIZE",
+    "POOL_OF_RADIANCE",
+    "CURSE_OF_THE_AZURE_BONDS",
+    "SECRET_OF_THE_SILVER_BLADES",
+    "POOLS_OF_DARKNESS",
+    "shape_for",
+    "layout_for",
+    "DosShapeError",
     "NAME_SIZE",
     "ITEM_SIZE",
     "EFFECT_SIZE",
@@ -352,11 +363,33 @@ _DECLARED: Sequence[Field] = (
        "0x0EE -- so this is an unpack, not a copy"),
     _f(0x0B5, 3, _RAW, "spells_castable_magic_user", "Magic-user spell slots",
        _MAYBE),
-    _f(0x0BB, 4, _RAW, "icon_choice", "Icon selection", _GUESS,
-       "four small numbers, different for every character and stable across "
-       "the A/B pair. The DOS art is a different set from the C64's "
-       "CHARPIC00 and HEADnn/BODYnn, so whatever these index they cannot be "
-       "carried across", candidate=True),
+    _f(0x0BB, 1, _U8, "portrait_head", "Portrait head", _OK,
+       "**the four bytes at 0x0BB were one GUESS field called `icon_choice`; "
+       "they are two pairs** (#57). 0x0BB and 0x0BC index the sheet portrait "
+       "-- the `HEAD<n>.DAX` and `BODY<n>.DAX` sets -- and 0x0BD and 0x0BE "
+       "the small combat icon, `CHEAD.DAX` and `CBODY.DAX`. Three things say "
+       "so together. The community's per-title tables in "
+       "`work/coab-research/formats/` name exactly this split and only Pool "
+       "of Radiance has all four: from Curse onwards the first pair is gone "
+       "and Pools of Darkness carries the second alone, which is what a "
+       "sheet portrait dropped between titles looks like. The C64 record has "
+       "`portrait_head` and `portrait_body` adjacent at 0x0FE and 0x0FF for "
+       "the same reason. And the values fit: 1-11 here and 1-10 at 0x0BC "
+       "across the 18, against 0-13 and 3-31 for the icon pair, which is two "
+       "small sets and one larger one.\n"
+       "**CONFIRMED in the running game** (#57), three sheets of one "
+       "character in DOSBox: BRUTUS ships as (12, 3) and draws a "
+       "dark-haired head on a bare torso; (1, 3) draws a *different head* on "
+       "**the same torso**; (1, 1) draws that same head on an armoured "
+       "torso. Head and body move independently, and each byte moves its own "
+       "half"),
+    _f(0x0BC, 1, _U8, "portrait_body", "Portrait body", _OK,
+       "see `portrait_head`: the body half of the same experiment"),
+    _f(0x0BD, 1, _U8, "icon_head", "Combat icon head", _MAYBE,
+       "the combat icon's half of the pair, and the half every title keeps. "
+       "0-13 across the 18"),
+    _f(0x0BE, 1, _U8, "icon_body", "Combat icon body", _MAYBE,
+       "3-31 across the 18. Pools of Darkness reaches 31"),
     _f(0x0BF, 1, _U8, "party_order", "Party order", _OK,
        "0-5 in file order for every six-character slot. Curse's importer "
        "declines to read it, which is a fact about Curse"),
@@ -364,10 +397,21 @@ _DECLARED: Sequence[Field] = (
        "1 small, 2 medium: 1 for the dwarf and the halfling, 2 for everyone "
        "else, in all 24. The C64 stores the same distinction one lower -- "
        "0 small, 1 large -- at 0x099"),
-    _f(0x0C1, 6, _RAW, "heap_0c1", "Heap pointers (LIVE)", _NOPE,
-       "far pointers into the DOS heap: the 0x0C4 and 0x0C6 bytes are the "
-       "same segment for every character in a slot and the offsets move by "
-       "16 between two saves of one party. LIVE -- drop them"),
+    _f(0x0C1, 6, _RAW, "icon_colours", "Icon colours", _MAYBE,
+       "**six bytes of two 4-bit colour indices each, not heap pointers** "
+       "(#57). They were read as far pointers because 0x0C4 and 0x0C6 are "
+       "equal for every character in a slot; they are equal for every "
+       "character in every slot of every *title*, which is not what a heap "
+       "segment does. 42 of the 54 shipped records across the four titles "
+       "read `91 A2 B3 C4 E6 F7` -- high nibbles 9 A B C E F, low nibbles "
+       "1 2 3 4 6 7 -- and the six that differ are the six **played** Pools "
+       "of Darkness characters, each with its own set. The community tables "
+       "name the pairs body, arm, leg, hair/face, shield and weapon. "
+       "PROBABLE; the confirmation is to change one and look at the icon.\n"
+       "**This matters for a conversion.** The engine does *not* rebuild "
+       "them: `docs/117` records that its own resave kept our zeros here. So "
+       "a converted character written with zeros is one whose combat icon "
+       "has no colours, and nobody has looked at one"),
     _f(0x0C7, 1, _U8, "item_count", "Item count", _OK,
        "24 of 24: count x 63 is the exact size of the sibling `.ITM` file. "
        "**Always 0 in an export**, which is the one systematic difference "
@@ -541,6 +585,270 @@ assert sum(f.size for f in LAYOUT) == RECORD_SIZE
 assert sum(f.size for f in ITEM_LAYOUT) == ITEM_SIZE
 assert len(FIELDS_BY_NAME) == len(LAYOUT)
 assert len(ITEM_FIELDS_BY_NAME) == len(ITEM_LAYOUT)
+
+
+# ---------------------------------------------------------------------------
+# The other three titles.  One row each.
+# ---------------------------------------------------------------------------
+#: What a title does to the record above.
+#:
+#: The four DOS Gold Box records this project can reach -- 285, 422, 439 and
+#: 510 bytes -- are **the same field sequence at four widths**.  Nothing is
+#: reordered and nothing is inserted out of turn: what changes is how wide a
+#: field is, whether it is there at all, and how much unnamed space sits
+#: between two named ones.  So a title is a row of overrides against the Pool
+#: of Radiance table, not a second table and never a branch.
+#:
+#: `sizes` names a field and gives its width in this title; **zero means the
+#: title does not have it**.  `inserts` names a field and gives how many bytes
+#: follow it that Pool of Radiance does not have; they come out as gaps,
+#: because that is what they are -- space this project has not decoded.
+#:
+#: Offsets are then whatever accumulation makes them, which is the point: a
+#: width that is wrong moves everything after it and the record stops adding
+#: up to its own size, so `layout_for` raises rather than reading rubbish.
+@dataclasses.dataclass(frozen=True)
+class DosShape:
+    """One title's DOS character record, as a difference from Pool of
+    Radiance's."""
+
+    key: str
+    title: str
+    record_size: int
+    #: The sibling files beside `CHRDAT<slot><n>.SAV`: items, then effects.
+    item_suffix: str = ".ITM"
+    effect_suffix: str = ".SPC"
+    #: Bytes in the byte-per-spell book, which is spell ids 1..n in order.
+    spellbook_spells: int = SPELLBOOK_SPELLS
+    sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
+    inserts: "Mapping[str, int | Sequence[Field]]" = dataclasses.field(
+        default_factory=dict)
+
+
+#: Shared by three titles, so it is written once.
+_FORMER_NOTE = (
+    "the per-class level array again, indexed by class number the same way, "
+    "holding what a dual-classed character *was*. ABAGAIL in Pools of "
+    "Darkness is a magic-user 12 whose slot 0 here reads cleric 11, and her "
+    "class bitmask carries both bits; PAINE is a magic-user 13 who was a "
+    "ranger 9. CONFIRMED on those two; Pool of Radiance has no such array")
+
+_DRUID_SLOT_NOTE = (
+    "the slot array between the cleric's and the magic-user's, one byte per "
+    "spell level. **CONFIRMED by the rangers**, six of them across two "
+    "titles: Silver Blades' PAINE, ARGORA and RWELLYN are level 8 and each "
+    "holds 1 here and nothing in the other arrays, which is AD&D's ranger "
+    "getting his first *druid* spell at 8; Pools of Darkness' CLARISSA, "
+    "ARGORA and RWELLYN are level 13 and hold 2 1 here **and** 2 1 in the "
+    "magic-user array, which is the same ranger at 13. Both match "
+    "`por/spells.py`'s ranger grant table, read out of the C64 `GEN`. "
+    "Paladins do **not** use this array -- Pools of Darkness' Guy de Valois, "
+    "a paladin 12, holds 2 2 in the *cleric* array")
+
+
+def _x(size: int, name: str, label: str, confidence: Confidence,
+       note: str = "") -> Field:
+    """A field a later title has and Pool of Radiance does not.  The offset
+    is filled in by `layout_for`, which is the only thing that knows it."""
+    return Field(0, size, Kind.RAW, name, label, confidence, note, False)
+
+
+#: Pool of Radiance itself: the table above, unchanged.  Present so callers
+#: can treat all four alike.
+POOL_OF_RADIANCE = DosShape(
+    key="pool-of-radiance", title="Pool of Radiance", record_size=285)
+
+#: Curse of the Azure Bonds, 422 bytes.  Three things move it: every ability
+#: becomes a (base, current) pair, the memorised-spell region grows from 21
+#: bytes to 84, and the spellbook grows from 56 entries to 100 -- which is
+#: `por/spells.py`'s Curse id space, 1..100, exactly.  Then the record gains
+#: the fields a second title needs: a multi-class level beside the level, a
+#: former-level array beside the class-level one, a druid spell-slot array
+#: between the cleric's and the magic-user's, and four bytes of its own
+#: before the combat tail.
+CURSE_OF_THE_AZURE_BONDS = DosShape(
+    key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
+    record_size=422, item_suffix=".ITM", effect_suffix=".FX",
+    spellbook_spells=100,
+    sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
+           "constitution": 2, "charisma": 2, "exceptional_strength": 2,
+           "gap_017": 0, "spells_memorised": 84, "spellbook": 100,
+           "experience": 4, "gap_0af": 0,
+           "spells_castable_cleric": 5, "spells_castable_magic_user": 5},
+    inserts={"level": 1,
+             "class_levels": (_x(8, "former_class_levels",
+                                 "Former class levels", _MAYBE, _FORMER_NOTE),),
+             "spells_castable_cleric": (
+                 _x(5, "spells_castable_druid", "Druid spell slots", _MAYBE,
+                    _DRUID_SLOT_NOTE),),
+             "icon_colours": 1, "heap_104": 4})
+
+#: Secret of the Silver Blades, 439 bytes.  Curse's record plus a spellbook
+#: of 117 -- `por/spells.py`'s Silver Blades id space, 1..117 -- seven spell
+#: slot levels rather than five, and **two** undecoded slot arrays between the
+#: cleric's and the magic-user's rather than one.  It drops the monk level
+#: slot and the `type` byte, and its memorised region is *smaller* than
+#: Curse's at 75 bytes.
+SECRET_OF_THE_SILVER_BLADES = DosShape(
+    key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
+    record_size=439, item_suffix=".ITM", effect_suffix=".SFX",
+    spellbook_spells=117,
+    sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
+           "constitution": 2, "charisma": 2, "exceptional_strength": 2,
+           "gap_017": 0, "spells_memorised": 75, "spellbook": 117,
+           "field_83_87": 4, "class_levels": 7, "gap_09f": 0,
+           "experience": 4, "gap_0af": 0,
+           "spells_castable_cleric": 7, "spells_castable_magic_user": 7},
+    inserts={"char_class": 1, "level": 1,
+             "class_levels": (_x(7, "former_class_levels",
+                                 "Former class levels", _MAYBE, _FORMER_NOTE),),
+             "spells_castable_cleric": (
+                 _x(7, "spells_castable_druid", "Druid spell slots", _MAYBE,
+                    _DRUID_SLOT_NOTE),
+                 _x(7, "spells_castable_unattributed",
+                    "A fourth spell-slot array", _NOPE,
+                    "Silver Blades is the only title of the four with a "
+                    "**fourth** slot array -- 28 bytes where Curse has 15 and "
+                    "Pools of Darkness 27 -- and no shipped character sets a "
+                    "byte of it. Cleric, druid and magic-user account for the "
+                    "other three, and it is **not the paladin's**: Pools of "
+                    "Darkness puts a paladin's spells in the cleric array. "
+                    "UNKNOWN. A played Silver Blades save with a caster the "
+                    "shipped party does not have would settle it")),
+             "icon_colours": 3, "heap_104": 1})
+
+#: Pools of Darkness, 510 bytes, and the one with no C64 counterpart at all.
+#: It is the later engine: no drained-level pair, no `modified` byte, no
+#: `type`, no monk, no experience-per-hit-point award -- and **only three
+#: money slots**, platinum, gems and jewelry, where every earlier title has
+#: seven.  It gains a highest-level array and a highest-experience field
+#: beside the current ones, which is what a title with level drain that
+#: matters looks like.
+POOLS_OF_DARKNESS = DosShape(
+    key="pools-of-darkness", title="Pools of Darkness", record_size=510,
+    item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
+    sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
+           "constitution": 2, "charisma": 2, "exceptional_strength": 2,
+           "gap_017": 0, "spells_memorised": 141, "spellbook": 125,
+           "levels_drained": 0, "hp_lost_to_drain": 0, "field_83_87": 4,
+           "copper": 0, "silver": 0, "electrum": 0, "gold": 0,
+           "class_levels": 7, "gap_09f": 0, "strength_bonus": 0,
+           "experience": 4, "gap_0af": 0,
+           "spells_castable_cleric": 9, "spells_castable_magic_user": 9,
+           "gap_0b8": 2, "portrait_head": 0, "portrait_body": 0},
+    inserts={"char_class": 1, "level": 1,
+             "class_levels": (
+                 _x(7, "former_class_levels", "Former class levels", _MAYBE,
+                    _FORMER_NOTE),
+                 _x(7, "highest_class_levels", "Highest class levels", _MAYBE,
+                    "a third copy of the level array, and what a title with "
+                    "level drain that matters needs: the level to restore to. "
+                    "Zero in every shipped record, so PROBABLE from its "
+                    "position and from the highest-experience field that sits "
+                    "beside experience for the same reason")),
+             "experience": 5, "spells_castable_cleric": (
+                 _x(9, "spells_castable_druid", "Druid spell slots", _MAYBE,
+                    _DRUID_SLOT_NOTE),),
+             "icon_colours": 2, "heap_104": 2})
+
+SHAPES: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+                                SECRET_OF_THE_SILVER_BLADES,
+                                POOLS_OF_DARKNESS)
+SHAPES_BY_KEY: dict[str, DosShape] = {s.key: s for s in SHAPES}
+#: The record size identifies the title on its own: 285, 422, 439, 510.
+SHAPES_BY_SIZE: dict[int, DosShape] = {s.record_size: s for s in SHAPES}
+
+
+class DosShapeError(ValueError):
+    """A record size or title key that names no DOS Gold Box record."""
+
+
+def shape_for(what: "int | str | DosShape") -> DosShape:
+    """The shape for a record size, a key, or a shape.
+
+    The size is enough on its own -- no two of the four are the same length --
+    which is what lets a reader identify a file it was handed with no title.
+    """
+    if isinstance(what, DosShape):
+        return what
+    if isinstance(what, int):
+        try:
+            return SHAPES_BY_SIZE[what]
+        except KeyError:
+            raise DosShapeError(
+                f"{what} bytes is no DOS Gold Box character record; the four "
+                f"this project reads are "
+                f"{', '.join(str(n) for n in sorted(SHAPES_BY_SIZE))}"
+            ) from None
+    try:
+        return SHAPES_BY_KEY[what]
+    except KeyError:
+        raise DosShapeError(f"no DOS title keyed {what!r}") from None
+
+
+def layout_for(what: "int | str | DosShape") -> tuple[Field, ...]:
+    """The field table for one title, built from Pool of Radiance's.
+
+    Every field keeps its name, its meaning and its note; what a title moves
+    is where it lands.  A shape whose widths do not add up to its own record
+    size raises here rather than handing back a table that reads the wrong
+    bytes -- which is the check that makes a new title cheap to try.
+
+    **What that check does not catch, and what does.**  It is a sum, so two
+    compensating mistakes in one shape -- a field short by *n* and a later one
+    long by *n* -- add up correctly and pass, mis-placing every field between
+    them.  What catches that is the per-specimen work in
+    `tests/test_dosconvert.py`: every record rebuilding byte for byte, the
+    encumbrance identity balancing, and the class bitmask agreeing with the
+    level arrays, all 54 of 54 today.
+
+    **Those tests need the player's own archives and skip without them, so CI
+    does not run them.**  On a machine with no `FR_ARCHIVES` the only thing
+    standing behind Curse, Silver Blades and Pools of Darkness is this sum and
+    `test_each_shape_tiles_its_own_record`, which checks total width and that
+    offsets increase -- not that any field is in the right place.  So an edit
+    to one of those three shapes is only really tested where the archives are.
+    Say in the commit that you ran it somewhere they exist.
+    """
+    shape = shape_for(what)
+    declared: list[Field] = []
+    cursor = 0
+    for f in LAYOUT:
+        size = shape.sizes.get(f.name, f.size)
+        if size < 0:
+            raise DosShapeError(
+                f"{shape.key}: field {f.name!r} cannot be {size} bytes")
+        if size:
+            if not f.name.startswith("gap_"):
+                kind = f.kind
+                if size != f.size and kind in (Kind.U8, Kind.I8):
+                    # A byte that became a pair is no longer a byte: read it
+                    # raw rather than silently handing back half of it.
+                    kind = Kind.RAW
+                declared.append(dataclasses.replace(
+                    f, offset=cursor, size=size, kind=kind))
+            cursor += size
+        extra = shape.inserts.get(f.name, 0)
+        if isinstance(extra, int):
+            cursor += extra
+        else:
+            for e in extra:
+                declared.append(dataclasses.replace(e, offset=cursor))
+                cursor += e.size
+    if cursor != shape.record_size:
+        raise DosShapeError(
+            f"{shape.key}: the field widths add up to {cursor} bytes, not "
+            f"the {shape.record_size} the record is")
+    return _build(declared, shape.record_size, f"{shape.key} record")
+
+
+#: Every title's table, by key.  Pool of Radiance's is `LAYOUT` itself.
+LAYOUTS: dict[str, tuple[Field, ...]] = {s.key: layout_for(s) for s in SHAPES}
+FIELDS_BY_NAME_FOR: dict[str, dict[str, Field]] = {
+    key: {f.name: f for f in table} for key, table in LAYOUTS.items()}
+
+assert LAYOUTS[POOL_OF_RADIANCE.key] == LAYOUT, (
+    "the Pool of Radiance shape must reproduce the table it was read from")
 
 
 def iter_fields() -> Iterator[Field]:
