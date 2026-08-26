@@ -217,6 +217,31 @@ record followed by N ten-byte effect records**, the four observed sizes being
 | Silver Blades character record | `.SAV`, **439** | in-save block, **340** | **−99** |
 | Silver Blades effect record | `.SFX`, **9** | appended, **10** | +1 |
 
+**The item list is a chain, and its count is at `0x150`** — CONFIRMED 15 of 15:
+zero in all eleven `.guy` files, which carry no items, and 2, 2, 3, 2 in the
+four in-save blocks, which are the numbers that make each block's byte length
+come out exactly. `0x18c` was the other candidate and is **refuted**: it reads
+1 where there are no items.
+
+**The 66-byte item record**, on nine specimens of five distinct items:
+
+| offset | field | grade |
+|---|---|---|
+| `0x000`-`0x027` | display text, NUL-separated, no length prefix: full name, second word, price right-aligned. DOS spends a length byte plus 41 | CONFIRMED 9/9 |
+| `0x028`-`0x029` | `7f 00`, end-of-text marker | CONFIRMED 9/9 |
+| `0x02a`-`0x02d` | next item, u32 big-endian, NULL on the last | CONFIRMED 9/9 |
+| `0x02e` | type index (Chain Mail 55, Shield 59, Bastard Sword 34, Mace 23, Glaive-Guisarme 15) | CONFIRMED 9/9 |
+| `0x032` | the type index again, byte-identical | CONFIRMED 9/9 |
+| `0x038`-`0x039` | weight, u16 big-endian — Chain Mail 300, the rest 100 | CONFIRMED 5/5 distinct items |
+| `0x03c`-`0x03d` | value in gold, u16 big-endian | CONFIRMED 5/5 — **each matches the price string in its own display text** |
+| `0x035`, `0x03b`, `0x03e` | 1, 52, 47 — constant in all nine | UNKNOWN |
+
+Weight is +1 and value +2 against `por/dos_layout.py`'s 63-byte DOS record;
+which byte is padding in each case is UNKNOWN, and the three constants above
+are the candidates. **The item record is per-title on the Amiga**: 65 bytes in
+Pool of Radiance (195 = 3x65, 130 = 2x65, neither a multiple of 66) against 66
+here, where DOS's is 63 across the whole family.
+
 **The Amiga packs the spellbook as bits.** The whole 99-byte Silver Blades
 difference is one region: DOS `0x071`-`0x0e2` is 114 one-byte spell flags, and
 the Amiga has 15 bytes at `0x071`-`0x07f`, which is 120 bits. CONFIRMED 6 of 6
@@ -246,27 +271,78 @@ which a nine-byte record cannot do.
 
 `SAVE/savgamA.dat` (Curse, 15221, byte 0 `02`) and `SAVE/savgamA.sav` (Silver
 Blades, 7233, byte 0 `01`), against [`141-dos-savegame.md`](141-dos-savegame.md).
+The five regions are the DOS ones at the DOS offsets; only the last is a
+different object.
 
-The first five regions occupy the same span they do in DOS. `docs/141` puts the
-DOS character table at 12822 for Curse and 5142 for Silver Blades; the Amiga
-party-size byte is at 12824 and 5142, with the first record one byte later.
-**CONFIRMED**: that byte is the party size — Curse reads 4 and holds four
-records, Silver Blades reads 6 and holds six.
+**The variable array is `docs/141`'s, unchanged, big-endian.** CONFIRMED, and
+by a whole-array match rather than spot checks: listing every non-zero word at
+`1 + 2*(addr − $4900)`, the Amiga Silver Blades save and the DOS Silver Blades
+save hold **the same six words with the same values and no extras on either
+side** — `$49E6`=1, `$49FC`=4, `$49FF`=3, `$4AF4`=2, `$5012`=1, `$503E`=6 —
+and the two files are the same party in the same state. Across all four saves
+`$5012` equals byte 0 of its own file and `$503E` equals the number of
+character records the file holds.
+
+**The ECL text buffer starts at `0x1401`, the DOS offset, and holds the script
+byte for byte.** CONFIRMED, one specimen: the Amiga Curse save's region at
+`0x1401` is byte-identical to **block 1 of `DISKB/ECL.GLB`, all 7622 bytes,
+from byte 0**. Two differences from DOS, both measured:
+
+* DOS carries its `ECL<n>.DAX` block **from byte 2 on** because that block
+  opens with a `88 13` (u16le 5000) length header. The `GLIB` block has no
+  header, so the Amiga carries it from byte 0.
+* The buffer is the same 7680 bytes; block 1 fills 7622 and the rest is
+  **zero**, consistent with `docs/141`'s corrected reading. Both DOS shipped
+  saves have the whole buffer zero.
+
+The Silver Blades save has **no ECL buffer at all** — the variable array ends
+at `0x1400` and the square region starts at `0x1401`.
+
+**`GLIB` is not the crunched container.** `*.GLB` and `*.TLB` are: magic
+`GLIB`, u32 total size, u16 block count, u16 1, magic `DATA`, then count+1
+big-endian u32 offsets, block *i* being `[off[i], off[i+1])`. **The blocks are
+uncompressed** — `work/amiga/dax.py`'s bit-cruncher fails on 25 of ECL.GLB's 26
+and yields 3 bytes of garbage from the last. §1.1's container work is for the
+Pool of Radiance `.dax` archives and does not apply. `work/amiga/goldbox/glib.py`
+reads it.
 
 **Where DOS names six `CHRDAT<letter><n>` files, the Amiga embeds the records.**
 CONFIRMED, 4 of 4 Curse blocks and 6 of 6 Silver Blades blocks, parsed to the
-byte with no slack: a Curse block is 428 + items×66 + effects×10, and a Silver
+byte with no slack: a Curse block is 428 + items×66 + effects×10, a Silver
 Blades block is 340 + effects×10 with no items. The Silver Blades effect counts
 match the DOS default save's `.SFX` files character for character, and its six
-characters are the same six as DOS slot A in the same state — so the two are a
-direct diff, which is how §1.6's spellbook finding was measured.
+characters are DOS slot A's six in the same state — which is what makes §1.6's
+spellbook finding a diff rather than an inference.
 
-Untested, and each is cheap: the VM variable region (the Curse save carries the
-contiguous ASCII `WEAPONERS OF CORMYR` at `0x0f9a`, inside it, where `docs/141`
-records the DOS encounter buffer as one character per word — so either the
-Amiga stores it as bytes or the array is not two bytes per address); the ECL
-text buffer, whose high-entropy span runs about `0x1472`-`0x31bf` on Curse; the
-square, facing and clock; and the 66-byte item record.
+**The square region**, between the buffer and the first record, is 24 bytes on
+Curse and 22 on Silver Blades against 20 in both DOS files. Silver Blades is a
+clean diff and gives **x, y and facing as single bytes at the DOS offsets**
+(`0x1401`-`0x1403` = 7, 13, 0 in both files) with one byte inserted in
+`0x1404`-`0x140a` and the party size preceded by a `00`. **Curse does not
+agree**: its region is +4, its contents differ from DOS's everywhere because it
+is a mid-game save, and it reads either as `x=0, y=3, facing=0` or as widened
+big-endian words giving **`x=3, y=14, facing=2`**. The array holds `$49F0`=2
+and `$49F1`=14, which favours the second from an independent part of the file
+but does not prove it. PROBABLE, one specimen.
+
+The encounter message is in the Curse save **twice**: unpacked at `$5289`, one
+character per word, which is `docs/141`'s buffer; and **packed two characters
+per big-endian word at `$50CC`**, which is why it also reads as contiguous
+ASCII at file offset `0x0f9a`. Whether DOS keeps the packed copy too is
+untestable — neither DOS save holds an encounter string, and on DOS the pairs
+would be byte-swapped.
+
+**The clock is at Pool of Radiance's addresses.** `$49C6`-`$49CB` read
+0, 5, 1, 1, 0, 0 in the Amiga Curse save, which is `docs/141`'s
+sub-minute / minute units / minute tens / hour and gives **01:15**; both DOS
+shipped saves read 00:00 there, which is what a save taken before play looks
+like. The day and month words are zero in all three, so they are either unused
+in Curse or untested. PROBABLE, three saves and no specimen with a non-zero
+day.
+
+Still open: the byte inserted in Silver Blades' square region; Curse's square,
+which needs a second specimen; and whether Curse's ECL buffer is 7680 or 7684,
+since the boundary is zero on both sides.
 
 ---
 
