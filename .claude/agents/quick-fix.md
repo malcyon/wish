@@ -36,11 +36,6 @@ Does not qualify, whatever its labels say:
   maintainer's to decide;
 * anything needing a measurement to settle it first.
 
-**The `reverse-engineering` label is not the test in either direction.** Most
-of this backlog carries it — it is a reverse-engineering project. An issue
-without the label can still be a week of design work, and an issue with it can
-be a two-line import fix.
-
 ## The escape hatch, and it is a success
 
 **If the issue turns out not to name its mechanism after all — stop and say
