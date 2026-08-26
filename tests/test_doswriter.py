@@ -373,7 +373,15 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
     party = dos.read_party(tmp_path, "B")
     assert len(party) == 6
-    assert party[0].name == "MALCYON"
+    # **The file order is the reverse of the C64 slot order** (#101): the C64
+    # lists the party from the highest slot down and DOS from `CHRDATB1` up,
+    # so MALCYON in slot 0 is the C64's *last* and has to be DOS's last too.
+    from por.savegame import SaveGame0 as _SG0
+    slots = [s.record.name for s in _SG0.from_bytes(save0).slots if s.occupied]
+    assert slots == ["MALCYON", "LADY KATHERINE", "ROLAND", "SILAS",
+                     "MAGNUS", "BRUTUS"]
+    assert [c.name for c in party] == slots[::-1]
+    assert [c.get("party_order") for c in party] == [0, 1, 2, 3, 4, 5]
     assert (tmp_path / "SAVGAMB.DAT").exists()
     savgam = (tmp_path / "SAVGAMB.DAT").read_bytes()
     assert sg.character_files(savgam) == [f"CHRDATB{n}" for n in range(1, 7)]
@@ -412,21 +420,26 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
     dos.write_dos_save(save0, None, _save_dir(), tmp_path, "B")
 
     party = dos.read_party(tmp_path, "B")
-    assert [c.name for c in party][:2] == ["MALCYON", "LADY KATHERINE"]
-    assert party[0].effect_ids == [107]      # elf sleep and charm resistance
-    assert party[1].effect_ids == [124]      # the half-elf's
-    assert (tmp_path / "CHRDATB1.SPC").read_bytes() == \
+    # The party arrives reversed (#101), so the elf and the half-elf are the
+    # last two files rather than the first two. Keyed by name so the test is
+    # about the effects rather than about the ordering.
+    by_name = {c.name: c for c in party}
+    assert [c.name for c in party][-2:] == ["LADY KATHERINE", "MALCYON"]
+    assert by_name["MALCYON"].effect_ids == [107]   # elf sleep/charm resistance
+    assert by_name["LADY KATHERINE"].effect_ids == [124]      # the half-elf's
+    elf = party.index(by_name["MALCYON"]) + 1
+    assert (tmp_path / f"CHRDATB{elf}.SPC").read_bytes() == \
         bytes((107,)) + dos.INNATE_PAYLOAD + dos.EFFECT_NEXT_NULL
     # MAGNUS the dwarf: 26 against orcs and 47 against giants, from the race
     # byte.  90 and 97 are *not* here -- the C64 has already spent the
     # constitution save bonus inside the five saving-throw bytes this
     # conversion copies, so writing them too would apply it twice.
-    assert party[4].name == "MAGNUS"
-    assert party[4].effect_ids == [26, 47]
+    assert by_name["MAGNUS"].effect_ids == [26, 47]
     # The three humans carry nothing, and an empty file is not how the engine
     # says so.
-    for n in (3, 4, 6):
-        assert party[n - 1].effect_ids == []
+    for who in ("BRUTUS", "SILAS", "ROLAND"):
+        assert by_name[who].effect_ids == []
+        n = party.index(by_name[who]) + 1
         assert not (tmp_path / f"CHRDATB{n}.SPC").exists()
 
 
@@ -684,3 +697,30 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
         dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
     after = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert after == before
+
+
+@needs_dos_saves
+def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
+    """`$49EB` and `$4A00`-`$4A1F` convert the way the quest flags do (#59).
+
+    Both are CONFIRMED the same field on both ports in
+    `docs/141-dos-savegame.md`, and before this they were inherited: the DOS
+    save came up holding whichever party's script scratch the template
+    directory belonged to. The values here are a sentinel no real save holds,
+    so the test says nothing about what the words mean -- only where they
+    came from.
+    """
+    save0, save1 = _fixture_payloads()
+    save0 = bytearray(save0)
+    before = {a: sg.word((_save_dir() / "SAVGAMA.DAT").read_bytes(), a)
+              for a in dos.SHARED_SCRATCH}
+    for n, addr in enumerate(dos.SHARED_SCRATCH):
+        save0[addr - dos.SAVE0_BASE] = (n * 7 + 3) & 0xFF
+    dos.write_dos_save(bytes(save0), save1, _save_dir(), tmp_path, "A")
+    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    for n, addr in enumerate(dos.SHARED_SCRATCH):
+        assert sg.word(savgam, addr) == (n * 7 + 3) & 0xFF, hex(addr)
+    # And the template did not already hold them, so this cannot pass by
+    # accident: at least one address moved.
+    assert any(sg.word(savgam, a) != before[a] for a in dos.SHARED_SCRATCH)
+    assert len(dos.SHARED_SCRATCH) == 33     # $49EB plus the 32-word window

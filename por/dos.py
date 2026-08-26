@@ -83,9 +83,12 @@ __all__ = [
     "to_c64_record",
     "export_party",
     "quest_flags",
+    "SHARED_SCRATCH",
     "apply_position",
     "apply_quest_flags",
     "apply_file_cache",
+    "apply_clock",
+    "marching_slot",
     "convert_save",
     "WriteReport",
     "write",
@@ -1218,6 +1221,29 @@ def export_party(folder: str | pathlib.Path, slot: str,
 FLAGS_FIRST = dos_savegame.FLAGS_FIRST
 FLAGS_LAST = dos_savegame.FLAGS_LAST
 
+#: ECL-visible state the two ports keep at the same addresses, and therefore
+#: convertible the way the quest flags are: read the C64 byte, write the DOS
+#: word.  `docs/141-dos-savegame.md` grades both CONFIRMED as the same field
+#: on both ports.
+#:
+#: `$49EB` is a script variable -- 0 in ten C64 New Phlan saves and in the DOS
+#: New Phlan ones, 1 in both ports' Slums saves; `ECL00` writes 1 when the
+#: party boards a boat.  `$4A00`-`$4A1F` is the per-script scratch, the C64's
+#: own `SCRIPT_SCRATCH` at the same addresses, zeroed on every area change.
+#:
+#: Copying the whole scratch window rather than the six words measured live in
+#: it (#59) is the same code with fewer special cases, and the other twenty-six
+#: read zero on both ports in every specimen -- so what changes is provenance,
+#: not values.  **What each word gates is still UNKNOWN and this does not
+#: claim otherwise.**  What it settles is where the bytes come from: the party
+#: being converted, at its own address, rather than whichever stranger's save
+#: was used as the template.
+#:
+#: It is right on a retarget too, and that is the case that matters: the C64
+#: party's scratch belongs to the area the C64 party is standing in, which is
+#: exactly the area the DOS save is being moved to.
+SHARED_SCRATCH = (0x49EB,) + tuple(range(0x4A00, 0x4A20))
+
 
 def quest_flags(save: bytes) -> bytes:
     """`$4A20`-`$4AF8` as the C64's 217 bytes: read the word, keep the byte.
@@ -1244,6 +1270,38 @@ def apply_quest_flags(save0: bytearray, savgam: bytes) -> int:
     changed = sum(1 for i, b in enumerate(flags) if save0[base + i] != b)
     save0[base:base + len(flags)] = flags
     return changed
+
+
+#: The six clock digits and the largest value each holds -- sub-minute,
+#: minute units, minute tens, hour, day, month (#58).  `$49C6` means the same
+#: six things on both ports, which is what makes the copy below unconditional.
+CLOCK_LIMITS = (10, 10, 6, 24, 30, 12)
+
+
+def apply_clock(save0: bytearray, savgam: bytes) -> tuple[str, list[str]]:
+    """Copy the DOS clock into a `SAVEDGAME0` payload, digit for digit.
+
+    The mirror of what `write_dos_save` does the other way (#67), and for the
+    same reason: the time of day is a value the party carries, not one the
+    engine derives on load, so a conversion that does not write it leaves the
+    template's clock in place.  Two DOS saves reading 10:15 and 22:15 both
+    arrived at 21:15, which was `PORSAVE13`'s time (#103).
+
+    Returns the report line and any complaints, because a digit above what
+    its field holds means the six words are not the clock we think they are.
+    """
+    digits = [dos_savegame.word(savgam, dos_savegame.CLOCK + i)
+              for i in range(dos_savegame.CLOCK_DIGITS)]
+    warnings = [
+        f"clock digit {i} reads {d}, above the {limit} that digit holds; "
+        f"written as {d & 0xFF}"
+        for i, (d, limit) in enumerate(zip(digits, CLOCK_LIMITS)) if d > limit]
+    at = dos_savegame.CLOCK - SAVE0_BASE
+    save0[at:at + dos_savegame.CLOCK_DIGITS] = bytes(d & 0xFF for d in digits)
+    hour, minute, day, month = dos_savegame.clock(savgam)
+    return (f"the clock: {hour}:{minute:02d}, day {day} month {month} -- the "
+            f"DOS save's six digit words, narrowed to the C64's six bytes",
+            warnings)
 
 
 def apply_position(save0: bytearray, savgam: bytes) -> tuple:
@@ -1310,11 +1368,13 @@ SCRIPT_SCRATCH = (0x4A00, 0x20)
 #: not data: `GEN $25DE` reads `LDA $4BC0,X / ORA #$80 / STA $6E13,X` for all
 #: twenty-five, so whatever bit a save carries is discarded and set again.
 #:
-#: **Two slots are enough.**  `$FF` everywhere else, slot 2 = the area's `GEO`
-#: number and slot 8 = the area id, and the arriving script's entry 4 refills
-#: the rest -- CONFIRMED twice in the running game, once retargeting a New
-#: Phlan save into Sokol Keep.  That is what lets a converted save stand
-#: somewhere the template never did.
+#: **Three slots are enough, and two are not.**  `$FF` everywhere else, slot
+#: 2 = the area's `GEO` number, slot 8 = the area id and slot 11 =
+#: `ANIMATE00`, and the arriving script's entry 4 refills the rest --
+#: CONFIRMED twice in the running game, once retargeting a New Phlan save into
+#: Sokol Keep.  That is what lets a converted save stand somewhere the
+#: template never did.  Slot 11 was the one #102 found missing: it is not a
+#: lazy slot, because the save is *carrying* the file (`CACHE_ANIMATE`).
 FILE_CACHE = (0x4BC0, 0x19)
 FILE_CACHE_EMPTY = 0xFF
 FILE_CACHE_RELOAD = 0x80
@@ -1335,6 +1395,22 @@ CACHE_WALLSET_PIECES = 3
 #: A masked slot reading `$7F` is empty -- `$FF` and `$7F` both mean "nothing
 #: loaded" to `LIBRARY $4225`.
 CACHE_UNSET = 0x7F
+#: Slot 11 is `ANIMATE`, and it is **not** one of the lazy slots a converted
+#: save may leave empty (#102).  `SAVEDGAME1` is `$8300`-`$8AFF` and its tail
+#: from `$8400` is the resident `ANIMATE00` -- 829 of 852 bytes match the file
+#: on the disk in `W1`, `PORSAVE11` and `PORSAVE13` alike -- so a save that
+#: leaves the slot `$FF` says nothing is loaded while carrying the file.  With
+#: `$FF` there, walking off the travel grid into an area draws the area window
+#: and stops in it, in all four directions; with `00` the same save completes
+#: the transition.  Measured by bisecting the sixteen cache bytes that differ
+#: between a full and a minimal cache: slot 11 alone is sufficient and slot 11
+#: removed is sufficient to break it (`work/p102/bisect3.log`, `anim.log`).
+#:
+#: `00` is not a guess and not a choice: `ANIMATE00` is the only `ANIMATE`
+#: file in the game and it is on all eight `POOL` sides, so the disk hint
+#: never has to reach it.
+CACHE_ANIMATE = 11
+ANIMATE_RESIDENT = 0x00
 
 #: The disk hint.  `GEN $08BD` is `LDA $49EA / STA $6E12`, and `$6E12` is the
 #: `POOL` side the loader asks for by number.  It is not part of the cache but
@@ -1383,8 +1459,9 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     * the template already stands in that area, and its own cache -- a real
       one, written by the game -- is kept untouched;
     * or it does not, and the cache is rewritten to `$FF` in all twenty-five
-      slots with slot 2 = the area's `GEO` number and slot 8 = the area id,
-      plus the three bytes outside the cache that make those two findable:
+      slots with slot 2 = the area's `GEO` number, slot 8 = the area id and
+      slot 11 = `ANIMATE00` -- the file `SAVEDGAME1`'s own tail holds (#102)
+      -- plus the three bytes outside the cache that make those findable:
       the disk hint `$49EA`, the map `$49C5` and the script id `$49F2`.
 
     The second is `docs/140-loaded-files-cache.md`'s recipe and is the shape
@@ -1421,13 +1498,15 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
             bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1])
         save0[at + CACHE_SQRDATA] = sqr
         save0[at + CACHE_ECL] = there
+        save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT
         save0[DISK_HINT - SAVE0_BASE] = where.disk
         save0[CURRENT_GEO - SAVE0_BASE] = sqr   # $49C5 holds the SQRDATA
         save0[CURRENT_SCRIPT - SAVE0_BASE] = there   # number outdoors (#47)
         save0[INDOORS - SAVE0_BASE] = 0
         return (f"loaded-files cache: $FF in all twenty-five, then slot 4 = "
-                f"{where.sqrdata} and slot 8 = {where.ecl}; outdoors no GEO "
-                f"loads at all, and $49E6 = 0 is what boots into travel mode")
+                f"{where.sqrdata}, slot 8 = {where.ecl} and slot 11 = "
+                f"ANIMATE00; outdoors no GEO loads at all, and $49E6 = 0 is "
+                f"what boots into travel mode")
     if where.dynamic_geo or len(where.geos) < 1:
         raise DosRecordError(UNSUPPORTED_LOCATION)
 
@@ -1435,13 +1514,35 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     save0[at:at + FILE_CACHE[1]] = bytes([FILE_CACHE_EMPTY]) * FILE_CACHE[1]
     save0[at + CACHE_GEO] = geo
     save0[at + CACHE_ECL] = there
+    save0[at + CACHE_ANIMATE] = ANIMATE_RESIDENT
     save0[DISK_HINT - SAVE0_BASE] = where.disk
     save0[CURRENT_GEO - SAVE0_BASE] = geo
     save0[CURRENT_SCRIPT - SAVE0_BASE] = there
     save0[INDOORS - SAVE0_BASE] = 1
     return (f"loaded-files cache: $FF in all twenty-five, then slot 2 = "
-            f"{where.geos[0]} and slot 8 = {where.ecl}; the arriving script "
-            f"refills the rest")
+            f"{where.geos[0]}, slot 8 = {where.ecl} and slot 11 = ANIMATE00; "
+            f"the arriving script refills the rest")
+
+
+def marching_slot(index: int, count: int) -> int:
+    """Which C64 save slot a party member at DOS marching position `index` goes in.
+
+    **The C64 lists the party from the highest slot down** (#101).  Its own
+    `ENCAMP > ALTER > ORDER` screen asks `WHO TAKES POSITION #1?` over a list
+    headed by BRUTUS, and BRUTUS is in slot 5 of `work/p3/W1.D64`, an
+    engine-written save whose slots 0-5 are MALCYON, LADY KATHERINE, ROLAND,
+    SILAS, MAGNUS, BRUTUS.  The main panel lists the same six in the same
+    order, and so does `PORSAVE13`.
+
+    DOS is the other way round: `party_order` at `0x0BF` is 0 for the
+    first-listed character, and the file order is the marching order.  So the
+    conversion reverses; writing DOS index *i* into slot *i* put the DOS
+    party's front-rank fighter at the back of the C64 one.
+
+    The party stays in the low slots, `count - 1` down to 0, which is where
+    every engine-written save keeps it.
+    """
+    return count - 1 - index
 
 
 def convert_save(folder: str | pathlib.Path, slot: str,
@@ -1461,26 +1562,32 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     report = Report(total=len(save0))
 
     for index, char in enumerate(party):
+        place = marching_slot(index, len(party))
         icon = None
         if keep_icons:
-            at = ICON_TABLE - SAVE0_BASE + index * ICON_SIZE
+            at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
             icon = bytes(save0[at:at + ICON_SIZE])
-        rec, one = to_c64_record(char, slot=index, icon=icon)
+        rec, one = to_c64_record(char, slot=place, icon=icon)
+        # `party_order` in a roster block is the record's slot index, not the
+        # marching position -- `por/layout.py` 0x10D, and identity in every
+        # engine-written save read.  It follows the slot the record lands in.
+        rec.set("party_order", place)
         raw = rec.to_bytes()
-        at = SLOT_AREA - SAVE0_BASE + index * SLOT_STRIDE
+        who = f"slot {place}: {char.name}, {index + 1} in the DOS marching order"
+        at = SLOT_AREA - SAVE0_BASE + place * SLOT_STRIDE
         save0[at:at + SLOT_STRIDE] = raw[:SLOT_STRIDE]
-        report.note(at, SLOT_STRIDE, f"slot {index}: the converted record")
-        at = ITEM_AREA - SAVE0_BASE + index * SLOT_STRIDE
+        report.note(at, SLOT_STRIDE, f"{who} -- the converted record")
+        at = ITEM_AREA - SAVE0_BASE + place * SLOT_STRIDE
         save0[at:at + SLOT_STRIDE] = raw[0x120:0x220]
-        report.note(at, SLOT_STRIDE, f"slot {index}: the converted inventory")
-        at = ICON_TABLE - SAVE0_BASE + index * ICON_SIZE
+        report.note(at, SLOT_STRIDE, f"{who} -- the converted inventory")
+        at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
         if keep_icons:
-            report.note(at, ICON_SIZE, f"slot {index}: the template's icon")
+            report.note(at, ICON_SIZE, f"{who} -- the template's icon")
         else:
             save0[at:at + ICON_SIZE] = raw[0x220:0x244]
-            report.note(at, ICON_SIZE, f"slot {index}: icon from the record")
+            report.note(at, ICON_SIZE, f"{who} -- icon from the record")
         if save1 is not None:
-            at = index * ROSTER_STRIDE
+            at = place * ROSTER_STRIDE
             save1[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
@@ -1516,6 +1623,10 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "quest flags: the DOS word array, narrowed to bytes")
     for address, what in apply_position(save0, savgam):
         report.note(address - SAVE0_BASE, 1, what)
+    note, complaints = apply_clock(save0, savgam)
+    report.note(dos_savegame.CLOCK - SAVE0_BASE, dos_savegame.CLOCK_DIGITS,
+                note)
+    report.warnings.extend(complaints)
     report.warnings.append(
         f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "
         f"differed from the template's")
@@ -1616,6 +1727,10 @@ def write_dos_save(save0: bytes, save1: bytes | None,
 
     * the quest flags, from the C64 bytes -- the two ports index them by the
       same ECL address;
+    * **the script scratch** (#59), the same copy for the same reason:
+      `$49EB` and the whole `$4A00`-`$4A1F` window, which
+      `docs/141-dos-savegame.md` grades CONFIRMED as the same fields on both
+      ports.  What they mean is still unknown; where they come from is not;
     * **the clock** (#67), the same unconditional copy: six digit words at
       `$49C6`-`$49CB`, which are the C64's own six bytes at its own addresses;
     * **the party size** (#67), into both the word at `$503E` and byte 12808;
@@ -1682,6 +1797,20 @@ def write_dos_save(save0: bytes, save1: bytes | None,
         rec, itm, spc, one = write(char)
         built.append((char, rec, itm, spc, one, char_slot))
 
+    # **The two ports list the party from opposite ends** (#101).  The C64
+    # displays the highest occupied slot first -- its own `ENCAMP > ALTER >
+    # ORDER` asks `WHO TAKES POSITION #1?` over a list headed by the character
+    # in slot 5 -- and DOS displays `CHRDAT<slot>1` first.  So the file order
+    # is the reverse of the slot order, and `party_order` at `0x0BF`, which is
+    # 0-5 in file order in every DOS specimen, is renumbered to match rather
+    # than left as the C64's slot index.
+    built.reverse()
+    order = FIELDS_BY_NAME["party_order"].offset
+    for position, entry in enumerate(built):
+        record = bytearray(entry[1])
+        record[order] = position
+        built[position] = (entry[0], bytes(record)) + entry[2:]
+
     # The unit a conversion overwrites is the *slot*, not the characters this
     # party happens to fill.  Converting one character into a directory that
     # held six left `CHRDAT<slot>2`-`6` behind, and the engine loads the party
@@ -1735,6 +1864,11 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     report.carried.append(
         f"quest flags: {FLAGS_LAST - FLAGS_FIRST + 1} C64 bytes widened to "
         f"words at the same ECL addresses")
+    for addr in SHARED_SCRATCH:
+        dos_savegame.put_word(savgam, addr, save0[addr - SAVE0_BASE])
+    report.carried.append(
+        f"the script scratch: $49EB and $4A00-$4A1F, {len(SHARED_SCRATCH)} "
+        f"more C64 bytes widened to words at the same ECL addresses")
 
     # The clock and the party size are unconditional copies, like the flags.
     digits = [save0[dos_savegame.CLOCK + i - SAVE0_BASE]

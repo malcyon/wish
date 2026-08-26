@@ -162,9 +162,9 @@ The rule in `CLAUDE.md` is **measured versus inherited**: a value we
 established is fine at any number, and a value taken from somebody else's
 save is not. This is the list, in the three legitimate groups, measured over
 the twelve genuine specimens. `por.dos.write_dos_save` writes the quest
-flags, the clock, the party size, the square, the six character filenames
-and — when the areas differ — the nine retarget writes and the ECL buffer.
-Everything else in the file it copies from the template.
+flags, the script scratch, the clock, the party size, the square, the six
+character filenames and — when the areas differ — the nine retarget writes
+and the ECL buffer. Everything else in the file it copies from the template.
 
 **1. The engine rebuilds it, so writing anything is pointless.** Nine VM
 words came back rewritten when the engine loaded a hand-built save and the
@@ -188,15 +188,26 @@ experiment that would remove it.
 | what | bytes | what would settle it |
 |---|---|---|
 | `$49FC`, `$49FF` | 4 | ECL-visible, but the ports disagree — DOS reads (6/4, 3) where the C64 reads (2, 129/1). A read-watch on either in DOSBox-X |
-| `$49EB`, `$4A00`, `$4A02`, `$4A13`, `$4A16`-`$4A18` | 14 | ECL-visible script scratch, and the C64 holds the same values for the same area (`$4A00` = 255 in both ports' Slums saves, 0 in both ports' New Phlan). **Copyable from the C64 by the quest-flag mechanism** — the work is the code change and a load, not more measurement |
 | `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507A`-`$507D`, `$507F`-`$5080` | 30 | DOS-only engine state. `$507A`-`$507D` are zero in all nine indoor specimens, so zero is measured for an indoor conversion; the rest partition by area. Read-watches, one per word |
 | `$5202`-`$5207`, `$520A`-`$520F` and the encounter-text buffer `$5227`+ | 154 | they change together and sit immediately before a readable encounter message, so PROBABLE the pending-encounter record. A converted party has no encounter pending; the experiment is a hand-built save with the block zeroed, loaded and walked |
 | the character table's 29 junk bytes per entry and the 82 bytes of UI scratch after it | 246 | PROBABLE display scratch — the bytes contain readable fragments of menu words ("camping"), and the engine rewrote 55 of them on its own resave with no visible effect. Same experiment: zero them, load, look |
 | byte 12804 | 1 | in group 1, not a blocker; naming it needs a write-watch on the save routine |
 
-**444 bytes of 13137**, 3.4% of the file, would still be inherited after
-every finding above is acted on — down from the whole of the 8016 bytes this
-issue opened with. None of it is party or place data.
+`$49EB` and `$4A00`-`$4A1F` used to head that table and have come off it.
+They are ECL-visible and CONFIRMED the same fields on both ports, so
+`write_dos_save` now copies them from the C64 the way it copies the quest
+flags — the whole scratch window rather than the six live words in it, since
+the other twenty-six read zero on both ports in every specimen and one loop is
+fewer special cases than seven addresses. **What each word gates is still
+UNKNOWN.** What changed is the provenance: the party being converted, at its
+own address, instead of whichever stranger's save the template came from. It
+is right on a retarget too, and that is the case that matters — the C64
+party's scratch belongs to the area it is standing in, which is the area the
+DOS save is being moved to.
+
+**430 bytes of 13137**, 3.3% of the file, would still be inherited after
+every finding above is acted on — down from 444, and from the whole of the
+8016 bytes this issue opened with. None of it is party or place data.
 
 ## What this leaves open
 

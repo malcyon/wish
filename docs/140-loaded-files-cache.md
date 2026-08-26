@@ -98,13 +98,16 @@ slot 0 with `0` instead. `LOADPIECES` (`$28DC`) writes the `WALLSET` and
 **That is why `$4BC0` reads `01` indoors and `00` outdoors** — it is not a flag,
 it is which `GDRIVE` overlay is resident.
 
-## The two entries a save actually needs
+## The three entries a save actually needs
 
 CONFIRMED, twice, in the running game. `work/p24/build.py` and
 `work/p24/build2.py`.
 
 A save whose cache is `$FF` in every slot except **slot 2 (`GEO`)** and
 **slot 8 (`ECL`)** loads, draws and plays. The engine refills the rest itself.
+
+**And it cannot walk into another area.** Slot 11, `ANIMATE`, is the third
+entry, and the section below is what leaving it out costs.
 
 | test | template | cache written | result |
 |---|---|---|---|
@@ -172,6 +175,48 @@ POOL2. `118-debug-mode.md`'s area table has the disk for every area.
 `117-save-conversion.md` currently lists `$49EA`-`$49EF` among the unattributed
 gaps; `$49EA` is no longer one.
 
+## Slot 11 is not lazy, because the save is carrying the file
+
+CONFIRMED in the running game, by bisecting a known-good and a known-bad save
+that differ in the cache and nothing else (`work/p102/`, #102).
+
+`SAVEDGAME1` is `$8300`-`$8AFF`, and its tail from `$8400` is the resident
+`ANIMATE00`: 829 of those 852 bytes match the file on the disk in `W1.D64`,
+`PORSAVE11.D64` and `PORSAVE13.D64` alike, the other 23 being live state. So a
+save whose slot 11 reads `$FF` says *nothing is loaded* while carrying the file
+in its own second half, and the engine believes the cache.
+
+**What it costs.** An engine-written outdoor save standing on the ship's
+landing square, travel window `1A` (7,29), takes the boat into New Phlan:
+`THERE IS A BOAT HERE...`, `Y`, and the status line becomes `W 15,1`. The same
+save with the minimal two-slot cache draws the area window, leaves it empty and
+stops — in all four directions, with no message and nothing to press. Sixteen
+cache bytes differ between the two, and the bisection is
+
+| cache slots restored from the full save | transition |
+|---|---|
+| all sixteen | completes |
+| none | stuck |
+| 0-7 (`GDRIVE`…`SPELLE`) | stuck |
+| 9, 10, 11, 13 (`WALLS`, `SPRITE`, `ANIMATE`, `BODY`) | completes |
+| 14, 21, 22, 23 together with all of 0-7 | stuck |
+| **11 alone** | **completes** |
+| 9 alone | stuck |
+| 13 alone | stuck |
+
+Slot 11 alone is sufficient and every failing case is a case without it. The
+same one byte written into the converter's own output — a DOS overland save
+converted by `por.dos.convert_save` — moves it from stuck in all four
+directions to standing in New Phlan at `W 15,1`.
+
+**The value is `00` and there is no other.** `ANIMATE00` is the only `ANIMATE`
+file in the game and it is on all eight `POOL` sides, so the disk hint never
+has to reach it.
+
+The empty bordered window a stuck save draws is the arriving area's map window
+before anything is put in it — the same frame a successful arrival draws, with
+the map missing.
+
 ## What a converter should write
 
 Given a target area id `N`, its `GEO` number `G` and the disk `D` that carries
@@ -179,7 +224,7 @@ Given a target area id `N`, its `GEO` number `G` and the disk `D` that carries
 
 | address | value |
 |---|---|
-| `$4BC0`-`$4BD8` | `$FF` × 25, then slot 2 = `G` and slot 8 = `N` |
+| `$4BC0`-`$4BD8` | `$FF` × 25, then slot 2 = `G`, slot 8 = `N` and slot 11 = `00` |
 | `$49EA` | `D` |
 | `$49E6` | 1 indoors, 0 on the travel grid |
 | `$49C5` | `G` |
@@ -199,7 +244,7 @@ number `S` (`04`/`05`/`06`) standing in for `G` everywhere `G` appears:
 
 | address | value |
 |---|---|
-| `$4BC0`-`$4BD8` | `$FF` × 25, then slot 4 = `S` and slot 8 = `N` |
+| `$4BC0`-`$4BD8` | `$FF` × 25, then slot 4 = `S`, slot 8 = `N` and slot 11 = `00` |
 | `$49EA` | `D` — still the disk carrying `ECLN`: 6, 7, 8 for the three windows |
 | `$49E6` | 0, and it is sufficient on its own to come up in travel mode |
 | `$49C5` | `S` — the seven game-written outdoor specimens all carry it, not `G` and not `N` |

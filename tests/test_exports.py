@@ -139,9 +139,10 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
     plan = DosPlan(one, tmp_path, dos_template, "B")
     # The elf, the half-elf and the dwarf of the six-party each left a `.SPC`
     # behind (#61); BRUTUS is human and writes none, so those go with the five
-    # strangers' records.
+    # strangers' records. The party is written back to front (#101), so the
+    # three are files 2, 5 and 6 rather than 1, 2 and 5.
     assert plan.removed == sorted(
-        ["CHRDATB1.SPC", "CHRDATB2.SPC", "CHRDATB5.SPC"]
+        ["CHRDATB2.SPC", "CHRDATB5.SPC", "CHRDATB6.SPC"]
         + [f"CHRDATB{n}.SAV" for n in range(2, 7)])
     assert plan.replaced == ["CHRDATB1.SAV", "SAVGAMB.DAT"]
     assert REMOVES_HEADING in plan.text()

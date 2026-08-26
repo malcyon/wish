@@ -24,7 +24,7 @@ import pytest
 import yaml
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import areas, dos, dos_layout, spells
+from por import areas, dos, dos_layout, savegame, spells
 from por import dos_savegame as sg
 from por.layout import RECORD_SIZE as C64_RECORD_SIZE
 
@@ -409,12 +409,15 @@ def test_convert_save_accounts_for_the_whole_payload():
 
 @needs_dos_saves
 def test_a_template_from_another_area_is_retargeted_not_refused():
-    """`$FF` in all twenty-five slots, then slot 2 = the `GEO` and slot 8 =
-    the area id. That is the whole cache a save needs: the arriving script's
-    entry 4 refills the rest, CONFIRMED twice in the running game
-    (`docs/140-loaded-files-cache.md`). The three bytes outside the cache go
-    with it, `$49EA` above all -- without the disk hint the loader sits on
-    `INSERT SIDE # N` hunting a file that is not on the side it asked for.
+    """`$FF` in all twenty-five slots, then slot 2 = the `GEO`, slot 8 = the
+    area id and slot 11 = `ANIMATE00`. The arriving script's entry 4 refills
+    the rest, CONFIRMED twice in the running game
+    (`docs/140-loaded-files-cache.md`). Slot 11 is the third because the save
+    *carries* `ANIMATE00` in `SAVEDGAME1`'s tail, and a save that leaves the
+    slot empty cannot complete a transition into an area (#102). The three
+    bytes outside the cache go with it, `$49EA` above all -- without the disk
+    hint the loader sits on `INSERT SIDE # N` hunting a file that is not on
+    the side it asked for.
     """
     savgam = _savgam("A")
     there = sg.area_id(savgam)
@@ -427,6 +430,7 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
     want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
     want[dos.CACHE_GEO] = areas.geo_number(where.geos[0])
     want[dos.CACHE_ECL] = there
+    want[11] = 0                 # ANIMATE00, and see below
     assert cache == bytes(want)
     assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == where.disk
     assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == want[dos.CACHE_GEO]
@@ -503,6 +507,12 @@ def test_an_overland_save_writes_the_outdoor_cache_recipe(script, sqrdata, disk)
     assert save0[at + dos.CACHE_SQRDATA] == sqrdata
     assert save0[at + dos.CACHE_ECL] == script
     assert save0[at + dos.CACHE_GEO] == dos.FILE_CACHE_EMPTY
+    # Slot 11 goes with them: `SAVEDGAME1`'s tail *is* `ANIMATE00`, and a save
+    # that leaves the slot empty cannot walk into an area (#102). Written as
+    # the literal 11 and 0 rather than through the module's own names, so a
+    # constant renumbered by hand fails here instead of following the change:
+    # `ANIMATE00` is the only `ANIMATE` file in the game, on all eight sides.
+    assert save0[at + 11] == 0
     assert save0[dos.INDOORS - dos.SAVE0_BASE] == 0
     assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == sqrdata
     assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == script
@@ -584,3 +594,95 @@ def test_the_roster_tail_comes_from_the_dos_combat_tail():
         assert rec.get("armour_class") == char.get("armour_class")
         assert rec.get_raw("roster_tail") == char.raw("roster_tail")
         assert rec.get("roster_movement") == char.get("movement_current")
+
+
+@needs_dos_saves
+def test_the_converted_clock_is_the_dos_partys_and_not_the_templates():
+    """The time of day is carried, not inherited (#103).
+
+    Three DOS saves, three different clocks -- 10:02, 1:22 and 10:56 -- each
+    converted onto a template whose own six clock bytes are a sentinel no
+    real save holds.  Before the fix all three arrived reading the sentinel,
+    which is what a player saw as 21:15 on a party whose save said 10:15.
+    """
+    sentinel = bytes([9, 9, 9, 21, 28, 11])   # 21:99 on day 28 of month 11
+    seen = set()
+    for slot in "JBA":
+        savgam = _savgam(slot)
+        save0 = bytearray(0x1C00)
+        at = sg.CLOCK - dos.SAVE0_BASE
+        save0[at:at + sg.CLOCK_DIGITS] = sentinel
+        dos.convert_save(_save_dir(), slot, save0)
+        want = bytes(sg.word(savgam, sg.CLOCK + i)
+                     for i in range(sg.CLOCK_DIGITS))
+        assert bytes(save0[at:at + sg.CLOCK_DIGITS]) == want, slot
+        # And it reads back as the same time through the C64's own accessor,
+        # so the six digits are in the order the status line prints.
+        hour, minute, day, month = sg.clock(savgam)
+        c64 = savegame.SaveGame0.from_bytes(bytes(save0))
+        assert c64.party.clock == (hour, minute)
+        seen.add((hour, minute, day, month))
+    assert len(seen) == 3, "the three saves must differ or this proves nothing"
+
+
+@needs_dos_saves
+def test_a_clock_digit_too_large_for_its_field_is_reported():
+    """A digit above what its field holds means the six words are not the
+    clock, so it is a warning rather than a silent narrowing."""
+    savgam = bytearray(_savgam("A"))
+    sg.put_word(savgam, sg.CLOCK + 3, 300)      # the hour digit, limit 24
+    save0 = bytearray(0x1C00)
+    note, complaints = dos.apply_clock(save0, bytes(savgam))
+    assert "the clock" in note
+    assert len(complaints) == 1 and "clock digit 3" in complaints[0]
+    assert save0[sg.CLOCK + 3 - dos.SAVE0_BASE] == 300 & 0xFF
+
+
+@needs_dos_saves
+def test_the_converted_party_marches_in_the_dos_order():
+    """The C64 lists the party from the highest slot down (#101).
+
+    `ENCAMP > ALTER > ORDER` in `work/p3/W1.D64` -- an engine-written save
+    whose slots 0-5 are MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS,
+    BRUTUS -- asks `WHO TAKES POSITION #1?` over a list headed by BRUTUS, and
+    the main panel lists the same six in the same order (`work/p102/order2.log`).
+    So DOS position 0 belongs in the highest slot, and writing it into slot 0
+    put the DOS party's front-rank fighter at the back.
+    """
+    for slot in "JBA":
+        party = [c.name for c in dos.read_party(_save_dir(), slot)]
+        assert len(party) == 6
+        save0 = bytearray(0x1C00)
+        save1 = bytearray(0x0800)
+        dos.convert_save(_save_dir(), slot, save0, save1)
+        sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
+        by_slot = {s.index: s.record.name for s in sg0.slots if s.occupied}
+        # Highest slot first is the C64's marching order; it must be the DOS
+        # party's own order, not its reverse.
+        assert [by_slot[i] for i in sorted(by_slot, reverse=True)] == party
+        # And the roster block travels with the record: +0x0D is the record's
+        # slot index, identity in every engine-written save read.
+        stride = savegame.ROSTER_STRIDE
+        for i in sorted(by_slot):
+            assert save1[i * stride + 0x0D] == i, (slot, i)
+
+
+@needs_dos_saves
+def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
+    """The item page and the slot record must not come apart when the party is
+    reversed: page `n` at `$5900` belongs to the character in slot `n`."""
+    from por import items
+
+    slot = "A"
+    # Keyed by name, not by index: reading the expected count back through
+    # `marching_slot` would make the test agree with the code by construction.
+    want = {c.name: c.get("item_count")
+            for c in dos.read_party(_save_dir(), slot)}
+    assert len(want) == 6 and any(want.values())
+    save0 = bytearray(0x1C00)
+    dos.convert_save(_save_dir(), slot, save0)
+    sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
+    for place in [s.index for s in sg0.slots if s.occupied]:
+        who = sg0.slots[place].record.name
+        carried = list(items.items_for_slot(bytes(save0), place))
+        assert len(carried) == want[who], (who, place)

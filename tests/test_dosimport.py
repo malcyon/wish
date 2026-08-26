@@ -143,6 +143,11 @@ def test_a_template_from_another_area_converts(app, dos_save, elsewhere):
         (dos_save / f"SAVGAM{dialog.slot}.DAT").read_bytes())
     want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
     want[dos.CACHE_GEO] = want[dos.CACHE_ECL] = there
+    # Slot 11: the save carries `ANIMATE00` in `SAVEDGAME1`'s tail, so the
+    # cache has to say it is resident or the party cannot walk into an area
+    # (#102). The literal 11 and 0, not the module's names, so this fails on a
+    # renumbering rather than following it.
+    want[11] = 0
     assert payload[at:at + dos.FILE_CACHE[1]] == bytes(want)
 
 
@@ -202,8 +207,11 @@ def test_the_import_lands_unsaved_and_the_editors_own_save_writes_it(
     assert window.dirty                      # unsaved, and the title says so
     assert window.path == template
     assert template.read_bytes() == before   # nothing written yet
+    # Slot order, which the C64 reads back to front: the character DOS lists
+    # first is the one the game puts at the head of the marching order, and
+    # that is the *highest* slot (#101, `dos.marching_slot`).
     names = [m.name for m in window.party.members if m.name]
-    assert names == [c.name for c in dos.read_party(dos_save, "A")]
+    assert names == [c.name for c in dos.read_party(dos_save, "A")][::-1]
     assert "slot A" in note or "A" in note
 
     window.save(interactive=False)
