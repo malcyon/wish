@@ -175,7 +175,7 @@ the routing.
 | `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. It runs in the shared tree, so scope it to the files it owns |
-| `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands. Launch it with `isolation: "worktree"` |
+| `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands. It runs in the shared tree, so scope it to the files it owns |
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
 
