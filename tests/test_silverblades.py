@@ -858,6 +858,65 @@ def test_the_magic_user_grant_is_morgaines_spellbook():
         assert ids == grants[rec.get("level_magic_user")], rec.name
 
 
+# --- #89: por/levelup.py's own copy of the same two grant tables -----------
+# The tables in `por/spells.py` were transcribed from the same mechanical
+# extraction the tests above run against a real disk; these compare
+# `por/levelup.py`'s reading of them, level by level, against `GEN` directly
+# -- the same "two independent readings of one fact" `test_the_cleric_grant_
+# is_curses_own_table...` already relies on in `tests/test_curselevels.py`.
+
+
+def test_the_magic_user_grant_row_matches_gens_own_table():
+    from por import levelup
+
+    grants = _grant_table(_gen(), 0xC9, range(5, 10))
+    for level in range(5, 10):
+        row = levelup._magic_user_grant_row(level, SSB)
+        assert row is not None and set(row) == grants[level], level
+
+
+def test_the_ranger_grant_matches_gens_own_table():
+    from por import levelup
+
+    grants = _grant_table(_gen(), 0xD0, range(8, 16))
+    for level in range(8, 16):
+        assert set(levelup._ranger_spell_ids(level, SSB)) == grants[level], level
+
+
+def test_the_ranger_grant_is_empty_below_the_gate():
+    """`CPX #$08`: nothing before level 8, not even an empty attempt at one."""
+    from por import levelup
+
+    assert levelup._ranger_spell_ids(7, SSB) == []
+    assert levelup._ranger_spell_ids(1, SSB) == []
+
+
+def test_learnable_offers_nothing_because_silver_blades_grants_a_row():
+    """#82's sibling claim for #89: the trainer does not build a menu here,
+    so there is nothing for `LevelUp.offers` to put in front of a player."""
+    from por import levelup
+    from por.record import CharacterRecord
+
+    rec = CharacterRecord.blank()
+    rec.set("class_bits", 0x01)
+    rec.set("level_magic_user", 9)
+    assert levelup.learnable(rec, SSB, level=9) == []
+
+    # The control: the same record, read as Pool of Radiance, still offers.
+    assert levelup.learnable(rec, games.POOL_OF_RADIANCE, level=9) != []
+
+
+def test_a_title_with_no_grant_table_falls_back_to_the_menu():
+    """Curse's magic-user trainer is UNKNOWN (#89) -- nothing here should
+    guess at it, so it keeps `learnable`'s menu shape, same as Pool of
+    Radiance."""
+    from por import levelup
+
+    assert levelup._magic_user_grant_row(9, games.POOL_OF_RADIANCE) is None
+    assert levelup._magic_user_grant_row(
+        9, games.CURSE_OF_THE_AZURE_BONDS) is None
+
+
 def test_the_spellbook_mask_is_sixteen_bytes_and_gen_says_so():
     """#81's measurement, and the one that is not shared with Curse.
 

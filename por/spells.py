@@ -99,6 +99,19 @@ class SpellTable:
     #: Curse replaced that with a per-level table and left two ids out of it --
     #: see `CURSE_OF_THE_AZURE_BONDS` below. CONFIRMED.
     not_granted: tuple[int, ...] = ()
+    #: `(level, ids)` pairs: the whole magic-user spell list a character of
+    #: that level is granted, where the trainer hands out a row instead of
+    #: building a menu to choose from. Empty for a title whose magic-user
+    #: learns by picking one spell -- `por.levelup.learnable` is what tells
+    #: the two apart. See `SECRET_OF_THE_SILVER_BLADES` below. CONFIRMED,
+    #: read mechanically out of `GEN` by `tests/test_silverblades.py::
+    #: _grant_table(_gen(), 0xC9, range(5, 10))` (#89).
+    magic_user_grant: tuple[tuple[int, tuple[int, ...]], ...] = ()
+    #: Same shape, for a ranger. Empty below the level the title's trainer
+    #: first grants one -- Silver Blades gates its routine at `CPX #$08`, so
+    #: nothing before level 8. CONFIRMED the same way, `_grant_table(_gen(),
+    #: 0xD0, range(8, 16))`.
+    ranger_grant: tuple[tuple[int, tuple[int, ...]], ...] = ()
 
     @property
     def text_end(self) -> int | None:
@@ -230,6 +243,36 @@ _GROUPS_SILVER_BLADES = (
 _NOT_A_SPELL_SILVER_BLADES = (57, 59, 60, 61, 62, 63, 64, 65, 95, 97, 99, 100,
                               101, 102, 103, 104, 105, 106, 107, 108)
 
+#: The magic-user's whole known list at each level 5-9, read mechanically out
+#: of `GEN` by `tests/test_silverblades.py::_grant_table(_gen(), 0xC9,
+#: range(5, 10))`. Level 9's 29 ids are the shipped MORGAINE's spellbook
+#: exactly, id for id -- the corroboration `test_the_magic_user_grant_is_
+#: morgaines_spellbook` makes. **CONFIRMED**, and specific to this title: it
+#: is a grant, not the menu `GEN $215A` builds in Pool of Radiance (#89).
+_MAGIC_USER_GRANT_SILVER_BLADES = (
+    (5, (11, 18, 19, 21)),
+    (6, (11, 12, 15, 18, 19, 21, 30, 31, 34, 47, 51, 54)),
+    (7, (11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 34, 35, 45, 47, 48, 51,
+         54, 81)),
+    (8, (9, 10, 11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 32, 34, 35, 45,
+         47, 48, 51, 54, 55, 81, 85)),
+    (9, (9, 10, 11, 12, 14, 15, 16, 18, 19, 21, 29, 30, 31, 32, 34, 35, 45,
+         47, 48, 50, 51, 52, 54, 55, 81, 82, 85, 88, 94)),
+)
+
+#: The ranger's whole known list, same extraction, `_grant_table(_gen(),
+#: 0xD0, range(8, 16))`. Gated at `CPX #$08`, so nothing before level 8; the
+#: shipped PAINE at level 8 holds exactly the level-8 row and nothing else.
+#: **CONFIRMED** (#89).
+_RANGER_GRANT_SILVER_BLADES = (
+    (8, (77, 78, 79, 80)),
+    (9, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 77, 78, 79, 80)),
+    (12, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 77, 78, 79, 80,
+          90, 96, 98)),
+    (13, (9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30, 31, 32,
+          33, 34, 35, 77, 78, 79, 80, 90, 96, 98)),
+)
+
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
 #: in each game's own code, not carried across from another one.** The one
 #: thing that looks like proof and is not: Curse's `GEN $2C2F` copies 32 bytes
@@ -316,6 +359,8 @@ SECRET_OF_THE_SILVER_BLADES = SpellTable(
     groups=_GROUPS_SILVER_BLADES,
     not_a_spell=_NOT_A_SPELL_SILVER_BLADES,
     spellbook_size=16,
+    magic_user_grant=_MAGIC_USER_GRANT_SILVER_BLADES,
+    ranger_grant=_RANGER_GRANT_SILVER_BLADES,
 )
 
 TITLES: tuple[SpellTable, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,

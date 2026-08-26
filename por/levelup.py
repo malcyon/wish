@@ -46,9 +46,12 @@ from . import levels, spells
 from .games import CLASS_BITS_CLASSIC
 
 #: `0x0C9` upwards, in class-bit order -- the order every one of the game's own
-#: tables is indexed in.
+#: tables is indexed in. `ranger` is not in `CLASS_BITS_CLASSIC` and so never
+#: appears in `classes_of`'s output today; it is here so `class_level` works
+#: on a ranger's record wherever a caller already has one in hand (#89).
 CLASS_LEVEL_FIELD = {"magic-user": "level_magic_user", "cleric": "level_cleric",
-                     "thief": "level_thief", "fighter": "level_fighter"}
+                     "thief": "level_thief", "fighter": "level_fighter",
+                     "ranger": "level_ranger"}
 
 #: The five saving throws, in stored order at `0x09A`.
 SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
@@ -265,9 +268,19 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
     per-class levels before the menu is built, so a magic-user reaching 3 is
     offered second-level spells at that same training. Defaults to what the
     record already holds, for a caller asking what is on offer now.
+
+    **Not every title builds a menu at all.** Silver Blades' `0x0C9` routine
+    ORs a whole row into the mask instead of listing choices -- see
+    `_magic_user_grant_row`, which `plan` calls for the actual write -- so its
+    trainer offers nothing to pick and this returns empty rather than Pool of
+    Radiance's rule applied to the wrong list (#89). Curse is left alone: its
+    `GEN` carries no grant loop for `0x0C9` at all, so whether it menus or
+    grants is UNKNOWN, and this keeps treating it as a menu rather than guess.
     """
     if level is None:
         level = class_level(record, "magic-user")
+    if spells.for_game(game).magic_user_grant:
+        return []
     castable = (level + 1) // 2
     table = spells.for_game(game)
     known = set(spells.spells_known(bytes(record), game))
@@ -326,6 +339,47 @@ def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
         if group and group[0] == "cleric" and group[1] <= castable:
             out.append(spell_id)
     return out
+
+
+def _row_at(table: tuple[tuple[int, tuple[int, ...]], ...],
+           level: int, floor: int) -> tuple[int, ...] | None:
+    """The row for the highest key at or below `level`, or None below `floor`.
+
+    A grant table only records the levels where the row actually changes, so
+    a level between two entries gets the lower one -- the trainer's own
+    routine does the same by indexing a monotonic array rather than one row
+    per level.
+    """
+    if level < floor:
+        return None
+    rows = dict(table)
+    idx = max(k for k in rows if k <= level)
+    return rows[idx]
+
+
+def _magic_user_grant_row(level: int, game=None) -> tuple[int, ...] | None:
+    """The whole spell list Silver Blades' `0x0C9` routine ORs in at `level`,
+    or None for a title with no grant table of its own -- see
+    `SpellTable.magic_user_grant`.
+
+    `GEN` floors its own index at 5 and caps it at 9, so a level outside that
+    still reads the nearest end of it (#89).
+    """
+    table = spells.for_game(game).magic_user_grant
+    if not table:
+        return None
+    return _row_at(table, min(max(level, 5), 9), floor=5)
+
+
+def _ranger_spell_ids(level: int, game=None) -> list[int]:
+    """Every spell a ranger of `level` is granted by Silver Blades' `0x0D0`
+    routine. Empty for a title with no ranger grant table, and below the
+    level the gate `CPX #$08` first lets the routine run (#89)."""
+    table = spells.for_game(game).ranger_grant
+    if not table:
+        return []
+    row = _row_at(table, min(level, max(k for k, _ in table)), floor=table[0][0])
+    return sorted(row or ())
 
 
 def _spells_castable(record, class_levels: dict[str, int],
@@ -491,20 +545,26 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     learned = None
     if class_levels.get("cleric"):
         known |= set(_cleric_spell_ids(class_levels["cleric"], game))
+    if class_levels.get("ranger"):
+        known |= set(_ranger_spell_ids(class_levels["ranger"], game))
     if class_name == "magic-user":
-        offered = learnable(record, game, level=to_level)
-        if offered:
-            if learn is None:
-                raise CannotLevel(
-                    "a magic-user picks one new spell at the trainer and "
-                    "nothing derives which; pass learn=<spell id>")
-            if learn not in offered:
-                raise CannotLevel(f"spell {learn} is not one the trainer "
-                                  f"would offer")
-            known.add(learn)
-            learned = learn
+        grant = _magic_user_grant_row(to_level, game)
+        if grant is not None:
+            known |= set(grant)      # a row, not a choice -- nothing to ask
         else:
-            notes.append("no magic-user spell was left to learn")
+            offered = learnable(record, game, level=to_level)
+            if offered:
+                if learn is None:
+                    raise CannotLevel(
+                        "a magic-user picks one new spell at the trainer and "
+                        "nothing derives which; pass learn=<spell id>")
+                if learn not in offered:
+                    raise CannotLevel(f"spell {learn} is not one the trainer "
+                                      f"would offer")
+                known.add(learn)
+                learned = learn
+            else:
+                notes.append("no magic-user spell was left to learn")
     # As wide as the title's mask: seven bytes on Pool of Radiance, thirteen on
     # Curse. Compared against the same span of the record, so a level-up that
     # changes nothing above id 55 still reports no change.
