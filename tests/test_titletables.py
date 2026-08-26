@@ -598,7 +598,8 @@ def _fit_library_base(payload: bytes, low: int = 0x2A00, high: int = 0x3000):
 def test_the_library_base_is_fitted_not_read(which, expected):
     """Pool of Radiance's `LIBRARY` declares `$1000` and the rest declare
     `$1220`; none of them runs there. The fit wins by better than three to one
-    in every title, which is the bar `skills/goldbox` sets for a fitted base."""
+    in every title, which is the bar `docs/144-decoding-a-new-title.md` sets for a
+    fitted base."""
     (score, base), (other, _) = _fit_library_base(_library_of(which))
     assert base == expected
     assert score >= 3 * other, f"margin only {score} to {other}"

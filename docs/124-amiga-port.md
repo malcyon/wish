@@ -667,7 +667,7 @@ Stated out loud, so nobody is surprised and nobody tries.
    before believing it.
 7. **FS-UAE is not VICE.** There is no binary monitor with the shape
    `automap/vice.py` expects, so none of the live-memory technique in
-   `skills/goldbox/SKILL.md` transfers. The mitigation is that **phase 4 does
+   `docs/144-decoding-a-new-title.md` transfers. The mitigation is that **phase 4 does
    not need live memory** — differential *saves* are files, and the emulator is
    only needed to produce them. Anything that does want live memory (a PoD
    automapper) is a separate project and is out of scope here. Kickstart ROMs

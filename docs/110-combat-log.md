@@ -249,4 +249,4 @@ frames are `work/p18b/frames-narrow.jsonl`, with `frames-baseline.jsonl` and
 and its `--shrink`/`--narrow` only ever write `$0973`/`$0971` when the four
 bytes there really are COMBAT's `17 27 01 17` — the first attempt wrote to
 `$0973` while another overlay owned it, which is the hazard
-`skills/goldbox/SKILL.md` warns about.
+`docs/144-decoding-a-new-title.md` warns about.

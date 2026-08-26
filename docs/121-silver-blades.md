@@ -42,7 +42,8 @@ address and marker byte were UNKNOWN and are now `$7C00` and **`\x05`**.
 
 ### A note on the skill
 
-`skills/goldbox/SKILL.md` did **not exist** when this was written. The phases
+The decoding checklist -- `skills/goldbox` then, `docs/144-decoding-a-new-title.md`
+now -- did **not exist** when this was written. The phases
 below are derived from `docs/60-goldbox-field-checklist.md` and
 `docs/116-second-game.md`, which is what the skill was distilled from, so they
 should align; whoever runs the rest should read the skill first and reorder to
@@ -316,10 +317,10 @@ reads as a `*PRG` with a zero block count, which our own reader is perfectly
 happy with and the 1541 will not open: the first import attempt answered
 `CHARACTER NOT FOUND` for exactly that reason.
 
-## 6. What the run feeds back into the skill
+## 6. What the run feeds back into the checklist
 
-The point of running a skill against a new title is not the title. It is the
-skill. **A finding is not closed until `skills/goldbox/SKILL.md` reads
+The point of running the decoding checklist against a new title is not the
+title. It is the checklist. **A finding is not closed until `docs/144-decoding-a-new-title.md` reads
 differently, or has been deliberately left alone with a line in
 `docs/50-experiments.md` saying why.**
 
@@ -329,7 +330,7 @@ differently, or has been deliberately left alone with a line in
 | a prediction failed | the advice becomes *check, do not assume*, with the Silver Blades counterexample cited by offset. This is the most valuable outcome and should be treated as a success |
 | a step cost far more or less than budgeted | reorder the phases. The order of attack is the skill's main claim; a phase that keeps running last should be documented last |
 | a step needed something the skill does not mention | name the tool, the file and the invocation. A subagent starts cold; "you will need a save disk" belongs in the skill, not in someone's memory |
-| a constant differed | it goes in the per-game constants table in `skills/goldbox/references/`, third column. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
+| a constant differed | it goes in `por/games.py`, which is where the per-title constants live now that the skill's reference tables are gone. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
 
 `docs/116-second-game.md` §7 is the model: it ends by listing every place the
 earlier plan was wrong, *including where it was wrong in our favour*. Do the same
@@ -348,7 +349,7 @@ references now carry, all from phases 1 and 2:
   will see it.
 
 **What phases 3-5 owe the skill.** These are the edits the run earns;
-`skills/goldbox/SKILL.md` was another agent's file while this was written, so
+The checklist was another agent's file while this was written, so
 they are listed here rather than made.
 
 | what the run showed | the edit it earns |

@@ -71,8 +71,8 @@ the bytes and say explicitly why it is not a mistake in the reader.
 ## Working in this repository
 
 Read `CLAUDE.md` at the top of the repo before you start, and `INDEX.md` for
-where things live. `skills/goldbox` carries the decoding checklist and the
-order of attack for a Gold Box title. The knowledge base is `docs/`;
+where things live. `docs/144-decoding-a-new-title.md` carries the decoding
+checklist and the order of attack for a Gold Box title. The knowledge base is `docs/`;
 `docs/50-experiments.md` is the one document that gets length, and is where
 reasoning belongs.
 

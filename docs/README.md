@@ -70,6 +70,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [141-dos-savegame.md](141-dos-savegame.md) | the 13137-byte DOS `SAVGAM?.DAT` mapped: header byte, sparse VM word array, the ECL text buffer (live on load — write 7 of the retarget recipe), square and party size, and the retarget recipe that survives `Load3DMap` |
 | [142-dosbox-x-debugger.md](142-dosbox-x-debugger.md) | the DOS side's answer to VICE's binary monitor: a DOSBox-X built with the debugger, driven unattended over a pty, the memory reads, watchpoints and breakpoints it does and does not give, and the harness `tools/dosboxx.py` that hides its four traps |
 | [143-winuae-debugger.md](143-winuae-debugger.md) | the Amiga side's answer: WinUAE's console debugger driven from Linux over the Windows VM, why stock WinUAE has no GDB server however much uae-dap suggests it does, `S`-to-a-file as the read path, the built-in trainer search as the way to find a live address, and what a `WinuaeTarget` would cost |
+| [144-decoding-a-new-title.md](144-decoding-a-new-title.md) | the method for a title nobody here has opened: which Pool of Radiance facts may be assumed and which must be re-measured, the order of attack cheapest first, the recipe for finding live data whose addresses are unknown, the confidence discipline, and the twenty-step checklist |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -94,7 +95,6 @@ dragging in throwaway discovery scripts.
 | `designer/` | the Qt Designer `.ui` forms, loaded at runtime |
 | `packaging/` | the PyInstaller entry points and the Windows console-stream repair |
 | `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. `tools.wish` is the body of the `wish export`/`wish import` subcommands and `tools.genui` runs at window startup, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) is the CLI folded into `wish` itself |
-| `skills/goldbox/` | the transferable method, for a cold agent starting on a new title |
 | `work/` | scratch disk copies — `.gitignore`d, and where every disk image belongs |
 
 **Two decisions shape all of it, and both still hold.**

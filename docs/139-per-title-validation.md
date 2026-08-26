@@ -9,7 +9,7 @@ actually backed by — and what it would take to back the rest.
 | question | answer | grade |
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
-| Is `skills/goldbox/SKILL.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
+| Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
 | How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 24, Silver Blades 16.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `por/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
@@ -39,8 +39,9 @@ Two specific corrections they already earned and have not had:
   it there, so it shipped as a defect on two titles. **Closed by #29**: the
   triple is `Game.live_position`, measured per title, and a title where it is
   unmeasured refuses instead of guessing.
-* `docs/121` §6 lists eight edits the run owes `SKILL.md` and says they were
-  not made because the file was another agent's. Seven of the eight are still
+* `docs/121` §6 lists eight edits the run owes the decoding checklist -- then
+  `skills/goldbox/SKILL.md`, now `docs/144-decoding-a-new-title.md` -- and says
+  they were not made because the file was another agent's. Seven of the eight are still
   not made. §4.
 
 ## 2. The matrix
