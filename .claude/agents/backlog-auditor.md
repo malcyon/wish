@@ -29,7 +29,7 @@ The checks below are written in Jira's vocabulary because that is where they cam
 | fixVersion | git tags; `v0.1.0` is the only release |
 | assignee, sprint | `assignees`; there are no sprints |
 
-If a Jira MCP server is ever configured, the same seven checks run unchanged against JQL and structured fields; only this section changes.
+If a Jira MCP server is ever configured, the same eight checks run unchanged against JQL and structured fields; only this section changes.
 
 ## Query before reading
 
@@ -42,7 +42,7 @@ gh issue list --state all --limit 200 \
 
 **Report the corpus size and the exact query you used.** A finding from an unstated corpus cannot be reproduced.
 
-## Seven checks, in yield order
+## Eight checks, in yield order
 
 **1. Description–comment contradiction.** Read the description as the original claim and the comment thread as subsequent findings. Flag where a comment establishes something the description still contradicts: a root cause that turned out different, scope that changed, an approach abandoned, an acceptance criterion overtaken by a decision.
 
@@ -71,6 +71,12 @@ Report every hit with its issue number and the sentence it sits in, and **say wh
 Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `CLAUDE.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
 
 This check exists because the words got into the backlog faster than into the documentation: `#97` and `#102` were both filed by agents carrying language `CLAUDE.md` had already ruled out, and nobody noticed until Donald read them.
+
+**8. Unnamed issue references.** `CLAUDE.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in issue bodies, comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
+
+Grep bodies and comments for `#\d+` and report the ones with no title beside them. **Report by issue, not by occurrence** — a thread with thirty bare references is one finding with a count, not thirty findings, or this check will drown the other seven.
+
+**Commit messages are exempt** and so is a reference inside a code block or a URL. Rank a bare reference in a **description** above one in a comment: the description is the standing record and is the thing read first.
 
 **Never infer staleness from age alone.** An old ticket describing work nobody has started is not stale; it is unbuilt.
 

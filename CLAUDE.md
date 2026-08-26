@@ -927,3 +927,16 @@ with more than three data points. No closing summary of a reply the user just
 read.
 
 Report failures with the shortest decisive line of output, not the whole log.
+
+**Name every issue you cite, here as much as anywhere** -- `#59 (Map the DOS
+saved game, not just the character record)`, never a bare `#59`. The rule is in
+the Issues section and it says it applies to replies, but it is three hundred
+lines away from here and that is exactly why it gets broken: a reply is written
+fast, the number is what the assistant has in hand, and the title feels like
+padding. It is not padding. Donald reads these replies without the browser
+open, and a bare number carries nothing at all to him: *"when you only
+reference a number, it never means anything to me."*
+
+**This includes tables**, which is where it is dropped most often -- a column
+of bare numbers is the least readable thing in a reply, not the most. Put the
+title in the row.
