@@ -5,6 +5,7 @@ and nothing here needs an emulator: `MemoryTarget` is a dictionary of bytes and
 a fake backend hands one over.
 """
 
+import ast
 import os
 import pathlib
 
@@ -356,6 +357,31 @@ def test_editor_imports_nothing_live():
         source = path.read_text()
         assert "automap" not in source, path
         assert "socket" not in source, path
+
+
+FORBIDDEN_TRANSPORT_ROOTS = ("automap", "socket", "telnet", "telnetlib", "serial")
+
+
+def test_por_imports_no_transport():
+    """por/ stays transport-free -- checked by import, not by grepping prose.
+
+    por/areas.py, por/games.py and por/strength.py all *mention* automap in
+    comments, so a substring grep would be a false positive on every one of
+    them. Parsing the AST and looking only at Import/ImportFrom nodes is the
+    difference.
+    """
+    for path in pathlib.Path("por").glob("*.py"):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module] if node.module else []
+            else:
+                continue
+            for name in names:
+                root = name.split(".")[0]
+                assert root not in FORBIDDEN_TRANSPORT_ROOTS, (path, name)
 
 
 def test_the_test_platform_is_forced_and_not_merely_defaulted():
