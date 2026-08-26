@@ -29,7 +29,7 @@ The checks below are written in Jira's vocabulary because that is where they cam
 | fixVersion | git tags; `v0.1.0` is the only release |
 | assignee, sprint | `assignees`; there are no sprints |
 
-If a Jira MCP server is ever configured, the same six checks run unchanged against JQL and structured fields; only this section changes.
+If a Jira MCP server is ever configured, the same seven checks run unchanged against JQL and structured fields; only this section changes.
 
 ## Query before reading
 
