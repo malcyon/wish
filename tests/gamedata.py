@@ -24,8 +24,8 @@ import pathlib
 import pytest
 
 from automap.paths import find_disks
-from por.d64 import D64, load_payload
-from por.geo import (
+from goldbox.d64 import D64, load_payload
+from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
     GRID,
@@ -115,7 +115,7 @@ def curse_disks(engine_only: bool = True):
     """Every readable Curse side, skipping when there are none.
 
     One of the three published rips carries error bytes and is 175531 bytes,
-    which `por.d64` refuses; that side is simply skipped rather than failed.
+    which `goldbox.d64` refuses; that side is simply skipped rather than failed.
 
     `engine_only` keeps the default to game sides, because a save disk matches
     the glob too and carries its own `SAVEAZURE`. Pass False to reach the save
@@ -277,7 +277,7 @@ PARTY_SLOTS = 6
 #: only reason this exists, so a value the record can hold beats a value a
 #: player would ever see.
 #:
-#: `hp_max` is two bytes (`por/layout.py` `0x076`), so 65535 rather than a
+#: `hp_max` is two bytes (`goldbox/layout.py` `0x076`), so 65535 rather than a
 #: three-digit total: capping it at 999 understated the window's floor by 14px,
 #: which is 1251 against 1265 at the base font and exactly the number #71 turns
 #: on. The roster's current-hit-points byte is one byte and 255 is its ceiling.
@@ -306,7 +306,7 @@ def _widest(strings) -> str:
 
 def _blank_disk() -> bytearray:
     """A formatted 35-track image with an empty directory."""
-    from por import d64
+    from goldbox import d64
     data = bytearray(d64.IMAGE_SIZE)
     bam = d64.sector_offset(d64.DIRECTORY_TRACK, d64.HEADER_SECTOR)
     data[bam], data[bam + 1] = d64.DIRECTORY_TRACK, d64.DIRECTORY_SECTOR
@@ -326,12 +326,12 @@ def _blank_disk() -> bytearray:
 def _disk_with(files) -> bytes:
     """An image carrying each `(name, prg)` pair as a closed PRG.
 
-    `por/d64.py` has no block allocator on purpose -- it only ever rewrites a
+    `goldbox/d64.py` has no block allocator on purpose -- it only ever rewrites a
     file over its own chain -- so the chain is laid down here: consecutive
     sectors from track 1, skipping the directory track. No 1541 would fill a
     disk in that order, and nothing that reads one cares.
     """
-    from por import d64
+    from goldbox import d64
     if len(files) > d64.ENTRIES_PER_DIR_SECTOR:
         raise ValueError("this builder writes one directory sector")
     data = _blank_disk()
@@ -379,12 +379,12 @@ def synthetic_party(game=None) -> bytes:
     strings it holds.
     """
     from editor.enums import class_bit_names
-    from por import games
-    from por.d64 import attach_load_address
-    from por.encoding import COMBAT_BIAS
-    from por.layout import NAME_SIZE
-    from por.record import CharacterRecord
-    from por.savegame import (
+    from goldbox import games
+    from goldbox.d64 import attach_load_address
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.layout import NAME_SIZE
+    from goldbox.record import CharacterRecord
+    from goldbox.savegame import (
         HEADER_SIZE,
         ROSTER_ARMOUR_CLASS,
         ROSTER_HP_CURRENT,
@@ -483,8 +483,8 @@ def synthetic_arena(fighters=((0, 25, 13), (8, 30, 13))) -> dict[int, bytes]:
     The party fighter must be an index the saved roster actually fills --
     `savedgame1.bin` holds one, at 0 -- or it has no record and is skipped.
     """
-    from por.encoding import COMBAT_BIAS
-    from por.savegame import (
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.savegame import (
         ROSTER_ARMOUR_CLASS,
         ROSTER_HP_CURRENT,
         ROSTER_MOVEMENT,

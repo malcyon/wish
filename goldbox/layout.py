@@ -7,7 +7,7 @@ derive from :data:`LAYOUT`.
 
 The C64 record is 580 bytes, stored uncompressed.  On disk it is preceded by
 a 2-byte little-endian PRG load address (``$6B00``); that header is *not* part
-of the record and is handled in :mod:`por.record`.
+of the record and is handled in :mod:`goldbox.record`.
 
 Adding a newly discovered field is a one-line edit: append a ``_field(...)``
 entry to :data:`_DECLARED`.  Every byte not covered by a declared entry is
@@ -101,7 +101,7 @@ class Kind(enum.Enum):
     #: `f.size` -- so this is the same machinery under an honest name, for the
     #: 24-bit experience total.
     UINT_LE = "uint_le"
-    #: Fixed-width, NUL-padded ASCII text (see :mod:`por.petscii`).
+    #: Fixed-width, NUL-padded ASCII text (see :mod:`goldbox.petscii`).
     ASCII_NUL = "ascii_nul"
     #: Opaque bytes, passed through untouched.
     RAW = "raw"
@@ -119,7 +119,7 @@ class Field:
         size: Width in bytes.
         kind: Encoding (:class:`Kind`).
         name: Python identifier.  Named fields become attributes on
-            :class:`por.record.CharacterRecord`.
+            :class:`goldbox.record.CharacterRecord`.
         label: Human-readable label for dumps and documentation.
         confidence: :class:`Confidence` level.
         note: Free-form evidence / observation text.
@@ -212,7 +212,7 @@ _DECLARED: Sequence[Field] = (
            "Ids are CONFIRMED against the game's own SPELLN00 table and "
            "against spells Donald memorised on purpose: 1 BLESS, 3 CURE LIGHT "
            "WOUNDS, 21 SLEEP. Cleric and magic-user ids fall in disjoint "
-           "ranges; see por/spells.py. The roster block's +0x03/+0x04/+0x05 "
+           "ranges; see goldbox/spells.py. The roster block's +0x03/+0x04/+0x05 "
            "were read as a per-level count of this list, because they matched "
            "it for all eight characters of npc_party.d64. That reading is "
            "RETRACTED: in PORSAVE4 they read 0/0/0 while this list is set, on "
@@ -244,9 +244,9 @@ _DECLARED: Sequence[Field] = (
            "six, i.e. spell id 0 does not exist.\n"
            "**Seven bytes is Pool of Radiance's width, not the engine's**, and "
            "the field stops here because seven is what this game reads and "
-           "what por/spells.py encodes. The later titles continue into "
+           "what goldbox/spells.py encodes. The later titles continue into "
            "spells_known_high at 0x07F; each title's width is "
-           "por.spells.SpellTable.spellbook_size, measured in that title's "
+           "goldbox.spells.SpellTable.spellbook_size, measured in that title's "
            "own code. docs/127-community-formats.md"),
     _field(0x07F, 9, _RAW, "spells_known_high", "Spellbook (high ids)", _OK,
            "the rest of the spellbook bitmask, for the titles whose spell list "
@@ -342,7 +342,7 @@ _DECLARED: Sequence[Field] = (
     _field(0x09A, 1, _U8, "save_paralysis", "Save vs para/poison/death", _OK,
            "fighter 14, cleric 10 -- both match the AD&D 1e L1 tables.\n"
            "All five saves at 0x09A-0x09E are now **derivable**, which "
-           "por/levels.py's docstring says they were not: the stored number is "
+           "goldbox/levels.py's docstring says they were not: the stored number is "
            "the class table row for the character's level in that class, taking "
            "the **best number in each column** across every class it holds, "
            "minus the AD&D constitution bonus (+1 per 3.5 points) when the "
@@ -546,7 +546,7 @@ _DECLARED: Sequence[Field] = (
            "the running effects are four 64-entry arrays in SAVEDGAME0 "
            "(docs/133-active-effects.md). The two share one code namespace, "
            "which is why one table names both. **The namespace is named**: "
-           "the DOS guide enumerates ids 1-127 and por/traits.py carries the "
+           "the DOS guide enumerates ids 1-127 and goldbox/traits.py carries the "
            "whole table, 44 of them CONFIRMED because a MON* record or a saved "
            "item carries the id on exactly the creature or item its meaning "
            "demands -- AHNKHEG 121 'anhkheg acid squirt', TROLL 100 and 101, "
@@ -667,7 +667,7 @@ _DECLARED: Sequence[Field] = (
            "twenty creatures match the Monster Manual: GHOUL 04 02 / 01 01 / "
            "03 06 is two 1d3 claws and a 1d6 bite, TROLL 04 02 / 01 02 / 04 06 "
            "/ 04 00 is two 1d4+4 claws and a 2d6 bite. A form with no damage "
-           "dice is not an attack. Decoded in por/monster.py; kept as one raw "
+           "dice is not an attack. Decoded in goldbox/monster.py; kept as one raw "
            "block here because the character sheet has no use for eight "
            "separate monster fields.\n"
            "This region read UNKNOWN for a long while on a note recording the "
@@ -793,7 +793,7 @@ _DECLARED: Sequence[Field] = (
            "roster +0x10 the armour bonus, then +0x11 to +0x18 the **current "
            "attack form** -- the running copy of attack_forms at 0x0D9, in the "
            "engine's own order: two attack counts, two dice counts, two die "
-           "sizes, two damage bonuses. All decoded in por/savegame.py, and "
+           "sizes, two damage bonuses. All decoded in goldbox/savegame.py, and "
            "kept RAW here because the roster is the place to read them.\n"
            "The die-size byte is +0x15, which this project called EQUIPMENT "
            "for a long time because it 'rises with what is readied'. It does: "
@@ -804,7 +804,7 @@ _DECLARED: Sequence[Field] = (
            "the ITEMS table entry of the item each of them had equipped.\n"
            "The first byte does NOT line up with DOS: DOS spends it on armour "
            "class from behind and the C64 on the armour bonus, 48 + bonus, "
-           "which por/savegame.py established by putting armour on (none 48, "
+           "which goldbox/savegame.py established by putting armour on (none 48, "
            "leather 50, banded 54, the AD&D bonuses exactly, and unmoved by a "
            "shield). Read the C64 byte the DOS way and those become 12, 10 and "
            "6, two worse than each armour's real class and meaning nothing. "
@@ -834,14 +834,14 @@ _DECLARED: Sequence[Field] = (
            "7, two others 4) and zero on every level-1 one. Zero in every "
            "Pool of Radiance player specimen"),
     _field(0x120, 256, _RAW, "inventory", "Items carried", _OK,
-           "sixteen item slots of sixteen bytes, which is por/items.py's "
+           "sixteen item slots of sixteen bytes, which is goldbox/items.py's "
            "ITEM_SIZE and ITEMS_PER_CHARACTER and the same 16 x 16 page the "
            "save file gives each character at $5900 + slot * $100. The "
            "shopping trip decoded the slot format field by field; slot +0 zero "
            "means empty, +4 is the plus and +10 the quantity. Pinning the "
            "extent here matters because it leaves 0x11C-0x11F **outside** the "
            "item area and outside the roster block, which ends at 0x11B -- four "
-           "bytes still unaccounted for. Kept RAW because por/items.py is where "
+           "bytes still unaccounted for. Kept RAW because goldbox/items.py is where "
            "an item is read"),
     _field(0x220, 36, _RAW, "region_220", "unknown @0x220 (record tail)", _NOPE,
            "E4 A0 02 6B 04 05 06 07 08 20 A0 0B 20 0D E9 06 10 11 00 0F 08 0E"

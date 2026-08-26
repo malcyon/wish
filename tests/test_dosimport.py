@@ -1,4 +1,4 @@
-"""File > Import > DOS save: the window over `por/dos.py`'s converter.
+"""File > Import > DOS save: the window over `goldbox/dos.py`'s converter.
 
 The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
 the one thing a menu can get wrong that a command line cannot: **the losses
@@ -20,7 +20,7 @@ import pytest
 from gamedata import disk_path
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import dos, dos_savegame
+from goldbox import dos, dos_savegame
 
 # `PORSAVE11` stands in New Phlan, which is where the archives' slot A party
 # stands; `PORSAVE13` stands in the Slums. Since the loaded-files cache was

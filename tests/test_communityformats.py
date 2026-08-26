@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import pytest
 
-from por import items, levels, spells
-from por.record import CharacterRecord
-from por.savegame import SaveGame0
+from goldbox import items, levels, spells
+from goldbox.record import CharacterRecord
+from goldbox.savegame import SaveGame0
 from tests.gamedata import FIXTURES, game_disk, game_file
 
-# --- offsets under test, all from por.layout ---------------------------------
+# --- offsets under test, all from goldbox.layout ---------------------------------
 CASTABLE = 0x0EE          # three used bytes, three spare
 MEMORISED = 0x020
 SAVES = 0x09A
@@ -35,7 +35,7 @@ PER_CLASS_LEVEL = 0x0C9   # indexed by class_bits bit number
 #: 6 half-orc, 7 human.
 STURDY_RACES = {1, 3, 5}
 
-#: Which `por.levels` table each bit of `class_bits` names.
+#: Which `goldbox.levels` table each bit of `class_bits` names.
 CLASS_BIT_TABLE = {0: "magic-user", 1: "cleric", 2: "thief", 3: "fighter"}
 
 
@@ -76,7 +76,7 @@ def _constitution_bonus(constitution: int) -> int:
 
 
 # --- saving throws -----------------------------------------------------------
-# por/levels.py used to say its saving-throw columns "cannot be compared to a
+# goldbox/levels.py used to say its saving-throw columns "cannot be compared to a
 # record" because the modifiers were not understood. They are: best column
 # across the character's classes, less the racial constitution bonus.
 
@@ -226,7 +226,7 @@ def test_weapon_flags_decode_as_a_bitfield(item_types):
 
 
 def test_armour_protection_uses_the_sixty_minus_bias(item_types):
-    """`60 - (byte & 0x7F)` and por.items' `12 - low nibble` are one rule.
+    """`60 - (byte & 0x7F)` and goldbox.items' `12 - low nibble` are one rule.
 
     The community document gives `10 - (60 - (AC & 127))`, which is this list
     reversed and would make leather better than plate. The nine armour records

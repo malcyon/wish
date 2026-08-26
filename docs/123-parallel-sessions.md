@@ -293,7 +293,7 @@ Small, as the premise claimed. Six existing files, one new one.
 | `tools/instance.py` | **new** — claim, release, reap, seed a `vicerc`, and a `main()` so a shell script can claim a slot too | ~150 lines |
 | `tests/test_instance.py` | **new** — allocation, contention, reap's table, `vicerc` seeding. All of it is files and flocks, so none of it needs VICE | 26 tests |
 
-Roughly **270 new lines and 50 changed**, and nothing in `por/`, `editor/`,
+Roughly **270 new lines and 50 changed**, and nothing in `goldbox/`, `editor/`,
 `ui/` or `designer/` is touched. `wish/backends.py` needs no structural change
 at all: `Backend.connect=ViceTarget` picks up the new default because
 `ViceTarget` already forwards `port=None` to `Monitor`'s default.
@@ -429,7 +429,7 @@ Neither is about the emulator, and no number of instances helps:
 * **Differential experiments.** "Change exactly one thing, then diff" *is* the
   method. Two experiments running at once destroy the attribution that makes
   either result mean anything, however many emulators they have.
-* **`por/layout.py` has exactly one owner at a time.** It is the single source
+* **`goldbox/layout.py` has exactly one owner at a time.** It is the single source
   of truth for every field offset, and it asserts that all 580 bytes are
   accounted for; several agents appending to it independently fragment the
   schema and reintroduce the drift the table exists to prevent.
@@ -510,7 +510,7 @@ written, and step 0 was the whole thing:**
 | 1 | A DOS save of a known party | **Found**, in the same tree: a real played DOS Pool of Radiance party in three slots (`A`, `B`, `J`), `A` and `B` being the same party at two moments. 24 specimens in all |
 | 2 | `dosbox-staging` installed | still not installed here. One package. Recommending, not provisioning |
 | 3 | Check the community record layout against a real file | **Done.** `work/reports/dos-saves.md`: **every prediction in `117` survived**, the record is 285 bytes, and the money block, spellbook, per-class array and class bitmask are all CONFIRMED against 24 specimens |
-| 4 | `por/dos_layout.py`, declarative, confidence per field | `117` order of work, step 2 |
+| 4 | `goldbox/dos_layout.py`, declarative, confidence per field | `117` order of work, step 2 |
 | 5 | Stand on a known square in both ports, read `$4BC2` / `$49C0` and the DOS equivalents | `117` obstacle 2 — and this one really does want DOSBox |
 | 6 | Item and spell numbering agreement | `117` obstacle 3. Partly answered statically: `ITEMS` is **126 of 128 records byte-identical** between the two ports, and spell ids 1–56 match — but DOS continues to 67 with item-invoked effects where the C64 continues with combat message fragments, so a DOS memorised-spell byte in 57–67 has no C64 id |
 

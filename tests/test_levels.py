@@ -9,11 +9,11 @@ import pathlib
 import pytest
 from gamedata import disk_dir
 
-from por import levels
-from por.d64 import D64
-from por.levels import TABLES, at_level, next_threshold, progress
-from por.record import CharacterRecord
-from por.savegame import SaveGame0
+from goldbox import levels
+from goldbox.d64 import D64
+from goldbox.levels import TABLES, at_level, next_threshold, progress
+from goldbox.record import CharacterRecord
+from goldbox.savegame import SaveGame0
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -102,7 +102,7 @@ def test_the_modifier_that_made_two_level_one_fighters_differ():
 
 
 # --- the game's own tables, re-expanded off the player's GEN -----------------
-# `por/levels.py` writes its rows out longhand because a row is what a reader
+# `goldbox/levels.py` writes its rows out longhand because a row is what a reader
 # wants; the game stores them compressed. These read `GEN` off whichever POOL
 # disk carries it and rebuild every table, so a typo in the longhand form fails
 # here rather than in somebody's save. Skips without the disks.
@@ -266,7 +266,7 @@ def test_only_pool_of_radiances_trainer_has_been_measured():
     which is right for a spell name and wrong for writing a record -- so a
     writer asks `trainer_measured`, which does not fall back.
     """
-    from por import games
+    from goldbox import games
 
     assert levels.trainer_measured() is True             # None is the default
     assert levels.trainer_measured(games.POOL_OF_RADIANCE)

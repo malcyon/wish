@@ -132,7 +132,7 @@ napoleon_use_ivar = True
 default_role = "literal"
 
 # The knowledge base links to files that are not documents (LICENSE, source
-# under por/, GitHub URLs); myst resolves what it can and the rest are plain
+# under goldbox/, GitHub URLs); myst resolves what it can and the rest are plain
 # links.
 myst_heading_anchors = 3
 suppress_warnings = ["myst.header", "myst.xref_missing", "autosummary"]

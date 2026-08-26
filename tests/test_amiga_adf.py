@@ -1,4 +1,4 @@
-"""`por.amiga_adf` -- the Amiga filesystem, read and written (#36).
+"""`goldbox.amiga_adf` -- the Amiga filesystem, read and written (#36).
 
 The reader is checked against **the player's own disks**, because a
 filesystem reader that agrees with itself proves nothing: every real Amiga
@@ -27,7 +27,7 @@ import struct
 
 import pytest
 
-from por.amiga_adf import (
+from goldbox.amiga_adf import (
     BLOCK_SIZE,
     HASH_TABLE_SIZE,
     OFS_DATA_SIZE,

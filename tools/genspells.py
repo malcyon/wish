@@ -10,8 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from por import d64  # noqa: E402
-from por.spells import (  # noqa: E402
+from goldbox import d64  # noqa: E402
+from goldbox.spells import (  # noqa: E402
     LAST_SPELL,
     SPELL_GROUPS,
     SPELL_RESTORATION,
@@ -35,7 +35,7 @@ def main() -> int:
     w("")
     w("A character's memorised spells are a packed list of these ids at record")
     w("offset `0x020`, highest spell level first. The file format is described")
-    w("in `por/spells.py`; the short version is that the strings **overlap** —")
+    w("in `goldbox/spells.py`; the short version is that the strings **overlap** —")
     w("`CURE LIGHT WOUNDS` and `CAUSE LIGHT WOUNDS` share one copy of")
     w("` LIGHT WOUNDS` — so the table has to be read through its pointers.")
     w("")

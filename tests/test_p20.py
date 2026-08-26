@@ -1,7 +1,7 @@
 """P20: where a warp lands a party in an area with no arrival square.
 
 Fourteen of the thirty areas have no arrival square harvested from the scripts,
-and for those `Warp` picks one off the `GEO` with `por.areas.landing_square`.
+and for those `Warp` picks one off the `GEO` with `goldbox.areas.landing_square`.
 The rule that used to ship took the first square with any passable edge;
 driving the game found what that came to (`work/reports/p20-arrivals.md`), and
 what is testable without an emulator is the geometry underneath it, which is
@@ -15,8 +15,8 @@ from __future__ import annotations
 import pytest
 from gamedata import game_file
 
-from por import areas
-from por.geo import GRID, Geo
+from goldbox import areas
+from goldbox.geo import GRID, Geo
 
 #: Every map on the disks, once, with the area that loads it.
 MAPS = sorted({g for a in areas.AREAS for g in a.geos})
@@ -52,7 +52,7 @@ def first_passable(g: Geo) -> tuple[int, int, int] | None:
 
 def test_fourteen_areas_have_no_arrival_square():
     """Area 21 used to be the fifteenth: P20 found Sokol Keep's square in
-    `ECL15`'s own bytecode and `por/areas.py` carries it now."""
+    `ECL15`'s own bytecode and `goldbox/areas.py` carries it now."""
     assert NO_ARRIVAL == (3, 4, 5, 8, 9, 11, 15, 19, 20, 25, 26, 27, 29, 30)
     assert areas.AREAS_BY_ID[21].arrival == areas.Arrival(8, 14, 0)
 

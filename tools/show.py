@@ -15,12 +15,12 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from por import layout
-from por.d64 import D64
-from por.items import items_for_slot, load_item_names
-from por.layout import Confidence
-from por.record import RECORD_SIZE, CharacterRecord
-from por.savegame import SaveGame0
+from goldbox import layout
+from goldbox.d64 import D64
+from goldbox.items import items_for_slot, load_item_names
+from goldbox.layout import Confidence
+from goldbox.record import RECORD_SIZE, CharacterRecord
+from goldbox.savegame import SaveGame0
 
 RACES = {1: "dwarf", 2: "elf", 3: "gnome", 4: "half-elf",
          5: "halfling", 6: "half-orc", 7: "human", 8: "monster"}

@@ -25,11 +25,11 @@ import statistics
 import pytest
 import yaml
 
-from por import games, geo
-from por import spells as por_spells
-from por.d64 import D64, split_load_address
-from por.savegame import SaveGameError, load_save
-from por.yaml_io import ValueError_, export_save, import_into, to_yaml
+from goldbox import games, geo
+from goldbox import spells as por_spells
+from goldbox.d64 import D64, split_load_address
+from goldbox.savegame import SaveGameError, load_save
+from goldbox.yaml_io import ValueError_, export_save, import_into, to_yaml
 from tests import gamedata
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
@@ -261,7 +261,7 @@ def test_the_curse_export_and_the_editor_agree_about_the_spellbook(tmp_path):
     the width is asserted against `GEN` and `CAMP` further down. The cleric
     knows 23.
     """
-    from por.spells import spellbook_raw, spells_known
+    from goldbox.spells import spellbook_raw, spells_known
 
     src = _copy(_curse_party_disk(), tmp_path)
     _, sg0, _ = load_save(D64.open(src))
@@ -697,7 +697,7 @@ def test_a_curse_character_export_round_trips_byte_for_byte():
     the directory reports as **zero blocks**, which is why finding it at all
     took a fix to `tests/gamedata.py:curse_file`.
     """
-    from por.record import CharacterRecord
+    from goldbox.record import CharacterRecord
     exports = gamedata.curse_exports()
     if not exports:
         pytest.skip("no Curse character export on the player's disks")
@@ -741,7 +741,7 @@ def test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte():
     So the icon editor's charset needs no per-title anything for this title;
     Silver Blades redraws three glyphs and that is the whole family's variation.
     """
-    from por.icons import load_icon_charset
+    from goldbox.icons import load_icon_charset
 
     por = load_icon_charset(str(gamedata.game_disk("POOL1")))
     seen = 0
@@ -761,8 +761,8 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
     an icon raised `IndexError` -- so the parts picker could not be opened on
     this title at all.
     """
-    from por.iconparts import IconParts
-    from por.icons import ICON_COUNT, ICON_SIZE
+    from goldbox.iconparts import IconParts
+    from goldbox.icons import ICON_COUNT, ICON_SIZE
 
     parts = IconParts.load(str(_curse_disk_with(b"SPELLE64")))
     assert parts.base == 0x8E00
@@ -798,7 +798,7 @@ def test_every_shipped_curse_icon_is_a_weapon_and_a_head():
 
 def test_curses_item_lists_still_carry_the_file_in_their_name():
     """`ITEMFILE01`, not Silver Blades' `ITEM10` -- and `ITEMS` is neither."""
-    from por.items import is_item_list
+    from goldbox.items import is_item_list
 
     stems = {bytes(e.name).upper()
              for disk in gamedata.curse_disks() for e in disk.directory()}
@@ -844,14 +844,14 @@ def _grant_table(payload: bytes, record_offset: int):
 
 
 def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
-    """`por/spells.py`'s Curse cleric groups were inferred from the names.
+    """`goldbox/spells.py`'s Curse cleric groups were inferred from the names.
     This is the game's own table saying the same thing.
 
     It also carries an AD&D check of its own: the levels at which a new spell
     level appears are 1, 3, 5, 7 and 9, which is the 1st edition cleric
     progression exactly.
     """
-    from por.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
+    from goldbox.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
 
     grants = _grant_table(_curse_file(b"GEN"), 0xCA)      # 0x0CA, cleric level
     expected = {}
@@ -864,7 +864,7 @@ def test_curses_cleric_spell_groups_are_read_out_of_gens_own_grant_table():
     assert sorted(got_new) == [1, 3, 5, 7, 9], sorted(got_new)
     for spell_level, (game_level, ids) in enumerate(sorted(got_new.items()), 1):
         want = expected[spell_level]
-        # Everything the trainer grants is inside the group `por/spells.py`
+        # Everything the trainer grants is inside the group `goldbox/spells.py`
         # claims -- that is the direction that matters. Two ids the group
         # claims are never granted: 36 ANIMATE DEAD and 100 BESTOW CURSE, both
         # of which a player meets on a scroll rather than at a temple.
@@ -921,7 +921,7 @@ def test_camp_reads_curses_mask_as_far_as_spell_one_hundred():
     mask is seven bytes. A copy wider than the field says nothing about the
     field, so both are asserted together.
     """
-    from por.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
+    from goldbox.spells import CURSE_OF_THE_AZURE_BONDS as TABLE
 
     assert TABLE.spellbook_size == 13
 

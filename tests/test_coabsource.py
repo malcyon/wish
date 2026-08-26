@@ -30,8 +30,8 @@ import re
 import pytest
 from gamedata import curse_dir, disk_dir
 
-from por.d64 import D64, load_payload
-from por.spells import load_spell_names, spellbook_bytes
+from goldbox.d64 import D64, load_payload
+from goldbox.spells import load_spell_names, spellbook_bytes
 
 # --- the STING negative ------------------------------------------------------
 

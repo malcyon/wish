@@ -18,7 +18,7 @@ Byte offset of (track, sector) = `(sum of sector counts for tracks 1..track-1 + 
 
 ## Six variants, and only one of them writable
 
-`por/d64.py` accepts **six** sizes and refuses anything else — a size we cannot name is a
+`goldbox/d64.py` accepts **six** sizes and refuses anything else — a size we cannot name is a
 file we cannot claim to understand. Tracks 1–35 sit at the same offsets in every variant,
 which is why a 40-track image is readable by code that only knows about 35.
 
@@ -100,7 +100,7 @@ stale bytes in the tail, which is correct 1541 behaviour and not a bug.
 
 ## A second opinion on a disk
 
-`por/d64.py` is the reader this project uses, but VICE ships the reference tool and the
+`goldbox/d64.py` is the reader this project uses, but VICE ships the reference tool and the
 Flatpak will run it: `flatpak run --command=c1541 net.sf.VICE`. It reaches `/mnt/media` and
 `$HOME` (the Flatpak grants `filesystems=home`), so a `list`, `extract` or `validate` on any
 image here is one command away when a parse looks wrong.

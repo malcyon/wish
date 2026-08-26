@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from por.geo import (
+from goldbox.geo import (
     DIRECTIONS,
     EAST,
     GRID,

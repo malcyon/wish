@@ -150,7 +150,7 @@ and [the combat research](50-experiments.md).
 
 Nothing outside combat should read slots 8–11. A monster loaded there carries
 seven of the eight `$FF` residue bytes, so it reads as a half-marked NPC.
-`SLOT_COUNT` in `por/savegame.py` is deliberately **8** — the party, which the
+`SLOT_COUNT` in `goldbox/savegame.py` is deliberately **8** — the party, which the
 game enforces at six player characters and eight total.
 
 ### Correction: this was previously recorded as 6 slots of `$400`
@@ -211,7 +211,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$4900`, `$4940`, `$4980`, `$4B80` | the four active-effect arrays — see [`133-active-effects.md`](133-active-effects.md), which is where they are maintained |
 
 Established by walking three steps north and three steps west and diffing: each
-leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`
+leg moved one coordinate by exactly 3 and left the other alone. `goldbox/savegame.py`
 exposes all of it as `SaveGame0.party`. Two header bytes that moved only on
 leaving the inn, `$4A07` and `$4BC6`, are still unexplained.
 
@@ -226,7 +226,7 @@ change and everything from `$4A20` to `$4AF8` survives. `work/reports/quest-flag
 attributes 172 of those addresses to the scripts that write them, and a DOS guide
 published since names 229 of them in English —
 see [`128-guide-and-scripting.md`](128-guide-and-scripting.md), where merging the
-two is named as a cheap job for whoever next touches `por/commissions.py`.
+two is named as a cheap job for whoever next touches `goldbox/commissions.py`.
 
 ### Other header bytes
 
@@ -299,7 +299,7 @@ self-checking against `docs/20-character-record.md`.
 
 | Offset | Field | Confidence | Notes |
 |---|---|---|---|
-| `+0x00` | in use | PROBABLE | `roster_in_use` in `por/layout.py`. 1 in every occupied block; a fourth source calls the DOS field at the aligned offset a status enum, which weakens rather than strengthens the case. One specimen reading other than 1 settles it |
+| `+0x00` | in use | PROBABLE | `roster_in_use` in `goldbox/layout.py`. 1 in every occupied block; a fourth source calls the DOS field at the aligned offset a status enum, which weakens rather than strengthens the case. One specimen reading other than 1 settles it |
 | `+0x03` | spells memorised, **1st level** | PROBABLE | see below |
 | `+0x04` | spells memorised, **2nd level** | PROBABLE | |
 | `+0x05` | spells memorised, **3rd level** | PROBABLE | |
@@ -362,7 +362,7 @@ memorising at two different spell levels. See
 | `0x078`-`0x07E` | a bitmask of the spells the character **knows** |
 
 How many a character *may* memorise is not stored anywhere we have found; it
-follows from class, level and Wisdom, and `por/spells.py` computes it from the
+follows from class, level and Wisdom, and `goldbox/spells.py` computes it from the
 AD&D 1st edition tables.
 
 ### THAC0 sits next to armour class, in the same encoding
@@ -432,7 +432,7 @@ offset, which is an alignment and not a measurement.
 What separates them: **a non-armour source of armour class** — a ring or bracers
 of protection readied on a character. "The armour's own bonus" predicts the byte
 does not move; "armour class from behind" predicts it does. Nobody has tried it,
-and `por/savegame.py` keeps the name it measured.
+and `goldbox/savegame.py` keeps the name it measured.
 
 ### What the rest of the block is not
 
@@ -520,7 +520,7 @@ minus the dexterity adjustment and nothing else:
 BRUTUS has DEX 14 and was the only character in the party who did, so the
 one-point gap looked like something about *him*. It was about the table. With
 the corrected table every character in every save comes out consistent, and
-`por/derive.py` uses it.
+`goldbox/derive.py` uses it.
 
 The penalties for low dexterity are still the book's, because no specimen has a
 dexterity below 12. If the whole table is shifted by one they are wrong too, and

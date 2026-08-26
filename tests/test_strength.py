@@ -1,4 +1,4 @@
-"""Party strength: `DUNGEON $1BE8`, re-implemented in `por/strength.py`.
+"""Party strength: `DUNGEON $1BE8`, re-implemented in `goldbox/strength.py`.
 
 The routine is what sizes a random encounter -- its value becomes the count
 operand of `LOADMON` in twelve area scripts -- so what is tested here is every
@@ -18,8 +18,8 @@ import pytest
 from gamedata import FIXTURES, disk_dir
 
 from automap.target import MemoryTarget
-from por import strength
-from por.savegame import HEADER_SIZE, ROSTER_STRIDE, SLOT_STRIDE
+from goldbox import strength
+from goldbox.savegame import HEADER_SIZE, ROSTER_STRIDE, SLOT_STRIDE
 
 
 def captured() -> tuple[bytearray, bytearray]:
@@ -64,7 +64,7 @@ def test_the_save_disks_give_the_numbers_the_experiment_recorded(disk, expected)
     115 -> 11 and 130 -> 13, with MALCYON 27 and BRUTUS 26 in the second. This
     is the whole of `docs/114-party-strength.md` checked end to end.
     """
-    from por.d64 import D64, load_payload
+    from goldbox.d64 import D64, load_payload
 
     path = pathlib.Path(disk_dir()) / f"{disk}.D64"
     if not path.exists():

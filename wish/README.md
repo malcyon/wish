@@ -3,7 +3,7 @@
 The application that wraps the other two — the tabbed window, preferences, the
 debug log, the backend session, the CLI entry point. The direction of the
 imports is the point: `wish` may import both `editor/` and `automap/`, `editor`
-imports neither, and `por/` stays transport-free.
+imports neither, and `goldbox/` stays transport-free.
 
 `wish/_version.py` is not listed below: it is written at build time by
 hatch-vcs and is gitignored.

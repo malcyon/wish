@@ -51,8 +51,8 @@ from automap.area import (
 from automap.state import Automapper
 from automap.target import MemoryTarget
 from automap.window import WRONG_GAME
-from por import games
-from por.geo import (
+from goldbox import games
+from goldbox.geo import (
     ATTRIBUTES,
     BARRIERS,
     GEO_SIZE,
@@ -67,7 +67,7 @@ POOL = games.POOL_OF_RADIANCE.title
 CURSE = games.CURSE_OF_THE_AZURE_BONDS.title
 SILVER = games.SECRET_OF_THE_SILVER_BLADES.title
 
-#: The fourth Realms title, which `por/games.py` has no descriptor for because
+#: The fourth Realms title, which `goldbox/games.py` has no descriptor for because
 #: **the C64 never got it** (`docs/138` §0). It can only ever reach the window
 #: as a title somebody typed, so what matters is that a title with no
 #: descriptor behind it is guarded exactly like one that has.
@@ -406,7 +406,7 @@ def test_the_debug_log_carries_what_the_message_does_not(ours, theirs, caplog,
 # --- the thresholds, against real game data ----------------------------------
 
 def _maps_on(where, patterns) -> dict[str, bytes]:
-    from por.d64 import D64
+    from goldbox.d64 import D64
     out: dict[str, bytes] = {}
     for pattern in patterns:
         for path in sorted(pathlib.Path(where).glob(pattern)):
@@ -429,7 +429,7 @@ def _maps_on(where, patterns) -> dict[str, bytes]:
 
 def _pages_on(where, patterns):
     """Every aligned 1024-byte page of every file that is not a map."""
-    from por.d64 import D64
+    from goldbox.d64 import D64
     for pattern in patterns:
         for path in sorted(pathlib.Path(where).glob(pattern)):
             try:

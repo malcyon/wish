@@ -31,8 +31,8 @@ the starting purse. See [116-second-game.md](116-second-game.md) §2.2 and
 offset.
 
 **So the first hour on a new title is not analysis, it is aiming the existing
-decoders at it.** Point `por/record.py`, `por/geo.py`, `por/items.py` and
-`por/savegame.py` at the new game's disks and record what round-trips, what
+decoders at it.** Point `goldbox/record.py`, `goldbox/geo.py`, `goldbox/items.py` and
+`goldbox/savegame.py` at the new game's disks and record what round-trips, what
 decodes to sane values, and what does not. What fails is your work list;
 everything else is done. Assume the format transfers and make the game disprove
 it — the opposite assumption cost this project a re-derivation it did not need.
@@ -54,8 +54,8 @@ Assume the left column; re-measure the right one every time.
 | Base versus current: the record holds base values, the roster block the derived current ones | — | [30-savegame-layout.md](30-savegame-layout.md) |
 | The biased encodings — `60 - value`, `48 + value`, `12 - AC` | — | [30-savegame-layout.md](30-savegame-layout.md), [20-character-record.md](20-character-record.md) |
 | Classes 0-based, `class_bits` at `0x0EB` the field to prefer; the per-class level array eight wide at `0x0C9` | Which classes the title implements inside those eight slots, and what slot 4 is called (druid in the Realms titles, knight in the Krynn ones) | [20-character-record.md](20-character-record.md) `level_knight` |
-| The race byte at `0x072` is a code | **The table it indexes.** Silver Blades drops half-orc and human becomes 6; the Krynn titles are 0-based | `por/games.py`, one list per title |
-| Save container geometry, payload-relative | The payload's **base** — but only three values across six titles | `por/games.py`; [116](116-second-game.md), [121](121-silver-blades.md) |
+| The race byte at `0x072` is a code | **The table it indexes.** Silver Blades drops half-orc and human becomes 6; the Krynn titles are 0-based | `goldbox/games.py`, one list per title |
+| Save container geometry, payload-relative | The payload's **base** — but only three values across six titles | `goldbox/games.py`; [116](116-second-game.md), [121](121-silver-blades.md) |
 | The spellbook mask is indexed `0x078 + (id >> 3)` and its declared extent is `0x078`-`0x087` | **How many of those bytes a title actually reads** — 7, 13 and 16 for Pool of Radiance, Curse and Silver Blades, each measured in that title's own code | [20-character-record.md](20-character-record.md) `spells_known_high` |
 | `GEO` maps: 1024 bytes, four 256-byte planes, 16×16, `x + (y << 4)` | Which `GEO` file is which area — always local, always earned | [88-map-files.md](88-map-files.md) |
 | `GEO` ids are **not a range**. Enumerate by directory scan | Which ids a title uses; Silver Blades' high nibble is the disk side | [138-multiple-games.md](138-multiple-games.md) §2 |
@@ -161,7 +161,7 @@ anywhere, and it survives only as code.
 Every claim carries `CONFIRMED`, `PROBABLE`, `GUESS` or `UNKNOWN`, and the label
 is part of the claim. The definitions are in
 [20-character-record.md](20-character-record.md), which generates them from
-`por/layout.py`.
+`goldbox/layout.py`.
 
 **A wrong `CONFIRMED` is worse than an honest `UNKNOWN`.** An `UNKNOWN` invites
 work; a wrong `CONFIRMED` stops it, and it propagates into the generated docs,
@@ -183,7 +183,7 @@ Four working rules the log paid for:
   training hall" was four runs of one wrong assumption, not four pieces of
   evidence — and the wedge did not exist
   ([70-driving-the-game.md](70-driving-the-game.md)).
-* **Make the table tile the whole record.** `por/layout.py` asserts at import
+* **Make the table tile the whole record.** `goldbox/layout.py` asserts at import
   time that every one of the 580 bytes belongs to exactly one entry, gaps
   included. That makes an edit byte-exact by construction, makes overlaps
   impossible to introduce silently, and makes the coverage figure generated
@@ -199,7 +199,7 @@ survive the round trip.
 ## Finding live data when you do not know the addresses
 
 **Start from the assumption that the addresses are wrong.** Every absolute
-address in `por/memory.py` is Pool of Radiance's. Curse shifts the save image by
+address in `goldbox/memory.py` is Pool of Radiance's. Curse shifts the save image by
 `$200` and moves the roster into the same file; nothing promises the next title
 is as tidy.
 
@@ -342,11 +342,11 @@ artefact before moving on.
 
 | # | Do | Produces |
 |---|---|---|
-| 1 | Locate the player's disks behind an env var; accept only a size `por/d64.py` names | a disk finder, and a skip path for machines without the game |
+| 1 | Locate the player's disks behind an env var; accept only a size `goldbox/d64.py` names | a disk finder, and a skip path for machines without the game |
 | 2 | List every directory entry and walk the chains by link, terminating on **track 0 only** | full file inventory. Ignore a zero block count — it is not an empty file |
 | 3 | Group by stem; record size, uniformity and PRG load address per family | candidate families: uniform size = fixed-size records or maps |
 | 4 | Compute Shannon entropy per byte per family | the triage order |
-| 5 | Run one exported character through `por.record` unchanged | either 580 bytes of free layout, or a precise list of what moved |
+| 5 | Run one exported character through `goldbox.record` unchanged | either 580 bytes of free layout, or a precise list of what moved |
 | 6 | Diff that export against the same character inside a save | the slot size, and which record blocks the save splits out |
 | 7 | Read the save's PRG load address; try Pool of Radiance's geometry at that base | header size, slot base, item area, roster location |
 | 8 | Make **two saves differing by one deliberate act** — one step, one purchase, one wound | party position, clock, the field you moved |
@@ -404,7 +404,7 @@ prediction that held gets promoted and names the second corroboration; a
 prediction that failed becomes *check, do not assume* with the counterexample
 cited by offset — **that is the most valuable outcome and should be treated as a
 success**; a step that cost far more or less than budgeted reorders the phases
-above; a constant that differed goes in `por/games.py`, not in prose.
+above; a constant that differed goes in `goldbox/games.py`, not in prose.
 
 **A finding is not closed until this page reads differently, or has been
 deliberately left alone with a line in [50-experiments.md](50-experiments.md)

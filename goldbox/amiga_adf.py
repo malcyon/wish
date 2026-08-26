@@ -10,7 +10,7 @@ overwriting an existing file's bytes, so a player could not be handed a disk
 with their party on it -- which is the only form the result is useful in.
 
 No transport, no Qt, no emulator: bytes in and bytes out, the same contract as
-the rest of `por/`.
+the rest of `goldbox/`.
 
 What was measured rather than looked up
 ---------------------------------------

@@ -16,7 +16,7 @@ import os
 import pytest
 
 from automap import paths
-from por import games
+from goldbox import games
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
 POOL = games.POOL_OF_RADIANCE
@@ -274,7 +274,7 @@ def test_the_map_says_where_the_party_is_not_which_file_it_came_from():
     """
     from gamedata import synthetic_geo
 
-    from por.geo import Geo
+    from goldbox.geo import Geo
     from wish.window import WishWindow
     win = WishWindow(maps={"GEO00": Geo(synthetic_geo())})
     try:

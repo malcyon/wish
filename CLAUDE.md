@@ -151,7 +151,7 @@ for writing.
 `git clean` against a file in this repository.** Several agents share one
 working tree, so a revert is never local to the agent doing it: it discards
 whatever anybody else has uncommitted, silently and unrecoverably. That is how
-580 lines of `por/amiga.py` went on 2026-08-26 -- a reviewer undoing a
+580 lines of `goldbox/amiga.py` went on 2026-08-26 -- a reviewer undoing a
 throwaway edit of its own.
 
 To test whether a change is load-bearing, **copy the file aside and copy it
@@ -871,7 +871,7 @@ Comment the *why*, and only when it is not obvious. A field note that carries
 evidence — "10 for every player character; monsters carry their real AC here" —
 earns its lines. Restating the code does not.
 
-`por/layout.py` is the exception: its notes are the field documentation and are
+`goldbox/layout.py` is the exception: its notes are the field documentation and are
 generated into `docs/20-character-record.md`. They can be long. Run
 `python3 tools/gendocs.py` after touching them.
 

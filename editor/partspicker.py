@@ -5,7 +5,7 @@ about 10^43 icons, of which some thousands are ones the game can make and the
 rest are nonsense -- and it was possible to build a figure with two heads and no
 legs and have the editor call it fine.
 
-`por/iconparts.py` carries the real model, read out of `SPELLE64`/`SPELLN64`.
+`goldbox/iconparts.py` carries the real model, read out of `SPELLE64`/`SPELLN64`.
 This is the dialog over it: two lists, each entry rendered as the icon you would
 end up with, so you pick a result rather than a number.
 
@@ -31,8 +31,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por.iconparts import IconParts
-from por.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
+from goldbox.iconparts import IconParts
+from goldbox.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
 
 from .palette import colour
 

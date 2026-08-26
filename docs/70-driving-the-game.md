@@ -149,7 +149,7 @@ trainer asks; the party then stands at `7,2` in the ordinary move mode.
 **What is being loaded is area 11, `ECL0B`, the training hall** — square `(6,2)`
 in `GEO00` carries script id 10, and `ECL00`'s `ONGOTO` sends id 10 to a handler
 ending in `NEWECL 11`. It was long labelled "the arena" here and in
-`por/areas.py`; `ECL0B` also prints `WE TRAIN ONLY <class> HERE. DO YOU WANT TO
+`goldbox/areas.py`; `ECL0B` also prints `WE TRAIN ONLY <class> HERE. DO YOU WANT TO
 TRAIN?` at `$A0DD`, and both DOS sources name script 11 the training hall.
 `7,2` itself carries script id 14, which `ECL00` sends to a handler that does
 nothing — so a driver told to "go to `7,2`" and press keys there will wait for
@@ -200,7 +200,7 @@ Bitmap screens cannot be read as text — use a screenshot.
 
 **Menu selection is a colour, not a character.** The highlighted row is drawn in
 white (colour 1), the rest green (colour 5). Colour RAM is always at `$D800`
-regardless of VIC bank. `por`-side helpers read it to find the highlight, then
+regardless of VIC bank. `goldbox`-side helpers read it to find the highlight, then
 press Up/Down the right number of times and Return. That is far more robust than
 counting rows.
 

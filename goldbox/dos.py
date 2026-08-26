@@ -9,11 +9,11 @@ read-only and never written -- :func:`write` builds *new* bytes, and
     C64 save  ->  c64_codec.read  ->  NeutralCharacter
                                     ->  dos.write  ->  DOS record + .ITM
 
-The middle is `por/neutral.py`'s typed record, and this module is the DOS
+The middle is `goldbox/neutral.py`'s typed record, and this module is the DOS
 codec of that pair -- the only module that knows a DOS offset.  The C64 half
-is `por/c64_codec.py`'s, and the two never mention each other.
-`por/dos_layout.py` is the field table, in the same declarative style as
-`por/layout.py` and with a confidence on every entry, which is the grade the
+is `goldbox/c64_codec.py`'s, and the two never mention each other.
+`goldbox/dos_layout.py` is the field table, in the same declarative style as
+`goldbox/layout.py` and with a confidence on every entry, which is the grade the
 neutral value carries and a writer refuses to write below.
 
 `export_party` renders the result as the editor's own YAML, so a DOS party
@@ -32,7 +32,7 @@ The three places the formats diverge in kind
 --------------------------------------------
 * **The spellbook.** DOS spends one byte per spell across `0x033`-`0x06A`;
   the C64 packs 56 bits at `0x078`.  The *ordering* turns out to be identical
-  -- DOS byte *n* is spell id *n + 1*, the same id `por/spells.py` uses -- so
+  -- DOS byte *n* is spell id *n + 1*, the same id `goldbox/spells.py` uses -- so
   the transpose is a pack and not a permutation.  See `dos_layout.spellbook`.
   Spell 56, `RESTORATION`, is the one id with no C64 bit and is reported.
 * **The per-class level array.** Eight wide on both.  DOS indexes by the class
@@ -245,7 +245,7 @@ def item_to_c64(record: bytes) -> bytes:
 #: importer reads a Pool of Radiance `.spc` file and keeps exactly 18, 26, 47,
 #: 48, 97, 107 and 124, every one a racial or constitutional bonus.  90 is
 #: added here because the DOS party carries it on the dwarf and on the
-#: halfling and `por/traits.py` names it the same kind of thing -- a racial
+#: halfling and `goldbox/traits.py` names it the same kind of thing -- a racial
 #: constitution bonus to poison and death saves.  PROBABLE.
 INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
 
@@ -283,7 +283,7 @@ EFFECT_NEXT_NULL = bytes(4)
 #:   -- so DOS keeps the bonus in these two records.  The C64 does the
 #:   opposite: HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11`
 #:   where the class row is `13 12 14 16 15`, four better in every column
-#:   (`por/levels.py`, "the saving-throw rule is the game's own").  The
+#:   (`goldbox/levels.py`, "the saving-throw rule is the game's own").  The
 #:   conversion copies those five bytes, so the bonus arrives with them, and
 #:   writing 90 and 97 as well would apply it twice.
 #: * **26 and 47 are situational and no stored number can hold them** -- a
@@ -298,7 +298,7 @@ EFFECT_NEXT_NULL = bytes(4)
 RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {1: (26, 47)}
 
 #: Races the C64 gives a constitution save bonus to, and so the races whose
-#: innate ids are already inside the five saving-throw bytes.  `por/levels.py`
+#: innate ids are already inside the five saving-throw bytes.  `goldbox/levels.py`
 #: reads the same three out of the game's own `GEN`.
 STURDY_RACES = (1, 3, 5)
 
@@ -426,7 +426,7 @@ class DosCharacter(_Fielded):
         """The spell ids the byte-per-spell book at `0x033` has set.
 
         DOS byte *n* is spell id *n + 1*, and the ids are the C64's own --
-        `por/spells.py`'s group boundaries 1-8, 9-21, 22-28, 29-35, 36-44,
+        `goldbox/spells.py`'s group boundaries 1-8, 9-21, 22-28, 29-35, 36-44,
         45-55 are the DOS array's cleric-1 / mage-1 / cleric-2 / mage-2 /
         cleric-3 / mage-3 runs exactly.
         """
@@ -554,7 +554,7 @@ DIRECT: tuple[tuple[str, str], ...] = (
     ("thac0_base", "thac0_base"),
     ("race", "race"),
     # The class byte copies because the two ports share one 18-entry table:
-    # por/yaml_io.py's CLASS_CODES is Gold Box Companion's list entry for
+    # goldbox/yaml_io.py's CLASS_CODES is Gold Box Companion's list entry for
     # entry, checked against the class bitmask on all 24 specimens.
     ("char_class", "char_class"),
     ("age", "age"),
@@ -652,9 +652,9 @@ def field_disposition() -> dict[str, str]:
     """Every declared DOS field and what the conversion does with it.
 
     The test that keeps this module honest: a field declared in
-    `por/dos_layout.py` and named nowhere here would be a field silently
+    `goldbox/dos_layout.py` and named nowhere here would be a field silently
     dropped, which `docs/117-save-conversion.md` forbids.  The shape is
-    `por/neutral.py`'s, so every direction reports its drops the same way.
+    `goldbox/neutral.py`'s, so every direction reports its drops the same way.
     """
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the C64's")
 
@@ -662,7 +662,7 @@ def field_disposition() -> dict[str, str]:
 def to_neutral(dos: DosCharacter) -> NeutralCharacter:
     """Read one DOS character into the neutral record.
 
-    The DOS half of the pair `por/neutral.py` describes, and the only half
+    The DOS half of the pair `goldbox/neutral.py` describes, and the only half
     that knows a DOS offset.  It names where every value came from and what
     the DOS record holds that no neutral field does; what becomes of them
     afterwards is a writer's business.
@@ -725,7 +725,7 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
     out.set("innate_effects",
             [e for e in dos.effect_ids if e in INNATE_EFFECTS],
             "the innate ids of the DOS .SPC file; the two ports share one "
-            "effect-id namespace (por/traits.py)",
+            "effect-id namespace (goldbox/traits.py)",
             Confidence.PROBABLE,
             dropped=[f".SPC effect {e} ({traits.describe(e)}): a running "
                      f"effect, not an innate one, and running effects do not "
@@ -998,7 +998,7 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "00 01 00 00 in all 24 DOS specimens"),
 )
 
-#: What :func:`write` does with every field `por/dos_layout.py` declares --
+#: What :func:`write` does with every field `goldbox/dos_layout.py` declares --
 #: the *output-side* account, over DOS field names, where
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
 #: `tests/test_doswriter.py` fails if a field is declared in the layout and
@@ -1262,7 +1262,7 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
 def write_field_disposition() -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
-    The DOS writer's twin of `por.c64_codec.field_disposition`, over the
+    The DOS writer's twin of `goldbox.c64_codec.field_disposition`, over the
     neutral vocabulary; `WRITE_TARGETS` is the same account over the DOS
     layout's own names, and the tests hold both complete.
     """
@@ -1271,7 +1271,7 @@ def write_field_disposition() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# The conversion, previewed as the plain data `por/yaml_io.py` writes
+# The conversion, previewed as the plain data `goldbox/yaml_io.py` writes
 # ---------------------------------------------------------------------------
 def export_party(folder: str | pathlib.Path, slot: str,
                  game_disk: str | None = None) -> dict[str, Any]:
@@ -1281,7 +1281,7 @@ def export_party(folder: str | pathlib.Path, slot: str,
     record is converted to the C64 first and the entry built off that, so what
     the document shows is what would land on the C64 disk, and each entry
     carries the conversion's own `_dropped` beside it.  That is why the extra
-    hop through `por/c64_codec.py` is there and is not a detour.
+    hop through `goldbox/c64_codec.py` is there and is not a detour.
 
     Everything DOS keeps and the C64 does not is carried as a `_`-prefixed
     annotation: `strip_annotations` drops those on import, so the document
@@ -1342,7 +1342,7 @@ def export_party(folder: str | pathlib.Path, slot: str,
 # ---------------------------------------------------------------------------
 # `SAVGAM<slot>.DAT` -- the saved game
 # ---------------------------------------------------------------------------
-#: **The byte map is `por/dos_savegame.py`'s and only its** (#64). This module
+#: **The byte map is `goldbox/dos_savegame.py`'s and only its** (#64). This module
 #: used to restate the base, the stride, the word accessor and the position
 #: offsets, and the two copies had already begun to disagree about bounds
 #: checking within one commit of the second existing. `dos_savegame` depends on
@@ -1476,7 +1476,7 @@ def apply_position(save0: bytearray, savgam: bytes) -> tuple:
 #: `$8300`-`$8AFF`. Every offset below is an address less `$4900` (or `$8300`).
 SAVE0_BASE = 0x4900
 SAVE1_BASE = 0x8300
-#: Where the C64 keeps the party's square -- `por/savegame.py`'s own names for
+#: Where the C64 keeps the party's square -- `goldbox/savegame.py`'s own names for
 #: these, read here as offsets into a raw payload.
 PARTY_X, PARTY_Y, PARTY_FACING = 0x49C0, 0x49C1, 0x49C2
 SLOT_AREA = 0x4D00
@@ -1499,7 +1499,7 @@ SLOT_COUNT = 8
 #: the engine is known to produce is worth more than a tidier one nobody has
 #: seen it write.
 EMPTY_RECORD_BYTE = 0x000    # the first byte of the name
-EMPTY_ROSTER_BYTE = 0x000    # `roster_in_use`, `por/layout.py` 0x100
+EMPTY_ROSTER_BYTE = 0x000    # `roster_in_use`, `goldbox/layout.py` 0x100
 ITEM_AREA = 0x5900
 ICON_TABLE = 0x4BE0
 ICON_SIZE = 36
@@ -1642,7 +1642,7 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
             f"{'outdoors' if savgam_outdoors else 'indoors'}, but script id "
             f"{there} ({where.name or where.ecl}) is marked "
             f"{'outdoors' if where.outdoors else 'indoors'} in "
-            "por/areas.py -- these two disagree and neither is trusted "
+            "goldbox/areas.py -- these two disagree and neither is trusted "
             "over the other")
     if where.outdoors:
         sqr = _sqrdata_number(where.sqrdata)
@@ -1721,7 +1721,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             icon = bytes(save0[at:at + ICON_SIZE])
         rec, one = to_c64_record(char, slot=place, icon=icon)
         # `party_order` in a roster block is the record's slot index, not the
-        # marching position -- `por/layout.py` 0x10D, and identity in every
+        # marching position -- `goldbox/layout.py` 0x10D, and identity in every
         # engine-written save read.  It follows the slot the record lands in.
         rec.set("party_order", place)
         raw = rec.to_bytes()
@@ -2113,7 +2113,7 @@ if __name__ == "__main__":  # pragma: no cover - convenience
     from .yaml_io import to_yaml
 
     if len(sys.argv) < 3:
-        print("usage: python3 -m por.dos <dos-save-dir> <slot> [game.d64]")
+        print("usage: python3 -m goldbox.dos <dos-save-dir> <slot> [game.d64]")
         raise SystemExit(2)
     print(to_yaml(export_party(sys.argv[1], sys.argv[2],
                                sys.argv[3] if len(sys.argv) > 3 else None)))

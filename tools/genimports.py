@@ -59,14 +59,14 @@ def edges(package: pathlib.Path) -> list[tuple[str, str, str]]:
                 elif node.module in modules:     # from .a import x
                     targets = [node.module]
             elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                # `from por.a import x` -- a sibling reached by its absolute
+                # `from goldbox.a import x` -- a sibling reached by its absolute
                 # name. It binds exactly as `from .a import x` does, and
                 # missing it would hide the one edge this tool exists to
-                # catch. `por.areas` reaches `por.layout` this way.
+                # catch. `goldbox.areas` reaches `goldbox.layout` this way.
                 head = (node.module or "").split(".")
                 if head[:1] == [package.name] and head[1:2] and head[1] in modules:
                     targets = [head[1]]
-            elif isinstance(node, ast.Import):   # import por.a
+            elif isinstance(node, ast.Import):   # import goldbox.a
                 targets = [a.name.split(".")[1] for a in node.names
                            if a.name.startswith(package.name + ".")
                            and a.name.split(".")[1] in modules]
@@ -94,8 +94,8 @@ def mermaid(found: list[tuple[str, str, str]]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("package", nargs="?", default="por",
-                    help="package directory (default: por)")
+    ap.add_argument("package", nargs="?", default="goldbox",
+                    help="package directory (default: goldbox)")
     ap.add_argument("--mermaid", action="store_true",
                     help="print a fenced mermaid graph instead of a list")
     args = ap.parse_args(argv)

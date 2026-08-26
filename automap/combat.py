@@ -23,10 +23,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from por import monster
-from por.layout import RECORD_SIZE
-from por.record import CharacterRecord, FieldNotStored
-from por.savegame import (
+from goldbox import monster
+from goldbox.layout import RECORD_SIZE
+from goldbox.record import CharacterRecord, FieldNotStored
+from goldbox.savegame import (
     RECORD_SLOT_COUNT,
     ROSTER_STRIDE,
     SAVE1_LOAD_ADDRESS,
@@ -35,7 +35,7 @@ from por.savegame import (
     RosterBlock,
     looks_occupied,
 )
-from por.traits import traits
+from goldbox.traits import traits
 
 from .render import Hatch, Label, Line, Rect, hatch_lines
 

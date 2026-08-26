@@ -18,10 +18,10 @@ import pytest
 
 from automap import actions, live
 from automap.target import MemoryTarget
-from por import games, levelup
-from por import items as por_items
-from por.record import RECORD_SIZE, CharacterRecord
-from por.savegame import ROSTER_HP_CURRENT
+from goldbox import games, levelup
+from goldbox import items as por_items
+from goldbox.record import RECORD_SIZE, CharacterRecord
+from goldbox.savegame import ROSTER_HP_CURRENT
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -107,7 +107,7 @@ def test_read_party_refuses_a_roster_page_borrowed_by_a_picture():
     reading as graphics data while the record slots -- read from a different
     page -- are unaffected. `read_party`'s other checks would pass; only the
     roster page is scrap, and `roster_page_plausible` is what catches it."""
-    from por.savegame import ROSTER_SLOT_INDEX
+    from goldbox.savegame import ROSTER_SLOT_INDEX
     save0, save1 = captured()
     graphics = bytearray(save1)
     graphics[ROSTER_SLOT_INDEX] = 9          # BRUTUS is slot 0; this is not
@@ -124,7 +124,7 @@ def test_read_party_refuses_a_roster_page_borrowed_by_a_picture():
 
 def test_read_party_refuses_hit_points_above_the_recorded_maximum():
     """The second, independent check #82 names: BRUTUS's maximum is 11."""
-    from por.savegame import ROSTER_HP_CURRENT
+    from goldbox.savegame import ROSTER_HP_CURRENT
     save0, save1 = captured()
     over = bytearray(save1)
     over[ROSTER_HP_CURRENT] = 255
@@ -234,7 +234,7 @@ def test_the_memorised_list_is_written_inside_the_slot_the_character_owns():
 def unidentified() -> bytes:
     """One item with all three name words hidden and readied set.
 
-    Built from the format, not copied: `por.items.build_item` is the same
+    Built from the format, not copied: `goldbox.items.build_item` is the same
     constructor the editor uses.
     """
     raw = bytearray(por_items.build_item(type_index=0x24, words=(0xA5, 0x24, 0),
@@ -287,7 +287,7 @@ def test_levelling_refuses_before_it_reads_a_slot_that_is_not_there():
 
 
 def test_the_blockers_are_empty_because_every_field_is_confirmed():
-    """The mechanism stays -- a field demoted in por/layout.py stops the
+    """The mechanism stays -- a field demoted in goldbox/layout.py stops the
     action dead -- but nothing is standing in the way today."""
     assert actions.level_up_blockers() == ()
     assert all(isinstance(b, str) for b in actions.level_up_blockers(None))
@@ -297,11 +297,11 @@ def test_the_blockers_are_empty_because_every_field_is_confirmed():
 
 def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
     """#16. Curse is the dangerous one: its level tables are in
-    `por/levels.py`, so selecting them looks like enough and is not. Every
+    `goldbox/levels.py`, so selecting them looks like enough and is not. Every
     derivation around them was read at Pool of Radiance's addresses out of Pool
     of Radiance's `GEN`, so a Curse fighter would be written Pool of Radiance's
     THAC0, saving throws, hit die and thresholds."""
-    from por import games
+    from goldbox import games
 
     # A Curse-shaped machine, so the refusal is the trainer's and not an
     # accident of reading Curse's addresses on Pool of Radiance's memory. Since
@@ -331,7 +331,7 @@ def test_every_title_but_pool_of_radiance_is_refused_by_name(game):
     """The other four have no tables at all, so `levels.for_game` falls back to
     Pool of Radiance's -- which is exactly the silent wrong answer the blocker
     is here to stop."""
-    from por import games
+    from goldbox import games
 
     blockers = actions.level_up_blockers(None, games.by_key(game))
     assert blockers and games.by_key(game).title in blockers[0]
@@ -521,7 +521,7 @@ def test_the_offer_is_for_the_level_being_reached_not_the_one_held():
     record = actions.read_party(target).by_slot(0).record
     record.set("class_bits", 1)
     record.set("level_magic_user", 2)
-    from por import spells
+    from goldbox import spells
     offered = actions.LevelUp.offers(record)
     assert any(spells.spell_group(i)[1] == 2 for i in offered)
     assert all(spells.spell_group(i)[0] == "magic-user" for i in offered)

@@ -9,14 +9,14 @@ Radiance those are:
 
 **and in no other title.** Curse and Silver Blades load the save at `$4B00` and
 keep the roster inside it at `$6700`, which is one read rather than two. Every
-address here therefore comes from the `por.games.Game` descriptor -- see
+address here therefore comes from the `goldbox.games.Game` descriptor -- see
 `memory_blocks` -- and not from a constant, so a new title costs a table row.
 `automap/actions.py` reads through the same `read_blocks`, so the write side
 cannot come to disagree with the read side about where a title lives.
 
-Both go into `por/savegame.py` unchanged. `SaveGame0.from_bytes()` takes exactly
+Both go into `goldbox/savegame.py` unchanged. `SaveGame0.from_bytes()` takes exactly
 the first range, and the roster page is padded out to the length `SaveGame1`
-expects rather than being decoded here. That is the payoff of `por/` being
+expects rather than being decoded here. That is the payoff of `goldbox/` being
 transport-free: a live view needs no new decoding at all, and this module is
 testable against a dictionary of bytes -- or against a save file, which *is* a
 captured snapshot.
@@ -38,11 +38,11 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-from por import games, levels
-from por.derive import CLASS_BITS
-from por.items import items_for_slot, load_item_names
-from por.record import FieldNotStored
-from por.savegame import (
+from goldbox import games, levels
+from goldbox.derive import CLASS_BITS
+from goldbox.items import items_for_slot, load_item_names
+from goldbox.record import FieldNotStored
+from goldbox.savegame import (
     ROSTER_COUNT,
     ROSTER_STRIDE,
     SaveGame0,
@@ -233,7 +233,7 @@ class Character:
         and the trait codes at `0x0AD` are **one namespace**, not two:
         `LIBRARY $4028` reads the arrays first and falls back to the
         character's own slots (`docs/133-active-effects.md`), so
-        `por/traits.py` names both and a badge would not be invented. 66 of
+        `goldbox/traits.py` names both and a badge would not be invented. 66 of
         its 129 names are CONFIRMED, 21 of them things that can be true of a
         player character.
 

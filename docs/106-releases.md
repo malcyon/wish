@@ -90,12 +90,12 @@ differs on every machine. The drift worth catching is in the widgets.
 
 `select = ["E4", "E7", "E9", "F", "I"]`: pyflakes, the pycodestyle rules that
 are actual errors, and import ordering. Deliberately **not** `E501` —
-`por/layout.py` is the field documentation and its notes are meant to be read,
+`goldbox/layout.py` is the field documentation and its notes are meant to be read,
 not wrapped to 88 columns; enabling it wanted 60 rewraps across files whose
 prose is the point. `editor/ui_character.py` is excluded outright: pyuic6 writes
 it.
 
-Nothing else is on yet. `ruff format` and mypy on `por/` remain the next
+Nothing else is on yet. `ruff format` and mypy on `goldbox/` remain the next
 candidates; bandit and vulture stay off for the reasons the old plan gave — a
 tool that reads files and opens sockets trips bandit constantly, and the
 deliberately unused format constants that document the file layout are exactly
@@ -215,9 +215,9 @@ leave a half-made release page behind it.
 
 Two known failures waiting for CI, neither of them the packaging's:
 
-* `docs/41-memory-regions.md` has four combat rows that `por/memory.py` does not
+* `docs/41-memory-regions.md` has four combat rows that `goldbox/memory.py` does not
   generate, so the `generated` job fails until those regions are added to
-  `por/memory.py` — which is exactly what that check is for.
+  `goldbox/memory.py` — which is exactly what that check is for.
 * the suite segfaults about one run in three, in `findChild` inside
   `EditorWindow.__init__`. It bisects to `tests/test_debuglog.py`: with that file
   ignored, six consecutive runs are clean; with it, three runs in nine crashed.

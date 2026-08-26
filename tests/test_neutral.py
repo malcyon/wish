@@ -13,10 +13,10 @@ from __future__ import annotations
 import pytest
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import amiga, c64_codec, dos, dos_layout, neutral
-from por.layout import FIELDS_BY_NAME as C64_FIELDS
-from por.layout import Confidence
-from por.neutral import NeutralCharacter, Provenance
+from goldbox import amiga, c64_codec, dos, dos_layout, neutral
+from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
+from goldbox.layout import Confidence
+from goldbox.neutral import NeutralCharacter, Provenance
 
 # --- the vocabulary ----------------------------------------------------------
 
@@ -110,7 +110,7 @@ def _filled() -> NeutralCharacter:
 def test_every_value_a_writer_takes_comes_back_out_of_the_record():
     """The round trip the neutral layer can have on its own: put a value in,
     write it, and read the same value back off the C64 record."""
-    from por import spells
+    from goldbox import spells
 
     char = _filled()
     rec, rep = c64_codec.write(char)
@@ -177,7 +177,7 @@ def test_the_dos_reader_sets_nothing_the_c64_writer_leaves_behind():
 @needs_dos_saves
 def test_the_reader_grades_every_value_it_carries():
     """A value with no grade cannot be refused, so every one carries the grade
-    `por/dos_layout.py` gives the field it was read from."""
+    `goldbox/dos_layout.py` gives the field it was read from."""
     path = next(p for p in sorted(_save_dir().glob("*.SAV"))
                 if p.stat().st_size == dos_layout.RECORD_SIZE)
     char = dos.to_neutral(dos.read_character(path))
@@ -190,7 +190,7 @@ def test_the_reader_grades_every_value_it_carries():
 # --- the neutral vocabulary's own disposition --------------------------------
 
 def test_every_neutral_field_has_a_disposition_in_every_writer():
-    """The gap the design review found: `por.dos.field_disposition` checks the
+    """The gap the design review found: `goldbox.dos.field_disposition` checks the
     DOS layout and nothing checked the *neutral* vocabulary, so a name added
     to `FIELDS` and never wired up would rot in silence.
 

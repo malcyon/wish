@@ -17,7 +17,7 @@ of Krynn and Gateway to the Savage Frontier; see
 **The offsets inside the payload are identical in all six.** Items at `$1000`,
 the combat-icon table at `$2E0`, the slot area at `$400`, the position triple at
 `$C0`, the loaded-file cache and area byte at `$2C0`. Only the base moves, which
-is why nothing here is a subclass and why `por/items.py`, `por/icons.py` and
+is why nothing here is a subclass and why `goldbox/items.py`, `goldbox/icons.py` and
 `editor/inventory.py` -- all of which work in payload offsets -- needed no
 change at all.
 
@@ -484,11 +484,11 @@ def detect(disk, default: Game | None = None) -> Game | None:
 # The per-title tables, resolved
 # ---------------------------------------------------------------------------
 # `race`, `char_class` and `class_bits` are *indices into this title's own
-# tables* wherever they appear -- in a C64 record, in `por/neutral.py`'s
+# tables* wherever they appear -- in a C64 record, in `goldbox/neutral.py`'s
 # vocabulary, in the YAML. Turning one into a name therefore needs the title,
 # and every codec needs the same answer. These live here, beside the tables
 # themselves, so that a codec asking for a name imports a table module rather
-# than another codec: `por/yaml_io.py` and `por/amiga.py` both need this and
+# than another codec: `goldbox/yaml_io.py` and `goldbox/amiga.py` both need this and
 # neither may reach for the other.
 def race_table(game: "Game | None") -> dict[int, str]:
     """Race code -> name for a title, or Pool of Radiance's.

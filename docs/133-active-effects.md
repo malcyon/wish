@@ -19,7 +19,7 @@ So there are two lists, and they share one code namespace:
 
 `LIBRARY $4028` reads the arrays first and falls back to the character's own
 slots, which is why one table names both. A code in the arrays is therefore
-evidence about `por/traits.py` and vice versa.
+evidence about `goldbox/traits.py` and vice versa.
 
 **The editor already holds both.** `party.save0` is the whole `$4900`–`$64FF`
 image and `store_save` writes it back, so neither list needs new I/O.
@@ -32,7 +32,7 @@ does.
 
 * **`Traits`** — the box now titled `Active effects`. Ten rows, per character,
   editable in place. Rename the box: the title is a refuted claim, and
-  `por/layout.py`'s label for `item_effects` should move with it.
+  `goldbox/layout.py`'s label for `item_effects` should move with it.
 * **`Active effects`** — new, and it belongs to the *save*, not to the selected
   character, so it goes beside the roster rather than in the character sheet.
   One row per non-zero id, showing who it is on and how much is left. Absent
@@ -65,7 +65,7 @@ several are the ones somebody would most want.
 The number appears in exactly two places: in a row's tooltip, and as the whole
 of the name when there is no name. `describe()` already does the second.
 
-**Prerequisite.** `por/traits.py` still marks the seventeen codes that
+**Prerequisite.** `goldbox/traits.py` still marks the seventeen codes that
 `docs/90-specimens.md` promoted this afternoon as PROBABLE, and
 `tests/test_corrections.py` asserts `CONFIRMED == 49`. Promote the seventeen and
 move that number in the same commit, before the picker exists — otherwise the
@@ -105,7 +105,7 @@ just spent an afternoon deleting.
 
 Instead: a new effect gets **the duration and magnitude the game itself wrote
 for that id**, harvested from `P3-EFFECTS.D64` into a small table in
-`por/effects.py`, and the row shows what that came to in the game's own terms —
+`goldbox/effects.py`, and the row shows what that came to in the game's own terms —
 the count, and the unit spelled as whatever the decode eventually calls it. An
 id we have never seen the game write gets the modal duration of its neighbours
 and is marked the way an unnamed code is marked.
@@ -148,7 +148,7 @@ it is not refusing.
 | written | what could happen |
 |---|---|
 | a monster's code on a player: 83 petrifying gaze, 121 acid squirt, 81 dragon fear | the handler reads fields a monster's record carries and a player's does not — attack forms at `0x0D9` are `02 00 01 00 02 00 00 00` in every player character. Garbage attack at best |
-| 63, or 54 | `por/traits.py` records both as having no handler. A dispatch with no entry is how a jump through an unset vector happens |
+| 63, or 54 | `goldbox/traits.py` records both as having no handler. A dispatch with no entry is how a jump through an unset vector happens |
 | 92 | the DOS table calls this id unused and TYRANITHRAXUS carries it. Nobody knows what runs |
 | 255 anywhere but slot 9 | fill, in every one of the 38 records that carry it. A real code after it has never been observed and the reader may stop there |
 | the same id in two slots | applied twice, or expired once. Untested either way |
@@ -163,13 +163,13 @@ tooltip — and write the bytes anyway.
 The four addresses, the `Effect` record, the owner encoding and the duration
 packing live in the live-map package today. `editor/` may not import that
 package and `tests/test_wish.py` enforces it by grepping the source, so the
-decode moves down to **`por/effects.py`** — no Qt, no I/O — and both packages
-import it from there. Same argument that put `por/traits.py` in `por/`: one
+decode moves down to **`goldbox/effects.py`** — no Qt, no I/O — and both packages
+import it from there. Same argument that put `goldbox/traits.py` in `goldbox/`: one
 table cannot be allowed to become two.
 
 While moving it, fix what it says. Its `conditions` docstring and
 `docs/107-roster-and-notes.md` both state that the effect ids are a different
-code space from `por/traits.py` and that nothing maps one onto the other. Today
+code space from `goldbox/traits.py` and that nothing maps one onto the other. Today
 settled that: it is one namespace, so the poisoned and paralysed icons the live
 view has been withholding are now nameable.
 
@@ -177,9 +177,9 @@ view has been withholding are now nameable.
 
 | file | what changes |
 |---|---|
-| `por/traits.py` | promote the seventeen; `tests/test_corrections.py` moves with it |
-| `por/effects.py` | new — the four arrays, the `Effect` record, the observed durations |
+| `goldbox/traits.py` | promote the seventeen; `tests/test_corrections.py` moves with it |
+| `goldbox/effects.py` | new — the four arrays, the `Effect` record, the observed durations |
 | `editor/effects.py` | the trait table becomes editable; a picker dialog |
 | `editor/character.ui` | `Active effects` → `Traits`; the new panel beside the roster |
-| `por/layout.py` | the `item_effects` label follows the box title; regenerate `docs/20-character-record.md` |
+| `goldbox/layout.py` | the `item_effects` label follows the box title; regenerate `docs/20-character-record.md` |
 | `tests/test_editor.py` | the picker, the full-block case, and that a hidden panel writes back untouched |

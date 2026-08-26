@@ -1,11 +1,11 @@
-"""Tests for por.icons — the combat-icon table at $4BE0."""
+"""Tests for goldbox.icons — the combat-icon table at $4BE0."""
 
 import pathlib
 
 import pytest
 
-from por.icons import CELLS, ICON_COUNT, ICON_SIZE, ICON_TABLE_BASE, icon_for_slot
-from por.savegame import SLOT_AREA_BASE, SaveGame0
+from goldbox.icons import CELLS, ICON_COUNT, ICON_SIZE, ICON_TABLE_BASE, icon_for_slot
+from goldbox.savegame import SLOT_AREA_BASE, SaveGame0
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

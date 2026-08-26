@@ -20,8 +20,8 @@ import pathlib
 import pytest
 from gamedata import disk_dir
 
-import por.commissions as C
-from por.d64 import D64, load_payload
+import goldbox.commissions as C
+from goldbox.d64 import D64, load_payload
 
 
 def operand(address: int) -> bytes:

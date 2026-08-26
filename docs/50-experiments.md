@@ -236,7 +236,7 @@ specimens agreeing with a hypothesis is not the same as testing it, and
 "$5100 exists only under a $400 stride" was simply false — I asserted a
 uniqueness I had not checked.
 
-Corrected in `por/savegame.py`, with `tests/fixtures/party6_savedgame0.bin` (a
+Corrected in `goldbox/savegame.py`, with `tests/fixtures/party6_savedgame0.bin` (a
 real six-character party) pinned as the regression fixture.
 
 ---
@@ -632,7 +632,7 @@ agrees, that is corroboration; where its author gave up, that is a landmark.
   the one in our own `PORSAVE2.D64` except for the readied bit, so these are
   genuine specimens of the real format.
 
-**Two fixes to `por/items.py` came straight out of those 162 records:**
+**Two fixes to `goldbox/items.py` came straight out of those 162 records:**
 
 * **Cost is 16-bit** (`+11` and `+12`), not one byte. Every price then matches the
   AD&D 1st edition tables -- banded mail 90 gp, bracers of AC 3 21000 gp, cloak of
@@ -745,7 +745,7 @@ concatenated in order, which is the three-word naming we had already worked out.
 ---
 
 ## The item name table has gaps
-**Found while building `docs/85-item-tables.md`.** `por/items.py` read
+**Found while building `docs/85-item-tables.md`.** `goldbox/items.py` read
 `ITEMNAMES` by walking the strings in order and numbering them as it went. That
 is wrong.
 
@@ -845,7 +845,7 @@ player, so presumably the temple's.
 fragments -- `IS CHARMED`, `AND MISSES...`, `POINTS OF DAMAGE`. Same mechanism,
 different meaning. `wish` refuses to write an id above 56 into a spell list.
 
-Full table in [the spell table](86-spell-table.md); reader in `por/spells.py`.
+Full table in [the spell table](86-spell-table.md); reader in `goldbox/spells.py`.
 
 ---
 
@@ -985,7 +985,7 @@ the trait.
 `MON04` opens with `ORC` in a 20-byte NUL-padded name field, then 10, 6, 10, 10,
 10, 10 at `0x014`-`0x019`: six ability scores with the low intelligence an orc
 should have. `char_class` is 2 (fighter), `age` 30, `hp_max` 5. Every field lands
-where `por/layout.py` already says it should.
+where `goldbox/layout.py` already says it should.
 
 That explains something already in the docs and never accounted for: the game's
 race table ends `HUMAN=7 MONSTER=8`. Monsters are characters with race 8.
@@ -1071,7 +1071,7 @@ been tested.* Four is sparse.
 **How many spells a character may memorise** is not stored anywhere found. It
 follows from class, level and Wisdom, and matches on every caster: MALCYON and
 LADY KATHERINE one apiece as level-1 magic-users, ROLAND three as a level-1
-cleric with Wisdom 16. `por/spells.py` computes it.
+cleric with Wisdom 16. `goldbox/spells.py` computes it.
 
 ---
 
@@ -1703,7 +1703,7 @@ rate chance predicts.
 ## The orc left behind at `$5500`
 
 **Hypothesis.** `$5500`-`$58FF` is recorded in two places as "stays zero even
-with a fully equipped party", and the same claim reached `por/savegame.py`. One
+with a fully equipped party", and the same claim reached `goldbox/savegame.py`. One
 page between the character slots and the item area, said to be empty in every
 save, is exactly the sort of claim that survives because nobody looked twice.
 
@@ -1750,7 +1750,7 @@ so it is one record wide, and `PORSAVE11` has it zero again after later fights,
 so nothing accumulates there.
 
 **Two corrections fall out.** The item area begins at `$5900`, not `$5500`, and
-one line of `por/savegame.py` said otherwise. And "`$5500`-`$58FF` stays zero
+one line of `goldbox/savegame.py` said otherwise. And "`$5500`-`$58FF` stays zero
 even with a fully equipped party" was written from the shopping-trip diff --
 where `PORSAVE2`, one of the two disks being compared, already had the orc in it.
 
@@ -1833,7 +1833,7 @@ spell levels**.
 exactly where `wish` predicted.** This is the largest thing in the save.
 MALCYON's dexterity was edited 16 to 18 by that experiment; the game went on
 showing `AC 8`, the value for his old score, through eight saves. Here it reads
-**6** -- precisely what `por/derive.py` has been computing and reporting as
+**6** -- precisely what `goldbox/derive.py` has been computing and reporting as
 stale all along. His `strength_index` at `0x0E2` did the same thing, sitting at
 15 (his pre-edit Strength) until this save and now reading 18.
 
@@ -1853,7 +1853,7 @@ his readied weapon is still a dart. A **readied missile weapon picks up a
 dexterity to-hit bonus** -- DEX 16 was worth 1 at the shopping trip, DEX 18 is
 worth more now. Two points do not pin the table down, and the project has
 already found that Pool of Radiance's dexterity tables are not the book's, so
-the shape is left open. `por/derive.py` does not model it and now reports
+the shape is left open. `goldbox/derive.py` does not model it and now reports
 MALCYON's THAC0 as stale when it is correct.
 
 **Strength 18 with a percentile of 0 is plain 18, not 18/00.** The recomputed
@@ -2273,7 +2273,7 @@ record offset `0x0A0`.
 Scanning every absolute operand in `$6B00`–`$6D44` across every file on the nine
 disks yields a map of which offsets the game's own code touches, and the routines
 can then be read out directly. Four independent checks fix the base against
-`por/layout.py`: `$6B14` is strength, `$6BD8` alignment, `$6BEB` class_bits,
+`goldbox/layout.py`: `$6B14` is strength, `$6BD8` alignment, `$6BEB` class_bits,
 `$6C19` current hit points.
 
 Comparing saves was the wrong tool for these fields, and had been failing on them
@@ -2668,7 +2668,7 @@ could not have detected.
 
 ## The combat icon is two poses, in multicolour
 
-**Question.** `por/icons.py` had the 36 bytes -- 18 screen codes then 18 colours
+**Question.** `goldbox/icons.py` had the 36 bytes -- 18 screen codes then 18 colours
 -- but nothing that could *draw* them. Three things were missing: the cell grid,
 the glyphs, and the colours.
 
@@ -2707,7 +2707,7 @@ Bit pair 11 takes the cell's own colour, low three bits.
 recognisable little fighters -- blonde hair, blue and red tunics, swords raised
 -- in two poses each. A wrong reading does not produce that by accident.
 
-`por/icons.py` grew `icon_pixels()`, which returns the whole thing as a grid of
+`goldbox/icons.py` grew `icon_pixels()`, which returns the whole thing as a grid of
 C64 colour indices with no image library involved, so the editor, a PNG dump and
 a terminal preview all share one implementation.
 
@@ -2769,7 +2769,7 @@ forwards from the filename.
   `$4182`. The search that missed it looked for consecutive 16-bit addresses,
   which a split table does not contain.
 
-`por/savegame.py` exposes it as `SaveGame0.area` and `.area_file`, with
+`goldbox/savegame.py` exposes it as `SaveGame0.area` and `.area_file`, with
 `.loaded_files` for the whole cache.
 
 **Confirmed by observation, not only by code.** Donald made the boundary pair:
@@ -2857,13 +2857,13 @@ those six — so the lost tail is `D4 D4`.
 **Nothing touches it.** The highest shape code across thirteen sources is **243**
 (the earlier note said 233, which was one specimen short), ending 72 bytes clear
 of the truncation, and glyphs 244-252 are non-blank so the file is not
-blank-padded. The clamp in `por/icons.py` never fires. One `CHARPIC` exists,
+blank-padded. The clamp in `goldbox/icons.py` never fires. One `CHARPIC` exists,
 byte-identical on all eight disks.
 
 
 ## The effect list shares storage with item `+14`, not meaning
 
-**A standing PROBABLE, corrected.** `docs/80-fields-wanted.md` and `por/layout.py`
+**A standing PROBABLE, corrected.** `docs/80-fields-wanted.md` and `goldbox/layout.py`
 both said record `0x0AD`-`0x0B6` used "the same namespace as item byte `+14`".
 They share the *slots*, not the vocabulary.
 
@@ -3116,7 +3116,7 @@ At eight slots there is an unexplained gap. So **`$5500` is slot 8**, not the
 are slots 9, 10 and 11 rather than dead space. The orc found at `$5500` after a
 fight was a combatant occupying a real slot.
 
-`SLOT_COUNT` in `por/savegame.py` stays **8** deliberately: that is the *party*,
+`SLOT_COUNT` in `goldbox/savegame.py` stays **8** deliberately: that is the *party*,
 which the game enforces at six player characters and eight total. The extra four
 are combat scratch and must not appear in a party list.
 
@@ -3185,7 +3185,7 @@ has to compute capacity from class, level and wisdom — the game already did.
 
 ### Where it came from
 
-The Curse disks are on this machine, and pointing `por/` at them worked: `geo.py`
+The Curse disks are on this machine, and pointing `goldbox/` at them worked: `geo.py`
 decodes all 16 of Curse's `GEO` files unchanged, `items.py` reads its `ITEMNAMES`
 after changing one address, and Pool of Radiance's record offsets read Curse's
 own pre-generated party correctly — abilities, race, age, saves, money, levels,
@@ -3561,8 +3561,8 @@ division and a three-byte race flag.
 **And the two masks settle P76.** The fighter's fourth column carries mask
 `$0C` where its other four carry `$08`, so that column improves twice by level 4
 and once elsewhere: the game's own table gives a breath save of **15** at
-fighter 4 where AD&D 1st edition gives 16. `por/levels.py` was wrong, not the
-game. `por/derive.py` had the same species of error next door — its fighter
+fighter 4 where AD&D 1st edition gives 16. `goldbox/levels.py` was wrong, not the
+game. `goldbox/derive.py` had the same species of error next door — its fighter
 THAC0 row was AD&D's grouped `20 20 18 18 …` where `GEN $1F1F` runs
 `20 19 18 17 …`, so every even fighter level was one out.
 
@@ -3586,7 +3586,7 @@ written the *new* per-class level by then, so a magic-user reaching 3 is offered
 second-level spells at that same training — which is what a first replay got
 wrong. A cleric needs no menu: `$20CF` ORs its whole new spell level in.
 
-**The verification.** `por/levelup.py` was written from the routines and then
+**The verification.** `goldbox/levelup.py` was written from the routines and then
 replayed against the thirty-four before/after record pairs in `work/p18b/`,
 each one a 580-byte read either side of a real training. Given the roll the
 game made, **every pair comes out byte-identical** on every field except the
@@ -3782,13 +3782,13 @@ saving-throw rows — `14 13 11 15 12` magic-user, `10 13 14 16 15` cleric,
 
 ### The audit of what we already cite
 
-107 distinct `OVERLAY $XXXX` citations across `docs/`, `por/`, `automap/`,
+107 distinct `OVERLAY $XXXX` citations across `docs/`, `goldbox/`, `automap/`,
 `tools/` and `tests/` were checked against the measured bases. **Every one is
 inside the overlay it names.** The handful the checker flagged are all
 explained: a linear sweep desynchronises over an embedded table, so `GEN $102E`,
 `$1F44` and `$2228` "are not instructions" because they are the thief-skill,
 saving-throw and spell-slot tables; `GEN $136E` and `$15A9` are *Curse's* `GEN`,
-cited in `por/levels.py` beside Pool of Radiance's; and `CAMP $301C` is an
+cited in `goldbox/levels.py` beside Pool of Radiance's; and `CAMP $301C` is an
 address *in* `LIBRARY` that a sentence about `CAMP` mentions.
 
 So `$282E` was the only one. The reason nothing else slipped is that `$282E` is
@@ -3801,7 +3801,7 @@ other citation came from reading the file at a base somebody had already fixed.
 `docs/85-item-tables.md` used to say `$7600`; the string was hardcoded in
 `tools/genitems.py` and the document is generated, so the fix went there --
 done, with the header clause that reconciles the two addresses.
-Nothing depends on it — `por/items.py` indexes the file by record number and
+Nothing depends on it — `goldbox/items.py` indexes the file by record number and
 never by address — but it is the same mistake `$282E` was, still sitting in the
 knowledge base. `docs/125-bug-notes.md` R51's "the DOS file even carries the
 same `$7600` load address" is a statement about the two files' headers and stays
@@ -3873,7 +3873,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   COLOR SIZE EXIT`, then `PARTS: WEAPON HEAD EXIT`. Its data file `SPELLE64`
   holds four option tables — 35 weapons and 23 heads for one size, 28 and 14
   for the other — with counts at `$B0DA` and pointers at `$B0DE`, both read
-  rather than assumed by `por/iconparts.py`.
+  rather than assumed by `goldbox/iconparts.py`.
 
   The reachable set is **15328 shapes**, not the 805 + 392 that "one weapon
   times one head" predicts, because a weapon change *preserves* cells 0, 1, 9
@@ -4135,7 +4135,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   **Effect ids and trait codes are separate vocabularies.** They meet only at
   `LIBRARY $4028` and the `$9AD5` dispatch. Ids run 1-71, item `+15` codes take
   `$80`-`$8B`, monster traits 64-139; the single overlap is 71 and no monster
-  carries it. **`por/traits.py` must not be reused for the live panel** -- which
+  carries it. **`goldbox/traits.py` must not be reused for the live panel** -- which
   independently confirms what the combat-view work suspected.
 
   Still unnamed: ids 49, 54, 58, 59, 60, 95 and 102, all combat-only, set by
@@ -4439,7 +4439,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
   `0x0E8` written into the running machine at `$4D00 + slot*$100 + 0x0E8`,
   three bytes little-endian, for all six of Donald's characters (2000 to 5002,
-  each past its class's level-2 threshold in `por/levels.py`). `ENCAMP → SAVE →
+  each past its class's level-2 threshold in `goldbox/levels.py`). `ENCAMP → SAVE →
   SAVE GAME` onto a copy of the save disk, and `SAVEDGAME0` read back off that
   disk carries the new values. So the half of route (b) that this project
   controls works end to end.
@@ -4562,7 +4562,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 
   Each school writes a class filter into `$6DA8` — `0x71` magic users, `0x72`
   clerics, `0x74` thieves, `0x78` fighters. The low nibble is exactly
-  `por.games.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
+  `goldbox.games.CLASS_BITS_CLASSIC`, which is a free corroboration of that table
   and of the fact that the trainer tests `class_bits` at `0x0EB`.
 
   **The run.** `work/drive/LVBEFORE.D64`, party at (15,1) in New Phlan.
@@ -4692,7 +4692,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   absolute operand anywhere on the disks**; the only way anything reaches it is
   through this indexing, which is why save-diffing never moved it.
 
-  Two consequences. **Do not widen the field in `por/layout.py`** — 7 is
+  Two consequences. **Do not widen the field in `goldbox/layout.py`** — 7 is
   correct for this title and the width is a property of the id space, not of
   the record. And `gap_07f`, the unallocated 25 bytes at `0x07F`-`0x097`, is
   **exactly the rest of the region the enumerator sweeps**, which makes it very
@@ -4749,7 +4749,7 @@ cost nothing and survived a feature nobody had planned.
    seeded per race by `GEN $0BF3`.
 
 **What it got right, and would be worth repeating on a new title:** staging the
-work so nothing was built on an unproven layout; making `por/layout.py` a
+work so nothing was built on an unproven layout; making `goldbox/layout.py` a
 declarative table with a confidence level per field and generating the
 documentation from it; splitting the packages along the packaging boundary
 before it cost anything to do; and the one method that carried everything —
@@ -4792,7 +4792,7 @@ two hex digits.
    and every `WALLSET` file on the disks is exactly 400 bytes. The third ends at
    `$6B00`, where `MON` begins.
 4. `LIBRARY $48B3`-`$48C2` loads `HEAD` from `$6BFE` and `BODY` from `$6BFF` —
-   character-record offsets `0x0FE` and `0x0FF`, which `por/layout.py`
+   character-record offsets `0x0FE` and `0x0FF`, which `goldbox/layout.py`
    independently calls `portrait_head` and `portrait_body`.
 5. Across about sixty specimen saves, **every** non-empty entry names a file that
    exists on Donald's disks. Nothing unresolved.
@@ -4810,7 +4810,7 @@ two hex digits.
   rules out the addressing modes the scan understood.
 * `CHARPIC00` "loading at `$8000`" was read off the file's own PRG header, which
   like every overlay's is a lie. The loader puts it at `$9900` (slot 21) or
-  `$8C00` (slot 22). Nothing depends on it — `por/icons.py` reads the disk file.
+  `$8C00` (slot 22). Nothing depends on it — `goldbox/icons.py` reads the disk file.
 
 **Why `$FF` is the value that matters.** `GEN $25DE` is
 `LDA $4BC0,X / ORA #$80 / STA $6E13,X` for all 25 entries, so **the reload bit a
@@ -4937,13 +4937,13 @@ too is 648/648 the cache edit is exonerated, and walking the party within sight
 of (12,11) says whether the player is actually shown the camp.
 
 **What this leaves for the converter.** The C64 side is closed: the refusal in
-`por.dos.apply_file_cache` for areas 25–27 can be replaced by the recipe above
+`goldbox.dos.apply_file_cache` for areas 25–27 can be replaced by the recipe above
 (slot 4 = the `SQRDATA` number, slot 8 = the id, `$49C5` = the `SQRDATA`
-number, `$49E6` = 0, disk from `por/areas.py`, position into `$49C3`/`$49C4`).
+number, `$49E6` = 0, disk from `goldbox/areas.py`, position into `$49C3`/`$49C4`).
 The **DOS side is not**: none of the three DOS specimen saves is outdoors, so
 where a DOS save keeps the travel square is unmeasured. PROBABLE by the
 variable-array mapping that already carried `$49C5` and `$49F2`, it is
-`por.dos_savegame.word` at `$49C3`/`$49C4` (it was `savgam_word` when this
+`goldbox.dos_savegame.word` at `$49C3`/`$49C4` (it was `savgam_word` when this
 was written; #64 renamed it); the experiment is one DOS save made on the
 overland map, its words at those addresses against the on-screen position.
 
@@ -5169,9 +5169,9 @@ then saves are font-shaped heap, `quantity` `0xFE`, which is the `254` on the
 sheet. Settling it would need the overlay disassembled, and nothing turns on
 it.
 
-**The fix**, `por.dos.write_dos_save`: write the `.ITM` only when the
+**The fix**, `goldbox.dos.write_dos_save`: write the `.ITM` only when the
 character carries something, and remove a stale one, the way the stale `.SPC`
-already was (`por.dos.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
+already was (`goldbox.dos.ITM_OMITTED_WHEN_EMPTY`). Verified by conversion,
 not by hand-edit: the fixture converted by the fixed writer loads, views
 clean and resaves without inventing anything (`work/p62/out-fixed/`).
 
@@ -5205,7 +5205,7 @@ then bisection with hand-built saves the game is made to load.
 J (the Slums, 20); four saves taken one action apart (run 1); two engine
 resaves of converted parties from #56; and nine hand-built variants V1-V12.
 All artefacts in `work/p59/`. `docs/141-dos-savegame.md` is the resulting
-layout; `por/dos_savegame.py` reads it.
+layout; `goldbox/dos_savegame.py` reads it.
 
 **Result 1. The file is five fixed regions**, and the biggest is the
 current area's ECL script — **live, not dead weight**. Bytes 5121-12800 are
@@ -5278,7 +5278,7 @@ all seven writes above, its own buffer left alone — which dies in
 against the seven and its first attempt to move a save onto a fresh template
 died exactly there. The recipe as it stands is in `docs/141-dos-savegame.md`
 "The recipe for moving a save to a different area (#60)", formatted from
-`por.dos_savegame.RETARGET_WRITES`.
+`goldbox.dos_savegame.RETARGET_WRITES`.
 
 **Result 5. The variable array is sparse and the tail is mostly not state.**
 2407 of 2560 words are zero in all nine specimens. `$5227`+ is the

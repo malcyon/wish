@@ -5,7 +5,7 @@ about where those bytes came from -- a .d64 image, a save file, emulator RAM,
 a hex editor.  Bytes in, bytes out.
 
 The record is held verbatim as a mutable buffer and fields are read and written
-*through* :mod:`por.layout`.  That is deliberate: it makes a decode/encode
+*through* :mod:`goldbox.layout`.  That is deliberate: it makes a decode/encode
 cycle byte-exact by construction, so the many bytes whose meaning we have not
 yet worked out can never be dropped, normalised or zeroed on the way through.
 
@@ -163,7 +163,7 @@ class FieldNotStored(KeyError):
 class CharacterRecord:
     """A mutable view over one 580-byte character record.
 
-    Named fields from :mod:`por.layout` are exposed as attributes, e.g.
+    Named fields from :mod:`goldbox.layout` are exposed as attributes, e.g.
     ``.name``, ``.strength``, ``.exceptional_strength``.  Unknown regions are
     reachable through :meth:`get_raw` / :meth:`set_raw` but are otherwise left
     strictly alone.
@@ -446,7 +446,7 @@ def _hexdump(data: bytes, base: int, width: int = 16) -> list[str]:
 # ---------------------------------------------------------------------------
 # Attribute access, generated from the layout.
 #
-# Adding a named field to por.layout automatically gives it an attribute here;
+# Adding a named field to goldbox.layout automatically gives it an attribute here;
 # no edit to this module is needed.
 # ---------------------------------------------------------------------------
 def _make_property(f: Field) -> property:

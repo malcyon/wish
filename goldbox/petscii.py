@@ -15,7 +15,7 @@ confused:
 
 Decoding is deliberately *display-oriented* and therefore lossy for control
 bytes: unrepresentable bytes become :data:`SUBSTITUTE`.  Round-tripping of a
-record is never done through text -- :class:`por.record.CharacterRecord` keeps
+record is never done through text -- :class:`goldbox.record.CharacterRecord` keeps
 the raw bytes and only rewrites a name field when it is explicitly assigned.
 Use :func:`is_canonical_record_name` to check whether a particular field will
 survive a decode/encode cycle unchanged.

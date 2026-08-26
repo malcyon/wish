@@ -1,4 +1,4 @@
-"""`por/dos_savegame.py`, the DOS saved game's byte map.
+"""`goldbox/dos_savegame.py`, the DOS saved game's byte map.
 
 Fixed-offset indexing into a 13137-byte file, which is the shape of bug this
 project has actually shipped -- a stride slip, a width read at half, a slice
@@ -8,7 +8,7 @@ middle, and a real specimen is used where one is available.
 
 import pytest
 
-from por import dos_savegame as sg
+from goldbox import dos_savegame as sg
 
 
 def blank() -> bytearray:
@@ -275,7 +275,7 @@ def test_a_block_ending_on_a_dangling_run_is_named_not_indexed():
     The run branch of the unpacker indexes `chunk[i + 1]`, where the copy
     branch beside it takes a slice and degrades to something the length check
     catches. A half-copied `.DAX` used to raise `IndexError` from inside, and
-    `por.dos.write_dos_save` catches only `DosSaveError` -- so the whole
+    `goldbox.dos.write_dos_save` catches only `DosSaveError` -- so the whole
     conversion came down with a traceback instead of keeping the template's
     square and saying why.
     """

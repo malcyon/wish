@@ -1,8 +1,8 @@
-por
-===
+goldbox
+=======
 
 .. autosummary::
    :toctree: generated
    :recursive:
 
-   por
+   goldbox

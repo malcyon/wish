@@ -225,7 +225,7 @@ def read_live(target) -> PartyStrength:
     """From a running game, through anything with `read(address, length)`.
 
     `MemoryTarget` in the tests and `ViceTarget` in the window both qualify, and
-    neither this module nor `por/` in general knows which it has.
+    neither this module nor `goldbox/` in general knows which it has.
     """
     read_blocks = getattr(target, "read_blocks", None)
     blocks = ((SAVE0_LOAD_ADDRESS, SAVE0_SIZE), (SAVE1_LOAD_ADDRESS, ROSTER_PAGE))

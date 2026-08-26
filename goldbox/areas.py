@@ -60,7 +60,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Iterator, Mapping
 
-from por.layout import Confidence
+from goldbox.layout import Confidence
 
 __all__ = [
     "Confidence",
@@ -85,7 +85,7 @@ __all__ = [
 
 
 #: Game titles this module knows about. Plain strings on purpose, and the seam
-#: with `por/games.py`: these are `Game.title`, so a caller holding a descriptor
+#: with `goldbox/games.py`: these are `Game.title`, so a caller holding a descriptor
 #: writes `areas.area_name(geo, game.title)` and neither module imports the
 #: other. `tests/test_areas.py` pins the two spellings together.
 POOL_OF_RADIANCE = "Pool of Radiance"
@@ -369,7 +369,7 @@ def components(geo) -> list[set[tuple[int, int]]]:
     and a square picked without regard to which piece it is in can be a place
     the party cannot walk out of.
     """
-    from por.geo import GRID, STEP
+    from goldbox.geo import GRID, STEP
 
     seen: set[tuple[int, int]] = set()
     out: list[set[tuple[int, int]]] = []
@@ -416,7 +416,7 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     scripts write `[$4A18]`/`[$4A19]`, the world-map cell, not a `GEO` square;
     and the two **`dynamic_geo`** areas, which load a map `geos` does not name.
     """
-    from por.geo import GRID
+    from goldbox.geo import GRID
 
     comps = [c for c in components(geo) if len(c) > 1]
     if not comps:

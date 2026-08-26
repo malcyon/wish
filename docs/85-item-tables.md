@@ -1,7 +1,7 @@
 # Item tables
 
 **Generated** — run `python3 tools/genitems.py` after changing
-`por/items.py`. Both tables are read directly off a game disk, so the
+`goldbox/items.py`. Both tables are read directly off a game disk, so the
 spellings are the game's own.
 
 An item record does not store a name. It stores three indices into the

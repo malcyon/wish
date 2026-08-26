@@ -12,7 +12,7 @@ block is lifted and the remaining question is what to draw with.
 ## 1. What the wilderness areas are
 
 Three areas, 25–27, scripts `ECL19`/`ECL1A`/`ECL1B` on POOL6/7/8. CONFIRMED,
-and `por/areas.py` already carries them with `sqrdata=` set.
+and `goldbox/areas.py` already carries them with `sqrdata=` set.
 
 **`SQRDATA` is what an overland map is made of, not `GEO`.** Each of the three
 areas names *both* a `GEO` and a `SQRDATA`, and `LOADFILES` picks which to fetch
@@ -171,10 +171,10 @@ them by `kind` without knowing which map it is looking at.
 | a new `world_primitives(world, visible, cell, margin)` | one `Rect` per square for the terrain class, a `Glyph` for the mark, and nothing else. No walls, no doors, no edge merging, no reciprocity |
 | new `kind` values and `SVG_STYLE` rows | `terrain-water`, `terrain-forest`, … one line each, and the Qt painter picks them up through the same dispatch |
 | the party marker | `party_marker` already takes a facing; **travel is eight-way** (`$033D`), so it needs eight positions rather than four |
-| the canvas | 40 × 32, not 16 × 16. `CELL` and `MARGIN` are already parameters; `GRID` is imported from `por.geo` and is the one hard 16 in the file |
+| the canvas | 40 × 32, not 16 × 16. `CELL` and `MARGIN` are already parameters; `GRID` is imported from `goldbox.geo` and is the one hard 16 in the file |
 | a third page in the `QStackedWidget` | only one of area / combat / world is ever true |
 
-`por/world.py` is the reading half and is specified in
+`goldbox/world.py` is the reading half and is specified in
 [`113-world-map.md`](113-world-map.md) §"The work, in order" step 2. It is
 transport-free, testable against the disks today, and nothing here duplicates
 it.

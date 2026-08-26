@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate docs/20-character-record.md from por/layout.py.
+"""Regenerate docs/20-character-record.md from goldbox/layout.py.
 
 The field table is generated rather than hand-written so the documentation
 cannot drift from the code. Re-run after changing the layout:
@@ -13,8 +13,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from por import layout
-from por.layout import Confidence
+from goldbox import layout
+from goldbox.layout import Confidence
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "20-character-record.md"
 
@@ -33,7 +33,7 @@ def main() -> int:
 
     add("# Character record")
     add("")
-    add("**Generated from `por/layout.py` by `tools/gendocs.py` — do not edit by hand.**")
+    add("**Generated from `goldbox/layout.py` by `tools/gendocs.py` — do not edit by hand.**")
     add("")
     add(f"A character record is **{layout.RECORD_SIZE} bytes**. Exported to disk it is a PRG "
         f"with a 2-byte load address of `${layout.LOAD_ADDRESS:04X}` "

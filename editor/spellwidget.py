@@ -34,7 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por.spells import SpellTable, describe, for_game, spell_group
+from goldbox.spells import SpellTable, describe, for_game, spell_group
 
 MEMORISED_SIZE = 16          # the packed list at 0x020
 
@@ -265,7 +265,7 @@ class MemorisedEditor(SpellEditor):
 
     Ids repeat -- two CURE LIGHT WOUNDS is two entries -- so this is a list and
     not a set. A new one is inserted so that the list stays ordered by
-    descending spell level, which is the shape `por/layout.py` records the
+    descending spell level, which is the shape `goldbox/layout.py` records the
     game's own lists in.
     """
 
@@ -366,7 +366,7 @@ class MemorisedEditor(SpellEditor):
                      casts: bool = False) -> None:
         """How many spells of each level may be memorised, and whether any may.
 
-        The two are separate because they disagree: `por.spells.capacity`
+        The two are separate because they disagree: `goldbox.spells.capacity`
         returns nothing for a title whose progression tables have not been
         read, and "we do not know how many" is not "none".
         """

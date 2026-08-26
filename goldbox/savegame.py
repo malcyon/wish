@@ -1,6 +1,6 @@
 """The save container: Pool of Radiance's two files, and the family's one.
 
-Which title a save belongs to is a `por.games.Game`, passed to every class here
+Which title a save belongs to is a `goldbox.games.Game`, passed to every class here
 and defaulting to Pool of Radiance so that callers written before there was a
 second game keep working. The constants below are Pool of Radiance's and stay
 for those callers; anything that must work on Curse reads the `Game`.
@@ -22,7 +22,7 @@ verified byte-identical against every character's own exported .chr file for a
 full six-character party. The rest of the record lives elsewhere: the combat
 icon in the shared table at $4BE0 (8 entries of 36 bytes, ending exactly at
 $4D00), and items in the area from $5900, one $100 block per slot (see
-por/items.py).
+goldbox/items.py).
 
 **There are twelve record slots, not eight.** `LIBRARY $312B` computes both
 `$4D00 + n*$100` and `$5900 + n*$100`, and the arithmetic only closes at twelve:
@@ -114,7 +114,7 @@ ROSTER_MOVEMENT = 0x1B
 
 # THAC0 and armour class are both stored as (60 - value): lower armour class is
 # better, and the game keeps the byte rising as the character improves.
-# Re-exported from por/encoding.py, which is now the one place these live.
+# Re-exported from goldbox/encoding.py, which is now the one place these live.
 COMBAT_BIAS = _enc.COMBAT_BIAS
 ARMOUR_BIAS = _enc.ARMOUR_BONUS_BIAS
 
@@ -165,7 +165,7 @@ RECORD_SLOT_COUNT = 12
 COMBAT_SLOT_BASE = 0x5500          # slot 8; was called STAGING_PAGE_BASE
 STAGING_PAGE_BASE = COMBAT_SLOT_BASE   # old name, kept so callers do not break
 
-# Items live at $5900, immediately after the twelfth slot -- see por/items.py.
+# Items live at $5900, immediately after the twelfth slot -- see goldbox/items.py.
 ITEM_AREA_BASE = 0x5900
 
 

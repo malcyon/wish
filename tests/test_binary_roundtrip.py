@@ -12,12 +12,12 @@ import pathlib
 import pytest
 from gamedata import disk_dir, game_file
 
-from por.d64 import D64, load_payload, split_load_address
-from por.geo import GEO_SIZE, Geo, GeoError, load_geo_files
-from por.icons import CELLS, ICON_SIZE, Icon, icon_pixels, load_icon_charset
-from por.items import ITEM_SIZE, Item, load_item_names, load_item_templates
-from por.record import RECORD_SIZE, CharacterRecord
-from por.spells import spellbook_bytes, spells_known
+from goldbox.d64 import D64, load_payload, split_load_address
+from goldbox.geo import GEO_SIZE, Geo, GeoError, load_geo_files
+from goldbox.icons import CELLS, ICON_SIZE, Icon, icon_pixels, load_icon_charset
+from goldbox.items import ITEM_SIZE, Item, load_item_names, load_item_templates
+from goldbox.record import RECORD_SIZE, CharacterRecord
+from goldbox.spells import spellbook_bytes, spells_known
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -49,10 +49,10 @@ def test_a_geo_survives_the_prg_wrapper():
 @game_disks
 def test_every_icon_round_trips_and_renders():
     charset = load_icon_charset(f"{DISKS}/POOL1.D64")
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     disk = D64.open(f"{DISKS}/PORSAVE11.D64")
     save = SaveGame0.from_prg(disk.read_file(b"SAVEDGAME0"))
-    from por.icons import icon_for_slot
+    from goldbox.icons import icon_for_slot
     for slot in save.characters:
         icon = icon_for_slot(save.to_bytes(), slot.index)
         assert len(icon.raw) == ICON_SIZE
@@ -74,7 +74,7 @@ def test_every_item_template_round_trips():
 
 
 def test_a_spellbook_round_trips_for_every_legal_id():
-    from por.spells import LAST_SPELLBOOK_SPELL, SPELLBOOK_OFFSET
+    from goldbox.spells import LAST_SPELLBOOK_SPELL, SPELLBOOK_OFFSET
     for ids in ([], [1], [1, 55], list(range(1, LAST_SPELLBOOK_SPELL + 1))):
         book = spellbook_bytes(ids)
         record = bytes(SPELLBOOK_OFFSET) + book + bytes(400)
@@ -116,7 +116,7 @@ def test_a_truncated_record_is_refused():
 
 @game_disks
 def test_a_missing_file_names_itself():
-    from por.d64 import FileNotFoundInImage
+    from goldbox.d64 import FileNotFoundInImage
     with pytest.raises(FileNotFoundInImage):
         load_payload(f"{DISKS}/POOL1.D64", b"NOSUCHFILE")
 

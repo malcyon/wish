@@ -21,10 +21,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from por import layout
-from por.d64 import D64, split_load_address
-from por.record import RECORD_SIZE
-from por.savegame import HEADER_SIZE, SAVE0_LOAD_ADDRESS, SLOT_STRIDE, SaveGame0
+from goldbox import layout
+from goldbox.d64 import D64, split_load_address
+from goldbox.record import RECORD_SIZE
+from goldbox.savegame import HEADER_SIZE, SAVE0_LOAD_ADDRESS, SLOT_STRIDE, SaveGame0
 
 IMAGE_SIZE = 174848
 

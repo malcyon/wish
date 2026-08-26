@@ -9,7 +9,7 @@ Two tables live on the game disk and neither is in this repo as data:
   ITEMS      128 item *type* records -- damage, protection, class usage
 
 Both are read straight off the disk, so the names here carry no
-transcription errors. Run after changing por/items.py:
+transcription errors. Run after changing goldbox/items.py:
 
     python3 tools/genitems.py [GAME.D64]
 """
@@ -18,8 +18,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from por import d64  # noqa: E402
-from por.items import (  # noqa: E402
+from goldbox import d64  # noqa: E402
+from goldbox.items import (  # noqa: E402
     NAMES_TABLE_ENTRIES,
     ItemType,
     load_item_names,
@@ -61,7 +61,7 @@ def main() -> int:
     w("# Item tables")
     w("")
     w("**Generated** — run `python3 tools/genitems.py` after changing")
-    w("`por/items.py`. Both tables are read directly off a game disk, so the")
+    w("`goldbox/items.py`. Both tables are read directly off a game disk, so the")
     w("spellings are the game's own.")
     w("")
     w("An item record does not store a name. It stores three indices into the")
@@ -149,7 +149,7 @@ def main() -> int:
         r = types[idx * 16:(idx + 1) * 16]
         if not any(r):
             continue
-        # por.items owns the protection rule; reading the byte a second way
+        # goldbox.items owns the protection rule; reading the byte a second way
         # here is how docs/85 came to carry a nibble rule the library had
         # already dropped.
         t = ItemType(index=idx, raw=bytes(r))

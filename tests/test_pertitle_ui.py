@@ -20,7 +20,7 @@ import pytest
 
 from automap import live
 from editor.enums import class_bit_names, race_names, tables_for
-from por import games
+from goldbox import games
 
 POOL = games.POOL_OF_RADIANCE
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
@@ -107,7 +107,7 @@ def test_the_spells_box_is_gated_on_the_open_titles_casters(window):
     all this needs -- and the box's enabled state is also what decides whether
     `_flush` writes the spell bytes back, which is why one mask answers both.
     """
-    from por.record import CharacterRecord
+    from goldbox.record import CharacterRecord
 
     class _Party:
         def __init__(self, game):
@@ -147,7 +147,7 @@ def test_the_spells_box_is_gated_on_the_open_titles_casters(window):
 def _member(game, race=None, class_bits=None):
     """One roster row, built from a blank record rather than from a disk."""
     from editor.roster import Member
-    from por.record import CharacterRecord
+    from goldbox.record import CharacterRecord
 
     record = CharacterRecord.blank()
     record.set("name", "TESTER")
@@ -350,7 +350,7 @@ def _copy_disks(source: pathlib.Path, pattern: str, into: pathlib.Path) -> None:
 def test_a_curse_save_gets_curse_item_names(app, tmp_path):
     """The `$9E00` table, not the `$6F00` one: without the title in hand the
     lookup lands on nothing and every item shows as its word index."""
-    from por.items import load_item_names
+    from goldbox.items import load_item_names
     from tests.gamedata import curse_dir
     where = curse_dir()
     if where is None:
@@ -405,7 +405,7 @@ def _is_save(path: pathlib.Path, game: games.Game) -> bool:
     Curse's side B has a truncated `SAVEAZURE` demo party under the same name,
     which `matches_payload` is exactly for.
     """
-    from por.d64 import D64
+    from goldbox.d64 import D64
     try:
         disk = D64.open(path)
         entry = disk.find(game.save_file)
@@ -424,8 +424,8 @@ def _is_save(path: pathlib.Path, game: games.Game) -> bool:
 # exercised somewhere.
 
 def test_synthetic_party_builds_a_save_for_every_title():
-    from por.d64 import D64
-    from por.savegame import load_save
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
     from tests.gamedata import synthetic_party
 
     for game in games.GAMES:

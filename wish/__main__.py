@@ -68,8 +68,8 @@ def game_of(save: str | None):
     if not save:
         return None
     try:
-        from por import games
-        from por.d64 import D64
+        from goldbox import games
+        from goldbox.d64 import D64
         return games.detect(D64.open(save))
     except Exception:
         # The editor opens the same disk and reports its own failure; this one

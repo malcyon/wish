@@ -1,12 +1,12 @@
 """Turning a DOS Pool of Radiance save into a C64 one, checked field by field.
 
 `tests/test_dossave.py` measures the DOS file; this module checks what
-`por/dos.py` does with it.  The two halves of the promise in
+`goldbox/dos.py` does with it.  The two halves of the promise in
 `docs/117-save-conversion.md` are what most of these tests are:
 
 * **losslessness** -- a DOS record read and handed back byte for byte, which
   is how a read-only decoder proves it understood the file;
-* **nothing dropped silently** -- every field declared in `por/dos_layout.py`
+* **nothing dropped silently** -- every field declared in `goldbox/dos_layout.py`
   has a disposition, and every byte of the 580-byte C64 record has a
   provenance.
 
@@ -24,9 +24,9 @@ import pytest
 import yaml
 from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 
-from por import areas, dos, dos_layout, savegame, spells
-from por import dos_savegame as sg
-from por.layout import RECORD_SIZE as C64_RECORD_SIZE
+from goldbox import areas, dos, dos_layout, savegame, spells
+from goldbox import dos_savegame as sg
+from goldbox.layout import RECORD_SIZE as C64_RECORD_SIZE
 
 # --- the tables, which need no save -----------------------------------------
 
@@ -56,7 +56,7 @@ def test_every_declared_field_has_a_disposition():
 def test_the_spell_id_space_is_shared():
     """DOS byte *n* of the spellbook is spell id *n + 1*, and the ids are the
     C64's own -- the DOS array's cleric-1 / mage-1 / cleric-2 / mage-2 /
-    cleric-3 / mage-3 runs are `por/spells.py`'s group boundaries exactly."""
+    cleric-3 / mage-3 runs are `goldbox/spells.py`'s group boundaries exactly."""
     bounds = [(lo, hi) for lo, hi, _, _ in spells.SPELL_GROUPS]
     assert bounds == [(1, 8), (9, 21), (22, 28), (29, 35), (36, 44), (45, 55)]
     # 56 DOS bytes hold ids 1..56; the C64's seven bytes hold bits 1..55.
@@ -153,7 +153,7 @@ def test_an_export_carries_no_items():
 def test_every_known_spell_is_one_its_owner_could_cast():
     """The transpose, checked the only way that does not assume it.
 
-    Every byte set in the DOS spellbook falls in a `por/spells.py` group whose
+    Every byte set in the DOS spellbook falls in a `goldbox/spells.py` group whose
     class the character has, with no crossover in either direction: a level-1
     cleric sets exactly the eight first-level cleric ids, a level-3 magic-user
     sets the thirteen first-level and seven second-level magic-user ids.
@@ -178,7 +178,7 @@ def test_every_known_spell_is_one_its_owner_could_cast():
 @needs_dos_saves
 def test_a_first_level_cleric_knows_the_eight_first_level_cleric_spells():
     """The sharpest single check on the ordering: eight bytes, in a row, at
-    the start, and `por/spells.py` says ids 1-8 are cleric level 1."""
+    the start, and `goldbox/spells.py` says ids 1-8 are cleric level 1."""
     seen = 0
     for char in _records():
         levels = char.class_levels
@@ -232,7 +232,7 @@ def test_the_converted_record_says_what_the_dos_one_said():
 @needs_dos_saves
 def test_the_converted_items_are_the_dos_items():
     """Sixteen fixed C64 slots against a DOS chain of 63-byte records."""
-    from por.items import ITEM_SIZE as C64_ITEM_SIZE
+    from goldbox.items import ITEM_SIZE as C64_ITEM_SIZE
 
     carried = 0
     for char in _records():
@@ -266,7 +266,7 @@ def test_innate_effects_survive_and_running_ones_are_reported():
     """The `.SPC` file splits in two, and the two ports share the id space.
 
     Curse's own importer keeps exactly the innate racial ids out of a Pool of
-    Radiance `.spc`; `por/traits.py` names the same numbers the same way --
+    Radiance `.spc`; `goldbox/traits.py` names the same numbers the same way --
     107 is elf sleep resistance and 124 is the half-elf's on both sides.
     Everything else is a running spell and is dropped, out loud.
     """
@@ -377,7 +377,7 @@ def test_the_flags_and_the_square_land_where_a_c64_save_keeps_them():
 def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
     """Step 2, and the reason it is worth having on its own: one shape, one
     set of field names, one renderer."""
-    from por.yaml_io import to_yaml
+    from goldbox.yaml_io import to_yaml
 
     data = dos.export_party(_save_dir(), "A")
     assert data["port"] == "dos"
@@ -485,7 +485,7 @@ def _outdoor_savgam(script: int = 26) -> bytes:
     return bytes(savgam)
 
 
-# script, SQRDATA number, disk hint -- `por/areas.py`'s entries for 25-27.
+# script, SQRDATA number, disk hint -- `goldbox/areas.py`'s entries for 25-27.
 OUTDOOR_WINDOWS = [(25, 4, 6), (26, 5, 7), (27, 6, 8)]
 
 
@@ -550,7 +550,7 @@ def test_an_outdoor_area_id_is_read_from_the_script_word(script):
 # --- #99: the two outdoor signals checked against each other ----------------
 
 def _mismatched_savgam(indoors_word: int, area: int, script: int) -> bytes:
-    """A `SAVGAM` whose own `$49E6` disagrees with what `por/areas.py` says
+    """A `SAVGAM` whose own `$49E6` disagrees with what `goldbox/areas.py` says
     about its script id -- never seen on a real disk (#59 is 3 of 3
     agreeing), but reachable by a corrupt or hand-edited save now that #50 no
     longer refuses all outdoor input.  Built from nothing rather than a real
@@ -671,7 +671,7 @@ def test_the_converted_party_marches_in_the_dos_order():
 def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
     """The item page and the slot record must not come apart when the party is
     reversed: page `n` at `$5900` belongs to the character in slot `n`."""
-    from por import items
+    from goldbox import items
 
     slot = "A"
     # Keyed by name, not by index: reading the expected count back through
@@ -691,7 +691,7 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
 # --- the other three titles (#53) -------------------------------------------
 #
 # Reading is per title and the title is the record's own length.  These tests
-# are the evidence that `por/dos_layout.py`'s four shapes are right: a shape
+# are the evidence that `goldbox/dos_layout.py`'s four shapes are right: a shape
 # one byte out fails several of them at once, because each check is a fact
 # about the *content* of a field rather than about the table that names it.
 
@@ -860,7 +860,7 @@ def test_a_dual_classed_character_carries_the_class_it_was():
 
 def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
     """The strongest single check on a shape this project did not measure
-    itself: `por/spells.py`'s ranger grant table was read mechanically out of
+    itself: `goldbox/spells.py`'s ranger grant table was read mechanically out of
     the **C64** `GEN` file, and DOS Silver Blades' three shipped rangers hold
     its level-8 row -- 77, 78, 79, 80 -- and nothing else.
 
@@ -877,7 +877,7 @@ def test_the_silver_blades_rangers_hold_the_c64_grant_list_exactly():
 
 def test_the_silver_blades_clerics_hold_the_cleric_grant_levels():
     """The level-8 clerics know cleric levels 1-4 and nothing else, which is
-    `por/spells.py`'s Silver Blades groups 1-8, 22-28, 37-44, {58, 66-70}."""
+    `goldbox/spells.py`'s Silver Blades groups 1-8, 22-28, 37-44, {58, 66-70}."""
     shape = dos_layout.SHAPES_BY_SIZE[439]
     want = (set(range(1, 9)) | set(range(22, 29)) | set(range(37, 45))
             | {58} | set(range(66, 71)))

@@ -1,6 +1,6 @@
 # Level progression
 
-**Generated** by `tools/genlevels.py` from `por/levels.py` — do not edit.
+**Generated** by `tools/genlevels.py` from `goldbox/levels.py` — do not edit.
 
 What each class needs to advance and what it gets. Pool of Radiance stops well
 short of the rulebook — a fighter at 8, a cleric at 6 — because it was built to

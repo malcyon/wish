@@ -1,4 +1,4 @@
-"""Tests for por.savegame.
+"""Tests for goldbox.savegame.
 
 The slot model was corrected once already: it is **8 slots of $100**, not 6 of
 $400. The decisive fixture is `party6_savedgame0.bin`, a real save holding a
@@ -11,8 +11,8 @@ import pathlib
 import pytest
 from gamedata import disk_dir
 
-from por.record import CharacterRecord
-from por.savegame import (
+from goldbox.record import CharacterRecord
+from goldbox.savegame import (
     HEADER_SIZE,
     ICON_SIZE,
     ICON_TABLE_BASE,
@@ -219,11 +219,11 @@ class TestRosterBlocks:
         p = pathlib.Path("/mnt/media/roms/c64/Pool of Radiance Disks/PORSAVE2.D64")
         if not p.exists():
             pytest.skip("needs a real save disk")
-        from por.d64 import D64
+        from goldbox.d64 import D64
         return SaveGame1.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME1"))
 
     def test_the_roster_is_exactly_one_page(self):
-        from por.savegame import (
+        from goldbox.savegame import (
             ROSTER_AREA_END,
             ROSTER_COUNT,
             ROSTER_STRIDE,
@@ -309,7 +309,7 @@ class TestStagingPage:
         disk = _p.Path(f"{self.DISKS}/POOL1.D64.orig")
         if not disk.exists():
             pytest.skip("needs a game disk")
-        from por.d64 import D64, split_load_address
+        from goldbox.d64 import D64, split_load_address
         _, mon = split_load_address(D64.open(str(disk)).read_file(b"MON04"))
         after = SaveGame0.from_prg(
             (FIXTURES / "party6_after_combat.bin").read_bytes())
@@ -332,7 +332,7 @@ class TestRosterSpellCounts:
         p = _p.Path(path)
         if not p.exists():
             pytest.skip(f"needs {p.name}")
-        from por.d64 import D64
+        from goldbox.d64 import D64
         img = D64.open(str(p))
         return (SaveGame0.from_prg(img.read_file(b"SAVEDGAME0")),
                 SaveGame1.from_prg(img.read_file(b"SAVEDGAME1")))
@@ -341,7 +341,7 @@ class TestRosterSpellCounts:
     def _by_level(record):
         from collections import Counter
 
-        from por.spells import spell_group
+        from goldbox.spells import spell_group
         ids = [b for b in record.get_raw("spells_memorised") if b]
         per = Counter(spell_group(i)[1] for i in ids)
         return (per.get(1, 0), per.get(2, 0), per.get(3, 0))
@@ -395,7 +395,7 @@ class TestShippedNpcRecords:
         p = _p.Path(f"{self.DISKS}/{disk}")
         if not p.exists():
             pytest.skip("needs the game disks")
-        from por.d64 import D64, split_load_address
+        from goldbox.d64 import D64, split_load_address
         _, payload = split_load_address(D64.open(str(p)).read_file(name))
         return payload
 
@@ -405,7 +405,7 @@ class TestShippedNpcRecords:
         p = _p.Path(os.path.expanduser("~/Downloads/npc_party.d64"))
         if not p.exists():
             pytest.skip("needs npc_party.d64")
-        from por.d64 import D64
+        from goldbox.d64 import D64
         return SaveGame0.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME0"))
 
     def test_fatimas_race_is_the_one_the_game_shipped(self):
@@ -433,7 +433,7 @@ class TestShippedNpcRecords:
 
     def test_the_marker_bytes_are_FF_before_any_save_exists(self):
         """So the marker is fill residue, not a flag the game sets on joining."""
-        from por.record import NPC_MARKER, NPC_MARKER_OFFSETS
+        from goldbox.record import NPC_MARKER, NPC_MARKER_OFFSETS
         for disk, name in self.SHIPPED.values():
             shipped = self._monster(disk, name)
             assert all(shipped[o] == NPC_MARKER for o in NPC_MARKER_OFFSETS), name
@@ -442,7 +442,7 @@ class TestShippedNpcRecords:
         """MONSTER=8 is enumerated and never instantiated, like PALADIN."""
         import pathlib as _p
 
-        from por.d64 import D64, split_load_address
+        from goldbox.d64 import D64, split_load_address
         races = set()
         for n in range(1, 9):
             disk = _p.Path(f"{self.DISKS}/POOL{n}.D64"
@@ -460,7 +460,7 @@ class TestShippedNpcRecords:
 
 class TestTheCacheRefreshed:
     """PORSAVE11: MALCYON's armour class finally caught up with the dexterity
-    the thirteen-field edit gave him, and landed on what por.derive predicts.
+    the thirteen-field edit gave him, and landed on what goldbox.derive predicts.
     See docs/50-experiments.md, "the spell counts, and how thin the retraction
     was"."""
 
@@ -471,13 +471,13 @@ class TestTheCacheRefreshed:
         p = _p.Path(f"{self.DISKS}/{name}.D64")
         if not p.exists():
             pytest.skip("needs the later save disks")
-        from por.d64 import D64
+        from goldbox.d64 import D64
         img = D64.open(str(p))
         return (SaveGame0.from_prg(img.read_file(b"SAVEDGAME0")),
                 SaveGame1.from_prg(img.read_file(b"SAVEDGAME1")))
 
     def test_armour_class_was_stale_and_is_now_right(self):
-        from por import derive
+        from goldbox import derive
         for name, expected in (("PORSAVE9", 8), ("PORSAVE11", 6)):
             sg0, sg1 = self._save(name)
             malcyon = sg0.slot(0)
@@ -512,7 +512,7 @@ class TestPartyPosition:
         p = pathlib.Path(f"{self.DISKS}/{name}.D64")
         if not p.exists():
             pytest.skip("needs the walk-experiment save disks")
-        from por.d64 import D64
+        from goldbox.d64 import D64
         return SaveGame0.from_prg(D64.open(str(p)).read_file(b"SAVEDGAME0"))
 
     def test_three_steps_north_moves_only_y(self):
@@ -532,7 +532,7 @@ class TestPartyPosition:
         assert before.facing_name == "west" and after.facing_name == "north"
 
     def test_previous_square_is_one_step_back(self):
-        from por.savegame import FACING_STEP
+        from goldbox.savegame import FACING_STEP
         for name in ("PORSAVE7", "PORSAVE8"):
             p = self._save(name).party
             dx, dy = FACING_STEP[p.facing]
@@ -565,8 +565,8 @@ def _area_of(name: str):
 
     import pytest
 
-    from por.d64 import D64
-    from por.savegame import SaveGame0
+    from goldbox.d64 import D64
+    from goldbox.savegame import SaveGame0
 
     path = pathlib.Path(f"/home/donald/c64/Pool of Radiance Disks/{name}.D64")
     if not path.exists():
@@ -605,8 +605,8 @@ def test_a_foreign_save_reports_a_different_area():
 
     import pytest
 
-    from por.d64 import D64
-    from por.savegame import SaveGame0
+    from goldbox.d64 import D64
+    from goldbox.savegame import SaveGame0
 
     path = pathlib.Path("/home/donald/Downloads/npc_party.d64")
     if not path.exists():
@@ -618,7 +618,7 @@ def test_a_foreign_save_reports_a_different_area():
 
 def test_the_dirty_bit_is_masked_off():
     """Bit 7 is the loader's "reload me" marker, not part of the number."""
-    from por.savegame import AREA, LOADED_DIRTY, SAVE0_LOAD_ADDRESS, SaveGame0
+    from goldbox.savegame import AREA, LOADED_DIRTY, SAVE0_LOAD_ADDRESS, SaveGame0
 
     payload = bytearray(0x1C00)
     payload[AREA - SAVE0_LOAD_ADDRESS] = 0x14 | LOADED_DIRTY

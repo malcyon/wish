@@ -3,7 +3,7 @@
 A character's memorised spells are a packed list of **spell ids** at record
 offset `0x020`, and the names live on the game disk. *Where* on the disk is the
 one thing that does not transfer between titles, so this module is a table per
-title -- the shape `por/games.py` settled on -- and every entry point takes an
+title -- the shape `goldbox/games.py` settled on -- and every entry point takes an
 optional `game`.
 
 | | Pool of Radiance | Curse of the Azure Bonds | Secret of the Silver Blades |
@@ -70,7 +70,7 @@ class SpellTable:
     them the title chose.
 
     Pairs rather than dicts in `groups`, so the descriptor stays frozen and
-    hashable, which is what `por/games.py` does for the same reason.
+    hashable, which is what `goldbox/games.py` does for the same reason.
     """
 
     key: str
@@ -102,7 +102,7 @@ class SpellTable:
     #: `(level, ids)` pairs: the whole magic-user spell list a character of
     #: that level is granted, where the trainer hands out a row instead of
     #: building a menu to choose from. Empty for a title whose magic-user
-    #: learns by picking one spell -- `por.levelup.learnable` is what tells
+    #: learns by picking one spell -- `goldbox.levelup.learnable` is what tells
     #: the two apart. See `SECRET_OF_THE_SILVER_BLADES` below. CONFIRMED,
     #: read mechanically out of `GEN` by `tests/test_silverblades.py::
     #: _grant_table(_gen(), 0xC9, range(5, 10))` (#89).
@@ -375,8 +375,8 @@ DEFAULT = POOL_OF_RADIANCE
 def for_game(game=None) -> SpellTable:
     """The spell table for a title.
 
-    Takes a `por.games.Game`, a game key, a `SpellTable`, or None. Duck-typed
-    on `.key` rather than importing `por.games`, which would be a whole module
+    Takes a `goldbox.games.Game`, a game key, a `SpellTable`, or None. Duck-typed
+    on `.key` rather than importing `goldbox.games`, which would be a whole module
     of coupling for one string.
     """
     if isinstance(game, SpellTable):
@@ -483,7 +483,7 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
                  (3, 3, 2, 1, 0), (3, 3, 3, 2, 0), (4, 4, 3, 2, 1),
                  (4, 4, 3, 3, 2)]
 # Bonus first-, second- and third-level cleric spells for high Wisdom. **The
-# game's, not AD&D's**: `por.levels.wisdom_bonus_spells` implements `GEN
+# game's, not AD&D's**: `goldbox.levels.wisdom_bonus_spells` implements `GEN
 # $10AD` and the shifts `$2108` puts it through, and the game's first-level
 # column starts a point low -- 1 at wisdom 12, where the rulebook gives the
 # first bonus spell at 13. See `docs/125-bug-notes.md` N13. Curse's copy has
@@ -531,7 +531,7 @@ def spellbook_bytes(ids, game=None) -> bytes:
     return bytes(out)
 
 
-#: The two `por/layout.py` fields the mask is declared as, in record order:
+#: The two `goldbox/layout.py` fields the mask is declared as, in record order:
 #: the seven bytes Pool of Radiance uses, and the nine `0x07F`-`0x087` the
 #: titles after it continue into. Two fields rather than one sixteen-byte one
 #: because seven is a fact about *this* game and the split is where that fact
@@ -596,7 +596,7 @@ def capacity(class_bits: int, level: int, wisdom: int,
         # Silver Blades' progression tables have not been read off its disks,
         # and neither have the Krynn titles' or Gateway's. Nothing here, so a
         # caller shows no number rather than another game's -- the same rule
-        # `por/games.py` applies to a race table it does not have. Issue #31.
+        # `goldbox/games.py` applies to a race table it does not have. Issue #31.
         return {}
     magic_user, cleric = rows
     level = max(1, min(int(level or 1), len(magic_user)))

@@ -289,7 +289,7 @@ from tools import dosbox, dosboxx
 with dosboxx.claim("what I am doing") as slot:
     with dosboxx.XSession(slot, dosbox.find_game("POOLRAD")) as s:
         por = dosbox.PoolOfRadiance(s)
-        por.to_main_menu(); por.load_game("J")
+        goldbox.to_main_menu(); goldbox.load_game("J")
         s.attach()                       # Alt+Pause; True when it answered
         image = s.read(0, 0x100000)      # sixteen MEMDUMPBINs, joined
         base, votes, same = dosboxx.locate(image, save[1:5121])

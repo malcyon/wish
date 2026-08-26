@@ -4,7 +4,7 @@ Every creature in the game -- a goblin as much as a fighter -- is one 580-byte
 character record, so this is not a monster-only decode; a level-1 player
 character reads here as one unarmed 1d2 attack, which `GEN $0BBE` writes.
 
-**The offsets are literals rather than `por/layout.py` fields.** The layout
+**The offsets are literals rather than `goldbox/layout.py` fields.** The layout
 carries `0x0D9`-`0x0E0` as one named block, `attack_forms`, because the sheet
 has no box for a monster's attack table; this view is where it is read apart.
 The reading itself is CONFIRMED --

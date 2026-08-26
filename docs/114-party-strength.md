@@ -6,7 +6,7 @@ twelve of the thirty area scripts it becomes the **count operand of `LOADMON`**
 — literally how many monsters are placed in the fight.
 
 Nothing stores it. The routine walks the eight roster slots every time a script
-asks, and writes only to the ECL variable its operand names. `por/strength.py`
+asks, and writes only to the ECL variable its operand names. `goldbox/strength.py`
 recomputes it the same way, and the Automapper shows it live under the bottom
 strip. Found in `work/reports/encounters.md`; the entry in
 `docs/50-experiments.md` is "Does the game scale random encounters to the
@@ -151,13 +151,13 @@ where the armour-class subtraction at `$1C16` carries a `BCC`. A current THAC0
 worse than 21 therefore wraps to a byte near 255 and, times five, adds well over
 a thousand to the sum — enough on its own to saturate `LOADMON`. A cursed
 weapon is the plausible route to a THAC0 that bad. **GUESS**: this is read off
-the instruction and reproduced in `por/strength.py`
+the instruction and reproduced in `goldbox/strength.py`
 (`Contribution.wrapped`), but no cursed weapon has been put on a character and
 walked into the slums.
 
 ## Where the code is
 
-`por/strength.py`. No Qt and no transport:
+`goldbox/strength.py`. No Qt and no transport:
 
 ```python
 strength.from_bytes(save0_bytes, roster_bytes)   # a save file, or a live read

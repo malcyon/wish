@@ -2,7 +2,7 @@
 
 **Status: built and wired.** A quest log on the Automapper tab: what the City
 Council has asked the party to do, and what it has already paid for.
-`por/commissions.py` decodes it, `automap/commissions.py` draws it, it sits in
+`goldbox/commissions.py` decodes it, `automap/commissions.py` draws it, it sits in
 the right-hand column of the map tab under the notes, and
 `tests/test_commissions.py` holds the verification below.
 
@@ -41,7 +41,7 @@ ones, and anything above `$4AFF` — no ECL operand reaches there, so
 same byte seen from two ends: the imperative on the way in, the clerk's payment
 speech — *slums cleared* — on the way out.
 
-The byte's four states, from `por/commissions.py`:
+The byte's four states, from `goldbox/commissions.py`:
 
 | value | what it means |
 |---|---|
@@ -130,7 +130,7 @@ the override, keyed by ledger index.
 The board says *clear the slums* and the clerk pays for *slums cleared*; a
 quest log should say **Clear the Slums**. `_sentence` does both the first
 letter and the place names, beside each other and for the same reason: the
-strings in `por/commissions.py` are the bytecode's own words and are cited as
+strings in `goldbox/commissions.py` are the bytecode's own words and are cited as
 such, so nothing there is edited. `PLACES` holds the one word that needs it —
 every other place the board names (Sokal Keep, Kuto's Well, Podal Plaza, Kovel
 Mansion, Valjevo Castle, Stojanow Gate) is already capitalised in the game's
@@ -151,7 +151,7 @@ handled row by row above.
 
 ## Where the code is
 
-`por/commissions.py`: the 26 ledger names and the script that finishes each, the
+`goldbox/commissions.py`: the 26 ledger names and the script that finishes each, the
 three states, `$4AC1`, the `ECL08 $A84D` offer loop, and the eight appointment
 flags. `read(source)` returns the lot; `summary_lines(source)` is a plain-text
 rendering for the CLI, which still groups by state. `source` is the 224 flags,

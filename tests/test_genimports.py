@@ -26,12 +26,12 @@ def _package(root, files):
 
 def test_a_sibling_is_seen_however_the_import_is_spelled(tmp_path):
     """Four spellings, one edge each. The absolute one was missed once."""
-    root = _package(tmp_path / "por", {
+    root = _package(tmp_path / "goldbox", {
         "layout": "",
         "relative": "from .layout import Field\n",
         "bare": "from . import layout\n",
-        "absolute": "from por.layout import Field\n",
-        "dotted": "import por.layout\n",
+        "absolute": "from goldbox.layout import Field\n",
+        "dotted": "import goldbox.layout\n",
     })
     found = {(s, d) for s, d, _ in genimports.edges(root)}
     for source in ("relative", "bare", "absolute", "dotted"):
@@ -39,16 +39,16 @@ def test_a_sibling_is_seen_however_the_import_is_spelled(tmp_path):
 
 
 def test_an_import_outside_the_module_body_binds_more_weakly(tmp_path):
-    root = _package(tmp_path / "por", {
+    root = _package(tmp_path / "goldbox", {
         "layout": "",
-        "late": "def f():\n    from por.layout import Field\n",
+        "late": "def f():\n    from goldbox.layout import Field\n",
     })
     assert genimports.edges(root) == [("late", "layout", genimports.DEFERRED)]
 
 
 def test_the_documented_graph_is_the_one_the_tool_prints():
     """docs/117 marks the block generated; this is what makes that true."""
-    package = pathlib.Path(__file__).resolve().parent.parent / "por"
+    package = pathlib.Path(__file__).resolve().parent.parent / "goldbox"
     printed = genimports.mermaid(genimports.edges(package))
     assert printed in DOC.read_text(), (
         "docs/117-save-conversion.md is out of step with tools/genimports.py --"

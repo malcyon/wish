@@ -2,7 +2,7 @@
 tabs below them.
 
 The form comes from `editor/character.ui`. Widgets are found by `objectName`
-and matched to `por/layout.py` fields, so the form can be rearranged in Qt
+and matched to `goldbox/layout.py` fields, so the form can be rearranged in Qt
 Designer -- fields moved between group boxes, regrouped, relabelled -- without
 a line of this file changing.
 """
@@ -29,14 +29,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por import games as por_games
-from por.iconparts import IconParts
-from por.icons import load_icon_charset
-from por.items import load_item_names, load_item_templates, load_item_types
-from por.layout import FIELDS_BY_NAME
-from por.savegame import store_save
-from por.spells import capacity, load_spell_names
-from por.spells import for_game as spell_table
+from goldbox import games as por_games
+from goldbox.iconparts import IconParts
+from goldbox.icons import load_icon_charset
+from goldbox.items import load_item_names, load_item_templates, load_item_types
+from goldbox.layout import FIELDS_BY_NAME
+from goldbox.savegame import store_save
+from goldbox.spells import capacity, load_spell_names
+from goldbox.spells import for_game as spell_table
 
 from . import changes, files, inventory
 from .binding import bindings, field_name, value_range, widest_text
@@ -49,7 +49,7 @@ from .rosterview import (
 )
 from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
 
-#: The spellbook bitmask at 0x078, which `por/layout.py` declares as two
+#: The spellbook bitmask at 0x078, which `goldbox/layout.py` declares as two
 #: fields: the seven bytes Pool of Radiance uses, and the nine the titles after
 #: it continue into. In record order, because they are read and written as one
 #: run of bytes.
@@ -635,7 +635,7 @@ class EditorWindow(QMainWindow):
             if name not in known:
                 raise KeyError(
                     f"{widget.objectName()!r} on the form matches no field in "
-                    f"por/layout.py")
+                    f"goldbox/layout.py")
             found[name] = widget
         return found
 
@@ -836,7 +836,7 @@ class EditorWindow(QMainWindow):
         """Give every box the width of the widest value its bytes can hold.
 
         A name is twenty characters, an ability score three digits and a coin
-        count five, and `por/layout.py` knows which is which. Nothing here is
+        count five, and `goldbox/layout.py` knows which is which. Nothing here is
         per-field, so a field added to the form later comes out right.
         """
         for name, w in self._widgets.items():
@@ -888,7 +888,7 @@ class EditorWindow(QMainWindow):
     def _spellbook_raw(self, record) -> bytes:
         """The whole mask at 0x078, both declared fields of it.
 
-        `por/layout.py` splits it: `spells_known` is the seven bytes Pool of
+        `goldbox/layout.py` splits it: `spells_known` is the seven bytes Pool of
         Radiance uses and every writer in the project encodes, and
         `spells_known_high` is the nine the later titles continue into. The
         widget wants one run of bytes and decides for itself how far its title
@@ -989,7 +989,7 @@ class EditorWindow(QMainWindow):
         editor's own Save is what reaches the disk, so the backup in
         `editor/files.py` covers an import like any other edit.
         """
-        from por import dos
+        from goldbox import dos
 
         from .dosimport import (
             FOLDER_TITLE,

@@ -35,7 +35,7 @@ import sys
 from dataclasses import dataclass
 from typing import Protocol
 
-from por import games
+from goldbox import games
 
 from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
 from .vice import Monitor, monitor_address

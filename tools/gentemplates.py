@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from por.items import (  # noqa: E402
+from goldbox.items import (  # noqa: E402
     Item,
     load_item_names,
     load_item_templates,

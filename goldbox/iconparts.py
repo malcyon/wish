@@ -1,6 +1,6 @@
 """The icon editor's own model: an icon is a WEAPON and a HEAD, not 18 cells.
 
-`por/icons.py` reads the 36 bytes an icon *is*. This reads the much smaller set
+`goldbox/icons.py` reads the 36 bytes an icon *is*. This reads the much smaller set
 of icons the game can actually *make*, which is a different question and the one
 an editor has to answer. Offering 253 screen codes in each of 18 cells offers
 about 10^43 icons, essentially all of them nonsense; the game's own ICON menu

@@ -2,7 +2,7 @@
 
 **Status: solved.** Every field the training hall writes is derived from the
 game's own tables, and replaying the twenty-nine measured trainings of
-[`119`](119-test-party.md) through `por/levelup.py` reproduces the record the
+[`119`](119-test-party.md) through `goldbox/levelup.py` reproduces the record the
 trainer produced, **byte for byte**, on all thirty-five before/after pairs held
 in `work/p18b/` — given the hit die the game rolled. The thirty-fifth is
 `rec-kath-t2-*`, driven later for the multi-class clamp below. The five blockers
@@ -39,7 +39,7 @@ the file.
 
 ## The sequence
 
-`GEN $1B8C`, in order. Every one is in `por/levelup.py` beside the field it
+`GEN $1B8C`, in order. Every one is in `goldbox/levelup.py` beside the field it
 fills.
 
 | | routine | what it writes |
@@ -129,7 +129,7 @@ After training, `0x0E8` becomes one less than the largest next threshold across
 nine wide a class and each class's tenth entry lands in the next class's unused
 slot 0, so the game has a real number one past every ceiling — 60,001 for a
 magic-user 6, 55,001 for a cleric 6, **160,001 for a thief 9** and 250,001 for
-a fighter 8. `por/levels.py` keeps those in `clamp_thresholds`, apart from the
+a fighter 8. `goldbox/levels.py` keeps those in `clamp_thresholds`, apart from the
 rows, because `next_threshold` has to stay `None` at a ceiling: an experience
 bar there has nothing to fill towards.
 
@@ -178,7 +178,7 @@ The general rule is that the untrained class survives unless its next threshold
 is at or above the trained class's *new* next threshold. Both halves were driven
 at the game's own schools; the loss is in `goldbox-bugs.md` as bug 8.
 
-**`por/levelup.py` reproduces it, because the promise is that we write what the
+**`goldbox/levelup.py` reproduces it, because the promise is that we write what the
 trainer writes.** `Plan.experience_lost` and `Plan.classes_disqualified` say
 what a training will cost before it is applied, so a caller can warn instead of
 silently doing it.
@@ -191,7 +191,7 @@ card is which character it means, so the button needs no label saying so.
 
 **Which class is not a question the player is asked.** Donald's rule: the
 button always raises the class with the highest threshold, and the next press
-takes the next one. `por.levelup.best_next_class` implements it as the class
+takes the next one. `goldbox.levelup.best_next_class` implements it as the class
 whose threshold **after** the level it is about to gain is largest — not the
 one it needs now — because the post-level number is the one `$23D4` actually
 reads. Ties break in class-bit order (magic-user, cleric, thief, fighter),
@@ -225,12 +225,12 @@ confirm — the clamp is what the trainer always does.
 **Levelling is refused for every title but Pool of Radiance**, with the reason
 in the outcome's notes, and the button does not appear on the card at all
 (#16). `automap.actions.level_up_blockers` takes the title as well as the
-record, and `por.levels.TRAINER_MEASURED` is the list of titles whose trainer
+record, and `goldbox.levels.TRAINER_MEASURED` is the list of titles whose trainer
 has been read — one entry.
 
 Curse of the Azure Bonds is the case that made this necessary, because it is
 the only one that would have failed *quietly*. Its level tables are in
-`por/levels.py`, so selecting them looks like enough; the other four titles have
+`goldbox/levels.py`, so selecting them looks like enough; the other four titles have
 no tables, match no row and produce no button by luck. Selecting Curse's tables
 would still have left every derivation around them running on Pool of
 Radiance's numbers — the hit-die roll at `$2037`, the saving-throw masks at
@@ -243,7 +243,7 @@ off `POOL3`, Curse's 9455 off `CURSE_A` — and 8925 of the 9083 common bytes
 differ. Every address in the table at the top of this file holds something else
 in Curse's build. Searching Curse's whole `GEN` for Pool of Radiance's tables
 found two and only two: the hit die 2697 bytes earlier at `$161E`, and the
-thief-skill rows 42 bytes earlier at `$1004`. `por/levels.py`'s own per-title
+thief-skill rows 42 bytes earlier at `$1004`. `goldbox/levels.py`'s own per-title
 table agrees, and the rows it still leaves at `--` for Curse — racial save
 bonus, constitution hit-point bonus, wisdom bonus spells, turning level — are
 precisely the ones a level-up needs.

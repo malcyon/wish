@@ -26,8 +26,8 @@ import pytest
 
 from automap.area import RESIDENT_GEO, Fingerprint, ResidentGeo
 from automap.target import PARTY_X, party_fix
-from por import games, geo
-from por.d64 import D64
+from goldbox import games, geo
+from goldbox.d64 import D64
 from tests import gamedata
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
@@ -149,7 +149,7 @@ def _curse_save_payload() -> bytes:
 def test_the_save_image_lives_at_its_own_load_address():
     """The whole 7424 bytes were byte-identical at `$4B00` in the running game.
 
-    So `por.games`' geometry is not merely the file's shape, it is the live
+    So `goldbox.games`' geometry is not merely the file's shape, it is the live
     layout, and every payload offset in it names a real address.
     """
     assert CURSE.save_load_address == 0x4B00

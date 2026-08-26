@@ -13,8 +13,8 @@ an edit typed and typed back has changed nothing.
 
 from __future__ import annotations
 
-from por.layout import LAYOUT, Kind
-from por.record import CharacterRecord
+from goldbox.layout import LAYOUT, Kind
+from goldbox.record import CharacterRecord
 
 from .inventory import describe as describe_item
 

@@ -648,7 +648,7 @@ what wish happened to see. What replaced it is a table of ticks in this dialog.
   — `New Phlan - GEO00, POOL3` — the same string the dropdown's own items
   carry.
 * **New Phlan, The Slums and Sokol Keep are ticked on a fresh config**, ids 0,
-  20 and 21 in `por/areas.py`.
+  20 and 21 in `goldbox/areas.py`.
 * **`Settings.fast_travel_targets` is `null` until somebody ticks something.**
   That is what distinguishes a fresh config from a player who unticked
   everything, and it is why an empty selection comes back empty instead of

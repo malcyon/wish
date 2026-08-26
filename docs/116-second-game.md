@@ -1,6 +1,6 @@
 # Curse of the Azure Bonds — how much of it is the same game
 
-**Status: researched, and now supported.** `por/games.py` carries Curse's save
+**Status: researched, and now supported.** `goldbox/games.py` carries Curse's save
 file name, load address, geometry, race table, class bits and item-name base, so
 `wish` opens a Curse save disk, decodes its party and round-trips it
 byte-identically. What is *not* built is anything needing a running Curse — the
@@ -26,7 +26,7 @@ because it is the game's own arithmetic rather than a diff of two specimens.
 | | Pool of Radiance | Curse of the Azure Bonds | Confidence |
 |---|---|---|---|
 | character record size | 580 bytes | 580 bytes | CONFIRMED |
-| every named field in `por/layout.py` | — | same offset, same width | CONFIRMED |
+| every named field in `goldbox/layout.py` | — | same offset, same width | CONFIRMED |
 | save slot | first 256 bytes of the record | first 256 bytes of the record | CONFIRMED |
 | roster block | record `0x100`–`0x11F` | record `0x100`–`0x11F`, byte-identical structure | CONFIRMED |
 | `60 - value` encoding for THAC0, AC, damage | yes | yes | CONFIRMED |
@@ -34,15 +34,15 @@ because it is the game's own arithmetic rather than a diff of two specimens.
 | map files | `GEO`, 1024 bytes, four 16×16 planes | identical | CONFIRMED |
 | item word table | `ITEMNAMES`, 256 low + 256 high + strings | identical shape | CONFIRMED |
 | item type table | `ITEMS`, 128 × 16 | identical shape | CONFIRMED |
-| spell ids 1–56 | as `por/spells.py` has them | identical | CONFIRMED (research) |
+| spell ids 1–56 | as `goldbox/spells.py` has them | identical | CONFIRMED (research) |
 
-`por/geo.py` decodes all sixteen Curse `GEO` files with no change at all.
+`goldbox/geo.py` decodes all sixteen Curse `GEO` files with no change at all.
 Reciprocity — the fraction of wall edges that agree from both sides, which
 collapses if a plane is misassigned — is **15114/15360 (98.4%)** across Curse's
 sixteen, against **28540/28800 (99.1%)** across Pool of Radiance's thirty. Same
 distribution, same decoder.
 
-`por.record.CharacterRecord` parses a Curse export and round-trips it
+`goldbox.record.CharacterRecord` parses a Curse export and round-trips it
 byte-identically today, with no code change.
 
 ## 2. What differs
@@ -74,7 +74,7 @@ many `JSR`/`JMP` targets land on the byte after an `RTS`, an `RTI` or a `JMP`.
 
 ### 2.2 Two fields Curse uses that Pool of Radiance leaves at zero
 
-Both fall inside regions `por/layout.py` marks UNKNOWN, so neither displaces
+Both fall inside regions `goldbox/layout.py` marks UNKNOWN, so neither displaces
 anything.
 
 | Offset | What | Evidence |
@@ -107,7 +107,7 @@ zeroes it. `class_bits` is the field to read, which is what
 | `0x0A4` | the **caster's** half of turning: non-zero only for characters who turn undead — 6 for Curse's level-5 cleric, 3 for its level-5 paladin, 1 for Pool of Radiance's level-1 cleric ROLAND, 0 for everyone else in both games. The *value* is not the cleric's level: three of Pool of Radiance's level-5 clerics read 1, 4 and 6, and its 7TH LVL CLERIC reads 0 | PROBABLE for the population; the value is a guess |
 | `0x0B6` | non-zero **only** for Curse's paladin (45) and ranger (134); zero in every Pool of Radiance specimen held and in Curse's other four. A class-specific counter of some kind | GUESS |
 
-**An earlier version of this table said `0x0A4` displaced `por/layout.py`'s
+**An earlier version of this table said `0x0A4` displaced `goldbox/layout.py`'s
 `turn_class` at `0x0A3`, because `0x0A3` is zero in every specimen of either
 game. It is — every *player* specimen, and no player character is undead.**
 Across Pool of Radiance's 121 distinct `MON*` records the two bytes are
@@ -158,7 +158,7 @@ Two things do not simply shift.
 area, and the file ends there. The block layout is unchanged: `+0x00` and
 `+0x13` structural 1, `+0x0D` slot index, `+0x0E` THAC0, `+0x0F` AC, `+0x15`
 readied count, `+0x17` damage bonus, `+0x19` current HP, `+0x1B` movement.
-`por/savegame.py`'s `RosterBlock` reads it without a single field change.
+`goldbox/savegame.py`'s `RosterBlock` reads it without a single field change.
 
 **There is a name table at `$5700`** — sixteen bytes per character, NUL-padded,
 in slot order. Pool of Radiance has nothing there; `$5700` is exactly where
@@ -217,9 +217,9 @@ C64 build does the same is NOT FOUND.
 | | |
 |---|---|
 | **Classes** | Two more: paladin at array index 6 / bit 6, ranger at index 7 / bit 7. No new offsets, no new widths. The class-name table entries 13/14/15 are fighter/mage, fighter/thief, fighter/mage/thief in both games — not paladin and ranger |
-| **Levels** | Measured — §9. The ceiling is **11 / 10 / 12 / 12 / 11 / 11** for magic-user, cleric, thief, fighter, paladin, ranger, against Pool of Radiance's 6 / 6 / 9 / 8, and the experience table is the full AD&D 1st edition progression to level 13. `por/levels.py`'s existing rows are Curse's rows exactly where the two overlap; what it needs is the missing levels and two more classes, not a different `Level` |
-| **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `por/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
-| **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `por/items.py` reads it |
+| **Levels** | Measured — §9. The ceiling is **11 / 10 / 12 / 12 / 11 / 11** for magic-user, cleric, thief, fighter, paladin, ranger, against Pool of Radiance's 6 / 6 / 9 / 8, and the experience table is the full AD&D 1st edition progression to level 13. `goldbox/levels.py`'s existing rows are Curse's rows exactly where the two overlap; what it needs is the missing levels and two more classes, not a different `Level` |
+| **Items** | `ITEMS` byte `+13` is the class-usage bitmask. Curse sets **bit 7 (ranger) wherever Pool of Radiance sets bit 6 (paladin)** — 95 of the 128 records differ in that byte, against at most 9 in any other. `goldbox/items.py`'s `CLASS_USAGE_BITS` names only the low four bits, so bit 6 already reads as nothing in Pool of Radiance |
+| **Item names** | 253 named entries against Pool of Radiance's 252, sharing 252 indices of which **217 are the identical string**. Curse fills the gap at 168 and replaces 35 entries Pool of Radiance never used. One constant (`$9E00`) and `goldbox/items.py` reads it |
 | **Spells** | 169 named ids where Pool of Radiance has 120, and the **first 56 are the same spell in the same order** — §10. Curse has **no `SPELLN00`**; it ships `SPELLN64`, and so does Pool of Radiance, and that file is not a spell-name table in either game: its payload is the `ALTER`/icon menu strings (`SIZE`, `SMALL`, `LARGE`, `WEAPON`, `HEAD`, `SHIELD`), 1878 bytes in both. The names and their pointer table are in `COMBAT2`, resident at `$E000`. The spellbook bitmask is at `0x078` in both; no Curse specimen writes past `0x07D`, so its width is unproven here — but Silver Blades and Death Knights casters set `0x07D`–`0x07F`, so on the later engine the mask is **at least 8 bytes** (`work/reports/goldbox-inventory.md`) |
 | **Status** | `0x100` reads 1 in every occupied Curse record, exactly as Pool of Radiance's `roster_in_use` does. The C64 Curse editor labels `0x100` `STATUS` with a seven-value enum — 1 OK, 2 GONE, 3 DEAD, 4 DYING, 5 UNCONSCIOUS, 6 RUNNING, 7 STONED — and the same author's Silver Blades and Death Knights editors carry it unchanged. It disagrees with the DOS enum, and no specimen reads anything but 1, so it stays a lead; the one observation that fits is the combat research watching the byte go `$01` → `$84`, and `$84 & 0x0F = 4 = DYING`. **A fourth source has since made it weaker, not stronger**: the DOS format workbooks place `CharacterStatus` at DOS `0x10C`, which under the roster alignment is C64 `0x10A` and not `0x100` at all, and their enum is 0-based where the three "sir" editors' is 1-based. `roster_in_use` keeps its name. One specimen reading other than 1 settles it |
 
@@ -255,7 +255,7 @@ now settled, some against its guesses.
 
 One practical note that is not in the plan, **and it has since been fixed.**
 `CURSE4.D64` in the `with_docs` set is 175531 bytes — 35 tracks plus error bytes
-— and `por/d64.py` refused it, because the reader took plain 174848-byte images
+— and `goldbox/d64.py` refused it, because the reader took plain 174848-byte images
 only. It now reads **six** variants, that one included; the error bytes are
 exposed through `D64.error_code` and acted on by nothing, and every variant but
 the plain image is read-only. See [`10-disk-format.md`](10-disk-format.md).
@@ -264,7 +264,7 @@ the plain image is read-only. See [`10-disk-format.md`](10-disk-format.md).
 
 `tests/test_second_game.py`. It runs the *same* invariant checks over Pool of
 Radiance's own saved games and over Curse's `SAVEAZURE`, through the same
-`por.record`, `por.geo`, `por.items` and `por.savegame` code paths:
+`goldbox.record`, `goldbox.geo`, `goldbox.items` and `goldbox.savegame` code paths:
 
 * a record decodes at Pool of Radiance's offsets and round-trips byte-identically;
 * `class_bits` is exactly one bit per non-zero slot of the eight-byte array at
@@ -364,7 +364,7 @@ Every value is the AD&D 1st edition number **plus one** — 2001 to reach fighte
 2, 125001 to reach fighter 8 — with exactly one exception: the ranger's first
 threshold is a bare 2250. Pool of Radiance's own table, at `$1DB5` and split
 into parallel low, mid and high arrays nine entries wide, holds the same
-numbers with the same +1, so `por/levels.py` already agrees with Curse for
+numbers with the same +1, so `goldbox/levels.py` already agrees with Curse for
 every level the two share. `tests/test_titletables.py` asserts that agreement
 row by row.
 

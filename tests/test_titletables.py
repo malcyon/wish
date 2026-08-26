@@ -32,8 +32,8 @@ import pathlib
 
 import pytest
 
-from por import games, items, levels, spells
-from por.d64 import D64
+from goldbox import games, items, levels, spells
+from goldbox.d64 import D64
 from tests import gamedata
 from tests.test_silverblades import ssb_dir
 
@@ -207,7 +207,7 @@ def test_pool_of_radiance_stops_at_six_six_nine_eight():
     """The ceiling `docs/89-level-tables.md` shows, as a table in the game.
 
     Eight bytes in class-bit order -- magic-user, cleric, thief, fighter, then
-    four the game does not implement. `por/spells.py` and `por/layout.py`
+    four the game does not implement. `goldbox/spells.py` and `goldbox/layout.py`
     already read `class_bits` that way; this is the same order in the game's
     own data, which is what makes the reading more than a convention.
     """
@@ -302,7 +302,7 @@ def test_curse_widens_the_racial_rows_to_eight_and_tightens_the_cleric():
 
 
 def test_the_racial_limit_is_indexed_by_the_records_own_race_byte():
-    """`LDA $7C72` is record offset `0x072`, which `por/layout.py` calls race.
+    """`LDA $7C72` is record offset `0x072`, which `goldbox/layout.py` calls race.
     The three shifts after it are the `* 8` that makes the row."""
     gen = _curse_payload("GEN")
     assert bytes([0xAE, 0x72, 0x7C, 0xCA, 0x8A, 0x0A, 0x0A, 0x0A]) in gen
@@ -336,7 +336,7 @@ def test_curses_experience_table_is_thirteen_rising_thresholds(row, name):
                                       (2, "thief"), (3, "fighter")])
 def test_curse_agrees_with_pool_of_radiance_where_the_tables_overlap(row, name):
     """The strongest thing available without a second specimen: Curse's own
-    table reproduces, threshold for threshold, the one `por/levels.py` already
+    table reproduces, threshold for threshold, the one `goldbox/levels.py` already
     holds -- so the levels an imported character keeps mean the same number of
     experience points in both games."""
     gen = _curse_payload("GEN")
@@ -530,7 +530,7 @@ def test_the_earlier_titles_keep_their_labels_in_library(which):
 
 def test_champions_race_table_is_death_knights_race_table():
     """Both Krynn titles, read from their own disks and compared to each other
-    rather than to `por/games.py`. If they ever disagree this fails and
+    rather than to `goldbox/games.py`. If they ever disagree this fails and
     `RACES_KRYNN` has to split in two."""
     champions = _item_names_of("champions", COK)
     death = items.load_item_names(str(death_knights_disk()), DKK)
@@ -551,7 +551,7 @@ def test_the_krynn_race_codes_start_at_zero_on_champions_own_disk():
 def test_champions_keeps_its_file_stems_where_no_pointer_reaches_them():
     """Why Champions resolves 227 names where Death Knights resolves 250: the
     entries above 227 point at the file-stem table, which is packed with no
-    NUL between one stem and the next. `por/items.py` finds no terminator and
+    NUL between one stem and the next. `goldbox/items.py` finds no terminator and
     drops them, which is the honest answer -- a stem is not an item name."""
     disk = champions_disk()
     payload = _payload(disk, b"ITEMNAMES")

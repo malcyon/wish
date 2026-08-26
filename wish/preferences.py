@@ -80,8 +80,8 @@ from PyQt6.QtWidgets import (
 from automap import paths
 from automap.actionbar import DANGER, no_areas
 from automap.config import clamp_to_screen
-from por import areas as area_table
-from por import games
+from goldbox import areas as area_table
+from goldbox import games
 
 #: Spelled out rather than `QKeySequence.StandardKey.Preferences`, which
 #: resolves on Linux/Qt 6 to the `XF86Settings` multimedia key --
@@ -708,7 +708,7 @@ class PreferencesDialog(QDialog):
         says so, and it is asked rather than the id being written down here.
 
         **The table is the open title's**, and five of the six titles have no
-        area table at all -- `por.areas.areas_for_title`. For those the table
+        area table at all -- `goldbox.areas.areas_for_title`. For those the table
         is empty and a sentence says which game nothing is known for, rather
         than offering Pool of Radiance's thirty to be ticked for a game they do
         not belong to (#14, `docs/138-multiple-games.md` §7 task 1).

@@ -12,7 +12,7 @@ color: green
 
 **You have `Bash`, and `Bash` is write access.** Your tool list has no `Write`
 and no `Edit`, which is deliberate — but a shell can do everything they can and
-more, and on 2026-08-26 a review of `por/amiga.py` ran `git checkout -- ` on it
+more, and on 2026-08-26 a review of `goldbox/amiga.py` ran `git checkout -- ` on it
 to undo a throwaway edit of its own and **destroyed 580 lines of uncommitted
 work** that no transcript could rebuild. The review had found real defects; it
 cost more than it found.
@@ -146,7 +146,7 @@ Read `CLAUDE.md` and `INDEX.md` first — they set rules that change what counts
 as a finding here:
 
 * **Generated documents must not be corrected in place.** `docs/20-character-record.md`
-  comes from `por/layout.py` via `tools/gendocs.py`, `docs/85-item-tables.md`
+  comes from `goldbox/layout.py` via `tools/gendocs.py`, `docs/85-item-tables.md`
   from `tools/genitems.py`, and several others say **Generated** at the top. A
   wrong sentence in one of those is a finding **against the generator**, and the
   suggested fix names the generator and the line.

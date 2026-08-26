@@ -35,7 +35,7 @@ Amiga or FRUA.
 | 1 | **`github.com/simeonpilgrim/coab` is a primary source, not a footnote.** It holds the DOS record for *both* our titles — `PoolRadPlayer.cs` (285 bytes, named fields), `Player.cs` (422 bytes, 81 machine-readable `[DataOffset]` attributes) — and `engine/ovr017.cs::ConvertPoolRadPlayer`, **the routine the game runs when it imports a Pool of Radiance character into Curse**. | [2332](https://forums.goldbox.games/index.php?topic=2332.0), [1048](https://forums.goldbox.games/index.php?topic=1048.0), [1073](https://forums.goldbox.games/index.php?topic=1073.0) | Mined in full. **The conclusions live in [`117-save-conversion.md`](117-save-conversion.md)**, which is where the conversion work is. They account for 12 of the 15 bytes our own Pool→Curse import changed. |
 | 2 | **The DOS builds ship a second cheat mode, on the command line: `start.exe STING` for Pool of Radiance, `start.exe STING Wooden` for Curse**, then Alt+X. | [1082](https://forums.goldbox.games/index.php?topic=1082.0) | Probed on the C64 and **the answer is no** — §2. Closed. |
 | 3 | **The playtester "magic values" are not magic.** David Knott's `SAVGAM.TXT` names save offset 18 *current module* and 21 *initiated flag*; Ishad Nha's Death Knights notes name 198 *current `GEO`* and 243 *current `ECL`*. | [1034](https://forums.goldbox.games/index.php?topic=1034.0), [1919](https://forums.goldbox.games/index.php?topic=1919.0) | Ours confirmed and sharpened: the playtester trick is **writing an area id into the save's current-area field** — our Warp To, performed offline. §2. |
-| 4 | **The `GEO` wall nibble decomposes**: `wallset = (n−1)/5`, `slice = (n−1)%5`, from the Curse code — and marainein's WALLDEF decode gives the 156-byte, ten-view structure it indexes into. | [1255](https://forums.goldbox.games/index.php?topic=1255.0), [2532](https://forums.goldbox.games/index.php?topic=2532.0) | Extends `por/geo.py`: the nibble is structured, not opaque. A prediction, not a measurement — §4. |
+| 4 | **The `GEO` wall nibble decomposes**: `wallset = (n−1)/5`, `slice = (n−1)%5`, from the Curse code — and marainein's WALLDEF decode gives the 156-byte, ten-view structure it indexes into. | [1255](https://forums.goldbox.games/index.php?topic=1255.0), [2532](https://forums.goldbox.games/index.php?topic=2532.0) | Extends `goldbox/geo.py`: the nibble is structured, not opaque. A prediction, not a measurement — §4. |
 | 5 | **Two DOS area-id tables for our two titles**, and **the DOS 63-byte `.ITM` record** field by field. | [1912](https://forums.goldbox.games/index.php?topic=1912.0), [1048](https://forums.goldbox.games/index.php?topic=1048.0) | §5 and §6. One conflict between two DOS sources over Valjevo Castle remains unsettled and is cheap to decide. |
 
 ---
@@ -56,9 +56,9 @@ disks. An outside report agreeing is real evidence.
 | Spell id **36 is ANIMATE DEAD** (`docs/86`) | `coab`'s own enum: `animate_dead = 0x24` | **strong** |
 | The money block is seven `u16le` in the order copper, silver, electrum, gold, platinum, gems, jewelry | `coab`'s `MoneySet.cs`: `Copper = 0 … Jewelry = 6`, same order | **strong** |
 | `ITEMNAMES` has **no name at indices 62 and 63** (`docs/125`) | marainein's DOS name-component list has two empty strings in exactly that position, between `Arrow` and `Potion` | **strong** — same table in both ports |
-| Monsters use the character record (`por/record.py` parses `MON*`) | Nol Drek: "The monsters use the same data structure as the characters"; "every monster has maximum HP, current HP, and pre-drain HP" — our `0x076` / `0x119` / the drain pair at `0x0A1`–`0x0A2` | moderate |
+| Monsters use the character record (`goldbox/record.py` parses `MON*`) | Nol Drek: "The monsters use the same data structure as the characters"; "every monster has maximum HP, current HP, and pre-drain HP" — our `0x076` / `0x119` / the drain pair at `0x0A1`–`0x0A2` | moderate |
 | Paladin, ranger, druid and monk are named and never instantiated in Pool of Radiance (`docs/20`, `0x073`) | GBC users who forced those classes report no sweep attack, and that level drain then restoration cycles the gender byte and awards 10,000,000 XP ([1913](https://forums.goldbox.games/index.php?topic=1913.0)) | moderate — behavioural, DOS |
-| `ECL0B` is the **training hall**, not the arena (`work/reports/analysis-batch.md`: `$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall", and Stephen S. Lee's guide independently: "Civilized Area (Training Hall)" | **strong**, three ways. `docs/118` and `por/areas.py` both corrected (P61) |
+| `ECL0B` is the **training hall**, not the arena (`work/reports/analysis-batch.md`: `$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall", and Stephen S. Lee's guide independently: "Civilized Area (Training Hall)" | **strong**, three ways. `docs/118` and `goldbox/areas.py` both corrected (P61) |
 | The disk grouping is a real constraint: `GEO<n>`, `ECL<n>`, `WALLDEF<n>`, `MON<n>CHA` all belong to floppy *n*, and a map may only use monsters and walls from its own disk | reported the same way for the DOS build; it is why the Cadorna Textile House is full of undead | moderate — our `$6E12` disk byte is the same constraint from the inside |
 
 On our bug 2 — Sokol Keep's dead elf returning on every re-entry — **the forums
@@ -225,7 +225,7 @@ the file" — two bytes per square over 16×16. At run time Curse holds five til
 blocks: 0 and 4 permanent, 1–3 loaded by the `ECL` script's `LOAD PIECES`
 command, with indices re-based as each set loads.
 
-**What it gives us.** `por/geo.py` reads the C64 wall art as *nibbles* — high
+**What it gives us.** `goldbox/geo.py` reads the C64 wall art as *nibbles* — high
 north / low east at `$000`, south / west at `$100` — two bytes per square, which
 is Simeon's 512 exactly. A nibble holds 0–15; apply his arithmetic and `1..15`
 becomes **three wallsets of five walls**, precisely the three dynamically loaded
@@ -237,7 +237,7 @@ Related, smaller: [3108](https://forums.goldbox.games/index.php?topic=3108.0) �
 a door is a non-zero wall slot whose type field is not "blocked", and **a secret
 door cannot be distinguished from a normal one without looking at the art**.
 Both marainein and Ishad Nha agree there is no programmatic test. That is the
-same wall-versus-barrier separation `por/geo.py` documents, arrived at
+same wall-versus-barrier separation `goldbox/geo.py` documents, arrived at
 independently on the DOS side.
 
 ---
@@ -266,7 +266,7 @@ Numbers are `GEO` record ids. Only the rows that add something to `docs/118`:
 | 30 | Lizard Man Catacombs | `GEO1E`, shared with `ECL10` |
 | 31 | Wealthy Area | `GEO1F`, shared with `ECL18` |
 | 32 | Kuto's Well Catacombs | `GEO20`, shared with `ECL1D` |
-| — | `ECL3` record 8 City Hall, record **11 Training Hall** | both `docs/118` and `por/areas.py` now say training hall (P61) |
+| — | `ECL3` record 8 City Hall, record **11 Training Hall** | both `docs/118` and `goldbox/areas.py` now say training hall (P61) |
 
 ### Two DOS sources, two different castles — unsettled
 
@@ -278,8 +278,8 @@ third-party and DOS; neither is ours; nothing here settles it.
 |---|---|---|---|
 | 3 | Valjevo Castle, **North West** | Valjevo Castle (**Northwest and Southeast**) | partial — the guide has one script covering two quadrants |
 | 5 | Valjevo Castle, **South East** | Valjevo Castle **Hedge Maze** | **flat contradiction** |
-| 7 | Valjevo Castle, Upper Level | Valjevo Castle Inner Tower | no conflict; two names for one floor, and `por/areas.py`'s "the pool" is a third |
-| 31 (`GEO1F`) | **Wealthy Area** | script 24's second map, and script 24 **is** the Wealthy Area — so `GEO1F` is the **Temple of Bane** | **flat contradiction**, and exactly the pair `por/areas.py` holds as `("GEO18", "GEO1F")` under the name *Temple of Bane* |
+| 7 | Valjevo Castle, Upper Level | Valjevo Castle Inner Tower | no conflict; two names for one floor, and `goldbox/areas.py`'s "the pool" is a third |
+| 31 (`GEO1F`) | **Wealthy Area** | script 24's second map, and script 24 **is** the Wealthy Area — so `GEO1F` is the **Temple of Bane** | **flat contradiction**, and exactly the pair `goldbox/areas.py` holds as `("GEO18", "GEO1F")` under the name *Temple of Bane* |
 
 They agree on 4 (Northeast) and 6 (Southwest). **`docs/128` states the guide's
 side as settled** — "ours names the wrong one of its two maps" of id 24 —
@@ -291,7 +291,7 @@ turn, match `$0400` against the disk `GEO` with `ResidentGeo`, and read the
 floor plan. A hedge maze is not a castle quadrant and will not be mistaken for
 one, so id 5 falls out in one look. The same run settles `GEO1F` by warping to
 24 and stepping onto its second map. Until then both readings are PROBABLE and
-`por/areas.py` should not be changed to either.
+`goldbox/areas.py` should not be changed to either.
 
 ### Curse of the Azure Bonds — Ishad Nha and manikus, [1048](https://forums.goldbox.games/index.php?topic=1048.0)
 
@@ -331,7 +331,7 @@ ours if we ever take one of those titles.
 
 ## 6. Items, three ports deep
 
-Nothing here overturns `por/items.py`, but three sources now bracket it.
+Nothing here overturns `goldbox/items.py`, but three sources now bracket it.
 
 **marainein, [1912](https://forums.goldbox.games/index.php?topic=1912.0), 2013**
 — **63 bytes** per `.ITM` record in DOS Pool of Radiance, of which 45 is the
@@ -354,7 +354,7 @@ carrying the detail. The first 56 effect numbers are the spell ids.
 
 **This is the same shape as ours, minus the string.** The C64 packs an item into
 16 bytes and keeps the name in `ITEMNAMES` as three component indices — the plus
-at `+4` and the quantity at `+10` in `por/items.py` line up with his `0x31` and
+at `+4` and the quantity at `+10` in `goldbox/items.py` line up with his `0x31` and
 `0x38`. Two things transferred: **"save bonus" is signed** — done, item byte
 `+5` is a signed saving-throw bonus and every byte of the 16 is read — and
 **spell ids 1–56 double as effect ids**, which matches `0x0AD`'s note in
@@ -506,7 +506,7 @@ a per-thread index with authors and post counts is
 | **`web.archive.org`** | Carries `personal.inet.fi/koti/jhirvonen/gbc/` in full; `items/info.txt` (23 KB) and `items/por_items.txt` (99 KB) recovered — §6 |
 | **Blackthorn's DOS disassembly**, [4605](https://forums.goldbox.games/index.php?topic=4605.0), 2025– | A full DOS Pool of Radiance disassembly in progress, down to the Turbo Pascal v4–v6 libraries, feeding a revision of his GameFAQs guide; an unofficial bugfix build is the stated next step. Active, serious, and the only other person doing this on any port. He notes **v1.0 and v1.3 differ** in random item generation — a version axis we have not considered |
 | **Draxinusom's format documentation**, [4677](https://forums.goldbox.games/index.php?topic=4677.0), 2026– | Character/monster, effects, items, vault, `GEO` and FRUA `SCRIPT.GLB` formats normalised across ten games, with ImHex `.hexpat` patterns being submitted to ImHex's official library. On OneDrive and 403 without a Microsoft sign-in — **but obtained by Donald and written up in [`127`](127-community-formats.md) and [`128`](128-guide-and-scripting.md)**: the patterns confirmed our four-plane `GEO` decode outright, `GB_FileFormat.xlsx`'s `CHR_01` covers all 285 DOS bytes, and `EXE_Offset` closed the saving-throw question |
-| **Stephen S. Lee's GameFAQs guides** ([73869](https://gamefaqs.gamespot.com/pc/564785-pool-of-radiance/faqs/73869), [78365](https://gamefaqs.gamespot.com/pc/564786-curse-of-the-azure-bonds/faqs/78365)) | 403 to a fetch, **obtained by Donald**; `docs/128` works from `por-guide.txt` v2.00. Its §12.3.3 lists the same 62 ECL opcodes we derived from the VM's own dispatch tables, with semantics we had not; §12.4.1 names 229 script flags against our 172 addresses; §12.2.3 enumerates 127 effect ids, the namespace `por/traits.py` now carries |
+| **Stephen S. Lee's GameFAQs guides** ([73869](https://gamefaqs.gamespot.com/pc/564785-pool-of-radiance/faqs/73869), [78365](https://gamefaqs.gamespot.com/pc/564786-curse-of-the-azure-bonds/faqs/78365)) | 403 to a fetch, **obtained by Donald**; `docs/128` works from `por-guide.txt` v2.00. Its §12.3.3 lists the same 62 ECL opcodes we derived from the VM's own dispatch tables, with semantics we had not; §12.4.1 names 229 script flags against our 172 addresses; §12.2.3 enumerates 127 effect ids, the namespace `goldbox/traits.py` now carries |
 
 ### Dead, and what replaces them
 

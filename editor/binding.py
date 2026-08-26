@@ -3,7 +3,7 @@
 Two ideas hold this together.
 
 **Widgets bind by `objectName`.** A widget called `field_strength` edits the
-`strength` entry in `por/layout.py`. Nothing here knows where on the form a
+`strength` entry in `goldbox/layout.py`. Nothing here knows where on the form a
 widget sits, so `editor/character.ui` can be rearranged in Qt Designer without
 touching a line of Python.
 
@@ -11,7 +11,7 @@ touching a line of Python.
 must not be edited, each derived from something the project already maintains,
 so none of them can go stale:
 
-1. the game recomputes it (`por/derive.py` knows which),
+1. the game recomputes it (`goldbox/derive.py` knows which),
 2. we do not understand it (`Confidence.UNKNOWN`),
 3. the write would be silently dropped -- a save slot is 256 bytes and a record
    is 580, so anything at `0x100` or above exists only in a `.chr` export.
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from por.layout import LAYOUT, Confidence, Field, Kind
+from goldbox.layout import LAYOUT, Confidence, Field, Kind
 
 PREFIX = "field_"
 
@@ -30,7 +30,7 @@ SLOT_BYTES = 0x100
 
 # Values the game derives from the character plus their equipment and caches in
 # the SAVEDGAME1 roster. Editing the record's copy achieves nothing: the game
-# recomputes it on the next equipment change. por/derive.py computes what each
+# recomputes it on the next equipment change. goldbox/derive.py computes what each
 # should be, and the editor shows that beside the stored value.
 DERIVED = frozenset({
     "armour_class", "armour_class_base", "thac0", "thac0_base",

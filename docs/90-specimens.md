@@ -178,7 +178,7 @@ so are on the disk. It is one namespace with `0x0AD` (`LIBRARY $4028` reads the
 arrays first and falls back to the character's own slots), so an id seen in the
 array is evidence about the same table.
 
-**Seventeen `por/traits.py` codes are promoted PROBABLE → CONFIRMED** by it,
+**Seventeen `goldbox/traits.py` codes are promoted PROBABLE → CONFIRMED** by it,
 each named by the spell that produced it: 1 Bless, 5 Detect Magic, 8 Protection
 from Evil, 9 Protection from Good, 10 Resist Cold, 12 Enlarge, 14 Friends, 16
 Read Magic, 17 Shield, 19 Find Traps, 20 Resist Fire, 24 sees invisible
@@ -384,4 +384,4 @@ namespace is named — 129 codes, 44 CONFIRMED off `MON*` carriers and item reco
 already on the disks — and the discriminator between an item's `+14` as an effect
 id and as a spell id is `+15` bit 7. CLOAK OF DISPLACEMENT reads `+14` 89 (displaced)
 and TWO-HANDED SWORD +1 +3 VS UNDEAD reads 3 (undead-slaying), both off the player's
-own saves. See `por/traits.py` and [128-guide-and-scripting.md](128-guide-and-scripting.md).
+own saves. See `goldbox/traits.py` and [128-guide-and-scripting.md](128-guide-and-scripting.md).

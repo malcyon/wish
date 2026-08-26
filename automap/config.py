@@ -21,19 +21,19 @@ FILE = "automap.json"
 _log = logging.getLogger("wish.automap.config")
 
 
-#: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `por/areas.py`
+#: Ticked on a fresh config: New Phlan, The Slums, Sokol Keep -- `goldbox/areas.py`
 #: ids 0, 20 and 21. The three a party has almost certainly walked in by the
 #: time it wants to travel anywhere, so the list starts safe rather than long.
 #: **A Pool of Radiance fact**, which is why it is keyed like one below.
 DEFAULT_FAST_TRAVEL_TARGETS: tuple[int, ...] = (0, 20, 21)
 
-#: `por.games.Game.key` for the one title with an area table. Spelled out
+#: `goldbox.games.Game.key` for the one title with an area table. Spelled out
 #: rather than imported: this module is the settings file and has no other
 #: business with the game descriptors.
 POOL_OF_RADIANCE = "pool-of-radiance"
 
 #: What a title gets before anybody has ticked anything. Every title but Pool
-#: of Radiance gets nothing, because `por.areas.areas_for_title` has nothing to
+#: of Radiance gets nothing, because `goldbox.areas.areas_for_title` has nothing to
 #: offer it -- an id ticked for a title with no area table would be an id from
 #: another game's list.
 DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
@@ -44,7 +44,7 @@ DEFAULT_FAST_TRAVEL_BY_GAME: dict[str, tuple[int, ...]] = {
 def game_key(game=None) -> str:
     """The key to file a fast-travel choice under.
 
-    Takes a `por.games.Game`, a key string, or None -- and None is Pool of
+    Takes a `goldbox.games.Game`, a key string, or None -- and None is Pool of
     Radiance, because every choice made before this setting was keyed at all
     was Pool of Radiance's. A `Game.title` is **not** accepted: the file is
     keyed by the stable identifier, never by display text.
@@ -147,8 +147,8 @@ class Settings:
     # `tests/test_debuglog.py` still asserts no settings field carries "log";
     # that test encodes the superseded decision and is Donald's to retire.
     diagnostics: bool = False
-    # Which areas the Fast Travel dropdown offers, by `por/areas.py` id, and
-    # **keyed by `por.games.Game.key`** -- an area id means nothing without a
+    # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
+    # **keyed by `goldbox.games.Game.key`** -- an area id means nothing without a
     # title, and warping on Pool of Radiance's ids in another game's machine is
     # what issue #14 was.
     #

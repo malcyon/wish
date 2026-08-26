@@ -10,9 +10,9 @@ They are. But the dialog is the last problem, not the first.
 
 | question | answer | grade |
 |---|---|---|
-| Is the area table per-title? | **No.** `por/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
+| Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
 | What do we have for Curse and Silver Blades? | Decoded `GEO` files and nothing else. No area ids, no names, no disks, no arrival squares, no `ECL` decode | CONFIRMED |
-| What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `por/games.py` has six titles and PoD is not one of them | CONFIRMED |
+| What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/games.py` has six titles and PoD is not one of them | CONFIRMED |
 | Does the warp mechanism transfer? | The five writes are three different kinds of address and they grade differently. §5 | mixed |
 
 So the honest shape of the feature today is **one title with a list and two
@@ -21,12 +21,12 @@ building the tab bar.
 
 ## 1. What is already per-title, exactly
 
-`por/games.py` carries six frozen `Game` descriptors — Pool of Radiance, Curse,
+`goldbox/games.py` carries six frozen `Game` descriptors — Pool of Radiance, Curse,
 Silver Blades, Champions of Krynn, Death Knights of Krynn, Gateway to the
 Savage Frontier — with save geometry, race and class tables, item-name load
 address and disk glob. Nothing in it touches areas.
 
-`por/areas.py` splits in two:
+`goldbox/areas.py` splits in two:
 
 * **`AREAS`** — thirty `Area` rows, each an `ECL` id, a `POOL` disk 1–8, its
   `GEO`s, an arrival square and a confidence. Pool of Radiance only, and not
@@ -116,7 +116,7 @@ appears when a second title has an area table.** Reasons, in order of weight:
    it). A second bar inside the second tab is two levels of the same control
    doing two different jobs, and the inner one wraps or scrolls on the display
    sizes that made §14 necessary in the first place.
-2. **Six titles, not four.** `por/games.py` already knows six, three of which
+2. **Six titles, not four.** `goldbox/games.py` already knows six, three of which
    (Champions, Death Knights, Gateway) are as C64-real as Silver Blades. A
    selector costs one row whatever the count; a tab bar is sized by it.
 3. **Only one list is ever actionable.** The tab bar's implicit promise is that
@@ -257,7 +257,7 @@ of a player who has done nothing wrong. The two closest *distinct* maps in the
 two titles differ in 379 of 1024 bytes, so there is a factor of three between
 the tolerance and any chance of confusing one map with another.
 
-**Tasks 1 and 2 are done** (#14). `por.areas.areas_for_title` is the refusal:
+**Tasks 1 and 2 are done** (#14). `goldbox.areas.areas_for_title` is the refusal:
 it hands back `AREAS` for Pool of Radiance and `()` for every other title, and
 `WarpBar`, `automap.actions.area_rows` and the Preferences table all go through
 it. `Settings.fast_travel_targets` is `{game key: [ids]}`, with the bare-list

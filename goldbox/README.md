@@ -1,4 +1,4 @@
-# por
+# goldbox
 
 The game's formats, decoded — character records, save games, maps, items,
 spells. No Qt, no emulator, no transport: everything here is bytes in and bytes

@@ -17,11 +17,11 @@ import pathlib
 import pytest
 from gamedata import disk_dir, game_file, needs_disks
 
-from por.d64 import D64, split_load_address
-from por.items import ItemType
-from por.record import CharacterRecord
-from por.savegame import SaveGame0
-from por.spells import LAST_SPELL, load_spell_names
+from goldbox.d64 import D64, split_load_address
+from goldbox.items import ItemType
+from goldbox.record import CharacterRecord
+from goldbox.savegame import SaveGame0
+from goldbox.spells import LAST_SPELL, load_spell_names
 
 pytestmark = needs_disks
 
@@ -36,7 +36,7 @@ COMBAT_BEHAVIOUR = {0: "allied, controlled", 128: "allied, uncontrolled",
 # GB_ITM-Base.hexpat `ITEMDAMAGETYPE_A`.
 DAMAGE_TYPES = {0: "slashing", 1: "piercing", 128: "bludgeoning"}
 
-TYPE_DAMAGE_TYPE = 7          # unnamed in por/items.py
+TYPE_DAMAGE_TYPE = 7          # unnamed in goldbox/items.py
 TYPE_WEAPON_FLAGS = 14        # likewise
 WEAPON_LAUNCH_ARROW = 0x01
 WEAPON_RANGED = 0x02
@@ -127,7 +127,7 @@ def test_drain_fields_read_255_on_every_monster(monsters):
 # --- record 0x0C9: the class-level array is indexed by class_bits -----------
 
 def test_class_levels_are_indexed_by_the_item_usability_bit_order():
-    """Magic-user, cleric, thief, fighter -- `por.items.CLASS_USAGE_BITS`.
+    """Magic-user, cleric, thief, fighter -- `goldbox.items.CLASS_USAGE_BITS`.
 
     The DOS record orders the same eight-entry array cleric, druid, fighter,
     paladin, ranger, magic-user, thief, monk. The C64 does not, so a save
@@ -205,7 +205,7 @@ def test_the_launcher_flags_separate_bow_from_crossbow_from_sling(item_types):
 # --- ITEMS +6: armour class is stored as 60 - AC, not 12 - a nibble ---------
 
 def test_armour_protection_is_the_standard_sixty_minus_value(item_types):
-    """`por.items` reads `12 - (byte & 0x0F)`, which is this rule in disguise.
+    """`goldbox.items` reads `12 - (byte & 0x0F)`, which is this rule in disguise.
 
     The two agree for every armour on the disks and diverge at AC 13 or worse.
     The general rule is the one the DOS engine uses and the one to prefer.

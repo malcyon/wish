@@ -1,7 +1,7 @@
 # Knowledge base
 
 Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
-`por/` library, the `wish` editor and the automapper.
+`goldbox/` library, the `wish` editor and the automapper.
 
 | document | contents |
 |---|---|
@@ -10,7 +10,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [20-character-record.md](20-character-record.md) | **generated** field table for the 580-byte record, with confidence levels |
 | [30-savegame-layout.md](30-savegame-layout.md) | `SAVEDGAME0`/`SAVEDGAME1`, the `$100`×8 slot layout, the party header, the icon table and the roster blocks |
 | [40-memory-map.md](40-memory-map.md) | live addresses and the game's own race/class/alignment/item tables |
-| [41-memory-regions.md](41-memory-regions.md) | **generated** every named address, from `por/memory.py` |
+| [41-memory-regions.md](41-memory-regions.md) | **generated** every named address, from `goldbox/memory.py` |
 | [50-experiments.md](50-experiments.md) | append-only experiment log, including the failures |
 | [60-goldbox-field-checklist.md](60-goldbox-field-checklist.md) | research pass: what fields *ought* to exist, and which online claims are unreliable |
 | [70-driving-the-game.md](70-driving-the-game.md) | how to automate the game under VICE, and what does not work |
@@ -74,7 +74,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [145-dos-decode-kit.md](145-dos-decode-kit.md) | a stranger's MIT-licensed DOS reverse-engineering kit read against our tables: the ECL bytecode proven to be the same bytes on both ports, the `88 13` header word, the GEO door slice, the DOS byte they misread as a class group, and the `GAME.OVR` overlay map we do not have |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
-changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
+changing `goldbox/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
 `python3 tools/genitems.py`, `python3 tools/genspells.py`,
 `python3 tools/gentemplates.py` and `python3 tools/genmaps.py`, which need a
 game disk. Everything else is
@@ -88,8 +88,8 @@ dragging in throwaway discovery scripts.
 
 | package | what it is |
 |---|---|
-| `por/` | the file formats: D64, the 580-byte character record, the save games, the item and spell tables. **Transport-free** — no sockets, nothing that knows a machine is running |
-| `editor/` | the PyQt6 character editor, over `por/` alone |
+| `goldbox/` | the file formats: D64, the 580-byte character record, the save games, the item and spell tables. **Transport-free** — no sockets, nothing that knows a machine is running |
+| `editor/` | the PyQt6 character editor, over `goldbox/` alone |
 | `automap/` | everything that reads a *running* machine, quarantined here so the first decision below is structural rather than a convention |
 | `wish/` | the one window: two tabs, the single shared live connection, the backend registry, and `File > Preferences…`. See [99-one-window.md](99-one-window.md) and [130-preferences.md](130-preferences.md) |
 | `ui/` | drawing code both the editor and the map need, owned by neither |
@@ -102,7 +102,7 @@ dragging in throwaway discovery scripts.
 
 1. **The editor is a file tool with zero emulator dependency.** It opens a
    `.D64`, edits the save, writes it back, and never talks to VICE. `editor/`
-   imports nothing from `automap/`, `por/` stays transport-free, and the whole
+   imports nothing from `automap/`, `goldbox/` stays transport-free, and the whole
    file path works on a machine with no emulator on it.
    `tests/test_wish.py` asserts both halves: the editor tab is never handed the
    live target, and no file under `editor/` mentions `automap`.
@@ -112,7 +112,7 @@ dragging in throwaway discovery scripts.
    engineering. That grew into the automapper, which *is* a shipped feature —
    and it lives in `automap/` precisely so the first decision survives it.
 
-`por/layout.py` is the single source of truth for the record: a declarative
+`goldbox/layout.py` is the single source of truth for the record: a declarative
 table, every field carrying `CONFIRMED` / `PROBABLE` / `GUESS`, asserting at
 import that all 580 bytes belong to exactly one entry.
 [20-character-record.md](20-character-record.md) is generated from it, so the
@@ -152,7 +152,7 @@ schema and reintroduce the drift it exists to prevent.
   memorised list at `0x020` (what is prepared), both readable by name.
 * **Most of the record is still unread.** The current count lives in
   [20-character-record.md](20-character-record.md), which is generated from
-  `por/layout.py` — a number retyped here goes stale the moment a field is
+  `goldbox/layout.py` — a number retyped here goes stale the moment a field is
   named, and has. Name, six abilities,
   exceptional strength, race, class, class bitmask, sex, alignment, age, five
   saving throws, movement, infravision, thief skills, hit points, all seven

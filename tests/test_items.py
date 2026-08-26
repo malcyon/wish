@@ -1,13 +1,13 @@
-"""Tests for por.items, against a save taken after the party bought equipment."""
+"""Tests for goldbox.items, against a save taken after the party bought equipment."""
 
 import pathlib
 
 import pytest
 from gamedata import disk_dir
 
-from por.d64 import D64
-from por.items import ITEM_AREA_BASE, ITEM_SIZE, items_for_slot, load_item_names
-from por.savegame import SaveGame0
+from goldbox.d64 import D64
+from goldbox.items import ITEM_AREA_BASE, ITEM_SIZE, items_for_slot, load_item_names
+from goldbox.savegame import SaveGame0
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -137,7 +137,7 @@ game_disks = pytest.mark.skipif(not pathlib.Path(f"{DISKS}/POOL2.D64").exists(),
 
 @game_disks
 def test_templates_come_from_every_disk():
-    from por.items import load_item_templates
+    from goldbox.items import load_item_templates
     one = load_item_templates("work/POOL1.D64.orig")
     all_of_them = load_item_templates(f"{DISKS}/POOL1.D64")
     assert len(all_of_them) > len(one)          # siblings are scanned
@@ -148,7 +148,7 @@ def test_the_hidden_name_mask_produces_the_unidentified_name(names):
     """Each of the low three bits of +6 conceals one name word. CURSED NECKLACE
     is the decisive case: it hides the noun and the suffix, so a cursed item
     presents as a plain NECKLACE."""
-    from por.items import Item, load_item_templates
+    from goldbox.items import Item, load_item_templates
     tpl = load_item_templates("work/POOL1.D64.orig", names)
     cases = {"BANDED MAIL +1": "BANDED MAIL",
              "POTION OF HEALING": "POTION",
@@ -164,8 +164,8 @@ def test_the_hidden_name_mask_produces_the_unidentified_name(names):
 def _monster_items(disk, name):
     """The MON* files are character records, and 0x120 begins twelve item slots.
     They carry magic the shop lists never do."""
-    from por.d64 import split_load_address
-    from por.items import ITEM_SIZE, Item
+    from goldbox.d64 import split_load_address
+    from goldbox.items import ITEM_SIZE, Item
     _, payload = split_load_address(D64.open(disk).read_file(name))
     out = []
     for i in range(12):
@@ -187,7 +187,7 @@ def test_the_ring_of_protection_carries_both_bonuses():
 
 @game_disks
 def test_a_cursed_item_is_negative_on_both():
-    from por.items import Item, load_item_templates
+    from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
     item = Item(tpl["CURSED NECKLACE"])
     assert item.is_cursed
@@ -198,7 +198,7 @@ def test_a_cursed_item_is_negative_on_both():
 def test_potions_and_wands_decode_to_item_only_effects():
     """+14 is one namespace: <=56 a real spell id, >=80 an item-only effect
     stored 23 above its true id."""
-    from por.items import Item, load_item_templates
+    from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
     assert Item(tpl["POTION OF SPEED"]).effect == 57
     assert Item(tpl["WAND OF MAGIC MISSILES"]).effect == 65
@@ -209,7 +209,7 @@ def test_potions_and_wands_decode_to_item_only_effects():
 def test_a_handler_argument_is_not_read_as_an_effect():
     """When +15 selects a handler, +14 is that handler's argument. The sword's
     3 is its bonus against undead, not spell id 3."""
-    from por.items import Item, load_item_templates
+    from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
     sword = Item(tpl["TWO-HANDED SWORD +1 +3 VS UNDEAD"])
     assert sword.power == 0x88 and sword.is_passive
@@ -218,7 +218,7 @@ def test_a_handler_argument_is_not_read_as_an_effect():
 
 @game_disks
 def test_worn_powers_are_passive_and_used_ones_are_not():
-    from por.items import Item, load_item_templates
+    from goldbox.items import Item, load_item_templates
     tpl = load_item_templates(f"{DISKS}/POOL1.D64")
     assert Item(tpl["CLOAK OF DISPLACEMENT"]).is_passive
     assert Item(tpl["GAUNTLETS OF OGRE POWER"]).is_passive
@@ -227,7 +227,7 @@ def test_worn_powers_are_passive_and_used_ones_are_not():
 
 @game_disks
 def test_the_type_table_says_where_an_item_is_worn():
-    from por.items import LOCATIONS, TYPE_LOCATION, load_item_types
+    from goldbox.items import LOCATIONS, TYPE_LOCATION, load_item_types
     types = load_item_types(f"{DISKS}/POOL1.D64")
     seen = {LOCATIONS.get(t.raw[TYPE_LOCATION]) for t in types.values()}
     assert {"weapon", "shield", "body", "hands", "finger"} <= seen

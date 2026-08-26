@@ -7,7 +7,7 @@ to YAML, and imports an edited YAML back onto a **new** disk.
 folded that program into `wish` as two subcommands. The file name here is kept
 so the links to it keep working; nothing else about the tool changed.
 
-Pool of Radiance is the reference title. `por/games.py` carries save geometry,
+Pool of Radiance is the reference title. `goldbox/games.py` carries save geometry,
 race, class and item-name tables for six titles, and the title is detected from
 the save file's own name and load address — a Curse of the Azure Bonds or Secret
 of the Silver Blades save opens and round-trips byte-identically through the same

@@ -43,7 +43,7 @@ from automap.config import (
 from automap.state import Automapper
 from automap.window import AutomapWindow
 from editor.window import EditorWindow
-from por import games
+from goldbox import games
 from ui.appicon import app_icon
 
 from . import backends, debuglog, debugmode, nativewatch
@@ -457,7 +457,7 @@ class WishWindow(QMainWindow):
         self.session.set_interval(interval_ms)
 
     def set_fast_travel_targets(self, ids) -> None:
-        """Which areas the Fast Travel dropdown offers, by `por/areas.py` id.
+        """Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id.
 
         Empty is a choice like any other and is saved as one: the setting is
         None only until somebody has ticked or unticked anything. Filed under

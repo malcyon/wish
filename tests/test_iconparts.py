@@ -5,9 +5,9 @@ import pathlib
 import pytest
 from gamedata import game_file
 
-from por.iconparts import CELLS_PER_POSE, SPACE, IconParts
-from por.icons import ICON_COUNT, icon_for_slot
-from por.savegame import SaveGame0
+from goldbox.iconparts import CELLS_PER_POSE, SPACE, IconParts
+from goldbox.icons import ICON_COUNT, icon_for_slot
+from goldbox.savegame import SaveGame0
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

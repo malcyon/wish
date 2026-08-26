@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/41-memory-regions.md from por/memory.py."""
+"""Generate docs/41-memory-regions.md from goldbox/memory.py."""
 
 import os
 import pathlib
@@ -7,13 +7,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from por.memory import MAP  # noqa: E402
+from goldbox.memory import MAP  # noqa: E402
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "docs" / "41-memory-regions.md"
 
 HEADER = """# Memory regions
 
-**Generated** by `tools/genmemory.py` from `por/memory.py` — do not edit.
+**Generated** by `tools/genmemory.py` from `goldbox/memory.py` — do not edit.
 
 Every address this project has named, in one place. It answers "what is at
 `$4BC2`" without grepping, which is what it exists for;

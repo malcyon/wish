@@ -1,21 +1,21 @@
-"""What the game's own training hall wrote, checked against `por/levels.py`.
+"""What the game's own training hall wrote, checked against `goldbox/levels.py`.
 
 Twenty-nine level-ups were driven through the training school in area 11 on
 2026-08-22 and the 580-byte record read before and after each one
 (`work/reports/p18-party.md`).  The numbers below are what the *game* wrote, so
-where they and `por/levels.py` disagree it is the table that is wrong.
+where they and `goldbox/levels.py` disagree it is the table that is wrong.
 
 Nothing here touches a disk or an emulator: the measurements are a handful of
-integers, and the point of the file is that a future edit to `por/levels.py`
+integers, and the point of the file is that a future edit to `goldbox/levels.py`
 cannot quietly contradict them.
 """
 from __future__ import annotations
 
 import pytest
 
-from por import levels, levelup
-from por.record import CharacterRecord
-from por.savegame import RECORD_SIZE
+from goldbox import levels, levelup
+from goldbox.record import CharacterRecord
+from goldbox.savegame import RECORD_SIZE
 
 # --- what the trainer wrote ------------------------------------------------
 
@@ -51,7 +51,7 @@ MEASURED_SAVES = {
     },
 }
 
-# `por/levels.py` used to give the fighter's breath save as 16 at level 4 and
+# `goldbox/levels.py` used to give the fighter's breath save as 16 at level 4 and
 # the game writes 15, on two independent characters -- SILAS 16 -> 15 and the
 # dwarf MAGNUS 13 -> 12, at that level and no other.  **Settled (P76): the
 # table was wrong.**  `GEN $1FCA + 18` holds mask `$0C` where the fighter's
@@ -72,7 +72,7 @@ MEASURED_CLAMP = {
                 8: 250000},
 }
 
-# Thresholds the clamp read that lie past the class ceiling, so `por/levels.py`
+# Thresholds the clamp read that lie past the class ceiling, so `goldbox/levels.py`
 # has no row for them.  The game's own tables do.
 PAST_THE_CEILING = {("thief", 9): 160001, ("cleric", 6): 55001,
                     ("magic-user", 6): 60001, ("fighter", 8): 250001}
@@ -226,7 +226,7 @@ def test_the_clamp_past_a_ceiling_has_a_number():
 # LADY KATHERINE is magic-user 1 / thief 1 on `work/drive/LVBEFORE.D64` with
 # 5,002 experience, and the trainer's own before/after pair for her thief
 # training is `work/p18/lk-{before,after}.hex`.  These are the numbers off
-# those two records, so a change to `por/levelup.py` cannot quietly stop
+# those two records, so a change to `goldbox/levelup.py` cannot quietly stop
 # reproducing them.
 
 KATHERINE = {"class_bits": 5, "race": HALF_ELF, "constitution": 14,

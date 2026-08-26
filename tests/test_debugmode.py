@@ -19,7 +19,7 @@ import pytest
 
 from automap import actionbar, actions
 from automap.target import MemoryTarget
-from por import games
+from goldbox import games
 from wish import debugmode
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
@@ -60,7 +60,7 @@ def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
 def area(id: int = 20):
     row = actions.area_by_id(id)
     if row is None:                     # pragma: no cover - the table is there
-        pytest.skip("por/areas.py has no such area")
+        pytest.skip("goldbox/areas.py has no such area")
     return row
 
 
@@ -243,9 +243,9 @@ def test_fast_travel_asks_nothing_and_names_no_disk():
 # --- the area table ----------------------------------------------------------
 
 def test_the_areas_come_from_por_areas_and_are_not_copied_here():
-    """One table. `automap/actions.py` reads `por/areas.py` and holds no copy
+    """One table. `automap/actions.py` reads `goldbox/areas.py` and holds no copy
     of its own; the row objects are that module's."""
-    from por import areas as table
+    from goldbox import areas as table
     assert actions.area_rows() == tuple(table.AREAS)
 
 
@@ -259,9 +259,9 @@ def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
     """The fallback for the fourteen areas nobody has harvested: never the
     party's current square, which is a wall in the next area along.
 
-    `por.areas.landing_square` picks it -- P20 measured what the old rule came
+    `goldbox.areas.landing_square` picks it -- P20 measured what the old rule came
     to and it was `(0, 0)` on every map (`work/reports/p20-arrivals.md`)."""
-    from por.geo import Geo
+    from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo
     geo = Geo(synthetic_geo())
     square = actions.landing_square(geo)
@@ -398,7 +398,7 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     Curse. Offering nothing is the fix; falling back to that list is the one
     answer that corrupts."""
     from automap.config import Settings
-    from por import games
+    from goldbox import games
 
     row = bar(app, machine(area=13), settings=Settings(),
               title=games.CURSE_OF_THE_AZURE_BONDS.title,
@@ -419,7 +419,7 @@ def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
 def test_the_row_follows_the_title_when_the_disks_change(app):
     """The one place the title moves under a live row: `set_maps`."""
     from automap.config import Settings
-    from por import games
+    from goldbox import games
 
     row = bar(app, settings=Settings(), title=games.POOL_OF_RADIANCE.title,
               game=games.POOL_OF_RADIANCE)
@@ -491,7 +491,7 @@ def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):
     `geos` does not name -- area 3 loaded `GEO05` and area 5 `GEO04`
     (`work/reports/p20-arrivals.md`).
     """
-    from por.geo import Geo
+    from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo
     g = Geo(synthetic_geo())
     row = bar(app, maps={"GEO14": g, "GEO19": g, "GEO03": g})
@@ -671,7 +671,7 @@ def loaded(geo_bytes: bytes, **kw) -> Machine:
 def test_a_warp_is_verified_by_the_map_at_0400(app):
     """An exact 1024-byte match against the disk copy: a hit is certain and
     needs no fingerprinting."""
-    from por.geo import Geo
+    from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo
     raw = synthetic_geo()
     row = area(13)                                  # GEO0D, the kobold caves
@@ -692,7 +692,7 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     """Not five. Stepping into an encounter in New Phlan takes about 25 to
     load, and four runs "died" on a timeout that was too short."""
     import automap.actionbar as ab
-    from por.geo import Geo
+    from goldbox.geo import Geo
     from tests.gamedata import synthetic_geo
     row = area(13)
     target = loaded(bytes(1024), area=0)            # some other map
@@ -808,7 +808,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     threshold it had already passed, so a level the character earned goes, and
     that is worth a question. The refusal must write nothing."""
     from automap.window import AutomapWindow
-    from por.levelup import Plan
+    from goldbox.levelup import Plan
     window = AutomapWindow.__new__(AutomapWindow)
     seen = {}
 

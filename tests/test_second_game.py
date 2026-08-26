@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import pytest
 
-from por import geo, items, savegame
-from por.d64 import split_load_address
-from por.layout import RECORD_SIZE
-from por.record import CharacterRecord
+from goldbox import geo, items, savegame
+from goldbox.d64 import split_load_address
+from goldbox.layout import RECORD_SIZE
+from goldbox.record import CharacterRecord
 from tests.gamedata import (
     FIXTURES,
     curse_disks,
@@ -164,7 +164,7 @@ def test_curse_second_ability_array_mirrors_the_first():
     """`0x065`-`0x06B` repeats the seven scores at `0x014`-`0x01A`.
 
     A field Curse fills and Pool of Radiance leaves at zero -- and it sits
-    inside a region `por/layout.py` marks UNKNOWN, so it displaces nothing.
+    inside a region `goldbox/layout.py` marks UNKNOWN, so it displaces nothing.
     """
     for _, slot in _slots(_curse_save(), CURSE_SLOT_BASE, CURSE_SAVE_LOAD):
         assert slot[0x065:0x06C] == slot[0x014:0x01B]

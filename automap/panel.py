@@ -38,7 +38,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por.levelup import best_next_class
+from goldbox.levelup import best_next_class
 from ui.iconpaint import draw_icon, icon_pixmap
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
@@ -360,7 +360,7 @@ class CharacterCard(QFrame):
     #: multi-class character with two ready gets the one whose threshold after
     #: the level is highest, which keeps the trainer's experience clamp as high
     #: as it goes and so usually leaves the other class still qualified;
-    #: pressing again takes that one. `por.levelup.best_next_class` is the rule
+    #: pressing again takes that one. `goldbox.levelup.best_next_class` is the rule
     #: and `docs/135-levelling.md` is why.
     level_up_requested = pyqtSignal(int)
 

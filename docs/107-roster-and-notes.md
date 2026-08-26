@@ -39,7 +39,7 @@ glance.
 ## 2. Readied items, under the bars
 
 Each card carries one line of what that character has **in hand**, decoded by
-`por/items.py` from the item block the poll already reads —
+`goldbox/items.py` from the item block the poll already reads —
 `live.readied(payload, slot, names)`.
 
 * **Readied only.** The whole inventory would swamp the card; what matters
@@ -135,7 +135,7 @@ ids at `$4900` and the trait codes at `0x0AD` were two code spaces. They are
 one: `LIBRARY $4028` reads the arrays first and falls back to the character's
 own slots, which is why one table names both
 ([active effects](133-active-effects.md)). `P3-EFFECTS.D64` — twenty-six spells
-running — promoted seventeen codes, and 66 of `por/traits.py`'s 129 names are
+running — promoted seventeen codes, and 66 of `goldbox/traits.py`'s 129 names are
 CONFIRMED today.
 
 So the name is no longer the blocker. **The glyph is**, and this is the menu.

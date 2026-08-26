@@ -4,7 +4,7 @@
 window (`python -m editor` still opens it alone). This document is the design;
 it is kept because it records why the editor is shaped the way it is.
 
-A PyQt6 desktop editor over the same `por/` library the CLI uses. It opens a
+A PyQt6 desktop editor over the same `goldbox/` library the CLI uses. It opens a
 `.D64` save or a `.chr` export, shows a character sheet, and writes the disk
 back. It **never talks to VICE** — that promise is what keeps it a file tool,
 and it is why the live automapper is a separate `automap/` package.
@@ -40,7 +40,7 @@ with `findChild(QWidget, name)` on the built form, which behaves identically
 whether the form came from `loadUi` or from `setupUi`.
 
 **Widgets bind to record fields by `objectName`.** A widget called
-`field_strength` is bound to the `strength` entry in `por/layout.py`; one called
+`field_strength` is bound to the `strength` entry in `goldbox/layout.py`; one called
 `field_thac0_base` to `thac0_base`. Nothing in the code knows where on the form
 a field sits, so **rearranging in Designer needs no code change at all**. The
 binder walks the form once at startup:
@@ -311,7 +311,7 @@ right for recognising the party, but here you are choosing who to work on, and
 
 Note the AC and HP columns come from **`SAVEDGAME1`, not the character record**
 -- they are the only place those live in a save. The editor therefore has both
-files open at once, which `por/savegame.py` already models with `SaveGame0` and
+files open at once, which `goldbox/savegame.py` already models with `SaveGame0` and
 `SaveGame1`.
 
 ### Three kinds of file open into the same roster
@@ -364,8 +364,8 @@ project already keeps rather than from a list somebody remembers to update:
 
 | reason | source | shown as |
 |---|---|---|
-| **The game recomputes it** | `por/derive.py` | read-only, with the computed value |
-| **We do not understand it** | `Confidence.UNKNOWN` in `por/layout.py` | read-only, greyed |
+| **The game recomputes it** | `goldbox/derive.py` | read-only, with the computed value |
+| **We do not understand it** | `Confidence.UNKNOWN` in `goldbox/layout.py` | read-only, greyed |
 | **The write would be dropped** | offset ≥ `0x100` while editing a *save* | read-only, with a note |
 
 The third is the subtle one and it is a real trap: a save slot is **256 bytes**
@@ -374,7 +374,7 @@ exist in a `.chr` export and nowhere in a save. `wish` accepts an edit to them
 and the write goes nowhere. The editor must grey them out when the file is a
 save and enable them when it is an export — the same widget, different state.
 
-The first covers armour class, THAC0 and damage bonus. `por/derive.py` already
+The first covers armour class, THAC0 and damage bonus. `goldbox/derive.py` already
 computes what each *should* be; the editor shows the stored value, shows the
 expected one beside it, and flags a disagreement rather than silently
 reconciling. That is the same discipline the importer learned the hard way: two
@@ -392,7 +392,7 @@ The requirement: editable, showing the real pixel art, with a colour picker.
 
 ### What is known
 
-`por/icons.py` has it: 36 bytes per character in a shared table at `$4BE0`,
+`goldbox/icons.py` has it: 36 bytes per character in a shared table at `$4BE0`,
 split in half — **18 screen codes** then **18 colour values**, C64 colours 0-15.
 Confirmed by changing icons in game and diffing; MAGNUS changed only the colour
 half.
@@ -403,7 +403,7 @@ See [the combat icon is two poses, in multicolour](50-experiments.md).
 
 **The grid is two 3x3 poses stacked**, the glyphs are `CHARPIC00`, and the three
 shared multicolour values come from `COM.PREP`: background 11, multicolour 1 is
-10, multicolour 2 is 0. `por/icons.py` carries them and `icon_pixels()` returns
+10, multicolour 2 is 0. `goldbox/icons.py` carries them and `icon_pixels()` returns
 the art as a grid of colour indices.
 
 ### The widget
@@ -414,7 +414,7 @@ the form like any other widget while living in `editor/iconwidget.py`.
 * Draws the 3×6 grid at a large integer zoom (8× gives 192×384), so pixels stay
   crisp.
 * Click a cell → a 16-swatch C64 palette popup, using the names already in
-  `por/icons.py`. Not `QColorDialog`: the C64 has sixteen colours and offering a
+  `goldbox/icons.py`. Not `QColorDialog`: the C64 has sixteen colours and offering a
   full colour wheel would let the user pick something the machine cannot show.
 * The glyph in a cell is changed from the same menu -- `Glyph 228…` above the
   colours -- opening a scrollable grid of all 253 `CHARPIC00` glyphs, drawn in
@@ -426,7 +426,7 @@ the form like any other widget while living in `editor/iconwidget.py`.
 Editing the icon is only meaningful for a `.chr` export, because the icon lives
 at `0x220` — beyond a save slot's 256 bytes. In a save the icons come from the
 shared table at `$4BE0`, which the editor writes directly. Both paths exist in
-`por/` already (`icon_for_slot`, and `por/yaml_io.py` writes the table), so the
+`goldbox/` already (`icon_for_slot`, and `goldbox/yaml_io.py` writes the table), so the
 widget can be backed by either.
 
 ---
@@ -448,11 +448,11 @@ editor/
                     traits of the selected item
   effects.py        the ten trait slots at 0x0AD -- racial seeds, monster
                     specials and item-granted passives, not cast spells. The
-                    namespace is named -- 129 codes in por/traits.py -- so a
+                    namespace is named -- 129 codes in goldbox/traits.py -- so a
                     slot reads "petrifying gaze", and only a code outside the
                     table falls back to "trait <n>"
   spellwidget.py    the spellbook and the memorised list, promoted
-  enums.py          race/class/alignment/sex, per title, from por/yaml_io.py
+  enums.py          race/class/alignment/sex, per title, from goldbox/yaml_io.py
   changes.py        what a save would write, in --dry-run's form
   character.ui      the form -- EDIT THIS in Qt Designer
   ui_character.py   generated from it; do not edit
@@ -460,7 +460,7 @@ editor/
 tools/genui.py      character.ui -> ui_character.py
 ```
 
-`por/` gains nothing except the shared-colour constants once they are measured.
+`goldbox/` gains nothing except the shared-colour constants once they are measured.
 The editor is a consumer of the library, not an extension of it.
 
 ---
@@ -470,7 +470,7 @@ The editor is a consumer of the library, not an extension of it.
 1. ~~**The icon probe.**~~ ✅ Done, and it needed no emulator -- `COM.PREP`
    states the colours outright.
 2. `binding.py` and the read-only rules, tested headless against
-   `por/layout.py` — no Qt needed to assert that `armour_class` is read-only
+   `goldbox/layout.py` — no Qt needed to assert that `armour_class` is read-only
    because `derive.py` computes it, and that `0x119` is read-only for a save and
    editable for an export.
 3. `roster.py` -- the party model, headless-testable: open each of the three
@@ -541,7 +541,7 @@ Everything below the icon picker landed; see
 [the editor fixes report](../work/reports/editor-fixes.md) for what each one
 does now. In short: the roster carries race and class and is sized to its rows,
 every box is as wide as the widest value its bytes can hold (derived from
-`por/layout.py`), `Identity` is `Character`, the item column fits the longest
+`goldbox/layout.py`), `Identity` is `Character`, the item column fits the longest
 of the 163 names the game disks carry, and two tables joined the sheet -- the
 selected item's traits, and the ten active-effect slots at `0x0AD`.
 
@@ -561,7 +561,7 @@ picker put every glyph in `CHARPIC00` into each of 18 cells and would happily
 build a figure with two heads.
 
 `SPELLN64` on disk 3 is the game's own icon editor and `SPELLE64` its data.
-`por/iconparts.py` reads both — the counts and table addresses come out of the
+`goldbox/iconparts.py` reads both — the counts and table addresses come out of the
 overlay at `$B0DA`/`$B0DE` rather than being hardcoded — and
 `editor/partspicker.py` is the dialog over it: two lists, every entry rendered
 as the icon it would produce, plus the SIZE control the game has.

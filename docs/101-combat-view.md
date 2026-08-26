@@ -86,7 +86,7 @@ Hovering a combatant gives the record. Two rules. **Only what is decoded** — a
 field we cannot read is left out rather than guessed at. And **the trait codes
 we know are named and the rest show their number**, so an unnamed code is
 visibly unnamed rather than silently dropped; that is also how new codes get
-noticed. The table is `por/traits.py`, shared with the character sheet.
+noticed. The table is `goldbox/traits.py`, shared with the character sheet.
 
 ```
 15. ORC  (28,15)
@@ -111,10 +111,10 @@ it, because there the point is the whole ten slots.
 |---|---|
 | `automap/combat.py` | reads the fight and yields its geometry. No Qt |
 | `automap/window.py` | `CombatCanvas`, and the swap in `AutomapWindow.poll_battle` |
-| `por/monster.py` | attacks and the experience award, off any record |
-| `por/traits.py` | the trait codes, named where we know them |
+| `goldbox/monster.py` | attacks and the experience award, off any record |
+| `goldbox/traits.py` | the trait codes, named where we know them |
 
-`por/` stays transport-free and `editor/` stays emulator-free; reads go through
+`goldbox/` stays transport-free and `editor/` stays emulator-free; reads go through
 the `Target` protocol, so the Commodore 64 Ultimate backend gets this for free.
 
 **Two bursts a poll**: the mode byte, the parameter block and the camera, then

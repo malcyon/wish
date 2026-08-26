@@ -27,7 +27,7 @@ from automap import paths
 from automap.render import CELL, CELL_MIN, MARGIN
 from automap.state import AutomapState
 from automap.window import MapCanvas
-from por.geo import GRID
+from goldbox.geo import GRID
 
 #: The screen the whole window has to fit: a 1280x720 laptop, which is what
 #: Donald asked for in round five of #43. It was 1280x760 -- a 1280x800 panel

@@ -146,7 +146,7 @@ answers unknown 2 on its own.
 1. **Fix the stride** in `automap/combat.py` — `$0612 + 1`, not `$0607` — and
    the note in `docs/101-combat-view.md`. Cheap, and everything downstream
    depends on it.
-2. **`por/world.py`**, transport-free, promoted out of `work/analysis9/wild.py`:
+2. **`goldbox/world.py`**, transport-free, promoted out of `work/analysis9/wild.py`:
    read `SQRDATA0n` off a disk, expose the 18 x 36 grid and the 120 glyph
    entries, stitch the three at 13, carry the site tables and the two terrain
    tables, and answer `passable(map, x, y)` and `site_at(world_x, y)`. It needs
@@ -158,7 +158,7 @@ answers unknown 2 on its own.
    (6,15) — which `npc_party.d64` independently corroborates.
 4. **Detect the state.** `(ECL & $7F) in {$19, $1A, $1B}` says the party is on
    a travel map; `$4A9E` says grid or cave; `$4BC4 & $7F` says which
-   `SQRDATA`. Add it to `por/savegame.py` beside `.area`, and to the automapper
+   `SQRDATA`. Add it to `goldbox/savegame.py` beside `.area`, and to the automapper
    as a third mode alongside area and combat.
 5. **Take W1 and the two live captures.** Stop here until they exist. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.

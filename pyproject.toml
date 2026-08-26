@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 # GPL-3.0: PyQt6 is GPL, and linking against it makes this GPL too.
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-# por/yaml_io.py reads and writes the party export.
+# goldbox/yaml_io.py reads and writes the party export.
 dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
@@ -53,7 +53,7 @@ version-file = "wish/_version.py"
 # it twice: `tools.wish` is the body of the `export` and `import` subcommands,
 # and the window imports `tools.genui` at startup. Without it both were broken
 # in an installed wheel.
-packages = ["por", "editor", "automap", "wish", "tools", "ui"]
+packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -66,6 +66,6 @@ extend-exclude = ["editor/ui_character.py"]
 [tool.ruff.lint]
 # Pyflakes and the import rules, which are the two that catch real mistakes
 # here -- an undefined name, an import that no longer resolves, a block that
-# has drifted out of order. Deliberately NOT E501: `por/layout.py` is the field
+# has drifted out of order. Deliberately NOT E501: `goldbox/layout.py` is the field
 # documentation and its notes are meant to be read, not wrapped to 88 columns.
 select = ["E4", "E7", "E9", "F", "I"]

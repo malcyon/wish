@@ -58,7 +58,7 @@ def item_protection_ac(protection: int) -> int:
     same arithmetic in disguise -- `60 - (0x30 + n)` is `12 - n` -- and agrees
     with the general rule on every armour the disks carry. **They diverge at
     armour class 13**: `$AF` is 13 here and -3 under the nibble rule, and the
-    general form is the one the rest of the format uses. `por/items.py` reads
+    general form is the one the rest of the format uses. `goldbox/items.py` reads
     the byte with the same rule and decides bonus-versus-class by magnitude.
     """
     return COMBAT_BIAS - (protection & 0x7F)

@@ -17,7 +17,7 @@ player saves in the game as usual. That keeps the losslessness promise intact:
 
 ## Which title, and the one address that stops it (#29)
 
-**Every address an action writes comes from the `por.games.Game` descriptor.**
+**Every address an action writes comes from the `goldbox.games.Game` descriptor.**
 The slot area, the item area and the roster page are payload offsets that are
 identical in all six titles, so they follow `save_load_address` and nothing
 here is a constant: Pool of Radiance's `$4D00`/`$5900`/`$8300` are Curse's
@@ -164,7 +164,7 @@ on the experiment in [fields wanted](80-fields-wanted.md).
 ### 5. Level up without the training hall — `level-up`
 
 **It writes what the training hall writes.** `GEN $1B8C` is the sequence a
-level-up runs; every routine it calls has been read, and `por/levelup.py` names
+level-up runs; every routine it calls has been read, and `goldbox/levelup.py` names
 each one beside the field it fills — see [levelling](135-levelling.md).
 Replaying the twenty-nine trainings measured in [`119`](119-test-party.md)
 through it reproduces the game's own record **byte for byte** on all thirty-four
@@ -181,7 +181,7 @@ refuses any other title by name and the button is not drawn at all —
 
 **It does not ask which class.** A multi-class character with two ready gets
 the one whose threshold *after* the level it is about to gain is largest —
-`por.levelup.best_next_class`, ties broken in class-bit order. That is the
+`goldbox.levelup.best_next_class`, ties broken in class-bit order. That is the
 number the trainer's experience clamp reads, so it leaves the ceiling as high
 as it goes and the other class usually still qualified; pressing again takes
 it. The outcome names the class raised — `LADY KATHERINE is a magic-user 2` —
@@ -200,7 +200,7 @@ is non-empty and the window asks first; otherwise nothing is asked.
 | a magic-user's new spell | **chosen**, from `offers(record)`. The action refuses without one rather than picking. Asked *after* the class, since only then is it known whether it is needed |
 
 `level_up_blockers()` survives as the gate: any field it writes that is not
-CONFIRMED in `por/layout.py` stops the action dead. It is empty today, and it
+CONFIRMED in `goldbox/layout.py` stops the action dead. It is empty today, and it
 got there by measurement rather than by lowering the bar.
 
 **No money moves.** The trainer charges 1000 gold at every level and converts

@@ -38,8 +38,8 @@ from automap.render import (
 from automap.state import Automapper, AutomapState, Exploration, title_dir
 from automap.state import data_dir as state_data_dir
 from automap.target import Fix, MemoryTarget, ReplayTarget
-from por import games
-from por.geo import (
+from goldbox import games
+from goldbox.geo import (
     EAST,
     GEO_SIZE,
     GRID,
@@ -438,7 +438,7 @@ def test_settings_round_trip(tmp_path, monkeypatch):
 
 def test_a_fresh_config_offers_three_areas_for_fast_travel(tmp_path,
                                                           monkeypatch):
-    """New Phlan, The Slums and Sokol Keep -- `por/areas.py` ids 0, 20 and 21.
+    """New Phlan, The Slums and Sokol Keep -- `goldbox/areas.py` ids 0, 20 and 21.
     The setting is None until somebody ticks something, which is what tells a
     fresh config from a player who unticked everything."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -491,7 +491,7 @@ def test_a_hand_edited_area_list_is_read_for_what_it_holds(tmp_path,
 def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
         tmp_path, monkeypatch):
     """An area id means nothing without a title, so the file is keyed by
-    `por.games.Game.key` -- `docs/138-multiple-games.md` §5.
+    `goldbox.games.Game.key` -- `docs/138-multiple-games.md` §5.
 
     Only Pool of Radiance has a default, because only Pool of Radiance has an
     area table: a tick for a title with no table would be an id off another
@@ -499,7 +499,7 @@ def test_the_ticks_are_kept_per_title_and_one_title_does_not_disturb_another(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
     from automap.config import Settings
-    from por import games
+    from goldbox import games
 
     fresh = Settings()
     assert fresh.chosen_areas(games.POOL_OF_RADIANCE) == (0, 20, 21)
@@ -813,7 +813,7 @@ def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
 from automap import live  # noqa: E402
 from automap.state import migrate_flat_notes  # noqa: E402
 from automap.target import party_fix  # noqa: E402
-from por.record import FieldNotStored  # noqa: E402
+from goldbox.record import FieldNotStored  # noqa: E402
 
 CURSE = games.CURSE_OF_THE_AZURE_BONDS
 CHAMPIONS = games.CHAMPIONS_OF_KRYNN
@@ -858,7 +858,7 @@ def test_a_snapshot_decodes_a_party_from_captured_bytes():
 def test_the_party_reads_the_same_live_as_it_does_off_the_disk():
     """The assertion the editor's roster test makes, by a different path: the
     same bytes, read as a running machine rather than as a file."""
-    from por.d64 import D64
+    from goldbox.d64 import D64
     disk = D64.open(f"{DISKS}/PORSAVE11.D64")
     snap = live.read_snapshot(live_machine(
         disk.read_file(b"SAVEDGAME0")[2:],
@@ -890,7 +890,7 @@ def test_a_roster_page_borrowed_by_a_picture_is_refused():
     """#82: on Silver Blades, a full-screen picture leaves the roster page
     reading as graphics data while the record slots are fine, so the position
     and the records both pass -- only `roster_page_plausible` catches this."""
-    from por.savegame import ROSTER_SLOT_INDEX
+    from goldbox.savegame import ROSTER_SLOT_INDEX
     save0, save1 = captured()
     graphics = bytearray(save1)
     graphics[ROSTER_SLOT_INDEX] = 9          # BRUTUS is slot 0; this is not
@@ -901,7 +901,7 @@ def test_a_roster_page_borrowed_by_a_picture_is_refused():
 
 def test_hit_points_above_the_recorded_maximum_refuse_the_roster_too():
     """The second, independent check #82 names: BRUTUS's maximum is 11."""
-    from por.savegame import ROSTER_HP_CURRENT
+    from goldbox.savegame import ROSTER_HP_CURRENT
     save0, save1 = captured()
     over = bytearray(save1)
     over[ROSTER_HP_CURRENT] = 255
@@ -1015,7 +1015,7 @@ def test_a_title_whose_live_triple_is_unmeasured_gets_no_fallback():
 def test_the_combat_numbers_come_from_the_roster_not_the_record():
     """A save slot holds 256 bytes; AC, THAC0 and current hit points are past
     them. Reading them from the record gives AC 60 -- plausible and wrong."""
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     save0, save1 = captured()
     record = SaveGame0.from_bytes(save0).characters[0].record
     with pytest.raises(FieldNotStored):
@@ -1744,7 +1744,7 @@ def test_a_long_readied_list_is_elided_and_kept_whole_in_the_tooltip(app):
 def test_readied_items_are_read_from_the_item_block():
     """The editor's inventory table shows exactly this; the card shows the
     readied half of it."""
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     save = SaveGame0.from_prg((FIXTURES / "party6_after_combat.bin").read_bytes())
     names = live.item_names()
     payload = save.to_bytes()
@@ -1759,7 +1759,7 @@ def test_readied_items_are_read_from_the_item_block():
 def test_without_a_game_disk_the_readied_line_is_blank_not_numbered():
     """Item names come off the disk. Word indices on a card would be worse
     than nothing."""
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     save = SaveGame0.from_prg((FIXTURES / "party6_after_combat.bin").read_bytes())
     assert live.readied(save.to_bytes(), 5, None) == ()
 
@@ -2360,19 +2360,19 @@ def test_the_running_figure_is_font_awesome_verbatim_and_reads_at_13px(app):
 
 def test_the_effect_table_is_still_shown_by_number():
     """The two lists share one namespace -- `LIBRARY $4028` reads the arrays
-    and falls back to the character's own slots -- so `por/traits.py` could
+    and falls back to the character's own slots -- so `goldbox/traits.py` could
     name an effect. It does not here: the strip beside the map is a row of
     running spells and a PROBABLE name in it reads as a fact.
     `docs/133-active-effects.md` is where the naming is being designed."""
     effect = live.Effect(slot=0, id=64, owner=0, duration=3, magnitude=0)
     assert effect.label == "effect 64"
-    from por import traits
+    from goldbox import traits
     assert traits.describe(64).startswith("melee poison")   # a trait, not this
 
 
 def book_flags() -> bytes:
     """The flag block from the shipped unplayed save, as bytes."""
-    from por import commissions as book
+    from goldbox import commissions as book
     save0 = (FIXTURES / "savedgame0.bin").read_bytes()[2:]
     return book.flags(save0).to_bytes()
 

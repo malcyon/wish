@@ -19,8 +19,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from automap.paths import disk_globs  # noqa: E402
-from por.d64 import D64  # noqa: E402
-from por.geo import (  # noqa: E402
+from goldbox.d64 import D64  # noqa: E402
+from goldbox.geo import (  # noqa: E402
     DIRECTIONS,
     GRID,
     LOCKED,
@@ -29,7 +29,7 @@ from por.geo import (  # noqa: E402
     Geo,
     load_geo_files,
 )
-from por.savegame import SaveGame0  # noqa: E402
+from goldbox.savegame import SaveGame0  # noqa: E402
 
 DISKS = os.environ.get("POR_DISKS", "/home/donald/c64/Pool of Radiance Disks")
 

@@ -173,7 +173,7 @@ own `ECL0B` prints `THE ROOM IS FILLED WITH DUELING PAIRS.` and
 `WE TRAIN ONLY <class> HERE. DO YOU WANT TO TRAIN?` at `$A0DD`, the DOS guide
 names script 11 *Civilized Area (Training Hall)*, and a forum area list names
 `ECL3` record 11 *Training Hall*. It has no map of its own -- the schools are
-New Phlan's own squares, so `ECL0B` reuses `GEO00`. `por/areas.py` was
+New Phlan's own squares, so `ECL0B` reuses `GEO00`. `goldbox/areas.py` was
 corrected to match.
 
 **The doubled maps belong to their neighbours.** DOS numbers maps and scripts in
@@ -311,9 +311,9 @@ so warning first told the player only what the game was about to, and the
 question the dialog asked was the one the game asks again a second later. The
 `$6E12` reader stays: `Travel Back` records the disk it has to restore.
 
-The area table is data, not UI: **`por/areas.py`**, a frozen dataclass per area
+The area table is data, not UI: **`goldbox/areas.py`**, a frozen dataclass per area
 carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square, generated
-into this document by `tools/gendocs.py` the way `por/layout.py` already is.
+into this document by `tools/gendocs.py` the way `goldbox/layout.py` already is.
 `automap/state.py`'s `AREA_NAMES` becomes a view over it, so there is one table
 and not two.
 
@@ -376,7 +376,7 @@ Four cases, in order:
 2. **We know a square another script uses** (the arrival column above) — write
    that. It is the game's own answer for that door.
 3. **Neither** — pick a square from the target `GEO` read off the player's disk,
-   with **`por.areas.landing_square`**: the map's largest connected component,
+   with **`goldbox.areas.landing_square`**: the map's largest connected component,
    a square off the outer ring within it, facing an open edge.
 
    That rule replaced "the first square with at least one passable edge", and
@@ -414,7 +414,7 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
 | arrival square is a wall or off-map | **has never happened.** Fifteen warps put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
-| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `por.areas.landing_square`, `work/reports/p20-arrivals.md` |
+| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `goldbox.areas.landing_square`, `work/reports/p20-arrivals.md` |
 | **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be warped out again — the session is over | **fixed**: not offered in the dropdown, and refused by `Warp.legality` for a caller that did not come through it |
 | a script's own **menu** is up | the next warp is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then warp. Anything that warps repeatedly has to clear the arriving script's **menus**, not only its messages |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a warp is not the same as playing there |
@@ -568,7 +568,7 @@ the sections above. Both entries below are answers rather than questions, and
 
    **All five recommendations are now in the code.** Area 30 is out of the
    dropdown and refused by `Warp.legality`; the fallback is
-   `por.areas.landing_square`; the overland and `dynamic_geo` areas get no
+   `goldbox.areas.landing_square`; the overland and `dynamic_geo` areas get no
    square; area 21 carries `Arrival(8, 14, 0)`. §3 above is the current rule.
 
 **One area a warp cannot enter: 11, the training hall.** `ECL0B`'s entry reads

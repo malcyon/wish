@@ -8,7 +8,7 @@ anyone calls.
 .. toctree::
    :maxdepth: 2
 
-   por
+   goldbox
    wish
    editor
    automap

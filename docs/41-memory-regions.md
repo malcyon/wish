@@ -1,6 +1,6 @@
 # Memory regions
 
-**Generated** by `tools/genmemory.py` from `por/memory.py` — do not edit.
+**Generated** by `tools/genmemory.py` from `goldbox/memory.py` — do not edit.
 
 Every address this project has named, in one place. It answers "what is at
 `$4BC2`" without grepping, which is what it exists for;

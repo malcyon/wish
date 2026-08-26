@@ -1,4 +1,4 @@
-"""The D64 sizes `por.d64` accepts, and the ones it must still refuse.
+"""The D64 sizes `goldbox.d64` accepts, and the ones it must still refuse.
 
 `tests/test_d64.py` is the regression on the plain 174848-byte image and stays
 that way. This module covers what was added around it: the 40- and 42-track
@@ -22,8 +22,8 @@ import pathlib
 
 import pytest
 
-from por import games, items
-from por.d64 import (
+from goldbox import games, items
+from goldbox.d64 import (
     D64,
     ERROR_OK,
     IMAGE_SIZE,

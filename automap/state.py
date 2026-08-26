@@ -13,9 +13,9 @@ import logging
 import pathlib
 from dataclasses import dataclass, field
 
-from por import areas, games
-from por.areas import POOL_OF_RADIANCE
-from por.geo import DIRECTIONS, GRID, STEP, Geo
+from goldbox import areas, games
+from goldbox.areas import POOL_OF_RADIANCE
+from goldbox.geo import DIRECTIONS, GRID, STEP, Geo
 
 from . import notes as notemod
 from .area import (
@@ -30,11 +30,11 @@ from .notes import Note
 from .paths import data_dir as _data_dir
 from .target import Fix, read_fix
 
-#: A read-only view over `por/areas.py`, keyed **by game title first**. This
+#: A read-only view over `goldbox/areas.py`, keyed **by game title first**. This
 #: used to be a flat `GEO -> name` dictionary, which was a Pool of Radiance
 #: table with nothing saying so: `GEO15` exists in Curse of the Azure Bonds too
 #: (`docs/120-curse-testing.md`), and a Curse party standing in it was labelled
-#: "Sokol Keep". Use `por.areas.area_name`, which degrades an unknown title to
+#: "Sokol Keep". Use `goldbox.areas.area_name`, which degrades an unknown title to
 #: "area 21" instead of guessing.
 AREA_NAMES = areas.GEO_NAMES
 
@@ -67,7 +67,7 @@ def title_dir(title: str | None) -> str:
 
 
 def _pool_of_radiance_maps() -> frozenset[str]:
-    """Every `GEO` stem Pool of Radiance actually ships, from `por/areas.py`."""
+    """Every `GEO` stem Pool of Radiance actually ships, from `goldbox/areas.py`."""
     out = set(areas.GEO_NAMES.get(POOL_OF_RADIANCE, {}))
     for area_ in areas.AREAS:
         out |= set(area_.geos)
@@ -197,7 +197,7 @@ class AutomapState:
     geo: Geo | None = None
     area: str | None = None
     #: Which game's map names to use. A plain string, deliberately: the
-    #: per-game descriptor lives in `por/games.py` and this module only needs
+    #: per-game descriptor lives in `goldbox/games.py` and this module only needs
     #: its title. An unrecognised one is not an error -- `area_label` falls
     #: back to "area 21" rather than naming a Pool of Radiance place.
     title: str | None = POOL_OF_RADIANCE

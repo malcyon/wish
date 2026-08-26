@@ -4,7 +4,7 @@ Answered twice over, and the module carries both answers.
 
 A *save* says outright: `$4BC2` is the `GEO` file number -- see
 `docs/50-experiments.md`, "The area id: `$4BC2`, and it was in the header all
-along", and `por.savegame.AREA`.
+along", and `goldbox.savegame.AREA`.
 
 A *live* game says it even more directly, because the map it is drawing is
 resident: `ResidentGeo` reads the 1024 bytes at `$0400` and matches them against
@@ -23,7 +23,7 @@ at all -- their lowest id is `$10` or `$20` (`work/reports/goldbox-inventory.md`
 Anything that counted maps, or walked a range, would be wrong for four of the
 six titles on the shelf.
 
-`por.areas` carries the names and the area-to-map relation; nothing here
+`goldbox.areas` carries the names and the area-to-map relation; nothing here
 duplicates it.
 """
 
@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from por.geo import DIRECTIONS, EAST, GEO_SIZE, GRID, OPPOSITE, SOUTH, STEP, Geo
+from goldbox.geo import DIRECTIONS, EAST, GEO_SIZE, GRID, OPPOSITE, SOUTH, STEP, Geo
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off.
@@ -294,7 +294,7 @@ class ResidentGeo:
 
         With `expect` this is an exact-match hunt and the answer is certain.
         Without it, look for any 1024 bytes whose barrier plane is highly
-        reciprocal -- that is the self-check `por.geo` already relies on, and
+        reciprocal -- that is the self-check `goldbox.geo` already relies on, and
         random memory does not pass it.
         """
         needle = expect.to_bytes() if expect else None

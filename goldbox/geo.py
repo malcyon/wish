@@ -64,7 +64,7 @@ NORTH, EAST, SOUTH, WEST = 0, 1, 2, 3
 DIRECTIONS = (NORTH, EAST, SOUTH, WEST)
 DIRECTION_NAMES = {NORTH: "north", EAST: "east", SOUTH: "south", WEST: "west"}
 
-# Matches FACING_STEP in por/savegame.py: y increases southward.
+# Matches FACING_STEP in goldbox/savegame.py: y increases southward.
 STEP = {NORTH: (0, -1), EAST: (1, 0), SOUTH: (0, 1), WEST: (-1, 0)}
 OPPOSITE = {NORTH: SOUTH, EAST: WEST, SOUTH: NORTH, WEST: EAST}
 

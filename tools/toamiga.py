@@ -6,7 +6,7 @@ One file per character, 484 bytes each, ready to be dropped into the `Save`
 drawer of a Pools of Darkness disk 3 and picked up with
 `Add Character -> Pools`. The C64 disk is opened read-only.
 
-The conversion goes through `por/neutral.py`'s `NeutralCharacter`, so it reads a
+The conversion goes through `goldbox/neutral.py`'s `NeutralCharacter`, so it reads a
 save of any of the six C64 titles whose race and class tables the project
 knows. What cannot cross is printed rather than dropped quietly --
 `--quiet` prints only the file names, `--verbose` prints the byte-by-byte
@@ -22,7 +22,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from por.amiga import ConversionError, export_party  # noqa: E402
+from goldbox.amiga import ConversionError, export_party  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:

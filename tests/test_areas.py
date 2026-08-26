@@ -14,8 +14,8 @@ import re
 import pytest
 
 from automap.state import AREA_NAMES, AutomapState
-from por import areas
-from por.areas import (
+from goldbox import areas
+from goldbox.areas import (
     CURSE_OF_THE_AZURE_BONDS,
     POOL_OF_RADIANCE,
     Arrival,
@@ -320,20 +320,20 @@ def test_the_two_dynamic_areas_are_flagged_as_such(scripts):
         assert f"LOADFILES {id}, " not in text
 
 
-# -- the seam with por/games.py ----------------------------------------------
+# -- the seam with goldbox/games.py ----------------------------------------------
 
 
 def test_the_title_strings_match_the_per_game_descriptor():
-    """`por/areas.py` takes a title as a plain string on purpose, so that it
+    """`goldbox/areas.py` takes a title as a plain string on purpose, so that it
     does not have to import the descriptor. This is the one place the two have
     to agree: `areas.GEO_NAMES[game.title]` is how a caller with a `Game` looks
-    a name up. Skipped while `por/games.py` does not yet exist."""
-    games = pytest.importorskip("por.games")
+    a name up. Skipped while `goldbox/games.py` does not yet exist."""
+    games = pytest.importorskip("goldbox.games")
     for attr, title in (("POOL_OF_RADIANCE", POOL_OF_RADIANCE),
                         ("CURSE_OF_THE_AZURE_BONDS", CURSE_OF_THE_AZURE_BONDS)):
         game = getattr(games, attr, None)
         if game is None or not hasattr(game, "title"):
-            pytest.skip(f"por.games has no {attr}.title yet")
+            pytest.skip(f"goldbox.games has no {attr}.title yet")
         assert game.title == title
         assert game.title in areas.GEO_NAMES
 

@@ -10,7 +10,7 @@ the screen: `2` is COMBAT. An action that is illegal in combat refuses at
 `apply` time and not only in its tooltip, because a button's enabled state is
 one poll interval stale and a fight can start inside that interval.
 
-**Every address here is per title, and comes from `por.games.Game`** -- the
+**Every address here is per title, and comes from `goldbox.games.Game`** -- the
 slot area, the item area and the roster page all follow `save_load_address`,
 so Curse and Silver Blades are written at `$4F00`, `$5B00` and `$6700` and not
 at Pool of Radiance's `$4D00`, `$5900` and `$8300` (#29).
@@ -51,11 +51,11 @@ import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
-from por import games, levels, levelup
-from por import items as por_items
-from por.layout import Confidence, field_by_name
-from por.record import CharacterRecord
-from por.savegame import (
+from goldbox import games, levels, levelup
+from goldbox import items as por_items
+from goldbox.layout import Confidence, field_by_name
+from goldbox.record import CharacterRecord
+from goldbox.savegame import (
     ROSTER_HP_CURRENT,
     ROSTER_STRIDE,
     ROSTER_THAC0,
@@ -185,7 +185,7 @@ class Member:
     the three bases were Pool of Radiance's `$4D00`, `$5900` and `$8300`, which
     is what made these actions write into another title's memory (#29). The
     offsets inside the payload are the same in all six titles; only the base
-    moves, so a new title costs a row in `por/games.py` and nothing here.
+    moves, so a new title costs a row in `goldbox/games.py` and nothing here.
     """
 
     slot: int
@@ -330,7 +330,7 @@ class Action:
         """This action's title, as the descriptor its addresses come from.
 
         A property rather than the attribute itself because `LevelUp` accepts
-        a key or a `LevelTables` as well -- `por/levels.py` is duck-typed on
+        a key or a `LevelTables` as well -- `goldbox/levels.py` is duck-typed on
         `.key` on purpose -- and the addresses need a `Game`.
         """
         return self.game
@@ -608,7 +608,7 @@ class IdentifyItems(Action):
 # --- levelling ---------------------------------------------------------------
 
 #: Every record field a level-up writes. Each one has to be CONFIRMED in
-#: `por/layout.py` before the action will write anything at all: a
+#: `goldbox/layout.py` before the action will write anything at all: a
 #: half-levelled character is a corrupt character, and one field written from a
 #: guess is enough to make it one.
 LEVEL_UP_FIELDS: tuple[str, ...] = (
@@ -628,7 +628,7 @@ def game_title(game=None) -> str:
     if game is None:
         return levels.DEFAULT.title
     try:
-        from por import games
+        from goldbox import games
     except ImportError:                     # pragma: no cover - defensive
         return str(game)
     known = games.BY_KEY.get(str(game))
@@ -643,14 +643,14 @@ def level_up_blockers(record: CharacterRecord | None = None,
     CONFIRMED. **It got there by measurement, not by lowering a bar**: the
     five entries this used to carry were closed by reading the trainer's own
     routines out of `GEN` and replaying twenty-nine measured trainings through
-    `por/levelup.py` -- see `docs/135-levelling.md`.
+    `goldbox/levelup.py` -- see `docs/135-levelling.md`.
 
     It takes a record because the remaining refusals are per character: a class
     at its ceiling, a race at its limit, or not enough experience.
 
     **And it takes a title, because the measurement was of one title.** Curse
     is the case that would corrupt quietly: its level tables are in
-    `por/levels.py`, so selecting them looks like enough, and it is not. Every
+    `goldbox/levels.py`, so selecting them looks like enough, and it is not. Every
     derivation around them was read at Pool of Radiance's addresses out of Pool
     of Radiance's `GEN` -- `levels.TRAINER_MEASURED` names them -- so a title
     nobody has measured is refused whatever tables it has.
@@ -671,7 +671,7 @@ class LevelUp(Action):
 
     **The trainer is the specification and this is a copy of it.** `GEN $1B8C`
     is the sequence a level-up runs; every routine it calls has been read and
-    `por/levelup.py` names each one beside the field it fills. Replaying the
+    `goldbox/levelup.py` names each one beside the field it fills. Replaying the
     twenty-nine trainings measured in `docs/119-test-party.md` through it
     reproduces the game's own record **byte for byte** on every field, given
     the hit die it rolled.
@@ -708,11 +708,11 @@ class LevelUp(Action):
     `class_name` still overrides.
 
     **Which title, though, is a question, and it is asked.** `game` is the
-    `por.games.Game` the session is, and every table and every derivation is
+    `goldbox.games.Game` the session is, and every table and every derivation is
     taken from it. None means Pool of Radiance, because every caller written
     before there was a second title meant that one. A title whose trainer
     nobody has measured is refused by `level_up_blockers` before a byte is
-    written -- see `por.levels.TRAINER_MEASURED`.
+    written -- see `goldbox.levels.TRAINER_MEASURED`.
     """
 
     name = "level-up"
@@ -1099,16 +1099,16 @@ ANY_TITLE = object()
 def area_rows(title=ANY_TITLE) -> tuple:
     """This title's area table, or nothing if there is none.
 
-    `por/areas.py` owns it. Imported here rather than at the top of the module
+    `goldbox/areas.py` owns it. Imported here rather than at the top of the module
     so that a checkout without it still has the other five actions.
 
     **Only Pool of Radiance has one.** A row's disk number and `ECL` id are
     Pool of Radiance's, and `Warp` writes both into the running machine, so
     another title's session must be offered nothing rather than these --
-    `por.areas.areas_for_title` is where that refusal lives.
+    `goldbox.areas.areas_for_title` is where that refusal lives.
     """
     try:
-        from por import areas
+        from goldbox import areas
     except ImportError:                     # pragma: no cover - defensive
         return ()
     if title is ANY_TITLE:
@@ -1119,7 +1119,7 @@ def area_rows(title=ANY_TITLE) -> tuple:
 def landing_square(geo) -> tuple[int, int, int] | None:
     """Where to put a party arriving in an area whose square nobody harvested.
 
-    `por.areas.landing_square` does the work; this is the seam, imported the
+    `goldbox.areas.landing_square` does the work; this is the seam, imported the
     same guarded way as the table for the same reason. It replaces a rule that
     took the first square with any passable edge, which came to `(0, 0)` on all
     twenty-nine maps and left a party walled into a pocket on four of them --
@@ -1131,7 +1131,7 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     if geo is None:
         return None
     try:
-        from por.areas import landing_square as pick
+        from goldbox.areas import landing_square as pick
     except ImportError:                     # pragma: no cover - defensive
         return None
     return pick(geo)
@@ -1140,13 +1140,13 @@ def landing_square(geo) -> tuple[int, int, int] | None:
 def place_name(geo: str) -> str | None:
     """What to call the map now resident, or None if we cannot say.
 
-    `por.areas.geo_name`, imported the same guarded way as the table and for
+    `goldbox.areas.geo_name`, imported the same guarded way as the table and for
     the same reason. The name is the one the status line under the map already
     shows -- `AutomapState.area_label` calls the same function -- so the two
     cannot disagree about where the party is.
     """
     try:
-        from por.areas import geo_name
+        from goldbox.areas import geo_name
     except ImportError:                     # pragma: no cover - defensive
         return None
     return geo_name(geo)
@@ -1351,7 +1351,7 @@ class Warp(Action):
     def __init__(self):
         # Pool of Radiance, always and explicitly. Every address below is one
         # of this title's overlays -- `NEWECL`'s tail, DUNGEON's key-wait loop,
-        # the disk and cache-slot bytes -- and `por/areas.py` has a table for
+        # the disk and cache-slot bytes -- and `goldbox/areas.py` has a table for
         # no other title, so the row offers a later title nothing at all (#14).
         super().__init__(games.POOL_OF_RADIANCE)
         #: Where the last warp came from. `Warp Back` reads it; None until a

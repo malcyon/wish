@@ -1,10 +1,10 @@
 """Declarative field table for the DOS Pool of Radiance character record.
 
-`por/layout.py` is this module's model and its sibling: same `Field`, same
+`goldbox/layout.py` is this module's model and its sibling: same `Field`, same
 `Confidence`, same rule that every byte of the record belongs to exactly one
 entry so an overlap cannot be introduced silently.  What differs is the
 record.  The DOS one is **285 bytes** to the C64's 580, and it is *rearranged
-rather than translated*.  Both directions read this table now: `por/dos.py`
+rather than translated*.  Both directions read this table now: `goldbox/dos.py`
 decodes a DOS record through it and, since #26, encodes one too -- the
 player's own files are still never written to.
 
@@ -29,7 +29,7 @@ Three shapes worth knowing before reading the table
   *bits*.  The ordering turns out to be identical -- see `SPELLBOOK`.
 * **The per-class level array is indexed by the class number**, where the
   C64's eight slots are indexed by the class *bit*.  Same width, different
-  meaning per slot; `por/dos.py` carries the permutation.
+  meaning per slot; `goldbox/dos.py` carries the permutation.
 
 Live-only state
 ---------------
@@ -184,7 +184,7 @@ _DECLARED: Sequence[Field] = (
        "C64's own table**: 0 cleric, 2 fighter, 5 mage, 6 thief, 8 "
        "cleric/fighter, 9 cleric/fighter/mage, 11 cleric/mage, 12 "
        "cleric/thief, 13 fighter/mage, 14 fighter/thief, 15 "
-       "fighter/mage/thief, 16 mage/thief, which is `por/yaml_io.py`'s "
+       "fighter/mage/thief, 16 mage/thief, which is `goldbox/yaml_io.py`'s "
        "CLASS_CODES entry for entry. Checked against the class bitmask at "
        "0x0B0 on all 24 -- BAKSHI 9 against bits 11, RHIANNON 13 against 9, "
        "ORATISI NOMOON 15 against 13. So the class byte converts by copying, "
@@ -204,7 +204,7 @@ _DECLARED: Sequence[Field] = (
        "same ids the C64 bitmask at 0x078 indexes**, so the conversion is a "
        "pack, not a permutation. Three things say so together. The DOS array "
        "is grouped cleric-1 (8), mage-1 (13), cleric-2 (7), mage-2 (7), "
-       "cleric-3 (9), mage-3 (11), which is `por/spells.py`'s "
+       "cleric-3 (9), mage-3 (11), which is `goldbox/spells.py`'s "
        "`_GROUPS_POOL` boundaries 1-8, 9-21, 22-28, 29-35, 36-44, 45-55 "
        "byte for byte. Every set byte in all 24 specimens falls in a group "
        "its owner's class can cast, with no crossover: a level-1 cleric sets "
@@ -225,7 +225,7 @@ _DECLARED: Sequence[Field] = (
        "1 in all 24. The C64's 0x099 aligns here but does **not** mean this: "
        "it carries the icon *size* (small/large), which DOS keeps separately "
        "at 0x0C0. Two DOS fields, one C64 byte, and the C64's is the second "
-       "of the two, one lower -- see `por/layout.py`'s `size_small`"),
+       "of the two, one lower -- see `goldbox/layout.py`'s `size_small`"),
     _f(0x06D, 1, _U8, "save_paralysis", "Save vs paralysis", _OK,
        "the five saving throws in the C64's order, 0x06D-0x071. ROLAND, a "
        "cleric 3, reads 10 13 14 16 15, which is Gold Box Companion's "
@@ -540,7 +540,7 @@ _ITEM_DECLARED: Sequence[Field] = (
 def _build(declared: Iterable[Field], size: int, what: str) -> tuple[Field, ...]:
     """Sort, validate, and fill the gaps with UNKNOWN entries.
 
-    The same contract as `por.layout._build`: every byte of the record ends up
+    The same contract as `goldbox.layout._build`: every byte of the record ends up
     in exactly one entry, and an overlap or an out-of-range declaration is an
     import-time error rather than a silently wrong read.
     """
@@ -641,7 +641,7 @@ _DRUID_SLOT_NOTE = (
     "getting his first *druid* spell at 8; Pools of Darkness' CLARISSA, "
     "ARGORA and RWELLYN are level 13 and hold 2 1 here **and** 2 1 in the "
     "magic-user array, which is the same ranger at 13. Both match "
-    "`por/spells.py`'s ranger grant table, read out of the C64 `GEN`. "
+    "`goldbox/spells.py`'s ranger grant table, read out of the C64 `GEN`. "
     "Paladins do **not** use this array -- Pools of Darkness' Guy de Valois, "
     "a paladin 12, holds 2 2 in the *cleric* array")
 
@@ -661,7 +661,7 @@ POOL_OF_RADIANCE = DosShape(
 #: Curse of the Azure Bonds, 422 bytes.  Three things move it: every ability
 #: becomes a (base, current) pair, the memorised-spell region grows from 21
 #: bytes to 84, and the spellbook grows from 56 entries to 100 -- which is
-#: `por/spells.py`'s Curse id space, 1..100, exactly.  Then the record gains
+#: `goldbox/spells.py`'s Curse id space, 1..100, exactly.  Then the record gains
 #: the fields a second title needs: a multi-class level beside the level, a
 #: former-level array beside the class-level one, a druid spell-slot array
 #: between the cleric's and the magic-user's, and four bytes of its own
@@ -684,7 +684,7 @@ CURSE_OF_THE_AZURE_BONDS = DosShape(
              "icon_colours": 1, "heap_104": 4})
 
 #: Secret of the Silver Blades, 439 bytes.  Curse's record plus a spellbook
-#: of 117 -- `por/spells.py`'s Silver Blades id space, 1..117 -- seven spell
+#: of 117 -- `goldbox/spells.py`'s Silver Blades id space, 1..117 -- seven spell
 #: slot levels rather than five, and **two** undecoded slot arrays between the
 #: cleric's and the magic-user's rather than one.  It drops the monk level
 #: slot and the `type` byte, and its memorised region is *smaller* than

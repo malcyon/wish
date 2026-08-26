@@ -15,9 +15,9 @@ from gamedata import game_file
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from por import commissions as book  # noqa: E402
-from por.commissions import DONE, LEDGER_BASE, PAID_VALUE  # noqa: E402
-from por.savegame import SAVE0_SIZE, SaveGame0  # noqa: E402
+from goldbox import commissions as book  # noqa: E402
+from goldbox.commissions import DONE, LEDGER_BASE, PAID_VALUE  # noqa: E402
+from goldbox.savegame import SAVE0_SIZE, SaveGame0  # noqa: E402
 
 # A far-advanced save, kept out of the repository like every other game file.
 ADVANCED = pathlib.Path("work/fields/npc_party.d64")
@@ -46,7 +46,7 @@ def put_ledger(flags: bytearray, index: int, value: int) -> bytearray:
 def advanced_save() -> bytes:
     if not ADVANCED.exists():
         pytest.skip(f"needs {ADVANCED}, a far-advanced save")
-    from por.d64 import load_payload
+    from goldbox.d64 import load_payload
     return load_payload(str(ADVANCED), b"SAVEDGAME0")
 
 

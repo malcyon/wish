@@ -16,7 +16,7 @@ you never edit.
 
 **You have `Bash`, and `Bash` is write access.** Your tool list has no `Write`
 and no `Edit`, which is deliberate — but a shell can do everything they can and
-more, and on 2026-08-26 a review of `por/amiga.py` ran `git checkout -- ` on it
+more, and on 2026-08-26 a review of `goldbox/amiga.py` ran `git checkout -- ` on it
 to undo a throwaway edit of its own and **destroyed 580 lines of uncommitted
 work** that no transcript could rebuild. The review had found real defects; it
 cost more than it found.
@@ -130,12 +130,12 @@ violation, so you do not re-raise a settled question.
 
 Read `CLAUDE.md` and `INDEX.md`. Two of its rules bear directly on review:
 
-* **`por/` stays transport-free, `editor/` stays emulator-free, and everything
+* **`goldbox/` stays transport-free, `editor/` stays emulator-free, and everything
   that talks to VICE lives in `automap/`.** An import that crosses those lines
   is a Critical finding — `tests/test_wish.py` greps for it, and the split is
   what keeps the editor usable with no emulator installed.
 * **Comments explain the *why*.** A comment restating the code is a suggestion
-  to delete it; a field note carrying evidence earns its lines. `por/layout.py`
+  to delete it; a field note carrying evidence earns its lines. `goldbox/layout.py`
   is the deliberate exception — its notes are the field documentation and are
   generated into `docs/20-character-record.md`.
 

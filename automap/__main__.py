@@ -19,8 +19,8 @@ import os
 import pathlib
 import sys
 
-from por.games import Game
-from por.geo import load_geo_files
+from goldbox.games import Game
+from goldbox.geo import load_geo_files
 
 from .paths import disk_globs, resolve_disks, titles_in, vice_settings_hint
 from .state import Automapper

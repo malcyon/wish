@@ -1,6 +1,6 @@
 """The DOS ``SAVGAM<slot>.DAT`` saved game, mapped field by field (#59).
 
-`por/dos.py` decodes the DOS *character record*; this module is the map of
+`goldbox/dos.py` decodes the DOS *character record*; this module is the map of
 the saved game around it, the DOS counterpart of `docs/30-savegame-layout.md`.
 Everything here was established by differential analysis in DOSBox: twelve
 specimens -- Donald's own slots A, B and J, four saves taken one action
@@ -48,8 +48,8 @@ import struct
 class DosSaveError(ValueError):
     """A buffer that is not a DOS saved game, or an address outside it.
 
-    Its own class rather than `por.dos.DosRecordError` because this module is
-    the layer *under* `por/dos.py` -- importing it the other way would invert
+    Its own class rather than `goldbox.dos.DosRecordError` because this module is
+    the layer *under* `goldbox/dos.py` -- importing it the other way would invert
     the edge the module graph in `docs/117-save-conversion.md` exists to keep
     honest.  Both derive from `ValueError`, so a caller that catches that
     catches either.
@@ -59,7 +59,7 @@ class DosSaveError(ValueError):
 class DaxError(DosSaveError):
     """A `.DAX` block does not decode -- truncated, or not this container.
 
-    A subclass so that `por.dos.write_dos_save`, which catches `DosSaveError`
+    A subclass so that `goldbox.dos.write_dos_save`, which catches `DosSaveError`
     around the block it lifts the target area's script out of, keeps catching
     it.
     """
@@ -120,7 +120,7 @@ PARTY_NAME_LEN = 9           # length byte + up to 8 of "CHRDAT<letter><n>"
 # -- the named VM variables --------------------------------------------------
 TRAVEL_X = 0x49C3            # the overland square, window-local, live only
 TRAVEL_Y = 0x49C4            # outdoors -- see `travel_square`
-AREA = 0x49C5                # geo block id == area id, `por/areas.py` numbers
+AREA = 0x49C5                # geo block id == area id, `goldbox/areas.py` numbers
                              # -- but **0 in all three outdoor saves**, not
                              # the C64's SQRDATA number (#59, outdoor pass)
 EMPTY = 0xFFFF               # an empty word slot, the wallset triple's $FF
@@ -315,7 +315,7 @@ def encounter_text(save: bytes, limit: int = 96) -> str:
 #:
 #: **One copy, here** (#76).  `tools/dosbox.py` carried a second and re-exports
 #: this one; a retarget needs one ECL block out of the player's own archive and
-#: `por/` may not import from `tools/`, so the shared copy has to be this side
+#: `goldbox/` may not import from `tools/`, so the shared copy has to be this side
 #: of the edge.
 #:
 #: This is *not* the Amiga container.  That one is big-endian, orders the entry
@@ -349,7 +349,7 @@ def dax_unpack(block: bytes, raw_size: int, name: str = "block") -> bytes:
     block's -- and all three used to be silent (#65).  A run whose operand is
     past the end of the block raised `IndexError` from the subscript, and a
     block that ran out before `raw_size` returned a plausible prefix and left
-    the caller to notice.  `por.dos.write_dos_save` catches `DosSaveError` and
+    the caller to notice.  `goldbox.dos.write_dos_save` catches `DosSaveError` and
     keeps the template's square; an `IndexError` took the whole conversion down
     with a traceback instead.
     """

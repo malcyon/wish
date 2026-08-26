@@ -169,7 +169,7 @@ assembled from three indices into the game's own `ITEMNAMES` table — `CLOAK` `
 being dropped, and cost was read as one byte, which is enough for everything
 buyable in a shop and wrong for everything interesting. Only `+5` is still
 unread — 0 on 162 of the 163 items on the game disks and 251 on CURSED NECKLACE
-alone. See `por/items.py`.
+alone. See `goldbox/items.py`.
 
 **Combat icon: ✅ done** ([the combat-icon edits](50-experiments.md)). 36 bytes, split exactly in half — 18 screen
 codes for the **shape**, then 18 **colour** values. In a save they live in a
@@ -509,7 +509,7 @@ The game never clears it, which is
 ## What the trainer changes when a level is gained — FOUND, and closed
 
 Every field, and the routine that writes each one, is in
-[`135`](135-levelling.md); `por/levelup.py` reproduces the record the trainer
+[`135`](135-levelling.md); `goldbox/levelup.py` reproduces the record the trainer
 produces byte for byte across all thirty-four before/after pairs measured in
 [`119`](119-test-party.md). The five that stood open here are answered:
 

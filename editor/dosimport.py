@@ -1,6 +1,6 @@
 """Turning a DOS save into a C64 one, with the losses named first.
 
-`por/dos.py` does the conversion and this is the window over it. The one thing
+`goldbox/dos.py` does the conversion and this is the window over it. The one thing
 this file exists for is the order of events: a DOS save carries fields the C64
 has no home for -- encumbrance, the item heap pointers, the item count, the
 icon selection, the strength-bonus boolean, every running spell effect -- and
@@ -13,7 +13,7 @@ this the way it covers every other write.
 
 The template no longer has to stand where the DOS party stands. The
 loaded-files cache at `$4BC0` is decoded (`docs/140-loaded-files-cache.md`) and
-`por.dos.convert_save` writes it, so any Pool of Radiance save will do as a
+`goldbox.dos.convert_save` writes it, so any Pool of Radiance save will do as a
 template. What is left of the refusal is the wrong game, which is still a
 sentence in the pane rather than a traceback.
 
@@ -42,9 +42,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por import dos, games
-from por.d64 import D64
-from por.savegame import SaveGame0, SaveGame1, load_save, store_save
+from goldbox import dos, games
+from goldbox.d64 import D64
+from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
 
 _log = logging.getLogger("wish.editor.dosimport")
 
@@ -138,7 +138,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     """Convert onto a copy of the template and report, writing nothing.
 
     The template is read; the DOS files are read; the result exists only as
-    the returned `Conversion`. Anything `por.dos.convert_save` refuses raises
+    the returned `Conversion`. Anything `goldbox.dos.convert_save` refuses raises
     from in here, which is what the dialog turns into a sentence.
     """
     disk = D64.open(template)
@@ -159,7 +159,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
 def dropped_text(report: dos.Report) -> str:
     """The losses, one to a line, under a heading.
 
-    The lines themselves are `por/dos.py`'s -- the same words the command line
+    The lines themselves are `goldbox/dos.py`'s -- the same words the command line
     prints -- so the report a menu shows and the report a terminal shows cannot
     drift into being two different accounts of the same conversion.
     """

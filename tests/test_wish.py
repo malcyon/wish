@@ -362,10 +362,10 @@ def test_editor_imports_nothing_live():
 FORBIDDEN_TRANSPORT_ROOTS = ("automap", "socket", "telnet", "telnetlib", "serial")
 
 
-def test_por_imports_no_transport():
-    """por/ stays transport-free -- checked by import, not by grepping prose.
+def test_goldbox_imports_no_transport():
+    """goldbox/ stays transport-free -- checked by import, not by grepping prose.
 
-    por/areas.py, por/games.py and por/strength.py all *mention* automap in
+    goldbox/areas.py, goldbox/games.py and goldbox/strength.py all *mention* automap in
     comments, so a substring grep would be a false positive on every one of
     them. Parsing the AST and looking only at Import/ImportFrom nodes is the
     difference.
@@ -375,10 +375,10 @@ def test_por_imports_no_transport():
     that means reading string literals, which is the prose false-positive this
     test exists to avoid. And a relative import is checked as though it were
     absolute, which can only make the test too strict, never blind: `from
-    .d64 import D64` reads as `d64`, and no por/ module is named after a
-    forbidden root. por/ uses neither importlib nor `__import__` today.
+    .d64 import D64` reads as `d64`, and no goldbox/ module is named after a
+    forbidden root. goldbox/ uses neither importlib nor `__import__` today.
     """
-    for path in pathlib.Path("por").glob("*.py"):
+    for path in pathlib.Path("goldbox").glob("*.py"):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

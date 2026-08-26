@@ -86,8 +86,8 @@ TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from por import dos as _por_dos  # noqa: E402
-from por import dos_savegame as _sav  # noqa: E402
+from goldbox import dos as _por_dos  # noqa: E402
+from goldbox import dos_savegame as _sav  # noqa: E402
 
 
 class DosboxUnavailable(RuntimeError):
@@ -746,7 +746,7 @@ class Session:
 BAR = (0, 192, 320, 7)
 STATUS = (128, 120, 128, 8)
 
-#: **The byte map is `por/dos_savegame.py`'s and only its** (#76).  This
+#: **The byte map is `goldbox/dos_savegame.py`'s and only its** (#76).  This
 #: harness held a second copy -- and `AREA_ID` had already drifted out of the
 #: map's units: it is the *word index* 395, which is `word_offset($49C5)`, so a
 #: reader who fixed `$49C5` on one side would never have found 395 on the
@@ -759,7 +759,7 @@ AREA_ID = _sav.word_offset(_sav.AREA)
 AREA_FILE = _sav.DAX_NUMBER
 
 #: The facing byte as the *file* carries it: the C64's 0-3 doubled.
-#: `por.dos_savegame.position` halves it and this harness does not, because
+#: `goldbox.dos_savegame.position` halves it and this harness does not, because
 #: what a driven run wants to see is the byte that moved.
 FACINGS = {i * _sav.FACING_SCALE: d for i, d in enumerate("NESW")}
 
@@ -767,7 +767,7 @@ FACINGS = {i * _sav.FACING_SCALE: d for i, d in enumerate("NESW")}
 def position(save: bytes) -> tuple[int, int, int]:
     """`(x, y, facing)` out of a `SAVGAM<slot>.DAT`, facing doubled.
 
-    `por.dos_savegame.position` returns the same square with the facing in the
+    `goldbox.dos_savegame.position` returns the same square with the facing in the
     C64's 0-3; this one is the file's own byte, which is what a differential
     between two saves is written in.
     """
@@ -775,7 +775,7 @@ def position(save: bytes) -> tuple[int, int, int]:
 
 
 def area_id(save: bytes) -> int:
-    """The current area, in the numbering `por/areas.py` uses."""
+    """The current area, in the numbering `goldbox/areas.py` uses."""
     return _sav.area_id(save)
 
 
@@ -783,8 +783,8 @@ def area_id(save: bytes) -> int:
 # The `.DAX` container, and the 63-byte item record inside `.ITM`
 # --------------------------------------------------------------------------
 
-#: The container reader is `por/dos_savegame.py`'s (#76): one index, one
-#: run-length decode, one set of refusals.  `por/` may not import from
+#: The container reader is `goldbox/dos_savegame.py`'s (#76): one index, one
+#: run-length decode, one set of refusals.  `goldbox/` may not import from
 #: `tools/`, so the shared copy lives there and this is the re-export.
 DAX_ENTRY = _sav.DAX_ENTRY
 DaxError = _sav.DaxError
@@ -814,7 +814,7 @@ ITEM_TEXT_MAX = 41
 ITEM_NEXT = 0x02A
 
 # `0x02E` onwards is the C64's own 16-byte item record with its packed bytes
-# spread out.  `por.items` documents what each one means; the correspondence
+# spread out.  `goldbox.items` documents what each one means; the correspondence
 # below is what makes that documentation apply.
 ITEM_TYPE = 0x02E        # indexes ITEMS, the 128 x 16 type table -- and the
 ITEM_NAME1 = 0x02F       #   DOS ITEMS is byte-identical to the C64's in 126
@@ -834,7 +834,7 @@ ITEM_SPECIAL = 0x03C     # three bytes: charges, effect, power -- or, on a
 C64_ITEM_SIZE = 16
 
 
-#: The projection itself now lives in `por/dos.py`, because it is part of the
+#: The projection itself now lives in `goldbox/dos.py`, because it is part of the
 #: converter rather than part of the harness that drives DOSBox.  Re-exported
 #: here so the measurements in `tests/test_dosbox.py` keep reading it from the
 #: place they were written against, and so there is one copy of it.

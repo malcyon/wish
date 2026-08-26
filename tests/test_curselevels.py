@@ -1,4 +1,4 @@
-"""`por/levels.py` and `por/spells.py`, now that both carry two titles.
+"""`goldbox/levels.py` and `goldbox/spells.py`, now that both carry two titles.
 
 Everything that needs game data reads it off the player's own disks through
 `tests/gamedata.py` and skips when there are none. The tables in those two
@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from por import levels, levelup, spells
-from por.record import CharacterRecord
+from goldbox import levels, levelup, spells
+from goldbox.record import CharacterRecord
 from tests import gamedata
 from tests.test_curse import _grant_table
 
@@ -181,7 +181,7 @@ def test_the_curse_records_on_the_disks_all_satisfy_the_rule():
 
 def _curse_records():
     """Every Curse character record on the player's disks, labelled."""
-    from por.d64 import D64
+    from goldbox.d64 import D64
     out = []
     for disk in gamedata.curse_disks(engine_only=False):
         for entry in disk.directory():
@@ -327,7 +327,7 @@ def test_curse_hit_dice_come_from_the_games_three_arrays():
 
 def test_only_the_level_one_saves_are_on_the_disk():
     """Both games keep four five-byte rows and derive every other level, so the
-    higher rows in `por/levels.py` are AD&D transcription checked against
+    higher rows in `goldbox/levels.py` are AD&D transcription checked against
     stored records rather than against a table."""
     for gen, address in ((_pool_gen(), 0x1FA2),
                          (_curse_gen(), CURSE_LEVEL_1_SAVES)):
@@ -421,7 +421,7 @@ def test_spelln64_is_the_icon_editor_menu_in_both_games():
 
 
 # --- levelling, per title ----------------------------------------------------
-# Issue #87. `por/levelup.py` walked the spellbook to `spells.LAST_SPELLBOOK_
+# Issue #87. `goldbox/levelup.py` walked the spellbook to `spells.LAST_SPELLBOOK_
 # SPELL`, which is 55 because that is Pool of Radiance's, so a Curse caster was
 # offered about half its own list. The records below are built rather than read
 # off a disk: what is being checked is the arithmetic, and a blank record with
@@ -474,7 +474,7 @@ def test_a_curse_magic_user_below_seven_is_offered_no_fourth_level_spell():
 
 
 def test_the_cleric_grant_is_curses_own_table_at_every_level_it_reaches():
-    """`por/levelup.py`'s derivation against `GEN`'s bytes, id for id.
+    """`goldbox/levelup.py`'s derivation against `GEN`'s bytes, id for id.
 
     The derivation is "every cleric spell of a level the title's slot table
     says it can cast, minus the ids that table never grants". This asserts it
@@ -518,7 +518,7 @@ def test_the_castable_row_reaches_curses_fifth_spell_level():
 
 
 def test_levelling_a_title_with_no_tables_of_its_own_refuses():
-    """Silver Blades has no `por/levels.py` entry, so `for_game` hands back
+    """Silver Blades has no `goldbox/levels.py` entry, so `for_game` hands back
     Pool of Radiance's. Writing those would be a corrupt record that looks
     right, so `plan` refuses and names the title instead."""
     rec = _caster(0x02, 5)

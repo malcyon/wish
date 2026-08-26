@@ -19,10 +19,10 @@ import shutil
 import pytest
 from gamedata import disk_dir
 
-from por.d64 import D64
-from por.record import FieldNotStored
-from por.savegame import ROSTER_STRIDE, SaveGame0, SaveGame1
-from por.yaml_io import export_save, import_into
+from goldbox.d64 import D64
+from goldbox.record import FieldNotStored
+from goldbox.savegame import ROSTER_STRIDE, SaveGame0, SaveGame1
+from goldbox.yaml_io import export_save, import_into
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")

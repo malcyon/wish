@@ -33,7 +33,7 @@ window = Analysis(
     ["packaging/wish_main.py"],
     pathex=["."],
     hiddenimports=(
-        collect_submodules("por")
+        collect_submodules("goldbox")
         + collect_submodules("editor")
         + collect_submodules("automap")
         + collect_submodules("wish")

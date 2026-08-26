@@ -1,18 +1,18 @@
 """The C64 codec: a 580-byte C64 record to and from a neutral character.
 
-Both halves of the pair `por/neutral.py` describes.  :func:`write` turns a
+Both halves of the pair `goldbox/neutral.py` describes.  :func:`write` turns a
 neutral character into the 580 bytes; :func:`read` turns the 580 bytes into a
 neutral character.  The module knows the C64 record and nothing else: which
-neutral field goes to which entry of `por/layout.py`, what the C64 stores
+neutral field goes to which entry of `goldbox/layout.py`, what the C64 stores
 that no source supplies, and what the C64 has no room for.  Where a value
 came from is a source reader's business and reaches :func:`write` only as
-the phrase :class:`por.neutral.Value` carries.
+the phrase :class:`goldbox.neutral.Value` carries.
 
 Every byte of the output is justified -- it came from a neutral value, or it
 was computed from one by a named rule, or it is a documented constant --
 which is what :attr:`Report.unaccounted` asserts.
 
-Evidence for the fields themselves is in `por/layout.py`; for the conversion,
+Evidence for the fields themselves is in `goldbox/layout.py`; for the conversion,
 `docs/117-save-conversion.md`.
 """
 
@@ -336,7 +336,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rep.note(0x220, 36, "combat icon: supplied")
     else:
         rep.note(0x220, 36, f"combat icon: zero. {port} has no C64 charset "
-                            f"icon; por/iconparts.py can compose a legal one")
+                            f"icon; goldbox/iconparts.py can compose a legal one")
         rep.dropped.append("the combat icon: C64 icons are 18 CHARPIC00 "
                            "screen codes plus 18 colours and "
                            f"{port} has no equivalent")
@@ -357,7 +357,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     w.finish()
 
     # Everything still unnamed is a byte the C64 record does not use: the
-    # unknown gaps of por/layout.py, which are zero in every specimen we hold.
+    # unknown gaps of goldbox/layout.py, which are zero in every specimen we hold.
     for f in _layout():
         for i in range(f.offset, f.end):
             rep.sources.setdefault(
@@ -411,11 +411,11 @@ DROPPED: tuple[tuple[str, str], ...] = (
 def field_disposition() -> dict[str, str]:
     """Every neutral field and what :func:`write` does with it.
 
-    The neutral-vocabulary twin of `por.dos.field_disposition`, which asks the
+    The neutral-vocabulary twin of `goldbox.dos.field_disposition`, which asks the
     same question of the DOS layout.  `Writer.finish` catches a value no
     writer took one character at a time; this catches a *name* the writer has
     never been taught, which is the failure that rots silently -- a field
-    added to `por/neutral.py`'s `FIELDS` and never wired up here.
+    added to `goldbox/neutral.py`'s `FIELDS` and never wired up here.
     """
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED,
                                "the C64 record's")
@@ -445,7 +445,7 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
 #: What :func:`read` does with every named field of the C64 layout -- the
 #: layout-wide account the DOS writer of #26 called for, so a C64 field
 #: nothing reads cannot be dropped in silence.  `tests/test_doswriter.py`
-#: checks it against `por/layout.py`'s named fields.
+#: checks it against `goldbox/layout.py`'s named fields.
 READ_TARGETS: dict[str, str] = (
     {c64_name: f"read as neutral {n}" for n, c64_name in DIRECT}
     | {"name": "read as neutral name",
@@ -454,7 +454,7 @@ READ_TARGETS: dict[str, str] = (
        "spells_known_high": "the same mask's high nine bytes, 0x07F-0x087, "
                             "unpacked into the same neutral spells_known. How "
                             "far into them the reader goes is the title's "
-                            "por.spells.SpellTable.spellbook_size -- 7, 13 or "
+                            "goldbox.spells.SpellTable.spellbook_size -- 7, 13 or "
                             "16 -- so Pool of Radiance reads none of them and "
                             "Curse stops at 0x084",
        "spells_memorised": "zeroes stripped into neutral spells_memorised",

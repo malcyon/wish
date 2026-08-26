@@ -6,7 +6,7 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 
 * **the round trip** -- a DOS record read into the neutral middle and written
   out again is byte-for-byte the original everywhere a byte *can* survive,
-  and the mask of bytes that cannot is `por.dos.WRITE_UNSOURCED` -- the named
+  and the mask of bytes that cannot is `goldbox.dos.WRITE_UNSOURCED` -- the named
   live-heap and unattributed runs -- not whatever happened to differ;
 * **nothing dropped silently** -- every neutral field has a disposition in
   the writer, every DOS layout field has a target, and every byte of both
@@ -21,15 +21,15 @@ import pytest
 from test_dossave import _save_dir, needs_dos_saves
 from test_neutral import _filled
 
-from por import c64_codec, dos, dos_layout, neutral
-from por import dos_savegame as sg
-from por.layout import Confidence
+from goldbox import c64_codec, dos, dos_layout, neutral
+from goldbox import dos_savegame as sg
+from goldbox.layout import Confidence
 
 # --- the tables, which need no save -----------------------------------------
 
 def test_write_targets_tile_the_dos_layout():
     """The promise the brief for #26 makes explicit: a field added to
-    `por/dos_layout.py` and forgotten by the writer fails here rather than
+    `goldbox/dos_layout.py` and forgotten by the writer fails here rather than
     passing in silence."""
     declared = {f.name for f in dos_layout.LAYOUT
                 if not f.name.startswith("gap_")}
@@ -39,9 +39,9 @@ def test_write_targets_tile_the_dos_layout():
 
 def test_read_targets_tile_the_c64_layout():
     """The C64 reader's layout-wide account, which #25 left to this issue: a
-    field `por/layout.py` names and `c64_codec.read` neither reads nor names
+    field `goldbox/layout.py` names and `c64_codec.read` neither reads nor names
     as dropped would be lost in silence on the way to DOS."""
-    from por import layout
+    from goldbox import layout
     known = {f.name for f in layout.LAYOUT if f.is_known}
     assert known - set(c64_codec.READ_TARGETS) == set()
     # region_220 is the combat icon, graded UNKNOWN in the layout for its
@@ -51,7 +51,7 @@ def test_read_targets_tile_the_c64_layout():
 
 def test_every_neutral_field_has_a_write_disposition():
     """The writer's twin of `test_every_neutral_field_has_a_disposition_in_
-    every_writer`: a name added to `por/neutral.py`'s FIELDS and never wired
+    every_writer`: a name added to `goldbox/neutral.py`'s FIELDS and never wired
     into the DOS writer is named here."""
     assert neutral.undeclared(neutral.FIELDS, dos.write_field_disposition()) \
         == (set(), set())
@@ -285,8 +285,8 @@ def test_the_roster_path_speaks_the_stored_encoding():
     through; this is that bug, pinned."""
     import pathlib
 
-    from por.encoding import COMBAT_BIAS
-    from por.savegame import SaveGame0, SaveGame1
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.savegame import SaveGame0, SaveGame1
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     sg = SaveGame0.from_prg((here / "savedgame0.bin").read_bytes())
     sg1 = SaveGame1.from_prg((here / "savedgame1.bin").read_bytes())
@@ -310,7 +310,7 @@ def test_the_roster_path_speaks_the_stored_encoding():
 def _fixture_payloads():
     import pathlib
 
-    from por.savegame import SaveGame0, SaveGame1
+    from goldbox.savegame import SaveGame0, SaveGame1
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     sg = SaveGame0.from_prg((here / "savedgame0.bin").read_bytes())
     sg1 = SaveGame1.from_prg((here / "savedgame1.bin").read_bytes())
@@ -366,7 +366,7 @@ def test_write_dos_save_refuses_to_write_into_the_template(tmp_path):
 def test_a_party_of_six_writes_six_characters(tmp_path):
     import pathlib
 
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
@@ -376,7 +376,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     # **The file order is the reverse of the C64 slot order** (#101): the C64
     # lists the party from the highest slot down and DOS from `CHRDATB1` up,
     # so MALCYON in slot 0 is the C64's *last* and has to be DOS's last too.
-    from por.savegame import SaveGame0 as _SG0
+    from goldbox.savegame import SaveGame0 as _SG0
     slots = [s.record.name for s in _SG0.from_bytes(save0).slots if s.occupied]
     assert slots == ["MALCYON", "LADY KATHERINE", "ROLAND", "SILAS",
                      "MAGNUS", "BRUTUS"]
@@ -413,7 +413,7 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
     """
     import pathlib
 
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
@@ -454,7 +454,7 @@ def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
     """
     import pathlib
 
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     six = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
@@ -493,7 +493,7 @@ def test_a_conversion_that_cannot_read_its_template_clears_nothing(tmp_path):
     template's `SAVGAM<slot>.DAT` has been read."""
     import pathlib
 
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     six = SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes()
@@ -519,7 +519,7 @@ def _c64_in_the_slums() -> bytes:
     """
     import pathlib
 
-    from por.savegame import SaveGame0
+    from goldbox.savegame import SaveGame0
     here = pathlib.Path(__file__).resolve().parent / "fixtures"
     save0 = bytearray(SaveGame0.from_prg(
         (here / "party6_savedgame0.bin").read_bytes()).to_bytes())
@@ -543,7 +543,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     write of `dos_savegame.RETARGET_WRITES` has to land or the game exits to
     DOS with `Unable to load geo in Load3DMap.`
     """
-    from por import dos_savegame
+    from goldbox import dos_savegame
 
     save0 = _c64_in_the_slums()
     report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "A")

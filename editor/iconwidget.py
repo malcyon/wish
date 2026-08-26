@@ -8,7 +8,7 @@ What it draws is the genuine article. An icon is 18 cells: **two 3x3 poses
 stacked**, each cell a glyph from `CHARPIC00` in **multicolour** text mode, so a
 cell row is four double-width pixels rather than eight. Three of the four
 colours are shared and come from VIC registers the save does not hold; `COM.PREP`
-sets them, and `por/icons.py` carries the values it uses.
+sets them, and `goldbox/icons.py` carries the values it uses.
 
 Clicking a cell offers the sixteen C64 colours and nothing else, plus the
 glyph picker. A general colour dialog would let you pick something the machine
@@ -21,7 +21,7 @@ from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QDialog, QMenu, QWidget
 
-from por.icons import (
+from goldbox.icons import (
     CELL_COLS,
     CELLS,
     COMBAT_BORDER,

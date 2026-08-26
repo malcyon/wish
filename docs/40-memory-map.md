@@ -5,7 +5,7 @@ game is heavily overlaid: an address is only meaningful while the overlay that
 owns it is resident.
 
 **For a plain lookup — "what is at `$4BC2`" — see
-[41-memory-regions.md](41-memory-regions.md)**, generated from `por/memory.py`.
+[41-memory-regions.md](41-memory-regions.md)**, generated from `goldbox/memory.py`.
 This page keeps the reasoning and the game's own string tables.
 
 ## Where each overlay runs
@@ -159,6 +159,6 @@ same pool: `LDA $9E8C,X` is `$9E00 + 140`, so a race name is word-table entry
 `140 + race`, read straight out of `ITEMNAMES`. See
 `work/reports/p40-title-tables.md`.
 
-Nothing in the tool depends on the resident copy — `por/items.py` reads the disk
+Nothing in the tool depends on the resident copy — `goldbox/items.py` reads the disk
 file — but the identity is worth having, because it means one table explains every
 name the game prints for an item.

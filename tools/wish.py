@@ -29,9 +29,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import yaml
 
 from automap.paths import disk_globs
-from por.d64 import D64
-from por.games import detect
-from por.yaml_io import ValueError_, export_save, import_into, to_yaml
+from goldbox.d64 import D64
+from goldbox.games import detect
+from goldbox.yaml_io import ValueError_, export_save, import_into, to_yaml
 
 GAME_DISK_ENV = "POR_GAME_DISK"
 

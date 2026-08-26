@@ -1,4 +1,4 @@
-"""`por.amiga` against the offsets the character sheet actually drew.
+"""`goldbox.amiga` against the offsets the character sheet actually drew.
 
 Two probe shapes did the work and both are rebuilt here. The **ramp** -- a
 `.pc` whose byte at every offset is that offset -- makes a number the sheet
@@ -19,8 +19,8 @@ import pathlib
 
 import pytest
 
-from por import amiga, dos_layout
-from por.amiga import (
+from goldbox import amiga, dos_layout
+from goldbox.amiga import (
     ABILITIES,
     ALIGNMENTS,
     AMIGA_POR_RECORD_SIZE,
@@ -288,7 +288,7 @@ def test_a_real_record_carries_the_class_bit_the_converter_writes():
     """1 magic-user, 2 cleric, 4 thief, 8 fighter -- the C64's own numbering
     for the four base classes -- but **64 for the paladin and the ranger
     alike**, where the C64 gives them 0x40 and 0x80 separately."""
-    from por.amiga import CLASS_BIT, CLASS_LEVEL_SLOT
+    from goldbox.amiga import CLASS_BIT, CLASS_LEVEL_SLOT
     by_pod_name = {CLASS_LEVEL_SLOT[c64]: bit for c64, bit in CLASS_BIT.items()}
     for path in real_records():
         pc = PodCharacter.from_bytes(path.read_bytes())
@@ -302,14 +302,14 @@ def test_a_real_record_carries_the_class_bit_the_converter_writes():
 
 def test_the_disk_names_its_files_the_way_the_converter_would():
     """`MAGIC JHONSON` is `MAGICJHO.pc`; `TRIPEL TURBO` is `TRIPELTU.pc`."""
-    from por.amiga import pc_filename
+    from goldbox.amiga import pc_filename
     for path in real_records():
         pc = PodCharacter.from_bytes(path.read_bytes())
         assert pc_filename(pc.name).lower() == path.name.split("_")[-1].lower()
 
 
 # ---------------------------------------------------------------------------
-# Anything -> Amiga, over `por/neutral.py`'s record
+# Anything -> Amiga, over `goldbox/neutral.py`'s record
 # ---------------------------------------------------------------------------
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -317,14 +317,14 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 def neutral_party() -> list:
     """The player's own saved game as the neutral characters the writer eats.
 
-    Straight through `por.c64_codec.read`, which is the point: the Amiga
+    Straight through `goldbox.c64_codec.read`, which is the point: the Amiga
     writer reads neutral field names and never a `CharacterRecord`, so it
     needs to know neither the C64 record layout nor which of the six titles
     wrote it -- and it never reaches for another codec to find out.
     """
-    from por.c64_codec import read
-    from por.items import items_for_slot
-    from por.savegame import SaveGame0, SaveGame1
+    from goldbox.c64_codec import read
+    from goldbox.items import items_for_slot
+    from goldbox.savegame import SaveGame0, SaveGame1
 
     sg0 = SaveGame0((FIXTURES / "savedgame0.bin").read_bytes()[2:])
     sg1 = SaveGame1((FIXTURES / "savedgame1.bin").read_bytes()[2:])
@@ -336,10 +336,10 @@ def neutral_party() -> list:
 
 
 def test_every_neutral_field_has_a_disposition():
-    """A field `por/neutral.py` declares and `field_disposition` does not name
+    """A field `goldbox/neutral.py` declares and `field_disposition` does not name
     would be a field silently dropped, which is the one thing the conversion
     promises not to do."""
-    from por import neutral
+    from goldbox import neutral
 
     unaccounted, unknown = neutral.undeclared(neutral.FIELDS,
                                               amiga.field_disposition())
@@ -384,7 +384,7 @@ def test_the_conversion_credits_every_non_zero_byte():
 
 
 def test_the_class_level_lands_in_the_slot_pods_own_code_names():
-    from por.games import class_table
+    from goldbox.games import class_table
 
     for char in neutral_party():
         record, _ = amiga.to_pc(char)
@@ -404,7 +404,7 @@ def sample(**over):
     Not a slice of any game file: every value here is chosen, which is what
     lets the edge cases below be tested where no disk is present.
     """
-    from por.neutral import NeutralCharacter
+    from goldbox.neutral import NeutralCharacter
 
     values = {
         "name": "AELFRIC", "sex": 1, "race": 4, "age": 33, "alignment": 8,
@@ -459,7 +459,7 @@ def test_a_race_pools_of_darkness_lacks_is_substituted_and_said_out_loud():
 
 def test_a_knight_arrives_as_a_fighter_and_says_so():
     """The Knight of Solamnia is Krynn's and has no Realms slot."""
-    from por.games import by_key
+    from goldbox.games import by_key
 
     levels = {"knight": 9, "thief": 0, "fighter": 0, "cleric": 0,
               "magic-user": 0, "paladin": 0, "ranger": 0}
@@ -498,7 +498,7 @@ def test_a_class_pools_of_darkness_cannot_express_is_refused():
 def test_a_field_graded_below_the_floor_is_refused_rather_than_guessed():
     """`neutral.Writer.use` is the whole of the refusal, and it is shared:
     a value the reader will not stand behind is reported, not written."""
-    from por.layout import Confidence
+    from goldbox.layout import Confidence
 
     char = sample()
     char.set("age", 99, "a value nobody measured", Confidence.UNKNOWN)
@@ -524,7 +524,7 @@ def test_a_built_filename_is_uppercase_and_eight_characters():
 def test_a_repeated_stem_gets_a_trailing_digit_rather_than_overwriting():
     """LADY KATHERINE and LADY KATHRYN both give `LADYKATH.pc` (#79); the
     second one claimed keeps the length `pc_filename` promises."""
-    from por.amiga import _unique_pc_filename
+    from goldbox.amiga import _unique_pc_filename
 
     used: set[str] = set()
     first = _unique_pc_filename(amiga.pc_filename("LADY KATHERINE"), used)
@@ -552,12 +552,12 @@ def _six_identical_names_disk(tmp_path) -> pathlib.Path:
     """
     import gamedata
 
-    from por import games
-    from por.d64 import attach_load_address
-    from por.encoding import COMBAT_BIAS
-    from por.layout import NAME_SIZE
-    from por.record import CharacterRecord
-    from por.savegame import (
+    from goldbox import games
+    from goldbox.d64 import attach_load_address
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.layout import NAME_SIZE
+    from goldbox.record import CharacterRecord
+    from goldbox.savegame import (
         HEADER_SIZE,
         ROSTER_ARMOUR_CLASS,
         ROSTER_HP_CURRENT,
@@ -605,7 +605,7 @@ def test_export_party_disambiguates_a_six_way_collision(tmp_path):
     """Before the fix, `export_party` returned six `(path, Report)` pairs
     that all pointed at the one file the last write left behind; only one
     `.pc` ever reached disk."""
-    from por.amiga import export_party
+    from goldbox.amiga import export_party
 
     save = _six_identical_names_disk(tmp_path)
     out_dir = tmp_path / "out"
@@ -920,10 +920,10 @@ def test_an_item_of_the_wrong_length_is_refused_by_name():
 
 
 def test_the_effect_node_transposes_onto_the_dos_payload():
-    """`por/dos.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
+    """`goldbox/dos.py`'s `INNATE_PAYLOAD` is `00 00 FF 00` for a permanent
     effect; the Amiga writes the same four bytes one later, behind the pad
     at offset 1.  So a transposed node has to reproduce it exactly."""
-    from por.dos import EFFECT_NEXT_NULL, INNATE_PAYLOAD
+    from goldbox.dos import EFFECT_NEXT_NULL, INNATE_PAYLOAD
 
     node = bytes((107, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xC5, 0x7C, 0x0C))
     out = amiga.amiga_por_effect_to_dos(node)
@@ -952,13 +952,13 @@ NOT_TRANSPOSED = {
 
 
 def test_the_dos_recut_carries_every_field_it_does_not_declare_dropped():
-    """Read the re-cut record back through `por/dos.py` and compare.
+    """Read the re-cut record back through `goldbox/dos.py` and compare.
 
     The two readers are independent -- one applies the shift map to the
     Amiga bytes, the other reads a DOS record straight -- so this fails if
     the re-cut loses a field, mis-orders a `u16`, or drifts by a byte.
     """
-    from por.dos import DosCharacter
+    from goldbox.dos import DosCharacter
 
     for path in amiga_por_records():
         a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
@@ -994,7 +994,7 @@ def test_the_neutral_record_carries_the_amiga_port_and_its_items():
         # or a mis-strided one shows up here as the wrong item entirely.
         assert [it[0] for it in n.get("inventory")] == \
             [it.get("type_index") for it in c.items]
-        assert any("por.amiga.to_dos_record" in w for w in n.warnings)
+        assert any("goldbox.amiga.to_dos_record" in w for w in n.warnings)
 
 
 def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
@@ -1012,7 +1012,7 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         assert n.get("experience") == 17
         assert n.get("exceptional_strength") == 100
         assert n.get("movement_current") == 9
-        # Encumbrance is derived, so `por/dos.py` drops it rather than
+        # Encumbrance is derived, so `goldbox/dos.py` drops it rather than
         # carrying it -- the identity that proves the item file is decoded
         # is asserted on the reader above, not here.
         assert n.get("encumbrance") is None
@@ -1025,7 +1025,7 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
 
 def test_the_innate_effects_reach_the_neutral_record():
     """The dwarf's four racial ids and the elf's one, through the ten-byte
-    Amiga node and the nine-byte DOS one that `por/dos.py` filters."""
+    Amiga node and the nine-byte DOS one that `goldbox/dos.py` filters."""
     seen = 0
     for path in amiga_por_records():
         c = amiga.read_amiga_por(path)
@@ -1053,12 +1053,12 @@ def por_write_mask() -> set[int]:
     """Offsets a round trip is allowed to differ in, and why each is there.
 
     Built from the **declared** tables -- `amiga.POR_WRITE_UNSOURCED` for the
-    three insertions and the heap pointer, and `por.dos`'s own
+    three insertions and the heap pointer, and `goldbox.dos`'s own
     `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields for everything
     the DOS writer already says it does not carry.  Masking by the diff
     instead would make the test agree with the code by construction.
     """
-    from por import dos
+    from goldbox import dos
 
     mask: set[int] = set()
     for first, size, _ in amiga.POR_WRITE_UNSOURCED:
@@ -1074,9 +1074,9 @@ def por_write_mask() -> set[int]:
         mask |= field(name)
     for name, _, _ in dos.WRITE_CONSTANTS:
         mask |= field(name)
-    # Computed rather than copied, and `por.dos.WRITE_TARGETS` says so.
+    # Computed rather than copied, and `goldbox.dos.WRITE_TARGETS` says so.
     mask |= field("encumbrance") | field("item_count")
-    # Repacked: `por.dos` reads the sixteen slots as a set and writes them
+    # Repacked: `goldbox.dos` reads the sixteen slots as a set and writes them
     # back from the end.  Four of the fourteen Amiga exports are not filled
     # from the end, so the positions do not survive -- #110.
     mask |= field("spells_memorised")
@@ -1091,11 +1091,11 @@ def test_every_masked_field_is_one_the_declared_tables_name():
     """The mask cannot quietly grow.
 
     Every offset it covers has to be inside a field named in
-    `amiga.POR_WRITE_UNSOURCED`, in one of `por.dos`'s three declared tables,
+    `amiga.POR_WRITE_UNSOURCED`, in one of `goldbox.dos`'s three declared tables,
     or in the short computed/repacked list above -- so a new difference in a
     field nobody declared fails the round trip instead of being absorbed.
     """
-    from por import dos
+    from goldbox import dos
 
     named = {name for name, _ in dos.WRITE_UNSOURCED}
     named |= {name for name, _, _ in dos.WRITE_CONSTANTS}
@@ -1136,8 +1136,8 @@ def test_the_record_writer_is_the_readers_exact_inverse():
 def test_a_specimen_round_trips_through_the_neutral_record():
     """Amiga -> neutral -> Amiga, byte for byte outside the declared mask.
 
-    The full path a conversion takes, so it exercises `por.dos.to_neutral`
-    and `por.dos.write` as well as the two transpositions.
+    The full path a conversion takes, so it exercises `goldbox.dos.to_neutral`
+    and `goldbox.dos.write` as well as the two transpositions.
     """
     mask = por_write_mask()
     seen = 0
@@ -1225,7 +1225,7 @@ def test_experience_is_one_big_endian_longword_across_dos_gap_0af():
     """DOS spends three bytes plus `gap_0af`; the Amiga spends one `u32be`.
 
     Tested on the transposition rather than through `write_por`, because
-    `por.dos.write`'s own field is three bytes wide and nothing that goes
+    `goldbox.dos.write`'s own field is three bytes wide and nothing that goes
     through it can put anything in the fourth -- #111.  A writer that
     swapped only three would put a large total's bytes in the wrong order.
     """
@@ -1246,7 +1246,7 @@ def test_a_written_experience_total_survives_the_round_trip():
 def test_the_effect_chain_is_written_null():
     """A live heap address has no business in a file we authored.
 
-    Tested against a DOS record that **holds** one, because `por.dos.write`
+    Tested against a DOS record that **holds** one, because `goldbox.dos.write`
     already zeroes its own field: going through `write_por` alone would pass
     whether or not this writer nulled anything, and did.
     """
@@ -1333,7 +1333,7 @@ def test_the_save_file_names_are_the_ones_on_the_shipped_disk():
 # The save slot and the list the picker reads (#109)
 # ---------------------------------------------------------------------------
 #
-# All of these run on a disk `por.amiga_adf` formats itself, so no game data is
+# All of these run on a disk `goldbox.amiga_adf` formats itself, so no game data is
 # involved and they run wherever the suite does.
 
 
@@ -1354,7 +1354,7 @@ def synthetic_savegame(slot: str = "A") -> bytes:
 
 def save_disk_with(slots: str = "A"):
     """A blank disk carrying a `save` drawer and a slot list."""
-    from por.amiga_adf import AmigaDisk
+    from goldbox.amiga_adf import AmigaDisk
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
@@ -1463,7 +1463,7 @@ def test_a_shorter_party_does_not_leave_the_old_ones_files_behind():
 def test_a_disk_with_no_slot_list_lists_nothing():
     """The picker reads the file; no file is no slots, whatever is in the
     drawer."""
-    from por.amiga_adf import AmigaDisk
+    from goldbox.amiga_adf import AmigaDisk
 
     disk = AmigaDisk.blank("poolgame")
     disk.make_dir("save")
@@ -1492,7 +1492,7 @@ def test_the_saved_game_file_name_is_the_shipped_one():
 
 
 def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case():
-    """A guard against `por/dos_layout.py` moving under this module.
+    """A guard against `goldbox/dos_layout.py` moving under this module.
 
     That table belongs to the DOS side and a field there can be renamed,
     split or moved. Every field either lands somewhere in the 288 bytes or is
@@ -1524,7 +1524,7 @@ def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
     through -- which is the state `write_por_slot` exists to refuse, arrived
     at by a different route.
     """
-    from por.amiga_adf import AmigaDisk
+    from goldbox.amiga_adf import AmigaDisk
 
     # 48 blocks fits the six records and stops on the saved game.
     disk = AmigaDisk.blank("poolgame", blocks=48)

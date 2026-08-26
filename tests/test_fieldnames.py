@@ -2,8 +2,8 @@
 
 A third-party document is PROBABLE evidence and nothing more. These are the
 checks that turned parts of two community sources into measurements of ours:
-the 127-entry effect table (`por/traits.py`), the roster block's current attack
-form (`por/savegame.py`) and the armour-protection encoding (`por/items.py`).
+the 127-entry effect table (`goldbox/traits.py`), the roster block's current attack
+form (`goldbox/savegame.py`) and the armour-protection encoding (`goldbox/items.py`).
 `docs/127-community-formats.md` and `docs/128-guide-and-scripting.md` are the
 write-ups.
 
@@ -17,9 +17,9 @@ import pathlib
 import pytest
 from gamedata import disk_dir, needs_disks
 
-from por import traits
-from por.d64 import D64, split_load_address
-from por.items import (
+from goldbox import traits
+from goldbox.d64 import D64, split_load_address
+from goldbox.items import (
     PROTECTION_BIAS,
     PROTECTION_GRANTS,
     ItemType,
@@ -27,8 +27,8 @@ from por.items import (
     load_item_names,
     load_item_types,
 )
-from por.record import CharacterRecord
-from por.savegame import (
+from goldbox.record import CharacterRecord
+from goldbox.savegame import (
     ROSTER_ARMOUR_BONUS,
     ROSTER_COUNT,
     ROSTER_DAMAGE_DIE,

@@ -32,7 +32,7 @@ that clearing the pollution swaps an impassable-terrain table.
   left for a human is the *meanings*: the DOS guide names 229 of these addresses
   in English (`docs/128` §"The script-flag map"), and merging its names onto our
   addresses is a cheap, high-value job for whoever next touches
-  `por/commissions.py` or the quest panel.
+  `goldbox/commissions.py` or the quest panel.
 * **Anything that contradicts a doc.** Several corrections have already come
   from a careful read, and there are likely more.
 * **Encounters that are not what they look like** — `ECL00` shifts the monster

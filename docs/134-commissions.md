@@ -1,6 +1,6 @@
 # The council's commissions
 
-The City Hall's books, as `por/commissions.py` reads them. `ECL08` on disk 3 is
+The City Hall's books, as `goldbox/commissions.py` reads them. `ECL08` on disk 3 is
 the authority for all of it; the working is in
 `work/reports/commissions.md` (P80) and `work/reports/quest-flags.md` (P30).
 

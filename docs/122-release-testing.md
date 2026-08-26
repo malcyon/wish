@@ -501,7 +501,7 @@ cmp TESTSAVE.D64 ROUNDTRIP.D64      # expect: no output
 
 *If they differ,* stop. Everything else in the tool depends on this property.
 
-**L11a.** The same, on a **second title**. `por/games.py` detects the title from
+**L11a.** The same, on a **second title**. `goldbox/games.py` detects the title from
 the save file's own name and load address and carries geometry for six of them, so
 this is the step that proves the frozen build ships that table rather than
 defaulting everything to Pool of Radiance. Copy a Curse of the Azure Bonds save

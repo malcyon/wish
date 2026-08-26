@@ -18,8 +18,8 @@ the same 580-byte character record, the same `GEO` format, the same roster
 block, and a save image that is Pool of Radiance's constants plus `$200` — and
 `tests/test_second_game.py` pins it. This document is about the gap between
 *the decoders read Curse's bytes* and *the program works on Curse* — a gap that
-was wide because everything above `por/` named Pool of Radiance's files by
-hand, and that `por/games.py` closed.
+was wide because everything above `goldbox/` named Pool of Radiance's files by
+hand, and that `goldbox/games.py` closed.
 
 The single most useful check in this document is **tier 5.1: export a Curse
 save disk to YAML and re-import it byte-identically.** It exercises the whole
@@ -94,7 +94,7 @@ Five differences matter, and all five are new information:
 | observation | consequence | Confidence |
 |---|---|---|
 | **Curse's `GEO` ids are sparse and grouped by chapter**: `01 03 04` / `10 11 15` / `20 21 25` / `32 33 35` / `40 42 43 45`. Pool of Radiance runs `GEO00`–`GEO1F` dense | anything that *enumerates* maps by counting must enumerate by directory instead | CONFIRMED |
-| **`GEO15` exists in both games and means different places.** | `por/areas.py:GEO_NAMES` is now keyed by game title first and `area_name` degrades an unknown title to `"area 15"`, so the collision no longer mislabels | CONFIRMED, and cleared |
+| **`GEO15` exists in both games and means different places.** | `goldbox/areas.py:GEO_NAMES` is now keyed by game title first and `area_name` degrades an unknown title to `"area 15"`, so the collision no longer mislabels | CONFIRMED, and cleared |
 | **No `SQRPACI*`, `SQRDATA*` or `WALLS*` on any Curse side.** Curse has `WALLDEF00`–`WALLDEF0F` and `WALLSET00`–`WALLSET0F` only | the combat square renderer, which `docs/50-experiments.md` places at `$0400` from `SQRPACI01`, has no counterpart of that name | CONFIRMED |
 | **No `LOAD/SAVE` file.** Pool of Radiance carries one | save/load is not the same overlay, so nothing about its addresses transfers | CONFIRMED |
 | **`SPELLN64` exists on `CURSE_A.D64` (8 blocks); `SPELLN00` does not.** Pool of Radiance carries both | `docs/116` §5 says "Curse has no `SPELLN` file". That is too strong and should be corrected to "no `SPELLN00`" | CONFIRMED |
@@ -135,7 +135,7 @@ What it checks, and what came of it:
 | `armour_class_base` decodes to 10 | holds for every player character in both games — the `60 - value` encoding intact |
 | `class_bits` is one bit per non-zero slot of the **eight-wide** array at `0x0C9`, and no slot exceeds `level` | holds, including `0x40` paladin in slot 6 and `0x80` ranger in slot 7 |
 
-Left undone, and deliberately: hit points against `por/levels.py`'s caps, which
+Left undone, and deliberately: hit points against `goldbox/levels.py`'s caps, which
 are Pool of Radiance's and unmeasured for Curse; and the spellbook's width,
 which no Curse specimen settles — Silver Blades does, see `docs/121`.
 
@@ -257,11 +257,11 @@ can be checked without an emulator.
 | `Fingerprint` | transfers unchanged | 16 candidates → **2** on four completed steps and one refusal, **0 contradictions**, `GEO01` among the survivors and equal to what `ResidentGeo` said independently |
 | `automap/state.py`'s `_refused` | **never fires on Curse** | it infers a refusal from clock+1 with the square unchanged, and Curse's clock does not advance on a refused step. Its docstring already allows this; a driver that wants refusals must compare squares |
 | one step costs one minute | **CONFIRMED for a completed forward step**, and zero for a turn or a refusal | the clock ran `0:01 → 0:03 → 0:07` over six steps and stood still through four turns and one refusal |
-| area names | structure done, content not | `por/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
+| area names | structure done, content not | `goldbox/areas.py:GEO_NAMES` is keyed by title and Curse's table is empty, so `area_label` degrades rather than lying. Naming Curse's sixteen maps still needs somebody who has played it |
 | `FilenameDigits` | **moot** | there is no filename strategy in `automap/area.py`, and `$2714` is code in a running Curse anyway |
 
 **What is left to make this work in the product**, as against in the experiment:
-a per-title party base for the memory fallback. It is a `por.games`-shaped
+a per-title party base for the memory fallback. It is a `goldbox.games`-shaped
 change — `automap/target.py` and `automap/area.py` both hold their addresses as
 module constants — and the value for Curse is `$C04B`.
 
@@ -277,12 +277,12 @@ second would have been a genuinely new fact about the engine. It found it at
 
 ### 5.0 The blocker, cleared
 
-**`por/games.py` is the game parameter this section asked for**: a frozen
+**`goldbox/games.py` is the game parameter this section asked for**: a frozen
 `Game` descriptor per title carrying the save file name, the load address, the
-payload size and the roster's place, threaded through `por/savegame.py`,
-`por/yaml_io.py` and `editor/`. `games.detect(disk)` names the title from the
+payload size and the roster's place, threaded through `goldbox/savegame.py`,
+`goldbox/yaml_io.py` and `editor/`. `games.detect(disk)` names the title from the
 disk's own directory, so a Curse save opens with no argument, and
-`por/items.py`, `por/icons.py` and `editor/inventory.py` needed no change at
+`goldbox/items.py`, `goldbox/icons.py` and `editor/inventory.py` needed no change at
 all because they already worked in payload offsets. All six titles are in the
 table.
 
@@ -328,7 +328,7 @@ the right one.
 The same sheet corroborated the read side in one screen: `STR 18(98)`,
 `PLATINUM 300`, `AC 10`, `THACO 18`, `DAMAGE 1D2+5`, `MOVEMENT 12`,
 `MALE HUMAN AGE 21`, `NEUTRAL GOOD`, `FIGHTER` — every one of them what
-`por.record` reads out of the same bytes.
+`goldbox.record` reads out of the same bytes.
 
 Do not attempt an edited-field test before the round trip passes. An edit that
 appears not to take effect, on a path that is silently lossy, is unreadable
@@ -340,14 +340,14 @@ evidence.
 
 Five of the seven blockers this section listed are cleared: `wish` opens a
 Curse save, `curse_file()` follows the sector chain instead of trusting the
-block count, `por/areas.py:GEO_NAMES` is keyed by title, the `PIS` rip supplies
+block count, `goldbox/areas.py:GEO_NAMES` is keyed by title, the `PIS` rip supplies
 six clean sides, and **the game's start-up check did not block the live tiers on
 that rip**. What is left:
 
 | blocker | severity | what would clear it |
 |---|---|---|
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
-| the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `por/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
+| the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
 | no Curse save from a *played* party with inventory | the item area at `$5B00` stays PROBABLE and no Curse item record has ever been seen | play far enough to pick something up, then save. Needs the emulator |
 | Curse's level caps and spell tables are not measured | tier 1.3's "hit points in range" check cannot be strict, and is not asserted | table data; a day of reading the disks, no emulator |
 | the spellbook's width in Curse | no Curse specimen writes past `0x07C`, so `docs/116`'s NOT FOUND stands *for Curse* | already settled for the family by Silver Blades — `docs/121` |

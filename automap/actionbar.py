@@ -256,7 +256,7 @@ NOTHING_TICKED = "No areas ticked — Preferences ▸ Fast travel"
 
 
 def no_areas(title: str | None) -> str:
-    """What the row says for a title `por/areas.py` has no table for.
+    """What the row says for a title `goldbox/areas.py` has no table for.
 
     Five of the six titles, and the sentence is the whole feature for them.
     **It must never be Pool of Radiance's list instead**: a trip writes a
@@ -329,7 +329,7 @@ class WarpBar(QWidget):
     list is the one answer that corrupts, so the title is asked for at
     construction and again whenever the disks change.
 
-    The area table is `por/areas.py`, and the row holds no copy of it.
+    The area table is `goldbox/areas.py`, and the row holds no copy of it.
     """
 
     #: The tallest this row may hold the window open, whatever the UI font.
@@ -348,7 +348,7 @@ class WarpBar(QWidget):
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
         #: Which title this session is, as `AutomapState.title` spells it, and
-        #: the `por.games.Game` that names for the settings key. **None is
+        #: the `goldbox.games.Game` that names for the settings key. **None is
         #: Pool of Radiance**, which is what a row built without a window means
         #: and what every caller written before there was a second title meant.
         self.title = title

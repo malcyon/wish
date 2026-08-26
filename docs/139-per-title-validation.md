@@ -11,7 +11,7 @@ actually backed by — and what it would take to back the rest.
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
 | How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 24, Silver Blades 16.** §2 | CONFIRMED, cited per row |
-| Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `por/games.py:Game.mode_flag`, `tests/test_actions.py` |
+| Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
 *reader* now works on three, and the live *writes* are addressed correctly on
@@ -24,7 +24,7 @@ the one that now ships.
 
 | | `docs/120` (Curse) | `docs/121` (Silver Blades) |
 |---|---|---|
-| written against | the editor, the CLI and the automapper's map | the same, plus `por/games.py` |
+| written against | the editor, the CLI and the automapper's map | the same, plus `goldbox/games.py` |
 | "the editor" means | the character sheet, inventory, icons, YAML | the shipped party decoding |
 | "the automapper" means | `Geo`, `ResidentGeo`, `party_fix`, `Fingerprint` | the same five |
 | never mentions | Fast Travel, Level Up, the commissions panel, the combat log, the combat view, condition badges, the quickfight badge, map notes, the roster cards, the live actions (heal, store/restore spells, identify), Preferences, the debug log, the DOS converter | all of the same, plus the whole editor UI |
@@ -59,7 +59,7 @@ applicable.
 | A3 | 580-byte record decodes to sane fields | V | V | V | `test_curse.py::test_every_curse_character_parses_with_fields_a_person_would_recognise`, `test_silverblades.py::test_the_shipped_party_decodes_with_fields_a_person_would_recognise` |
 | A4 | record round-trips byte-identically | V | V | V | `test_curse.py::test_a_curse_character_export_round_trips_byte_for_byte`, `test_silverblades.py::test_every_slot_round_trips_byte_identically` |
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
-| A6 | saving throws satisfy the derived rule | V | V | **U** | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`; `por/levels.py` has no Silver Blades tables at all |
+| A6 | saving throws satisfy the derived rule | V | V | **U** | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`; `goldbox/levels.py` has no Silver Blades tables at all |
 | A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | **U** | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours; nothing for SSB |
 | A8 | the seven money fields | V | V (gold only) | **U** | `docs/120` §5.2 — gold `0` → `777` read back off the game's own sheet; the other six purses untested on any title but PoR |
 | A9 | spellbook width | V | **U** | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; `docs/120` blockers — no Curse specimen writes past `0x07C` |
@@ -67,7 +67,7 @@ applicable.
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
 | A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | **U** | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; SSB is shape-only (`test_silverblades.py::test_the_item_table_is_a_whole_number_of_sixteen_byte_records`) |
 | A13 | inventory edit, add, remove | V | **U** | **U** | `docs/120` blockers: "no Curse save from a *played* party with inventory … no Curse item record has ever been seen" |
-| A14 | combat icon editor and its charset | V | **U** | **U** | `por/icons.py:95` reads `CHARPIC00`; nothing has checked that file exists, or is the same charset, on either later title |
+| A14 | combat icon editor and its charset | V | **U** | **U** | `goldbox/icons.py:95` reads `CHARPIC00`; nothing has checked that file exists, or is the same charset, on either later title |
 | A15 | character traits panel (`0x0AD`–`0x0B6`) | V | **U** | **U** | trait codes were read on PoR; `docs/121` §4.1 shows the SSB import re-seeding `0x0AD` from **its own** per-race table, so the codes are per-title |
 | A16 | active effects panel | V | **U** | **U** | `docs/133`; the effect arrays were read at `$4900` in PoR and never looked for elsewhere |
 | A17 | an unchanged save writes back byte-identically | V | V | **U** | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; no SSB equivalent |
@@ -93,14 +93,14 @@ applicable.
 | C5 | `Fingerprint` narrows the map from a walk | V | V | V | `test_curselive.py::test_the_walked_route_fits_geo01_and_narrows_sixteen_maps_to_two`, `test_ssblive.py::test_every_step_the_party_completed_crossed_a_passable_edge` |
 | C6 | area identification across a boundary | V | **U** | **U** | `docs/120` tier 3 — no boundary was crossed, the area byte stays PROBABLE; `docs/121` §5 — the party never left `GEO10` |
 | C7 | map drawing, reveal, exploration | V | **U** | **U** | pure `Geo`, so it ought to transfer; nothing has drawn a Curse or SSB map in the shipped window |
-| C8 | area names on the map | V | — | — | `por/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
+| C8 | area names on the map | V | — | — | `goldbox/areas.py:334` — `GEO_NAMES` is empty for Curse on purpose and absent for SSB; `area_name` degrades to `"area 15"`. Correct behaviour, no content |
 | C9 | map notes and exploration, persisted | V | V | V | `test_automap.py::test_a_note_on_one_titles_geo15_is_absent_from_anothers` — the path is `{data dir}/maps/{title}/{GEO id}.json` (#30), three distinct paths for one map id. Pre-split files migrate: `…::test_a_flat_notes_file_is_still_readable_after_the_split` |
 | C10 | combat view | V | **U**, expected broken | **U**, expected broken | `automap/combat.py` holds `$6E11`, `$0600`, `$A380` — PoR's combat overlay. Only the first of those is known for the later titles (`$7F11`, #29), and it is deliberately **not** threaded through here: making the view open on Curse would only let it draw the other two addresses' garbage. Curse ships no `SQRPACI`/`SQRDATA` at all (`docs/120` tier 1.1) |
 | C11 | combat log | V | **U**, expected broken | **U**, expected broken | `automap/combatlog.py` is built on `COMBAT $2983`, a PoR address in a PoR overlay |
 | C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | V | V | `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29) — **and both have now been read for real**: Curse's BRUTUS/MAGNUS/LADY KATHERINE and Silver Blades' six, names and hit point maxima matching each game's own panel (`docs/120` tier 3, `docs/121` §4). One hazard fell out: while a full-screen picture is up the roster page is scrap and the cards read zeroes — issue #82 |
 | C13 | condition badges | V | **U** | **U** | rides C12, which is now V on both -- but no badge has been *drawn* from a real Curse or SSB roster, only the numbers behind it read |
 | C14 | quickfight badge | V | **U** | **U** | rides C12. `quickfight_flag` resolved to `$670C` on both live machines (#29) and nobody was on quickfight, so the bit has never been seen set on either |
-| C15 | commissions panel | V | — | — | `por/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
+| C15 | commissions panel | V | — | — | `goldbox/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
 | C16 | heal party | V | **U** | V | Addresses and gate both done (#29). `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own` -- and `Game.mode_flag` is `$7F11` on both later titles, `…::test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances`. **V for Silver Blades because it was done to a real party**: `HealParty` wrote `$6719`/`$6739` on a live machine and MORGAINE and MALACHITE came back to 35/35 and 58/58 (`docs/121` §4). On Curse the same call ran and legitimately had nothing to heal, so the write half is untried there. The combat gate was exercised for real on Silver Blades: `1` -> `4` -> `2` on a wandering encounter, `heal` legal, `identify` refused |
 | C17 | store / restore spells | V | **U** | **U** | rides C16 -- the gate passes on both titles now (#29), but no spell block has been written on either |
 | C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29). Neither party carried an item, so nothing has been identified on either title |
@@ -114,7 +114,7 @@ applicable.
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
 | D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | one folder setting is shared by all six titles — issue #22 |
-| D2 | Preferences: the Fast Travel tick table | V | — | — | built straight off `por/areas.py:AREAS`, which is PoR's alone |
+| D2 | Preferences: the Fast Travel tick table | V | — | — | built straight off `goldbox/areas.py:AREAS`, which is PoR's alone |
 | D3 | backend selection, VICE | V | V | V | title-independent; exercised by every live test |
 | D4 | backend, Commodore 64 Ultimate | **U** | **U** | **U** | `wish/ultimate.py` — "UNVERIFIED. Nobody on this project has the hardware", and `Backend.verified` is False |
 | D5 | debug log and debug mode | V | V | V | title-independent — `test_debuglog.py`, `test_debugmode.py` |
@@ -245,7 +245,7 @@ share one prerequisite and one kind of run.
 is what the five action buttons gate on — is `$7F11` on both later titles, and
 it did not need a differential read at all: it is the absolute operand of
 `LINKER`'s own first instruction and can be taken off the disk. With it in
-`por/games.py` the four `R` cells stop refusing, and one sitting per title read
+`goldbox/games.py` the four `R` cells stop refusing, and one sitting per title read
 a real party through the shipped code, which is C12. Silver Blades' heal was
 done to a real wounded party, which is C16 for that title.
 
@@ -284,7 +284,7 @@ show nothing rather than garbage on the others, the way Fast Travel now does.
 * **Not a release checklist.** `docs/122` is that, and it is per-platform.
 * **Not a decoding plan.** `docs/120` and `docs/121` are those, per title, and
   they remain correct about what they cover.
-* **Not a promise to support the other three titles.** `por/games.py` carries
+* **Not a promise to support the other three titles.** `goldbox/games.py` carries
   Champions of Krynn, Death Knights of Krynn and Gateway to the Savage Frontier
   because the geometry table is cheaper complete than partial. `README.md` does
   not name them and this document does not either.

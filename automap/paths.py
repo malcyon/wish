@@ -11,7 +11,7 @@ import os
 import pathlib
 import sys
 
-from por import games
+from goldbox import games
 
 APP = "wish"
 

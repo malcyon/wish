@@ -3,10 +3,10 @@
 **Status: built.** The code is the `automap/` package; this note is kept because
 it records why the design is shaped the way it is.
 
-It lives outside the character editor on purpose, and outside `por/` too: the
+It lives outside the character editor on purpose, and outside `goldbox/` too: the
 editor is a file tool with **zero emulator dependency** ([README.md](README.md)
 §"How the code is laid out"), so everything that reads a running machine is in
-`automap/` and neither `por/` nor `editor/` imports it.
+`automap/` and neither `goldbox/` nor `editor/` imports it.
 
 | module | what it is |
 |---|---|
@@ -42,7 +42,7 @@ for things a save file cannot reach.
 
 ## Why it is cheap to add later
 
-`por/` contains **no transport code at all** — no sockets, no disk knowledge
+`goldbox/` contains **no transport code at all** — no sockets, no disk knowledge
 beyond the D64 module. `CharacterRecord.from_bytes()` does not care whether the
 bytes came from a disk image, a TCP socket or an HTTP response. So a live layer
 does not disturb any existing code; it only has to supply bytes.
@@ -116,7 +116,7 @@ it still decodes as a sane party, and refuse otherwise. For writes that check
 should be mandatory.
 
 **Batch aggressively.** Read the whole save image in one call, not sixty small
-ones — `$4900`–`$64FF` in Pool of Radiance, and whatever `por/games.py` says for
+ones — `$4900`–`$64FF` in Pool of Radiance, and whatever `goldbox/games.py` says for
 any other title.
 At network latency that is the difference between a usable map and an unusable
 one.
@@ -256,7 +256,7 @@ the visible tab polls at all.
 **One read in every title after it.** Curse and Silver Blades load the save at
 `$4B00` and fold the roster into its last page at `$6700`, so the page is in
 hand already and asking for it again would be a round trip for bytes we have.
-`live.memory_blocks(game)` is where that choice is made and `por/games.py` is
+`live.memory_blocks(game)` is where that choice is made and `goldbox/games.py` is
 where the numbers are; nothing in `automap/live.py` holds an address (#29).
 
 ### The refused step -- wired up
@@ -291,7 +291,7 @@ keeps the last set that fitted, and counts the contradiction instead.
 ### Closed
 
 * ~~**Effect ids have no names.**~~ **They do.** 129 codes are named in
-  `por/traits.py` -- 44 CONFIRMED, because a `MON*` record or a saved item
+  `goldbox/traits.py` -- 44 CONFIRMED, because a `MON*` record or a saved item
   carries the code on exactly the creature the meaning demands, and 84 PROBABLE
   from the DOS guide's 127-entry effect table. An effect on a roster card or a
   monster tooltip reads `petrifying gaze`, not `effect 27`; a code outside the

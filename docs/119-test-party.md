@@ -17,18 +17,18 @@ Walk in; `(9,0)` is both the shortest way in and the thieves' school.
 
 Two practical notes the run paid for. `LOW EXPERIENCE OR WRONG CLASS` is
 usually the class half: the school's filter is `$6DA8 = 0x70 | class_bit` and
-the bits are `por.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
+the bits are `goldbox.games.CLASS_BITS_CLASSIC` — 1 magic-user, 2 cleric, 4 thief,
 **8 fighter**. And training costs gold — a flat **1000 gp at every level**,
 measured across twenty-nine of them — so a generated party needs money as well
 as experience.
 
 **The generator is still not written.** The deliverable is **a generator, not a
-disk** — `por/testparty.py` plus a test-time disk builder. A disk is game data
+disk** — `goldbox/testparty.py` plus a test-time disk builder. A disk is game data
 and cannot be committed; a party we can rebuild from code at any moment can.
 
 ## Why now: a correction the project cannot settle
 
-`por/layout.py` names `0x0A3` `turn_class` at CONFIRMED, on thirteen undead
+`goldbox/layout.py` names `0x0A3` `turn_class` at CONFIRMED, on thirteen undead
 specimens that match the AD&D 1e turning table exactly. The Curse of the Azure
 Bonds survey (`docs/116-second-game.md`) says `0x0A4` instead: non-zero only for
 characters who *turn* undead — 6 for Curse's level-5 cleric, 1 for Pool of
@@ -45,7 +45,7 @@ isolating action: train a cleric."
 **Settled, and without the undead fight.** ROLAND was trained cleric 1 to 6 in
 the game's own school: `0x0A4` moved at every single level and `0x0A3` did not
 move once. So `0x0A4` is the character's turning level and `0x0A3` is the
-monster property `por/layout.py` documents. What `0x0A4`'s value *means* is
+monster property `goldbox/layout.py` documents. What `0x0A4`'s value *means* is
 still open — it runs `1 2 3 5 6 7` against cleric levels 1-6, skipping 4.
 
 The rest of the argument stands: every remaining question in
@@ -93,7 +93,7 @@ Three routes, and the choice matters more than the party does.
 
 | route | cost | authority | fails how |
 |---|---|---|---|
-| **a. generate** — build 580-byte records with `por/`, write a disk | hours | **only as good as our model** | silently. A record built wrong loads, plays, and validates our own mistake |
+| **a. generate** — build 580-byte records with `goldbox/`, write a disk | hours | **only as good as our model** | silently. A record built wrong loads, plays, and validates our own mistake |
 | **b. play** — grant XP into `0x0E8` and let the training hall level each character | a long unattended VICE run | **the game's own arithmetic** | visibly. Either the trainer levels the character or it does not |
 | **c. hybrid** — do (b) once per class-level, diff the record before and after, write the generator from the diff | (b) plus a day | the diff is the specification | — |
 
@@ -101,8 +101,8 @@ Three routes, and the choice matters more than the party does.
 
 Route (a) alone cannot work, and it is worth saying exactly why rather than
 gesturing at it. The generator would write `hp_max`, `thac0_base`, the saving
-throws and the thief skills from `por/levels.py`. A test would then read those
-same bytes back through `por/layout.py` and assert they are what we wrote.
+throws and the thief skills from `goldbox/levels.py`. A test would then read those
+same bytes back through `goldbox/layout.py` and assert they are what we wrote.
 **That test passes whether or not the game agrees**, and its passing would be
 recorded as evidence that the fields are understood. Half the fields a level-up
 touches are currently PROBABLE, one is unmeasured and one has no table in the
@@ -140,7 +140,7 @@ diff comes first; the generator is written from it; the six fall out.
 
 **Superseded, and there is no need for a debug variant.** Reading the trainer's
 own routines out of `GEN` closed every blocker; `automap.actions.LevelUp` now
-writes what the training hall writes, and `por/levelup.py` reproduces the
+writes what the training hall writes, and `goldbox/levelup.py` reproduces the
 records this section's diffs produced byte for byte. See
 [`135`](135-levelling.md). The rest of this section is the reasoning that got
 there and the confidence table it argued from, both of which are still worth
@@ -150,7 +150,7 @@ reading; it is no longer the plan.
 carries a `LevelUp` action whose entire implementation is
 `level_up_blockers()` — a list, as data, of every field it cannot derive — and
 whose `run` writes nothing. That refusal is correct and **must stay**: the
-shipped action becomes possible by promoting fields in `por/layout.py`, not by
+shipped action becomes possible by promoting fields in `goldbox/layout.py`, not by
 editing the action.
 
 The debug button is a **second** action beside it, not a loosening of the first.
@@ -158,7 +158,7 @@ The debug button is a **second** action beside it, not a loosening of the first.
 | | `level-up` (today) | `debug-level-up` (this plan) |
 |---|---|---|
 | visible | always, disabled with reasons | **only in debug mode** — see `docs/118-debug-mode.md` |
-| writes | nothing | every field it can, from `por/levels.py` |
+| writes | nothing | every field it can, from `goldbox/levels.py` |
 | unknown fields | is the reason it refuses | written from the table and **reported as unvouched** in `outcome.notes` |
 | claim | "this is what the game would do" | "this is what our tables say; the game has not agreed" |
 
@@ -177,7 +177,7 @@ operation.
 | field | offset | what levelling does to it | project confidence | can we write it today? |
 |---|---|---|---|---|
 | `experience` | `0x0E8` | set past the threshold | **CONFIRMED** | **yes** |
-| `level` | `0x0A0` | +1 | **PROBABLE** in `por/layout.py`, **CONFIRMED** in `docs/80-fields-wanted.md` — *the two disagree* | value known; the contradiction blocks |
+| `level` | `0x0A0` | +1 | **PROBABLE** in `goldbox/layout.py`, **CONFIRMED** in `docs/80-fields-wanted.md` — *the two disagree* | value known; the contradiction blocks |
 | `level_cleric` / `_fighter` / `_magic_user` / `_thief` | `0x0C9`–`0x0CC` | +1 in the advancing class only | PROBABLE — every specimen is level 1, so "level" and "class present" are indistinguishable | value known; GRIMSTONE is what settles it |
 | `thac0_base` | `0x071` | the table row, stored `60 − THAC0` | PROBABLE — matches the AD&D table on all 12 of Donald's characters | value known |
 | `hp_max` | `0x076` | **+ a hit-die roll + CON bonus** | field CONFIRMED; the *roll* is not a formula | **no** — this is a die, not arithmetic |
@@ -185,11 +185,11 @@ operation.
 | `hp_current` | `0x119` | + the same delta | CONFIRMED, **export only** | follows `hp_max` |
 | five saving throws | `0x09A`–`0x09E` | the table row **plus modifiers** | fields CONFIRMED; the modifiers **UNMEASURED** — two level-1 fighters store `14,15,16,17,17` and `11,12,13,14,14` | **no** |
 | `spells_castable` | `0x0EE` | new capacity, nibble-packed, cleric high / magic-user low | PROBABLE, checked only at level 1 | **no** |
-| `spells_known` | `0x078`–`0x07E` | a cleric gains every spell of the new level; a magic-user learns by roll | CONFIRMED, and `por/spells.spellbook_bytes` writes it | **cleric yes, magic-user no** |
+| `spells_known` | `0x078`–`0x07E` | a cleric gains every spell of the new level; a magic-user learns by roll | CONFIRMED, and `goldbox/spells.spellbook_bytes` writes it | **cleric yes, magic-user no** |
 | eight thief skills | `0x0A5`–`0x0AC` | the per-level table | fields CONFIRMED (and **signed**); **there is no per-level thief table in this project at all** | **no** |
 | attacks per round | `0x0D9` | 1 → 3/2 at fighter 7 | CONFIRMED — `0x0D9`–`0x0E0` is `attack_forms`, count and damage per form, read on 20 creatures | **yes** |
 | turning power | `0x0A4` | rises with cleric level | PROBABLE — non-zero on eight records, every one a cleric; the *value* is unexplained, as three level-5 clerics read 1, 4 and 6 | **no** |
-| roster THAC0 / AC / damage bonus | `SAVEDGAME1` `+0x0E` / `+0x0F` / `+0x17` | recomputed | PROBABLE, and `por/derive.py` computes all three | **yes, derived** |
+| roster THAC0 / AC / damage bonus | `SAVEDGAME1` `+0x0E` / `+0x0F` / `+0x17` | recomputed | PROBABLE, and `goldbox/derive.py` computes all three | **yes, derived** |
 
 Three of those blockers are cheap to remove and one is not:
 
@@ -197,7 +197,7 @@ Three of those blockers are cheap to remove and one is not:
 * **The saving-throw modifiers** fall straight out of the trainer diff — level a
   fighter and read which five bytes move by how much.
 * **`spells_castable`** likewise: WARDEN at cleric 6 with WIS 18 makes the
-  wisdom bonus visible in one byte. (Note that `por/spells.py`'s `capacity()`
+  wisdom bonus visible in one byte. (Note that `goldbox/spells.py`'s `capacity()`
   docstring still says "no field holding it has been found"; `0x0EE` is that
   field, and the docstring is stale.)
 * **`hp_max` is a die roll and will never be a formula.** For a *test* party
@@ -219,7 +219,7 @@ Instead, three pieces:
 
 | piece | where | why it is allowed |
 |---|---|---|
-| the six records | `por/testparty.py`, built at run time from `por/layout.py` and `por/levels.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
+| the six records | `goldbox/testparty.py`, built at run time from `goldbox/layout.py` and `goldbox/levels.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
 | the disk | `work/drive/`, built at test time | `work/` is `.gitignore`d and `CLAUDE.md` already names it as where disk images belong |
 | the base disk | **the player's own**, via `tests/gamedata.save_disk("PORSAVE")` | read-only, never written, skipped when absent |
 
@@ -231,7 +231,7 @@ tests/gamedata.save_disk("PORSAVE")        # the player's; skips if absent
   D64.open(copy)
     SaveGame0.from_prg(disk.read_file(b"SAVEDGAME0"))
     save0.write_record(slot, record)  x6
-    roster writes into SAVEDGAME1 via por/savegame.RosterBlock
+    roster writes into SAVEDGAME1 via goldbox/savegame.RosterBlock
     disk.write_file_inplace(b"SAVEDGAME0", save0.to_prg())
     disk.write_file_inplace(b"SAVEDGAME1", save1.to_prg())
     disk.save(copy)
@@ -262,7 +262,7 @@ us.
 | class ceilings: cleric 6, fighter 8, magic-user 6, thief 9 | `GEN` `$1E5C`, eight bytes in class-bit order, read by the level-up routine at `GEN` `$1E21` | **CONFIRMED** — P49. The routine takes the class index from `$2B58`, raises `$2B50,X`, `CMP $1E5C,X`, and on a value above the table clamps to it and bumps `$2B74`. The table reads `06 06 09 08 00 00 00 00` — magic-user 6, cleric 6, thief 9, fighter 8 |
 | experience thresholds | the tables | **PROBABLE** — transcribed. Only the THAC0 column has been checked against the game, and checking it found two errors |
 | experience field width | 24-bit LE at `0x0E8` | **CONFIRMED** |
-| race level limits (dwarf, halfling, elf) | the 28 bytes at `GEN` `$1E64`, seven races of four classes | **CONFIRMED** — P49, same read. `$1E3D`-`$1E49` takes the race from `$6B72`, forms `race * 4 + class`, and the check at `$1E4A` clamps against it exactly as the class ceiling does. All 28 bytes match `por/levels.py`'s `racial_limits`, 99 for unlimited |
+| race level limits (dwarf, halfling, elf) | the 28 bytes at `GEN` `$1E64`, seven races of four classes | **CONFIRMED** — P49, same read. `$1E3D`-`$1E49` takes the race from `$6B72`, forms `race * 4 + class`, and the check at `$1E4A` clamps against it exactly as the class ceiling does. All 28 bytes match `goldbox/levels.py`'s `racial_limits`, 99 for unlimited |
 | which classes a race may take | the creation menu offers HUMAN only CLERIC / FIGHTER / MAGIC-USER / THIEF | **CONFIRMED for human**; the other five races' menus are undocumented here |
 | ability-score minimums per class | nothing in the project | **UNKNOWN** |
 | hit points the game will accept | `hp_max` is 16-bit; no character has exceeded 255 | field width CONFIRMED; any **validation** is UNKNOWN |
@@ -287,7 +287,7 @@ Four gates, weakest first. Only the last two are evidence about the *game*.
 1. **Round trip.** `CharacterRecord.from_bytes(generated).to_bytes()` is
    byte-identical, and every field decodes to what the builder was asked for.
    Catches encoder bugs and nothing else.
-2. **Derived agreement.** `por/derive.check(record, roster_block, readied)`
+2. **Derived agreement.** `goldbox/derive.check(record, roster_block, readied)`
    returns no complaints — the cached roster THAC0, armour class and damage
    bonus match what the rules say for the record we built. Catches a stale
    cache, which is the failure mode a hand-built save has.
@@ -295,7 +295,7 @@ Four gates, weakest first. Only the last two are evidence about the *game*.
    character sheet, and read it off the screen — the game runs in text mode with
    its own charset, so this is screen codes, not OCR. Name, class, level, hit
    points, armour class and THAC0 come back from a decoder that is completely
-   independent of `por/layout.py`. **This is the gate that breaks the circle**,
+   independent of `goldbox/layout.py`. **This is the gate that breaks the circle**,
    and no generated party should be used for anything before it passes.
 4. **Behaviour.** The sheet showing 6 does not prove the game *treats* the
    cleric as level 6.
@@ -323,7 +323,7 @@ Getting to the undead does not require playing to them: the current area at
 save can start in Sokal Keep. That an arbitrary area-plus-coordinates pair is
 legal has never been tested, so try it and fall back to walking.
 
-Whatever it returns, **prune afterwards**: `por/layout.py`, the generated
+Whatever it returns, **prune afterwards**: `goldbox/layout.py`, the generated
 `docs/20-character-record.md` and `docs/80-fields-wanted.md` all currently state
 the `0x0A3` reading as CONFIRMED, and `docs/116-second-game.md` states the other.
 One of those has to go, and a doc that accretes the correction without deleting
@@ -335,9 +335,9 @@ the superseded text is how contradictions got in before.
 
 | where | how it came out |
 |---|---|
-| `0x0A0` PROBABLE in `por/layout.py`, CONFIRMED in `docs/80-fields-wanted.md` | CONFIRMED. Twenty-one shipped `MON*` records name their own level, and `0x0A0` matches nineteen; the two that differ read 7 in the per-class array too, so the designer's label is what is wrong |
+| `0x0A0` PROBABLE in `goldbox/layout.py`, CONFIRMED in `docs/80-fields-wanted.md` | CONFIRMED. Twenty-one shipped `MON*` records name their own level, and `0x0A0` matches nineteen; the two that differ read 7 in the per-class array too, so the designer's label is what is wrong |
 | `0x0D9` read as attacks-doubled, and BRUTUS reading `03` where that predicts `02` | **the premise was false.** The `03` came from a dump starting at `0x0D8`, off by one; `0x0D9`–`0x0E0` is `attack_forms`, count and damage per form, CONFIRMED on twenty creatures |
-| `por/spells.py` `capacity()`: "no field holding it has been found" | `0x0EE`–`0x0F0`, nibble-packed magic-user low, cleric high. Docstring rewritten |
+| `goldbox/spells.py` `capacity()`: "no field holding it has been found" | `0x0EE`–`0x0F0`, nibble-packed magic-user low, cleric high. Docstring rewritten |
 
 ---
 
@@ -351,7 +351,7 @@ the superseded text is how contradictions got in before.
    Once per class; fighter first, because it moves the most.
 3. **Write the level-up table from the diff**, and empty the entries of
    `LEVEL_UP_BLOCKERS` that the diff answers.
-4. `por/testparty.py` — the six records, generated, no disk.
+4. `goldbox/testparty.py` — the six records, generated, no disk.
 5. The test-time disk builder, off `tests/gamedata.save_disk`, skipping without
    disks.
 6. `debug-level-up` on the debug mode's action bar, `docs/118-debug-mode.md`.
@@ -426,7 +426,7 @@ Six of the blockers in §3's table are now answerable, and one is not:
 
 ### Corrections this run forces
 
-* **`por/levels.py` is wrong at fighter 4**: the breath save is **15**, not 16.
+* **`goldbox/levels.py` is wrong at fighter 4**: the breath save is **15**, not 16.
   Two characters, at that level and no other.
 * **Experience is clamped, not spent.** The previous session read 5002 → 2500
   as "−2502, twice the thief threshold"; 2500 is simply `threshold(3) − 1`.
@@ -442,5 +442,5 @@ Six of the blockers in §3's table are now answerable, and one is not:
 ### Still not built
 
 A half-elf cleric/fighter/magic-user, a dwarf fighter/thief, a wounded fighter
-8 on disk, and `por/testparty.py` itself. The specification for the last of
+8 on disk, and `goldbox/testparty.py` itself. The specification for the last of
 those is the table above.

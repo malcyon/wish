@@ -1,7 +1,7 @@
 # Secret of the Silver Blades — running the Gold Box skill
 
 **Status: phases 0 to 5 are done.** Phases 0-2 were a cold read of the disks
-with `por/geo.py`, `por/record.py` and `por/savegame.py` **unmodified**;
+with `goldbox/geo.py`, `goldbox/record.py` and `goldbox/savegame.py` **unmodified**;
 phases 3-5 were one driven session, and `work/reports/p9-ssb-live.md` is the
 account of it. `tests/test_ssblive.py` carries what a machine with the disks
 can check again without an emulator.
@@ -21,7 +21,7 @@ say.
 ## 1. The disks
 
 `SILVER-1.D64` ... `SILVER-6.D64` — three double-sided disks, sides 1 to 6,
-with no gap and no error-byte rip among them. `por/d64.py` opens all six.
+with no gap and no error-byte rip among them. `goldbox/d64.py` opens all six.
 `work/reports/goldbox-inventory.md` has the full inventory.
 
 **How the tests find them.** `tests/test_silverblades.py` looks behind an
@@ -81,11 +81,11 @@ six.
 | | Prediction | Outcome |
 |---|---|---|
 | character record size 580 bytes | same | **held** |
-| every field in `por/layout.py`, same offset, same width | same | **held** — six shipped characters decode and round-trip byte-identically |
+| every field in `goldbox/layout.py`, same offset, same width | same | **held** — six shipped characters decode and round-trip byte-identically |
 | save slot = first 256 bytes of the record, `$100` stride | same | **held** |
 | roster block = record `0x100`–`0x11F`, last page of the payload | same | **held**, at `$6700` |
 | `60 - value` encoding for THAC0, AC, damage bonus | same | **held** — `armour_class_base` decodes to 10 for all six |
-| `GEO`: 1024 bytes, four 16×16 planes, `por/geo.py` unmodified | same | **held** — 17 files, barrier reciprocity mean 0.982, worst `GEO40` 0.923; wall-art reciprocity **1.000 on every file** |
+| `GEO`: 1024 bytes, four 16×16 planes, `goldbox/geo.py` unmodified | same | **held** — 17 files, barrier reciprocity mean 0.982, worst `GEO40` 0.923; wall-art reciprocity **1.000 on every file** |
 | `ITEMS` 128 × 16; `ITEMNAMES` 256 low + 256 high + strings | same shape | **held** — `ITEMS` 2048 bytes |
 | second ability array at `0x065`, fighting level at `0x098` | present, as in Curse | **held** |
 | spell ids 1–56 unchanged, more added above | as Curse did | **held**, and it is the strongest new result — see below |
@@ -104,7 +104,7 @@ six.
 transfers, *addresses* do not — except that the **save container's** addresses
 did, exactly. Silver Blades and Gateway both reuse Curse's `$4B00`; the two
 Krynn titles moved the block down `$B00` to `$4000`. So the save geometry is a
-per-title constant with only three values across six games, and `por/games.py`
+per-title constant with only three values across six games, and `goldbox/games.py`
 is where they live. Every *other* absolute number is still a Pool of Radiance
 constant that must be re-measured.
 
@@ -119,11 +119,11 @@ and it is asserted in `tests/test_silverblades.py`.
 | Difference | What came of it |
 |---|---|
 | **Party is imported from Curse, not rolled** | **Done, and it is the best result here.** Seven characters imported through `ADD CHARACTER TO PARTY → CURSE`: three bytes change for a plain character, twelve for a demi-human thief. §4.1 |
-| **Higher level range** | The shipped party is level 8-9 with 100000-200000 experience. `por/levels.py`'s caps are Pool of Radiance's and are still unmeasured for this title |
+| **Higher level range** | The shipped party is level 8-9 with 100000-200000 experience. `goldbox/levels.py`'s caps are Pool of Radiance's and are still unmeasured for this title |
 | **Higher spell levels than Curse** | **The gift arrived twice.** The cold read showed DOMINIC setting `0x07F = 0x04` — spell id 58 — so the mask was at least eight bytes. The driven session settled it outright: `GEN` clears **sixteen** bytes at `$7C78` and a second loop reads sixteen, so `spells_known` is `0x078`-`0x087`, spell ids 0-127. Usage stops at `0x083` (MORGAINE, id 94). `docs/116`'s prediction of 13 was low, and `gap_07f` is the mask's tail plus sixteen unexplained bytes, not one field |
 | **Dual- and multi-classed characters common at this level** | Weakly held: one of six, MALACHITE, thief 8 / fighter 7 |
 | **No city-block/wilderness structure** | Held at the file level — no `SQRDATA`, `SQRPACI` or `WALLS` on any side, in this or any title after Pool of Radiance. Whether the save's wilderness travel bytes are dead is not answerable statically |
-| **A different race table** | Not predicted at all, and real. Silver Blades drops half-orc and re-orders the rest, so **human is 6, not 7**. `por/games.py` now carries a per-title race table for exactly this |
+| **A different race table** | Not predicted at all, and real. Silver Blades drops half-orc and re-orders the rest, so **human is 6, not 7**. `goldbox/games.py` now carries a per-title race table for exactly this |
 
 ## 4. The phases
 
@@ -136,12 +136,12 @@ and it is asserted in `tests/test_silverblades.py`.
 | 4 | **The import diff** | yes | **done.** `ADD FROM: SECRET CURSE EXIT` — Curse is the only foreign source, there is no `POOL`. §4.1 |
 | 5 | **Live addresses and the automapper run** | yes, exclusively | **done.** Live base `$4B00`, resident `GEO` at `$0400`, live party triple at `$C04B`. Nine steps and three refusals against `GEO10`, no contradictions. §5 |
 | 6 | **Tests** | no | **done** — `tests/test_silverblades.py` for the cold read and `tests/test_ssblive.py` for the run, with Pool of Radiance as the control where there is one and a clean skip when the disks are absent |
-| 7 | **Constants become a table** | no | **done** — `por/games.py`, all six titles, threaded through `por/savegame.py`, `por/yaml_io.py` and `editor/` |
+| 7 | **Constants become a table** | no | **done** — `goldbox/games.py`, all six titles, threaded through `goldbox/savegame.py`, `goldbox/yaml_io.py` and `editor/` |
 
 Phase 7 was planned last on the argument that two games can share code by
 accident and three cannot. That held: it was the six-title inventory that
 showed the seam is the save container's base address and nothing else, and
-`por/games.py` is three numbers wide because of it.
+`goldbox/games.py` is three numbers wide because of it.
 
 ### What phase 2 corrected in its own pass criterion
 
@@ -151,7 +151,7 @@ the array at `0x0C9`". `work/reports/goldbox-inventory.md` §3.3(a) reports it
 criterion covers only the low four bits.
 
 **That is wrong, and the criterion holds unchanged.** The report read the array
-at `0x0C9` as four bytes. It is eight — `por/layout.py` names them
+at `0x0C9` as four bytes. It is eight — `goldbox/layout.py` names them
 `level_magic_user`, `level_cleric`, `level_thief`, `level_fighter`,
 `level_knight`, a gap, `level_paladin`, `level_ranger`. PAINE's level 8 sits in
 slot 7 and GUY DE VALOIS's in slot 6, which is exactly what bits `0x80` and
@@ -173,7 +173,7 @@ them — out of the file Silver Blades itself exported; the two agree.
 
 | offset | field | before → after | what explains it |
 |---|---|---|---|
-| `0x072` | `race` | 7 → 6, 4 → 2, 2 → 1 | **Silver Blades' own race table.** Each pair is the same race under this title's numbering: `por/games.py`'s two tables confirmed by the game's arithmetic instead of by inference |
+| `0x072` | `race` | 7 → 6, 4 → 2, 2 → 1 | **Silver Blades' own race table.** Each pair is the same race under this title's numbering: `goldbox/games.py`'s two tables confirmed by the game's arithmetic instead of by inference |
 | `0x0A5`–`0x0AC` | thief skills | re-derived | the same behaviour the Pool → Curse import showed. Only the thief has them |
 | `0x0AD` | racial trait | 124 → 18 (half-elf), 107 → 95 (elf) | `GEN` seeds this from a per-race table indexed by the race byte; the import re-seeds it from **Silver Blades'** table using the **new** code — an independent corroboration of the remap |
 | `0x0B6` | trait, slot 9 | ranger 134 → 105; paladin 45 unchanged | Silver Blades' own pregens carry exactly those two numbers |
@@ -223,7 +223,7 @@ the marker is an identifier out of some list rather than a count of sequels.
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
 | whether the sixteen-byte spellbook is also Curse's and Gateway's | the same code scan on their disks; no emulator needed |
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
-| `por/levels.py`'s caps for this title | table data on the disks; no emulator needed |
+| `goldbox/levels.py`'s caps for this title | table data on the disks; no emulator needed |
 
 **The loader's mode flag is `$7F11` (#29).** `LINKER` is 149 bytes on
 `SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and
@@ -330,7 +330,7 @@ differently, or has been deliberately left alone with a line in
 | a prediction failed | the advice becomes *check, do not assume*, with the Silver Blades counterexample cited by offset. This is the most valuable outcome and should be treated as a success |
 | a step cost far more or less than budgeted | reorder the phases. The order of attack is the skill's main claim; a phase that keeps running last should be documented last |
 | a step needed something the skill does not mention | name the tool, the file and the invocation. A subagent starts cold; "you will need a save disk" belongs in the skill, not in someone's memory |
-| a constant differed | it goes in `por/games.py`, which is where the per-title constants live now that the skill's reference tables are gone. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
+| a constant differed | it goes in `goldbox/games.py`, which is where the per-title constants live now that the skill's reference tables are gone. That table is the skill's most reusable artefact and Silver Blades is what makes it a table rather than a pair |
 
 `docs/116-second-game.md` §7 is the model: it ends by listing every place the
 earlier plan was wrong, *including where it was wrong in our favour*. Do the same
@@ -341,11 +341,11 @@ references now carry, all from phases 1 and 2:
 
 * **Enumerate maps by directory scan, never by range.** Silver Blades,
   Champions and Death Knights have no `GEO00` and start at `$10` or `$20`.
-  `por/areas.py` says so at the top of its module docstring.
+  `goldbox/areas.py` says so at the top of its module docstring.
 * **The save container's geometry is a per-title constant with three values,
-  not six.** `por/games.py` is the table.
+  not six.** `goldbox/games.py` is the table.
 * **`spells_known` is at least eight bytes in the later titles.** Recorded in
-  `por/layout.py` against the field itself, where anyone reading the record
+  `goldbox/layout.py` against the field itself, where anyone reading the record
   will see it.
 
 **What phases 3-5 owe the skill.** These are the edits the run earns;
@@ -360,7 +360,7 @@ they are listed here rather than made.
 | **The save-image search worked in one step, exactly as written** | promote it too. Comparing the live region against a save the game had just written gave the base with 25 bytes of difference, all of them the loaded-file cache |
 | **A refused move costs no time here** | the skill says the cost of a bump is unmeasured. It is measured now, for one title: zero. Keep the "unmeasured" wording for the others |
 | **A D64 written by a driven session must be flushed before it is read** | a new hazard row. It is not in the list, it looks exactly like a corrupt file, and it made a working import answer `CHARACTER NOT FOUND` |
-| **`spells_known` is sixteen bytes on this engine** | the per-game constants table gains a row, and `por/layout.py`'s note that "nothing proves it stops at eight" can be replaced by the `GEN` clear loop |
+| **`spells_known` is sixteen bytes on this engine** | the per-game constants table gains a row, and `goldbox/layout.py`'s note that "nothing proves it stops at eight" can be replaced by the `GEN` clear loop |
 | **The disk prompts and the side letters are per-title** | `INSERT SIDE A` is a letter here where Pool of Radiance uses a digit, and the import and export prompts name the *other* game. A driver that matches Pool of Radiance's wordings answers none of them |
 
 ## 7. Out of scope

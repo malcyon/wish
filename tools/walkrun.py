@@ -113,7 +113,7 @@ def main() -> int:
 
 def read_position(disk: str) -> list[int]:
     sys.path.insert(0, "/home/donald/src/wish")
-    from por.d64 import D64
+    from goldbox.d64 import D64
 
     s = D64.open(disk).read_file("SAVEDGAME0")[2:]
     return [s[0xC0], s[0xC1], s[0xC2]]

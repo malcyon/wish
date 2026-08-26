@@ -1,4 +1,4 @@
-"""Tests for por.geo, the GEO map geometry.
+"""Tests for goldbox.geo, the GEO map geometry.
 
 GEO04 is read off the player's POOL5 at run time -- no game data lives in this
 repository. The live game disks are used only for the
@@ -10,7 +10,7 @@ import pathlib
 import pytest
 from gamedata import disk_dir, game_file, synthetic_geo
 
-from por.geo import (
+from goldbox.geo import (
     EAST,
     GEO_SIZE,
     GRID,

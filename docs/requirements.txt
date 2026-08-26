@@ -9,5 +9,5 @@ sphinx==9.1.0
 # The knowledge base in docs/ is Markdown and is published beside the API pages.
 myst-parser==5.1.0
 furo==2025.12.19
-# por/yaml_io.py imports it at module scope, so autodoc needs it for real.
+# goldbox/yaml_io.py imports it at module scope, so autodoc needs it for real.
 PyYAML==6.0.3

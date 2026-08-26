@@ -10,7 +10,7 @@ Two things decide the shape of this module.
 and leaves the tail zero, so deleting compacts rather than leaving a hole --
 the game's own scan almost certainly stops at the first empty record.
 
-**A template beats a hand-built record.** `por.items.load_item_templates`
+**A template beats a hand-built record.** `goldbox.items.load_item_templates`
 gives 163 real records off the game disks, and copying one keeps whatever the
 bytes we do not understand are meant to hold. Adding an item therefore means
 picking a template, never filling in fields.
@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from por.items import (
+from goldbox.items import (
     ITEM_AREA_BASE,
     ITEM_BLOCK_STRIDE,
     ITEM_SIZE,
@@ -41,10 +41,10 @@ from por.items import (
     Item,
     ItemType,
 )
-from por.savegame import SAVE0_LOAD_ADDRESS
-from por.spells import POOL_OF_RADIANCE, SpellTable
-from por.spells import describe as describe_spell
-from por.spells import for_game as spell_table
+from goldbox.savegame import SAVE0_LOAD_ADDRESS
+from goldbox.spells import POOL_OF_RADIANCE, SpellTable
+from goldbox.spells import describe as describe_spell
+from goldbox.spells import for_game as spell_table
 
 EMPTY = bytes(ITEM_SIZE)
 

@@ -63,7 +63,7 @@ $83. The fourth, LONG SWORD +3 at $84, is **not** evidence about any code:
 `$84` is the alignment-locked sword and its `+14` is two nibbles, not an id.
 POTION OF HEALING reads 85 / $00 and is a potion, not a level drain.
 
-Lives in `por/` rather than in the editor because the combat view names the same
+Lives in `goldbox/` rather than in the editor because the combat view names the same
 codes on a monster's tooltip, and one table cannot be allowed to become two.
 """
 
@@ -127,7 +127,7 @@ NAMES: dict[int, tuple[str, str]] = {
     35: ("under an allied Prayer", "CONFIRMED"),
     36: ("Bestow Curse", "PROBABLE"),
     37: ("blinking", "CONFIRMED"),                         # PHASE SPIDER
-    # por/items.py has the gauntlets carrying 38, derived before the guide was
+    # goldbox/items.py has the gauntlets carrying 38, derived before the guide was
     # read; two independent lines on one id.
     38: ("extra strength", "CONFIRMED"),
     39: ("hasted", "CONFIRMED"),
@@ -153,7 +153,7 @@ NAMES: dict[int, tuple[str, str]] = {
     58: ("immobile", "PROBABLE"),
     59: ("gains regeneration when this expires", "PROBABLE"),
     60: ("unused", "PROBABLE"),
-    # por/items.py has the ring carrying 61, again derived independently.
+    # goldbox/items.py has the ring carrying 61, again derived independently.
     61: ("wearing a Ring of Fire Resistance", "CONFIRMED"),
     62: ("regeneration from constitution 20 or better", "PROBABLE"),
     63: ("unimplemented -- no handler exists", "PROBABLE"),

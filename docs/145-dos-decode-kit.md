@@ -68,7 +68,7 @@ from edited sources.
 
 Every one of the 30 C64 `ECL` files begins `88 13 01 01`, i.e. the word **5000**.
 `docs/141-dos-savegame.md` already records that every DOS block opens the same
-way. `por/d64.load_payload` strips those two bytes *as a PRG load address*; the
+way. `goldbox/d64.load_payload` strips those two bytes *as a PRG load address*; the
 outcome is right (the bytecode does start at +2) and the name is wrong — the
 files are loaded at `$9900`, not `$1388`, and `ECL64`/`ECL65`, which are 6502
 code rather than bytecode, carry `00 10` there instead.
@@ -86,12 +86,12 @@ absolute addresses, base `$9900`. Their empirically fitted label formula
 `file_offset = label − 0x98F1` is that base out by fifteen bytes.
 
 Nothing of ours needs changing except the wording where the two bytes are called
-a load address. **That is `por/d64.py`'s and `por/geo.py`'s owner's call, not
+a load address. **That is `goldbox/d64.py`'s and `goldbox/geo.py`'s owner's call, not
 this document's** — flagged, not edited.
 
 ### 3. GEO wall slices have names, and slice 4 is the door — CONFIRMED for slice 4
 
-`por/geo.py` decomposes a wall nibble as `wallset = (v−1)//5`, `slice = (v−1)%5`
+`goldbox/geo.py` decomposes a wall nibble as `wallset = (v−1)//5`, `slice = (v−1)%5`
 and gives the five slices no meaning. The repository derives the same
 decomposition independently on DOS and adds an order: **`[base, window, gate,
 plain, door]`**.
@@ -116,7 +116,7 @@ Slices 0 and 1 are **UNKNOWN**: passability does not separate them. What would
 settle it: render one edge of each slice from `WALLSET`/`WALLDEF` and look, which
 is the same render-to-validate step the repository used.
 
-This belongs in `docs/88-map-files.md` and `por/geo.py`. Flagged, not edited.
+This belongs in `docs/88-map-files.md` and `goldbox/geo.py`. Flagged, not edited.
 
 ---
 
@@ -128,7 +128,7 @@ This belongs in `docs/88-map-files.md` and `por/geo.py`. Flagged, not edited.
 (9 = Warrior, 6 = Priest, 12 = Rogue/Mage)"**, and builds a class-resolution
 heuristic on top of it.
 
-**It is `movement_current`.** `por/dos_layout.py` has `0x11C` (= 284) as current
+**It is `movement_current`.** `goldbox/dos_layout.py` has `0x11C` (= 284) as current
 movement, graded from 24 real DOS records: **12 for everyone unencumbered and 6
 for SILAS, who wears plate mail**. `docs/127-community-formats.md` has the same
 byte as the community workbook's `MOV_Current`, independently. The DOS class
@@ -209,7 +209,7 @@ Leads, at the confidence a third-party document earns.
 Worth recording so nobody looks twice.
 
 * **The DAX container and its RLE codec.** Their `kit/dax.py` and our
-  `por/dos_savegame.dax_index` / `dax_unpack` are the same format, field for
+  `goldbox/dos_savegame.dax_index` / `dax_unpack` are the same format, field for
   field and opcode for opcode — `u16` directory length, 9-byte entries
   `{u8 id, u32 off, u16 unpacked, u16 packed}`, then `c < 0x80` copies `c+1`
   literals and `c >= 0x80` repeats the next byte `256−c` times. Two independent

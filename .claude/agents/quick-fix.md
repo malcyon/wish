@@ -143,11 +143,11 @@ Read `CLAUDE.md` and `INDEX.md` first. These bind you regardless of the task:
   or 6600 — those are the maintainer's own running games.
 * **Never kill a process by name.** Not `pkill -x x64sc`, not `pkill -x Xephyr`.
   The one time that rule was broken, what died was his own window.
-* **`por/` stays transport-free, `editor/` stays emulator-free, and anything
+* **`goldbox/` stays transport-free, `editor/` stays emulator-free, and anything
   talking to VICE lives in `automap/`.** `tests/test_wish.py` greps for
   violations.
 * **Comment the why, not the what.** A comment restating the code should not be
-  written. `por/layout.py` is the deliberate exception — its notes are field
+  written. `goldbox/layout.py` is the deliberate exception — its notes are field
   documentation generated into `docs/20-character-record.md` by
   `tools/gendocs.py`.
 * **A new file means a new row in that directory's `README.md`**, in the same

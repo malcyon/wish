@@ -12,7 +12,7 @@ resave of a converted party, and three saves made on the overland travel map
 by playing there (`work/p59-outdoor`), plus a DOSBox-X debugger pass on the
 live outdoor game. A thirteenth file, `Default files/Saves/SAVGAMB.DAT`, is a
 **stub and is excluded from every count**: its ECL buffer is 7680 zero bytes,
-it holds nine nonzero VM words, no quest flags and a 00:00 clock. `por/dos_savegame.py` is the machine-readable form and the
+it holds nine nonzero VM words, no quest flags and a 00:00 clock. `goldbox/dos_savegame.py` is the machine-readable form and the
 reasoning is in [`50-experiments.md`](50-experiments.md) "Mapping the DOS
 saved game" and "The DOS saved game outdoors".
 
@@ -53,7 +53,7 @@ quest flags convert unconditionally.
 |---|---|---|
 | `$49C0`-`$49C2` | **zero in every DOS save**, indoors and out — the square is *not* here, unlike the C64; it is at file 12801-12803 indoors and `$49C3`/`$49C4` outdoors | CONFIRMED — 6 of 6 |
 | `$49C3`, `$49C4` | **the overland travel square, window-local**: (7,29) → (7,28) → (8,28) across the three outdoor saves against on-screen `20,29`/`20,28`/`21,28` — world x = local x + 13 for window 26 (`WINDOW_X_OFFSET`) — and a live `BPM` caught one east step writing `$49C3` 7→8 (writer `2E33:095E`). Zero in the three indoor specimens, stale after a return indoors | CONFIRMED — two independent sources |
-| `$49C5` | area id (= geo block id, `por/areas.py` numbering) — but **0 in all three outdoor saves**, *not* the C64's SQRDATA number (the C64 holds 5 there for window 26) | CONFIRMED indoors — three saves, plus moving a save to a new area only works when this word is set to the target's id; outdoor value CONFIRMED, its consumer UNKNOWN |
+| `$49C5` | area id (= geo block id, `goldbox/areas.py` numbering) — but **0 in all three outdoor saves**, *not* the C64's SQRDATA number (the C64 holds 5 there for window 26) | CONFIRMED indoors — three saves, plus moving a save to a new area only works when this word is set to the target's id; outdoor value CONFIRMED, its consumer UNKNOWN |
 | `$49C6`-`$49CB` | **the clock, six digit words, exactly the C64's six bytes**: sub-minute, minute units, minute tens, hour, day, month. A reads 10:02 day 16 and displayed 10:02; one step moved `$49C7` 2→3 as the display moved 10:02→10:03; saving costs no time | CONFIRMED |
 | `$49E6` | **the indoors flag**: 1 in the three indoor specimens, 0 in the three outdoor ones, and the boat-back transition was caught live writing it 0→1 (writer `30F6:0CA1`) | CONFIRMED |
 | `$49F2` | the area script id | CONFIRMED as the field; carried in every save that has successfully moved a party to a new area, never tested absent |
@@ -86,7 +86,7 @@ The writes. The first seven are what the load path checks — take any one
 away and the game exits to DOS — and the last two are the party rather than
 the place:
 
-1. byte 0 = the target area's DAX number (`por/areas.py`'s `Area.disk`);
+1. byte 0 = the target area's DAX number (`goldbox/areas.py`'s `Area.disk`);
 2. `$49C5` = the target area id;
 3. `$49F2` = the target area id;
 4. `$5012` = the target area's DAX number;
@@ -97,7 +97,7 @@ the place:
 8. 12801-12803 = x, y, facing×2;
 9. `$503E` and byte 12808 = the party size.
 
-The flags and everything else may stay the template's. `por.dos_savegame.retarget`
+The flags and everything else may stay the template's. `goldbox.dos_savegame.retarget`
 is the function that applies these writes, and `RETARGET_WRITES` holds the list
 above in machine-readable form.
 
@@ -112,7 +112,7 @@ one area a C64 save can offer nothing better for. A save moved into area 0 with
 same move carrying DOS's own `(0, $FFFF, $FFFF)` — `work/p60/run3` Z0 against
 `run2` X3, the only differing pixels being the colour-cycling command bar.
 
-And end to end through `por.dos.write_dos_save`, both walked: `PORSAVE13` in
+And end to end through `goldbox.dos.write_dos_save`, both walked: `PORSAVE13` in
 the Slums onto template A comes up at 15,4 W 21:15, and `PORSAVE12` in New
 Phlan onto template J at 0,4 W 16:58 — each party's own square, facing and
 clock, with six characters on the roster (`work/p60/run3` and `run4`).
@@ -161,7 +161,7 @@ why `$49C5` has nothing to carry out there.
 The rule in `CLAUDE.md` is **measured versus inherited**: a value we
 established is fine at any number, and a value taken from somebody else's
 save is not. This is the list, in the three legitimate groups, measured over
-the twelve genuine specimens. `por.dos.write_dos_save` writes the quest
+the twelve genuine specimens. `goldbox.dos.write_dos_save` writes the quest
 flags, the script scratch, the clock, the party size, the square, the six
 character filenames and — when the areas differ — the nine retarget writes
 and the ECL buffer. Everything else in the file it copies from the template.
@@ -213,7 +213,7 @@ issue opened with. None of it is party or place data.
 gave two counts for the same region: the file map above says each 41-byte
 character entry is a length-prefixed filename **then 32 bytes of heap junk**,
 and the blocker table said 29. Neither 29 nor the 246 beside it is right.
-`por/dos_savegame.put_character_files` writes one length byte and eight of
+`goldbox/dos_savegame.put_character_files` writes one length byte and eight of
 name — `PARTY_NAME_LEN` is 9 — so **32** bytes an entry are inherited, and
 246 is 6 × 41, the whole table including the filenames the writer does source.
 Measured over six engine-written `SAVGAM` files: every one of those 32 bytes,

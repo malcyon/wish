@@ -24,7 +24,7 @@ Six things, in order of value.
 
 ### 1. Saving throws are solved
 
-`por/levels.py` says in its own docstring that the saving-throw columns are
+`goldbox/levels.py` says in its own docstring that the saving-throw columns are
 "transcribed, not verified, and nothing should assert them against a record
 until the modifiers are understood". The modifier is understood.
 
@@ -67,7 +67,7 @@ bands PROBABLE.
 The class table itself is the DOS one, which the spreadsheet's `EXE_Offset`
 sheet told us to look for: eight classes × nine levels × five saves. It is not
 at the offset the sheet gives (§6) but it is exactly the shape the sheet gives,
-and every row matches `por/levels.py`'s transcription.
+and every row matches `goldbox/levels.py`'s transcription.
 
 ### 2. `spells_castable` promoted to CONFIRMED
 
@@ -153,14 +153,14 @@ the AD&D bonuses 0, 2 and 6. Read as `60 − AC` the same bytes give 12, 10 and 
 two worse than each armour's real class, which means nothing.
 
 So the two ports differ here: DOS spends the byte on rear armour class, the C64
-on the armour bonus. **Our measurement wins and `por/savegame.py` is right.**
+on the armour bonus. **Our measurement wins and `goldbox/savegame.py` is right.**
 
 ### 5. `spells_memorised` is probably 21 bytes, not 16
 
 DOS Pool of Radiance allots **21** memorised-spell slots (`0x017`–`0x02B`, one
 byte per memorised instance, an index into the 56-spell list). 21 is also the
 C64 ceiling: a cleric 6 with wisdom 18 gets 13 slots and a magic-user 6 gets 8,
-and one character can be both. `por/layout.py` declares 16 at `0x020`.
+and one character can be both. `goldbox/layout.py` declares 16 at `0x020`.
 
 The C64 array packs **forward** from `0x020` in descending spell id, where DOS
 fills its 21 in reverse. Verified against `spells_castable` on three
@@ -324,13 +324,13 @@ offset map, and the DOS names then say what the C64's unnamed bytes are.
 | `0x0E6`–`0x0E7` (in `region_0e3`) | `0x0AB` `MON_Index` | — | both are a high-entropy per-character value sitting immediately before experience. DOS uses one byte, the C64 two |
 | `0x0ED` `hp_rolled` | `0x0B1` `HP_Base` | +`0x3C` | |
 | `0x0EE`–`0x0F0` `spells_castable` | `0x0B2`–`0x0B7` six `SPL_Count_*` | — | the C64 nibble-packs what DOS spends six bytes on |
-| `0x0F7`–`0x0F9` (in `gap_0f4`) | `0x0B8`–`0x0BA` `XP_Award_Base` `u16` + `XP_Award_Bonus` | — | **already ours**: `por/monster.py` has these as `XP_BASE` and `XP_PER_HP`, proven from `POST.COM $09BB`. The spreadsheet corroborates and adds nothing. What it does explain is why the five NPC records in `npc_party.d64` carry them and no player character does — an NPC who joins the party gets a record copied from its monster record, award fields included |
+| `0x0F7`–`0x0F9` (in `gap_0f4`) | `0x0B8`–`0x0BA` `XP_Award_Base` `u16` + `XP_Award_Bonus` | — | **already ours**: `goldbox/monster.py` has these as `XP_BASE` and `XP_PER_HP`, proven from `POST.COM $09BB`. The spreadsheet corroborates and adds nothing. What it does explain is why the five NPC records in `npc_party.d64` carry them and no player character does — an NPC who joins the party gets a record copied from its monster record, award fields included |
 | `0x10E`/`0x10F` roster THAC0/AC | `0x110`/`0x111` | −2 | |
 | `0x110` roster (`roster_tail[0]`) | `0x112` `AC_Back` | −2 | **the correspondence fails**: the C64 byte is the armour bonus, `48 + bonus`, measured by equipping armour. See §4 |
 | `0x111`–`0x118` (`roster_tail[1..8]`) | `0x113`–`0x11A` eight `ATK_*_Current` | −2 | the nine-byte `roster_tail` is rear AC plus the eight current attack bytes |
 | `0x119` hp current, `0x11B` movement | `0x11B`, `0x11C` | −2, −1 | the C64's hit points are two bytes where DOS's are one |
 
-**`attack_forms`.** `por/layout.py` reads `0x0D9` as four parallel two-entry
+**`attack_forms`.** `goldbox/layout.py` reads `0x0D9` as four parallel two-entry
 arrays — attacks doubled, dice, die, modifier — proved from `COMBAT $0CAD`'s
 stride-2 indexing. The spreadsheet spells the DOS eight bytes out in exactly
 that order: `ATK_1_Count_Base`, `ATK_2_Count_Base`, `ATK_1_Rolls_Base`,
@@ -360,7 +360,7 @@ say what they are:
 | BRUTUS | 2 | fighter | 3 |
 
 **The C64 array is indexed by the `class_bits` bit number** — magic-user 0,
-cleric 1, thief 2, fighter 3 — not by the class enum. `por/layout.py` already
+cleric 1, thief 2, fighter 3 — not by the class enum. `goldbox/layout.py` already
 says so and is right; the spreadsheet's order is a DOS fact only.
 
 One thing does transfer. The spreadsheet's `ClassRestrictionArray` names all
@@ -369,7 +369,7 @@ eight bits: 0 magic-user, 1 cleric, 2 thief, 3 fighter, **4 druid, 5 monk,
 `level_ranger`, which is a strong check on the whole scheme, and it makes slot
 4 **druid** rather than the `level_knight` the Death Knights editor calls it —
 Krynn's knights presumably reuse the druid slot in a world with no druids.
-The note in `por/layout.py` now records both readings.
+The note in `goldbox/layout.py` now records both readings.
 
 ### `0x100` — the STATUS question is not settled
 
@@ -408,7 +408,7 @@ checked out perfectly (§1, §6). Treat the sheet as "these tables exist, in thi
 shape, in this file" and find them yourself. That is still the most valuable
 thing in the workbook after `CHR_01`.
 
-**The spell counts answer the `spells_known` width question.** `por/layout.py`
+**The spell counts answer the `spells_known` width question.** `goldbox/layout.py`
 declares seven bytes at `0x078` and notes that Silver Blades and Death Knights
 casters write past it. Seven bytes is 56 bits and Pool of Radiance has exactly
 56 spells — no C64 record in our corpus of 79 sets any of `0x07F`–`0x097`. If

@@ -4,7 +4,7 @@ What each directory in this repository is for.
 
 | directory | purpose |
 |---|---|
-| [`por/`](por/README.md) | The game's formats, decoded — character records, save games, maps, items, spells. No Qt, no emulator, no transport. |
+| [`goldbox/`](goldbox/README.md) | The game's formats, decoded — character records, save games, maps, items, spells. No Qt, no emulator, no transport. |
 | [`editor/`](editor/README.md) | The character editor GUI. Opens a `.D64` and writes it back; imports nothing from `automap/`, so it works with no emulator anywhere. |
 | [`automap/`](automap/README.md) | The live automapper: everything that knows about a running machine — the VICE client, the map state, the rendering geometry, the window. |
 | [`wish/`](wish/README.md) | The application that wraps the other two — the tabbed window, preferences, the debug log, the backend session, the CLI entry point. |
@@ -27,7 +27,7 @@ https://wish-goldbox.readthedocs.io/en/latest/
 
 ## The split that is a rule, not tidiness
 
-`por/` stays transport-free, `editor/` stays emulator-free, and everything that
+`goldbox/` stays transport-free, `editor/` stays emulator-free, and everything that
 talks to VICE lives in `automap/`. That is what keeps the editor a file tool
 that runs with no emulator installed, and it is why the automapper is its own
 package rather than part of the editor.

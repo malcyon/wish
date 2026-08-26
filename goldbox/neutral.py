@@ -183,7 +183,7 @@ FIELDS: dict[str, str] = {
     "gems": "gems, counted not valued",
     "jewelry": "pieces of jewelry, counted not valued",
     "inventory": "the items carried, each in the shared sixteen-byte item "
-                 "shape `por/items.py` reads",
+                 "shape `goldbox/items.py` reads",
     # -- magic --------------------------------------------------------------
     "spells_known": "spell ids in the spellbook, ascending",
     "spells_memorised": "spell ids memorised, highest first",
@@ -215,7 +215,7 @@ class NeutralCharacter:
     `game` is the *title* whose tables the port-relative indices were read in
     -- `race`, `char_class` and `class_bits` are numbers into a table that is
     not the same in every Gold Box game, so a writer that wants a name asks
-    `por/games.py` with this in hand.  None means Pool of Radiance's, which is
+    `goldbox/games.py` with this in hand.  None means Pool of Radiance's, which is
     what a caller with no title in hand means.
     """
 
@@ -238,7 +238,7 @@ class NeutralCharacter:
         if name not in FIELDS:
             raise NeutralError(
                 f"{name!r} is not a neutral field; declare it in "
-                f"por/neutral.py FIELDS or fix the spelling")
+                f"goldbox/neutral.py FIELDS or fix the spelling")
         self.fields[name] = Value(value, origin, confidence, how,
                                   tuple(dropped))
 
@@ -336,9 +336,9 @@ class Report:
 class Writer:
     """The take-refuse-report protocol every writer shares.
 
-    Hoisted from `por/c64_codec.write`, where `use` and `emit` were closures
+    Hoisted from `goldbox/c64_codec.write`, where `use` and `emit` were closures
     a second writer would have copied by hand -- which is exactly what
-    `por/amiga.py` did, against a different middle, and the mistake this
+    `goldbox/amiga.py` did, against a different middle, and the mistake this
     class exists to end.  A writer constructs one around the character and
     its own report and gets four things it would otherwise re-implement:
 

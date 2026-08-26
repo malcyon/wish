@@ -1,6 +1,6 @@
 """Export a save's party to YAML and import it back.
 
-The **YAML codec**, one of four around the record `por/neutral.py` describes
+The **YAML codec**, one of four around the record `goldbox/neutral.py` describes
 and not the thing the others convert through. `entry_for` reads a
 `NeutralCharacter` and never a `CharacterRecord`, so a C64 party and a DOS one
 render through one code path without either being converted to the other
@@ -22,7 +22,7 @@ and the damage bonus. Those appear under `combat:`, together with the three
 bytes at `+0x03`–`+0x05` whose meaning is not established, and are the only part
 of `SAVEDGAME1` this module touches. Curse of the Azure Bonds and the four
 titles after it write **one** file with the same roster as its last page; which
-shape a disk has is `por/games.py`'s business, not this module's.
+shape a disk has is `goldbox/games.py`'s business, not this module's.
 
 **The document records the title it came from**, as `game:`, and an import into
 a different title's disk is refused. The container geometry differs between them
@@ -84,8 +84,8 @@ from .spells import (
 from .spells import for_game as spell_table
 
 # `race_table`, `class_table` and `classes_to_names` used to live here and are
-# now `por/games.py`'s, re-exported above so every name still resolves. They
-# moved because `por/amiga.py` needs them too, and a codec reaching into
+# now `goldbox/games.py`'s, re-exported above so every name still resolves. They
+# moved because `goldbox/amiga.py` needs them too, and a codec reaching into
 # another codec for a table is the pairwise web `docs/117-save-conversion.md`
 # exists to prevent -- a per-title table belongs beside the per-title data.
 #
@@ -93,7 +93,7 @@ from .spells import for_game as spell_table
 # caller with no `Game` in hand means. **They are not universal** -- Silver
 # Blades moves human from 7 to 6 and the Krynn titles use a different race list
 # altogether -- so anything that knows which title it is holding should read
-# `game.race_names` and `game.class_bits` instead. See `por/games.py` for the
+# `game.race_names` and `game.class_bits` instead. See `goldbox/games.py` for the
 # evidence behind each list.
 RACES = dict(DEFAULT_GAME.races)
 ALIGNMENTS = ["lawful good", "lawful neutral", "lawful evil",
@@ -403,7 +403,7 @@ def export_save(path: str, game_disk: str | None = None,
 def entry_for(char, slot_index: int, items, icon, game: Game | None = None,
               names=None, types=None, spell_names=None,
               block=None) -> dict[str, Any]:
-    """One :class:`por.neutral.NeutralCharacter` as plain data.
+    """One :class:`goldbox.neutral.NeutralCharacter` as plain data.
 
     The YAML writer: a codec beside the C64, DOS and Amiga ones rather than
     the thing they convert through.  It reads neutral field names and never a

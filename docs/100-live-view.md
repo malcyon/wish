@@ -92,9 +92,9 @@ not per byte, measured at 14.3 ms either way under VICE.
 character record and the item area in a single read. `$8300`–`$83FF` is a second
 for the roster. **Two reads, whole tab.**
 
-Feed both into `por/savegame.py` unchanged: `SaveGame0.from_bytes()` takes
+Feed both into `goldbox/savegame.py` unchanged: `SaveGame0.from_bytes()` takes
 exactly those bytes and gives back records, party position, area and the icon
-table with no new decoding at all. That is the payoff of having kept `por/`
+table with no new decoding at all. That is the payoff of having kept `goldbox/`
 transport-free.
 
 Poll only while the tab is visible, at the backend's own interval -- 200 ms

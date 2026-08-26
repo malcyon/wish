@@ -1,5 +1,5 @@
-"""File > Export: the windows over `por.dos.write_dos_save` and
-`por.amiga.export_party`.
+"""File > Export: the windows over `goldbox.dos.write_dos_save` and
+`goldbox.amiga.export_party`.
 
 The conversions themselves are `tests/test_doswriter.py`'s and
 `tests/test_amiga.py`'s. What is tested here is the pair of things a menu item
@@ -31,7 +31,7 @@ import pytest
 from gamedata import disk_path
 from test_dossave import _save_dir, needs_dos_saves
 
-from por import dos, games
+from goldbox import dos, games
 
 SAVE_DISK = "PORSAVE11"
 
@@ -55,7 +55,7 @@ def _source(fixture: str, save1: str | None = None, game=None):
     the `SAVEDGAME0`/`SAVEDGAME1` payloads, not the file they came out of.
     """
     from editor.exports import Source
-    from por.savegame import SaveGame0, SaveGame1
+    from goldbox.savegame import SaveGame0, SaveGame1
 
     return Source(
         game or games.POOL_OF_RADIANCE,
@@ -102,7 +102,7 @@ def test_the_export_is_rehearsed_and_the_destination_is_untouched(
 
 @needs_dos_saves
 def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
-    """The lines come from `por/dos.py`'s report, so the pane and
+    """The lines come from `goldbox/dos.py`'s report, so the pane and
     `tools/` cannot become two accounts of the same conversion."""
     from editor.exports import DROPPED_HEADING, DosPlan
 
@@ -127,7 +127,7 @@ def test_a_second_export_names_the_first_partys_leftovers_before_writing(
         one, six, dos_template, tmp_path):
     """#68, moved forward of the button.
 
-    `por.dos.write_dos_save` clears the slot, so the party that arrives is
+    `goldbox.dos.write_dos_save` clears the slot, so the party that arrives is
     right -- but a user who is told nothing has five files silently deleted.
     The plan names them while there is still a Cancel.
     """
@@ -222,17 +222,17 @@ def test_the_amiga_export_removes_nothing_and_says_what_it_overwrites(
 
 
 def test_two_characters_with_one_amiga_file_name_are_named_as_a_loss():
-    """`por.amiga.pc_filename` cuts a name to eight AmigaDOS characters, so
+    """`goldbox.amiga.pc_filename` cuts a name to eight AmigaDOS characters, so
     LADY KATHERINE and LADY KATHRYN are both `LADYKATH.pc` and
-    `por.amiga.export_party` writes the second over the first in silence --
+    `goldbox.amiga.export_party` writes the second over the first in silence --
     a character that leaves the window and does not arrive.
 
-    The defect is `por/amiga.py`'s and is #79; what this asserts
+    The defect is `goldbox/amiga.py`'s and is #79; what this asserts
     is that the pane does not repeat it, because a menu item that drops a
     whole character silently would be worse than no menu item (#36).
     """
     from editor.exports import COLLIDES, _amiga_losses
-    from por.neutral import Report
+    from goldbox.neutral import Report
 
     same = pathlib.Path("LADYKATH.pc")
     text = _amiga_losses([(same, Report()), (same, Report())])

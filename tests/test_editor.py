@@ -23,7 +23,7 @@ from editor.binding import (
 )
 from editor.files import automatic_dir, back_up, prune
 from editor.roster import Party
-from por.layout import LAYOUT, Confidence
+from goldbox.layout import LAYOUT, Confidence
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -334,7 +334,7 @@ def test_editing_quantity_and_readied_reaches_the_disk(editor, save):
 @game_disks
 def test_an_added_item_is_a_copy_of_the_games_own_record(editor, save):
     from editor.window import EditorWindow
-    from por.items import load_item_templates
+    from goldbox.items import load_item_templates
     editor.ui.roster.selectRow(2)                    # ROLAND, two items
     assert "slot 2" in editor.add_item("POTION OF HEALING")
     editor.save(interactive=False)
@@ -571,7 +571,7 @@ def test_race_zero_is_named_rather_than_left_blank():
     whole window (#41, #43).
     """
     from editor.enums import race_names
-    from por import games
+    from goldbox import games
 
     race = race_names(games.POOL_OF_RADIANCE)
     assert race[0] == "MONSTER" and race[8] == "MONSTER"
@@ -966,7 +966,7 @@ def test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save)
         "constant -- or its columns, when a party is narrower than the floor, "
         "which this one is")
     # And the column really is a name's width rather than a window's.
-    from por.layout import NAME_SIZE
+    from goldbox.layout import NAME_SIZE
     widest = view.fontMetrics().horizontalAdvance("W" * NAME_SIZE)
     assert header.sectionSize(NAME_COLUMN) <= widest * 2
 
@@ -1031,7 +1031,7 @@ def test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     # approve.
     from PyQt6.QtCore import Qt
     assert view.textElideMode() == Qt.TextElideMode.ElideRight
-    from por.layout import NAME_SIZE
+    from goldbox.layout import NAME_SIZE
     assert tight[NAME_COLUMN] < view.fontMetrics().horizontalAdvance(
         "W" * NAME_SIZE)
     assert w.minimumSizeHint().width() == floor, (
@@ -1530,7 +1530,7 @@ def _silver_blades_save(tmp_path):
     lookup lives there because `tests/gamedata.py` has no Silver Blades hook --
     and copied, because the player's own disks are never opened by a test.
     """
-    from por.d64 import D64
+    from goldbox.d64 import D64
     from tests.test_silverblades import SSB, ssb_dir
 
     where = ssb_dir()
@@ -1810,7 +1810,7 @@ def test_each_tab_scrolls_inside_itself(app, save):
 
 def test_the_widest_value_comes_from_the_kind_and_the_byte_width():
     from editor.binding import value_range, widest_text
-    from por.layout import FIELDS_BY_NAME
+    from goldbox.layout import FIELDS_BY_NAME
     assert widest_text(FIELDS_BY_NAME["strength"]) == "255"
     assert widest_text(FIELDS_BY_NAME["gold"]) == "65535"
     assert widest_text(FIELDS_BY_NAME["name"]) == "W" * 20
@@ -1878,7 +1878,7 @@ def test_a_free_slot_has_no_traits(editor):
 @game_disks
 def test_a_scroll_shows_its_spells_and_a_wand_its_charges(editor):
     from editor.inventory import ItemTraitsModel
-    from por.items import Item
+    from goldbox.items import Item
     m = ItemTraitsModel()
     m.set_tables(editor.item_types, editor.spell_names)
     m.set_item(Item(editor.templates["MU SCROLL WITH 1 SPELL"], editor.item_names))
@@ -1919,7 +1919,7 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
     which code happens to be unnamed today.
     """
     from editor.effects import EffectsModel
-    from por.traits import describe
+    from goldbox.traits import describe
     assert describe(107) == "elf: 90% resistance to sleep and charm"
     assert describe(200) == "trait 200"
     m = EffectsModel(bytes([200]))
@@ -1986,7 +1986,7 @@ def _title_save(where, pattern, game, into):
     Copied because a test must never write to the player's disks, and the
     editor is a program that writes.
     """
-    from por.d64 import D64
+    from goldbox.d64 import D64
     if where is None:
         pytest.skip(f"needs the {game.title} disks")
     _copy_disks(where, pattern, into)
@@ -2005,7 +2005,7 @@ def _curse_window(app, tmp_path):
     from gamedata import curse_dir
 
     from editor.window import EditorWindow
-    from por import games
+    from goldbox import games
     save = _title_save(curse_dir(), "CURSE*.[dD]64",
                        games.CURSE_OF_THE_AZURE_BONDS, tmp_path)
     return EditorWindow(str(save))
@@ -2013,7 +2013,7 @@ def _curse_window(app, tmp_path):
 
 def _silver_blades_window(app, tmp_path):
     from editor.window import EditorWindow
-    from por import games
+    from goldbox import games
     ssb_dir = pytest.importorskip("tests.test_silverblades").ssb_dir
     save = _title_save(ssb_dir(), "SILVER*.[dD]64",
                        games.SECRET_OF_THE_SILVER_BLADES, tmp_path)
@@ -2034,7 +2034,7 @@ def test_a_curse_spellbook_names_its_spells_rather_than_numbering_them(
     for the wrong file raised, the exception was logged and swallowed, and an
     empty name table looks exactly like a missing game disk.
     """
-    from por import games
+    from goldbox import games
     window = _curse_window(app, tmp_path)
     assert window.party.game is games.CURSE_OF_THE_AZURE_BONDS
     assert window.spell_names, "no spell names off a Curse disk"
@@ -2050,7 +2050,7 @@ def test_a_silver_blades_spellbook_names_its_spells_too(app, tmp_path):
     """#80, third title. Silver Blades moves two of the fifty-six -- 36 is
     `HEAL` where Pool of Radiance has `ANIMATE DEAD` -- so a spellbook read
     against the wrong table would be wrong even where it was not blank."""
-    from por import games
+    from goldbox import games
     window = _silver_blades_window(app, tmp_path)
     assert window.party.game is games.SECRET_OF_THE_SILVER_BLADES
     rows = _rows(window._spell_widgets()[0])
@@ -2063,11 +2063,11 @@ def test_the_editor_and_the_automapper_name_the_same_spells(app, tmp_path):
     """The disagreement was the clearest evidence of #80 and is the test.
 
     `automap/window.py::_names_for_spells` calls
-    `por.spells.load_spell_names(path, game)` -- with the title. The editor
+    `goldbox.spells.load_spell_names(path, game)` -- with the title. The editor
     called it without, so the two windows named the same character's spells
     differently: the map said `STINKING CLOUD` and the sheet said `spell 34`.
     """
-    from por.spells import load_spell_names
+    from goldbox.spells import load_spell_names
     for build in (_curse_window, _silver_blades_window):
         window = build(app, tmp_path)
         disk = window._find_game_disk()
@@ -2090,8 +2090,8 @@ def test_a_silver_blades_casters_spellbook_reaches_past_spell_fifty_five(
     that many -- so `CONFUSION`, `FIRE SHIELD`, `MINOR GLOBE OF INVULNERABLITY`
     and `HOLD MONSTERS`, ids 82, 85, 88 and 94, had no tick box to appear in.
     """
-    from por.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
-    from por.spells import spells_known
+    from goldbox.spells import SECRET_OF_THE_SILVER_BLADES as TABLE
+    from goldbox.spells import spells_known
 
     window = _silver_blades_window(app, tmp_path)
     row = next(r for r in range(window.model.rowCount())

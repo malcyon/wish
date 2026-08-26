@@ -247,7 +247,7 @@ cache bytes differ between the two, and the bisection is
 
 Slot 11 alone is sufficient and every failing case is a case without it. The
 same one byte written into the converter's own output — a DOS overland save
-converted by `por.dos.convert_save` — moves it from stuck in all four
+converted by `goldbox.dos.convert_save` — moves it from stuck in all four
 directions to standing in New Phlan at `W 15,1`.
 
 **The value is `00` and there is no other.** `ANIMATE00` is the only `ANIMATE`

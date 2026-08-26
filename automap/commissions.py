@@ -8,7 +8,7 @@ Read-only, and deliberately. Every byte behind this panel is a plot flag, and
 writing one would mean claiming to know what the rest of the script expects
 afterwards. Displaying them promises nothing.
 
-All the decoding is `por/commissions.py`, which has no Qt in it and is tested
+All the decoding is `goldbox/commissions.py`, which has no Qt in it and is tested
 against saves. This module is presentation: `update_from()` takes the same
 bytes that module does -- the 224 flags at `$4A20`, a `SaveGame0`, or a whole
 `SAVEDGAME0` image -- so it works from a live read and from a save file alike.
@@ -44,7 +44,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por import commissions as book
+from goldbox import commissions as book
 
 from .panel import CARD, LATTICE, MUTED
 
@@ -67,7 +67,7 @@ UNBOARDED = {
 }
 
 # What a candidate's gate reads besides its own ledger entries. `_gate` in
-# `por/commissions.py` is the authority; this is the same thing in words, for
+# `goldbox/commissions.py` is the authority; this is the same thing in words, for
 # the tooltip, and it is why a row can be finished and still on the board.
 GATE_NOTES = {
     2: "gated on the book bounty flag $4AC2, not on the six entries",
@@ -163,7 +163,7 @@ PLACES = {"slums": "Slums"}
 def _sentence(text: str) -> str:
     """First letter up, place names capitalised, nothing else touched.
 
-    Both done here rather than in `por/commissions.py`, because the strings
+    Both done here rather than in `goldbox/commissions.py`, because the strings
     there are the clerk's own speech as the bytecode carries it and are cited
     as such -- "clear the slums" is what is on the board, and "Clear the Slums"
     is what a quest log should say. `str.capitalize` would lower the rest and
@@ -179,7 +179,7 @@ def _note(commission, entries) -> str:
 
     Two shapes. A commission spanning several ledger entries counts them --
     "3 of 6 books recovered". A single entry that keeps a progress marker says
-    what the marker means, which `por.commissions.marker_text` decoded: only
+    what the marker means, which `goldbox.commissions.marker_text` decoded: only
     four entries have one, and only the slums' counts anything.
     """
     if commission.unit:
@@ -411,7 +411,7 @@ class CommissionsPanel(QWidget):
                              else "Commissions")
 
     def update_from(self, source) -> None:
-        """Redraw from the flag block. Same input as `por.commissions.read`."""
+        """Redraw from the flag block. Same input as `goldbox.commissions.read`."""
         flags = book.flags(source)
         if self._flags is not None and flags.to_bytes() == self._flags:
             return                      # plot flags move rarely; skip the churn

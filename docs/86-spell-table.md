@@ -5,7 +5,7 @@ game disk, so the spellings are the game's own.
 
 A character's memorised spells are a packed list of these ids at record
 offset `0x020`, highest spell level first. The file format is described
-in `por/spells.py`; the short version is that the strings **overlap** —
+in `goldbox/spells.py`; the short version is that the strings **overlap** —
 `CURE LIGHT WOUNDS` and `CAUSE LIGHT WOUNDS` share one copy of
 ` LIGHT WOUNDS` — so the table has to be read through its pointers.
 

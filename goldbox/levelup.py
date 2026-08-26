@@ -63,7 +63,7 @@ THIEF_FIELDS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
                 "thief_hear_noise", "thief_climb_walls",
                 "thief_read_languages")
 
-#: The cleric's bit in the mask at `0x0EB`, for asking `por.spells.capacity`
+#: The cleric's bit in the mask at `0x0EB`, for asking `goldbox.spells.capacity`
 #: about a cleric without a record in hand.
 CLASS_CLERIC = {n: b for b, n in CLASS_BITS_CLASSIC}["cleric"]
 
@@ -123,7 +123,7 @@ def _tables_for(game):
     and the old guard here (`not tables.thief_skills`) never fired for it,
     because the fallback has thief skills.
 
-    Refusing is the visible half of the same rule `por.spells.capacity`
+    Refusing is the visible half of the same rule `goldbox.spells.capacity`
     follows by returning nothing: an unread table shows as unread.
 
     UNAPPROVED WORDING: the refusal below is a new string and Donald has not
@@ -166,7 +166,7 @@ def ready_classes(record, game=None) -> list[str]:
     `GEN $1BBC` walks the class's threshold column downwards and takes the
     first row it is not below (`SBC` then `BCS`), and the rows themselves hold
     2501 for magic-user 2 where AD&D prints 2500 -- so 2500 exactly is refused
-    and 2501 is offered. `por/levels.py` stores the game's numbers, which is
+    and 2501 is offered. `goldbox/levels.py` stores the game's numbers, which is
     why the comparison here is a plain `>=`.
     """
     experience = record.get("experience") or 0
@@ -301,7 +301,7 @@ def learnable(record, game=None, level: int | None = None) -> list[int]:
 def _castable_levels(cleric_level: int, game=None) -> int:
     """How many spell levels a cleric of that level may cast, per title.
 
-    The title's own slot table, read through `por.spells.capacity`, and not a
+    The title's own slot table, read through `goldbox.spells.capacity`, and not a
     ladder: Pool of Radiance's `GEN $222C` gives a new level at cleric 1, 3 and
     5, Curse's `ECL65` continues to 7 and 9, and both fall straight out of
     counting the leading non-zero columns of the cleric row.

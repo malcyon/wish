@@ -1,6 +1,6 @@
 """The game's memory map, as data.
 
-`por/layout.py` is the single source of truth for the 580-byte character record,
+`goldbox/layout.py` is the single source of truth for the 580-byte character record,
 and it works: every field carries a confidence, the docs are generated from it,
 and nothing drifts. Nothing played that role for **everything outside a record**
 -- the party header, the loader's caches, the combat tables -- so those addresses

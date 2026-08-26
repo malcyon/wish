@@ -433,11 +433,11 @@ def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
 
     `tools/dosbox.py` reports the facing byte as the file carries it, doubled,
     because a differential between two driven saves is written in file bytes;
-    `por.dos_savegame.position` reports the C64's 0-3 because that is what a
+    `goldbox.dos_savegame.position` reports the C64's 0-3 because that is what a
     conversion writes.  Collapsing the harness onto the other accessor -- the
     obvious next tidy -- halves every facing a driven run reports, silently.
     """
-    from por import dos_savegame as sg
+    from goldbox import dos_savegame as sg
 
     for letter, data in _need_saves().items():
         x, y, facing = dosbox.position(data)
@@ -449,7 +449,7 @@ def test_the_harness_reads_the_facing_the_file_carries_and_por_halves_it():
 
 def test_the_area_id_is_one_the_c64_area_table_knows():
     """The numbering is the same on both ports, which is the finding."""
-    from por.areas import AREAS_BY_ID
+    from goldbox.areas import AREAS_BY_ID
 
     for letter, data in _need_saves().items():
         assert dosbox.area_id(data) in AREAS_BY_ID, letter
@@ -491,12 +491,12 @@ def test_the_header_byte_names_more_than_one_area_so_it_is_not_the_map():
 def test_the_c64_arrival_square_for_new_phlan_is_where_the_boat_lands():
     """A cross-port check that costs nothing and would catch a wrong offset.
 
-    `por/areas.py` records New Phlan's arrival as (15, 1) facing west, measured
+    `goldbox/areas.py` records New Phlan's arrival as (15, 1) facing west, measured
     on the C64.  Driving DOS and taking the boat back to Phlan puts the party
     at DOS (15, 1) facing 6 -- west, doubled.  The saved run is kept under
     `work/dosbox/p47/`, which is gitignored, so this skips without it.
     """
-    from por.areas import AREAS_BY_ID
+    from goldbox.areas import AREAS_BY_ID
 
     path = (
         pathlib.Path(__file__).resolve().parent.parent
@@ -679,7 +679,7 @@ def test_the_dos_item_tail_projects_onto_the_c64_record():
     bit, the weight, the quantity, the cost or the three special bytes wrong
     and the count collapses.
     """
-    from por.items import load_item_templates
+    from goldbox.items import load_item_templates
     from tests.gamedata import game_disk
 
     c64 = set(load_item_templates(str(game_disk("POOL1"))).values())
@@ -694,7 +694,7 @@ def test_the_dos_name_words_are_the_c64_itemnames_indices():
     Not a text match against the rendered line: the same three numbers mean
     the same three words on both ports, and every one the game ships resolves.
     """
-    from por.items import load_item_names
+    from goldbox.items import load_item_names
     from tests.gamedata import game_disk
 
     names = load_item_names(str(game_disk("POOL1")))
@@ -747,7 +747,7 @@ def test_the_hidden_name_mask_hides_the_words_the_c64_mask_hides():
     records leak a "+1" the party has not discovered yet; read this way, none
     does.  It is the C64's mask at +6 bits 0-2, same order.
     """
-    from por.items import load_item_names
+    from goldbox.items import load_item_names
     from tests.gamedata import game_disk
 
     names = load_item_names(str(game_disk("POOL1")))

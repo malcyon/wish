@@ -15,10 +15,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from por import layout
-from por.d64 import D64, split_load_address
-from por.record import RECORD_SIZE, CharacterRecord
-from por.savegame import SaveGame0
+from goldbox import layout
+from goldbox.d64 import D64, split_load_address
+from goldbox.record import RECORD_SIZE, CharacterRecord
+from goldbox.savegame import SaveGame0
 
 
 def hexdump(data: bytes, base: int = 0, width: int = 16) -> str:

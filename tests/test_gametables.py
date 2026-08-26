@@ -1,6 +1,6 @@
 """The per-title tables: races, class bits, and where ITEMNAMES loads.
 
-`por/yaml_io.py` used to hold one race table and one class-bit table for all
+`goldbox/yaml_io.py` used to hold one race table and one class-bit table for all
 six titles, and they were Pool of Radiance's. Silver Blades moves human from 7
 to 6, the Krynn titles number a different list from 0, and Curse's `ITEMNAMES`
 loads at $9E00 rather than $6F00 -- so the shared tables were wrong for four
@@ -18,8 +18,8 @@ import pathlib
 
 import pytest
 
-from por import games, items, yaml_io
-from por.d64 import D64, split_load_address
+from goldbox import games, items, yaml_io
+from goldbox.d64 import D64, split_load_address
 
 KEYS = [g.key for g in games.GAMES]
 
@@ -245,7 +245,7 @@ def test_no_address_means_no_names_and_no_disk_read():
 def item_names_disk(key: str) -> str:
     """A side of this title's disks that carries a readable `ITEMNAMES`.
 
-    Skips otherwise -- one Champions side is a 40-track rip `por/d64.py`
+    Skips otherwise -- one Champions side is a 40-track rip `goldbox/d64.py`
     refuses, and it may be the only side holding the file.
     """
     for path in disks_for(key):

@@ -1,6 +1,6 @@
 """The ten trait slots at `0x0AD`, spelled out on the character sheet.
 
-The codes themselves live in `por/traits.py` -- the combat view names the same
+The codes themselves live in `goldbox/traits.py` -- the combat view names the same
 ones on a monster's tooltip, and one table cannot be allowed to become two.
 This module is the sheet's view of them: ten rows, coloured by confidence.
 
@@ -21,7 +21,7 @@ from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QTableView
 
 # EMPTY is re-exported: the form's tests read it as `effects.EMPTY`.
-from por.traits import EMPTY, NAMES, SLOTS, describe  # noqa: F401
+from goldbox.traits import EMPTY, NAMES, SLOTS, describe  # noqa: F401
 
 FADED = QColor("#808080")
 UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is

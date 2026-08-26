@@ -38,8 +38,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from por import strength as strengthmod
-from por.geo import GRID
+from goldbox import strength as strengthmod
+from goldbox.geo import GRID
 from ui.iconpaint import draw_icon
 
 from . import actions, combat, live
@@ -112,7 +112,7 @@ _log = logging.getLogger("wish.automap.window")
 
 def game_named(title: str | None):
     """The `Game` this title is, for the readers that need one."""
-    from por import games
+    from goldbox import games
     return games.by_title(title)
 
 
@@ -1160,7 +1160,7 @@ class AutomapWindow(QMainWindow):
             root = find_disks(game)
             for path in (_disk_images(root, game) if root else ()):
                 try:
-                    from por.spells import load_spell_names
+                    from goldbox.spells import load_spell_names
                     found = load_spell_names(str(path), game)
                 except Exception as exc:                # not the right disk
                     _log.debug("no spell names on %s: %s", path.name, exc)

@@ -32,7 +32,7 @@ unpacks to the C64's own scripts, and DOS and C64 *Curse* differ only in a
 script's 2-byte header. So an address the DOS scripts use is an address our
 scripts use, and the character record answers to a fixed `$6B00`.
 
-That turns §12.4.2 into a field list for `por/layout.py`. Twenty entries land on
+That turns §12.4.2 into a field list for `goldbox/layout.py`. Twenty entries land on
 fields we already had, at the same offsets, which is corroboration we did not
 have before. **Six land inside gaps.** All six were then checked against the
 `MON*` records on the player's disks:
@@ -57,7 +57,7 @@ disks agree:
   primary attacks ×2, secondary attacks ×2, primary dice, secondary dice,
   primary sides, secondary sides, primary bonus, secondary bonus. TROLL reads
   `04 02 01 02 04 06 04 00` = two 1d4+4 claws and one 2d6 bite, which is the
-  Monster Manual. That is the same decode `por/layout.py` already records, seen
+  Monster Manual. That is the same decode `goldbox/layout.py` already records, seen
   column-first instead of row-first; both readings are right and the DOS one is
   the engine's own.
 
@@ -65,13 +65,13 @@ disks agree:
 
 DOS orders `0x0C9`-`0x0D0` cleric, druid, fighter, paladin, ranger, magic-user,
 thief, monk. **The C64 orders it magic-user, cleric, thief, fighter, druid,
-monk, paladin, ranger** — which is `por.items.CLASS_USAGE_BITS`, i.e. the bit
+monk, paladin, ranger** — which is `goldbox.items.CLASS_USAGE_BITS`, i.e. the bit
 order of the item-usability mask `CLASSRESTRICTION`. So the C64 indexes the
 level array by `class_bits` bit position and DOS does not.
 
 CONFIRMED from `party6_savedgame0.bin`: a magic-user's level sits at index 0, a
 cleric's at 1, a fighter's at 3, and Lady Katherine (magic-user/thief) carries
-both 0 and 2. That promotes four PROBABLE labels in `por/layout.py` and gives
+both 0 and 2. That promotes four PROBABLE labels in `goldbox/layout.py` and gives
 them a reason. Two consequences:
 
 * **`0x0CD` is the druid slot in Pool of Radiance, not the knight slot.** The
@@ -92,11 +92,11 @@ have never opened, offered as a work list rather than as findings:
 | `0x0B9`-`0x0BA` | unknown, "always 0 for monsters" | likewise |
 | `0x0E2` | strength-bonus-applies flag | we call it `strength_index` |
 | `0x0ED` | maximum hit points before Constitution and `M`odify | we call it `hp_rolled`; the reading matches |
-| `0x0EE`-`0x0F3` | three cleric then three magic-user spell counts | on the C64 these are **nibble-packed**, cleric high, magic-user low (`por/layout.py` already has this) — another place the C64 halved a DOS field |
+| `0x0EE`-`0x0F3` | three cleric then three magic-user spell counts | on the C64 these are **nibble-packed**, cleric high, magic-user low (`goldbox/layout.py` already has this) — another place the C64 halved a DOS field |
 | `0x110` | current 60 − armour class **from behind** | see below |
 | `0x111`-`0x118` | current attack form, eight fields mirroring `0x0D9` | see below |
 
-**`por/savegame.py`'s roster names look wrong.** It calls roster `+0x10`
+**`goldbox/savegame.py`'s roster names look wrong.** It calls roster `+0x10`
 `ARMOUR_BONUS`, `+0x11` unknown, `+0x15` `EQUIPMENT` ("rises with what is
 readied") and `+0x17` `DAMAGE_BONUS`. Against the monster records those are:
 `+0x10` = 60 − rear armour class (TROLL 54 → AC 6, against 56 → AC 4 from the
@@ -176,7 +176,7 @@ Two people, two ports, two methods, one flag.
 What the guide adds is the part we could not get from bytecode: **what each flag
 means in the story.** Our report attributes 172 addresses to scripts; the guide
 names 229 in English. Merging them is a cheap, high-value job for whoever next
-touches `por/commissions.py` or the quest panel. It also fills `$4A00`-`$4A1F`,
+touches `goldbox/commissions.py` or the quest panel. It also fills `$4A00`-`$4A1F`,
 the per-script scratch page, which we deliberately left alone: the guide lists
 each of those 32 bytes with the different meaning every area gives it.
 
@@ -187,7 +187,7 @@ C64 stores them as bytes. Addresses transfer, widths do not.
 
 ## The area table: five names and one deletion
 
-Guide §12.3.1 lists every script by number. Against `por/areas.py`:
+Guide §12.3.1 lists every script by number. Against `goldbox/areas.py`:
 
 | id | ours | the guide | verdict |
 |---|---|---|---|
@@ -224,7 +224,7 @@ files on our disks.
 ## Items: two new fields in `ITEMS`, and a rule we got by accident
 
 `GB_ITM-Base.hexpat` describes the base-item table as **128 records of 16
-bytes**, which is our `ITEMS` exactly, and names two bytes `por/items.py` does
+bytes**, which is our `ITEMS` exactly, and names two bytes `goldbox/items.py` does
 not:
 
 | offset | field | checked on our disks |
@@ -235,7 +235,7 @@ not:
 `+8` is 0 or 128 and both sources call it unknown. `+15` is zero throughout.
 
 **The protection byte is `60 - AC` with bit 7 set, not a nibble.**
-`por/items.py` reads body armour as `12 - (byte & 0x0F)` under a `0xB0` mask and
+`goldbox/items.py` reads body armour as `12 - (byte & 0x0F)` under a `0xB0` mask and
 a shield as `byte & 0x0F` under `0x80`. The engine's rule is `bit 7 = it grants
 protection` and the low **seven** bits hold the same biased `60 - value` the
 record uses for THAC0 and armour class everywhere else. The two agree on every
@@ -247,13 +247,13 @@ The 16-byte C64 item record is the DOS 17-byte record with one byte removed:
 DOS keeps *equipped*, *name-hiding flags* and *cursed* as three separate bytes
 at `+6`, `+7`, `+8`; the C64 packs equipped and the hiding flags into `+6` and
 keeps cursed at `+7`. Everything from `+8` on is DOS shifted down by one, which
-is why `por/items.py`'s existing offsets all line up.
+is why `goldbox/items.py`'s existing offsets all line up.
 
 ### The effect table is ours
 
 Guide §12.2.3 enumerates **127 effect ids**. That is the namespace our
 `work/reports/effects.md` decoded structurally without ever getting names for
-the monster half. Three spot checks, all from `por/items.py`'s own notes:
+the monster half. Three spot checks, all from `goldbox/items.py`'s own notes:
 
 | our note | the guide |
 |---|---|
@@ -273,7 +273,7 @@ to 139 and the guide's stops at 127; the tail needs checking.
 ## Spells: our grouping confirmed, our tail is different
 
 `GB_ENUM.cs`'s `SPL_NAME01` gives ids 1-56 for the DOS build, and the group
-boundaries are `por.spells.SPELL_GROUPS` byte for byte — cleric 1 at 1-8,
+boundaries are `goldbox.spells.SPELL_GROUPS` byte for byte — cleric 1 at 1-8,
 magic-user 1 at 9-21, cleric 2 at 22-28, magic-user 2 at 29-35, cleric 3 at
 36-44, magic-user 3 at 45-55, Restoration at 56. CONFIRMED, independently.
 
@@ -295,13 +295,13 @@ Training is 1000 gold or 200 platinum a level, in New Phlan only.
 
 ## Commissions: ten for ten
 
-`por.commissions.MAJOR` — the ten quests that advance the tracker — is
+`goldbox.commissions.MAJOR` — the ten quests that advance the tracker — is
 `{0, 1, 10, 11, 12, 13, 15, 16, 17, 21}`. The guide lists the same ten in
 English: slums, Sokal Keep, the Podol Plaza auction, Kovel Mansion, nomads,
 kobolds, the river, lizardmen, the graveyard, Norris the Gray. Exact match, and
 we derived ours from bytecode.
 
-**Lead on ledger 22**, the one entry `por/commissions.py` has as `(None, None)`.
+**Lead on ledger 22**, the one entry `goldbox/commissions.py` has as `(None, None)`.
 The guide lists a "clear Podal Plaza" reward that is distinct from commission 4
 (discover the auction item = our ledger 10) and pays the same 200 platinum and
 250 gold as the other clearance rewards. That is the shape of a ledger entry
@@ -420,7 +420,7 @@ than prose.
 | `GB_VLT` | the vault | **Pool of Radiance and Curse have no vault.** Nothing to do |
 | `GB_UA_SCRIPT` | `SCRIPT.GLB` | above |
 
-Barrier value 3, which `por/geo.py` calls `WIZARD_LOCKED`, is "hard-to-open
+Barrier value 3, which `goldbox/geo.py` calls `WIZARD_LOCKED`, is "hard-to-open
 barred door" in the guide and "locked, unpickable" in the pattern. Neither
 source connects it to a wizard lock. The name is ours and should probably go.
 

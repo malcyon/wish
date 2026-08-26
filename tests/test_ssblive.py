@@ -10,11 +10,11 @@ Three kinds of assertion, and they are different in nature:
   nine completed and three refused, recorded square by square. Against the
   decoded map every completed move must cross a passable edge and every refusal
   must meet an impassable one. That is the automapper validation, frozen: if a
-  later change to `por/geo.py` starts reading the barrier planes differently,
+  later change to `goldbox/geo.py` starts reading the barrier planes differently,
   these twelve facts fail.
 * **The import diff**, expressed as the rule it obeys rather than as bytes. The
   game rewrote `0x072` from 7 to 6, from 4 to 2 and from 2 to 1 -- which is
-  exactly "keep the race, take Silver Blades' code for it". `por/games.py`'s two
+  exactly "keep the race, take Silver Blades' code for it". `goldbox/games.py`'s two
   race tables have to agree with that.
 * **The spellbook's width.** `GEN` clears sixteen bytes at the record's `0x078`,
   so the mask is `0x078`-`0x087`; the shipped party reaches `0x083` and no
@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import pytest
 
-from por import games
-from por.d64 import D64, split_load_address
-from por.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
+from goldbox import games
+from goldbox.d64 import D64, split_load_address
+from goldbox.geo import EAST, GEO_SIZE, NORTH, SOUTH, WEST, Geo
 from tests.gamedata import curse_dir, curse_disks
 from tests.test_silverblades import _party, ssb_dir, ssb_disks
 
@@ -138,7 +138,7 @@ def test_the_import_rewrites_the_race_byte_into_silver_blades_numbering():
     """`0x072` went 7 to 6, 4 to 2 and 2 to 1 across six imported characters.
 
     Not a diff of specimens: the game's own import arithmetic. Each pair is
-    "same race, this title's code for it", so `por/games.py`'s two tables have
+    "same race, this title's code for it", so `goldbox/games.py`'s two tables have
     to reproduce all three -- and human moving 7 to 6 is the one that would
     silently turn a Curse human into a Silver Blades halfling if either table
     were wrong.
@@ -225,7 +225,7 @@ def _assemble(payload: bytes, i: int) -> bytes:
 
 
 def test_the_shipped_casters_reach_0x083_and_no_further():
-    """Twelve bytes by usage, where `por/layout.py` declares seven.
+    """Twelve bytes by usage, where `goldbox/layout.py` declares seven.
 
     MORGAINE sets `0x082` and `0x083`, DOMINIC `0x07F` and `0x080`, PAINE
     `0x081` and `0x082` -- three casters, three different bands, and every
@@ -247,7 +247,7 @@ def test_no_shipped_caster_writes_between_the_spellbook_and_the_saves():
     """`0x088`-`0x097` is not spellbook, and nothing in the party uses it.
 
     `GEN` clears sixteen bytes from `0x078`, so the mask stops at `0x087`; the
-    twenty-five bytes `por/layout.py` calls `gap_07f` are therefore the mask's
+    twenty-five bytes `goldbox/layout.py` calls `gap_07f` are therefore the mask's
     last nine plus sixteen that stay unexplained. This pins the second half so
     a later reading cannot quietly widen the field into it.
     """
@@ -265,7 +265,7 @@ def test_the_position_triple_and_the_clock_sit_at_pool_of_radiances_offsets():
     """Measured live at `$4BC0` and `$4BC7`, which are those offsets on `$4B00`.
 
     The shipped save has never adventured, so it reads zero everywhere here;
-    what this asserts is that `por/savegame.py` computes the same addresses the
+    what this asserts is that `goldbox/savegame.py` computes the same addresses the
     driven game was read at, which is the part that could rot.
     """
     sg0, _ = _party()

@@ -5,7 +5,7 @@ because it was written to hand its party on to *Curse of the Azure Bonds*;
 Curse raises every ceiling, adds paladin and ranger, and carries thirteen
 experience rows where Pool of Radiance carries nine. Nothing about that is a
 different *kind* of table, so this module is data per title -- the same choice
-`por/games.py` made -- and every entry point takes an optional `game`.
+`goldbox/games.py` made -- and every entry point takes an optional `game`.
 
 **Every number here is either read off the player's own disks or transcribed
 from AD&D 1st edition and then checked against them.** The tables the game
@@ -313,7 +313,7 @@ CURSE_RANGER = _progression(
 
 # --- what the trainer rolls and looks up --------------------------------------
 # Everything below is Pool of Radiance's `GEN`, read byte for byte, and is what
-# lets `por/levelup.py` reproduce a training without one. Curse has its own
+# lets `goldbox/levelup.py` reproduce a training without one. Curse has its own
 # copies of all of it and none of them has been read, which is why these are
 # fields on the per-title descriptor with an empty default rather than module
 # constants that would answer for a title nobody measured.
@@ -431,7 +431,7 @@ class LevelTables:
     """One title's progression, as data.
 
     Pairs rather than dicts so the descriptor stays hashable and frozen, which
-    is the shape `por/games.py` settled on for the same reason.
+    is the shape `goldbox/games.py` settled on for the same reason.
 
     `class_order` is **class-bit order** -- index `n` is bit `n` of
     `class_bits` at `0x0EB` and slot `n` of the per-class level array at
@@ -638,11 +638,11 @@ def trainer_measured(game=None) -> bool:
 def for_game(game=None) -> LevelTables:
     """The tables for a title.
 
-    Takes a `por.games.Game`, a game key, a `LevelTables`, or None. Deliberately
-    duck-typed on `.key` rather than importing `por.games`: this module needs
+    Takes a `goldbox.games.Game`, a game key, a `LevelTables`, or None. Deliberately
+    duck-typed on `.key` rather than importing `goldbox.games`: this module needs
     one string from that one, and a title it has no tables for falls back to
     Pool of Radiance rather than raising, because every geometry-only title in
-    `por/games.py` runs an engine whose progression has not been read.
+    `goldbox/games.py` runs an engine whose progression has not been read.
     """
     if isinstance(game, LevelTables):
         return game

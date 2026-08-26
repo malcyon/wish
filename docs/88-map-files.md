@@ -1,8 +1,8 @@
 # The `GEO` map files
 
 **Generated** by `tools/genmaps.py` — do not edit. Decoded in
-[GEO is solved](50-experiments.md); the reader is `por/geo.py`, `tools/geomap.py`
-renders them, and [`por/areas.py`](../por/areas.py) says which area loads which
+[GEO is solved](50-experiments.md); the reader is `goldbox/geo.py`, `tools/geomap.py`
+renders them, and [`goldbox/areas.py`](../goldbox/areas.py) says which area loads which
 file and what it is called.
 
 Four 256-byte planes over a 16×16 grid, indexed `x + (y << 4)` — row-major, y
@@ -26,7 +26,7 @@ where there is wall art**, so a wall and a barrier are independent:
 | 2 | locked door |
 | 3 | barred door — locked and unpickable, bashed against a tougher table |
 
-`por/geo.py` still spells value 3 `WIZARD_LOCKED`, and that name is ours alone:
+`goldbox/geo.py` still spells value 3 `WIZARD_LOCKED`, and that name is ours alone:
 the Gold Box guide calls it a "hard-to-open barred door" and
 `GB_GEO.hexpat` "locked, unpickable". Neither connects it to the spell. See
 [the community formats](128-guide-and-scripting.md).
@@ -85,7 +85,7 @@ windows**, areas 25 and 27, each drawn over its own `SQRDATA`; and the two least
 roofed, `GEO10` and `GEO11`, are the **Lizardman Keep** and the **Nomad Camp**,
 which are outdoor but not wilderness. Both pairs were guessed the other way
 round from these columns alone. What a file *is* comes from the script that
-loads it, and that table is `por/areas.py`.
+loads it, and that table is `goldbox/areas.py`.
 
 ## The nine Phlan city blocks
 
@@ -110,4 +110,4 @@ in the matrix scoring above 0.316. See
 loader's twenty-five-slot "what is currently loaded" cache at `$4BC0`-`$4BD8`
 — [the loaded-files cache](140-loaded-files-cache.md), which is where the other
 twenty-four slots are. Bit 7 is a reload marker and must be masked off.
-`por/savegame.py` exposes it as `SaveGame0.area` and `.area_file`.
+`goldbox/savegame.py` exposes it as `SaveGame0.area` and `.area_file`.

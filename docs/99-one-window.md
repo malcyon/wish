@@ -6,7 +6,7 @@ onto the tab each name implies. The build report is
 one part that is **unverified**, because nobody has the hardware.
 
 Two programs when this was written: `wish-editor` (a file tool) and
-`wish-automap` (a live map). They shared `por/`, a toolkit and a purpose, and
+`wish-automap` (a live map). They shared `goldbox/`, a toolkit and a purpose, and
 nothing else. This merges them into one application with tabs, and reshapes the
 character sheet.
 
@@ -61,7 +61,7 @@ Two boxes are big enough to deserve their own scroll area rather than stretching
 the page: **Inventory** and **Spells**. Everything else fits.
 
 **Nothing about the binding changes.** Widgets still bind by `objectName` —
-`field_strength` to the `strength` field in `por/layout.py` — and `findChild`
+`field_strength` to the `strength` field in `goldbox/layout.py` — and `findChild`
 does not care whether the widget's parent is a tab or a group box. The read-only
 rules, the flush-before-switch, the losslessness test: all untouched.
 
@@ -87,7 +87,7 @@ wish/
 ```
 
 That keeps the project's first decision intact: **the editor never talks to a
-live machine** ([README.md](README.md) §"How the code is laid out"). `editor/` gains no import of `automap`, `por/` stays
+live machine** ([README.md](README.md) §"How the code is laid out"). `editor/` gains no import of `automap`, `goldbox/` stays
 transport-free, and the file path — open, edit, save — works with no emulator
 present, which is how most people will use it.
 

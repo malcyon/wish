@@ -23,7 +23,7 @@ from gamedata import disk_dir, needs_disks, synthetic_save
 
 from automap import paths
 from automap.config import Settings, clamp_to_screen, restore_geometry
-from por import games
+from goldbox import games
 from wish import preferences
 from wish.preferences import PreferencesDialog, report
 
@@ -752,7 +752,7 @@ def test_a_fresh_config_ticks_the_three_areas_and_nothing_else(app, tmp_path,
 def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
     """`ECL1E` is the attract-mode demo and entering it ends the session. It
     is `Area.warpable` that says so, not an id written down twice."""
-    from por import areas
+    from goldbox import areas
 
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))

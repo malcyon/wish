@@ -336,7 +336,7 @@ def test_a_combo_shows_its_longest_name_however_wide_the_arrow_is(app):
 
 @game_disks
 def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
-    """Not one field, all sixty-two, against what `por/layout.py` says each
+    """Not one field, all sixty-two, against what `goldbox/layout.py` says each
     can hold. A form sized field by field grows a field that was missed.
 
     `editor.window.TRIMMED` is the one exception and is read from there rather
@@ -352,7 +352,7 @@ def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
 
     from editor.binding import widest_text
     from editor.window import TRIMMED, EditorWindow
-    from por.layout import FIELDS_BY_NAME
+    from goldbox.layout import FIELDS_BY_NAME
 
     assert set(TRIMMED) == {"name"}
 

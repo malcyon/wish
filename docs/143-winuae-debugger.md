@@ -546,8 +546,8 @@ That is a better first move than disassembling, and it is how a C64 address in
 `docs/40-memory-map.md` would have been found if VICE had the feature.
 
 **The Amiga is not the C64 and the addresses do not carry over.** Nothing in
-`por/games.py` applies: different CPU, different memory map, relocatable
-hunks. `por/amiga.py` decodes the *save record*, which is a file format and
+`goldbox/games.py` applies: different CPU, different memory map, relocatable
+hunks. `goldbox/amiga.py` decodes the *save record*, which is a file format and
 title-independent; a live address is neither.
 
 ## 10. Fitting it to `automap`

@@ -1,9 +1,9 @@
 """The memory map is descriptive, so the tests check it stays honest."""
 
 
-from por import savegame
-from por.layout import Confidence
-from por.memory import MAP, at, describe, saved_regions
+from goldbox import savegame
+from goldbox.layout import Confidence
+from goldbox.memory import MAP, at, describe, saved_regions
 
 
 def test_regions_are_sane():

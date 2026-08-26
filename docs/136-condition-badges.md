@@ -7,7 +7,7 @@ a column filled in.
 The roster card badges two conditions today — dead or dying, and levels drained.
 `docs/109-icon-choices.md` recorded a third row as **blocked**: "roster —
 poisoned, paralysed — the effect codes are not decoded". That is out of date.
-The codes are decoded, 66 of the 129 names in `por/traits.py` are CONFIRMED, and
+The codes are decoded, 66 of the 129 names in `goldbox/traits.py` are CONFIRMED, and
 the question is no longer *what can we show* but *what is worth showing*.
 
 ## Three findings, and they narrow the choosing
@@ -19,7 +19,7 @@ carried by SNAKE, POISONOUS FROG, THRI-KREEN and GHOUL; 73–88 are attack forms
 monster defences — regeneration, immunities, half damage from a damage type. A
 handler for one of these reads fields a `MON*` record carries and a player
 record does not: `attack_forms` at `0x0D9` is `02 00 01 00 02 00 00 00` in every
-player character we hold. CONFIRMED, from the carrier census in `por/traits.py`.
+player character we hold. CONFIRMED, from the carrier census in `goldbox/traits.py`.
 
 **One exception, and it is a real one: 89, displaced.** TYRANITHRAXUS carries it
 *and so does the player's own CLOAK OF DISPLACEMENT*, as a passive item power
@@ -45,7 +45,7 @@ should have been lit**.
 The list that does move is the save's four 64-entry arrays — `$4900` id,
 `$4940` owner, `$4980` duration, `$4B80` magnitude. Read the id array, filter on
 the owner byte matching this character's slot, and name the id through
-`por/traits.py`. `LIBRARY $4028` reads the arrays first and falls back to the
+`goldbox/traits.py`. `LIBRARY $4028` reads the arrays first and falls back to the
 character's own slots, so one code table serves both and nothing new is needed
 to name them.
 
@@ -162,8 +162,8 @@ without choosing between them.
 
 ## The work, in order
 
-1. **`por/effects.py`**, per `docs/133-active-effects.md`: the four array
-   addresses, the `Effect` record, the owner encoding. Transport-free, in `por/`
+1. **`goldbox/effects.py`**, per `docs/133-active-effects.md`: the four array
+   addresses, the `Effect` record, the owner encoding. Transport-free, in `goldbox/`
    because `editor/` may not import `automap/` and `tests/test_wish.py` greps
    the source to enforce it. This is a prerequisite shared with the effects
    editor and should be built once.

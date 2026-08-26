@@ -3,7 +3,7 @@
 **Status: it works end to end.** A character out of the player's own C64
 *Pool of Radiance* save disk now converts to a `.pc`, and Amiga *Pools of
 Darkness* loaded it, put it in the party and drew a sheet that matches the C64
-one field for field -- see §2.5. `por/amiga.py` is the whole converter and
+one field for field -- see §2.5. `goldbox/amiga.py` is the whole converter and
 `tools/toamiga.py` is how it is invoked.
 
 **Phase 4 is done for every field the character sheet shows, and the
@@ -11,12 +11,12 @@ writer works.** Amiga Pools of Darkness **accepts a C64 Pool of Radiance
 export** as a `SAVE/NAME.pc` and puts it in the party — no length check, no
 signature check, and the `0x00`-`0x5F` heap-address block is don't-care. So the
 record was decoded by *writing* one and reading the sheet, and it is now
-written the other way round: `por.amiga.PodWriter` emits a **484-byte record
+written the other way round: `goldbox.amiga.PodWriter` emits a **484-byte record
 built from named fields alone**, and PoD drew every one of them back —
 `WRITTEN`, `FEMALE 33 YEARS`, `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`,
 `HIT POINTS 55/77`, `EXPERIENCE 10000`, `STR 18 INT 17 WIS 16 DEX 15 CON 14
 CHA 13`, `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`, `STATUS: OKAY`.
-§2.3 and §2.4 have the probes; `por/amiga.py` and `tests/test_amiga.py` carry
+§2.3 and §2.4 have the probes; `goldbox/amiga.py` and `tests/test_amiga.py` carry
 the result. The item region at `0x0B6` turned out **not** to be a wall: zero in
 it is accepted, and its error message belongs to the graphics library, not the
 inventory. Everything else below is still a costing. It exists because the
@@ -136,7 +136,7 @@ multi-byte fields byte-swapped.** That corroborates the earlier finding in
 Rosetta stone for every Amiga question in this document**.
 
 Where the +3 comes from is **three separate insertions**, measured on
-fourteen specimens (#27) and reproduced by `por.amiga.amiga_por_offset`:
+fourteen specimens (#27) and reproduced by `goldbox.amiga.amiga_por_offset`:
 
 1. one pad byte at `0x07F`, ahead of the effect pointer — zero in 14 of 14,
    and it is there because the Amiga keeps one `u32` where DOS keeps an
@@ -253,7 +253,7 @@ come out exactly. `0x18c` was the other candidate and is **refuted**: it reads
 | `0x03c`-`0x03d` | value in gold, u16 big-endian | CONFIRMED 5/5 — **each matches the price string in its own display text** |
 | `0x035`, `0x03b`, `0x03e` | 1, 52, 47 — constant in all nine | UNKNOWN |
 
-Weight is +1 and value +2 against `por/dos_layout.py`'s 63-byte DOS record;
+Weight is +1 and value +2 against `goldbox/dos_layout.py`'s 63-byte DOS record;
 which byte is padding in each case is UNKNOWN, and the three constants above
 are the candidates. **The item record is per-title on the Amiga**: 65 bytes in
 Pool of Radiance (195 = 3x65, 130 = 2x65, neither a multiple of 66) against 66
@@ -415,8 +415,8 @@ other.
 ### 1.8 Amiga Pool of Radiance, read on screen (#27)
 
 The record is decoded and **confirmed by the instrument**, not only by
-file-internal consistency. `por.amiga.AmigaPorCharacter` reads the DOS field
-table in `por/dos_layout.py` through `amiga_por_offset`, big-endian; there is
+file-internal consistency. `goldbox.amiga.AmigaPorCharacter` reads the DOS field
+table in `goldbox/dos_layout.py` through `amiga_por_offset`, big-endian; there is
 no second table, so the two cannot drift apart.
 
 **Twenty specimens.** Fourteen 288-byte `.cha` files on the Curse save disk
@@ -454,7 +454,7 @@ roster, and every field of the one sheet photographed:
 directory named by `$AMIGA_POR_SAVES`, skipping without one.
 
 **A DOS-side consequence.** `movement_current` at DOS `0x11C` is PROBABLE in
-`por/dos_layout.py`; the Amiga's counterpart is drawn on the sheet as
+`goldbox/dos_layout.py`; the Amiga's counterpart is drawn on the sheet as
 `MOVEMENT 9` beside a base of 12, which settles the field and independently
 refutes the third-party claim that the byte is an AD&D class group (#59).
 
@@ -462,8 +462,8 @@ refutes the third-party claim that the byte is an AD&D class group (#59).
 
 The record was only two thirds of the reader. `CHRDATA<n>.itm` and
 `CHRDATA<n>.spc` beside it hold the gear and the innate effects, and both are
-now decoded — so `por.amiga.to_neutral` turns an Amiga character into
-`por/neutral.py`'s record, which is the Amiga cell of the reader row #51
+now decoded — so `goldbox.amiga.to_neutral` turns an Amiga character into
+`goldbox/neutral.py`'s record, which is the Amiga cell of the reader row #51
 tracks.
 
 **The item node is 65 bytes: the DOS 63 with two insertions.** Seventeen
@@ -501,18 +501,18 @@ the ready column lived in the text. It does — and so it does on **DOS**: the
 DOS `.ITM` files in `work/dos-saves` carry ` No   Long Sword +1 `,
 ` Yes  * Shield +1 ` and, on the same character, a plain `Plate Mail ` with
 stale bytes (`Mail           400`) past its own length byte. So a writer must
-compose the line, never trust it — which is what `por/dos.py` already says of
+compose the line, never trust it — which is what `goldbox/dos.py` already says of
 the DOS buffer.
 
 **The effect node is 10 bytes with the pad at offset 1**, which #55 measured
 on 62 records; disk 1's six agree, and their payload bytes `0x02`-`0x05` read
-`00 00 FF 00` — exactly `por/dos.py`'s `INNATE_PAYLOAD`, which is DOS's bytes
+`00 00 FF 00` — exactly `goldbox/dos.py`'s `INNATE_PAYLOAD`, which is DOS's bytes
 1-4. So the pad is at 1 and everything after it is DOS's four payload bytes
 and four pointer bytes in order.
 
 **The neutral bridge is a transposition, not a second codec.**
-`por.amiga.to_dos_record` re-cuts the 288 bytes into the 285 `por/dos.py`
-already reads, and `por.dos.to_neutral` does the rest — so every grade, drop
+`goldbox.amiga.to_dos_record` re-cuts the 288 bytes into the 285 `goldbox/dos.py`
+already reads, and `goldbox.dos.to_neutral` does the rest — so every grade, drop
 and provenance line the DOS side earned on 24 specimens carries over, and
 there is no second bridge to drift. Four rules and nothing else: the name is
 re-cut from 16 NUL-padded bytes to a count and fifteen; `u16` and `u32` fields
@@ -634,7 +634,7 @@ code wheel, so the title cannot be driven unattended)`.
 
 ### 1.10 Writing an Amiga disk, and the block that is free but not free (#36)
 
-`por/amiga_adf.py` writes the AmigaDOS filesystem: allocate from the bitmap,
+`goldbox/amiga_adf.py` writes the AmigaDOS filesystem: allocate from the bitmap,
 write OFS data blocks, build a file header, thread it into the parent drawer's
 hash chain, fix every checksum. Until it existed a converted character reached
 an Amiga disk only by overwriting an existing file's bytes.
@@ -738,8 +738,8 @@ the item record's size. **Read the title before reading the file.**
 ### 1.12 Writing an Amiga Pool of Radiance character (#105)
 
 The reader landed in §1.8 and §1.9; this is the other half, and it is the same
-transposition run backwards. `por.amiga.write_por` takes a `NeutralCharacter`,
-hands it to `por.dos.write`, and re-cuts the 285-byte DOS record, its `.ITM`
+transposition run backwards. `goldbox.amiga.write_por` takes a `NeutralCharacter`,
+hands it to `goldbox.dos.write`, and re-cuts the 285-byte DOS record, its `.ITM`
 and its `.SPC` into the Amiga's 288, 65 and 10. **There is no second field
 table and no second conversion.** Every drop, every derived value and every
 provenance line the DOS writer earned on 24 DOS specimens carries over
@@ -752,7 +752,7 @@ declared list rather than by whatever happened to differ:
 | what | result |
 |---|---|
 | 288 -> 285 -> 288, no neutral record in the middle | **20 of 20** identical outside `POR_WRITE_UNSOURCED` |
-| Amiga -> neutral -> Amiga, the whole path | **20 of 20** identical outside that list plus `por.dos`'s own `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields |
+| Amiga -> neutral -> Amiga, the whole path | **20 of 20** identical outside that list plus `goldbox.dos`'s own `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields |
 | the 65-byte item nodes | **17 of 17** identical past the display cache and `next` |
 | the 10-byte effect nodes | **6 of 6** identical past the four-byte `next` |
 | `.itm` and `.spc` lengths | identical to the originals, 6 of 6 |
@@ -781,9 +781,9 @@ what an uninitialised pad looks like). The effect chain at `0x080` and each
 item's `next` at `0x02A` are written NULL, because they are live Amiga heap
 addresses and the engine relinks both on load.
 
-**Two things `por.dos.write` imposes on this side and neither is ours:**
+**Two things `goldbox.dos.write` imposes on this side and neither is ours:**
 
-* **memorised spells are repacked.** `por.dos` reads the sixteen slots as a
+* **memorised spells are repacked.** `goldbox.dos` reads the sixteen slots as a
   set and writes them back from the end, on the DOS reading that "DOS fills
   its sixteen slots backwards from the end". **The Amiga corpus refutes that as
   a general rule**: of the fourteen `.cha` exports, one is filled from the
@@ -791,13 +791,13 @@ addresses and the engine relinks both on load.
   sides (`00 x10, 15 15 00 22 2f 00`). The spells survive; their slot positions
   do not. `#110`.
 * **experience is capped at 16 777 215.** The Amiga field is a `u32be` and the
-  reader reads all four bytes, but `por.dos.write`'s own field is three bytes
+  reader reads all four bytes, but `goldbox.dos.write`'s own field is three bytes
   wide, so anything going through it overflows with a bare `OverflowError`
   above that. No Pool of Radiance character can reach it. `#111`.
 
 **The file names**, read off disk 1 and confirmed by the game's own save to
 slot B (§1.9b): `save/CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
-`n` from 1 to 6. `por.amiga.por_filename` is the one place that knows it. **A
+`n` from 1 to 6. `goldbox.amiga.por_filename` is the one place that knows it. **A
 character carrying nothing gets no `.itm` file at all** -- `b""` is not an
 empty file, and #62 is what handing the engine a zero-length one did on DOS.
 
@@ -808,7 +808,7 @@ is current, and that a disk carrying a complete slot the file does not name is
 offered only the slots it does name. `#36`'s demonstration worked because that
 file was edited by hand as part of the experiment; nothing wrote it.
 
-`por.amiga.write_por_slot(disk, slot, characters, savegame)` is what writes
+`goldbox.amiga.write_por_slot(disk, slot, characters, savegame)` is what writes
 one now, and the rule it enforces is **a slot that cannot be listed is not
 written**. The refusals run before anything touches the disk, and the list is
 read back afterwards, because a silent failure here is invisible until
@@ -845,7 +845,7 @@ the state this function exists to refuse, arrived at by a different route.
 `write_por_slot` snapshots the image before the first write and
 `AmigaDisk.restore` puts it back on any failure.
 
-`por.amiga_adf.AmigaDisk.make_dir` was added for this, and only for the
+`goldbox.amiga_adf.AmigaDisk.make_dir` was added for this, and only for the
 tests: production writes into the `save` drawer of a copy of the player's own
 game disk, which is already there, but a blank disk this module formats has no
 drawers at all and `tests/test_amiga_adf.py`'s no-game-data property is worth
@@ -926,7 +926,7 @@ Two things are new and both are negative:
   **zero in all seventeen** Amiga Pool of Radiance nodes, so they are not a
   struct constant every Amiga item carries.
 * **Neither is a trait id that makes sense on a weapon or a suit of armour.**
-  In `por/traits.py`'s shared namespace 47 is the dwarf and gnome armour-class
+  In `goldbox/traits.py`'s shared namespace 47 is the dwarf and gnome armour-class
   bonus against giants and 52 is *held or paralysed*.
 
 The settling experiment is unchanged and is the one #55 named: **an Amiga Curse
@@ -1109,7 +1109,7 @@ end of each table:
 |---|---|---|
 | P1 | `0x058=1 0x059=6 0x05C=1 0x05D=8`, age 33, xp 10000, plat 200, hp max 77, levels `1..7`, AC 10, damage 1d6+2 | `FEMALE 33 YEARS`, `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 1/2/3/4/5/6/7`, `HIT POINTS 0/77`, `EXPERIENCE 10000`, `PLATINUM 200`, `ARMOR CLASS 10`, `DAMAGE 1D6+2`, `STATUS: OKAY` |
 | P2 | the same with `0x058=2 0x059=2 0x05C=0 0x05D=0`, plus `0x190=55`, `0x088=12`, gems 11, jewelry 22, and a deliberately wrong `0x056=1234` and `0x192=99` | `MALE`, `LAWFUL GOOD`, `DWARF`, `FIGHTER`, `HIT POINTS 55/77`, `GEMS 11`, `JEWELRY 22`, `MOVEMENT 12`, `ENCUMBRANCE 233` |
-| P3 | a 484-byte record built by `por.amiga.PodWriter` from named fields and nothing else | every field back: `WRITTEN`, `FEMALE 33 YEARS`, `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`, `HIT POINTS 55/77`, `EXPERIENCE 10000`, `STR 18 INT 17 WIS 16 DEX 15 CON 14 CHA 13`, `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`, `STATUS: OKAY` |
+| P3 | a 484-byte record built by `goldbox.amiga.PodWriter` from named fields and nothing else | every field back: `WRITTEN`, `FEMALE 33 YEARS`, `CHAOTIC EVIL`, `HALF-ELF`, `THIEF`, `LEVEL 7`, `HIT POINTS 55/77`, `EXPERIENCE 10000`, `STR 18 INT 17 WIS 16 DEX 15 CON 14 CHA 13`, `PLATINUM 200 GEMS 11 JEWELRY 22`, `MOVEMENT 12`, `STATUS: OKAY` |
 
 So: **sex `0x05C`, race `0x058`, class `0x059`, alignment `0x05D`**, all
 CONFIRMED, and **current hit points a big-endian word at `0x190`**, and the
@@ -1265,7 +1265,7 @@ writing a PoD-legal `.pc` ourselves. §1.6 has the record and §1.7 the save.
 
 ## 4. The three-way field map
 
-C64 offsets from `por/layout.py`. DOS Pool of Radiance offsets from
+C64 offsets from `goldbox/layout.py`. DOS Pool of Radiance offsets from
 `docs/117-save-conversion.md` and verified today against a real DOS record.
 Amiga Pool of Radiance verified today. Amiga Pools of Darkness is the column
 that is mostly empty, and filling it is the project.
@@ -1277,14 +1277,14 @@ that is mostly empty, and filling it is the project.
 | exceptional strength | `0x01A` — CONFIRMED | `0x016` — CONFIRMED | `0x016` — CONFIRMED | `0x07C`, pair — CONFIRMED |
 | second ability block | `0x065`, 7 — CONFIRMED | — | — | folded into the pairs — PROBABLE |
 | 60 − THAC0 | `0x071` — PROBABLE | `0x02D` — CONFIRMED | `0x02D` — CONFIRMED | `0x186`, and **derived on load** from the class levels — the record's copy is ignored (§2.4) |
-| race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | `0x058` — CONFIRMED (`HALF-ELF`, `DWARF`). `ELF` 0, `HALF-ELF` 1, `DWARF` 2, `GNOME` 3, `HALFLING` 4, `HUMAN` 5 — a **different table again** from the C64's (`por/games.py`) |
+| race | `0x072` — CONFIRMED | `0x02E` — CONFIRMED | `0x02E` — CONFIRMED | `0x058` — CONFIRMED (`HALF-ELF`, `DWARF`). `ELF` 0, `HALF-ELF` 1, `DWARF` 2, `GNOME` 3, `HALFLING` 4, `HUMAN` 5 — a **different table again** from the C64's (`goldbox/games.py`) |
 | class | `0x073` — CONFIRMED | `0x02F` — CONFIRMED | `0x02F` — CONFIRMED | `0x059` — CONFIRMED (`THIEF`, `FIGHTER`); 0-based, 17 entries, singles first (§2.4) |
 | age | `0x074` u16 LE — CONFIRMED | `0x030` u16 LE — CONFIRMED | `0x030` u16 **BE** — CONFIRMED | `0x052` u16 **BE** — CONFIRMED (`21075 YEARS`) |
 | hp max | `0x076` **u16** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x032` **u8** — CONFIRMED | `0x081` **u8** — CONFIRMED (`HP 0/129`). **Current** hit points are a u16 at `0x190` — CONFIRMED (`HIT POINTS 55/77`) |
 | saving throws ×5 | `0x09A`–`0x09E` — CONFIRMED | ~`0x06B` block — PROBABLE | ~`0x06B` block — PROBABLE | `0x083`–`0x087` — PROBABLE; they decode to the AD&D table for each specimen's class and level, and the sheet never shows them |
 | level | `0x0A0` — CONFIRMED | UNKNOWN | UNKNOWN | `0x089` — PROBABLE, and it equals the **highest** of the seven class levels in all twelve. It is a maximum, not a sum: `TRIPEL TURBO` is 6/6/12 and reads 12. The sheet draws the class levels, not this |
 | per-class levels | `0x0C9`–`0x0D0`, 8 — PROBABLE | UNKNOWN | UNKNOWN | `0x09D`–`0x0A3`, **7** — CONFIRMED (`LEVEL 1/2/3/4/5/6/7`); indexed by the single-class code, so slot 6 is the thief's |
-| class bits | `0x0EB` — CONFIRMED | UNKNOWN | UNKNOWN | `0x0B7` — PROBABLE; magic-user 1, cleric 2, thief 4, fighter 8, which is the C64's own numbering, and 13 = 1\|4\|8 for the fighter/magic-user/thief. But **64 for the paladin and the ranger alike**, where the C64 gives them 0x40 and 0x80 separately — so the byte is *not* the C64's and must not be copied. `por/amiga.CLASS_BIT` is the table |
+| class bits | `0x0EB` — CONFIRMED | UNKNOWN | UNKNOWN | `0x0B7` — PROBABLE; magic-user 1, cleric 2, thief 4, fighter 8, which is the C64's own numbering, and 13 = 1\|4\|8 for the fighter/magic-user/thief. But **64 for the paladin and the ranger alike**, where the C64 gives them 0x40 and 0x80 separately — so the byte is *not* the C64's and must not be copied. `goldbox/amiga.CLASS_BIT` is the table |
 | experience | `0x0E8`, **3 bytes** — CONFIRMED | UNKNOWN | UNKNOWN | `0x044` **u32 BE** — CONFIRMED (`EXPERIENCE 1145390663`) |
 | money | `0x0BB`–`0x0C8`, 7 × u16 — CONFIRMED | UNKNOWN | UNKNOWN | platinum `0x04C`, gems `0x04E`, jewelry `0x050`, u16 BE — CONFIRMED. The lighter coins are unlocated; R7 was the probe for them and did not finish |
 | thief skills ×8 | `0x0A5`–`0x0AC` — CONFIRMED | UNKNOWN | UNKNOWN | `0x08B`–`0x092` — PROBABLE; non-zero in exactly the two specimens with a thief level |
@@ -1315,7 +1315,7 @@ name difference is the DOS length byte, which the Amiga drops for NUL padding.
 | What filesystem? | **OFS.** All three PoD ADFs are `DOS\0`, FFS bit clear, root names `POD 1/2/3`. | CONFIRMED |
 | Can we read one already? | Yes. `work/amiga/adf.py` walks the hash chains, follows extension blocks and extracts every file. | CONFIRMED |
 | Can we **write** one? | Not yet. Nothing in this tree writes an ADF, and `amitools` is not installed in `.venv` and should not be — `wish` ships as a PyInstaller binary and does not take dependencies lightly. | — |
-| What does writing require? | An OFS writer: bootblock, root block with its hash table and checksum, bitmap block, one dir header, and per file a header block plus data blocks each carrying a 24-byte header and its own checksum. Perhaps 300 lines, and `por/d64.py` is the precedent — this project already writes a container by hand. | PROBABLE |
+| What does writing require? | An OFS writer: bootblock, root block with its hash table and checksum, bitmap block, one dir header, and per file a header block plus data blocks each carrying a 24-byte header and its own checksum. Perhaps 300 lines, and `goldbox/d64.py` is the precedent — this project already writes a container by hand. | PROBABLE |
 | Does PoD want its own save disk? | It prompts (`is your save disk in drive`, `Place Secret save disk in DF0:`), and the rip we read carries `Save/` on disk 3 itself. Whether an original demands a separately formatted disk is UNKNOWN and phase 2 answers it. | — |
 
 The one thing the container work does **not** need to touch: `dax.py`. Pools
@@ -1333,10 +1333,10 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script under `work/` | no | an hour | the numbers in §1 come out again |
 | 1 | **Read the `.pc` loader.** Disassemble around `0x255B2` / `0x25802` with `work/amiga/m68dis.py`; find the `Open`/`Read` pair and any length or signature check. | a written account of what the reader validates | no | a day | we can name the number of bytes it reads and say whether it checks anything |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
-| 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `por/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
-| 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `por/amiga.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
+| 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `goldbox/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
+| 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `goldbox/amiga.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
 | 5 | **Resolve the pointers.** Determine whether the `0x00`–`0x5F` addresses are re-linked on load. Two ways: read the loader (phase 1 may already answer it), or write a `.pc` with those longwords zeroed and see if PoD still loads it. | a ruling: don't-care, or must-be-plausible | yes | a session | a zeroed-pointer `.pc` loads and its sheet is unchanged |
-| 6 | ~~**The map and the writer.**~~ **DONE.** `por.amiga.write` takes a `NeutralCharacter` — the one record every codec now shares, since #25 — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `field_disposition()` names what becomes of every neutral field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `por/amiga.py`, `tools/toamiga.py` | no | done | run |
+| 6 | ~~**The map and the writer.**~~ **DONE.** `goldbox.amiga.write` takes a `NeutralCharacter` — the one record every codec now shares, since #25 — and `to_pc` emits the 484 bytes. `Report.unaccounted` is empty on every character of the player's own party, so there is no "template" category. `field_disposition()` names what becomes of every neutral field, and `tests/test_amiga.py` fails if a field appears in one and not the other. | `goldbox/amiga.py`, `tools/toamiga.py` | no | done | run |
 | 7 | ~~**End to end.**~~ **DONE**, on Pool of Radiance rather than Silver Blades, for blocker 2's reason. `LADY KATHERINE` off the player's own C64 save loaded into PoD and her sheet matches field for field — §2.5. | the thing Donald asked for | yes | done | run |
 
 Two side experiments worth naming, both cheap and neither on the critical path:
@@ -1365,7 +1365,7 @@ Stated out loud, so nobody is surprised and nobody tries.
 | **Items** | The C64 stores 16 bytes per item, an id into that title's `ITEMNAMES`. DOS and Amiga store 63–65 bytes per item **carrying the name as text**. And a Silver Blades item id and a Pools of Darkness item id are two different games' tables. | re-encode from named fields, and **check the tables agree before assuming any id means the same thing** |
 | **Memorised spells** | C64 spell ids run 1–56. Pools of Darkness has cleric spells to level 7 and mage spells to level 9, so its id space is larger and the mapping is certainly not identity. | map by name, or drop and let the player re-memorise |
 | **Experience** | The C64 field is **3 bytes** — 16 777 215 maximum. Pools of Darkness characters exceed that. | the target field is wider; carry the value up, and expect a C64-sourced total to look low rather than wrong |
-| **Race and class codes** | `por/games.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
+| **Race and class codes** | `goldbox/games.py` already documents that the race table changes per title on the C64 alone (human is 7 in Pool of Radiance, 6 in Silver Blades). PoD's Amiga table has not been read. | read PoD's own table before writing a race byte |
 | **Copper, silver, electrum and gold** | only platinum (`0x04C`), gems and jewelry have been located in the `.pc`. R7 was the probe for the lighter coins and did not finish; `0x048` and `0x04A` are zero in all twelve and are the obvious candidates. | reported, with the total, so the player knows what was left on the counter |
 | **Armour class and unarmed damage** | not a loss so much as a category error. The C64's numbers already include worn armour and a strength bonus, PoD re-applies dexterity and strength itself, and no item crosses — so a converted character genuinely arrives unarmoured. | write the unarmoured `10` and `1d2`, which is what all twelve genuine records hold, and let PoD derive the rest. §2.5 shows it coming out at `AC 8` and `1D2+1` |
 | **Everything Silver Blades knew and Pools of Darkness does not** | quest flags, position, journal entries | not carried, and not wanted — see §3 |

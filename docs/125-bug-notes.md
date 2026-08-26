@@ -125,7 +125,7 @@ generation but leaves human at code 7, and its label table names **both 6 and 7
 **What the player sees.** Nothing directly. It matters to anything importing a
 Pool of Radiance character: a half-orc arrives as code 6, prints as HUMAN, and
 there is no way to tell it apart from a real human without looking at the byte.
-`por/games.py` deliberately leaves 6 unnamed for that reason — naming it
+`goldbox/games.py` deliberately leaves 6 unnamed for that reason — naming it
 "half-orc" would contradict what the game prints and naming it "human" would let
 an import silently rewrite a 7 as a 6.
 
@@ -330,7 +330,7 @@ a player is a spell they will assume they were owed.
 
 ## N14. Ours: the fighter's level-4 breath save, and the four THAC0 rows above it
 
-**What we got wrong.** `por/levels.py` gave a level-4 fighter a breath save of
+**What we got wrong.** `goldbox/levels.py` gave a level-4 fighter a breath save of
 16, which is the AD&D 1st edition number, and the game writes 15. It was
 recorded as a divergence in `tests/test_liveparty.py` for a day on the reading
 that the game might be wrong.
@@ -343,7 +343,7 @@ its other four carry `$08`, so that column improves twice by level 4 and once
 elsewhere. Fifteen is the table's own answer, deliberately, and ours was a
 transcription of the rulebook rather than of the game.
 
-`por/derive.py` had the same shape of error next door: its fighter THAC0 row
+`goldbox/derive.py` had the same shape of error next door: its fighter THAC0 row
 was AD&D's grouped one, `20 20 18 18 16 16 14 14`, where the game's table at
 `$1F1F` runs `20 19 18 17 16 15 14 13`. Every even fighter level was one out,
 and no specimen was an even-level fighter with cached combat numbers to catch
@@ -610,7 +610,7 @@ Raw capture in `work/forums/p2772.txt`. Summarised in our own words.
 | R6 | After Tyranthraxus, resting in some New Phlan areas (the training hall named) can still be stopped by the city watch; **if you fight them the shops stop giving commissions** | none | Two halves. The watch check is in `ECL00`/`ECL0B`; the commission ledger is the one `docs/103` reads. The second half — a permanent loss of the commission clerk — would be a real player-visible bug and is worth the work. |
 | R7 | Tyranthraxus can be fought again if you return to his lair after killing him | none | `ECL07`. Our own note says `ECL07` writes ledger flag 20; check whether the encounter branch tests it. |
 | R8 | **C64 only:** an infinite loop in combat if an enemy casts an offensive spell while the party is using **dust of disappearance** | **C64**, stated | The only C64-specific report on the forum, and therefore the most valuable one here. Reproducible in VICE: acquire the dust, ready it, and fight something that casts. If it hangs, it is ours to log properly. |
-| R9 | **C64 only:** items get corrupted when using **gauntlets**, producing strange items | **C64**, stated | Same session. "Strange items" reads like an item-slot index running off the end of `ITEMNAMES` — the same failure mode as our own indices 62/63 gap. Testable from a save plus `por/items.py` without the emulator if a corrupted specimen can be produced. |
+| R9 | **C64 only:** items get corrupted when using **gauntlets**, producing strange items | **C64**, stated | Same session. "Strange items" reads like an item-slot index running off the end of `ITEMNAMES` — the same failure mode as our own indices 62/63 gap. Testable from a save plus `goldbox/items.py` without the emulator if a corrupted specimen can be produced. |
 | R10 | Paladins and rangers (only reachable by editing) get **no sweep attack**; level drain followed by restoration cycles the gender byte and awards 10,000,000 experience | DOS, via Gold Box Companion, [topic 1913](https://forums.goldbox.games/index.php?topic=1913.0) | Consistent with what we already hold — `docs/20` records that those two classes are named in the table and instantiated nowhere. Confirming it on the C64 needs `wish` to write a paladin and a restoration scroll; the drain path is `SPELLE02`/`SPELLE04`, which we have read. |
 
 Kirben's framing is worth keeping: *"It would be worth mentioning which port(s)
@@ -626,7 +626,7 @@ what the thread's regulars played.
 | R12 | A scroll of protection from dragon breath stayed active for the rest of the game | none | `docs/125` N7 already has effect expiry clearing one array of four. Same neighbourhood; check whether the scroll writes an effect slot the expiry loop does not cover. |
 | R13 | A THAC0 of −1 prints as **255** on the character sheet, while combat behaves correctly | none | Almost certainly true and almost certainly the same on the C64: our THAC0 is stored biased as `60 - value` and the sheet prints the unbiased byte unsigned. One `wish` edit to a THAC0 past 60 and one screenshot settles it. Cosmetic — this belongs here even if confirmed. |
 | R14 | SHARE hands out absurd jewelry totals inside the Shadowdale side dungeon, repeatably, surviving a restart, and not outside that dungeon | none, screenshots | Odd and specific. The poster's own guess is overflow from an over-encumbered character. Our `0x0C7` jewelry word is `u16le`; a signed/unsigned mix in the divide would do it. |
-| R15 | The Wand of Magic Missiles in Zhentil Keep costs **14,464 gp**, apparently a 16-bit truncation of 80,000 | none | 80000 − 65536 = 14464 exactly. Arithmetically certain, and checkable from the Curse item tables on disk with `por/items.py` and no emulator at all. **The cheapest confirmable claim in this section.** |
+| R15 | The Wand of Magic Missiles in Zhentil Keep costs **14,464 gp**, apparently a 16-bit truncation of 80,000 | none | 80000 − 65536 = 14464 exactly. Arithmetically certain, and checkable from the Curse item tables on disk with `goldbox/items.py` and no emulator at all. **The cheapest confirmable claim in this section.** |
 | R16 | Buying with more than 65,535 gp worth of platinum makes money evaporate | none | Same overflow, other side. Testable with an edited party. |
 | R17 | Importing a character with exceptional strength from Pool of Radiance: the first time strength is magically modified in Curse, the **score itself becomes the exceptional number** | none | We have the import routine (`docs/116` §2.2) and both fields — `0x014` strength, `0x01A` exceptional. Readable from the bytecode. |
 | R18 | The Girdle of the Dwarves on an imported fighter with a Manual-raised constitution of 19 produced "weird ability numbers" instead of 20 | none | Vague. Log it, do not chase it. |

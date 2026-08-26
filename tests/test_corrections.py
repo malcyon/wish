@@ -17,9 +17,9 @@ import collections
 import pytest
 from gamedata import disk_dir, game_file
 
-from por import levels, traits
-from por.d64 import D64, split_load_address
-from por.encoding import item_protection_ac
+from goldbox import levels, traits
+from goldbox.d64 import D64, split_load_address
+from goldbox.encoding import item_protection_ac
 
 # `GEN` runs at $0800 like every other Pool of Radiance overlay, whatever its
 # PRG header claims. `$1E5C` is therefore payload offset $1E5C - $0800.
@@ -66,7 +66,7 @@ def test_a_routine_reads_that_table_and_clamps_to_it():
 
 def test_the_racial_level_limits_are_the_same_table_four_wide():
     """Seven races of four classes at `$1E64`, 99 for unlimited. All 28 bytes
-    match `por/levels.py`, which had them from AD&D 1e and nothing else."""
+    match `goldbox/levels.py`, which had them from AD&D 1e and nothing else."""
     rows = _at(_gen(), CEILINGS + 8, 28)
     pool = levels.for_game(levels.POOL_OF_RADIANCE)
     for race, limits in pool.racial_limits:
@@ -203,7 +203,7 @@ def test_the_census_is_the_only_thing_that_promotes_a_name():
 
 
 def test_item_protection_is_read_with_the_general_rule():
-    """`por/encoding.py` was the last copy of `12 - (byte & 0x0F)`. That is the
+    """`goldbox/encoding.py` was the last copy of `12 - (byte & 0x0F)`. That is the
     general rule in disguise while the high nibble is $B and nonsense below
     it."""
     assert item_protection_ac(0xB4) == 8          # leather

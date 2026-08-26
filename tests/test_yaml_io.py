@@ -12,9 +12,9 @@ import pytest
 import yaml
 from gamedata import disk_dir
 
-from por.d64 import D64
-from por.savegame import SaveGame0
-from por.yaml_io import export_save, import_into, strip_annotations, to_yaml
+from goldbox.d64 import D64
+from goldbox.savegame import SaveGame0
+from goldbox.yaml_io import export_save, import_into, strip_annotations, to_yaml
 
 # Wherever the player keeps them, not wherever one machine did.
 DISKS = str(disk_dir() or "no-disks-here")
@@ -157,7 +157,11 @@ def test_quoting_survives_awkward_names():
 # ---------------------------------------------------------------------------
 # Friendly values: the YAML shows names, not the raw encodings
 # ---------------------------------------------------------------------------
-from por.yaml_io import ValueError_, classes_to_names, names_to_classes  # noqa: E402
+from goldbox.yaml_io import (  # noqa: E402
+    ValueError_,
+    classes_to_names,
+    names_to_classes,
+)
 
 
 def test_class_bitmask_is_hidden_behind_names():
@@ -487,7 +491,7 @@ def test_the_npc_flag_writes_only_the_byte_the_game_tests(tmp_path):
     """The eight $FF residue bytes must be left exactly as found. They are fill
     that survives the load, not a marker, and rewriting them would be the
     editor inventing state."""
-    from por.record import NPC_FLAG_BIT, NPC_FLAG_OFFSET, NPC_MARKER_OFFSETS
+    from goldbox.record import NPC_FLAG_BIT, NPC_FLAG_OFFSET, NPC_MARKER_OFFSETS
     data = export_save(SAVE, GAME)
     before = _record(SAVE, "MALCYON").to_bytes()
     next(e for e in data["party"] if e["name"] == "MALCYON")["npc"] = True
@@ -505,7 +509,7 @@ def test_the_npc_flag_writes_only_the_byte_the_game_tests(tmp_path):
 def test_clearing_the_npc_flag_leaves_the_rest_of_0x0b8_alone(tmp_path):
     """Bit 0 records that a score was altered at the trainer. Toggling npc
     must not disturb it."""
-    from por.record import NPC_FLAG_OFFSET
+    from goldbox.record import NPC_FLAG_OFFSET
     data = export_save(SAVE, GAME)
     entry = next(e for e in data["party"] if e["name"] == "MALCYON")
     entry["npc"] = True
@@ -520,8 +524,8 @@ def test_clearing_the_npc_flag_leaves_the_rest_of_0x0b8_alone(tmp_path):
 
 
 def _items(disk, slot):
-    from por.items import items_for_slot, load_item_names
-    from por.savegame import SaveGame0
+    from goldbox.items import items_for_slot, load_item_names
+    from goldbox.savegame import SaveGame0
     payload = SaveGame0.from_prg(D64.open(str(disk)).read_file(b"SAVEDGAME0")).to_bytes()
     return items_for_slot(payload, slot, load_item_names(GAME))
 
@@ -594,7 +598,7 @@ def test_the_spellbook_is_exported_and_editable(tmp_path):
     by["MALCYON"]["spells_known"] = [11, 15, 18, 19, 21]                # learn magic missile
     out = tmp_path / "book.d64"
     import_into(SAVE4, data, str(out), game_disk=GAME)
-    from por.spells import spells_known
+    from goldbox.spells import spells_known
     assert spells_known(_record(out, "MALCYON").to_bytes()) == [11, 15, 18, 19, 21]
 
 
@@ -602,7 +606,7 @@ def test_the_spellbook_is_exported_and_editable(tmp_path):
 def test_capacity_is_derived_not_read():
     """No field holds it; it follows from class, level and Wisdom -- and it
     matches what each caster actually has memorised."""
-    from por.spells import capacity
+    from goldbox.spells import capacity
     data = export_save(SAVE4, GAME)
     by = {e["name"]: e for e in data["party"]}
     assert by["ROLAND"]["_spell_capacity"] == "cleric 3/0/0"       # WIS 16 at level 1
@@ -651,7 +655,7 @@ def test_the_dexterity_table_starts_a_point_early():
     """Pool of Radiance gives an armour class bonus from DEX 14, where AD&D 1st
     edition starts at 15. Read off the save where nobody wears anything, so
     armour class is 10 minus this and nothing else."""
-    from por.derive import dexterity_ac_bonus
+    from goldbox.derive import dexterity_ac_bonus
     assert dexterity_ac_bonus(13) == 0
     assert dexterity_ac_bonus(14) == 1          # the book says 0
     assert dexterity_ac_bonus(15) == 1
@@ -693,7 +697,7 @@ def _disagreeing_save(tmp_path):
     the shape DWARVEN FIGHTER has in the shipped game data."""
     import shutil
 
-    from por.savegame import SaveGame0 as SG
+    from goldbox.savegame import SaveGame0 as SG
     src = tmp_path / "npcish.d64"
     shutil.copy(SAVE, src)
     img = D64.open(str(src))
