@@ -1039,6 +1039,83 @@ def test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     assert w.width() == floor, "the window refused to be made as small as it says"
 
 
+def _drag_name_divider(view, x_after: int) -> None:
+    """Drag `Name`'s right edge to `x_after` in the header's viewport."""
+    from PyQt6.QtCore import QPoint, Qt
+    from PyQt6.QtTest import QTest
+
+    from editor.rosterview import NAME_COLUMN
+
+    header = view.horizontalHeader()
+    viewport = header.viewport()
+    divider = sum(header.sectionSize(i) for i in range(NAME_COLUMN + 1))
+    QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=QPoint(divider, 5))
+    QTest.mouseMove(viewport, QPoint(x_after, 5))
+    QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=QPoint(x_after, 5))
+
+
+def test_dragging_the_name_divider_wider_leaves_it_where_the_user_put_it(
+        app, party):
+    """#93: a dragged section is the user's, and `_share_width` leaves it alone.
+
+    `_share_width` only runs from `resizeEvent` and from `measure`, and a
+    header-section drag fires neither -- `_share_width`'s own docstring
+    already says this is the chosen stance rather than an oversight. What was
+    never asserted is that the stance holds, and that #71's floor -- built
+    from `minimumSizeHint`, not from a section width -- does not move because
+    of it.
+    """
+    from editor.rosterview import NAME_COLUMN
+    from editor.window import EditorWindow
+
+    w = EditorWindow(str(party))
+    w.show()
+    app.processEvents()
+    header = w.ui.roster.horizontalHeader()
+    floor = w.minimumSizeHint()
+
+    wide_target = header.sectionSize(NAME_COLUMN) + 120
+    _drag_name_divider(w.ui.roster, wide_target)
+    assert header.sectionSize(NAME_COLUMN) == wide_target, (
+        "a drag wider than the contents did not stick")
+    app.processEvents()
+    assert header.sectionSize(NAME_COLUMN) == wide_target, (
+        "something undid the drag once events were processed")
+    assert w.minimumSizeHint() == floor, (
+        "the window's floor moved because of a section drag")
+
+
+def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
+        app, party):
+    """The other direction, in its own window -- see the docstring above.
+
+    Kept apart from the wider case because the two interact: dragging wide
+    first and narrow second can make a scroll bar appear and disappear, which
+    is `_share_width`'s *own* documented incidental correction (fired from a
+    real `resizeEvent`, not from the drag) rather than anything this test is
+    about.
+    """
+    from editor.rosterview import NAME_COLUMN, NAME_MIN_WIDTH
+    from editor.window import EditorWindow
+
+    w = EditorWindow(str(party))
+    w.show()
+    app.processEvents()
+    header = w.ui.roster.horizontalHeader()
+    floor = w.minimumSizeHint()
+
+    _drag_name_divider(w.ui.roster, 5)
+    landed = header.sectionSize(NAME_COLUMN)
+    assert landed < NAME_MIN_WIDTH, (
+        "the drag did not reach below NAME_MIN_WIDTH, so this proves nothing "
+        "-- QHeaderView.minimumSectionSize is what actually stops it")
+    app.processEvents()
+    assert header.sectionSize(NAME_COLUMN) == landed, (
+        "something undid the narrow drag once events were processed")
+    assert w.minimumSizeHint() == floor, (
+        "the window's floor moved because of a section drag")
+
+
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one
 #: Donald asked for in round five: a 1280x720 laptop, forty pixels shorter than
 #: the 1280x760 the earlier rounds allowed themselves. The editor has to fit
