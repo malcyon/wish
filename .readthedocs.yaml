@@ -9,6 +9,15 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.13"
+  # Read the Docs clones shallow and without tags, so `git describe` in
+  # docs/conf.py finds nothing and the version falls all the way through to the
+  # literal "0.0.0" -- the package is deliberately not installed here either, so
+  # the importlib.metadata fallback has nothing to read. Fetching the history and
+  # the tags is what gives the built page its real version.
+  jobs:
+    post_checkout:
+      - git fetch --unshallow || true
+      - git fetch --tags --force
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
