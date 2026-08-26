@@ -374,6 +374,32 @@ reasons are legitimate:
 
 The third kind is a bug that has not been filed yet. Treat it that way.
 
+**A template is not one of the three reasons, and "the template supplies it" is
+not an answer.** Donald's ruling, 2026-08-26: *"We should not be using a
+template at all. We should block on not understanding everything and go back and
+understand what we need to. No more plugging in fake data to make it work."*
+
+Building a converted save on top of a save the engine wrote means every byte
+nobody has decoded silently keeps a value belonging to **a different party in a
+different place**. That is not a neutral default -- it is wrong data that looks
+right, and it is invisible because the file loads. It is how a converted party
+arrived reading 21:15 when its own save said 10:15 (`#58`), and nothing about
+the run said so; it took a person looking at the clock.
+
+So **an undecoded field is a blocker, not a gap the template fills**. When the
+conversion needs a byte nobody has attributed, the work is to go and measure
+it, and the ticket says so. This is a tightening of the standard above rather
+than a new rule: "we do not understand the bytes well enough to write them" was
+already a defect with a settling experiment, and leaning on a template is what
+let that entry sit.
+
+**Zero written because the engine rebuilds the field is not plugged-in data and
+does not fall under this.** Six of `WRITE_UNSOURCED`'s seven are live heap
+pointers and combat state where the engine itself writes zero, measured both
+with items and without. That is a known value with evidence. The distinction
+that matters is **measured versus inherited**: a value we established is fine at
+any number, and a value we inherited from somebody else's save is not.
+
 **"Reported as dropped" is not a resting state.** Every entry in a drop list
 carries the experiment that would remove it, and a drop list that has not
 shrunk in months is a list of unfiled bugs.
@@ -868,6 +894,7 @@ constantly in assistant prose and almost never in human speech:
 | **fair** ("that's fair") | agree or disagree in words: "you're right", "I don't think so, because" |
 | **blast radius** | what else this touches, what it would break |
 | **elide** | truncate, shorten, cut off with an ellipsis |
+| **retarget** | move the party to where it actually was, point the save at the right map |
 
 The list is examples of a habit rather than a blocklist to be satisfied.
 The habit is reaching for a piece of jargon that sounds precise and carries
