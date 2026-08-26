@@ -116,7 +116,8 @@ class WishWindow(QMainWindow):
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
         self.editor = EditorWindow(save, game_disk, disks=self.disks_text(),
-                                   backups="")
+                                   backups="",
+                                   last_save_folder=self.settings.last_save_folder)
         # The backup folder follows whatever save is open until somebody
         # chooses one, so the window has to hear about every open. `""` above
         # is deliberate: the editor is managed from here, and until this says
@@ -409,11 +410,13 @@ class WishWindow(QMainWindow):
             else "no game disks found")
 
     def follow_save(self) -> None:
-        """A save was opened: point the automatic backup folder at it.
+        """A save was opened: point the automatic backup folder at it, and
+        remember its folder for the next `File > Open` (#66).
 
-        Does nothing at all once the user has chosen a folder in the dialog --
-        *"never change it after they've specified it themselves"* -- and that
-        is the only branch in here.
+        The backup half does nothing at all once the user has chosen a folder
+        in the dialog -- *"never change it after they've specified it
+        themselves"* -- but the remembered-folder half always follows: it is a
+        convenience, not a preference, so every open updates it.
         """
         if not chosen_backup_folder(self.settings):
             where = backup_folder(self.settings, self.editor.path)
@@ -421,6 +424,11 @@ class WishWindow(QMainWindow):
                 self.settings.backup_folder = where
                 self.settings.save()
         self.editor.set_backup_folder(self.settings.backup_folder or "")
+        if self.editor.path:
+            folder = str(self.editor.path.parent)
+            if folder != (self.settings.last_save_folder or ""):
+                self.settings.last_save_folder = folder
+                self.settings.save()
 
     def set_backup_folder(self, folder: str) -> None:
         """The user typed, browsed or cleared one in the dialog.

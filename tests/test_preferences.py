@@ -19,7 +19,7 @@ import pathlib
 from dataclasses import asdict, fields
 
 import pytest
-from gamedata import disk_dir, needs_disks
+from gamedata import disk_dir, needs_disks, synthetic_save
 
 from automap import paths
 from automap.config import Settings, clamp_to_screen, restore_geometry
@@ -438,6 +438,41 @@ def test_the_remembered_folder_is_a_setting_and_survives_a_restart(
     settings.last_save_folder = str(tmp_path / "saves")
     settings.save()
     assert Settings.load().last_save_folder == str(tmp_path / "saves")
+
+
+def test_opening_a_save_remembers_its_folder_and_the_next_open_starts_there(
+        app, tmp_path, monkeypatch):
+    """The wiring #66 left undone: `WishWindow` writes the setting back on
+    `opened`, and a fresh `EditorWindow` built from it starts `File > Open`
+    there."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    folder = tmp_path / "saves" / "party one"
+    folder.mkdir(parents=True)
+    save = synthetic_save(folder)
+
+    win = window(app, save=str(save))
+    try:
+        assert win.settings.last_save_folder == str(folder)
+        assert Settings.load().last_save_folder == str(folder)
+    finally:
+        win.close()
+
+    # A later window, with nothing open, hands the remembered folder straight
+    # to the dialog.
+    again = window(app, settings=Settings.load())
+    try:
+        captured = {}
+
+        def fake_dialog(_parent, _caption, directory, _filter):
+            captured["directory"] = directory
+            return "", ""
+
+        monkeypatch.setattr(
+            "editor.window.QFileDialog.getOpenFileName", fake_dialog)
+        again.editor.open_file()
+        assert captured["directory"] == str(folder)
+    finally:
+        again.close()
 
 
 def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,

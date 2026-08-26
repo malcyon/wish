@@ -491,7 +491,8 @@ class EditorWindow(QMainWindow):
     opened = pyqtSignal(str)
 
     def __init__(self, path: str | None = None, game_disk: str | None = None,
-                 disks: str | None = None, backups: str | None = None):
+                 disks: str | None = None, backups: str | None = None,
+                 last_save_folder: str = ""):
         """`disks` is the Game directory, already resolved by the caller.
 
         Handed in rather than looked up, exactly as `game_disk` is: this
@@ -505,6 +506,10 @@ class EditorWindow(QMainWindow):
         save, which is the rule the preference itself starts on. An empty
         string is a caller saying it has no folder to give, and a save then
         refuses rather than going through without a copy.
+
+        `last_save_folder` is the same arrangement again, for where
+        `File > Open` should start (#66) -- the setting lives over in the live
+        half, so the caller resolves it and hands over a plain string.
         """
         super().__init__()
         from .ui_character import Ui_CharacterWindow
@@ -516,6 +521,7 @@ class EditorWindow(QMainWindow):
         self.game_disk = game_disk
         self.disks = disks
         self.backups = backups
+        self.last_save_folder = last_save_folder
         #: Which image each thing was actually read off, for a report that can
         #: say so. They are not always the same disk.
         self.game_disk_found: str | None = None
@@ -920,7 +926,8 @@ class EditorWindow(QMainWindow):
 
     def open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open a save disk", str(self.path.parent if self.path else ""),
+            self, "Open a save disk",
+            files.open_start_dir(self.last_save_folder, self.path),
             "Gold Box disks (*.d64 *.D64);;All files (*)")
         if path:
             self.load(path)
