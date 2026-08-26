@@ -583,9 +583,9 @@ an existing file's contents on a copy of disk 3 — which is what
 a directory entry to one, still wants phase 3's OFS writer. That is the last
 piece between here and something a player can be handed.
 
-If the `Secret` route ever becomes reachable (blocker 1), prefer it: writing a
-Silver Blades `.sav` and letting PoD convert it is strictly less for us to get
-right than writing a PoD-legal `.pc` ourselves.
+**Prefer the `Secret` route** now the disks are here: writing a Silver Blades
+`.sav` and letting PoD convert it is strictly less for us to get right than
+writing a PoD-legal `.pc` ourselves. §1.6 has the record and §1.7 the save.
 
 ---
 
@@ -700,13 +700,15 @@ Stated out loud, so nobody is surprised and nobody tries.
 
 ## 8. Blockers, honestly
 
-1. **There is no Amiga Secrets of the Silver Blades on this machine.** Only
-   Amiga Pool of Radiance and Amiga Pools of Darkness are here. That closes the
-   `Secret` import route — the one the game was actually designed around, and
-   the one where PoD would do the conversion arithmetic for us. We are left
-   with the `Pools` route, which makes **us** responsible for producing a
-   PoD-legal character. This is the largest single cost in the plan and it is a
-   missing-disk problem, not a technical one.
+1. ~~**There is no Amiga Secrets of the Silver Blades on this machine.**~~
+   **Gone — the disks arrived 2026-08-25**, in
+   `work/amiga/goldbox/Secret_Of_The_Silver_Blades/` (both sides, 901120 bytes
+   each), and `SecretOfTheSilverBlades_A.adf` carries a shipped saved game at
+   `SAVE/savgamA.sav`. The Curse disks and a Curse save disk came with them.
+   So the `Secret` import route — the one the game was designed around, where
+   PoD does the conversion arithmetic for us — is reachable, and §1.6 and §1.7
+   decode the record and the save it wants. What is left is a *technical*
+   question rather than a missing disk: whether PoD accepts a `.sav` we wrote.
 2. **The C64 source end is weaker than the Amiga target end**, and it is why
    §2.5 ran on Pool of Radiance. `docs/121-silver-blades.md`: no Silver Blades
    save disk written by the game exists here, no exported character file
