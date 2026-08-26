@@ -58,9 +58,8 @@ experiments. It applies to code.
 
 **The `reverse-engineering` subagent runs on Fable and is not to be used
 unless the work genuinely cannot be done without it.** It is not the default
-for anything technical, and the `reverse-engineering` label is not a reason to
-reach for it -- most of this backlog carries that label, because this is a
-reverse-engineering project. **Do not launch it without asking Donald first.**
+for anything technical, and "this is a reverse-engineering project" is not a
+reason to reach for it. **Do not launch it without asking Donald first.**
 It exhausted a monthly spend limit in one night on 2026-08-26, and what it had
 produced by then a general-purpose agent went on to match.
 
@@ -172,7 +171,7 @@ the routing.
 
 | agent | model | when |
 |---|---|---|
-| `reverse-engineering` | Fable | **Ask Donald before launching it.** Only when the work needs a disassembly read, not merely a measurement. Exhausted a monthly limit in one night; the label is not a reason to use it |
+| `reverse-engineering` | Fable | **Ask Donald before launching it.** Only when the work needs a disassembly read, not merely a measurement. Exhausted a monthly limit in one night |
 | `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. It runs in the shared tree, so scope it to the files it owns |
@@ -182,7 +181,7 @@ the routing.
 
 **"Easy" is not a category and neither is "unlabelled".** `quick-fix`'s filter
 is a property of the issue body -- does it name the mechanism, or only the
-goal? #71 carried no `reverse-engineering` label and took nine rounds and a
+goal? #71 looked like ordinary work and took nine rounds and a
 `QTableView` subclass. #73 named the two candidate shapes and said which was
 smaller, and that is what made it assignable.
 
