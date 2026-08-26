@@ -798,6 +798,23 @@ removed on request.
 When in doubt, leave it out and say so in the reply. Removing a sentence is
 cheap; a user reading a paragraph that should never have existed is not.
 
+**"It matches the wording already there" is not approval, and it is the excuse
+that got three strings shipped.** In 2026-08 an agent added one line to the
+export report and two to Preferences, each closely modelled on a sibling
+sentence in the same function, and that similarity is why nobody stopped to
+ask. Donald's verdict on all three was *"they won't be understood by humans"* --
+`#96`. The existing sentences read well **to somebody who already knows the
+machinery**, which is everybody who has ever reviewed them and nobody who is
+using the program.
+
+**Look at the string in the running window before proposing it, not in the
+source.** The export line reads `the file name 'LADYKATH.pc' is already used by
+another character in this export; written instead as 'LADYKAT2.pc'` in the
+code, and in the pane it is prefixed with the file it concerns -- so the same
+filename appears twice in one sentence and half of it is repeating the prefix.
+That was invisible in the diff and obvious in a screenshot. `QWidget.grab()`
+under `offscreen` costs nothing; `work/reports/issue-96/` is the pattern.
+
 ## Code comments
 
 Comment the *why*, and only when it is not obvious. A field note that carries
