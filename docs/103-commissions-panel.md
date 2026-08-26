@@ -191,3 +191,43 @@ log that blanked every time somebody opened one would be a flicker.
   offers nomads, kobolds, lizardmen, and draws each commission once.
 * Reading is pure: the decoder copies its input, and the specimen save's bytes
   are identical after the panel has drawn them.
+
+## The other titles have no equivalent, and this is why the panel refuses (#40)
+
+**Curse of the Azure Bonds and Secret of the Silver Blades have nothing a
+commissions panel could draw.** Established by reading every string in both
+games' scripts off the player's own C64 disks — **2683 from Curse's 26 scripts
+and 1856 from Silver Blades'** — and looking for the vocabulary a job register
+needs.
+
+A plain `strings` over a Gold Box script finds nothing, which is why nobody had
+looked: the text is **6-bit packed**, three characters to four bytes.
+`work/analysis/ecl.py`'s `unpack` already had the decoder from the Pool of
+Radiance work and it applies unchanged. `work/p40/curse_strings.py` is the scan.
+
+| word | Curse | Silver Blades |
+|---|---:|---:|
+| COMMISSION | **0** | **0** |
+| COUNCIL | **0** | **0** |
+| PROCLAMATION | **0** | **0** |
+| BOUNTY | **0** | **0** |
+| CLERK | **0** | 6 — a Black Circle secretary burning papers |
+| MAYOR | **0** | 3 — Priam, who puts the party up |
+| REWARD | 5 | 1 — all one-off narrative lines |
+| TASK | 1 | 1 — assassins engrossed in theirs |
+
+**The shape is different, not merely the words.** Pool of Radiance's City Hall
+keeps a 26-entry reward ledger, a counter of major commissions and a sixteen-
+candidate offer board, and the clerk reads entries out of it. The nearest thing
+in Curse is one line from the man at the standing stones:
+
+> `YOU PRESENTLY SERVE <n> MASTERS. RETURN TO ME WHEN YOU HAVE SLAIN <n> MORE.
+> THEN YOU SHALL ACHIEVE YOUR DESTINY.`
+
+That is **one number** — the five bonds — on a linear plot, and Silver Blades
+has not even that. There is no board to offer from and no ledger to read back,
+so a per-title panel would have a single integer to draw and no rows.
+
+**So the refusal is permanent rather than provisional**, and #35's decision to
+make the panel refuse instead of making it per-title is the right one for a
+reason rather than for want of information.
