@@ -1406,6 +1406,15 @@ def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     where = areas.area(there)
     if where is None:
         raise DosRecordError(NOT_AN_AREA.format(area=there))
+    savgam_outdoors = dos_savegame.outdoors(savgam)
+    if savgam_outdoors != where.outdoors:
+        raise DosRecordError(
+            f"the save's own $49E6 says "
+            f"{'outdoors' if savgam_outdoors else 'indoors'}, but script id "
+            f"{there} ({where.name or where.ecl}) is marked "
+            f"{'outdoors' if where.outdoors else 'indoors'} in "
+            "por/areas.py -- these two disagree and neither is trusted "
+            "over the other")
     if where.outdoors:
         sqr = _sqrdata_number(where.sqrdata)
         save0[at:at + FILE_CACHE[1]] = (
