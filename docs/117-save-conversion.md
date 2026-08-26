@@ -1395,8 +1395,9 @@ save. Every one is reported in the `SaveReport`'s `carried` list, and
 **The party lands where it stood, not where the template stood.** #59's
 seven-write recipe was not enough, and what it was missing is the one thing
 it recorded as unnecessary: the **ECL text buffer at 5121-12800 is live**,
-and a retarget that leaves the template's script staged dies with `Unable to
-load geo in Load3DMap.` however many variables it writes. All twelve of #59's variants
+and a save built for a new area but still carrying the old area's script dies
+with `Unable to load geo in Load3DMap.` however many other variables it
+writes. All twelve of #59's variants
 happened to carry the target area's buffer, so it was never a variable in
 that bisection; `work/p60/run2`'s X1 is the control, and it fails. The buffer
 is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
@@ -1413,8 +1414,8 @@ Two DOSBox runs, both through the real converter, both walked:
 
 **An empty wallset triple is legal.** New Phlan is the one area the C64 loads
 no `WALLSET` for — all three cache slots read `$FF` — where DOS's own slot A
-holds `(0, $FFFF, $FFFF)`. A save retargeted there with three empty words
-draws a view **pixel-identical** to one carrying DOS's own triple, so the
+holds `(0, $FFFF, $FFFF)`. A save moved there with three empty words in the
+triple draws a view **pixel-identical** to one carrying DOS's own triple, so the
 converter sources the triple from the C64 and does not refuse the empty case
 (`work/p60/run3` Z0 against `run2` X3, 229 differing pixels and every one of
 them in the colour-cycling command bar).
@@ -1422,8 +1423,8 @@ them in the colour-cycling command bar).
 Three kinds of area are still refused, each because there is no legal answer
 rather than because it is untested: an area this project has no row for, an
 area whose script picks its map at run time or loads none at all, and the
-travel grid, where no DOS specimen exists at all (#50). A retarget with no
-`ECL<n>.DAX` to read keeps the template's square and says so.
+travel grid, where no DOS specimen exists at all (#50). Moving a save to an
+area with no `ECL<n>.DAX` to read keeps the template's square and says so.
 
 ### Where every DOS byte comes from
 
@@ -1659,10 +1660,10 @@ And for the reverse direction, `tests/test_doswriter.py`:
 * **A written save is read back by our own reader**, and the quest flags,
   square, facing, clock, party size and party filenames land where `SAVGAM`
   keeps them.
-* **A party from another area is retargeted**, every write checked against
-  the byte map and the staged script against the `ECL<n>.DAX` block it came
-  from; and with no game directory to read, the template's square is
-  kept and the report says which file was missing.
+* **A party converted from another area is moved to where it actually stood**,
+  every write checked against the byte map and the staged script against the
+  `ECL<n>.DAX` block it came from; and with no game directory to read, the
+  template's square is kept and the report says which file was missing.
 * **A converted save loads and plays in DOS Pool of Radiance** under
-  DOSBox — the four driven runs above, and the two retargeted parties of
+  DOSBox — the four driven runs above, and the two area-moved parties of
   #60.

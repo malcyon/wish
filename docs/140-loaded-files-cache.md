@@ -109,7 +109,7 @@ A save whose cache is `$FF` in every slot except **slot 2 (`GEO`)** and
 | test | template | cache written | result |
 |---|---|---|---|
 | A | `PORSAVE13`, the Slums | slot 2 = `$14`, slot 8 = `$14`, rest `$FF` | loaded, status line `W 21:15 15,4`, `$0400`-`$07FF` byte-identical to `GEO14`, walked east across the boundary into New Phlan |
-| B | `PORSAVE`, New Phlan, retargeted to Sokol Keep | slot 2 = `$15`, slot 8 = `$15`, rest `$FF`, plus `$49C0`-`$49C2` = 8,14,0, `$49C5` = `$15`, `$49E6` = 1, `$49F2` = `$15` | loaded, ran `ECL15`'s own arrival — "THE BOAT DISEMBARKS YOU AT SOKAL KEEP." — settled at `(8,14)` facing north, `$0400`-`$07FF` byte-identical to `GEO15`, and walked. Cache refilled to `GDRIVE01`, `GEO15`, `SECSET02`, `ECL15` and the wall triple `01 05 09` |
+| B | `PORSAVE`, a New Phlan save rewritten to stand in Sokol Keep instead | slot 2 = `$15`, slot 8 = `$15`, rest `$FF`, plus `$49C0`-`$49C2` = 8,14,0, `$49C5` = `$15`, `$49E6` = 1, `$49F2` = `$15` | loaded, ran `ECL15`'s own arrival — "THE BOAT DISEMBARKS YOU AT SOKAL KEEP." — settled at `(8,14)` facing north, `$0400`-`$07FF` byte-identical to `GEO15`, and walked. Cache refilled to `GDRIVE01`, `GEO15`, `SECSET02`, `ECL15` and the wall triple `01 05 09` |
 
 Test B needed one more byte than the cache, `$49EA`; see below.
 
@@ -188,8 +188,9 @@ Given a target area id `N`, its `GEO` number `G` and the disk `D` that carries
 ## The outdoor form — areas 25, 26 and 27
 
 CONFIRMED, twice, in the running game (`work/p47/`): once cutting a genuine
-wilderness save's cache to the two entries, once retargeting the indoor Slums
-template onto travel window `1A` from a cold boot. Both came up `OUTDOORS`,
+wilderness save's cache to the two entries, once rewriting an indoor Slums
+save to stand on travel window `1A` instead, from a cold boot. Both came up
+`OUTDOORS`,
 at the square the save carried, and walked the grid; `$8C00` matched the
 window's `SQRDATA` file in 648 of 648 bytes.
 
@@ -207,6 +208,6 @@ number `S` (`04`/`05`/`06`) standing in for `G` everywhere `G` appears:
 Slot 2 stays `$FF` and stays empty after arrival — no `GEO` is loaded outdoors.
 The refill is `LOADFILES`' travel branch: `GDRIVE00`, `SQRPACI00`, `SECSET0n`
 and the `SQRDATA` itself. And unlike indoors, the placement question is closed:
-a warp carrying (0,0) came up at (0,0) and the retarget carrying (5,2) came up
-at (5,2), so the arriving script honours `$49C3`/`$49C4` rather than re-placing
-the party.
+a warp carrying (0,0) came up at (0,0) and a save rewritten to carry (5,2) came
+up at (5,2), so the arriving script honours `$49C3`/`$49C4` rather than
+re-placing the party.

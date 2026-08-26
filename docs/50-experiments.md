@@ -4840,8 +4840,9 @@ still `$FF` is the lazy half — pictures, sprites, portraits, spell tables, the
 icon charset — loaded when something first asks.
 
 *Test B, the one that answers the issue.* `PORSAVE`, a **New Phlan** save,
-retargeted to **Sokol Keep**: cache `$FF` except slots 2 and 8 = `$15`, plus
-`$49C0`-`$49C2` = 8,14,0, `$49C5` = `$15`, `$49E6` = 1. It loaded, ran `ECL15`'s
+rewritten to stand in **Sokol Keep** instead: cache `$FF` except slots 2 and
+8 = `$15`, plus `$49C0`-`$49C2` = 8,14,0, `$49C5` = `$15`, `$49E6` = 1. It
+loaded, ran `ECL15`'s
 own arrival — "THE BOAT DISEMBARKS YOU AT SOKAL KEEP." — settled at `(8,14)`
 facing north with `$0400`-`$07FF` byte-identical to `GEO15`, and walked. The
 cache had refilled itself to `GDRIVE01`, `GEO15`, `SECSET02`, `ECL15` and the
@@ -4905,8 +4906,9 @@ window `1A`, square (5,2) — with the cache cut to `$FF` × 25 except slot 4 =
 its job), came up **`OUTDOORS 21:15 5,2`**, and travel-stepped east to (6,2) and
 back. `$8C00` read back byte-identical to `SQRDATA05` in **648 of 648**.
 
-*Test D, the retarget.* `PORSAVE13` — the Slums, indoors — given the outdoor
-recipe wholesale: cache `$FF` × 25 with slot 4 = `$05` and slot 8 = `$1A`,
+*Test D, moving an indoor save outdoors.* `PORSAVE13` — the Slums, indoors —
+given the outdoor recipe wholesale: cache `$FF` × 25 with slot 4 = `$05` and
+slot 8 = `$1A`,
 `$49E6` = 0, `$49EA` = 7, `$49C5` = `$05`, `$49F2` = `$1A`, `$49C3`/`$49C4` =
 (5,2), and `$49C0`-`$49C2` left at the template's own indoor square, exactly as
 every genuine outdoor save leaves them. From a cold boot it loaded, drew the
@@ -4949,11 +4951,11 @@ Build scripts, runner, logs and screenshots: `work/p47/`.
 
 ## Does the arriving script re-place the party? Yes, when it means to
 
-**Hypothesis.** #24's test B could not say whether `ECL15` placed the retargeted
+**Hypothesis.** #24's test B could not say whether `ECL15` placed the moved
 party or the saved square survived, because `(8,14)` was both. The clean test is
 the same build carrying `(8,12)` — a walkable square that is neither.
 
-**Method.** `work/p24/build2.py`'s Sokol Keep retarget rebuilt with
+**Method.** `work/p24/build2.py`'s save-moved-to-Sokol-Keep rebuilt with
 `$49C0`-`$49C2` = `(8,12,0)` and one benign extra, `$49EA` = 4, so the run does
 not sit on the disk-hint hang test B had to poke through. `$4A02` — the scratch
 flag `118-debug-mode.md` reads as the gate on `ECL15 $9A92`'s message-and-place
@@ -4977,8 +4979,8 @@ So the two indoor cases are now separated:
 * **a script with no placing arrival** leaves the saved square alone —
   PROBABLE, one run: the #24 DOS conversion came up at `(4,3)`, the DOS square,
   where New Phlan's own arrival is `(15,1)`. The settling experiment for a
-  second area: retarget onto the Slums (`ECL14`) with a square that is neither
-  the template's nor an arrival, and read `$C04B`.
+  second area: move a save onto the Slums (`ECL14`) with a square that is
+  neither the template's nor an arrival, and read `$C04B`.
 
 **What a converter should conclude:** `$49C0`-`$49C2` is not decoration — it
 seeds the live position on load and is what a non-placing area uses — but it is
@@ -5248,7 +5250,8 @@ C64 disk side); the header byte alone does not satisfy `Load3DMap`.
 block ids, `$FFFF` empty — and the cross-port check is exact: C64
 `PORSAVE13` (the Slums) carries cache slots 15-17 = (2,4,1), byte-identical
 to DOS slot J's triple, so **a converter can source the triple from the C64
-save**. Run 9 played the retargeted party and let the engine resave it:
+save**. Run 9 played the party that had been moved to the new area and let
+the engine resave it:
 dax 2, area 20, `$5012` = 2, triple (2,4,1), CHRDAT letters rewritten,
 buffer refilled. CONFIRMED for area 0 → area 20; a second pair would firm
 the general claim.
@@ -5261,9 +5264,10 @@ shown it mattered; V11 stood in the Slums with the *Slums'* script staged,
 not area 0's. The control this run lacked is `work/p60/run2` X1 — slot A,
 all seven writes above, its own buffer left alone — which dies in
 `Load3DMap`. The buffer is write **7** of nine, and #60 was implemented
-against the seven and its first retarget onto a fresh template died exactly
-there. The recipe as it stands is in `docs/141-dos-savegame.md` "The
-retarget recipe (#60)", formatted from `por.dos_savegame.RETARGET_WRITES`.
+against the seven and its first attempt to move a save onto a fresh template
+died exactly there. The recipe as it stands is in `docs/141-dos-savegame.md`
+"The recipe for moving a save to a different area (#60)", formatted from
+`por.dos_savegame.RETARGET_WRITES`.
 
 **Result 5. The variable array is sparse and the tail is mostly not state.**
 2407 of 2560 words are zero in all nine specimens. `$5227`+ is the
@@ -5357,8 +5361,8 @@ bytes 12804-12807 have no single live address to watch.
 
 **Left open.** The wallset triple outdoors reads (0,$FFFF,$FFFF) but the
 departure template's was the same, so live-versus-stale needs a sail from
-Sokol Keep (triple 1,5,9). An outdoor retarget has not been driven; #50
-owns the converter form. `$49F0`, `$5079`-`$507D`, 12804/12805/12807
+Sokol Keep (triple 1,5,9). Moving an outdoor save to a new area has not been
+driven; #50 owns the converter form. `$49F0`, `$5079`-`$507D`, 12804/12805/12807
 remain unnamed.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
