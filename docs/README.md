@@ -30,20 +30,20 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [96-live-memory-automapper.md](96-live-memory-automapper.md) | the live automapper in `automap/`: how it reads a running game, draws the map and shows the party |
 | [102-live-actions.md](102-live-actions.md) | buttons that change the running game — built |
 | [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — built |
-| [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — planned |
-| [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and what still does |
-| [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — planned |
+| [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — built |
+| [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and the findings from the 2026-08-20 audit — all fixed, kept as the record |
+| [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — built, no tag pushed yet |
 | [107-roster-and-notes.md](107-roster-and-notes.md) | the automapper's roster cards, note tooltips and the icons — built |
 | [108-purge-history.md](108-purge-history.md) | removing the game's files from the git history — planned |
-| [109-icon-choices.md](109-icon-choices.md) | icon candidates to choose between, and where icons earn their place |
+| [109-icon-choices.md](109-icon-choices.md) | which icon was chosen for each role, and where icons earn their place — chosen and wired |
 | [110-combat-log.md](110-combat-log.md) | capturing the game's combat messages before it paints over them |
 | [111-map-shading.md](111-map-shading.md) | darker walls and Dyson-style hatching |
-| [112-test-harness.md](112-test-harness.md) | the suite opens real windows, and an intermittent findChild segfault |
+| [112-test-harness.md](112-test-harness.md) | two fixed test-harness faults: the suite opening real windows, and an intermittent findChild segfault |
 | [114-party-strength.md](114-party-strength.md) | what makes a random encounter bigger, term by term |
 | [113-world-map.md](113-world-map.md) | the overland travel map, which is the combat engine on other data |
 | [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
 | [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
-| [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — planned |
+| [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — the converter is written and `File > Import`/`Export` are wired, behind `WISH_EXPERIMENTAL_DOS_IMPORT`/`WISH_EXPERIMENTAL_EXPORT` |
 | [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Fast Travel, and what an area change actually is — built |
 | [119-test-party.md](119-test-party.md) | getting a levelled, varied party for the specimens still wanted |
 | [120-curse-testing.md](120-curse-testing.md) | testing the second game |
@@ -55,9 +55,11 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [126-forum-findings.md](126-forum-findings.md) | what the Gold Box forums have that we do not — playtester mode, DOS area tables, tooling |
 | [127-community-formats.md](127-community-formats.md) | the community format spreadsheets: saving throws solved, the DOS record against ours |
 | [128-guide-and-scripting.md](128-guide-and-scripting.md) | the DOS guide and the Unlimited Adventures files: the GBVM address list, the area names, the ECL semantics |
-| [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — planned |
+| [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — built |
 | [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log — built |
 | [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — measured; it does not |
+| [132-logo.md](132-logo.md) | the app icon: Font Awesome's `hat-wizard`, generated from `ui/icons.py` — built and wired |
+| [133-active-effects.md](133-active-effects.md) | editing active effects: the `SAVEDGAME0` arrays distinct from the record's traits, and what the UI to edit them would need — planned |
 | [134-commissions.md](134-commissions.md) | the council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
 | [136-condition-badges.md](136-condition-badges.md) | which spell effects earn a badge on the roster card, measured at 13 px — a decision sheet for Donald |
@@ -65,8 +67,9 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [138-multiple-games.md](138-multiple-games.md) | fast travel for more than one Gold Box title: what is per-title today, what data the other games have, and the dialog |
 | [139-per-title-validation.md](139-per-title-validation.md) | every shipped feature against every title we claim: what is verified, what refuses, what does not work |
 | [140-loaded-files-cache.md](140-loaded-files-cache.md) | the 25-slot loaded-files cache at `$4BC0`: which file kind each slot names, where each loads, and the two entries a converted save actually needs |
-| [141-dos-savegame.md](141-dos-savegame.md) | the 13137-byte DOS `SAVGAM?.DAT` mapped: header byte, sparse VM word array, dead ECL buffer, square and party size, and the retarget recipe that survives `Load3DMap` |
+| [141-dos-savegame.md](141-dos-savegame.md) | the 13137-byte DOS `SAVGAM?.DAT` mapped: header byte, sparse VM word array, the ECL text buffer (live on load — write 7 of the retarget recipe), square and party size, and the retarget recipe that survives `Load3DMap` |
 | [142-dosbox-x-debugger.md](142-dosbox-x-debugger.md) | the DOS side's answer to VICE's binary monitor: a DOSBox-X built with the debugger, driven unattended over a pty, the memory reads, watchpoints and breakpoints it does and does not give, and the harness `tools/dosboxx.py` that hides its four traps |
+| [143-winuae-debugger.md](143-winuae-debugger.md) | the Amiga side's answer: WinUAE's console debugger driven from Linux over the Windows VM, why stock WinUAE has no GDB server however much uae-dap suggests it does, `S`-to-a-file as the read path, the built-in trainer search as the way to find a live address, and what a `WinuaeTarget` would cost |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `por/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
@@ -90,7 +93,7 @@ dragging in throwaway discovery scripts.
 | `ui/` | drawing code both the editor and the map need, owned by neither |
 | `designer/` | the Qt Designer `.ui` forms, loaded at runtime |
 | `packaging/` | the PyInstaller entry points and the Windows console-stream repair |
-| `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. Two entry points live here, `wish-cli` (`tools/wish.py`) and `tools.genui`, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) plans to fold the CLI into `wish` itself |
+| `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. `tools.wish` is the body of the `wish export`/`wish import` subcommands and `tools.genui` runs at window startup, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) is the CLI folded into `wish` itself |
 | `skills/goldbox/` | the transferable method, for a cold agent starting on a new title |
 | `work/` | scratch disk copies — `.gitignore`d, and where every disk image belongs |
 

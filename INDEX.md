@@ -9,7 +9,7 @@ What each directory in this repository is for.
 | [`automap/`](automap/README.md) | The live automapper: everything that knows about a running machine — the VICE client, the map state, the rendering geometry, the window. |
 | [`wish/`](wish/README.md) | The application that wraps the other two — the tabbed window, preferences, the debug log, the backend session, the CLI entry point. |
 | [`ui/`](ui/README.md) | Shared widget-level helpers both GUIs use: the app icon, icon painting, the Font Awesome set. |
-| [`tools/`](tools/README.md) | Developer scripts, not shipped — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators. |
+| [`tools/`](tools/README.md) | Developer scripts, but ships anyway — the emulator harness, the instance pool, the disassembly and dump helpers, the code generators, and `tools.wish`/`tools.genui`, which `wish` reaches into at runtime. |
 | `tests/` | The test suite, plus `gamedata.py`, which reads game data off the player's own disks so none of it is committed. |
 | `docs/` | The knowledge base: numbered documents recording what is known and how it was established. Outlives every issue that cites it. |
 | `packaging/` | The PyInstaller entry script and the Windows console-borrowing shim. |
