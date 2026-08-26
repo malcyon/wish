@@ -185,6 +185,23 @@ def _squeezed(hint: QSize, floor: int) -> QSize:
     return QSize(min(floor, hint.width()), hint.height())
 
 
+def shortened(hint: QSize, floor: int) -> QSize:
+    """`hint` with its height capped at `floor`. Never heightens anything.
+
+    The height twin of `_squeezed`, and the same argument in the other axis:
+    the window's minimum *height* was the sum of the row heights its bars
+    happened to want, so a larger UI font dragged the window down past a
+    720-high screen with nothing open at all -- 662 at the base font here and
+    805 at ten points more (#77).
+
+    A row that is given less height than its font wants clips rather than
+    eliding, so unlike the width caps this one is only ever reached by a
+    window squeezed to its floor. Everything above the floor lays out exactly
+    as it did.
+    """
+    return QSize(hint.width(), min(floor, hint.height()))
+
+
 def _let_it_shrink(widget) -> None:
     """Let a layout squeeze this widget down to its `minimumSizeHint`.
 
@@ -590,6 +607,13 @@ class RosterPanel(QWidget):
 class BottomStrip(QWidget):
     """Where, when, which area, and what is on the party."""
 
+    #: The tallest this strip may hold the window open, whatever the UI font.
+    #: One row of read-outs and the four pixels above it -- 21 measured at 9pt
+    #: under Breeze on Linux, where the strip wants 39 at ten points more. It
+    #: moves only if a second row is added to the strip; a wider UI font must
+    #: not move it, which is the whole of #77.
+    SHORT = 21
+
     def __init__(self, parent=None):
         super().__init__(parent)
         box = QVBoxLayout(self)
@@ -617,6 +641,9 @@ class BottomStrip(QWidget):
         #: and only when it moves -- twenty-five bytes five times a second
         #: would drown the file.
         self._loaded: tuple[int, ...] = ()
+
+    def minimumSizeHint(self) -> QSize:
+        return shortened(super().minimumSizeHint(), self.SHORT)
 
     def show_state(self, state, snap=None) -> None:
         """The map's own state answers "where"; the snapshot answers the rest.

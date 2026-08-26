@@ -275,7 +275,109 @@ def test_the_windows_minimum_does_not_follow_the_ui_font(app, tmp_path,
 #: of 480 plus 24 of layout margins and spacing plus 4 of window frame, none of
 #: which is measured from a string.
 #:
-#: The height still follows the font, which is #77 and is not this.
+#: The height still follows the font through the window's own chrome, which is
+#: the two tests below and is not this.
+
+
+def _heights(app, tmp_path, monkeypatch, fonts=(0, 3, 6, 10)):
+    """The window's floor, the automapper page's floor and the chrome's, at
+    each of several UI font sizes. Base font restored afterwards.
+
+    The three are one measurement because they are one sum: the window's
+    minimum height is the taller of its two pages plus the menu bar, the tab
+    bar and the status bar around them. Splitting the answer is what says
+    which half of it a font moved.
+    """
+    from wish.session import Session
+    from wish.window import WishWindow
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "_home", lambda: empty)
+    monkeypatch.chdir(empty)
+
+    base = app.font()
+    try:
+        out = []
+        for extra in fonts:
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            win = WishWindow(None, maps={},
+                             session=Session(find=lambda pref=None: None))
+            chrome = sum(w.minimumSizeHint().height()
+                         for w in (win.menuBar(), win.tabs.tabBar(),
+                                   win.statusBar()))
+            out.append((win.minimumSizeHint().height(),
+                        win.map.minimumSizeHint().height(), chrome))
+            win.close()
+        return out
+    finally:
+        app.setFont(base)
+
+
+def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
+        app, tmp_path, monkeypatch):
+    """#77, and the height twin of the width test above.
+
+    The window's minimum *height* was 662 at the base font and 805 at ten
+    points more, so a user who raised the UI font three points -- an ordinary
+    accessibility choice -- could not fit the window on a 1366x768 panel. Of
+    the 143px, 90 were the automapper page: the map canvas's own floor is
+    `CELL_MIN` arithmetic and does not move, but the action bar under it, the
+    Fast Travel row under that and the bottom strip were each as tall as their
+    own font metrics, in a layout that does not scroll.
+
+    Each of those three now caps its `minimumSizeHint` height at a constant
+    (`ActionBar.SHORT`, `WarpBar.SHORT`, `BottomStrip.SHORT`), the way #41
+    capped the widths, so the page's floor is 580 at every UI font this
+    machine can be made to draw -- 580, 605, 635 and 670 before.
+
+    An equality and not a tolerance, for the same reason the width one is:
+    everything left in the page's floor is either a constant or the map's own
+    square, and if these ever differ something has gone back to measuring a
+    string.
+
+    The roster panel and the notes/commissions/messages column are not capped.
+    They do follow the font -- 89 to 132 and 281 to 410 between +0 and +24 --
+    and neither comes near the map column's 514, so neither is in this
+    number. If one ever overtakes it this test goes red, which is the right
+    way round.
+    """
+    fonts = (0, 3, 6, 10)
+    pages = [page for _win, page, _chrome
+             in _heights(app, tmp_path, monkeypatch, fonts)]
+    assert pages == [pages[0]] * len(fonts), (
+        f"the automapper page's floor grew with the font: "
+        f"{dict(zip(fonts, pages))}")
+
+
+def test_what_is_left_following_the_font_is_the_windows_own_chrome(
+        app, tmp_path, monkeypatch):
+    """And the whole window, which still grows -- by exactly its chrome.
+
+    A menu bar, a tab bar and a status bar are three rows of text, and a user
+    who asks for a larger UI font is asking for those to be larger too;
+    capping them would clip `File`. So the window's floor is not a constant
+    the way its width is, and this is the assertion that says what the
+    remainder is made of: every pixel the floor moves is one of those three.
+
+    Measured here, empty window: 662, 677, 694, 707 and 715 at +0, +3, +6, +8
+    and +10, where before #77 it was 662, 702, 749, 782 and 805. The 720-high
+    screen is cleared to about ten points of extra font instead of failing at
+    six -- but the numbers are this machine's and the assertion is not: it is
+    that the two grow together, which is true wherever it runs.
+
+    Above roughly +13 the *editor* page overtakes the automapper page and
+    starts setting the height itself (378 to 630 between +0 and +16). That is
+    a different page and a different issue; the fonts here stop below it.
+    """
+    fonts = (0, 3, 6, 10)
+    parts = _heights(app, tmp_path, monkeypatch, fonts)
+    slack = [window - chrome for window, _page, chrome in parts]
+    assert slack == [slack[0]] * len(fonts), (
+        "the window's floor grew by more than its menu bar, tab bar and "
+        f"status bar did: {dict(zip(fonts, parts))}")
 
 
 def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
@@ -305,13 +407,18 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     font this machine can be made to draw -- 332px of margin under the screen
     rather than ten. The sibling below is the test that says so directly.
 
-    The width is checked at four fonts and the height at two, and that is not
-    the assertion being trimmed to fit: the height still follows the UI font
-    and 720 does not hold this window at +6pt, which is #77 and is nothing this
-    change touches. The width at +6pt and +10pt is precisely what it does
-    touch, it was 1449 and 1672 before, and without those two rows this test
-    cannot go red on a Linux machine at all -- which is how it came to be an
-    expected failure that CI disagreed with.
+    Both axes are checked at all four fonts. The height used to be checked at
+    two, because 720 did not hold this window above +3pt -- that was #77, and
+    #77 has since capped the automapper page's floor, so +6pt and +10pt now
+    fit and are asserted here rather than described in a comment. That is the
+    guarantee #77 was opened for; without these rows nothing in CI compares
+    the window against the screen at a raised font, and a change to the menu,
+    tab or status bar could put it back over 720 with everything green.
+
+    The width at +6pt and +10pt is what the roster change touched, it was 1449
+    and 1672 before, and without those two rows this test cannot go red on a
+    Linux machine at all -- which is how it came to be an expected failure
+    that CI disagreed with.
     """
     from gamedata import synthetic_save
 
@@ -321,8 +428,6 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     for extra, floor in zip(fonts, floors):
         assert floor.width() <= SMALL.width(), f"+{extra}pt"
     for extra, floor in zip(fonts, floors):
-        if extra > 3:
-            continue                                # the height is #77
         assert floor.height() <= SMALL.height(), f"+{extra}pt"
 
 

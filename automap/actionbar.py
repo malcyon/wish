@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -43,7 +43,13 @@ from PyQt6.QtWidgets import (
 from . import actions as engine
 from .area import ResidentGeo
 from .config import Settings
-from .panel import MUTED, ElidingButton, ElidingCheckBox, ElidingComboBox
+from .panel import (
+    MUTED,
+    ElidingButton,
+    ElidingCheckBox,
+    ElidingComboBox,
+    shortened,
+)
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -81,6 +87,14 @@ COLUMNS = 3
 
 class ActionBar(QWidget):
     """One button per action, and the watcher's checkbox."""
+
+    #: The tallest this bar may hold the window open, whatever the UI font.
+    #: Two rows of buttons and the watcher's row -- 86 measured at 9pt under
+    #: Breeze on Linux, where the same three rows want 140 at ten points more,
+    #: and that 54px was most of the 90 the automapper page grew by (#77).
+    #: It moves if `COLUMNS` changes or an action is added, since both change
+    #: how many rows there are; a wider UI font must not move it.
+    SHORT = 86
 
     def __init__(self, parent=None, actions=None, watcher=None, say=None,
                  game=None):
@@ -134,6 +148,9 @@ class ActionBar(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         self.note.setWordWrap(True)
         grid.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
+
+    def minimumSizeHint(self) -> QSize:
+        return shortened(super().minimumSizeHint(), self.SHORT)
 
     def _watch_toggled(self, on: bool) -> None:
         self.watcher.enabled = on
@@ -315,6 +332,12 @@ class WarpBar(QWidget):
     The area table is `por/areas.py`, and the row holds no copy of it.
     """
 
+    #: The tallest this row may hold the window open, whatever the UI font.
+    #: The dropdown-and-buttons row and the 8pt note under it -- 48 measured
+    #: at 9pt under Breeze on Linux, where it wants 66 at ten points more
+    #: (#77). It moves if a second row of controls is added here.
+    SHORT = 48
+
     def __init__(self, parent=None, warp=None, areas=None, say=None,
                  maps=None, settings: Settings | None = None,
                  title: str | None = None, game=None):
@@ -381,6 +404,9 @@ class WarpBar(QWidget):
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
         self.refresh()
+
+    def minimumSizeHint(self) -> QSize:
+        return shortened(super().minimumSizeHint(), self.SHORT)
 
     def _rows_for_title(self) -> tuple:
         """This title's areas, which is nothing for every title but one."""
