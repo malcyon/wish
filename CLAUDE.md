@@ -321,6 +321,21 @@ spare here and twenty pixels short on Windows. Each time the fix was the same
 to work. Where a constant genuinely is the answer, say beside it what it was
 measured on and what would move it.
 
+**The trap has an inverse, and it caught #77 after the constant was right.**
+A cap can be a perfectly good constant and the *assertion about it* still be a
+measurement of this machine. #77 capped three widgets so the automapper page's
+floor stops following the UI font, and asserted the floor was **the same at
+every font**. True here -- 580 at +0 through +10 -- and red on both CI
+platforms, because their base font is *smaller*: CI's Linux climbs 561, 578,
+578, 578 and Windows 551, 569, 576, 576. The cap holds in all three. Only a
+machine whose base font already reaches the cap sees no climb at all.
+
+So when a constant bounds something, **assert that it is bounded, not that it
+never moved**: non-decreasing, and flat by the largest font. And prefer the
+assertion that states the outcome a user cares about -- "the window fits a
+720-high screen at +6pt" survived both platforms untouched, while two
+structural proxies for it did not.
+
 **Say what the sample size was.** "24 of 24 records round-trip byte for byte" is
 evidence. "It worked on my character" is not. Where a rule has exceptions, count
 them and name them rather than rounding them away.
