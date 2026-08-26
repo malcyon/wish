@@ -245,11 +245,23 @@ straight out.
 `main` is the state everything else is built on, and a failure found an hour
 later has other people's work stacked on top of it.
 
+**Check the run for the commit you pushed, not the newest run.** `--limit 1`
+answers whichever run is at the top, which during a push is usually the
+*previous* one, already green. That is how green has been reported off a stale
+run three times here across two sessions. Match on `headSha`:
+
 ```sh
-until [ "$(gh run list --limit 1 --json status -q '.[0].status')" = completed ]
+SHA=$(git rev-parse HEAD)
+until [ "$(gh run list --limit 5 --json headSha,status \
+           -q "[.[] | select(.headSha==\"$SHA\")] | map(.status) | unique | join(\",\")")" \
+        = completed ]
 do sleep 15; done
-gh run list --limit 2
+gh run list --limit 5 --json headSha,name,conclusion \
+  -q ".[] | select(.headSha==\"$SHA\") | \"\(.name)\t\(.conclusion)\""
 ```
+
+Both jobs, both named, both against that sha. A run whose `conclusion` is
+empty has not finished, however `completed` the list looks.
 
 Give it a minute or two -- the suite takes about 90 seconds on each of four
 jobs. If it failed, `gh run view <id> --log-failed` says why, and **the fix goes
@@ -279,6 +291,17 @@ until you have seen it red. This has gone wrong here twice: a test that filtered
 on `not isWindow()` passed with the fix reverted, because the fault *was* a
 parentless widget answering `isWindow() == True`; and a feature-flag test only
 earned its place once forcing the flag on made it fail.
+
+**A number measured on this machine is not a number.** It is a measurement of
+this machine, and the moment it is written into an assertion it becomes a
+claim about every machine. Three of one night's failures were this: 1270 here
+against 1308 on CI's Linux and 1447 on Windows; five clipped fields here and
+nine on another Linux box; a window width of `natural + 900` that was room to
+spare here and twenty pixels short on Windows. Each time the fix was the same
+-- **compute from what the thing asks for rather than from what you saw**, so
+`natural + box.sizeHint().width() + 400` instead of a constant that happened
+to work. Where a constant genuinely is the answer, say beside it what it was
+measured on and what would move it.
 
 **Say what the sample size was.** "24 of 24 records round-trip byte for byte" is
 evidence. "It worked on my character" is not. Where a rule has exceptions, count
@@ -398,7 +421,13 @@ Describe, cite, measure, and generate. Do not copy.
 ## Issues
 
 **GitHub issues are the work list.** `gh issue list` is the register; `docs/` is
-the knowledge base. The two are not the same thing and must not drift into
+the knowledge base.
+
+**`gh issue list` defaults to `--limit 30`, and says nothing when it truncates.**
+Counting the backlog with it answered "30 open" against a real 44, and the
+number looked plausible enough not to question. Pass `--limit` above the
+backlog size for any count, any sweep, or anything an answer to Donald rests
+on. The two are not the same thing and must not drift into
 being the same thing: an issue tracks work and closes when the work is done, a
 doc records what is known and outlives every issue that cited it.
 

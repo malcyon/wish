@@ -172,6 +172,19 @@ def _floor(tmp_path, monkeypatch, save=None):
 
     The save may be `gamedata.synthetic_party`'s, which is why the loaded case
     runs where there are no disks (#70).
+
+    **Two Qt traps live here, and both make a working change look broken.**
+    Each cost a prototype run during #71 before it was understood:
+
+    * `EditorWindow.showEvent` calls `_size_roster` once, *after* the window
+      is shown. Anything set on the roster before `show()` is overwritten, so
+      a change applied to the live widget does nothing at all and reads as the
+      idea being wrong rather than the timing.
+    * `QLayout.activate()` pins a top-level window's `minimumSize` from the
+      layout and does not un-pin it. After shrinking a child's minimum,
+      `minimumSizeHint()` keeps answering the old, larger number until the
+      window is told `setMinimumSize(0, 0)` and the layout is re-activated --
+      so the measurement says the fix failed while the fix is working.
     """
     from wish.session import Session
     from wish.window import WishWindow
