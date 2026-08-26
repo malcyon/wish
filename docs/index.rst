@@ -1,9 +1,9 @@
-wish
+Wish
 ====
 
 |description|
 
-`wish on GitHub <https://github.com/malcyon/wish>`_
+`Wish on GitHub <https://github.com/malcyon/wish>`_
 
 These pages are generated from the source's own docstrings. The
 reverse-engineering notes the code rests on are hand-written, live under

@@ -65,7 +65,7 @@ def _description() -> str:
         return ""
 
 
-project = "wish"
+project = "Wish"
 author = "Donald Morton"
 copyright = "2026, Donald Morton"
 release = _release()
@@ -140,7 +140,7 @@ suppress_warnings = ["myst.header", "myst.xref_missing", "autosummary"]
 intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 html_theme = "furo"
-html_title = f"wish {version}"
+html_title = f"Wish {version}"
 html_static_path = []
 
 
