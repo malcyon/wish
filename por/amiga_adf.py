@@ -249,6 +249,23 @@ class AmigaDisk:
     def save(self, path: str | pathlib.Path) -> None:
         pathlib.Path(path).write_bytes(self.to_bytes())
 
+    def restore(self, data: bytes | bytearray) -> None:
+        """Put the whole image back to a snapshot taken with :meth:`to_bytes`.
+
+        The undo half of a multi-file write.  A caller that writes sixteen
+        files and fails on the tenth has a disk that is neither what it was
+        nor what it meant to be, and the AmigaDOS structures are exactly the
+        kind of thing that is worse half-changed than not changed at all --
+        `write_file` allocates the replacement before freeing the original,
+        so a run that fills the disk can stop anywhere.
+        """
+        if len(data) != len(self._data):
+            raise AmigaDiskError(
+                f"a snapshot of {len(data)} bytes is not this disk's "
+                f"{len(self._data)}")
+        self._data[:] = data
+        self.root = self._find_root()
+
     # -- the shape of the disk ---------------------------------------------
     @property
     def block_count(self) -> int:
@@ -319,6 +336,23 @@ class AmigaDisk:
                 yield from self.walk(entry.block, here)
             else:
                 yield here, entry
+
+    def walk_dirs(self, header: int | None = None,
+                  path: str = "") -> Iterator[tuple[str, DirEntry]]:
+        """Every drawer on the disk, as `(path, entry)`, depth first.
+
+        The companion to :meth:`walk`, which yields only files -- and the
+        reason this exists is that `verify()` had no way to reach a drawer's
+        own header block. Before `make_dir` every directory on a disk this
+        module wrote was the root, which `verify()` checks by hand, so the
+        gap was invisible: a drawer with a wrong checksum verified clean.
+        """
+        for entry in self.entries(header):
+            if not entry.is_dir:
+                continue
+            here = f"{path}/{entry.name}"
+            yield here, entry
+            yield from self.walk_dirs(entry.block, here)
 
     def lookup(self, path: str) -> DirEntry:
         """One entry by `SAVE/NAME.cha`-style path, case-insensitively.
@@ -525,6 +559,65 @@ class AmigaDisk:
         self._write_data_chain(header, data, data_blocks)
         self._write_header(header, parent, name, data, data_blocks,
                            extensions, when)
+        self._link(parent, header, name)
+        self._touch(parent)
+        self._fix(parent, _HDR_CHECKSUM)
+        if parent != self.root:
+            self._touch(self.root)
+            self._fix(self.root, _HDR_CHECKSUM)
+        self._fix_bitmap()
+        return header
+
+    def make_dir(self, path: str,
+                 when: datetime.datetime | None = None) -> int:
+        """Create a drawer at `path` and return its block number.
+
+        One block, no data chain: a `ST_USERDIR` header is a hash table and a
+        name, which is why this is short where `write_file` is not.  The
+        parent has to exist, and a name already in the parent is an error
+        rather than a silent reuse -- a drawer that quietly turned out to be
+        the file of the same name is the kind of thing that corrupts a disk
+        two operations later.
+
+        Production never needs it: a converted party lands in the `save`
+        drawer of a copy of the player's own game disk, which is already
+        there.  It exists so the writer above can be tested on a disk this
+        module formatted, with no game data anywhere -- which is the property
+        `tests/test_amiga_adf.py` is built on.
+        """
+        parts = [p for p in path.replace("\\", "/").split("/") if p]
+        if not parts:
+            raise AmigaDiskError("an empty path names nothing")
+        name = parts[-1]
+        self._check_name(name)
+        parent = self.root
+        if len(parts) > 1:
+            entry = self.lookup("/".join(parts[:-1]))
+            if not entry.is_dir:
+                raise AmigaDiskError(
+                    f"{parts[-2]!r} is a file, not a drawer")
+            parent = entry.block
+        for entry in self.entries(parent):
+            if entry.name.upper() == name.upper():
+                raise AmigaDiskError(
+                    f"{name!r} is already on this disk at block {entry.block}")
+
+        header = self._allocate(1)[0]
+        at = header * BLOCK_SIZE
+        self._data[at:at + BLOCK_SIZE] = bytes(BLOCK_SIZE)
+        struct.pack_into(">I", self._data, at + _HDR_TYPE, T_HEADER)
+        struct.pack_into(">I", self._data, at + _HDR_KEY, header)
+        days, minutes, ticks = _amiga_date(when or datetime.datetime.now())
+        struct.pack_into(">III", self._data, at + _HDR_DAYS,
+                         days, minutes, ticks)
+        encoded = name.encode("latin1")
+        self._data[at + _HDR_NAME] = len(encoded)
+        self._data[at + _HDR_NAME + 1:
+                   at + _HDR_NAME + 1 + len(encoded)] = encoded
+        struct.pack_into(">I", self._data, at + _HDR_PARENT, parent)
+        struct.pack_into(">i", self._data, at + _HDR_SEC_TYPE, ST_USERDIR)
+        self._fix(header, _HDR_CHECKSUM)
+
         self._link(parent, header, name)
         self._touch(parent)
         self._fix(parent, _HDR_CHECKSUM)
@@ -757,6 +850,13 @@ class AmigaDisk:
             if self.is_free(known):
                 problems.append(
                     f"block {known} is in use and marked free in the bitmap")
+
+        for where, entry in self.walk_dirs():
+            check(entry.block, _HDR_CHECKSUM, f"the drawer {where!r} at block")
+            if self.is_free(entry.block):
+                problems.append(
+                    f"block {entry.block} holds the drawer {where!r} and is "
+                    f"marked free in the bitmap")
 
         for _, entry in self.walk():
             current = entry.block

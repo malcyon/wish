@@ -1036,3 +1036,503 @@ def test_the_innate_effects_reach_the_neutral_record():
         assert n.get("innate_effects") == [e[0] for e in c.effects], path
     if not seen:
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+
+
+# ---------------------------------------------------------------------------
+# Writing an Amiga Pool of Radiance character (#105)
+# ---------------------------------------------------------------------------
+#
+# The writer is the reader run backwards, so the tests that matter are the
+# ones a wrong byte order or a wrong shift would fail: a round trip against
+# genuine specimens masked by the writer's *declared* list rather than by
+# whatever happened to differ, and the placement checks that a synthetic
+# character can carry with no game data anywhere.
+
+
+def por_write_mask() -> set[int]:
+    """Offsets a round trip is allowed to differ in, and why each is there.
+
+    Built from the **declared** tables -- `amiga.POR_WRITE_UNSOURCED` for the
+    three insertions and the heap pointer, and `por.dos`'s own
+    `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields for everything
+    the DOS writer already says it does not carry.  Masking by the diff
+    instead would make the test agree with the code by construction.
+    """
+    from por import dos
+
+    mask: set[int] = set()
+    for first, size, _ in amiga.POR_WRITE_UNSOURCED:
+        mask |= set(range(first, first + size))
+
+    def field(name: str) -> set[int]:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        return {amiga_por_offset(o)
+                for o in range(f.offset, f.offset + f.size)
+                if o not in AMIGA_POR_UNPLACED}
+
+    for name, _ in dos.WRITE_UNSOURCED:
+        mask |= field(name)
+    for name, _, _ in dos.WRITE_CONSTANTS:
+        mask |= field(name)
+    # Computed rather than copied, and `por.dos.WRITE_TARGETS` says so.
+    mask |= field("encumbrance") | field("item_count")
+    # Repacked: `por.dos` reads the sixteen slots as a set and writes them
+    # back from the end.  Four of the fourteen Amiga exports are not filled
+    # from the end, so the positions do not survive -- #110.
+    mask |= field("spells_memorised")
+    # The gaps, which the DOS writer zeroes and names in its own report.
+    for f in dos_layout.LAYOUT:
+        if f.name.startswith("gap_"):
+            mask |= field(f.name)
+    return mask
+
+
+def test_every_masked_field_is_one_the_declared_tables_name():
+    """The mask cannot quietly grow.
+
+    Every offset it covers has to be inside a field named in
+    `amiga.POR_WRITE_UNSOURCED`, in one of `por.dos`'s three declared tables,
+    or in the short computed/repacked list above -- so a new difference in a
+    field nobody declared fails the round trip instead of being absorbed.
+    """
+    from por import dos
+
+    named = {name for name, _ in dos.WRITE_UNSOURCED}
+    named |= {name for name, _, _ in dos.WRITE_CONSTANTS}
+    named |= {"encumbrance", "item_count", "spells_memorised"}
+    named |= {f.name for f in dos_layout.LAYOUT if f.name.startswith("gap_")}
+    declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED
+                for o in range(first, first + size)}
+    for offset in por_write_mask() - declared:
+        hit = [f.name for f in dos_layout.LAYOUT
+               if f.offset not in AMIGA_POR_UNPLACED
+               and amiga_por_offset(f.offset) <= offset
+               < amiga_por_offset(f.offset) + f.size]
+        assert hit and hit[0] in named, (hex(offset), hit)
+
+
+def test_the_record_writer_is_the_readers_exact_inverse():
+    """288 -> 285 -> 288, on every specimen, outside the declared list.
+
+    This is the transposition alone -- no neutral record, so nothing is
+    dropped or derived on the way through.  A wrong byte order, a wrong shift
+    or a mis-cut name fails it on the first specimen.
+    """
+    declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED
+                for o in range(first, first + size)}
+    seen = 0
+    for path in amiga_por_records():
+        raw = path.read_bytes()
+        c = AmigaPorCharacter.from_bytes(raw, str(path))
+        back = amiga.from_dos_record(amiga.to_dos_record(c))
+        assert len(back) == AMIGA_POR_RECORD_SIZE
+        differ = [i for i in range(AMIGA_POR_RECORD_SIZE)
+                  if back[i] != raw[i] and i not in declared]
+        assert not differ, (path, [hex(i) for i in differ])
+        seen += 1
+    assert seen
+
+
+def test_a_specimen_round_trips_through_the_neutral_record():
+    """Amiga -> neutral -> Amiga, byte for byte outside the declared mask.
+
+    The full path a conversion takes, so it exercises `por.dos.to_neutral`
+    and `por.dos.write` as well as the two transpositions.
+    """
+    mask = por_write_mask()
+    seen = 0
+    for path in amiga_por_records():
+        c = amiga.read_amiga_por(path)
+        record, _, _, rep = amiga.write_por(amiga.to_neutral(c))
+        assert not rep.unaccounted, (path, rep.unaccounted[:8])
+        differ = [i for i in range(AMIGA_POR_RECORD_SIZE)
+                  if record[i] != c.raw[i] and i not in mask]
+        assert not differ, (path, [hex(i) for i in differ])
+        seen += 1
+    assert seen
+
+
+def test_the_item_nodes_round_trip_past_their_cached_line():
+    """Every byte of a 65-byte item node but the display cache and `next`.
+
+    The line is a render the game rewrites, and `next` is a live Amiga heap
+    address -- both are written empty on purpose, and everything else has to
+    come back identical or the item map is wrong.
+    """
+    nodes = 0
+    for path in amiga_por_with_items():
+        c = amiga.read_amiga_por(path)
+        _, itm, _, _ = amiga.write_por(amiga.to_neutral(c))
+        assert len(itm) == len(c.items) * amiga.AMIGA_POR_ITEM_SIZE, path
+        for n, item in enumerate(c.items):
+            written = itm[n * amiga.AMIGA_POR_ITEM_SIZE:
+                          (n + 1) * amiga.AMIGA_POR_ITEM_SIZE]
+            assert written[0x02E:] == item.raw[0x02E:], (path, n)
+            assert written[:0x02E] == bytes(0x02E), (path, n)
+            nodes += 1
+    assert nodes
+
+
+def test_the_effect_nodes_round_trip_past_their_next_pointer():
+    seen = 0
+    for path in amiga_por_records():
+        c = amiga.read_amiga_por(path)
+        if not c.effects:
+            continue
+        _, _, spc, _ = amiga.write_por(amiga.to_neutral(c))
+        for n, node in enumerate(c.effects):
+            written = spc[n * amiga.AMIGA_POR_EFFECT_SIZE:
+                          (n + 1) * amiga.AMIGA_POR_EFFECT_SIZE]
+            assert written[:6] == node[:6], (path, n)
+            assert written[6:] == bytes(4), (path, n)
+            seen += 1
+    if not seen:
+        pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+
+
+# -- the synthetic half: no game data, so these run everywhere --------------
+
+
+def test_every_byte_of_a_written_record_is_accounted_for():
+    record, itm, spc, rep = amiga.write_por(sample())
+    assert len(record) == AMIGA_POR_RECORD_SIZE
+    assert rep.total == AMIGA_POR_RECORD_SIZE + len(itm) + len(spc)
+    assert rep.unaccounted == []
+
+
+def test_the_name_is_sixteen_nul_padded_bytes_with_no_count():
+    """The Amiga's own encoding, and the whole of the difference at `0x00`.
+
+    A writer that copied DOS's count byte through would put a `07` in front
+    of the name and the game would draw it.
+    """
+    record, _, _, _ = amiga.write_por(sample())
+    assert record[:16] == b"AELFRIC".ljust(16, b"\0")
+    assert AmigaPorCharacter.from_bytes(record).name == "AELFRIC"
+
+
+def test_multi_byte_fields_are_written_big_endian():
+    """A 68000 record. Little-endian here draws 51200 platinum, not 200."""
+    record, _, _, _ = amiga.write_por(sample(platinum=200, age=33))
+    assert record[amiga_por_offset(
+        dos_layout.FIELDS_BY_NAME["platinum"].offset):][:2] == b"\x00\xc8"
+    c = AmigaPorCharacter.from_bytes(record)
+    assert c.money["platinum"] == 200
+    assert c.get("age") == 33
+
+
+def test_experience_is_one_big_endian_longword_across_dos_gap_0af():
+    """DOS spends three bytes plus `gap_0af`; the Amiga spends one `u32be`.
+
+    Tested on the transposition rather than through `write_por`, because
+    `por.dos.write`'s own field is three bytes wide and nothing that goes
+    through it can put anything in the fourth -- #111.  A writer that
+    swapped only three would put a large total's bytes in the wrong order.
+    """
+    record = bytearray(dos_layout.RECORD_SIZE)
+    at = dos_layout.FIELDS_BY_NAME["experience"].offset
+    record[at:at + 4] = b"\x04\x03\x02\x01"       # 0x01020304, little-endian
+    out = amiga.from_dos_record(bytes(record))
+    assert out[amiga.AMIGA_POR_EXPERIENCE:
+               amiga.AMIGA_POR_EXPERIENCE + 4] == b"\x01\x02\x03\x04"
+    assert AmigaPorCharacter.from_bytes(out).experience == 0x01020304
+
+
+def test_a_written_experience_total_survives_the_round_trip():
+    record, _, _, _ = amiga.write_por(sample(experience=123456))
+    assert AmigaPorCharacter.from_bytes(record).experience == 123456
+
+
+def test_the_effect_chain_is_written_null():
+    """A live heap address has no business in a file we authored.
+
+    Tested against a DOS record that **holds** one, because `por.dos.write`
+    already zeroes its own field: going through `write_por` alone would pass
+    whether or not this writer nulled anything, and did.
+    """
+    record = bytearray(dos_layout.RECORD_SIZE)
+    at = dos_layout.FIELDS_BY_NAME["effect_chain"].offset
+    record[at:at + 4] = b"\x9f\xe0\xc6\x00"       # a genuine Amiga heap value
+    out = amiga.from_dos_record(bytes(record))
+    assert out[0x080:0x084] == bytes(4)
+    assert AmigaPorCharacter.from_bytes(out).effect_chain == 0
+    written, _, _, _ = amiga.write_por(sample())
+    assert AmigaPorCharacter.from_bytes(written).effect_chain == 0
+
+
+def test_the_three_insertions_hold_what_the_specimens_hold():
+    """`0x07F` and `0x11F` zero, and the unplaced window's six measured bytes.
+
+    The six are `00 00 01 00 00 00`, which every record Amiga Pool of
+    Radiance itself wrote on disk 1 holds -- DOS's `field_83_87` constant
+    under the `+1` shift, with the second insertion after it.
+    """
+    record, _, _, _ = amiga.write_por(sample())
+    assert record[amiga.AMIGA_POR_PAD] == 0
+    assert record[amiga.AMIGA_POR_TAIL_PAD] == 0
+    at = amiga.AMIGA_POR_FIELD_83_87_AT
+    assert record[at:at + 6] == b"\x00\x00\x01\x00\x00\x00"
+    # The `01` lands two bytes into the window, which is where DOS's own
+    # sits under the `+1` shift -- and that is what narrows the second
+    # insertion to the three bytes after it rather than the three before.
+    assert at + 2 == amiga.AMIGA_POR_INSERTION_AFTER
+    assert all(o > amiga.AMIGA_POR_INSERTION_AFTER
+               for o in amiga.AMIGA_POR_INSERTION_CANDIDATES)
+
+
+def test_a_character_carrying_nothing_gets_no_item_file():
+    """`b""` is not an empty file: #62 is what a zero-length one did."""
+    _, itm, spc, _ = amiga.write_por(sample())
+    assert itm == b""
+    assert spc == b""
+
+
+def test_a_written_record_reads_back_as_the_character_that_was_written():
+    """The end-to-end check: what the reader makes of what the writer made."""
+    char = sample()
+    record, _, _, _ = amiga.write_por(char)
+    back = amiga.to_neutral(AmigaPorCharacter.from_bytes(record))
+    for name in ("name", "strength", "intelligence", "wisdom", "dexterity",
+                 "constitution", "charisma", "age", "experience", "level",
+                 "hp_max", "platinum", "gems", "jewelry", "movement"):
+        assert back.get(name) == char.get(name), name
+
+
+@pytest.mark.parametrize("length", [284, 286, 288, 428, 484])
+def test_a_dos_record_of_the_wrong_length_is_refused_by_name(length):
+    with pytest.raises(AmigaRecordError):
+        amiga.from_dos_record(bytes(length))
+
+
+@pytest.mark.parametrize("length", [62, 64, 65, 66])
+def test_a_dos_item_of_the_wrong_length_is_refused_by_name(length):
+    with pytest.raises(AmigaRecordError):
+        amiga.amiga_por_item_from_dos(bytes(length))
+
+
+@pytest.mark.parametrize("length", [8, 10])
+def test_a_dos_effect_of_the_wrong_length_is_refused_by_name(length):
+    with pytest.raises(AmigaRecordError):
+        amiga.amiga_por_effect_from_dos(bytes(length))
+
+
+@pytest.mark.parametrize("slot,index", [("AB", 1), ("1", 1), ("A", 0),
+                                        ("A", 7), ("", 1)])
+def test_a_save_file_name_outside_the_scheme_is_refused(slot, index):
+    with pytest.raises(AmigaRecordError):
+        amiga.por_filename(slot, index)
+
+
+def test_the_save_file_names_are_the_ones_on_the_shipped_disk():
+    assert amiga.por_filename("A", 1) == "CHRDATA1.sav"
+    assert amiga.por_filename("a", 6, ".itm") == "CHRDATA6.itm"
+    assert amiga.por_filename("B", 3, ".spc") == "CHRDATB3.spc"
+
+
+# ---------------------------------------------------------------------------
+# The save slot and the list the picker reads (#109)
+# ---------------------------------------------------------------------------
+#
+# All of these run on a disk `por.amiga_adf` formats itself, so no game data is
+# involved and they run wherever the suite does.
+
+
+def synthetic_savegame(slot: str = "A") -> bytes:
+    """A 13141-byte Amiga Pool of Radiance saved game, built not copied.
+
+    Only the character table is filled in, because that is the only region
+    `retarget_savegame` touches: six 41-byte entries at 12813 holding
+    `CHRDAT<slot><n>` as eight plain bytes. `docs/124-amiga-port.md` §1.9a has
+    the region map the rest of the file would follow.
+    """
+    save = bytearray(amiga.POR_SAVEGAME_SIZE)
+    for n in range(amiga.POR_PARTY_MAX):
+        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+        save[at:at + 8] = f"CHRDAT{slot.upper()}{n + 1}".encode("ascii")
+    return bytes(save)
+
+
+def save_disk_with(slots: str = "A"):
+    """A blank disk carrying a `save` drawer and a slot list."""
+    from por.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("poolgame")
+    disk.make_dir("save")
+    disk.write_file(amiga.POR_SLOT_LIST, amiga.slot_list_bytes(list(slots)))
+    return disk
+
+
+def test_a_slot_written_onto_a_disk_is_offered_by_the_picker():
+    """The whole of #109: the files are not the slot, the list is.
+
+    Reading `save/save` back is what the game's picker does, so this asserts
+    the thing a player would see rather than that a function was called.
+    """
+    disk = save_disk_with("A")
+    written = amiga.write_por_slot(disk, "B", [sample()],
+                                   savegame=synthetic_savegame())
+    assert amiga.read_slot_list(disk) == ["A", "B"]
+    assert disk.read_file(amiga.POR_SLOT_LIST) == b"AB        "
+    assert "/save/CHRDATB1.sav" in written
+    assert amiga.POR_SLOT_LIST in written
+    assert disk.verify() == []
+
+
+def test_the_slot_list_is_ten_bytes_and_space_padded():
+    """`"A         "` is what the shipped disk holds; ten bytes, not one."""
+    assert amiga.slot_list_bytes(["A"]) == b"A         "
+    assert len(amiga.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
+
+
+def test_the_slot_list_keeps_the_order_it_was_given():
+    """Adding a slot must not shuffle the ones already on the disk.
+
+    Whether the game sorts or appends is unmeasured, so the safe thing is to
+    move nothing: a list found as `ADB` comes back as `ADB` with the new
+    letter after it.
+    """
+    assert amiga.slot_list_bytes(["B", "A"]) == b"BA        "
+    disk = save_disk_with("A")
+    disk.write_file(amiga.POR_SLOT_LIST, b"ADB       ")
+    amiga.write_por_slot(disk, "C", [sample()],
+                         savegame=synthetic_savegame())
+    assert disk.read_file(amiga.POR_SLOT_LIST) == b"ADBC      "
+
+
+def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
+    """Refusing beats writing a slot the player cannot load.
+
+    `K` is the eleventh letter and the list holds ten, so it can never be
+    offered. The assertion that matters is the second one: the disk is
+    unchanged, not merely that something was raised.
+    """
+    disk = save_disk_with("A")
+    before = disk.to_bytes()
+    with pytest.raises(AmigaRecordError):
+        amiga.write_por_slot(disk, "K", [sample()],
+                             savegame=synthetic_savegame())
+    assert disk.to_bytes() == before
+
+
+def test_a_slot_with_no_saved_game_is_refused():
+    """Character files alone are a drawer full of files, not a save slot."""
+    disk = save_disk_with("A")
+    before = disk.to_bytes()
+    with pytest.raises(AmigaRecordError):
+        amiga.write_por_slot(disk, "B", [sample()])
+    assert disk.to_bytes() == before
+
+
+def test_a_saved_game_moved_to_another_slot_is_retargeted():
+    """The engine loads the party the character table names, not the slot.
+
+    Measured the other way round: the game's own save to B rewrote all six
+    entries from `CHRDATA<n>` to `CHRDATB<n>` (#28 §1.9b). A savegame copied
+    without this loads the party it came from.
+    """
+    disk = save_disk_with("A")
+    amiga.write_por_slot(disk, "B", [sample()],
+                         savegame=synthetic_savegame("A"))
+    save = disk.read_file("/save/savgamB.dat")
+    for n in range(amiga.POR_PARTY_MAX):
+        at = amiga.POR_CHARACTER_TABLE + n * amiga.POR_CHARACTER_TABLE_STRIDE
+        assert save[at:at + 8] == f"CHRDATB{n + 1}".encode()
+
+
+def test_a_saved_game_that_is_not_one_is_refused_by_name():
+    with pytest.raises(AmigaRecordError):
+        amiga.retarget_savegame(bytes(amiga.POR_SAVEGAME_SIZE), "B")
+    with pytest.raises(AmigaRecordError):
+        amiga.retarget_savegame(bytes(13137), "B")
+
+
+def test_a_shorter_party_does_not_leave_the_old_ones_files_behind():
+    """Six characters then four must not leave slots five and six loadable."""
+    disk = save_disk_with("A")
+    amiga.write_por_slot(disk, "B", [sample()] * 6,
+                         savegame=synthetic_savegame())
+    assert disk.lookup("/save/CHRDATB6.sav")
+    amiga.write_por_slot(disk, "B", [sample()] * 4,
+                         savegame=synthetic_savegame())
+    for n in (5, 6):
+        with pytest.raises(Exception):
+            disk.lookup(f"/save/CHRDATB{n}.sav")
+    assert disk.verify() == []
+
+
+def test_a_disk_with_no_slot_list_lists_nothing():
+    """The picker reads the file; no file is no slots, whatever is in the
+    drawer."""
+    from por.amiga_adf import AmigaDisk
+
+    disk = AmigaDisk.blank("poolgame")
+    disk.make_dir("save")
+    assert amiga.read_slot_list(disk) == []
+
+
+def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
+    disk = save_disk_with("A")
+    disk.write_file(amiga.POR_SLOT_LIST, b"ADB       ")
+    assert amiga.read_slot_list(disk) == ["A", "D", "B"]
+
+
+@pytest.mark.parametrize("party", [[], [1] * 7])
+def test_a_party_that_is_not_one_to_six_is_refused(party):
+    disk = save_disk_with("A")
+    with pytest.raises(AmigaRecordError):
+        amiga.write_por_slot(disk, "B", [sample()] * len(party),
+                             savegame=synthetic_savegame())
+
+
+def test_the_saved_game_file_name_is_the_shipped_one():
+    assert amiga.por_savegame_filename("A") == "savgamA.dat"
+    assert amiga.por_savegame_filename("b") == "savgamB.dat"
+    with pytest.raises(AmigaRecordError):
+        amiga.por_savegame_filename("K")
+
+
+def test_the_shift_map_covers_every_dos_field_the_writer_does_not_special_case():
+    """A guard against `por/dos_layout.py` moving under this module.
+
+    That table belongs to the DOS side and a field there can be renamed,
+    split or moved. Every field either lands somewhere in the 288 bytes or is
+    one this writer handles itself; a field that does neither would be written
+    nowhere, silently.
+    """
+    covered: set[int] = set()
+    for f in dos_layout.LAYOUT:
+        if amiga._por_special(f):
+            continue
+        at = amiga_por_offset(f.offset)
+        assert at + f.size <= AMIGA_POR_RECORD_SIZE, f.name
+        covered |= set(range(at, at + f.size))
+    special = set(range(amiga.AMIGA_POR_NAME_SIZE))
+    special |= set(range(amiga.AMIGA_POR_EXPERIENCE,
+                         amiga.AMIGA_POR_EXPERIENCE + 4))
+    special |= set(range(amiga.AMIGA_POR_FIELD_83_87_AT,
+                         amiga.AMIGA_POR_FIELD_83_87_AT
+                         + len(amiga.AMIGA_POR_FIELD_83_87)))
+    special |= {amiga.AMIGA_POR_PAD, amiga.AMIGA_POR_TAIL_PAD}
+    assert covered | special == set(range(AMIGA_POR_RECORD_SIZE))
+
+
+def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
+    """Half a party on a disk is worse than none.
+
+    `AmigaDisk.write_file` allocates the replacement before freeing the
+    original, so a slot that runs the disk out of blocks stops part way
+    through -- which is the state `write_por_slot` exists to refuse, arrived
+    at by a different route.
+    """
+    from por.amiga_adf import AmigaDisk
+
+    # 48 blocks fits the six records and stops on the saved game.
+    disk = AmigaDisk.blank("poolgame", blocks=48)
+    disk.make_dir("save")
+    disk.write_file(amiga.POR_SLOT_LIST, amiga.slot_list_bytes(["A"]))
+    before = disk.to_bytes()
+    with pytest.raises(Exception):
+        amiga.write_por_slot(disk, "B", [sample()] * 6,
+                             savegame=synthetic_savegame())
+    assert disk.to_bytes() == before
+    assert disk.verify() == []

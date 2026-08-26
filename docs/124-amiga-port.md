@@ -405,9 +405,10 @@ like. The day and month words are zero in all three, so they are either unused
 in Curse or untested. PROBABLE, three saves and no specimen with a non-zero
 day.
 
-Still open: the byte inserted in Silver Blades' square region; Curse's square,
-which needs a second specimen; and whether Curse's ECL buffer is 7680 or 7684,
-since the boundary is zero on both sides.
+All three of the questions this section once left open are now answered in
+§1.14: Curse's square by §1.11's on-screen reading, and the inserted byte and
+the buffer's length by lining the two titles' square regions up against each
+other.
 
 ---
 
@@ -733,6 +734,215 @@ encoding, and the clock at `$49C6` reads 01:15 as `docs/141`'s six digit words.
 single bytes (§1.9b), Curse widens x and y. That is the third per-title
 difference in the Amiga port, after the saved game's missing container byte and
 the item record's size. **Read the title before reading the file.**
+
+### 1.12 Writing an Amiga Pool of Radiance character (#105)
+
+The reader landed in §1.8 and §1.9; this is the other half, and it is the same
+transposition run backwards. `por.amiga.write_por` takes a `NeutralCharacter`,
+hands it to `por.dos.write`, and re-cuts the 285-byte DOS record, its `.ITM`
+and its `.SPC` into the Amiga's 288, 65 and 10. **There is no second field
+table and no second conversion.** Every drop, every derived value and every
+provenance line the DOS writer earned on 24 DOS specimens carries over
+unchanged, and the only lines this side adds are the three bytes the Amiga has
+and DOS does not.
+
+**Twenty of twenty round-trip byte for byte**, masked by the writer's own
+declared list rather than by whatever happened to differ:
+
+| what | result |
+|---|---|
+| 288 -> 285 -> 288, no neutral record in the middle | **20 of 20** identical outside `POR_WRITE_UNSOURCED` |
+| Amiga -> neutral -> Amiga, the whole path | **20 of 20** identical outside that list plus `por.dos`'s own `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields |
+| the 65-byte item nodes | **17 of 17** identical past the display cache and `next` |
+| the 10-byte effect nodes | **6 of 6** identical past the four-byte `next` |
+| `.itm` and `.spc` lengths | identical to the originals, 6 of 6 |
+
+**The second insertion is narrowed from six candidate positions to three, and
+it is measured.** DOS holds `00 00 01 00 00` at `0x083`-`0x087` in 24 of 24
+specimens. On the Amiga that `01` reads at **`0x086`** in **8 of 20** -- all
+six `CHRDATA<n>.sav` the game itself wrote on disk 1, plus two of the fourteen
+`.cha` exports -- and `0x086` is `amiga_por_offset(0x085)`, which is where
+DOS's `01` lands only if the insertion sits *after* it. A pad at `0x084`,
+`0x085` or `0x086` would put the `01` at `0x087`, and **no specimen reads 1
+there**. So the insertion is one of `0x087`, `0x088`, `0x089`; the other twelve
+specimens hold six zeros and say nothing either way. PROBABLE, resting on the
+DOS constant being the same field on both ports.
+
+All three survivors are zero in all twenty, so **a writer does not have to know
+which**: `AMIGA_POR_FIELD_83_87` is the six bytes `00 00 01 00 00 00` and it is
+right whichever one the pad turns out to be. `AMIGA_POR_UNPLACED` is
+deliberately *not* narrowed to match -- the reader's refusal exists to stop a
+caller guessing, and this reading is an inference rather than a probe.
+
+**What the writer does with the three Amiga-only bytes**, each measured on the
+twenty specimens rather than assumed: `0x07F` zero (20 of 20), the `0x084`
+window as above, and `0x11F` zero (15 of 20, junk in the other five, which is
+what an uninitialised pad looks like). The effect chain at `0x080` and each
+item's `next` at `0x02A` are written NULL, because they are live Amiga heap
+addresses and the engine relinks both on load.
+
+**Two things `por.dos.write` imposes on this side and neither is ours:**
+
+* **memorised spells are repacked.** `por.dos` reads the sixteen slots as a
+  set and writes them back from the end, on the DOS reading that "DOS fills
+  its sixteen slots backwards from the end". **The Amiga corpus refutes that as
+  a general rule**: of the fourteen `.cha` exports, one is filled from the
+  *start* (`22 22 2f 2f 00...`), and three have entries with zeros on both
+  sides (`00 x10, 15 15 00 22 2f 00`). The spells survive; their slot positions
+  do not. `#110`.
+* **experience is capped at 16 777 215.** The Amiga field is a `u32be` and the
+  reader reads all four bytes, but `por.dos.write`'s own field is three bytes
+  wide, so anything going through it overflows with a bare `OverflowError`
+  above that. No Pool of Radiance character can reach it. `#111`.
+
+**The file names**, read off disk 1 and confirmed by the game's own save to
+slot B (§1.9b): `save/CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
+`n` from 1 to 6. `por.amiga.por_filename` is the one place that knows it. **A
+character carrying nothing gets no `.itm` file at all** -- `b""` is not an
+empty file, and #62 is what handing the engine a zero-length one did on DOS.
+
+### 1.13 Writing a whole save slot, and the list the picker reads (#109)
+
+§1.10 found that `save/save` is the **slot list**, not a note about which slot
+is current, and that a disk carrying a complete slot the file does not name is
+offered only the slots it does name. `#36`'s demonstration worked because that
+file was edited by hand as part of the experiment; nothing wrote it.
+
+`por.amiga.write_por_slot(disk, slot, characters, savegame)` is what writes
+one now, and the rule it enforces is **a slot that cannot be listed is not
+written**. The refusals run before anything touches the disk, and the list is
+read back afterwards, because a silent failure here is invisible until
+somebody boots the game.
+
+| what it writes | why |
+|---|---|
+| `save/CHRDAT<slot><n>.sav`, `.itm`, `.spc` | the party, through `write_por` |
+| `save/savgam<slot>.dat`, **retargeted** | the engine loads the party the saved game's character table names, not the party the slot letter implies -- measured, because the game's own save to B rewrote all six entries from `CHRDATA<n>` to `CHRDATB<n>` (§1.9b) |
+| `save/save` | the slot list: whatever the disk already named, in the order it named them, with the new letter after it, space-padded to ten bytes |
+
+Three things it refuses rather than doing badly: a slot letter outside
+`A`-`J`, which is what the ten-byte list can hold; a party that is not one to
+six characters; and a slot with no saved game and none given, because the
+character files alone are a drawer full of files rather than something the
+game can load. It also **removes the previous occupant's files** for character
+slots the new party does not fill, so a six-character save followed by a
+four-character one does not leave two loadable strangers behind.
+
+**Whether the game sorts the list or appends to it is still UNKNOWN.** The two
+specimens are `"A         "` and `"AB        "`, and A before B is *both* the
+sorted order and the order they were created in, so they cannot tell the two
+apart. So we sort nothing: the list is written back in the order it was found,
+with the new letter after it, which leaves slots we did not write exactly
+where they were. **Saving to a later letter and then an earlier one settles it
+in one run** -- load slot A, camp, save to `D`, then save to `B`, and read
+`save/save` off the disk: `ABD` is sorted, `ADB` is creation order. What the
+file holds for a full disk is the same run carried on.
+
+**And it is all or nothing on the disk.** `write_file` allocates the
+replacement before it frees the original (§1.10), so a slot that runs the disk
+out of blocks stops part way -- and a disk carrying three of six characters is
+the state this function exists to refuse, arrived at by a different route.
+`write_por_slot` snapshots the image before the first write and
+`AmigaDisk.restore` puts it back on any failure.
+
+`por.amiga_adf.AmigaDisk.make_dir` was added for this, and only for the
+tests: production writes into the `save` drawer of a copy of the player's own
+game disk, which is already there, but a blank disk this module formats has no
+drawers at all and `tests/test_amiga_adf.py`'s no-game-data property is worth
+more than the twenty-five lines.
+
+### 1.14 The Curse and Silver Blades square regions, lined up (#28)
+
+§1.7 left three things open and all three fall out of one observation: **after
+the coordinates, Amiga Curse's square region and Amiga Silver Blades' are the
+same nineteen bytes.**
+
+```
+             x        y      facing  |  seven bytes    | u16be |  eight bytes            | u16be
+DOS  both    07       0d     00      |  00 00 00 00 00 00     01 00   ff ff ff ff ff ff ff ff   06
+AMI  Secret  07       0d     00      |  00 00 00 04 00 00 00 | 00 01 | ff ff ff ff ff ff ff ff | 00 06
+AMI  Curse   00 03    00 0e  02      |  00 00 00 04 02 00 01 | 00 01 | 00 02 00 02 00 03 00 03 | 00 04
+```
+
+The two DOS shipped saves are **byte-identical** through the whole region --
+`07 0d 00`, six zeros, `01 00`, eight `FF`, `06` -- which is what makes this a
+diff rather than an inference. Three things agree across the two Amiga titles
+independently: the `04` at the fourth byte of the seven, the `u16be` 1, and the
+party size at the end.
+
+**The party size is a `u16be` on both**, 6 and 4, and each is confirmed
+independently by `$503E` in its own file and by the number of character records
+that follow. That settles the reading §1.7 downgraded to PROBABLE for Curse:
+`00 04` at `0x3217`-`0x3218` is the party size.
+
+**Silver Blades' inserted byte is at `0x1407`, and the `04` is it.** §1.7 asked
+which of two facts explained the other -- one byte inserted somewhere in
+`0x1404`-`0x140a`, and a `04` at `0x1407` where DOS has `00`. **They are the
+same fact.** Both Amiga titles carry a `04` at that position of a seven-byte
+block where both DOS titles have six zeros, and one of those Amiga saves is at
+the start of the game in the same state as the DOS file it is being diffed
+against. PROBABLE, two titles. It is a field with a non-zero initial value, not
+a pad -- every pad measured in this family is zero (the record's `0x07F` 20 of
+20, the item's `0x03B` 17 of 17, the `.spc` pad 68 of 68).
+
+**Curse's ECL buffer is 7680, not 7684.** CONFIRMED, three independent grounds:
+
+* §1.11 read `3,14 E` off the status line and the file holds x at `0x3201` and
+  y at `0x3203`. A 7684-byte buffer would run to `0x3204` and swallow both;
+* `ECL.GLB` **block 1** is what fills the buffer -- 7622 bytes matched from
+  `0x1401`, then **58 zero bytes ending exactly at `0x3200`**, which is
+  `0x1401 + 7680`;
+* the nineteen-byte match above only works with the square region starting at
+  `0x3201`.
+
+**And the `ECL.GLB` block 0 coincidence is a coincidence.** §1.7 flagged that
+`0x320b`-`0x3218` reads `00 01 00 01 00 02 00 02 00 03 00 03 00 04`, which is
+bytes 2-15 of block 0. It is -- and it is exactly fourteen bytes with a
+mismatch immediately on **both** sides: block 0 opens `00 19` where the save
+holds `04 02`, and continues `00 04 00 10 00 05` where the save's next byte is
+the `G` of `GALAIN`. A buffer copy does not end at both edges of a
+fourteen-byte window. Under the alignment above those fourteen bytes are four
+separate fields, and the last two are a party size `$503E` gives independently.
+A table of ascending pairs matches any block of small ascending numbers.
+
+**What is still open in that region**: the eight bytes where DOS writes eight
+`0xFF`. Amiga Silver Blades, taken before any play, keeps the eight `0xFF`;
+Amiga Curse's mid-game save holds `00 02 00 02 00 03 00 03` -- four `u16be`
+values 2, 2, 3, 3 for a party of four, on the byte order the rest of the region
+uses. So it is filled during play and DOS's `0xFF` is its unset state.
+UNKNOWN, one played specimen.
+
+### 1.15 The item record's remaining bytes: the corpus is exhausted (#28, #55)
+
+**Amiga Curse's `0x03B` = 52 and `0x03E` = 47 are still UNKNOWN, and no further
+file reading will change that.** A scan of the whole Amiga Curse saved game for
+the `7f 00` end-of-text marker finds **exactly the nine item nodes the four
+party members carry and no tenth** -- every other hit is inside the ECL buffer
+and decodes to nothing. All nine hold 52 and 47.
+
+Two things are new and both are negative:
+
+* **They are Curse's values, not the family's.** The same two offsets read
+  **zero in all seventeen** Amiga Pool of Radiance nodes, so they are not a
+  struct constant every Amiga item carries.
+* **Neither is a trait id that makes sense on a weapon or a suit of armour.**
+  In `por/traits.py`'s shared namespace 47 is the dwarf and gnome armour-class
+  bonus against giants and 52 is *held or paralysed*.
+
+The settling experiment is unchanged and is the one #55 named: **an Amiga Curse
+item with a charge count** -- a wand, a ring, anything the game spends uses out
+of -- puts a number in `charges` and says which offset it is. The whole corpus
+is a weapon and a suit of armour apiece.
+
+**Amiga Pool of Radiance's own pad window, `0x035`-`0x037`, cannot be placed
+from files either**, and now for a measured reason rather than an unexamined
+one: `hidden` and `cursed` read **zero in all seventeen** nodes, so there is
+nothing to align the window against. `readied` at `0x034` is CONFIRMED (§1.9),
+which fixes the window's left edge and no more. A 68000 compiler pads
+immediately before the field that needs the alignment, which puts the pad at
+`0x037`, in front of the `u16` weight at `0x038` -- the same inference that
+places the record's own second insertion at the end of its window (§1.12), and
+the same grade: an inference, not a probe.
 
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 

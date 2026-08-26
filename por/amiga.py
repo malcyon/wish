@@ -34,11 +34,13 @@ alignment legal for its class. `tests/test_amiga.py` asserts both halves.
 
 from __future__ import annotations
 
+import contextlib
 import struct
 from dataclasses import dataclass, field
 from typing import Sequence
 
 from . import dos_layout, games, neutral
+from .amiga_adf import AmigaDiskError
 from .layout import Kind
 from .neutral import NeutralCharacter
 
@@ -1445,3 +1447,588 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
     out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
              "room for")
     return out
+
+
+# ---------------------------------------------------------------------------
+# The neutral record -> Amiga Pool of Radiance (#105)
+# ---------------------------------------------------------------------------
+#
+# The writing half of the reader above, and the same transposition run
+# backwards: `por.dos.write` builds the 285-byte DOS record, its `.ITM` and
+# its `.SPC` out of the neutral character, and everything here re-cuts those
+# three into the Amiga's 288, 65 and 10.  There is no second field table and
+# no second set of conversion rules -- a field DOS drops is dropped here for
+# DOS's reason, and a field DOS derives is derived here by DOS's rule.
+#
+# The four rules `to_dos_record` names are simply reversed:
+#
+#   * the name -- DOS's count byte and fifteen become 16 NUL-padded bytes.
+#     Composed rather than copied: the count says how much of the fifteen is
+#     the name, and the rest is NUL.  Measured: all twenty genuine specimens
+#     are NUL to the end of the sixteen, with nothing past the terminator;
+#   * `u16` and `u32` fields -- little-endian becomes big-endian;
+#   * experience -- DOS's 24-bit field and `gap_0af` become one Amiga `u32be`
+#     at `0x0AE`;
+#   * the two live pointers -- the effect chain at `0x080` and each item's
+#     `next` at `0x02A` -- are written NULL.  The receiving engine allocates a
+#     node per `.spc` record and per `.itm` record on load and relinks them
+#     itself, which is what the reader measured in the other direction.
+#
+# Three bytes have no DOS source and are written rather than carried:
+#
+#   * `0x07F`, the first insertion: zero in 20 of 20 specimens;
+#   * `0x089`ish, the second: see AMIGA_POR_FIELD_83_87 below;
+#   * `0x11F`, the trailing pad: junk in 5 of 20 and zero in 15, which is what
+#     an uninitialised pad looks like.  Zero is the value fifteen specimens
+#     hold and it is what the writer emits.
+
+#: Amiga `0x084`-`0x089`: DOS's `field_83_87` under the `+1` shift, plus the
+#: second insertion, whichever of the last three bytes it is.
+#:
+#: **This narrows the unplaced insertion and the measurement is new.**  DOS
+#: holds `00 00 01 00 00` at `0x083`-`0x087` in 24 of 24 specimens.  On the
+#: Amiga the `01` reads at `0x086` in **8 of 20** -- all six `CHRDATA<n>.sav`
+#: the game itself wrote on disk 1, and two of the fourteen `.cha` exports --
+#: and `0x086` is `amiga_por_offset(0x085)`, which is where DOS's `01` lands
+#: if the insertion is *after* it.  A pad at `0x084`, `0x085` or `0x086` would
+#: put the `01` at `0x087`, and no specimen reads 1 there.  So the insertion
+#: is one of `0x087`, `0x088` and `0x089`; the other twelve specimens read six
+#: zeros and say nothing either way.  All three candidates are zero in all
+#: twenty, so these six bytes are right whichever of them it turns out to be.
+AMIGA_POR_FIELD_83_87 = b"\x00\x00\x01\x00\x00\x00"
+AMIGA_POR_FIELD_83_87_AT = 0x084
+#: Where DOS's `01` lands in that window, and so the last Amiga offset the
+#: shift map is now *measured* to place rather than merely to assume.
+AMIGA_POR_INSERTION_AFTER = 0x086
+#: What is left of the second insertion: one of these three, all zero in all
+#: twenty specimens, which is why a writer does not have to know which.
+#: `AMIGA_POR_UNPLACED` is deliberately **not** narrowed to match -- the
+#: reader's refusal is a guard against guessing and this reading is PROBABLE,
+#: resting on the DOS constant being the same field on both ports.
+AMIGA_POR_INSERTION_CANDIDATES = (0x087, 0x088, 0x089)
+#: The Amiga offset of the `u32be` experience total.
+AMIGA_POR_EXPERIENCE = 0x0AE
+
+#: Amiga record bytes with no DOS source: the three insertions and the live
+#: heap pointer.  The round-trip test masks **this list** plus `por.dos`'s own
+#: `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields, rather than
+#: whatever happens to differ -- so a new difference fails instead of being
+#: absorbed.  `(first offset, size, why)`.
+POR_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
+    (AMIGA_POR_PAD, 1,
+     "the first insertion, a pad ahead of the effect pointer; zero in 20 of "
+     "20 specimens, so zero is the value and not a guess"),
+    (0x080, 4,
+     "the effect chain: a live Amiga heap address. The engine allocates a "
+     "node per .spc record on load and writes the head itself, which is what "
+     "por.dos.WRITE_UNSOURCED records for the DOS field it maps onto"),
+    (AMIGA_POR_FIELD_83_87_AT, len(AMIGA_POR_FIELD_83_87),
+     "DOS's field_83_87 plus the second insertion, written as the six bytes "
+     "all six of the game's own disk-1 records hold; twelve of the fourteen "
+     "exported .cha files hold six zeros instead, so this one is written "
+     "rather than carried"),
+    (AMIGA_POR_TAIL_PAD, 1,
+     "the trailing pad, which the 285-byte DOS record has no room for; zero "
+     "in 15 of 20 and uninitialised junk in the other five"),
+)
+
+#: DOS fields the record writer places itself rather than through the shift
+#: map: the name is re-cut, experience spans two DOS fields, and the unplaced
+#: window has no per-byte map to shift through.
+_POR_SPECIAL = frozenset(
+    {"name_length", "name_text", "experience", "gap_0af", "field_83_87"})
+
+
+def _por_special(f) -> bool:
+    """True for a DOS field `from_dos_record` writes by hand.
+
+    A function rather than a bare `in` so the shift-map guard in
+    `tests/test_amiga.py` asks the writer what it special-cases instead of
+    keeping its own copy of the list and drifting from it.
+    """
+    return f.name in _POR_SPECIAL
+
+
+#: The AmigaDOS drawer a Pool of Radiance save slot lives in, and the file
+#: names inside it: `CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
+#: read off disk 1 and confirmed by the game's own save to slot B (#28).
+POR_SAVE_DRAWER = "save"
+POR_PARTY_MAX = 6
+
+
+def por_filename(slot: str, index: int, suffix: str = ".sav") -> str:
+    """`CHRDATA1.sav` and its siblings, for slot `A` and index 1.
+
+    The engine loads a party from the names in the saved game's character
+    table rather than from the slot letter, but it writes them in this shape
+    and the shipped disk carries them in it -- so anything we write uses it
+    too.
+    """
+    if len(slot) != 1 or not slot.isalpha():
+        raise AmigaRecordError(f"a save slot is one letter; got {slot!r}")
+    if not 1 <= index <= POR_PARTY_MAX:
+        raise AmigaRecordError(
+            f"a Pool of Radiance party is 1 to {POR_PARTY_MAX}; got {index}")
+    return f"CHRDAT{slot.upper()}{index}{suffix}"
+
+
+@dataclass
+class PorWriteReport(neutral.Report):
+    """Where every byte of an Amiga Pool of Radiance write came from.
+
+    Offsets `0` to `AMIGA_POR_RECORD_SIZE - 1` are the record;
+    `AMIGA_POR_RECORD_SIZE` and up are the `.itm` payload and then the `.spc`.
+    **Every** byte has to be explained, not only the non-zero ones -- which is
+    where this differs from `Report` above and agrees with
+    `por.dos.WriteReport`, because unlike the Pools of Darkness `.pc` this
+    record's zeroes are fields rather than untouched heap.
+    """
+
+    total: int = AMIGA_POR_RECORD_SIZE
+
+    @property
+    def unaccounted(self) -> list[int]:  # type: ignore[override]
+        """Offsets this conversion cannot explain. Should be empty."""
+        return [i for i in range(self.total) if i not in self.sources]
+
+    def summary_notes(self) -> list[str]:
+        if self.unaccounted:
+            return [f"  UNACCOUNTED: {len(self.unaccounted)} bytes"]
+        return []
+
+
+def _por_name_bytes(record: bytes) -> bytes:
+    """DOS's count byte and fifteen as the Amiga's sixteen NUL-padded."""
+    size = dos_layout.FIELDS_BY_NAME["name_text"].size
+    count = min(record[0], size)
+    return record[1:1 + count].ljust(AMIGA_POR_NAME_SIZE, b"\0")
+
+
+def from_dos_record(record: bytes) -> bytes:
+    """The 285-byte DOS record re-cut as the 288-byte Amiga one.
+
+    The exact inverse of :func:`to_dos_record` for every byte either port
+    sources, and the note above this function says what happens to the three
+    the Amiga has and DOS does not.
+    """
+    if len(record) != DOS_RECORD_SIZE:
+        raise AmigaRecordError(
+            f"a DOS Pool of Radiance record is {DOS_RECORD_SIZE} bytes, "
+            f"got {len(record)}")
+    out = bytearray(AMIGA_POR_RECORD_SIZE)
+    out[:AMIGA_POR_NAME_SIZE] = _por_name_bytes(record)
+
+    exp = dos_layout.FIELDS_BY_NAME["experience"]
+    assert amiga_por_offset(exp.offset) == AMIGA_POR_EXPERIENCE
+    out[AMIGA_POR_EXPERIENCE:AMIGA_POR_EXPERIENCE + 4] = int.from_bytes(
+        record[exp.offset:exp.offset + 4], "little").to_bytes(4, "big")
+
+    out[AMIGA_POR_FIELD_83_87_AT:
+        AMIGA_POR_FIELD_83_87_AT + len(AMIGA_POR_FIELD_83_87)] = \
+        AMIGA_POR_FIELD_83_87
+
+    for f in dos_layout.LAYOUT:
+        if _por_special(f):
+            continue
+        at = amiga_por_offset(f.offset)
+        chunk = record[f.offset:f.offset + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            chunk = chunk[::-1]
+        out[at:at + f.size] = chunk
+    # The effect chain is a live Amiga heap address; the engine rebuilds it.
+    out[0x080:0x084] = bytes(4)
+    return bytes(out)
+
+
+def amiga_por_item_from_dos(item: bytes) -> bytes:
+    """One DOS 63-byte item node as the Amiga's 65.
+
+    The display text is left NUL and the `next` pointer NULL, for the two
+    reasons `por/dos.py` gives on its own side: the line is a cache the game
+    rewrites whenever it draws the ITEMS screen -- stale by construction on
+    both ports, `docs/124-amiga-port.md` §1.9 -- and the chain is heap the
+    loader relinks from the file's own length.
+    """
+    if len(item) != dos_layout.ITEM_SIZE:
+        raise AmigaRecordError(
+            f"a DOS Pool of Radiance item is {dos_layout.ITEM_SIZE} bytes, "
+            f"got {len(item)}")
+    out = bytearray(AMIGA_POR_ITEM_SIZE)
+    for f in dos_layout.ITEM_LAYOUT:
+        if f.name in ("text_length", "text", "next"):
+            continue
+        at = amiga_por_item_offset(f.offset)
+        chunk = item[f.offset:f.offset + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            chunk = chunk[::-1]
+        out[at:at + f.size] = chunk
+    return bytes(out)
+
+
+def amiga_por_effect_from_dos(node: bytes) -> bytes:
+    """One DOS 9-byte `.SPC` record as the Amiga's 10.
+
+    The inverse of :func:`amiga_por_effect_to_dos`: a pad at offset 1, the
+    duration byte-swapped into `0x02`, and the four-byte next pointer NULL.
+    """
+    if len(node) != dos_layout.EFFECT_SIZE:
+        raise AmigaRecordError(
+            f"a DOS effect record is {dos_layout.EFFECT_SIZE} bytes, "
+            f"got {len(node)}")
+    return bytes((node[0], 0, node[2], node[1], node[3], node[4])) + bytes(4)
+
+
+def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
+                                               PorWriteReport]:
+    """Build an Amiga Pool of Radiance record and its `.itm` and `.spc`.
+
+    Returns `(record, itm, spc, report)`, the same shape `por.dos.write`
+    returns -- and it is `por.dos.write` that does the conversion, because
+    the Amiga record *is* the DOS record in another shape.  So every drop,
+    every warning and every provenance line this report carries was earned on
+    the DOS side against 24 DOS specimens, and the only lines added here are
+    the three bytes the Amiga has and DOS does not.
+
+    **A character carrying nothing gets no `.itm` file**, and an empty file is
+    not the same thing as no file: `por.dos.ITM_OMITTED_WHEN_EMPTY` records
+    what handing the DOS engine a zero-length one did (#62).  The caller sees
+    `b""` and must not write a file for it.
+    """
+    from . import dos as _dos
+
+    record, itm, spc, dosrep = _dos.write(char)
+    out = from_dos_record(record)
+
+    items = [amiga_por_item_from_dos(
+        itm[n * dos_layout.ITEM_SIZE:(n + 1) * dos_layout.ITEM_SIZE])
+        for n in range(len(itm) // dos_layout.ITEM_SIZE)]
+    effects = [amiga_por_effect_from_dos(
+        spc[n * dos_layout.EFFECT_SIZE:(n + 1) * dos_layout.EFFECT_SIZE])
+        for n in range(len(spc) // dos_layout.EFFECT_SIZE)]
+    amiga_itm = b"".join(items)
+    amiga_spc = b"".join(effects)
+
+    rep = PorWriteReport()
+    rep.dropped = list(dosrep.dropped)
+    rep.warnings = list(dosrep.warnings)
+    rep.warnings.append(
+        "written as a 288-byte Amiga Pool of Radiance record by re-cutting "
+        "the 285-byte DOS one built by por.dos.write; the provenance lines "
+        "name the DOS field each byte was transposed from, which is the "
+        "field table both ports share")
+    rep.total = AMIGA_POR_RECORD_SIZE + len(amiga_itm) + len(amiga_spc)
+
+    def carried(name: str) -> str:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        return dosrep.sources.get(f.offset, f"{name}: no DOS provenance")
+
+    rep.note(0, AMIGA_POR_NAME_SIZE,
+             f"name: {AMIGA_POR_NAME_SIZE} NUL-padded bytes composed from "
+             f"DOS's count byte and fifteen -- {carried('name_length')}")
+    rep.note(AMIGA_POR_EXPERIENCE, 4,
+             f"experience: one u32 big-endian spanning DOS's 24-bit field and "
+             f"gap_0af -- {carried('experience')}")
+    rep.note(AMIGA_POR_PAD, 1,
+             "0x07F: the first insertion, a pad ahead of the effect pointer. "
+             "Zero in 20 of 20 Amiga specimens")
+    rep.note(AMIGA_POR_FIELD_83_87_AT, len(AMIGA_POR_FIELD_83_87),
+             "0x084-0x089: DOS's field_83_87 constant plus the second "
+             "insertion. 00 00 01 00 00 00 in all six records Amiga Pool of "
+             "Radiance itself wrote on disk 1; the insertion is one of the "
+             "last three bytes and all three are zero in all twenty")
+    rep.note(AMIGA_POR_TAIL_PAD, 1,
+             "0x11F: the trailing pad DOS has no room for. Zero in 15 of 20 "
+             "specimens and uninitialised junk in the other five")
+
+    for f in dos_layout.LAYOUT:
+        if _por_special(f):
+            continue
+        rep.note(amiga_por_offset(f.offset), f.size, carried(f.name))
+
+    for n in range(len(items)):
+        base = AMIGA_POR_RECORD_SIZE + n * AMIGA_POR_ITEM_SIZE
+        dos_base = _dos.RECORD_SIZE + n * dos_layout.ITEM_SIZE
+        rep.note(base, AMIGA_POR_ITEM_TEXT,
+                 f"item {n}: the rendered-line cache, left NUL -- the game "
+                 f"rewrites it whenever it draws the list")
+        rep.note(base + 0x02A, 4,
+                 f"item {n}: next pointer left NULL -- the loader rebuilds "
+                 f"the chain")
+        for f in dos_layout.ITEM_LAYOUT:
+            if f.name in ("text_length", "text", "next"):
+                continue
+            rep.note(base + amiga_por_item_offset(f.offset), f.size,
+                     dosrep.sources.get(dos_base + f.offset,
+                                        f"item {n}: {f.name}"))
+        for pad in list(AMIGA_POR_ITEM_PAD_WINDOW) + [AMIGA_POR_ITEM_PAD]:
+            if base + pad not in rep.sources:
+                rep.sources[base + pad] = (
+                    f"item {n}: pad at {pad:#05x}, zero in all 17 nodes read")
+
+    base = AMIGA_POR_RECORD_SIZE + len(amiga_itm)
+    dos_base = _dos.RECORD_SIZE + len(itm)
+    for n in range(len(effects)):
+        at = base + n * AMIGA_POR_EFFECT_SIZE
+        dos_at = dos_base + n * dos_layout.EFFECT_SIZE
+        rep.note(at, 1, dosrep.sources.get(dos_at, f".spc record {n}: id"))
+        rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
+                 f".spc record {n}: the extra byte, a pad. Zero in every "
+                 f"Pool of Radiance and Curse record read (68)")
+        rep.note(at + 2, 4,
+                 dosrep.sources.get(dos_at + 1, f".spc record {n}: payload"))
+        rep.note(at + 6, 4,
+                 dosrep.sources.get(dos_at + 5,
+                                    f".spc record {n}: next pointer NULL"))
+
+    return out, amiga_itm, amiga_spc, rep
+
+
+# ---------------------------------------------------------------------------
+# A whole Amiga Pool of Radiance save slot, and the list the picker reads (#109)
+# ---------------------------------------------------------------------------
+#
+# `save/save` is **the slot list**, not a note about which slot is current.
+# Ten bytes: `"A         "` on the shipped disk and `"AB        "` after the
+# game itself saved to B (#36).  A disk carrying a complete slot B that does
+# not name B here is offered only `A` at the picker -- measured, one run wasted
+# on it -- so a writer that puts the files down and leaves this alone has
+# written a slot the player cannot load and reported success.
+#
+# Hence the rule this module enforces: **a slot that cannot be listed is not
+# written.**  The feasibility check runs before anything touches the disk, and
+# the list is read back afterwards, because a silent failure here is invisible
+# until somebody boots the game.
+#
+# The saved game names its own party.  Six 41-byte entries at 12813 hold
+# `CHRDATA1`...`CHRDATA6` as eight plain bytes with no count byte, and the
+# engine loads from *those* names rather than from the slot letter -- which is
+# why saving to slot B rewrote all six to `CHRDATB<n>` (#28, §1.9b).  So a
+# saved game moved to another slot has to be pointed at the files it will
+# actually find, or the party that loads is the one it came from.
+POR_SLOT_LIST = f"/{POR_SAVE_DRAWER}/save"
+POR_SLOT_LIST_SIZE = 10
+#: Ten legal slots, which is exactly what the ten-byte list holds.
+POR_SLOT_LETTERS = "ABCDEFGHIJ"
+POR_SAVEGAME_SIZE = 13141
+POR_CHARACTER_TABLE = 12813
+POR_CHARACTER_TABLE_STRIDE = 41
+POR_CHARACTER_TABLE_NAME = 8
+
+
+def _por_slot_letter(slot: str) -> str:
+    """One of the ten letters the list can hold, upper-cased, or a refusal.
+
+    `len` first: `"AB" in "ABCDEFGHIJ"` is true, and a membership test on its
+    own would accept a two-letter slot and write files nobody can load.
+    """
+    letter = slot.upper()
+    if len(letter) != 1 or letter not in POR_SLOT_LETTERS:
+        raise AmigaRecordError(
+            f"a Pool of Radiance save slot is one of {POR_SLOT_LETTERS}; "
+            f"got {slot!r}")
+    return letter
+
+
+def por_savegame_filename(slot: str) -> str:
+    """`savgamA.dat`, the case the shipped disk uses."""
+    return f"savgam{_por_slot_letter(slot)}.dat"
+
+
+def _remove_if_there(disk, path: str) -> bool:
+    """Delete `path` if the disk has one, and say whether it did.
+
+    Narrow on purpose, and that is the whole reason it exists: the only thing
+    it swallows is the file not being there, which is the ordinary case when a
+    slot is written over a shorter party.  A blind `except Exception` around
+    `remove_file` would also swallow a looping hash chain and a drawer where a
+    file was expected, and leave the disk half rewritten with nothing said.
+    """
+    try:
+        entry = disk.lookup(path)
+    except AmigaDiskError:
+        return False
+    if entry.is_dir:
+        raise AmigaRecordError(
+            f"{path!r} is a drawer on this disk, not a save file; refusing to "
+            f"remove it")
+    disk.remove_file(path)
+    return True
+
+
+@contextlib.contextmanager
+def _all_or_nothing(disk):
+    """Put the disk back exactly as it was if anything inside raises.
+
+    `AmigaDisk.write_file` allocates the replacement before it frees the
+    original (§1.10), so a write that runs the disk out of blocks stops part
+    way through and leaves a filesystem that is neither what it was nor what
+    it meant to be.  A slot is several files, so the window is several writes
+    wide: three characters of six on the disk is exactly the state
+    :func:`write_por_slot` exists to refuse.
+
+    The snapshot is the whole image and the undo is `AmigaDisk.restore`, which
+    is cheap enough at 880K not to be worth being clever about.
+    """
+    snapshot = disk.to_bytes()
+    try:
+        yield
+    except BaseException:
+        disk.restore(snapshot)
+        raise
+
+
+def read_slot_list(disk) -> list[str]:
+    """The slots the picker will offer, in the order the file names them.
+
+    A disk with no `save/save` returns an empty list: the file is what the
+    picker reads, so a disk without one offers nothing whatever else is in
+    the drawer.
+    """
+    try:
+        raw = disk.read_file(POR_SLOT_LIST)
+    except AmigaDiskError:
+        return []
+    out: list[str] = []
+    for byte in raw[:POR_SLOT_LIST_SIZE]:
+        letter = chr(byte).upper()
+        if letter in POR_SLOT_LETTERS and letter not in out:
+            out.append(letter)
+    return out
+
+
+def slot_list_bytes(slots: Sequence[str]) -> bytes:
+    """The ten bytes for a set of slots, space-padded, in the order given.
+
+    **Nothing is sorted.**  Whether the game sorts the list or appends to it
+    is UNKNOWN: the two specimens are `"A         "` and `"AB        "`, and
+    A before B is both the sorted order and the order they were created in,
+    so they cannot tell the two apart.  Writing the list back in the order it
+    was found leaves slots we did not write exactly where they were, which is
+    the only choice that cannot be wrong about a slot somebody else made.
+    Saving to a later letter and then an earlier one settles it in one run --
+    `ABD` is sorted, `ADB` is creation order.
+    """
+    wanted: list[str] = []
+    for slot in slots:
+        letter = _por_slot_letter(slot)
+        if letter not in wanted:
+            wanted.append(letter)
+    if len(wanted) > POR_SLOT_LIST_SIZE:
+        raise AmigaRecordError(
+            f"{len(wanted)} slots will not fit in {POR_SLOT_LIST_SIZE} bytes")
+    return "".join(wanted).ljust(POR_SLOT_LIST_SIZE, " ").encode("ascii")
+
+
+def retarget_savegame(save: bytes, slot: str) -> bytes:
+    """Point a saved game's character table at another slot's files.
+
+    Six entries of eight plain bytes at 12813, stride 41: `CHRDATA1` becomes
+    `CHRDATB1` and so on.  The engine loads the party named here rather than
+    the party named by the slot letter, so a saved game copied to another slot
+    without this loads the party it came from -- measured the other way round,
+    by the game's own save to slot B rewriting all six (#28 §1.9b).
+    """
+    letter = _por_slot_letter(slot)
+    if len(save) != POR_SAVEGAME_SIZE:
+        raise AmigaRecordError(
+            f"an Amiga Pool of Radiance saved game is {POR_SAVEGAME_SIZE} "
+            f"bytes, got {len(save)}")
+    out = bytearray(save)
+    for n in range(POR_PARTY_MAX):
+        at = POR_CHARACTER_TABLE + n * POR_CHARACTER_TABLE_STRIDE
+        name = out[at:at + POR_CHARACTER_TABLE_NAME]
+        if not name.startswith(b"CHRDAT"):
+            raise AmigaRecordError(
+                f"entry {n} of the character table at {at} reads {name!r}, "
+                f"not a CHRDAT<slot><n> name; this is not the saved game "
+                f"this function knows how to point at another slot")
+        out[at + 6] = ord(letter)
+    return bytes(out)
+
+
+def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
+                   savegame: bytes | None = None) -> list[str]:
+    """Write a whole save slot onto an Amiga disk, slot list and all.
+
+    Returns the paths written, in the order they were written.  `disk` is an
+    open `por.amiga_adf.AmigaDisk`, which is mutated in place -- the caller
+    decides whether to `save()` it, so a run that raises leaves the caller's
+    file untouched.
+
+    **It refuses a slot it cannot list.**  The check runs before anything is
+    written, and the list is read back off the disk afterwards; a slot the
+    picker will not offer is a slot the player cannot load, so writing one and
+    reporting success is worse than refusing (#109).
+
+    **And it is all or nothing.**  Every write happens inside
+    :func:`_all_or_nothing`, so a disk that runs out of blocks half way
+    through a six-character party comes back byte for byte as it was.
+
+    `savegame` is pointed at this slot's own character files if it is given.
+    Without one the character files land in the drawer and the slot still
+    cannot be loaded, so it is required unless the slot already has a saved
+    game of its own.
+    """
+    letter = _por_slot_letter(slot)
+    if not 1 <= len(characters) <= POR_PARTY_MAX:
+        raise AmigaRecordError(
+            f"a Pool of Radiance party is 1 to {POR_PARTY_MAX} characters; "
+            f"got {len(characters)}")
+
+    with _all_or_nothing(disk):
+        # Feasibility first: nothing is written for a slot the picker will not
+        # be told about.
+        wanted = slot_list_bytes(read_slot_list(disk) + [letter])
+
+        savegame_path = f"/{POR_SAVE_DRAWER}/{por_savegame_filename(letter)}"
+        if savegame is None:
+            try:
+                disk.lookup(savegame_path)
+            except AmigaDiskError:
+                raise AmigaRecordError(
+                    f"slot {letter} has no {savegame_path} on this disk and "
+                    f"none was given; the character files alone are not a "
+                    f"slot the game can load") from None
+
+        written: list[str] = []
+        for index, char in enumerate(characters, start=1):
+            record, itm, spc, rep = write_por(char)
+            if rep.unaccounted:
+                raise AmigaRecordError(
+                    f"{len(rep.unaccounted)} bytes of character {index} have "
+                    f"no provenance; refusing to write an unexplained record")
+            stem = f"/{POR_SAVE_DRAWER}/{por_filename(letter, index, '')}"
+            disk.write_file(stem + ".sav", record)
+            written.append(stem + ".sav")
+            for suffix, payload in ((".itm", itm), (".spc", spc)):
+                if payload:
+                    disk.write_file(stem + suffix, payload)
+                    written.append(stem + suffix)
+                else:
+                    # A character carrying nothing gets no file, and a stale
+                    # one from whoever held this slot before would hand him
+                    # somebody else's gear -- the engine reads the record's
+                    # own count, but the file is what the count indexes into.
+                    _remove_if_there(disk, stem + suffix)
+
+        # Any file the previous occupant of this slot left for a character
+        # this party does not have. A six-character save followed by a
+        # four-character one would otherwise leave CHRDAT?5 and CHRDAT?6 on
+        # the disk, loadable and belonging to somebody else.
+        for index in range(len(characters) + 1, POR_PARTY_MAX + 1):
+            stem = f"/{POR_SAVE_DRAWER}/{por_filename(letter, index, '')}"
+            for suffix in (".sav", ".itm", ".spc"):
+                _remove_if_there(disk, stem + suffix)
+
+        if savegame is not None:
+            disk.write_file(savegame_path,
+                            retarget_savegame(savegame, letter))
+            written.append(savegame_path)
+
+        disk.write_file(POR_SLOT_LIST, wanted)
+        written.append(POR_SLOT_LIST)
+        if letter not in read_slot_list(disk):
+            raise AmigaRecordError(
+                f"slot {letter} is still not in {POR_SLOT_LIST} after writing "
+                f"it; the picker would not offer it")
+        return written

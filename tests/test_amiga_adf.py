@@ -371,3 +371,66 @@ def test_allocation_stays_away_from_the_front_of_the_disk():
     used = [b for b in range(2, disk.block_count) if not disk.is_free(b)]
     header = disk.lookup("HIGH").block
     assert header > disk.block_count * 3 // 4, (header, used[:5])
+
+
+# ---------------------------------------------------------------------------
+# Drawers (#109)
+# ---------------------------------------------------------------------------
+#
+# `make_dir` exists so a save slot can be written onto a disk this module
+# formatted, with no game data anywhere. Production never calls it: a
+# converted party lands in the `save` drawer of a copy of the player's own
+# game disk.
+
+
+def test_a_new_drawer_is_a_consistent_filesystem():
+    disk = AmigaDisk.blank("wishtest")
+    block = disk.make_dir("save", when=WHEN)
+    assert disk.verify() == []
+    entry = disk.lookup("save")
+    assert entry.is_dir and entry.block == block
+
+
+def test_a_file_written_into_a_new_drawer_reads_back():
+    disk = AmigaDisk.blank("wishtest")
+    disk.make_dir("save", when=WHEN)
+    payload = bytes(range(256)) * 3
+    disk.write_file("save/CHRDATA1.sav", payload, when=WHEN)
+    assert disk.read_file("/save/CHRDATA1.sav") == payload
+    assert [p for p, _ in disk.walk()] == ["/save/CHRDATA1.sav"]
+    assert disk.verify() == []
+
+
+def test_a_drawer_inside_a_drawer_works():
+    disk = AmigaDisk.blank("wishtest")
+    disk.make_dir("outer", when=WHEN)
+    disk.make_dir("outer/inner", when=WHEN)
+    disk.write_file("outer/inner/FILE", b"payload", when=WHEN)
+    assert disk.read_file("outer/inner/FILE") == b"payload"
+    assert disk.verify() == []
+
+
+def test_a_drawer_over_a_name_already_there_is_refused():
+    """Quietly returning the file of the same name is how a disk gets
+    corrupted two operations later."""
+    disk = AmigaDisk.blank("wishtest")
+    disk.write_file("save", b"not a drawer", when=WHEN)
+    with pytest.raises(AmigaDiskError):
+        disk.make_dir("save", when=WHEN)
+    disk.make_dir("other", when=WHEN)
+    with pytest.raises(AmigaDiskError):
+        disk.make_dir("other", when=WHEN)
+
+
+def test_a_drawer_under_a_file_is_refused():
+    disk = AmigaDisk.blank("wishtest")
+    disk.write_file("FILE", b"x", when=WHEN)
+    with pytest.raises(AmigaDiskError):
+        disk.make_dir("FILE/under", when=WHEN)
+
+
+def test_a_drawer_takes_exactly_one_block():
+    disk = AmigaDisk.blank("wishtest")
+    before = disk.free_count()
+    disk.make_dir("save", when=WHEN)
+    assert disk.free_count() == before - 1
