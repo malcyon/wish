@@ -179,11 +179,10 @@ the routing.
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
 
-**"Easy" is not a category and neither is "unlabelled".** `quick-fix`'s filter
-is a property of the issue body -- does it name the mechanism, or only the
-goal? #71 looked like ordinary work and took nine rounds and a
-`QTableView` subclass. #73 named the two candidate shapes and said which was
-smaller, and that is what made it assignable.
+**`quick-fix`'s filter is a property of the issue body** -- does it name the
+mechanism, or only the goal? #71 looked like ordinary work and took nine
+rounds and a `QTableView` subclass. #73 named the two candidate shapes and
+said which was smaller, and that is what made it assignable.
 
 **Every agent gets an escape hatch and it is a success, not a failure.** If the
 work turns out to need something the agent is not for, it stops and says so and

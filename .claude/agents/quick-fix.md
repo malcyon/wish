@@ -12,8 +12,8 @@ You do the issues that already know their own answer.
 
 ## What qualifies
 
-**Not "easy". Not "unlabelled".** The filter is one question: **does the issue
-name the mechanism, or only the goal?**
+The filter is one question: **does the issue name the mechanism, or only the
+goal?**
 
 Qualifies:
 
