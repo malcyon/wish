@@ -110,6 +110,24 @@ for X -- so a private `Xvfb` is not a sandbox. DOSBox-X's file chooser walked
 straight out of one that way and drew on his screen. "Run it on your own X
 display" is not sufficient advice on this machine.
 
+**An agent's `ssh` must never be able to ask a human anything.** With no tty
+and `DISPLAY` set, OpenSSH does not fail when authentication falls through --
+it runs `SSH_ASKPASS`, and on this desktop that is `ksshaskpass`, which draws a
+KDE credential dialog on Donald's screen. Three of them appeared in one night
+that way. So:
+
+```sh
+SSH_ASKPASS_REQUIRE=never ssh -o BatchMode=yes ...
+```
+
+`BatchMode=yes` makes ssh fail instead of prompting; `SSH_ASKPASS_REQUIRE=never`
+stops it reaching for a dialog even so. Set both, including for anything that
+shells out to `ssh` or `scp` -- `winvm ssh` does not pass `BatchMode`, so it is
+one of the things that needs wrapping rather than trusting.
+
+A prompt an agent cannot answer is not a pause; it is a dialog on somebody
+else's desktop, waiting on somebody who did not ask for it.
+
 **Never point VICE at Donald's config.** Every pooled instance gets its own
 `vicerc` seeded from his, with `SaveResourcesOnExit=0`, so nothing an agent
 runs can write settings back. His file is read as a template and never opened
