@@ -101,7 +101,7 @@ So there are **two import routes**, and they want different files:
 | route | reads | we have the format? |
 |---|---|---|
 | `Pools` | `SAVE/NAME.pc` on a PoD save disk | 12 real specimens, **undecoded** |
-| `Secret` | `SAVE/*.sav` on a Secrets of the Silver Blades **Amiga** disk | **no Amiga SSB exists on this machine** — blocker 1 |
+| `Secret` | `SAVE/*.sav` on a Secrets of the Silver Blades **Amiga** disk | **the disks arrived 2026-08-25** and `SecretOfTheSilverBlades_A.adf` carries `SAVE/savgamA.sav` — see §1.6 and §1.7. Blocker 1 is gone as a *media* problem; whether PoD accepts a `.sav` we wrote is still untested |
 
 ### 1.3 The Amiga port is a mechanical translation of the DOS build
 
@@ -135,7 +135,9 @@ multi-byte fields byte-swapped.** That corroborates the earlier finding in
 `117-save-conversion.md` from an independent direction and makes **DOS the
 Rosetta stone for every Amiga question in this document**.
 
-Where the +3 comes from is UNKNOWN. See phase 4.
+Where the +3 comes from is **one pad byte at `0x07F`, ahead of the effect
+pointer, and a second insertion inside DOS `0x083`-`0x087`** — §1.6, measured
+on fourteen specimens. The second is located to a window, not to a byte.
 
 ### 1.4 But the DOS/Amiga record is not one record across the family
 
@@ -186,6 +188,85 @@ Two things fall straight out:
 Caveat on the specimens: **all twelve have every ability at 18.** They are a
 maxed party, so they give layout and give almost no value variation. Real
 variation has to be manufactured (phase 4).
+
+### 1.6 Curse and Silver Blades, read off the shipped disks
+
+Four Amiga disks arrived on 2026-08-25 (`work/amiga/goldbox/`, gitignored):
+two Curse of the Azure Bonds game disks, a Curse **save disk**, and two Secret
+of the Silver Blades disks. `work/amiga/goldbox/adfread.py` walks them —
+importable, unlike `work/amiga/adf.py`, and it finds the root block by scanning
+because the save disk is 1804 blocks rather than 1760.
+
+**The save disk's fourteen 288-byte `.cha` files are Pool of Radiance, not
+Curse.** CONFIRMED 14 of 14: single ability bytes at `0x010`-`0x015` where a
+Curse record holds current/max pairs, and levels at Pool of Radiance's caps
+(fighter 8, thief 9, mage 6) with experience past the AD&D threshold, which is
+what a capped character accrues. Somebody staged a Pool of Radiance party for
+import. They are the specimens #27 wanted; the field map is on that issue.
+
+**The Amiga Curse record is `SAVE/*.guy` on the game disk** — eleven
+pre-generated characters, 428 to 468 bytes. CONFIRMED 11 of 11: a **428-byte
+record followed by N ten-byte effect records**, the four observed sizes being
+0, 1, 3 and 4 effects, with every effect id landing on the right race.
+
+| artefact | DOS | Amiga | delta |
+|---|---|---|---|
+| Curse character record | `.SAV`, **422** | `.guy` / in-save block, **428** | +6, the last byte a pad |
+| Curse item record | inside the record | **66**, with its display text inline | — |
+| Curse effect record | `.FX`, **9** | appended, **10** | +1 |
+| Silver Blades character record | `.SAV`, **439** | in-save block, **340** | **−99** |
+| Silver Blades effect record | `.SFX`, **9** | appended, **10** | +1 |
+
+**The Amiga packs the spellbook as bits.** The whole 99-byte Silver Blades
+difference is one region: DOS `0x071`-`0x0e2` is 114 one-byte spell flags, and
+the Amiga has 15 bytes at `0x071`-`0x07f`, which is 120 bits. CONFIRMED 6 of 6
+— read **least-significant bit first within each byte**, the Amiga's 15 bytes
+reproduce the DOS non-zero indices exactly (29 spells, 29 spells, 4 spells,
+and empty for the three non-casters); most-significant-first reproduces none of
+them. So §1.3's "the DOS record, name re-encoded and multi-byte fields
+byte-swapped" is **not the whole rule**: one field changes representation, and
+it is the C64's own trick.
+
+**The `.spc` / effect record, ten bytes**, on 62 records plus every appended
+tail:
+
+| bytes | what | grade |
+|---|---|---|
+| 0 | effect id, the same namespace as DOS | CONFIRMED — 90/97/26/47 on dwarves, 107 elf, 124 half-elf |
+| 1 | **the extra byte**, a pad; zero everywhere in Pool of Radiance and Curse, uninitialised garbage in the first record of each Silver Blades character | PROBABLE |
+| 2-3 | duration, u16 big-endian | PROBABLE — 10, 6, 4 and 3 read as durations; little-endian gives 2560 and 1536 |
+| 4 | value; `0xFF` permanent, 92 for one character's exceptional strength | CONFIRMED for `0xFF`, 30+ records |
+| 5 | zero except `0x01` on four records | UNKNOWN |
+| 6-9 | next-node pointer, u32 big-endian, NULL-terminated | CONFIRMED — steps by `0x10` in Pool of Radiance, `0x0A` in Curse |
+
+It exists to align the u16 duration and the u32 pointer on even addresses,
+which a nine-byte record cannot do.
+
+### 1.7 The Amiga saved game is the DOS file with its last region replaced
+
+`SAVE/savgamA.dat` (Curse, 15221, byte 0 `02`) and `SAVE/savgamA.sav` (Silver
+Blades, 7233, byte 0 `01`), against [`141-dos-savegame.md`](141-dos-savegame.md).
+
+The first five regions occupy the same span they do in DOS. `docs/141` puts the
+DOS character table at 12822 for Curse and 5142 for Silver Blades; the Amiga
+party-size byte is at 12824 and 5142, with the first record one byte later.
+**CONFIRMED**: that byte is the party size — Curse reads 4 and holds four
+records, Silver Blades reads 6 and holds six.
+
+**Where DOS names six `CHRDAT<letter><n>` files, the Amiga embeds the records.**
+CONFIRMED, 4 of 4 Curse blocks and 6 of 6 Silver Blades blocks, parsed to the
+byte with no slack: a Curse block is 428 + items×66 + effects×10, and a Silver
+Blades block is 340 + effects×10 with no items. The Silver Blades effect counts
+match the DOS default save's `.SFX` files character for character, and its six
+characters are the same six as DOS slot A in the same state — so the two are a
+direct diff, which is how §1.6's spellbook finding was measured.
+
+Untested, and each is cheap: the VM variable region (the Curse save carries the
+contiguous ASCII `WEAPONERS OF CORMYR` at `0x0f9a`, inside it, where `docs/141`
+records the DOS encounter buffer as one character per word — so either the
+Amiga stores it as bytes or the array is not two bytes per address); the ECL
+text buffer, whose high-entropy span runs about `0x1472`-`0x31bf` on Curse; the
+square, facing and clock; and the 66-byte item record.
 
 ---
 
