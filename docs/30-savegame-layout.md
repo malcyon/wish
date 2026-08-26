@@ -208,7 +208,7 @@ the animator **modifying its own operands**, not the game recording anything.
 | `$4A00`–`$4A1F` | per-script scratch, zeroed by `DUNGEON $202A` on every area change |
 | `$4A20`–`$4AF8` | the persistent quest flags, including the commission ledger at `$4AA6` |
 | `$4BC0`–`$4BD8` | the loader's "what is currently loaded" cache; `$4BC2` is the `GEO` number and `$4BC4` the `SQRDATA` |
-| `$4900`–`$497F`, `$4B80`–`$4BBF` | the active-effect arrays — effect code, owner, magnitude and a fourth parallel array |
+| `$4900`, `$4940`, `$4980`, `$4B80` | the four active-effect arrays — see [`133-active-effects.md`](133-active-effects.md), which is where they are maintained |
 
 Established by walking three steps north and three steps west and diffing: each
 leg moved one coordinate by exactly 3 and left the other alone. `por/savegame.py`
