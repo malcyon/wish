@@ -36,6 +36,23 @@ So, absolutely:
   because it often is. The safe assumption costs you nothing; the unsafe one
   cost a session.
 
+**You may be running in your own git worktree**, a separate checkout of this
+repository made for you. When you are, `git` commands touch only your copy —
+but do not take that as permission: the rules above hold either way, because
+you cannot tell from inside which case you are in, and being wrong once costs
+somebody's day.
+
+**A worktree has no `work/` directory.** That is where every disk image,
+specimen, dump and run artefact lives, and it is gitignored, so it is not part
+of what a worktree copies. It is 1.6 GB and is not copied per review. Read it
+**by absolute path** at `/home/donald/src/wish/work/...`, and **read only** —
+that path is the real one, shared with every running agent, and a write there
+lands in their laps.
+
+The archives outside the repository are unaffected either way:
+`~/Downloads/fr-archives/` and `/home/donald/c64/Pool of Radiance Disks/`, both
+read-only, always.
+
 If you cannot establish something without modifying the tree, **say so in the
 report as an unverified claim.** That is a useful finding. A destroyed working
 tree is not.

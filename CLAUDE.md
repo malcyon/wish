@@ -175,8 +175,8 @@ the routing.
 | `reverse-engineering` | Fable | **Ask Donald before launching it.** Only when the work needs a disassembly read, not merely a measurement. Exhausted a monthly limit in one night; the label is not a reason to use it |
 | `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
-| `code-reviewer` | Sonnet | after **every** subagent that wrote code, before its work is committed |
-| `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands |
+| `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. Launch it with `isolation: "worktree"` |
+| `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands. Launch it with `isolation: "worktree"` |
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
 
