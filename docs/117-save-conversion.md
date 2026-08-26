@@ -1740,8 +1740,8 @@ value belonging to another party in another place. The full accounting — what
 the engine rebuilds, what the C64 format has no counterpart for, and the
 blocker list of what nobody has decoded, with the experiment against each — is
 ["What a conversion still has to inherit"](141-dos-savegame.md) in
-`141-dos-savegame.md`. After #59's file-level pass it is **444 bytes of
-13137**, none of it party or place data; the 8016 resident-state bytes this
+`141-dos-savegame.md`. After #59's file-level pass it is the byte count
+that table states, none of it party or place data; the 8016 resident-state bytes this
 document once called unattributed are attributed.
 
 ## The template's spare characters (#104)

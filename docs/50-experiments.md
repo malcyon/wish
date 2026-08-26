@@ -5509,8 +5509,8 @@ retargeted into the Slums, so the prologue runs on load and these are
 rebuilt, not carried. `$49EB` and `$4A00` read the same way on both ports too
 (`$4A00` = 255 in both Slums saves, 0 in both New Phlan ones).
 
-The inherit list this leaves — 444 bytes of 13137, in three groups with an
-experiment against each — is the table in `141-dos-savegame.md`. Scripts:
+The inherit list this leaves — three groups with an experiment against each,
+and the byte count — is the table in `141-dos-savegame.md`. Scripts:
 `work/p59-vars/corr.py`, `partition.py`, `inherit.py`, `crossport.py`.
 
 ## What the C64 engine writes when a character is dropped (#104)
