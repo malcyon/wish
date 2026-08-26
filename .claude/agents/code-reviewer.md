@@ -36,6 +36,21 @@ So, absolutely:
   because it often is. The safe assumption costs you nothing; the unsafe one
   cost a session.
 
+**Say in the first line of your report whether you are isolated.** Run:
+
+```sh
+git rev-parse --git-dir --git-common-dir
+```
+
+If the two paths differ you are in your own worktree; if they are the same you
+are in the shared tree with every other agent. **Report which, every time.**
+
+Isolation is passed when you are launched, not set in your own definition, so
+it can be forgotten — and a forgotten flag is invisible unless you say so. If
+you are **not** isolated, say that plainly and treat every rule above as
+doubly binding: an accident in the shared tree destroys whatever anybody else
+has uncommitted.
+
 **You may be running in your own git worktree**, a separate checkout of this
 repository made for you. When you are, `git` commands touch only your copy —
 but do not take that as permission: the rules above hold either way, because
