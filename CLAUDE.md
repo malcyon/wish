@@ -899,6 +899,20 @@ constantly in assistant prose and almost never in human speech:
 | **retarget** | move the party to where it actually was, point the save at the right map |
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
 | **"the test bites"** | the test fails without the fix; it catches the bug; it goes red when the guard is removed |
+| **a file "walks", "arrives", "stands"** | name who does it: *the party* walks, *the player* sees it, *the game* loads the save without crashing |
+
+**Do not give a file the verb that belongs to the people in it.** "All three
+saves walk" was written here and Donald could not read it: *"I don't know what
+a save walking means."* He is right -- a save cannot walk, a **party** walks.
+The shorthand collapses the actor, and the actor is the whole content of the
+sentence: "the party in each of the three converted saves could be made to
+move" says what was proven, where "the saves walk" could equally mean the file
+loaded, the game did not crash, or somebody took a step.
+
+**The sense that is fine is the one with no person in it** -- walking a range,
+a loop or a structure. `docs/118-debug-mode.md`'s "walks `$9800` from 10 to 18"
+is exactly right and should stay. The test is whether a person or a party is
+the thing really doing it; if so, name them.
 
 **"Follows" is the worst of these for a reader who was not there**, and it went
 into two issue titles before Donald said so: *"I see this a lot, where you say
@@ -942,3 +956,11 @@ reference a number, it never means anything to me."*
 **This includes tables**, which is where it is dropped most often -- a column
 of bare numbers is the least readable thing in a reply, not the most. Put the
 title in the row.
+
+**Every mention, not the first one.** The next failure after the tables was
+putting titles in the table and then writing bare numbers in the prose around
+it -- "#102 is solved", "#59's inherit list", "#50's proof now passes". A
+number used as the subject of a sentence is the *least* readable place for it,
+because that is where the reader most needs to know what is being talked
+about. There is no "already introduced it above" exemption; a reply is skimmed,
+not read in order.
