@@ -412,3 +412,31 @@ def _is_save(path: pathlib.Path, game: games.Game) -> bool:
         return entry is not None and game.matches_payload(disk.read_file(entry))
     except Exception:
         return False
+
+
+# --- synthetic saves for every title, needing no disks at all --------------
+#
+# #98: `synthetic_party` raised for every title but Pool of Radiance, because
+# it always wrote a separate roster file at `game.roster_load_address`, which
+# is None for every later title -- they keep the roster inside the save
+# payload instead. This is what makes the disks-backed tests above skippable
+# in CI: a per-title UI guarantee no longer needs the player's own disks to be
+# exercised somewhere.
+
+def test_synthetic_party_builds_a_save_for_every_title():
+    from por.d64 import D64
+    from por.savegame import load_save
+    from tests.gamedata import synthetic_party
+
+    for game in games.GAMES:
+        disk = D64.from_bytes(synthetic_party(game))
+        found, sg0, sg1 = load_save(disk)
+        assert found is game, game.title
+        chars = sg0.characters
+        assert len(chars) == 6, game.title
+        for char in chars:
+            record = char.record
+            assert record.name.rstrip() == "W" * 20, game.title
+            assert record.hp_max == 65535, game.title
+        assert sg1 is not None, game.title
+        assert sg1.roster(0).thac0 == 20, game.title

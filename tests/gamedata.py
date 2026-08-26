@@ -422,12 +422,23 @@ def synthetic_party(game=None) -> bytes:
         roster[at + ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - WIDEST_AC
         roster[at + ROSTER_HP_CURRENT] = WIDEST_HP
         roster[at + ROSTER_MOVEMENT] = 12
-    return _disk_with([
-        (game.save_file, attach_load_address(game.save_load_address,
-                                             bytes(payload))),
-        (game.roster_file, attach_load_address(game.roster_load_address,
-                                               bytes(roster))),
-    ])
+
+    # `Game.roster_in_payload` is the branch: Pool of Radiance alone keeps the
+    # roster in its own file at its own load address, and every later title
+    # folds it into the save payload at `roster_offset` -- `SaveGame0.roster_page`
+    # is the same split on the read side.
+    if game.roster_in_payload:
+        payload[game.roster_offset:game.roster_offset + game.roster_size] = roster
+        files = [(game.save_file, attach_load_address(game.save_load_address,
+                                                       bytes(payload)))]
+    else:
+        files = [
+            (game.save_file, attach_load_address(game.save_load_address,
+                                                 bytes(payload))),
+            (game.roster_file, attach_load_address(game.roster_load_address,
+                                                   bytes(roster))),
+        ]
+    return _disk_with(files)
 
 
 def synthetic_save(tmp_path, name: str = "SYNTHETIC.D64"):
