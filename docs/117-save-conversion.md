@@ -464,7 +464,7 @@ from somewhere.** This is the whole list.
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_layout.py` |
 | `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
-| `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — **not save data at all** | **yes** — copy from any existing C64 save; the game overwrites it |
+| `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — resident code, not party state | **yes**, and now measured rather than assumed: a converted save with all 1792 bytes zeroed loaded, walked and changed area, with `$0400` matching `GEO00` in 1024 of 1024 (#118 step 3, four variants). Cache slot 11 is what decides the transition; the bytes it points at did not. Still copied from the template today. Untested: a fight fought to its end, and an arrival that plays an animation — `#122 (A converted save says ANIMATE00 is resident and carries whatever the template had there)` |
 | `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes a legal icon |
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
@@ -1500,13 +1500,24 @@ here fails a test. Three kinds of byte have no neutral source:
   from money plus item weight × quantity, the identity the engine itself
   uses;
 * **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
-  `icon_colours`, `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`,
-  `portrait_head`, `portrait_body`, `icon_head`, `icon_body` — live heap,
-  the art ids and the unattributed, ~80 bytes. Measured
+  `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`, `portrait_head`,
+  `portrait_body`, `icon_head`, `icon_body` — live heap, the art ids and the
+  unattributed, ~74 bytes. Measured
   survivable for a character carrying items, and, since #62, for one carrying
   nothing too: the engine's own record for a character who dropped everything
   in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
   writes.
+* **measured defaults**, the `WRITE_DEFAULTS` list — `icon_colours` alone so
+  far, written `91 A2 B3 C4 E6 F7`. A default is not a constant: it is what a
+  *newly made* character has, 42 of the 54 shipped records across the four
+  DOS titles, and a played character's own set differs — so a round trip has
+  to mask these, which is why they are their own table rather than entries in
+  `WRITE_CONSTANTS`. `icon_colours` was in the unsourced list until #112
+  measured what zero draws: all six parts EGA 8, dark grey, which is the
+  combat floor's own colour, so the figure reads as not being there at all.
+  Each entry carries a fourth string saying what the source held that is not
+  carried — here the C64's own icon colours, which have seven parts to DOS's
+  six and one 3-bit colour per part against DOS's two 4-bit ones.
 
 And one rule that is about a **file** rather than a byte: a character carrying
 nothing gets **no `.ITM`**, not an empty one (`ITM_OMITTED_WHEN_EMPTY`). A
@@ -1580,8 +1591,8 @@ with the three humans at NULL and no `.SPC` written for them at all.
 `tests/test_doswriter.py`, on Donald's 24 DOS records:
 
 * **DOS → neutral → DOS is byte-for-byte the original outside the writer's
-  own unsourced list, 24 of 24** — and the mask is `WRITE_UNSOURCED`, not
-  whatever happened to differ. Encumbrance is recomputed and matches
+  own unsourced list, 24 of 24** — and the mask is `WRITE_UNSOURCED` plus
+  `WRITE_DEFAULTS`, not whatever happened to differ. Encumbrance is recomputed and matches
   wherever the original's own identity balanced (22 of 24; the two stale
   dart stacks come back *corrected*).
 * **DOS → neutral → C64 record → neutral → DOS loses nothing more, 24 of
@@ -1715,8 +1726,8 @@ The DOS-to-C64 direction is `tests/test_dosconvert.py`, the reverse is
 And for the reverse direction, `tests/test_doswriter.py`:
 
 * **A DOS record round-trips through the neutral middle** — byte for byte
-  outside `WRITE_UNSOURCED`, 24 of 24 — and **through the C64 record** with
-  nothing more lost, 24 of 24.
+  outside `WRITE_UNSOURCED` and `WRITE_DEFAULTS`, 24 of 24 — and **through the
+  C64 record** with nothing more lost, 24 of 24.
 * **Every neutral field has a disposition in the DOS writer, and every DOS
   layout field a target**, both set-checked, so neither vocabulary can grow
   a silently-skipped field.

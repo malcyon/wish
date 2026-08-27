@@ -22,9 +22,12 @@ still unread.
 a character *is right now, as a member of this party*: armour class, THAC0,
 current hit points, movement as encumbered, damage bonus. Every one of these is
 a value the game **derives** from the character plus their equipment, and caches
-rather than recomputing on load. **Everything past `$8400` is not save data at
-all** — it is resident code and a graphics buffer that happened to be in memory
-when the game dumped the range. See below.
+rather than recomputing on load. **Everything past `$8400` is resident code and
+a graphics buffer** that happened to be in memory when the game dumped the
+range — which is not the same as saying a new save may leave it out, because
+the save's own loaded-files cache tells the engine that code is there. See
+below, and `#122 (A converted save says ANIMATE00 is resident and carries
+whatever the template had there)`.
 
 **A caution about the obvious reading.** "`SAVEDGAME0` is the characters and
 `SAVEDGAME1` is the world" is wrong, and it was assumed here for a while: the
@@ -241,14 +244,69 @@ verbatim.
 
 ## SAVEDGAME1 past the roster: `ANIMATE00` and a bitmap buffer
 
-**CONFIRMED. `$8400`–`$8AFF` holds no save data.** The game dumps `$8300`–`$8AFF`
-verbatim, and only the first page is state; the rest is whatever was resident.
+**CONFIRMED. The game dumps `$8300`–`$8AFF` verbatim, and only the first page
+is the roster.** What the rest *is* is settled; whether a save may carry
+anything there is **disputed** — see the two paragraphs below the table.
 
 | Range | Size | Contents |
 |---|---|---|
 | `$8400`–`$8753` | 852 | the on-disk file **`ANIMATE00`** — a 7-entry jump table (`4C xx 84`) and a VIC bitmap blitter |
-| `$8754`–`$882F` | 220 | zero in every specimen |
+| `$8754`–`$882F` | 220 | zero in 93 of 98 saves; the other five carry the same 59 non-zero bytes |
 | `$8830`–`$8AFF` | 720 | C64 multicolour bitmap scratch, the leading edge of the animator's data |
+
+**Measured over 98 saves, not three** (#118 step 1, which corrects one number
+this table gave from a sample of three and adds two it did not have):
+
+* **844 of the 852 `ANIMATE00` bytes are the same in every save that carries
+  it.** The eight that move are `$8415`, `$862D`, `$8630`, `$8673`, `$86B4`,
+  `$86B5`, `$86B7`, `$86E4`, and nobody has established what they are. The 98
+  saves take four distinct values of the region, differing only in those eight.
+  This is save against save; the 829 below is save against the disk file, and
+  the two were briefly confused for each other.
+* **`$8415` is the byte that splits the five levelling saves off**, reading
+  `01` there where the other 93 read `00`. The same five are the ones with
+  non-zero bytes at `$8754`.
+* **The 220 bytes at `$8754` are not zero in every specimen.** Five of 98 carry
+  the same 59 non-zero bytes — `work/drive/LVAFTER.D64`, `work/drive/P18PARTY.D64`
+  and three `work/inst/0/save-*6.D64` levelling saves, every one of them taken
+  after training. None of Donald's own 13 `PORSAVE` disks do.
+* **A save carries `ANIMATE00` after the game has run it**, not as it comes off
+  the disk — but the two are close. The file is 852 bytes, load address
+  `$1000`, and is **byte-identical on all eight `POOL` sides**; a save's copy
+  matches it in **829 of 852 bytes**, the same 23 differing in every save, and
+  15 of those 23 the file writes into itself as soon as it runs. The identical
+  run at the start is 22 bytes long, the first difference being `$8416` — that
+  22 is a prefix length and not a count of matching bytes, and it was reported
+  as one here for part of a night.
+
+**What was disputed, and how it came out.** This section used to say flatly
+that `$8400`–`$8AFF` holds no save data, while
+[140-loaded-files-cache.md](140-loaded-files-cache.md) said loaded-files cache
+slot 11 tells the engine `ANIMATE00` is resident and #102 showed the engine
+believes that cache rather than checking — which reads as "if the cache says
+the code is there, the code has to be there".
+
+**Measured, #118 step 3.** Four saves, DOS slot J converted onto `PORSAVE9`,
+warped The Slums → New Phlan, which is the transition #102 showed the cache
+decides:
+
+| `$8400`–`$8753` | slot 11 | area change | `$0400` against `GEO00` |
+|---|---|---|---|
+| the template's copy | `$00` resident | arrived | 1024 of 1024 |
+| **852 zeros** | `$00` resident | **arrived** | 1024 of 1024 |
+| 852 zeros | `$FF` empty | arrived | 1024 of 1024 |
+| `ANIMATE00` off `POOL1.D64` | `$00` resident | arrived | 1024 of 1024 |
+
+**Slot 11 matters; the bytes it points at did not.** All four loaded, walked
+and changed area. So this section's original claim stands for a load, a walk
+and a transition, and the two documents were never really disagreeing.
+
+**What is not on the record**, and both are cheap: a **fight fought to its
+end** — `COMPIC` and `SPRITE` are what an encounter loads, and the harness
+could not drive a combat to a result — and **Sokol Keep's arrival**, area 21,
+which plays the boat animation. Those are the two things that could still call
+into a zeroed page. `#122 (A converted save says ANIMATE00 is resident and
+carries whatever the template had there)`.
 
 The `EUD` / `PTTP` / `DQP` / `DPU` "ASCII runs" this section once flagged as a
 possible journal are `45 55 44` and `50 54 54 50` — pixel patterns.
