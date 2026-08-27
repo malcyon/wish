@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Roster's horizontal scroll bar no longer hides the last character's row.
 - Roster shows the open title's own race and class names, instead of always showing Pool of Radiance's.
 - A Silver Blades ranger's spellbook is no longer greyed out as if he knows no spells.
-- Live roster no longer misreads party stats off a full-screen picture on Silver Blades; it holds its last good reading instead.
+- Live roster no longer shows wrong hit points when the game puts a picture over the whole screen; it keeps its last good reading until the party is readable again.
 - Character editor's Spells tab now names every spell on Curse of the Azure Bonds and Secret of the Silver Blades, instead of leaving them unlabelled.
 - Exporting a Curse or Silver Blades character to YAML no longer stops partway through the spellbook.
 - Spells tab's "Castable per level" field no longer reads as all zeros for a spellcaster; it was showing a clipped tail of the real value.
