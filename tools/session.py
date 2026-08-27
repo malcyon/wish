@@ -177,10 +177,6 @@ PANEL_LEFT = 22
 PANEL_ROWS = range(0, 8)
 
 
-def sign(n: int) -> int:
-    return (n > 0) - (n < 0)
-
-
 def chebyshev(a, b) -> int:
     """Squares between two combatants, eight-way."""
     return max(abs(a.x - b.x), abs(a.y - b.y))
@@ -801,8 +797,12 @@ class Session:
         """
         time.sleep(seconds)
 
-    def combat_turn(self, state: CombatBar) -> str:
+    def combat_turn(self) -> str:
         """Pass one character's turn.  Returns what was chosen.
+
+        It takes no bar: it is only ever reached at a command bar, and it
+        walks the highlight to `DONE` from wherever it is rather than from
+        anything the bar said.  It used to take one and never read it.
 
         **`DONE` does not end a turn.**  It opens
         `GUARD DELAY QUIT SPEED EXIT`, and `GUARD` on that is what ends it --
@@ -911,6 +911,11 @@ class Session:
     def melee_turn(self, state: CombatBar) -> str:
         """Walk the acting character into the nearest enemy, which attacks it.
 
+        `state` is the bar `fight` was looking at.  It is not read -- the
+        tactic protocol is `tactic(session, state)` and this is a tactic, so
+        it takes one whether it wants one or not; the positions come from
+        `battle()`, which is a fresher read than the bar.
+
         There is no attack key.  `MOVE/ATTACK` is the whole of it: a step into
         an occupied square is a blow, and the game says as much on the sub-bar
         it puts up.  So this takes MOVE, then steps towards the nearest living
@@ -922,9 +927,9 @@ class Session:
         b = self.battle()
         me = self.acting(b)
         if b is None or me is None or not me.alive:
-            return self.combat_turn(state)
+            return self.combat_turn()
         if not any(e.alive and e.on_map for e in b.enemies):
-            return self.combat_turn(state)
+            return self.combat_turn()
         # Work out the step **before** taking MOVE.  A character the rest of
         # the party has boxed in has nowhere that gets it closer, and taking
         # MOVE and backing out again does not end its turn: the same command
@@ -935,9 +940,9 @@ class Session:
         target = min((e for e in b.enemies if e.alive and e.on_map),
                      key=lambda e: chebyshev(me, e))
         if self.step_towards(b, me, target) is None:
-            return self.combat_turn(state)
+            return self.combat_turn()
         if not self.combat_bar("MOVE", timeout=15):
-            return self.combat_turn(state)
+            return self.combat_turn()
         moving = self.await_bar((BAR_MOVE,), timeout=8)
         if moving is None:
             return ""                           # MOVE did not take; press on
@@ -970,7 +975,7 @@ class Session:
         if not stepped:
             # Still this character's turn, and it has done nothing.  Pass it,
             # or the same bar comes straight back.
-            return self.combat_turn(self.combat_state())
+            return self.combat_turn()
         return "MOVE"
 
     def fight(self, budget: float = 300.0, tactic=None,

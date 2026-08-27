@@ -42,7 +42,6 @@ from session import (  # noqa: E402
     WON,
     Session,
     chebyshev,
-    sign,
     span_in,
     word_column,
 )
@@ -395,10 +394,6 @@ def test_every_direction_has_a_key_and_standing_still_has_none():
     assert len(set(STEP_KEYS.values())) == 8
 
 
-def test_sign_is_the_step_and_not_the_distance():
-    assert (sign(-7), sign(0), sign(3)) == (-1, 0, 1)
-
-
 class ArenaSession(FakeSession):
     """A `Session` over `tests/gamedata.py`'s arena: one fighter, one orc.
 
@@ -650,7 +645,7 @@ def test_passing_a_turn_takes_done_and_then_guard():
         (COMBAT, bar_screen("GUARDING")),
     ]
     sess = FakeSession(frames)
-    assert sess.combat_turn(sess.combat_state()) == "GUARD"
+    assert sess.combat_turn() == "GUARD"
     assert sess.kbd.sent == ["Return", "Return"]
 
 
