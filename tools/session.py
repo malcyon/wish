@@ -718,7 +718,10 @@ class Session:
             return CombatBar(BAR_NONE, "")
         bar = s.row(24).strip()
         up = bar.upper()
-        if "CONTINUE BATTLE" in up:
+        # Whole words, like every other branch here: a substring test would
+        # take IMPRESSED for PRESS.  `word_column` tokenises, so a two-word
+        # label is two calls rather than one.
+        if word_column(up, "CONTINUE") >= 0 and word_column(up, "BATTLE") >= 0:
             return CombatBar(BAR_CONTINUE, bar)
         found = RE_MOVE_LEFT.search(up)
         if found:
@@ -730,7 +733,7 @@ class Session:
         # `work/p126/run1.log`, on the press that spent the last square.
         if word_column(up, "DONE") >= 0:
             return CombatBar(BAR_COMMAND, bar)
-        if "PRESS" in up:
+        if word_column(up, "PRESS") >= 0:
             return CombatBar(BAR_PRESS, bar)
         # `DONE` does not end a turn; it opens this.  `GUARD` on it is what
         # passes the turn, which is where the `GUARDING` in the old logs was
@@ -923,6 +926,13 @@ class Session:
         attacks, runs out of squares, or dies.
 
         Distance is Chebyshev because the moves are eight-way.
+
+        **The square it steps into may hold a different enemy than the one it
+        aimed at**, because only party members are excluded from the
+        candidates.  That still lands a blow and still ends the turn, so it
+        does not stall a fight; it means the target this picks is where the
+        character is heading rather than what it is guaranteed to hit.  A
+        tactic wanting a chosen target would have to exclude the others too.
         """
         b = self.battle()
         me = self.acting(b)
