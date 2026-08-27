@@ -618,6 +618,20 @@ def game_disk(stem: str = "POOL1"):
     pytest.skip(f"no {stem} disk where the game disks are")
 
 
+def save_disks():
+    """Every `PORSAVE*` disk the player has, in name order.
+
+    For a check that wants a *population* rather than one specimen -- the
+    sample size is the finding, and a test written against `PORSAVE13` alone
+    reports n=1 however many disks are sitting beside it.  Empty when the
+    disks are not there; pair it with the `needs_disks` marker.
+    """
+    where = disk_dir()
+    if where is None:
+        return []
+    return sorted(where.glob("PORSAVE*.[dD]64"), key=lambda p: p.name)
+
+
 def save_disk(stem: str = "PORSAVE"):
     """The path to one of the player's save disks, or skip."""
     where = disk_dir()

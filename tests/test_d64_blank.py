@@ -301,34 +301,57 @@ def test_the_directory_track_is_all_a_1541_directory_gets():
 # committed.
 
 
-@gamedata.needs_disks
-def test_a_built_disk_matches_the_one_the_1541_wrote():
-    """The strongest structural check there is without an emulator.
+#: The shape this check needs: a save disk holding the two save files and
+#: nothing else.  Two of the player's fifteen carry staged character files as
+#: well and are skipped rather than special-cased -- they are also the two
+#: written at interleave 10, so a disk built at 16 would differ from them
+#: everywhere, which is a fact about the drive and not about this code.
+SAVE_PAIR = [b"SAVEDGAME1", b"SAVEDGAME0"]
 
-    Take the two files off a save the game itself wrote, put them on a disk
-    built here, and the images agree everywhere except the slack after each
-    file's last payload byte -- which is the drive's own buffer, written out
-    because a 1541 writes whole 256-byte sectors.
-    """
-    real = D64.open(gamedata.save_disk("PORSAVE13"))
-    names = [e.name for e in real.directory()]
-    assert names == [b"SAVEDGAME1", b"SAVEDGAME0"], names
 
+def _reproduces(path) -> set[int]:
+    """Which bytes of `path` a disk built here does not reproduce."""
+    real = D64.open(path)
     built = D64.blank(name=real.disk_name, disk_id=real.disk_id)
-    for name in names:
+    for name in SAVE_PAIR:
         built.write_file(name, real.read_file(name))
 
     slack = set()
-    for name in names:
+    for name in SAVE_PAIR:
         chain = real.sector_chain(name)
         tail = len(real.read_file(name)) - (len(chain) - 1) * PAYLOAD_PER_SECTOR
         last = sector_offset(*chain[-1])
         slack |= set(range(last + 2 + tail, last + 256))
 
     mine, theirs = built.to_bytes(), real.to_bytes()
-    differ = {i for i in range(IMAGE_SIZE) if mine[i] != theirs[i]}
-    assert differ == slack, (
-        f"{len(differ - slack)} bytes differ outside the final-sector slack")
+    return {i for i in range(IMAGE_SIZE) if mine[i] != theirs[i]} - slack
+
+
+@gamedata.needs_disks
+def test_a_built_disk_matches_the_ones_the_1541_wrote():
+    """The strongest structural check there is without an emulator, over
+    every save disk the player has rather than one of them.
+
+    Take the two files off a save the game itself wrote, put them on a disk
+    built here, and the images agree everywhere except the slack after each
+    file's last payload byte -- which is the drive's own buffer, written out
+    because a 1541 writes whole 256-byte sectors.
+
+    **The sample size is part of the finding**, so it is counted rather than
+    assumed: this was written against `PORSAVE13` alone and reported n=1 with
+    fifteen disks beside it.  Thirteen of Donald's fifteen are of the shape
+    `SAVE_PAIR` describes and all thirteen reproduce.
+    """
+    checked = []
+    for path in gamedata.save_disks():
+        if [e.name for e in D64.open(path).directory()] != SAVE_PAIR:
+            continue
+        differ = _reproduces(path)
+        assert not differ, (
+            f"{path.name}: {len(differ)} bytes differ outside the "
+            f"final-sector slack")
+        checked.append(path.name)
+    assert len(checked) >= 2, f"too small a sample to mean anything: {checked}"
 
 
 @gamedata.needs_disks
