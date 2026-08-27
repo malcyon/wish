@@ -11,8 +11,9 @@ than it is.
 **Reading** a running game needs one thing: VICE started with
 `-binarymonitor -binarymonitoraddress 127.0.0.1:6502`, plus
 `flatpak override --user --share=network net.sf.VICE` if it is the Flatpak. Set
-`BinaryMonitor=1` in `vicerc` and every launch has it, including from a desktop
-menu. Nothing below this line applies.
+`BinaryMonitorServer=1` in `vicerc` and every launch has it, including from a
+desktop menu -- the name ends in `Server`, and VICE ignores a resource it does
+not recognise without a word. Nothing below this line applies.
 
 **Driving** a game — sending keys — needs everything below: the nested X server,
 the input timing, the whole apparatus. `tools/porlaunch.sh` exists for that, not

@@ -603,9 +603,16 @@ are these.
 3. Under the `[C64SC]` section — create it if it is absent, as the last line of
    the file — add:
    ```ini
-   BinaryMonitor=1
-   BinaryMonitorAddress="127.0.0.1:6502"
+   BinaryMonitorServer=1
+   BinaryMonitorServerAddress="127.0.0.1:6502"
    ```
+   **The names end in `Server`, and getting that wrong fails silently.** This
+   step said `BinaryMonitor` and `BinaryMonitorAddress` until 2026-08-26, and
+   VICE has no resources by those names — it reads the file, ignores the lines
+   it does not recognise, starts with no monitor, and says nothing. The right
+   names are in VICE 3.10's own manual (`doc/vice.pdf` in the release zip,
+   under *Monitor settings*) and in the workstation's working
+   `~/.var/app/net.sf.VICE/config/vice/vicerc`.
 4. Save, then start `x64sc.exe`.
 
 **The alternative, which avoids the file entirely** and is worth trying first if
@@ -615,8 +622,9 @@ the ini fights you — a shortcut, or PowerShell:
 C:\vice\bin\x64sc.exe -binarymonitor -binarymonitoraddress 127.0.0.1:6502
 ```
 
-*Expect, either way:* nothing visible. VICE does not announce the monitor. The
-proof is step 6 attaching. *Possible on first run:* a Windows Defender Firewall
+*Expect, either way:* nothing visible. VICE does not announce the monitor, and
+it does not complain about a setting it did not understand either. The proof is
+step 6 attaching — there is no earlier one. *Possible on first run:* a Windows Defender Firewall
 prompt when VICE opens the listening socket. It is bound to `127.0.0.1`, so
 loopback should not need a rule — **unverified**; if you get the prompt, note
 which choice you made, because it changes what step 6 means.
