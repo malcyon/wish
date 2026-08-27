@@ -29,6 +29,8 @@ import socket
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
+from typing import NamedTuple
 
 sys.path.insert(0, "/home/donald/src/wish/tools")
 import instance  # noqa: E402
@@ -55,6 +57,165 @@ SAVE_PROMPT = "SAVE GAME DISK"
 # The in-game status line: facing, clock, x,y -- `E 16:48 5,2`
 RE_STATUS = re.compile(r"([NESW]) +(\d+):(\d+) +(\d+),(\d+)")
 FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
+
+# -- combat -----------------------------------------------------------------
+# LINKER's dispatch byte, and the two values a driver cares about: `1` DUNGEON,
+# `2` COMBAT.  `automap/combat.py` and `docs/101-combat-view.md` are where it
+# came from; before this it was a hand-rolled `peek` in three scratch scripts.
+MODE = 0x6E11
+DUNGEON = 1
+COMBAT = 2
+
+BAR_COMMAND = "command"    # MOVE VIEW AIM USE [CAST] QUICK DONE
+BAR_MOVE = "move"          # MOVE/ATTACK, MOVE LEFT = 9
+BAR_CONTINUE = "continue"  # CONTINUE BATTLE : YES NO
+BAR_YESNO = "yesno"        # any other YES NO bar
+BAR_EXIT = "exit"          # the treasure and end-of-fight bars
+BAR_DONE = "done"          # GUARD DELAY QUIT SPEED EXIT -- what DONE opens
+BAR_PRESS = "press"        # PRESS <RETURN> OR BUTTON TO CONTINUE
+BAR_MESSAGE = "message"    # GUARDING, YOUR TEAMMATE IS DYING -- and a bar
+                           # caught half-redrawn, which reads as `MOVE/AT`
+BAR_BLANK = "blank"        # a monster's turn: row 24 is empty
+BAR_NONE = "none"          # no readable screen at all
+
+# `MOVE LEFT = 9` is the move sub-bar's own count of remaining squares, and it
+# is the one thing that tells that bar apart from the command bar, which also
+# begins with MOVE.
+RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*=\s*(\d+)")
+
+# What a fight prints when it is over.  `THE PARTY HAS WON !` was read off two
+# fights (`work/p118-step3/runF.log`, `runH.log`); the losing wording has never
+# been seen here, so `DEFEATED` is a guess and `fight()` reports `ended` rather
+# than `lost` when it does not match.
+WON_TEXT = "THE PARTY HAS WON"
+LOST_TEXT = "DEFEATED"
+
+# Lines worth keeping out of a fight: they are the evidence that a turn did
+# something.  A driver that only records the command bar cannot tell an attack
+# from a character standing still.
+#
+# **The panel is on the screen too, and it lies to a loose pattern.**  Two
+# false positives were caught this way and both reported a blow struck in a
+# fight where nobody had swung, which is the one thing `acted` exists to tell
+# apart:
+#
+# * `HIT POINTS 4`, on the acting character's panel on every screen of every
+#   fight -- so the word is `HITS`, never `HIT` (`work/p126/quick.log`);
+# * `THAC0 17  DAMAGE 1D3`, on the VIEW panel -- so it is `POINTS OF DAMAGE`,
+#   never `DAMAGE` on its own (`work/p126/run1.log`).
+RE_NOTABLE = re.compile(
+    r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|HAS WON"
+    r"|DEFEATED|EXPERIENCE|GUARDING)\b|POINTS OF DAMAGE")
+
+# Of those, the ones only a blow can produce.
+RE_STRUCK = re.compile(r"\b(HITS|MISSES|SLAIN)\b|POINTS OF DAMAGE")
+
+WON, LOST, ENDED, BUDGET, NOT_FIGHTING = (
+    "won", "lost", "ended", "budget", "not fighting")
+
+
+class CombatBar(NamedTuple):
+    """Row 24 during a fight, classified."""
+
+    kind: str
+    text: str
+    moves_left: int | None = None
+
+
+@dataclass
+class FightResult:
+    """What one driven fight did.
+
+    `bars` is every row-24 bar in the order it appeared, deduplicated against
+    the one before it, and `lines` the messages that say a blow landed.  Both
+    are kept because the interesting failure is a fight that ends with the
+    party having done nothing, and only the messages tell that apart from a
+    fight the party won.
+    """
+
+    outcome: str
+    turns: int
+    seconds: float
+    bars: list[str]
+    lines: list[str]
+
+    @property
+    def acted(self) -> bool:
+        """Did a blow land, or miss?  The difference between a fight the party
+        fought and one it stood through."""
+        return any(RE_STRUCK.search(ln.upper()) for ln in self.lines)
+
+
+# How a character moves in a fight, measured key by key in `work/p126/run1.log`:
+# eight candidate key sets were pressed at a `MOVE/ATTACK, MOVE LEFT = 12` bar
+# and the square each one spent was read out of the combatant table.
+#
+# **It is the joystick, not the keyboard.**  XTEST `Up`, `Down`, `Left` and
+# `Right` moved nothing at all, and neither did the world's own `I`, `J`, `K`,
+# `M`.  The numeric keypad did, because VICE maps it to joystick port 2 -- so
+# this table is a property of the emulator's keyset as the pool seeds it, and
+# what would move it is a `vicerc` with a different joystick mapping, not a
+# different machine.
+#
+# Seven of the eight were seen to move a character.  `KP_4` is the exception
+# and it is graded PROBABLE by symmetry: the square west of the acting
+# character was occupied by another party member on the one turn it was tried.
+STEP_KEYS = {
+    (0, -1): "KP_8",
+    (0, 1): "KP_2",
+    (-1, 0): "KP_4",       # PROBABLE -- see above
+    (1, 0): "KP_6",
+    (-1, -1): "KP_7",
+    (1, -1): "KP_9",
+    (-1, 1): "KP_1",
+    (1, 1): "KP_3",
+}
+
+# Where the game names whose turn it is: the right-hand panel, which reads
+# `BAKSHI / HIT POINTS 4 / AC 3 / TWO-HANDED SWORD` down its own column.
+PANEL_LEFT = 22
+PANEL_ROWS = range(0, 8)
+
+
+def sign(n: int) -> int:
+    return (n > 0) - (n < 0)
+
+
+def chebyshev(a, b) -> int:
+    """Squares between two combatants, eight-way."""
+    return max(abs(a.x - b.x), abs(a.y - b.y))
+
+
+def word_column(text: str, label: str) -> int:
+    """Where `label` starts on a bar as a **whole word**, or -1.
+
+    `str.find` is not enough here.  `MOVE` is inside `MOVE/ATTACK, MOVE LEFT
+    = 9`, so a substring match walks the highlight towards a target that is not
+    a command at all -- which is one of the two ways the draft in
+    `work/p118-step3/run.py` stalled.
+    """
+    want = label.upper()
+    for m in re.finditer(r"[A-Z0-9<>]+", text.upper()):
+        if m.group(0) == want:
+            return m.start()
+    return -1
+
+
+def span_in(screen, row: int, colour: int = 1) -> tuple[int, int] | None:
+    """The highlighted run on a bar, from a snapshot's **own** colour RAM.
+
+    `Session.highlight_span` reads colour RAM in a second monitor connection,
+    which means the text and the highlight come from two different moments.
+    Outside a fight that is harmless; in one the bar is redrawn for every
+    character in turn, so the two can disagree and the walk goes the wrong way.
+    Blank cells are ignored because colour RAM under a space keeps whatever the
+    previous screen left there.
+    """
+    base = row * 40
+    idx = [i for i in range(40)
+           if screen.colours[base + i] == colour
+           and screen.codes[base + i] not in (0x20, 0x00)]
+    return (idx[0], idx[-1]) if idx else None
 
 
 class Session:
@@ -500,6 +661,378 @@ class Session:
         self.select_bar("EXIT")
         return True
 
+    # -- combat -----------------------------------------------------------
+
+    def mode(self) -> int:
+        """LINKER's dispatch byte: which overlay is running.
+
+        `1` DUNGEON, `2` COMBAT.  `automap/combat.py` documents the rest.
+        """
+        with self.mon(5) as m:
+            return m.read(MODE, 1)[0]
+
+    def in_combat(self) -> bool:
+        return self.mode() == COMBAT
+
+    def battle(self):
+        """The fight as `automap.combat` reads it, or None.
+
+        One monitor connection for the whole read rather than one per range:
+        a stop/resume pair costs the emulation ~14.3 ms of extra time whatever
+        it carries, so the number that matters is how many, not how many bytes.
+        """
+        from automap.combat import read_battle
+
+        class _Target:
+            def __init__(self, m):
+                self.m = m
+
+            def read(self, addr, length):
+                return self.m.read(addr, length)
+
+        try:
+            with self.mon(8) as m:
+                return read_battle(_Target(m))
+        except (OSError, MonitorError):
+            return None
+
+    def combat_state(self, s=None) -> CombatBar:
+        """Row 24 during a fight, classified.  Reading a fight is mostly this.
+
+        A bar caught **half redrawn** -- `MOVE/AT`, `MO`, both seen in
+        `work/p118-step3/*.log` -- comes back as `BAR_MESSAGE` rather than
+        being forced into a kind, so the driver waits and reads again instead
+        of pressing Return at a bar that does not exist yet.
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return CombatBar(BAR_NONE, "")
+        bar = s.row(24).strip()
+        up = bar.upper()
+        if "CONTINUE BATTLE" in up:
+            return CombatBar(BAR_CONTINUE, bar)
+        found = RE_MOVE_LEFT.search(up)
+        if found:
+            return CombatBar(BAR_MOVE, bar, int(found.group(1)))
+        # `DONE` alone, not `MOVE` and `DONE`.  A character who has spent every
+        # square gets `VIEW AIM USE QUICK DONE` -- **MOVE is dropped from its
+        # own command bar** -- and a driver that wanted both would sit waiting
+        # at a bar that was asking it for a command.  Measured in
+        # `work/p126/run1.log`, on the press that spent the last square.
+        if word_column(up, "DONE") >= 0:
+            return CombatBar(BAR_COMMAND, bar)
+        if "PRESS" in up:
+            return CombatBar(BAR_PRESS, bar)
+        # `DONE` does not end a turn; it opens this.  `GUARD` on it is what
+        # passes the turn, which is where the `GUARDING` in the old logs was
+        # coming from.  Told apart from a treasure bar, which also carries
+        # EXIT, by DELAY and SPEED being on it -- **not** by GUARD, which drops
+        # off the bar for a character that cannot take it and left the driver
+        # bouncing off `DELAY QUIT SPEED EXIT` (`work/p126/melee5.log`).
+        if word_column(up, "DELAY") >= 0 and word_column(up, "SPEED") >= 0:
+            return CombatBar(BAR_DONE, bar)
+        if word_column(up, "EXIT") >= 0:
+            return CombatBar(BAR_EXIT, bar)
+        if word_column(up, "YES") >= 0 and word_column(up, "NO") >= 0:
+            return CombatBar(BAR_YESNO, bar)
+        return CombatBar(BAR_BLANK if not bar else BAR_MESSAGE, bar)
+
+    #: Which bars `combat_bar` will walk the highlight along.  Not the move
+    #: sub-bar: `MOVE LEFT = 9` is a prompt for a direction, not a menu, and
+    #: sending Right there steps the character.
+    SELECTABLE = (BAR_COMMAND, BAR_CONTINUE, BAR_YESNO, BAR_EXIT,
+                  BAR_DONE)
+
+    def combat_bar(self, label: str, timeout: float = 20.0, row: int = 24) -> bool:
+        """Put the combat highlight on `label` and press Return.
+
+        `select_bar` with three differences.  It **refuses every bar that is
+        not a menu**, which is what keeps a `Right` out of the move sub-bar,
+        where it would step the character rather than move a highlight.  The
+        highlight comes from the same screen snapshot as the text rather than
+        from a second monitor read, so a bar redrawn between the two cannot
+        send the walk the wrong way.  And the label is matched as a whole word
+        -- which on every bar measured so far gives the same answer as a plain
+        `find`, so treat that one as a guard against a vocabulary we have not
+        seen rather than as a fix for anything.
+
+        Returns True when the highlight was on `label` and Return was sent.
+        It does **not** claim the command did anything -- verify by effect.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            state = self.combat_state(s)
+            if state.kind not in self.SELECTABLE:
+                time.sleep(0.3)
+                continue
+            col = word_column(s.row(row), label)
+            span = span_in(s, row)
+            if col < 0 or span is None:
+                time.sleep(0.3)
+                continue
+            if span[0] == col:
+                self.kbd.key("Return")
+                return True
+            self.kbd.key("Right" if span[0] < col else "Left")
+        return False
+
+    def idle(self, seconds: float) -> None:
+        """Wait out somebody else's turn.
+
+        A seam rather than a bare `time.sleep`, so a fight can be driven
+        against a scripted screen without an emulator or a wall clock.
+        """
+        time.sleep(seconds)
+
+    def combat_turn(self, state: CombatBar) -> str:
+        """Pass one character's turn.  Returns what was chosen.
+
+        **`DONE` does not end a turn.**  It opens
+        `GUARD DELAY QUIT SPEED EXIT`, and `GUARD` on that is what ends it --
+        which is where the `GUARDING` on row 24 in the older logs was coming
+        from.  A driver that takes DONE and stops leaves the same command bar
+        up and is asked again: 210 turns in 420 seconds
+        (`work/p126/melee4.log`).
+        """
+        if not self.combat_bar("DONE", timeout=12):
+            return ""
+        if self.await_bar((BAR_DONE,), timeout=6) is None:
+            return "DONE"
+        return self.end_turn()
+
+    def end_turn(self) -> str:
+        """Get off the sub-bar `DONE` opens, and end the turn if it can.
+
+        `GUARD` is the one that ends it, and it is **not always offered** --
+        some characters get `DELAY QUIT SPEED EXIT` with no GUARD on it at all.
+        `DELAY` postpones the character, which also gets the fight moving;
+        `EXIT` only backs out, so it is the last resort rather than the answer.
+        """
+        for choice in ("GUARD", "DELAY", "EXIT"):
+            if self.combat_bar(choice, timeout=8):
+                return choice
+        return ""
+
+    def acting(self, battle, s=None):
+        """Whose turn the command bar belongs to, or None.
+
+        The game says so itself: the right-hand panel carries the acting
+        character's name, hit points, armour class and readied weapon.  Reading
+        it beats inferring from initiative, which several combatants hold at
+        once.
+        """
+        if battle is None:
+            return None
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return None
+        panel = " ".join(s.row(r)[PANEL_LEFT:] for r in PANEL_ROWS)
+        # Longest first, so a party holding both SEAN and BROTHER SEAN does not
+        # hand every one of BROTHER SEAN's turns to SEAN.
+        named = sorted((c for c in battle.party if c.name.strip()),
+                       key=lambda c: -len(c.name.strip()))
+        for who in named:
+            if who.name.strip() in panel:
+                return who
+        return None
+
+    def await_bar(self, kinds, timeout: float = 6.0,
+                  interval: float = 0.4) -> CombatBar | None:
+        """Read row 24 until it is one of `kinds`, or give up.
+
+        **The bar lags the keypress.**  Taking MOVE and reading row 24 straight
+        afterwards gives the command bar still, so a driver that decides on one
+        read concludes the sub-bar never appeared, backs out, and takes MOVE
+        again -- 638 times in 420 seconds with `MOVE LEFT = 12` never once
+        going down (`work/p126/melee2.log`).  Verify by effect and retry: it is
+        the rule the rest of this file already follows.
+        """
+        deadline = time.time() + timeout
+        while True:
+            state = self.combat_state()
+            if state.kind in kinds:
+                return state
+            if time.time() >= deadline:
+                return None
+            time.sleep(interval)
+
+    @staticmethod
+    def step_towards(battle, me, target, avoid=()) -> str | None:
+        """The key for the step that gets closest, without walking into an ally.
+
+        Aiming straight at the target and pressing that key walks into whoever
+        is in the way, and a step into a party member is a blow like any other
+        -- the game asks `ATTACK ALLY: YES NO` first, which is how this was
+        found (`work/p126/melee.log`).  So the eight squares are ranked by how
+        much closer they get, and any square a party member is standing on is
+        dropped.  An enemy's square is not dropped: stepping onto it is the
+        attack.
+
+        `avoid` is the keys already tried this turn that spent no square --
+        a wall, or something else the position table does not show.  Without it
+        a character pinned against one burns its whole turn on the same press.
+        """
+        best = None
+        for (dx, dy), key in STEP_KEYS.items():
+            if key in avoid:
+                continue
+            x, y = me.x + dx, me.y + dy
+            if not battle.shape.holds(x, y):
+                continue
+            who = battle.at(x, y)
+            if who is not None and who.is_party:
+                continue
+            reach = max(abs(target.x - x), abs(target.y - y))
+            if best is None or reach < best[0]:
+                best = (reach, key)
+        if best is None or best[0] >= chebyshev(me, target):
+            # Every step either blocked or no better than standing still.
+            return None
+        return best[1]
+
+    def melee_turn(self, state: CombatBar) -> str:
+        """Walk the acting character into the nearest enemy, which attacks it.
+
+        There is no attack key.  `MOVE/ATTACK` is the whole of it: a step into
+        an occupied square is a blow, and the game says as much on the sub-bar
+        it puts up.  So this takes MOVE, then steps towards the nearest living
+        enemy until the sub-bar goes away -- which it does when the character
+        attacks, runs out of squares, or dies.
+
+        Distance is Chebyshev because the moves are eight-way.
+        """
+        b = self.battle()
+        me = self.acting(b)
+        if b is None or me is None or not me.alive:
+            return self.combat_turn(state)
+        if not any(e.alive and e.on_map for e in b.enemies):
+            return self.combat_turn(state)
+        # Work out the step **before** taking MOVE.  A character the rest of
+        # the party has boxed in has nowhere that gets it closer, and taking
+        # MOVE and backing out again does not end its turn: the same command
+        # bar comes back and the driver does it again, 638 times in 420
+        # seconds (`work/p126/melee3.log`).  A turn that cannot attack has to
+        # be **passed**, not merely left.
+        index = me.index
+        target = min((e for e in b.enemies if e.alive and e.on_map),
+                     key=lambda e: chebyshev(me, e))
+        if self.step_towards(b, me, target) is None:
+            return self.combat_turn(state)
+        if not self.combat_bar("MOVE", timeout=15):
+            return self.combat_turn(state)
+        moving = self.await_bar((BAR_MOVE,), timeout=8)
+        if moving is None:
+            return ""                           # MOVE did not take; press on
+        avoid: set[str] = set()
+        stepped = False
+        for _ in range(24):
+            b = self.battle()
+            if b is None:
+                break
+            me = next((c for c in b.combatants if c.index == index), None)
+            live = [e for e in b.enemies if e.alive and e.on_map]
+            if me is None or not me.on_map or not live:
+                break
+            target = min(live, key=lambda e: chebyshev(me, e))
+            key = self.step_towards(b, me, target, avoid)
+            if key is None:                     # nowhere to go that helps
+                break
+            before = moving.moves_left
+            self.kbd.key(key, 0.15, 0.30)
+            moving = self.await_bar((BAR_MOVE,), timeout=3)
+            if moving is None:
+                return "MOVE"                   # attacked, spent, or dead
+            if before is not None and moving.moves_left == before:
+                # The step cost nothing, so it did not happen.  Try another.
+                avoid.add(key)
+            else:
+                stepped = True
+        if self.combat_state().kind == BAR_MOVE:
+            self.press_kernal(0x0D)             # back out of move mode
+        if not stepped:
+            # Still this character's turn, and it has done nothing.  Pass it,
+            # or the same bar comes straight back.
+            return self.combat_turn(self.combat_state())
+        return "MOVE"
+
+    def fight(self, budget: float = 300.0, tactic=None,
+              poll: float = 1.0) -> FightResult:
+        """Drive a fight from `$6E11 == 2` back to `$6E11 == 1`.
+
+        The end of a fight is **not** the mode byte leaving 2: `THE PARTY HAS
+        WON !`, the experience share and any treasure run under POST.COM, and
+        a driver that stops at the mode byte leaves the party standing at a
+        `PRESS <RETURN>` for ever.  So this runs until DUNGEON is back *and*
+        the status line is on screen, which is the state the rest of
+        `Session` can drive.
+
+        `tactic(session, state)` is called once per command bar and returns
+        what it chose; the default passes the turn with `DONE`.
+        """
+        act = tactic or (lambda sess, state: sess.combat_turn(state))
+        started = time.time()
+        end = started + budget
+        bars: list[str] = []
+        lines: list[str] = []
+        seen: set[str] = set()
+        turns = 0
+        outcome: str | None = None
+        if not self.in_combat():
+            return FightResult(NOT_FIGHTING, 0, 0.0, bars, lines)
+        while time.time() < end:
+            mode = self.mode()
+            s = self.screen()
+            text = s.text() if s is not None else ""
+            if outcome is None and WON_TEXT in text:
+                outcome = WON
+            elif outcome is None and LOST_TEXT in text:
+                outcome = LOST
+            for row in text.splitlines():
+                row = row.strip()
+                if row and row not in seen and RE_NOTABLE.search(row.upper()):
+                    seen.add(row)
+                    lines.append(row)
+            if mode == DUNGEON and RE_STATUS.search(text):
+                return FightResult(outcome or ENDED, turns,
+                                   time.time() - started, bars, lines)
+            state = self.combat_state(s)
+            if state.text and (not bars or bars[-1] != state.text):
+                bars.append(state.text)
+            if state.kind == BAR_CONTINUE:
+                # The game offering a withdrawal is how a driven fight ends.
+                self.combat_bar("NO", timeout=12)
+            elif state.kind == BAR_DONE:
+                self.end_turn()      # left open by a turn that did not finish
+            elif state.kind == BAR_EXIT:
+                self.combat_bar("EXIT", timeout=12)
+            elif state.kind == BAR_PRESS:
+                # XTEST Return is not dependable at a prompt; the buffer is.
+                self.press_kernal(0x0D)
+            elif state.kind == BAR_YESNO:
+                # `ATTACK ALLY: YES NO`, which the game puts up when a step
+                # would walk into a party member.  `NO` is the conservative
+                # answer to a yes/no bar this does not recognise, and this one
+                # is the only such bar seen: it stalled a whole fight for its
+                # 421-second budget because there was no branch for it at all
+                # (`work/p126/melee.log`).
+                self.combat_bar("NO", timeout=12)
+            elif state.kind == BAR_MOVE:
+                self.press_kernal(0x0D)      # back out of move mode
+            elif state.kind == BAR_COMMAND:
+                turns += 1
+                act(self, state)
+            else:
+                self.idle(poll)              # a monster's turn, or a redraw
+            self.handle_prompt()
+        return FightResult(outcome or BUDGET, turns, time.time() - started,
+                           bars, lines)
+
 
 # -- command server ---------------------------------------------------------
 
@@ -566,6 +1099,19 @@ def handle(sess: Session, line: str) -> bool:
     elif cmd == "save":
         print(sess.save_game(args[0] if args else None))
         print(sess.position())
+    elif cmd == "combat":
+        print(sess.combat_state())
+    elif cmd == "battle":
+        b = sess.battle()
+        if b is None:
+            print("not in a fight")
+        else:
+            print(f"shape {b.shape.width}x{b.shape.height} camera {b.camera}")
+            for c in b.combatants:
+                print(f"  {c.index:2d} {c.kind:9s} ({c.x:2d},{c.y:2d}) "
+                      f"init {c.initiative:3d} hp {c.hp_text} {c.name}")
+    elif cmd == "fight":
+        print(sess.fight(float(args[0]) if args else 300.0))
     elif cmd == "shot":
         print("ok" if sess.kbd.screenshot(
             args[0] if args else f"{sess.here}/shot.png") else "failed")

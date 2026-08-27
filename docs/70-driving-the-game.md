@@ -171,6 +171,129 @@ Three things made this look like a wedge:
 Do not conclude "wedged" because row 24 lacks the label you wanted. Match
 `PRESS <RETURN>` and `YES NO` and answer them.
 
+## Driving a fight
+
+`tools/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`
+and `fight()`. Before those existed every agent that needed a fight wrote its
+own loop, and `work/drive/qffight.py`, `work/combatlog/walkabout.py` and
+`work/p118-step3/run.py` are three of them.
+
+**`$6E11` says whether there is a fight**: `1` DUNGEON, `2` COMBAT. It is
+LINKER's own dispatch byte and `automap/combat.py` documents the rest of it.
+
+**Row 24 is the whole of what a fight asks you**, and telling its kinds apart is
+most of the work. 807 readings across the twelve logs in `work/p118-step3/`
+hold 18 distinct bars, and every one of them is one of these:
+
+| kind | what it looks like | what to do |
+|---|---|---|
+| command | `MOVE VIEW AIM USE [CAST] QUICK DONE`, and `MOVE` drops off once the character has no squares left | one character's turn |
+| move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu |
+| continue | `CONTINUE BATTLE : YES NO` | `NO` ends the fight |
+| press | `PRESS <RETURN> OR BUTTON TO CONTINUE` | inject `$0D` |
+| done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn |
+| exit | a treasure bar | take `EXIT` |
+| yesno | `ATTACK ALLY: YES NO` | answer `NO` |
+| message | `GUARDING`, `YOUR TEAMMATE IS DYING` | wait |
+| blank | empty | a monster's turn; wait |
+| none | no readable screen at all | not the same as an empty bar |
+
+**A half-redrawn bar reads as a message, and must not be forced into a kind.**
+`MOVE/AT`, `MO` and a row of the screen's own border were all caught on row 24.
+Wait and read again.
+
+**The move sub-bar is not a menu and `select_bar` must never be pointed at it.**
+`MOVE` is a word on `MOVE/ATTACK, MOVE LEFT = 9` exactly as it is on the command
+bar, so matching cannot save you — `Right` sent there steps the character rather
+than moving a highlight. `Session.combat_bar` refuses every bar that is not a
+menu.
+
+**Take the highlight from the same snapshot as the text.** `Screen` carries its
+own colour RAM; `Session.highlight_span` does a second monitor read, so the two
+come from different moments. Outside a fight that never shows. In one the bar is
+redrawn for every character in turn, and the walk goes the wrong way.
+
+**The fight is not over when `$6E11` leaves 2.** `THE PARTY HAS WON !`, the
+experience share and any treasure all run afterwards under POST.COM. A driver
+that stops at the mode byte leaves the party at a `PRESS <RETURN>` for ever, so
+`fight()` runs until DUNGEON is back **and** the status line is on screen.
+
+**`DONE` does not end a turn — it opens a sub-bar.**
+`GUARD DELAY QUIT SPEED EXIT`, and **`GUARD` on that is what ends the turn**,
+which is where the `GUARDING` on row 24 in the older logs was coming from. A
+driver that takes DONE and stops is asked for the same character's command
+again: 210 turns in 420 seconds, no blow struck (`work/p126/melee4.log`).
+Tell it apart from a treasure bar, which also carries EXIT, by `GUARD` and
+`DELAY` being on it.
+
+**`QUICK` reached the same sub-bar** and the quickfight bit at roster `+0x0C`
+did not move on any of six characters (`work/p126/quick.log`). Whether QUICK
+opens it in its own right or the highlight walk landed on DONE was not
+distinguished, so nothing is claimed about QUICK beyond that it did not resolve
+a turn.
+
+### There is no attack key
+
+`MOVE/ATTACK` is the whole of it: take `MOVE`, and a step into an occupied
+square is a blow. That is why six runs of `#118` step 3 could get the party to
+the end of a fight without any of them swinging — the driver kept entering move
+mode and pressing Return to get out again.
+
+**Combat movement is the joystick, and under the pool's seeded `vicerc` that
+is the numeric keypad.** Measured key by key at a `MOVE LEFT = 12` bar, reading
+the square each press spent out of the combatant table
+(`work/p126/run1.log`):
+
+| key | step | key | step |
+|---|---|---|---|
+| `KP_8` | north | `KP_7` | north-west |
+| `KP_2` | south | `KP_9` | north-east |
+| `KP_4` | west (PROBABLE) | `KP_1` | south-west |
+| `KP_6` | east | `KP_3` | south-east |
+
+Seven of the eight were seen to move a character. `KP_4` is graded PROBABLE
+because on the one turn it was tried the square west of the acting character
+held another party member.
+
+**XTEST `Up`, `Down`, `Left` and `Right` move nothing in a fight**, and neither
+do the world's own `I`, `J`, `K`, `M`. All eight were pressed at a live move
+sub-bar and `MOVE LEFT` did not change once. This is a property of VICE's
+keyset rather than of the machine: what would move the table is a `vicerc` with
+a different joystick mapping.
+
+**A step into an ally is a blow too, and the game asks first.** Walking a
+character at (26,11) west into a party member on (25,11) put
+`ATTACK ALLY: YES NO` on row 24 — which is the clearest confirmation there is
+that a step onto an occupied square is an attack. `Session.melee_turn` ranks
+the eight squares and drops any a party member is standing on; an enemy's
+square is never dropped, because that step is the point.
+
+**The game names whose turn it is** in the right-hand panel — the acting
+character's name, hit points, armour class and readied weapon, from column 22.
+That beats inferring it from initiative, which several combatants hold at once.
+
+**A character with no movement left loses `MOVE` from its own command bar**:
+the bar becomes `VIEW AIM USE QUICK DONE`. A driver that recognises a command
+bar by `MOVE` *and* `DONE` sits waiting at a bar that is asking it for a
+command. Match on `DONE`.
+
+**A driven turn costs about twelve seconds**, and that is the number to budget
+against: three fights on the melee tactic ran 34, 36 and 36 turns inside a
+420-second budget and none of them finished. Most of it is monitor round
+trips -- a turn reads the whole fight once per step. `fight(budget=...)`
+defaults to 300 seconds, which is not enough for a fight of eight orcs against
+six characters; give it a number that matches the fight.
+
+`Session.melee_turn` is all of that together: read the fight, find the acting
+character, take `MOVE`, and step towards the nearest living enemy until the
+sub-bar goes away.
+
+**A won fight is not a fought fight.** Six runs before `#126` ended with
+`THE PARTY HAS WON !` and no character having attacked — the party guarded, the
+monsters wandered off, and a log of command bars cannot tell that from a
+victory. `FightResult.acted` is the distinction: it looks for a `HITS`,
+`MISSES` or `DAMAGE` line, which is the only evidence a blow was struck.
+
 ## The KERNAL keyboard buffer *does* work at text prompts
 
 The blanket claim that it does not is wrong. The game's key fetcher at `$2E4E`
