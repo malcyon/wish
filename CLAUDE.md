@@ -432,9 +432,9 @@ already a defect with a settling experiment, and leaning on a template is what
 let that entry sit.
 
 **Zero written because the engine rebuilds the field is not plugged-in data and
-does not fall under this.** Six of `WRITE_UNSOURCED`'s seven are live heap
-pointers and combat state where the engine itself writes zero, measured both
-with items and without. That is a known value with evidence. The distinction
+does not fall under this.** Most of `WRITE_UNSOURCED` is live heap pointers
+and combat state where the engine itself writes zero, measured both with
+items and without. That is a known value with evidence. The distinction
 that matters is **measured versus inherited**: a value we established is fine at
 any number, and a value we inherited from somebody else's save is not.
 
@@ -449,8 +449,9 @@ conversion had been declared proven.
 
 **Round-trip byte for byte, and mask by the declared list rather than by the
 diff.** Masking by whatever happened to differ makes the test agree with the
-code by construction. `tests/test_doswriter.py` masks by `WRITE_UNSOURCED`,
-which is the list the writer declares, so a new difference fails.
+code by construction. `tests/test_doswriter.py` masks by `WRITE_UNSOURCED`
+and `WRITE_DEFAULTS`, which are the lists the writer declares, so a new
+difference fails.
 
 **A conversion is not proven until it runs.** Bytes matching is necessary and
 not sufficient: load it in the game, walk, and look at the sheet. Three separate
