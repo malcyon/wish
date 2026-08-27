@@ -5,17 +5,26 @@ this file exists for is the order of events: a DOS save carries fields the C64
 has no home for -- encumbrance, the item heap pointers, the item count, the
 icon selection, the strength-bonus boolean, every running spell effect -- and
 `docs/117-save-conversion.md` forbids dropping them in silence. So the
-conversion is **rehearsed** against a copy held in memory, the losses it
-reports are put on screen, and only then is there a button to press. Nothing
-reaches a disk until the user saves the result through the editor's ordinary
-Save, which is what keeps the backup guarantee in `editor/files.py` covering
-this the way it covers every other write.
+conversion is **rehearsed** in memory, the losses it reports are put on
+screen, and only then is there a button to press. Nothing reaches a disk until
+the user names a file through the editor's own Save As, which is what keeps
+the backup guarantee in `editor/files.py` covering this the way it covers
+every other write.
 
-The template no longer has to stand where the DOS party stands. The
-loaded-files cache at `$4BC0` is decoded (`docs/140-loaded-files-cache.md`) and
-`goldbox.dos.convert_save` writes it, so any Pool of Radiance save will do as a
-template. What is left of the refusal is the wrong game, which is still a
-sentence in the pane rather than a traceback.
+**There is no template any more** (#118). The dialog used to make the user
+pick an existing `.d64` to convert *onto*, and every byte the conversion did
+not explicitly set kept the value it had in somebody else's saved game -- a
+different party, in a different place, at a different time. `goldbox.dos`
+now writes all 9216 bytes of both payloads and `D64.blank()` carries them, so
+what the user gets is theirs and nothing else's.
+
+What that costs is the player's own `POOL*` disks at the moment the import
+runs: the combat icon is composed out of `SPELLE64`/`SPELLN64` and `$8400` is
+`ANIMATE00`, and neither may be stored here. Donald's ruling, 2026-08-27 --
+*"We should never attempt to write a save file if we don't have the game
+disks and we need them. That would mean making up data, which we will not
+do."* -- so `editor/window.py` checks for them before the folder picker opens
+and refuses with a pop-up.
 
 A DOS save is a *directory* of loose files and a C64 save is one `.d64`, so
 the two are never told apart by sniffing: the first picker asks for a folder.
@@ -32,25 +41,21 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from goldbox import dos, games
-from goldbox.d64 import D64
-from goldbox.savegame import SaveGame0, SaveGame1, load_save, store_save
+from goldbox.savegame import SaveGame0, SaveGame1
 
 _log = logging.getLogger("wish.editor.dosimport")
 
 
-# Every string below is Donald's, approved 2026-08-24. Changing one is his
-# call, not a refactor.
+# Every string below is Donald's -- approved 2026-08-24, and the refusal
+# 2026-08-27. Changing one is his call, not a refactor.
 
 #: **Off unless `WISH_EXPERIMENTAL_DOS_IMPORT=1`.** The conversion works and is proven --
 #: a C64 party built from a DOS save loads and walks -- but what it cannot
@@ -103,35 +108,51 @@ NO_SLOTS = "{folder} holds no DOS Pool of Radiance save."
 DIALOG_TITLE = "Import a DOS save"
 LABEL_FOLDER = "DOS save"
 LABEL_SLOT = "Slot"
-LABEL_TEMPLATE = "C64 save"
-BUTTON_CHOOSE = "Choose…"
 BUTTON_CONVERT = "Convert"
-TEMPLATE_TITLE = "Choose the C64 save to convert into"
-TEMPLATE_FILTER = "Gold Box disks (*.d64 *.D64);;All files (*)"
 
-#: What the report pane says before anything has been chosen, and the heading
-#: over the list of fields the conversion cannot carry.
-NO_TEMPLATE = "Choose a C64 save to convert into."
+#: The heading over the list of fields the conversion cannot carry.
 DROPPED_HEADING = "The conversion cannot carry these:"
 
-#: The refusal, shown in the report pane with Convert greyed out.
-WRONG_GAME = "This is a {title} save. Only Pool of Radiance can be converted."
+#: The refusal when the player's game disks cannot be found, which is the one
+#: thing the conversion cannot do without: the combat icon comes out of
+#: `SPELLE64` and `$8400` out of `ANIMATE00`, and neither may be stored here.
+#: Donald's wording, approved 2026-08-27, a title and one line and no more.
+#: It fires **before** the folder picker, so nothing has been chosen and no
+#: dialog is left standing behind the error.
+NO_DISKS_TITLE = "Game disks not found"
+NO_DISKS = "Set the folder in File ▸ Preferences…"
 
 #: The status line after the conversion, which has written nothing yet.
 CONVERTED = "converted DOS slot {slot} - not saved yet"
 # ---------------------------------------------------------------------------
 
 
-class NotPoolOfRadiance(dos.DosRecordError):
-    """The chosen C64 save is a later title's, which has no DOS reader."""
+@dataclasses.dataclass
+class GameFiles:
+    """The two things off the player's game disks a conversion cannot do
+    without, and which disk each came from.
+
+    Held together because the refusal is one question -- can this import read
+    the player's disks? -- and answering it twice in two places is how the two
+    halves drift apart.
+    """
+
+    #: The 36-byte combat icon every converted character gets, composed from
+    #: `SPELLE64`/`SPELLN64` by `IconParts.default_icon`.
+    icon: bytes
+    #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
+    animate: bytes
+    icon_disk: str
+    animate_disk: str
 
 
 @dataclasses.dataclass
 class Conversion:
     """A converted save, held in memory. Nothing here has been written."""
 
-    #: The template's disk image, with the converted save already stored into
-    #: it -- so `disk.to_bytes()` is what a save would write.
+    #: A `.d64` built by `goldbox.dos.save_disk` and carrying nothing but the
+    #: two files this conversion wrote -- so `disk.to_bytes()` is what a save
+    #: would write, and every byte of it is this party's.
     disk: Any
     game: Any
     save0: SaveGame0
@@ -139,30 +160,26 @@ class Conversion:
     report: dos.Report
     folder: pathlib.Path
     slot: str
-    template: pathlib.Path
+    files: GameFiles
 
 
 def rehearse(folder: str | pathlib.Path, slot: str,
-             template: str | pathlib.Path) -> Conversion:
-    """Convert onto a copy of the template and report, writing nothing.
+             files: GameFiles) -> Conversion:
+    """Build the save and the disk in memory and report, writing nothing.
 
-    The template is read; the DOS files are read; the result exists only as
-    the returned `Conversion`. Anything `goldbox.dos.convert_save` refuses raises
-    from in here, which is what the dialog turns into a sentence.
+    The DOS files are read, the game files in `files` were read before this
+    was called, and the result exists only as the returned `Conversion`.
+    Anything `goldbox.dos.new_save` refuses raises from in here, which is what
+    the dialog turns into a sentence.
     """
-    disk = D64.open(template)
-    game, sg0, sg1 = load_save(disk)
-    if game.key != games.POOL_OF_RADIANCE.key:
-        raise NotPoolOfRadiance(game.title)
-    payload0 = bytearray(sg0.to_bytes())
-    payload1 = bytearray(sg1.to_bytes()) if sg1 is not None else None
-    report = dos.convert_save(folder, slot, payload0, payload1)
+    payload0, payload1, report = dos.new_save(folder, slot,
+                                              files.icon, files.animate)
+    game = games.POOL_OF_RADIANCE
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
-    if sg1 is not None and payload1 is not None:
-        sg1 = SaveGame1(bytes(payload1), game)
-    store_save(disk, sg0, sg1, game)
+    sg1 = SaveGame1(bytes(payload1), game)
+    disk = dos.save_disk(bytes(payload0), bytes(payload1), game)
     return Conversion(disk, game, sg0, sg1, report,
-                      pathlib.Path(folder), slot, pathlib.Path(template))
+                      pathlib.Path(folder), slot, files)
 
 
 def dropped_text(report: dos.Report) -> str:
@@ -177,21 +194,23 @@ def dropped_text(report: dos.Report) -> str:
 
 
 class DosImportDialog(QDialog):
-    """The folder, the slot, the C64 save, and what will be lost.
+    """The folder, the slot, and what will be lost.
 
-    Every change to the slot or the template re-runs `rehearse`, so the pane
-    is never showing the losses of a conversion other than the one the button
-    would commit -- and the button is disabled whenever there is no rehearsal
-    behind it.
+    Every change to the slot re-runs `rehearse`, so the pane is never showing
+    the losses of a conversion other than the one the button would commit --
+    and the button is disabled whenever there is no rehearsal behind it.
+
+    `files` is the icon and `ANIMATE00`, already read: `editor/window.py`
+    refuses the whole import before this window is built when they cannot be
+    found, so by the time anything here runs they exist.
     """
 
-    def __init__(self, folder: str | pathlib.Path,
-                 template: str | pathlib.Path | None = None,
+    def __init__(self, folder: str | pathlib.Path, files: GameFiles,
                  parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle(DIALOG_TITLE)
         self.folder = pathlib.Path(folder)
-        self.template = pathlib.Path(template) if template else None
+        self.files = files
         self.conversion: Conversion | None = None
 
         form = QFormLayout()
@@ -204,18 +223,6 @@ class DosImportDialog(QDialog):
         self.slots.addItems(dos.slots_available(self.folder))
         self.slots.currentTextChanged.connect(lambda _t: self._rehearse())
         form.addRow(LABEL_SLOT, self.slots)
-
-        self._template_label = QLabel(str(self.template or ""))
-        self._template_label.setObjectName("dos_template")
-        choose = QPushButton(BUTTON_CHOOSE)
-        choose.setObjectName("dos_choose_template")
-        choose.clicked.connect(lambda _c=False: self.choose_template())
-        row = QHBoxLayout()
-        row.addWidget(self._template_label, 1)
-        row.addWidget(choose)
-        holder = QWidget()
-        holder.setLayout(row)
-        form.addRow(LABEL_TEMPLATE, holder)
 
         self.report_pane = QPlainTextEdit()
         self.report_pane.setObjectName("dos_report")
@@ -242,22 +249,10 @@ class DosImportDialog(QDialog):
     def slot(self) -> str:
         return self.slots.currentText()
 
-    def choose_template(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, TEMPLATE_TITLE, str(self.template or self.folder),
-            TEMPLATE_FILTER)
-        if path:
-            self.set_template(path)
-
-    def set_template(self, path: str | pathlib.Path) -> None:
-        self.template = pathlib.Path(path)
-        self._template_label.setText(str(self.template))
-        self._rehearse()
-
     # -- the rehearsal -----------------------------------------------------
 
     def _rehearse(self) -> None:
-        """Convert onto a copy, and put what it costs on screen.
+        """Build the save in memory, and put what it costs on screen.
 
         Failures are shown, not raised: a refusal reaches the user as its own
         message while the log keeps the traceback, which is a sentence in the
@@ -270,14 +265,16 @@ class DosImportDialog(QDialog):
             self.conversion is not None)
 
     def _attempt(self) -> str:
-        if self.template is None or not self.slot:
-            return NO_TEMPLATE
+        # No slot is not a state the user can reach: `import_dos_save` refuses
+        # a folder with no DOS save in it before this window is built. An
+        # empty pane rather than a sentence, because a sentence about a state
+        # nobody can be in is a sentence nobody should have to read.
+        if not self.slot:
+            return ""
         try:
-            self.conversion = rehearse(self.folder, self.slot, self.template)
-        except NotPoolOfRadiance as exc:
-            return WRONG_GAME.format(title=str(exc))
+            self.conversion = rehearse(self.folder, self.slot, self.files)
         except Exception as exc:
-            _log.exception("could not convert %s slot %s into %s",
-                           self.folder, self.slot, self.template)
+            _log.exception("could not convert %s slot %s",
+                           self.folder, self.slot)
             return str(exc)
         return dropped_text(self.conversion.report)

@@ -943,16 +943,19 @@ class EditorWindow(QMainWindow):
             return
         self._adopt(party, path)
 
-    def _adopt(self, party: Party, path: str, note: str | None = None,
+    def _adopt(self, party: Party, path: str | None, note: str | None = None,
                dirty: bool = False) -> None:
         """Show a party that is already built, from wherever it came.
 
-        `load` reads one off a disk; the DOS import converts one in memory and
-        has nothing on disk to read it back from. `dirty` marks every row
-        changed, which is how an import arrives: on screen, in the title bar,
-        and not yet written anywhere.
+        `load` reads one off a disk; the DOS import builds one in memory and
+        has **no path at all** -- the disk it made did not exist a moment ago
+        and no file has been chosen for it yet, so `path` is None and Save As
+        is what names one. `dirty` marks every row changed, which is how an
+        import arrives: on screen, in the title bar, and not yet written
+        anywhere.
         """
-        self.party, self.path = party, pathlib.Path(path)
+        self.party = party
+        self.path = pathlib.Path(path) if path else None
         self.dirty = set(range(len(party))) if dirty else set()
         self.current_row = -1
         # Before the first row is selected, and while `current_row` is -1 so
@@ -976,28 +979,72 @@ class EditorWindow(QMainWindow):
                     + ("" if self.charset else
                        "  -- no game disk, so no item names and no icons"))
         self._retitle()
-        self.opened.emit(str(self.path))
+        if self.path is not None:
+            self.opened.emit(str(self.path))
 
     # -- importing --------------------------------------------------------
+
+    def game_files_for_import(self):
+        """The icon and `ANIMATE00` a conversion needs, or None (#118).
+
+        A save built from nothing needs two things off the player's own
+        `POOL*` disks: `SPELLE64`/`SPELLN64`, out of which the combat icon the
+        game's own character creation writes is composed, and `ANIMATE00`,
+        which is what `$8400` of `SAVEDGAME1` holds.  Neither may be stored in
+        this repository -- both are the game's own data -- and neither may be
+        invented, so with the disks missing the import refuses rather than
+        writing a save with made-up bytes in it.  Donald's ruling, 2026-08-27.
+
+        The two live on different sides, so each is searched for by trying to
+        read it rather than by naming a disk number, which is what
+        `_find_disk` is for.
+        """
+        from goldbox import dos
+        from goldbox.d64 import load_payload
+
+        from .dosimport import GameFiles
+
+        def read_animate(disk):
+            return load_payload(disk, dos.ANIMATE_FILE)
+
+        icon_disk = self._find_disk(IconParts.load)
+        animate_disk = self._find_disk(read_animate)
+        if icon_disk is None or animate_disk is None:
+            return None
+        return GameFiles(icon=IconParts.load(icon_disk).default_icon(),
+                         animate=read_animate(animate_disk),
+                         icon_disk=icon_disk, animate_disk=animate_disk)
 
     def import_dos_save(self, folder: str | None = None) -> str:
         """File > Import > DOS Save Folder… Returns what happened, for a test.
 
-        Two pickers and a window, and no write: what the conversion costs is
-        on screen before the button that commits it exists to press, and what
-        it commits is a party in this window that Save has yet to write. The
-        editor's own Save is what reaches the disk, so the backup in
-        `editor/files.py` covers an import like any other edit.
+        A picker, a window and a Save As, and no write until the last of
+        those: what the conversion costs is on screen before the button that
+        commits it exists to press, and what it commits is a party in this
+        window with no file behind it.  The editor's own Save is what reaches
+        the disk, so the backup in `editor/files.py` covers an import like any
+        other edit -- and there is nothing to back up, because the disk this
+        writes did not exist a moment ago.
+
+        **The game disks are checked first**, before the folder picker opens,
+        so a user with none is not asked to choose something and then told it
+        was pointless (#118).
         """
         from goldbox import dos
 
         from .dosimport import (
             FOLDER_TITLE,
+            NO_DISKS,
+            NO_DISKS_TITLE,
             NO_SLOTS,
             NO_SLOTS_TITLE,
             DosImportDialog,
         )
 
+        files = self.game_files_for_import()
+        if files is None:
+            QMessageBox.critical(self, NO_DISKS_TITLE, NO_DISKS)
+            return "no game disks"
         if folder is None:
             folder = QFileDialog.getExistingDirectory(
                 self, FOLDER_TITLE,
@@ -1008,21 +1055,28 @@ class EditorWindow(QMainWindow):
             QMessageBox.warning(self, NO_SLOTS_TITLE,
                                 NO_SLOTS.format(folder=folder))
             return "no DOS save"
-        dialog = DosImportDialog(folder, self.path, self)
+        dialog = DosImportDialog(folder, files, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return "cancelled"
-        return self.adopt_conversion(dialog.conversion)
+        note = self.adopt_conversion(dialog.conversion)
+        if dialog.conversion is not None:
+            self.save_as()
+        return note
 
     def adopt_conversion(self, conversion) -> str:
-        """Show a converted save, unwritten. Separate so a test can call it."""
+        """Show a converted save, unwritten. Separate so a test can call it.
+
+        **With no path**, which is the honest state: the disk was built in
+        memory a moment ago and there is no file it came from.  Save As is
+        what names one.
+        """
         from .dosimport import CONVERTED
 
         if conversion is None:
             return "cancelled"
         note = CONVERTED.format(slot=conversion.slot)
-        party = Party(str(conversion.template), game=conversion.game,
-                      disk=conversion.disk)
-        self._adopt(party, str(conversion.template), note=note, dirty=True)
+        party = Party("", game=conversion.game, disk=conversion.disk)
+        self._adopt(party, None, note=note, dirty=True)
         return note
 
     # -- exports ----------------------------------------------------------
