@@ -993,7 +993,7 @@ def export_party(save_path, out_dir, game_disk=None) -> list[tuple]:
         filename = _unique_pc_filename(base, used)
         if filename != base:
             rep.warnings.append(
-                f"the file name {base!r} is already used by another "
+                f"The file name {base!r} is already used by another "
                 f"character in this export; written instead as {filename!r}")
         used.add(filename)
         path = root / filename

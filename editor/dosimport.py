@@ -83,7 +83,7 @@ def enabled() -> bool:
 
 #: The File menu entry and the submenu it hangs under.
 MENU_IMPORT = "&Import"
-MENU_DOS_SAVE = "&DOS save…"
+MENU_DOS_SAVE = "&DOS…"
 
 #: The folder picker, and what is said when the folder holds no DOS save.
 FOLDER_TITLE = "Choose a DOS save folder"

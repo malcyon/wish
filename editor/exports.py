@@ -64,10 +64,12 @@ _log = logging.getLogger("wish.editor.exports")
 # He also settled the two choices that are not words:
 #   * **the report pane leads with what the conversion cannot carry**, and
 #     then says what the write will replace and remove. Losses first.
-#   * **`MENU_AMIGA` names the port and not the game.** "&Amiga characters…"
-#     is deliberate: the export is meant to reach every Amiga Gold Box title
+#   * **`MENU_AMIGA` names the port and not the game.** "&Amiga…" is
+#     deliberate: the export is meant to reach every Amiga Gold Box title
 #     in time, and naming one game in the menu would have to be undone. If
-#     that costs work later, that is the trade he chose.
+#     that costs work later, that is the trade he chose. Shortened from
+#     "&Amiga characters…" in 2026-08: the menu names the destination, and
+#     what it writes there is the export dialog's business, not the menu's.
 #
 # The feature flag below stays until #52 closes. The words are settled; the
 # direction is not yet proven end to end for a user.
@@ -75,8 +77,8 @@ _log = logging.getLogger("wish.editor.exports")
 
 #: The File menu entry and the two ports under it.
 MENU_EXPORT = "&Export"
-MENU_DOS = "&DOS save…"
-MENU_AMIGA = "&Amiga characters…"
+MENU_DOS = "&DOS…"
+MENU_AMIGA = "&Amiga…"
 
 #: The two windows.
 DOS_TITLE = "Export a DOS save"
