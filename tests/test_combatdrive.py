@@ -14,12 +14,16 @@ the game offered to stop".  Both look identical in a log of command bars.
 """
 
 import dataclasses
+import pathlib
 import sys
 
 import pytest
 from gamedata import synthetic_arena
 
-sys.path.insert(0, "/home/donald/src/wish/tools")
+# From this file, not from a path measured on somebody's machine: an absolute
+# one exists here and nowhere else, and `tests/gamedata.py` carries the same
+# lesson in its own docstring after two tests were invisible on CI that way.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
 from session import (  # noqa: E402
     BAR_BLANK,
