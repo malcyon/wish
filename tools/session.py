@@ -986,8 +986,23 @@ class Session:
 
         `tactic(session, state)` is called once per command bar and returns
         what it chose; the default passes the turn with `DONE`.
+
+        **`budget` is a floor on when this gives up, not a ceiling on how
+        long it runs.**  The deadline is tested once per iteration, and the
+        calls inside one iteration carry their own timeouts: this method
+        clamps its own to whatever is left, but a tactic's do not, so
+        `melee_turn` can spend `combat_bar(..., 15)` plus `await_bar(..., 8)`
+        plus `end_turn`'s three tries at 8 past a deadline that had already
+        passed -- about 42 seconds in the worst case measured here.  A short
+        budget overruns proportionally worse than a long one.  Give it
+        seconds to spare rather than the exact number wanted.
         """
-        act = tactic or (lambda sess, state: sess.combat_turn(state))
+        def left() -> float:
+            """Seconds to the deadline, never below one -- a timeout of zero
+            asks a bar to have already resolved."""
+            return max(1.0, end - time.time())
+
+        act = tactic or (lambda sess, state: sess.combat_turn())
         started = time.time()
         end = started + budget
         bars: list[str] = []
@@ -1018,11 +1033,11 @@ class Session:
                 bars.append(state.text)
             if state.kind == BAR_CONTINUE:
                 # The game offering a withdrawal is how a driven fight ends.
-                self.combat_bar("NO", timeout=12)
+                self.combat_bar("NO", timeout=min(12.0, left()))
             elif state.kind == BAR_DONE:
                 self.end_turn()      # left open by a turn that did not finish
             elif state.kind == BAR_EXIT:
-                self.combat_bar("EXIT", timeout=12)
+                self.combat_bar("EXIT", timeout=min(12.0, left()))
             elif state.kind == BAR_PRESS:
                 # XTEST Return is not dependable at a prompt; the buffer is.
                 self.press_kernal(0x0D)
@@ -1033,7 +1048,7 @@ class Session:
                 # is the only such bar seen: it stalled a whole fight for its
                 # 421-second budget because there was no branch for it at all
                 # (`work/p126/melee.log`).
-                self.combat_bar("NO", timeout=12)
+                self.combat_bar("NO", timeout=min(12.0, left()))
             elif state.kind == BAR_MOVE:
                 self.press_kernal(0x0D)      # back out of move mode
             elif state.kind == BAR_COMMAND:
