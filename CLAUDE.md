@@ -154,9 +154,13 @@ whatever anybody else has uncommitted, silently and unrecoverably. That is how
 580 lines of `por/amiga.py` went on 2026-08-26 -- a reviewer undoing a
 throwaway edit of its own.
 
-To test whether a change is load-bearing, **copy the file aside and copy it
-back**, and `diff` to confirm the restore. Only the main window touches git's
-history, and only deliberately.
+To test whether a change matters, **copy the file aside and copy it back**,
+`diff` to confirm the restore, **and then delete `__pycache__`**. A file put
+back at the same size in the same second does not look changed to CPython's
+bytecode cache, so the program goes on running the broken code while
+`inspect.getsource` shows the right source -- a test stayed red for twenty
+minutes against a correct file that way on 2026-08-27. Only the main window
+touches git's history, and only deliberately.
 
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the
