@@ -1,6 +1,7 @@
 # 1541 D64 container format
 
-Verified empirically against `PORSAVE.D64` and `POOL1.D64.orig` (both 174848 bytes, 35 tracks).
+Verified empirically against `POOL1.D64.orig` and the player's fifteen `PORSAVE*.D64` saves
+(all 174848 bytes, 35 tracks).
 
 ## Geometry
 
@@ -86,11 +87,80 @@ sector's payload is `bytes[2 : next_sector + 1]`.
 Every PRG's first two bytes are a little-endian load address. All three files on the save disk
 are PRGs, so their raw contents are 2 bytes longer than the data they represent.
 
-## Writing
+## The BAM — track 18 sector 0
 
-For this project we only ever rewrite a save **in place, at the same block count**, reusing
-the existing sector chain. That avoids BAM allocation entirely. Growing or deleting files is
-deliberately not implemented.
+```
+0..1    link to the first directory sector: 18, 1
+2       DOS version, 0x41 = 'A'
+3       unused, 0
+4..     four bytes per track, tracks 1..35:
+            +0  free blocks on the track
+            +1..3  bitmap, little endian, bit N = sector N; a SET bit is FREE
+0x90    disk name, 16 bytes, padded with 0xA0
+0xA0    0xA0 0xA0
+0xA2    disk id, 2 bytes
+0xA4    0xA0
+0xA5    DOS type, "2A"
+0xA7    0xA0 x 4
+0xAB    zero to the end of the sector
+```
+
+Rebuilding all 35 track entries from the sector counts reproduces that sector byte for byte on
+all fifteen of the player's `PORSAVE*.D64` saves. A blank 35-track disk reports **664** blocks
+free, which is every sector but track 18's nineteen — the drive leaves the directory track out
+of the count and so does `D64.blocks_free`.
+
+## Building a disk from nothing
+
+`D64.blank()` formats an image; `D64.write_file()` allocates blocks, writes the sector chain
+and links a directory entry, growing the directory chain when eight entries are not enough.
+Written for #118, so a DOS save can be imported without a `.d64` the player already had.
+
+**Neither the disk name nor the placement of a file's blocks is something the game insists on.**
+Thirteen of the fifteen save disks are named `" "` and two `"BLANK"`; thirteen space a file's
+blocks six sectors apart and two space them ten. All fifteen are saves the player made with the
+game itself, so the game reads all of it. `FILE_INTERLEAVE` is 6 and both are parameters.
+
+The allocation rule, which reproduces the thirteen clean specimens exactly:
+
+| | |
+|---|---|
+| track order | 17 down to 1, then 19 up to 35; track 18 is never given to a file |
+| first block | the lowest free sector on the first track that has one |
+| each block after | `(previous + 6) mod sectors on the track`, then step forward one sector at a time until a free one |
+| a full track | carry the running sector number onto the next track rather than restarting at 0 |
+| directory chain | the same rule with an interleave of **3**, on track 18 |
+
+The track carry is what puts `SAVEDGAME0`'s spill from track 17 sector 19 onto track 16 sector
+**4**, and it is the part a plausible-looking allocator gets wrong.
+
+**Verified against the drive's own work.** Read `SAVEDGAME1` and `SAVEDGAME0` off `PORSAVE13.D64`
+and write them onto a blank built here, in that order: the two images differ in **432 bytes and
+no others**, and those 432 are exactly the two files' final-sector slack — 236 after
+`SAVEDGAME1`'s last 18 payload bytes, 196 after `SAVEDGAME0`'s last 58. BAM, directory, both
+sector chains and every payload byte match. `tests/test_d64_blank.py` computes the slack from
+the chain lengths rather than from the number 432, and skips where there are no disks.
+Interleave 3 for the directory likewise reproduces all thirteen directory sectors of
+`POOL1.D64.orig`'s 103-entry directory.
+
+**An unused sector reads as 256 zero bytes** — all 643 of them on `PORSAVE13.D64`, and every
+unused sector on fourteen of the fifteen disks. The one exception holds the tail of something
+scratched on `PORSAVE.D64`, which is what a 1541 does: it frees a block without wiping it.
+`D64.blank()` zero-fills.
+
+**Eight 32-byte slots starting two bytes in would need 258 bytes and a sector is 256.** The last
+two bytes of every slot are the next slot's first two, which nothing uses — except slot 0's,
+which are the sector's link. A write that clears a whole 32 bytes wipes the *next* sector's link
+when it fills slot 7, and the rest of the directory disappears. `ENTRY_FIELDS` is 30 for that
+reason.
+
+**A file is never grown or replaced.** `write_file` refuses a name already in the directory and
+nothing scratches a file, so no block is ever freed. 144 files is the limit: eighteen directory
+sectors, because sector 0 of track 18 is the BAM.
+
+## Rewriting a file in place
+
+The other writer: rewrite a save **at the same block count**, reusing the existing sector chain.
 
 **Final-sector slack matters.** The bytes after the payload in a file's last sector hold
 leftover garbage from whatever previously occupied those sectors. A rewrite must touch only
