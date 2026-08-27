@@ -918,6 +918,7 @@ constantly in assistant prose and almost never in human speech:
 | **fair** ("that's fair") | agree or disagree in words: "you're right", "I don't think so, because" |
 | **blast radius** | what else this touches, what it would break |
 | **elide** | truncate, shorten, cut off with an ellipsis |
+| **obviate** | say what actually happened: it cannot happen any more, the fix is no longer needed, that removes the reason for it |
 | **retarget** | move the party to where it actually was, point the save at the right map |
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
 | **"the test bites"** | the test fails without the fix; it catches the bug; it goes red when the guard is removed |
