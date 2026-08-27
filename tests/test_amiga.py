@@ -1074,6 +1074,8 @@ def por_write_mask() -> set[int]:
         mask |= field(name)
     for name, _, _ in dos.WRITE_CONSTANTS:
         mask |= field(name)
+    for name, _, _, _ in dos.WRITE_DEFAULTS:
+        mask |= field(name)
     # Computed rather than copied, and `goldbox.dos.WRITE_TARGETS` says so.
     mask |= field("encumbrance") | field("item_count")
     # Repacked: `goldbox.dos` reads the sixteen slots as a set and writes them
@@ -1099,6 +1101,7 @@ def test_every_masked_field_is_one_the_declared_tables_name():
 
     named = {name for name, _ in dos.WRITE_UNSOURCED}
     named |= {name for name, _, _ in dos.WRITE_CONSTANTS}
+    named |= {name for name, _, _, _ in dos.WRITE_DEFAULTS}
     named |= {"encumbrance", "item_count", "spells_memorised"}
     named |= {f.name for f in dos_layout.LAYOUT if f.name.startswith("gap_")}
     declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED

@@ -85,6 +85,7 @@ __all__ = [
     "DosCharacter",
     "DosItem",
     "Report",
+    "WRITE_DEFAULTS",
     "item_to_c64",
     "item_from_c64",
     "read_character",
@@ -977,11 +978,6 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
     ("portrait_body", "see portrait_head"),
     ("icon_head", "see portrait_head; this pair is the combat icon"),
     ("icon_body", "see portrait_head"),
-    ("icon_colours", "the combat icon's six colour pairs. **Zero is not "
-                     "obviously right**: the engine does not rebuild them -- "
-                     "its own resave kept our zeros -- so a converted "
-                     "character's icon is drawn with no colours and nobody "
-                     "has looked at one (#57)"),
     ("item_chain", "live heap pointer block; the items themselves are in "
                    "the .ITM file. **Zero is what the engine itself writes "
                    "for a character carrying nothing** -- measured, #62 -- "
@@ -1006,6 +1002,31 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
      "00 01 00 00 in all 24 DOS specimens"),
 )
 
+#: Fields written to a **measured default** rather than carried from the
+#: source, because the source holds something that does not correspond.
+#: Distinct from :data:`WRITE_CONSTANTS`, whose values are the same in every
+#: specimen we hold: a default is what a *newly made* character has, and a
+#: played character's own value differs -- so a round trip has to mask these,
+#: and `tests/test_doswriter.py` builds its mask from this table beside
+#: `WRITE_UNSOURCED`.  Each entry is a reported drop as well as a write: the
+#: player's own value is being replaced, and that is said out loud.
+WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
+    ("icon_colours", b"\x91\xA2\xB3\xC4\xE6\xF7",
+     "the set a freshly made DOS character has -- 42 of the 54 shipped "
+     "records across the four DOS titles, and the ones that differ are "
+     "precisely the played parties (#57). Six pairs of 4-bit indices, one "
+     "per part: body, arm, leg, hair and skin, shield, weapon; the low "
+     "nibble is the main colour and the high one the highlight, which is "
+     "what the game's own icon editor writes as COLOR-1 and COLOR-2",
+     "zero is not neutral here: all six parts become EGA 8, dark grey, "
+     "which is the combat floor's own colour, so the character is about 64 "
+     "black outline pixels on its own shade and reads as not being there "
+     "(#112, three fights). The C64's own icon colours are not carried "
+     "across -- it has seven colour parts to DOS's six and one 3-bit "
+     "colour per part against DOS's two 4-bit ones, so a correspondence "
+     "would be a choice rather than a conversion"),
+)
+
 #: What :func:`write` does with every field `goldbox/dos_layout.py` declares --
 #: the *output-side* account, over DOS field names, where
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
@@ -1027,6 +1048,7 @@ WRITE_TARGETS: dict[str, str] = (
        "item_count": "computed: the number of .ITM records written",
        "encumbrance": "computed: money plus item weight x quantity"}
     | {name: f"constant: {why}" for name, _, why in WRITE_CONSTANTS}
+    | {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
     | {name: f"zero: {why}" for name, why in WRITE_UNSOURCED}
 )
 
@@ -1250,6 +1272,18 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
         f = FIELDS_BY_NAME[cname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size, f"{cname}: {why}")
+
+    # -- measured defaults, where the source holds no matching value --------
+    # The provenance note carries both halves: why this value, and what the
+    # source held that is not being carried.  It does **not** go in
+    # `rep.dropped`, which is read by a person in the conversion pane -- that
+    # is a sentence for Donald to approve rather than one to model on the
+    # sibling lines already there (CLAUDE.md, "Help text in the GUI").
+    for dname, data, why, lost in WRITE_DEFAULTS:
+        f = FIELDS_BY_NAME[dname]
+        rec[f.offset:f.end] = data
+        rep.note(f.offset, f.size,
+                 f"{dname}: {data.hex()} -- {why}. Not carried: {lost}")
 
     # -- bytes with no source: live heap and the unattributed ----------------
     for uname, why in WRITE_UNSOURCED:

@@ -194,6 +194,12 @@ def _unsourced_offsets() -> set[int]:
     for name, _ in dos.WRITE_UNSOURCED:
         f = dos_layout.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
+    # A measured default is not carried either: it is what a *newly made*
+    # character has, and a played one's own value differs -- 12 of the 24
+    # specimens here for `icon_colours` (#112).
+    for name, _, _, _ in dos.WRITE_DEFAULTS:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        out.update(range(f.offset, f.end))
     return out
 
 
@@ -220,6 +226,24 @@ def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
     differs = {i for i in range(len(original)) if original[i] != rec[i]}
     enc = bool(differs & set(range(ENC.offset, ENC.end)))
     return differs - mask - set(range(ENC.offset, ENC.end)), enc
+
+
+@needs_dos_saves
+def test_the_written_icon_colours_are_not_zero():
+    """A DOS combat icon whose six colour pairs are zero paints all six parts
+    EGA 8, dark grey -- which is the combat floor's own colour, so the
+    character is ~64 black outline pixels on a background of exactly its own
+    shade and reads as not being there at all (#112, measured in three
+    fights; the shipped default draws a person).
+
+    The engine does not put them back: `docs/117-save-conversion.md` records
+    a hand-built save loaded, re-saved from inside the game, and the game
+    writing our zeros straight back.
+    """
+    f = dos_layout.FIELDS_BY_NAME["icon_colours"]
+    for char in _records():
+        rec, _, _, _ = dos.write(dos.to_neutral(char))
+        assert rec[f.offset:f.end] != bytes(f.size), char.name
 
 
 @needs_dos_saves
