@@ -229,7 +229,22 @@ _DECLARED: Sequence[Field] = (
            "magic-user ids only. Nothing we hold contradicts 16 and nothing "
            "supports stopping there -- PROBABLE at 21. Settle it with a "
            "cleric/magic-user carrying more than sixteen memorised spells. "
-           "docs/127-community-formats.md"),
+           "docs/127-community-formats.md\n"
+           "**Position within the sixteen bytes carries no meaning.** The "
+           "engine scans all sixteen, ignores zeros wherever they fall, draws "
+           "the list in descending spell id rather than in byte order, and "
+           "repacks the field forward from 0x020 in that same order once it "
+           "is finished with it -- by the first time the party makes camp, "
+           "which is what every save goes through. Measured in the running "
+           "game on the C64: one spell swept across all sixteen positions for "
+           "a cleric and two magic-users listed 48 times out of 48, was cast "
+           "from position 15, and was consumed. A record written with entries "
+           "at 7, at 3 and 9, and at 15 came back from the game's own save at "
+           "0, at 0 and 1, and at 0. So a conversion that keeps the ids and "
+           "loses the arrangement loses nothing a player can see. Measured on "
+           "the C64 engine only: the DOS reader's own rule about filling "
+           "backwards from the end has not been put through the same sweep. "
+           "#110"),
     _field(0x078, 7, _RAW, "spells_known", "Spellbook", _OK,
            "a bitmask of the spells the character KNOWS, indexed by spell id: "
            "bit (id & 7) of byte 0x078 + (id >> 3). Confirmed on every caster "

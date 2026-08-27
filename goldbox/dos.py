@@ -637,7 +637,10 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("name_text", "re-padded into the C64's 20-byte name"),
     ("spellbook", "56 bytes packed into 56 bits; the ids are identical"),
     ("spells_memorised", "reversed: DOS fills from the end, the C64 from the "
-                         "start"),
+                         "start. The arrangement is not carried and does not "
+                         "need to be -- the C64 engine ignores position "
+                         "entirely and repacks the field itself by the first "
+                         "camp (#110, goldbox/layout.py 0x020)"),
     ("class_levels", "permuted from class number to class bit"),
     ("spells_castable_cleric", "packed into the C64's high nibbles"),
     ("spells_castable_magic_user", "packed into the C64's low nibbles"),
