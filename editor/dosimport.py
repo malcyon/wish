@@ -6,10 +6,12 @@ has no home for -- encumbrance, the item heap pointers, the item count, the
 icon selection, the strength-bonus boolean, every running spell effect -- and
 `docs/117-save-conversion.md` forbids dropping them in silence. So the
 conversion is **rehearsed** in memory, the losses it reports are put on
-screen, and only then is there a button to press. Nothing reaches a disk until
-the user names a file through the editor's own Save As, which is what keeps
-the backup guarantee in `editor/files.py` covering this the way it covers
-every other write.
+screen, and only then is there a button to press. The file the write goes to
+is named in this window, on the bottom row, before Convert is pressed --
+Donald's shape, 2026-08-27: *"when the user clicks the Convert button, it does
+what the user expects. it converts."* The write itself is still the editor's
+own Save, so the backup guarantee in `editor/files.py` covers this the way it
+covers every other write.
 
 **There is no template any more** (#118). The dialog used to make the user
 pick an existing `.d64` to convert *onto*, and every byte the conversion did
@@ -42,8 +44,11 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -110,6 +115,20 @@ LABEL_FOLDER = "DOS save"
 LABEL_SLOT = "Slot"
 BUTTON_CONVERT = "Convert"
 
+#: The destination row, from the mock-up Donald picked on #118: a full path,
+#: filled in before he touches it, and a button beside it. *"when the user
+#: clicks the Convert button, it does what the user expects. it converts."*
+#: -- so there is no Save As after this window any more.
+LABEL_DESTINATION = "Save as"
+BUTTON_BROWSE = "Browse…"
+
+#: What the path is suggested as. The C64 game's own save name with the DOS
+#: slot letter in it, so importing slot J offers `PORSAVEJ.D64`. The letter is
+#: the slot's, so the box is rebuilt every time the slot changes or it goes on
+#: naming a slot nobody is converting -- but never over a path the user typed
+#: or browsed to, which is theirs.
+DEFAULT_NAME = "PORSAVE{slot}.D64"
+
 #: The heading over the list of fields the conversion cannot carry.
 DROPPED_HEADING = "The conversion cannot carry these:"
 
@@ -120,9 +139,13 @@ DROPPED_HEADING = "The conversion cannot carry these:"
 #: It fires **before** the folder picker, so nothing has been chosen and no
 #: dialog is left standing behind the error.
 NO_DISKS_TITLE = "Game disks not found"
-NO_DISKS = "Set the folder in File ▸ Preferences…"
+NO_DISKS = ("You must set the Game Disk folder in File ▸ Preferences… "
+            "before importing a character.")
 
-#: The status line after the conversion, which has written nothing yet.
+#: The status line when a conversion reaches the window with no file behind
+#: it. Convert names one and writes it, so what a user sees after an import is
+#: `editor/files.py`'s own line about the file it wrote; this is what is left
+#: for a caller that adopts a conversion without a path.
 CONVERTED = "converted DOS slot {slot} - not saved yet"
 # ---------------------------------------------------------------------------
 
@@ -130,11 +153,16 @@ CONVERTED = "converted DOS slot {slot} - not saved yet"
 @dataclasses.dataclass
 class GameFiles:
     """The two things off the player's game disks a conversion cannot do
-    without, and which disk each came from.
+    without.
 
     Held together because the refusal is one question -- can this import read
     the player's disks? -- and answering it twice in two places is how the two
     halves drift apart.
+
+    **Which disk each came from is not kept.** It was, and nothing ever read
+    it: the one place the disks have to be named is the log line
+    `editor/window.py` writes when the second read fails, and that runs where
+    there is no `GameFiles` to have named them.
     """
 
     #: The 36-byte combat icon every converted character gets, composed from
@@ -142,8 +170,6 @@ class GameFiles:
     icon: bytes
     #: `ANIMATE00`'s 852-byte payload, which goes at `$8400`.
     animate: bytes
-    icon_disk: str
-    animate_disk: str
 
 
 @dataclasses.dataclass
@@ -160,7 +186,6 @@ class Conversion:
     report: dos.Report
     folder: pathlib.Path
     slot: str
-    files: GameFiles
 
 
 def rehearse(folder: str | pathlib.Path, slot: str,
@@ -179,7 +204,7 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     sg1 = SaveGame1(bytes(payload1), game)
     disk = dos.save_disk(bytes(payload0), bytes(payload1), game)
     return Conversion(disk, game, sg0, sg1, report,
-                      pathlib.Path(folder), slot, files)
+                      pathlib.Path(folder), slot)
 
 
 def dropped_text(report: dos.Report) -> str:
@@ -194,11 +219,16 @@ def dropped_text(report: dos.Report) -> str:
 
 
 class DosImportDialog(QDialog):
-    """The folder, the slot, and what will be lost.
+    """The folder, the slot, what will be lost, and where it goes.
 
     Every change to the slot re-runs `rehearse`, so the pane is never showing
     the losses of a conversion other than the one the button would commit --
-    and the button is disabled whenever there is no rehearsal behind it.
+    and Convert is disabled unless there is a rehearsal behind it and a path
+    in front of it.
+
+    The bottom row is the destination, and it is why there is no Save As after
+    this window any more: the file is named before Convert is pressed, so
+    Convert converts.
 
     `files` is the icon and `ANIMATE00`, already read: `editor/window.py`
     refuses the whole import before this window is built when they cannot be
@@ -206,12 +236,23 @@ class DosImportDialog(QDialog):
     """
 
     def __init__(self, folder: str | pathlib.Path, files: GameFiles,
-                 parent: QWidget | None = None):
+                 parent: QWidget | None = None, start_dir: str = ""):
         super().__init__(parent)
         self.setWindowTitle(DIALOG_TITLE)
         self.folder = pathlib.Path(folder)
         self.files = files
         self.conversion: Conversion | None = None
+        #: Where a suggested path is put. `editor/window.py` hands over what
+        #: `editor/files.py`'s `open_start_dir` answered -- beside the open
+        #: save, or the folder one was last opened from -- so an import and a
+        #: `File > Open` start in the same place rather than under two rules.
+        #: That answer is empty when there is neither, and a field that has to
+        #: show a path cannot be empty, so the home directory is the last
+        #: resort.
+        self.start_dir = start_dir or str(pathlib.Path.home())
+        #: The user has typed a path or browsed to one, and the slot must stop
+        #: rewriting it.
+        self._named = False
 
         form = QFormLayout()
         self._folder_label = QLabel(str(self.folder))
@@ -228,6 +269,22 @@ class DosImportDialog(QDialog):
         self.report_pane.setObjectName("dos_report")
         self.report_pane.setReadOnly(True)
 
+        self.destination = QLineEdit()
+        self.destination.setObjectName("dos_destination")
+        self.destination.textEdited.connect(self._typed)
+        self.destination.textChanged.connect(lambda _t: self._settle_button())
+        self.browse_button = QPushButton(BUTTON_BROWSE)
+        self.browse_button.setObjectName("dos_browse")
+        self.browse_button.clicked.connect(self.browse)
+        where = QHBoxLayout()
+        where.addWidget(self.destination, 1)
+        where.addWidget(self.browse_button)
+        # One form for all three rows, the pane spanning the middle of it, so
+        # "Save as" lines up under "DOS save" and "Slot" rather than sitting
+        # in a second column of its own.
+        form.addRow(self.report_pane)
+        form.addRow(LABEL_DESTINATION, where)
+
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel)
@@ -237,8 +294,7 @@ class DosImportDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(self.report_pane, 1)
+        layout.addLayout(form, 1)
         layout.addWidget(self.buttons)
         self.resize(680, 480)
         self._rehearse()
@@ -248,6 +304,54 @@ class DosImportDialog(QDialog):
     @property
     def slot(self) -> str:
         return self.slots.currentText()
+
+    def target(self) -> str:
+        """The file Convert writes, as the user has left it."""
+        return self.destination.text().strip()
+
+    # -- where it goes -----------------------------------------------------
+
+    def _typed(self, _text: str) -> None:
+        """Anything the user types in the box is theirs from then on."""
+        self._named = True
+
+    def _suggest(self) -> None:
+        """Fill the destination in from the slot, over nothing the user chose.
+
+        The name is the slot's -- `PORSAVEJ.D64` for slot J -- so it has to be
+        rebuilt whenever the slot changes or it goes on naming a slot that is
+        no longer being converted.
+        """
+        if self._named:
+            return
+        self.destination.setText(
+            str(pathlib.Path(self.start_dir)
+                / DEFAULT_NAME.format(slot=self.slot or "")))
+
+    def browse(self) -> None:
+        """The editor's own Save As picker, with its own title and filter.
+
+        Imported here rather than worded again: it is the same picker doing
+        the same job, and two copies of an approved string is how they drift.
+        """
+        from PyQt6.QtWidgets import QFileDialog
+
+        from .window import DISK_FILTER, SAVE_AS_TITLE
+
+        path, _ = QFileDialog.getSaveFileName(self, SAVE_AS_TITLE,
+                                              self.target(), DISK_FILTER)
+        if path:
+            self._named = True
+            self.destination.setText(path)
+
+    def refuse(self, text: str) -> None:
+        """Put a failed write in the pane the losses are already reported in.
+
+        The window stays open on the path that did not work, which is the one
+        thing the user has to change -- and it is a sentence rather than the
+        traceback that reaches `wish/debuglog.py`.
+        """
+        self.report_pane.setPlainText(text)
 
     # -- the rehearsal -----------------------------------------------------
 
@@ -261,8 +365,15 @@ class DosImportDialog(QDialog):
         self.conversion = None
         text = self._attempt()
         self.report_pane.setPlainText(text)
+        self._suggest()
+        self._settle_button()
+
+    def _settle_button(self) -> None:
+        """Convert is pressable when there is a conversion and somewhere to
+        put it. Clearing the box is the one way a user can leave it with
+        nowhere, and a disabled button says so without a sentence saying it."""
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(
-            self.conversion is not None)
+            self.conversion is not None and bool(self.target()))
 
     def _attempt(self) -> str:
         # No slot is not a state the user can reach: `import_dos_save` refuses

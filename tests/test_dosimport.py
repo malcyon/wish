@@ -58,24 +58,20 @@ def files():
     if where is None:
         pytest.skip("needs the game disks")
     icon = animate = None
-    icon_disk = animate_disk = ""
     for disk in sorted(where.glob("POOL*.[dD]64")):
         try:
             if icon is None:
                 icon = IconParts.load(str(disk)).default_icon()
-                icon_disk = str(disk)
         except Exception:
             pass
         try:
             if animate is None:
                 animate = load_payload(str(disk), dos.ANIMATE_FILE)
-                animate_disk = str(disk)
         except Exception:
             pass
     if icon is None or animate is None:
         pytest.skip("the game disks here carry neither SPELLE64 nor ANIMATE00")
-    return GameFiles(icon=icon, animate=animate,
-                     icon_disk=icon_disk, animate_disk=animate_disk)
+    return GameFiles(icon=icon, animate=animate)
 
 
 # --- the rehearsal, which is the whole point --------------------------------
@@ -83,23 +79,27 @@ def files():
 @needs_dos_saves
 @needs_disks
 def test_the_conversion_is_rehearsed_and_writes_nothing(dos_save, files,
-                                                        tmp_path):
+                                                        tmp_path, monkeypatch):
     """`rehearse` builds the converted disk in memory and touches no file at
     all. Everything downstream depends on that: the report cannot be shown
     before the write unless there is a conversion with no write in it.
 
     It now has no template to leave alone either, so what this asserts is the
     stronger thing -- the directory it was pointed at is unchanged and the
-    working directory has gained nothing.
+    working directory has gained nothing. The working-directory half is an
+    empty `tmp_path` this runs inside, because a relative path written by
+    accident lands there and nowhere else.
     """
     from editor.dosimport import rehearse
 
+    monkeypatch.chdir(tmp_path)
     before = sorted((p.name, p.stat().st_mtime, p.stat().st_size)
                     for p in dos_save.iterdir() if p.is_file())
     conversion = rehearse(dos_save, "A", files)
     after = sorted((p.name, p.stat().st_mtime, p.stat().st_size)
                    for p in dos_save.iterdir() if p.is_file())
     assert after == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == []
     assert conversion.report.dropped
     assert len(conversion.disk.to_bytes()) == 174848
 
@@ -146,20 +146,32 @@ def test_nothing_in_the_converted_save_is_left_to_a_previous_owner(
 @needs_dos_saves
 @needs_disks
 def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
-    """The list `docs/117-save-conversion.md` requires: encumbrance, the item
-    count, the portrait and icon ids, the icon colours and the strength-bonus
-    boolean, by name.
+    """What a player is shown, which is shorter than what the conversion
+    knows.
 
-    The portrait entry used to be one field called `icon_choice`; #57 split it
-    into the four the record actually has, so the report names four.
+    The pane used to name every entry in `goldbox/dos.py`'s `DROPPED`, and
+    Donald cut three kinds of line out of it on 2026-08-27: a field the C64
+    works out for itself, a spell effect that was about to expire, and the
+    three DOS combat-icon fields, which became one sentence. None of the
+    three is a loss anybody using the program can see.
+
+    So this asserts both directions. The portrait ids stay -- they are the
+    character's face and #57 is still open on them -- and the derived fields
+    go. `tests/test_dosconvert.py` is where the other half is checked: every
+    suppressed name is still declared in `DROPPED` and still has a
+    disposition, so nothing measured left the code.
     """
     from editor.dosimport import dropped_text, rehearse
+    from goldbox.dos import COMBAT_ICON_DROP
 
     text = dropped_text(rehearse(dos_save, "A", files).report)
-    for field in ("encumbrance", "item_count", "strength_bonus",
-                  "portrait_head", "portrait_body", "icon_head", "icon_body",
-                  "icon_colours"):
+    for field in ("portrait_head", "portrait_body", "icon_colours"):
         assert field in text, field
+    assert COMBAT_ICON_DROP in text
+    for field in ("encumbrance", "item_count", "strength_bonus",
+                  "icon_head", "icon_body", "icon_dimension"):
+        assert field not in text, field
+    assert ".SPC effect" not in text
 
 
 # --- the window -------------------------------------------------------------
@@ -177,7 +189,7 @@ def test_the_losses_are_on_screen_before_the_button_is_pressable(
     dialog = DosImportDialog(dos_save, files)
     text = dialog.report_pane.toPlainText()
     assert text.startswith(DROPPED_HEADING)
-    assert "encumbrance" in text
+    assert "portrait_head" in text
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 
@@ -295,6 +307,42 @@ def test_with_the_game_disks_there_the_import_gets_as_far_as_the_picker(
 
 
 @needs_disks
+def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
+        app, tmp_path, monkeypatch):
+    """`_find_disk` proves `IconParts.load` *succeeds*; it does not prove the
+    default weapon and head are in range for that disk's option counts. The
+    second read is where a corrupt or truncated `SPELLE64` shows up, and with
+    nothing catching it the exception escapes the menu's slot: `wish/debuglog.py`
+    logs it and **the user sees nothing at all happen**.
+
+    Raising out of `default_icon` is the shortest way to stand that state up.
+    What has to come back is the refusal the missing-disks case already gets,
+    and no folder picker.
+    """
+    import editor.window as ew
+    from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
+    from editor.window import EditorWindow
+    from goldbox.iconparts import IconParts
+
+    said, picked = [], []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
+                        lambda *a, **k: picked.append(a) or "")
+
+    def out_of_range(_self):
+        raise IndexError("icon option 3 of 2")
+
+    monkeypatch.setattr(IconParts, "default_icon", out_of_range)
+    window = EditorWindow(backups=str(tmp_path / "backups"),
+                          disks=str(game_disk().parent))
+    assert window.import_dos_save() == "no game disks"
+    assert said == [(NO_DISKS_TITLE, NO_DISKS)]
+    assert picked == []
+    window.close()
+
+
+@needs_disks
 def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
     """What `game_files_for_import` actually found, rather than that it found
     something: a 36-byte icon that is not zero and `ANIMATE00`'s own 852."""
@@ -340,6 +388,167 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
                         lambda *a, **k: (str(out), ""))
     window.save_as()
     assert out.exists() and out.stat().st_size == 174848
+    window.close()
+
+
+# --- the destination row, and Convert writing (#118) -------------------------
+
+@needs_dos_saves
+@needs_disks
+def test_the_destination_starts_filled_in_from_the_slot(app, dos_save, files,
+                                                        tmp_path):
+    """Donald picked a full path that starts filled in, so Convert has
+    somewhere to write the moment the window opens: `PORSAVEJ.D64` for slot J,
+    in the folder `File > Open` would have started in."""
+    from editor.dosimport import DosImportDialog
+
+    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
+    assert dialog.target() == str(tmp_path / f"PORSAVE{dialog.slot}.D64")
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_suggested_name_changes_with_the_slot(app, dos_save, files,
+                                                  tmp_path):
+    """The name is built out of the slot letter, so a slot the user changes
+    their mind about must not leave the previous slot's name behind it."""
+    from editor.dosimport import DosImportDialog
+
+    offered = dos.slots_available(dos_save)
+    if len(offered) < 2:
+        pytest.skip("needs a DOS save folder holding two slots")
+    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
+    other = next(s for s in offered if s != dialog.slot)
+    dialog.slots.setCurrentText(other)
+    assert dialog.target() == str(tmp_path / f"PORSAVE{other}.D64")
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_path_the_user_typed_survives_a_change_of_slot(app, dos_save, files,
+                                                         tmp_path):
+    """The other direction, and the one that would cost somebody their choice:
+    a path somebody typed is theirs, and the slot stops rewriting the box."""
+    from PyQt6.QtTest import QTest
+
+    from editor.dosimport import DosImportDialog
+
+    offered = dos.slots_available(dos_save)
+    if len(offered) < 2:
+        pytest.skip("needs a DOS save folder holding two slots")
+    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
+    mine = str(tmp_path / "MINE.D64")
+    dialog.destination.clear()
+    # Typed, not `setText`: `textEdited` is what tells a box from a program
+    # filling it in, and using `setText` here would test nothing.
+    QTest.keyClicks(dialog.destination, mine)
+    other = next(s for s in offered if s != dialog.slot)
+    dialog.slots.setCurrentText(other)
+    assert dialog.target() == mine
+
+
+@needs_dos_saves
+@needs_disks
+def test_an_empty_destination_is_not_convertible(app, dos_save, files,
+                                                 tmp_path):
+    """Clearing the box is the one way to leave Convert with nowhere to write,
+    and a disabled button says so without a sentence saying it."""
+    from PyQt6.QtWidgets import QDialogButtonBox
+
+    from editor.dosimport import DosImportDialog
+
+    dialog = DosImportDialog(dos_save, files, start_dir=str(tmp_path))
+    ok = dialog.buttons.button(QDialogButtonBox.StandardButton.Ok)
+    assert ok.isEnabled()
+    dialog.destination.clear()
+    assert not ok.isEnabled()
+
+
+@needs_dos_saves
+@needs_disks
+def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
+                                                 files, monkeypatch):
+    """The whole of Donald's ruling in one test: *"when the user clicks the
+    Convert button, it does what the user expects. it converts."*
+
+    Pressing Convert writes the `.d64` the bottom row names -- no Save As
+    after it -- and what lands on disk is byte for byte the disk the rehearsal
+    built, so the editor's save machinery carrying the write changes nothing
+    about it. Afterwards the window has that file: a path, an `opened` signal,
+    a title bar with the name in it and no unsaved mark.
+    """
+    from PyQt6.QtWidgets import QDialog
+
+    import editor.dosimport as di
+    from editor.dosimport import rehearse
+    from editor.window import EditorWindow
+
+    monkeypatch.setattr(di.DosImportDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    window = EditorWindow(backups=str(tmp_path / "backups"),
+                          disks=str(game_disk().parent),
+                          last_save_folder=str(tmp_path))
+    opened = []
+    window.opened.connect(opened.append)
+
+    slot = dos.slots_available(dos_save)[0]
+    note = window.import_dos_save(folder=str(dos_save))
+    out = tmp_path / f"PORSAVE{slot}.D64"
+
+    assert out.exists(), f"Convert wrote nothing; it said {note!r}"
+    assert out.read_bytes() == rehearse(dos_save, slot, files).disk.to_bytes()
+    assert window.path == out
+    assert not window.dirty
+    assert opened == [str(out)]
+    assert out.name in note
+    assert out.name in window.windowTitle()
+    assert "*" not in window.windowTitle()
+    window.close()
+
+
+@needs_dos_saves
+@needs_disks
+def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
+        app, tmp_path, dos_save, monkeypatch):
+    """A refused write reaches the user as the sentence it raised, in the pane
+    the losses are already reported in, with the window still open on the path
+    that has to change -- not as a traceback in the log and nothing on screen.
+
+    No backup folder is the refusal that can be stood up without depending on
+    what a filesystem allows: `editor/files.py` will not overwrite a save with
+    nowhere to put the copy, and it checks that before it looks at whether the
+    target exists.
+    """
+    from PyQt6.QtWidgets import QDialog
+
+    import editor.dosimport as di
+    import editor.window as ew
+    from editor.window import EditorWindow
+
+    tries = []
+
+    def once(self):
+        tries.append(self)
+        return (QDialog.DialogCode.Accepted if len(tries) == 1
+                else QDialog.DialogCode.Rejected)
+
+    monkeypatch.setattr(di.DosImportDialog, "exec", once)
+    # A window somebody is managing the backup folder for, and it is unset --
+    # `wish/window.py` hands over `""` before any save has been opened.
+    window = EditorWindow(backups="", disks=str(game_disk().parent),
+                          last_save_folder=str(tmp_path))
+    assert window.import_dos_save(folder=str(dos_save)) == "cancelled"
+
+    said = tries[0].report_pane.toPlainText()
+    assert "backup" in said.lower(), said
+    assert not said.startswith("Traceback")
+    assert sorted(p.name for p in tmp_path.iterdir()) == []
+    # The party is still in the window and still unsaved, which is the honest
+    # state and is what a failed Save As leaves too -- so closing asks, and a
+    # test that did not answer would block here forever.
+    assert window.dirty
+    monkeypatch.setattr(ew.QMessageBox, "question",
+                        lambda *a, **k: ew.QMessageBox.StandardButton.Discard)
     window.close()
 
 

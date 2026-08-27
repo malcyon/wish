@@ -60,6 +60,15 @@ SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
 #: `editor` still imports nothing from `wish`.
 _log = logging.getLogger("wish.editor.window")
 
+#: What the Open and Save As pickers offer to filter on. Donald's wording,
+#: 2026-08-27: *"These should be described as 'C64 disk image (*.d64 *.D64)'"*
+#: -- the file is a Commodore 64 disk image, and "Gold Box" named the games on
+#: it rather than the thing being opened.
+DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
+#: The Save As picker's title. `editor/dosimport.py`'s Browse… opens the same
+#: picker for the same purpose and reuses this rather than wording it again.
+SAVE_AS_TITLE = "Save the disk as"
+
 
 def _size_combo(combo: QComboBox) -> None:
     """As wide as its longest name, and no wider.
@@ -928,7 +937,7 @@ class EditorWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(
             self, "Open a save disk",
             files.open_start_dir(self.last_save_folder, self.path),
-            "Gold Box disks (*.d64 *.D64);;All files (*)")
+            DISK_FILTER)
         if path:
             self.load(path)
 
@@ -948,11 +957,11 @@ class EditorWindow(QMainWindow):
         """Show a party that is already built, from wherever it came.
 
         `load` reads one off a disk; the DOS import builds one in memory and
-        has **no path at all** -- the disk it made did not exist a moment ago
-        and no file has been chosen for it yet, so `path` is None and Save As
-        is what names one. `dirty` marks every row changed, which is how an
-        import arrives: on screen, in the title bar, and not yet written
-        anywhere.
+        hands over the file it is about to be written to, which nothing has
+        created yet. `path` is still `str | None`, because a conversion can be
+        adopted with no file behind it at all -- see `adopt_conversion`.
+        `dirty` marks every row changed, which is how an import arrives: on
+        screen, in the title bar, and not yet written anywhere.
         """
         self.party = party
         self.path = pathlib.Path(path) if path else None
@@ -1011,20 +1020,35 @@ class EditorWindow(QMainWindow):
         animate_disk = self._find_disk(read_animate)
         if icon_disk is None or animate_disk is None:
             return None
-        return GameFiles(icon=IconParts.load(icon_disk).default_icon(),
-                         animate=read_animate(animate_disk),
-                         icon_disk=icon_disk, animate_disk=animate_disk)
+        try:
+            return GameFiles(icon=IconParts.load(icon_disk).default_icon(),
+                             animate=read_animate(animate_disk))
+        except Exception:
+            # `_find_disk` proves the two files *load*; it does not prove the
+            # icon option tables on that disk are long enough for the default
+            # selection to be in range, and nothing here proves the second read
+            # of a disk that has since been unplugged succeeds. Returning None
+            # is what puts the refusal in front of the user -- without it the
+            # exception escapes the menu's slot, `wish/debuglog.py` logs it and
+            # the user sees nothing happen at all. The disks are named because
+            # they are what a bug report would have to start from.
+            _log.exception("could not read the import's game files off "
+                           "%s and %s", icon_disk, animate_disk)
+            return None
 
     def import_dos_save(self, folder: str | None = None) -> str:
         """File > Import > DOS Save Folder… Returns what happened, for a test.
 
-        A picker, a window and a Save As, and no write until the last of
-        those: what the conversion costs is on screen before the button that
-        commits it exists to press, and what it commits is a party in this
-        window with no file behind it.  The editor's own Save is what reaches
-        the disk, so the backup in `editor/files.py` covers an import like any
-        other edit -- and there is nothing to back up, because the disk this
-        writes did not exist a moment ago.
+        A folder picker and then one window, which names the file it will
+        write on its bottom row: what the conversion costs is on screen before
+        the button that commits it can be pressed, and pressing it converts and
+        writes, with no second dialog after it.  Donald's shape, 2026-08-27.
+
+        The write is the editor's own `save`, so `editor/files.py`'s backup
+        covers an import exactly as it covers any other edit.  A write that
+        cannot happen -- an unwritable folder, no backup folder set -- goes
+        back into the window's report pane as the sentence it raised, and the
+        window stays open on the path that has to change.
 
         **The game disks are checked first**, before the folder picker opens,
         so a user with none is not asked to choose something and then told it
@@ -1041,8 +1065,10 @@ class EditorWindow(QMainWindow):
             DosImportDialog,
         )
 
-        files = self.game_files_for_import()
-        if files is None:
+        # Not `files`, which is this module's `editor.files`: the save below
+        # goes through it.
+        game_files = self.game_files_for_import()
+        if game_files is None:
             QMessageBox.critical(self, NO_DISKS_TITLE, NO_DISKS)
             return "no game disks"
         if folder is None:
@@ -1055,29 +1081,46 @@ class EditorWindow(QMainWindow):
             QMessageBox.warning(self, NO_SLOTS_TITLE,
                                 NO_SLOTS.format(folder=folder))
             return "no DOS save"
-        dialog = DosImportDialog(folder, files, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return "cancelled"
-        note = self.adopt_conversion(dialog.conversion)
-        if dialog.conversion is not None:
-            self.save_as()
-        return note
+        dialog = DosImportDialog(
+            folder, game_files, self,
+            start_dir=files.open_start_dir(self.last_save_folder, self.path))
+        while True:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return "cancelled"
+            if dialog.conversion is None:
+                return "cancelled"
+            self.adopt_conversion(dialog.conversion, dialog.target())
+            try:
+                # Non-interactive: the refusal belongs in the window the user
+                # is looking at, not in a third dialog on top of it.
+                return self.save(interactive=False)
+            except Exception as exc:
+                dialog.refuse(str(exc))
 
-    def adopt_conversion(self, conversion) -> str:
-        """Show a converted save, unwritten. Separate so a test can call it.
+    def adopt_conversion(self, conversion, path: str | None = None) -> str:
+        """Show a converted save. Separate so a test can call it.
 
-        **With no path**, which is the honest state: the disk was built in
-        memory a moment ago and there is no file it came from.  Save As is
-        what names one.
+        `path` is the file Convert is about to write, set before the write for
+        the same reason `save_as` sets it before its own: the automatic backup
+        folder is pointed at the save's own folder by the `opened` signal, so
+        it has to know where the save is going before the copy is taken.
+
+        **None is a conversion with no file behind it** -- the disk was built
+        in memory a moment ago and there is no file it came from.  Nothing in
+        the menus reaches that any more, and it is the state `_adopt` has to go
+        on handling: `path` is `str | None` everywhere below it.
+
+        Dirty either way, because at this point nothing has been written yet;
+        `save` is what clears it.
         """
         from .dosimport import CONVERTED
 
         if conversion is None:
             return "cancelled"
-        note = CONVERTED.format(slot=conversion.slot)
+        note = CONVERTED.format(slot=conversion.slot) if path is None else None
         party = Party("", game=conversion.game, disk=conversion.disk)
-        self._adopt(party, None, note=note, dirty=True)
-        return note
+        self._adopt(party, path, note=note, dirty=True)
+        return note or ""
 
     # -- exports ----------------------------------------------------------
     #
@@ -1457,8 +1500,7 @@ class EditorWindow(QMainWindow):
         if self.party is None:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save the disk as", str(self.path or ""),
-            "Gold Box disks (*.d64 *.D64);;All files (*)")
+            self, SAVE_AS_TITLE, str(self.path or ""), DISK_FILTER)
         if not path:
             return
         self.path = pathlib.Path(path)
