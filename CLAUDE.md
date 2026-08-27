@@ -176,13 +176,27 @@ the routing.
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. It runs in the shared tree, so scope it to the files it owns |
 | `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands. It runs in the shared tree, so scope it to the files it owns |
-| `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy |
+| `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**: the banned-words sweep of titles, bodies and comments, and the fixing of them, are its work and not a `general-purpose` agent's |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
 
 **`quick-fix`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? #71 looked like ordinary work and took nine
 rounds and a `QTableView` subclass. #73 named the two candidate shapes and
 said which was smaller, and that is what made it assignable.
+
+**Send work to the agent whose definition already describes it.** Each
+`.claude/agents/*.md` says what its agent is for, and that sentence is the
+routing rule -- `backlog-auditor` names the "Words to avoid" sweep in its own
+description, and `changelog-writer` names keeping `CHANGELOG.md` current. On
+2026-08-26 both were reached past: a `general-purpose` agent was sent to fix
+banned words in issues, and a second one to work out which fixed bugs a
+`v0.1.0` user could have hit -- a question `changelog-writer` needed answered
+*before* it wrote the entries and should have been asked in its own brief.
+
+The cost is not only the model. A specialist has read its own domain's rules;
+a general-purpose agent has to be told them in the brief, and whatever the
+brief forgets is what goes wrong. **Before writing a brief, read the
+definitions and ask which one already owns this.**
 
 **Every agent gets an escape hatch and it is a success, not a failure.** If the
 work turns out to need something the agent is not for, it stops and says so and
