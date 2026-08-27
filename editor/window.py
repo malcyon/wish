@@ -981,7 +981,7 @@ class EditorWindow(QMainWindow):
     # -- importing --------------------------------------------------------
 
     def import_dos_save(self, folder: str | None = None) -> str:
-        """File > Import > DOS… Returns what happened, for a test.
+        """File > Import > DOS Save Folder… Returns what happened, for a test.
 
         Two pickers and a window, and no write: what the conversion costs is
         on screen before the button that commits it exists to press, and what

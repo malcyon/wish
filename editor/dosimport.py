@@ -89,7 +89,10 @@ def enabled() -> bool:
 
 #: The File menu entry and the submenu it hangs under.
 MENU_IMPORT = "&Import"
-MENU_DOS_SAVE = "&DOS…"
+#: The entry says **Folder** because the picker behind it asks for one -- a
+#: DOS save is a dozen loose files with no single one to point at, and
+#: "DOS…" read as a file chooser.  Donald's wording, approved 2026-08-26.
+MENU_DOS_SAVE = "&DOS Save Folder…"
 
 #: The folder picker, and what is said when the folder holds no DOS save.
 FOLDER_TITLE = "Choose a DOS save folder"
