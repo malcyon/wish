@@ -64,9 +64,15 @@ _log = logging.getLogger("wish.editor.dosimport")
 #: and a sentence explaining what "experimental" meant, and this interface has
 #: had several such sentences removed already.
 #:
-#: **Comes off when #57 and #58 close** -- the portrait and the clock. That is
-#: the whole condition; a flag with no stated way out is a second code path
-#: kept forever.
+#: **Comes off when #57 and #58 close** -- the portrait and the clock -- **and
+#: when the README says how the first picker works.** It asks for the *folder*
+#: a DOS save lives in, not a file, because one save is a dozen or more loose
+#: files with no single one to point at. That is defensible and it is not
+#: guessable: Donald, who wrote the format documentation, was stopped by it on
+#: 2026-08-26 -- the folder holds no subdirectories, so the dialog listed
+#: nothing and there was no sign he was already standing in the right place.
+#: A player meeting it cold has less to go on than he did. Two conditions, both
+#: stated; a flag with no way out is a second code path kept forever.
 ENV = "WISH_EXPERIMENTAL_DOS_IMPORT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching
