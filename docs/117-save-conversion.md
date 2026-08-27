@@ -464,8 +464,9 @@ from somewhere.** This is the whole list.
 | `$4D00`-`$58FF` | 3072 | twelve character slots | **yes, with work** — a field remap, `goldbox/dos_layout.py` |
 | `$5900`-`$64FF` | 3072 | item area, 16 items x 16 bytes per slot | **yes** — the DOS item record's last 17 bytes *are* the C64's 16, unpacked; `tools.dosbox.item_to_c64` is the copy. Obstacle 3 |
 | `$8300`-`$83FF` | 256 | roster: derived combat values | **yes** — recompute for the target, do not copy |
-| `$8400`-`$8AFF` | 1792 | `ANIMATE00` and a bitmap buffer — resident code, not party state | **yes**, and now measured rather than assumed: a converted save with all 1792 bytes zeroed loaded, walked and changed area, with `$0400` matching `GEO00` in 1024 of 1024 (#118 step 3, four variants). Cache slot 11 is what decides the transition; the bytes it points at did not. Still copied from the template today. Untested: a fight fought to its end, and an arrival that plays an animation — `#122 (A converted save says ANIMATE00 is resident and carries whatever the template had there)` |
-| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes a legal icon |
+| `$8400`-`$8753` | 852 | `ANIMATE00`, resident — code, not party state | **yes** — read the file off the player's own `POOL` disk. 852 payload bytes at load address `$1000`, byte-identical on all eight sides, and 829 of the 852 match what an engine-written save holds here on all 14 of Donald's save disks. `$8400 + 852 - 1` is `$8753`, so the boundary with the buffer below is the file's own length rather than a guess |
+| `$8754`-`$8AFF` | 940 | bitmap buffer | **yes, as zero** — 407 non-zero bytes of a template wiped, and the result loaded, walked, fought and changed area indistinguishably from the control (#118 step 3) |
+| `$4BE0`-`$4CFF` | 288 | combat icon table | **synthesise** — DOS has no equivalent; `goldbox/iconparts.py` composes the icon the game's own character creation writes. **Zero is refused**: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed icon draws as a 3x3 block of black hooks in a fight (#57) |
 | `$49C0`-`$49C2` | 3 | party x, y, facing | **yes** — DOS keeps them at file offsets 12801, 12802, 12803; the facing is the C64's doubled. Obstacle 2 |
 | `$4BC2` | 1 | current `GEO` | **yes** — DOS keeps the area id at file offset 395, in the same numbering. Obstacle 2 |
 | `$49C6`-`$49CB` | 6 | clock, six digits | **probably** — needs the DOS clock format |
@@ -786,15 +787,17 @@ checking was better than the question:
   in any save on the disks has a trait id at all, because the C64 works his
   out from the race byte. "The `.SPC` effects file" below is what that costs
   a conversion and what closes it;
-* **`0x0C7` is load-bearing.** The item count, not the `.ITM` file's length,
+* **`0x0C7` is what the reader has to trust.** The item count, not the `.ITM` file's length,
   says how many items a character has. The archives hold exports sitting
   beside stale `.ITM` files from an earlier save, and trusting the file length
   gives `BRYTWYN` seven items she does not carry.
 
-**3. The clock is still unread.** `$49C6`-`$49CB` is six digits on the C64 and
-nothing has been found in the DOS save that carries it. The converter leaves
-the template save's clock alone, which is a defensible constant and not an
-answer.
+**3. The clock is read, and this said it was not.** `$49C6`-`$49CB` is six
+digits on the C64 and the DOS save keeps the same six as words at the same
+address; `apply_clock` copies them digit for digit in both directions (#58,
+#67). The paragraph that stood here said the converter left the template
+save's clock alone — which is what put a party that saved at 10:15 in the
+game reading 21:15, and #103 is where that was found and fixed.
 
 ## Order of work
 
@@ -912,15 +915,22 @@ the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `$49F2` alone (`$49C5` reads 0 out there, so `convert_save` keys on
 `dos_savegame.current_area`). The converted outdoor shape follows #47's
 live-proven cold-boot recipe exactly, but **the conversion itself has not
-been loaded on a C64 end to end** — that run is the remaining proof.
-A template already standing in the target area keeps its own cache untouched:
-that one is real, written by the game, and names more than the two slots.
+been loaded on a C64 end to end** — that run is the remaining proof for the
+outdoor shape. The indoor one has run: `work/p119/` boots a save Wish built
+from nothing and the party in it loads, reads right on the sheet and walks.
 
-### What `convert_save` writes, and what it leaves
+The cache is written this way **every time**, even when the party is going to
+an area the save already names — #121 removed the branch that kept an existing
+cache, which was the last place here that preferred an inherited value to a
+computed one.
 
-A template C64 save is still required, and for a good reason: `$8400`-`$8AFF`
-is `ANIMATE00` and a bitmap buffer rather than save data, and the combat icons
-are a C64 charset DOS has no equivalent of. Everything else is replaced.
+### What `convert_save` writes, and there is nothing left over (#118)
+
+**There is no template.** `goldbox.dos.new_save` starts from two zeroed
+buffers and writes all 9216 bytes; `goldbox.dos.save_disk` puts them on a
+`D64.blank()`. What it costs is the player's own `POOL*` disks at the moment
+it runs, for the two things that are the game's own data and may not be stored
+here — and with those missing the import refuses rather than inventing them.
 
 | region | from |
 |---|---|
@@ -929,14 +939,18 @@ are a C64 charset DOS has no equivalent of. Everything else is replaced.
 | the `SAVEDGAME1` roster, six blocks | the converted record's `0x100`-`0x11F` |
 | quest flags `$4A20`-`$4AF8` | the DOS word array, narrowed |
 | party square and facing `$49C0`-`$49C2` | `SAVGAM?.DAT` bytes 12801-12803 |
+| the clock `$49C6`-`$49CB` | the DOS save's own six digit words |
 | the four effect arrays, and `$4A00`-`$4A1F` | zeroed — "nothing running" is a legal state, and `DUNGEON $202A` zeroes the scratch on every area change |
-| the loaded-files cache `$4BC0`-`$4BD8`, and `$49EA`, `$49C5`, `$49F2`, `$49E6` with it | **`$FF` in all twenty-five slots**, then slot 2 = the area's `GEO` number and slot 8 = the area id, with the disk hint, the map and the script id to match — or the template's own cache untouched where it already stands in that area |
-| the combat icon table `$4BE0`-`$4CFF` | **kept from the template** |
-| everything else | **kept from the template**, and said so in the report |
+| the loaded-files cache `$4BC0`-`$4BD8`, and `$49EA`, `$49C5`, `$49F2`, `$49E6` with it | **`$FF` in all twenty-five slots**, then slot 2 = the area's `GEO` number and slot 8 = the area id, with the disk hint, the map and the script id to match |
+| the combat icons of the party's slots `$4BE0`+ | **composed** — `(large, weapon 0, head 1)` out of `SPELLE64`/`SPELLN64`, which is what the game's own character creation writes, 8 of 8 (#57) |
+| `SAVEDGAME1` `$8400`-`$8753` | **`ANIMATE00`** off a `POOL` side |
+| the slots, item blocks, icons and roster blocks above the party | **zero**, entire — not the one `DROP`-style byte the engine writes |
+| the 193 unattributed header bytes, and `$8754`-`$8AFF` | **zero**, each with a run behind it (#118 step 3) |
 
-`Report.total` is the whole payload for a save conversion, and
-`Report.unaccounted` is empty: every one of `SAVEDGAME0`'s 7168 bytes has a
-one-line provenance, "carried through from the template save" included.
+`Report.unaccounted` is empty and so is `Report.unwritten`: every one of the
+9216 bytes has a one-line provenance, and none of them says "carried through
+from the template save". `unwritten` is what makes that checkable rather than
+asserted — `new_save` refuses to return a save with an entry in it.
 
 ## The design, drawn
 
@@ -1339,8 +1353,10 @@ graph LR
   derive --> items
   dos --> areas
   dos --> c64_codec
+  dos -.->|deferred| d64
   dos --> dos_layout
   dos --> dos_savegame
+  dos -.->|deferred| games
   dos -.->|deferred| icons
   dos -.->|deferred| items
   dos --> layout
