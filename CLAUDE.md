@@ -951,6 +951,17 @@ sentence: "the party in each of the three converted saves could be made to
 move" says what was proven, where "the saves walk" could equally mean the file
 loaded, the game did not crash, or somebody took a step.
 
+**The rule survived the sentence it was written about and was broken again on
+2026-08-27**, in a reply announcing that the DOS import no longer needs a
+template: *"The template is gone, and it played."* Donald: *"I don't know what
+'it played' means. A template cannot play a video game. It is a template, it
+can't action anything on its own."* Two faults in five words -- a thing was
+given a person's verb, and `it` pointed at the noun nearest to hand rather than
+the one meant. What was true is that **a party** converted onto a disk Wish
+built could be played in the emulator, and that sentence has a person in it and
+cannot be misread. Announcing a result is exactly where this slips, because the
+result feels like the subject; it is not.
+
 **The sense that is fine is the one with no person in it** -- walking a range,
 a loop or a structure. `docs/118-debug-mode.md`'s "walks `$9800` from 10 to 18"
 is exactly right and should stay. The test is whether a person or a party is
