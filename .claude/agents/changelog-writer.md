@@ -106,20 +106,26 @@ support for Curse of the Azure Bonds and Secrets of the Silver Blades, where
 character editing should work but bugs are expected."* That sentence is worth
 more than a confident one, and it is the register Donald wants.
 
-**End every line with its issue number in parentheses**, after the full stop:
+**End every line with its issue, as a Markdown link**, after the full stop:
 
 ```
 - Roster shows the open title's own race and class names, instead of always
-  showing Pool of Radiance's. (#78)
+  showing Pool of Radiance's. ([#78](https://github.com/malcyon/wish/issues/78))
 ```
 
-Where a line covers more than one, list them: `(#71, #77)`.
+Where a line covers more than one, list them the same way, comma separated.
 
-GitHub autolinks a bare `#53` **on the release page**, which is where these are
-read -- the workflow publishes this file's section as the release body. It does
-*not* autolink inside `CHANGELOG.md` viewed as a file, where the number stays
-plain text. That is the accepted trade: a link where it is used, a bare number
-where it is not.
+**Write the link out; do not rely on a bare `#78`.** GitHub autolinks a bare
+number only where it has repository context -- the release page has it, a
+Markdown file viewed in the repository does not, and `CHANGELOG.md` is read in
+both. Measured through GitHub's own renderer on 2026-08-26: bare `#78` becomes
+a link on the release page and stays plain text in the file; the written-out
+link becomes a link in both, and keeps the hovercard that shows the issue's
+title on hover.
+
+That hovercard is why this satisfies `CLAUDE.md`'s rule that a bare `#59`
+carries nothing. The title is one hover away, so the line does not have to
+repeat in our words what it already says in a player's.
 
 This is the one place a bare number is right. `CLAUDE.md` asks everywhere else
 for `#59 (Map the DOS saved game, not just the character record)`, because a
