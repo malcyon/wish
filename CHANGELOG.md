@@ -19,12 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Live automapper reads party stats and runs its five live actions (heal, store/restore spells, identify, quickfight) from the correct memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's addresses.
+- Live automapper's five actions -- heal, store and restore memorised spells, identify items, turn quickfight off -- now act on the open title's own memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's.
 - Fast Travel now confirms the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
-- Character editor's header no longer draws on top of itself when the window is narrowed, and the window now fits a 1280x720 screen at any interface font size.
 - Automapper window now fits a 1280x720 screen at a larger interface font too, instead of growing past it.
-- Roster's Name column stays within its width limit instead of growing past it; a long name is shortened with an ellipsis instead.
-- Roster's horizontal scroll bar no longer hides the last character's row.
 - Roster shows the open title's own race and class names, instead of always showing Pool of Radiance's.
 - A Silver Blades ranger's spellbook is no longer greyed out as if he knows no spells.
 - Live roster no longer shows wrong hit points when the game puts a picture over the whole screen; it keeps its last good reading until the party is readable again.
