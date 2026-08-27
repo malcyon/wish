@@ -860,6 +860,15 @@ class D64:
         track fills, the next one carries on from the same running sector
         number rather than restarting at 0 -- which is what makes the spill
         from track 17 to track 16 land on sector 4 on the player's disks.
+
+        **Measured within one speed zone only.** Every spill in evidence is
+        track 17 to track 16, both 21 sectors, because no file a 1541 wrote
+        on any disk here is long enough to cross into the 19-, 18- or
+        17-sector zones. The wrap uses each track's own sector count and
+        fills to exactly 664 blocks when driven across all three by hand, so
+        the accounting is sound -- but whether a real drive picks the *same*
+        sector at a zone boundary is unverified, and a save file is far too
+        short to reach one.
         """
         if count < 1:
             raise ValueError(f"a file occupies at least one block, got {count}")
