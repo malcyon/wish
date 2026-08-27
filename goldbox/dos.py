@@ -743,14 +743,19 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
     return out
 
 
-def to_c64_record(dos: DosCharacter, slot: int = 0,
+def to_c64_record(dos: DosCharacter,
                   icon: bytes | None = None) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
     A DOS read and a C64 write with the neutral record between them, which is
-    all this function is now.  `slot` only names the character in the report.
-    `icon` is the 36-byte combat icon; DOS has no equivalent -- its art is a
-    different set -- so with none given the field is left zero and reported.
+    all this function is now.  `icon` is the 36-byte combat icon; DOS has no
+    equivalent -- its art is a different set -- so with none given the field
+    is left zero and reported.
+
+    The report names no character: it is one character's provenance, and which
+    character that is belongs to the caller, which is the only thing that
+    knows the slot and the marching position.  `convert_save` prefixes each of
+    its own notes that way (#107).
     """
     return c64_codec.write(to_neutral(dos), icon=icon)
 
@@ -1309,7 +1314,7 @@ def export_party(folder: str | pathlib.Path, slot: str,
 
     party = []
     for index, char in enumerate(read_party(folder, slot)):
-        rec, rep = to_c64_record(char, slot=index)
+        rec, rep = to_c64_record(char)
         inv = rec.get_raw("inventory")
         items = [Item(inv[n * C64_ITEM_SIZE:(n + 1) * C64_ITEM_SIZE], names)
                  for n in range(len(inv) // C64_ITEM_SIZE)]
@@ -1719,7 +1724,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         if keep_icons:
             at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
             icon = bytes(save0[at:at + ICON_SIZE])
-        rec, one = to_c64_record(char, slot=place, icon=icon)
+        rec, one = to_c64_record(char, icon=icon)
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
         # engine-written save read.  It follows the slot the record lands in.
