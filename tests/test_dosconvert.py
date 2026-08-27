@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import pathlib
 
+import gamedata
 import pytest
 import yaml
+from gamedata import needs_disks
 from test_dossave import _game_dirs, _save_dir, needs_dos_saves
 
 from goldbox import areas, dos, dos_layout, savegame, spells
@@ -954,10 +956,11 @@ def test_no_spare_character_survives_a_conversion():
     not still read as characters: the party would arrive with strangers in it,
     carrying items that are not theirs and sharing the experience.
 
-    **Emptied the way the engine does it**, which is one byte: `#104`'s
-    measurement of the game's own `DROP CHARACTER` changed the first byte of
-    the name and the roster's `roster_in_use`, and left the rest of the slot
-    alone. So this asserts the slot reads empty, not that it reads zero.
+    **The whole slot goes**, not the one byte the engine's own `DROP` writes
+    (#118). `ZSLOT8` wiped 555 non-zero bytes of an eight-character save this
+    way and the party in it walked five squares and won a fight, so a slot
+    that is nobody's carries none of the previous owner's abilities, hit
+    points or items either.
     """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
@@ -981,8 +984,190 @@ def test_no_spare_character_survives_a_conversion():
     for place in range(len(party), 8):
         assert save1[place * savegame.ROSTER_STRIDE] == 0, place
     assert report.unaccounted == []
-    # Not zeroed: the engine leaves the rest of a dropped character's slot
-    # where it was, and imitating it is what keeps this a measured state.
-    at = savegame.SLOT_AREA_BASE - savegame.SAVE0_LOAD_ADDRESS \
-        + 6 * savegame.SLOT_STRIDE
-    assert bytes(save0[at:at + 5]) == b"\x00YZZY"
+    # And nothing of XYZZY is left behind it: not the name, not the abilities
+    # `_plant` wrote at +0x14, not the item block, not the icon.
+    for place in range(len(party), dos.SLOT_TOTAL):
+        for base in (savegame.SLOT_AREA_BASE, dos.ITEM_AREA):
+            at = base - savegame.SAVE0_LOAD_ADDRESS + place * dos.SLOT_STRIDE
+            assert bytes(save0[at:at + dos.SLOT_STRIDE]) == \
+                bytes(dos.SLOT_STRIDE), f"slot {place} at ${base:04X}"
+    for place in range(len(party), savegame.SLOT_COUNT):
+        at = dos.ICON_TABLE - savegame.SAVE0_LOAD_ADDRESS \
+            + place * dos.ICON_SIZE
+        assert bytes(save0[at:at + dos.ICON_SIZE]) == bytes(dos.ICON_SIZE)
+        at = place * savegame.ROSTER_STRIDE
+        assert bytes(save1[at:at + savegame.ROSTER_STRIDE]) == \
+            bytes(savegame.ROSTER_STRIDE)
+
+
+# --- a save built from nothing (#118) ---------------------------------------
+#
+# The regions below are what a template used to supply. Each has a run behind
+# it in the emulator, on this issue's comments; what these assert is that the
+# writer puts the measured value there rather than leaving the buffer's.
+
+def _game_files():
+    """The icon and `ANIMATE00` off the player's own disks, or skip.
+
+    Read at run time, never stored: both are the game's own data and
+    `CLAUDE.md` forbids a fixture that is a slice of a game file.
+    """
+    import gamedata
+
+    from goldbox.d64 import load_payload
+    from goldbox.iconparts import IconParts
+
+    where = gamedata.disk_dir()
+    if where is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    icon = animate = None
+    for disk in sorted(where.glob("POOL*.[dD]64")):
+        try:
+            icon = icon if icon is not None else \
+                IconParts.load(str(disk)).default_icon()
+        except Exception:
+            pass
+        try:
+            animate = animate if animate is not None else \
+                load_payload(str(disk), dos.ANIMATE_FILE)
+        except Exception:
+            pass
+    if icon is None or animate is None:
+        pytest.skip("no POOL disk here carries SPELLE64 or ANIMATE00")
+    return icon, animate
+
+
+@needs_dos_saves
+def test_a_save_built_from_nothing_accounts_for_every_byte():
+    """`new_save` returns a report whose `unwritten` is empty, for every slot
+    the DOS folder holds.
+
+    That is the whole of #118 stated as a test: a byte with no source is a
+    byte inherited from somebody else's save, and there is no longer a save to
+    inherit one from. Without the zeroing tables and the two game files this
+    goes red with 5405 entries.
+    """
+    icon, animate = _game_files()
+    slots = dos.slots_available(_save_dir())
+    assert slots, "the DOS save folder has to hold at least one slot"
+    for slot in slots:
+        save0, save1, report = dos.new_save(_save_dir(), slot, icon, animate)
+        assert report.unwritten == [], slot
+        assert report.unaccounted == [], slot
+        assert len(save0) + len(save1) == report.total == 9216
+
+
+@needs_dos_saves
+def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
+    """Zero is refused here (#57): screen code 0 in `CHARPIC00` is a real
+    glyph, so a zeroed 36-byte icon draws as a 3x3 block of black hooks on the
+    combat floor rather than as nothing.
+
+    So every occupied slot carries the icon the game's own character creation
+    writes, and every empty one carries zero -- nothing draws an icon for a
+    slot with no character in it.
+    """
+    icon, animate = _game_files()
+    party = dos.read_party(_save_dir(), "A")
+    save0, _save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    for place in range(savegame.SLOT_COUNT):
+        at = dos.ICON_TABLE - dos.SAVE0_BASE + place * dos.ICON_SIZE
+        got = bytes(save0[at:at + dos.ICON_SIZE])
+        want = icon if place < len(party) else bytes(dos.ICON_SIZE)
+        assert got == want, place
+        if place < len(party):
+            assert any(got), f"slot {place} would draw as black hooks"
+
+
+@needs_disks
+def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
+    """Composed from the option tables, and checked against the player's own
+    save disks rather than against a number written down here.
+
+    Slots 6 and 7 are the NPC-only slots nobody has ever edited, so they still
+    hold what the table was seeded with. **28 of 28** -- every save disk, both
+    slots -- and **0 of 84** in slots 0-5, which is what says the match is the
+    creation default rather than a shape any character happens to carry.
+    """
+    from goldbox import icons
+    from goldbox.d64 import D64
+    from goldbox.iconparts import IconParts
+
+    #: Slots 6 and 7 are the two a DOS party can never fill, so the engine's
+    #: seeding is still in them on every save the player has ever made.
+    NPC_SLOTS = (6, 7)
+
+    want = IconParts.load(str(gamedata.game_disk("POOL3"))).default_icon()
+    checked = seeded = nudged = 0
+    for path in gamedata.save_disks():
+        try:
+            _game, sg0, _sg1 = savegame.load_save(D64.open(path))
+        except Exception:
+            continue                      # a roster disk with no save on it
+        checked += 1
+        payload = sg0.to_bytes()
+        for place in range(savegame.SLOT_COUNT):
+            same = icons.icon_for_slot(payload, place).raw == want
+            if place in NPC_SLOTS:
+                seeded += same
+            else:
+                nudged += same
+    assert checked, "needs at least one save disk to check against"
+    assert seeded == checked * len(NPC_SLOTS), \
+        f"{seeded} of {checked * len(NPC_SLOTS)} NPC slots carry it"
+    assert nudged == 0, "a slot the player edited matches the default"
+
+
+@needs_dos_saves
+def test_animate00_is_written_where_the_cache_says_it_is():
+    """`$8400`-`$8753` is `ANIMATE00` as the loader leaves it, off the
+    player's own disk.
+
+    It is not scratch: the loaded-files cache slot 11 says the file is
+    resident, so the engine does not reload it and calls into whatever the
+    save carried (#102). The bounds are the file's own -- `$8400 + 852 - 1` is
+    `$8753`, exactly where the bitmap buffer begins -- and the buffer after it
+    is zero, which is what makes the split checkable rather than asserted.
+    """
+    icon, animate = _game_files()
+    assert len(animate) == dos.ANIMATE_SIZE
+    _save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    at = dos.ANIMATE_AT - dos.SAVE1_BASE
+    assert bytes(save1[at:at + len(animate)]) == animate
+    end = at + len(animate)
+    assert dos.SAVE1_BASE + end == dos.BITMAP_BUFFER[0]
+    assert bytes(save1[end:]) == bytes(len(save1) - end)
+
+
+@needs_dos_saves
+def test_a_wrong_sized_animate_is_refused_rather_than_written():
+    """852 bytes on all eight `POOL` sides. Something else is not the file,
+    and writing it would put the wrong bytes under a cache entry that says
+    they are the right ones.
+
+    **The long case is the one that needs the check.** A short payload leaves
+    a byte with no source and `new_save` catches it anyway; a long one runs
+    past `$8753` into the bitmap buffer, and every byte of it is accounted
+    for, so nothing else would notice.
+    """
+    icon, animate = _game_files()
+    for wrong in (animate[:-1], animate + b"\x00"):
+        with pytest.raises(dos.DosRecordError):
+            dos.new_save(_save_dir(), "A", icon, wrong)
+
+
+@needs_dos_saves
+def test_the_built_disk_is_the_two_files_a_save_disk_needs():
+    """Thirteen of the player's fifteen save disks hold `SAVEDGAME1` and
+    `SAVEDGAME0` in that directory order and nothing else, so a disk built
+    from nothing is those two files and no others."""
+    from goldbox.savegame import load_save
+
+    icon, animate = _game_files()
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    disk = dos.save_disk(bytes(save0), bytes(save1))
+    assert [bytes(e.name) for e in disk.directory()] == \
+        [b"SAVEDGAME1", b"SAVEDGAME0"]
+    _game, sg0, sg1 = load_save(disk)
+    assert sg0.to_bytes() == bytes(save0)
+    assert sg1.to_bytes() == bytes(save1)

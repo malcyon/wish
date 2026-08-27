@@ -102,6 +102,8 @@ __all__ = [
     "apply_clock",
     "marching_slot",
     "convert_save",
+    "new_save",
+    "save_disk",
     "WriteReport",
     "write",
     "write_field_disposition",
@@ -1620,6 +1622,85 @@ CURRENT_SCRIPT = 0x49F2
 #: 1 indoors, 0 on the travel grid: `LOADFILES` picks the file *type* from it.
 INDOORS = 0x49E6
 
+#: How big each payload is, so a conversion can build one rather than be
+#: handed one.  `goldbox/savegame.py`'s own numbers, repeated here beside
+#: `SAVE0_BASE` because this module's offsets are all relative to those.
+SAVE0_SIZE = 0x1C00             # $4900-$64FF
+SAVE1_SIZE = 0x0800             # $8300-$8AFF
+
+#: Twelve slots, not eight.  `$4D00`-`$54FF` is the eight the party can occupy
+#: and `$5500`-`$58FF` four more the engine fills during a fight; the item
+#: blocks from `$5900` run the same twelve, ending at `$64FF`.  A conversion
+#: writes the party's slots and zeroes all the rest, combat scratch included:
+#: `ZSLOT8` was built with slots 6-11 and item blocks 6-11 zeroed outright,
+#: and the party in it started a fight, fought it and won it -- so combat
+#: fills those four from nothing (#118, `work/p118-step3/runF.log`).
+SLOT_TOTAL = 12
+
+# ---------------------------------------------------------------------------
+# What a conversion writes as zero, and what measured it
+# ---------------------------------------------------------------------------
+#: The header bytes no part of the conversion computes, as `(address, size)`.
+#:
+#: All 193 of them were written as zero in a converted save that was then
+#: loaded, walked, taken into a random encounter and taken through an area
+#: change in VICE (#118, `work/p118-step3/runC.log` and `runE.log`).  The
+#: template was `PORSAVE13`, chosen because it is one of the few saves that
+#: carries something here to destroy: `$49EB` = 1, `$49F0`-`$49F1` the
+#: previous square, `$49FC` = 2, `$49FD`-`$49FE` the wall colours 8 and 9,
+#: `$49FF` = 1.  The result was indistinguishable from the control on every
+#: check -- the same six names, the same status line, the same arrival screen
+#: but for the blinking command-bar cursor, the same squares walked.
+#:
+#: Corroborated by a census of **99 distinct C64 save payloads**: 48 of the
+#: 56 that were unattributed before that run are zero in all 99, and all 56
+#: are zero in every one of Donald's own 13 `PORSAVE` disks.  The 137 in
+#: `$49FD`-`$49FE` and `$4AF9`-`$4B7F` were already graded "the engine
+#: rebuilds it" from the bytecode; the run is what turned that into a
+#: measurement.
+#:
+#: `$49C3`-`$49C4` is here because it is zero in every indoor save, and
+#: `apply_position` overwrites it with the travel square when the DOS party is
+#: outdoors -- so the zero is what an indoor conversion leaves and not what an
+#: outdoor one writes.
+#:
+#: **`$49EB` is the one entry with a better answer waiting.**  #59 established
+#: that the DOS save holds the same script variable at the same ECL address --
+#: `SHARED_SCRATCH` copies it in the other direction -- so a conversion could
+#: carry the party's own value instead of zeroing it.  Nobody has measured
+#: that in this direction, and zero is measured, so zero is what is written.
+HEADER_ZEROED: tuple[tuple[int, int], ...] = (
+    (0x49C3, 2), (0x49CC, 26), (0x49E7, 3), (0x49EB, 5), (0x49F0, 2),
+    (0x49F3, 9), (0x49FC, 1), (0x49FD, 2), (0x49FF, 1),
+    (0x4AF9, 135), (0x4BD9, 7),
+)
+
+#: `SAVEDGAME1`'s tail past `ANIMATE00`: the bitmap buffer, `$8754`-`$8AFF`.
+#: 940 bytes, of which 407 were non-zero on the template it was measured
+#: against.  Zeroed, loaded, walked, fought in and taken through an area
+#: change with no visible difference from the control (#118).
+BITMAP_BUFFER = (0x8754, 0x8AFF - 0x8754 + 1)
+
+#: Where the resident `ANIMATE00` sits in `SAVEDGAME1`, and the file it is.
+#:
+#: `$8400 + 852 - 1` is `$8753`, which is exactly where `BITMAP_BUFFER`
+#: begins, so the split between the two is measured rather than assumed.  The
+#: file is 852 payload bytes at load address `$1000` and is **byte-identical
+#: on all eight `POOL` sides**, so a reader never has to care which side is in
+#: the drive.  829 of the 852 match what an engine-written save carries at
+#: `$8400` on all 14 of the player's save disks; the 23 that differ are
+#: run-time state, and a save with all 852 written as zero loads, walks and
+#: changes area anyway (#118, `runD.log`).  So the file's own bytes are
+#: strictly closer to right than either zero or a stranger's save.
+#:
+#: The bytes are never stored here.  `convert_save` is *handed* the payload by
+#: a caller that found the disk -- `goldbox/` takes a game file as a parameter
+#: and never goes looking, which is what keeps the search in `automap/paths.py`
+#: and the application's preferences.
+ANIMATE_FILE = b"ANIMATE00"
+ANIMATE_AT = 0x8400
+ANIMATE_SIZE = 852
+
 
 #: The refusals, which reach the player through the import dialog's generic
 #: handler. Donald's wording, approved 2026-08-24.  Each fires on where the
@@ -1766,34 +1847,51 @@ class C64SaveReport(Report):
     #: right number.
     save0_size: int = 0x1C00
 
-    def address(self, offset: int) -> str:
-        """`SAVEDGAME1 $8300`-style, because `0x0100` now means two things."""
-        if offset < self.save0_size:
-            return f"SAVEDGAME0 ${SAVE0_BASE + offset:04X}"
-        return f"SAVEDGAME1 ${SAVE1_BASE + offset - self.save0_size:04X}"
+    #: Offsets the conversion did not write, and so left to whatever the
+    #: payload already held.  Empty when the save was built from nothing:
+    #: that is what makes "no template" checkable rather than asserted.
+    unwritten: list[int] = dataclasses.field(default_factory=list)
 
     def summary_notes(self) -> list[str]:
         lines = super().summary_notes()
         if self.total > self.save0_size:
             lines.append(f"  SAVEDGAME0 {self.save0_size} bytes, SAVEDGAME1 "
                          f"{self.total - self.save0_size}")
+        if self.unwritten:
+            lines.append(f"  {len(self.unwritten)} bytes left to the payload, "
+                         f"from {self.address(self.unwritten[0])}")
         return lines
+
+    def address(self, offset: int) -> str:
+        """`SAVEDGAME1 $8300`-style, because `0x0100` now means two things."""
+        if offset < self.save0_size:
+            return f"SAVEDGAME0 ${SAVE0_BASE + offset:04X}"
+        return f"SAVEDGAME1 ${SAVE1_BASE + offset - self.save0_size:04X}"
 
 
 def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
-                 keep_icons: bool = True) -> C64SaveReport:
+                 icon: bytes | None = None,
+                 animate: bytes | None = None) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
-    `save0` and `save1` come from an existing C64 save, which supplies the
-    regions a DOS save cannot: `$8400`-`$8AFF` is `ANIMATE00` and a bitmap
-    buffer and is not save data at all, and the combat icons are a C64 charset
-    DOS has no equivalent of.  Everything else is replaced.
+    Both payloads are modified in place, and **the conversion writes every
+    byte of both** when it is given an `icon` and an `animate`: hand it two
+    zeroed buffers and the result is a whole save owing nothing to anybody
+    else's (#118).  :func:`new_save` is that call, and is what the import
+    uses.
 
-    Both payloads are modified in place.  The DOS files are only ever read.
+    `icon` is the 36-byte combat icon every converted character gets, which
+    only the caller can supply because it is composed from the player's own
+    game disk -- `goldbox.iconparts.IconParts.default_icon`.  `animate` is
+    `ANIMATE00`'s 852-byte payload off the same disks, which goes at `$8400`.
+    Leave either out and that region keeps whatever the payload already held,
+    which is only ever right when the payload came from a real C64 save;
+    `Report.unwritten` is what says so afterwards.
 
-    The report covers both of them: an offset below `len(save0)` is a
+    The report covers both files: an offset below `len(save0)` is a
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
+    `Report.unwritten` is empty when nothing was left to the payload.
     """
     party = read_party(folder, slot)
     savgam = pathlib.Path(folder).joinpath(f"SAVGAM{slot}.DAT").read_bytes()
@@ -1802,12 +1900,19 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         total=len(save0) + (0 if save1 is None else len(save1)),
         save0_size=len(save0))
 
+    # First, because `apply_position` writes the travel square over
+    # `$49C3`-`$49C4` when the DOS party is outdoors.
+    header_zeroed = sum(size for _, size in HEADER_ZEROED)
+    for address, size in HEADER_ZEROED:
+        at = address - SAVE0_BASE
+        save0[at:at + size] = bytes(size)
+        report.note(at, size,
+                    f"zero: no part of the conversion computes it, and a save "
+                    f"with all {header_zeroed} of these written as zero "
+                    f"loaded, walked, fought and changed area (#118)")
+
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
-        icon = None
-        if keep_icons:
-            at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
-            icon = bytes(save0[at:at + ICON_SIZE])
         rec, one = to_c64_record(char, icon=icon)
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
@@ -1822,11 +1927,14 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         save0[at:at + SLOT_STRIDE] = raw[0x120:0x220]
         report.note(at, SLOT_STRIDE, f"{who} -- the converted inventory")
         at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
-        if keep_icons:
-            report.note(at, ICON_SIZE, f"{who} -- the template's icon")
-        else:
-            save0[at:at + ICON_SIZE] = raw[0x220:0x244]
-            report.note(at, ICON_SIZE, f"{who} -- icon from the record")
+        save0[at:at + ICON_SIZE] = raw[0x220:0x244]
+        report.note(at, ICON_SIZE, f"{who} -- " + (
+            "the combat icon the game's own character creation writes, "
+            "composed from the player's own disk. The DOS character's own "
+            "icon_head, icon_body and icon_colours are not carried: the two "
+            "ports draw from different art and the palettes have not been "
+            "compared (#57)" if icon is not None else
+            "icon from the record, which is zero"))
         if save1 is not None:
             at = place * ROSTER_STRIDE
             save1[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
@@ -1837,22 +1945,34 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
 
-    # The party fills slots `len(party) - 1` down to 0, so anything above it is
-    # the template's and would otherwise walk into the converted party (#104).
-    for place in range(len(party), SLOT_COUNT):
-        at = SLOT_AREA - SAVE0_BASE + place * SLOT_STRIDE + EMPTY_RECORD_BYTE
-        save0[at] = 0
-        report.note(at, 1,
-                    f"slot {place}: emptied the way the engine's own DROP "
-                    f"does -- one byte, and the rest of the template's slot "
-                    f"left where it was")
-        if save1 is not None:
-            at = place * ROSTER_STRIDE + EMPTY_ROSTER_BYTE
-            save1[at] = 0
-            report.note(save1_at + at, 1,
+    # The party fills slots `len(party) - 1` down to 0, so everything above it
+    # is somebody else's and would otherwise walk into the converted party
+    # (#104).  The whole slot goes, not the `DROP`-style name byte the engine
+    # writes: `ZSLOT8` zeroed slots 6-11, item blocks 6-11, icons 6-7 and
+    # roster blocks 6-7 on the one template in 99 whose slots 6 and 7 hold a
+    # seventh and an eighth character -- 555 non-zero bytes of a stranger's
+    # party wiped -- and the party list showed six, the party walked five
+    # squares and won a fight (#118, `work/p118-step3/runF.log`).
+    for place in range(len(party), SLOT_TOTAL):
+        for base in (SLOT_AREA, ITEM_AREA):
+            at = base - SAVE0_BASE + place * SLOT_STRIDE
+            save0[at:at + SLOT_STRIDE] = bytes(SLOT_STRIDE)
+            report.note(at, SLOT_STRIDE,
+                        f"slot {place}: zeroed entire -- not this party's, and "
+                        f"a party that carried none of these fought and won "
+                        f"(#118)")
+        if place < SLOT_COUNT:
+            at = ICON_TABLE - SAVE0_BASE + place * ICON_SIZE
+            save0[at:at + ICON_SIZE] = bytes(ICON_SIZE)
+            report.note(at, ICON_SIZE,
+                        f"slot {place}: combat icon zeroed -- nothing draws "
+                        f"an icon for a slot with no character in it")
+        if save1 is not None and place < SLOT_COUNT:
+            at = place * ROSTER_STRIDE
+            save1[at:at + ROSTER_STRIDE] = bytes(ROSTER_STRIDE)
+            report.note(save1_at + at, ROSTER_STRIDE,
                         f"SAVEDGAME1 ${SAVE1_BASE + at:04X} -- slot {place}: "
-                        f"roster_in_use cleared, the roster's half of the "
-                        f"same emptying")
+                        f"roster block zeroed, `roster_in_use` with it")
     if len(party) < SLOT_COUNT:
         report.warnings.append(
             f"Slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
@@ -1892,17 +2012,80 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     report.warnings.append(
         f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "
         f"differed from the template's")
-    if keep_icons:
-        report.dropped.append(
-            "the combat icons: kept from the template save, because DOS has "
-            "no C64 charset icon to convert")
-    # Everything not written above stays as the template save had it, and
-    # that is a provenance too -- an honest one, and the reason a template is
-    # required at all.
-    for i in range(report.total):
-        report.sources.setdefault(
-            i, f"{report.address(i)}: carried through from the template save")
+    if save1 is not None:
+        at = BITMAP_BUFFER[0] - SAVE1_BASE
+        save1[at:at + BITMAP_BUFFER[1]] = bytes(BITMAP_BUFFER[1])
+        report.note(save1_at + at, BITMAP_BUFFER[1],
+                    f"SAVEDGAME1 ${BITMAP_BUFFER[0]:04X} -- the bitmap "
+                    f"buffer: zeroed, and a save with all "
+                    f"{BITMAP_BUFFER[1]} of these zero was indistinguishable "
+                    f"from the control on load, on a walk, in a fight and "
+                    f"through an area change (#118)")
+        if animate is not None:
+            if len(animate) != ANIMATE_SIZE:
+                raise DosRecordError(
+                    f"{ANIMATE_FILE.decode()} is {ANIMATE_SIZE} payload "
+                    f"bytes on every POOL side; this one is {len(animate)}")
+            at = ANIMATE_AT - SAVE1_BASE
+            save1[at:at + len(animate)] = animate
+            report.note(save1_at + at, len(animate),
+                        f"SAVEDGAME1 ${ANIMATE_AT:04X} -- "
+                        f"{ANIMATE_FILE.decode()} as the loader leaves it, "
+                        f"read off the player's own game disk. The cache says "
+                        f"the file is resident and this is the file (#102)")
+
+    # Anything still without a source was left to whatever the payload already
+    # held -- somebody else's save, when the payload came from one.  With an
+    # `icon` and an `animate` given there is nothing here, and `unwritten`
+    # being empty is what "built from nothing" means.
+    report.unwritten = [i for i in range(report.total)
+                        if i not in report.sources]
+    for i in report.unwritten:
+        report.sources[i] = (
+            f"{report.address(i)}: carried through from the template save")
     return report
+
+
+def new_save(folder: str | pathlib.Path, slot: str, icon: bytes,
+             animate: bytes) -> tuple[bytearray, bytearray, C64SaveReport]:
+    """A whole C64 save from a DOS one, owing nothing to another save (#118).
+
+    `icon` is the 36-byte combat icon each character gets and `animate` is
+    `ANIMATE00`'s payload; both come off the player's own game disks, and
+    there is no default for either -- a conversion that cannot read them is
+    one that would have to invent bytes, and it refuses instead.
+
+    Returns the two payloads and the report, whose `unwritten` is empty.
+    """
+    save0, save1 = bytearray(SAVE0_SIZE), bytearray(SAVE1_SIZE)
+    report = convert_save(folder, slot, save0, save1,
+                          icon=icon, animate=animate)
+    if report.unwritten:
+        raise DosRecordError(
+            f"{len(report.unwritten)} bytes of the save have no source and "
+            f"were left zero by accident rather than by measurement; the "
+            f"first is {report.address(report.unwritten[0])}")
+    return save0, save1, report
+
+
+def save_disk(save0: bytes, save1: bytes, game=None):
+    """A `.d64` carrying exactly the two files a save disk needs (#118).
+
+    Thirteen of the player's fifteen `PORSAVE*.D64` hold `SAVEDGAME1` and
+    `SAVEDGAME0` and nothing else, in that directory order, so that is what
+    this writes.  Built onto `D64.blank()` with the drive's own interleave,
+    the result reproduces a disk the 1541 wrote everywhere but the two files'
+    final-sector slack, on all 13 (`tests/test_d64_blank.py`).
+    """
+    from . import games
+    from .d64 import D64, attach_load_address
+    game = game or games.POOL_OF_RADIANCE
+    disk = D64.blank()
+    disk.write_file(game.roster_file,
+                    attach_load_address(game.roster_load_address, save1))
+    disk.write_file(game.save_file,
+                    attach_load_address(game.save_load_address, save0))
+    return disk
 
 
 # ---------------------------------------------------------------------------

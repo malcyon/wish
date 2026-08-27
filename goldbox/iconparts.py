@@ -91,6 +91,49 @@ CELLS_PER_POSE = 9
 
 PART_CLASSES = ("weapon", "body", "cap", "hair", "shield", "arm", "leg")
 
+#: Bit 3 of a colour byte tells the VIC-II to draw that cell in multicolour.
+#: `colours_for` sets it from the glyph's own class byte; the cells holding no
+#: part carry whatever the table was seeded with, which is where
+#: :data:`DEFAULT_BACKGROUND` comes in.
+MULTICOLOUR = 0x08
+
+# -- what a character the engine rolled itself carries -----------------------
+#
+# The icon table at `$4BE0` is seeded before any character exists, so creation
+# inherits this rather than computing it: the game's own character creation
+# wrote the same 36 bytes for **8 of 8 newly created characters**, across four
+# classes and five races, and independently of the size bit -- a dwarf, a
+# halfling and a gnome all got the *large* figure (#57).  So this is a value
+# with evidence, which is what `CLAUDE.md` distinguishes from one inherited
+# from somebody else's save.
+#
+# It is stored as the choices rather than as the bytes.  `(large, weapon 0,
+# head 1)` is a pair of menu positions the way `portrait_head = 3` is a
+# number; the 36 bytes it turns into are the game's own art and do not belong
+# in this repository.  :meth:`IconParts.default_icon` reads them off the
+# player's disk at the moment they are needed.
+#
+# Confirmed against the player's own saves: slots 6 and 7 -- the NPC-only
+# slots nobody has ever edited -- carry exactly these 36 bytes on **28 of 28**
+# (14 save disks x 2 slots), and no slot 0-5 on any of them does.
+DEFAULT_SIZE = "large"
+DEFAULT_WEAPON = 0
+DEFAULT_HEAD = 1
+#: One colour per part, read back out of the measured bytes by
+#: :meth:`part_colours`.  Weapon 0 is empty hands and head 1 wears nothing, so
+#: the weapon, cap and shield classes own no cell in this figure and no colour
+#: of theirs was measured.  Keyed by class index, off `PART_CLASSES` rather
+#: than written as numbers, so reordering that tuple cannot silently repaint
+#: the figure.
+DEFAULT_PART_COLOURS = {PART_CLASSES.index(part): colour for part, colour in
+                        (("body", 6), ("hair", 7), ("arm", 6), ("leg", 6))}
+#: The colour behind the four cells this figure leaves as spaces.  It is not
+#: zero: the seeded table holds `$0E` there, which is this 6 with
+#: :data:`MULTICOLOUR` set.  A space draws nothing, so it is invisible either
+#: way -- but writing it is what makes the composed icon the engine's bytes
+#: rather than merely one that looks like them.
+DEFAULT_BACKGROUND = 6
+
 
 @dataclass(frozen=True)
 class Option:
@@ -251,6 +294,22 @@ class IconParts:
         shape = self.apply(shape, size, "weapon", weapon)
         return self.apply(shape, size, "head", head)
 
+    def default_icon(self) -> bytes:
+        """The 36 bytes the game gives a character it has just rolled (#57).
+
+        Eighteen screen codes and eighteen colours, composed out of this
+        disk's own option tables rather than stored -- see
+        :data:`DEFAULT_SIZE` for what was measured and on what sample.
+
+        This is what a conversion from a port with no C64 icon writes.  Zero
+        is refused: screen code 0 in `CHARPIC00` is a real glyph, so a zeroed
+        icon draws as a 3x3 block of black hooks on the combat floor (#57,
+        seen in a fight).
+        """
+        shape = self.compose(DEFAULT_SIZE, DEFAULT_WEAPON, DEFAULT_HEAD)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+        return shape + self.colours_for(shape, DEFAULT_PART_COLOURS, seed)
+
     # -- the legal set ---------------------------------------------------
 
     def legal_shapes(self, sizes: tuple[str, ...] = ("small", "large")) -> set[bytes]:
@@ -318,5 +377,5 @@ class IconParts:
             if klass >= len(PART_CLASSES):
                 continue
             base = per_class.get(klass, 0) & 0x07
-            out[cell] = base | (0x08 if self.multicolour(glyph) else 0)
+            out[cell] = base | (MULTICOLOUR if self.multicolour(glyph) else 0)
         return bytes(out)
