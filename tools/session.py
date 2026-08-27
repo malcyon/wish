@@ -663,15 +663,27 @@ class Session:
 
     # -- combat -----------------------------------------------------------
 
-    def mode(self) -> int:
-        """LINKER's dispatch byte: which overlay is running.
+    def mode(self) -> int | None:
+        """LINKER's dispatch byte: which overlay is running, or None.
 
         `1` DUNGEON, `2` COMBAT.  `automap/combat.py` documents the rest.
+
+        **None is "the read failed", not a mode.**  `screen()` and `battle()`
+        degrade the same way, and this one has to as well because `fight()`
+        calls it once a second for up to `budget` seconds: a single wedged
+        monitor -- a stray client on the port, a text monitor left open --
+        would otherwise raise out of the whole fight and throw away every
+        turn, bar and line gathered up to that point, which is the evidence
+        the harness exists to collect.
         """
-        with self.mon(5) as m:
-            return m.read(MODE, 1)[0]
+        try:
+            with self.mon(5) as m:
+                return m.read(MODE, 1)[0]
+        except (OSError, MonitorError):
+            return None
 
     def in_combat(self) -> bool:
+        """True only on a read that answered COMBAT.  A failed read is False."""
         return self.mode() == COMBAT
 
     def battle(self):
