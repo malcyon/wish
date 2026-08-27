@@ -11,23 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- File > Open remembers the folder your last save came from, and starts there next time instead of wherever the dialog was last left.
+- File > Open remembers the folder your last save came from, and starts there next time instead of wherever the dialog was last left. (#66)
 
 ### Changed
 
-- Character editor reorganised onto tabs -- Stats, Inventory and Spells -- with the roster and combat icon shown above them, so the window no longer has to be as wide.
+- Character editor reorganised onto tabs -- Stats, Inventory and Spells -- with the roster and combat icon shown above them, so the window no longer has to be as wide. (#43)
 
 ### Fixed
 
-- Live automapper's five actions -- heal, store and restore memorised spells, identify items, turn quickfight off -- now act on the open title's own memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's.
-- Fast Travel now confirms the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
-- Automapper window now fits a 1280x720 screen at a larger interface font too, instead of growing past it.
-- Roster shows the open title's own race and class names, instead of always showing Pool of Radiance's.
-- A Silver Blades ranger's spellbook is no longer greyed out as if he knows no spells.
-- Live roster no longer shows wrong hit points when the game puts a picture over the whole screen; it keeps its last good reading until the party is readable again.
-- Character editor's Spells tab now names every spell on Curse of the Azure Bonds and Secret of the Silver Blades, instead of leaving them unlabelled.
-- Exporting a Curse or Silver Blades character to YAML no longer stops partway through the spellbook.
-- Spells tab's "Castable per level" field no longer reads as all zeros for a spellcaster; it was showing a clipped tail of the real value.
+- Live automapper's five actions -- heal, store and restore memorised spells, identify items, turn quickfight off -- now act on the open title's own memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's. (#29)
+- Fast Travel now confirms the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong. (#21)
+- Automapper window now fits a 1280x720 screen at a larger interface font too, instead of growing past it. (#77)
+- Roster shows the open title's own race and class names, instead of always showing Pool of Radiance's. (#78)
+- A Silver Blades ranger's spellbook is no longer greyed out as if he knows no spells. (#86)
+- Live roster no longer shows wrong hit points when the game puts a picture over the whole screen; it keeps its last good reading until the party is readable again. (#82)
+- Character editor's Spells tab now names every spell on Curse of the Azure Bonds and Secret of the Silver Blades, instead of leaving them unlabelled. (#80)
+- Exporting a Curse or Silver Blades character to YAML no longer stops partway through the spellbook. (#85)
+- Spells tab's "Castable per level" field no longer reads as all zeros for a spellcaster; it was showing a clipped tail of the real value. (#42)
 
 ## [0.1.0] - 2026-08-23
 

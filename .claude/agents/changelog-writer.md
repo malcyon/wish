@@ -106,6 +106,33 @@ support for Curse of the Azure Bonds and Secrets of the Silver Blades, where
 character editing should work but bugs are expected."* That sentence is worth
 more than a confident one, and it is the register Donald wants.
 
+**End every line with its issue number in parentheses**, after the full stop:
+
+```
+- Roster shows the open title's own race and class names, instead of always
+  showing Pool of Radiance's. (#78)
+```
+
+Where a line covers more than one, list them: `(#71, #77)`.
+
+GitHub autolinks a bare `#53` **on the release page**, which is where these are
+read -- the workflow publishes this file's section as the release body. It does
+*not* autolink inside `CHANGELOG.md` viewed as a file, where the number stays
+plain text. That is the accepted trade: a link where it is used, a bare number
+where it is not.
+
+This is the one place a bare number is right. `CLAUDE.md` asks everywhere else
+for `#59 (Map the DOS saved game, not just the character record)`, because a
+number alone carries nothing to somebody reading without a browser. Here the
+line itself already says what changed, in a player's words, so the title would
+only repeat it in ours -- and on the page the reader is on, the number is a
+link.
+
+**A line with no issue is worth a second look** before you write it. Most user-
+visible change here comes from an issue; one that does not may be something
+that was never asked for, or a fix folded into unrelated work. Say so in your
+report rather than leaving the parentheses off in silence.
+
 **Do not invent.** If you cannot tell from the commit and the issue what a
 change means for a user, leave it out and **say so in your report** rather than
 guessing. A missing line he adds is cheaper than a wrong line he has to notice.
