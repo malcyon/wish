@@ -1054,8 +1054,8 @@ def por_write_mask() -> set[int]:
 
     Built from the **declared** tables -- `amiga.POR_WRITE_UNSOURCED` for the
     three insertions and the heap pointer, and `goldbox.dos`'s own
-    `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields for everything
-    the DOS writer already says it does not carry.  Masking by the diff
+    `WRITE_UNSOURCED`, `WRITE_CONSTANTS`, `WRITE_DEFAULTS` and computed
+    fields for everything the DOS writer already says it does not carry.  Masking by the diff
     instead would make the test agree with the code by construction.
     """
     from goldbox import dos
