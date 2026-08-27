@@ -215,11 +215,11 @@ jobs:
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
 
-      # The release page says what CHANGELOG.md says, so the two cannot drift
-      # and nobody writes the notes twice. `generate_release_notes` is
-      # deliberately off: it lists every commit since the last tag, which for
-      # 0.1.1 would have been 169 of them, almost all internal -- the opposite
-      # of what the changelog is written to say.
+      # The release page is the changelog's section for this tag and nothing
+      # else. Donald, 2026-08-26: "The Release page should just have the
+      # changelog in it." `generate_release_notes` is deliberately off -- it
+      # lists every commit since the last tag, which for 0.1.1 would have been
+      # 169 of them, almost all internal.
       #
       # A missing section fails the job rather than publishing empty notes. A
       # release page with no notes is the kind of thing nobody notices until
@@ -239,7 +239,7 @@ jobs:
             grep -n '^## \[' CHANGELOG.md >&2
             exit 1
           fi
-          { printf '%s\n\n' "$notes"; cat .github/release-body.md; } > release-notes.md
+          printf '%s\n' "$notes" > release-notes.md
           echo "--- release notes ---"; cat release-notes.md
 
       - uses: softprops/action-gh-release@v2
