@@ -231,7 +231,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         for i in known.value:
             if i > ceiling:
                 rep.warnings.append(
-                    f"spell id {i} is set in the {port} spellbook and "
+                    f"Spell id {i} is set in the {port} spellbook and "
                     f"{table.title}'s {table.spellbook_size}-byte mask has no "
                     f"bit for it (ids 1-{ceiling})"
                     + ("; id 56 is RESTORATION"

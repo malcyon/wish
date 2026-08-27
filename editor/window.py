@@ -981,7 +981,7 @@ class EditorWindow(QMainWindow):
     # -- importing --------------------------------------------------------
 
     def import_dos_save(self, folder: str | None = None) -> str:
-        """File > Import > DOS save. Returns what happened, for a test.
+        """File > Import > DOS… Returns what happened, for a test.
 
         Two pickers and a window, and no write: what the conversion costs is
         on screen before the button that commits it exists to press, and what
@@ -1049,13 +1049,13 @@ class EditorWindow(QMainWindow):
         return Source.from_party(self.party, self.path)
 
     def export_dos_save(self, destination: str | None = None) -> str:
-        """File > Export > DOS save. Returns what happened, for a test."""
+        """File > Export > DOS… Returns what happened, for a test."""
         from .exports import DosExportDialog
 
         return self._export(DosExportDialog, destination)
 
     def export_amiga_party(self, destination: str | None = None) -> str:
-        """File > Export > Amiga characters. Returns what happened."""
+        """File > Export > Amiga… Returns what happened."""
         from .exports import AmigaExportDialog
 
         return self._export(AmigaExportDialog, destination)

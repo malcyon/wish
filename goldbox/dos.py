@@ -1084,7 +1084,7 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
         text = str(name.value)[:15].encode("ascii", "replace")
         if len(str(name.value)) > 15:
             rep.warnings.append(
-                f"name {str(name.value)!r} is longer than the DOS fifteen "
+                f"Name {str(name.value)!r} is longer than the DOS fifteen "
                 f"characters; truncated")
         rec[0x000] = len(text)
         rec[0x001:0x001 + len(text)] = text
@@ -1106,7 +1106,7 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
                 book[int(sid) - 1] = 1
             else:
                 rep.warnings.append(
-                    f"spell id {sid} is outside the DOS book's ids 1-56")
+                    f"Spell id {sid} is outside the DOS book's ids 1-56")
         put(known, "spellbook", ", unpacked to one byte per spell",
             value=bytes(book))
 
@@ -1757,7 +1757,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             save1[place * ROSTER_STRIDE + EMPTY_ROSTER_BYTE] = 0
     if len(party) < SLOT_COUNT:
         report.warnings.append(
-            f"slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
+            f"Slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
             f"six characters and a C64 save eight")
 
     for base, size in EFFECT_ARRAYS:
@@ -2088,7 +2088,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                 f"{where.name}, at ({x},{y}) facing {facing}")
         else:
             report.warnings.append(
-                f"the C64 party stands in area {c64_area} and the template's "
+                f"The C64 party stands in area {c64_area} and the template's "
                 f"DOS party in area {here}, and {why}; so the party will "
                 f"stand on the template's square")
     (out / f"SAVGAM{slot}.DAT").write_bytes(bytes(savgam))

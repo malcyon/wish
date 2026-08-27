@@ -275,7 +275,7 @@ def losses(report) -> str:
     could not do faithfully, which is the same question the heading asks.
     """
     return "\n".join(list(report.dropped)
-                     + [f"warning: {w}" for w in report.warnings])
+                     + [f"WARNING: {w}" for w in report.warnings])
 
 
 def _block(heading: str, lines) -> str:

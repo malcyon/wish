@@ -770,7 +770,7 @@ def _classes_of(names) -> tuple[list[str], list[str]]:
         key = raw.strip().lower()
         if key in CLASS_SUBSTITUTE:
             replacement, why = CLASS_SUBSTITUTE[key]
-            warnings.append(f"class {key} -> {replacement}: {why}")
+            warnings.append(f"Class {key} -> {replacement}: {why}")
             key = replacement
         if key not in CLASS_LEVEL_SLOT:
             raise ConversionError(
@@ -801,7 +801,7 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         raise ConversionError("a character with no name cannot be converted")
     if len(name) > NAME_LENGTH:
         rep.warnings.append(
-            f"name {name!r} is {len(name)} characters; PoD keeps "
+            f"Name {name!r} is {len(name)} characters; PoD keeps "
             f"{NAME_LENGTH}, so it arrives as {name[:NAME_LENGTH]!r}")
 
     race_value = w.use("race")
@@ -809,7 +809,7 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
         race_value.value if race_value else None, "")).strip().lower()
     if race_key in RACE_SUBSTITUTE:
         replacement, why = RACE_SUBSTITUTE[race_key]
-        rep.warnings.append(f"race {race_key} -> {replacement.lower()}: {why}")
+        rep.warnings.append(f"Race {race_key} -> {replacement.lower()}: {why}")
         race_name = replacement
     elif race_key in RACE_FROM_C64:
         race_name = RACE_FROM_C64[race_key]
@@ -859,7 +859,7 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     hp_max = int(max_hp.value if max_hp else 0)
     if hp_max > 0xFF:
         rep.warnings.append(
-            f"hit points maximum {hp_max} does not fit the Amiga's one byte "
+            f"Hit points maximum {hp_max} does not fit the Amiga's one byte "
             f"at {HP_MAX:#05x}; clamped to 255")
         hp_max = 0xFF
 
@@ -883,7 +883,7 @@ def write(char: NeutralCharacter) -> tuple[PodWriter, Report]:
     if current is None:
         hp_current = hp_max
         rep.warnings.append(
-            "no current hit points in the source, so they are set to the "
+            "No current hit points in the source, so they are set to the "
             "maximum")
     else:
         hp_current = min(int(current.value), hp_max)
@@ -1428,19 +1428,19 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
     out.port = "Amiga"
     out.source = char.source
     out.warnings.append(
-        "read from a 288-byte Amiga Pool of Radiance record re-cut to the "
+        "Read from a 288-byte Amiga Pool of Radiance record re-cut to the "
         "285-byte DOS one by goldbox.amiga.to_dos_record; the provenance lines "
         "name the DOS field table, which is the table both ports share")
 
     line, _ = _amiga_por_name(char.raw)
     if line >= dos_layout.FIELDS_BY_NAME["name_text"].size:
         out.warnings.append(
-            f"the Amiga name fills all {AMIGA_POR_NAME_SIZE} bytes with no "
+            f"The Amiga name fills all {AMIGA_POR_NAME_SIZE} bytes with no "
             f"terminator; DOS holds fifteen, so it was truncated")
     stored = char.get("item_count")
     if stored != len(char.items):
         out.warnings.append(
-            f"the record counts {stored} items and {len(char.items)} were "
+            f"The record counts {stored} items and {len(char.items)} were "
             f"read from the .itm file; the shorter of the two was used")
     out.drop("Amiga 0x083-0x087: the second insertion is not located, so "
              "those bytes were written zero rather than guessed")
@@ -1712,7 +1712,7 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
     rep.dropped = list(dosrep.dropped)
     rep.warnings = list(dosrep.warnings)
     rep.warnings.append(
-        "written as a 288-byte Amiga Pool of Radiance record by re-cutting "
+        "Written as a 288-byte Amiga Pool of Radiance record by re-cutting "
         "the 285-byte DOS one built by goldbox.dos.write; the provenance lines "
         "name the DOS field each byte was transposed from, which is the "
         "field table both ports share")

@@ -16,12 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Character editor reorganised onto tabs -- Stats, Inventory and Spells -- with the roster and combat icon shown above them, so the window no longer has to be as wide.
-- Preferences no longer prints a paragraph explaining how the save folder is searched, or a row naming what overrode it; it just shows the folder in use.
 
 ### Fixed
 
 - Live automapper reads party stats and runs its five live actions (heal, store/restore spells, identify, quickfight) from the correct memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's addresses.
-- Level Up and Fast Travel now confirm the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
+- Fast Travel now confirms the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
 - Character editor's header no longer draws on top of itself when the window is narrowed, and the window now fits a 1280x720 screen at any interface font size.
 - Automapper window now fits a 1280x720 screen at a larger interface font too, instead of growing past it.
 - Roster's Name column stays within its width limit instead of growing past it; a long name is shortened with an ellipsis instead.

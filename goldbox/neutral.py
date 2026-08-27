@@ -327,7 +327,7 @@ class Report:
         lines = [f"{len(self.sources)}/{self.total} bytes accounted for"]
         lines.extend(self.summary_notes())
         for w in self.warnings:
-            lines.append(f"  warning: {w}")
+            lines.append(f"  WARNING: {w}")
         for d in self.dropped:
             lines.append(f"  dropped: {d}")
         return "\n".join(lines)
