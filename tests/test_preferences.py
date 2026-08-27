@@ -152,16 +152,19 @@ def test_with_no_game_named_the_per_title_folders_are_not_consulted(
     assert paths.resolve_disks(settings=settings) == (shared, paths.PREFERENCE)
 
 
-def test_the_report_names_a_titles_own_preference_and_the_shared_one_it_beat(
+def test_a_titles_own_preference_beats_the_shared_one_in_the_report(
         tmp_path, monkeypatch):
+    """`#22 (A disk folder setting per game, not one shared by all six)`: the
+    report's "In use" row is the title's own folder. Which preference won and
+    what it beat is `paths.resolve_disks`'s own source constant, checked
+    directly in `test_a_titles_own_folder_wins_over_the_shared_one` -- `report`
+    no longer prints that reason in words."""
     nowhere(tmp_path, monkeypatch)
     shared = disks(tmp_path / "shared", "CURSE1.D64")
     own = disks(tmp_path / "curse-only", "CURSE1.D64")
     settings = Settings(disks=str(shared), game_folders={CURSE.key: str(own)})
     rows = dict(report(settings, game=CURSE))
     assert rows["In use"] == str(own)
-    assert rows["Set by"].startswith("this title's own preference")
-    assert str(shared) in rows["Set by"]
 
 
 def test_an_old_settings_file_migrates_its_one_folder_to_the_title_in_it(
@@ -207,14 +210,12 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
 
 # --- the report --------------------------------------------------------------
 
-def test_the_report_names_the_folder_the_source_and_the_titles(tmp_path,
-                                                               monkeypatch):
+def test_the_report_names_the_folder_and_the_titles(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "Desktop" / "porgame",
                   "POOL1.D64", "POOL2.D64", "POOL3.D64", "CURSE1.D64")
     rows = dict(report(Settings(disks=str(shelf))))
     assert rows["In use"] == str(shelf)
-    assert rows["Set by"] == "this preference"
     assert "Pool of Radiance (3 disks)" in rows["Titles"]
     assert "Curse of the Azure Bonds (1 disk)" in rows["Titles"]
 
@@ -229,43 +230,36 @@ def test_the_report_states_each_failure_in_its_own_slot(tmp_path, monkeypatch):
     assert rows["In use"] == str(empty)
 
 
-def test_the_report_prints_three_lines_and_not_six(tmp_path, monkeypatch):
+def test_the_report_prints_two_lines_and_not_six(tmp_path, monkeypatch):
     """Donald, 2026-08: "remove Maps, Names, and Icons". The map tab and the
-    item column already answer those where somebody is looking."""
+    item column already answer those where somebody is looking. "Set by" came
+    out later still, on the same reasoning: a GUI is not the place for
+    documentation, and the folder and the titles are the two facts left."""
     nowhere(tmp_path, monkeypatch)
     shelf = disks(tmp_path / "porgame", "POOL1.D64")
     for settings in (Settings(disks=str(shelf)), Settings()):
-        assert [name for name, _ in report(settings)] == [
-            "In use", "Set by", "Titles"]
+        assert [name for name, _ in report(settings)] == ["In use", "Titles"]
 
 
-def test_the_report_says_when_por_disks_is_set_and_overridden(tmp_path,
-                                                              monkeypatch):
-    nowhere(tmp_path, monkeypatch)
-    saved = disks(tmp_path / "saved", "POOL1.D64")
-    monkeypatch.setenv("POR_DISKS", str(tmp_path / "elsewhere"))
-    rows = dict(report(Settings(disks=str(saved))))
-    assert rows["Set by"].startswith("this preference")
-    assert "$POR_DISKS is set and overridden" in rows["Set by"]
-
-
-def test_a_flag_says_this_run_only_and_names_the_preference_it_beat(
-        tmp_path, monkeypatch):
+def test_a_flag_beats_the_preference_in_the_report(tmp_path, monkeypatch):
+    """The words -- "this run only", and naming the preference it beat -- are
+    gone with `_set_by`. The precedence they were reporting (the flag over the
+    preference over the environment) is already pinned at the source, in
+    `test_the_flag_beats_the_preference_which_beats_the_environment`; this
+    keeps only what is `report`'s own to get right, that "In use" is the
+    flag's folder."""
     nowhere(tmp_path, monkeypatch)
     saved = disks(tmp_path / "saved", "POOL1.D64")
     flag = disks(tmp_path / "third place", "POOL1.D64")
     rows = dict(report(Settings(disks=str(saved)), flag=str(flag)))
     assert rows["In use"] == str(flag)
-    assert "this run only" in rows["Set by"]
-    assert str(saved) in rows["Set by"]
 
 
-def test_the_report_of_nowhere_is_three_stated_failures(tmp_path, monkeypatch):
+def test_the_report_of_nowhere_is_two_stated_failures(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
     rows = dict(report(Settings()))
     assert rows["In use"] == "nothing found"
-    assert rows["Set by"] == "nothing found"
-    assert len(rows) == 3
+    assert len(rows) == 2
 
 
 def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
@@ -591,7 +585,6 @@ def test_changing_the_folder_updates_the_report_with_no_ok_pressed(
     dialog.set_folder(str(shelf))
     printed = dict(rows(dialog))
     assert printed["In use"] == str(shelf)
-    assert printed["Set by"] == "this preference"
     assert "Pool of Radiance (2 disks)" in printed["Titles"]
     assert Settings.load().disks == str(shelf)
 
@@ -608,7 +601,7 @@ def test_clearing_the_folder_goes_back_to_searching(app, tmp_path, monkeypatch):
     dialog.set_folder(str(shelf))
     dialog.set_folder("")
     assert Settings.load().disks == ""
-    assert dict(rows(dialog))["Set by"] == "nothing found"
+    assert dict(rows(dialog))["In use"] == "nothing found"
 
 
 def test_the_backend_radios_are_the_menu_s_actions_and_still_act(
@@ -1182,7 +1175,6 @@ def test_one_folder_gets_item_names_and_a_map_without_a_restart(
         dialog.set_folder(str(shelf))
 
         printed = dict(rows(dialog))
-        assert printed["Set by"] == "this preference"
         assert "Pool of Radiance" in printed["Titles"]
         assert win.editor.item_names, "item names arrive without a restart"
         assert win.map.no_maps is False

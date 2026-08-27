@@ -4,8 +4,8 @@ may go.
 **Half of this is the report, not the form.** The failure it exists to fix is
 silent -- items rendered as `word 8`, an empty map tab, and the one diagnostic
 that says why printed to a stderr a desktop launcher throws away. So the dialog
-says what was *found*: which folder is in use, who named it, and which titles
-are in it. A user who types nothing still learns what went wrong. It said three
+says what was *found*: which folder is in use, and which titles are in it. A
+user who types nothing still learns what went wrong. It said three
 things more -- maps, item names, icons -- until Donald called that too chatty
 in 2026-08; what those three answered is visible on the map tab and in the
 item column, where you are already looking.
@@ -92,9 +92,6 @@ SHORTCUT = "Ctrl+,"
 #: How long after the last keystroke the folder is re-read. Typing a path a
 #: character at a time would otherwise open eight D64s per letter.
 SETTLE_MS = 400
-
-HINT = ("Leave it empty to search: beside the open save disk first, then the "
-        "usual folders.")
 
 #: What the backup box says while it is empty, which is the state a fresh
 #: config is in. It is also what sets that box's width -- `room_for` measures
@@ -234,48 +231,22 @@ def backup_folder(settings, save) -> str:
     return str(files.automatic_dir(save))
 
 
-def _set_by(source: str, settings) -> str:
-    """Who named the folder in use, and what was overridden to say so."""
-    words = {
-        paths.FLAG: "--disks, this run only",
-        paths.GAME_PREFERENCE: "this title's own preference",
-        paths.PREFERENCE: "this preference",
-        paths.ENVIRONMENT: "$POR_DISKS",
-        paths.BESIDE: "beside the open save",
-        paths.SEARCHED: "found by searching the usual folders",
-        paths.NOWHERE: "nothing found",
-    }
-    text = words.get(source, source)
-    extra = []
-    if source != paths.ENVIRONMENT and os.environ.get("POR_DISKS"):
-        extra.append("$POR_DISKS is set and overridden")
-    if source == paths.FLAG and (getattr(settings, "disks", "") or ""):
-        extra.append(f"the saved preference {settings.disks} is not used "
-                     "for this run")
-    if source == paths.GAME_PREFERENCE and (getattr(settings, "disks", "") or ""):
-        extra.append(f"the shared folder {settings.disks} is not used for "
-                     "this title")
-    return text + (f"  ({'; '.join(extra)})" if extra else "")
-
-
 def report(settings, flag=None, beside=None,
            game: games.Game | None = None) -> list[tuple[str, str]]:
-    """The three lines the dialog prints, as (label, value) pairs.
+    """The two lines the dialog prints, as (label, value) pairs.
 
     Each answers a question somebody has actually had: is it even looking where
-    I put them, why is it ignoring what I typed, and are these the right disks.
-    A failure is stated in the same slot -- an empty answer is more informative
-    than a missing row.
+    I put them, and are these the right disks. A failure is stated in the same
+    slot -- an empty answer is more informative than a missing row.
 
     It printed three more -- the map count, the disk the item names came off
     and the icon charset. Donald had them out in 2026-08: they answered
     questions nobody was asking at the moment of opening this dialog, and the
     map tab and the item column say the same thing where you are looking.
     """
-    where, source = paths.resolve_disks(flag=flag, beside=beside, game=game,
-                                        settings=settings)
-    rows = [("In use", str(where) if where is not None else "nothing found"),
-            ("Set by", _set_by(source, settings))]
+    where, _source = paths.resolve_disks(flag=flag, beside=beside, game=game,
+                                         settings=settings)
+    rows = [("In use", str(where) if where is not None else "nothing found")]
     wanted = [game] if game else list(games.GAMES)[:2]
     patterns = " or ".join(_pretty(g.disk_glob) for g in wanted)
     if where is None:
@@ -415,12 +386,11 @@ class PreferencesDialog(QDialog):
 
         **Height is the scarce one.** The work area is 662 lines tall and 1280
         across, and every line a paragraph wraps to is a line of height a wider
-        dialog would not have spent -- the search hint under the folder box takes
-        two lines at the width the folder row alone asks for and one at 784,
-        and the backups note three and two. So the width is raised while that
-        is still true and then stopped: as narrow as it can be without costing
-        height. The ceiling is twice the widest control, which no
-        sentence in a settings dialog needs.
+        dialog would not have spent -- the backups note takes three lines at
+        the width the folder row alone asks for and two at 784. So the width
+        is raised while that is still true and then stopped: as narrow as it
+        can be without costing height. The ceiling is twice the widest
+        control, which no sentence in a settings dialog needs.
 
         Getting this wrong is not cosmetic. A dialog handed less height than
         its layout's minimum does not refuse -- it squeezes what can be
@@ -470,7 +440,7 @@ class PreferencesDialog(QDialog):
 
         self.report_rows: dict[str, QLabel] = {}
         form = QFormLayout()
-        for name in ("In use", "Set by", "Titles"):
+        for name in ("In use", "Titles"):
             value = QLabel("")
             value.setWordWrap(True)
             # Selectable: the first thing anybody does with a path in a
@@ -480,9 +450,6 @@ class PreferencesDialog(QDialog):
             self.report_rows[name] = value
             form.addRow(name, value)
         outer.addLayout(form)
-        hint = QLabel(HINT)
-        hint.setWordWrap(True)
-        outer.addWidget(hint)
         return box
 
     # -- where the backups go ---------------------------------------------

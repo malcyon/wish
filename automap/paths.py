@@ -153,11 +153,12 @@ def resolve_disks(flag=None, beside=None, game: games.Game | None = None,
                   settings=None) -> tuple[pathlib.Path | None, str]:
     """Where to look for the game disks, and who said so.
 
-    The second half of the answer is the point: the preferences dialog reports
-    it, so "why is it ignoring what I typed?" has a printed answer instead of a
-    guess. A folder named by the flag or by the setting is returned whether or
-    not it holds any disks -- reporting an empty folder as empty is more use
-    than silently searching somewhere else.
+    The second half of the answer is for callers that need to distinguish the
+    precedence rule's outcomes -- a test asserting `#22 (A disk folder setting
+    per game, not one shared by all six)`'s per-title preference wins, for
+    instance -- rather than for display. A folder named by the flag or by the
+    setting is returned whether or not it holds any disks -- reporting an
+    empty folder as empty is more use than silently searching somewhere else.
 
     `beside` is the open save, as a file or its directory, and is only taken
     when disks are actually there. `settings` lets a window pass the copy it
