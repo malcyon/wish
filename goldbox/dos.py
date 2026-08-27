@@ -1756,6 +1756,14 @@ class C64SaveReport(Report):
 
     #: How many of the offsets belong to `SAVEDGAME0`.  The rest are
     #: `SAVEDGAME1`, and zero of them when the caller passed no `save1`.
+    #:
+    #: `convert_save` is the only thing that builds one of these and it always
+    #: passes `len(save0)`, so this default is never reached.  It is `$6500` -
+    #: `$4900` -- the real size -- rather than 0, because a second constructor
+    #: that forgot to pass it would otherwise pair it with `Report.total`'s own
+    #: default of `RECORD_SIZE` and label every offset `SAVEDGAME1`.  Both
+    #: defaults being wrong together is a seam; this half of it is at least the
+    #: right number.
     save0_size: int = 0x1C00
 
     def address(self, offset: int) -> str:
