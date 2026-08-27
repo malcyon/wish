@@ -1171,3 +1171,74 @@ def test_the_built_disk_is_the_two_files_a_save_disk_needs():
     _game, sg0, sg1 = load_save(disk)
     assert sg0.to_bytes() == bytes(save0)
     assert sg1.to_bytes() == bytes(save1)
+
+
+def _outdoor_folder(tmp_path, slot: str = "A", script: int = 26):
+    """A DOS save folder holding one slot, patched to stand on the travel grid.
+
+    All three of Donald's own DOS saves are indoors, so an outdoor
+    `new_save` cannot be reached from the archives as they stand -- and
+    `_outdoor_savgam` alone cannot reach it either, because `convert_save`
+    reads `SAVGAM<slot>.DAT` off the disk rather than taking bytes.  So the
+    slot's files are copied into `tmp_path` and the copy of the `SAVGAM` is
+    the one that is patched; nothing under `$FR_ARCHIVES` is written.
+    """
+    import shutil
+
+    where = _save_dir()
+    if where is None:
+        pytest.skip("needs a DOS save; set FR_ARCHIVES to the archives")
+    for path in sorted(where.glob(f"CHRDAT{slot}?.*")):
+        shutil.copy(path, tmp_path / path.name)
+    if not list(tmp_path.glob(f"CHRDAT{slot}?.SAV")):
+        pytest.skip(f"no CHRDAT{slot}?.SAV here")
+    (tmp_path / f"SAVGAM{slot}.DAT").write_bytes(_outdoor_savgam(script))
+    return tmp_path
+
+
+@needs_dos_saves
+def test_an_outdoor_dos_save_builds_a_whole_c64_save(tmp_path):
+    """An outdoor DOS party converts at all, which it did not (#118).
+
+    `apply_position` writes `$49C0`-`$49C2` on its **indoor** branch only:
+    outdoors the square is the travel pair `$49C3`/`$49C4` and those three
+    bytes are nobody's.  With a template underneath that was "left alone";
+    from nothing it is three bytes with no source, so `new_save` refused
+    every outdoor save there is -- `3 bytes of the save have no source ...
+    the first is SAVEDGAME0 $49C0`.
+
+    Zero is what the game's own ENCAMP > SAVE writes there outdoors
+    (`work/p3/W4.D64`-`W7.D64`), which is what `DUNGEON_SQUARE` records.
+    """
+    icon, animate = _game_files()
+    folder = _outdoor_folder(tmp_path)
+    save0, save1, report = dos.new_save(folder, "A", icon, animate)
+    assert report.unwritten == []
+    assert report.unaccounted == []
+    assert len(save0) + len(save1) == report.total == 9216
+    at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
+    assert bytes(save0[at:at + dos.DUNGEON_SQUARE[1]]) == bytes(3)
+    # The travel pair is the square the party is actually standing on, and it
+    # is the one thing that would be lost by zeroing the whole run at once.
+    assert [save0[sg.TRAVEL_X - dos.SAVE0_BASE],
+            save0[sg.TRAVEL_Y - dos.SAVE0_BASE]] == [7, 29]
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 0
+
+
+@needs_dos_saves
+def test_an_indoor_dos_save_still_carries_its_own_dungeon_square():
+    """The other half of the zero, and what stops it being written always.
+
+    Indoors `apply_position` writes all three over the zero, so a conversion
+    that zeroed `$49C0`-`$49C2` unconditionally would put every imported
+    indoor party on square 0,0 facing north.  Checked against the DOS save's
+    own bytes rather than against a square written down here.
+    """
+    icon, animate = _game_files()
+    slot = dos.slots_available(_save_dir())[0]
+    save0, _save1, _report = dos.new_save(_save_dir(), slot, icon, animate)
+    at = dos.DUNGEON_SQUARE[0] - dos.SAVE0_BASE
+    want = sg.position(_savgam(slot))
+    assert not sg.outdoors(_savgam(slot)), \
+        "this test needs an indoor slot; all three archives saves are indoors"
+    assert tuple(save0[at:at + 3]) == want

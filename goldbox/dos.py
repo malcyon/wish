@@ -1490,11 +1490,17 @@ def apply_position(save0: bytearray, savgam: bytes) -> tuple:
     other twenty-four slots and the three bytes that make them findable.
 
     Outdoors the square is the travel pair `$49C3`/`$49C4` -- window-local on
-    both ports, measured on DOS in #59 and on the C64 in #47 -- and
-    `$49C0`-`$49C2` is **left the template's**: the DOS file's 12801-12803
-    x,y are the stale square the party left the grid on, the C64 keeps its
-    own stale copy there too, and the one proven live shape (#47 test D)
-    wrote the travel pair alone.
+    both ports, measured on DOS in #59 and on the C64 in #47 -- and this
+    function writes **nothing** into `$49C0`-`$49C2`: the DOS file's
+    12801-12803 x,y are the stale square the party left the grid on, not
+    where it stands, and the one proven live shape (#47 test D) wrote the
+    travel pair alone.
+
+    What those three bytes hold outdoors is :data:`DUNGEON_SQUARE`'s answer
+    and not this function's -- `convert_save` zeroes them before calling
+    here, so indoors the three writes below land on top of the zero and
+    outdoors the zero is what stands.  Saying "left alone" was true only
+    while there was a template underneath to leave them to (#118).
 
     Returns the `(address, what)` notes for the report, because which pair
     was written is exactly what its reader wants to know.
@@ -1674,6 +1680,51 @@ HEADER_ZEROED: tuple[tuple[int, int], ...] = (
     (0x49F3, 9), (0x49FC, 1), (0x49FD, 2), (0x49FF, 1),
     (0x4AF9, 135), (0x4BD9, 7),
 )
+
+#: The party's square and facing on the **dungeon** map, `$49C0`-`$49C2`.
+#:
+#: Kept apart from `HEADER_ZEROED` because the evidence is a different run and
+#: only one of the two branches ever leaves the zero standing.  `convert_save`
+#: writes it before `apply_position`, which overwrites all three indoors --
+#: so this is what an *outdoor* conversion puts there, and nothing else.
+#:
+#: Outdoors nothing computes them: the party is on the travel grid and its
+#: square is `$49C3`/`$49C4`.  While the conversion still had a template to
+#: work onto, the answer was to leave them alone; with no template, "alone"
+#: means whatever `new_save`'s zeroed buffer held, and an unmeasured zero is
+#: a blocker rather than a gap (#118).  Left as it was, `new_save` raised on
+#: **every** outdoor DOS save -- three bytes with no source.
+#:
+#: **The engine itself skips these three outdoors**, which is why they are
+#: nobody's.  `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into
+#: $49C0..$49C2` (`docs/118-debug-mode.md`): `$C04B`-`$C04D` inside `GDRIVE00`
+#: is the live party square and `$49C0`-`$49C2` is the lagging copy a save
+#: carries, and the copy is made only when `$49E6` says indoors.  So an
+#: outdoor save keeps whatever those three held when the party last left a
+#: dungeon, and never anything newer.
+#:
+#: **Nothing reads them outdoors, measured in VICE.**  Two non-stopping
+#: checkpoints over the three bytes, one on loads and one on stores, on four
+#: converted outdoor saves built as two pairs differing in these three bytes
+#: and nothing else -- `0,0,0` against `15,1,3`.  The read count stayed at
+#: **0** through 4 cold boots, 4 save loads, 4 arrivals on the travel grid, 8
+#: travel-grid steps and 4 area changes; the first read comes only after the
+#: arrival has already written them.  Every log line matched between the two
+#: disks of each pair, and 13 screenshot pairs differ in **0 pixels** of the
+#: emulated screen (#118, `work/p118-outdoor/`).
+#:
+#: That run also corrected what the census below looked like it said: the
+#: `15,1,3` is New Phlan's arrival square, written by the boat on all four
+#: disks, so it is a stale *indoor* square left behind rather than anything an
+#: outdoor save means by it.  Zero and 15,1,3 are the same kind of value --
+#: whatever the party last arrived on -- and the game reads neither.
+#:
+#: Zero is also what an engine-written outdoor save holds.  `work/p3/W4.D64`
+#: through `W7.D64` are four travel-grid saves the game itself wrote through
+#: its own ENCAMP > SAVE (`work/p3/wsave.py`) and all four read 0,0,0.  Over
+#: every C64 save payload on this machine -- 115 distinct, 30 of them
+#: outdoors -- 6 of the 30 read 0,0,0 (`work/p118-outdoor/census.py`).
+DUNGEON_SQUARE: tuple[int, int] = (0x49C0, 3)
 
 #: `SAVEDGAME1`'s tail past `ANIMATE00`: the bitmap buffer, `$8754`-`$8AFF`.
 #: 940 bytes, of which 407 were non-zero on the template it was measured
@@ -1910,6 +1961,16 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                     f"zero: no part of the conversion computes it, and a save "
                     f"with all {header_zeroed} of these written as zero "
                     f"loaded, walked, fought and changed area (#118)")
+    # And the dungeon square, which `apply_position` overwrites indoors and
+    # leaves standing outdoors.  Its own note and its own evidence, so the
+    # sentence above keeps saying exactly what its own run covered.
+    at = DUNGEON_SQUARE[0] - SAVE0_BASE
+    save0[at:at + DUNGEON_SQUARE[1]] = bytes(DUNGEON_SQUARE[1])
+    report.note(at, DUNGEON_SQUARE[1],
+                "zero: the party is on the travel grid and its square is "
+                "$49C3/$49C4, so nothing here computes the dungeon square -- "
+                "and nothing in the game reads it there, measured at 0 reads "
+                "across a load, eight travel steps and an area change (#118)")
 
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))

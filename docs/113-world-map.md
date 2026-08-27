@@ -21,6 +21,7 @@ shape, which makes this much cheaper than it looks.
 | The three are **overlapping windows on one world, 13 columns apart, west to east** | CONFIRMED — 179/180 and 180/180 squares agree, and the edge-crossing arithmetic closes independently |
 | Walkable is `x` 2..15, `y` 2..33 of each window; the world's playable area is **40 x 32** | CONFIRMED from the edge tests and the southernmost site |
 | The party's travel position is **`$49C3`, `$49C4`** — a separate pair from `$49C0`/`$49C1` | CONFIRMED by `npc_party.d64` |
+| `$49C0`–`$49C2` **is frozen while the party is outdoors**, so `$49C2` is not the travel facing | CONFIRMED. `DUNGEON $1A3C` is `if $49E6 then copy $C04B..$C04D into $49C0..$49C2` ([`118-debug-mode.md`](118-debug-mode.md)), so the live square reaches the save only indoors. `work/p3/W4.D64`–`W7.D64` are four saves taken through the game's own ENCAMP ▸ SAVE during one travel-grid walk that went in three different directions, and all four read `0,0,0`. A read checkpoint over the three counted **0 reads** across four converted outdoor saves, eight travel-grid steps and four area changes |
 | Travel is **eight-way**, direction in `$033D` | CONFIRMED |
 | `$4A9E` = 0 on the grid, 255 inside that map's own cave (`GEO19`/`1A`/`1B`) | CONFIRMED |
 | `$49E6` is `inDungeon` — 0 selects the overhead view, non-zero the 3D one | CONFIRMED against the Azure Bonds reimplementation |
@@ -58,7 +59,9 @@ and it should be made before the reader is pointed at anything overland.
 2. **`$49FB`**, which is 0 on the grid and 255 in the cave and gates a display
    item next to the clock. What it prints has not been seen.
 3. **Where the travel facing is kept.** `$033D` is page 3 and is not in the
-   save. Whether `$49C2` shadows it is untested.
+   save, and it is not `$49C2` either — see the row above. So a converted
+   outdoor save cannot set the direction the party faces on the grid, and
+   nobody has looked for the byte that would.
 4. **`$4BC0`.** GDRIVE00 carries the square code, GDRIVE01 does not, and all
    fourteen saves read `01`. A travel-grid save should read `00`.
 5. **What a travel step costs in game time.** `ECL19 $AEA3` writes
