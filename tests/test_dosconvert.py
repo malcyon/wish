@@ -264,13 +264,24 @@ def test_a_character_with_no_thief_level_carries_no_thief_skills():
 
 
 @needs_dos_saves
-def test_innate_effects_survive_and_running_ones_are_reported():
+def test_innate_effects_survive_and_running_ones_do_not():
     """The `.SPC` file splits in two, and the two ports share the id space.
 
     Curse's own importer keeps exactly the innate racial ids out of a Pool of
     Radiance `.spc`; `goldbox/traits.py` names the same numbers the same way --
     107 is elf sleep resistance and 124 is the half-elf's on both sides.
-    Everything else is a running spell and is dropped, out loud.
+    Everything else is a running spell and must not reach the trait slots: a
+    Bless with four rounds left on it would arrive as a permanent racial
+    bonus, which is a defect a player can see.
+
+    **The running ones used to be reported as dropped as well, and are not
+    any more.**  Donald, 2026-08-27: *"For running effects, that would expire
+    after a certain period of time, we do not need to report those. The user
+    will not expect this to carry over, so reporting it is unnecessary."*  An
+    innate effect that cannot be carried is the opposite case and is still
+    reported -- `write`'s gnome line is the one specimen of it.  So what this
+    asserts moved from "it is reported" to "it is not written", which is the
+    thing a player would meet.
     """
     innate = running = 0
     for char in _records():
@@ -282,9 +293,46 @@ def test_innate_effects_survive_and_running_ones_are_reported():
                 innate += 1
             else:
                 running += 1
-                assert any(str(e) in d for d in report.dropped)
+                assert e not in slots, (char.name, e)
+        assert not [d for d in report.dropped if d.startswith(".SPC effect")], \
+            char.name
     assert innate >= 5
     assert running >= 2
+
+
+@needs_dos_saves
+def test_the_dropped_list_names_the_losses_a_player_would_notice():
+    """What the import's report pane shows, which is not everything the
+    conversion knows (#118, Donald's four corrections of 2026-08-27).
+
+    Three kinds of line came off it: a field the C64 derives for itself, a
+    running spell effect, and the three DOS icon fields, which became one
+    sentence.  None of the three is a loss a player can see, and a pane of
+    lines nobody can act on is what made him ask.
+
+    **Nothing measured left the code.**  Every suppressed name is still in
+    `DROPPED`, so `field_disposition` still accounts for it and
+    `test_every_declared_field_has_a_disposition` still holds; every one
+    still has its field note in `goldbox/dos_layout.py`.  This asserts both
+    halves, because the failure worth catching is a fact being deleted rather
+    than a line being hidden.
+    """
+    quiet = dos.UNREPORTED_DROPS | dos.ICON_DROPS
+    declared = dict(dos.DROPPED)
+    assert quiet <= set(declared), "a suppressed drop must still be declared"
+    disposition = dos.field_disposition()
+    for name in quiet:
+        assert disposition[name].startswith("dropped:"), name
+
+    seen = 0
+    for char in _records():
+        _rec, report = dos.to_c64_record(char)
+        for name in quiet:
+            assert not [d for d in report.dropped
+                        if d.startswith(f"DOS {name} @")], (char.name, name)
+        assert report.dropped.count(dos.COMBAT_ICON_DROP) == 1, char.name
+        seen += 1
+    assert seen >= 6, "needs a party to check against"
 
 
 # --- the saved game ----------------------------------------------------------

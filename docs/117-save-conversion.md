@@ -446,7 +446,17 @@ different form:
 * **every byte written must be justified.** Either it came from the DOS save,
   or it was computed, or it is a documented constant. "Copied from a template
   and probably fine" is a category that should not exist by the end.
-* every DOS field with no C64 home is **reported**, not silently dropped;
+* every DOS field with no C64 home is **accounted for**, not silently dropped.
+  `goldbox/dos.py`'s `field_disposition()` is where that promise is kept and
+  `test_every_declared_field_has_a_disposition` is what enforces it: a field
+  the layout declares and the three tables never name fails the build.
+  **What the player is shown is a shorter list than that**, since 2026-08-27
+  — a value the C64 derives for itself, a spell effect that was about to
+  expire, and three offsets saying the DOS combat figure does not convert are
+  all lines nobody using the program can act on. `UNREPORTED_DROPS`,
+  `ICON_DROPS` and `COMBAT_ICON_DROP` name exactly which, and the three icon
+  fields become one sentence rather than disappearing. Keeping a line out of
+  the pane does not take it out of the account;
 * the finished converter should be able to say, for any offset in its output,
   *where that byte came from*. That is the test, and it is stricter than a
   round trip would have been.
@@ -1039,8 +1049,12 @@ derivation as well as to a copy: `neutral.Writer.get` exists because
 from a field it would have refused to copy is standing behind the value twice
 as hard, not half as hard. A refusal also carries the refused value's own
 `dropped` list into the report — what a reader had to leave behind to produce
-a value is a fact about the source whether or not the value is written, and
-the running `.SPC` effects ride on `innate_effects.dropped` exactly that way.
+a value is a fact about the source whether or not the value is written. The
+running `.SPC` effects used to ride on `innate_effects.dropped` exactly that
+way and no longer do: Donald ruled on 2026-08-27 that a spell about to expire
+is not a loss a player will look for, so `to_neutral` passes no `dropped=`
+there. `INNATE_EFFECTS` still decides which ids are *carried*, which is the
+half that changes what the character can do.
 
 The split it enforces is that **a reader says where a value came from and a
 writer says where it went**. Two lines used to break it and no longer do: the

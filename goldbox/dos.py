@@ -632,6 +632,33 @@ DROPPED: tuple[tuple[str, str], ...] = (
                       "the combat tail"),
 )
 
+#: Drops the **player** is not shown, though the conversion still knows them.
+#:
+#: Every name here is still in :data:`DROPPED`, so `field_disposition` still
+#: accounts for it and `goldbox/dos_layout.py` still carries its field note --
+#: what changes is only the list in front of somebody importing a save.  Each
+#: of these three is a value the C64 works out for itself, so there is nothing
+#: for a player to see go missing: encumbrance is money plus item weight,
+#: item_count is implied by the sixteen fixed slots, and strength_bonus is a
+#: boolean the C64 replaces with a computed strength index.
+#:
+#: Donald, 2026-08-27: *"We do not need to report derived lines as being
+#: dropped. The user will not notice the difference."*
+UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus"})
+
+#: The three DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
+#: All three say the same thing to a player -- the DOS combat figure does not
+#: come across -- and three offsets do not make that any clearer.
+ICON_DROPS = frozenset({"icon_head", "icon_body", "icon_dimension"})
+
+#: What the player is told instead, in place of those three.  Donald's words,
+#: approved 2026-08-27.  It is true because the conversion composes the icon
+#: the game's own character creation writes (#118); if a conversion ever
+#: carries the DOS figure across (#130), this sentence stops being true and
+#: goes back to naming the fields.
+COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
+                    "art does not convert")
+
 
 #: DOS fields converted by a rule rather than by a copy.  Named here so the
 #: disposition check below can see them; the rules themselves are in
@@ -729,15 +756,24 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
             FIELDS_BY_NAME["roster_tail"].confidence)
 
     # -- the .SPC file splits in two: innate, and running ---------------------
+    # Only the innate half crosses, which is what the game's own C64 importer
+    # does too, and the running half is **not** put in front of the player.
+    # Donald, 2026-08-27: *"For running effects, that would expire after a
+    # certain period of time, we do not need to report those. The user will
+    # not expect this to carry over, so reporting it is unnecessary."*  A
+    # Bless that had four rounds left is not a loss anybody can see.
+    #
+    # An **innate** effect that cannot be carried is the opposite and is
+    # always reported -- a racial bonus a player paid for at character
+    # creation and would go looking for.  `INNATE_EFFECTS` is where the line
+    # is drawn in the bytes and it is the same line drawn here.
+    # `docs/133-active-effects.md` records what a running effect is; the
+    # active-effect arrays are zeroed by `EFFECT_ARRAYS` in `convert_save`.
     out.set("innate_effects",
             [e for e in dos.effect_ids if e in INNATE_EFFECTS],
             "the innate ids of the DOS .SPC file; the two ports share one "
             "effect-id namespace (goldbox/traits.py)",
-            Confidence.PROBABLE,
-            dropped=[f".SPC effect {e} ({traits.describe(e)}): a running "
-                     f"effect, not an innate one, and running effects do not "
-                     f"survive"
-                     for e in dos.effect_ids if e not in INNATE_EFFECTS])
+            Confidence.PROBABLE)
 
     # -- the .ITM file, projected -------------------------------------------
     out.set("inventory", [it.to_c64() for it in dos.items],
@@ -745,8 +781,14 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
             Confidence.CONFIRMED)
 
     # -- what the DOS record holds and no neutral field does ------------------
+    # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
+    # `field_disposition` still accounts for every one of them; what they are
+    # kept out of is the list a person reads.
     for name, why in DROPPED:
+        if name in UNREPORTED_DROPS or name in ICON_DROPS:
+            continue
         out.drop(f"DOS {name} @{FIELDS_BY_NAME[name].offset:#05x}: {why}")
+    out.drop(COMBAT_ICON_DROP)
     return out
 
 
