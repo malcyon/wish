@@ -396,15 +396,37 @@ def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
 
 @needs_dos_saves
 def test_convert_save_accounts_for_the_whole_payload():
-    """Every one of `SAVEDGAME0`'s 7168 bytes has a provenance, including
-    "carried through from the template save", which is why a template is
-    required at all."""
+    """Every one of the 9216 bytes of **both** files has a provenance,
+    including "carried through from the template save", which is why a
+    template is required at all.
+
+    `SAVEDGAME1` used to be absent from the report entirely (#120): its 194
+    written bytes had no provenance line and its 1854 carried ones were not
+    counted, so `3833/7168 bytes accounted for` was a statement about half
+    the output.
+    """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
     report = dos.convert_save(_save_dir(), "A", save0, save1)
-    assert report.total == 0x1C00
+    assert report.total == len(save0) + len(save1)
     assert report.unaccounted == []
     assert any("quest-flag" in w for w in report.warnings)
+    # The six roster blocks the conversion writes are named, and named as
+    # being in the other file -- `0x0100` means two different things now.
+    for place in range(6):
+        at = len(save0) + place * dos.ROSTER_STRIDE
+        assert "SAVEDGAME1" in report.sources[at]
+        assert "roster" in report.sources[at]
+
+
+@needs_dos_saves
+def test_convert_save_accounts_for_save0_alone_when_there_is_no_save1():
+    """`save1` is optional, and with none given the report covers exactly the
+    one file it was handed."""
+    save0 = bytearray(0x1C00)
+    report = dos.convert_save(_save_dir(), "A", save0)
+    assert report.total == len(save0)
+    assert report.unaccounted == []
 
 
 @needs_dos_saves

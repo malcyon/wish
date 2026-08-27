@@ -86,6 +86,7 @@ __all__ = [
     "DosItem",
     "Report",
     "WRITE_DEFAULTS",
+    "C64SaveReport",
     "item_to_c64",
     "item_from_c64",
     "read_character",
@@ -1739,9 +1740,43 @@ def marching_slot(index: int, count: int) -> int:
     return count - 1 - index
 
 
+@dataclasses.dataclass
+class C64SaveReport(Report):
+    """A whole-save conversion's provenance, over **both** save files.
+
+    Offsets 0 to `save0_size - 1` are `SAVEDGAME0`, a verbatim image of
+    `$4900`-`$64FF`; `save0_size` and up are `SAVEDGAME1`, which is `$8300`
+    onwards.  One flat offset map for two files, which is the shape
+    :class:`WriteReport` already uses for the record and the `.ITM` payload
+    beside it.
+
+    `SAVEDGAME1` was absent from the report entirely until #120: nothing
+    called `note` for it, the fill-in sweep ran to `len(save0)`, and `total`
+    counted one file -- so the summary said `3833/7168 bytes accounted for`
+    about a 9216-byte output whose second file is 90% template bytes.
+    """
+
+    #: How many of the offsets belong to `SAVEDGAME0`.  The rest are
+    #: `SAVEDGAME1`, and zero of them when the caller passed no `save1`.
+    save0_size: int = 0x1C00
+
+    def address(self, offset: int) -> str:
+        """`SAVEDGAME1 $8300`-style, because `0x0100` now means two things."""
+        if offset < self.save0_size:
+            return f"SAVEDGAME0 ${SAVE0_BASE + offset:04X}"
+        return f"SAVEDGAME1 ${SAVE1_BASE + offset - self.save0_size:04X}"
+
+    def summary_notes(self) -> list[str]:
+        lines = super().summary_notes()
+        if self.total > self.save0_size:
+            lines.append(f"  SAVEDGAME0 {self.save0_size} bytes, SAVEDGAME1 "
+                         f"{self.total - self.save0_size}")
+        return lines
+
+
 def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
-                 keep_icons: bool = True) -> Report:
+                 keep_icons: bool = True) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     `save0` and `save1` come from an existing C64 save, which supplies the
@@ -1750,10 +1785,16 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     DOS has no equivalent of.  Everything else is replaced.
 
     Both payloads are modified in place.  The DOS files are only ever read.
+
+    The report covers both of them: an offset below `len(save0)` is a
+    `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
     """
     party = read_party(folder, slot)
     savgam = pathlib.Path(folder).joinpath(f"SAVGAM{slot}.DAT").read_bytes()
-    report = Report(total=len(save0))
+    save1_at = len(save0)
+    report = C64SaveReport(
+        total=len(save0) + (0 if save1 is None else len(save1)),
+        save0_size=len(save0))
 
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
@@ -1783,6 +1824,10 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         if save1 is not None:
             at = place * ROSTER_STRIDE
             save1[at:at + ROSTER_STRIDE] = raw[0x100:0x120]
+            report.note(save1_at + at, ROSTER_STRIDE,
+                        f"SAVEDGAME1 ${SAVE1_BASE + at:04X} -- {who} -- the "
+                        f"converted roster block: the derived combat numbers "
+                        f"the character record does not hold")
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
 
@@ -1796,7 +1841,12 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                     f"does -- one byte, and the rest of the template's slot "
                     f"left where it was")
         if save1 is not None:
-            save1[place * ROSTER_STRIDE + EMPTY_ROSTER_BYTE] = 0
+            at = place * ROSTER_STRIDE + EMPTY_ROSTER_BYTE
+            save1[at] = 0
+            report.note(save1_at + at, 1,
+                        f"SAVEDGAME1 ${SAVE1_BASE + at:04X} -- slot {place}: "
+                        f"roster_in_use cleared, the roster's half of the "
+                        f"same emptying")
     if len(party) < SLOT_COUNT:
         report.warnings.append(
             f"Slots {len(party)}-{SLOT_COUNT - 1} emptied: a DOS save holds "
@@ -1847,8 +1897,9 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     # Everything not written above stays as the template save had it, and
     # that is a provenance too -- an honest one, and the reason a template is
     # required at all.
-    for i in range(len(save0)):
-        report.sources.setdefault(i, "carried through from the template save")
+    for i in range(report.total):
+        report.sources.setdefault(
+            i, f"{report.address(i)}: carried through from the template save")
     return report
 
 
