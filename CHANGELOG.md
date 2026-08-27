@@ -7,14 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-26
+
+### Added
+
+- File > Open remembers the folder your last save came from, and starts there next time instead of wherever the dialog was last left.
+
 ### Changed
 
 - Character editor reorganised onto tabs -- Stats, Inventory and Spells -- with the roster and combat icon shown above them, so the window no longer has to be as wide.
+- Preferences no longer prints a paragraph explaining how the save folder is searched, or a row naming what overrode it; it just shows the folder in use.
 
 ### Fixed
 
-- Live automapper reads party stats and runs its five live actions (heal, store/restore spells, identify, quickfight) from the correct memory on Curse of the Azure Bonds and Secrets of the Silver Blades, instead of Pool of Radiance's addresses.
+- Live automapper reads party stats and runs its five live actions (heal, store/restore spells, identify, quickfight) from the correct memory on Curse of the Azure Bonds and Secret of the Silver Blades, instead of Pool of Radiance's addresses.
 - Level Up and Fast Travel now confirm the game running in the emulator is the one believed before acting, instead of trusting a saved preference that could be stale or wrong.
+- Character editor's header no longer draws on top of itself when the window is narrowed, and the window now fits a 1280x720 screen at any interface font size.
+- Automapper window now fits a 1280x720 screen at a larger interface font too, instead of growing past it.
+- Roster's Name column stays within its width limit instead of growing past it; a long name is shortened with an ellipsis instead.
+- Roster's horizontal scroll bar no longer hides the last character's row.
+- Roster shows the open title's own race and class names, instead of always showing Pool of Radiance's.
+- A Silver Blades ranger's spellbook is no longer greyed out as if he knows no spells.
+- Live roster no longer misreads party stats off a full-screen picture on Silver Blades; it holds its last good reading instead.
+- Character editor's Spells tab now names every spell on Curse of the Azure Bonds and Secret of the Silver Blades, instead of leaving them unlabelled.
+- Exporting a Curse or Silver Blades character to YAML no longer stops partway through the spellbook.
+- Spells tab's "Castable per level" field no longer reads as all zeros for a spellcaster; it was showing a clipped tail of the real value.
 
 ## [0.1.0] - 2026-08-23
 
@@ -42,5 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/malcyon/wish/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/malcyon/wish/releases/tag/v0.1.0
