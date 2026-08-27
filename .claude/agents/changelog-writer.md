@@ -43,6 +43,12 @@ says what the code does.
 
 ## What earns a line
 
+**Write from the reader's side of the program, not from the diff.** They have
+the last release installed. The only question that matters is **what is new to
+them** — and a commit list cannot answer it, because most of what is in one
+never reaches a user at all. Read the corpus to find candidates; decide each one
+by asking what the person running the last version would see change.
+
 **The test is: would a person using the program notice, and would they care?**
 
 Yes -- a new thing they can do, a thing that used to be wrong and now is not, a
@@ -59,6 +65,32 @@ it, not to the decode.
 behind `WISH_EXPERIMENTAL_*` (see the Feature flags section of `CLAUDE.md`). Do
 not announce something a user cannot reach. When the flag comes off, that is
 the release it belongs to.
+
+**A bug the last release never had is not a fix worth reporting.** Some of the
+commits since the tag repair defects that the *same stretch* introduced. Nobody
+running the last version ever met them, so a line about one describes a journey
+they were not on — and implies the copy they have is worse than it is. Donald,
+on 0.1.1: *"We added a tabbed interface, so anything about fixing something
+introduced by that change doesn't need to be told to a 0.1.0 user."*
+
+**Establish that, do not infer it from dates.** When an issue was opened says
+nothing: one filed today can describe a bug that has been there for months, and
+one filed months ago can describe a regression from last week. Read the code as
+it stood at the tag —
+
+```sh
+git show v0.1.0:editor/rosterview.py
+```
+
+— and look for the faulty construct the fix removed. If it is there, it shipped,
+and the fix earns its line. If the file, the widget or the code path did not
+exist yet, the user never met the bug.
+
+**Answer this while you write, not afterwards.** It decides whether a line
+belongs at all, so it is part of choosing the lines rather than a review of
+them. Where you genuinely cannot tell, **leave the line in and say so in your
+report** — an extra line costs a reader a moment, a missing one costs them the
+fix they were waiting for.
 
 ## How to write a line
 
