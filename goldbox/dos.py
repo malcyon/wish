@@ -1647,34 +1647,32 @@ def _sqrdata_number(name: str) -> int:
 def apply_file_cache(save0: bytearray, savgam: bytes) -> str:
     """Point a `SAVEDGAME0` payload at the area the DOS party is standing in.
 
-    Returns the one line the report puts against the cache, because which of
-    the two things happened is exactly what a reader of the report wants to
-    know:
+    The cache is rewritten to `$FF` in all twenty-five slots with slot 2 =
+    the area's `GEO` number, slot 8 = the area id and slot 11 = `ANIMATE00`
+    -- the file `SAVEDGAME1`'s own tail holds (#102) -- plus the three bytes
+    outside the cache that make those findable: the disk hint `$49EA`, the
+    map `$49C5` and the script id `$49F2`.  Returns the one line the report
+    puts against the cache.
 
-    * the template already stands in that area, and its own cache -- a real
-      one, written by the game -- is kept untouched;
-    * or it does not, and the cache is rewritten to `$FF` in all twenty-five
-      slots with slot 2 = the area's `GEO` number, slot 8 = the area id and
-      slot 11 = `ANIMATE00` -- the file `SAVEDGAME1`'s own tail holds (#102)
-      -- plus the three bytes outside the cache that make those findable:
-      the disk hint `$49EA`, the map `$49C5` and the script id `$49F2`.
-
-    The second is `docs/140-loaded-files-cache.md`'s recipe and is the shape
-    both live tests used.  Outdoors the same recipe with slot 4 in slot 2's
+    That is `docs/140-loaded-files-cache.md`'s recipe and is the shape both
+    live tests used.  Outdoors the same recipe with slot 4 in slot 2's
     role -- `SQRDATA` where a dungeon has a `GEO` -- which is the outdoor form
     #47 proved live twice, plus `$49E6` = 0, which is on its own what boots
     the engine into travel mode.  It still refuses rather than guesses for
     two kinds of area: one this project has no row for, and one whose script
     picks its map at run time or loads none at all.
+
+    **It applies to a template standing in the area too** (#121).  That case
+    used to return early and keep the template's own cache, on the reasoning
+    that the game wrote it and it names more files than a converted save
+    needs.  It was the only path here that preferred an inherited value to a
+    computed one, and it cost 29 bytes of somebody else's save.  One of the
+    two live tests of the recipe is itself a same-area case -- PORSAVE13 in
+    the Slums -- so the branch that went is the one already proven
+    unnecessary.
     """
     at = FILE_CACHE[0] - SAVE0_BASE
     there = dos_savegame.current_area(savgam)
-    here = save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD
-    if here == there and not dos_savegame.outdoors(savgam):
-        return ("loaded-files cache: the template's own, untouched -- it "
-                "stands where the DOS party stands, so it already names the "
-                "right files")
-
     where = areas.area(there)
     if where is None:
         raise DosRecordError(NOT_AN_AREA.format(area=there))
@@ -1863,20 +1861,16 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "area change")
     at = FILE_CACHE[0] - SAVE0_BASE
     outdoors = dos_savegame.outdoors(savgam)
-    there = dos_savegame.current_area(savgam)
-    retargeted = outdoors or (
-        save0[at + CACHE_GEO] & ~FILE_CACHE_RELOAD != there)
     report.note(at, FILE_CACHE[1], apply_file_cache(save0, savgam))
-    if retargeted:
-        for address, what in (
-                (DISK_HINT, "the POOL side the loader will ask for"),
-                (CURRENT_GEO, "the SQRDATA number LOADFILES reloads" if
-                 outdoors else "the map LOADFILES reloads"),
-                (CURRENT_SCRIPT, "the script id"),
-                (INDOORS, "outdoors -- 0 boots into travel mode" if outdoors
-                 else "indoors")):
-            report.note(address - SAVE0_BASE, 1,
-                        f"{what}, from the area the DOS party is in")
+    for address, what in (
+            (DISK_HINT, "the POOL side the loader will ask for"),
+            (CURRENT_GEO, "the SQRDATA number LOADFILES reloads" if
+             outdoors else "the map LOADFILES reloads"),
+            (CURRENT_SCRIPT, "the script id"),
+            (INDOORS, "outdoors -- 0 boots into travel mode" if outdoors
+             else "indoors")):
+        report.note(address - SAVE0_BASE, 1,
+                    f"{what}, from the area the DOS party is in")
 
     changed = apply_quest_flags(save0, savgam)
     report.note(FLAGS_FIRST - SAVE0_BASE, FLAGS_LAST - FLAGS_FIRST + 1,

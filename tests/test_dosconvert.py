@@ -461,19 +461,39 @@ def test_a_template_from_another_area_is_retargeted_not_refused():
 
 
 @needs_dos_saves
-def test_a_template_already_in_the_area_keeps_its_own_cache():
-    """A template standing where the DOS party stands carries a real cache the
-    game itself wrote, naming every file it had resident. That is strictly
-    more than the two slots a converted save needs, so it is kept."""
+def test_a_template_already_in_the_area_is_retargeted_like_any_other():
+    """A template standing where the DOS party stands used to keep its own
+    cache, on the reasoning that the game wrote it and it names more files
+    than a converted save needs. That was the one path in the conversion
+    that preferred an inherited value to a computed one, and #121 removed it.
+
+    The recipe is confirmed twice in the running game
+    (`docs/140-loaded-files-cache.md`), and **one of those two tests is
+    itself a same-area case** -- PORSAVE13 standing in the Slums with a
+    Slums save converted onto it -- so the branch this replaces is the one
+    already proven unnecessary. What it cost was 29 bytes of somebody
+    else's save on #118's inherited list, for no gain.
+    """
     savgam = _savgam("A")
     there = sg.area_id(savgam)
+    where = areas.area(there)
     save0 = bytearray(0x1C00)
     at = dos.FILE_CACHE[0] - dos.SAVE0_BASE
     save0[at:at + dos.FILE_CACHE[1]] = bytes(range(0x20, 0x39))
     save0[at + dos.CACHE_GEO] = there | dos.FILE_CACHE_RELOAD
-    before = bytes(save0[at:at + dos.FILE_CACHE[1]])
     dos.convert_save(_save_dir(), "A", save0)
-    assert bytes(save0[at:at + dos.FILE_CACHE[1]]) == before
+    want = bytearray(b"\xFF" * dos.FILE_CACHE[1])
+    want[dos.CACHE_GEO] = areas.geo_number(where.geos[0])
+    want[dos.CACHE_ECL] = there
+    want[11] = 0                 # ANIMATE00, as in the other-area case
+    assert bytes(save0[at:at + dos.FILE_CACHE[1]]) == bytes(want)
+    # The four bytes outside the cache are written too. They used to be
+    # skipped on this branch, which is how $49EA -- the side the loader asks
+    # for -- kept the template's value.
+    assert save0[dos.DISK_HINT - dos.SAVE0_BASE] == where.disk
+    assert save0[dos.CURRENT_GEO - dos.SAVE0_BASE] == want[dos.CACHE_GEO]
+    assert save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] == there
+    assert save0[dos.INDOORS - dos.SAVE0_BASE] == 1
 
 
 @needs_dos_saves

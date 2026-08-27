@@ -222,10 +222,21 @@ CONFIRMED in the running game, by bisecting a known-good and a known-bad save
 that differ in the cache and nothing else (`work/p102/`, #102).
 
 `SAVEDGAME1` is `$8300`-`$8AFF`, and its tail from `$8400` is the resident
-`ANIMATE00`: 829 of those 852 bytes match the file on the disk in `W1.D64`,
-`PORSAVE11.D64` and `PORSAVE13.D64` alike, the other 23 being live state. So a
-save whose slot 11 reads `$FF` says *nothing is loaded* while carrying the file
-in its own second half, and the engine believes the cache.
+`ANIMATE00`: 829 of those 852 bytes match the file on the disk, over 98 saves
+as over the three this was first counted on. So a save whose slot 11 reads
+`$FF` says *nothing is loaded* while carrying the file in its own second half,
+and the engine believes the cache.
+
+**"The engine believes the cache" is a claim about slot 11, not about the 852
+bytes**, and this section was read as making both. #118 step 3 zeroed the whole
+of `$8400`-`$8AFF` in a converted save, left slot 11 saying resident, and the
+party loaded, walked and changed area anyway — `$0400` matching `GEO00` in 1024
+of 1024 — as did the same save with slot 11 `$FF`, and one carrying `ANIMATE00`
+straight off `POOL1.D64`. Four variants, one load and one transition each. So
+slot 11 decides the transition and the bytes behind it did not have to be
+right for it. What has **not** been tried is a fight fought to its end or an
+arrival that plays an animation; `#122 (A converted save says ANIMATE00 is
+resident and carries whatever the template had there)`.
 
 **What it costs.** An engine-written outdoor save standing on the ship's
 landing square, travel window `1A` (7,29), takes the boat into New Phlan:
