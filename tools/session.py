@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import pathlib
 import re
 import socket
 import subprocess
@@ -32,13 +33,19 @@ import time
 from dataclasses import dataclass
 from typing import NamedTuple
 
-sys.path.insert(0, "/home/donald/src/wish/tools")
+# From this file, not from a path measured on one machine.  These were three
+# absolute paths under `/home/donald`, which is where `tools/` happens to sit
+# here and nowhere else -- and `tools/` ships, so they were wrong for everybody
+# who is not Donald.  `tests/gamedata.py` carries the same lesson: an absolute
+# path is invisible on CI, and this one hid until a test imported the module
+# and CI answered `ModuleNotFoundError: No module named 'session'`.
+TOOLS = str(pathlib.Path(__file__).resolve().parent)
+sys.path.insert(0, TOOLS)
 import instance  # noqa: E402
 from drive import Keyboard, Monitor, MonitorError, is_bitmap, read_screen  # noqa: E402
 
-TOOLS = "/home/donald/src/wish/tools"
 # Disk images and logs live in scratch; the code does not.
-HERE = "/home/donald/src/wish/work/drive"
+HERE = str(pathlib.Path(TOOLS).parent / "work" / "drive")
 # The human's numbers, and the defaults when no slot is passed.  The pool never
 # allocates these: `tools/instance.py` starts at 6520, so anything still on 6502
 # is a game a human started from the desktop menu.
