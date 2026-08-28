@@ -251,13 +251,13 @@ def test_a_plain_session_still_asks_for_dosbox(tmp_path, monkeypatch):
         shutil, "which",
         lambda name, *a, **k: None if name == "dosbox" else f"/usr/bin/{name}")
     with pytest.raises(dosbox.DosboxUnavailable) as e:
-        dosbox.Session(dosbox.Slot(n=0, dir=tmp_path, _fd=-1), tmp_path / "POOLRAD")
+        dosbox.Session(dosbox.Slot(n=0, dir=tmp_path, _fd=-1, _display_num=30), tmp_path / "POOLRAD")
     assert "not installed: dosbox" in str(e.value)
 
 
 def test_a_session_refuses_to_stage_outside_work(tmp_path):
     """The assertion that keeps a copy from ever landing on the player's files."""
-    slot = dosbox.Slot(n=0, dir=tmp_path, _fd=-1)
+    slot = dosbox.Slot(n=0, dir=tmp_path, _fd=-1, _display_num=30)
     session = dosbox.Session.__new__(dosbox.Session)
     session.dir = tmp_path
     session.stem = "POOLRAD"

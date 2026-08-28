@@ -330,10 +330,7 @@ def locate(image: bytes, needle: bytes, window: int = 12, stride: int = 2):
 @dataclass
 class Slot(dosbox.Slot):
     """`tools/dosbox.py`'s lease on this pool's own displays and directories."""
-
-    @property
-    def display(self) -> str:
-        return f":{DISPLAY_BASE + self.n}"
+    pass
 
 
 def claim(note: str = "") -> Slot:
@@ -354,11 +351,35 @@ def claim(note: str = "") -> Slot:
         except OSError:
             os.close(fd)
             continue
+            
+        display_num = -1
+        display_fd = -1
+        for i in range(100):
+            x = DISPLAY_BASE + i
+            xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            try:
+                fcntl.flock(xfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if not server_on(f":{x}"):
+                    display_num = x
+                    display_fd = xfd
+                    break
+                fcntl.flock(xfd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(xfd)
+            
+        if display_num == -1:
+            os.close(fd)
+            continue
+
         os.ftruncate(fd, 0)
-        os.write(fd, json.dumps(
-            {"slot": n, "pid": os.getpid(), "note": note, "at": time.time()}
-        ).encode())
-        return Slot(n=n, dir=d, _fd=fd)
+        os.write(
+            fd,
+            json.dumps(
+                {"slot": n, "pid": os.getpid(), "note": note, "at": time.time(), "display": f":{display_num}"}
+            ).encode(),
+        )
+        return Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
     raise dosbox.PoolFull(f"all {SLOTS} DOSBox-X slots are leased")
 
 

@@ -154,16 +154,22 @@ class Slot:
     n: int
     dir: Path
     _fd: int
+    _xfd: int = -1
+    _display_num: int = -1
 
     @property
     def display(self) -> str:
-        return f":{DISPLAY_BASE + self.n}"
+        return f":{self._display_num}"
 
     def release(self) -> None:
         if self._fd >= 0:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             os.close(self._fd)
             self._fd = -1
+        if self._xfd >= 0:
+            fcntl.flock(self._xfd, fcntl.LOCK_UN)
+            os.close(self._xfd)
+            self._xfd = -1
 
     def __enter__(self) -> Slot:
         return self
@@ -186,14 +192,35 @@ def claim(note: str = "") -> Slot:
         except OSError:
             os.close(fd)
             continue
+            
+        display_num = -1
+        display_fd = -1
+        for i in range(100):
+            x = DISPLAY_BASE + i
+            xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            try:
+                fcntl.flock(xfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if not server_on(f":{x}"):
+                    display_num = x
+                    display_fd = xfd
+                    break
+                fcntl.flock(xfd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(xfd)
+            
+        if display_num == -1:
+            os.close(fd)
+            continue
+
         os.ftruncate(fd, 0)
         os.write(
             fd,
             json.dumps(
-                {"slot": n, "pid": os.getpid(), "note": note, "at": time.time()}
+                {"slot": n, "pid": os.getpid(), "note": note, "at": time.time(), "display": f":{display_num}"}
             ).encode(),
         )
-        return Slot(n=n, dir=d, _fd=fd)
+        return Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
     raise PoolFull(f"all {SLOTS} DOSBox slots are leased")
 
 

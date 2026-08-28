@@ -118,9 +118,12 @@ class Slot:
     n: int
     dir: Path
     _fd: int
+    _xfd: int = -1
 
     # -- the six resources -------------------------------------------------
 
+    _display_num: int = -1
+    
     @property
     def port(self) -> int:
         """Binary monitor. VICE serves exactly one connection to this."""
@@ -138,7 +141,7 @@ class Slot:
 
     @property
     def display(self) -> str:
-        return f":{DISPLAY_BASE + self.n}"
+        return f":{self._display_num}"
 
     @property
     def vicerc(self) -> Path:
@@ -168,6 +171,10 @@ class Slot:
             fcntl.flock(self._fd, fcntl.LOCK_UN)
             os.close(self._fd)
             self._fd = -1
+        if self._xfd >= 0:
+            fcntl.flock(self._xfd, fcntl.LOCK_UN)
+            os.close(self._xfd)
+            self._xfd = -1
 
     def __enter__(self) -> Slot:
         return self
@@ -236,7 +243,28 @@ def claim(game: str = "por", note: str = "", slots: int = SLOTS) -> Slot:
         except OSError:
             os.close(fd)
             continue
-        slot = Slot(n=n, dir=d, _fd=fd)
+            
+        display_num = -1
+        display_fd = -1
+        for i in range(100):
+            x = DISPLAY_BASE + i
+            xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            try:
+                fcntl.flock(xfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if not _server_on(f":{x}"):
+                    display_num = x
+                    display_fd = xfd
+                    break
+                fcntl.flock(xfd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(xfd)
+            
+        if display_num == -1:
+            os.close(fd)
+            continue
+            
+        slot = Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
         _reap_held(slot)
         if _listening(slot.port):
             # Reaping found something and could not free the port: the lease
@@ -373,7 +401,7 @@ def status(slots: int = SLOTS) -> list[dict]:
             "port": BIN_BASE + n,
             "text_port": TEXT_BASE + n,
             "cmd_port": CMD_BASE + n,
-            "display": f":{DISPLAY_BASE + n}",
+            "display": info.get("display") or f":{DISPLAY_BASE + n}",
             **{f: info.get(f) if f in live else None
                for f in ("pid", "pgid", "game", "note")},
         })
@@ -510,6 +538,21 @@ def _greets(port: int, host: str = "127.0.0.1", timeout: float = 1.0) -> bool:
         return True
     except Exception:
         return False
+
+
+def _server_on(display: str) -> bool:
+    n = display.lstrip(":").split(".")[0]
+    if not hasattr(socket, "AF_UNIX"):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1.0)
+        sock.connect(f"/tmp/.X11-unix/X{n}")
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
 
 
 def _killpg(pgid: object, timeout: float = 8.0) -> bool:

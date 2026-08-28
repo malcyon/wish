@@ -346,7 +346,7 @@ def test_a_machine_with_only_the_debugger_build_can_open_a_session(tmp_path,
         lambda name, *a, **k: None if name == "dosbox" else f"/usr/bin/{name}")
     monkeypatch.setattr(dosboxx, "require_debugger", lambda: None)
     assert "dosbox" not in dosboxx.missing_tools()
-    slot = dosboxx.Slot(n=0, dir=tmp_path, _fd=-1)
+    slot = dosboxx.Slot(n=0, dir=tmp_path, _fd=-1, _display_num=40)
     session = dosboxx.XSession(slot, tmp_path / "POOLRAD")
     assert session.display == ":40"
 

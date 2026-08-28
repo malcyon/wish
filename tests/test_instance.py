@@ -376,7 +376,7 @@ def test_seeding_never_opens_the_template_for_writing(pool):
 
 def test_seeding_works_with_no_template_at_all(pool):
     """A machine with no VICE config yet still gets a valid rc."""
-    slot = instance.Slot(n=0, dir=pool / "inst" / "0", _fd=-1)
+    slot = instance.Slot(n=0, dir=pool / "inst" / "0", _fd=-1, _display_num=10)
     path = instance.seed_vicerc(slot, pool / "nothing-here")
     text = path.read_text()
     assert "[C64SC]" in text
