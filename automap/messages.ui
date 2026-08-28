@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>MessagesPanel</class>
+ <widget class="QWidget" name="MessagesPanel">
+  <layout class="QVBoxLayout" name="outer">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <property name="spacing"><number>4</number></property>
+   <item>
+    <widget class="QLabel" name="heading">
+     <property name="text"><string>Messages</string></property>
+     <property name="font">
+      <font><bold>true</bold></font>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QListWidget" name="list">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="wordWrap"><bool>true</bool></property>
+     <property name="selectionMode"><enum>QAbstractItemView::NoSelection</enum></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+</ui>
