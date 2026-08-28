@@ -55,7 +55,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -72,10 +71,11 @@ from PyQt6.QtWidgets import (
     QStyleOptionFrame,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
+
+from .ui_preferences import Ui_PreferencesDialog
 
 from automap import paths
 from automap.actionbar import DANGER, no_areas
@@ -303,30 +303,19 @@ class PreferencesDialog(QDialog):
     def __init__(self, window, parent=None):
         super().__init__(parent or window)
         self.win = window
-        self.setWindowTitle("Preferences")
-        self.setModal(True)
+        self.ui = Ui_PreferencesDialog()
+        self.ui.setupUi(self)
+        self.tabs = self.ui.tabs
+        self._buttons = self.ui.buttons
 
-        # **Two tabs, and the tall thing has one to itself.** In one column the
-        # form and the 29-row area table competed for a height neither could
-        # have: the page wanted 930 px, cosmic-comp caps a window at 662
-        # (`docs/130-preferences.md` §12), and a layout handed less than its
-        # minimum does not refuse -- it squeezes whatever can be squeezed,
-        # which was the Ultimate host box, the poll spinner and the table, all
-        # crushed to a few pixels. Split, each tab is shorter than the screen
-        # and the table gets the whole of its own.
-        self.tabs = QTabWidget()
+        # Replace the placeholder tab pages with the real ones.
+        self.tabs.removeTab(1)
+        self.tabs.removeTab(0)
         self.tabs.addTab(self._general_tab(), "General")
         self.tabs.addTab(self._travel_tab(), "Fast travel")
         # General every time. A dialog that reopens on a tab nobody chose is
         # worse than one that remembers nothing, so nothing is remembered.
         self.tabs.setCurrentIndex(0)
-
-        outer = QVBoxLayout(self)
-        outer.addWidget(self.tabs, 1)
-        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        self._buttons.rejected.connect(self.reject)
-        self._buttons.accepted.connect(self.accept)
-        outer.addWidget(self._buttons)
 
         # One timer for both: re-reading a folder opens every D64 in it, and
         # applying it reloads 29 maps. Neither belongs on a keystroke.

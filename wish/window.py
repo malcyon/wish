@@ -28,8 +28,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QStatusBar,
-    QTabWidget,
 )
 
 from automap import paths
@@ -57,6 +55,7 @@ from .preferences import (
     game_named,
 )
 from .session import BUSY, CONNECTED, Session
+from .ui_window import Ui_WishWindow
 
 # The map is what a player has open while playing; the editor is the
 # occasional visit. Index order is tab order, so the map is first.
@@ -98,6 +97,9 @@ class WishWindow(QMainWindow):
                  tab: int = MAP_TAB, title: str | None = None,
                  disks: str | None = None):
         super().__init__()
+        self.ui = Ui_WishWindow()
+        self.ui.setupUi(self)
+        self.tabs = self.ui.tabs
         self.settings = settings or Settings()
 
         # What the log has already said, so a title change or a poll does not
@@ -134,16 +136,13 @@ class WishWindow(QMainWindow):
         self.map = AutomapWindow(self.mapper, settings=self.settings,
                                  drive=False, disks=self.disks_text())
 
-        self.tabs = QTabWidget()
         self.tabs.addTab(self.map, "Automapper")
         self.tabs.addTab(self.editor, "Character Editor")
-        self.setCentralWidget(self.tabs)
 
         # One status bar for the window. The pages keep their own -- they are
         # whole windows and are still usable alone -- but a status bar inside a
         # tab inside a window reads as clutter, so theirs are hidden here and
         # their lines forwarded to this one.
-        self.setStatusBar(QStatusBar())
         for page in (self.editor, self.map):
             page.statusBar().hide()
         self.statusBar().addPermanentWidget(self.map.fog_box)
