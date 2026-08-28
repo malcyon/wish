@@ -80,7 +80,7 @@ def load_maps_titled(disks: str | None = None, game=None) -> tuple[dict, object]
     to take the window down when somebody points the preference at it.
     """
     try:
-        from automap.__main__ import load_maps_titled as _load
+        from automap.maps import load_maps_titled as _load
         return _load(disks, game)
     except Exception:
         debuglog.exception("could not read the maps under %s", disks)
