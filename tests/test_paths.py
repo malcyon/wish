@@ -109,7 +109,7 @@ def test_disk_globs_cover_a_lower_cased_unpack():
 # -- the maps, and the title they came with -----------------------------------
 
 def _no_geo_reading(monkeypatch, seen):
-    from wish import window as automain
+    from automap import maps as automain
     monkeypatch.setattr(automain, "load_geo_files",
                         lambda path: seen.append(path) or {})
 
@@ -145,7 +145,7 @@ def test_a_disk_matched_by_both_patterns_is_read_once(tmp_path, monkeypatch):
     disks(tmp_path, "POOL1.D64")
     seen: list[str] = []
     _no_geo_reading(monkeypatch, seen)
-    from wish import window as automain
+    from automap import maps as automain
     hit = str(tmp_path / "POOL1.D64")
     monkeypatch.setattr(automain.glob, "glob", lambda _pattern: [hit])
     automain.load_maps_titled(str(tmp_path))
