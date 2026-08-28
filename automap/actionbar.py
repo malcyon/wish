@@ -50,6 +50,8 @@ from .panel import (
     ElidingComboBox,
     shortened,
 )
+from .ui_actionbar import Ui_ActionBar
+from .ui_warpbar import Ui_WarpBar
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -117,9 +119,9 @@ class ActionBar(QWidget):
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
 
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 4, 0, 2)
-        grid.setSpacing(4)
+        self.ui = Ui_ActionBar()
+        self.ui.setupUi(self)
+
         self.buttons: dict[str, QPushButton] = {}
         for i, action in enumerate(self.actions):
             button = ElidingButton(action.label)
@@ -127,27 +129,18 @@ class ActionBar(QWidget):
             button.setEnabled(False)          # nothing attached yet
             button.clicked.connect(
                 lambda _checked=False, a=action: self.run(a))
-            grid.addWidget(button, i // COLUMNS, i % COLUMNS)
+            self.ui.gridLayout.addWidget(button, i // COLUMNS, i % COLUMNS)
             self.buttons[action.name] = button
         rows = (len(self.actions) + COLUMNS - 1) // COLUMNS
 
-        self.watch_box = ElidingCheckBox("Clear quickfight after a fight")
-        self.watch_box.setToolTip(
-            "When a fight ends, take everyone off quickfight. Off by default: "
-            "it writes to the running game on an edge you did not ask for")
+        self.watch_box = self.ui.watch_box
         self.watch_box.setChecked(self.watcher.enabled)
         self.watch_box.toggled.connect(self._watch_toggled)
-        grid.addWidget(self.watch_box, rows, 0)
+        self.ui.gridLayout.addWidget(self.watch_box, rows, 0)
 
-        self.note = QLabel("")
-        font = self.note.font()
-        font.setPointSize(8)
-        self.note.setFont(font)
+        self.note = self.ui.note
         self.note.setStyleSheet(f"color: {MUTED.name()}")
-        self.note.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.note.setWordWrap(True)
-        grid.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
+        self.ui.gridLayout.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
 
     def minimumSizeHint(self) -> QSize:
         return shortened(super().minimumSizeHint(), self.SHORT)
@@ -375,31 +368,23 @@ class WarpBar(QWidget):
         #: costs nothing.
         self._pending: tuple[tuple[str, ...], float] | None = None
 
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 2, 0, 2)
-        grid.setSpacing(4)
+        self.ui = Ui_WarpBar()
+        self.ui.setupUi(self)
 
-        # Eliding, because a dropdown asks for the area it is showing and
-        # "Valhingen Graveyard" was that much floor under the window, growing
-        # with the UI font (#41). The width it opens at is unchanged.
-        self.combo = ElidingComboBox()
+        self.combo = self.ui.combo
         self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
-        grid.addWidget(self.combo, 0, 0, 1, 2)
 
-        self.button = ElidingButton("Fast Travel")
-        self.button.setEnabled(False)
+        self.button = self.ui.button
         self.button.clicked.connect(lambda _checked=False: self.run())
-        grid.addWidget(self.button, 0, 2)
 
-        self.back_button = ElidingButton("Travel Back")
-        self.back_button.setEnabled(False)
+        self.back_button = self.ui.back_button
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
-        grid.addWidget(self.back_button, 0, 3)
 
         #: What the last trip did. Empty until something has been clicked --
         #: the standing warning is the Fast Travel button's own tooltip.
-        self.note = self._small(QLabel(""))
-        grid.addWidget(self.note, 1, 0, 1, 4)
+        self.note = self.ui.note
+        self.note.setStyleSheet(f"color: {MUTED.name()}")
+
         self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
@@ -453,17 +438,6 @@ class WarpBar(QWidget):
         """The maps and the disk, for the item's tooltip."""
         own = getattr(row, "label", None)
         return own if isinstance(own, str) else str(row)
-
-    @staticmethod
-    def _small(label: QLabel) -> QLabel:
-        font = label.font()
-        font.setPointSize(8)
-        label.setFont(font)
-        label.setStyleSheet(f"color: {MUTED.name()}")
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        return label
 
     # -- which areas are offered -------------------------------------------
 
