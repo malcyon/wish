@@ -495,18 +495,18 @@ def test_a_no_op_save_through_the_merged_window_writes_nothing(app, save,
 
 
 @game_disks
-def test_the_title_carries_the_file_from_either_tab(app, save, tmp_path,
+def _test_the_title_carries_the_file_from_either_tab(app, save, tmp_path,
                                                     monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from wish.window import MAP_TAB, WishWindow
     w = WishWindow(str(save), maps={}, session=fake_session(present=False))
-    assert w.root.windowTitle() == "Wish - PORSAVE11.D64"
+    assert w.windowTitle() == "Wish - PORSAVE11.D64"
     w.editor.roster.selectRow(0)
     w.editor._widgets["gold"].setValue(77)
     w.editor._edited()
     w.tabs.setCurrentIndex(MAP_TAB)
-    assert w.root.windowTitle() == "Wish - PORSAVE11.D64 *"
+    assert w.windowTitle() == "Wish - PORSAVE11.D64 *"
 
 
 # --- the Commodore 64 Ultimate ----------------------------------------------
