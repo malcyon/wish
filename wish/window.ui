@@ -1613,7 +1613,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="2">
+              <item row="0" column="1">
                <widget class="ElidingButton" name="action_restore">
                 <property name="text">
                  <string>Restore spells</string>
@@ -1686,7 +1686,7 @@
               <item row="0" column="0" colspan="2">
                <widget class="ElidingComboBox" name="ft_combo" />
               </item>
-              <item row="0" column="2">
+              <item row="0" column="1">
                <widget class="ElidingButton" name="ft_button">
                 <property name="enabled">
                  <bool>false</bool>
@@ -1743,7 +1743,7 @@
           </layout>
          </widget>
         </item>
-        <item row="0" column="2">
+        <item row="0" column="1">
          <widget class="QWidget" name="automap_side">
           <property name="maximumSize">
            <size>
@@ -2558,7 +2558,7 @@
                   </layout>
                  </widget>
                 </item>
-                <item row="0" column="2">
+                <item row="0" column="1">
                  <widget class="QGroupBox" name="box_money">
                   <property name="title">
                    <string>Money</string>
