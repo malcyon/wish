@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """What driving Secret of the Silver Blades under VICE established.
 
 `docs/121-silver-blades.md` phases 3, 4 and 5. The run itself is in
@@ -23,7 +25,6 @@ Three kinds of assertion, and they are different in nature:
 Everything skips when the disks are absent. Nothing reads a committed fixture.
 """
 
-from __future__ import annotations
 
 import pytest
 

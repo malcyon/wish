@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The application icon: the drawing, the `.ico`, and how it reaches Windows.
 
 Two different things are checked here and they fail for different reasons.
@@ -17,7 +19,6 @@ within a measured tolerance -- see `test_the_committed_assets_are_todays_drawing
 and `test_the_comparison_still_catches_a_change_to_the_drawing`.
 """
 
-from __future__ import annotations
 
 import pathlib
 

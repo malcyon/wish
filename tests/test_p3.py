@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The disk half of the P3 wilderness finding, so it cannot rot silently.
 
 `work/reports/p3-saves.md` §4 reports that 648 bytes read live at `$8C00`
@@ -15,7 +17,6 @@ Nothing is committed: the bytes come off the player's own disks through
 `game_file`, which skips when there are none.
 """
 
-from __future__ import annotations
 
 import pytest
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The repository must not carry the game.
 
 `CLAUDE.md` forbids committing Pool of Radiance's code, art, music, manuals or
@@ -9,7 +11,6 @@ The check runs against `git ls-files`, not the working tree: what matters is
 what is committed. Untracked scratch under `work/` is ignored and fine.
 """
 
-from __future__ import annotations
 
 import pathlib
 import subprocess

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """`goldbox.amiga` against the offsets the character sheet actually drew.
 
 Two probe shapes did the work and both are rebuilt here. The **ramp** -- a
@@ -12,7 +14,6 @@ A second set of tests reads the player's own `Save/*.pc` files when
 data lives in this repository.
 """
 
-from __future__ import annotations
 
 import os
 import pathlib

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The combat view, against a captured fight.
 
 The arena is composed rather than captured -- see `tests/gamedata.py`. It used
@@ -7,7 +9,6 @@ reads. It is stored as chunks of `addr, length, bytes` so the addresses travel
 with the data and nothing here has to repeat them.
 """
 
-from __future__ import annotations
 
 import dataclasses
 import pathlib
@@ -248,8 +249,12 @@ def test_a_click_lands_on_the_square_under_it(battle):
 def make_window(app, tmp_path, monkeypatch, target):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(target, {}), drive=False)
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(target, {}), drive=False)
 
 
 def test_the_canvas_swaps_on_the_mode_flag_and_back(app, tmp_path, monkeypatch):

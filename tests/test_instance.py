@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The instance pool: allocation, contention, the reap table, the `vicerc`.
 
 None of it needs VICE.  A lease is a file and a flock, a slot's ports are
@@ -9,7 +11,6 @@ module still has to *import* there: CI runs the suite on Windows and an
 unimportable module fails at collection time.
 """
 
-from __future__ import annotations
 
 import json
 import os

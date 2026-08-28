@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The findings `docs/127-community-formats.md` earned, asserted.
 
 A community worker's format spreadsheets for the DOS Gold Box games were
@@ -10,7 +12,6 @@ Everything reads the player's own saved games and disks and skips when there
 are none, the same as every other test that needs game data.
 """
 
-from __future__ import annotations
 
 import pytest
 

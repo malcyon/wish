@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The DOS writer: a neutral character becomes a 285-byte record (#26).
 
 The other half of `tests/test_dosconvert.py`.  That module proves the DOS
@@ -15,7 +17,6 @@ The other half of `tests/test_dosconvert.py`.  That module proves the DOS
 **The saves are Donald's, not the repository's** -- see `test_dossave.py`.
 """
 
-from __future__ import annotations
 
 import pytest
 from test_dossave import _save_dir, needs_dos_saves

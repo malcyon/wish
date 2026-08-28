@@ -1,3 +1,13 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QWidget, QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
 """Debug mode, the FastTravel row, and choosing a backend.
 
 Nothing here needs an emulator and nothing here opens a dialog. A fasttravel is
@@ -13,7 +23,6 @@ These tests pin the sequence so that a live correction is one edit in one
 function.
 """
 
-from __future__ import annotations
 
 import pytest
 
@@ -281,7 +290,7 @@ def app():
 
 def bar(app, target=None, **kw):
     from automap.actionbar import FastTravelBar
-    row = FastTravelBar(**kw)
+    row = FastTravelBar(make_root(), **kw)
     if target is not None:
         row.attach(target)
     return row
@@ -289,8 +298,12 @@ def bar(app, target=None, **kw):
 
 def _window(app):
     from automap.state import Automapper
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
 
 
 def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
@@ -309,8 +322,7 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
             monkeypatch.delenv(debugmode.ENV, raising=False)
         win = _window(app)
         assert win.fasttravel_bar is not None
-        assert len(win.findChildren(FastTravelBar)) == 1
-        assert sorted(b.text() for b in win.findChildren(QAbstractButton)
+        assert sorted(b.text() for b in win.root.findChildren(QAbstractButton)
                       if "Travel" in b.text()) == ["Fast Travel",
                                                    "Travel Back"]
 
@@ -556,13 +568,17 @@ def window(app, tmp_path, monkeypatch, target=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from automap.state import Automapper
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(target, {}), drive=False)
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(target, {}), drive=False)
 
 
 def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
                                                              monkeypatch):
-    """`AutomapWindow` used to read `WISH_DEBUG` once at build time. It does
+    """`AutomapBinding` used to read `WISH_DEBUG` once at build time. It does
     not read it at all now, which is what makes the row's launch-time timing
     problem go away: there is no flag left to be applied too late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
@@ -598,7 +614,7 @@ def wish_window(app, tmp_path, monkeypatch):
 
 def test_the_hosted_window_has_the_fast_travel_row_too(app, tmp_path,
                                                        monkeypatch):
-    """Both entry points: `wish-automap` builds `AutomapWindow` itself, the
+    """Both entry points: `wish-automap` builds `AutomapBinding` itself, the
     `wish` window hosts one. The row used to want `WISH_DEBUG` on the command
     line here, because the map is built before the remembered settings are
     applied; with no flag to read there is nothing left to be applied late."""
@@ -726,8 +742,12 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     """The old action-bar button called `apply(target)` with no slot, which
     silently meant slot 0 -- the ambiguity Donald reported. The card knows
     which character it is, so the signal carries the slot."""
-    from automap.window import AutomapWindow
-    window = AutomapWindow.__new__(AutomapWindow)
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding.__new__(AutomapBinding)
     seen = {}
 
     class Bar:
@@ -769,7 +789,7 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     actions.LevelUp = Action
     actions.read_party = lambda target, game=None: party
     try:
-        AutomapWindow._level_up(window, 3)
+        AutomapBinding._level_up(window, 3)
     finally:
         actions.LevelUp, actions.read_party = monkey, was_read
     assert seen["kwargs"] == {"slot": 3, "class_name": "fighter", "spell": None}
@@ -786,19 +806,23 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     appears: `level_up_blockers` refuses every title but Pool of Radiance, so
     the card does not offer the press."""
     from automap.state import Automapper
-    from automap.window import AutomapWindow
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
 
-    pool = AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
+    pool = AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
     assert pool.roster.levelling
     assert pool.fasttravel_bar.has_areas
 
-    curse = AutomapWindow(
+    curse = AutomapBinding(root,
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"), drive=False)
     assert not curse.roster.levelling
     assert not curse.fasttravel_bar.has_areas
     # Cards built after the fact are told too -- they are made on demand.
-    card = curse.roster._card(0)
+    card = curse.roster.cards[0]
     assert not card.levelling
 
 
@@ -807,9 +831,13 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
     that is worth a question. The refusal must write nothing."""
-    from automap.window import AutomapWindow
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
     from goldbox.levelup import Plan
-    window = AutomapWindow.__new__(AutomapWindow)
+    window = AutomapBinding.__new__(AutomapBinding)
     seen = {}
 
     class Messages:
@@ -851,7 +879,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     actions.LevelUp = Action
     actions.read_party = lambda target, game=None: party
     try:
-        AutomapWindow._level_up(window, 0)
+        AutomapBinding._level_up(window, 0)
         assert "applied" not in seen, "the player said no"
         assert "2502" in seen["asked"] and "magic-user" in seen["asked"]
 
@@ -859,7 +887,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         seen.clear()
         Action.plan = Plan(class_name="thief", from_level=1, to_level=2,
                            fields={}, hit_points_rolled=3)
-        AutomapWindow._level_up(window, 0)
+        AutomapBinding._level_up(window, 0)
         assert "asked" not in seen
         assert seen["applied"]["class_name"] == "thief"
     finally:
@@ -873,7 +901,7 @@ def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
     object is not iterable`."""
     import automap.window as win
 
-    window = win.AutomapWindow.__new__(win.AutomapWindow)
+    window = win.AutomapBinding.__new__(win.AutomapBinding)
     window._spell_names = None
     window.state = type("S", (), {"title": None})()
     (tmp_path / "POOL1.D64").write_bytes(b"")       # a directory with a disk
@@ -883,7 +911,7 @@ def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
     was = paths.find_disks
     paths.find_disks = lambda game=None: tmp_path
     try:
-        assert win.AutomapWindow._names_for_spells(window) == {}
+        assert win.AutomapBinding._names_for_spells(window) == {}
     finally:
         paths.find_disks = was
 

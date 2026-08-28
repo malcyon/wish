@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The DOSBox harness, and what driving it established about a DOS save.
 
 Two kinds of test live here, and both skip rather than fail on a machine that
@@ -13,7 +15,6 @@ has neither the player's archives nor an emulator, which is what CI is.
 Nothing is copied in. `docs/117-save-conversion.md` carries the reasoning.
 """
 
-from __future__ import annotations
 
 import functools
 import os

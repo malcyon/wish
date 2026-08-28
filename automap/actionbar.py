@@ -31,8 +31,9 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QObject, QSize, Qt
 from PyQt6.QtWidgets import (
+    QLabel,
     QMessageBox,
     QPushButton,
     QWidget,
@@ -44,10 +45,10 @@ from .config import Settings
 from .panel import (
     MUTED,
     ElidingButton,
+    ElidingCheckBox,
+    ElidingComboBox,
     shortened,
 )
-from .ui_actionbar import Ui_ActionBar
-from .ui_fasttravelbar import Ui_FastTravelBar
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
@@ -83,20 +84,17 @@ class _OnePoll:
 COLUMNS = 3
 
 
-class ActionBar(QWidget):
+class ActionBar(QObject):
     """One button per action, and the watcher's checkbox."""
 
-    #: The tallest this bar may hold the window open, whatever the UI font.
-    #: Two rows of buttons and the watcher's row -- 86 measured at 9pt under
-    #: Breeze on Linux, where the same three rows want 140 at ten points more,
-    #: and that 54px was most of the 90 the automapper page grew by (#77).
-    #: It moves if `COLUMNS` changes or an action is added, since both change
-    #: how many rows there are; a wider UI font must not move it.
     SHORT = 86
+    BUTTON_NAMES = ("action_heal", "action_store", "action_restore",
+                    "action_identify", "action_clear_qf")
 
-    def __init__(self, parent=None, actions=None, watcher=None, say=None,
-                 game=None):
+    def __init__(self, root: QWidget, *, actions=None, watcher=None, say=None,
+                 game=None, parent: QObject | None = None):
         super().__init__(parent)
+        self.root = root
         #: Where results are reported. `MessagesPanel.say` in the window; a
         #: no-op alone, so the bar is usable without one.
         self.say = say or (lambda text, detail="", alarm=False: None)
@@ -115,31 +113,25 @@ class ActionBar(QWidget):
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
 
-        self.ui = Ui_ActionBar()
-        self.ui.setupUi(self)
+        self.buttons: dict[str, ElidingButton] = {}
+        for action, name in zip(self.actions, self.BUTTON_NAMES):
+            button = root.findChild(ElidingButton, name)
+            if button is not None:
+                button.setText(action.label)
+                button.setToolTip(action.description)
+                button.setEnabled(False)          # nothing attached yet
+                button.clicked.connect(
+                    lambda _checked=False, a=action: self.run(a))
+                self.buttons[action.name] = button
 
-        self.buttons: dict[str, QPushButton] = {}
-        for i, action in enumerate(self.actions):
-            button = ElidingButton(action.label)
-            button.setToolTip(action.description)
-            button.setEnabled(False)          # nothing attached yet
-            button.clicked.connect(
-                lambda _checked=False, a=action: self.run(a))
-            self.ui.gridLayout.addWidget(button, i // COLUMNS, i % COLUMNS)
-            self.buttons[action.name] = button
-        rows = (len(self.actions) + COLUMNS - 1) // COLUMNS
+        self.watch_box = root.findChild(ElidingCheckBox, "watch_box")
+        if self.watch_box is not None:
+            self.watch_box.setChecked(self.watcher.enabled)
+            self.watch_box.toggled.connect(self._watch_toggled)
 
-        self.watch_box = self.ui.watch_box
-        self.watch_box.setChecked(self.watcher.enabled)
-        self.watch_box.toggled.connect(self._watch_toggled)
-        self.ui.gridLayout.addWidget(self.watch_box, rows, 0)
-
-        self.note = self.ui.note
-        self.note.setStyleSheet(f"color: {MUTED.name()}")
-        self.ui.gridLayout.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
-
-    def minimumSizeHint(self) -> QSize:
-        return shortened(super().minimumSizeHint(), self.SHORT)
+        self.note = root.findChild(QLabel, "actions_note")
+        if self.note is not None:
+            self.note.setStyleSheet(f"color: {MUTED.name()}")
 
     def _watch_toggled(self, on: bool) -> None:
         self.watcher.enabled = on
@@ -160,7 +152,10 @@ class ActionBar(QWidget):
             for action in self.actions:
                 button = self.buttons.get(action.name)
                 if button is not None:
-                    button.clicked.disconnect()
+                    try:
+                        button.clicked.disconnect()
+                    except (TypeError, RuntimeError):
+                        pass
                     button.clicked.connect(
                         lambda _checked=False, a=action: self.run(a))
         self.watcher = engine.QuickfightWatcher(
@@ -178,9 +173,10 @@ class ActionBar(QWidget):
         once = None if target is None else _OnePoll(target)
         for action in self.actions:
             verdict = action.legality(once)
-            button = self.buttons[action.name]
-            button.setEnabled(verdict.ok)
-            button.setToolTip(verdict.reason or action.description)
+            button = self.buttons.get(action.name)
+            if button is not None:
+                button.setEnabled(verdict.ok)
+                button.setToolTip(verdict.reason or action.description)
 
     def watch(self, target) -> engine.Outcome | None:
         """One tick of the quickfight watcher. Fires on the 2-to-not-2 edge."""
@@ -193,8 +189,9 @@ class ActionBar(QWidget):
 
     def ask(self, question: str) -> bool:
         """The confirmation. A method so a test can answer it."""
+        parent_widget = self.root if isinstance(self.root, QWidget) else None
         return QMessageBox.question(
-            self, "wish", question,
+            parent_widget, "wish", question,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
@@ -203,8 +200,9 @@ class ActionBar(QWidget):
         self.last = outcome
         line = f"{what}: {outcome.message}"
         detail = "\n".join(outcome.notes)
-        self.note.setText(line)
-        self.note.setToolTip(detail)
+        if self.note is not None:
+            self.note.setText(line)
+            self.note.setToolTip(detail)
         self.say(line, detail, alarm=not outcome.ok)
 
     def run(self, action) -> engine.Outcome | None:
@@ -256,7 +254,7 @@ def no_areas(title: str | None) -> str:
     return f"No areas are known for {title or 'this game'}."
 
 
-class FastTravelBar(QWidget):
+class FastTravelBar(QObject):
     """The Fast Travel row: pick an area, and enter it the way the exits do.
 
     **`FastTravel` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's
@@ -321,16 +319,14 @@ class FastTravelBar(QWidget):
     The area table is `goldbox/areas.py`, and the row holds no copy of it.
     """
 
-    #: The tallest this row may hold the window open, whatever the UI font.
-    #: The dropdown-and-buttons row and the 8pt note under it -- 48 measured
-    #: at 9pt under Breeze on Linux, where it wants 66 at ten points more
-    #: (#77). It moves if a second row of controls is added here.
     SHORT = 48
 
-    def __init__(self, parent=None, fasttravel=None, areas=None, say=None,
+    def __init__(self, root: QWidget, *, fasttravel=None, areas=None, say=None,
                  maps=None, settings: Settings | None = None,
-                 title: str | None = None, game=None):
+                 title: str | None = None, game=None,
+                 parent: QObject | None = None):
         super().__init__(parent)
+        self.root = root
         self.say = say or (lambda text, detail="", alarm=False: None)
         self.fasttravel = fasttravel or engine.FastTravel()
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
@@ -364,30 +360,28 @@ class FastTravelBar(QWidget):
         #: costs nothing.
         self._pending: tuple[tuple[str, ...], float] | None = None
 
-        self.ui = Ui_FastTravelBar()
-        self.ui.setupUi(self)
+        self.combo = root.findChild(ElidingComboBox, "ft_combo")
+        if self.combo is not None:
+            self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
 
-        self.combo = self.ui.combo
-        self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.button = root.findChild(ElidingButton, "ft_button")
+        if self.button is not None:
+            self.button.clicked.connect(lambda _checked=False: self.run())
 
-        self.button = self.ui.button
-        self.button.clicked.connect(lambda _checked=False: self.run())
-
-        self.back_button = self.ui.back_button
-        self.back_button.clicked.connect(lambda _checked=False: self.run_back())
+        self.back_button = root.findChild(ElidingButton, "ft_back_button")
+        if self.back_button is not None:
+            self.back_button.clicked.connect(lambda _checked=False: self.run_back())
 
         #: What the last trip did. Empty until something has been clicked --
         #: the standing warning is the Fast Travel button's own tooltip.
-        self.note = self.ui.note
-        self.note.setStyleSheet(f"color: {MUTED.name()}")
+        self.note = root.findChild(QLabel, "ft_note")
+        if self.note is not None:
+            self.note.setStyleSheet(f"color: {MUTED.name()}")
 
         self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
         self.refresh()
-
-    def minimumSizeHint(self) -> QSize:
-        return shortened(super().minimumSizeHint(), self.SHORT)
 
     def _rows_for_title(self) -> tuple:
         """This title's areas, which is nothing for every title but one."""
@@ -461,6 +455,8 @@ class FastTravelBar(QWidget):
         """
         keeping = self.area()
         self.rows = self.chosen_rows()
+        if self.combo is None:
+            return
         self.combo.blockSignals(True)
         self.combo.clear()
         for i, row in enumerate(self.rows):
@@ -487,6 +483,8 @@ class FastTravelBar(QWidget):
 
     def area(self):
         """The row the combo box is showing, or None if the table is empty."""
+        if self.combo is None:
+            return None
         i = self.combo.currentIndex()
         return self.rows[i] if 0 <= i < len(self.rows) else None
 
@@ -569,40 +567,44 @@ class FastTravelBar(QWidget):
 
     def refresh(self) -> None:
         area = self.area()
-        if area is None and not self.rows:
-            # Nothing ticked, or nothing to tick. Say that rather than the
-            # emulator's verdict: there is nothing to be legal or illegal
-            # about.
-            self.button.setEnabled(False)
-            self.button.setToolTip(
-                "No areas are ticked in Preferences ▸ Fast travel, so there "
-                "is nowhere to travel to." if self.has_areas else
-                f"{no_areas(self.title)} Its areas have not been tabulated, "
-                f"and Pool of Radiance's disk numbers and area ids would be "
-                f"the wrong thing to write here.")
-        else:
-            verdict = self.fasttravel.legality(self.target, area)
-            self.button.setEnabled(verdict.ok)
-            # `DANGER` when it is enabled, the refusal when it is not: the
-            # warning is about making a trip, and a disabled button is not
-            # about to make one.
-            self.button.setToolTip(verdict.reason or DANGER)
-        back = self.fasttravel.back_verdict(self.target)
-        self.back_button.setEnabled(back.ok)
-        self.back_button.setToolTip(
-            back.reason or "return to the area the last trip started in")
+        if self.button is not None:
+            if area is None and not self.rows:
+                # Nothing ticked, or nothing to tick. Say that rather than the
+                # emulator's verdict: there is nothing to be legal or illegal
+                # about.
+                self.button.setEnabled(False)
+                self.button.setToolTip(
+                    "No areas are ticked in Preferences ▸ Fast travel, so there "
+                    "is nowhere to travel to." if self.has_areas else
+                    f"{no_areas(self.title)} Its areas have not been tabulated, "
+                    f"and Pool of Radiance's disk numbers and area ids would be "
+                    f"the wrong thing to write here.")
+            else:
+                verdict = self.fasttravel.legality(self.target, area)
+                self.button.setEnabled(verdict.ok)
+                # `DANGER` when it is enabled, the refusal when it is not: the
+                # warning is about making a trip, and a disabled button is not
+                # about to make one.
+                self.button.setToolTip(verdict.reason or DANGER)
+        if self.back_button is not None:
+            back = self.fasttravel.back_verdict(self.target)
+            self.back_button.setEnabled(back.ok)
+            self.back_button.setToolTip(
+                back.reason or "return to the area the last trip started in")
 
     # -- running one -------------------------------------------------------
 
     def _said(self, line: str, alarm: bool = False) -> None:
-        self.note.setText(line)
+        if self.note is not None:
+            self.note.setText(line)
         self.say(line, alarm=alarm)
 
     def _report(self, what: str, outcome: engine.Outcome) -> None:
         self.last = outcome
         line = f"{what}: {outcome.message}"
-        self.note.setText(line)
-        self.note.setToolTip("\n".join(outcome.notes))
+        if self.note is not None:
+            self.note.setText(line)
+            self.note.setToolTip("\n".join(outcome.notes))
         self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
         self.refresh()
 
@@ -625,3 +627,4 @@ class FastTravelBar(QWidget):
             self._expect(going)
         self._report("travel back", outcome)
         return outcome
+

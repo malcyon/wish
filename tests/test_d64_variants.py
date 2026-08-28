@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The D64 sizes `goldbox.d64` accepts, and the ones it must still refuse.
 
 `tests/test_d64.py` is the regression on the plain 174848-byte image and stays
@@ -14,7 +16,6 @@ Disk-backed checks find the player's images by size rather than by title, and
 skip when there is no specimen of that size on the machine.
 """
 
-from __future__ import annotations
 
 import functools
 import os

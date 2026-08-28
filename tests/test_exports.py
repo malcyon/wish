@@ -1,3 +1,13 @@
+from __future__ import annotations
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """File > Export: the windows over `goldbox.dos.write_dos_save` and
 `goldbox.amiga.export_party`.
 
@@ -23,7 +33,6 @@ Either missing and those tests skip, which is what CI does. Nothing here opens
 a window: `tests/conftest.py` forces the offscreen platform.
 """
 
-from __future__ import annotations
 
 import pathlib
 
@@ -301,14 +310,14 @@ def test_the_editor_exports_the_party_on_screen_not_the_one_on_disk(
     """An edit typed but not saved crosses. `export_source` flushes and pushes
     into the in-memory disk exactly as Save does, and touches no file."""
     from editor.exports import AmigaPlan, Source
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     disk = tmp_path / f"{SAVE_DISK}.D64"
     disk.write_bytes(disk_path(SAVE_DISK).read_bytes())
     before = disk.read_bytes()
 
-    window = EditorWindow(str(disk), backups=str(tmp_path / "backups"))
-    window.ui.roster.selectRow(0)
+    window = EditorBinding(make_root(), str(disk), backups=str(tmp_path / "backups"))
+    window.roster.selectRow(0)
     window._widgets["gold"].setValue(1234)
     window._edited()
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Corrections checked against the game's own bytes, not against a document.
 
 Each block here is one closed task -- once `docs/TASKS.md`, now a GitHub
@@ -10,7 +12,6 @@ Everything that needs game data reads it off the player's disks and skips
 without them.
 """
 
-from __future__ import annotations
 
 import collections
 

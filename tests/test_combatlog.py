@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The combat log, against screens we construct.
 
 No game data here and none needed: the message panel is text on a screen, so a
@@ -5,7 +7,6 @@ synthetic screen exercises every rule. What it cannot exercise is the timing --
 see the numbered list at the end of `docs/110-combat-log.md`.
 """
 
-from __future__ import annotations
 
 import pytest
 
@@ -331,10 +332,14 @@ def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from automap.state import Automapper
-    from automap.window import AutomapWindow
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
 
     target = arena_with_screen([])
-    window = AutomapWindow(Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}), drive=False)
     for _ in range(window.LIVE_EVERY):
         window.tick()
     assert window.battle is not None
@@ -354,10 +359,14 @@ def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from automap.state import Automapper
-    from automap.window import AutomapWindow
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
 
     target = arena_with_screen([])
-    window = AutomapWindow(Automapper(target, {}), drive=False)
+    window = AutomapBinding(root, Automapper(target, {}), drive=False)
     for _ in range(window.LIVE_EVERY):
         window.tick()
     show(target, ["ORC", "IS KILLED"])

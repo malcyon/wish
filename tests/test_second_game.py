@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Curse of the Azure Bonds reads with Pool of Radiance's decoders.
 
 `docs/116-second-game.md` establishes that the two C64 games share the 580-byte
@@ -11,7 +13,6 @@ The Curse half skips when the disks are absent, like every other test that
 needs game data.
 """
 
-from __future__ import annotations
 
 import pytest
 

@@ -12,6 +12,7 @@ import logging
 from functools import partial
 
 from PyQt6.QtCore import (
+    QObject,
     QEvent,
     QPoint,
     QPointF,
@@ -61,7 +62,6 @@ from .render import (
     party_marker,
 )
 from .target import MonitorBusy, NotConnected, monitor_listening
-from .ui_window import Ui_AutomapWindow
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -115,8 +115,8 @@ def game_named(title: str | None):
 class MapCanvas(QWidget):
     """Paints the current map."""
 
-    def __init__(self, state, host=None):
-        super().__init__(host)
+    def __init__(self, state, parent=None, host=None):
+        super().__init__(parent)
         self.state = state
         # Held rather than asked for: the canvas is centred inside a container
         # widget, so `parent()` is that container and not the window.
@@ -347,8 +347,8 @@ class CombatCanvas(QWidget):
     it yields and answers the tooltip.
     """
 
-    def __init__(self, host=None):
-        super().__init__(host)
+    def __init__(self, parent=None, host=None):
+        super().__init__(parent)
         self.host = host
         self.battle = None
         self.box = (0, 0, combat.LEAST, combat.LEAST)
@@ -493,7 +493,7 @@ class CombatCanvas(QWidget):
                        Qt.AlignmentFlag.AlignCenter, prim.text)
 
 
-class AutomapWindow(QMainWindow):
+class AutomapBinding(QObject):
     """The map, which opens whether or not there is a game to watch.
 
     Three ordinary states, none of them an error: no emulator yet, an emulator
@@ -528,23 +528,12 @@ class AutomapWindow(QMainWindow):
     #: 270px of fixed width whatever the screen was (#41).
     SIDE_SQUEEZED = 160
 
-    def __init__(self, mapper, interval_ms: int = 200, connect=None,
+    def __init__(self, root, mapper, interval_ms: int = 200, connect=None,
                  settings: Settings | None = None, drive: bool = True,
                  disks: str | None = None):
-        """`drive=False` hands the connection and the clock to a host window.
-
-        The merged `wish` window owns one `Target` for every tab, because VICE
-        serves exactly one monitor connection and ignores the second in
-        silence. So when hosted this window neither connects nor keeps a timer:
-        it is asked to `tick()`, and a lost connection is raised for the owner
-        to deal with.
-        """
         super().__init__()
-        self.ui = Ui_AutomapWindow()
-        self.ui.setupUi(self)
-        self.ui.grid.setColumnStretch(1, 1)
-        self.ui.grid.setColumnStretch(2, 1)
-        self.ui.grid.setRowStretch(0, 1)
+        self.root = root
+        self.ui = root.ui if hasattr(root, "ui") else root
         self._drive = drive
         self.mapper = mapper
         self.connect_target = connect
@@ -553,40 +542,41 @@ class AutomapWindow(QMainWindow):
         self.state.reveal = self.settings.reveal
         self.state.exploration.sight = self.settings.sight
 
-        self.canvas = MapCanvas(self.state, self)
-        self.battle_canvas = CombatCanvas(self)
+        self.canvas = MapCanvas(self.state, parent=self.root, host=self)
+        self.battle_canvas = CombatCanvas(parent=self.root, host=self)
         # One tab, two canvases, and only ever one of them true: when the game
         # enters combat the area map becomes the combat map and changes back
         # afterwards. Two tabs would mean the useful one is always the one you
         # are not looking at. The area map's state is untouched by the swap, so
         # the explored squares are still there when the fight ends.
-        self.stack = self.ui.stack
+        self.stack = getattr(self.ui, "map_stack", None) or self.root.findChild(QWidget, "map_stack")
         self.stack.addWidget(self.canvas)
         self.stack.addWidget(self.battle_canvas)
         self.battle = None
-        self.roster = RosterPanel()
+        self.roster = RosterPanel(self.root)
         self.roster.level_up_requested.connect(self._level_up)
         #: Spell names, read off the player's disks the first time a wizard is
         #: levelled and kept after. A magic-user picks its new spell by name.
         self._spell_names: dict[int, str] | None = None
-        self.strip = BottomStrip()
-        self.notes_panel = NotesPanel()
+        self.strip = BottomStrip(self.root)
+        self.notes_panel = NotesPanel(self.root)
         self.notes_panel.chosen.connect(self.point_at)
-        self.commissions = CommissionsPanel()
+        self.commissions = CommissionsPanel(self.root)
         # `CommissionsPanel` fixes its own width for a window where it is the
         # only thing beside the map. Here it shares a column with the notes, so
         # the cap comes off and the column decides -- otherwise every pixel the
         # window gains lands as blank paper beside a fixed 270px panel.
-        self.commissions.setMaximumWidth(QWIDGETSIZE_MAX)
+        if hasattr(self.commissions, 'scroll') and self.commissions.scroll:
+            self.commissions.scroll.setMaximumWidth(QWIDGETSIZE_MAX)
         # And the floor comes off with it, for the same reason in the other
         # direction: a fixed 270px was the whole of this column's minimum
         # width, and the rows inside it scroll and wrap already (#41).
-        self.commissions.setMinimumWidth(self.SIDE_SQUEEZED)
-        self.messages = MessagesPanel()
+        if hasattr(self.commissions, 'scroll') and self.commissions.scroll:
+            self.commissions.scroll.setMinimumWidth(self.SIDE_SQUEEZED)
+        self.messages = MessagesPanel(self.root)
         self.combat_log = CombatLog()
-        self.strength_label = self.ui.strength_label
-        self.actions_bar = ActionBar(say=self.messages.say,
-                                     game=game_named(self.state.title))
+        self.strength_label = self.root.findChild(QLabel, "strength_label")
+        self.actions_bar = ActionBar(self.root, say=self.messages.say, game=game_named(self.state.title))
         # `_maps` is what the automapper loaded off the player's disks; the
         # Fast Travel row needs them to pick a landing square for the fourteen
         # areas whose arrival square nobody has harvested. Built for every
@@ -597,33 +587,15 @@ class AutomapWindow(QMainWindow):
         # `title` is what says whether there is an area table at all: five of
         # the six titles have none, and offering Pool of Radiance's would write
         # Pool of Radiance's disk numbers into another game (#14).
-        self.fasttravel_bar = FastTravelBar(say=self.messages.say,
+        self.fasttravel_bar = FastTravelBar(self.root, say=self.messages.say,
                                 maps=getattr(self.mapper, "_maps", {}),
                                 settings=self.settings,
                                 title=self.state.title,
                                 game=game_named(self.state.title))
 
-        # Swap .ui placeholders for the real widgets that need constructors.
-        self._replace(self.ui.roster_placeholder, self.roster)
-        self._replace(self.ui.actions_bar_placeholder, self.actions_bar)
-        self._replace(self.ui.fasttravel_bar_placeholder, self.fasttravel_bar)
-        self._replace(self.ui.strip_placeholder, self.strip)
-        # The splitter's children must be replaced in order.
-        splitter = self.ui.side_splitter
-        splitter.replaceWidget(0, self.notes_panel)
-        splitter.replaceWidget(1, self.commissions)
-        splitter.replaceWidget(2, self.messages)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
-        splitter.setStretchFactor(2, 2)
-        self.ui.notes_placeholder.setParent(None)
-        self.ui.commissions_placeholder.setParent(None)
-        self.ui.messages_placeholder.setParent(None)
-        self.side = self.ui.side
-        self.map_column = self.ui.map_column
 
+        
         self._status = QLabel()
-        self.statusBar().addWidget(self._status)
 
         # Both a checkbox and the R key, driving one action so they cannot
         # disagree. Off by default: a map you opened because you were lost is
@@ -633,7 +605,7 @@ class AutomapWindow(QMainWindow):
                          shortcut=QKeySequence("R"))
         reveal.setToolTip("Hide squares the party has not seen (R)")
         reveal.triggered.connect(self._toggle_reveal)
-        self.addAction(reveal)
+        if hasattr(self.root, "addAction"): self.root.addAction(reveal)
         self._reveal_action = reveal
 
         # A note on the square the party is standing in, without the mouse:
@@ -641,7 +613,7 @@ class AutomapWindow(QMainWindow):
         here = QAction("Note here", self, shortcut=QKeySequence("N"))
         here.setToolTip("Put a note on the party's square (N)")
         here.triggered.connect(self.note_here)
-        self.addAction(here)
+        if hasattr(self.root, "addAction"): self.root.addAction(here)
         self._note_action = here
 
         self.fog_box = QCheckBox("Fog of war")
@@ -649,7 +621,7 @@ class AutomapWindow(QMainWindow):
         self.fog_box.setChecked(self.settings.reveal)
         self.fog_box.toggled.connect(reveal.setChecked)
         self.fog_box.toggled.connect(self._toggle_reveal)
-        self.statusBar().addPermanentWidget(self.fog_box)
+
 
         # Read once: the item names come off a game disk, and a card without
         # one shows nothing rather than word indices. `disks` is the resolved
@@ -1041,7 +1013,7 @@ class AutomapWindow(QMainWindow):
         box in front of the map is an interruption for something that should
         cost one keystroke.
         """
-        pop = NotePopover(self.state, x, y, index, self)
+        pop = NotePopover(self.state, x, y, index, self.root)
         pop.changed.connect(self.notes_changed)
         corner = self.canvas.mapToGlobal(self.canvas.corner_of(x, y))
         pop.move(corner)

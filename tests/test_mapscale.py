@@ -1,3 +1,13 @@
+from __future__ import annotations
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """The area map scales to the room it is given, so the window can be small.
 
 Donald's Windows build opened taller than his screen and would not shrink: 16
@@ -11,7 +21,6 @@ where a note popover hangs -- is derived from the same cell the paint used, so
 the tests that matter here are the ones that scale the canvas and then ask.
 """
 
-from __future__ import annotations
 
 import os
 
@@ -166,7 +175,7 @@ def _floor(tmp_path, monkeypatch, save=None):
 
     `save` is the path to a saved game, or None for a window with nothing
     open. The two are not the same measurement and #63 is the record of why:
-    `EditorWindow._adopt` runs only when a save is opened, and `_size_roster`
+    `EditorBinding._adopt` runs only when a save is opened, and `_size_roster`
     with it, so a window built with None has never seen the roster's real
     column widths or the character sheet's real field widths.
 
@@ -176,7 +185,7 @@ def _floor(tmp_path, monkeypatch, save=None):
     **Two Qt traps live here, and both make a working change look broken.**
     Each cost a prototype run during #71 before it was understood:
 
-    * `EditorWindow.showEvent` calls `_size_roster` once, *after* the window
+    * `EditorBinding.showEvent` calls `_size_roster` once, *after* the window
       is shown. Anything set on the roster before `show()` is overwritten, so
       a change applied to the live widget does nothing at all and reads as the
       idea being wrong rather than the timing.
@@ -408,7 +417,7 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     """And with a character on screen, which is the case `_floor(None)` above
     has never measured -- #63.
 
-    Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
+    Opening a save is what runs `EditorBinding._adopt`, and `_size_roster` with
     it: the roster's five columns get their real widths, and none of them were
     in the 836 the empty window answers.
 

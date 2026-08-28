@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """P20: where a fasttravel lands a party in an area with no arrival square.
 
 Fourteen of the thirty areas have no arrival square harvested from the scripts,
@@ -10,7 +12,6 @@ what is asserted here.
 The maps come off the player's own disks and these skip without them.
 """
 
-from __future__ import annotations
 
 import pytest
 from gamedata import game_file

@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 """Tests for goldbox.d64 against the real Pool of Radiance disk images."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

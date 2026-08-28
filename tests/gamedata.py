@@ -1,3 +1,13 @@
+from __future__ import annotations
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """Game data comes from the player's own disks, never from this repository.
 
 `CLAUDE.md` forbids committing the game's code, art or data files, and a test
@@ -15,7 +25,6 @@ own data, produced by playing, and several of them capture states that no disk
 still holds.
 """
 
-from __future__ import annotations
 
 import functools
 import os
@@ -267,7 +276,7 @@ def synthetic_geo() -> bytes:
 # documented, so the guarantee it holds runs on a machine with no game.
 #
 # It exists to be measured. The window's floor only appears once a save is open
-# -- `EditorWindow._adopt` runs then, and `_size_roster` with it -- so #63 and
+# -- `EditorBinding._adopt` runs then, and `_size_roster` with it -- so #63 and
 # #70 both wanted a party CI could open. What sets those widths is the roster's
 # five columns, and every one of them is sized from the strings it holds; hence
 # the widest case rather than a plausible one.

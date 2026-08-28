@@ -1,3 +1,13 @@
+from __future__ import annotations
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """The editor and the tools, once they stopped assuming Pool of Radiance.
 
 Two things were still wired to one title. The character sheet named a race from
@@ -10,7 +20,6 @@ Most of what is here needs no disks: the tables are data, and the dropdowns can
 be filled without opening a file. The two that do need disks skip.
 """
 
-from __future__ import annotations
 
 import os
 import pathlib
@@ -103,7 +112,7 @@ def test_the_caster_mask_follows_the_title():
 def test_the_spells_box_is_gated_on_the_open_titles_casters(window):
     """The greying rule itself, without needing a save on the machine.
 
-    `_show_boxes` reads the title off `EditorWindow.party`, so a stub party is
+    `_show_boxes` reads the title off `EditorBinding.party`, so a stub party is
     all this needs -- and the box's enabled state is also what decides whether
     `_flush` writes the spell bytes back, which is why one mask answers both.
     """
@@ -223,8 +232,8 @@ def app():
 @pytest.fixture
 def window(app):
     """An editor with no file open. Never closed, so nothing can prompt."""
-    from editor.window import EditorWindow
-    return EditorWindow()
+    from editor.window import EditorBinding
+    return EditorBinding(make_root(), )
 
 
 def _codes(combo) -> list[int]:
@@ -361,8 +370,8 @@ def test_a_curse_save_gets_curse_item_names(app, tmp_path):
     if save is None:
         pytest.skip("no Curse disk here carries a whole SAVEAZURE")
 
-    from editor.window import EditorWindow
-    window = EditorWindow(str(save))
+    from editor.window import EditorBinding
+    window = EditorBinding(make_root(), str(save))
     assert window.party.game is CURSE
     assert window.item_names, "no item names off a Curse disk"
     disk = window._find_game_disk()
@@ -383,12 +392,12 @@ def test_a_silver_blades_save_shows_its_own_races(app, tmp_path):
     if save is None:
         pytest.skip("no Silver Blades disk here carries a SAVEDBASH")
 
-    from editor.window import EditorWindow
-    window = EditorWindow(str(save))
+    from editor.window import EditorBinding
+    window = EditorBinding(make_root(), str(save))
     assert window.party.game is SSB
     race = window._widgets["race"]
     assert "HUMAN" in _label(race, 6)
-    window.ui.roster.selectRow(0)
+    window.roster.selectRow(0)
     assert race.currentData() is not None
     # A ranger and a paladin are in the shipped party, and neither is a class
     # Pool of Radiance has.

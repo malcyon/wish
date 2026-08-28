@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """What a real DOS Pool of Radiance save says about its own layout.
 
 `docs/117-save-conversion.md` carried a predicted DOS field table taken from
@@ -14,7 +16,6 @@ which is what CI does.
 Findings and their reasoning: `work/reports/dos-saves.md`.
 """
 
-from __future__ import annotations
 
 import functools
 import os

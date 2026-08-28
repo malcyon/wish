@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Building a 1541 disk from nothing: `D64.blank` and `D64.write_file` (#118).
 
 What would actually break if this were wrong is the game's own `LOAD SAVED
@@ -13,7 +15,6 @@ outside the drive-buffer leftovers in each file's last sector.
 is what covers the rest, and it needs an emulator.
 """
 
-from __future__ import annotations
 
 import gamedata
 import pytest

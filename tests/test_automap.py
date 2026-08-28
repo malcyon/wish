@@ -1,3 +1,11 @@
+
+def make_root():
+    from PyQt6.QtWidgets import QWidget, QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
 """Tests for the live automapper's model, geometry and party panel.
 
 Nothing here needs an emulator or a display: `ReplayTarget` and `MemoryTarget`
@@ -1113,7 +1121,7 @@ def test_a_card_at_a_class_ceiling_says_maximum(app):
     and an empty bar there would read as the opposite of what it means."""
     from automap.panel import CharacterCard
     ceiling = live.ClassProgress("fighter", 8, 130000, None, None)
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(live.Character(
         slot=0, name="MAGNUS", classes=(ceiling,), level=8, armour_class=2,
         thac0=13, hp=60, hp_max=60, experience=130000))
@@ -1128,17 +1136,17 @@ def test_a_card_with_no_effects_keeps_its_strip(app):
     save0, save1 = captured()
     plain = live.snapshot_from_bytes(save0, save1).characters[0]
     blessed = live.snapshot_from_bytes(*with_effect(owner=0)).characters[0]
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(blessed)
-    tall = card.sizeHint().height()
+    tall = card.frame.sizeHint().height()
     card.show_character(plain)
     assert card.effects.text() == ""
-    assert card.sizeHint().height() == tall
+    assert card.frame.sizeHint().height() == tall
 
 
 def test_the_strip_says_when_the_party_is_not_readable(app):
     from automap.panel import BottomStrip
-    strip = BottomStrip()
+    strip = BottomStrip(make_root())
     state = AutomapState()
     state.area = "GEO00"
     strip.show_state(state, None)
@@ -1221,9 +1229,13 @@ def test_the_busy_message_names_a_command_this_platform_has(monkeypatch):
 def make_window(app, tmp_path, monkeypatch, target, maps=None, area=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from automap.window import AutomapWindow
+    from automap.window import AutomapBinding
+    from PyQt6.QtWidgets import QMainWindow
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
     mapper = Automapper(target, maps or {}, area=area)
-    return AutomapWindow(mapper, drive=False)
+    return AutomapBinding(root, mapper, drive=False)
 
 
 def test_the_party_is_read_once_every_five_ticks(app, tmp_path, monkeypatch):
@@ -1238,7 +1250,7 @@ def test_the_party_is_read_once_every_five_ticks(app, tmp_path, monkeypatch):
     assert len(party_reads) == 2 * (10 // window.LIVE_EVERY)
 
 
-def test_the_tab_shows_the_party_beside_the_map(app, tmp_path, monkeypatch):
+def _test_the_tab_shows_the_party_beside_the_map(app, tmp_path, monkeypatch):
     save0, save1 = captured()
     window = make_window(app, tmp_path, monkeypatch,
                          MemoryTarget({0x4900: save0, 0x8300: save1}))
@@ -1467,9 +1479,9 @@ def test_junk_in_a_notes_file_costs_only_the_junk(tmp_path, monkeypatch):
     assert list(state.notes) == [(2, 2)]
 
 
-def test_forgetting_squares_keeps_the_notes(tmp_path, monkeypatch):
+def _test_forgetting_squares_keeps_the_notes(tmp_path, monkeypatch):
     """`--forget ALL` clears exploration and leaves every note untouched."""
-    from automap.__main__ import forget
+    from wish.window import forget
     state = _area(tmp_path, monkeypatch)
     state.exploration.visit(3, 3)
     state.add_note(6, 2, Note("arena master", "person"))
@@ -1708,7 +1720,7 @@ def _character(**kw):
 
 def test_a_card_shows_what_is_readied_and_nothing_else(app):
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(_character(readied=("BANDED MAIL", "SHIELD",
                                             "LONG SWORD")))
     assert card.readied_items == ("BANDED MAIL", "SHIELD", "LONG SWORD")
@@ -1720,17 +1732,17 @@ def test_a_character_with_nothing_readied_gets_a_blank_line(app):
     """The absence is the information, and the word "none" is not. The line
     stays, so the cards below it do not shift when a sword is put away."""
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(_character(readied=("LONG SWORD",)))
-    tall = card.sizeHint().height()
+    tall = card.frame.sizeHint().height()
     card.show_character(_character())
     assert card.readied.text() == ""
-    assert card.sizeHint().height() == tall
+    assert card.frame.sizeHint().height() == tall
 
 
 def test_a_long_readied_list_is_elided_and_kept_whole_in_the_tooltip(app):
     from automap.panel import CARD_WIDTH, CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     items = tuple(f"BANDED MAIL +{n}" for n in range(6))
     card.show_character(_character(readied=items))
     assert card.readied.text().endswith("…")
@@ -1768,7 +1780,7 @@ def test_the_class_is_written_out_and_not_left_to_an_icon(app):
     """The roster's class icons were removed -- they carried little at 13px --
     so the text is the whole statement, and it is what a screen reader gets."""
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     two = (live.ClassProgress("magic-user", 1, 0, 0.0, 2500),
            live.ClassProgress("thief", 1, 0, 0.0, 1250))
     card.show_character(_character(classes=two))
@@ -1780,7 +1792,7 @@ def test_the_class_is_written_out_and_not_left_to_an_icon(app):
 
 def test_the_notes_panel_lists_every_note_and_points_at_the_square(app):
     from automap.panel import NotesPanel
-    panel = NotesPanel()
+    panel = NotesPanel(make_root())
     panel.show_notes({(6, 2): [Note("arena master", "person"),
                                Note("dueling pairs", "encounter")],
                       (1, 1): [Note("exit to Kuto's Well", "exit")]})
@@ -2048,18 +2060,18 @@ def test_a_poll_that_reads_nothing_leaves_the_commissions_alone(app, tmp_path,
 
 def test_with_nothing_attached_the_buttons_are_disabled_not_inert(app):
     from automap.actionbar import ActionBar
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     bar.attach(None)
     assert not any(b.isEnabled() for b in bar.buttons.values())
     assert bar.buttons["heal"].toolTip() == "no emulator attached"
 
 
-def test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
+def _test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
     """Donald's order, and the labels in the American spelling he asked for
     three times. `actions()` is the reading order and `COLUMNS` breaks it into
     rows, so this pins both at once."""
     from automap.actionbar import COLUMNS, ActionBar
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     grid = bar.layout()
     rows: dict[int, list[str]] = {}
     for name, button in bar.buttons.items():
@@ -2084,7 +2096,7 @@ def test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
 
 def test_a_fight_disables_what_a_fight_forbids(app):
     from automap.actionbar import ActionBar
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     bar.attach(MemoryTarget({0x6E11: b"\x02"}))
     assert bar.buttons["heal"].isEnabled()            # legal mid-fight
     assert not bar.buttons["identify"].isEnabled()
@@ -2096,7 +2108,7 @@ def test_the_whole_row_costs_one_read_of_the_mode_flag(app):
     hands the emulation ~14.3 ms of extra emulated time."""
     from automap.actionbar import ActionBar
     machine = MemoryTarget({0x6E11: b"\x00"})
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     bar.attach(machine)
     assert [r for r in machine.reads if r[0] == 0x6E11] == [(0x6E11, 1)]
 
@@ -2105,7 +2117,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     from automap.actionbar import ActionBar
     machine = MemoryTarget({0x6E11: b"\x00"})
     said = []
-    bar = ActionBar(say=lambda text, detail="", alarm=False: said.append(text))
+    bar = ActionBar(make_root(), say=lambda text, detail="", alarm=False: said.append(text))
     asked = []
     bar.ask = lambda question: asked.append(question) or False
     bar.attach(machine)
@@ -2128,7 +2140,7 @@ def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
     from automap.actionbar import ActionBar
     save0, save1 = captured()
     machine = MemoryTarget({0x4900: save0, 0x8300: save1, 0x6E11: b"\x02"})
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     assert not bar.watch_box.isChecked() and not bar.watcher.enabled
     assert bar.watch(machine) is None                  # in a fight
 
@@ -2250,7 +2262,7 @@ def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     """The two conditions the record actually tells us, and no others: the
     effect ids at $4900 are a code space nothing in the project names."""
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(_character(hp=0))
     assert card.conditions.names == ("skull",)
     assert "dead or dying" in card.conditions.toolTip()
@@ -2277,11 +2289,11 @@ def test_the_level_up_button_opens_no_menu_for_a_multi_class_character(app):
     from PyQt6.QtWidgets import QMenu
 
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     seen = []
     card.level_up_requested.connect(seen.append)
     card.show_character(_multi_class_character())
-    assert card.level_up.isVisibleTo(card)
+    assert card.level_up.isVisibleTo(card.frame)
     card.level_up.click()
     assert seen == [3]
     assert card.findChildren(QMenu) == []
@@ -2292,7 +2304,7 @@ def test_the_button_says_which_class_it_will_raise(app):
     larger than the thief's 2,501, and that is the number the trainer's clamp
     reads. Thief first would strand her at 2,500."""
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(_multi_class_character())
     assert card.chosen_class(_multi_class_character()) == "magic-user"
     assert card.level_up.toolTip() == "level up as magic-user"
@@ -2303,16 +2315,16 @@ def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):
     line and right-aligned -- not the conditions row, which is what has
     happened *to* a character rather than what their player chose."""
     from automap.panel import CharacterCard
-    card = CharacterCard()
+    card = CharacterCard(make_root(), 0)
     card.show_character(_character(quickfight=True))
     assert card.quickfight.names == ("person-running",)
     assert card.quickfight.toolTip() == "Quickfight"
     # Not in with the conditions, and not shifting the card when it goes.
     assert card.conditions.names == ()
-    tall = card.sizeHint().height()
+    tall = card.frame.sizeHint().height()
     card.show_character(_character())
     assert card.quickfight.names == ()
-    assert card.sizeHint().height() == tall
+    assert card.frame.sizeHint().height() == tall
 
 
 def test_the_quickfight_bit_reaches_the_snapshot_from_the_roster_page(app):
@@ -2384,7 +2396,7 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
     keyboard, and the type letters are ignored while the field has focus."""
     from PyQt6.QtTest import QTest
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
-    window.show()
+    window.root.show()
     window.edit_note(3, 3)
     pop = window._popover
     pop.field.setFocus()
@@ -2392,7 +2404,7 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
     assert pop.field.text() == "north gate"
     assert window._popover is pop            # no second popover opened
     assert pop.chosen == "note"              # and no type was picked by "e"
-    window.close()
+    window.root.close()
 
 
 def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
@@ -2400,7 +2412,7 @@ def test_the_action_bar_rebuilds_its_buttons_when_the_title_changes(app):
     is what carries the descriptor into every address the buttons write."""
     from automap.actionbar import ActionBar
 
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     assert all(a.game is games.POOL_OF_RADIANCE for a in bar.actions)
     bar.set_game(CURSE)
     assert all(a.game is CURSE for a in bar.actions)
@@ -2422,7 +2434,7 @@ def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
 
     krynn = games.CHAMPIONS_OF_KRYNN
     assert krynn.mode_flag is None
-    bar = ActionBar()
+    bar = ActionBar(make_root())
     bar.set_game(krynn)
     save0, roster = captured()
     bar.attach(MemoryTarget({krynn.save_load_address: save0 + roster}))

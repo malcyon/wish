@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """How solid rock is shaded on the combat map.
 
 Three options, chosen by `combat.SHADING`: a plain darker fill, one set of
@@ -7,7 +9,6 @@ anchored to the square rather than the canvas, that it survives the cell
 shrinking, and that a crowded fight still reads.
 """
 
-from __future__ import annotations
 
 import dataclasses
 

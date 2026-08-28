@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The native message watch: off everywhere but Windows, and cheap when idle.
 
 It exists because three fixes for a popup that closes itself were reasoned from
@@ -5,7 +7,6 @@ Linux and all three were wrong, and a standalone probe on Windows cleared the
 last Qt-level suspect. See `wish/nativewatch.py`.
 """
 
-from __future__ import annotations
 
 import logging
 

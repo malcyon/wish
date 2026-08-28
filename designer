@@ -1,4 +1,3 @@
 #!/usr/bin/bash
 
-#/usr/lib/qt6/bin/designer editor/character.ui
-/usr/lib/qt6/bin/designer
+/usr/lib/qt6/bin/designer wish/window.ui

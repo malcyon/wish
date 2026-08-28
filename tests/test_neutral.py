@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The neutral character record, and the codecs either side of it.
 
 `docs/117-save-conversion.md` and issue #25: three formats in two directions
@@ -8,7 +10,6 @@ comes back out of a writer unchanged, that a value no writer will take is
 rather than guessed at.
 """
 
-from __future__ import annotations
 
 import pytest
 from test_dossave import _save_dir, needs_dos_saves
