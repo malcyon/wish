@@ -2,7 +2,7 @@
 name: docs-reviewer
 description: Audits repository documentation for internal contradictions, claims that no longer match the code, and facts discovered during work that were never written down. Use when documentation may have drifted.
 tools: Read, Grep, Glob, Bash
-model: gemini-3.1-pro
+model: gemini-3.1-flash
 effort: high
 memory: project
 color: green

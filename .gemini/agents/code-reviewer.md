@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Reviews code for best-practice violations, gaps in exception handling and logging, and likely bugs. Use proactively after writing or modifying code.
 tools: Read, Grep, Glob, Bash
-model: gemini-3.1-pro
+model: gemini-3.1-flash
 effort: high
 memory: project
 color: blue
