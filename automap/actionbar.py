@@ -180,7 +180,8 @@ class ActionBar(QObject):
         """One tick of the quickfight watcher. Fires on the 2-to-not-2 edge."""
         outcome = self.watcher.poll(target)
         if outcome is not None:
-            self._report("quickfight", outcome)
+            if outcome.message != "nobody was on quickfight":
+                self._report("quickfight", outcome)
         return outcome
 
     # -- running one -----------------------------------------------------

@@ -1621,7 +1621,6 @@ class Ui_WishWindow(object):
     def retranslateUi(self, WishWindow):
         _translate = QtCore.QCoreApplication.translate
         WishWindow.setWindowTitle(_translate("WishWindow", "Wish"))
-        self.automap_grid.setColumnStretch(_translate("WishWindow", "0,1,0"))
         self.automap_roster_heading.setText(_translate("WishWindow", "Party"))
         self.card_0_level_up.setText(_translate("WishWindow", "Level up"))
         self.card_1_level_up.setText(_translate("WishWindow", "Level up"))
