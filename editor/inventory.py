@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
+from .ui_inventory import Ui_AddItemDialog
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -352,22 +353,17 @@ class AddItemDialog(QDialog):
 
     def __init__(self, templates: dict[str, bytes], parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add an item")
+        self.ui = Ui_AddItemDialog()
+        self.ui.setupUi(self)
         self.templates = templates
-        self.search = QLineEdit(self)
-        self.search.setPlaceholderText("type to filter")
-        self.list = QListWidget(self)
+        self.search = self.ui.search
+        self.list = self.ui.list
+        
         self.list.addItems(sorted(templates))
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel, parent=self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         self.search.textChanged.connect(self._filter)
-        layout = QVBoxLayout(self)
-        for w in (self.search, self.list, buttons):
-            layout.addWidget(w)
+        
         self.resize(420, 480)
         if self.list.count():
             self.list.setCurrentRow(0)
