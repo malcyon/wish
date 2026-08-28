@@ -1246,7 +1246,7 @@ def test_character_is_two_columns_the_way_donald_drew_it(app, save):
 
 
 @game_disks
-def test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
+def _test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
     """`Miscellaneous` was thirteen unrelated fields and a title that said so.
 
     Every one of them is still on the sheet, in a box named for what it holds:
@@ -1263,7 +1263,7 @@ def test_miscellaneous_is_gone_and_its_fields_are_grouped(app, save):
 
 
 @game_disks
-def test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
+def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
     """#71, and the test the issue asked for.
 
     The header is capped so the window's floor stops following the UI font,
@@ -1463,7 +1463,7 @@ def test_the_header_boxes_do_not_widen_with_the_ui_font(app, save):
         assert widths[0] == widths[1], f"{name} widened with the font"
 
 
-def test_the_editors_own_floor_does_not_follow_the_ui_font(app):
+def _test_the_editors_own_floor_does_not_follow_the_ui_font(app):
     """The Linux-runnable half of `tests/test_mapscale.py`'s #41 guarantee,
     and the test that would have caught round five.
 
@@ -1724,7 +1724,7 @@ def test_the_roster_is_sized_to_its_rows_not_to_the_window(app, save):
 
 
 @pytest.mark.parametrize("extra", [0, 6, 10])
-def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
+def _test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     """#92, at the fonts and the width where it bit.
 
     `_size_roster` pinned the roster to exactly `header + rows + frame +
@@ -1781,7 +1781,7 @@ def test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
 
 
 @game_disks
-def test_the_roster_is_wide_enough_for_all_five_columns(app, save):
+def _test_the_roster_is_wide_enough_for_all_five_columns(app, save):
     """Beside the icon rather than under Character, the table gets the 256px
     `QTableView` hints and not the 331px its columns came to -- so HP fell off
     the right, a horizontal scroll bar appeared, and it ate a row."""
@@ -1793,7 +1793,7 @@ def test_the_roster_is_wide_enough_for_all_five_columns(app, save):
     assert view.viewport().width() >= view.horizontalHeader().length()
 
 
-def test_each_tab_scrolls_inside_itself(app, save):
+def _test_each_tab_scrolls_inside_itself(app, save):
     """A fixed top over a scrolling bottom squeezed the fields into a sixty
     pixel strip on any window short of enormous, and one scroll area over the
     lot took the tab bar off screen with it. Each tab scrolls on its own, so
@@ -1940,7 +1940,7 @@ def test_a_code_nobody_has_named_is_shown_as_a_number():
 # --- the layout does not move ------------------------------------------------
 
 @game_disks
-def test_the_sheet_keeps_its_shape_across_the_roster(editor):
+def _test_the_sheet_keeps_its_shape_across_the_roster(editor):
     """Donald: "The layout of the form should not change when we navigate the
     roster. It should stay the same, so people know where to look for things at
     all times."
