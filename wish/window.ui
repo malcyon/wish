@@ -25,7 +25,7 @@
         <string>Automapper</string>
        </attribute>
        <layout class="QGridLayout" name="automap_grid">
-        <item row="3" column="0" colspan="3">
+        <property name="columnStretch"><string>0,1,0</string></property><item row="0" column="0">
          <widget class="QWidget" name="automap_roster">
           <layout class="QVBoxLayout" name="automap_roster_layout">
            <property name="spacing">
@@ -1556,7 +1556,7 @@
           </layout>
          </widget>
         </item>
-        <item row="0" column="0" alignment="Qt::AlignTop">
+        <item row="0" column="1" alignment="Qt::AlignTop">
          <widget class="QWidget" name="map_column">
           <layout class="QVBoxLayout" name="map_column_layout">
            <property name="spacing">
@@ -1726,7 +1726,7 @@
            </layout>
          </widget>
         </item>
-        <item row="0" column="1">
+        <item row="0" column="2">
          <widget class="QWidget" name="automap_side">
           <property name="maximumSize">
            <size>
@@ -2016,7 +2016,7 @@
           <item>
            <widget class="QPushButton" name="button_open">
             <property name="text">
-             <string>&amp;Open&#8230;</string>
+             <string>&amp;Open…</string>
             </property>
            </widget>
           </item>
@@ -2030,14 +2030,14 @@
           <item>
            <widget class="QPushButton" name="button_save_as">
             <property name="text">
-             <string>Save &amp;As&#8230;</string>
+             <string>Save &amp;As…</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="button_preview">
             <property name="text">
-             <string>&amp;Preview changes&#8230;</string>
+             <string>&amp;Preview changes…</string>
             </property>
            </widget>
           </item>
@@ -3186,7 +3186,7 @@
                      <item>
                       <widget class="QPushButton" name="button_item_add">
                        <property name="text">
-                        <string>&amp;Add item&#8230;</string>
+                        <string>&amp;Add item…</string>
                        </property>
                       </widget>
                      </item>
