@@ -1556,7 +1556,7 @@
           </layout>
          </widget>
         </item>
-        <item row="0" column="1" alignment="Qt::AlignTop">
+        <item row="0" column="0" alignment="Qt::AlignTop">
          <widget class="QWidget" name="map_column">
           <layout class="QVBoxLayout" name="map_column_layout">
            <property name="spacing">
@@ -1577,10 +1577,156 @@
            <item alignment="Qt::AlignHCenter">
             <widget class="QStackedWidget" name="map_stack" />
            </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QWidget" name="actions_bar">
+             <layout class="QGridLayout" name="actions_grid">
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>2</number>
+              </property>
+              <item row="0" column="0">
+               <widget class="ElidingButton" name="action_heal">
+                <property name="text">
+                 <string>Heal party</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="ElidingButton" name="action_store">
+                <property name="text">
+                 <string>Store spells</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="ElidingButton" name="action_restore">
+                <property name="text">
+                 <string>Restore spells</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="ElidingButton" name="action_identify">
+                <property name="text">
+                 <string>Identify items</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="ElidingButton" name="action_clear_qf">
+                <property name="text">
+                 <string>Clear quickfight</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="ElidingCheckBox" name="watch_box">
+                <property name="text">
+                 <string>Clear quickfight after a fight</string>
+                </property>
+                <property name="toolTip">
+                 <string>When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="1" colspan="2">
+               <widget class="QLabel" name="actions_note">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                 </font>
+                </property>
+                <property name="text">
+                 <string />
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="textInteractionFlags">
+                 <set>Qt::TextSelectableByMouse</set>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QWidget" name="fasttravel_bar">
+             <layout class="QGridLayout" name="fasttravel_grid">
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>2</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>2</number>
+              </property>
+              <item row="0" column="0" colspan="2">
+               <widget class="ElidingComboBox" name="ft_combo" />
+              </item>
+              <item row="0" column="1">
+               <widget class="ElidingButton" name="ft_button">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Fast Travel</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="3">
+               <widget class="ElidingButton" name="ft_back_button">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Travel Back</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0" colspan="4">
+               <widget class="QLabel" name="ft_note">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                 </font>
+                </property>
+                <property name="text">
+                 <string />
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="textInteractionFlags">
+                 <set>Qt::TextSelectableByMouse</set>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
            </layout>
          </widget>
         </item>
-        <item row="0" column="2">
+        <item row="0" column="1">
          <widget class="QWidget" name="automap_side">
           <property name="maximumSize">
            <size>
@@ -1655,7 +1801,7 @@
                 </widget>
                </item>
               </layout>
-             </widget>
+             <property name="maximumSize"><size><width>16777215</width><height>120</height></size></property></widget>
              <widget class="QWidget" name="commissions_panel">
               <layout class="QVBoxLayout" name="commissions_layout">
                <property name="spacing">
@@ -1858,153 +2004,7 @@
           </property>
          </widget>
         </item>
-       <item row="0" column="0"><widget class="QWidget" name="left_column"><layout class="QVBoxLayout" name="left_column_layout"><item alignment="Qt::AlignHCenter">
-            <widget class="QWidget" name="actions_bar">
-             <layout class="QGridLayout" name="actions_grid">
-              <property name="spacing">
-               <number>4</number>
-              </property>
-              <property name="leftMargin">
-               <number>0</number>
-              </property>
-              <property name="topMargin">
-               <number>4</number>
-              </property>
-              <property name="rightMargin">
-               <number>0</number>
-              </property>
-              <property name="bottomMargin">
-               <number>2</number>
-              </property>
-              <item row="0" column="0">
-               <widget class="ElidingButton" name="action_heal">
-                <property name="text">
-                 <string>Heal party</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="1">
-               <widget class="ElidingButton" name="action_store">
-                <property name="text">
-                 <string>Store spells</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="1">
-               <widget class="ElidingButton" name="action_restore">
-                <property name="text">
-                 <string>Restore spells</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="0">
-               <widget class="ElidingButton" name="action_identify">
-                <property name="text">
-                 <string>Identify items</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="1">
-               <widget class="ElidingButton" name="action_clear_qf">
-                <property name="text">
-                 <string>Clear quickfight</string>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="0">
-               <widget class="ElidingCheckBox" name="watch_box">
-                <property name="text">
-                 <string>Clear quickfight after a fight</string>
-                </property>
-                <property name="toolTip">
-                 <string>When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for</string>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="1" colspan="2">
-               <widget class="QLabel" name="actions_note">
-                <property name="font">
-                 <font>
-                  <pointsize>8</pointsize>
-                 </font>
-                </property>
-                <property name="text">
-                 <string />
-                </property>
-                <property name="wordWrap">
-                 <bool>true</bool>
-                </property>
-                <property name="textInteractionFlags">
-                 <set>Qt::TextSelectableByMouse</set>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item alignment="Qt::AlignHCenter">
-            <widget class="QWidget" name="fasttravel_bar">
-             <layout class="QGridLayout" name="fasttravel_grid">
-              <property name="spacing">
-               <number>4</number>
-              </property>
-              <property name="leftMargin">
-               <number>0</number>
-              </property>
-              <property name="topMargin">
-               <number>2</number>
-              </property>
-              <property name="rightMargin">
-               <number>0</number>
-              </property>
-              <property name="bottomMargin">
-               <number>2</number>
-              </property>
-              <item row="0" column="0" colspan="2">
-               <widget class="ElidingComboBox" name="ft_combo" />
-              </item>
-              <item row="0" column="1">
-               <widget class="ElidingButton" name="ft_button">
-                <property name="enabled">
-                 <bool>false</bool>
-                </property>
-                <property name="text">
-                 <string>Fast Travel</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="3">
-               <widget class="ElidingButton" name="ft_back_button">
-                <property name="enabled">
-                 <bool>false</bool>
-                </property>
-                <property name="text">
-                 <string>Travel Back</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="0" colspan="4">
-               <widget class="QLabel" name="ft_note">
-                <property name="font">
-                 <font>
-                  <pointsize>8</pointsize>
-                 </font>
-                </property>
-                <property name="text">
-                 <string />
-                </property>
-                <property name="wordWrap">
-                 <bool>true</bool>
-                </property>
-                <property name="textInteractionFlags">
-                 <set>Qt::TextSelectableByMouse</set>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item><spacer name="left_spacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint"><size><width>20</width><height>40</height></size></property></spacer></item></layout></widget></item></layout>
+       </layout>
       </widget>
       <widget class="QWidget" name="tab_editor">
        <attribute name="title">
