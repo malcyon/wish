@@ -114,8 +114,17 @@ class Screen:
             return -1
         return max(counts, key=counts.__getitem__)
 
-    def highlighted_rows(self, colour: int = 1) -> list[int]:
+    def highlighted_rows(self, colour: int = 1, column: int | None = None) -> list[int]:
         """Rows drawn in the menu highlight colour (white by default)."""
+        if column is not None:
+            rows = []
+            for r in range(SCREEN_ROWS):
+                base = r * SCREEN_COLS
+                if self.colours[base + column] == colour:
+                    if column >= 2 and self.colours[base + column - 2] == colour:
+                        continue
+                    rows.append(r)
+            return rows
         return [r for r in range(SCREEN_ROWS) if self.row_colour(r) == colour]
 
 

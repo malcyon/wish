@@ -378,12 +378,12 @@ class Session:
             if line.strip():
                 print(f"{r:2d} {s.row_colour(r):2d} |{line}|")
 
-    def colours(self, row: int) -> bytes:
+    def colours(self) -> bytes:
         with self.mon(5) as m:
-            return bytes(c & 0x0F for c in m.read(0xD800 + row * 40, 40))
+            return bytes(c & 0x0F for c in m.read(0xD800, 1000))
 
     def highlight_span(self, row: int) -> tuple[int, int] | None:
-        c = self.colours(row)
+        c = self.colours()[row * 40 : (row + 1) * 40]
         idx = [i for i, v in enumerate(c) if v == 1]
         return (idx[0], idx[-1]) if idx else None
 
@@ -441,7 +441,7 @@ class Session:
 
     # -- menus ------------------------------------------------------------
 
-    def select_row(self, label: str, timeout=30.0) -> bool:
+    def select_row(self, label: str, timeout=30.0, column: int | None = None) -> bool:
         """Vertical menu: walk the white row onto *label*, then Return.
 
         Driven by where the highlight is, not by counting from an assumed
@@ -455,7 +455,7 @@ class Session:
                 time.sleep(0.3)
                 continue
             hit = s.find(label)
-            hot = s.highlighted_rows()
+            hot = s.highlighted_rows(column=column)
             if hit is None or not hot:
                 self.handle_prompt(s)   # a disk prompt can sit over any menu
                 time.sleep(0.3)
