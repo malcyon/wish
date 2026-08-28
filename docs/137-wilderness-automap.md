@@ -60,7 +60,7 @@ read off the save.
 
 **c. No `GEO` is resident, so `ResidentGeo` never names an area.** It matches
 the 1024 bytes at `$0400` against the disk `GEO`s; outdoors the square engine's
-descriptor is there instead. Warping into all three overland areas found
+descriptor is there instead. FastTraveling into all three overland areas found
 `$49E6` = 0 and **no `GEO` resident** (`work/reports/p20-arrivals.md`).
 `Fingerprint`, fed the frozen (15,1) fix from (b), never narrows either.
 CONFIRMED.

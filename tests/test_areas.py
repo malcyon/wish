@@ -272,7 +272,7 @@ def test_the_table_names_exactly_the_scripts_on_the_disks(scripts):
 
 
 def test_every_disk_number_matches_the_disk_the_script_is_on(scripts):
-    """`Area.disk` is what a warp writes to `$6E12`; getting it wrong makes the
+    """`Area.disk` is what a fasttravel writes to `$6E12`; getting it wrong makes the
     loader sit at a disk prompt."""
     wrong = {a.id: (a.disk, scripts[a.id].name) for a in areas.AREAS
              if f"POOL{a.disk}__" not in scripts[a.id].name}

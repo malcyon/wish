@@ -221,7 +221,7 @@ FONT_AWESOME = {
         "87.9C447.6 87.9 454.8 91.5 459.3 97.7L571.3 249.7C578.1 "
         "258.9 577.4 271.6 569.8 280.1z",
     # The Fast Travel help affordance, on a `QToolButton` so that it
-    # looks like something to point at -- `actionbar.WarpBar`.
+    # looks like something to point at -- `actionbar.FastTravelBar`.
     "circle-info":
         "M320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 "
         "64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM288 "

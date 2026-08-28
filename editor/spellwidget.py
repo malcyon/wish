@@ -22,19 +22,18 @@ from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QComboBox,
-    QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
     QStyle,
     QStyleOptionComboBox,
     QStyleOptionViewItem,
-    QVBoxLayout,
     QWidget,
 )
 
 from goldbox.spells import SpellTable, describe, for_game, spell_group
+
+from .ui_memorised import Ui_MemorisedEditor
+from .ui_spellbook import Ui_SpellbookEditor
 
 MEMORISED_SIZE = 16          # the packed list at 0x020
 
@@ -163,15 +162,14 @@ class SpellbookEditor(SpellEditor):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.ui = Ui_SpellbookEditor()
+        self.ui.setupUi(self)
         self._names: dict[int, str] | None = None
         self._table = DEFAULT_TABLE
         self._loading = False
         self._raw = bytes(self._table.spellbook_size)
-        self.list = QListWidget(self)
+        self.list = self.ui.list
         self.list.itemChanged.connect(self._ticked)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.list)
         self._rows: dict[int, QListWidgetItem] = {}
         self._fill()
 
@@ -271,6 +269,8 @@ class MemorisedEditor(SpellEditor):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.ui = Ui_MemorisedEditor()
+        self.ui.setupUi(self)
         self._names: dict[int, str] | None = None
         self._table = DEFAULT_TABLE
         self._casts = False
@@ -278,29 +278,15 @@ class MemorisedEditor(SpellEditor):
         self._cap: dict[str, tuple[int, ...]] = {}
         self._raw = bytes(MEMORISED_SIZE)
 
-        self.list = QListWidget(self)
-        self.choice = QComboBox(self)
-        self.add = QPushButton("Add", self)
-        self.remove = QPushButton("Remove", self)
-        self.capacity = QLabel(self)
-        self.capacity.setWordWrap(True)
+        self.list = self.ui.list
+        self.choice = self.ui.choice
+        self.add = self.ui.add
+        self.remove = self.ui.remove
+        self.capacity = self.ui.capacity
 
         self.add.clicked.connect(self._add_chosen)
         self.remove.clicked.connect(self._remove_selected)
 
-        # The drop-down gets a row to itself. Sharing one with the buttons left
-        # it 140 px for a 303 px name -- Donald: "the text isn't entirely
-        # visible" -- and the two buttons will not shrink to give it back.
-        row = QHBoxLayout()
-        for w in (self.add, self.remove):
-            row.addWidget(w)
-        row.addStretch(1)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.list)
-        layout.addWidget(self.choice)
-        layout.addLayout(row)
-        layout.addWidget(self.capacity)
         self._fill_choices()
 
     def _fill_choices(self) -> None:

@@ -894,6 +894,29 @@ earns its lines. Restating the code does not.
 generated into `docs/20-character-record.md`. They can be long. Run
 `python3 tools/gendocs.py` after touching them.
 
+## Qt Designer
+
+**Every widget layout that a human might rearrange must come from a `.ui`
+file.** New windows, dialogs, panels and forms are designed in Qt Designer and
+compiled with `tools/genui.py`. The Python code wires signals, sets models, and
+does anything dynamic; it does not call `addWidget`, `setLayout`, or build a
+form in code. `tools/genui.py --check` catches drift in CI.
+
+**The only exceptions are custom-painted widgets** -- the map and combat
+canvases, the HP/XP bars -- that have no layout to rearrange. Their
+*containers and placement* still belong in the `.ui` that holds them, as
+promoted widgets.
+
+**The pattern is `editor/character.ui`**, which the character editor has used
+from the start. Widgets are found by `objectName` and matched to the code that
+drives them, so the form can be rearranged in Designer without a line of Python
+changing.
+
+**`tools/genui.py` compiles every `.ui` in the project.** It discovers pairs
+automatically -- `<dir>/<name>.ui` becomes `<dir>/ui_<name>.py` -- and
+`ensure_current()` at startup regenerates anything stale. `--check` is what CI
+runs. A `.ui` added in a new directory needs a row in `genui.py`'s `UI_DIRS`.
+
 ## Ending a session, and starting the next one
 
 **The session is not the knowledge base and must never become it.** A fact

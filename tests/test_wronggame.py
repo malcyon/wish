@@ -340,9 +340,9 @@ def test_both_refusals_fire_when_the_game_is_the_wrong_one(app, ours, theirs,
 
     assert window.mapper.title_check is NOT_OURS
     assert window.roster.levelling is False
-    assert window.warp_bar.target is None
-    assert window.warp_bar.button.isEnabled() is False
-    assert window.warp_bar.back_button.isEnabled() is False
+    assert window.fasttravel_bar.target is None
+    assert window.fasttravel_bar.button.isEnabled() is False
+    assert window.fasttravel_bar.back_button.isEnabled() is False
 
 
 def test_every_write_button_goes_with_them(app, ours, theirs, notes_elsewhere):
@@ -378,7 +378,7 @@ def test_the_controls_come_back_when_the_right_game_appears(app, ours, theirs,
 
     assert window.mapper.title_check is OURS
     assert window.roster.levelling is True
-    assert window.warp_bar.target is target
+    assert window.fasttravel_bar.target is target
 
 
 def test_the_window_says_nothing_when_the_disks_were_right(app, ours,

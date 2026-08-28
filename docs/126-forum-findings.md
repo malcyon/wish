@@ -34,7 +34,7 @@ Amiga or FRUA.
 |---|---|---|---|
 | 1 | **`github.com/simeonpilgrim/coab` is a primary source, not a footnote.** It holds the DOS record for *both* our titles — `PoolRadPlayer.cs` (285 bytes, named fields), `Player.cs` (422 bytes, 81 machine-readable `[DataOffset]` attributes) — and `engine/ovr017.cs::ConvertPoolRadPlayer`, **the routine the game runs when it imports a Pool of Radiance character into Curse**. | [2332](https://forums.goldbox.games/index.php?topic=2332.0), [1048](https://forums.goldbox.games/index.php?topic=1048.0), [1073](https://forums.goldbox.games/index.php?topic=1073.0) | Mined in full. **The conclusions live in [`117-save-conversion.md`](117-save-conversion.md)**, which is where the conversion work is. They account for 12 of the 15 bytes our own Pool→Curse import changed. |
 | 2 | **The DOS builds ship a second cheat mode, on the command line: `start.exe STING` for Pool of Radiance, `start.exe STING Wooden` for Curse**, then Alt+X. | [1082](https://forums.goldbox.games/index.php?topic=1082.0) | Probed on the C64 and **the answer is no** — §2. Closed. |
-| 3 | **The playtester "magic values" are not magic.** David Knott's `SAVGAM.TXT` names save offset 18 *current module* and 21 *initiated flag*; Ishad Nha's Death Knights notes name 198 *current `GEO`* and 243 *current `ECL`*. | [1034](https://forums.goldbox.games/index.php?topic=1034.0), [1919](https://forums.goldbox.games/index.php?topic=1919.0) | Ours confirmed and sharpened: the playtester trick is **writing an area id into the save's current-area field** — our Warp To, performed offline. §2. |
+| 3 | **The playtester "magic values" are not magic.** David Knott's `SAVGAM.TXT` names save offset 18 *current module* and 21 *initiated flag*; Ishad Nha's Death Knights notes name 198 *current `GEO`* and 243 *current `ECL`*. | [1034](https://forums.goldbox.games/index.php?topic=1034.0), [1919](https://forums.goldbox.games/index.php?topic=1919.0) | Ours confirmed and sharpened: the playtester trick is **writing an area id into the save's current-area field** — our FastTravel To, performed offline. §2. |
 | 4 | **The `GEO` wall nibble decomposes**: `wallset = (n−1)/5`, `slice = (n−1)%5`, from the Curse code — and marainein's WALLDEF decode gives the 156-byte, ten-view structure it indexes into. | [1255](https://forums.goldbox.games/index.php?topic=1255.0), [2532](https://forums.goldbox.games/index.php?topic=2532.0) | Extends `goldbox/geo.py`: the nibble is structured, not opaque. A prediction, not a measurement — §4. |
 | 5 | **Two DOS area-id tables for our two titles**, and **the DOS 63-byte `.ITM` record** field by field. | [1912](https://forums.goldbox.games/index.php?topic=1912.0), [1048](https://forums.goldbox.games/index.php?topic=1048.0) | §5 and §6. One conflict between two DOS sources over Valjevo Castle remains unsettled and is cheap to decide. |
 
@@ -108,12 +108,12 @@ immediately, and that is the only key combination in the thread.
 offset **18 = current module** and **21 = initiated flag**; Ishad Nha's own
 Death Knights notes name **198 = current `GEO`** and **243 = current `ECL`**.
 The trick is writing an area id into the save's current-area field. It is our
-Warp To performed offline, on the same door with a different handle.
+FastTravel To performed offline, on the same door with a different handle.
 
 **Nothing changes for us.** Pool of Radiance has no unreferenced playtester
 script: our `ECL` decode is exhaustive — thirty scripts, 16,233 instructions,
-zero derailments — and there is exactly **one** script nothing warps to,
-`ECL1E` (area 30), which `docs/50` P20 warped into and got the attract-mode
+zero derailments — and there is exactly **one** script nothing fasttravels to,
+`ECL1E` (area 30), which `docs/50` P20 fasttraveled into and got the attract-mode
 demo, with marketing copy and a self-driving party. CONFIRMED. Curse does the
 same: `ECL1.dax` in the DOS build is documented on the forum as record 082
 "Demo text". The engine ships its attract mode as a script; that is the family
@@ -286,10 +286,10 @@ side as settled** — "ours names the wrong one of its two maps" of id 24 —
 without recording that a second third-party DOS list says the opposite; the note
 belongs on that page too.
 
-**The experiment that decides it, and it is cheap:** warp to each of 3–7 in
+**The experiment that decides it, and it is cheap:** fasttravel to each of 3–7 in
 turn, match `$0400` against the disk `GEO` with `ResidentGeo`, and read the
 floor plan. A hedge maze is not a castle quadrant and will not be mistaken for
-one, so id 5 falls out in one look. The same run settles `GEO1F` by warping to
+one, so id 5 falls out in one look. The same run settles `GEO1F` by fasttraveling to
 24 and stepping onto its second map. Until then both readings are PROBABLE and
 `goldbox/areas.py` should not be changed to either.
 

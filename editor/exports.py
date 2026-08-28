@@ -40,16 +40,15 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
 from goldbox import games
+
+from .ui_exports import Ui_ExportDialog
 
 _log = logging.getLogger("wish.editor.exports")
 
@@ -404,12 +403,14 @@ class ExportDialog(QDialog):
 
     def __init__(self, source: Source, destination=None, parent=None):
         super().__init__(parent)
+        self.ui = Ui_ExportDialog()
+        self.ui.setupUi(self)
         self.setWindowTitle(self.TITLE)
         self.source = source
         self.destination = pathlib.Path(destination) if destination else None
         self.plan: Plan | None = None
 
-        self.form = QFormLayout()
+        self.form = self.ui.form
         label = QLabel(source.name)
         label.setObjectName("export_source")
         self.form.addRow(LABEL_SOURCE, label)
@@ -420,23 +421,12 @@ class ExportDialog(QDialog):
                          _picker(self._destination_label, "export_choose_dest",
                                  self.choose_destination))
 
-        self.report_pane = QPlainTextEdit()
-        self.report_pane.setObjectName("export_report")
-        self.report_pane.setReadOnly(True)
+        self.report_pane = self.ui.export_report
 
-        self.buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel)
+        self.buttons = self.ui.buttons
         self.buttons.button(
             QDialogButtonBox.StandardButton.Ok).setText(BUTTON_EXPORT)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(self.form)
-        layout.addWidget(self.report_pane, 1)
-        layout.addWidget(self.buttons)
-        self.resize(680, 480)
         self.replan()
 
     # -- the parts the two ports differ in ---------------------------------

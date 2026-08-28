@@ -641,7 +641,7 @@ def test_a_crossing_does_not_record_the_new_areas_squares_on_the_old_map(
     came back on the next visit and never went away.
 
     Reproduced live before it was fixed (`docs/98-automap-notes.md`): the party
-    warped from the Slums to New Phlan, stepped to New Phlan's (14,1), and five
+    fasttraveled from the Slums to New Phlan, stepped to New Phlan's (14,1), and five
     New Phlan squares were saved into the Slums' own `GEO14.json`.
     """
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))

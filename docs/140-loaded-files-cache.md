@@ -305,6 +305,6 @@ number `S` (`04`/`05`/`06`) standing in for `G` everywhere `G` appears:
 Slot 2 stays `$FF` and stays empty after arrival — no `GEO` is loaded outdoors.
 The refill is `LOADFILES`' travel branch: `GDRIVE00`, `SQRPACI00`, `SECSET0n`
 and the `SQRDATA` itself. And unlike indoors, the placement question is closed:
-a warp carrying (0,0) came up at (0,0) and a save rewritten to carry (5,2) came
+a fasttravel carrying (0,0) came up at (0,0) and a save rewritten to carry (5,2) came
 up at (5,2), so the arriving script honours `$49C3`/`$49C4` rather than
 re-placing the party.

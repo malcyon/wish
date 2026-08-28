@@ -72,7 +72,7 @@ jobs:
 
       - run: pip install -e ".[dev,gui]"
 
-      - name: the compiled form matches character.ui
+      - name: the compiled forms match their .ui files
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/genui.py --check

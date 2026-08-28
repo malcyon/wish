@@ -744,15 +744,15 @@ def test_a_fresh_config_ticks_the_three_areas_and_nothing_else(app, tmp_path,
 
 def test_area_30_is_not_in_the_table_at_all(app, tmp_path, monkeypatch):
     """`ECL1E` is the attract-mode demo and entering it ends the session. It
-    is `Area.warpable` that says so, not an id written down twice."""
+    is `Area.fasttravelable` that says so, not an id written down twice."""
     from goldbox import areas
 
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
-    assert [a.id for a in dialog.travel_rows if not a.warpable] == []
+    assert [a.id for a in dialog.travel_rows if not a.fasttravelable] == []
     assert 30 not in [a.id for a in dialog.travel_rows]
     assert dialog.travel_table.rowCount() == len(
-        [a for a in areas.AREAS if a.warpable])
+        [a for a in areas.AREAS if a.fasttravelable])
 
 
 def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
@@ -762,11 +762,11 @@ def test_ticking_an_area_reaches_the_dropdown_and_the_settings_file(
     dialog = PreferencesDialog(win)
     tick(dialog, "The Kobold Caves")
     assert 13 in Settings.load().chosen_areas()
-    assert "The Kobold Caves" in [r.name for r in win.map.warp_bar.rows]
+    assert "The Kobold Caves" in [r.name for r in win.map.fasttravel_bar.rows]
 
     tick(dialog, "Sokol Keep", on=False)
     assert 21 not in Settings.load().chosen_areas()
-    assert "Sokol Keep" not in [r.name for r in win.map.warp_bar.rows]
+    assert "Sokol Keep" not in [r.name for r in win.map.fasttravel_bar.rows]
 
 
 def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
@@ -787,7 +787,7 @@ def test_unticking_everything_is_an_answer_and_is_kept(app, tmp_path,
     assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()
     assert dialog.travel_note.text() == "0 areas in the Fast Travel list."
-    assert win.map.warp_bar.rows == ()
+    assert win.map.fasttravel_bar.rows == ()
 
 
 def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
@@ -798,7 +798,7 @@ def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
 
     tick(PreferencesDialog(window(app)), "Kovel Mansion")
     later = window(app, settings=Settings.load())
-    assert "Kovel Mansion" in [r.name for r in later.map.warp_bar.rows]
+    assert "Kovel Mansion" in [r.name for r in later.map.fasttravel_bar.rows]
     assert ticked(PreferencesDialog(later)) == [
         "Kovel Mansion", "New Phlan", "Sokol Keep", "The Slums"]
 
@@ -816,7 +816,7 @@ def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
     assert dialog.travel_table.rowCount() == 0
     assert dialog.travel_note.text() == ("No areas are known for Curse of the "
                                          "Azure Bonds.")
-    assert win.map.warp_bar.rows == ()
+    assert win.map.fasttravel_bar.rows == ()
 
 
 def test_the_warning_is_a_framed_box_in_the_same_amber_as_unverified(
@@ -842,14 +842,14 @@ def written_config(tmp_path) -> dict:
 
 def test_a_config_file_written_before_the_rename_keeps_its_ticks(app, tmp_path,
                                                                   monkeypatch):
-    """It was `warp_areas` until 2026-08 -- Donald: "since we aren't calling it
-    warp_to anymore. We need consistency in our naming." His own file has the
+    """It was `fasttravel_areas` until 2026-08 -- Donald: "since we aren't calling it
+    fasttravel_to anymore. We need consistency in our naming." His own file has the
     old key in it, so the old key is read; only the new one is written, so the
     rename finishes instead of being carried in the file forever."""
     nowhere(tmp_path, monkeypatch)
     (tmp_path / "wish").mkdir(parents=True, exist_ok=True)
     (tmp_path / "wish" / "automap.json").write_text(
-        json.dumps({"warp_areas": [13, 21], "sight": 4}))
+        json.dumps({"fasttravel_areas": [13, 21], "sight": 4}))
 
     old = Settings.load()
     # Two migrations in one read: the key rename, and then the bare list into
@@ -860,7 +860,7 @@ def test_a_config_file_written_before_the_rename_keeps_its_ticks(app, tmp_path,
     old.save()
     assert written_config(tmp_path)["fast_travel_targets"] == {
         "pool-of-radiance": [13, 21]}
-    assert "warp_areas" not in written_config(tmp_path)
+    assert "fasttravel_areas" not in written_config(tmp_path)
 
 
 def test_the_new_key_wins_and_an_empty_old_list_is_still_a_choice(app, tmp_path,
@@ -869,10 +869,10 @@ def test_the_new_key_wins_and_an_empty_old_list_is_still_a_choice(app, tmp_path,
     (tmp_path / "wish").mkdir(parents=True, exist_ok=True)
     path = tmp_path / "wish" / "automap.json"
 
-    path.write_text(json.dumps({"warp_areas": [1], "fast_travel_targets": [2]}))
+    path.write_text(json.dumps({"fasttravel_areas": [1], "fast_travel_targets": [2]}))
     assert Settings.load().chosen_areas() == (2,)
 
-    path.write_text(json.dumps({"warp_areas": []}))
+    path.write_text(json.dumps({"fasttravel_areas": []}))
     assert Settings.load().fast_travel_targets == {"pool-of-radiance": []}
     assert Settings.load().chosen_areas() == ()      # not the default three
 

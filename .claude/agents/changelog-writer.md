@@ -95,7 +95,7 @@ fix they were waiting for.
 ## How to write a line
 
 **Say what the program now does, in the words the interface uses.** "Fast
-Travel to visited areas" -- not "implement warp target resolution".
+Travel to visited areas" -- not "implement fasttravel target resolution".
 
 **Name the consequence, never the mechanism.** No addresses, no function names,
 no file paths, no internal vocabulary. A reader of this file has never seen the

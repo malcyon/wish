@@ -28,8 +28,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QStatusBar,
-    QTabWidget,
 )
 
 from automap import paths
@@ -57,6 +55,7 @@ from .preferences import (
     game_named,
 )
 from .session import BUSY, CONNECTED, Session
+from .ui_window import Ui_WishWindow
 
 # The map is what a player has open while playing; the editor is the
 # occasional visit. Index order is tab order, so the map is first.
@@ -98,6 +97,9 @@ class WishWindow(QMainWindow):
                  tab: int = MAP_TAB, title: str | None = None,
                  disks: str | None = None):
         super().__init__()
+        self.ui = Ui_WishWindow()
+        self.ui.setupUi(self)
+        self.tabs = self.ui.tabs
         self.settings = settings or Settings()
 
         # What the log has already said, so a title change or a poll does not
@@ -134,16 +136,13 @@ class WishWindow(QMainWindow):
         self.map = AutomapWindow(self.mapper, settings=self.settings,
                                  drive=False, disks=self.disks_text())
 
-        self.tabs = QTabWidget()
         self.tabs.addTab(self.map, "Automapper")
         self.tabs.addTab(self.editor, "Character Editor")
-        self.setCentralWidget(self.tabs)
 
         # One status bar for the window. The pages keep their own -- they are
         # whole windows and are still usable alone -- but a status bar inside a
         # tab inside a window reads as clutter, so theirs are hidden here and
         # their lines forwarded to this one.
-        self.setStatusBar(QStatusBar())
         for page in (self.editor, self.map):
             page.statusBar().hide()
         self.statusBar().addPermanentWidget(self.map.fog_box)
@@ -165,7 +164,7 @@ class WishWindow(QMainWindow):
         self.session.changed.connect(self._session_said)
 
         self._menu()
-        self._log_warps()
+        self._log_fasttravels()
         self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.setCurrentIndex(tab)
         self._tab_changed(self.tabs.currentIndex())
@@ -465,18 +464,18 @@ class WishWindow(QMainWindow):
         """
         self.settings.set_chosen_areas(ids, self.map_game())
         self.settings.save()
-        self.map.warp_bar.reload_areas()
+        self.map.fasttravel_bar.reload_areas()
 
-    # -- the warp row ----------------------------------------------------
+    # -- the fasttravel row ----------------------------------------------------
 
-    def _log_warps(self) -> None:
-        """A line in the debug log for every warp attempted, with its writes.
+    def _log_fasttravels(self) -> None:
+        """A line in the debug log for every fasttravel attempted, with its writes.
 
         Our own writes to our own machine, so the log's privacy claims are
         unaffected -- it still records no file paths, no character names and no
         bytes from a save.
         """
-        bar = getattr(self.map, "warp_bar", None)
+        bar = getattr(self.map, "fasttravel_bar", None)
         if bar is None:
             return
         onward = bar.say
@@ -485,7 +484,7 @@ class WishWindow(QMainWindow):
             outcome = bar.last
             where = ", ".join(f"${a:04X}+{len(b)}"
                                for a, b in getattr(outcome, "writes", ()))
-            debuglog.note("warp: %s [%s]", text, where or "no writes")
+            debuglog.note("fasttravel: %s [%s]", text, where or "no writes")
             onward(text, detail, alarm=alarm)
 
         bar.say = say

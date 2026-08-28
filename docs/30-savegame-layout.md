@@ -288,7 +288,7 @@ believes that cache rather than checking — which reads as "if the cache says
 the code is there, the code has to be there".
 
 **Measured, #118 step 3.** Four saves, DOS slot J converted onto `PORSAVE9`,
-warped The Slums → New Phlan, which is the transition #102 showed the cache
+fasttraveled The Slums → New Phlan, which is the transition #102 showed the cache
 decides:
 
 | `$8400`–`$8753` | slot 11 | area change | `$0400` against `GEO00` |

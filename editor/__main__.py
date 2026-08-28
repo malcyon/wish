@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
     from tools.genui import ensure_current
     if ensure_current():
-        print("character.ui changed; recompiled the form")
+        print("ui files changed; recompiled forms")
 
     from PyQt6.QtWidgets import QApplication
 

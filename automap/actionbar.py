@@ -15,7 +15,7 @@ game in the other window and has to be dismissed before the map is usable
 again. The only dialog left is the confirmation an irreversible action asks
 first, because that one needs an answer.
 
-`WarpBar` is the same shape for the one action that is not in that row: the
+`FastTravelBar` is the same shape for the one action that is not in that row: the
 Fast Travel row. It asks nothing before it writes: the game itself stops and
 asks for the disk it wants, so the confirmation was a question the game was
 about to ask again. What travelling costs is the Fast Travel button's own
@@ -33,8 +33,6 @@ import time
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
-    QGridLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QWidget,
@@ -46,17 +44,17 @@ from .config import Settings
 from .panel import (
     MUTED,
     ElidingButton,
-    ElidingCheckBox,
-    ElidingComboBox,
     shortened,
 )
+from .ui_actionbar import Ui_ActionBar
+from .ui_fasttravelbar import Ui_FastTravelBar
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on
 #: the face of the window: it is the evidence a bug report needs and nothing a
 #: player asked for. A child of `wish`, so `wish/debuglog.py`'s handler picks
 #: it up when the log is on and its level swallows it when the log is off --
 #: and this module still imports nothing from `wish`.
-_log = logging.getLogger("wish.automap.warp").info
+_log = logging.getLogger("wish.automap.fasttravel").info
 
 
 class _OnePoll:
@@ -117,9 +115,9 @@ class ActionBar(QWidget):
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
 
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 4, 0, 2)
-        grid.setSpacing(4)
+        self.ui = Ui_ActionBar()
+        self.ui.setupUi(self)
+
         self.buttons: dict[str, QPushButton] = {}
         for i, action in enumerate(self.actions):
             button = ElidingButton(action.label)
@@ -127,27 +125,18 @@ class ActionBar(QWidget):
             button.setEnabled(False)          # nothing attached yet
             button.clicked.connect(
                 lambda _checked=False, a=action: self.run(a))
-            grid.addWidget(button, i // COLUMNS, i % COLUMNS)
+            self.ui.gridLayout.addWidget(button, i // COLUMNS, i % COLUMNS)
             self.buttons[action.name] = button
         rows = (len(self.actions) + COLUMNS - 1) // COLUMNS
 
-        self.watch_box = ElidingCheckBox("Clear quickfight after a fight")
-        self.watch_box.setToolTip(
-            "When a fight ends, take everyone off quickfight. Off by default: "
-            "it writes to the running game on an edge you did not ask for")
+        self.watch_box = self.ui.watch_box
         self.watch_box.setChecked(self.watcher.enabled)
         self.watch_box.toggled.connect(self._watch_toggled)
-        grid.addWidget(self.watch_box, rows, 0)
+        self.ui.gridLayout.addWidget(self.watch_box, rows, 0)
 
-        self.note = QLabel("")
-        font = self.note.font()
-        font.setPointSize(8)
-        self.note.setFont(font)
+        self.note = self.ui.note
         self.note.setStyleSheet(f"color: {MUTED.name()}")
-        self.note.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.note.setWordWrap(True)
-        grid.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
+        self.ui.gridLayout.addWidget(self.note, rows, 1, 1, COLUMNS - 1)
 
     def minimumSizeHint(self) -> QSize:
         return shortened(super().minimumSizeHint(), self.SHORT)
@@ -267,14 +256,14 @@ def no_areas(title: str | None) -> str:
     return f"No areas are known for {title or 'this game'}."
 
 
-class WarpBar(QWidget):
+class FastTravelBar(QWidget):
     """The Fast Travel row: pick an area, and enter it the way the exits do.
 
-    **`Warp` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's
+    **`FastTravel` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's
     own name for the mechanism and the classes keep it; the label is what a
     player is being offered.
 
-    **Shown to everybody**, no longer only in debug mode: P20 warped into every
+    **Shown to everybody**, no longer only in debug mode: P20 fasttraveled into every
     area that had no arrival square and recorded where the party landed
     (`work/reports/p20-arrivals.md`), which is what the gate was waiting for.
     The one area that turned out not to be a place is not offered at all.
@@ -293,9 +282,9 @@ class WarpBar(QWidget):
     exactly as it does when a player walks through the same door, so warning
     about a disk beforehand told the player only what the game was about to.
 
-    **Area 30 is not listed.** `ECL1E` is the attract-mode demo: a warp there
-    leaves the world and no later warp can be started, so the session is over
-    (P20). `Warp.legality` refuses it as well, for a caller that does not come
+    **Area 30 is not listed.** `ECL1E` is the attract-mode demo: a fasttravel there
+    leaves the world and no later fasttravel can be started, so the session is over
+    (P20). `FastTravel.legality` refuses it as well, for a caller that does not come
     through this dropdown; a control that offers a session-ending choice and
     then argues about it is worse than one that does not offer it.
     Everything the row refuses, it refuses with the reason -- the same rule
@@ -318,13 +307,13 @@ class WarpBar(QWidget):
     a feature that failed to load.
 
     **The choice narrows what is offered, never what is legal.**
-    `Warp.legality` and the arrival-square logic are untouched.
+    `FastTravel.legality` and the arrival-square logic are untouched.
 
     **One title has areas and the other five have none.** `AREAS` is Pool of
     Radiance's -- `POOL` disk numbers and `ECL` ids, both of which a trip
     writes into the machine -- so a session of any other title is offered
     nothing and told which game it is that nothing is known for. The row used
-    to offer Pool of Radiance's thirty in a Curse session and warping on one
+    to offer Pool of Radiance's thirty in a Curse session and fasttraveling on one
     wrote Pool of Radiance's numbers into Curse (#14); falling back to that
     list is the one answer that corrupts, so the title is asked for at
     construction and again whenever the disks change.
@@ -338,12 +327,12 @@ class WarpBar(QWidget):
     #: (#77). It moves if a second row of controls is added here.
     SHORT = 48
 
-    def __init__(self, parent=None, warp=None, areas=None, say=None,
+    def __init__(self, parent=None, fasttravel=None, areas=None, say=None,
                  maps=None, settings: Settings | None = None,
                  title: str | None = None, game=None):
         super().__init__(parent)
         self.say = say or (lambda text, detail="", alarm=False: None)
-        self.warp = warp or engine.Warp()
+        self.fasttravel = fasttravel or engine.FastTravel()
         #: `{GEO name: Geo}`, for choosing a square in an area whose arrival
         #: square nobody has harvested. The window hands its own maps over.
         self.maps = maps if maps is not None else {}
@@ -354,12 +343,12 @@ class WarpBar(QWidget):
         self.title = title
         self.game = game
         rows = self._rows_for_title() if areas is None else areas
-        #: Every area a warp is allowed to name, in display order. `rows` is
+        #: Every area a fasttravel is allowed to name, in display order. `rows` is
         #: what the dropdown is currently showing, which is the ticked subset
         #: of this whenever there are settings to read.
         self.all_rows = self._sorted(r for r in rows
-                                     if getattr(r, "warpable", True))
-        #: Whose choice to honour. **None means every warpable area**, which
+                                     if getattr(r, "fasttravelable", True))
+        #: Whose choice to honour. **None means every fasttravelable area**, which
         #: is a row built without a window -- the one construction site in the
         #: program passes the window's settings, so this is the tests' case
         #: and not a fallback anybody plays with.
@@ -370,36 +359,28 @@ class WarpBar(QWidget):
         self.rows = self.all_rows
         self.target = None
         self.last: engine.Outcome | None = None
-        #: `(GEO names to watch for, when to give up)`, while a warp is in
+        #: `(GEO names to watch for, when to give up)`, while a fasttravel is in
         #: flight. None the rest of the time, which is when the extra read
         #: costs nothing.
         self._pending: tuple[tuple[str, ...], float] | None = None
 
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 2, 0, 2)
-        grid.setSpacing(4)
+        self.ui = Ui_FastTravelBar()
+        self.ui.setupUi(self)
 
-        # Eliding, because a dropdown asks for the area it is showing and
-        # "Valhingen Graveyard" was that much floor under the window, growing
-        # with the UI font (#41). The width it opens at is unchanged.
-        self.combo = ElidingComboBox()
+        self.combo = self.ui.combo
         self.combo.currentIndexChanged.connect(lambda _i: self.refresh())
-        grid.addWidget(self.combo, 0, 0, 1, 2)
 
-        self.button = ElidingButton("Fast Travel")
-        self.button.setEnabled(False)
+        self.button = self.ui.button
         self.button.clicked.connect(lambda _checked=False: self.run())
-        grid.addWidget(self.button, 0, 2)
 
-        self.back_button = ElidingButton("Travel Back")
-        self.back_button.setEnabled(False)
+        self.back_button = self.ui.back_button
         self.back_button.clicked.connect(lambda _checked=False: self.run_back())
-        grid.addWidget(self.back_button, 0, 3)
 
         #: What the last trip did. Empty until something has been clicked --
         #: the standing warning is the Fast Travel button's own tooltip.
-        self.note = self._small(QLabel(""))
-        grid.addWidget(self.note, 1, 0, 1, 4)
+        self.note = self.ui.note
+        self.note.setStyleSheet(f"color: {MUTED.name()}")
+
         self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
         # enabled-looking until the first poll attaches something.
@@ -426,7 +407,7 @@ class WarpBar(QWidget):
         if not self._own_areas:
             self.all_rows = self._sorted(
                 r for r in self._rows_for_title()
-                if getattr(r, "warpable", True))
+                if getattr(r, "fasttravelable", True))
         self.repopulate()
 
     @property
@@ -454,23 +435,12 @@ class WarpBar(QWidget):
         own = getattr(row, "label", None)
         return own if isinstance(own, str) else str(row)
 
-    @staticmethod
-    def _small(label: QLabel) -> QLabel:
-        font = label.font()
-        font.setPointSize(8)
-        label.setFont(font)
-        label.setStyleSheet(f"color: {MUTED.name()}")
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        return label
-
     # -- which areas are offered -------------------------------------------
 
     def chosen_rows(self) -> tuple:
         """The areas the player has ticked, in display order.
 
-        With no settings -- a row built without a window -- every warpable
+        With no settings -- a row built without a window -- every fasttravelable
         area, because there is nobody to have made a choice.
         """
         if self.settings is None:
@@ -541,7 +511,7 @@ class WarpBar(QWidget):
         area = self.area()
         if area is None:
             return None
-        own = self.warp.arrival_of(area)
+        own = self.fasttravel.arrival_of(area)
         if own is not None:
             return own
         if getattr(area, "outdoors", False) or getattr(area, "dynamic_geo",
@@ -558,7 +528,7 @@ class WarpBar(QWidget):
         self.check_arrival()
 
     def check_arrival(self) -> str | None:
-        """Did the last warp land? An exact 1024-byte match, or nothing yet.
+        """Did the last fasttravel land? An exact 1024-byte match, or nothing yet.
 
         `ResidentGeo.identify` compares `$0400` against the disk copies byte
         for byte, so a hit is certain and needs no fingerprinting. Checked on
@@ -592,7 +562,7 @@ class WarpBar(QWidget):
         return None
 
     def _expect(self, area) -> None:
-        """Start watching for the map this warp should bring up."""
+        """Start watching for the map this fasttravel should bring up."""
         geos = tuple(getattr(area, "geos", ()) or ())
         self._pending = ((geos, time.monotonic() + VERIFY_SECONDS)
                          if geos and self.maps else None)
@@ -611,13 +581,13 @@ class WarpBar(QWidget):
                 f"and Pool of Radiance's disk numbers and area ids would be "
                 f"the wrong thing to write here.")
         else:
-            verdict = self.warp.legality(self.target, area)
+            verdict = self.fasttravel.legality(self.target, area)
             self.button.setEnabled(verdict.ok)
             # `DANGER` when it is enabled, the refusal when it is not: the
             # warning is about making a trip, and a disabled button is not
             # about to make one.
             self.button.setToolTip(verdict.reason or DANGER)
-        back = self.warp.back_verdict(self.target)
+        back = self.fasttravel.back_verdict(self.target)
         self.back_button.setEnabled(back.ok)
         self.back_button.setToolTip(
             back.reason or "return to the area the last trip started in")
@@ -640,7 +610,7 @@ class WarpBar(QWidget):
         area = self.area()
         if area is None:
             return None
-        outcome = self.warp.apply(self.target, area=area,
+        outcome = self.fasttravel.apply(self.target, area=area,
                                   arrival=self.arrival())
         if outcome.ok:
             self._expect(area)
@@ -648,9 +618,9 @@ class WarpBar(QWidget):
         return outcome
 
     def run_back(self) -> engine.Outcome | None:
-        going = engine.area_by_id(self.warp.back.area) \
-            if self.warp.back is not None else None
-        outcome = self.warp.apply_back(self.target)
+        going = engine.area_by_id(self.fasttravel.back.area) \
+            if self.fasttravel.back is not None else None
+        outcome = self.fasttravel.apply_back(self.target)
         if outcome.ok and going is not None:
             self._expect(going)
         self._report("travel back", outcome)

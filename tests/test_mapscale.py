@@ -329,7 +329,7 @@ def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     own font metrics, in a layout that does not scroll.
 
     Each of those three now caps its `minimumSizeHint` height at a constant
-    (`ActionBar.SHORT`, `WarpBar.SHORT`, `BottomStrip.SHORT`), the way #41
+    (`ActionBar.SHORT`, `FastTravelBar.SHORT`, `BottomStrip.SHORT`), the way #41
     capped the widths, so the page's floor is 580 at every UI font this
     machine can be made to draw -- 580, 605, 635 and 670 before.
 

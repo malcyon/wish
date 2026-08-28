@@ -26,15 +26,10 @@ from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
     QApplication,
     QCheckBox,
-    QGridLayout,
     QLabel,
     QMainWindow,
     QMenu,
-    QSplitter,
-    QStackedWidget,
-    QStatusBar,
     QToolTip,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -44,7 +39,7 @@ from ui.iconpaint import draw_icon
 
 from . import actions, combat, live
 from . import notes as notemod
-from .actionbar import ActionBar, WarpBar
+from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
@@ -66,6 +61,7 @@ from .render import (
     party_marker,
 )
 from .target import MonitorBusy, NotConnected, monitor_listening
+from .ui_window import Ui_AutomapWindow
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")
@@ -544,6 +540,11 @@ class AutomapWindow(QMainWindow):
         to deal with.
         """
         super().__init__()
+        self.ui = Ui_AutomapWindow()
+        self.ui.setupUi(self)
+        self.ui.grid.setColumnStretch(1, 1)
+        self.ui.grid.setColumnStretch(2, 1)
+        self.ui.grid.setRowStretch(0, 1)
         self._drive = drive
         self.mapper = mapper
         self.connect_target = connect
@@ -551,7 +552,6 @@ class AutomapWindow(QMainWindow):
         self.settings = settings or Settings()
         self.state.reveal = self.settings.reveal
         self.state.exploration.sight = self.settings.sight
-        self.setWindowTitle("Pool of Radiance - automap")
 
         self.canvas = MapCanvas(self.state, self)
         self.battle_canvas = CombatCanvas(self)
@@ -560,7 +560,7 @@ class AutomapWindow(QMainWindow):
         # afterwards. Two tabs would mean the useful one is always the one you
         # are not looking at. The area map's state is untouched by the swap, so
         # the explored squares are still there when the fight ends.
-        self.stack = QStackedWidget()
+        self.stack = self.ui.stack
         self.stack.addWidget(self.canvas)
         self.stack.addWidget(self.battle_canvas)
         self.battle = None
@@ -584,19 +584,7 @@ class AutomapWindow(QMainWindow):
         self.commissions.setMinimumWidth(self.SIDE_SQUEEZED)
         self.messages = MessagesPanel()
         self.combat_log = CombatLog()
-        # Party strength, live. Nothing stores it -- `PARTYSTRENGTH` recomputes
-        # it from the roster every time an area script asks -- so it is
-        # recomputed here too, from the two blocks the poll already reads, and
-        # it moves the moment somebody readies a weapon. It sits under the strip
-        # rather than in the status bar because the one-window host hides that
-        # status bar, and this is a fact about the party, not about the app.
-        self.strength_label = QLabel("party strength --")
-        self.strength_label.setStyleSheet("color: #5c6b7a")
-        _font = self.strength_label.font()
-        _font.setPointSize(8)
-        self.strength_label.setFont(_font)
-        self.strength_label.setToolTip(
-            "How big a random encounter is. Not readable yet.")
+        self.strength_label = self.ui.strength_label
         self.actions_bar = ActionBar(say=self.messages.say,
                                      game=game_named(self.state.title))
         # `_maps` is what the automapper loaded off the player's disks; the
@@ -609,63 +597,31 @@ class AutomapWindow(QMainWindow):
         # `title` is what says whether there is an area table at all: five of
         # the six titles have none, and offering Pool of Radiance's would write
         # Pool of Radiance's disk numbers into another game (#14).
-        self.warp_bar = WarpBar(say=self.messages.say,
+        self.fasttravel_bar = FastTravelBar(say=self.messages.say,
                                 maps=getattr(self.mapper, "_maps", {}),
                                 settings=self.settings,
                                 title=self.state.title,
                                 game=game_named(self.state.title))
 
-        # Roster left, map centre, the two reading panels right, the actions
-        # under the map and one strip along the bottom for what is none of
-        # those. The map asks for a 596px square and takes no more, so the
-        # stretch goes to the right-hand column: it is the one thing here that
-        # is worth more with more room, and giving it to the map's column only
-        # makes whitespace. Below 596 the map gives way -- see `MapCanvas.cell`
-        # -- because that square was a floor under the whole window.
-        side = QWidget()
-        column = QVBoxLayout(side)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(6)
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(self.notes_panel)
-        splitter.addWidget(self.commissions)
-        splitter.addWidget(self.messages)
+        # Swap .ui placeholders for the real widgets that need constructors.
+        self._replace(self.ui.roster_placeholder, self.roster)
+        self._replace(self.ui.actions_bar_placeholder, self.actions_bar)
+        self._replace(self.ui.fasttravel_bar_placeholder, self.fasttravel_bar)
+        self._replace(self.ui.strip_placeholder, self.strip)
+        # The splitter's children must be replaced in order.
+        splitter = self.ui.side_splitter
+        splitter.replaceWidget(0, self.notes_panel)
+        splitter.replaceWidget(1, self.commissions)
+        splitter.replaceWidget(2, self.messages)
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
         splitter.setStretchFactor(2, 2)
-        column.addWidget(splitter)
-        # Capped, because a quest log a quarter of the window wide is a quarter
-        # of the window spent on two-word rows. What the cap leaves over goes
-        # to the map's column, which centres the map in it.
-        side.setMaximumWidth(self.SIDE_WIDTH)
-        self.side = side
+        self.ui.notes_placeholder.setParent(None)
+        self.ui.commissions_placeholder.setParent(None)
+        self.ui.messages_placeholder.setParent(None)
+        self.side = self.ui.side
+        self.map_column = self.ui.map_column
 
-        # The actions live in the map's own column, directly under the map,
-        # rather than in a row of their own: they act on what is drawn above
-        # them, and a grid row of their own left 180px of blank paper between
-        # the two.
-        middle = QWidget()
-        under = QVBoxLayout(middle)
-        under.setContentsMargins(0, 0, 0, 0)
-        under.setSpacing(4)
-        under.addWidget(self.stack, 0, Qt.AlignmentFlag.AlignHCenter)
-        under.addWidget(self.actions_bar, 0, Qt.AlignmentFlag.AlignHCenter)
-        under.addWidget(self.warp_bar, 0, Qt.AlignmentFlag.AlignHCenter)
-        under.addStretch(1)
-        self.map_column = middle
-
-        centre = QWidget()
-        grid = QGridLayout(centre)
-        grid.addWidget(self.roster, 0, 0)
-        grid.addWidget(middle, 0, 1, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(side, 0, 2)
-        grid.addWidget(self.strip, 1, 0, 1, 3)
-        grid.addWidget(self.strength_label, 2, 0, 1, 3)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        grid.setRowStretch(0, 1)
-        self.setCentralWidget(centre)
-        self.setStatusBar(QStatusBar())
         self._status = QLabel()
         self.statusBar().addWidget(self._status)
 
@@ -724,6 +680,14 @@ class AutomapWindow(QMainWindow):
         self._apply_title()
         self._refresh()
 
+    @staticmethod
+    def _replace(placeholder: QWidget, real: QWidget) -> None:
+        """Swap a .ui placeholder for a widget that needed a constructor."""
+        layout = placeholder.parentWidget().layout()
+        if layout is not None:
+            layout.replaceWidget(placeholder, real)
+        placeholder.setParent(None)
+
     def set_maps(self, maps: dict, title: str | None = None,
                  disks: str | None = None) -> None:
         """New game disks: draw their maps instead, without a restart.
@@ -752,7 +716,7 @@ class AutomapWindow(QMainWindow):
         # The mapper reads the party position at an address that is per title
         # too, and it is holding the descriptor the title resolved to.
         self.mapper.game = game
-        self.warp_bar.set_title(self.state.title, game)
+        self.fasttravel_bar.set_title(self.state.title, game)
         self.actions_bar.set_game(game)
         self.roster.set_levelling(not actions.level_up_blockers(game=game))
 
@@ -930,7 +894,7 @@ class AutomapWindow(QMainWindow):
             # party re-read: at these addresses it would be another game's
             # bytes decoded as this one's characters.
             self.actions_bar.attach(None)
-            self.warp_bar.attach(None)
+            self.fasttravel_bar.attach(None)
             self.roster.set_stale(True)
             self.strip.show_state(self.state, self.snapshot)
             return
@@ -939,7 +903,7 @@ class AutomapWindow(QMainWindow):
         # same `$6E11` this poll already reads.
         self.actions_bar.attach(target)
         self.actions_bar.watch(target)
-        self.warp_bar.attach(target)
+        self.fasttravel_bar.attach(target)
 
         # Every address in that read comes from the title's descriptor: Pool
         # of Radiance is $4900 plus a roster file at $8300, Curse and Silver

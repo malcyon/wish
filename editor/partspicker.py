@@ -20,21 +20,16 @@ from __future__ import annotations
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QGuiApplication, QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
-    QDialogButtonBox,
-    QHBoxLayout,
-    QLabel,
     QListWidget,
     QListWidgetItem,
-    QVBoxLayout,
-    QWidget,
 )
 
 from goldbox.iconparts import IconParts
 from goldbox.icons import PIXELS_WIDE, POSE_ROWS, POSES, Icon, icon_pixels
 
 from .palette import colour
+from .ui_partspicker import Ui_PartsPicker
 
 # Four rather than three: the ask was a quarter bigger, and 3.75 is not a whole
 # number of screen pixels per source pixel. At a fractional zoom `scaled` gives
@@ -78,58 +73,31 @@ class PartsPicker(QDialog):
     def __init__(self, parts: IconParts, charset: bytes, shape: bytes,
                  colours: bytes, size: str = "small", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Choose an icon")
+        self.ui = Ui_PartsPicker()
+        self.ui.setupUi(self)
         self.parts = parts
         self.charset = charset
         self.shape = bytes(shape)
         self.colours = bytes(colours)
         self.size = size
 
-        self.preview = QLabel(self)
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview = self.ui.preview
 
-        self.size_box = QComboBox(self)
-        for name in ("small", "large"):
-            self.size_box.addItem(name)
+        self.size_box = self.ui.size_box
         self.size_box.setCurrentText(size)
         self.size_box.currentTextChanged.connect(self._size_changed)
 
-        self.weapons = self._list()
-        self.heads = self._list()
+        self.weapons = self.ui.weapons
+        self.heads = self.ui.heads
+        self._setup_list(self.weapons)
+        self._setup_list(self.heads)
         self.weapons.currentRowChanged.connect(
             lambda row: self._chose("weapon", row))
         self.heads.currentRowChanged.connect(
             lambda row: self._chose("head", row))
 
-        lists = QHBoxLayout()
-        for label, view in (("Weapon", self.weapons), ("Head", self.heads)):
-            column = QVBoxLayout()
-            column.addWidget(QLabel(label, self))
-            column.addWidget(view)
-            holder = QWidget(self)
-            holder.setLayout(column)
-            lists.addWidget(holder)
+        self.buttons = self.ui.buttons
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel, parent=self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-
-        top = QHBoxLayout()
-        top.addWidget(QLabel("Size", self))
-        top.addWidget(self.size_box)
-        top.addStretch(1)
-
-        # The preview gets a row to itself. Sharing the size row put it hard
-        # against the right edge, which reads as an afterthought -- it is the
-        # thing being made, and it belongs over the two lists that make it.
-        # The label already centres its pixmap, so a full-width row is enough.
-        outer = QVBoxLayout(self)
-        outer.addLayout(top)
-        outer.addWidget(self.preview)
-        outer.addLayout(lists)
-        outer.addWidget(buttons)
         self._fill()
         self._open_tall()
 
@@ -154,16 +122,14 @@ class PartsPicker(QDialog):
         if screen is not None:
             room = screen.availableGeometry()
             wanted = QSize(min(wanted.width(), room.width() - 80),
-                           min(wanted.height(), room.height() - 80))
+                            min(wanted.height(), room.height() - 80))
         self.resize(wanted)
 
     # -- building --------------------------------------------------------
 
-    def _list(self) -> QListWidget:
-        view = QListWidget(self)
+    def _setup_list(self, view: QListWidget) -> None:
         view.setIconSize(QSize(FRAME_WIDE * LIST_ZOOM, FRAME_HIGH * LIST_ZOOM))
         view.setUniformItemSizes(True)
-        return view
 
     def _fill(self) -> None:
         """Render every option as the icon it would produce from here."""

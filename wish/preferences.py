@@ -1,4 +1,4 @@
-"""File > Preferences: the game disks, the live backend, and where a warp
+"""File > Preferences: the game disks, the live backend, and where a fasttravel
 may go.
 
 **Half of this is the report, not the form.** The failure it exists to fix is
@@ -55,7 +55,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -72,7 +71,6 @@ from PyQt6.QtWidgets import (
     QStyleOptionFrame,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -82,6 +80,8 @@ from automap.actionbar import DANGER, no_areas
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
 from goldbox import games
+
+from .ui_preferences import Ui_PreferencesDialog
 
 #: Spelled out rather than `QKeySequence.StandardKey.Preferences`, which
 #: resolves on Linux/Qt 6 to the `XF86Settings` multimedia key --
@@ -303,30 +303,19 @@ class PreferencesDialog(QDialog):
     def __init__(self, window, parent=None):
         super().__init__(parent or window)
         self.win = window
-        self.setWindowTitle("Preferences")
-        self.setModal(True)
+        self.ui = Ui_PreferencesDialog()
+        self.ui.setupUi(self)
+        self.tabs = self.ui.tabs
+        self._buttons = self.ui.buttons
 
-        # **Two tabs, and the tall thing has one to itself.** In one column the
-        # form and the 29-row area table competed for a height neither could
-        # have: the page wanted 930 px, cosmic-comp caps a window at 662
-        # (`docs/130-preferences.md` §12), and a layout handed less than its
-        # minimum does not refuse -- it squeezes whatever can be squeezed,
-        # which was the Ultimate host box, the poll spinner and the table, all
-        # crushed to a few pixels. Split, each tab is shorter than the screen
-        # and the table gets the whole of its own.
-        self.tabs = QTabWidget()
+        # Replace the placeholder tab pages with the real ones.
+        self.tabs.removeTab(1)
+        self.tabs.removeTab(0)
         self.tabs.addTab(self._general_tab(), "General")
         self.tabs.addTab(self._travel_tab(), "Fast travel")
         # General every time. A dialog that reopens on a tab nobody chose is
         # worse than one that remembers nothing, so nothing is remembered.
         self.tabs.setCurrentIndex(0)
-
-        outer = QVBoxLayout(self)
-        outer.addWidget(self.tabs, 1)
-        self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        self._buttons.rejected.connect(self.reject)
-        self._buttons.accepted.connect(self.accept)
-        outer.addWidget(self._buttons)
 
         # One timer for both: re-reading a folder opens every D64 in it, and
         # applying it reloads 29 maps. Neither belongs on a keystroke.
@@ -671,7 +660,7 @@ class PreferencesDialog(QDialog):
         explicit list of ticks and there is no second, cleverer rule behind it.
 
         **Area 30 is not in the table**, ticked or unticked: `ECL1E` is the
-        attract-mode demo and entering it ends the session. `Area.warpable`
+        attract-mode demo and entering it ends the session. `Area.fasttravelable`
         says so, and it is asked rather than the id being written down here.
 
         **The table is the open title's**, and five of the six titles have no
@@ -693,12 +682,12 @@ class PreferencesDialog(QDialog):
         outer.addWidget(warning)
 
         #: The table's rows, in the dropdown's own order: by name. Every
-        #: warpable area has one, and area 30 -- the only nameless one -- is
-        #: also the only unwarpable one, so excluding it needs no second rule.
+        #: fasttravelable area has one, and area 30 -- the only nameless one -- is
+        #: also the only unfasttravelable one, so excluding it needs no second rule.
         self.travel_game = self.win.map_game()
         self.travel_rows = sorted(
             (a for a in area_table.areas_for_title(
-                getattr(self.travel_game, "title", None)) if a.warpable),
+                getattr(self.travel_game, "title", None)) if a.fasttravelable),
             key=lambda a: a.name or "")
         chosen = set(self.win.settings.chosen_areas(self.travel_game))
         self.travel_table = QTableWidget(len(self.travel_rows), 1)

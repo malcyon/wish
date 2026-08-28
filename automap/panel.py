@@ -23,18 +23,14 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
-    QHBoxLayout,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStyle,
     QStyleOptionButton,
     QStyleOptionComboBox,
     QStylePainter,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -339,6 +335,13 @@ def _label(text="", *, bold=False, muted=False, size=0,
     return lab
 
 
+from .ui_bottomstrip import Ui_BottomStrip  # noqa: E402
+from .ui_card import Ui_CharacterCard  # noqa: E402
+from .ui_messages import Ui_MessagesPanel  # noqa: E402
+from .ui_notes import Ui_NotesPanel  # noqa: E402
+from .ui_roster import Ui_RosterPanel  # noqa: E402
+
+
 class CharacterCard(QFrame):
     """One character: name, class and level, AC and THAC0, bars, what is in
     hand, what is on them, and whether they are on quickfight.
@@ -376,47 +379,25 @@ class CharacterCard(QFrame):
         self.setStyleSheet(
             f"CharacterCard {{ background: {CARD.name()};"
             f" border: 1px solid {LATTICE.name()}; border-radius: 4px; }}")
-        box = QVBoxLayout(self)
-        box.setContentsMargins(8, 6, 8, 6)
-        box.setSpacing(3)
 
-        top = QHBoxLayout()
-        self.name = _label(bold=True)
-        # Only the conditions the record really tells us: at 0 hit points, and
-        # levels drained. Nothing else on a character is decoded.
-        self.conditions = IconRow(colour=DANGER)
-        self.combat = _label(muted=True, size=8)
-        top.addWidget(self.name)
-        top.addWidget(self.conditions)
-        top.addStretch(1)
-        top.addWidget(self.combat)
-        box.addLayout(top)
+        self.ui = Ui_CharacterCard()
+        self.ui.setupUi(self)
 
-        klass_row = QHBoxLayout()
-        klass_row.setSpacing(4)
-        self.klass = _label(muted=True, size=8)
-        klass_row.addWidget(self.klass)
-        klass_row.addStretch(1)
-        # The quickfight badge, on the class line at Donald's asking. It had a
-        # row of its own under the readied line, and that row was 13px of blank
-        # card on every character who does not use quickfight -- which is most
-        # of them, and which cost about one party member of scrolling in a
-        # panel that is meant to show the whole party at once.
-        self.quickfight = IconRow()
-        klass_row.addWidget(self.quickfight, 0, Qt.AlignmentFlag.AlignRight)
-        self.level_up = QPushButton("Level up")
-        font = self.level_up.font()
-        font.setPointSize(8)
-        self.level_up.setFont(font)
-        self.level_up.setFixedHeight(18)
-        self.level_up.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.name = self.ui.name
+        self.conditions = self.ui.conditions
+        self.conditions.colour = DANGER
+        self.combat = self.ui.combat
+        self.combat.setStyleSheet(f"color: {MUTED.name()}")
+
+        self.klass = self.ui.klass
+        self.klass.setStyleSheet(f"color: {MUTED.name()}")
+        self.quickfight = self.ui.quickfight
+        self.level_up = self.ui.level_up
         self.level_up.clicked.connect(self._level_up_clicked)
         self.level_up.hide()
-        klass_row.addWidget(self.level_up, 0, Qt.AlignmentFlag.AlignRight)
-        box.addLayout(klass_row)
 
         self.hp = Bar()
-        box.addWidget(self.hp)
+        self.ui.bars_layout.addWidget(self.hp)
 
         # One experience bar per class: a multi-class character levels each
         # class separately, so a single bar would have to pick one and lie
@@ -424,22 +405,19 @@ class CharacterCard(QFrame):
         # poll never re-lays-out the card.
         self.xp = [Bar() for _ in range(3)]
         for bar in self.xp:
-            box.addWidget(bar)
+            self.ui.bars_layout.addWidget(bar)
 
         # What is in hand, under the bars. Readied only -- the whole inventory
         # would swamp the card -- one elided line with the full list in the
         # tooltip, and a **blank line** for a character carrying nothing
         # readied: the absence is the information, and the word "none" is not.
-        self.readied = _label(size=8, muted=True)
-        self.readied.setMinimumHeight(14)
-        box.addWidget(self.readied)
+        self.readied = self.ui.readied
+        self.readied.setStyleSheet(f"color: {MUTED.name()}")
 
         # Always present, even when empty: a strip that appears and disappears
         # would shift every card below it each time a spell expires.
-        self.effects = _label(size=8, muted=True)
-        self.effects.setMinimumHeight(14)
-        self.effects.setWordWrap(True)
-        box.addWidget(self.effects)
+        self.effects = self.ui.effects
+        self.effects.setStyleSheet(f"color: {MUTED.name()}")
 
     @staticmethod
     def ready_to_level(who) -> tuple[str, ...]:
@@ -541,25 +519,11 @@ class RosterPanel(QWidget):
         super().__init__(parent)
         self.levelling = True
         self.setFixedWidth(CARD_WIDTH + 22)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-        self.heading = _label("Party", bold=True)
-        outer.addWidget(self.heading)
 
-        inner = QWidget()
-        self.column = QVBoxLayout(inner)
-        self.column.setContentsMargins(0, 0, 0, 0)
-        self.column.setSpacing(6)
-        self.column.addStretch(1)
-
-        scroll = QScrollArea()
-        scroll.setWidget(inner)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        outer.addWidget(scroll, 1)
+        self.ui = Ui_RosterPanel()
+        self.ui.setupUi(self)
+        self.heading = self.ui.heading
+        self.column = self.ui.column
 
         self.cards: list[CharacterCard] = []
         self.set_message("waiting for a game")
@@ -616,24 +580,14 @@ class BottomStrip(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        box = QVBoxLayout(self)
-        box.setContentsMargins(0, 4, 0, 0)
-        box.setSpacing(2)
+        self.ui = Ui_BottomStrip()
+        self.ui.setupUi(self)
 
-        row = QHBoxLayout()
-        row.setSpacing(16)
-        # Elided, because the strip spans all three columns and its text is
-        # whatever the game is doing: an area with a long name and a party
-        # under four spells set the window's minimum width between them.
-        self.where = _label("-", elide=True)
-        self.clock = _label("-", elide=True)
-        self.area = _label("-", elide=True)
-        self.effects = _label("-", muted=True, size=8, elide=True)
-        for widget in (self.where, self.clock, self.area):
-            row.addWidget(widget)
-        row.addWidget(self.effects, 1)
-
-        box.addLayout(row)
+        self.where = self.ui.where
+        self.clock = self.ui.clock
+        self.area = self.ui.area
+        self.effects = self.ui.effects
+        self.effects.setStyleSheet(f"color: {MUTED.name()}")
 
         #: The loader's cache, last time it changed. It used to be a collapsed
         #: readout on this strip, which is a reverse-engineering number in a
@@ -697,21 +651,14 @@ class NotesPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-        self.heading = _label("Notes", bold=True)
-        outer.addWidget(self.heading)
-
-        self.list = QListWidget()
-        self.list.setFrameShape(QFrame.Shape.StyledPanel)
+        self.ui = Ui_NotesPanel()
+        self.ui.setupUi(self)
+        self.heading = self.ui.heading
+        self.list = self.ui.list
         self.list.setStyleSheet(
             f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
             f"{LATTICE.name()}; border-radius: 4px; }}")
-        self.list.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
-        self.list.setWordWrap(True)
         self.list.itemClicked.connect(self._clicked)
-        outer.addWidget(self.list, 1)
         self._shown: tuple = ()
 
     def _clicked(self, item: QListWidgetItem) -> None:
@@ -768,20 +715,13 @@ class MessagesPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-        self.heading = _label("Messages", bold=True)
-        outer.addWidget(self.heading)
-
-        self.list = QListWidget()
-        self.list.setFrameShape(QFrame.Shape.StyledPanel)
+        self.ui = Ui_MessagesPanel()
+        self.ui.setupUi(self)
+        self.heading = self.ui.heading
+        self.list = self.ui.list
         self.list.setStyleSheet(
             f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
             f"{LATTICE.name()}; border-radius: 4px; }}")
-        self.list.setWordWrap(True)
-        self.list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        outer.addWidget(self.list, 1)
         self._last = ""
 
     def say(self, text: str, detail: str = "", alarm: bool = False,

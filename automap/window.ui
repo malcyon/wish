@@ -1,0 +1,101 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>AutomapWindow</class>
+ <widget class="QMainWindow" name="AutomapWindow">
+  <property name="windowTitle">
+   <string>Pool of Radiance - automap</string>
+  </property>
+  <widget class="QWidget" name="centre">
+   <layout class="QGridLayout" name="grid">
+    <item row="0" column="0">
+     <widget class="QWidget" name="roster_placeholder" native="true" />
+    </item>
+    <item row="0" column="1" alignment="Qt::AlignTop">
+     <widget class="QWidget" name="map_column">
+      <layout class="QVBoxLayout" name="map_column_layout">
+       <property name="spacing"><number>4</number></property>
+       <property name="leftMargin"><number>0</number></property>
+       <property name="topMargin"><number>0</number></property>
+       <property name="rightMargin"><number>0</number></property>
+       <property name="bottomMargin"><number>0</number></property>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QStackedWidget" name="stack" />
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QWidget" name="actions_bar_placeholder" native="true" />
+       </item>
+       <item alignment="Qt::AlignHCenter">
+        <widget class="QWidget" name="fasttravel_bar_placeholder" native="true" />
+       </item>
+       <item>
+        <spacer name="map_column_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item row="0" column="2">
+     <widget class="QWidget" name="side">
+      <property name="maximumSize">
+       <size>
+        <width>460</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="side_layout">
+       <property name="spacing"><number>6</number></property>
+       <property name="leftMargin"><number>0</number></property>
+       <property name="topMargin"><number>0</number></property>
+       <property name="rightMargin"><number>0</number></property>
+       <property name="bottomMargin"><number>0</number></property>
+       <item>
+        <widget class="QSplitter" name="side_splitter">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <widget class="QWidget" name="notes_placeholder" native="true" />
+         <widget class="QWidget" name="commissions_placeholder" native="true" />
+         <widget class="QWidget" name="messages_placeholder" native="true" />
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item row="1" column="0" colspan="3">
+     <widget class="QWidget" name="strip_placeholder" native="true" />
+    </item>
+    <item row="2" column="0" colspan="3">
+     <widget class="QLabel" name="strength_label">
+      <property name="text">
+       <string>party strength --</string>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">color: #5c6b7a</string>
+      </property>
+      <property name="toolTip">
+       <string>How big a random encounter is. Not readable yet.</string>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>8</pointsize>
+       </font>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar">
+  </widget>
+ </widget>
+ <resources />
+ <connections />
+</ui>

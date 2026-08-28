@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PartsPicker</class>
+ <widget class="QDialog" name="PartsPicker">
+  <property name="windowTitle">
+   <string>Choose an icon</string>
+  </property>
+  <layout class="QVBoxLayout" name="outer_layout">
+   <item>
+    <layout class="QHBoxLayout" name="top">
+     <item>
+      <widget class="QLabel" name="label_size">
+       <property name="text">
+        <string>Size</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="size_box">
+       <item>
+        <property name="text">
+         <string>small</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>large</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item>
+      <spacer name="spacer_top">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="preview">
+     <property name="alignment">
+      <set>Qt::AlignmentFlag::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="lists">
+     <item>
+      <widget class="QWidget" name="column_weapons" native="true">
+       <layout class="QVBoxLayout" name="layout_weapons">
+        <item>
+         <widget class="QLabel" name="label_weapon">
+          <property name="text">
+           <string>Weapon</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QListWidget" name="weapons"/>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QWidget" name="column_heads" native="true">
+       <layout class="QVBoxLayout" name="layout_heads">
+        <item>
+         <widget class="QLabel" name="label_head">
+          <property name="text">
+           <string>Head</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QListWidget" name="heads"/>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttons">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttons</sender>
+   <signal>accepted()</signal>
+   <receiver>PartsPicker</receiver>
+   <slot>accept()</slot>
+  </connection>
+  <connection>
+   <sender>buttons</sender>
+   <signal>rejected()</signal>
+   <receiver>PartsPicker</receiver>
+   <slot>reject()</slot>
+  </connection>
+ </connections>
+</ui>

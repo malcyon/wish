@@ -61,7 +61,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 88
 # pyuic6 writes it; ruff's opinion of the result is nobody's business.
-extend-exclude = ["editor/ui_character.py"]
+extend-exclude = ["*/ui_*.py"]
 
 [tool.ruff.lint]
 # Pyflakes and the import rules, which are the two that catch real mistakes

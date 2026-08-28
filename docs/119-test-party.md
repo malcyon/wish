@@ -11,7 +11,7 @@ no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
 squares under a second script — `(5,0)` clerics, `(7,0)` magic users,
 `(8,0)` fighters, `(9,0)` thieves, `(7,1)`/`(7,2)`/`(8,2)`/`(9,2)` the arena.
 Only script ids **10** (at `(6,1)`, `(6,2)`) and **17** (at `(9,0)`) reach it,
-because `ECL00`'s table sends only those to `NEWECL 11` — and a **warp cannot
+because `ECL00`'s table sends only those to `NEWECL 11` — and a **fasttravel cannot
 be used**, because `ECL0B` dispatches on the departing square's attribute byte.
 Walk in; `(9,0)` is both the shortest way in and the thieves' school.
 
