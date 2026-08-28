@@ -2,7 +2,7 @@
 name: backlog-auditor
 description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by CLAUDE.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: gemini-3.1-pro
 effort: high
 memory: local
 color: orange
