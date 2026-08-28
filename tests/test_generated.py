@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import pathlib
 import subprocess
 import sys
+
 
 def test_generated_ui_is_current():
     """Fail if UI files were changed but tools/genui.py wasn't run."""
