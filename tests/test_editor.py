@@ -1185,7 +1185,7 @@ def test_the_sheet_is_not_a_floor_under_the_window(app, save):
     assert floor.height() < tallest
     # Every box is still on the form -- a split that dropped one would be
     # silent, since a field with no widget is simply not shown.
-    assert {b.objectName() for b in w.findChildren(QGroupBox)} >= set(BOXES)
+    assert {b.objectName() for b in w.root.findChildren(QGroupBox)} >= set(BOXES)
 
 
 #: Donald's arrangement, left column beside right. Pinned as a shape rather
