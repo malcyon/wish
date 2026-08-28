@@ -582,8 +582,7 @@ class WishWindow(QMainWindow):
         # a game" in the ordinary colour reads as "nothing is there".
         self.map.waiting("" if self.session.state == CONNECTED else note,
                          alarm=self.session.state == BUSY)
-        if self.tabs.currentIndex() == MAP_TAB and self.session.target is None:
-            self.statusBar().showMessage(note)
+        
 
     # -- which tab is watching -------------------------------------------
 

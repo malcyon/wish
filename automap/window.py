@@ -12,8 +12,8 @@ import logging
 from functools import partial
 
 from PyQt6.QtCore import (
-    QObject,
     QEvent,
+    QObject,
     QPoint,
     QPointF,
     QRectF,
@@ -25,10 +25,8 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QWIDGETSIZE_MAX,
-    QApplication,
     QCheckBox,
     QLabel,
-    QMainWindow,
     QMenu,
     QToolTip,
     QWidget,
@@ -44,7 +42,7 @@ from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
-from .config import Settings, remember_geometry, restore_geometry
+from .config import Settings, remember_geometry
 from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
 from .render import (
@@ -271,16 +269,6 @@ class MapCanvas(QWidget):
 
         st = self.state
         if st.geo is None:
-            # No area yet: before a save is loaded, or while the party is on a
-            # map we cannot name. An empty grid and a line of text beats an
-            # error dialog -- the game may simply not have started.
-            p.setPen(QPen(ALARM if self.host.alarm else INK))
-            # Wrapped: "no game disks, open File > Preferences" is a sentence,
-            # not a word, and an unwrapped one is clipped by the grid.
-            p.drawText(self.rect(),
-                       int(Qt.AlignmentFlag.AlignCenter
-                           | Qt.TextFlag.TextWordWrap),
-                       self.host.waiting_text() or st.area_label)
             return
 
         # The primitives are asked for at margin zero and the painter is moved
@@ -605,7 +593,8 @@ class AutomapBinding(QObject):
                          shortcut=QKeySequence("R"))
         reveal.setToolTip("Hide squares the party has not seen (R)")
         reveal.triggered.connect(self._toggle_reveal)
-        if hasattr(self.root, "addAction"): self.root.addAction(reveal)
+        if hasattr(self.root, "addAction"):
+            self.root.addAction(reveal)
         self._reveal_action = reveal
 
         # A note on the square the party is standing in, without the mouse:
@@ -613,7 +602,8 @@ class AutomapBinding(QObject):
         here = QAction("Note here", self, shortcut=QKeySequence("N"))
         here.setToolTip("Put a note on the party's square (N)")
         here.triggered.connect(self.note_here)
-        if hasattr(self.root, "addAction"): self.root.addAction(here)
+        if hasattr(self.root, "addAction"):
+            self.root.addAction(here)
         self._note_action = here
 
         self.fog_box = QCheckBox("Fog of war")
@@ -634,7 +624,7 @@ class AutomapBinding(QObject):
         #: the map would be, because that is where somebody is looking.
         self.no_maps = not getattr(mapper, "_maps", None)
         self._popover: NotePopover | None = None
-        self._waiting = "" if mapper.target is not None else "looking for the game"
+        self._waiting = "" if mapper.target is not None else "Waiting to connect..."
         #: The last swallowed poll failure, so its traceback is written once
         #: rather than on every tick.
         self._trouble = ""
@@ -927,8 +917,7 @@ class AutomapBinding(QObject):
         if self.connect_target is None:
             return
         if not monitor_listening():
-            self._waiting = ("waiting for the game - start VICE with its binary "
-                             "monitor enabled")
+            self._waiting = "Waiting to connect..."
             self._refresh()
             return
         try:
@@ -937,7 +926,7 @@ class AutomapBinding(QObject):
             self._waiting = str(exc)
             self.alarm = True
         except NotConnected as exc:
-            self._waiting = f"waiting for the game ({exc})"
+            self._waiting = "Waiting to connect..."
             self.alarm = False
         else:
             self._waiting = "connected - waiting for a save to be loaded"
@@ -984,8 +973,7 @@ class AutomapBinding(QObject):
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
         if self._waiting:
-            self._say(self._waiting)
-            self.roster.set_message(self._waiting)
+            
             self.canvas.update()
             return
         seen = len(st.exploration)
@@ -1219,14 +1207,3 @@ class AutomapBinding(QObject):
     def closeEvent(self, event):
         self.shutdown()
         super().closeEvent(event)
-
-
-def run(mapper, interval_ms: int | None = None, connect=None,
-        disks: str | None = None) -> int:
-    app = QApplication([])
-    settings = Settings.load()
-    win = AutomapWindow(mapper, interval_ms or settings.interval_ms or 200,
-                        connect, settings, disks=disks)
-    restore_geometry(win, settings)
-    win.show()
-    return app.exec()

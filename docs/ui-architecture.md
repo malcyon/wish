@@ -36,38 +36,43 @@ graph TD
 
 ## The Qt Designer Pattern
 
-We use a strict 1:1 mapping between high-level Python widget classes and XML `.ui` files. This keeps layout logic (margins, fonts, spacing, sizing) out of Python, while keeping business logic (signals, slots, model updates) out of the XML.
+We use a consolidated UI approach for the main window and its tabs, while keeping standalone dialogs in their own `.ui` files. This keeps layout logic (margins, fonts, spacing, sizing) out of Python, while keeping business logic (signals, slots, model updates) out of the XML.
 
 ### 1. File Structure
 
-Each component is broken down into three pieces:
-* `component.ui` — The XML definition created in Qt Designer.
-* `ui_component.py` — The auto-generated Python code compiled by `tools/genui.py` (via `pyuic6`).
-* `component.py` — The hand-coded Python class that wraps the UI.
+* `wish/window.ui` — The consolidated XML definition created in Qt Designer that contains the main window, the Automapper tab, the Editor tab, and their panels.
+* `ui_window.py` — The auto-generated Python code compiled by `tools/genui.py` (via `pyuic6`).
+* Python wrapper classes (like `WishWindow`, `AutomapBinding`, `CharacterEditor`) — Hand-coded Python classes that attach to specific subsets of the UI.
 
 ### 2. Implementation Pattern
 
-The Python wrapper class inherits from the Qt base class (e.g., `QWidget`, `QDialog`) and holds an instance of the generated `Ui_ClassName`. 
+The main window inherits from the Qt base class and instantiates the generated UI. Sub-components (like panels or tabs) are passed the root window object and find their respective widgets using it.
 
 ```python
-from PyQt6.QtWidgets import QWidget
-from .ui_mywidget import Ui_MyWidget
+from PyQt6.QtWidgets import QMainWindow
+from .ui_window import Ui_WishWindow
 
-class MyWidget(QWidget):
+class WishWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         
         # 1. Instantiate the auto-generated UI
-        self.ui = Ui_MyWidget()
-        
-        # 2. Attach it to this QWidget
+        self.ui = Ui_WishWindow()
         self.ui.setupUi(self)
         
-        # 3. Create convenient aliases (optional)
-        self.button = self.ui.submit_button
+        # 2. Instantiate sub-components, passing the root window
+        self.automap = AutomapBinding(self)
+```
+
+Sub-components then attach to their specific parts of the UI:
+```python
+class AutomapBinding:
+    def __init__(self, root):
+        self.root = root
         
-        # 4. Connect signals to Python slots
-        self.button.clicked.connect(self._handle_submit)
+        # Access widgets directly via the root's UI
+        self.roster = RosterPanel(self.root)
+        self.strength_label = self.root.findChild(QLabel, "strength_label")
 ```
 
 ### 3. Dynamic Widgets and Custom Classes
@@ -90,31 +95,33 @@ def _add_bar(self, bar_widget):
 ### Core Windows
 | Python Class | UI File | Location | Purpose |
 |--------------|---------|----------|---------|
-| `WishWindow` | `window.ui` | `wish/` | The root QMainWindow holding the tabbed interface. |
-| `PreferencesDialog` | `preferences.ui` | `wish/` | The global settings and path configuration modal. |
-| `AutomapWindow` | `window.ui` | `automap/` | The main live-map view and container for play-assist panels. |
+| `WishWindow` | `wish/window.ui` | `wish/` | The root QMainWindow holding the tabbed interface. |
+| `PreferencesDialog` | `wish/preferences.ui` | `wish/` | The global settings and path configuration modal. |
+| `AutomapBinding` | `wish/window.ui` | `automap/` | The main live-map view and container for play-assist panels. |
+| `CharacterEditor` | `wish/window.ui` | `editor/` | The character editor tab. |
 
-### Automap Panels
+### Automap Panels (Consolidated in wish/window.ui)
+| Python Class | Location | Purpose |
+|--------------|----------|---------|
+| `CharacterCard` | `automap/` | Detailed stats for a single character (HP, AC, etc.). |
+| `RosterPanel` | `automap/` | The list of all party members. |
+| `CommissionsPanel` | `automap/` | Tracks major and minor quests/commissions. |
+| `NotesPanel` | `automap/` | List of user-created map notes. |
+| `MessagesPanel` | `automap/` | Logs the history of game events and dialogue. |
+| `ActionBar` | `automap/` | Quick-action buttons (rest, quickfight). |
+| `FastTravelBar`| `automap/` | The fast-travel combobox and controls. |
+
+*Note: `NotePopover` remains in `automap/noteeditor.ui` since it is a popup.*
+
+### Editor Modals (Standalone .ui files)
 | Python Class | UI File | Location | Purpose |
 |--------------|---------|----------|---------|
-| `CharacterCard` | `card.ui` | `automap/` | Detailed stats for a single character (HP, AC, etc.). |
-| `RosterPanel` | `roster.ui` | `automap/` | The list of all party members. |
-| `CommissionsPanel` | `commissions.ui` | `automap/` | Tracks major and minor quests/commissions. |
-| `NotesPanel` | `notes.ui` | `automap/` | List of user-created map notes. |
-| `NotePopover` | `noteeditor.ui` | `automap/` | Popup modal for editing a map note. |
-| `MessagesPanel` | `messages.ui` | `automap/` | Logs the history of game events and dialogue. |
-| `ActionBar` | `actionbar.ui` | `automap/` | Quick-action buttons (rest, quickfight). |
-| `FastTravelBar`| `fasttravelbar.ui`| `automap/` | The fast-travel combobox and controls. |
-
-### Editor Modals
-| Python Class | UI File | Location | Purpose |
-|--------------|---------|----------|---------|
-| `SpellbookEditor` | `spellbook.ui` | `editor/` | Edits known spells in the spellbook. |
-| `MemorisedEditor` | `memorised.ui` | `editor/` | Edits currently memorized spells. |
-| `PartsPicker` | `partspicker.ui` | `editor/` | Icon assembly tool (Heads, Weapons). |
-| `DosImportDialog` | `dosimport.ui` | `editor/` | Modal for converting DOS saves to C64. |
-| `ExportDialog` | `exports.ui` | `editor/` | Modal for exporting character sheets. |
-| `AddItemDialog` | `inventory.ui` | `editor/` | Filterable list for adding items to inventory. |
+| `SpellbookEditor` | `editor/spellbook.ui` | `editor/` | Edits known spells in the spellbook. |
+| `MemorisedEditor` | `editor/memorised.ui` | `editor/` | Edits currently memorized spells. |
+| `PartsPicker` | `editor/partspicker.ui` | `editor/` | Icon assembly tool (Heads, Weapons). |
+| `DosImportDialog` | `editor/dosimport.ui` | `editor/` | Modal for converting DOS saves to C64. |
+| `ExportDialog` | `editor/exports.ui` | `editor/` | Modal for exporting character sheets. |
+| `AddItemDialog` | `editor/inventory.ui` | `editor/` | Filterable list for adding items to inventory. |
 
 ## Updating the UI
 

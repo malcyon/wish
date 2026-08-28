@@ -69,3 +69,6 @@ extend-exclude = ["*/ui_*.py"]
 # has drifted out of order. Deliberately NOT E501: `goldbox/layout.py` is the field
 # documentation and its notes are meant to be read, not wrapped to 88 columns.
 select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["E402"]
