@@ -47,6 +47,7 @@ from PyQt6.QtWidgets import (
 from goldbox import commissions as book
 
 from .panel import CARD, LATTICE, MUTED
+from .ui_commissions import Ui_CommissionsPanel
 
 PANEL_WIDTH = 248
 
@@ -365,42 +366,29 @@ class CommissionsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedWidth(PANEL_WIDTH + 22)
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(4)
-        self.heading = _label("Commissions", bold=True)
-        outer.addWidget(self.heading)
+        self.ui = Ui_CommissionsPanel()
+        self.ui.setupUi(self)
 
-        inner = QWidget()
-        inner.setStyleSheet(f"background: {CARD.name()};")
-        column = QVBoxLayout(inner)
-        column.setContentsMargins(8, 6, 8, 6)
-        column.setSpacing(8)
+        self.heading = self.ui.heading
+        self.ui.inner.setStyleSheet(f"background: {CARD.name()};")
 
-        self.completed = _label("", muted=True, size=8)
+        self.completed = self.ui.completed
+        self.completed.setStyleSheet(f"color: {MUTED.name()}")
         self.completed.setToolTip(
             f"${book.COMPLETED:04X}, bumped by the clerk for the ten "
             "commissions that count as major")
-        column.addWidget(self.completed)
 
         self.groups = {
             "commissions": Group(),
             "summons": Group("Summoned to"),
         }
         for group in self.groups.values():
-            column.addWidget(group)
+            self.ui.column.addWidget(group)
 
-        column.addStretch(1)
+        self.ui.column.addStretch(1)
 
-        scroll = QScrollArea()
-        scroll.setWidget(inner)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.StyledPanel)
-        scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid "
-                             f"{LATTICE.name()}; border-radius: 4px; }}")
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        outer.addWidget(scroll, 1)
+        self.ui.scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid "
+                                     f"{LATTICE.name()}; border-radius: 4px; }}")
 
         self._flags = None
         self.set_message("waiting for a game")
