@@ -561,9 +561,7 @@ class TestPartyPosition:
 # --- the area the party is on ------------------------------------------------
 
 def _area_of(name: str):
-    import pathlib
 
-    import pytest
     from gamedata import save_disk
 
     from goldbox.d64 import D64

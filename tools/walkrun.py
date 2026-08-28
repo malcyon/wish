@@ -18,11 +18,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import shutil
 import sys
 import time
 
-import pathlib
 _TOOLS = pathlib.Path(__file__).resolve().parent
 _ROOT = _TOOLS.parent
 
