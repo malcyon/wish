@@ -13,7 +13,7 @@ They are. But the dialog is the last problem, not the first.
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
 | What do we have for Curse and Silver Blades? | Decoded `GEO` files and nothing else. No area ids, no names, no disks, no arrival squares, no `ECL` decode | CONFIRMED |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/games.py` has six titles and PoD is not one of them | CONFIRMED |
-| Does the warp mechanism transfer? | The five writes are three different kinds of address and they grade differently. §5 | mixed |
+| Does the fasttravel mechanism transfer? | The five writes are three different kinds of address and they grade differently. §5 | mixed |
 
 So the honest shape of the feature today is **one title with a list and two
 with an empty one**, and the work that matters is building the tables, not
@@ -69,7 +69,7 @@ weeks and which nothing else in the project depends on.
 Silver Blades is the cheaper of the two: the id's high nibble gives the disk
 side for free, so its table can be built with the map column and the disk
 column filled and the name column blank, which is already enough for a
-dropdown that says `GEO32` and warps.
+dropdown that says `GEO32` and fasttravels.
 
 ## 3. Where the title comes from, and what happens with no game running
 
@@ -104,7 +104,7 @@ Two consequences worth writing down:
 * The dropdown must use the **automapper's** title, never a selector's. If the
   Preferences selector lets a player look at Curse's list while the automapper
   is on Pool of Radiance, the dropdown still offers Pool of Radiance. Anything
-  else warps a party with another game's ids.
+  else fasttravels a party with another game's ids.
 
 ## 4. The dialog: a selector, not a tab bar
 
@@ -172,7 +172,7 @@ one extra step:
 
 * a `list` under `fast_travel_targets` is Pool of Radiance's, because Pool of
   Radiance is the only title that ever had one → `{"pool-of-radiance": [...]}`;
-* `warp_areas` still feeds in through `RENAMED` first, so a config from before
+* `fasttravel_areas` still feeds in through `RENAMED` first, so a config from before
   2026-08 migrates twice in one read and comes out right;
 * the file is written in the new shape only, so the migration finishes rather
   than living in the file forever — the same rule `RENAMED`'s comment sets.
@@ -185,10 +185,10 @@ new file sees a dict where it wants a list, falls into `chosen_areas`'s
 nothing crashes. That is the same one-way cost `RENAMED` already accepted.
 
 `chosen_areas()` / `set_chosen_areas()` grow a game-key parameter. Three
-callers: `WarpBar.chosen_rows`, `PreferencesDialog._travel_tab`, and
+callers: `FastTravelBar.chosen_rows`, `PreferencesDialog._travel_tab`, and
 `WishWindow.set_fast_travel_targets`.
 
-## 6. Does the warp mechanism transfer?
+## 6. Does the fasttravel mechanism transfer?
 
 `docs/117` established that **the `ECL` bytecode is one artefact across
 *ports*** — DOS, C64, Amiga of the same title. That is not the claim needed
@@ -209,7 +209,7 @@ loop is. One emulator session with the disassembler answers whether fast travel
 is possible for Curse at all.
 Until it does, a Curse tab is an empty tab whatever the data says.
 
-Also note that `Warp` writes the `POOL` disk number to `$6E12`, and *Curse's
+Also note that `FastTravel` writes the `POOL` disk number to `$6E12`, and *Curse's
 disks are not numbered like Pool of Radiance's.* Even with the addresses, the
 disk column of a Curse area table is a separate measurement.
 
@@ -217,10 +217,10 @@ disk column of a Curse area table is a separate measurement.
 
 | # | task | unblocked by |
 |---|---|---|
-| 1 | **Done.** **Say the dropdown is Pool of Radiance's.** When `AutomapState.title` is not Pool of Radiance, the Fast Travel row offers nothing and says why — *"No areas are known for Curse of the Azure Bonds."* — with the button disabled, the way `NOTHING_TICKED` already does. It must never fall back to Pool of Radiance's ids | nothing. This is the only change that is a **correctness** fix rather than a feature: today a Curse session gets Pool of Radiance's areas, and warping on them writes Pool of Radiance disk numbers and `ECL` ids into a Curse machine |
+| 1 | **Done.** **Say the dropdown is Pool of Radiance's.** When `AutomapState.title` is not Pool of Radiance, the Fast Travel row offers nothing and says why — *"No areas are known for Curse of the Azure Bonds."* — with the button disabled, the way `NOTHING_TICKED` already does. It must never fall back to Pool of Radiance's ids | nothing. This is the only change that is a **correctness** fix rather than a feature: today a Curse session gets Pool of Radiance's areas, and fasttraveling on them writes Pool of Radiance disk numbers and `ECL` ids into a Curse machine |
 | 2 | **Done.** **Key the setting by game.** `fast_travel_targets` becomes `{game key: [ids]}`, with the list-to-dict migration in `Settings.load` and the per-title default table. No visible change | nothing. Do it before any second table exists, so no config is ever written in a shape that has to be migrated twice |
 | 3 | **Label the tick table with the title**, and build its rows from a per-title area table looked up by key — a table that has one entry today. Still one table, still no selector | task 2 |
-| 4 | **Measure whether Curse can warp at all.** The flag is done — `$7F11`, #29. What is left in that session: a `NEWECL` handler and its tail, the key-wait window, and whether the payload-relative writes land where §6 predicts | an emulator slot, and a Curse disk set — both present |
+| 4 | **Measure whether Curse can fasttravel at all.** The flag is done — `$7F11`, #29. What is left in that session: a `NEWECL` handler and its tail, the key-wait window, and whether the payload-relative writes land where §6 predicts | an emulator slot, and a Curse disk set — both present |
 | 5 | **Build Silver Blades' area table.** The cheap one: 17 maps, disk side free from the id's high nibble, names blank. Enough for a dropdown that says `GEO32` | task 3 for somewhere to put it; task 4's answer for whether it can be acted on |
 | 6 | **Name Curse's sixteen maps.** Needs somebody who has played it, or the `ECL` decode. This is the item with no engineering answer | a human |
 | 7 | **The game selector in Preferences.** One row above the table, defaulting to the automapper's title, with the empty-title sentence in the body | a second real table — task 5 |
@@ -259,7 +259,7 @@ the tolerance and any chance of confusing one map with another.
 
 **Tasks 1 and 2 are done** (#14). `goldbox.areas.areas_for_title` is the refusal:
 it hands back `AREAS` for Pool of Radiance and `()` for every other title, and
-`WarpBar`, `automap.actions.area_rows` and the Preferences table all go through
+`FastTravelBar`, `automap.actions.area_rows` and the Preferences table all go through
 it. `Settings.fast_travel_targets` is `{game key: [ids]}`, with the bare-list
 migration in `Settings.load` and `DEFAULT_FAST_TRAVEL_BY_GAME` holding the
 per-title default -- Pool of Radiance's three, and nothing for the other five.

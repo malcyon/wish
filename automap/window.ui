@@ -25,7 +25,7 @@
         <widget class="QWidget" name="actions_bar_placeholder" native="true" />
        </item>
        <item alignment="Qt::AlignHCenter">
-        <widget class="QWidget" name="warp_bar_placeholder" native="true" />
+        <widget class="QWidget" name="fasttravel_bar_placeholder" native="true" />
        </item>
        <item>
         <spacer name="map_column_spacer">

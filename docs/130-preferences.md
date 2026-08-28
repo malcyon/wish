@@ -655,8 +655,8 @@ what wish happened to see. What replaced it is a table of ticks in this dialog.
   quietly reverting to the three. `Settings.chosen_areas()` is the reader;
   anything in the file that is not a list of numbers reads as "never chosen",
   because the file is documented as one you can hand-edit.
-* **It was `warp_areas` until 2026-08.** Donald: *"since we aren't calling it
-  warp_to anymore. We need consistency in our naming."* `config.RENAMED` reads
+* **It was `fasttravel_areas` until 2026-08.** Donald: *"since we aren't calling it
+  fasttravel_to anymore. We need consistency in our naming."* `config.RENAMED` reads
   the old key when the new one is absent, so a file written before the rename
   keeps its ticks; nothing writes the old key back, so the rename finishes in
   one save rather than living in the file forever. The accessors are still
@@ -669,7 +669,7 @@ what wish happened to see. What replaced it is a table of ticks in this dialog.
   was the setting doing what was asked; Donald had that out: *"The user will
   figure it out. No explanation is necessary."*
 * **Area 30 is not in the table**, ticked or not: `ECL1E` is the attract-mode
-  demo and entering it ends the session. `Area.warpable` is asked; the id is
+  demo and entering it ends the session. `Area.fasttravelable` is asked; the id is
   not written down here.
 * **The warning is a framed box, not a tooltip** — *"Fast travel to areas you
   haven't been to is dangerous and can break the game."*, Donald's wording, at

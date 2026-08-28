@@ -143,7 +143,7 @@ wrote it into *that* area's file, where `load_notes` brought it back on the
 next visit and it never went away.
 
 **Reproduced live**, before the fix, in a pooled VICE instance
-(`tools/instance.py`): `PORSAVE13` in the Slums at `(15,4)`, warp to New Phlan,
+(`tools/instance.py`): `PORSAVE13` in the Slums at `(15,4)`, fasttravel to New Phlan,
 one step, and the mapper -- still saying `GEO14` -- recorded New Phlan's
 `(14,0)`, `(14,1)`, `(14,2)`, `(14,3)` and `(15,1)` into the Slums' own
 `GEO14.json`. The lag between `$0400` becoming `GEO00` and the mapper saying so

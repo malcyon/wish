@@ -164,7 +164,7 @@ class WishWindow(QMainWindow):
         self.session.changed.connect(self._session_said)
 
         self._menu()
-        self._log_warps()
+        self._log_fasttravels()
         self.tabs.currentChanged.connect(self._tab_changed)
         self.tabs.setCurrentIndex(tab)
         self._tab_changed(self.tabs.currentIndex())
@@ -464,18 +464,18 @@ class WishWindow(QMainWindow):
         """
         self.settings.set_chosen_areas(ids, self.map_game())
         self.settings.save()
-        self.map.warp_bar.reload_areas()
+        self.map.fasttravel_bar.reload_areas()
 
-    # -- the warp row ----------------------------------------------------
+    # -- the fasttravel row ----------------------------------------------------
 
-    def _log_warps(self) -> None:
-        """A line in the debug log for every warp attempted, with its writes.
+    def _log_fasttravels(self) -> None:
+        """A line in the debug log for every fasttravel attempted, with its writes.
 
         Our own writes to our own machine, so the log's privacy claims are
         unaffected -- it still records no file paths, no character names and no
         bytes from a save.
         """
-        bar = getattr(self.map, "warp_bar", None)
+        bar = getattr(self.map, "fasttravel_bar", None)
         if bar is None:
             return
         onward = bar.say
@@ -484,7 +484,7 @@ class WishWindow(QMainWindow):
             outcome = bar.last
             where = ", ".join(f"${a:04X}+{len(b)}"
                                for a, b in getattr(outcome, "writes", ()))
-            debuglog.note("warp: %s [%s]", text, where or "no writes")
+            debuglog.note("fasttravel: %s [%s]", text, where or "no writes")
             onward(text, detail, alarm=alarm)
 
         bar.say = say

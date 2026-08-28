@@ -1,6 +1,6 @@
-"""Debug mode, the Warp row, and choosing a backend.
+"""Debug mode, the FastTravel row, and choosing a backend.
 
-Nothing here needs an emulator and nothing here opens a dialog. A warp is
+Nothing here needs an emulator and nothing here opens a dialog. A fasttravel is
 exercised against `MemoryTarget` with a program counter bolted on, which is
 what makes the assertions worth making: the addresses written, and their
 order, are the part that has to be right.
@@ -8,7 +8,7 @@ order, are the part that has to be right.
 **What these tests cannot show.** That entering `NEWECL`'s handler at `$2034`
 from `DUNGEON`'s key-wait loop does what the game does when it reaches that
 address itself. P15 did it in the game and the party walked afterwards; where a
-warp *lands* is the half still being measured (`docs/118-debug-mode.md`, P20).
+fasttravel *lands* is the half still being measured (`docs/118-debug-mode.md`, P20).
 These tests pin the sequence so that a live correction is one edit in one
 function.
 """
@@ -23,11 +23,11 @@ from goldbox import games
 from wish import debugmode
 
 WORLD, COMBAT = 1, 2                    # $6E11: DUNGEON, COMBAT
-IN_THE_LOOP = 0x10C2                    # a PC the warp will accept
+IN_THE_LOOP = 0x10C2                    # a PC the fasttravel will accept
 
 
 class Machine(MemoryTarget):
-    """A `MemoryTarget` that also has a CPU, which is all a warp adds.
+    """A `MemoryTarget` that also has a CPU, which is all a fasttravel adds.
 
     `Target` is `read` and `write` and deliberately nothing else, so the
     program counter is reached through the same optional hook a real backend
@@ -49,12 +49,12 @@ class Machine(MemoryTarget):
 
 def machine(mode: int = WORLD, area: int = 0, disk: int = 3,
             pc: int = IN_THE_LOOP, indoors: int = 1) -> Machine:
-    """A machine standing in an area, ready to be warped out of."""
+    """A machine standing in an area, ready to be fasttraveled out of."""
     return Machine({games.MODE_FLAG_POOL: bytes([mode]),
-                    actions.WARP_SLOT: bytes([area]),
-                    actions.WARP_DISK: bytes([disk]),
-                    actions.WARP_INDOORS: bytes([indoors]),
-                    actions.WARP_X: bytes([5, 6, 1])}, pc=pc)
+                    actions.FASTTRAVEL_SLOT: bytes([area]),
+                    actions.FASTTRAVEL_DISK: bytes([disk]),
+                    actions.FASTTRAVEL_INDOORS: bytes([indoors]),
+                    actions.FASTTRAVEL_X: bytes([5, 6, 1])}, pc=pc)
 
 
 def area(id: int = 20):
@@ -135,96 +135,96 @@ def test_the_outgoing_id_loses_the_reload_bit():
     """`$2011`-`$2016` is `$49F2 = $6E1B & $7F`: where we came from, without
     the cache's reload flag."""
     writes = dict(actions.newecl_writes(0xFF, 1))
-    assert writes[actions.WARP_FROM] == bytes([0x7F])
-    assert writes[actions.WARP_SLOT] == bytes([1 | 0x80])
+    assert writes[actions.FASTTRAVEL_FROM] == bytes([0x7F])
+    assert writes[actions.FASTTRAVEL_SLOT] == bytes([1 | 0x80])
 
 
 def test_a_square_is_only_written_when_there_is_one():
     """Six areas are placed by the arriving script's own entry 4, and area 7
     has a square but no facing."""
     plain = dict(actions.newecl_writes(0, 1))
-    assert actions.WARP_X not in plain
+    assert actions.FASTTRAVEL_X not in plain
     partial = dict(actions.newecl_writes(0, 7, arrival=(5, 7)))
-    assert partial[actions.WARP_X] == bytes([5, 7])
+    assert partial[actions.FASTTRAVEL_X] == bytes([5, 7])
 
 
-def test_a_warp_writes_then_jumps_into_the_tail_of_newecl():
+def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     target = machine(area=0)
-    warp = actions.Warp()
-    outcome = warp.apply(target, area=area(13))     # the kobold caves
+    fasttravel = actions.FastTravel()
+    outcome = fasttravel.apply(target, area=area(13))     # the kobold caves
     assert outcome.ok
     assert [addr for addr, _ in outcome.writes] == [
-        actions.WARP_DISK, actions.WARP_X, actions.WARP_FROM,
-        actions.WARP_SLOT, actions.WARP_SCRATCH]
+        actions.FASTTRAVEL_DISK, actions.FASTTRAVEL_X, actions.FASTTRAVEL_FROM,
+        actions.FASTTRAVEL_SLOT, actions.FASTTRAVEL_SCRATCH]
     assert target.jumps == [0x2034]
-    assert target.memory[actions.WARP_SLOT] == bytes([13 | 0x80])
+    assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
 
 
 def test_the_quest_flags_are_said_out_loud():
-    outcome = actions.Warp().apply(machine(), area=area(20))
+    outcome = actions.FastTravel().apply(machine(), area=area(20))
     assert any("quest flags" in note for note in outcome.notes)
 
 
 # --- what it refuses ---------------------------------------------------------
 
-def test_a_warp_is_refused_when_dungeon_is_not_resident():
+def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():
     """`$2034` is some other overlay's code, and jumping there is a crash."""
-    verdict = actions.Warp().legality(machine(mode=COMBAT), area(20))
+    verdict = actions.FastTravel().legality(machine(mode=COMBAT), area(20))
     assert not verdict and "$6E11" in verdict.reason
 
 
-def test_a_warp_is_refused_from_anywhere_but_the_key_wait_loop():
+def test_a_fasttravel_is_refused_from_anywhere_but_the_key_wait_loop():
     """Mid-script or mid-load, the stack reload at `$203A` throws away work in
     flight. It is also the check that `PC_REGISTER` is the register we think."""
     target = machine(pc=0x2011)
-    verdict = actions.Warp().legality(target, area(20))
+    verdict = actions.FastTravel().legality(target, area(20))
     assert not verdict and "key-wait" in verdict.reason
     assert target.jumps == []
 
 
-def test_a_warp_to_the_area_we_are_in_is_refused():
+def test_a_fasttravel_to_the_area_we_are_in_is_refused():
     """`NEWECL` skips a same-area transition, so `$4A00` would not be cleared
     and nothing would happen -- silently, which is the objection."""
-    verdict = actions.Warp().legality(machine(area=20), area(20))
+    verdict = actions.FastTravel().legality(machine(area=20), area(20))
     assert not verdict and "already in that area" in verdict.reason
 
 
-def test_a_backend_with_no_cpu_cannot_warp():
+def test_a_backend_with_no_cpu_cannot_fasttravel():
     plain = MemoryTarget({games.MODE_FLAG_POOL: bytes([WORLD])})
-    verdict = actions.Warp().legality(plain, area(20))
+    verdict = actions.FastTravel().legality(plain, area(20))
     assert not verdict and "program counter" in verdict.reason
 
 
-def test_nothing_is_written_by_a_refused_warp():
+def test_nothing_is_written_by_a_refused_fasttravel():
     target = machine(mode=COMBAT)
     before = dict(target.memory)
-    outcome = actions.Warp().apply(target, area=area(20))
+    outcome = actions.FastTravel().apply(target, area=area(20))
     assert not outcome.ok and outcome.writes == ()
     assert target.memory == before and target.jumps == []
 
 
 # --- going back --------------------------------------------------------------
 
-def test_warp_back_is_refused_until_a_warp_has_been_made():
-    warp = actions.Warp()
-    verdict = warp.back_verdict(machine())
+def test_fasttravel_back_is_refused_until_a_fasttravel_has_been_made():
+    fasttravel = actions.FastTravel()
+    verdict = fasttravel.back_verdict(machine())
     assert not verdict and "nothing to go back to" in verdict.reason
 
 
-def test_warp_back_returns_to_the_square_the_warp_started_on():
+def test_fasttravel_back_returns_to_the_square_the_fasttravel_started_on():
     """The waypoint is read before the writes: the first two of them are the
     disk and the square, so one taken afterwards would record the destination."""
     target = machine(area=0, disk=3)
-    warp = actions.Warp()
-    assert warp.apply(target, area=area(20)).ok
-    assert warp.back == actions.Waypoint(0, 3, (5, 6, 1))
-    target.memory[actions.WARP_SLOT] = bytes([20])       # the game arrived
+    fasttravel = actions.FastTravel()
+    assert fasttravel.apply(target, area=area(20)).ok
+    assert fasttravel.back == actions.Waypoint(0, 3, (5, 6, 1))
+    target.memory[actions.FASTTRAVEL_SLOT] = bytes([20])       # the game arrived
     target._pc = IN_THE_LOOP
-    outcome = warp.apply_back(target)
+    outcome = fasttravel.apply_back(target)
     assert outcome.ok
-    assert dict(outcome.writes)[actions.WARP_X] == bytes([5, 6, 1])
-    assert dict(outcome.writes)[actions.WARP_SLOT] == bytes([0x80])
-    assert warp.back is None                              # and no further back
+    assert dict(outcome.writes)[actions.FASTTRAVEL_X] == bytes([5, 6, 1])
+    assert dict(outcome.writes)[actions.FASTTRAVEL_SLOT] == bytes([0x80])
+    assert fasttravel.back is None                              # and no further back
 
 
 def test_fast_travel_asks_nothing_and_names_no_disk():
@@ -232,12 +232,12 @@ def test_fast_travel_asks_nothing_and_names_no_disk():
     tested the feature and the game asks for the disk it wants itself, so the
     confirmation and the disk warning both went; what travelling does not
     guarantee is `HELP`, under the row's help icon."""
-    warp = actions.Warp()
-    assert warp.confirm == ""                      # nothing to ask
-    assert not hasattr(warp, "question")
-    assert not hasattr(warp, "disk_note")
-    assert "copy of your save disk" in warp.HELP
-    assert "POOL" not in warp.HELP
+    fasttravel = actions.FastTravel()
+    assert fasttravel.confirm == ""                      # nothing to ask
+    assert not hasattr(fasttravel, "question")
+    assert not hasattr(fasttravel, "disk_note")
+    assert "copy of your save disk" in fasttravel.HELP
+    assert "POOL" not in fasttravel.HELP
 
 
 # --- the area table ----------------------------------------------------------
@@ -250,9 +250,9 @@ def test_the_areas_come_from_por_areas_and_are_not_copied_here():
 
 
 def test_an_arrival_square_is_taken_from_the_table():
-    assert actions.Warp.arrival_of(area(0)) == (15, 1, 3)     # New Phlan
-    assert actions.Warp.arrival_of(area(7)) == (5, 7)         # no facing known
-    assert actions.Warp.arrival_of(area(9)) is None           # none harvested
+    assert actions.FastTravel.arrival_of(area(0)) == (15, 1, 3)     # New Phlan
+    assert actions.FastTravel.arrival_of(area(7)) == (5, 7)         # no facing known
+    assert actions.FastTravel.arrival_of(area(9)) is None           # none harvested
 
 
 def test_a_square_is_chosen_off_the_map_when_the_table_has_none():
@@ -280,8 +280,8 @@ def app():
 
 
 def bar(app, target=None, **kw):
-    from automap.actionbar import WarpBar
-    row = WarpBar(**kw)
+    from automap.actionbar import FastTravelBar
+    row = FastTravelBar(**kw)
     if target is not None:
         row.attach(target)
     return row
@@ -300,7 +300,7 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
     the flag no longer decides whether the row is built."""
     from PyQt6.QtWidgets import QAbstractButton
 
-    from automap.actionbar import WarpBar
+    from automap.actionbar import FastTravelBar
 
     for flag in (False, True):
         if flag:
@@ -308,22 +308,22 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
         else:
             monkeypatch.delenv(debugmode.ENV, raising=False)
         win = _window(app)
-        assert win.warp_bar is not None
-        assert len(win.findChildren(WarpBar)) == 1
+        assert win.fasttravel_bar is not None
+        assert len(win.findChildren(FastTravelBar)) == 1
         assert sorted(b.text() for b in win.findChildren(QAbstractButton)
                       if "Travel" in b.text()) == ["Fast Travel",
                                                    "Travel Back"]
 
 
-def test_the_row_lists_every_warpable_area_by_name(app):
+def test_the_row_lists_every_fasttravelable_area_by_name(app):
     """Every area but 30, which is the attract-mode demo and is not a place a
     party can be put -- `work/reports/p20-arrivals.md`.
 
     A row built with no settings is a row nobody has chosen for, and offers
     the lot; the window always passes the window's settings."""
     row = bar(app)
-    warpable = [r for r in actions.area_rows() if r.warpable]
-    assert row.combo.count() == len(warpable) == len(actions.area_rows()) - 1
+    fasttravelable = [r for r in actions.area_rows() if r.fasttravelable]
+    assert row.combo.count() == len(fasttravelable) == len(actions.area_rows()) - 1
     assert 30 not in [r.id for r in row.rows]
     names = [r.name for r in row.rows]
     assert all(n is not None for n in names)
@@ -364,7 +364,7 @@ def test_unticking_an_area_takes_it_out_of_the_dropdown(app):
 
 
 def test_area_30_is_never_offered_however_the_setting_is_written(app):
-    """`ECL1E` is the attract-mode demo: warping there ends the session, so it
+    """`ECL1E` is the attract-mode demo: fasttraveling there ends the session, so it
     is not in the table to be ticked and a hand-edited config naming it still
     does not get it (`work/reports/p20-arrivals.md`)."""
     from automap.config import Settings
@@ -506,14 +506,14 @@ def test_a_square_is_chosen_off_the_map_only_where_that_means_something(app):
     assert chosen(3) is None                         # picks its map at run time
 
 
-def test_the_row_warps_what_the_combo_box_is_showing(app):
+def test_the_row_fasttravels_what_the_combo_box_is_showing(app):
     target = machine(area=0)
     row = bar(app, target)
     row.combo.setCurrentIndex(row.rows.index(area(13)))
     outcome = row.run()
     assert outcome.ok
-    assert target.memory[actions.WARP_SLOT] == bytes([13 | 0x80])
-    assert target.memory[actions.WARP_X] == bytes([6, 15, 0])   # the table's
+    assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
+    assert target.memory[actions.FASTTRAVEL_X] == bytes([6, 15, 0])   # the table's
     assert target.jumps == [actions.NEWECL_TAIL]
 
 
@@ -540,7 +540,7 @@ def test_the_row_travels_on_the_click_with_nothing_to_dismiss(app):
     assert not showing()
 
 
-def test_a_refused_warp_is_reported_as_an_alarm(app):
+def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
     said = []
     row = bar(app, machine(mode=COMBAT),
               say=lambda text, detail="", alarm=False: said.append((text, alarm)))
@@ -566,9 +566,9 @@ def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
     not read it at all now, which is what makes the row's launch-time timing
     problem go away: there is no flag left to be applied too late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
-    assert window(app, tmp_path, monkeypatch).warp_bar is not None
+    assert window(app, tmp_path, monkeypatch).fasttravel_bar is not None
     monkeypatch.setenv(debugmode.ENV, "1")
-    assert window(app, tmp_path, monkeypatch).warp_bar is not None
+    assert window(app, tmp_path, monkeypatch).fasttravel_bar is not None
 
 
 def test_the_fast_travel_row_follows_the_poll(app, tmp_path, monkeypatch):
@@ -578,8 +578,8 @@ def test_the_fast_travel_row_follows_the_poll(app, tmp_path, monkeypatch):
     win = window(app, tmp_path, monkeypatch, target)
     for _ in range(win.LIVE_EVERY):
         win.tick()
-    assert win.warp_bar.target is target
-    assert win.warp_bar.button.isEnabled()
+    assert win.fasttravel_bar.target is target
+    assert win.fasttravel_bar.button.isEnabled()
 
 
 # --- choosing a backend ------------------------------------------------------
@@ -604,8 +604,8 @@ def test_the_hosted_window_has_the_fast_travel_row_too(app, tmp_path,
     applied; with no flag to read there is nothing left to be applied late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
     win = wish_window(app, tmp_path, monkeypatch)
-    assert win.map.warp_bar is not None
-    assert win.map.warp_bar.button.text() == "Fast Travel"
+    assert win.map.fasttravel_bar is not None
+    assert win.map.fasttravel_bar.button.text() == "Fast Travel"
 
 
 def test_the_backend_menu_offers_every_backend_and_no_preference(app, tmp_path,
@@ -668,7 +668,7 @@ def loaded(geo_bytes: bytes, **kw) -> Machine:
     return target
 
 
-def test_a_warp_is_verified_by_the_map_at_0400(app):
+def test_a_fasttravel_is_verified_by_the_map_at_0400(app):
     """An exact 1024-byte match against the disk copy: a hit is certain and
     needs no fingerprinting."""
     from goldbox.geo import Geo
@@ -714,7 +714,7 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     assert "GEO" not in row_bar.note.text()
 
 
-def test_nothing_is_read_at_0400_when_no_warp_is_in_flight(app):
+def test_nothing_is_read_at_0400_when_no_fasttravel_is_in_flight(app):
     target = machine()
     row = bar(app, target, maps={"GEO0D": None})
     target.reads.clear()
@@ -790,13 +790,13 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
 
     pool = AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
     assert pool.roster.levelling
-    assert pool.warp_bar.has_areas
+    assert pool.fasttravel_bar.has_areas
 
     curse = AutomapWindow(
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"), drive=False)
     assert not curse.roster.levelling
-    assert not curse.warp_bar.has_areas
+    assert not curse.fasttravel_bar.has_areas
     # Cards built after the fact are told too -- they are made on demand.
     card = curse.roster._card(0)
     assert not card.levelling

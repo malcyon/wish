@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'automap/warpbar.ui'
+# Form implementation generated from reading ui file '/home/donald/src/wish/automap/fasttravelbar.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #
@@ -9,25 +9,25 @@
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 
-class Ui_WarpBar(object):
-    def setupUi(self, WarpBar):
-        WarpBar.setObjectName("WarpBar")
-        self.gridLayout = QtWidgets.QGridLayout(WarpBar)
+class Ui_FastTravelBar(object):
+    def setupUi(self, FastTravelBar):
+        FastTravelBar.setObjectName("FastTravelBar")
+        self.gridLayout = QtWidgets.QGridLayout(FastTravelBar)
         self.gridLayout.setContentsMargins(0, 2, 0, 2)
         self.gridLayout.setSpacing(4)
         self.gridLayout.setObjectName("gridLayout")
-        self.combo = ElidingComboBox(parent=WarpBar)
+        self.combo = ElidingComboBox(parent=FastTravelBar)
         self.combo.setObjectName("combo")
         self.gridLayout.addWidget(self.combo, 0, 0, 1, 2)
-        self.button = ElidingButton(parent=WarpBar)
+        self.button = ElidingButton(parent=FastTravelBar)
         self.button.setEnabled(False)
         self.button.setObjectName("button")
         self.gridLayout.addWidget(self.button, 0, 2, 1, 1)
-        self.back_button = ElidingButton(parent=WarpBar)
+        self.back_button = ElidingButton(parent=FastTravelBar)
         self.back_button.setEnabled(False)
         self.back_button.setObjectName("back_button")
         self.gridLayout.addWidget(self.back_button, 0, 3, 1, 1)
-        self.note = QtWidgets.QLabel(parent=WarpBar)
+        self.note = QtWidgets.QLabel(parent=FastTravelBar)
         self.note.setText("")
         font = QtGui.QFont()
         font.setPointSize(8)
@@ -37,10 +37,10 @@ class Ui_WarpBar(object):
         self.note.setObjectName("note")
         self.gridLayout.addWidget(self.note, 1, 0, 1, 4)
 
-        self.retranslateUi(WarpBar)
+        self.retranslateUi(FastTravelBar)
 
-    def retranslateUi(self, WarpBar):
+    def retranslateUi(self, FastTravelBar):
         _translate = QtCore.QCoreApplication.translate
-        self.button.setText(_translate("WarpBar", "Fast Travel"))
-        self.back_button.setText(_translate("WarpBar", "Travel Back"))
+        self.button.setText(_translate("FastTravelBar", "Fast Travel"))
+        self.back_button.setText(_translate("FastTravelBar", "Travel Back"))
 from automap.panel import ElidingButton, ElidingComboBox

@@ -1,13 +1,13 @@
 # A debug mode, and Fast Travel
 
 **Status: built, driven, and no longer a debug feature.**
-`automap/actions.py` implements `Warp` and `Warp Back` on `newecl_writes()`, the
+`automap/actions.py` implements `FastTravel` and `FastTravel Back` on `newecl_writes()`, the
 sequence below has been run against the running game (`docs/50-experiments.md`,
 P15 through P43), and P20 measured where a trip lands in every area that had no
 arrival square. That measurement is what the debug gate was waiting for, so the
 row is now shown to every user and is labelled **Fast Travel**.
 
-**`Warp` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's own
+**`FastTravel` in the code, "Fast Travel" on the screen.** `NEWECL` is the game's own
 name for the mechanism and the classes, the action id and the settings keys keep
 it; only the labels changed. This document keeps both names for the same reason.
 
@@ -40,7 +40,7 @@ It does not load a map. It does five things:
 | at | what | why it matters to us |
 |---|---|---|
 | `$2011`-`$2016` | `$49F2 = $6E1B & $7F` | the **outgoing** area id, which is how the arriving script knows where you came from |
-| `$2019`-`$2023` | evaluate the operand; skip everything if it is `$FF` or equals the current id | **warping to the area you are already in is a no-op** |
+| `$2019`-`$2023` | evaluate the operand; skip everything if it is `$FF` or equals the current id | **fasttraveling to the area you are already in is a no-op** |
 | `$2025`-`$2027` | `$6E1B = new \| $80` | the ECL slot of the loaded-files cache, bit 7 = "reload me" |
 | `$202A`-`$2032` | zero `$4A00`-`$4A1F` — `LDX #$1F / LDA #$00 / STA $4A00,X / DEX / BPL`, the store itself at `$202E` | the origin of the scratch/persistent split |
 | `$2034`-`$203E` | `JSR $1A3C`, `INC $6DDD`, `LDX $03BF / TXS`, `JMP $0809` | flush the position, reset the stack, restart `DUNGEON` |
@@ -86,7 +86,7 @@ cache slots `$6E15` and `$6E17`, mirrored in a save at `$4BC2` and `$4BC4`.
 | `$6E12` is the `POOL` disk the target area lives on | **CONFIRMED** — 32 of 33 static `SAVE n, [$6E12]` / `NEWECL t` pairs match the disk that carries `ECLt`; the one exception sets it in a `GOSUB` |
 | The arriving script loads its own `GEO`, not the departing one | **CONFIRMED** — every script's `LOADFILES` first operand is its own id (see the exceptions below) |
 | `$C04B`/`$C04C`/`$C04D` are the party square and writing them teleports | **CONFIRMED** — `$1A3C`; 29 of 30 scripts write them |
-| A warp can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
+| A fasttravel can be performed from outside by making those writes and setting PC to `$2034` | **CONFIRMED** — `docs/50-experiments.md` P15, twice: Slums → New Phlan, `ResidentGeo.identify()` returning an exact `GEO00` match, and the party then walked |
 | The loader prompts for a disk when `$6E12` names one that is not in the drive | **CONFIRMED** — P17: POOL2 in the drive, `$6E12` = 3, and the game printed `INSERT SIDE # 3, AND PRESS ANY KEY.` and waited |
 | `$6DD5` is "a step was taken" | **wrong, and retired.** It is zero after an ordinary step — see open question 1 |
 | `$6DD5` is the count the routine at `$10EC` returns, and the exit scripts run only while it is non-zero | **PROBABLE** — `$10EE` clears it, `$1115 INC $6DD5` is the only site that raises it, and an execution checkpoint on that `INC` did not fire on an ordinary step |
@@ -109,7 +109,7 @@ scripts' `SAVE <n>, mapX` and from the arriving scripts' entry 4. Facing is
 `0 N, 1 E, 2 S, 3 W`. Sokol Keep's is the one that came from an arriving script
 rather than a departing one: `ECL15 $9A92` writes `mapDir` 0, `mapX` 8, `mapY`
 14 behind the scratch flag `$4A02` and then prints the boat message, and P20
-watched it place a warped-in party. Fourteen areas still have none.
+watched it place a fasttraveled-in party. Fourteen areas still have none.
 
 | id | `ECL` | `GEO` | disk | name | arrival | confidence |
 |---|---|---|---|---|---|---|
@@ -142,7 +142,7 @@ watched it place a warped-in party. Fourteen areas still have none.
 | 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
-| 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not warpable**) | — | CONFIRMED |
+| 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
 geometry), `work/reports/world-map.md` (the wilderness site list),
@@ -156,7 +156,7 @@ and 7 the inner tower; a forum area list built from `GEO` record numbers gives
 3 north-west, 4 north-east, 5 south-east, 6 south-west and 7 upper level. The
 two disagree at 5 and 7 and the likeliest reason is that they index different
 things — one scripts, one maps — but nobody has checked. They are PROBABLE
-until warping to each in turn matches `$0400` against the disk `GEO`
+until fasttraveling to each in turn matches `$0400` against the disk `GEO`
 (`ResidentGeo`) and the floor plan is read against the compass names.
 
 **Names are title-cased, leading article included**, because they are titles
@@ -183,7 +183,7 @@ Area, and `GEO20` (32) Kuto's Well's catacombs. That is also why there is no DOS
 script 30 — and the C64 put its attract-mode demo in the slot the original
 numbering left free (`docs/50-experiments.md`, P20).
 
-Fifteen areas have no known arrival square. For those the warp supplies one
+Fifteen areas have no known arrival square. For those the fasttravel supplies one
 itself — see below — and the dropdown says so.
 
 ---
@@ -215,7 +215,7 @@ meant the row wanted `WISH_DEBUG=1` or `--debug` on the command line: in the
 checkbox ticked mid-session came too late. It is built unconditionally now, in
 both entry points, and there is no flag left to be applied late.
 
-**What debug mode gates today: nothing.** The Warp row was the only thing it
+**What debug mode gates today: nothing.** The FastTravel row was the only thing it
 ever gated. What remains of it is the flag itself — `--debug`, the variable, and
 the line `note()` puts in the debug log and the About box — and the debug log
 still turns it on and off. It is kept wired for the next control that needs a
@@ -243,7 +243,7 @@ argument that put the actions there: it acts on what is drawn above it.
   reaches them and nobody else has to read past them. **Area 30 is not one of
   the entries**: `ECL1E` is the attract-mode demo, travelling there ends the
   session (§4), and a control that lists a session-ending choice and then
-  argues about it is worse than one that does not list it. `Warp.legality`
+  argues about it is worse than one that does not list it. `FastTravel.legality`
   refuses it as well, which is what protects a caller that did not come through
   the dropdown.
 * **`Fast Travel` button**, disabled with the reason in its tooltip, exactly as
@@ -255,7 +255,7 @@ argument that put the actions there: it acts on what is drawn above it.
   areas you haven't been to is dangerous and can break the game."*, Donald's
   wording, shown while the button is usable and replaced by the refusal while
   it is not. There was a `circle-info` help button at the end of the row with
-  `Warp.HELP` under it; Donald had it out in 2026-08 — *"Remove the info icon
+  `FastTravel.HELP` under it; Donald had it out in 2026-08 — *"Remove the info icon
   with the tooltip altogether"* — so the row is four widgets and a message
   line. The same sentence is a framed amber box in Preferences ▸ Fast travel,
   because a tooltip is only read by somebody who already suspects there is
@@ -294,13 +294,13 @@ exactly what is ticked. Four rules:
 
 | | |
 |---|---|
-| a fresh config gets three | New Phlan, The Slums and Sokol Keep — ids 0, 20 and 21. `fast_travel_targets` is `null` until somebody ticks something (`warp_areas` in a file written before 2026-08, read by `config.RENAMED`), which is what tells a fresh config from a player who unticked everything |
+| a fresh config gets three | New Phlan, The Slums and Sokol Keep — ids 0, 20 and 21. `fast_travel_targets` is `null` until somebody ticks something (`fasttravel_areas` in a file written before 2026-08, read by `config.RENAMED`), which is what tells a fresh config from a player who unticked everything |
 | an empty choice is kept | unticking everything leaves the dropdown empty, and it says `No areas ticked — Preferences ▸ Fast travel` with the button disabled and the same reason in its tooltip. The player asked for that; a control that quietly refilled itself would be lying |
-| area 30 is not in the table | ticked or unticked. `Area.warpable` is what says so, asked rather than the id written down a second time |
-| it narrows what is offered, never what is legal | `Warp.legality` and the arrival-square logic are untouched |
+| area 30 is not in the table | ticked or unticked. `Area.fasttravelable` is what says so, asked rather than the id written down a second time |
+| it narrows what is offered, never what is legal | `FastTravel.legality` and the arrival-square logic are untouched |
 
-Every warpable area has a name, and area 30 — the only one without — is also
-the only unwarpable one, so nothing has to decide what to call a nameless row.
+Every fasttravelable area has a name, and area 30 — the only one without — is also
+the only unfasttravelable one, so nothing has to decide what to call a nameless row.
 
 **No confirmation, and no disk line.** Both were there until Donald tested the
 feature: a dialog in front of every trip, and a row of small print naming the
@@ -319,7 +319,7 @@ and not two.
 
 ---
 
-## 3. What a warp writes
+## 3. What a fasttravel writes
 
 Preconditions, all read first, one round trip:
 
@@ -349,30 +349,30 @@ otherwise have to guess at. `$203A` reloads the stack pointer from `$03BF`, so
 the call depth we interrupt does not matter and the `JSR` at `$2034` costs
 nothing.
 
-**All of it is now observed.** P15 warped from the key-wait loop twice and from
+**All of it is now observed.** P15 fasttraveled from the key-wait loop twice and from
 `$2E4E`, the key *fetcher* the loop calls, once; both worked, because `$203A`'s
 `LDX $03BF / TXS` discards the interrupted call depth either way. Half the idle
 PC samples fall in the fetcher, so a harness that refuses it fails about half
-the times it is asked (P36). P16 wrote `07 07 01` to `$C04B` before a warp and
+the times it is asked (P36). P16 wrote `07 07 01` to `$C04B` before a fasttravel and
 read it back unchanged afterwards, with `$49C0` flushed to match — so the
 arrival square is written **before** the load and no second stop is needed.
 
-**`$49E6` must be right before `$2034`.** Warping out of an overland area with
+**`$49E6` must be right before `$2034`.** FastTraveling out of an overland area with
 `$49E6` still 0 wedges the loader in an unrecoverable `INSERT SIDE # 3` loop:
 re-attaching, attaching another image and poking `$49E6` after the load had
-started all failed. The same warp from indoors worked first time.
+started all failed. The same fasttravel from indoors worked first time.
 
 ### Where the party lands
 
 Four cases, in order:
 
 1. **The arriving script sets it** (areas 1, 16, 17, 22, 23, 28) — write nothing
-   and let entry 4 do its job. This works under a warp: `$49F2` holds the
+   and let entry 4 do its job. This works under a fasttravel: `$49F2` holds the
    departing id right through the load, so entry 4's
    `COMPARE [$49F2], <own id>` behaves as it does in play (P43). Where a script
    places the party unconditionally, the way `ECL15` does off the scratch byte
    `$4A02`, writing that byte after the zero fill suppresses the placement and
-   the warp's own square is kept.
+   the fasttravel's own square is kept.
 2. **We know a square another script uses** (the arrival column above) — write
    that. It is the game's own answer for that door.
 3. **Neither** — pick a square from the target `GEO` read off the player's disk,
@@ -386,7 +386,7 @@ Four cases, in order:
    `GEO1A`, 30 in `GEO19`, 32 in `GEO05`, 48 in `GEO1B` — and a party put there
    can walk without being able to leave. Staying off the rim matters for its own
    reason: the edge squares are where the game's own exits live, so a party that
-   starts on one is a keypress from leaving the area it was just warped into.
+   starts on one is a keypress from leaving the area it was just fasttraveled into.
    `work/reports/p20-arrivals.md`.
 4. **Two kinds of area get no square even though they have a `GEO`**, both P20's:
 
@@ -394,7 +394,7 @@ Four cases, in order:
      `$49C3`/`$49C4`, and every script entering one writes `[$4A18]`/`[$4A19]`,
      the world-map cell, and no static square anywhere;
    * the **two `dynamic_geo`** areas (3 and 5), which choose their map at run
-     time with `GETTABLE ..., mapDir`. Warped into, area 3 loaded `GEO05` and
+     time with `GETTABLE ..., mapDir`. FastTraveled into, area 3 loaded `GEO05` and
      area 5 loaded `GEO04` — neither the map the table names — so a square off
      `Area.geos[0]` is a square off a map the game was never going to show.
      Write none and let the arriving script place the party, which it does.
@@ -413,17 +413,17 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | `$6E11 != 1` | `$2034` is some other overlay's code — an immediate crash | refuse; re-check at apply time, not only in the tooltip |
 | PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
-| arrival square is a wall or off-map | **has never happened.** Fifteen warps put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
+| arrival square is a wall or off-map | **has never happened.** Fifteen fasttravels put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
 | arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `goldbox.areas.landing_square`, `work/reports/p20-arrivals.md` |
-| **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be warped out again — the session is over | **fixed**: not offered in the dropdown, and refused by `Warp.legality` for a caller that did not come through it |
-| a script's own **menu** is up | the next warp is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then warp. Anything that warps repeatedly has to clear the arriving script's **menus**, not only its messages |
-| **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a warp is not the same as playing there |
-| the player saves after a warp | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
+| **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be fasttraveled out again — the session is over | **fixed**: not offered in the dropdown, and refused by `FastTravel.legality` for a caller that did not come through it |
+| a script's own **menu** is up | the next fasttravel is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then fasttravel. Anything that fasttravels repeatedly has to clear the arriving script's **menus**, not only its messages |
+| **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a fasttravel is not the same as playing there |
+| the player saves after a fasttravel | a save disk with that inconsistency baked in | debug mode must be pointed at a **copy**; the automapper never writes a disk and this does not change that |
 
 `/home/donald/c64/Pool of Radiance Disks/` is read-only for this project and
-warping does not change that: every byte here goes to RAM. The rule that matters
+fasttraveling does not change that: every byte here goes to RAM. The rule that matters
 is the one above it — **attach a copy to the emulator**, because the game's own
-save command will happily write a warped party out.
+save command will happily write a fasttraveled party out.
 
 It was off by default for as long as nobody had measured where a trip lands.
 P20 did (`work/reports/p20-arrivals.md`): nothing landed off the map, inside a
@@ -440,7 +440,7 @@ copy of the save disk, not a hidden control.
 (6,2)": stepping `(6,2) → (7,2)` is an ordinary encounter that takes about 25
 seconds to load, the status line keeps reading `6,2` for the whole of it, and
 the four runs that "died there" were four runs of one wrong assumption. The
-real lesson for a warp harness is the timeout: **allow 30 seconds for an area
+real lesson for a fasttravel harness is the timeout: **allow 30 seconds for an area
 change**, not five.
 
 ---
@@ -451,19 +451,19 @@ Every one of these needs a party standing somewhere it takes an evening of play
 to reach.
 
 * **`automap/area.py` against all 29 maps.** `ResidentGeo` matches `$0400` byte
-  for byte against the disk copies; warping to each area in turn turns that into
+  for byte against the disk copies; fasttraveling to each area in turn turns that into
   a 29-case test instead of one anecdote about New Phlan.
 * **`Fingerprint.refused()`, which nothing calls.** `docs/50` notes that one
   refused step identifies New Phlan instantly where 111 positive steps are
-  needed. A warp plus a scripted walk into a known wall produces that step on
+  needed. A fasttravel plus a scripted walk into a known wall produces that step on
   demand.
-* ~~**The overland map.**~~ **Done.** A warp from area 23 to area 26 came up
+* ~~**The overland map.**~~ **Done.** A fasttravel from area 23 to area 26 came up
   outdoors with `$6E1B` = `$1A`, `$49E6` going 1 → 0 by itself, the status line
   reading `OUTDOORS 21:35 0,0` and the command bar `1-8, RETURN OR BUTTON`. No
   arrival square is needed or wanted: outdoors `GDRIVE00` is not resident and
   the travel position is `$49C3`/`$49C4`, so writing `$C04B` overwrites somebody
   else's code.
-* **Combat and the combat view**, by warping to a floor with a fixed patrol
+* **Combat and the combat view**, by fasttraveling to a floor with a fixed patrol
   rather than waiting on a wandering-monster roll.
 * **The commissions panel**, against `ECL08` (City Hall), where the ledger the
   panel reads is actually written.
@@ -475,7 +475,7 @@ to reach.
 
 ## 6. Verification
 
-A warp worked if all four hold. The first three are memory reads and cost one
+A fasttravel worked if all four hold. The first three are memory reads and cost one
 round trip together.
 
 | check | address | expected |
@@ -491,12 +491,12 @@ match against the file, so a hit is certain and needs no fingerprinting.
 Automated, the whole thing is one function:
 
 ```
-warp(area) -> poll ResidentGeo.identify() every 200 ms for 30 s
+fasttravel(area) -> poll ResidentGeo.identify() every 200 ms for 30 s
            -> assert it equals the expected GEO name
            -> assert the status-line square is passable on that map
 ```
 
-Unit tests need no emulator: `Warp.apply` returns the same `Outcome` the actions
+Unit tests need no emulator: `FastTravel.apply` returns the same `Outcome` the actions
 return, with `writes` as `(address, bytes)` pairs, so the sequence above is
 asserted against `MemoryTarget` and a recording stub for the PC. That is how
 `tests/test_actions.py` already works.
@@ -508,7 +508,7 @@ asserted against `MemoryTarget` and a recording stub for the PC. That is how
 Every question this section carried has now been run; what they found is in
 `docs/50-experiments.md` under P15, P16, P17, P20 and P43, and is folded into
 the sections above. Both entries below are answers rather than questions, and
-**two areas have turned out to be closed to a warp** — 11, which bounces, and
+**two areas have turned out to be closed to a fasttravel** — 11, which bounces, and
 30, which is not a place.
 
 1. **Is `$6DD5` really "a step was taken"? No — and the mover has been found.**
@@ -545,37 +545,37 @@ the sections above. Both entries below are answers rather than questions, and
    down, `$0843` is called first when `$C04E` is non-zero, and nobody has read
    either. The old label is retired — a byte that is zero after an ordinary step
    is not "a step was taken".
-2. **Does a warp to an area with no known arrival square land somewhere legal?
+2. **Does a fasttravel to an area with no known arrival square land somewhere legal?
    Answered: mostly, and the exceptions are worth fixing.** All fifteen were
-   warped into with the square `Warp` itself picks —
+   fasttraveled into with the square `FastTravel` itself picks —
    `work/reports/p20-arrivals.md` has the table. Nothing landed off the map or
    inside a wall and nothing crashed. Three findings came out of it:
 
    * the fallback picked **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,
      `GEO1A` and `GEO1B` that corner is a walled-off pocket;
-   * **area 30 should not be warpable at all.** `ECL1E` is the attract-mode
+   * **area 30 should not be fasttravelable at all.** `ECL1E` is the attract-mode
      demo: the party square reads `254, 127, 16`, no map is resident, and the
-     program counter never comes back to the key-wait loop, so no further warp
+     program counter never comes back to the key-wait loop, so no further fasttravel
      can be made;
    * **area 21 does have an arrival square** and it is in the bytecode:
      `ECL15 $9A92` writes `mapDir` 0, `mapX` 8, `mapY` 14 behind the scratch
      flag `$4A02`, then prints the boat message. Watched happening, twice.
 
    Two smaller things the run pinned down: areas 3 and 5 load `GEO05` and
-   `GEO04` respectively, not the maps the table names, and a warp cannot be
+   `GEO04` respectively, not the maps the table names, and a fasttravel cannot be
    started while a script's own menu is up — the Cave of Diogenes' parlay cost
    four probes.
 
    **All five recommendations are now in the code.** Area 30 is out of the
-   dropdown and refused by `Warp.legality`; the fallback is
+   dropdown and refused by `FastTravel.legality`; the fallback is
    `goldbox.areas.landing_square`; the overland and `dynamic_geo` areas get no
    square; area 21 carries `Arrival(8, 14, 0)`. §3 above is the current rule.
 
-**One area a warp cannot enter: 11, the training hall.** `ECL0B`'s entry reads
+**One area a fasttravel cannot enter: 11, the training hall.** `ECL0B`'s entry reads
 `$6E82` — set from the *departing* square's attribute byte by
 `AND 127, ATTR, [$6E82]` — and walks `$9800` from 10 to 18 against it to choose a
-school. Warped in three times, once with `$6E82` forced to 10: every time `$6E1B`
+school. FastTraveled in three times, once with `$6E82` forced to 10: every time `$6E1B`
 went `$8B` → `$0B` → `$00` within eight seconds and the party was back in New
 Phlan. The target reads state the departure was supposed to leave behind, which
-is exactly the class of assumption `Warp`'s standing warning is about, and it is
+is exactly the class of assumption `FastTravel`'s standing warning is about, and it is
 what blocked the test-party work in `docs/119-test-party.md`.

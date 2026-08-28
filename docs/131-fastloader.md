@@ -74,7 +74,7 @@ per-slot `vicerc`.
 ## The matrix
 
 Constants, all on the command line so no config file is touched: `+saveres`,
-`+warp`, `+autostart-warp`, `+autostart-handle-tde`, `-speed 100`, a cold
+`+fasttravel`, `+autostart-fasttravel`, `+autostart-handle-tde`, `-speed 100`, a cold
 `x64sc` and a fresh copy of side 1 per run, `POR_HEADLESS=1`, one pool slot per
 worker.
 
@@ -84,7 +84,7 @@ worker.
 | **B** | JiffyDOS both halves | `N` | 5 |
 | **C** | stock `kernal-901227-03` + `dos1541ii-251968-03` | `Y` | 5 |
 | **D** | stock both halves | `N` | 5 |
-| **G** | as found, VICE's own autostart warp and TDE handling | `Y` | 2 |
+| **G** | as found, VICE's own autostart fasttravel and TDE handling | `Y` | 2 |
 | **F** | as found, true drive emulation **off** | `N` | 1 probe |
 
 Cell **E** — "force `Drive8Type=1542` and see whether JiffyDOS starts
@@ -119,8 +119,8 @@ exactly the interval in question and bias the `N` cells low.
 **The CIA #1 TOD cross-check was dropped, not fudged.** `$DC08-$DC0B` read one
 o'clock and zero tenths at every sample of every run — it does not advance in
 this configuration and measures nothing. What replaces it: `resourceget`
-confirms `AutostartWarp=0` and `Speed=100` per run, and the VICE status bar
-reads `101% cpu / 60.3 fps` with the warp indicator dark in every capture.
+confirms `AutostartFastTravel=0` and `Speed=100` per run, and the VICE status bar
+reads `101% cpu / 60.3 fps` with the fasttravel indicator dark in every capture.
 
 ### On polling the monitor
 
@@ -187,7 +187,7 @@ guidance calls wrong for their kernal.
 
 ### Cell G: what VICE's own defaults were doing
 
-`AutostartWarp` and `AutostartHandleTrueDriveEmulation` left at VICE's defaults
+`AutostartFastTravel` and `AutostartHandleTrueDriveEmulation` left at VICE's defaults
 give M2→M5 = 167.7 s against cell A's 167.8 — identical. The whole of their
 effect, 3.1 s, is in T0→M2, the autostart of `BOOT` before the prompt appears.
 They were never distorting the loading; they were distorting the launch.

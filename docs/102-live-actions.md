@@ -77,7 +77,7 @@ interval.
 | second | Identify all items · Turn quickfight off |
 
 The three that are about spells and hit points sit together; the two that stand
-alone sit under them. `Fast Travel` is its own row (`WarpBar`) and levelling is
+alone sit under them. `Fast Travel` is its own row (`FastTravelBar`) and levelling is
 on the roster card, so neither is in this grid.
 `test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for` pins it.
 

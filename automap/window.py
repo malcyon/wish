@@ -41,7 +41,7 @@ from ui.iconpaint import draw_icon
 
 from . import actions, combat, live
 from . import notes as notemod
-from .actionbar import ActionBar, WarpBar
+from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
 from .combatlog import CombatLog
 from .commissions import CommissionsPanel
@@ -598,7 +598,7 @@ class AutomapWindow(QMainWindow):
         # `title` is what says whether there is an area table at all: five of
         # the six titles have none, and offering Pool of Radiance's would write
         # Pool of Radiance's disk numbers into another game (#14).
-        self.warp_bar = WarpBar(say=self.messages.say,
+        self.fasttravel_bar = FastTravelBar(say=self.messages.say,
                                 maps=getattr(self.mapper, "_maps", {}),
                                 settings=self.settings,
                                 title=self.state.title,
@@ -607,7 +607,7 @@ class AutomapWindow(QMainWindow):
         # Swap .ui placeholders for the real widgets that need constructors.
         self._replace(self.ui.roster_placeholder, self.roster)
         self._replace(self.ui.actions_bar_placeholder, self.actions_bar)
-        self._replace(self.ui.warp_bar_placeholder, self.warp_bar)
+        self._replace(self.ui.fasttravel_bar_placeholder, self.fasttravel_bar)
         self._replace(self.ui.strip_placeholder, self.strip)
         # The splitter's children must be replaced in order.
         splitter = self.ui.side_splitter
@@ -717,7 +717,7 @@ class AutomapWindow(QMainWindow):
         # The mapper reads the party position at an address that is per title
         # too, and it is holding the descriptor the title resolved to.
         self.mapper.game = game
-        self.warp_bar.set_title(self.state.title, game)
+        self.fasttravel_bar.set_title(self.state.title, game)
         self.actions_bar.set_game(game)
         self.roster.set_levelling(not actions.level_up_blockers(game=game))
 
@@ -895,7 +895,7 @@ class AutomapWindow(QMainWindow):
             # party re-read: at these addresses it would be another game's
             # bytes decoded as this one's characters.
             self.actions_bar.attach(None)
-            self.warp_bar.attach(None)
+            self.fasttravel_bar.attach(None)
             self.roster.set_stale(True)
             self.strip.show_state(self.state, self.snapshot)
             return
@@ -904,7 +904,7 @@ class AutomapWindow(QMainWindow):
         # same `$6E11` this poll already reads.
         self.actions_bar.attach(target)
         self.actions_bar.watch(target)
-        self.warp_bar.attach(target)
+        self.fasttravel_bar.attach(target)
 
         # Every address in that read comes from the title's descriptor: Pool
         # of Radiance is $4900 plus a roster file at $8300, Curse and Silver

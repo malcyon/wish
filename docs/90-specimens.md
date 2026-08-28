@@ -155,7 +155,7 @@ ours, it settles level, it completes the multi-class enumeration, and it carries
 
 Twelve disks driven out of the game on 2026-08-22, the first specimens in the set
 that were *ordered* rather than found. They are the game's own writes: every one
-was produced by the game's `SAVE GAME`, from a state reached by playing, warping
+was produced by the game's `SAVE GAME`, from a state reached by playing, fasttraveling
 or poking, and every one has a recipe. They are game data, so they live in
 `work/p3/` and never in the repository. The recipes, byte for byte, are
 [`work/reports/p3-saves.md`](../work/reports/p3-saves.md); the party throughout
@@ -244,9 +244,9 @@ count. Copy after a clean teardown, or check and repair.
 | `W6.D64` | `1B` | (2,8) | on `1B`'s west-edge column |
 | `W7.D64` | `1A` | (14,8) | back across the seam the other way |
 
-They are made by warping to area 26 on POOL7 with `$49E6` set to 0 first —
+They are made by fasttraveling to area 26 on POOL7 with `$49E6` set to 0 first —
 `LOADFILES` dispatches on that byte and fetches a `GEO` instead of a `SQRDATA`
-if it is still 1 — and then walking. The warp lands at (0,0), outside the
+if it is still 1 — and then walking. The fasttravel lands at (0,0), outside the
 walkable band, so the first legal square has to be walked to.
 
 What they close, against [113-world-map.md](113-world-map.md)'s list of open

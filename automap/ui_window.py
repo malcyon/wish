@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'automap/window.ui'
+# Form implementation generated from reading ui file '/home/donald/src/wish/automap/window.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #
@@ -31,9 +31,9 @@ class Ui_AutomapWindow(object):
         self.actions_bar_placeholder = QtWidgets.QWidget(parent=self.map_column)
         self.actions_bar_placeholder.setObjectName("actions_bar_placeholder")
         self.map_column_layout.addWidget(self.actions_bar_placeholder, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self.warp_bar_placeholder = QtWidgets.QWidget(parent=self.map_column)
-        self.warp_bar_placeholder.setObjectName("warp_bar_placeholder")
-        self.map_column_layout.addWidget(self.warp_bar_placeholder, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        self.fasttravel_bar_placeholder = QtWidgets.QWidget(parent=self.map_column)
+        self.fasttravel_bar_placeholder.setObjectName("fasttravel_bar_placeholder")
+        self.map_column_layout.addWidget(self.fasttravel_bar_placeholder, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding)
         self.map_column_layout.addItem(spacerItem)
         self.grid.addWidget(self.map_column, 0, 1, 1, 1, QtCore.Qt.AlignmentFlag.AlignTop)

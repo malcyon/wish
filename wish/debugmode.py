@@ -13,9 +13,9 @@ it and sets the variable, so the two spellings cannot disagree.
 sets the variable rather than a private flag, so a debug session that spawns a
 subprocess passes the mode on.
 
-**It currently gates nothing.** The one control it ever gated was the Warp row
+**It currently gates nothing.** The one control it ever gated was the FastTravel row
 under the map, and that row is now Fast Travel and is shown to everybody: P20
-warped into every area whose arrival square was unknown and measured where the
+fasttraveled into every area whose arrival square was unknown and measured where the
 party landed, which is what the gate was waiting for
 (`work/reports/p20-arrivals.md`, `docs/118-debug-mode.md`). What is left is the
 flag itself -- `--debug`, the variable, and the line `note()` puts in the debug

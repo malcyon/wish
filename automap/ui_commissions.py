@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'automap/commissions.ui'
+# Form implementation generated from reading ui file '/home/donald/src/wish/automap/commissions.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #

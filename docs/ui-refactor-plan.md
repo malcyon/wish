@@ -136,20 +136,20 @@ Each stage is one component touching only its own files. Ordered easiest → har
 
 ---
 
-### Stage 7 — ActionBar + WarpBar
+### Stage 7 — ActionBar + FastTravelBar
 **Difficulty:** ★★★☆☆ — 10 layout calls across 2 classes
 **File:** [automap/actionbar.py](file:///home/donald/src/wish/automap/actionbar.py)
 **Layout:**
 - `ActionBar` (line 88): QGridLayout with dynamic buttons, watch checkbox, note label
-- `WarpBar` (line 270): QGridLayout with combo, warp/back buttons, note label
+- `FastTravelBar` (line 270): QGridLayout with combo, fasttravel/back buttons, note label
 **Note:** ActionBar buttons are built from a runtime action list — .ui declares grid + static widgets, buttons added in Python.
 
 #### [NEW] automap/actionbar.ui
-#### [NEW] automap/warpbar.ui
+#### [NEW] automap/fasttravelbar.ui
 #### [NEW] automap/ui_actionbar.py
-#### [NEW] automap/ui_warpbar.py
+#### [NEW] automap/ui_fasttravelbar.py
 #### [MODIFY] automap/actionbar.py
-**Test:** `tests/test_automap.py tests/test_warp.py`
+**Test:** `tests/test_automap.py tests/test_fasttravel.py`
 
 ---
 

@@ -1,7 +1,7 @@
-"""P20: where a warp lands a party in an area with no arrival square.
+"""P20: where a fasttravel lands a party in an area with no arrival square.
 
 Fourteen of the thirty areas have no arrival square harvested from the scripts,
-and for those `Warp` picks one off the `GEO` with `goldbox.areas.landing_square`.
+and for those `FastTravel` picks one off the `GEO` with `goldbox.areas.landing_square`.
 The rule that used to ship took the first square with any passable edge;
 driving the game found what that came to (`work/reports/p20-arrivals.md`), and
 what is testable without an emulator is the geometry underneath it, which is
@@ -111,26 +111,26 @@ def test_components_partition_the_grid():
         assert len(seen) == GRID * GRID == len(set(seen))
 
 
-def test_only_area_30_is_closed_to_a_warp():
-    """`ECL1E` is the attract-mode demo. Warped into, `$C04B`-`$C04D` read
+def test_only_area_30_is_closed_to_a_fasttravel():
+    """`ECL1E` is the attract-mode demo. FastTraveled into, `$C04B`-`$C04D` read
     254,127,16, no map was resident and the PC never came back to the key-wait
-    loop, so no later warp could be started -- the session was over."""
-    assert [a.id for a in areas.AREAS if not a.warpable] == [30]
+    loop, so no later fasttravel could be started -- the session was over."""
+    assert [a.id for a in areas.AREAS if not a.fasttravelable] == [30]
 
 
-def test_the_warp_action_refuses_the_attract_mode_demo():
+def test_the_fasttravel_action_refuses_the_attract_mode_demo():
     """Refused in the engine as well as absent from the dropdown, because the
     refusal is what protects a caller that did not come through the row."""
     from test_debugmode import IN_THE_LOOP, machine
 
-    from automap.actions import Warp
+    from automap.actions import FastTravel
 
     target = machine(area=0)
     target._pc = IN_THE_LOOP
-    verdict = Warp().legality(target, areas.AREAS_BY_ID[30])
+    verdict = FastTravel().legality(target, areas.AREAS_BY_ID[30])
     assert not verdict
     assert "attract-mode demo" in verdict.reason
-    assert not Warp().apply(target, area=areas.AREAS_BY_ID[30]).ok
+    assert not FastTravel().apply(target, area=areas.AREAS_BY_ID[30]).ok
 
 
 def test_the_engine_picks_its_landing_square_from_por_areas():

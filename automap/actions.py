@@ -1019,9 +1019,9 @@ def actions(store: SpellStore | None = None,
 #: the card answers the question, and the window instantiates it directly.
 
 
-# --- warping between areas ---------------------------------------------------
+# --- fasttraveling between areas ---------------------------------------------------
 #
-# "Fast Travel" on the screen; `Warp` in here, because `NEWECL` is what the
+# "Fast Travel" on the screen; `FastTravel` in here, because `NEWECL` is what the
 # game calls it and the names in this file are the game's. The one thing in
 # this file that does more than poke a byte: it hands the CPU a new program
 # counter. Shown to every user since P20 -- it was debug-mode-only while where
@@ -1029,7 +1029,7 @@ def actions(store: SpellStore | None = None,
 #
 # `docs/118-debug-mode.md` is the plan and the evidence. In short: an area exit
 # is a script ending in `NEWECL`, whose handler at `DUNGEON $2011` writes five
-# things and restarts the overlay. A warp is those writes made from outside,
+# things and restarts the overlay. A fasttravel is those writes made from outside,
 # with the operand fetch -- which needs a script stream we are not in --
 # skipped by entering the handler at its tail.
 #
@@ -1039,12 +1039,12 @@ def actions(store: SpellStore | None = None,
 
 #: Which `POOL` disk the arriving area lives on. `LIBRARY $43A4` reads it and
 #: prompts if that disk is not in the drive.
-WARP_DISK = 0x6E12
+FASTTRAVEL_DISK = 0x6E12
 #: The live party square inside `GDRIVE00`, of which `$49C0`-`$49C2` is a
 #: lagging copy: x, y, facing. `$1A3C`, called from `$2034`, copies these into
 #: the save's own bytes, which is why the arrival square is written before the
 #: jump and not after.
-WARP_X, WARP_Y, WARP_FACING = 0xC04B, 0xC04C, 0xC04D
+FASTTRAVEL_X, FASTTRAVEL_Y, FASTTRAVEL_FACING = 0xC04B, 0xC04C, 0xC04D
 #: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
 #: script's entry 4 compares it against its own id.
 #:
@@ -1053,17 +1053,17 @@ WARP_X, WARP_Y, WARP_FACING = 0xC04B, 0xC04C, 0xC04D
 #: `LDX #3 / JSR $19FC / LDA $6E1B / AND #$7F / STA $49F2` -- rewrites it to
 #: the *arriving* id once the entry has run, so a snapshot taken after the
 #: area settles always shows the current area whatever was written here.
-#: Proved by warping into area 22 with `$49F2` = 23: `ECL16`'s
+#: Proved by fasttraveling into area 22 with `$49F2` = 23: `ECL16`'s
 #: `COMPARE [$49F2], 23 / IF= / EXIT` fired, the script left the square alone,
-#: and the party stood where the warp had put it.
-WARP_FROM = 0x49F2
+#: and the party stood where the fasttravel had put it.
+FASTTRAVEL_FROM = 0x49F2
 #: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
-WARP_SLOT = 0x6E1B
+FASTTRAVEL_SLOT = 0x6E1B
 #: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
-WARP_SCRATCH, WARP_SCRATCH_LEN = 0x4A00, 0x20
+FASTTRAVEL_SCRATCH, FASTTRAVEL_SCRATCH_LEN = 0x4A00, 0x20
 #: Non-zero indoors, zero on the overland map. Read, never written: it decides
 #: whether `LOADFILES` asks for a `GEO` or a `SQRDATA`.
-WARP_INDOORS = 0x49E6
+FASTTRAVEL_INDOORS = 0x49E6
 #: The tail of `NEWECL`'s handler, past the operand fetch. `$203A` reloads the
 #: stack pointer from `$03BF`, so the call depth we interrupt does not matter.
 NEWECL_TAIL = 0x2034
@@ -1081,9 +1081,9 @@ DUNGEON = 1
 #: different routine (`LDA #$00 / STA $6DD5`). So the window ends at `$10EC`.
 KEY_WAIT = (0x10C2, 0x10EC)
 #: The key fetcher the loop calls, `$2E4E`-`$2E6A` inclusive: `LDA $DC00` for
-#: the CIA row, then the KERNAL buffer, then `RTS`. Warping from inside it is
+#: the CIA row, then the KERNAL buffer, then `RTS`. FastTraveling from inside it is
 #: safe for the same reason as the loop -- it is called *from* the loop, so
-#: `$203A`'s stack reload discards the same nothing -- and P15 warped
+#: `$203A`'s stack reload discards the same nothing -- and P15 fasttraveled
 #: successfully from `$2E4E` before this was written down. Nine idle samples
 #: in ten land in one window or the other, so refusing the fetcher made the
 #: button fail about half the times it was pressed.
@@ -1103,7 +1103,7 @@ def area_rows(title=ANY_TITLE) -> tuple:
     so that a checkout without it still has the other five actions.
 
     **Only Pool of Radiance has one.** A row's disk number and `ECL` id are
-    Pool of Radiance's, and `Warp` writes both into the running machine, so
+    Pool of Radiance's, and `FastTravel` writes both into the running machine, so
     another title's session must be offered nothing rather than these --
     `goldbox.areas.areas_for_title` is where that refusal lives.
     """
@@ -1154,7 +1154,7 @@ def place_name(geo: str) -> str | None:
 
 @dataclass(frozen=True)
 class Waypoint:
-    """Where the party was before a warp, so that `Warp Back` has an answer."""
+    """Where the party was before a fasttravel, so that `FastTravel Back` has an answer."""
 
     area: int
     disk: int | None
@@ -1183,12 +1183,12 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     """
     writes: list[tuple[int, bytes]] = []
     if disk is not None:
-        writes.append((WARP_DISK, bytes([disk & 0xFF])))
+        writes.append((FASTTRAVEL_DISK, bytes([disk & 0xFF])))
     if arrival is not None:
-        writes.append((WARP_X, bytes(int(v) & 0xFF for v in arrival)))
-    writes.append((WARP_FROM, bytes([from_area & 0x7F])))
-    writes.append((WARP_SLOT, bytes([(to_area & 0x7F) | 0x80])))
-    writes.append((WARP_SCRATCH, bytes(WARP_SCRATCH_LEN)))
+        writes.append((FASTTRAVEL_X, bytes(int(v) & 0xFF for v in arrival)))
+    writes.append((FASTTRAVEL_FROM, bytes([from_area & 0x7F])))
+    writes.append((FASTTRAVEL_SLOT, bytes([(to_area & 0x7F) | 0x80])))
+    writes.append((FASTTRAVEL_SCRATCH, bytes(FASTTRAVEL_SCRATCH_LEN)))
     return tuple(writes)
 
 
@@ -1273,7 +1273,7 @@ def program_counter(target):
 def jump(target, address: int) -> bool:
     """Set the PC and let the machine run. False if this backend cannot.
 
-    The last step of a warp and the only irreversible one: everything before it
+    The last step of a fasttravel and the only irreversible one: everything before it
     is bytes in RAM, and this is what makes the game act on them.
     """
     own = getattr(target, "set_pc", None)
@@ -1296,15 +1296,15 @@ def jump(target, address: int) -> bool:
     return True
 
 
-class Warp(Action):
+class FastTravel(Action):
     """Put the party in another area, the way the game's own exits do.
 
-    **"Fast Travel" is what the user calls it.** `Warp` is the game's own
+    **"Fast Travel" is what the user calls it.** `FastTravel` is the game's own
     name for the mechanism -- `NEWECL` -- and stays the name in the code.
 
     **The writes are proven; the arrival is measured.** Entering `NEWECL`'s
     handler at `$2034` from the key-wait loop has been done in the game and the
-    party walked afterwards (P15, `docs/118-debug-mode.md`), and P20 warped
+    party walked afterwards (P15, `docs/118-debug-mode.md`), and P20 fasttraveled
     into all fifteen areas that then had no arrival square and recorded where
     each landed. Fourteen still have none and get a square off the map instead.
 
@@ -1322,7 +1322,7 @@ class Warp(Action):
     That is what `HELP` is for, and the row keeps it under a help icon.
     """
 
-    name = "warp"
+    name = "fasttravel"
     label = "Fast Travel"
     description = ("travel to another area the way the game's own exits do -- "
                    "it writes to the running game")
@@ -1354,8 +1354,8 @@ class Warp(Action):
         # the disk and cache-slot bytes -- and `goldbox/areas.py` has a table for
         # no other title, so the row offers a later title nothing at all (#14).
         super().__init__(games.POOL_OF_RADIANCE)
-        #: Where the last warp came from. `Warp Back` reads it; None until a
-        #: warp has been made, which is why the button starts disabled.
+        #: Where the last fasttravel came from. `FastTravel Back` reads it; None until a
+        #: fasttravel has been made, which is why the button starts disabled.
         self.back: Waypoint | None = None
 
     # -- reading the machine ---------------------------------------------
@@ -1363,17 +1363,17 @@ class Warp(Action):
     @staticmethod
     def current_area(target) -> int | None:
         """The id of the area running now: `$6E1B` without the reload bit."""
-        raw = _read(target, WARP_SLOT, 1)
+        raw = _read(target, FASTTRAVEL_SLOT, 1)
         return raw[0] & 0x7F if raw else None
 
     @staticmethod
     def current_disk(target) -> int | None:
-        raw = _read(target, WARP_DISK, 1)
+        raw = _read(target, FASTTRAVEL_DISK, 1)
         return raw[0] if raw else None
 
     @staticmethod
     def current_square(target) -> tuple[int, int, int] | None:
-        raw = _read(target, WARP_X, 3)
+        raw = _read(target, FASTTRAVEL_X, 3)
         return (raw[0], raw[1], raw[2]) if raw and len(raw) == 3 else None
 
     # -- may we -----------------------------------------------------------
@@ -1397,13 +1397,13 @@ class Warp(Action):
                                   f"${KEY_FETCH[1] - 1:04X}): the game is busy")
         if area is None:
             return Verdict(False, "choose an area")
-        if not getattr(area, "warpable", True):
+        if not getattr(area, "fasttravelable", True):
             return Verdict(False, self.ATTRACT_TRAP)
         here = self.current_area(target)
         if here is not None and here == getattr(area, "id", None):
             return Verdict(False, "the party is already in that area, and "
                                   "NEWECL skips a same-area transition")
-        raw = _read(target, WARP_INDOORS, 1)
+        raw = _read(target, FASTTRAVEL_INDOORS, 1)
         indoors = raw[0] if raw else None
         if indoors == 0 and not getattr(area, "outdoors", False):
             return Verdict(False, self.OUTDOORS_TRAP)
@@ -1456,7 +1456,7 @@ class Warp(Action):
         return (got.x, got.y, got.facing)
 
     def warnings(self, target, area, arrival) -> tuple[str, ...]:
-        """Everything true about this warp that the caller should know first."""
+        """Everything true about this fasttravel that the caller should know first."""
         out = ["the arriving script assumes quest flags the party never set; "
                "arriving this way is not the same as having played there"]
         if arrival is None:
@@ -1472,7 +1472,7 @@ class Warp(Action):
                        "than a GEO; an arrival square is pointless there, "
                        "because outdoors the party's position is $49C3/$49C4 "
                        "and $C04B is not even GDRIVE00's any more")
-        raw = _read(target, WARP_INDOORS, 1)
+        raw = _read(target, FASTTRAVEL_INDOORS, 1)
         indoors = raw[0] if raw else None
         if indoors is not None:
             outdoors_now = indoors == 0
@@ -1481,10 +1481,10 @@ class Warp(Action):
                            f"{'SQRDATA' if outdoors_now else 'GEO'}")
         return tuple(out)
 
-    #: `ECL1E` is the attract-mode demo and warping into it ends the session:
+    #: `ECL1E` is the attract-mode demo and fasttraveling into it ends the session:
     #: P20 read `$C04B`-`$C04D` as `254, 127, 16` with no `GEO` resident, no
     #: status line and no command bar, and the PC never came back to the
-    #: key-wait loop, so nothing could be warped out again. `WarpBar` does not
+    #: key-wait loop, so nothing could be fasttraveled out again. `FastTravelBar` does not
     #: offer it; this refuses it for a caller that did not come through the
     #: dropdown. `work/reports/p20-arrivals.md`.
     ATTRACT_TRAP = ("this is the attract-mode demo, not a place: travelling "
@@ -1492,7 +1492,7 @@ class Warp(Action):
                     "program counter never returns to DUNGEON's key-wait loop, "
                     "so there is no way back out of it")
 
-    #: Warping out of an overland area into an indoors one hangs the loader:
+    #: FastTraveling out of an overland area into an indoors one hangs the loader:
     #: it asks for the target's side and goes on asking, and re-attaching,
     #: attaching something else first and poking `$49E6` afterwards all fail.
     #: The other direction is fine -- area 23 to 26 worked, and the arriving
@@ -1512,7 +1512,7 @@ class Warp(Action):
         return self.legality(target, area or self.back)
 
     def apply_back(self, target) -> Outcome:
-        """Warp to where the last warp started, on the square it started on."""
+        """FastTravel to where the last fasttravel started, on the square it started on."""
         verdict = self.back_verdict(target)
         if not verdict:
             return Outcome(False, verdict.reason)

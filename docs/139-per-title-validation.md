@@ -106,7 +106,7 @@ applicable.
 | C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29). Neither party carried an item, so nothing has been identified on either title |
 | C19 | clear quickfight, and the watcher | V | **U** | **U** | rides C16; `actions.quickfight_flag(game)` builds the address from `Game.roster_base` and read `$670C` on both live machines -- `test_actions.py::test_the_quickfight_flag_follows_the_roster_page`. Nobody was on quickfight, so no bit has been cleared on either title |
 | C20 | **Level Up** | V | **R** | **R** | `test_levels.py::test_only_pool_of_radiances_trainer_has_been_measured`, `test_actions.py` line 296, `test_debugmode.py` line 782. Closed by #16 |
-| C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `warp_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
+| C21 | **Fast Travel** and Travel Back | V | **R** | **R** | `test_debugmode.py` lines 789–795 — `fasttravel_bar.has_areas` is true for PoR and false for Curse. Closed by #14 |
 | C22 | the *running* title is **checked against** the machine | V | V | V | issue #21, closed. `ResidentGeo.verdict` asks whether the block at `$0400` is one of the believed title's own maps; a Gold Box map that is none of them takes Level up, Fast Travel and every live-action button off and says so. `tests/test_wronggame.py` — the thresholds are re-measured off the player's own disks, and C2 is what makes the ingredient V on all three |
 
 ### D. The application shell

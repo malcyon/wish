@@ -333,7 +333,7 @@ The per-step costs are unchanged by any of this, and they dominate:
 |---|---|---|
 | an area change | ~25 s | `50-experiments.md`, "There is no training-hall wedge" |
 | a save-game cycle | ~22 s of settle | `tools/session.py:426-432` |
-| a warp, budgeted | 30 s | [`118-debug-mode.md`](118-debug-mode.md) §4 |
+| a fasttravel, budgeted | 30 s | [`118-debug-mode.md`](118-debug-mode.md) §4 |
 | a monitor resume | 14.3 ms | `70-driving-the-game.md` |
 
 A 200-step walk run is about 83 minutes on one instance and about 83 minutes on
@@ -346,7 +346,7 @@ The live-session work currently waiting, by which game has to be booted:
 
 | task | doc | game | can share an instance with |
 |---|---|---|---|
-| Warp: is `$2034` safe to enter? (+6 more) | 118 §"Open questions" | PoR | the other PoR rows |
+| FastTravel: is `$2034` safe to enter? (+6 more) | 118 §"Open questions" | PoR | the other PoR rows |
 | `ResidentGeo` against all 29 maps | 118 §5 | PoR | ” |
 | `Fingerprint.refused()`, first ever call | 118 §5 | PoR | ” |
 | Overland map W1, the first step onto the travel grid | 113 | PoR | ” |
@@ -361,7 +361,7 @@ Not eight. The PoR column is a queue of six that has to run in some order
 anyway; splitting it across instances helps only once each item has its own
 agent, and each agent costs a brief and a context.
 
-The concrete win: Curse tier 3 and the PoR warp experiments are genuinely
+The concrete win: Curse tier 3 and the PoR fasttravel experiments are genuinely
 independent, need different disks in the drive, and today one of them waits for
 the other to finish and tear down. Two instances turns two half-days into one.
 Silver Blades makes it three the day its save disk exists. **PROBABLE** that

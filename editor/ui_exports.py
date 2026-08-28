@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'editor/exports.ui'
+# Form implementation generated from reading ui file '/home/donald/src/wish/editor/exports.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #

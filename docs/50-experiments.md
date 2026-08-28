@@ -3635,7 +3635,7 @@ save one step inside the slums at `(15, 4)`, `$4A0B` = 0, `$4A80` = `$4ABB` = 3.
 Two harness decisions, both of which touch what was being measured:
 
 * **the party was moved between steps by writing `$C04B`-`$C04D`**, the live
-  square, which is what the warp harness does before `NEWECL` minus the
+  square, which is what the fasttravel harness does before `NEWECL` minus the
   `NEWECL`, so it never goes near `$4A00`-`$4A1F`. Every step the party
   actually took was the game's own, and every area change was a real walk off
   the edge of a map.
@@ -4226,7 +4226,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   in one go. Use the player's own saves for driving work.
 
 - **P15: entering `NEWECL`'s tail at `$2034` is safe. CONFIRMED.** The
-  experiment `docs/118-debug-mode.md` says the whole Warp To plan rests on.
+  experiment `docs/118-debug-mode.md` says the whole FastTravel To plan rests on.
   From the Slums at (14,0), the five writes of section 3 and `PC = $2034`:
   the game loaded, asked for the disk, and came up in **New Phlan**.
   `ResidentGeo.identify()` returned **`GEO00`** — an exact 1024-byte match
@@ -4240,30 +4240,30 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   matter.
 
 - **P16: `$C04B` survives the overlay restart. CONFIRMED.** `07 07 01` was
-  written before the warp and read back unchanged afterwards, with `$49C0`
+  written before the fasttravel and read back unchanged afterwards, with `$49C0`
   flushed to match by the `JSR $1A3C` at `$2034` and the status line reading
   `E 21:41 7,7`. So the arrival square is written **before** the load, as
   section 3 has it, and no second stop on a checkpoint is needed.
 
   **But `$49F2` does not survive.** Write 3 put the departing area (20) there;
-  after the warp it read **0**, the *target*. Whatever sets it runs after
+  after the fasttravel it read **0**, the *target*. Whatever sets it runs after
   `$2034` — `$2011`-`$2016` is skipped by construction, so it is something on
   the `$0809` restart path. The consequence is worth having: entry 4's
   `COMPARE [$49F2], <own id> / IF= / EXIT` will always compare **equal**, so
   the arriving script takes its "re-entry from itself" branch and never writes
   its own arrival square. Case 1 of "Where the party lands" — *the arriving
-  script sets it, write nothing* — therefore does not apply to a warp:
-  **the warp must always supply the square.** PROBABLE, on one observation
+  script sets it, write nothing* — therefore does not apply to a fasttravel:
+  **the fasttravel must always supply the square.** PROBABLE, on one observation
   and the script shape.
 
 - **P17: the loader prompts. CONFIRMED**, where `docs/118` had it PROBABLE.
-  With POOL2 in drive 8 and `$6E12` = 3, the warp printed **`INSERT SIDE # 3,
-  AND PRESS ANY KEY.`** on row 24 and waited there indefinitely. So a warp
+  With POOL2 in drive 8 and `$6E12` = 3, the fasttravel printed **`INSERT SIDE # 3,
+  AND PRESS ANY KEY.`** on row 24 and waited there indefinitely. So a fasttravel
   harness needs a disk step, and it can be a plain text-monitor `attach` — but
   see the re-attach rule above.
 
 - **P20: `ECL1E` is the demo.** Area 30, POOL1, no map, no name, and no static
-  `NEWECL 30` anywhere — because nothing in the game warps to it. Warping to
+  `NEWECL 30` anywhere — because nothing in the game fasttravels to it. FastTraveling to
   it was, as `docs/118` guessed, the cheapest way to find out: the screen came
   up with two extra characters in the roster (`RESTAL` and `TARRAN`, AC 2, 30
   hp), a picture, and marketing copy in the message area — `SEE EVERY CITY,
@@ -4275,12 +4275,12 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
 - **P43: `$49F2` *does* survive the overlay restart. REFUTED, and the reason
   the first reading said otherwise is worth more than the answer.**
 
-  The claim was that the warp writes the departing area to `$49F2` and the
+  The claim was that the fasttravel writes the departing area to `$49F2` and the
   arriving script reads back the *target*, so entry 4's
-  `COMPARE [$49F2], <own id>` always compares equal and Warp To must always
-  supply an arrival square. Four warps across three areas say it does not.
+  `COMPARE [$49F2], <own id>` always compares equal and FastTravel To must always
+  supply an arrival square. Four fasttravels across three areas say it does not.
 
-  | warp | `$49F2` written | read during the load | read once the area settled |
+  | fasttravel | `$49F2` written | read during the load | read once the area settled |
   |---|---|---|---|
   | 20 → 21 Sokol Keep | `$14` | `$14` | `$15` |
   | 21 → 20 the Slums | `$15` | `$15` | `$14` |
@@ -4295,31 +4295,31 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   AND #$7F / STA $49F2 / RTS` — the same three instructions as `$2011`-`$2016`
   but run *after* `$6E1B` has been updated. A snapshot taken when the party is
   standing in the new area therefore always reads the current id, whatever the
-  warp wrote, which is precisely the observation P43 was built on.
+  fasttravel wrote, which is precisely the observation P43 was built on.
 
   **The decisive test was `ECL16`.** Area 22's entry reads
   `COMPARE [$49F2], 22 / IF= / EXIT` then `LOADFILES 22` then
   `COMPARE [$49F2], 23 / IF= / EXIT` then `SAVE 15, mapX / SAVE 0, mapY /
   SAVE 2, mapDir` — that is, "came from myself, do nothing", "came up from the
   lower pyramid, keep the square", "came from anywhere else, stand at the
-  entrance". Warped into area 22 with `$49F2` forced to 23 and the arrival
+  entrance". FastTraveled into area 22 with `$49F2` forced to 23 and the arrival
   square set to (3,3) facing south, the party stood at **(3,3) facing south**.
-  The 23 branch fired. The arriving script read the value the warp wrote.
+  The 23 branch fired. The arriving script read the value the fasttravel wrote.
   CONFIRMED.
 
   Consequences, all the other way round from the prediction: entry 4 works as
-  designed under a warp, an arriving script *will* place the party if it has a
+  designed under a fasttravel, an arriving script *will* place the party if it has a
   rule for it, and `newecl_writes()` needs no change. `automap/actions.py`'s
-  note on `WARP_FROM` now carries the story.
+  note on `FASTTRAVEL_FROM` now carries the story.
 
 - **P43 corollary: the arriving script's placement can be suppressed, and that
-  is how to warp onto a chosen square.** `ECL15`'s entry gates on `$4A02`, not
+  is how to fasttravel onto a chosen square.** `ECL15`'s entry gates on `$4A02`, not
   on `$49F2`: `COMPARE [$4A02], 0 / IF<> / EXIT`, then `SAVE 1, [$4A02]` and
   `SAVE 8, mapX / SAVE 14, mapY`. `$4A02` is inside the `$4A00`-`$4A1F` scratch
-  page the warp zeroes, so it is always 0 on arrival and the party is always
+  page the fasttravel zeroes, so it is always 0 on arrival and the party is always
   put on (8,14). Writing `$4A02 = 1` *after* the zero fill and before the jump
-  left the party on the square the warp asked for — twice, at (7,13) — and the
-  square's own script fired on arrival. So a warp harness that wants a specific
+  left the party on the square the fasttravel asked for — twice, at (7,13) — and the
+  square's own script fired on arrival. So a fasttravel harness that wants a specific
   square needs one extra byte per area, not a general mechanism.
 
 - **P41: the Sokol Keep dead elf is a shipped bug. CONFIRMED, in game.**
@@ -4337,7 +4337,7 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   | first entry, step onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` then `WHAT DO YOU DO? LEAVE SEARCH ATTACK TALK` | `00` |
   | chose ATTACK | `YOU HACK THE BODY TO BITS.` | `FF` |
   | stepped off and back on | `YOU SEE THE PITIFUL REMAINS OF A DEAD ELF.` | `FF` |
-  | warped out to the Slums and back in, stepped onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` again | `00` |
+  | fasttraveled out to the Slums and back in, stepped onto (6,13) | `THE SKELETON OF A LONG-DEAD ELF LIES HIDDEN BY ROCKS AND REEDS…` again | `00` |
 
   So the quest-flag split is exactly as `docs/41` has it, and SSI put this
   guard on the wrong side of it. Note that SEARCH — taking the scroll — writes
@@ -4379,17 +4379,17 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   **And the fetcher needed adding.** `$2E4E`-`$2E6A` is the key reader the loop
   calls: `LDA $DC00 / AND #$1F / STA $03F0` for the CIA row, then `LDA $C6` and
   the KERNAL buffer at `$0277` into `$03CB`, `RTS`; `$2E65` is the no-key path
-  writing `$FF`. Half the idle samples are in it, so refusing it made Warp To
+  writing `$FF`. Half the idle samples are in it, so refusing it made FastTravel To
   fail about half the times it was pressed — measured, five refusals across
   seven attempts in this session. It is called *from* the loop, so `$203A`'s
   `LDX $03BF / TXS` discards exactly the same nothing, and P15 had already
-  warped successfully from `$2E4E`. `KEY_FETCH = (0x2E4E, 0x2E6B)` is now
+  fasttraveled successfully from `$2E4E`. `KEY_FETCH = (0x2E4E, 0x2E6B)` is now
   accepted alongside `KEY_WAIT`.
 
-- **P20: the overland map warps like everything else. CONFIRMED.** Warped from
+- **P20: the overland map fasttravels like everything else. CONFIRMED.** FastTraveled from
   area 23 to area 26 with no arrival square at all. The load ran, `$6E1B` came
   up `$1A`, **`$49E6` went 1 → 0 by itself** — the arriving script sets it, the
-  warp does not — the status line read `OUTDOORS 21:35 0,0` and the command bar
+  fasttravel does not — the status line read `OUTDOORS 21:35 0,0` and the command bar
   `1-8, RETURN OR BUTTON`. `$C04B` afterwards held `4C 2F C5`, i.e. not a
   square at all: outdoors `GDRIVE00` is not the resident overlay and the travel
   position is `$49C3`/`$49C4`. So writing an arrival square for areas 25-27 is
@@ -4452,14 +4452,14 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `GEO00` reaches it from script id 10 at `(6,1)` and `(6,2)` and from id 17 at
   `(9,0)`, both ending in `NEWECL 11`.
 
-  **And a warp cannot get in.** `ECL0B`'s entry reads `$6E82` — set from the
+  **And a fasttravel cannot get in.** `ECL0B`'s entry reads `$6E82` — set from the
   departing square's attribute byte by `AND 127, ATTR, [$6E82]` — and walks
-  `$9800` from 10 to 18 against it to choose a school. Warped in three times,
+  `$9800` from 10 to 18 against it to choose a school. FastTraveled in three times,
   once with `$6E82` forced to 10: every time `$6E1B` went `$8B` → `$0B` → `$00`
   inside eight seconds and the party was back in New Phlan. This is the first
-  area found that a warp cannot enter, and the reason is instructive — the
+  area found that a fasttravel cannot enter, and the reason is instructive — the
   target reads state the *departure* was supposed to leave behind, which is
-  exactly the class of assumption `Warp`'s standing warning is about.
+  exactly the class of assumption `FastTravel`'s standing warning is about.
 
   A save with the boosted party is at `work/drive/LVBEFORE.D64`, in New Phlan,
   including a live **magic-user/thief** (LADY KATHERINE, `class_bits` 5, two
@@ -4467,14 +4467,14 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `docs/90-specimens.md` wants. Next session needs only to get one character
   through `ECL0B`'s menu.
 
-- **A warp out of an overland area into an indoors one wedges the loader.**
+- **A fasttravel out of an overland area into an indoors one wedges the loader.**
   Area 26 → area 0 with `$49E6` left at 0: the game asked `INSERT SIDE # 3` and
   went on asking for ever, `PC` in the KERNAL serial routines at `$EEAx`, no
   KERNAL filename to read because the loader is the game's own. Re-attaching,
   attaching a different image first, and poking `$49E6` back to 1 after the
-  load had started all failed. The same warp made from an indoors area (20 →
+  load had started all failed. The same fasttravel made from an indoors area (20 →
   0) worked first time. So `$49E6` has to be right **before** `$2034`, and
-  `Warp`'s existing "`$49E6` is 0, so LOADFILES will ask for a SQRDATA" warning
+  `FastTravel`'s existing "`$49E6` is 0, so LOADFILES will ask for a SQRDATA" warning
   is describing a hang rather than an inconvenience.
 
 - **P51: Amiga Pools of Darkness accepts a C64 Pool of Radiance export as a
@@ -4918,7 +4918,7 @@ writing: the refilled live cache read `GDRIVE00`, `SQRPACI00`, slot 2 still
 `$FF`, `SECSET05`, `SQRDATA05`, `ECL1A`, which is `LOADFILES`' outdoor branch
 exactly as `140-loaded-files-cache.md` reads it.
 
-**The placement question is settled outdoors, unlike test B indoors.** A warp
+**The placement question is settled outdoors, unlike test B indoors.** A fasttravel
 with `$49C3`/`$49C4` = (0,0) came up at (0,0) (`work/reports/p20-arrivals.md`);
 test D with (5,2) came up at (5,2). Two different values, both honoured — on a
 load the arriving script does not re-place an outdoor party, and a converter's
@@ -5308,7 +5308,7 @@ indoor one the way the C64's does (#47): `$49E6` = 0, the square in
 `$49C3`/`$49C4`, and some analogue of the SQRDATA substitution in whatever
 the DOS load path keys on.
 
-**Getting there, without a warp.** The DOS engine has no debug warp, so the
+**Getting there, without a fasttravel.** The DOS engine has no debug fasttravel, so the
 party went by play. The route was read out of `ECL00` (the DOS `ECL3.DAX`
 block 0 — the DOS blocks still carry the C64's `$9900` base internally, so
 `work/analysis/ecl.py` disassembles them unchanged): the harbor master at

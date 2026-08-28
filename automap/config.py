@@ -74,7 +74,7 @@ def migrate_game_folder(folder: str) -> dict[str, str]:
 #: finishes rather than being carried forever. The cost of that is one-way --
 #: an older build reading a new file sees no choice and offers its own three --
 #: which beats a settings file with two names for one setting in it.
-RENAMED = {"warp_areas": "fast_travel_targets"}
+RENAMED = {"fasttravel_areas": "fast_travel_targets"}
 
 
 @dataclass
@@ -149,7 +149,7 @@ class Settings:
     diagnostics: bool = False
     # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
     # **keyed by `goldbox.games.Game.key`** -- an area id means nothing without a
-    # title, and warping on Pool of Radiance's ids in another game's machine is
+    # title, and fasttraveling on Pool of Radiance's ids in another game's machine is
     # what issue #14 was.
     #
     # Three "nothing here" states and they are three different answers:
@@ -160,7 +160,7 @@ class Settings:
     # Anything else in the file -- a number, a string, a hand-edited mess --
     # reads as "not chosen".
     #
-    # Called `warp_areas` until 2026-08 (`RENAMED` reads that), and a bare list
+    # Called `fasttravel_areas` until 2026-08 (`RENAMED` reads that), and a bare list
     # until 2026-08 as well -- `load` migrates one to
     # `{"pool-of-radiance": [...]}`, because Pool of Radiance is the only title
     # that ever had one.
@@ -209,7 +209,7 @@ class Settings:
             if old in raw and new not in values:
                 values[new] = raw[old]
         # A bare list is Pool of Radiance's, because it is the only title that
-        # ever had one. `warp_areas` feeds in above first, so a file written
+        # ever had one. `fasttravel_areas` feeds in above first, so a file written
         # before 2026-08 migrates twice in this one read and comes out right.
         if isinstance(values.get("fast_travel_targets"), list):
             values["fast_travel_targets"] = {

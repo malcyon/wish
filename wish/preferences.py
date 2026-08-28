@@ -1,4 +1,4 @@
-"""File > Preferences: the game disks, the live backend, and where a warp
+"""File > Preferences: the game disks, the live backend, and where a fasttravel
 may go.
 
 **Half of this is the report, not the form.** The failure it exists to fix is
@@ -660,7 +660,7 @@ class PreferencesDialog(QDialog):
         explicit list of ticks and there is no second, cleverer rule behind it.
 
         **Area 30 is not in the table**, ticked or unticked: `ECL1E` is the
-        attract-mode demo and entering it ends the session. `Area.warpable`
+        attract-mode demo and entering it ends the session. `Area.fasttravelable`
         says so, and it is asked rather than the id being written down here.
 
         **The table is the open title's**, and five of the six titles have no
@@ -682,12 +682,12 @@ class PreferencesDialog(QDialog):
         outer.addWidget(warning)
 
         #: The table's rows, in the dropdown's own order: by name. Every
-        #: warpable area has one, and area 30 -- the only nameless one -- is
-        #: also the only unwarpable one, so excluding it needs no second rule.
+        #: fasttravelable area has one, and area 30 -- the only nameless one -- is
+        #: also the only unfasttravelable one, so excluding it needs no second rule.
         self.travel_game = self.win.map_game()
         self.travel_rows = sorted(
             (a for a in area_table.areas_for_title(
-                getattr(self.travel_game, "title", None)) if a.warpable),
+                getattr(self.travel_game, "title", None)) if a.fasttravelable),
             key=lambda a: a.name or "")
         chosen = set(self.win.settings.chosen_areas(self.travel_game))
         self.travel_table = QTableWidget(len(self.travel_rows), 1)
