@@ -45,8 +45,10 @@ def discover() -> list[tuple[pathlib.Path, pathlib.Path]]:
 
 def compile_ui(ui: pathlib.Path) -> str:
     """Run pyuic6 and return the generated source."""
+    import os
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
     out = subprocess.run([sys.executable, "-m", "PyQt6.uic.pyuic", str(ui)],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding="utf-8", env=env)
     if out.returncode:
         raise RuntimeError(out.stderr.strip() or "pyuic6 failed")
     return out.stdout
