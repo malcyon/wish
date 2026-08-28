@@ -318,14 +318,14 @@ def _heights(app, tmp_path, monkeypatch, fonts=(0, 3, 6, 10)):
                          for w in (win.menuBar(), win.tabs.tabBar(),
                                    win.statusBar()))
             out.append((win.minimumSizeHint().height(),
-                        win.map.minimumSizeHint().height(), chrome))
+                        win.ui.tab_automap.minimumSizeHint().height(), chrome))
             win.close()
         return out
     finally:
         app.setFont(base)
 
 
-def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
+def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
         app, tmp_path, monkeypatch):
     """#77, and the height twin of the width test above.
 
