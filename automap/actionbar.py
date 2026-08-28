@@ -198,7 +198,7 @@ class ActionBar(QObject):
         self.last = outcome
         line = f"{what}: {outcome.message}"
         detail = "\n".join(outcome.notes)
-        if self.note is not None:
+        if self.note is not None and "quickfight" not in what:
             self.note.setText(line)
             self.note.setToolTip(detail)
         self.say(line, detail, alarm=not outcome.ok)
