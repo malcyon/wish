@@ -70,7 +70,7 @@ def ensure_current(ui: pathlib.Path | None = None,
             continue
         if py_path.exists() and py_path.stat().st_mtime >= ui_path.stat().st_mtime:
             continue
-        py_path.write_text(compile_ui(ui_path))
+        py_path.write_text(encoding="utf-8", data=compile_ui(ui_path))
         wrote = True
     return wrote
 
@@ -99,14 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     for ui, py in pairs:
         source = compile_ui(ui)
         if "--check" in argv:
-            if not py.exists() or body(py.read_text()) != body(source):
+            if not py.exists() or body(py.read_text(encoding="utf-8")) != body(source):
                 print(f"{py.name} is stale; run tools/genui.py",
                       file=sys.stderr)
                 failed = True
             else:
                 print(f"{py.name} is up to date")
         else:
-            py.write_text(source)
+            py.write_text(encoding="utf-8", data=source)
             print(f"{ui.name} -> {py.name}")
     return 1 if failed else 0
 

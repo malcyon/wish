@@ -49,7 +49,7 @@ def edges(package: pathlib.Path) -> list[tuple[str, str, str]]:
     modules = {p.stem for p in package.glob("*.py")}
     found: set[tuple[str, str, str]] = set()
     for path in sorted(package.glob("*.py")):
-        tree = ast.parse(path.read_text(), str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
         _parents(tree)
         for node in ast.walk(tree):
             targets: list[str] = []

@@ -70,7 +70,7 @@ def main() -> int:
         if i > LAST_SPELL:
             w(f"| {i} | {names[i]} |")
     w("")
-    OUT.write_text("\n".join(out) + "\n")
+    OUT.write_text(encoding="utf-8", data="\n".join(out) + "\n")
     print(f"wrote {OUT} ({len(out)} lines)")
     return 0
 

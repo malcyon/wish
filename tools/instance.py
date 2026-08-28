@@ -426,7 +426,7 @@ def seed_vicerc(slot: Slot, template: Path | None = None) -> Path:
     measuring.
     """
     src = Path(template) if template is not None else template_vicerc()
-    lines = src.read_text().splitlines() if src.is_file() else ["[C64SC]"]
+    lines = src.read_text(encoding="utf-8").splitlines() if src.is_file() else ["[C64SC]"]
     overrides = dict(OVERRIDES)
     overrides["BinaryMonitorServerAddress"] = f'"127.0.0.1:{slot.port}"'
     overrides["MonitorServerAddress"] = f'"127.0.0.1:{slot.text_port}"'
@@ -494,7 +494,7 @@ def copy_disks(slot: Slot, sources) -> list[Path]:
 
 def _read_lease(d: Path) -> dict:
     try:
-        return json.loads((d / "lease").read_text() or "{}")
+        return json.loads((d / "lease").read_text(encoding="utf-8") or "{}")
     except (OSError, ValueError):
         return {}
 

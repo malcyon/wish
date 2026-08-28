@@ -113,7 +113,7 @@ def main() -> int:
             "completed": ok,
             "steps": steps,
         }
-        with open(f"{WALKS}/{args.name}.json", "w") as fh:
+        with open(f"{WALKS}/{args.name}.json", "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, indent=2)
         sess.close()
     return 0 if ok else 1

@@ -75,7 +75,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     game = find_game_disk(args.game_disk, args.save)
     data = export_save(args.save, game)
     out = args.output or str(pathlib.Path(args.save).with_suffix(".yaml"))
-    pathlib.Path(out).write_text(to_yaml(data))
+    pathlib.Path(out).write_text(encoding="utf-8", data=to_yaml(data))
     print(f"exported {len(data['party'])} characters -> {out}")
     if game is None:
         print(f"  (no game disk found, so items are unnamed; pass --game-disk "
@@ -94,7 +94,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     if not doc.exists():
         print(f"no such YAML file: {doc}", file=sys.stderr)
         return 2
-    data = yaml.safe_load(doc.read_text())
+    data = yaml.safe_load(doc.read_text(encoding="utf-8"))
 
     # The YAML holds only the fields we understand; the original disk supplies
     # everything else, so one is always required.

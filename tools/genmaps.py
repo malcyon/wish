@@ -152,7 +152,7 @@ def main() -> int:
         rows.append(f"| `{name}` | {walls} | {doors} | {locked} | "
                     f"{indoor}/256 | {agree}/{total} |")
 
-    with open(OUT, "w") as fh:
+    with open(OUT, "w", encoding="utf-8") as fh:
         fh.write(HEADER + "\n".join(rows) + "\n" + FOOTER)
     print(f"{len(found)} maps -> {os.path.normpath(OUT)}")
     return 0
