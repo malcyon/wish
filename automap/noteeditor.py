@@ -23,12 +23,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
     QToolButton,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -37,6 +32,7 @@ from ui.iconpaint import icon_pixmap
 from . import notes as notemod
 from .notes import Note
 from .panel import CARD, INK, LATTICE, MUTED, NOTE
+from .ui_noteeditor import Ui_NotePopover
 
 BUTTON = 26
 ICON = 15
@@ -73,19 +69,12 @@ class NotePopover(QWidget):
             f"NotePopover {{ background: {CARD.name()}; border: 1px solid "
             f"{LATTICE.name()}; border-radius: 4px; }}"
             f" QLabel {{ color: {MUTED.name()}; }}")
-        box = QVBoxLayout(self)
-        box.setContentsMargins(8, 6, 8, 6)
-        box.setSpacing(4)
+        self.ui = Ui_NotePopover()
+        self.ui.setupUi(self)
 
-        small = self.font()
-        small.setPointSize(8)
+        self.head = self.ui.head
+        self.head.setText(f"({x},{y})" + ("" if note is None else "  editing"))
 
-        head = QLabel(f"({x},{y})" + ("" if note is None else "  editing"))
-        head.setFont(small)
-        box.addWidget(head)
-
-        picker = QHBoxLayout()
-        picker.setSpacing(2)
         self.buttons: dict[str, QToolButton] = {}
         for kind in notemod.TYPES:
             button = QToolButton()
@@ -98,52 +87,25 @@ class NotePopover(QWidget):
             button.setChecked(kind.name == self.chosen)
             button.clicked.connect(
                 lambda _checked=False, name=kind.name: self.choose(name))
-            picker.addWidget(button)
+            self.ui.picker.addWidget(button)
             self.buttons[kind.name] = button
-        box.addLayout(picker)
 
-        self.field = QLineEdit(note.text if note else "")
-        self.field.setPlaceholderText("a few words, or none")
+        self.field = self.ui.field
+        self.field.setText(note.text if note else "")
         self.field.setStyleSheet(f"color: {INK.name()}")
         self.field.returnPressed.connect(self.accept)
-        box.addWidget(self.field)
 
-        buttons = QHBoxLayout()
-        buttons.setSpacing(4)
-        self.keep = QPushButton("Keep")
-        self.keep.setFont(small)
-        self.keep.setDefault(True)
+        self.keep = self.ui.keep
         self.keep.clicked.connect(self.accept)
+
         # Only where there is something to delete. A Delete button on a note
         # that does not exist yet would be furniture.
-        # **Parented here, in the constructor**, and not left to the layout.
-        # A widget with no parent that is made visible *is a top-level
-        # window*: Qt creates it, Windows activates it and takes focus off the
-        # main window, and parenting it a moment later destroys it again. The
-        # popover was being built inside that storm -- and only on a square
-        # that already had a note, because only then is this made visible --
-        # and Qt dismissed the popup on the way out. What the user saw was a
-        # small empty window half-painting and vanishing.
-        #
-        # `addWidget` is not enough on its own: `buttons` is not installed on
-        # anything until `box.addLayout(buttons)` further down, so a widget
-        # added to it has no parent yet either. Naming the parent is the only
-        # version that does not depend on the order of the lines below.
-        # `Keep` never had the bug because it never sets its own visibility.
-        self.remove = QPushButton(QIcon(icon_pixmap("trash-can", ICON, MUTED)),
-                                  "Delete", self)
-        self.remove.setFont(small)
-        self.remove.setToolTip("remove this note from the square")
+        self.remove = self.ui.remove
+        self.remove.setIcon(QIcon(icon_pixmap("trash-can", ICON, MUTED)))
         self.remove.clicked.connect(lambda _checked=False: self.delete())
         self.remove.setVisible(note is not None)
-        buttons.addWidget(self.remove)
-        buttons.addStretch(1)
-        buttons.addWidget(self.keep)
-        box.addLayout(buttons)
 
-        hint = QLabel("Enter keeps it, Escape leaves it alone")
-        hint.setFont(small)
-        box.addWidget(hint)
+        self.hint = self.ui.hint
 
     # -- editing ---------------------------------------------------------
 
