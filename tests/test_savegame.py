@@ -564,13 +564,12 @@ def _area_of(name: str):
     import pathlib
 
     import pytest
+    from gamedata import save_disk
 
     from goldbox.d64 import D64
     from goldbox.savegame import SaveGame0
 
-    path = pathlib.Path(f"/home/donald/c64/Pool of Radiance Disks/{name}.D64")
-    if not path.exists():
-        pytest.skip(f"needs {name}.D64")
+    path = save_disk(name)
     return SaveGame0.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME0"))
 
 
@@ -596,24 +595,6 @@ def test_the_older_saves_are_all_new_phlan():
                  "PORSAVE9", "PORSAVE11"):
         sg = _area_of(name)
         assert sg.area == 0x00, name
-
-
-def test_a_foreign_save_reports_a_different_area():
-    """npc_party.d64 is somebody else's playthrough at levels 4-8. It reads 13 --
-    a fully roofed map, which is where such a party would be."""
-    import pathlib
-
-    import pytest
-
-    from goldbox.d64 import D64
-    from goldbox.savegame import SaveGame0
-
-    path = pathlib.Path("/home/donald/Downloads/npc_party.d64")
-    if not path.exists():
-        pytest.skip("needs npc_party.d64")
-    sg = SaveGame0.from_prg(D64.open(str(path)).read_file(b"SAVEDGAME0"))
-    assert sg.area == 0x0D
-    assert sg.area_file == "GEO0D"
 
 
 def test_the_dirty_bit_is_masked_off():

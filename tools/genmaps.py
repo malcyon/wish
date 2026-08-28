@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from automap.paths import disk_globs  # noqa: E402
+from automap.paths import disk_globs, find_disks  # noqa: E402
 from goldbox.geo import (  # noqa: E402
     DIRECTIONS,
     GRID,
@@ -126,7 +126,7 @@ def game_disks(root: str) -> list[str]:
 
 def main() -> int:
     disks = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
-        "POR_DISKS", "/home/donald/c64/Pool of Radiance Disks")
+        "POR_DISKS", str(find_disks() or ""))
     found: dict[str, Geo] = {}
     for path in game_disks(disks):
         for name, geo in load_geo_files(path).items():

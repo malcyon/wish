@@ -22,11 +22,19 @@ import shutil
 import sys
 import time
 
-sys.path.insert(0, "/home/donald/src/wish/tools")
+import pathlib
+_TOOLS = pathlib.Path(__file__).resolve().parent
+_ROOT = _TOOLS.parent
+
+sys.path.insert(0, str(_TOOLS))
 from session import HERE, Session  # noqa: E402
 
+sys.path.insert(0, str(_ROOT))
+from automap.paths import find_disks  # noqa: E402
+
 WALKS = f"{HERE}/walks"
-BASE_SAVE = "/home/donald/c64/Pool of Radiance Disks/PORSAVE11.D64"
+_disks = find_disks()
+BASE_SAVE = str(_disks / "PORSAVE11.D64") if _disks else "PORSAVE11.D64"
 
 
 def main() -> int:
@@ -112,7 +120,7 @@ def main() -> int:
 
 
 def read_position(disk: str) -> list[int]:
-    sys.path.insert(0, "/home/donald/src/wish")
+    sys.path.insert(0, str(_ROOT))
     from goldbox.d64 import D64
 
     s = D64.open(disk).read_file("SAVEDGAME0")[2:]

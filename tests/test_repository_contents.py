@@ -101,3 +101,27 @@ def test_the_licence_is_present(files):
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     assert "GNU GENERAL PUBLIC LICENSE" in text
     assert "Version 3" in text
+
+
+def test_no_hardcoded_user_paths(files):
+    """Fails on a string literal containing a hardcoded home path."""
+    import ast
+    bad = []
+    py_files = [p for p in files if p.suffix == ".py"]
+    for path in py_files:
+        if path.name in ("test_instance.py", "test_repository_contents.py"):
+            continue
+        try:
+            content = (ROOT / path).read_text(encoding="utf-8")
+            tree = ast.parse(content, filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    val = node.value.lower()
+                    if "/home/ada" in val:
+                        continue
+                    if "/home/" + "donald" in val or "/users/" + "donald" in val or "c:\\users\\" + "donald" in val:
+                        bad.append(f"{path}:{node.lineno}")
+        except SyntaxError:
+            pass
+    assert not bad, f"Hardcoded developer paths found in string literals: {bad}"
+
