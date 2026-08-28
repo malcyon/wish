@@ -1112,7 +1112,11 @@ def _encode(f: Field, rec: bytearray, value: Any) -> None:
     if f.kind in (Kind.U8, Kind.I8):
         rec[f.offset] = int(value) & 0xFF
     elif f.kind in (Kind.U16LE, Kind.UINT_LE):
-        rec[f.offset:f.end] = int(value).to_bytes(f.size, "little")
+        val = int(value)
+        limit = (1 << (8 * f.size)) - 1
+        if not 0 <= val <= limit:
+            raise ValueError(f"{f.name}: {val} does not fit in {f.size} bytes")
+        rec[f.offset:f.end] = val.to_bytes(f.size, "little")
     else:
         data = bytes(value)
         if len(data) != f.size:
