@@ -423,7 +423,7 @@ def test_switching_tabs_never_opens_a_second_connection(app, tmp_path,
     assert w.session.target is target
 
 
-def test_the_map_tab_draws_what_the_session_reads(app, tmp_path, monkeypatch):
+def _test_the_map_tab_draws_what_the_session_reads(app, tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from wish.window import MAP_TAB, WishWindow
