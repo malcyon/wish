@@ -2,7 +2,7 @@
 name: changelog-writer
 description: Keeps CHANGELOG.md current with what has shipped since the last release, written for a player rather than a developer. Use after a batch of work lands, and before cutting a release.
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: gemini-3.1-flash
+model: flash
 effort: high
 memory: project
 color: yellow

@@ -2,7 +2,8 @@
 name: reverse-engineering
 description: Reverse engineers game binaries, disk images, and save file formats. Maps byte layouts, identifies checksums, and writes parsers. Use proactively when analyzing unknown binary structures or save data.
 tools: Read, Write, Edit, Bash, Glob, Grep, TodoWrite, WebFetch, WebSearch, mcp__vice__vice_connect, mcp__vice__vice_disconnect, mcp__vice__vice_status, mcp__vice__vice_memory_read, mcp__vice__vice_memory_dump, mcp__vice__vice_memory_write, mcp__vice__vice_registers_get, mcp__vice__vice_registers_set, mcp__vice__vice_breakpoint_set, mcp__vice__vice_breakpoint_clear, mcp__vice__vice_watchpoint_set, mcp__vice__vice_watchpoint_clear, mcp__vice__vice_continue, mcp__vice__vice_step, mcp__vice__vice_execute_until_return, mcp__vice__vice_cpu_history, mcp__vice__vice_load, mcp__vice__vice_reset, mcp__vice__vice_screenshot, mcp__vice__vice_vic_registers, mcp__vice__vice_sid_registers
-model: gemini-3.1-pro
+model: pro
+effort: high
 memory: project
 color: purple
 ---
