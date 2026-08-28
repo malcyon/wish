@@ -33,8 +33,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .ui_window import Ui_AutomapWindow
-
 from goldbox import strength as strengthmod
 from goldbox.geo import GRID
 from ui.iconpaint import draw_icon
@@ -63,6 +61,7 @@ from .render import (
     party_marker,
 )
 from .target import MonitorBusy, NotConnected, monitor_listening
+from .ui_window import Ui_AutomapWindow
 
 PAPER = QColor("#fbfcfd")
 LATTICE = QColor("#dbe3ec")

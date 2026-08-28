@@ -33,8 +33,6 @@ import time
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
-    QGridLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QWidget,
@@ -46,8 +44,6 @@ from .config import Settings
 from .panel import (
     MUTED,
     ElidingButton,
-    ElidingCheckBox,
-    ElidingComboBox,
     shortened,
 )
 from .ui_actionbar import Ui_ActionBar

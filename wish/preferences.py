@@ -75,13 +75,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .ui_preferences import Ui_PreferencesDialog
-
 from automap import paths
 from automap.actionbar import DANGER, no_areas
 from automap.config import clamp_to_screen
 from goldbox import areas as area_table
 from goldbox import games
+
+from .ui_preferences import Ui_PreferencesDialog
 
 #: Spelled out rather than `QKeySequence.StandardKey.Preferences`, which
 #: resolves on Linux/Qt 6 to the `XF86Settings` multimedia key --

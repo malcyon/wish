@@ -23,18 +23,14 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
-    QHBoxLayout,
     QLabel,
-    QListWidget,
     QListWidgetItem,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStyle,
     QStyleOptionButton,
     QStyleOptionComboBox,
     QStylePainter,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -339,11 +335,12 @@ def _label(text="", *, bold=False, muted=False, size=0,
     return lab
 
 
-from .ui_card import Ui_CharacterCard
-from .ui_roster import Ui_RosterPanel
-from .ui_bottomstrip import Ui_BottomStrip
-from .ui_notes import Ui_NotesPanel
-from .ui_messages import Ui_MessagesPanel
+from .ui_bottomstrip import Ui_BottomStrip  # noqa: E402
+from .ui_card import Ui_CharacterCard  # noqa: E402
+from .ui_messages import Ui_MessagesPanel  # noqa: E402
+from .ui_notes import Ui_NotesPanel  # noqa: E402
+from .ui_roster import Ui_RosterPanel  # noqa: E402
+
 
 class CharacterCard(QFrame):
     """One character: name, class and level, AC and THAC0, bars, what is in

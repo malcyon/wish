@@ -20,13 +20,8 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
-from .ui_inventory import Ui_AddItemDialog
 from PyQt6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
-    QLineEdit,
-    QListWidget,
-    QVBoxLayout,
 )
 
 from goldbox.items import (
@@ -46,6 +41,8 @@ from goldbox.savegame import SAVE0_LOAD_ADDRESS
 from goldbox.spells import POOL_OF_RADIANCE, SpellTable
 from goldbox.spells import describe as describe_spell
 from goldbox.spells import for_game as spell_table
+
+from .ui_inventory import Ui_AddItemDialog
 
 EMPTY = bytes(ITEM_SIZE)
 
