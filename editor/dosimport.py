@@ -40,21 +40,15 @@ import pathlib
 from typing import Any
 
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPlainTextEdit,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
 from goldbox import dos, games
 from goldbox.savegame import SaveGame0, SaveGame1
+
+from .ui_dosimport import Ui_DosImportDialog
 
 _log = logging.getLogger("wish.editor.dosimport")
 
@@ -244,7 +238,8 @@ class DosImportDialog(QDialog):
     def __init__(self, folder: str | pathlib.Path, files: GameFiles,
                  parent: QWidget | None = None, start_dir: str = ""):
         super().__init__(parent)
-        self.setWindowTitle(DIALOG_TITLE)
+        self.ui = Ui_DosImportDialog()
+        self.ui.setupUi(self)
         self.folder = pathlib.Path(folder)
         self.files = files
         self.conversion: Conversion | None = None
@@ -260,49 +255,26 @@ class DosImportDialog(QDialog):
         #: rewriting it.
         self._named = False
 
-        form = QFormLayout()
-        self._folder_label = QLabel(str(self.folder))
-        self._folder_label.setObjectName("dos_folder")
-        form.addRow(LABEL_FOLDER, self._folder_label)
+        self._folder_label = self.ui.dos_folder
+        self._folder_label.setText(str(self.folder))
 
-        self.slots = QComboBox()
-        self.slots.setObjectName("dos_slot")
+        self.slots = self.ui.dos_slot
         self.slots.addItems(dos.slots_available(self.folder))
         self.slots.currentTextChanged.connect(lambda _t: self._rehearse())
-        form.addRow(LABEL_SLOT, self.slots)
 
-        self.report_pane = QPlainTextEdit()
-        self.report_pane.setObjectName("dos_report")
-        self.report_pane.setReadOnly(True)
+        self.report_pane = self.ui.dos_report
 
-        self.destination = QLineEdit()
-        self.destination.setObjectName("dos_destination")
+        self.destination = self.ui.dos_destination
         self.destination.textEdited.connect(self._typed)
         self.destination.textChanged.connect(lambda _t: self._settle_button())
-        self.browse_button = QPushButton(BUTTON_BROWSE)
-        self.browse_button.setObjectName("dos_browse")
-        self.browse_button.clicked.connect(self.browse)
-        where = QHBoxLayout()
-        where.addWidget(self.destination, 1)
-        where.addWidget(self.browse_button)
-        # One form for all three rows, the pane spanning the middle of it, so
-        # "Save as" lines up under "DOS save" and "Slot" rather than sitting
-        # in a second column of its own.
-        form.addRow(self.report_pane)
-        form.addRow(LABEL_DESTINATION, where)
 
-        self.buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel)
+        self.browse_button = self.ui.dos_browse
+        self.browse_button.clicked.connect(self.browse)
+
+        self.buttons = self.ui.buttons
         self.buttons.button(
             QDialogButtonBox.StandardButton.Ok).setText(BUTTON_CONVERT)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(form, 1)
-        layout.addWidget(self.buttons)
-        self.resize(680, 480)
         self._rehearse()
 
     # -- the parts ---------------------------------------------------------
