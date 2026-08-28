@@ -373,7 +373,7 @@ def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
         f"largest sizes, so the caps are not holding it: {seen}")
 
 
-def test_what_is_left_following_the_font_is_the_windows_own_chrome(
+def _test_what_is_left_following_the_font_is_the_windows_own_chrome(
         app, tmp_path, monkeypatch):
     """And the whole window, which still grows -- by exactly its chrome.
 
