@@ -113,7 +113,7 @@ class Session(QObject):
             debuglog.note("%s: monitor busy (%s)", backend.name, exc)
             self._say(str(exc))
             return False
-        except NotConnected as exc:
+        except NotConnected:
             self.busy = False
             self._say("Waiting to connect...")
             return False

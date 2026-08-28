@@ -241,9 +241,10 @@ def app():
 def a_window(app, tmp_path, monkeypatch, machine):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

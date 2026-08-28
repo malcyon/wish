@@ -319,8 +319,9 @@ def app():
 
 
 def window_on(target, maps, title):
-    from automap.window import AutomapBinding
     from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

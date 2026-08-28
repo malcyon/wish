@@ -1,6 +1,7 @@
 
 def make_root():
-    from PyQt6.QtWidgets import QWidget, QMainWindow
+    from PyQt6.QtWidgets import QMainWindow
+
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -1229,8 +1230,9 @@ def test_the_busy_message_names_a_command_this_platform_has(monkeypatch):
 def make_window(app, tmp_path, monkeypatch, target, maps=None, area=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from automap.window import AutomapBinding
     from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

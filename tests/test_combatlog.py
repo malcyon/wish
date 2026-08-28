@@ -331,9 +331,10 @@ def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
     is right for the connection's own chatter and wrong for a fight."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -358,9 +359,10 @@ def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
     """The entire point: the player wants to read it once the fight is over."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

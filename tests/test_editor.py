@@ -1,6 +1,7 @@
 
 def make_root():
     from PyQt6.QtWidgets import QMainWindow
+
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -495,9 +496,9 @@ def test_the_memorised_drop_down_shows_a_whole_spell_name(editor):
 def _test_the_window_opens_inside_a_small_desktop(app, save):
     """Donald's compositor hands out 1280x662 of a 1920x1080 desktop, and the
     sheet asks for 1875x1030. The sheet scrolls; the window has to fit."""
+    from editor.__main__ import WANTED, fit_on_screen
     from PyQt6.QtCore import QRect
 
-    from editor.__main__ import WANTED, fit_on_screen
     from editor.window import EditorBinding
     space = QRect(0, 0, 1280, 662)
     w = EditorBinding(make_root(), str(save))

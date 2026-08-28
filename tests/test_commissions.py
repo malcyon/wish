@@ -1,6 +1,7 @@
 
 def make_root():
-    from PyQt6.QtWidgets import QWidget, QMainWindow
+    from PyQt6.QtWidgets import QMainWindow
+
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

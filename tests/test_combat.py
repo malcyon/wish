@@ -249,8 +249,9 @@ def test_a_click_lands_on_the_square_under_it(battle):
 def make_window(app, tmp_path, monkeypatch, target):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from automap.window import AutomapBinding
     from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

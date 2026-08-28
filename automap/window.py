@@ -925,7 +925,7 @@ class AutomapBinding(QObject):
         except MonitorBusy as exc:
             self._waiting = str(exc)
             self.alarm = True
-        except NotConnected as exc:
+        except NotConnected:
             self._waiting = "Waiting to connect..."
             self.alarm = False
         else:

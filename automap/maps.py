@@ -2,9 +2,12 @@ import glob
 import os
 import pathlib
 import sys
+
 from goldbox.games import Game
 from goldbox.geo import load_geo_files
+
 from .paths import disk_globs, resolve_disks, titles_in
+
 
 def default_disks(game: Game | None = None) -> str:
     where, _source = resolve_disks(game=game)
@@ -37,6 +40,7 @@ def load_maps_titled(disks: str | None = None, game: Game | None = None) -> tupl
 
 def forget(area: str) -> int:
     import json
+
     from .state import data_dir, migrate_flat_notes
     migrate_flat_notes()
     files = sorted(data_dir().glob("*/*.json")) + sorted(data_dir().glob("*.json"))

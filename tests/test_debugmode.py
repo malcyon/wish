@@ -2,7 +2,8 @@ from __future__ import annotations
 
 
 def make_root():
-    from PyQt6.QtWidgets import QWidget, QMainWindow
+    from PyQt6.QtWidgets import QMainWindow
+
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -297,9 +298,10 @@ def bar(app, target=None, **kw):
 
 
 def _window(app):
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -313,7 +315,6 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
     the flag no longer decides whether the row is built."""
     from PyQt6.QtWidgets import QAbstractButton
 
-    from automap.actionbar import FastTravelBar
 
     for flag in (False, True):
         if flag:
@@ -567,9 +568,10 @@ def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
 def window(app, tmp_path, monkeypatch, target=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -742,8 +744,9 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     """The old action-bar button called `apply(target)` with no slot, which
     silently meant slot 0 -- the ambiguity Donald reported. The card knows
     which character it is, so the signal carries the slot."""
-    from automap.window import AutomapBinding
     from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -805,9 +808,10 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     """#16. A button that appears and then fails is worse than one that never
     appears: `level_up_blockers` refuses every title but Pool of Radiance, so
     the card does not offer the press."""
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
     from automap.window import AutomapBinding
-    from PyQt6.QtWidgets import QMainWindow
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
@@ -831,8 +835,9 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
     that is worth a question. The refusal must write nothing."""
-    from automap.window import AutomapBinding
     from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
     from wish.ui_window import Ui_WishWindow
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)

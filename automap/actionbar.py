@@ -31,11 +31,10 @@ from __future__ import annotations
 import logging
 import time
 
-from PyQt6.QtCore import QObject, QSize, Qt
+from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
-    QPushButton,
     QWidget,
 )
 
@@ -47,7 +46,6 @@ from .panel import (
     ElidingButton,
     ElidingCheckBox,
     ElidingComboBox,
-    shortened,
 )
 
 #: Which map was found at `$0400`, and which was not, goes here rather than on

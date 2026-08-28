@@ -27,13 +27,11 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStyle,
     QStyleOptionButton,
     QStyleOptionComboBox,
     QStylePainter,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -764,4 +762,3 @@ class MessagesPanel(QObject):
         return [self.list.item(i).text() for i in range(self.list.count())]
 
 
-from .commissions import CommissionsPanel  # noqa: E402
