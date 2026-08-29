@@ -586,7 +586,7 @@ class Ui_WishWindow(object):
         self.ft_back_button.setObjectName("ft_back_button")
         self.fasttravel_grid.addWidget(self.ft_back_button, 0, 4, 1, 1)
         self.map_column_layout.addWidget(self.fasttravel_bar, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
-        self.automap_grid.addWidget(self.map_column, 0, 1, 1, 1, QtCore.Qt.AlignmentFlag.AlignTop)
+        self.automap_grid.addWidget(self.map_column, 0, 1, 1, 1)
         self.automap_side = QtWidgets.QWidget(parent=self.tab_automap)
         self.automap_side.setMaximumSize(QtCore.QSize(460, 16777215))
         self.automap_side.setObjectName("automap_side")

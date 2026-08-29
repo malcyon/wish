@@ -149,7 +149,7 @@ class MapCanvas(QWidget):
         with what was painted whether that event has arrived or not.
         """
         room = (min(self.width(), self.height()) - MARGIN * 2) // GRID
-        return max(CELL_MIN, min(CELL, room))
+        return max(CELL_MIN, room)
 
     @property
     def origin(self) -> tuple[int, int]:
@@ -377,7 +377,7 @@ class CombatCanvas(QWidget):
         _, _, w, h = self.box
         room = min((self.width() - combat.MARGIN * 2) // max(1, w),
                    (self.height() - combat.MARGIN * 2) // max(1, h))
-        return max(combat.CELL_MIN, min(self.cell, room))
+        return max(combat.CELL_MIN, room)
 
     def tooltip_at(self, px: float, py: float) -> str | None:
         """The record of whoever is under this point, or None.
