@@ -83,11 +83,10 @@ def test_the_cell_shrinks_and_grows_back_with_the_canvas(app):
     assert c.cell == CELL, "a canvas given its room back draws at full size"
 
 
-def test_the_cell_stops_at_the_floor_and_at_the_full_size(app):
-    """The floor is the whole point of the exercise; the ceiling is so a
-    window nobody will ever open does not get a 60px cell."""
+def test_the_cell_stops_at_the_floor_and_scales_up(app):
+    """The floor is the whole point of the exercise; the map can scale up to fill large screens."""
     assert canvas(app, 60).cell == CELL_MIN
-    assert canvas(app, 4000).cell == CELL
+    assert canvas(app, square(100)).cell == 100
 
 
 def test_the_grid_is_square_and_centred_in_whatever_room_there_is(app):

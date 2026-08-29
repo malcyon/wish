@@ -289,7 +289,7 @@ def test_the_canvas_answers_a_tooltip(app, tmp_path, monkeypatch, battle):
     canvas = CombatCanvas()
     canvas.show_battle(battle)
     x0, y0, w, _ = canvas.box
-    cell = canvas.cell
+    cell = canvas.drawn_cell
     px = combat.MARGIN + (30 - x0) * cell + cell / 2
     py = combat.MARGIN + (13 - y0) * cell + cell / 2
     assert canvas.tooltip_at(px, py).startswith("8. ORC")
