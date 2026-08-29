@@ -1,4 +1,3 @@
-<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>WishWindow</class>
  <widget class="QMainWindow" name="WishWindow">
@@ -26,7 +25,7 @@
         <string>Automapper</string>
        </attribute>
        <layout class="QGridLayout" name="automap_grid">
-        <item row="3" column="0" colspan="2">
+        <item row="0" column="0">
          <widget class="QWidget" name="automap_roster">
           <layout class="QVBoxLayout" name="automap_roster_layout">
            <property name="spacing">
@@ -63,9 +62,6 @@
              </property>
              <property name="frameShape">
               <enum>QFrame::NoFrame</enum>
-             </property>
-             <property name="horizontalScrollBarPolicy">
-              <enum>Qt::ScrollBarAlwaysOff</enum>
              </property>
              <widget class="QWidget" name="automap_roster_inner">
               <layout class="QVBoxLayout" name="automap_roster_column">
@@ -1555,12 +1551,12 @@
                </item>
               </layout>
              </widget>
-            </widget>
+            <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAlwaysOff</enum></property></widget>
            </item>
           </layout>
          </widget>
         </item>
-        <item row="0" column="0" alignment="Qt::AlignTop">
+        <item row="0" column="1" alignment="Qt::AlignTop">
          <widget class="QWidget" name="map_column">
           <layout class="QVBoxLayout" name="map_column_layout">
            <property name="spacing">
@@ -1613,7 +1609,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="2">
+              <item row="0" column="1">
                <widget class="ElidingButton" name="action_restore">
                 <property name="text">
                  <string>Restore spells</string>
@@ -1686,7 +1682,7 @@
               <item row="0" column="0" colspan="2">
                <widget class="ElidingComboBox" name="ft_combo" />
               </item>
-              <item row="0" column="2">
+              <item row="0" column="1">
                <widget class="ElidingButton" name="ft_button">
                 <property name="enabled">
                  <bool>false</bool>
@@ -1727,20 +1723,7 @@
              </layout>
             </widget>
            </item>
-           <item>
-            <spacer name="map_column_spacer">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-          </layout>
+           </layout>
          </widget>
         </item>
         <item row="0" column="2">
@@ -1818,7 +1801,7 @@
                 </widget>
                </item>
               </layout>
-             </widget>
+             <property name="maximumSize"><size><width>16777215</width><height>120</height></size></property></widget>
              <widget class="QWidget" name="commissions_panel">
               <layout class="QVBoxLayout" name="commissions_layout">
                <property name="spacing">
@@ -1949,7 +1932,7 @@
           </layout>
          </widget>
         </item>
-        <item row="1" column="0" colspan="2">
+        <item row="1" column="0" colspan="3">
          <widget class="QWidget" name="bottom_strip">
           <layout class="QHBoxLayout" name="bottom_strip_layout">
            <property name="spacing">
@@ -2003,7 +1986,7 @@
           </layout>
          </widget>
         </item>
-        <item row="2" column="0" colspan="2">
+        <item row="2" column="0" colspan="3">
          <widget class="QLabel" name="strength_label">
           <property name="font">
            <font>
@@ -2021,7 +2004,7 @@
           </property>
          </widget>
         </item>
-       </layout>
+       <columnstretch><number>0</number><number>1</number><number>0</number></columnstretch></layout>
       </widget>
       <widget class="QWidget" name="tab_editor">
        <attribute name="title">
@@ -2033,7 +2016,7 @@
           <item>
            <widget class="QPushButton" name="button_open">
             <property name="text">
-             <string>&amp;Open…</string>
+             <string>&amp;Open&#8230;</string>
             </property>
            </widget>
           </item>
@@ -2047,14 +2030,14 @@
           <item>
            <widget class="QPushButton" name="button_save_as">
             <property name="text">
-             <string>Save &amp;As…</string>
+             <string>Save &amp;As&#8230;</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="button_preview">
             <property name="text">
-             <string>&amp;Preview changes…</string>
+             <string>&amp;Preview changes&#8230;</string>
             </property>
            </widget>
           </item>
@@ -3203,7 +3186,7 @@
                      <item>
                       <widget class="QPushButton" name="button_item_add">
                        <property name="text">
-                        <string>&amp;Add item…</string>
+                        <string>&amp;Add item&#8230;</string>
                        </property>
                       </widget>
                      </item>
