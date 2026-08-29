@@ -218,15 +218,6 @@ class InventoryModel(QAbstractTableModel):
             return base
         if index.column() in EDITABLE:
             return base | Qt.ItemFlag.ItemIsEditable
-        if index.column() == READIED_COL:
-            return base | Qt.ItemFlag.ItemIsUserCheckable
-        if index.column() == IDENTIFIED:
-            # An identified item cannot be un-identified: which name words to
-            # hide is not recoverable once they are shown.
-            item = self.inventory.item(index.row())
-            if item.is_identified and not self.inventory.can_unidentify(index.row()):
-                return base
-            return base | Qt.ItemFlag.ItemIsUserCheckable
         return base
 
     # -- reading ----------------------------------------------------------
