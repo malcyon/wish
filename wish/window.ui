@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>WishWindow</class>
  <widget class="QMainWindow" name="WishWindow">
@@ -62,17 +63,7 @@
             </widget>
            </item>
            <item>
-            <widget class="QScrollArea" name="automap_roster_scroll">
-             <property name="horizontalScrollBarPolicy">
-              <enum>Qt::ScrollBarAlwaysOff</enum>
-             </property>
-             <property name="widgetResizable">
-              <bool>true</bool>
-             </property>
-             <property name="frameShape">
-              <enum>QFrame::NoFrame</enum>
-             </property>
-             <widget class="QWidget" name="automap_roster_inner">
+            <widget class="QWidget" name="automap_roster_inner">
               <layout class="QVBoxLayout" name="automap_roster_column">
                <property name="spacing">
                 <number>6</number>
@@ -138,25 +129,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_0_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_0_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_0_klass">
                       <property name="text">
                        <string />
@@ -168,20 +140,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_0_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_0_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -229,46 +188,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_0_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_0_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -320,25 +240,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_1_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_1_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_1_klass">
                       <property name="text">
                        <string />
@@ -350,20 +251,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_1_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_1_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -411,46 +299,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_1_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_1_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -502,25 +351,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_2_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_2_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_2_klass">
                       <property name="text">
                        <string />
@@ -532,20 +362,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_2_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_2_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -593,46 +410,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_2_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_2_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -684,25 +462,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_3_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_3_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_3_klass">
                       <property name="text">
                        <string />
@@ -714,20 +473,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_3_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_3_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -775,46 +521,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_3_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_3_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -866,25 +573,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_4_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_4_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_4_klass">
                       <property name="text">
                        <string />
@@ -896,20 +584,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_4_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_4_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -957,46 +632,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_4_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_4_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -1048,25 +684,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_5_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_5_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_5_klass">
                       <property name="text">
                        <string />
@@ -1078,20 +695,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_5_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_5_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -1139,46 +743,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_5_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_5_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -1230,25 +795,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_6_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_6_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_6_klass">
                       <property name="text">
                        <string />
@@ -1260,20 +806,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_6_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_6_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -1321,46 +854,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_6_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_6_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -1412,25 +906,6 @@
                      </spacer>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_7_combat">
-                      <property name="text">
-                       <string />
-                      </property>
-                      <property name="font">
-                       <font>
-                        <pointsize>8</pointsize>
-                       </font>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                  <item>
-                   <layout class="QHBoxLayout" name="card_7_klass_row">
-                    <property name="spacing">
-                     <number>4</number>
-                    </property>
-                    <item>
                      <widget class="QLabel" name="card_7_klass">
                       <property name="text">
                        <string />
@@ -1442,20 +917,7 @@
                       </property>
                      </widget>
                     </item>
-                    <item>
-                     <spacer name="card_7_klass_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
-                    </item>
-                    <item alignment="Qt::AlignRight">
+                   <item alignment="Qt::AlignRight">
                      <widget class="IconRow" name="card_7_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
@@ -1503,46 +965,7 @@
                     </item>
                    </layout>
                   </item>
-                  <item>
-                   <widget class="QLabel" name="card_7_readied">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="card_7_effects">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                    <property name="text">
-                     <string />
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>0</width>
-                      <height>14</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
+                  </layout>
                 </widget>
                </item>
                <item>
@@ -1560,7 +983,6 @@
                </item>
               </layout>
              </widget>
-            <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAlwaysOff</enum></property></widget>
            </item>
           </layout>
          </widget>
@@ -1632,14 +1054,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="3">
-               <widget class="ElidingButton" name="action_clear_qf">
-                <property name="text">
-                 <string>Clear quickfight</string>
-                </property>
-               </widget>
-              </item>
-              
+
               <item row="1" column="0" colspan="5">
                <widget class="QLabel" name="actions_note">
                 <property name="font">
@@ -1680,12 +1095,9 @@
                <number>2</number>
               </property>
               <item row="0" column="0">
-               <widget class="ElidingCheckBox" name="watch_box">
+               <widget class="ElidingButton" name="action_clear_qf">
                 <property name="text">
-                 <string>Clear quickfight after a fight</string>
-                </property>
-                <property name="toolTip">
-                 <string>When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for</string>
+                 <string>Clear quickfight</string>
                 </property>
                </widget>
               </item>
@@ -2014,7 +1426,7 @@
           </property>
          </widget>
         </item>
-       <columnstretch><number>0</number><number>1</number><number>0</number></columnstretch></layout>
+       </layout>
       </widget>
       <widget class="QWidget" name="tab_editor">
        <attribute name="title">
@@ -2026,7 +1438,7 @@
           <item>
            <widget class="QPushButton" name="button_open">
             <property name="text">
-             <string>&amp;Open&#8230;</string>
+             <string>&amp;Open…</string>
             </property>
            </widget>
           </item>
@@ -2040,14 +1452,14 @@
           <item>
            <widget class="QPushButton" name="button_save_as">
             <property name="text">
-             <string>Save &amp;As&#8230;</string>
+             <string>Save &amp;As…</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QPushButton" name="button_preview">
             <property name="text">
-             <string>&amp;Preview changes&#8230;</string>
+             <string>&amp;Preview changes…</string>
             </property>
            </widget>
           </item>
@@ -3196,7 +2608,7 @@
                      <item>
                       <widget class="QPushButton" name="button_item_add">
                        <property name="text">
-                        <string>&amp;Add item&#8230;</string>
+                        <string>&amp;Add item…</string>
                        </property>
                       </widget>
                      </item>

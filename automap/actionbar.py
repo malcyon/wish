@@ -90,7 +90,7 @@ class ActionBar(QObject):
                     "action_identify", "action_clear_qf")
 
     def __init__(self, root: QWidget, *, actions=None, watcher=None, say=None,
-                 game=None, parent: QObject | None = None):
+                 game=None, settings=None, parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
         #: Where results are reported. `MessagesPanel.say` in the window; a
@@ -106,7 +106,8 @@ class ActionBar(QObject):
         self._own_actions = actions is not None
         self.actions = tuple(actions if actions is not None
                              else engine.actions(game=game))
-        self.watcher = watcher or engine.QuickfightWatcher(game=game)
+        enabled = getattr(settings, "clear_quickfight", False) if settings else False
+        self.watcher = watcher or engine.QuickfightWatcher(game=game, enabled=enabled)
         self.last: engine.Outcome | None = None
         self.target = None          # what the window last attached
         self.disk = ""              # and which save it is, for SpellStore
@@ -122,17 +123,12 @@ class ActionBar(QObject):
                     lambda _checked=False, a=action: self.run(a))
                 self.buttons[action.name] = button
 
-        self.watch_box = root.findChild(ElidingCheckBox, "watch_box")
-        if self.watch_box is not None:
-            self.watch_box.setChecked(self.watcher.enabled)
-            self.watch_box.toggled.connect(self._watch_toggled)
 
         self.note = root.findChild(QLabel, "actions_note")
         if self.note is not None:
             self.note.setStyleSheet(f"color: {MUTED.name()}")
 
-    def _watch_toggled(self, on: bool) -> None:
-        self.watcher.enabled = on
+
 
     def set_game(self, game) -> None:
         """The session is this title now: rebuild the actions around it.

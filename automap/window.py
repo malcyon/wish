@@ -564,7 +564,7 @@ class AutomapBinding(QObject):
         self.messages = MessagesPanel(self.root)
         self.combat_log = CombatLog()
         self.strength_label = self.root.findChild(QLabel, "strength_label")
-        self.actions_bar = ActionBar(self.root, say=self.messages.say, game=game_named(self.state.title))
+        self.actions_bar = ActionBar(self.root, say=self.messages.say, game=game_named(self.state.title), settings=self.settings)
         # `_maps` is what the automapper loaded off the player's disks; the
         # Fast Travel row needs them to pick a landing square for the fourteen
         # areas whose arrival square nobody has harvested. Built for every

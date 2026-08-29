@@ -1130,21 +1130,6 @@ def test_a_card_at_a_class_ceiling_says_maximum(app):
     assert card.xp[0].fraction == 1.0
 
 
-def test_a_card_with_no_effects_keeps_its_strip(app):
-    """An effects strip that appears and disappears shifts every card below it
-    each time a spell expires."""
-    from automap.panel import CharacterCard
-    save0, save1 = captured()
-    plain = live.snapshot_from_bytes(save0, save1).characters[0]
-    blessed = live.snapshot_from_bytes(*with_effect(owner=0)).characters[0]
-    card = CharacterCard(make_root(), 0)
-    card.show_character(blessed)
-    tall = card.frame.sizeHint().height()
-    card.show_character(plain)
-    assert card.effects.text() == ""
-    assert card.frame.sizeHint().height() == tall
-
-
 def test_the_strip_says_when_the_party_is_not_readable(app):
     from automap.panel import BottomStrip
     strip = BottomStrip(make_root())
@@ -1723,38 +1708,10 @@ def _character(**kw):
 def test_a_card_shows_what_is_readied_and_nothing_else(app):
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
-    card.show_character(_character(readied=("BANDED MAIL", "SHIELD",
-                                            "LONG SWORD")))
-    assert card.readied_items == ("BANDED MAIL", "SHIELD", "LONG SWORD")
-    assert "BANDED MAIL" in card.readied.text()
-    assert card.readied.toolTip().splitlines()[-1] == "LONG SWORD"
+    card.show_character(_character(readied=("BANDED MAIL", "SHIELD", "LONG SWORD")))
+    assert "BANDED MAIL, SHIELD, LONG SWORD" in card.frame.toolTip()
 
 
-def test_a_character_with_nothing_readied_gets_a_blank_line(app):
-    """The absence is the information, and the word "none" is not. The line
-    stays, so the cards below it do not shift when a sword is put away."""
-    from automap.panel import CharacterCard
-    card = CharacterCard(make_root(), 0)
-    card.show_character(_character(readied=("LONG SWORD",)))
-    tall = card.frame.sizeHint().height()
-    card.show_character(_character())
-    assert card.readied.text() == ""
-    assert card.frame.sizeHint().height() == tall
-
-
-def test_a_long_readied_list_is_elided_and_kept_whole_in_the_tooltip(app):
-    from automap.panel import CARD_WIDTH, CharacterCard
-    card = CharacterCard(make_root(), 0)
-    items = tuple(f"BANDED MAIL +{n}" for n in range(6))
-    card.show_character(_character(readied=items))
-    assert card.readied.text().endswith("…")
-    assert len(card.readied.toolTip().splitlines()) == 6
-    from PyQt6.QtGui import QFontMetrics
-    assert QFontMetrics(card.readied.font()).horizontalAdvance(
-        card.readied.text()) <= CARD_WIDTH
-
-
-@game_disks
 def test_readied_items_are_read_from_the_item_block():
     """The editor's inventory table shows exactly this; the card shows the
     readied half of it."""
@@ -2143,11 +2100,8 @@ def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
     save0, save1 = captured()
     machine = MemoryTarget({0x4900: save0, 0x8300: save1, 0x6E11: b"\x02"})
     bar = ActionBar(make_root())
-    assert not bar.watch_box.isChecked() and not bar.watcher.enabled
+    assert not bar.watcher.enabled
     assert bar.watch(machine) is None                  # in a fight
-
-    bar.watch_box.setChecked(True)
-    assert bar.watcher.enabled
     assert bar.watch(machine) is None                  # still in the fight
     machine.memory[0x6E11] = b"\x00"
     outcome = bar.watch(machine)                       # the 2-to-not-2 edge
@@ -2267,7 +2221,6 @@ def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     card = CharacterCard(make_root(), 0)
     card.show_character(_character(hp=0))
     assert card.conditions.names == ("skull",)
-    assert "dead or dying" in card.conditions.toolTip()
     card.show_character(_character(hp=4, levels_drained=2))
     assert card.conditions.names == ("arrow-down-long",)
     assert "drained 2 levels" in card.conditions.toolTip()

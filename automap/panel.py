@@ -383,9 +383,7 @@ class CharacterCard(QObject):
         self.conditions = root.findChild(IconRow, f"card_{index}_conditions")
         if self.conditions is not None:
             self.conditions.colour = DANGER
-        self.combat = root.findChild(QLabel, f"card_{index}_combat")
-        if self.combat is not None:
-            self.combat.setStyleSheet(f"color: {MUTED.name()}")
+
 
         self.klass = root.findChild(QLabel, f"card_{index}_klass")
         if self.klass is not None:
@@ -399,19 +397,9 @@ class CharacterCard(QObject):
         self.hp = root.findChild(Bar, f"card_{index}_hp")
         self.xp = [root.findChild(Bar, f"card_{index}_xp_{j}") for j in range(3)]
 
-        # What is in hand, under the bars. Readied only -- the whole inventory
-        # would swamp the card -- one elided line with the full list in the
-        # tooltip, and a **blank line** for a character carrying nothing
-        # readied: the absence is the information, and the word "none" is not.
-        self.readied = root.findChild(QLabel, f"card_{index}_readied")
-        if self.readied is not None:
-            self.readied.setStyleSheet(f"color: {MUTED.name()}")
 
-        # Always present, even when empty: a strip that appears and disappears
-        # would shift every card below it each time a spell expires.
-        self.effects = root.findChild(QLabel, f"card_{index}_effects")
-        if self.effects is not None:
-            self.effects.setStyleSheet(f"color: {MUTED.name()}")
+
+
 
     @staticmethod
     def ready_to_level(who) -> tuple[str, ...]:
@@ -443,10 +431,16 @@ class CharacterCard(QObject):
             self.name.setText(who.name)
         ac = "--" if who.armour_class is None else who.armour_class
         thac0 = "--" if who.thac0 is None else who.thac0
-        if self.combat is not None:
-            self.combat.setText(f"AC {ac}   THAC0 {thac0}")
         if self.klass is not None:
             self.klass.setText(f"{who.class_text}  {who.level_text}")
+
+        tooltip_lines = [
+            f"{who.name} ({who.class_text} {who.level_text})",
+            f"AC {ac}   THAC0 {thac0}"
+        ]
+        if who.readied:
+            tooltip_lines.append("Readied: " + ", ".join(who.readied))
+        self.frame.setToolTip("\n".join(tooltip_lines))
         self.ready = self.ready_to_level(who)
         if self.level_up is not None:
             self.level_up.setVisible(bool(self.ready) and self.levelling)
@@ -484,30 +478,9 @@ class CharacterCard(QObject):
             if bar is not None:
                 bar.hide()
 
-        self.show_readied(who.readied)
-
         if self.quickfight is not None:
             self.quickfight.set_icons(("person-running",) if who.quickfight else ())
             self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
-
-        if self.effects is not None:
-            self.effects.setText("   ".join(e.label for e in who.effects))
-            self.effects.setToolTip("\n".join(e.detail for e in who.effects))
-
-    def show_readied(self, items) -> None:
-        """One line of what is in hand, elided to the card's width.
-
-        Elided here rather than by `QLabel`, because a label that elides is a
-        label that has already claimed the width -- and the card is 248px wide
-        by design.
-        """
-        self.readied_items = tuple(items)
-        if self.readied is not None:
-            text = ", ".join(self.readied_items)
-            metrics = QFontMetrics(self.readied.font())
-            self.readied.setText(metrics.elidedText(
-                text, Qt.TextElideMode.ElideRight, CARD_WIDTH - 20))
-            self.readied.setToolTip("\n".join(self.readied_items))
 
 
 class RosterPanel(QObject):

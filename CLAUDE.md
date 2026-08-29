@@ -1040,3 +1040,6 @@ number used as the subject of a sentence is the *least* readable place for it,
 because that is where the reader most needs to know what is being talked
 about. There is no "already introduced it above" exemption; a reply is skimmed,
 not read in order.
+
+## Temp Files
+Any temporary or scratch files created during development should be written to the `work/` directory to keep the project root clean.

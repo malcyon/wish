@@ -244,8 +244,7 @@ class Character:
         """
         out = []
         if self.down:
-            out.append(("skull", "at 0 hit points: dead or dying, and the "
-                                 "record does not say which"))
+            out.append(("skull", ""))
         if self.levels_drained:
             out.append(("arrow-down-long",
                         f"drained {self.levels_drained} level"
