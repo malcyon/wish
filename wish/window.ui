@@ -29,7 +29,7 @@
                   <widget class="QWidget" name="automap_roster">
           <property name="maximumSize">
            <size>
-            <width>160</width>
+            <width>220</width>
             <height>16777215</height>
            </size>
           </property>
@@ -63,6 +63,9 @@
            </item>
            <item>
             <widget class="QScrollArea" name="automap_roster_scroll">
+             <property name="horizontalScrollBarPolicy">
+              <enum>Qt::ScrollBarAlwaysOff</enum>
+             </property>
              <property name="widgetResizable">
               <bool>true</bool>
              </property>
@@ -90,19 +93,19 @@
                 <widget class="QFrame" name="card_0">
                  <layout class="QVBoxLayout" name="card_0_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_0_top">
@@ -272,19 +275,19 @@
                 <widget class="QFrame" name="card_1">
                  <layout class="QVBoxLayout" name="card_1_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_1_top">
@@ -454,19 +457,19 @@
                 <widget class="QFrame" name="card_2">
                  <layout class="QVBoxLayout" name="card_2_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_2_top">
@@ -636,19 +639,19 @@
                 <widget class="QFrame" name="card_3">
                  <layout class="QVBoxLayout" name="card_3_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_3_top">
@@ -818,19 +821,19 @@
                 <widget class="QFrame" name="card_4">
                  <layout class="QVBoxLayout" name="card_4_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_4_top">
@@ -1000,19 +1003,19 @@
                 <widget class="QFrame" name="card_5">
                  <layout class="QVBoxLayout" name="card_5_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_5_top">
@@ -1182,19 +1185,19 @@
                 <widget class="QFrame" name="card_6">
                  <layout class="QVBoxLayout" name="card_6_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_6_top">
@@ -1364,19 +1367,19 @@
                 <widget class="QFrame" name="card_7">
                  <layout class="QVBoxLayout" name="card_7_layout">
                   <property name="spacing">
-                   <number>3</number>
+                   <number>1</number>
                   </property>
                   <property name="leftMargin">
                    <number>8</number>
                   </property>
                   <property name="topMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <property name="rightMargin">
                    <number>8</number>
                   </property>
                   <property name="bottomMargin">
-                   <number>6</number>
+                   <number>2</number>
                   </property>
                   <item>
                    <layout class="QHBoxLayout" name="card_7_top">
@@ -1636,16 +1639,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="4">
-               <widget class="ElidingCheckBox" name="watch_box">
-                <property name="text">
-                 <string>Clear quickfight after a fight</string>
-                </property>
-                <property name="toolTip">
-                 <string>When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for</string>
-                </property>
-               </widget>
-              </item>
+              
               <item row="1" column="0" colspan="5">
                <widget class="QLabel" name="actions_note">
                 <property name="font">
@@ -1685,10 +1679,20 @@
               <property name="bottomMargin">
                <number>2</number>
               </property>
-              <item row="0" column="0" colspan="2">
-               <widget class="ElidingComboBox" name="ft_combo" />
+              <item row="0" column="0">
+               <widget class="ElidingCheckBox" name="watch_box">
+                <property name="text">
+                 <string>Clear quickfight after a fight</string>
+                </property>
+                <property name="toolTip">
+                 <string>When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for</string>
+                </property>
+               </widget>
               </item>
               <item row="0" column="1">
+               <widget class="ElidingComboBox" name="ft_combo" />
+              </item>
+              <item row="0" column="2">
                <widget class="ElidingButton" name="ft_button">
                 <property name="enabled">
                  <bool>false</bool>
