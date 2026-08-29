@@ -1,5 +1,5 @@
 ---
-name: quick-fix
+name: junior-dev
 description: Issues whose fix is already specified — ports, deduplication, narrowing a check, deleting a second copy of something. Not for anything needing a design decision. Use when an issue's "What would fix it" names the mechanism rather than describing a goal.
 tools: Read, Write, Edit, Bash, Grep, Glob, TodoWrite
 model: sonnet
