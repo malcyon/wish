@@ -476,7 +476,7 @@ class Automapper:
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
         if jumped and not changed_area:
-            if self._pending != (fix.x, fix.y):
+            if fix.source == "memory" or self._pending != (fix.x, fix.y):
                 self._pending = (fix.x, fix.y)
                 return False                # wait for a second opinion
             # confirmed twice: believe it after all
