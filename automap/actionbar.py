@@ -33,7 +33,6 @@ import time
 
 from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtWidgets import (
-    QLabel,
     QMessageBox,
     QWidget,
 )
@@ -42,9 +41,7 @@ from . import actions as engine
 from .area import ResidentGeo
 from .config import Settings
 from .panel import (
-    MUTED,
     ElidingButton,
-    ElidingCheckBox,
     ElidingComboBox,
 )
 
@@ -124,11 +121,6 @@ class ActionBar(QObject):
                 self.buttons[action.name] = button
 
 
-        self.note = root.findChild(QLabel, "actions_note")
-        if self.note is not None:
-            self.note.setStyleSheet(f"color: {MUTED.name()}")
-
-
 
     def set_game(self, game) -> None:
         """The session is this title now: rebuild the actions around it.
@@ -195,9 +187,6 @@ class ActionBar(QObject):
         self.last = outcome
         line = f"{what}: {outcome.message}"
         detail = "\n".join(outcome.notes)
-        if self.note is not None and "quickfight" not in what:
-            self.note.setText(line)
-            self.note.setToolTip(detail)
         self.say(line, detail, alarm=not outcome.ok)
 
     def run(self, action) -> engine.Outcome | None:
@@ -369,9 +358,6 @@ class FastTravelBar(QObject):
 
         #: What the last trip did. Empty until something has been clicked --
         #: the standing warning is the Fast Travel button's own tooltip.
-        self.note = root.findChild(QLabel, "ft_note")
-        if self.note is not None:
-            self.note.setStyleSheet(f"color: {MUTED.name()}")
 
         self.repopulate()
         # Disabled with the reason in the tooltip from the start, rather than
@@ -590,16 +576,11 @@ class FastTravelBar(QObject):
     # -- running one -------------------------------------------------------
 
     def _said(self, line: str, alarm: bool = False) -> None:
-        if self.note is not None:
-            self.note.setText(line)
         self.say(line, alarm=alarm)
 
     def _report(self, what: str, outcome: engine.Outcome) -> None:
         self.last = outcome
         line = f"{what}: {outcome.message}"
-        if self.note is not None:
-            self.note.setText(line)
-            self.note.setToolTip("\n".join(outcome.notes))
         self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
         self.refresh()
 

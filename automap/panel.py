@@ -18,7 +18,7 @@ import logging
 from datetime import datetime
 
 from PyQt6.QtCore import QObject, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,

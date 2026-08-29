@@ -1043,3 +1043,9 @@ not read in order.
 
 ## Temp Files
 Any temporary or scratch files created during development should be written to the `work/` directory to keep the project root clean.
+
+## Pre-commit Checklist
+Before committing and pushing any changes, you MUST always run the following checks locally to ensure CI will pass:
+1. `pytest` (to ensure all tests pass)
+2. `.venv/bin/ruff check .` (to ensure there are no unused imports or linting errors)
+3. `.venv/bin/python3 tools/genui.py --check` (to ensure all `.ui` files are compiled and up to date)
