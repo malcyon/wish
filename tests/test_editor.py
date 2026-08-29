@@ -700,7 +700,7 @@ BOXES = ("box_identity", "box_combat", "box_roster", "box_abilities",
 #: 48 squares at 3 pixels -- and pure floor, because nothing in it can read a
 #: wider window. Taking it off the header took 172px off the whole window's
 #: minimum, which is what brought the widest party a save can hold inside a
-#: 1280 screen at Donald's own font. Character Traits was tried here too and
+#: 1366 screen at Donald's own font. Character Traits was tried here too and
 #: Donald turned it down: it made the header far too tall.
 HEADER_BOXES = ("box_identity",)
 
@@ -936,7 +936,7 @@ def _test_the_header_s_spare_width_goes_to_the_roster_then_to_a_spacer(app, save
     column over the other. The roster hints its floor and grows from there, and
     the row is in the layout's *expanding* case at every width worth having.
 
-    Giving the spacer the stretch as well was measured and is worse: at 1280
+    Giving the spacer the stretch as well was measured and is worse: at 1366
     with the base font the two split the slack and the roster came out 147px
     short of its own contents, eliding names beside 250px of empty header.
 
@@ -988,7 +988,7 @@ def _test_the_roster_elides_a_name_rather_than_widening_the_window(app, party):
     of the strings it happened to be holding, and the header does not scroll,
     so that minimum was a floor under the whole window that followed the UI
     font: 1093px at the base font here, 1672 at ten points more, against a
-    1280-wide screen. It gives the width up instead.
+    1366-wide screen. It gives the width up instead.
 
     What is asserted is the shape Donald approved, in order:
 
@@ -1126,8 +1126,8 @@ def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
 
 
 #: The screen `tests/test_mapscale.py` holds the whole window to, and the one
-#: Donald asked for in round five: a 1280x720 laptop, forty pixels shorter than
-#: the 1280x760 the earlier rounds allowed themselves. The editor has to fit
+#: Donald asked for in round five: a 1366x768 laptop. It used to be
+#: 1280x720 in earlier rounds before the UI redesign. The editor has to fit
 #: inside it with room to spare, or it becomes the floor instead of the map.
 SMALL_LAPTOP = (1366, 768)
 
@@ -1276,7 +1276,7 @@ def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 
     It clips at the box's edge instead now. What is off the edge is not
     readable either, and that is still #71's remaining half -- the header
-    costs 880px at ten points of extra font against a 1280 screen -- but a
+    costs 880px at ten points of extra font against a 1366 screen -- but a
     field that is off the edge is a window that is too narrow, and a field
     with another field drawn on top of it is a broken program.
 
@@ -1318,7 +1318,7 @@ def _test_no_two_widgets_in_character_overlap_at_its_floor(app, save):
 #:
 #: Derived from a real party's roster, which is why it is a budget and not the
 #: guarantee: against the *widest* party a save can hold the roster is 764 at
-#: that font, and what settles whether the window fits 1280 is
+#: that font, and what settles whether the window fits 1366 is
 #: `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`,
 #: which measures the whole window against the whole screen.
 #:
@@ -1387,7 +1387,7 @@ def test_the_header_fits_its_width_budget(app, party):
     other half of #71 and is not fixed. Round seven moved the Armour class
     pair down to `Combat` and brought `Sex`, `Age` and `Size` up from
     Miscellaneous, and Character went from 939 to 880 at ten points of extra
-    font and from 1207 to 1120 at sixteen. Against a 1280 screen with the
+    font and from 1207 to 1120 at sixteen. Against a 1366 screen with the
     roster's 669 beside it, both still overrun; what is capped clips rather
     than overlapping -- `test_no_two_widgets_in_character_overlap_at_its_floor`
     -- and the roster is the next thing that would have to give.
@@ -1399,7 +1399,7 @@ def test_the_header_fits_its_width_budget(app, party):
 
     The party is synthetic and the test no longer skips: this and
     `tests/test_mapscale.py::test_the_window_still_fits_the_laptop_with_a_save_open`
-    are the two that hold the 1280x720 line, and both used to skip on every CI
+    are the two that hold the 1366x768 line, and both used to skip on every CI
     job there is (#70). What is measured here is a pair of explicit minimums,
     so the answer does not depend on which party is open -- which is exactly
     why the disks-only twin below is an equality rather than a bound.
@@ -1477,7 +1477,7 @@ def _test_the_editors_own_floor_does_not_follow_the_ui_font(app):
     Round five put ten fields and their labels in a header that does not
     scroll, and on Windows CI the whole window's floor went from 1036 to 1304
     with three points of font: #41's guarantee broken, and 1304 over the
-    1280 screen as well. Here the same box goes from 521 to 874 and the
+    1366 screen as well. Here the same box goes from 521 to 874 and the
     editor's floor does not move, because the header and the button row above
     it are both held to constants.
 
@@ -1740,8 +1740,8 @@ def _test_the_scroll_bar_does_not_eat_the_rosters_last_row(app, party, extra):
     layout permits, which is why the +0 case is a control rather than the
     test: the roster's floor of 440 clears its four fixed columns' 356.
 
-    **The window is squeezed to its own floor rather than to 1280.** The issue
-    measured it in a 1280-wide window, and 1280 is a measurement of this
+    **The window is squeezed to its own floor rather than to 1366.** The issue
+    measured it in a 1366-wide window, and 1366 is a measurement of this
     machine's fonts as much as of the screen; asking Qt to clamp a width of 1
     puts the roster on `ROSTER_MIN_WIDTH` wherever this runs, which is the
     state the bug needs and is the same state on every platform.
