@@ -392,7 +392,7 @@ class HealParty(Action):
 
     name = "heal"
     label = "Heal party"
-    description = "current hit points to maximum, for every conscious character"
+    description = "Set current hit points to maximum for every concious character."
     combat_legal = True
 
     def run(self, target, **kwargs) -> Outcome:
@@ -489,7 +489,7 @@ class StoreSpells(Action):
     # `spells_memorised` stays as it is, because it reaches generated docs and
     # saved YAML that has to keep loading.
     label = "Save spells"
-    description = "remember the memorised list for every character"
+    description = "Save the state of the memorized spell list for every character."
 
     def __init__(self, store: SpellStore | None = None,
                  game: games.Game | None = None):
@@ -544,7 +544,7 @@ class RestoreSpells(Action):
 
     name = "restore-spells"
     label = "Restore spells"
-    description = "put back the memorised list stored earlier"
+    description = "Restore your character's memorized spells."
 
     def __init__(self, store: SpellStore | None = None,
                  game: games.Game | None = None):
@@ -623,7 +623,7 @@ class IdentifyItems(Action):
 
     name = "identify"
     label = "Identify"
-    description = "clear the hidden-name bits on every item the party carries"
+    description = "Identify all items."
     confirm = ("Identify every item the party carries? There is no way to undo "
                "this in the game.")
 
@@ -766,7 +766,7 @@ class LevelUp(Action):
 
     name = "level-up"
     label = "Level up"
-    description = "raise a character a level without the trainer"
+    description = "Level up a character without the trainer."
     confirm = "Level up this character? There is no way to undo this in the game."
 
     def __init__(self, game=None):
@@ -969,7 +969,7 @@ class ClearQuickfight(Action):
 
     name = "clear-quickfight"
     label = "Turn quickfight off"
-    description = "clear the combat menu's QUICK bit for every character"
+    description = "Disable quickfight for all characters."
     combat_legal = True
 
     def __init__(self, flag: QuickfightFlag | None = None,
@@ -1373,8 +1373,8 @@ class FastTravel(Action):
 
     name = "fasttravel"
     label = "Fast Travel"
-    description = ("travel to another area the way the game's own exits do -- "
-                   "it writes to the running game")
+    description = "Teleport to another area."
+
     combat_legal = False
     #: What travelling does not guarantee, in Donald's own words, kept where
     #: it can be read rather than dismissed: the row hangs it off a help icon.
