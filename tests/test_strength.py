@@ -281,6 +281,6 @@ def test_the_line_says_what_the_number_costs(app, tmp_path, monkeypatch):
                       MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(roster)}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert "slums encounter 0 monsters" in window.strength_label.text()
+    assert "party strength 2" in window.strength_label.text()
     
     

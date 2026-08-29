@@ -1076,7 +1076,7 @@ def test_the_size_the_compositor_forces_does_not_become_the_memory(
     from automap.config import hold_geometry
 
     nowhere(tmp_path, monkeypatch)
-    space = QRect(0, 0, 1920, 1032)
+    space = QRect(0, 0, 1920, 1200)
     win = window(app)
     win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     win.show()

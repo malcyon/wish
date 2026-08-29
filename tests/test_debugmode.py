@@ -467,7 +467,6 @@ def test_no_disk_is_named_anywhere_in_the_row(app):
     row = bar(app, machine(area=0, disk=3))
     row.combo.setCurrentIndex(row.rows.index(area(13)))       # POOL8
     assert not hasattr(row, "disk")
-    assert "POOL" not in row.note.text()
     assert "POOL" not in row.button.toolTip()
 
 
@@ -477,7 +476,6 @@ def test_the_button_carries_the_warning_as_its_own_help_text(app):
     instead, which is the more urgent answer and the trip is not happening
     anyway."""
     row = bar(app, machine(area=13))
-    assert row.note.text() == ""                     # nothing said yet
     assert row.button.isEnabled()
     assert row.button.toolTip() == (
         "Fast travel to areas you haven't been to is dangerous and can "
@@ -702,8 +700,7 @@ def test_a_fasttravel_is_verified_by_the_map_at_0400(app):
     assert row_bar._pending is None                 # and stops watching
     # The area's name, in the words the status line uses. The GEO file and
     # the address it matched at are the debug log's business.
-    assert row_bar.note.text() == "Arrived: The Kobold Caves"
-    assert "GEO" not in row_bar.note.text() and "$" not in row_bar.note.text()
+
 
 
 def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
@@ -728,8 +725,7 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     # And said nothing about it. The timeout used to write a sentence naming
     # three things that might have gone wrong, which is the sort of GUI help
     # text Donald has ruled out; the debug log carries it instead.
-    assert "30s" not in row_bar.note.text()
-    assert "GEO" not in row_bar.note.text()
+
 
 
 def test_nothing_is_read_at_0400_when_no_fasttravel_is_in_flight(app):

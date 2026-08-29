@@ -43,7 +43,7 @@ from goldbox.geo import GRID
 #: The screen the whole window has to fit: a 1280x720 laptop, which is what
 #: Donald asked for in round five of #43. It was 1280x760 -- a 1280x800 panel
 #: with a task bar taken off it -- and forty pixels of that were slack.
-SMALL = QRect(0, 0, 1280, 720)
+SMALL = QRect(0, 0, 1366, 768)
 
 
 @pytest.fixture

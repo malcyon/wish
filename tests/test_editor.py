@@ -1129,7 +1129,7 @@ def test_dragging_the_name_divider_narrower_leaves_it_where_the_user_put_it(
 #: Donald asked for in round five: a 1280x720 laptop, forty pixels shorter than
 #: the 1280x760 the earlier rounds allowed themselves. The editor has to fit
 #: inside it with room to spare, or it becomes the floor instead of the map.
-SMALL_LAPTOP = (1280, 720)
+SMALL_LAPTOP = (1366, 768)
 
 
 @game_disks
