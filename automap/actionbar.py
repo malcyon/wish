@@ -185,7 +185,10 @@ class ActionBar(QObject):
     def _report(self, what: str, outcome: engine.Outcome) -> None:
         """One line in the panel, and the same line under the buttons."""
         self.last = outcome
-        line = f"{what}: {outcome.message}"
+        if outcome.message and outcome.message[0].isupper():
+            line = outcome.message
+        else:
+            line = f"{what}: {outcome.message}"
         detail = "\n".join(outcome.notes)
         self.say(line, detail, alarm=not outcome.ok)
 
