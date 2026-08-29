@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The tables a title keeps outside the character record.
 
 Level caps, experience thresholds, racial class limits, spell names, item
@@ -24,7 +26,6 @@ the disk by what its `ITEMNAMES` says rather than by a file name -- Death
 Knights of Krynn carries the same race labels and would otherwise match.
 """
 
-from __future__ import annotations
 
 import functools
 import os

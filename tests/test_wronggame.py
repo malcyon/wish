@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The window checks the machine is running the game it thinks it is (#21).
 
 The title used to be a chain of guesses -- the open save, then the Game
@@ -29,7 +31,6 @@ measure the thresholds against real game data read the player's own disks and
 skip without them.
 """
 
-from __future__ import annotations
 
 import os
 import pathlib
@@ -318,8 +319,13 @@ def app():
 
 
 def window_on(target, maps, title):
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(target, maps, title=title), drive=False)
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(target, maps, title=title), drive=False)
 
 
 def ticked(window, times: int = 24):

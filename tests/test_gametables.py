@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The per-title tables: races, class bits, and where ITEMNAMES loads.
 
 `goldbox/yaml_io.py` used to hold one race table and one class-bit table for all
@@ -10,7 +12,6 @@ The evidence is on the player's disks, so the tests that check it read them and
 skip when they are absent. Nothing here is a fixture.
 """
 
-from __future__ import annotations
 
 import dataclasses
 import functools

@@ -37,7 +37,7 @@ def main() -> int:
         note = r.note.replace("|", r"\|") if r.note else ""
         rows.append(f"| {span} | **{r.name}** | {r.saved_in or '—'} "
                     f"| {r.confidence.value} | {note} |")
-    OUT.write_text(HEADER + "\n".join(rows) + "\n")
+    OUT.write_text(encoding="utf-8", data=HEADER + "\n".join(rows) + "\n")
     print(f"{len(MAP)} regions -> {OUT.name}")
     return 0
 

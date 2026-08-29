@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """`tools/shotwindow.py` photographs the window, and the numbers it reports.
 
 The picture is not what is asserted on. A rendered image is not byte-identical
@@ -14,7 +26,6 @@ so that is what is here:
 * it puts the application's font back.
 """
 
-from __future__ import annotations
 
 import pathlib
 import sys
@@ -109,7 +120,7 @@ def test_an_unreadable_save_is_reported_rather_than_waited_on(app, tmp_path,
                                                               capsys):
     """The failure this tool cannot afford: a dialog nobody can dismiss.
 
-    `EditorWindow.load` reports an unreadable save with `QMessageBox.critical`,
+    `EditorBinding.load` reports an unreadable save with `QMessageBox.critical`,
     which is a blocking `exec()`. Offscreen there is no one to click it, so
     `--save` on a file that is not a save hung until it was killed -- measured
     at eight seconds and exit 124, with no output at all. It is the same fault

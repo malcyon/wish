@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """Curse of the Azure Bonds through the whole editor path.
 
 The strongest check here is the last one: **export a save disk to YAML,
@@ -15,7 +27,6 @@ Every test skips when the disks are absent -- CI has none. Nothing here reads a
 committed fixture.
 """
 
-from __future__ import annotations
 
 import pathlib
 import re
@@ -337,17 +348,17 @@ def test_the_editor_opens_a_curse_save(tmp_path):
 
 
 def test_the_editor_writes_a_curse_save_back_unchanged(tmp_path):
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
     src = _copy(_curse_save_disk(), tmp_path)
     before = pathlib.Path(src).read_bytes()
-    window = EditorWindow(src)
+    window = EditorBinding(make_root(), src)
     assert window.save(interactive=False) == "no changes"
     assert pathlib.Path(src).read_bytes() == before
 
 
 def test_the_editor_shows_which_game_is_open(tmp_path):
-    from editor.window import EditorWindow
-    window = EditorWindow(_copy(_curse_save_disk(), tmp_path))
+    from editor.window import EditorBinding
+    window = EditorBinding(make_root(), _copy(_curse_save_disk(), tmp_path))
     assert window._game_label.text() == "Curse of the Azure Bonds"
     window.load(_copy(gamedata.save_disk("PORSAVE11"), tmp_path))
     assert window._game_label.text() == "Pool of Radiance"

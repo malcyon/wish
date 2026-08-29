@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Turning a DOS Pool of Radiance save into a C64 one, checked field by field.
 
 `tests/test_dossave.py` measures the DOS file; this module checks what
@@ -16,7 +18,6 @@ somewhere else.  With no archives the file-reading tests skip, which is what
 CI does -- the table tests above them do not need a save at all.
 """
 
-from __future__ import annotations
 
 import pathlib
 

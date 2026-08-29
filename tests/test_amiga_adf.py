@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """`goldbox.amiga_adf` -- the Amiga filesystem, read and written (#36).
 
 The reader is checked against **the player's own disks**, because a
@@ -18,7 +20,6 @@ field that held zero on both sides. Hence :meth:`AmigaDisk.block_sum` and
 `test_a_block_with_its_checksum_in_the_wrong_field_is_caught`.
 """
 
-from __future__ import annotations
 
 import datetime
 import os

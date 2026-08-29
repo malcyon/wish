@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """One QApplication for the whole session, and no real windows.
 
 PyQt owns the QApplication from Python: drop the last reference to it and the
@@ -17,7 +19,6 @@ every module's own `app` fixture the same object and nothing ever destroys it.
 See `docs/112-test-harness.md` for the measurements.
 """
 
-from __future__ import annotations
 
 import gc
 import os

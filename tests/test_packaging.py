@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The frozen build: what each platform ships, and its entry script.
 
 Nothing here runs PyInstaller. `wish.spec` is a Python script whose `Analysis`,
@@ -7,7 +9,6 @@ catch the regression that matters, now that docs/129-one-binary.md has made it
 one executable: a second one creeping back, on either platform, or the
 subcommands' module falling out of the bundle.
 """
-from __future__ import annotations
 
 import importlib.util
 import io

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """`goldbox/levels.py` and `goldbox/spells.py`, now that both carry two titles.
 
 Everything that needs game data reads it off the player's own disks through
@@ -9,7 +11,6 @@ game; the point of this file is that the disk gets to contradict them.
 every address below is `payload[address - 0x0800]`.
 """
 
-from __future__ import annotations
 
 import pytest
 

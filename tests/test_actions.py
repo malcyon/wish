@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The live actions, driven against a dictionary of bytes.
 
 Nothing here needs an emulator: `MemoryTarget` is a `Target`, so an action that
@@ -10,7 +12,6 @@ alone in New Phlan, `SAVEDGAME0` and the roster page as the live view reads
 them.
 """
 
-from __future__ import annotations
 
 import pathlib
 

@@ -58,7 +58,7 @@ def main() -> int:
         w(f"| {name} | {it.cost_gp} gp | {it.weight_lb} lb | "
           f"{kind.summary() if kind else '—'} |")
     w("")
-    OUT.write_text("\n".join(out) + "\n")
+    OUT.write_text(encoding="utf-8", data="\n".join(out) + "\n")
     print(f"wrote {OUT} ({len(out)} lines)")
     return 0
 

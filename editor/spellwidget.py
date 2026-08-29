@@ -1,9 +1,8 @@
 """Spells by name: the spellbook a character knows, and what is memorised.
 
-Two record fields, two shapes, one widget each. Both are promoted in Qt
-Designer (`editor.spellwidget`) and both bind by `objectName` like everything
-else -- `field_spells_known` at `0x078` and `field_spells_memorised` at
-`0x020`.
+Two record fields, two shapes, one controller each. Both bind by `objectName`
+like everything else -- `field_spells_known` at `0x078` and `field_spells_memorised`
+at `0x020`.
 
 Both speak the same three methods, `set_names`, `set_bytes` and `to_bytes`, so
 the window handles them generically and never has to know which is which.
@@ -18,12 +17,14 @@ through either way.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QComboBox,
+    QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QStyle,
     QStyleOptionComboBox,
     QStyleOptionViewItem,
@@ -31,9 +32,6 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox.spells import SpellTable, describe, for_game, spell_group
-
-from .ui_memorised import Ui_MemorisedEditor
-from .ui_spellbook import Ui_SpellbookEditor
 
 MEMORISED_SIZE = 16          # the packed list at 0x020
 
@@ -135,10 +133,13 @@ def fit_to_choices(combo: QComboBox) -> None:
     combo.setMinimumWidth(size.width())
 
 
-class SpellEditor(QWidget):
+class SpellEditor(QObject):
     """What the window expects of anything editing a spell field."""
 
     changed = pyqtSignal()
+
+    def __init__(self, parent: QObject | None = None):
+        super().__init__(parent)
 
     def set_names(self, names: dict[int, str] | None,
                   table: SpellTable | None = None) -> None:
@@ -150,6 +151,15 @@ class SpellEditor(QWidget):
     def to_bytes(self) -> bytes:
         raise NotImplementedError
 
+    def isEnabled(self) -> bool:
+        return True
+
+    def setEnabled(self, enabled: bool) -> None:
+        pass
+
+    def setToolTip(self, text: str) -> None:
+        pass
+
 
 class SpellbookEditor(SpellEditor):
     """The bitmask at 0x078, as one named tick box per spell the title has.
@@ -160,20 +170,36 @@ class SpellbookEditor(SpellEditor):
     title has spells for.
     """
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.ui = Ui_SpellbookEditor()
-        self.ui.setupUi(self)
+    def __init__(self, root: QWidget | None = None):
+        super().__init__(root)
+        self.root = root
         self._names: dict[int, str] | None = None
         self._table = DEFAULT_TABLE
         self._loading = False
         self._raw = bytes(self._table.spellbook_size)
-        self.list = self.ui.list
-        self.list.itemChanged.connect(self._ticked)
+        self.list = (
+            root if isinstance(root, QListWidget)
+            else (root.findChild(QListWidget, "field_spells_known") if root is not None else None)
+        )
+        if self.list is not None:
+            self.list.itemChanged.connect(self._ticked)
         self._rows: dict[int, QListWidgetItem] = {}
         self._fill()
 
+    def isEnabled(self) -> bool:
+        return self.list.isEnabled() if self.list is not None else True
+
+    def setEnabled(self, enabled: bool) -> None:
+        if self.list is not None:
+            self.list.setEnabled(enabled)
+
+    def setToolTip(self, text: str) -> None:
+        if self.list is not None:
+            self.list.setToolTip(text)
+
     def _fill(self) -> None:
+        if self.list is None:
+            return
         self._loading = True
         self.list.clear()
         self._rows.clear()
@@ -267,10 +293,9 @@ class MemorisedEditor(SpellEditor):
     game's own lists in.
     """
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.ui = Ui_MemorisedEditor()
-        self.ui.setupUi(self)
+    def __init__(self, root: QWidget | None = None):
+        super().__init__(root)
+        self.root = root
         self._names: dict[int, str] | None = None
         self._table = DEFAULT_TABLE
         self._casts = False
@@ -278,18 +303,35 @@ class MemorisedEditor(SpellEditor):
         self._cap: dict[str, tuple[int, ...]] = {}
         self._raw = bytes(MEMORISED_SIZE)
 
-        self.list = self.ui.list
-        self.choice = self.ui.choice
-        self.add = self.ui.add
-        self.remove = self.ui.remove
-        self.capacity = self.ui.capacity
+        self.list = root.findChild(QListWidget, "field_spells_memorised_list") if root is not None else None
+        self.choice = root.findChild(QComboBox, "field_spells_memorised_choice") if root is not None else None
+        self.add = root.findChild(QPushButton, "field_spells_memorised_add") if root is not None else None
+        self.remove = root.findChild(QPushButton, "field_spells_memorised_remove") if root is not None else None
+        self.capacity = root.findChild(QLabel, "field_spells_memorised_capacity") if root is not None else None
 
-        self.add.clicked.connect(self._add_chosen)
-        self.remove.clicked.connect(self._remove_selected)
+        if self.add is not None:
+            self.add.clicked.connect(self._add_chosen)
+        if self.remove is not None:
+            self.remove.clicked.connect(self._remove_selected)
 
         self._fill_choices()
 
+    def isEnabled(self) -> bool:
+        return self.list.isEnabled() if self.list is not None else True
+
+    def setEnabled(self, enabled: bool) -> None:
+        for w in (self.list, self.choice, self.add, self.remove, self.capacity):
+            if w is not None:
+                w.setEnabled(enabled)
+
+    def setToolTip(self, text: str) -> None:
+        for w in (self.list, self.choice, self.add, self.remove, self.capacity):
+            if w is not None:
+                w.setToolTip(text)
+
     def _fill_choices(self) -> None:
+        if self.choice is None:
+            return
         self.choice.clear()
         for _cls, _level, ids in _ordered(self._table):
             for sid in ids:
@@ -297,9 +339,10 @@ class MemorisedEditor(SpellEditor):
                     _spell_text(sid, self._names, self._table), sid)
         # Any of them can end up in the list, so the list is sized for the
         # longest of them and not for the handful memorised right now.
-        fit_to_names(self.list,
-                     [self.choice.itemText(i)
-                      for i in range(self.choice.count())], checkable=False)
+        if self.list is not None:
+            fit_to_names(self.list,
+                         [self.choice.itemText(i)
+                          for i in range(self.choice.count())], checkable=False)
         fit_to_choices(self.choice)
 
     # -- the protocol -----------------------------------------------------
@@ -332,20 +375,25 @@ class MemorisedEditor(SpellEditor):
     # -- state ------------------------------------------------------------
 
     def set_ids(self, ids) -> None:
+        if self.list is None:
+            return
         self.list.clear()
         for sid in ids:
             self.list.addItem(self._row(int(sid)))
         self._describe()
 
     def ids(self) -> list[int]:
+        if self.list is None:
+            return []
         return [self.list.item(i).data(Qt.ItemDataRole.UserRole)
                 for i in range(self.list.count())]
 
     def set_known(self, ids) -> None:
         """Which spells are in the spellbook, so a stray one can be coloured."""
         self._known = set(int(i) for i in ids)
-        for i in range(self.list.count()):
-            self._paint(self.list.item(i))
+        if self.list is not None:
+            for i in range(self.list.count()):
+                self._paint(self.list.item(i))
         self._describe()
 
     def set_capacity(self, cap: dict[str, tuple[int, ...]],
@@ -375,6 +423,8 @@ class MemorisedEditor(SpellEditor):
         row.setToolTip("memorized but not in the spellbook" if stray else "")
 
     def _add_chosen(self) -> None:
+        if self.choice is None:
+            return
         sid = self.choice.currentData()
         if sid is None:
             return
@@ -385,7 +435,7 @@ class MemorisedEditor(SpellEditor):
         return (spell_group(sid, self._table) or ("", 0))[1]
 
     def add_spell(self, sid: int) -> bool:
-        if self.list.count() >= MEMORISED_SIZE:
+        if self.list is None or self.list.count() >= MEMORISED_SIZE:
             return False
         level = self._level(sid)
         at = self.list.count()
@@ -399,12 +449,14 @@ class MemorisedEditor(SpellEditor):
         return True
 
     def _remove_selected(self) -> None:
+        if self.list is None:
+            return
         row = self.list.currentRow()
         if row >= 0:
             self.remove_at(row)
 
     def remove_at(self, row: int) -> bool:
-        if not 0 <= row < self.list.count():
+        if self.list is None or not 0 <= row < self.list.count():
             return False
         self.list.takeItem(row)
         self._describe()
@@ -426,6 +478,8 @@ class MemorisedEditor(SpellEditor):
         slot counts, which was worse; after `capacity` learned about titles it
         would have read "This character casts no spells", which is worse still.
         """
+        if self.capacity is None:
+            return
         cap = self._cap
         ids = self.ids()
         if cap:

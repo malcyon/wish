@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The DOS debugger harness: the arithmetic, the parsing, and the 64K wrap.
 
 Everything here runs with no emulator and no game files, because everything
@@ -12,7 +14,6 @@ worked example.  Everything else skips cleanly on a machine with no debugger
 build, which is what CI is.
 """
 
-from __future__ import annotations
 
 import os
 import pathlib

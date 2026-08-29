@@ -341,6 +341,7 @@ class PreferencesDialog(QDialog):
         box.addWidget(self._disks_group())
         box.addWidget(self._backups_group())
         box.addWidget(self._backend_group())
+        box.addWidget(self._combat_group())
         box.addWidget(self._log_group())
         box.addStretch(1)
 
@@ -782,6 +783,22 @@ class PreferencesDialog(QDialog):
         # title bar and the status bar show [logging] while it is on, and the
         # status bar names the file the moment it opens.
         return box
+
+    def _combat_group(self) -> QGroupBox:
+        box = QGroupBox("Combat")
+        outer = QVBoxLayout(box)
+        self.watch_box = QCheckBox("Clear quickfight after a fight")
+        self.watch_box.setToolTip("When a fight ends, take everyone off quickfight. Off by default: it writes to the running game on an edge you did not ask for")
+        saved = getattr(self.win.settings, "clear_quickfight", False)
+        self.watch_box.setChecked(bool(saved))
+        self.watch_box.toggled.connect(self._clear_quickfight_toggled)
+        outer.addWidget(self.watch_box)
+        return box
+
+    def _clear_quickfight_toggled(self, on: bool) -> None:
+        self.win.settings.clear_quickfight = on
+        if hasattr(self.win, "map") and hasattr(self.win.map, "actions_bar"):
+            self.win.map.actions_bar.watcher.enabled = on
 
     # -- what was found --------------------------------------------------
 

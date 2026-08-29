@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Four corrections to field names, each checked against the player's disks.
 
 A third-party document is PROBABLE evidence and nothing more. These are the
@@ -10,7 +12,6 @@ write-ups.
 Everything here reads the player's own disks and skips without them.
 """
 
-from __future__ import annotations
 
 import pathlib
 

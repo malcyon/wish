@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Two findings that came off the community forum sweep, asserted.
 
 **The `STING` negative** (`docs/126` §2). The DOS builds of both our titles take
@@ -21,7 +23,6 @@ Neither half is in this repository. The disks are the player's own
 is absent, which is what CI does.
 """
 
-from __future__ import annotations
 
 import functools
 import pathlib

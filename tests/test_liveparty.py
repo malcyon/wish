@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """What the game's own training hall wrote, checked against `goldbox/levels.py`.
 
 Twenty-nine level-ups were driven through the training school in area 11 on
@@ -9,7 +11,6 @@ Nothing here touches a disk or an emulator: the measurements are a handful of
 integers, and the point of the file is that a future edit to `goldbox/levels.py`
 cannot quietly contradict them.
 """
-from __future__ import annotations
 
 import pytest
 

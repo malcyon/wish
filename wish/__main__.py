@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         if ensure_current():
             print("character.ui changed; recompiled the form")
 
-    from automap.__main__ import forget, load_maps_titled
+    from automap.maps import forget, load_maps_titled
 
     if args.forget:
         return forget(args.forget)

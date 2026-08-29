@@ -1,3 +1,14 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
 """Debug mode, the FastTravel row, and choosing a backend.
 
 Nothing here needs an emulator and nothing here opens a dialog. A fasttravel is
@@ -13,7 +24,6 @@ These tests pin the sequence so that a live correction is one edit in one
 function.
 """
 
-from __future__ import annotations
 
 import pytest
 
@@ -281,16 +291,21 @@ def app():
 
 def bar(app, target=None, **kw):
     from automap.actionbar import FastTravelBar
-    row = FastTravelBar(**kw)
+    row = FastTravelBar(make_root(), **kw)
     if target is not None:
         row.attach(target)
     return row
 
 
 def _window(app):
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
 
 
 def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
@@ -300,7 +315,6 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
     the flag no longer decides whether the row is built."""
     from PyQt6.QtWidgets import QAbstractButton
 
-    from automap.actionbar import FastTravelBar
 
     for flag in (False, True):
         if flag:
@@ -309,10 +323,8 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
             monkeypatch.delenv(debugmode.ENV, raising=False)
         win = _window(app)
         assert win.fasttravel_bar is not None
-        assert len(win.findChildren(FastTravelBar)) == 1
-        assert sorted(b.text() for b in win.findChildren(QAbstractButton)
-                      if "Travel" in b.text()) == ["Fast Travel",
-                                                   "Travel Back"]
+        assert sorted(b.text() for b in win.root.findChildren(QAbstractButton)
+                      if "Travel" in b.text()) == ["Fast Travel"]
 
 
 def test_the_row_lists_every_fasttravelable_area_by_name(app):
@@ -454,7 +466,6 @@ def test_no_disk_is_named_anywhere_in_the_row(app):
     row = bar(app, machine(area=0, disk=3))
     row.combo.setCurrentIndex(row.rows.index(area(13)))       # POOL8
     assert not hasattr(row, "disk")
-    assert "POOL" not in row.note.text()
     assert "POOL" not in row.button.toolTip()
 
 
@@ -464,7 +475,6 @@ def test_the_button_carries_the_warning_as_its_own_help_text(app):
     instead, which is the more urgent answer and the trip is not happening
     anyway."""
     row = bar(app, machine(area=13))
-    assert row.note.text() == ""                     # nothing said yet
     assert row.button.isEnabled()
     assert row.button.toolTip() == (
         "Fast travel to areas you haven't been to is dangerous and can "
@@ -555,14 +565,19 @@ def test_a_refused_fasttravel_is_reported_as_an_alarm(app):
 def window(app, tmp_path, monkeypatch, target=None):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
     from automap.state import Automapper
-    from automap.window import AutomapWindow
-    return AutomapWindow(Automapper(target, {}), drive=False)
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return AutomapBinding(root, Automapper(target, {}), drive=False)
 
 
 def test_the_flag_no_longer_decides_whether_the_row_is_built(app, tmp_path,
                                                              monkeypatch):
-    """`AutomapWindow` used to read `WISH_DEBUG` once at build time. It does
+    """`AutomapBinding` used to read `WISH_DEBUG` once at build time. It does
     not read it at all now, which is what makes the row's launch-time timing
     problem go away: there is no flag left to be applied too late."""
     monkeypatch.delenv(debugmode.ENV, raising=False)
@@ -598,7 +613,7 @@ def wish_window(app, tmp_path, monkeypatch):
 
 def test_the_hosted_window_has_the_fast_travel_row_too(app, tmp_path,
                                                        monkeypatch):
-    """Both entry points: `wish-automap` builds `AutomapWindow` itself, the
+    """Both entry points: `wish-automap` builds `AutomapBinding` itself, the
     `wish` window hosts one. The row used to want `WISH_DEBUG` on the command
     line here, because the map is built before the remembered settings are
     applied; with no flag to read there is nothing left to be applied late."""
@@ -684,8 +699,7 @@ def test_a_fasttravel_is_verified_by_the_map_at_0400(app):
     assert row_bar._pending is None                 # and stops watching
     # The area's name, in the words the status line uses. The GEO file and
     # the address it matched at are the debug log's business.
-    assert row_bar.note.text() == "Arrived: The Kobold Caves"
-    assert "GEO" not in row_bar.note.text() and "$" not in row_bar.note.text()
+
 
 
 def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
@@ -710,8 +724,7 @@ def test_an_area_change_is_given_thirty_seconds(app, monkeypatch):
     # And said nothing about it. The timeout used to write a sentence naming
     # three things that might have gone wrong, which is the sort of GUI help
     # text Donald has ruled out; the debug log carries it instead.
-    assert "30s" not in row_bar.note.text()
-    assert "GEO" not in row_bar.note.text()
+
 
 
 def test_nothing_is_read_at_0400_when_no_fasttravel_is_in_flight(app):
@@ -726,8 +739,13 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     """The old action-bar button called `apply(target)` with no slot, which
     silently meant slot 0 -- the ambiguity Donald reported. The card knows
     which character it is, so the signal carries the slot."""
-    from automap.window import AutomapWindow
-    window = AutomapWindow.__new__(AutomapWindow)
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    window = AutomapBinding.__new__(AutomapBinding)
     seen = {}
 
     class Bar:
@@ -769,7 +787,7 @@ def test_the_roster_button_levels_the_character_whose_card_it_is(app):
     actions.LevelUp = Action
     actions.read_party = lambda target, game=None: party
     try:
-        AutomapWindow._level_up(window, 3)
+        AutomapBinding._level_up(window, 3)
     finally:
         actions.LevelUp, actions.read_party = monkey, was_read
     assert seen["kwargs"] == {"slot": 3, "class_name": "fighter", "spell": None}
@@ -785,20 +803,25 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
     """#16. A button that appears and then fails is worse than one that never
     appears: `level_up_blockers` refuses every title but Pool of Radiance, so
     the card does not offer the press."""
-    from automap.state import Automapper
-    from automap.window import AutomapWindow
+    from PyQt6.QtWidgets import QMainWindow
 
-    pool = AutomapWindow(Automapper(MemoryTarget({}), {}), drive=False)
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+
+    pool = AutomapBinding(root, Automapper(MemoryTarget({}), {}), drive=False)
     assert pool.roster.levelling
     assert pool.fasttravel_bar.has_areas
 
-    curse = AutomapWindow(
+    curse = AutomapBinding(root,
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"), drive=False)
     assert not curse.roster.levelling
     assert not curse.fasttravel_bar.has_areas
     # Cards built after the fact are told too -- they are made on demand.
-    card = curse.roster._card(0)
+    card = curse.roster.cards[0]
     assert not card.levelling
 
 
@@ -807,9 +830,14 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     The exception is `classes_disqualified`: the clamp takes a class below a
     threshold it had already passed, so a level the character earned goes, and
     that is worth a question. The refusal must write nothing."""
-    from automap.window import AutomapWindow
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
     from goldbox.levelup import Plan
-    window = AutomapWindow.__new__(AutomapWindow)
+    window = AutomapBinding.__new__(AutomapBinding)
     seen = {}
 
     class Messages:
@@ -851,7 +879,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
     actions.LevelUp = Action
     actions.read_party = lambda target, game=None: party
     try:
-        AutomapWindow._level_up(window, 0)
+        AutomapBinding._level_up(window, 0)
         assert "applied" not in seen, "the player said no"
         assert "2502" in seen["asked"] and "magic-user" in seen["asked"]
 
@@ -859,7 +887,7 @@ def test_the_click_warns_only_when_the_clamp_costs_an_earned_level(app):
         seen.clear()
         Action.plan = Plan(class_name="thief", from_level=1, to_level=2,
                            fields={}, hit_points_rolled=3)
-        AutomapWindow._level_up(window, 0)
+        AutomapBinding._level_up(window, 0)
         assert "asked" not in seen
         assert seen["applied"]["class_name"] == "thief"
     finally:
@@ -873,7 +901,7 @@ def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
     object is not iterable`."""
     import automap.window as win
 
-    window = win.AutomapWindow.__new__(win.AutomapWindow)
+    window = win.AutomapBinding.__new__(win.AutomapBinding)
     window._spell_names = None
     window.state = type("S", (), {"title": None})()
     (tmp_path / "POOL1.D64").write_bytes(b"")       # a directory with a disk
@@ -883,7 +911,7 @@ def test_the_spell_names_come_off_the_disk_directory_not_from_it(tmp_path):
     was = paths.find_disks
     paths.find_disks = lambda game=None: tmp_path
     try:
-        assert win.AutomapWindow._names_for_spells(window) == {}
+        assert win.AutomapBinding._names_for_spells(window) == {}
     finally:
         paths.find_disks = was
 

@@ -7,17 +7,2768 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="central_layout">
-    <property name="leftMargin"><number>0</number></property>
-    <property name="topMargin"><number>0</number></property>
-    <property name="rightMargin"><number>0</number></property>
-    <property name="bottomMargin"><number>0</number></property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
     <item>
-     <widget class="QTabWidget" name="tabs" />
+     <widget class="QTabWidget" name="tabs">
+      <widget class="QWidget" name="tab_automap">
+       <attribute name="title">
+        <string>Automapper</string>
+       </attribute>
+       <layout class="QGridLayout" name="automap_grid">
+        <item row="0" column="0">
+                  <widget class="QWidget" name="automap_roster">
+          <property name="maximumSize">
+           <size>
+            <width>220</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <layout class="QVBoxLayout" name="automap_roster_layout">
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="automap_roster_heading">
+             <property name="text">
+              <string>Party</string>
+             </property>
+             <property name="font">
+              <font>
+               <bold>true</bold>
+              </font>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QWidget" name="automap_roster_inner">
+              <layout class="QVBoxLayout" name="automap_roster_column">
+               <property name="spacing">
+                <number>6</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QFrame" name="card_0">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_0_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_0_top">
+                    <item>
+                     <widget class="QLabel" name="card_0_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_0_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_0_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_0_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_0_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_0_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_0_bars">
+                    <item>
+                     <widget class="Bar" name="card_0_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_0_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_0_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_0_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_1">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_1_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_1_top">
+                    <item>
+                     <widget class="QLabel" name="card_1_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_1_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_1_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_1_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_1_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_1_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_1_bars">
+                    <item>
+                     <widget class="Bar" name="card_1_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_1_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_1_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_1_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_2">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_2_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_2_top">
+                    <item>
+                     <widget class="QLabel" name="card_2_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_2_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_2_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_2_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_2_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_2_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_2_bars">
+                    <item>
+                     <widget class="Bar" name="card_2_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_2_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_2_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_2_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_3">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_3_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_3_top">
+                    <item>
+                     <widget class="QLabel" name="card_3_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_3_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_3_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_3_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_3_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_3_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_3_bars">
+                    <item>
+                     <widget class="Bar" name="card_3_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_3_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_3_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_3_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_4">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_4_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_4_top">
+                    <item>
+                     <widget class="QLabel" name="card_4_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_4_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_4_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_4_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_4_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_4_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_4_bars">
+                    <item>
+                     <widget class="Bar" name="card_4_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_4_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_4_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_4_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_5">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_5_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_5_top">
+                    <item>
+                     <widget class="QLabel" name="card_5_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_5_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_5_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_5_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_5_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_5_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_5_bars">
+                    <item>
+                     <widget class="Bar" name="card_5_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_5_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_5_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_5_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_6">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_6_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_6_top">
+                    <item>
+                     <widget class="QLabel" name="card_6_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_6_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_6_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_6_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_6_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_6_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_6_bars">
+                    <item>
+                     <widget class="Bar" name="card_6_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_6_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_6_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_6_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QFrame" name="card_7">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_7_layout">
+                  <property name="spacing">
+                   <number>1</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>2</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>8</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>2</number>
+                  </property>
+                  <item>
+                   <layout class="QHBoxLayout" name="card_7_top">
+                    <item>
+                     <widget class="QLabel" name="card_7_name">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <bold>true</bold>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="IconRow" name="card_7_conditions" />
+                    </item>
+                    <item>
+                     <spacer name="card_7_top_spacer">
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                      <property name="sizeHint" stdset="0">
+                       <size>
+                        <width>40</width>
+                        <height>20</height>
+                       </size>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="card_7_klass">
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                   <item alignment="Qt::AlignRight">
+                     <widget class="IconRow" name="card_7_quickfight" />
+                    </item>
+                    <item alignment="Qt::AlignRight">
+                     <widget class="QPushButton" name="card_7_level_up">
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                      <property name="cursor">
+                       <cursorShape>PointingHandCursor</cursorShape>
+                      </property>
+                      <property name="text">
+                       <string>Level up</string>
+                      </property>
+                      <property name="minimumSize">
+                       <size>
+                        <width>0</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                      <property name="maximumSize">
+                       <size>
+                        <width>16777215</width>
+                        <height>18</height>
+                       </size>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                  <item>
+                   <layout class="QVBoxLayout" name="card_7_bars">
+                    <item>
+                     <widget class="Bar" name="card_7_hp" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_7_xp_0" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_7_xp_1" />
+                    </item>
+                    <item>
+                     <widget class="Bar" name="card_7_xp_2" />
+                    </item>
+                   </layout>
+                  </item>
+                  </layout>
+                </widget>
+               </item>
+               <item>
+                <spacer name="automap_roster_spacer">
+                 <property name="orientation">
+                  <enum>Qt::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>20</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </widget>
+           </item>
+          <item><spacer name="roster_bottom_spacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item><item><layout class="QHBoxLayout" name="strip_line1"><property name="spacing"><number>8</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="ElidingLabel" name="strip_where">
+             <property name="text">
+              <string>-</string>
+             </property>
+            </widget>
+           </item><item><spacer name="clock_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeType"><enum>QSizePolicy::Expanding</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="ElidingLabel" name="strip_clock">
+             <property name="text">
+              <string>-</string>
+             </property>
+            </widget>
+           </item></layout></item><item><layout class="QHBoxLayout" name="strip_line2"><property name="spacing"><number>8</number></property><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="strength_label">
+          <property name="font">
+           <font>
+            <pointsize>8</pointsize>
+           </font>
+          </property>
+          <property name="toolTip">
+           <string>How big a random encounter is. Not readable yet.</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">color: #5c6b7a</string>
+          </property>
+          <property name="text">
+           <string>party strength --</string>
+          </property>
+         </widget>
+        </item><item><widget class="ElidingLabel" name="strip_area">
+             <property name="text">
+              <string>-</string>
+             </property>
+            </widget>
+           </item></layout></item></layout>
+         </widget>
+        </item>
+        <item row="0" column="1" alignment="Qt::AlignTop">
+         <widget class="QWidget" name="map_column">
+          <layout class="QVBoxLayout" name="map_column_layout">
+           <property name="spacing">
+            <number>4</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QStackedWidget" name="map_stack"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>0</verstretch></sizepolicy></property></widget>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QWidget" name="actions_bar">
+             <layout class="QGridLayout" name="actions_grid">
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>2</number>
+              </property>
+              <item row="0" column="0">
+               <widget class="ElidingButton" name="action_heal">
+                <property name="text">
+                 <string>Heal party</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="ElidingButton" name="action_store">
+                <property name="text">
+                 <string>Save spells</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="2">
+               <widget class="ElidingButton" name="action_restore">
+                <property name="text">
+                 <string>Restore spells</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="3">
+               <widget class="ElidingButton" name="action_identify">
+                <property name="text">
+                 <string>Identify</string>
+                </property>
+               </widget>
+              </item>
+
+              </layout>
+            </widget>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QWidget" name="fasttravel_bar">
+             <layout class="QGridLayout" name="fasttravel_grid">
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>2</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>2</number>
+              </property>
+              <item row="0" column="1">
+               <widget class="ElidingButton" name="action_clear_qf">
+                <property name="text">
+                 <string>Clear quickfight</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="2">
+               <widget class="ElidingComboBox" name="ft_combo" />
+              </item>
+              <item row="0" column="3">
+               <widget class="ElidingButton" name="ft_button">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Fast Travel</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="4">
+               <widget class="ElidingButton" name="ft_back_button">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>Return</string>
+                </property>
+               </widget>
+              </item>
+              </layout>
+            </widget>
+           </item>
+           </layout>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QWidget" name="automap_side">
+          <property name="maximumSize">
+           <size>
+            <width>460</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <layout class="QVBoxLayout" name="automap_side_layout">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QSplitter" name="side_splitter">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <widget class="QWidget" name="notes_panel">
+              <layout class="QVBoxLayout" name="notes_layout">
+               <property name="spacing">
+                <number>4</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="notes_heading">
+                 <property name="font">
+                  <font>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>Notes</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QListWidget" name="notes_list">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="iconSize">
+                  <size>
+                   <width>13</width>
+                   <height>13</height>
+                  </size>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             <property name="maximumSize"><size><width>16777215</width><height>138</height></size></property></widget>
+             <widget class="QWidget" name="commissions_panel">
+              <layout class="QVBoxLayout" name="commissions_layout">
+               <property name="spacing">
+                <number>4</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="commissions_heading">
+                 <property name="font">
+                  <font>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>Commissions</string>
+                 </property>
+                 <property name="textInteractionFlags">
+                  <set>Qt::NoTextInteraction</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QScrollArea" name="commissions_scroll">
+                 <property name="minimumSize"><size><width>0</width><height>138</height></size></property><property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="horizontalScrollBarPolicy">
+                  <enum>Qt::ScrollBarAlwaysOff</enum>
+                 </property>
+                 <property name="widgetResizable">
+                  <bool>true</bool>
+                 </property>
+                 <widget class="QWidget" name="commissions_inner">
+                  <layout class="QVBoxLayout" name="commissions_column">
+                   <property name="spacing">
+                    <number>8</number>
+                   </property>
+                   <property name="leftMargin">
+                    <number>8</number>
+                   </property>
+                   <property name="topMargin">
+                    <number>6</number>
+                   </property>
+                   <property name="rightMargin">
+                    <number>8</number>
+                   </property>
+                   <property name="bottomMargin">
+                    <number>6</number>
+                   </property>
+                   <item>
+                    <widget class="QLabel" name="commissions_completed">
+                     <property name="font">
+                      <font>
+                       <pointsize>8</pointsize>
+                      </font>
+                     </property>
+                     <property name="text">
+                      <string />
+                     </property>
+                     <property name="textInteractionFlags">
+                      <set>Qt::NoTextInteraction</set>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="messages_panel">
+              <layout class="QVBoxLayout" name="messages_layout">
+               <property name="spacing">
+                <number>4</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
+               </property>
+               <item>
+                <widget class="QLabel" name="messages_heading">
+                 <property name="font">
+                  <font>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="text">
+                  <string>Messages</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QListWidget" name="messages_list">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="selectionMode">
+                  <enum>QAbstractItemView::NoSelection</enum>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        </layout>
+      </widget>
+      <widget class="QWidget" name="tab_editor">
+       <attribute name="title">
+        <string>Character Editor</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="editor_outer">
+        <item>
+         <layout class="QHBoxLayout" name="buttons">
+          <item>
+           <widget class="QPushButton" name="button_open">
+            <property name="text">
+             <string>&amp;Open…</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="button_save">
+            <property name="text">
+             <string>&amp;Save</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="button_save_as">
+            <property name="text">
+             <string>Save &amp;As…</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="button_preview">
+            <property name="text">
+             <string>&amp;Preview changes…</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="button_spacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="header_row">
+          <item>
+           <widget class="RosterView" name="roster" />
+          </item>
+          <item>
+           <widget class="QGroupBox" name="box_identity">
+            <property name="title">
+             <string>Character</string>
+            </property>
+            <layout class="QVBoxLayout" name="layout_identity">
+             <item>
+              <widget class="QWidget" name="columns_identity">
+               <layout class="QHBoxLayout" name="form_identity">
+                <item>
+                 <layout class="QFormLayout" name="form_identity_left">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="label_name">
+                    <property name="text">
+                     <string>Name</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QLineEdit" name="field_name" />
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="label_race">
+                    <property name="text">
+                     <string>Race</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QComboBox" name="field_race" />
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="label_char_class">
+                    <property name="text">
+                     <string>Char class</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QComboBox" name="field_char_class" />
+                  </item>
+                  <item row="3" column="0">
+                   <widget class="QLabel" name="label_class_bits">
+                    <property name="text">
+                     <string>Class bits</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="1">
+                   <widget class="QComboBox" name="field_class_bits" />
+                  </item>
+                  <item row="4" column="0">
+                   <widget class="QLabel" name="label_alignment">
+                    <property name="text">
+                     <string>Alignment</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="1">
+                   <widget class="QComboBox" name="field_alignment" />
+                  </item>
+                 </layout>
+                </item>
+                <item>
+                 <layout class="QFormLayout" name="form_identity_right">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="label_hp_max">
+                    <property name="text">
+                     <string>Hp max</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QSpinBox" name="field_hp_max">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>65535</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="label_hp_rolled">
+                    <property name="text">
+                     <string>Hp rolled</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QSpinBox" name="field_hp_rolled">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>255</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="label_hp_current">
+                    <property name="text">
+                     <string>Hp current</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QSpinBox" name="field_hp_current">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>65535</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="0">
+                   <widget class="QLabel" name="label_sex">
+                    <property name="text">
+                     <string>Sex</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="1">
+                   <widget class="QComboBox" name="field_sex" />
+                  </item>
+                  <item row="4" column="0">
+                   <widget class="QLabel" name="label_age">
+                    <property name="text">
+                     <string>Age</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="1">
+                   <widget class="QSpinBox" name="field_age">
+                    <property name="minimum">
+                     <number>0</number>
+                    </property>
+                    <property name="maximum">
+                     <number>65535</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="0">
+                   <widget class="QLabel" name="label_size_small">
+                    <property name="text">
+                     <string>Size</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="1">
+                   <widget class="QComboBox" name="field_size_small" />
+                  </item>
+                 </layout>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="header_slack">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>0</width>
+              <height>0</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTabWidget" name="sheet_tabs">
+          <widget class="QWidget" name="tab_stats">
+           <attribute name="title">
+            <string>Stats</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="layout_tab_stats">
+            <item>
+             <widget class="QScrollArea" name="scroll_stats">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="page_stats">
+               <layout class="QGridLayout" name="sheet_columns">
+                <item row="0" column="0">
+                 <widget class="QGroupBox" name="box_abilities">
+                  <property name="title">
+                   <string>Ability Scores</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_abilities">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_strength">
+                     <property name="text">
+                      <string>Strength</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_strength">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_exceptional_strength">
+                     <property name="text">
+                      <string>Exceptional strength</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_exceptional_strength">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_strength_index">
+                     <property name="text">
+                      <string>Strength index</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_strength_index">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_intelligence">
+                     <property name="text">
+                      <string>Intelligence</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_intelligence">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_wisdom">
+                     <property name="text">
+                      <string>Wisdom</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_wisdom">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_dexterity">
+                     <property name="text">
+                      <string>Dexterity</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_dexterity">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="0">
+                    <widget class="QLabel" name="label_constitution">
+                     <property name="text">
+                      <string>Constitution</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="1">
+                    <widget class="QSpinBox" name="field_constitution">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="0">
+                    <widget class="QLabel" name="label_charisma">
+                     <property name="text">
+                      <string>Charisma</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="1">
+                    <widget class="QSpinBox" name="field_charisma">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QGroupBox" name="box_levels">
+                  <property name="title">
+                   <string>Experience and levels</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_levels">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_experience">
+                     <property name="text">
+                      <string>Experience</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_experience">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>16777215</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_level">
+                     <property name="text">
+                      <string>Level</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_level">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_level_fighter">
+                     <property name="text">
+                      <string>Level fighter</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_level_fighter">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_level_cleric">
+                     <property name="text">
+                      <string>Level cleric</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_level_cleric">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_level_magic_user">
+                     <property name="text">
+                      <string>Level magic user</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_level_magic_user">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_level_thief">
+                     <property name="text">
+                      <string>Level thief</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_level_thief">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="0">
+                    <widget class="QLabel" name="label_levels_drained">
+                     <property name="text">
+                      <string>Levels drained</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="1">
+                    <widget class="QSpinBox" name="field_levels_drained">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="0">
+                    <widget class="QLabel" name="label_hp_lost_to_drain">
+                     <property name="text">
+                      <string>Hp lost to drain</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="1">
+                    <widget class="QSpinBox" name="field_hp_lost_to_drain">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QGroupBox" name="box_money">
+                  <property name="title">
+                   <string>Money</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_money">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_copper">
+                     <property name="text">
+                      <string>Copper</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_copper">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_silver">
+                     <property name="text">
+                      <string>Silver</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_silver">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_electrum">
+                     <property name="text">
+                      <string>Electrum</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_electrum">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_gold">
+                     <property name="text">
+                      <string>Gold</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_gold">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_platinum">
+                     <property name="text">
+                      <string>Platinum</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_platinum">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_gems">
+                     <property name="text">
+                      <string>Gems</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_gems">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="0">
+                    <widget class="QLabel" name="label_jewelry">
+                     <property name="text">
+                      <string>Jewelry</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="1">
+                    <widget class="QSpinBox" name="field_jewelry">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>65535</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QGroupBox" name="box_roster">
+                  <property name="title">
+                   <string>Roster</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_roster">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_roster_in_use">
+                     <property name="text">
+                      <string>Roster in use</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_roster_in_use">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_party_order">
+                     <property name="text">
+                      <string>Party order</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_party_order">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_roster_movement">
+                     <property name="text">
+                      <string>Roster movement</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_roster_movement">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_roster_tail">
+                     <property name="text">
+                      <string>Roster tail</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QLineEdit" name="field_roster_tail" />
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_turn_class">
+                     <property name="text">
+                      <string>Turn class</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_turn_class">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_flags_0b8">
+                     <property name="text">
+                      <string>Flags 0b8</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_flags_0b8">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="0" column="4" rowspan="2">
+                 <widget class="QGroupBox" name="box_effects">
+                  <property name="title">
+                   <string>Character Traits</string>
+                  </property>
+                  <layout class="QVBoxLayout" name="layout_effects">
+                   <item>
+                    <widget class="EffectsView" name="field_item_effects" />
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QGroupBox" name="box_saves">
+                  <property name="title">
+                   <string>Saving throws</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_saves">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_save_paralysis">
+                     <property name="text">
+                      <string>Paralysis</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_save_paralysis">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_save_petrification">
+                     <property name="text">
+                      <string>Petrification</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_save_petrification">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_save_wands">
+                     <property name="text">
+                      <string>Wands</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_save_wands">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_save_breath">
+                     <property name="text">
+                      <string>Breath</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_save_breath">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_save_spell">
+                     <property name="text">
+                      <string>Spell</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_save_spell">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QGroupBox" name="box_thief_skills">
+                  <property name="title">
+                   <string>Thief skills</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_thief_skills">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_thief_pick_pockets">
+                     <property name="text">
+                      <string>Pick pockets</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_thief_pick_pockets">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_thief_open_locks">
+                     <property name="text">
+                      <string>Open locks</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_thief_open_locks">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_thief_find_traps">
+                     <property name="text">
+                      <string>Find traps</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_thief_find_traps">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_thief_move_silently">
+                     <property name="text">
+                      <string>Move silently</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_thief_move_silently">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_thief_hide_in_shadows">
+                     <property name="text">
+                      <string>Hide in shadows</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_thief_hide_in_shadows">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_thief_hear_noise">
+                     <property name="text">
+                      <string>Hear noise</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_thief_hear_noise">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="0">
+                    <widget class="QLabel" name="label_thief_climb_walls">
+                     <property name="text">
+                      <string>Climb walls</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="6" column="1">
+                    <widget class="QSpinBox" name="field_thief_climb_walls">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="0">
+                    <widget class="QLabel" name="label_thief_read_languages">
+                     <property name="text">
+                      <string>Read languages</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="7" column="1">
+                    <widget class="QSpinBox" name="field_thief_read_languages">
+                     <property name="minimum">
+                      <number>-128</number>
+                     </property>
+                     <property name="maximum">
+                      <number>127</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QGroupBox" name="box_combat">
+                  <property name="title">
+                   <string>Combat</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_combat">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="label_thac0_base">
+                     <property name="text">
+                      <string>Thac0 base</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QSpinBox" name="field_thac0_base">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="label_thac0">
+                     <property name="text">
+                      <string>Thac0</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QSpinBox" name="field_thac0">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QLabel" name="label_armour_class_base">
+                     <property name="text">
+                      <string>Armour class base</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QSpinBox" name="field_armour_class_base">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="label_armour_class">
+                     <property name="text">
+                      <string>Armour class</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QSpinBox" name="field_armour_class">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="0">
+                    <widget class="QLabel" name="label_movement">
+                     <property name="text">
+                      <string>Movement</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="4" column="1">
+                    <widget class="QSpinBox" name="field_movement">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="0">
+                    <widget class="QLabel" name="label_infravision">
+                     <property name="text">
+                      <string>Infravision</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item row="5" column="1">
+                    <widget class="QSpinBox" name="field_infravision">
+                     <property name="minimum">
+                      <number>0</number>
+                     </property>
+                     <property name="maximum">
+                      <number>255</number>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QGroupBox" name="box_appearance">
+                  <property name="title">
+                   <string>Combat icon</string>
+                  </property>
+                  <layout class="QFormLayout" name="form_appearance">
+                   <item row="0" column="0" colspan="2">
+                    <widget class="IconEditor" name="field_icon" />
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tab_inventory">
+           <attribute name="title">
+            <string>Inventory</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="layout_tab_inventory">
+            <item>
+             <widget class="QScrollArea" name="scroll_inventory">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="page_inventory">
+               <layout class="QVBoxLayout" name="column_inventory">
+                <item>
+                 <widget class="QGroupBox" name="box_inventory">
+                  <property name="title">
+                   <string>Inventory</string>
+                  </property>
+                  <layout class="QVBoxLayout" name="layout_inventory">
+                   <item>
+                    <widget class="QLabel" name="label_inventory">
+                     <property name="text">
+                      <string>Items</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QTableView" name="inventory" />
+                   </item>
+                   <item>
+                    <layout class="QHBoxLayout" name="inventory_buttons">
+                     <item>
+                      <widget class="QPushButton" name="button_item_add">
+                       <property name="text">
+                        <string>&amp;Add item…</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QPushButton" name="button_item_delete">
+                       <property name="text">
+                        <string>&amp;Delete item</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <spacer name="inventory_spacer">
+                       <property name="orientation">
+                        <enum>Qt::Horizontal</enum>
+                       </property>
+                       <property name="sizeHint" stdset="0">
+                        <size>
+                         <width>40</width>
+                         <height>20</height>
+                        </size>
+                       </property>
+                      </spacer>
+                     </item>
+                    </layout>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QGroupBox" name="box_traits">
+                  <property name="title">
+                   <string>Item traits</string>
+                  </property>
+                  <layout class="QVBoxLayout" name="layout_traits">
+                   <item>
+                    <widget class="QLabel" name="label_traits">
+                     <property name="text">
+                      <string>Select an item</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QTableView" name="traits" />
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tab_spells">
+           <attribute name="title">
+            <string>Spells</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="layout_tab_spells">
+            <item>
+             <widget class="QScrollArea" name="scroll_spells">
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="page_spells">
+               <layout class="QVBoxLayout" name="column_spells">
+                <item>
+                 <widget class="QGroupBox" name="box_spells">
+                  <property name="title">
+                   <string>Spells</string>
+                  </property>
+                  <layout class="QVBoxLayout" name="layout_spells">
+                   <item>
+                    <layout class="QHBoxLayout" name="layout_spell_lists">
+                     <item>
+                      <layout class="QVBoxLayout" name="layout_spellbook">
+                       <item>
+                        <widget class="QLabel" name="label_spells_known">
+                         <property name="text">
+                          <string>Spellbook</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QListWidget" name="field_spells_known" />
+                       </item>
+                      </layout>
+                     </item>
+                     <item>
+                      <layout class="QVBoxLayout" name="layout_memorised">
+                       <item>
+                        <widget class="QLabel" name="label_spells_memorised">
+                         <property name="text">
+                          <string>Memorized</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QListWidget" name="field_spells_memorised_list" />
+                       </item>
+                       <item>
+                        <widget class="QComboBox" name="field_spells_memorised_choice" />
+                       </item>
+                       <item>
+                        <layout class="QHBoxLayout" name="layout_memorised_buttons">
+                         <item>
+                          <widget class="QPushButton" name="field_spells_memorised_add">
+                           <property name="text">
+                            <string>Add</string>
+                           </property>
+                          </widget>
+                         </item>
+                         <item>
+                          <widget class="QPushButton" name="field_spells_memorised_remove">
+                           <property name="text">
+                            <string>Remove</string>
+                           </property>
+                          </widget>
+                         </item>
+                         <item>
+                          <spacer name="memorised_spacer">
+                           <property name="orientation">
+                            <enum>Qt::Horizontal</enum>
+                           </property>
+                           <property name="sizeHint" stdset="0">
+                            <size>
+                             <width>40</width>
+                             <height>20</height>
+                            </size>
+                           </property>
+                          </spacer>
+                         </item>
+                        </layout>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="field_spells_memorised_capacity">
+                         <property name="wordWrap">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </item>
+                    </layout>
+                   </item>
+                   <item>
+                    <layout class="QHBoxLayout" name="layout_castable">
+                     <item>
+                      <widget class="QLabel" name="label_spells_castable">
+                       <property name="text">
+                        <string>Castable per level</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLineEdit" name="field_spells_castable" />
+                     </item>
+                     <item>
+                      <spacer name="castable_spacer">
+                       <property name="orientation">
+                        <enum>Qt::Horizontal</enum>
+                       </property>
+                       <property name="sizeHint" stdset="0">
+                        <size>
+                         <width>40</width>
+                         <height>20</height>
+                        </size>
+                       </property>
+                      </spacer>
+                     </item>
+                    </layout>
+                   </item>
+                  </layout>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
     </item>
    </layout>
   </widget>
   <widget class="QStatusBar" name="statusbar" />
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>Bar</class>
+   <extends>QWidget</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>IconRow</class>
+   <extends>QWidget</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidingButton</class>
+   <extends>QPushButton</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidingCheckBox</class>
+   <extends>QCheckBox</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidingComboBox</class>
+   <extends>QComboBox</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidingLabel</class>
+   <extends>QLabel</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>IconEditor</class>
+   <extends>QWidget</extends>
+   <header>editor.iconwidget</header>
+  </customwidget>
+  <customwidget>
+   <class>RosterView</class>
+   <extends>QTableView</extends>
+   <header>editor.rosterview</header>
+  </customwidget>
+  <customwidget>
+   <class>EffectsView</class>
+   <extends>QTableView</extends>
+   <header>editor.effects</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>

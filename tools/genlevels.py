@@ -58,7 +58,7 @@ def main() -> int:
                 row += " " + ("/".join(str(s) for s in r.spells) or "—") + " |"
             out.append(row)
         out.append("")
-    OUT.write_text("\n".join(out) + "\n")
+    OUT.write_text(encoding="utf-8", data="\n".join(out) + "\n")
     print(f"{len(TABLES)} classes -> {OUT.name}")
     return 0
 

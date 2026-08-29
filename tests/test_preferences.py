@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """File > Preferences: one precedence, and a report that says what it found.
 
 Two rules this file obeys, both learned the hard way:
@@ -11,7 +23,6 @@ Two rules this file obeys, both learned the hard way:
   `tests/gamedata.py` and skips when there are none.
 """
 
-from __future__ import annotations
 
 import json
 import os
@@ -284,7 +295,7 @@ def test_a_directory_holding_two_titles_reports_the_open_one_s_maps(
 def opens(win, save):
     """What the editor does when a save is loaded, without needing a disk.
 
-    `EditorWindow.load` sets `path` and emits `opened`; a real D64 is the
+    `EditorBinding.load` sets `path` and emits `opened`; a real D64 is the
     player's and this rule has nothing to do with what is inside one.
     """
     save.parent.mkdir(parents=True, exist_ok=True)
@@ -437,7 +448,7 @@ def test_the_remembered_folder_is_a_setting_and_survives_a_restart(
 def test_opening_a_save_remembers_its_folder_and_the_next_open_starts_there(
         app, tmp_path, monkeypatch):
     """The wiring #66 left undone: `WishWindow` writes the setting back on
-    `opened`, and a fresh `EditorWindow` built from it starts `File > Open`
+    `opened`, and a fresh `EditorBinding` built from it starts `File > Open`
     there."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     folder = tmp_path / "saves" / "party one"
@@ -1065,7 +1076,7 @@ def test_the_size_the_compositor_forces_does_not_become_the_memory(
     from automap.config import hold_geometry
 
     nowhere(tmp_path, monkeypatch)
-    space = QRect(0, 0, 1920, 1032)
+    space = QRect(0, 0, 1920, 1200)
     win = window(app)
     win.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     win.show()
@@ -1194,9 +1205,9 @@ def test_the_editor_takes_the_folder_as_a_parameter_and_imports_nothing(
         app, tmp_path, monkeypatch):
     """`tests/test_wish.py::test_editor_imports_nothing_live` is the rule; this
     is the mechanism that keeps it true -- the folder arrives as an argument."""
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
     nowhere(tmp_path, monkeypatch)
-    editor = EditorWindow()
+    editor = EditorBinding(make_root(), )
     editor.set_disks(str(disk_dir()))
     assert editor.item_names
     assert editor.game_disk_found

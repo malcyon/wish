@@ -391,7 +391,7 @@ class HealParty(Action):
     """
 
     name = "heal"
-    label = "Heal the party"
+    label = "Heal party"
     description = "current hit points to maximum, for every conscious character"
     combat_legal = True
 
@@ -488,7 +488,7 @@ class StoreSpells(Action):
     # American spelling on the face of the program, Donald's; the field name
     # `spells_memorised` stays as it is, because it reaches generated docs and
     # saved YAML that has to keep loading.
-    label = "Store memorized spells"
+    label = "Save spells"
     description = "remember the memorised list for every character"
 
     def __init__(self, store: SpellStore | None = None,
@@ -519,7 +519,7 @@ class RestoreSpells(Action):
     """
 
     name = "restore-spells"
-    label = "Restore memorized spells"
+    label = "Restore spells"
     description = "put back the memorised list stored earlier"
 
     def __init__(self, store: SpellStore | None = None,
@@ -573,7 +573,7 @@ class IdentifyItems(Action):
     """
 
     name = "identify"
-    label = "Identify all items"
+    label = "Identify"
     description = "clear the hidden-name bits on every item the party carries"
     confirm = ("Identify every item the party carries? There is no way to undo "
                "this in the game.")

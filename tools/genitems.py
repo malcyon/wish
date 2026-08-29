@@ -168,7 +168,7 @@ def main() -> int:
           f"{r[1] or '—'} | {r[5] or '—'} | {r[12] or '—'} | "
           f"{classes(r[13] & 0x0F)} |")
     w("")
-    OUT.write_text("\n".join(out) + "\n")
+    OUT.write_text(encoding="utf-8", data="\n".join(out) + "\n")
     print(f"wrote {OUT} ({len(out)} lines)")
     return 0
 

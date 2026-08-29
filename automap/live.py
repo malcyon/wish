@@ -244,8 +244,7 @@ class Character:
         """
         out = []
         if self.down:
-            out.append(("skull", "at 0 hit points: dead or dying, and the "
-                                 "record does not say which"))
+            out.append(("skull", ""))
         if self.levels_drained:
             out.append(("arrow-down-long",
                         f"drained {self.levels_drained} level"
@@ -255,7 +254,8 @@ class Character:
 
     @property
     def class_text(self) -> str:
-        return "/".join(c.name for c in self.classes) or "?"
+        abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C", "thief": "T"}
+        return "/".join(abbrevs.get(c.name.lower(), c.name) for c in self.classes) or "?"
 
     @property
     def level_text(self) -> str:

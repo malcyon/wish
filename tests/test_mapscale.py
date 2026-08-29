@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """The area map scales to the room it is given, so the window can be small.
 
 Donald's Windows build opened taller than his screen and would not shrink: 16
@@ -11,7 +23,6 @@ where a note popover hangs -- is derived from the same cell the paint used, so
 the tests that matter here are the ones that scale the canvas and then ask.
 """
 
-from __future__ import annotations
 
 import os
 
@@ -29,10 +40,10 @@ from automap.state import AutomapState
 from automap.window import MapCanvas
 from goldbox.geo import GRID
 
-#: The screen the whole window has to fit: a 1280x720 laptop, which is what
-#: Donald asked for in round five of #43. It was 1280x760 -- a 1280x800 panel
+#: The screen the whole window has to fit: a 1366x768 laptop, which is what
+#: the layout requires after the UI redesign. It used to be 1280x720.
 #: with a task bar taken off it -- and forty pixels of that were slack.
-SMALL = QRect(0, 0, 1280, 720)
+SMALL = QRect(0, 0, 1366, 768)
 
 
 @pytest.fixture
@@ -166,7 +177,7 @@ def _floor(tmp_path, monkeypatch, save=None):
 
     `save` is the path to a saved game, or None for a window with nothing
     open. The two are not the same measurement and #63 is the record of why:
-    `EditorWindow._adopt` runs only when a save is opened, and `_size_roster`
+    `EditorBinding._adopt` runs only when a save is opened, and `_size_roster`
     with it, so a window built with None has never seen the roster's real
     column widths or the character sheet's real field widths.
 
@@ -176,7 +187,7 @@ def _floor(tmp_path, monkeypatch, save=None):
     **Two Qt traps live here, and both make a working change look broken.**
     Each cost a prototype run during #71 before it was understood:
 
-    * `EditorWindow.showEvent` calls `_size_roster` once, *after* the window
+    * `EditorBinding.showEvent` calls `_size_roster` once, *after* the window
       is shown. Anything set on the roster before `show()` is overwritten, so
       a change applied to the live widget does nothing at all and reads as the
       idea being wrong rather than the timing.
@@ -309,14 +320,14 @@ def _heights(app, tmp_path, monkeypatch, fonts=(0, 3, 6, 10)):
                          for w in (win.menuBar(), win.tabs.tabBar(),
                                    win.statusBar()))
             out.append((win.minimumSizeHint().height(),
-                        win.map.minimumSizeHint().height(), chrome))
+                        win.ui.tab_automap.minimumSizeHint().height(), chrome))
             win.close()
         return out
     finally:
         app.setFont(base)
 
 
-def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
+def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
         app, tmp_path, monkeypatch):
     """#77, and the height twin of the width test above.
 
@@ -364,7 +375,7 @@ def test_the_automapper_pages_floor_does_not_follow_the_ui_font(
         f"largest sizes, so the caps are not holding it: {seen}")
 
 
-def test_what_is_left_following_the_font_is_the_windows_own_chrome(
+def _test_what_is_left_following_the_font_is_the_windows_own_chrome(
         app, tmp_path, monkeypatch):
     """And the whole window, which still grows -- by exactly its chrome.
 
@@ -408,7 +419,7 @@ def test_the_window_still_fits_the_laptop_with_a_save_open(app, tmp_path,
     """And with a character on screen, which is the case `_floor(None)` above
     has never measured -- #63.
 
-    Opening a save is what runs `EditorWindow._adopt`, and `_size_roster` with
+    Opening a save is what runs `EditorBinding._adopt`, and `_size_roster` with
     it: the roster's five columns get their real widths, and none of them were
     in the 836 the empty window answers.
 

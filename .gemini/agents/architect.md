@@ -2,7 +2,7 @@
 name: architect
 description: Creates reverse-engineering plans for other models to execute. Outlines what to look for, where to look, and what techniques/patterns to use. Does not execute the plan itself.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
-model: gemini-3.1-pro
+model: pro
 memory: project
 color: green
 ---

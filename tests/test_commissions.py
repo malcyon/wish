@@ -1,3 +1,12 @@
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
 """The City Council's books: the decoder, and the panel that draws it.
 
 Most of this runs on flag blocks built here, byte by byte, because the states
@@ -236,7 +245,7 @@ SLUMS = {"Clear the Slums", "Slums cleared"}   # the panel capitalises
 
 def panel_for(app, flags):
     from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel()
+    panel = CommissionsPanel(make_root())
     panel.update_from(flags)
     return panel
 
@@ -369,7 +378,7 @@ def test_a_paid_row_is_drawn_muted_so_live_work_stands_out(app):
 def test_the_panel_lists_an_outstanding_summons(app):
     panel = panel_for(app, put(blank(), 0x4A97, DONE))
     group = panel.groups["summons"]
-    assert group.isVisibleTo(panel)
+    assert group.isVisibleTo(panel.root)
     row = group.visible_rows()[0]
     assert row.what.text() == "Councilman Cadorna's chambers"
     assert row.state.text() == "summoned"
@@ -377,12 +386,12 @@ def test_the_panel_lists_an_outstanding_summons(app):
 
 def test_the_panel_hides_the_summonses_when_there_are_none(app):
     panel = panel_for(app, blank())
-    assert not panel.groups["summons"].isVisibleTo(panel)
+    assert not panel.groups["summons"].isVisibleTo(panel.root)
 
 
 def test_the_panel_takes_a_whole_savedgame0(app):
     from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel()
+    panel = CommissionsPanel(make_root())
     payload = game_file("SAVEDGAME0")
     before = bytes(payload)
     panel.update_from(payload)
@@ -418,7 +427,7 @@ def test_nothing_in_the_panel_is_editable(app):
 
 def test_the_panel_says_so_before_it_has_any_bytes(app):
     from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel()
+    panel = CommissionsPanel(make_root())
     assert panel.heading.text() == "Commissions - waiting for a game"
     panel.update_from(blank())
     assert panel.heading.text() == "Commissions"

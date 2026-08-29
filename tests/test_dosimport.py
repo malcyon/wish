@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """File > Import > DOS save: the window over `goldbox/dos.py`'s converter.
 
 The conversion itself is `tests/test_dosconvert.py`'s. What is tested here is
@@ -14,7 +26,6 @@ CI does. Nothing here opens a window: `tests/conftest.py` forces the offscreen
 platform before Qt is imported.
 """
 
-from __future__ import annotations
 
 import pytest
 from gamedata import disk_dir, game_disk
@@ -47,7 +58,7 @@ def files():
 
     The two live on different sides -- `SPELLE64`/`SPELLN64` on the
     character-creation disk and `ANIMATE00` on all eight -- so each is found
-    by trying to read it, which is what `EditorWindow._find_disk` does in the
+    by trying to read it, which is what `EditorBinding._find_disk` does in the
     running program.
     """
     from editor.dosimport import GameFiles
@@ -262,7 +273,7 @@ def test_no_game_disks_is_a_pop_up_and_no_folder_picker(app, tmp_path,
     """
     import editor.window as ew
     from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     said, picked = [], []
     monkeypatch.setattr(ew.QMessageBox, "critical",
@@ -276,7 +287,7 @@ def test_no_game_disks_is_a_pop_up_and_no_folder_picker(app, tmp_path,
     empty = tmp_path / "no disks here"
     empty.mkdir()
     monkeypatch.chdir(empty)
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(empty))
     assert window.import_dos_save() == "no game disks"
     assert said == [(NO_DISKS_TITLE, NO_DISKS)]
@@ -291,14 +302,14 @@ def test_with_the_game_disks_there_the_import_gets_as_far_as_the_picker(
     everything: with the disks configured the import goes on to the folder
     picker, and cancelling it is the only reason it stops."""
     import editor.window as ew
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     said, picked = [], []
     monkeypatch.setattr(ew.QMessageBox, "critical",
                         lambda *a, **k: said.append(a))
     monkeypatch.setattr(ew.QFileDialog, "getExistingDirectory",
                         lambda *a, **k: picked.append(a) or "")
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     assert window.import_dos_save() == "cancelled"
     assert said == []
@@ -321,7 +332,7 @@ def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
     """
     import editor.window as ew
     from editor.dosimport import NO_DISKS, NO_DISKS_TITLE
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
     from goldbox.iconparts import IconParts
 
     said, picked = [], []
@@ -334,7 +345,7 @@ def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
         raise IndexError("icon option 3 of 2")
 
     monkeypatch.setattr(IconParts, "default_icon", out_of_range)
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     assert window.import_dos_save() == "no game disks"
     assert said == [(NO_DISKS_TITLE, NO_DISKS)]
@@ -346,9 +357,9 @@ def test_a_disk_that_loads_but_makes_no_icon_refuses_rather_than_doing_nothing(
 def test_the_game_files_an_import_needs_are_the_icon_and_animate(app, tmp_path):
     """What `game_files_for_import` actually found, rather than that it found
     something: a 36-byte icon that is not zero and `ANIMATE00`'s own 852."""
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     found = window.game_files_for_import()
     assert found is not None
@@ -369,9 +380,9 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
     """
     import editor.window as ew
     from editor.dosimport import rehearse
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
-    window = EditorWindow(backups=str(tmp_path / "backups"))
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"))
     note = window.adopt_conversion(rehearse(dos_save, "A", files))
 
     assert window.dirty                      # unsaved, and the title says so
@@ -481,11 +492,11 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
 
     import editor.dosimport as di
     from editor.dosimport import rehearse
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     monkeypatch.setattr(di.DosImportDialog, "exec",
                         lambda self: QDialog.DialogCode.Accepted)
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent),
                           last_save_folder=str(tmp_path))
     opened = []
@@ -501,8 +512,8 @@ def test_convert_writes_the_file_the_window_names(app, tmp_path, dos_save,
     assert not window.dirty
     assert opened == [str(out)]
     assert out.name in note
-    assert out.name in window.windowTitle()
-    assert "*" not in window.windowTitle()
+    assert out.name in window.root.windowTitle()
+    assert "*" not in window.root.windowTitle()
     window.close()
 
 
@@ -523,7 +534,7 @@ def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
 
     import editor.dosimport as di
     import editor.window as ew
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     tries = []
 
@@ -535,7 +546,7 @@ def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
     monkeypatch.setattr(di.DosImportDialog, "exec", once)
     # A window somebody is managing the backup folder for, and it is unset --
     # `wish/window.py` hands over `""` before any save has been opened.
-    window = EditorWindow(backups="", disks=str(game_disk().parent),
+    window = EditorBinding(make_root(), backups="", disks=str(game_disk().parent),
                           last_save_folder=str(tmp_path))
     assert window.import_dos_save(folder=str(dos_save)) == "cancelled"
 
@@ -557,9 +568,9 @@ def test_a_write_that_cannot_happen_is_a_sentence_in_the_report_pane(
 def test_import_dos_save_is_cancellable_without_touching_anything(
         app, tmp_path, dos_save, monkeypatch):
     """A folder picker dismissed is a menu item that did nothing."""
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     before = sorted(p.name for p in tmp_path.iterdir())
     assert window.import_dos_save(folder="") == "cancelled"
@@ -571,12 +582,12 @@ def test_import_dos_save_is_cancellable_without_touching_anything(
 def test_a_folder_with_no_dos_save_says_so(app, tmp_path, monkeypatch):
     """And says it in a box rather than opening an empty conversion window."""
     import editor.window as ew
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
     said = []
     monkeypatch.setattr(ew.QMessageBox, "warning",
                         lambda *a, **k: said.append(a[2]))
-    window = EditorWindow(backups=str(tmp_path / "backups"),
+    window = EditorBinding(make_root(), backups=str(tmp_path / "backups"),
                           disks=str(game_disk().parent))
     assert window.import_dos_save(folder=str(tmp_path)) == "no DOS save"
     assert said and str(tmp_path) in said[0]

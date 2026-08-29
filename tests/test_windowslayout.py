@@ -1,3 +1,15 @@
+from __future__ import annotations
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
 """Layout rules that only broke on Windows, asserted here on Linux.
 
 Every test in this file stands for a report from Donald's Windows build that no
@@ -23,7 +35,6 @@ style: a `QProxyStyle` is set on the one widget under test, because the
 `QApplication` is shared by the whole session (`tests/conftest.py`).
 """
 
-from __future__ import annotations
 
 import os
 import pathlib
@@ -351,7 +362,7 @@ def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
     from PyQt6.QtWidgets import QLineEdit
 
     from editor.binding import widest_text
-    from editor.window import TRIMMED, EditorWindow
+    from editor.window import TRIMMED, EditorBinding
     from goldbox.layout import FIELDS_BY_NAME
 
     assert set(TRIMMED) == {"name"}
@@ -359,7 +370,7 @@ def test_every_field_on_the_sheet_can_show_its_widest_value(app, tmp_path):
     src = pathlib.Path(DISKS) / "PORSAVE11.D64"
     disk = tmp_path / "PORSAVE11.D64"
     disk.write_bytes(src.read_bytes())
-    w = EditorWindow(str(disk))
+    w = EditorBinding(make_root(), str(disk))
     try:
         checked = 0
         for name, widget in w._widgets.items():
@@ -445,12 +456,12 @@ def test_a_colour_the_model_asks_for_survives_the_selection_rule(app):
 
 def test_the_roster_carries_the_selection_rule(app):
     """The rule is on the table Donald was looking at, not only in a constant."""
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
 
-    w = EditorWindow()
+    w = EditorBinding(make_root(), )
     try:
-        assert "item:selected" in w.ui.roster.styleSheet()
-        assert "outline: none" in w.ui.roster.styleSheet()
+        assert "item:selected" in w.roster.styleSheet()
+        assert "outline: none" in w.roster.styleSheet()
     finally:
         w.close()
 
@@ -459,15 +470,15 @@ def test_the_roster_carries_the_selection_rule(app):
 
 def test_the_title_bar_and_the_about_box_say_wish(app):
     """The product name, capitalised. The command stays `wish`."""
-    from editor.window import EditorWindow
+    from editor.window import EditorBinding
     from wish import about
 
-    w = EditorWindow()
+    w = EditorBinding(make_root(), )
     try:
-        assert w.windowTitle() == "Wish"          # from the .ui, nothing open
+        assert w.root.windowTitle() == "Wish"          # from the .ui, nothing open
         w.path = pathlib.Path("PORSAVE14.D64")
         w._retitle()
-        assert w.windowTitle() == "Wish - PORSAVE14.D64"
+        assert w.root.windowTitle() == "Wish - PORSAVE14.D64"
     finally:
         w.close()
     assert about.TEXT.startswith("<h3>Wish ")

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """What the ledger's own bytes mean, checked against the shipped scripts.
 
 `tests/test_commissions.py` covers the module's shape. This file covers the
@@ -13,7 +15,6 @@ fall inside a string, which is the safe direction for an "is never referenced"
 assertion.
 """
 
-from __future__ import annotations
 
 import pathlib
 

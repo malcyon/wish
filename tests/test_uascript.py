@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The community sources' claims, checked against the player's own disks.
 
 Two third-party decodes of the DOS Gold Box engine -- Stephen S. Lee's Pool of
@@ -10,7 +12,6 @@ Everything here reads `MON*`, `ITEMS` and `SPELLN00` off whichever `POOL` disk
 carries them, and skips when the player has no disks.
 """
 
-from __future__ import annotations
 
 import pathlib
 

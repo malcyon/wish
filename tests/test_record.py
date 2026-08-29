@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 """Tests for the character-record decoding layer.
 
 The specimen is ``tests/fixtures/brutus.chr``: a 582-byte PRG (2-byte load
 address $6B00 + 580-byte record) holding a fighter named BRUTUS.
 """
 
-from __future__ import annotations
 
 import pathlib
 

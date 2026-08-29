@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """The area table, and the title key that stops it lying about Curse.
 
 The table's claims are checked against the game's own scripts where those are
@@ -6,7 +8,6 @@ not game data -- and skipped where they are not, exactly as `tests/gamedata.py`
 skips when no disk is attached.
 """
 
-from __future__ import annotations
 
 import pathlib
 import re

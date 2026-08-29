@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """What a live Curse of the Azure Bonds session settled, pinned offline.
 
 `docs/120-curse-testing.md` tiers 3 and 4 were done under VICE: the game was
@@ -20,7 +22,6 @@ Every test skips when the Curse disks are absent. Nothing here reads a
 committed fixture.
 """
 
-from __future__ import annotations
 
 import pytest
 

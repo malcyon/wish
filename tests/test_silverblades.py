@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Secret of the Silver Blades read with Pool of Radiance's decoders.
 
 `docs/121-silver-blades.md` phases 1 and 2: the cold read of the disks, and the
@@ -19,7 +21,6 @@ fixture: `CLAUDE.md` forbids the game's data in this repository, test fixture
 or not.
 """
 
-from __future__ import annotations
 
 import functools
 import os

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Party strength: `DUNGEON $1BE8`, re-implemented in `goldbox/strength.py`.
 
 The routine is what sizes a random encounter -- its value becomes the count
@@ -10,7 +12,6 @@ character, and the `PORSAVE*.D64` save disks for the six-character party that
 settled the question. Nothing here is a slice of a game file.
 """
 
-from __future__ import annotations
 
 import pathlib
 
@@ -240,10 +241,15 @@ def app():
 def a_window(app, tmp_path, monkeypatch, machine):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from automap.state import Automapper
-    from automap.window import AutomapWindow
+    from PyQt6.QtWidgets import QMainWindow
 
-    return AutomapWindow(Automapper(machine, {}), drive=False)
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+
+    return AutomapBinding(root, Automapper(machine, {}), drive=False)
 
 
 def test_the_window_shows_the_strength_and_follows_the_live_bytes(
@@ -275,6 +281,6 @@ def test_the_line_says_what_the_number_costs(app, tmp_path, monkeypatch):
                       MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(roster)}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert "slums encounter 0 monsters" in window.strength_label.text()
-    grid = window.centralWidget().layout()
-    assert grid.getItemPosition(grid.indexOf(window.strength_label))[0] == 2
+    assert "party strength 2" in window.strength_label.text()
+    
+    

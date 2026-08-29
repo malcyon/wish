@@ -39,8 +39,8 @@ from automap.config import (
     restore_geometry,
 )
 from automap.state import Automapper
-from automap.window import AutomapWindow
-from editor.window import EditorWindow
+from automap.window import AutomapBinding
+from editor.window import EditorBinding
 from goldbox import games
 from ui.appicon import app_icon
 
@@ -80,7 +80,7 @@ def load_maps_titled(disks: str | None = None, game=None) -> tuple[dict, object]
     to take the window down when somebody points the preference at it.
     """
     try:
-        from automap.__main__ import load_maps_titled as _load
+        from automap.maps import load_maps_titled as _load
         return _load(disks, game)
     except Exception:
         debuglog.exception("could not read the maps under %s", disks)
@@ -117,9 +117,7 @@ class WishWindow(QMainWindow):
             settings=self.settings)
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
-        self.editor = EditorWindow(save, game_disk, disks=self.disks_text(),
-                                   backups="",
-                                   last_save_folder=self.settings.last_save_folder)
+        self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder)
         # The backup folder follows whatever save is open until somebody
         # chooses one, so the window has to hear about every open. `""` above
         # is deliberate: the editor is managed from here, and until this says
@@ -133,18 +131,13 @@ class WishWindow(QMainWindow):
         self.mapper = Automapper(
             None, maps if maps is not None else load_maps(self.disks_text()),
             area=area, title=title or self._open_title())
-        self.map = AutomapWindow(self.mapper, settings=self.settings,
-                                 drive=False, disks=self.disks_text())
+        self.map = AutomapBinding(self, self.mapper, settings=self.settings, drive=False, disks=self.disks_text())
 
-        self.tabs.addTab(self.map, "Automapper")
-        self.tabs.addTab(self.editor, "Character Editor")
 
         # One status bar for the window. The pages keep their own -- they are
         # whole windows and are still usable alone -- but a status bar inside a
         # tab inside a window reads as clutter, so theirs are hidden here and
         # their lines forwarded to this one.
-        for page in (self.editor, self.map):
-            page.statusBar().hide()
         self.statusBar().addPermanentWidget(self.map.fog_box)
         # A log that survives a restart is one you forget is on, so while it is
         # on the window says so without being asked -- here, and in the title.
@@ -152,11 +145,7 @@ class WishWindow(QMainWindow):
         self.log_flag.setStyleSheet("color: #b00")
         self.log_flag.setVisible(False)
         self.statusBar().addPermanentWidget(self.log_flag)
-        self.editor.statusBar().messageChanged.connect(self._editor_said)
-        self.map.statusChanged.connect(self._map_said)
-        self.editor.windowTitleChanged.connect(self._retitle)
-        self.editor.windowTitleChanged.connect(lambda _t: self._log_save())
-        self._retitle(self.editor.windowTitle())
+        self._retitle()
 
         self.session = session or Session(
             preferred=getattr(self.settings, "backend", "") or None,
@@ -593,8 +582,7 @@ class WishWindow(QMainWindow):
         # a game" in the ordinary colour reads as "nothing is there".
         self.map.waiting("" if self.session.state == CONNECTED else note,
                          alarm=self.session.state == BUSY)
-        if self.tabs.currentIndex() == MAP_TAB and self.session.target is None:
-            self.statusBar().showMessage(note)
+        
 
     # -- which tab is watching -------------------------------------------
 
@@ -607,7 +595,7 @@ class WishWindow(QMainWindow):
         self.map.fog_box.setVisible(index == MAP_TAB)
         if index == MAP_TAB:
             self.session.set_reader(self._read_map)
-            self.map.setFocus()
+            self.map.canvas.setFocus()
             self.statusBar().showMessage(self.map.status_text())
         else:
             self.session.set_reader(None)

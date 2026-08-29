@@ -17,13 +17,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPen
+from PyQt6.QtCore import QObject, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
     QLabel,
+    QListWidget,
     QListWidgetItem,
     QPushButton,
     QSizePolicy,
@@ -335,14 +336,8 @@ def _label(text="", *, bold=False, muted=False, size=0,
     return lab
 
 
-from .ui_bottomstrip import Ui_BottomStrip  # noqa: E402
-from .ui_card import Ui_CharacterCard  # noqa: E402
-from .ui_messages import Ui_MessagesPanel  # noqa: E402
-from .ui_notes import Ui_NotesPanel  # noqa: E402
-from .ui_roster import Ui_RosterPanel  # noqa: E402
 
-
-class CharacterCard(QFrame):
+class CharacterCard(QObject):
     """One character: name, class and level, AC and THAC0, bars, what is in
     hand, what is on them, and whether they are on quickfight.
 
@@ -367,57 +362,44 @@ class CharacterCard(QFrame):
     #: and `docs/135-levelling.md` is why.
     level_up_requested = pyqtSignal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, index: int, parent: QObject | None = None):
         super().__init__(parent)
-        self.slot = 0
+        self.root = root
+        self.index = index
+        self.slot = index
         self.ready: tuple[str, ...] = ()
         #: Whether levelling is possible in this title at all. True until the
         #: window says otherwise, because a card built without one is Pool of
         #: Radiance's -- the same default every other per-title reader takes.
         self.levelling = True
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            f"CharacterCard {{ background: {CARD.name()};"
-            f" border: 1px solid {LATTICE.name()}; border-radius: 4px; }}")
 
-        self.ui = Ui_CharacterCard()
-        self.ui.setupUi(self)
+        self.frame = root.findChild(QFrame, f"card_{index}")
+        if self.frame is not None:
+            self.frame.setStyleSheet(
+                f"QFrame#card_{index} {{ background: {CARD.name()};"
+                f" border: 1px solid {LATTICE.name()}; border-radius: 4px; }}")
 
-        self.name = self.ui.name
-        self.conditions = self.ui.conditions
-        self.conditions.colour = DANGER
-        self.combat = self.ui.combat
-        self.combat.setStyleSheet(f"color: {MUTED.name()}")
+        self.name = root.findChild(QLabel, f"card_{index}_name")
+        self.conditions = root.findChild(IconRow, f"card_{index}_conditions")
+        if self.conditions is not None:
+            self.conditions.colour = DANGER
 
-        self.klass = self.ui.klass
-        self.klass.setStyleSheet(f"color: {MUTED.name()}")
-        self.quickfight = self.ui.quickfight
-        self.level_up = self.ui.level_up
-        self.level_up.clicked.connect(self._level_up_clicked)
-        self.level_up.hide()
 
-        self.hp = Bar()
-        self.ui.bars_layout.addWidget(self.hp)
+        self.klass = root.findChild(QLabel, f"card_{index}_klass")
+        if self.klass is not None:
+            self.klass.setStyleSheet(f"color: {MUTED.name()}")
+        self.quickfight = root.findChild(IconRow, f"card_{index}_quickfight")
+        self.level_up = root.findChild(QPushButton, f"card_{index}_level_up")
+        if self.level_up is not None:
+            self.level_up.clicked.connect(self._level_up_clicked)
+            self.level_up.hide()
 
-        # One experience bar per class: a multi-class character levels each
-        # class separately, so a single bar would have to pick one and lie
-        # about the other. Bars are made once and hidden, never rebuilt, so a
-        # poll never re-lays-out the card.
-        self.xp = [Bar() for _ in range(3)]
-        for bar in self.xp:
-            self.ui.bars_layout.addWidget(bar)
+        self.hp = root.findChild(Bar, f"card_{index}_hp")
+        self.xp = [root.findChild(Bar, f"card_{index}_xp_{j}") for j in range(3)]
 
-        # What is in hand, under the bars. Readied only -- the whole inventory
-        # would swamp the card -- one elided line with the full list in the
-        # tooltip, and a **blank line** for a character carrying nothing
-        # readied: the absence is the information, and the word "none" is not.
-        self.readied = self.ui.readied
-        self.readied.setStyleSheet(f"color: {MUTED.name()}")
 
-        # Always present, even when empty: a strip that appears and disappears
-        # would shift every card below it each time a spell expires.
-        self.effects = self.ui.effects
-        self.effects.setStyleSheet(f"color: {MUTED.name()}")
+
+
 
     @staticmethod
     def ready_to_level(who) -> tuple[str, ...]:
@@ -445,26 +427,40 @@ class CharacterCard(QFrame):
 
     def show_character(self, who) -> None:
         self.slot = who.slot
-        self.name.setText(who.name)
+        if self.name is not None:
+            self.name.setText(who.name)
         ac = "--" if who.armour_class is None else who.armour_class
         thac0 = "--" if who.thac0 is None else who.thac0
-        self.combat.setText(f"AC {ac}   THAC0 {thac0}")
-        self.klass.setText(f"{who.class_text}  {who.level_text}")
+        if self.klass is not None:
+            self.klass.setText(f"{who.class_text}  {who.level_text}")
+
+        tooltip_lines = [
+            f"{who.name} ({who.class_text} {who.level_text})",
+            f"AC {ac}   THAC0 {thac0}"
+        ]
+        if who.readied:
+            tooltip_lines.append("Readied: " + ", ".join(who.readied))
+        self.frame.setToolTip("\n".join(tooltip_lines))
         self.ready = self.ready_to_level(who)
-        self.level_up.setVisible(bool(self.ready) and self.levelling)
-        if self.ready:
-            self.level_up.setToolTip(f"level up as {self.chosen_class(who)}")
+        if self.level_up is not None:
+            self.level_up.setVisible(bool(self.ready) and self.levelling)
+            if self.ready:
+                self.level_up.setToolTip(f"level up as {self.chosen_class(who)}")
         conditions = who.conditions
-        self.conditions.set_icons(icon for icon, _ in conditions)
-        self.conditions.setToolTip("\n".join(why for _, why in conditions))
+        if self.conditions is not None:
+            self.conditions.set_icons(icon for icon, _ in conditions)
+            self.conditions.setToolTip("\n".join(why for _, why in conditions))
 
         hp = "--" if who.hp is None else who.hp
-        self.hp.set(who.hp_fraction, f"{hp} / {who.hp_max} hp",
-                    hp_colour(who.hp_fraction))
-        self.hp.setToolTip("current hit points from the roster block; the "
-                           "maximum from the character record")
+        if self.hp is not None:
+            self.hp.set(who.hp_fraction, f"{hp} / {who.hp_max} hp",
+                        hp_colour(who.hp_fraction))
+            self.hp.setToolTip("current hit points from the roster block; the "
+                               "maximum from the character record")
 
         for bar, klass in zip(self.xp, who.classes):
+            if bar is None:
+                continue
             if klass.at_ceiling:
                 # A class at its ceiling has no next threshold, so an empty bar
                 # would read as "no progress" when it means the opposite.
@@ -479,33 +475,16 @@ class CharacterCard(QFrame):
                 "established, so each bar uses the one stored number")
             bar.show()
         for bar in self.xp[len(who.classes):]:
-            bar.hide()
+            if bar is not None:
+                bar.hide()
 
-        self.show_readied(who.readied)
-
-        self.quickfight.set_icons(("person-running",) if who.quickfight else ())
-        self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
-
-        self.effects.setText("   ".join(e.label for e in who.effects))
-        self.effects.setToolTip("\n".join(e.detail for e in who.effects))
-
-    def show_readied(self, items) -> None:
-        """One line of what is in hand, elided to the card's width.
-
-        Elided here rather than by `QLabel`, because a label that elides is a
-        label that has already claimed the width -- and the card is 248px wide
-        by design.
-        """
-        self.readied_items = tuple(items)
-        text = ", ".join(self.readied_items)
-        metrics = QFontMetrics(self.readied.font())
-        self.readied.setText(metrics.elidedText(
-            text, Qt.TextElideMode.ElideRight, CARD_WIDTH - 20))
-        self.readied.setToolTip("\n".join(self.readied_items))
+        if self.quickfight is not None:
+            self.quickfight.set_icons(("person-running",) if who.quickfight else ())
+            self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
 
 
-class RosterPanel(QWidget):
-    """The cards, down the left. Scrolls, because eight cards outrun a window.
+class RosterPanel(QObject):
+    """The cards, down the left. Manages the 8 pre-created cards in the unified form.
 
     `level_up_requested` carries the slot up from whichever card was clicked,
     and nothing else: which class gets the level is decided from the record.
@@ -515,27 +494,17 @@ class RosterPanel(QWidget):
 
     level_up_requested = pyqtSignal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
+        self.root = root
         self.levelling = True
-        self.setFixedWidth(CARD_WIDTH + 22)
-
-        self.ui = Ui_RosterPanel()
-        self.ui.setupUi(self)
-        self.heading = self.ui.heading
-        self.column = self.ui.column
-
-        self.cards: list[CharacterCard] = []
-        self.set_message("waiting for a game")
-
-    def _card(self, index: int) -> CharacterCard:
-        while len(self.cards) <= index:
-            card = CharacterCard()
-            card.levelling = self.levelling
+        self.heading = root.findChild(QLabel, "automap_roster_heading")
+        self.cards: list[CharacterCard] = [
+            CharacterCard(root, i, parent=self) for i in range(8)
+        ]
+        for card in self.cards:
             card.level_up_requested.connect(self.level_up_requested)
-            self.column.insertWidget(len(self.cards), card)
-            self.cards.append(card)
-        return self.cards[index]
+        self.set_message("waiting for a game")
 
     def set_levelling(self, allowed: bool) -> None:
         """Whether this title can be levelled at all, and so whether the Level
@@ -543,12 +512,13 @@ class RosterPanel(QWidget):
         self.levelling = allowed
         for card in self.cards:
             card.levelling = allowed
-            if not allowed:
+            if not allowed and card.level_up is not None:
                 card.level_up.hide()
 
     def set_message(self, text: str) -> None:
         """No party to show. Says why rather than showing empty cards."""
-        self.heading.setText(f"Party - {text}" if text else "Party")
+        if self.heading is not None:
+            self.heading.setText(f"Party - {text}" if text else "Party")
 
     def set_stale(self, stale: bool) -> None:
         """The last good snapshot, held while the game is in a menu or loading.
@@ -560,34 +530,32 @@ class RosterPanel(QWidget):
 
     def show_snapshot(self, snap) -> None:
         for i, who in enumerate(snap.characters):
-            card = self._card(i)
-            card.show_character(who)
-            card.show()
+            if i < len(self.cards):
+                card = self.cards[i]
+                card.show_character(who)
+                if card.frame is not None:
+                    card.frame.show()
         for card in self.cards[len(snap.characters):]:
-            card.hide()
+            if card.frame is not None:
+                card.frame.hide()
         self.set_stale(False)
 
 
-class BottomStrip(QWidget):
+class BottomStrip(QObject):
     """Where, when, which area, and what is on the party."""
 
     #: The tallest this strip may hold the window open, whatever the UI font.
-    #: One row of read-outs and the four pixels above it -- 21 measured at 9pt
-    #: under Breeze on Linux, where the strip wants 39 at ten points more. It
-    #: moves only if a second row is added to the strip; a wider UI font must
-    #: not move it, which is the whole of #77.
     SHORT = 21
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
-        self.ui = Ui_BottomStrip()
-        self.ui.setupUi(self)
-
-        self.where = self.ui.where
-        self.clock = self.ui.clock
-        self.area = self.ui.area
-        self.effects = self.ui.effects
-        self.effects.setStyleSheet(f"color: {MUTED.name()}")
+        self.root = root
+        self.where = root.findChild(QLabel, "strip_where")
+        self.clock = root.findChild(QLabel, "strip_clock")
+        self.area = root.findChild(QLabel, "strip_area")
+        self.effects = root.findChild(QLabel, "strip_effects")
+        if self.effects is not None:
+            self.effects.setStyleSheet(f"color: {MUTED.name()}")
 
         #: The loader's cache, last time it changed. It used to be a collapsed
         #: readout on this strip, which is a reverse-engineering number in a
@@ -595,9 +563,6 @@ class BottomStrip(QWidget):
         #: and only when it moves -- twenty-five bytes five times a second
         #: would drown the file.
         self._loaded: tuple[int, ...] = ()
-
-    def minimumSizeHint(self) -> QSize:
-        return shortened(super().minimumSizeHint(), self.SHORT)
 
     def show_state(self, state, snap=None) -> None:
         """The map's own state answers "where"; the snapshot answers the rest.
@@ -608,15 +573,20 @@ class BottomStrip(QWidget):
         """
         # `source` is empty until the first fix lands. Before that (0,0) facing
         # north is not where the party is; it is the dataclass's defaults.
-        self.where.setText(
-            f"({state.x},{state.y}) facing {state.facing_letter}"
-            if state.source else "square --")
-        self.area.setText(state.area_label)
+        if self.where is not None:
+            self.where.setText(
+                f"({state.x},{state.y}) facing {state.facing_letter}"
+                if state.source else "square --")
+        if self.area is not None:
+            self.area.setText(state.area_label)
         if snap is None:
-            self.clock.setText("clock --:--")
-            self.effects.setText("party effects: not readable right now")
+            if self.clock is not None:
+                self.clock.setText("clock --:--")
+            if self.effects is not None:
+                self.effects.setText("party effects: not readable right now")
             return
-        self.clock.setText(snap.clock_text)
+        if self.clock is not None:
+            self.clock.setText(snap.clock_text)
         party = snap.party_effects
         text = "party effects: " + ("   ".join(e.label for e in party)
                                     if party else "none")
@@ -626,8 +596,9 @@ class BottomStrip(QWidget):
         monsters = snap.monster_effects
         if monsters:
             text += f"   (+{len(monsters)} on monsters)"
-        self.effects.setText(text)
-        self.effects.setToolTip("\n".join(e.detail for e in party + monsters))
+        if self.effects is not None:
+            self.effects.setText(text)
+            self.effects.setToolTip("\n".join(e.detail for e in party + monsters))
         loaded = tuple(snap.loaded_files)
         if loaded != self._loaded:
             self._loaded = loaded
@@ -635,7 +606,7 @@ class BottomStrip(QWidget):
                      " ".join(f"{b:02X}" for b in loaded) or "none")
 
 
-class NotesPanel(QWidget):
+class NotesPanel(QObject):
     """Every note in this area, with its square.
 
     This is what makes notes useful for *finding* something again, which the
@@ -649,16 +620,16 @@ class NotesPanel(QWidget):
 
     chosen = pyqtSignal(int, int)
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
-        self.ui = Ui_NotesPanel()
-        self.ui.setupUi(self)
-        self.heading = self.ui.heading
-        self.list = self.ui.list
-        self.list.setStyleSheet(
-            f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
-            f"{LATTICE.name()}; border-radius: 4px; }}")
-        self.list.itemClicked.connect(self._clicked)
+        self.root = root
+        self.heading = root.findChild(QLabel, "notes_heading")
+        self.list = root.findChild(QListWidget, "notes_list")
+        if self.list is not None:
+            self.list.setStyleSheet(
+                f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
+                f"{LATTICE.name()}; border-radius: 4px; }}")
+            self.list.itemClicked.connect(self._clicked)
         self._shown: tuple = ()
 
     def _clicked(self, item: QListWidgetItem) -> None:
@@ -676,7 +647,8 @@ class NotesPanel(QWidget):
         if signature == self._shown:
             return
         self._shown = signature
-        self.list.clear()
+        if self.list is not None:
+            self.list.clear()
         count = 0
         for square, items in sorted(notes.items()):
             for note in items:
@@ -690,12 +662,14 @@ class NotesPanel(QWidget):
                 font = row.font()
                 font.setPointSize(9)
                 row.setFont(font)
-                self.list.addItem(row)
+                if self.list is not None:
+                    self.list.addItem(row)
                 count += 1
-        self.heading.setText(f"Notes ({count})" if count else "Notes")
+        if self.heading is not None:
+            self.heading.setText(f"Notes ({count})" if count else "Notes")
 
 
-class MessagesPanel(QWidget):
+class MessagesPanel(QObject):
     """What the tab has done, and what it is waiting for.
 
     **Not a pop-up.** An action's result is something you asked for; putting it
@@ -713,15 +687,15 @@ class MessagesPanel(QWidget):
     #: that the panel never becomes the reason the window is slow.
     LIMIT = 200
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
-        self.ui = Ui_MessagesPanel()
-        self.ui.setupUi(self)
-        self.heading = self.ui.heading
-        self.list = self.ui.list
-        self.list.setStyleSheet(
-            f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
-            f"{LATTICE.name()}; border-radius: 4px; }}")
+        self.root = root
+        self.heading = root.findChild(QLabel, "messages_heading")
+        self.list = root.findChild(QListWidget, "messages_list")
+        if self.list is not None:
+            self.list.setStyleSheet(
+                f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
+                f"{LATTICE.name()}; border-radius: 4px; }}")
         self._last = ""
 
     def say(self, text: str, detail: str = "", alarm: bool = False,
@@ -748,11 +722,16 @@ class MessagesPanel(QWidget):
             row.setForeground(DANGER)
         if detail:
             row.setToolTip(detail)
-        self.list.addItem(row)
-        while self.list.count() > self.LIMIT:
-            self.list.takeItem(0)
-        self.list.scrollToBottom()
+        if self.list is not None:
+            self.list.addItem(row)
+            while self.list.count() > self.LIMIT:
+                self.list.takeItem(0)
+            self.list.scrollToBottom()
 
     def lines(self) -> list[str]:
         """Every line, oldest first. What a test reads."""
+        if self.list is None:
+            return []
         return [self.list.item(i).text() for i in range(self.list.count())]
+
+

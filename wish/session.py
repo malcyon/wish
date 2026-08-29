@@ -104,7 +104,7 @@ class Session(QObject):
             return True
         backend = self._find(self._preferred)
         if backend is None:
-            self._say("waiting for a game - " + backends.setup_hints())
+            self._say("Waiting to connect...")
             return False
         try:
             self.target = backend.connect()
@@ -113,9 +113,9 @@ class Session(QObject):
             debuglog.note("%s: monitor busy (%s)", backend.name, exc)
             self._say(str(exc))
             return False
-        except NotConnected as exc:
+        except NotConnected:
             self.busy = False
-            self._say(f"waiting for a game ({exc})")
+            self._say("Waiting to connect...")
             return False
         self.busy = False
         self.backend = backend

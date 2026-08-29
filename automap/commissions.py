@@ -33,11 +33,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -46,7 +47,6 @@ from PyQt6.QtWidgets import (
 from goldbox import commissions as book
 
 from .panel import CARD, LATTICE, MUTED
-from .ui_commissions import Ui_CommissionsPanel
 
 PANEL_WIDTH = 248
 
@@ -356,46 +356,51 @@ def commission_rows(flags) -> list[tuple]:
     return rows
 
 
-class CommissionsPanel(QWidget):
+class CommissionsPanel(QObject):
     """The whole log: one row per commission, and the summonses under it.
 
     One entry point -- `update_from(source)`. Nothing here writes.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
-        self.setFixedWidth(PANEL_WIDTH + 22)
-        self.ui = Ui_CommissionsPanel()
-        self.ui.setupUi(self)
+        self.root = root
+        self.heading = root.findChild(QLabel, "commissions_heading")
+        self.scroll = root.findChild(QScrollArea, "commissions_scroll")
+        if self.scroll is not None:
+            self.scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid "
+                                      f"{LATTICE.name()}; border-radius: 4px; }}")
+            if self.scroll.widget() is not None:
+                self.scroll.widget().setStyleSheet(f"background: {CARD.name()};")
 
-        self.heading = self.ui.heading
-        self.ui.inner.setStyleSheet(f"background: {CARD.name()};")
+        self.completed = root.findChild(QLabel, "commissions_completed")
+        if self.completed is not None:
+            self.completed.setStyleSheet(f"color: {MUTED.name()}")
+            self.completed.setToolTip(
+                f"${book.COMPLETED:04X}, bumped by the clerk for the ten "
+                "commissions that count as major")
 
-        self.completed = self.ui.completed
-        self.completed.setStyleSheet(f"color: {MUTED.name()}")
-        self.completed.setToolTip(
-            f"${book.COMPLETED:04X}, bumped by the clerk for the ten "
-            "commissions that count as major")
+        self.column = root.findChild(QVBoxLayout, "commissions_column")
+        if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
+            self.column = self.scroll.widget().layout()
 
         self.groups = {
             "commissions": Group(),
             "summons": Group("Summoned to"),
         }
-        for group in self.groups.values():
-            self.ui.column.addWidget(group)
-
-        self.ui.column.addStretch(1)
-
-        self.ui.scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid "
-                                     f"{LATTICE.name()}; border-radius: 4px; }}")
+        if self.column is not None:
+            for group in self.groups.values():
+                self.column.addWidget(group)
+            self.column.addStretch(1)
 
         self._flags = None
         self.set_message("waiting for a game")
 
     def set_message(self, text: str) -> None:
         """No bytes to show, and why."""
-        self.heading.setText(f"Commissions - {text}" if text
-                             else "Commissions")
+        if self.heading is not None:
+            self.heading.setText(f"Commissions - {text}" if text
+                                 else "Commissions")
 
     def update_from(self, source) -> None:
         """Redraw from the flag block. Same input as `goldbox.commissions.read`."""
@@ -405,7 +410,8 @@ class CommissionsPanel(QWidget):
         self._flags = flags.to_bytes()
         state = book.read(flags)
         self.set_message("")
-        self.completed.setText(f"Commissions completed: {state.completed}")
+        if self.completed is not None:
+            self.completed.setText(f"Commissions completed: {state.completed}")
 
         self.groups["commissions"].show_rows(
             commission_rows(flags)
@@ -413,3 +419,4 @@ class CommissionsPanel(QWidget):
         self.groups["summons"].show_rows(
             [(_sentence(a.name), a.state, f"${a.address:04X} = {a.value}")
              for a in state.outstanding])
+

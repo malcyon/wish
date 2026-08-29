@@ -92,7 +92,7 @@ def main() -> int:
         "we do not yet understand.")
     add("")
 
-    OUT.write_text("\n".join(lines))
+    OUT.write_text(encoding="utf-8", data="\n".join(lines))
     print(f"wrote {OUT} ({len(lines)} lines)")
     return 0
 
