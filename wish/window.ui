@@ -1218,7 +1218,7 @@
                 </widget>
                </item>
               </layout>
-             <property name="maximumSize"><size><width>16777215</width><height>120</height></size></property></widget>
+             <property name="maximumSize"><size><width>16777215</width><height>138</height></size></property></widget>
              <widget class="QWidget" name="commissions_panel">
               <layout class="QVBoxLayout" name="commissions_layout">
                <property name="spacing">
@@ -1253,7 +1253,7 @@
                </item>
                <item>
                 <widget class="QScrollArea" name="commissions_scroll">
-                 <property name="minimumSize"><size><width>0</width><height>120</height></size></property><property name="frameShape">
+                 <property name="minimumSize"><size><width>0</width><height>138</height></size></property><property name="frameShape">
                   <enum>QFrame::StyledPanel</enum>
                  </property>
                  <property name="horizontalScrollBarPolicy">
