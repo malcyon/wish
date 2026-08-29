@@ -526,8 +526,10 @@ class StoreSpells(Action):
                 notes.append(f"{m.name}: {', '.join(names)}")
             else:
                 notes.append(f"{m.name}: none")
-        return Outcome(True, f"stored spells for {len(party)} character"
-                             f"{'s' if len(party) != 1 else ''}", notes=tuple(notes))
+        msg = f"stored spells for {len(party)} character{'s' if len(party) != 1 else ''}"
+        if notes:
+            msg += ":\n" + "\n".join(notes)
+        return Outcome(True, msg)
 
 
 class RestoreSpells(Action):
