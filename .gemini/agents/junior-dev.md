@@ -87,10 +87,9 @@ worth counting out loud.
 **Run the suite before you report.** `.venv/bin/pytest`, plus `ruff` if the
 repository uses it.
 
-## What you do not do
+**Commit your work.** When you finish a task, commit it with a clear message so it is safely saved in the Git history. The `code-reviewer` agent will review your commit, and any requested fixes will be made in follow-up commits.
 
-**You do not commit.** Leave the work in the tree and say what you changed. The
-main window commits, after a `code-reviewer` pass on what you wrote.
+## What you do not do
 
 **You do not change labels, titles or priorities**, and you never remove a
 label you did not just add. The maintainer curates those by hand, and an agent

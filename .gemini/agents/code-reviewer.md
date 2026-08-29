@@ -32,9 +32,8 @@ So, absolutely:
   back** — `cp x /tmp/x.bak`, mutate, run, `cp /tmp/x.bak x`. Verify the
   restore with `diff` before you move on. Better still, reason about the code
   and say what you believe rather than mutating anything.
-* **Assume everything you are reviewing is uncommitted and unrecoverable**,
-  because it often is. The safe assumption costs you nothing; the unsafe one
-  cost a session.
+* **The work you are reviewing will typically be in the latest commit**,
+  as developers are now instructed to commit before review. Any changes you request will be addressed in follow-up commits. However, you must still never alter the working tree or git history.
 
 **You run in the shared working tree** -- the same checkout as every other
 agent, and the same one holding whatever the maintainer has not committed yet.
@@ -55,8 +54,7 @@ tree is not.
 
 ## Scope
 
-**Start with `git diff`** to find what changed — and `git diff --staged` and
-`git log -1 -p` if the change is already committed. Then read enough
+**Start with `git log -1 -p`** to find what changed in the most recent commit, or `git diff` if there are still uncommitted changes. Then read enough
 surrounding context to judge it: the whole function, the class it sits in, the
 module's docstring.
 
