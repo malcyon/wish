@@ -1142,7 +1142,7 @@
               <item row="0" column="0">
                <widget class="ElidingButton" name="action_identify">
                 <property name="text">
-                 <string>Identify items</string>
+                 <string>Identify</string>
                 </property>
                </widget>
               </item>

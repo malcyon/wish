@@ -573,7 +573,7 @@ class IdentifyItems(Action):
     """
 
     name = "identify"
-    label = "Identify all items"
+    label = "Identify"
     description = "clear the hidden-name bits on every item the party carries"
     confirm = ("Identify every item the party carries? There is no way to undo "
                "this in the game.")

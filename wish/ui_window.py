@@ -1397,7 +1397,7 @@ class Ui_WishWindow(object):
         self.action_clear_qf.setText(_translate("WishWindow", "Clear quickfight"))
         self.ft_button.setText(_translate("WishWindow", "Fast Travel"))
         self.ft_back_button.setText(_translate("WishWindow", "Travel Back"))
-        self.action_identify.setText(_translate("WishWindow", "Identify items"))
+        self.action_identify.setText(_translate("WishWindow", "Identify"))
         self.notes_heading.setText(_translate("WishWindow", "Notes"))
         self.commissions_heading.setText(_translate("WishWindow", "Commissions"))
         self.messages_heading.setText(_translate("WishWindow", "Messages"))
