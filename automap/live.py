@@ -254,7 +254,8 @@ class Character:
 
     @property
     def class_text(self) -> str:
-        return "/".join(c.name for c in self.classes) or "?"
+        abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C", "thief": "T"}
+        return "/".join(abbrevs.get(c.name.lower(), c.name) for c in self.classes) or "?"
 
     @property
     def level_text(self) -> str:

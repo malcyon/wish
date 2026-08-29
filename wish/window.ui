@@ -1081,14 +1081,14 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="1">
+              <item row="0" column="2">
                <widget class="ElidingButton" name="action_restore">
                 <property name="text">
                  <string>Restore spells</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="2">
+              <item row="0" column="3">
                <widget class="ElidingButton" name="action_identify">
                 <property name="text">
                  <string>Identify items</string>
