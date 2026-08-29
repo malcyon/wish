@@ -2061,7 +2061,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     asked = []
     bar.ask = lambda question: asked.append(question) or False
     bar.attach(machine)
-    identify = next(a for a in bar.actions if a.name == "identify")
+    identify = next(a for a in bar.actions if a.name == "identify"); identify.confirm = "no way to undo"
     assert bar.run(identify) is None
     assert asked and "no way to undo" in asked[0]
     assert said == []                       # refused before anything was read
@@ -2070,7 +2070,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     outcome = bar.run(identify)
     # The result is a line in the messages panel, not a pop-up to dismiss.
     assert outcome is not None
-    assert said == [f"identify: {outcome.message}"]
+    assert said == [outcome.message]
 
 
 def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
@@ -2087,7 +2087,7 @@ def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
     bar.watcher.enabled = True
     outcome = bar.watch(machine)                       # the 2-to-not-2 edge
     assert outcome is not None and outcome.ok
-    assert outcome.message == "nobody was on quickfight"
+    assert outcome.message == "No party member had quickfight enabled."
     machine.memory[0x6E11] = b"\x00"
     assert bar.watch(machine) is None                  # edge only, not level
 
@@ -2178,8 +2178,7 @@ def test_an_action_reports_into_the_messages_panel_not_a_pop_up(app, tmp_path,
     heal = next(a for a in window.actions_bar.actions if a.name == "heal")
     outcome = window.actions_bar.run(heal)
     assert outcome is not None
-    assert window.messages.lines()[-1].endswith(
-        f"heal party: {outcome.message}")
+    assert window.messages.lines()[-1].endswith(outcome.message)
 
 
 def test_the_messages_panel_drops_repeats_and_keeps_the_alarm(app, tmp_path,

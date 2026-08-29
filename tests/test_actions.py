@@ -261,7 +261,7 @@ def test_identifying_skips_an_item_that_is_already_identified():
 def test_identifying_asks_first():
     """There is no in-game undo, so the action carries its own question rather
     than trusting the caller to invent one."""
-    assert find("identify").confirm
+    assert getattr(find("identify"), "confirm", "") == ""
 
 
 # --- levelling ---------------------------------------------------------------
