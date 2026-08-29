@@ -1088,14 +1088,6 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="3">
-               <widget class="ElidingButton" name="action_identify">
-                <property name="text">
-                 <string>Identify items</string>
-                </property>
-               </widget>
-              </item>
-
               </layout>
             </widget>
            </item>
@@ -1117,17 +1109,17 @@
               <property name="bottomMargin">
                <number>2</number>
               </property>
-              <item row="0" column="0">
+              <item row="0" column="1">
                <widget class="ElidingButton" name="action_clear_qf">
                 <property name="text">
                  <string>Clear quickfight</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="1">
+              <item row="0" column="2">
                <widget class="ElidingComboBox" name="ft_combo" />
               </item>
-              <item row="0" column="2">
+              <item row="0" column="3">
                <widget class="ElidingButton" name="ft_button">
                 <property name="enabled">
                  <bool>false</bool>
@@ -1137,7 +1129,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="3">
+              <item row="0" column="4">
                <widget class="ElidingButton" name="ft_back_button">
                 <property name="enabled">
                  <bool>false</bool>
@@ -1147,6 +1139,14 @@
                 </property>
                </widget>
               </item>
+              <item row="0" column="0">
+               <widget class="ElidingButton" name="action_identify">
+                <property name="text">
+                 <string>Identify items</string>
+                </property>
+               </widget>
+              </item>
+
               </layout>
             </widget>
            </item>
