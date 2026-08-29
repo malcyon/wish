@@ -497,13 +497,20 @@ class StoreSpells(Action):
         self.store = store or SpellStore()
 
     def run(self, target, disk: str = "", **kwargs) -> Outcome:
-        party = read_party(target, self.game)
+        party = read_party(target, self.descriptor)
         if party is None:
             return Outcome(False, "no party to read")
+        notes = []
         for m in party:
-            self.store.put(disk, m.name, m.record.get_raw("spells_memorised"))
+            raw = m.record.get_raw("spells_memorised")
+            self.store.put(disk, m.name, raw)
+            spells = m.record.spells_memorised
+            if spells:
+                notes.append(f"{m.name}: {', '.join(str(i) for i in spells)}")
+            else:
+                notes.append(f"{m.name}: none")
         return Outcome(True, f"stored spells for {len(party)} character"
-                             f"{'s' if len(party) != 1 else ''}")
+                             f"{'s' if len(party) != 1 else ''}", notes=tuple(notes))
 
 
 class RestoreSpells(Action):
