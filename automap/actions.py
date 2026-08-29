@@ -500,13 +500,30 @@ class StoreSpells(Action):
         party = read_party(target, self.descriptor)
         if party is None:
             return Outcome(False, "no party to read")
+            
+        spell_names = {}
+        from automap.paths import find_disks
+        from automap.live import _disk_images
+        root = find_disks(self.descriptor)
+        if root:
+            for path in _disk_images(root, self.descriptor):
+                try:
+                    from goldbox.spells import load_spell_names
+                    found = load_spell_names(str(path), self.descriptor)
+                    if found:
+                        spell_names = found
+                        break
+                except Exception:
+                    continue
+                    
         notes = []
         for m in party:
             raw = m.record.get_raw("spells_memorised")
             self.store.put(disk, m.name, raw)
             spells = m.record.spells_memorised
             if spells:
-                notes.append(f"{m.name}: {', '.join(str(i) for i in spells)}")
+                names = [spell_names.get(i) or f"spell {i}" for i in spells]
+                notes.append(f"{m.name}: {', '.join(names)}")
             else:
                 notes.append(f"{m.name}: none")
         return Outcome(True, f"stored spells for {len(party)} character"
