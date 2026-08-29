@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'wish/window.ui'
+# Form implementation generated from reading ui file '/home/donald/src/wish/wish/window.ui'
 #
 # Created by: PyQt6 UI code generator 6.11.0
 #
@@ -43,6 +43,7 @@ class Ui_WishWindow(object):
         self.automap_roster_column.setSpacing(6)
         self.automap_roster_column.setObjectName("automap_roster_column")
         self.card_0 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_0.setVisible(False)
         self.card_0.setObjectName("card_0")
         self.card_0_layout = QtWidgets.QVBoxLayout(self.card_0)
         self.card_0_layout.setContentsMargins(8, 2, 8, 2)
@@ -99,6 +100,7 @@ class Ui_WishWindow(object):
         self.card_0_layout.addLayout(self.card_0_bars)
         self.automap_roster_column.addWidget(self.card_0)
         self.card_1 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_1.setVisible(False)
         self.card_1.setObjectName("card_1")
         self.card_1_layout = QtWidgets.QVBoxLayout(self.card_1)
         self.card_1_layout.setContentsMargins(8, 2, 8, 2)
@@ -155,6 +157,7 @@ class Ui_WishWindow(object):
         self.card_1_layout.addLayout(self.card_1_bars)
         self.automap_roster_column.addWidget(self.card_1)
         self.card_2 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_2.setVisible(False)
         self.card_2.setObjectName("card_2")
         self.card_2_layout = QtWidgets.QVBoxLayout(self.card_2)
         self.card_2_layout.setContentsMargins(8, 2, 8, 2)
@@ -211,6 +214,7 @@ class Ui_WishWindow(object):
         self.card_2_layout.addLayout(self.card_2_bars)
         self.automap_roster_column.addWidget(self.card_2)
         self.card_3 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_3.setVisible(False)
         self.card_3.setObjectName("card_3")
         self.card_3_layout = QtWidgets.QVBoxLayout(self.card_3)
         self.card_3_layout.setContentsMargins(8, 2, 8, 2)
@@ -267,6 +271,7 @@ class Ui_WishWindow(object):
         self.card_3_layout.addLayout(self.card_3_bars)
         self.automap_roster_column.addWidget(self.card_3)
         self.card_4 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_4.setVisible(False)
         self.card_4.setObjectName("card_4")
         self.card_4_layout = QtWidgets.QVBoxLayout(self.card_4)
         self.card_4_layout.setContentsMargins(8, 2, 8, 2)
@@ -323,6 +328,7 @@ class Ui_WishWindow(object):
         self.card_4_layout.addLayout(self.card_4_bars)
         self.automap_roster_column.addWidget(self.card_4)
         self.card_5 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_5.setVisible(False)
         self.card_5.setObjectName("card_5")
         self.card_5_layout = QtWidgets.QVBoxLayout(self.card_5)
         self.card_5_layout.setContentsMargins(8, 2, 8, 2)
@@ -379,6 +385,7 @@ class Ui_WishWindow(object):
         self.card_5_layout.addLayout(self.card_5_bars)
         self.automap_roster_column.addWidget(self.card_5)
         self.card_6 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_6.setVisible(False)
         self.card_6.setObjectName("card_6")
         self.card_6_layout = QtWidgets.QVBoxLayout(self.card_6)
         self.card_6_layout.setContentsMargins(8, 2, 8, 2)
@@ -435,6 +442,7 @@ class Ui_WishWindow(object):
         self.card_6_layout.addLayout(self.card_6_bars)
         self.automap_roster_column.addWidget(self.card_6)
         self.card_7 = QtWidgets.QFrame(parent=self.automap_roster_inner)
+        self.card_7.setVisible(False)
         self.card_7.setObjectName("card_7")
         self.card_7_layout = QtWidgets.QVBoxLayout(self.card_7)
         self.card_7_layout.setContentsMargins(8, 2, 8, 2)

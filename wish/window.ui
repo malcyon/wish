@@ -82,7 +82,7 @@
                </property>
                <item>
                 <widget class="QFrame" name="card_0">
-                 <layout class="QVBoxLayout" name="card_0_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_0_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -193,7 +193,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_1">
-                 <layout class="QVBoxLayout" name="card_1_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_1_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -304,7 +304,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_2">
-                 <layout class="QVBoxLayout" name="card_2_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_2_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -415,7 +415,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_3">
-                 <layout class="QVBoxLayout" name="card_3_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_3_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -526,7 +526,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_4">
-                 <layout class="QVBoxLayout" name="card_4_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_4_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -637,7 +637,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_5">
-                 <layout class="QVBoxLayout" name="card_5_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_5_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -748,7 +748,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_6">
-                 <layout class="QVBoxLayout" name="card_6_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_6_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
@@ -859,7 +859,7 @@
                </item>
                <item>
                 <widget class="QFrame" name="card_7">
-                 <layout class="QVBoxLayout" name="card_7_layout">
+                 <property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="card_7_layout">
                   <property name="spacing">
                    <number>1</number>
                   </property>
