@@ -78,12 +78,7 @@ GAP = 10
 #: is not in `ui.icons`, so a renamed drawing breaks the build rather than
 #: the sheet.
 SHEET = [
-    ("Class icons", [
-        ("wizard-hat", "ours", "magic-user: cone and brim, one silhouette"),
-        ("hood", "ours", "thief: one filled curve, one large hole"),
-        ("cross", "FA Free", "cleric: clean at every size"),
-        ("sword", "ours", "fighter: FA Free has no sword"),
-    ]),
+
     ("Note types", [
         ("crossed-swords", "U+2694", "encounter -- a font character, not a "
                                      "path: what it looks like is the "

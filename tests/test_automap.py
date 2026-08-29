@@ -1581,27 +1581,6 @@ def test_ours_and_font_awesome_do_not_share_a_name():
     assert not set(icons.OURS) & set(icons.FONT_AWESOME)
 
 
-def test_the_hood_keeps_its_face(app):
-    """The thief's hood is `location-dot`'s argument applied deliberately: one
-    solid silhouette, one hole. Drawn at 13px the face must still be paper --
-    odd-even fill, or a subpath wound the same way as the cowl, fills it in and
-    leaves a bell. See `docs/109-icon-choices.md`."""
-    from PyQt6.QtGui import QColor, QImage, QPainter
-
-    from ui.iconpaint import draw_icon
-
-    image = QImage(13, 13, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(QColor("white"))
-    p = QPainter(image)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    draw_icon(p, "hood", 0, 0, 13, QColor("black"))
-    p.end()
-
-    # The face sits a little above the middle; the shoulders below it are ink.
-    face = QColor(image.pixel(6, 5)).lightness()
-    shoulder = QColor(image.pixel(6, 10)).lightness()
-    assert face > 200, f"the face filled in: lightness {face}"
-    assert shoulder < 80, f"the shoulders are not ink: lightness {shoulder}"
 
 
 def test_the_sheet_only_names_icons_that_exist():

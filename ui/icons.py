@@ -77,13 +77,6 @@ FONT_AWESOME = {
         "298.3 569.4C248.1 514.9 127.9 371.9 127.9 252.6zM320 320C355.3 "
         "320 384 291.3 384 256C384 220.7 355.3 192 320 192C284.7 192 256 "
         "220.7 256 256C256 291.3 284.7 320 320 320z",
-    "cross":
-        "M304 64C277.5 64 256 85.5 256 112L256 192L176 192C149.5 192 128 "
-        "213.5 128 240L128 272C128 298.5 149.5 320 176 320L256 320L256 "
-        "528C256 554.5 277.5 576 304 576L336 576C362.5 576 384 554.5 384 "
-        "528L384 320L464 320C490.5 320 512 298.5 512 272L512 240C512 213.5 "
-        "490.5 192 464 192L384 192L384 112C384 85.5 362.5 64 336 64L304 "
-        "64z",
     "user":
         "M320 312C386.3 312 440 258.3 440 192C440 125.7 386.3 72 320 "
         "72C253.7 72 200 125.7 200 192C200 258.3 253.7 312 320 312zM290.3 "
@@ -220,18 +213,6 @@ FONT_AWESOME = {
         "68.7 249.7L180.7 97.7C185.2 91.6 192.4 87.9 200 87.9L440 "
         "87.9C447.6 87.9 454.8 91.5 459.3 97.7L571.3 249.7C578.1 "
         "258.9 577.4 271.6 569.8 280.1z",
-    # The Fast Travel help affordance, on a `QToolButton` so that it
-    # looks like something to point at -- `actionbar.FastTravelBar`.
-    "circle-info":
-        "M320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 "
-        "64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576zM288 "
-        "224C288 206.3 302.3 192 320 192C337.7 192 352 206.3 352 "
-        "224C352 241.7 337.7 256 320 256C302.3 256 288 241.7 288 "
-        "224zM280 288L328 288C341.3 288 352 298.7 352 312L352 400L360 "
-        "400C373.3 400 384 410.7 384 424C384 437.3 373.3 448 360 "
-        "448L280 448C266.7 448 256 437.3 256 424C256 410.7 266.7 400 "
-        "280 400L304 400L304 336L280 336C266.7 336 256 325.3 256 "
-        "312C256 298.7 266.7 288 280 288z",
     # The quickfight badge on a roster card -- `panel.CharacterCard`, drawn at
     # `ICON_SIZE`. Three subpaths (head, body, trailing arm), which the 13px
     # rule normally rejects; it passes because the separations are the ones a
@@ -257,68 +238,7 @@ FONT_AWESOME = {
 }
 
 
-def _poly(points) -> str:
-    """One closed subpath."""
-    return "".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}"
-                   for i, (x, y) in enumerate(points)) + "z"
-
-
-def _rect(x: float, y: float, w: float, h: float) -> str:
-    return _poly(((x, y), (x + w, y), (x + w, y + h), (x, y + h)))
-
-
-def _ellipse(cx: float, cy: float, rx: float, ry: float,
-             reverse: bool = False) -> str:
-    """One closed ellipse, as four cubics.
-
-    `reverse` winds it the other way, which is how a hole is made: winding fill
-    cancels a subpath drawn against the one containing it. `location-dot`'s
-    counter is the same trick, done by Font Awesome's exporter.
-    """
-    k = 0.5523                                  # the circle's magic constant
-    ax, ay = rx * k, ry * k
-    pts = [((cx + rx, cy), (cx + rx, cy + ay), (cx + ax, cy + ry),
-            (cx, cy + ry)),
-           ((cx, cy + ry), (cx - ax, cy + ry), (cx - rx, cy + ay),
-            (cx - rx, cy)),
-           ((cx - rx, cy), (cx - rx, cy - ay), (cx - ax, cy - ry),
-            (cx, cy - ry)),
-           ((cx, cy - ry), (cx + ax, cy - ry), (cx + rx, cy - ay),
-            (cx + rx, cy))]
-    if reverse:
-        pts = [tuple(reversed(seg)) for seg in reversed(pts)]
-    out = [f"M{pts[0][0][0]:.1f} {pts[0][0][1]:.1f}"]
-    for seg in pts:
-        out.append("C" + " ".join(f"{x:.1f} {y:.1f}" for x, y in seg[1:]))
-    return "".join(out) + "z"
-
-
-# The blade, upright: point, shoulders, crossguard, grip. Drawn thick on
-# purpose -- the map is stroked at 3px and a 12px icon beside it that is one
-# pixel wide reads as a scratch rather than as a sword.
-_BLADE = ((320, 60), (392, 190), (392, 380), (496, 380), (496, 450),
-          (376, 450), (376, 552), (264, 552), (264, 450), (144, 450),
-          (144, 380), (248, 380), (248, 190))
-_POMMEL = (240, 546, 160, 62)          # x, y, w, h
-
-OURS = {
-    # One sword, for the fighter: Font Awesome Free has none.
-    "sword": _poly(_BLADE) + _rect(*_POMMEL),
-    # A wizard's hat for the magic-user, drawn because Font Awesome's
-    # `hat-wizard` comes apart at 13px: its brim is a separate subpath and
-    # reads as a fin below the cone. Here the brim is part of the cone, and one
-    # silhouette cannot come apart into two. This is still the map's glyph;
-    # `hat-wizard` is the application icon, which is never drawn below 16.
-    "wizard-hat": _poly(((372, 50), (440, 460), (560, 460), (560, 560),
-                         (80, 560), (80, 460), (185, 460))),
-    # A hooded figure for the thief, drawn because Font Awesome's `mask` stays
-    # legible and reads as goggles. Cowl, shoulders, and the face as the one
-    # hole -- `location-dot`'s rule applied deliberately rather than inherited.
-    # The shoulders are what stop it reading as an archway.
-    "hood": ("M320 45C405 115 445 205 445 300C445 340 600 385 600 565"
-             "L40 565C40 385 195 340 195 300C195 205 235 115 320 45z"
-             + _ellipse(320, 275, 78, 100, reverse=True)),
-}
+OURS: dict[str, str] = {}
 
 ICONS: dict[str, str] = {**FONT_AWESOME, **OURS}
 
