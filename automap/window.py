@@ -1095,7 +1095,7 @@ class AutomapBinding(QObject):
         it, the same way `ActionBar.ask` is."""
         from PyQt6.QtWidgets import QMessageBox
         return QMessageBox.question(
-            self, "wish", question,
+            self.root, "wish", question,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes
 
@@ -1112,7 +1112,7 @@ class AutomapBinding(QObject):
         names = self._names_for_spells()
         labels = [f"{names.get(i) or f'spell {i}'}" for i in offers]
         pick, ok = QInputDialog.getItem(
-            self, "wish", f"{name} learns one new spell:", labels, 0, False)
+            self.root, "wish", f"{name} learns one new spell:", labels, 0, False)
         if not ok:
             return None
         return offers[labels.index(pick)]
