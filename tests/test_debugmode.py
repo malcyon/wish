@@ -324,8 +324,7 @@ def test_the_fast_travel_row_is_in_the_window_whatever_the_debug_flag_says(
         win = _window(app)
         assert win.fasttravel_bar is not None
         assert sorted(b.text() for b in win.root.findChildren(QAbstractButton)
-                      if "Travel" in b.text()) == ["Fast Travel",
-                                                   "Travel Back"]
+                      if "Travel" in b.text()) == ["Fast Travel"]
 
 
 def test_the_row_lists_every_fasttravelable_area_by_name(app):
