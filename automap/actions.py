@@ -520,12 +520,10 @@ class StoreSpells(Action):
         for m in party:
             raw = m.record.get_raw("spells_memorised")
             self.store.put(disk, m.name, raw)
-            spells = m.record.spells_memorised
+            spells = [b for b in raw if b]
             if spells:
                 names = [spell_names.get(i) or f"spell {i}" for i in spells]
                 notes.append(f"{m.name}: {', '.join(names)}")
-            else:
-                notes.append(f"{m.name}: none")
         msg = f"stored spells for {len(party)} character{'s' if len(party) != 1 else ''}"
         if notes:
             msg += ":\n" + "\n".join(notes)
