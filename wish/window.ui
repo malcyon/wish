@@ -26,7 +26,13 @@
        </attribute>
        <layout class="QGridLayout" name="automap_grid">
         <item row="0" column="0">
-         <widget class="QWidget" name="automap_roster">
+                  <widget class="QWidget" name="automap_roster">
+          <property name="maximumSize">
+           <size>
+            <width>160</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <layout class="QVBoxLayout" name="automap_roster_layout">
            <property name="spacing">
             <number>4</number>
@@ -1616,21 +1622,21 @@
                 </property>
                </widget>
               </item>
-              <item row="1" column="0">
+              <item row="0" column="2">
                <widget class="ElidingButton" name="action_identify">
                 <property name="text">
                  <string>Identify items</string>
                 </property>
                </widget>
               </item>
-              <item row="1" column="1">
+              <item row="0" column="3">
                <widget class="ElidingButton" name="action_clear_qf">
                 <property name="text">
                  <string>Clear quickfight</string>
                 </property>
                </widget>
               </item>
-              <item row="2" column="0">
+              <item row="0" column="4">
                <widget class="ElidingCheckBox" name="watch_box">
                 <property name="text">
                  <string>Clear quickfight after a fight</string>
@@ -1640,7 +1646,7 @@
                 </property>
                </widget>
               </item>
-              <item row="2" column="1" colspan="2">
+              <item row="1" column="0" colspan="5">
                <widget class="QLabel" name="actions_note">
                 <property name="font">
                  <font>
