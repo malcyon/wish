@@ -415,8 +415,8 @@ class HealParty(Action):
                            bytes([target_hp])))
         _write_all(target, writes)
         if not writes:
-            return Outcome(True, "nobody needed healing", (), tuple(notes))
-        return Outcome(True, f"healed {len(writes)} of {len(party)}",
+            return Outcome(True, "All party members are at full health.", (), tuple(notes))
+        return Outcome(True, f"Healed {len(writes)} of {len(party)}.",
                        tuple(writes), tuple(notes))
 
 
@@ -593,7 +593,7 @@ class RestoreSpells(Action):
                 
         _write_all(target, writes)
         if not writes:
-            return Outcome(True, "nothing to restore", (), tuple(notes))
+            return Outcome(True, "Spellcasters have already memorized their spells.", (), tuple(notes))
             
         msg = "Restored spell state."
         if display_notes:
@@ -649,9 +649,9 @@ class IdentifyItems(Action):
                 writes.append((addr, bytes([flags & ~por_items.HIDDEN_NAME_MASK])))
         _write_all(target, writes)
         if not writes:
-            return Outcome(True, "every item was already identified")
-        return Outcome(True, f"identified {len(writes)} item"
-                             f"{'s' if len(writes) != 1 else ''}", tuple(writes))
+            return Outcome(True, "No items to identify.")
+        return Outcome(True, f"Identified {len(writes)} item"
+                             f"{'s' if len(writes) != 1 else ''}.", tuple(writes))
 
 
 # --- levelling ---------------------------------------------------------------
@@ -887,7 +887,7 @@ class LevelUp(Action):
         # The class is named because the player no longer picks it: the only
         # place the choice is visible is here.
         return Outcome(True,
-                       f"{member.name} is a {plan.class_name} {plan.to_level}",
+                       f"{member.name} is now a level {plan.to_level} {plan.class_name}!",
                        tuple(writes), tuple(notes))
 
 
@@ -994,9 +994,9 @@ class ClearQuickfight(Action):
                 writes.append((addr, bytes([current & ~self.flag.mask])))
         _write_all(target, writes)
         if not writes:
-            return Outcome(True, "nobody was on quickfight")
-        return Outcome(True, f"took {len(writes)} character"
-                             f"{'s' if len(writes) != 1 else ''} off quickfight",
+            return Outcome(True, "No party member had quickfight enabled.")
+        return Outcome(True, f"Removed quickfight from {len(writes)} character"
+                             f"{'s' if len(writes) != 1 else ''}.",
                        tuple(writes))
 
 
@@ -1489,7 +1489,7 @@ class FastTravel(Action):
                            writes, tuple(notes))
         self.back = was
         name = getattr(area, "name", None) or getattr(area, "ecl", str(to))
-        return Outcome(True, f"travelling to {name} - watch for the drive light",
+        return Outcome(True, f"Traveling to {name}.",
                        writes, tuple(notes))
 
     @staticmethod

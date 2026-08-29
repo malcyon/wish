@@ -472,22 +472,22 @@ def test_katherine_takes_three_levels_from_three_presses():
     assert record.get("level_thief") == 3
     assert record.get("experience") == 5000
     assert levelup.ready_classes(record) == []          # nothing left to take
-    assert [m.split(" is a ")[1] for m in raised] == [
-        "magic-user 2", "thief 2", "thief 3"]
+    assert [m.split(" is now a level ")[1].replace("!", "") for m in raised] == [
+        "2 magic-user", "2 thief", "3 thief"]
 
 
 def test_the_outcome_names_the_class_it_raised():
     """The player no longer chooses, so this line is the only place the choice
     is visible."""
     target = multi_class(5002, **{"magic-user": 1, "thief": 1})
-    assert press_level_up(target).message.endswith(" is a magic-user 2")
+    assert press_level_up(target).message.endswith(" is now a level 2 magic-user!")
 
 
 def test_a_single_class_character_is_unaffected():
     """One class ready is one class picked, exactly as before."""
     target = with_experience(2001)
     outcome = find("level-up").apply(target, slot=0)
-    assert outcome.ok and outcome.message.endswith(" is a fighter 2")
+    assert outcome.ok and outcome.message.endswith(" is now a level 2 fighter!")
     record = actions.read_party(target).by_slot(0).record
     assert record.get("level_fighter") == 2
 
@@ -497,7 +497,7 @@ def test_an_explicit_class_still_wins():
     the measured trainings passes one, and so may any caller that wants it."""
     target = multi_class(5002, **{"magic-user": 1, "thief": 1})
     outcome = find("level-up").apply(target, slot=0, class_name="thief")
-    assert outcome.ok and outcome.message.endswith(" is a thief 2")
+    assert outcome.ok and outcome.message.endswith(" is now a level 2 thief!")
 
 
 def test_a_magic_user_is_not_levelled_without_a_spell_chosen():
