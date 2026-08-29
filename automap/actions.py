@@ -524,9 +524,9 @@ class StoreSpells(Action):
             if spells:
                 names = [spell_names.get(i) or f"spell {i}" for i in spells]
                 notes.append(f"{m.name}: {', '.join(names)}")
-        msg = f"stored spells for {len(party)} character{'s' if len(party) != 1 else ''}"
+        msg = "Saved spell state."
         if notes:
-            msg += ":\n" + "\n".join(notes)
+            msg += "\n" + "\n".join(notes)
         return Outcome(True, msg)
 
 
@@ -552,10 +552,26 @@ class RestoreSpells(Action):
         self.store = store or SpellStore()
 
     def run(self, target, disk: str = "", **kwargs) -> Outcome:
-        party = read_party(target, self.game)
+        party = read_party(target, self.descriptor)
         if party is None:
             return Outcome(False, "no party to restore")
-        writes, notes = [], []
+            
+        spell_names = {}
+        from automap.paths import find_disks
+        from automap.live import _disk_images
+        root = find_disks(self.descriptor)
+        if root:
+            for path in _disk_images(root, self.descriptor):
+                try:
+                    from goldbox.spells import load_spell_names
+                    found = load_spell_names(str(path), self.descriptor)
+                    if found:
+                        spell_names = found
+                        break
+                except Exception:
+                    continue
+                    
+        writes, notes, display_notes = [], [], []
         for m in party:
             raw = self.store.get(disk, m.name)
             if raw is None:
@@ -567,13 +583,22 @@ class RestoreSpells(Action):
                 continue
             if raw == m.record.get_raw("spells_memorised"):
                 continue
+            
             writes.append((m.field_address("spells_memorised"), raw))
+            
+            spells = [b for b in raw if b]
+            if spells:
+                names = [spell_names.get(i) or f"spell {i}" for i in spells]
+                display_notes.append(f"{m.name}: {', '.join(names)}")
+                
         _write_all(target, writes)
         if not writes:
             return Outcome(True, "nothing to restore", (), tuple(notes))
-        return Outcome(True, f"restored spells for {len(writes)} character"
-                             f"{'s' if len(writes) != 1 else ''}",
-                       tuple(writes), tuple(notes))
+            
+        msg = "Restored spell state."
+        if display_notes:
+            msg += "\n" + "\n".join(display_notes)
+        return Outcome(True, msg, tuple(writes), tuple(notes))
 
 
 # --- items -------------------------------------------------------------------
