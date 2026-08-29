@@ -2152,7 +2152,7 @@ def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
     machine.memory[0x6E11] = b"\x00"
     outcome = bar.watch(machine)                       # the 2-to-not-2 edge
     assert outcome is not None and outcome.ok
-    assert "quickfight" in bar.note.text()
+    assert outcome.message == "nobody was on quickfight"
     machine.memory[0x6E11] = b"\x00"
     assert bar.watch(machine) is None                  # edge only, not level
 
