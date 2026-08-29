@@ -905,12 +905,8 @@ class AutomapBinding(QObject):
         except ValueError:
             return
         self.strength_label.setText(
-            f"party strength {party.value}   "
-            f"slums encounter {party.slums_count} monsters")
-        self.strength_label.setToolTip(
-            party.detail
-            + f"\n\nA slums random encounter is ({party.value} / 3) * 2 = "
-              f"{party.slums_count} monsters.")
+            f"party strength {party.value}")
+        self.strength_label.setToolTip(party.detail)
 
     def _try_connect(self) -> None:
         """Attach when a monitor appears. Cheap enough to run on the tick."""
