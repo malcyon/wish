@@ -583,7 +583,10 @@ class FastTravelBar(QObject):
 
     def _report(self, what: str, outcome: engine.Outcome) -> None:
         self.last = outcome
-        line = f"{what}: {outcome.message}"
+        if outcome.message and outcome.message[0].isupper():
+            line = outcome.message
+        else:
+            line = f"{what}: {outcome.message}"
         self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
         self.refresh()
 

@@ -624,8 +624,6 @@ class IdentifyItems(Action):
     name = "identify"
     label = "Identify"
     description = "Identify all items."
-    confirm = ("Identify every item the party carries? There is no way to undo "
-               "this in the game.")
 
     def run(self, target, **kwargs) -> Outcome:
         party = read_party(target, self.game)
