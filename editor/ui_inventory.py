@@ -33,4 +33,4 @@ class Ui_AddItemDialog(object):
     def retranslateUi(self, AddItemDialog):
         _translate = QtCore.QCoreApplication.translate
         AddItemDialog.setWindowTitle(_translate("AddItemDialog", "Add an item"))
-        self.search.setPlaceholderText(_translate("AddItemDialog", "type to filter"))
+        self.search.setPlaceholderText(_translate("AddItemDialog", "Type to filter"))

@@ -60,8 +60,8 @@ class Ui_NotePopover(object):
 
     def retranslateUi(self, NotePopover):
         _translate = QtCore.QCoreApplication.translate
-        self.field.setPlaceholderText(_translate("NotePopover", "a few words, or none"))
+        self.field.setPlaceholderText(_translate("NotePopover", "A few words, or none"))
         self.remove.setText(_translate("NotePopover", "Delete"))
-        self.remove.setToolTip(_translate("NotePopover", "remove this note from the square"))
+        self.remove.setToolTip(_translate("NotePopover", "Remove this note from the square"))
         self.keep.setText(_translate("NotePopover", "Keep"))
         self.hint.setText(_translate("NotePopover", "Enter keeps it, Escape leaves it alone"))
