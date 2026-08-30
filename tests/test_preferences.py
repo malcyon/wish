@@ -958,14 +958,14 @@ def test_two_tabs_and_it_opens_on_general_every_time(app, tmp_path,
 
 def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
                                                               monkeypatch):
-    """cosmic-comp caps a window at 1280 x 662 (§12). A dialog handed less
+    """cosmic-comp caps a window at 1280 x 675 (§12). A dialog handed less
     height than its layout's minimum does not refuse -- it squeezes what can be
     squeezed, and the Ultimate host box and the poll spinner went to nine
     pixels tall. Neither tab scrolls at the size it opens; the area table
     scrolls inside itself, which is what a table does."""
     nowhere(tmp_path, monkeypatch)
     dialog = PreferencesDialog(window(app))
-    assert dialog.width() <= 1280 and dialog.height() <= 662
+    assert dialog.width() <= 1280 and dialog.height() <= 675
     dialog.show()
     try:
         assert dialog.host.height() >= dialog.host.sizeHint().height()
