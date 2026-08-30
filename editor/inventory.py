@@ -229,9 +229,7 @@ class InventoryModel(QAbstractTableModel):
         empty = self.inventory.is_empty(row)
         item = self.inventory.item(row)
 
-        if role == Qt.ItemDataRole.CheckStateRole and col in CHECKABLE and not empty:
-            on = item.readied if col == READIED_COL else item.is_identified
-            return (Qt.CheckState.Checked if on else Qt.CheckState.Unchecked)
+
         if role == Qt.ItemDataRole.ForegroundRole and empty:
             return QBrush(FADED)
         if role == Qt.ItemDataRole.ToolTipRole and not empty:
@@ -257,6 +255,10 @@ class InventoryModel(QAbstractTableModel):
             return f"{item.weight_lb:g}"
         if col == COST:
             return str(item.cost_gp)
+        if col == READIED_COL:
+            return "Yes" if item.readied else "No"
+        if col == IDENTIFIED:
+            return "Yes" if item.is_identified else "No"
         return ""
 
     def _tooltip(self, row: int, item: Item) -> str:

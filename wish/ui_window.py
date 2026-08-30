@@ -1374,7 +1374,7 @@ class Ui_WishWindow(object):
         self.action_identify.setText(_translate("WishWindow", "Identify"))
         self.action_clear_qf.setText(_translate("WishWindow", "Clear quickfight"))
         self.ft_button.setText(_translate("WishWindow", "Fast Travel"))
-        self.ft_back_button.setStyleSheet(_translate("WishWindow", "padding-left: 6px; padding-right: 6px;"))
+        self.ft_back_button.setStyleSheet(_translate("WishWindow", "padding-left: 5px; padding-right: 5px;"))
         self.ft_back_button.setText(_translate("WishWindow", "Return"))
         self.notes_heading.setText(_translate("WishWindow", "Notes"))
         self.commissions_heading.setText(_translate("WishWindow", "Commissions"))

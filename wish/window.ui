@@ -1131,7 +1131,7 @@
                  <bool>false</bool>
                 </property>
                 <property name="styleSheet">
-                 <string>padding-left: 6px; padding-right: 6px;</string>
+                 <string>padding-left: 5px; padding-right: 5px;</string>
                 </property>
                 <property name="text">
                  <string>Return</string>
