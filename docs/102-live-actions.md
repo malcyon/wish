@@ -74,7 +74,7 @@ interval.
 | row | buttons |
 |---|---|
 | first | Heal the party · Store memorized spells · Restore memorized spells |
-| second | Identify all items · Turn quickfight off |
+| second | Identify all items · Quickfight off |
 
 The three that are about spells and hit points sit together; the two that stand
 alone sit under them. `Fast Travel` is its own row (`FastTravelBar`) and levelling is
@@ -138,7 +138,7 @@ poking an item's weight there was reverted by the game — so this is the one
 action whose effect is worth checking in the game's own item list. Not yet
 tested live: the party on the test disk carried no unidentified item.
 
-### 4. Turn quickfight off — `clear-quickfight`
+### 4. Quickfight off — `clear-quickfight`
 
 **The bit is found**: roster block `+0x0C`, bit 7. QUICK on the combat menu
 moved exactly that bit for exactly the character quickfought, and it survives a

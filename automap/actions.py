@@ -502,8 +502,8 @@ class StoreSpells(Action):
             return Outcome(False, "no party to read")
             
         spell_names = {}
-        from automap.paths import find_disks
         from automap.live import _disk_images
+        from automap.paths import find_disks
         root = find_disks(self.descriptor)
         if root:
             for path in _disk_images(root, self.descriptor):
@@ -557,8 +557,8 @@ class RestoreSpells(Action):
             return Outcome(False, "no party to restore")
             
         spell_names = {}
-        from automap.paths import find_disks
         from automap.live import _disk_images
+        from automap.paths import find_disks
         root = find_disks(self.descriptor)
         if root:
             for path in _disk_images(root, self.descriptor):
@@ -966,7 +966,7 @@ class ClearQuickfight(Action):
     """
 
     name = "clear-quickfight"
-    label = "Turn quickfight off"
+    label = "Quickfight off"
     description = "Disable quickfight for all characters."
     combat_legal = True
 

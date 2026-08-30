@@ -1133,6 +1133,12 @@
               </item>
               <item row="0" column="4">
                <widget class="ElidingButton" name="ft_back_button">
+                <property name="maximumSize">
+                 <size>
+                  <width>75</width>
+                  <height>16777215</height>
+                 </size>
+                </property>
                 <property name="enabled">
                  <bool>false</bool>
                 </property>

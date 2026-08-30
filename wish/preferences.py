@@ -52,7 +52,6 @@ import re
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
-    QHBoxLayout,
     QAbstractItemView,
     QCheckBox,
     QDialog,
@@ -799,6 +798,7 @@ class PreferencesDialog(QDialog):
 
     def _clear_automap(self):
         import json
+
         from automap.paths import data_dir
         from automap.state import title_dir
         

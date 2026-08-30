@@ -2022,7 +2022,7 @@ def _test_the_buttons_are_laid_out_in_the_two_rows_donald_asked_for(app):
     assert laid == [
         ["Heal the party", "Store memorized spells", "Restore memorized "
          "spells"],
-        ["Identify all items", "Turn quickfight off"],
+        ["Identify all items", "Quickfight off"],
     ]
     assert COLUMNS == 3
     # The label moved to the American spelling; the internal names and the
@@ -2061,7 +2061,8 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     asked = []
     bar.ask = lambda question: asked.append(question) or False
     bar.attach(machine)
-    identify = next(a for a in bar.actions if a.name == "identify"); identify.confirm = "no way to undo"
+    identify = next(a for a in bar.actions if a.name == "identify")
+    identify.confirm = "no way to undo"
     assert bar.run(identify) is None
     assert asked and "no way to undo" in asked[0]
     assert said == []                       # refused before anything was read
