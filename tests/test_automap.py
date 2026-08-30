@@ -2070,7 +2070,7 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     outcome = bar.run(identify)
     # The result is a line in the messages panel, not a pop-up to dismiss.
     assert outcome is not None
-    assert said == [outcome.message]
+    assert said == [f"identify: {outcome.message}"]
 
 
 def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
