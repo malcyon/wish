@@ -201,7 +201,7 @@ class Session(QObject):
             with debuglog.timed("a poll"):
                 self.reader(self.target)
         except NotConnected:
-            self.detach("the emulator went away - waiting for it to come back")
+            self.detach("Game disconnected.")
         except Exception as exc:                    # keep the window alive
             note = f"trouble reading the machine: {exc}"
             fresh = note != self.note

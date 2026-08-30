@@ -746,7 +746,7 @@ class AutomapBinding(QObject):
             if not self._drive:
                 raise
             self.mapper.target = None
-            self._waiting = "the emulator went away - waiting for it to come back"
+            self._waiting = "Game disconnected."
             self._refresh()
             return
         except Exception as exc:                      # keep the window alive

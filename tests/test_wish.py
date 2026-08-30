@@ -215,7 +215,7 @@ def test_the_machine_going_away_drops_to_waiting_and_comes_back(session):
         raise NotConnected("connection reset")
     session.set_reader(reader)
     session.poll()
-    assert session.state == "waiting" and "went away" in session.note
+    assert session.state == "waiting" and session.note == "Game disconnected."
 
     session.set_reader(lambda t: None)
     session.poll()                       # the emulator is back
@@ -471,7 +471,7 @@ def test_the_emulator_going_away_leaves_the_editor_alone(app, save, tmp_path,
     w.tabs.setCurrentIndex(MAP_TAB)
     w.session.poll()
     assert w.session.state == "waiting"
-    assert "went away" in w.session.note
+    assert w.session.note == "Game disconnected."
     assert w.editor.party is not None and len(w.editor.party) == 6
 
 
