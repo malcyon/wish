@@ -343,6 +343,7 @@ class PreferencesDialog(QDialog):
         box.addWidget(self._backend_group())
         box.addWidget(self._combat_group())
         box.addWidget(self._log_group())
+        box.addWidget(self._automap_group())
         box.addStretch(1)
 
         self._general_scroll = QScrollArea()
@@ -783,6 +784,34 @@ class PreferencesDialog(QDialog):
         # title bar and the status bar show [logging] while it is on, and the
         # status bar names the file the moment it opens.
         return box
+
+    def _automap_group(self) -> QGroupBox:
+        box = QGroupBox("Automap")
+        outer = QVBoxLayout(box)
+        self.clear_automap_button = QPushButton("Clear Automap Memory")
+        self.clear_automap_button.setToolTip("Forget which areas you have explored on the automap.")
+        self.clear_automap_button.clicked.connect(self._clear_automap)
+        outer.addWidget(self.clear_automap_button)
+        return box
+
+    def _clear_automap(self):
+        # We need to tell the automapper to clear its current state, and delete the JSON files.
+        import shutil
+        from automap.config import data_dir
+        from automap.paths import title_dir
+        
+        # Clear files for the current game
+        if self.win.mapper.state and self.win.mapper.state.title:
+            maps_dir = data_dir() / title_dir(self.win.mapper.state.title)
+            if maps_dir.exists():
+                shutil.rmtree(maps_dir)
+        
+        # Reset current loaded state in AutomapState so it doesn't just re-save it
+        if self.win.mapper.state:
+            self.win.mapper.state.exploration.seen.clear()
+            self.win.mapper.state.notes.clear()
+            self.win.mapper.state.save_notes()
+            self.win.mapper.notes_changed()
 
     def _combat_group(self) -> QGroupBox:
         box = QGroupBox("Combat")
