@@ -352,7 +352,7 @@ class IconParts:
             klass = self.part_class(glyph)
             if klass >= len(PART_CLASSES):
                 continue
-            value = icon_colours[cell] & 0x0f
+            value = icon_colours[cell] & 0x07
             votes.setdefault(klass, {}).setdefault(value, 0)
             votes[klass][value] += 1
         return {k: max(v, key=v.get) for k, v in votes.items()}
@@ -376,6 +376,6 @@ class IconParts:
             klass = self.part_class(glyph)
             if klass >= len(PART_CLASSES):
                 continue
-            base = per_class.get(klass, 0) & 0x0f
+            base = per_class.get(klass, 0) & 0x07
             out[cell] = base | (MULTICOLOUR if self.multicolour(glyph) else 0)
         return bytes(out)
