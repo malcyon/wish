@@ -798,23 +798,30 @@ class PreferencesDialog(QDialog):
         return box
 
     def _clear_automap(self):
-        # We need to tell the automapper to clear its current state, and delete the JSON files.
-        import shutil
+        import json
         from automap.paths import data_dir
         from automap.state import title_dir
         
-        # Clear files for the current game
+        # Clear 'seen' for the current game from all JSON files
         if self.win.mapper.state and self.win.mapper.state.title:
             maps_dir = data_dir() / title_dir(self.win.mapper.state.title)
             if maps_dir.exists():
-                shutil.rmtree(maps_dir)
+                for json_file in maps_dir.glob("*.json"):
+                    try:
+                        payload = json.loads(json_file.read_text(encoding="utf-8"))
+                        if "seen" in payload:
+                            payload["seen"] = []
+                            json_file.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+                    except Exception:
+                        pass
         
         # Reset current loaded state in AutomapState so it doesn't just re-save it
         if self.win.mapper.state:
             self.win.mapper.state.exploration.seen.clear()
-            self.win.mapper.state.notes.clear()
             self.win.mapper.state.save_notes()
-            self.win.mapper.notes_changed()
+            
+        if self.win.map and hasattr(self.win.map, 'canvas'):
+            self.win.map.canvas.update()
 
     def _combat_group(self) -> QGroupBox:
         box = QGroupBox("Combat")
