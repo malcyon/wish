@@ -52,6 +52,7 @@ import re
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QHBoxLayout,
     QAbstractItemView,
     QCheckBox,
     QDialog,
@@ -342,8 +343,10 @@ class PreferencesDialog(QDialog):
         box.addWidget(self._backups_group())
         box.addWidget(self._backend_group())
         box.addWidget(self._combat_group())
-        box.addWidget(self._log_group())
-        box.addWidget(self._automap_group())
+        bottom_row = QHBoxLayout()
+        bottom_row.addWidget(self._log_group())
+        bottom_row.addWidget(self._automap_group())
+        box.addLayout(bottom_row)
         box.addStretch(1)
 
         self._general_scroll = QScrollArea()
