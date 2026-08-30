@@ -800,7 +800,7 @@ class PreferencesDialog(QDialog):
     def _clear_automap(self):
         # We need to tell the automapper to clear its current state, and delete the JSON files.
         import shutil
-        from automap.config import data_dir
+        from automap.paths import data_dir
         from automap.paths import title_dir
         
         # Clear files for the current game

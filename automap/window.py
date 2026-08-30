@@ -115,6 +115,8 @@ class MapCanvas(QWidget):
 
     def __init__(self, state, parent=None, host=None):
         super().__init__(parent)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.state = state
         # Held rather than asked for: the canvas is centred inside a container
         # widget, so `parent()` is that container and not the window.
@@ -337,6 +339,8 @@ class CombatCanvas(QWidget):
 
     def __init__(self, parent=None, host=None):
         super().__init__(parent)
+        from PyQt6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.host = host
         self.battle = None
         self.box = (0, 0, combat.LEAST, combat.LEAST)
