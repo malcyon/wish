@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+[0.1.2] - 2026-08-30
+
+
+### Changed
+
+- Updated Automapper layout.
+- Combat icon editor now uses dropdowns to limit choices to the 8 hardware-supported colors, replacing the free color picker.
+
+
+### Fixed
+
+- Refused experience point totals that exceed the 3-byte limit supported by DOS saves. ([#111](https://github.com/malcyon/wish/issues/111))
+- Fixed an issue where the loaded-files cache wouldn't rebuild if the template stayed in the same area. ([#121](https://github.com/malcyon/wish/issues/121))
+- Fixed the conversion report to correctly account for SAVEDGAME1 instead of only SAVEDGAME0. ([#120](https://github.com/malcyon/wish/issues/120))
+- Ensured a new character's icon colors are written explicitly, avoiding cases where the figure was painted the combat floor's grey color. ([#112](https://github.com/malcyon/wish/issues/112))
+- Allowed select_row to read cursors at specific columns in the automapper. ([#124](https://github.com/malcyon/wish/issues/124))
+- Fixed combat icon rendering and dropdown synchronization artifacts.
+- Wrote the dungeon square before the position so outdoor DOS saves build correctly. ([#118](https://github.com/malcyon/wish/issues/118))
 
 ## [0.1.1] - 2026-08-26
 
