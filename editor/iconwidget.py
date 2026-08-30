@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
-from PyQt6.QtWidgets import QDialog, QMenu, QWidget
+from PyQt6.QtWidgets import QDialog, QMenu, QWidget, QVBoxLayout, QGroupBox, QComboBox, QPushButton, QFormLayout
 
+from goldbox.iconparts import PART_CLASSES
 from goldbox.icons import (
     CELL_COLS,
     CELLS,
@@ -35,23 +36,19 @@ from goldbox.icons import (
 from .palette import COLOURS, NAMES, colour
 from .partspicker import PartsPicker
 
-ZOOM = 3                    # pixel doubling on top of multicolour's own
-# 3 and not 6 since the icon left the header: on the Stats tab beside Money
-# it is one box among six rather than the thing you look at first, and at 6
-# it was as wide as Money and Character Traits together.
+ZOOM = 4                    # 33% increase (UI scaled) over native
 
 # The two poses are drawn side by side rather than stacked. Stacked, the icon is
 # 24 wide by 48 tall, and a widget that tall pushed the roster strip to 430
 # pixels for a table needing 240 -- the shape fought the layout. Side by side it
 # is 48 by 24, which is also the better read: you compare the poses at a glance.
-FRAME_WIDE = PIXELS_WIDE * 2 * POSES     # multicolour doubling, then two poses
+FRAME_WIDE = PIXELS_WIDE * POSES     # two poses
 FRAME_HIGH = POSE_ROWS * 8
 
 
-class IconEditor(QWidget):
-    """Shows one character's combat icon and lets its colours be changed."""
+class IconPreview(QWidget):
 
-    iconChanged = pyqtSignal()
+    """Shows one character's combat icon and lets its colours be changed."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,8 +57,8 @@ class IconEditor(QWidget):
         self._pixels: list[list[int]] = []
         self._parts = None
         self._size = "small"
-        self.setMinimumSize(FRAME_WIDE * ZOOM, FRAME_HIGH * ZOOM)
-        self.setMaximumWidth(FRAME_WIDE * ZOOM * 2)
+        self.setMinimumSize(int(FRAME_WIDE * ZOOM), int(FRAME_HIGH * ZOOM))
+        self.setMaximumWidth(int(FRAME_WIDE * ZOOM * 2))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     # -- what to draw -----------------------------------------------------
@@ -86,24 +83,19 @@ class IconEditor(QWidget):
     # -- geometry ---------------------------------------------------------
 
     def _geometry(self) -> tuple[int, int, int]:
-        """`(scale, x0, y0)` -- an integer zoom, centred, aspect preserved.
-
-        A multicolour pixel is two screen pixels wide, so the icon's natural
-        shape is 24 by 48. Letting a form layout stretch it to fill smears the
-        art; better to keep it square-pixelled and centre it.
-        """
+        """`(scale, x0, y0)` -- an integer zoom, centred, aspect preserved."""
         if not self._pixels:
             return 1, 0, 0
-        scale = max(1, min(self.width() // FRAME_WIDE,
-                           self.height() // FRAME_HIGH))
-        w, h = FRAME_WIDE * scale, FRAME_HIGH * scale
-        return scale, (self.width() - w) // 2, (self.height() - h) // 2
+        scale = max(1, min(self.width() // FRAME_WIDE, self.height() // FRAME_HIGH))
+        x0 = (self.width() - FRAME_WIDE * scale) // 2
+        y0 = (self.height() - FRAME_HIGH * scale) // 2
+        return scale, x0, y0
 
     def _cell_at(self, px: float, py: float) -> int | None:
         if not self._pixels:
             return None
         scale, x0, y0 = self._geometry()
-        x = int((px - x0) // (scale * 2)) // 4
+        x = int((px - x0) // scale) // 8
         y = int((py - y0) // scale) // 8
         if 0 <= x < CELL_COLS * POSES and 0 <= y < POSE_ROWS:
             pose, column = divmod(x, CELL_COLS)
@@ -126,49 +118,101 @@ class IconEditor(QWidget):
             # `icon_pixels` stacks the poses; move the lower one to the right.
             pose, into = divmod(y, FRAME_HIGH)
             for x, index in enumerate(row):
-                p.fillRect(QRect(x0 + (pose * PIXELS_WIDE + x) * scale * 2,
+                p.fillRect(QRect(x0 + (pose * PIXELS_WIDE + x) * scale,
                                  y0 + into * scale,
-                                 scale * 2, scale), colour(index))
+                                 scale, scale), colour(index))
 
         # A hairline between the two poses, so it reads as two frames rather
         # than one tall figure.
         p.setPen(QPen(QColor(255, 255, 255, 70), 1, Qt.PenStyle.DashLine))
-        mid = x0 + PIXELS_WIDE * 2 * scale
+        mid = x0 + PIXELS_WIDE * scale
         p.drawLine(mid, y0, mid, y0 + FRAME_HIGH * scale)
 
-    # -- editing ----------------------------------------------------------
 
-    def mousePressEvent(self, event) -> None:
-        cell = self._cell_at(event.position().x(), event.position().y())
-        if cell is None or self._icon is None:
-            return
-        menu = QMenu(self)
-        # "Change the icon" replaces the old per-cell glyph pick. A cell is not
-        # a thing the game lets you choose: the ICON menu offers a weapon and a
-        # head, and picking screen codes cell by cell built figures with two
-        # heads that no amount of playing could produce.
-        whole = menu.addAction("Change the icon…")
-        whole.setData(-1)
-        menu.addSeparator()
-        current = self._icon.colours[cell] & 0x0F
+class IconEditor(QWidget):
+    """Shows one character's combat icon and lets its colours be changed."""
+
+    iconChanged = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._parts = None
+        self._size = "small"
+        self._icon = None
+        self._charset = b""
+        
+        self.preview = IconPreview(self)
+        
+        self.btn_change = QPushButton("Change the icon…")
+        self.btn_change.clicked.connect(self._pick_parts)
+        
+        self.group_box = QGroupBox("Set Icon Color")
+        self.part_combo = QComboBox()
+        self.part_combo.addItems([p.title() for p in PART_CLASSES])
+        self.color_combo = QComboBox()
         for i, name in enumerate(NAMES):
-            act = menu.addAction(f"{i:2d}  {name}")
-            act.setCheckable(True)
-            act.setChecked(i == current)
-            pix = COLOURS[i]
-            act.setData(i)
-            act.setIconVisibleInMenu(True)
-            act.setIcon(_swatch(pix))
-        chosen = menu.exec(event.globalPosition().toPoint())
-        if chosen is None:
+            self.color_combo.addItem(_swatch(COLOURS[i]), f"{i:2d}  {name}", i)
+            
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        layout.addWidget(self.preview, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.btn_change)
+        
+        form = QFormLayout(self.group_box)
+        form.addRow("Part:", self.part_combo)
+        form.addRow("Color:", self.color_combo)
+        layout.addWidget(self.group_box)
+        
+        self.part_combo.currentIndexChanged.connect(self._update_color_combo)
+        self.color_combo.currentIndexChanged.connect(self._color_selected)
+
+    def set_icon(self, icon: Icon | None, charset: bytes = b"") -> None:
+        self._icon = icon
+        if charset:
+            self._charset = charset
+        self.preview.set_icon(icon, charset)
+        self._update_color_combo()
+
+    @property
+    def icon(self) -> Icon | None:
+        return self._icon
+
+    def set_parts(self, parts, size: str = "small") -> None:
+        self._parts = parts
+        self._size = size
+
+    def _update_color_combo(self):
+        if self._icon is None or self._parts is None:
             return
-        if int(chosen.data()) < 0:
-            self._pick_parts()
-        else:
-            self.set_cell_colour(cell, int(chosen.data()))
+        part_idx = self.part_combo.currentIndex()
+        if part_idx < 0:
+            return
+            
+        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.shape))
+        current_color = pc.get(part_idx, 0)
+        
+        self.color_combo.blockSignals(True)
+        idx = self.color_combo.findData(current_color)
+        if idx >= 0:
+            self.color_combo.setCurrentIndex(idx)
+        self.color_combo.blockSignals(False)
+
+    def _color_selected(self):
+        if self._icon is None or self._parts is None:
+            return
+        part_idx = self.part_combo.currentIndex()
+        color_val = self.color_combo.currentData()
+        if part_idx < 0 or color_val is None:
+            return
+            
+        pc = self._parts.part_colours(bytes(self._icon.colours), bytes(self._icon.shape))
+        pc[part_idx] = color_val
+        
+        new_colours = self._parts.colours_for(bytes(self._icon.shape), pc, bytes(self._icon.colours))
+        self.set_shape(bytes(self._icon.shape), new_colours)
 
     def _pick_parts(self) -> None:
-        """The whole icon, from the game's own two lists."""
         if not self._charset or self._parts is None or self._icon is None:
             return
         dialog = PartsPicker(self._parts, self._charset,
@@ -178,19 +222,12 @@ class IconEditor(QWidget):
             return
         self.set_shape(dialog.shape, dialog.colours)
 
-    def set_parts(self, parts, size: str = "small") -> None:
-        """Hand the widget the option tables. Without them the icon still
-        draws; it just cannot be changed, which is the right failure when the
-        character-creation disk is not to hand."""
-        self._parts = parts
-        self._size = size
-
     def set_shape(self, shape: bytes, colours: bytes) -> None:
         if self._icon is None:
             return
         self._icon = Icon(bytes(shape) + bytes(colours))
-        self._rebuild()
-        self.update()
+        self.preview.set_icon(self._icon, self._charset)
+        self._update_color_combo()
         self.iconChanged.emit()
 
     def set_cell_glyph(self, cell: int, code: int) -> None:
@@ -200,9 +237,7 @@ class IconEditor(QWidget):
         if raw[cell] == code:
             return
         raw[cell] = code & 0xFF
-        self._icon = Icon(bytes(raw))
-        self._rebuild()
-        self.iconChanged.emit()
+        self.set_shape(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
 
     def set_cell_colour(self, cell: int, value: int) -> None:
         if self._icon is None or not 0 <= cell < CELLS:
@@ -211,9 +246,7 @@ class IconEditor(QWidget):
         if raw[CELLS + cell] == value:
             return
         raw[CELLS + cell] = value & 0x0F
-        self._icon = Icon(bytes(raw))
-        self._rebuild()
-        self.iconChanged.emit()
+        self.set_shape(bytes(raw[:CELLS]), bytes(raw[CELLS:]))
 
 
 def _swatch(colour_: QColor):

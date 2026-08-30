@@ -44,12 +44,10 @@ LIST_ZOOM = 4
 
 #: Choices visible without scrolling. The lists are the dialog.
 VISIBLE_ROWS = 5
-# Source pixels, not screen pixels: one pose is 12 across, two poses 24. The
-# multicolour doubling happens in the scale at the end. Conflating the two put
-# each pose in the left half of a 48-wide image and left the rest black.
+# Source pixels, not screen pixels: one pose is 24 across, two poses 48.
 SOURCE_WIDE = PIXELS_WIDE * POSES
 FRAME_HIGH = POSE_ROWS * 8
-FRAME_WIDE = SOURCE_WIDE * 2                    # what it measures on screen
+FRAME_WIDE = SOURCE_WIDE
 
 
 def preview(shape: bytes, colours: bytes, charset: bytes,
@@ -62,7 +60,7 @@ def preview(shape: bytes, colours: bytes, charset: bytes,
         pose, into = divmod(y, FRAME_HIGH)
         for x, index in enumerate(row):
             img.setPixelColor(pose * PIXELS_WIDE + x, into, colour(index))
-    return img.scaled(FRAME_WIDE * zoom, FRAME_HIGH * zoom,
+    return img.scaled(int(FRAME_WIDE * zoom), int(FRAME_HIGH * zoom),
                       Qt.AspectRatioMode.IgnoreAspectRatio,
                       Qt.TransformationMode.FastTransformation)
 

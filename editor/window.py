@@ -158,7 +158,7 @@ ROSTER_SLACK = 6
 #: A cap it can take a little of a wide column without the art smearing:
 #: `IconEditor._geometry` only zooms in whole steps, so the next step up is
 #: four times the area and does not fit here.
-ICON_MAX_WIDTH = 150
+ICON_MAX_WIDTH = 300
 STRIP_TABLE_HEIGHT = 150
 # Eight is every slot a save disk has and every character a roster disk holds,
 # so a roster sized to this never scrolls and never leaves a fifth of the

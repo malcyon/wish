@@ -58,7 +58,7 @@ def test_every_icon_round_trips_and_renders():
         assert len(icon.raw) == ICON_SIZE
         assert Icon(icon.raw).raw == icon.raw
         pixels = icon_pixels(icon, charset)
-        assert len(pixels) == 48 and all(len(row) == 12 for row in pixels)
+        assert len(pixels) == 48 and all(len(row) == 24 for row in pixels)
         assert all(0 <= c <= 15 for row in pixels for c in row)
 
 

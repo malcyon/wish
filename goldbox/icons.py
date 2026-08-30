@@ -114,7 +114,7 @@ C64_PALETTE = [
     "#7B7B7B", "#A9FF9F", "#706DEB", "#B2B2B2",
 ]
 
-PIXELS_WIDE = CELL_COLS * 4      # multicolour halves the horizontal resolution
+PIXELS_WIDE = CELL_COLS * 8      # 8 hi-res pixels per cell
 PIXELS_HIGH = CELL_ROWS * 8
 
 
@@ -135,13 +135,23 @@ def icon_pixels(icon: "Icon", charset: bytes) -> list[list[int]]:
     out = [[COMBAT_BACKGROUND] * PIXELS_WIDE for _ in range(PIXELS_HIGH)]
     for cell in range(CELLS):
         code = icon.shape[cell]
-        own = icon.colours[cell] & 0x07
+        color_byte = icon.colours[cell]
+        is_mc = bool(color_byte & 0x08)
+        own = color_byte & 0x07
         cx, cy = cell % CELL_COLS, cell // CELL_COLS
         base = code * 8
         glyph = charset[base:base + 8]
         for row in range(8):
             bits = glyph[row] if row < len(glyph) else 0
-            for pair in range(4):
-                value = (bits >> (6 - pair * 2)) & 0x03
-                out[cy * 8 + row][cx * 4 + pair] = shared.get(value, own)
+            if is_mc:
+                for pair in range(4):
+                    value = (bits >> (6 - pair * 2)) & 0x03
+                    c = shared.get(value, own)
+                    out[cy * 8 + row][cx * 8 + pair * 2] = c
+                    out[cy * 8 + row][cx * 8 + pair * 2 + 1] = c
+            else:
+                for bit in range(8):
+                    value = (bits >> (7 - bit)) & 0x01
+                    c = own if value else COMBAT_BACKGROUND
+                    out[cy * 8 + row][cx * 8 + bit] = c
     return out
