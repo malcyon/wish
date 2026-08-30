@@ -551,7 +551,6 @@ class BottomStrip(QObject):
         super().__init__(parent)
         self.root = root
         self.where = root.findChild(QLabel, "strip_where")
-        self.clock = root.findChild(QLabel, "strip_clock")
         self.area = root.findChild(QLabel, "strip_area")
         self.effects = root.findChild(QLabel, "strip_effects")
         if self.effects is not None:
@@ -580,13 +579,9 @@ class BottomStrip(QObject):
         if self.area is not None:
             self.area.setText(state.area_label)
         if snap is None:
-            if self.clock is not None:
-                self.clock.setText("clock --:--")
             if self.effects is not None:
                 self.effects.setText("party effects: not readable right now")
             return
-        if self.clock is not None:
-            self.clock.setText(snap.clock_text)
         party = snap.party_effects
         text = "party effects: " + ("   ".join(e.label for e in party)
                                     if party else "none")

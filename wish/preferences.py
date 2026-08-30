@@ -836,6 +836,7 @@ class PreferencesDialog(QDialog):
 
     def _clear_quickfight_toggled(self, on: bool) -> None:
         self.win.settings.clear_quickfight = on
+        self.win.settings.save()
         if hasattr(self.win, "map") and hasattr(self.win.map, "actions_bar"):
             self.win.map.actions_bar.watcher.enabled = on
 
