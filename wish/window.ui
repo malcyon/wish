@@ -1473,7 +1473,7 @@
                   <item row="0" column="0">
                    <widget class="QLabel" name="label_hp_max">
                     <property name="text">
-                     <string>Hp max</string>
+                     <string>HP max</string>
                     </property>
                    </widget>
                   </item>
@@ -1490,7 +1490,7 @@
                   <item row="1" column="0">
                    <widget class="QLabel" name="label_hp_rolled">
                     <property name="text">
-                     <string>Hp rolled</string>
+                     <string>HP rolled</string>
                     </property>
                    </widget>
                   </item>
@@ -1507,7 +1507,7 @@
                   <item row="2" column="0">
                    <widget class="QLabel" name="label_hp_current">
                     <property name="text">
-                     <string>Hp current</string>
+                     <string>HP current</string>
                     </property>
                    </widget>
                   </item>

@@ -37,7 +37,7 @@
    <item>
     <widget class="QLineEdit" name="field">
      <property name="placeholderText">
-      <string>a few words, or none</string>
+      <string>A few words, or none</string>
      </property>
     </widget>
    </item>
@@ -57,7 +57,7 @@
         <string>Delete</string>
        </property>
        <property name="toolTip">
-        <string>remove this note from the square</string>
+        <string>Remove this note from the square</string>
        </property>
       </widget>
      </item>

@@ -9,7 +9,7 @@
    <item>
     <widget class="QLineEdit" name="search">
      <property name="placeholderText">
-      <string>type to filter</string>
+      <string>Type to filter</string>
      </property>
     </widget>
    </item>
