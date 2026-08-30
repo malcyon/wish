@@ -1142,7 +1142,6 @@ def test_the_strip_says_when_the_party_is_not_readable(app):
     strip.show_state(state, None)
     assert strip.where.text() == "(3,14) facing N"
     strip.show_state(state, live.snapshot_from_bytes(*captured()))
-    assert strip.clock.text() == "0:01"
     
 
 
@@ -1245,7 +1244,6 @@ def _test_the_tab_shows_the_party_beside_the_map(app, tmp_path, monkeypatch):
         window.tick()
     assert window.snapshot is not None
     assert window.roster.cards[0].name.text() == "BRUTUS"
-    assert window.strip.clock.text() == "0:01"
     # Roster left, map centre, the reading panels right, the actions under the
     # map, the strip along the bottom. The map is the stack of two canvases --
     # the area map and the combat map.

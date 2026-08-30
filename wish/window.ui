@@ -1126,9 +1126,12 @@
                </widget>
               </item>
               <item row="0" column="4">
-               <widget class="QPushButton" name="ft_back_button">
+               <widget class="ElidingButton" name="ft_back_button">
                 <property name="enabled">
                  <bool>false</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>padding-left: 6px; padding-right: 6px;</string>
                 </property>
                 <property name="text">
                  <string>Return</string>

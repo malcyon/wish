@@ -147,6 +147,8 @@ class Settings:
     # `tests/test_debuglog.py` still asserts no settings field carries "log";
     # that test encodes the superseded decision and is Donald's to retire.
     diagnostics: bool = False
+    # Whether to clear quickfight after a fight ends.
+    clear_quickfight: bool = False
     # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
     # **keyed by `goldbox.games.Game.key`** -- an area id means nothing without a
     # title, and fasttraveling on Pool of Radiance's ids in another game's machine is
