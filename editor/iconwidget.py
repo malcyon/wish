@@ -158,7 +158,7 @@ class IconEditor(QWidget):
         self.part_combo = QComboBox()
         self.part_combo.addItems([p.title() for p in PART_CLASSES])
         self.color_combo = QComboBox()
-        for i, name in enumerate(NAMES):
+        for i, name in enumerate(NAMES[:8]):
             self.color_combo.addItem(_swatch(COLOURS[i]), f"{i:2d}  {name}", i)
             
         layout = QVBoxLayout(self)
