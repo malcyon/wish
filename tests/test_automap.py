@@ -1683,10 +1683,160 @@ def _character(**kw):
 
 
 def test_a_card_shows_what_is_readied_and_nothing_else(app):
+    """On the card itself, not only in the tooltip. What is in hand is what a
+    player glances at mid-crawl, and a tooltip is not a glance."""
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
     card.show_character(_character(readied=("BANDED MAIL", "SHIELD", "LONG SWORD")))
+    assert card.readied_items == ("BANDED MAIL", "SHIELD", "LONG SWORD")
+    assert card.readied.text() == "BANDED MAIL, SHIELD, LONG SWORD"
     assert "BANDED MAIL, SHIELD, LONG SWORD" in card.frame.toolTip()
+
+
+def test_a_character_with_nothing_readied_gets_a_blank_line(app):
+    """The absence is the information, and the word "none" is not. The line
+    stays, so the cards below it do not shift when a sword is put away."""
+    from automap.panel import CharacterCard
+    card = CharacterCard(make_root(), 0)
+    card.show_character(_character(readied=("LONG SWORD",)))
+    tall = card.frame.sizeHint().height()
+    card.show_character(_character())
+    assert card.readied.text() == ""
+    assert card.frame.sizeHint().height() == tall
+
+
+def test_a_long_readied_list_is_shortened_to_the_card_and_kept_whole(app):
+    """More in hand than the card is wide. The label keeps the whole string --
+    so nothing about the card's width is measured from item names off the
+    player's disk (#41) -- and draws as much of it as the room allows."""
+    from automap.panel import CharacterCard
+    card = CharacterCard(make_root(), 0)
+    items = tuple(f"BANDED MAIL +{n}" for n in range(6))
+    card.show_character(_character(readied=items))
+    card.readied.resize(card.readied.sizeHint().width() // 3,
+                        card.readied.sizeHint().height())
+    drawn = card.readied.elided_text()
+    assert drawn.endswith("…")
+    assert drawn != card.readied.text()
+    metrics = card.readied.fontMetrics()
+    assert metrics.horizontalAdvance(drawn) <= card.readied.contentsRect().width()
+    # And nothing is lost: the frame's tooltip is what the label answers with,
+    # because the label sets none of its own.
+    assert card.readied.toolTip() == ""
+    for item in items:
+        assert item in card.frame.toolTip()
+
+
+def test_the_readied_line_does_not_grow_with_the_ui_font(app):
+    """Eight cards in a column that does not scroll, so a line that got taller
+    with the UI font would put eight of that growth under the window (#77).
+
+    The line asks for the same height at every font because its point size is
+    set in `wish/window.ui` and so does not inherit the application's, and it
+    asks the layout for nothing at all -- `ReadiedLabel.SHORT` is 0, which is
+    what keeps it out of the window's floor entirely.
+    """
+    from PyQt6.QtGui import QFont
+
+    from automap.panel import CharacterCard
+    base = app.font()
+    fonts = (0, 3, 6, 10)
+    try:
+        natural, floor = [], []
+        for extra in fonts:
+            bigger = QFont(base)
+            bigger.setPointSizeF(base.pointSizeF() + extra)
+            app.setFont(bigger)
+            card = CharacterCard(make_root(), 0)
+            card.show_character(_character(readied=("LONG SWORD",)))
+            natural.append(card.readied.sizeHint().height())
+            floor.append(card.readied.minimumSizeHint().height())
+    finally:
+        app.setFont(base)
+    assert natural == [natural[0]] * len(fonts), (
+        f"the readied line got taller with the UI font: "
+        f"{dict(zip(fonts, natural))}")
+    assert floor == [0] * len(fonts), (
+        f"the readied line is holding the window open: "
+        f"{dict(zip(fonts, floor))}")
+
+
+def _eight_card_floor(app, extra: float, *, line: bool) -> int:
+    """The window form's minimum height with all eight cards showing.
+
+    `line` is the control: with it False every readied label is hidden, which
+    is the same window without this feature in it.
+
+    **Two Qt traps, both of which make the measurement lie.** A card is
+    `visible=false` in `wish/window.ui` and is shown by `RosterPanel`; on a
+    window that has never been shown, `QWidget.show()` on a card does not post
+    the layout request that would tell its ancestors their cached minimums are
+    stale, so every layout above it goes on answering the eight-hidden-cards
+    number. `updateGeometry()` up the chain is what clears the cached
+    `QWidgetItem` sizes. And `QLayout.invalidate()` alone is not enough --
+    the cache that matters belongs to the item, not to the layout.
+    """
+    from PyQt6.QtGui import QFont
+
+    from automap.panel import RosterPanel
+    was = app.font()
+    bigger = QFont(was)
+    bigger.setPointSizeF(was.pointSizeF() + extra)
+    app.setFont(bigger)
+    try:
+        root = make_root()
+        roster = RosterPanel(root)
+        classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 200_000)
+                        for name in ("magic-user", "cleric", "thief"))
+        for slot, card in enumerate(roster.cards):
+            card.show_character(_character(
+                slot=slot, name="W" * 15, classes=classes, armour_class=-3,
+                readied=("BANDED MAIL +1", "SHIELD +2", "LONG SWORD +3")))
+            card.frame.show()
+            card.readied.setVisible(line)
+        widget = roster.cards[0].frame
+        while widget is not None:
+            widget.updateGeometry()
+            widget = widget.parentWidget()
+        return root.minimumSizeHint().height()
+    finally:
+        app.setFont(was)
+
+
+def test_eight_readied_lines_cost_the_window_less_than_one_line(app):
+    """The one a user would feel, and the reason `ReadiedLabel.SHORT` is 0.
+
+    The roster column does not scroll, so with a full party of eight it is
+    already the tallest thing on the automapper page and its height is the
+    height the window cannot be made smaller than. Eight cards each insisting
+    on a line of their own would be eight lines added to that floor.
+
+    **What is asserted is that the eight lines cost less than one line**, not
+    a pixel count: the numbers here are this machine's and the same assertion
+    has to hold where the base font is smaller. What is left is the one pixel
+    of layout spacing each card spends on the row, which is a constant in
+    `wish/window.ui` rather than anything measured from a font -- so the cost
+    is also the same at every UI font, which is the second assertion.
+
+    Measured here, a party of eight three-class characters: the form's floor
+    is 917 without the line and 925 with it -- a cost of 8 -- at every one of
+    +0, +3, +6 and +10. Take the `SHORT` cap off and the floor is 1045 and the
+    cost 128, which is eight whole lines and sixteen times what the cap leaves.
+    """
+    fonts = (0, 3, 6, 10)
+    costs = [_eight_card_floor(app, extra, line=True)
+             - _eight_card_floor(app, extra, line=False) for extra in fonts]
+    seen = dict(zip(fonts, costs))
+    from automap.panel import CharacterCard
+    card = CharacterCard(make_root(), 0)
+    card.show_character(_character(readied=("LONG SWORD",)))
+    one_line = card.readied.sizeHint().height()
+    assert max(costs) < one_line, (
+        f"eight readied lines added more than one line's height to the "
+        f"window's floor: {seen}, against a line of {one_line}")
+    assert costs == [costs[0]] * len(fonts), (
+        f"what the readied lines cost the window's floor moved with the UI "
+        f"font: {seen}")
 
 
 def test_readied_items_are_read_from_the_item_block():

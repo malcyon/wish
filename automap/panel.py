@@ -306,10 +306,18 @@ class ElidingLabel(QLabel):
     def minimumSizeHint(self) -> QSize:
         return _squeezed(super().minimumSizeHint(), self.SQUEEZED)
 
+    def elided_text(self) -> str:
+        """What this label will actually draw in the room it has.
+
+        Split out of `paintEvent` so a test can ask for it: `text()` is the
+        whole string whatever the width, and the shortening is otherwise
+        visible only in pixels.
+        """
+        return self.fontMetrics().elidedText(
+            self.text(), Qt.TextElideMode.ElideRight, self.contentsRect().width())
+
     def paintEvent(self, event):
-        room = self.contentsRect().width()
-        elided = self.fontMetrics().elidedText(
-            self.text(), Qt.TextElideMode.ElideRight, room)
+        elided = self.elided_text()
         if elided == self.text():
             super().paintEvent(event)   # nothing to elide: paint it as always
             return
@@ -320,6 +328,31 @@ class ElidingLabel(QLabel):
                                   int(self.alignment()), self.palette(),
                                   self.isEnabled(), elided,
                                   self.foregroundRole())
+
+
+class ReadiedLabel(ElidingLabel):
+    """The card's line of what is in hand: bounded in both axes.
+
+    Width comes from `ElidingLabel` -- the item names are read off the
+    player's disk and a card whose floor was the width of `BANDED MAIL +1,
+    SHIELD +2, LONG SWORD +3` would put that string under the whole window
+    (#41).
+
+    Height is the reason for the subclass. There are eight of these, one per
+    party slot, in a column that does not scroll, so a line that insisted on
+    its own height would add eight of them to the window's floor -- and the
+    roster is already the tallest thing on the automapper page with a full
+    party. `SHORT = 0` says the line gives way *first*: it is the least
+    important row on the card, and it is only ever squeezed by a window
+    already pushed to its minimum. Anywhere above that floor the line is
+    drawn in full.
+    """
+
+    #: The tallest this line may hold the window open. Zero, deliberately.
+    SHORT = 0
+
+    def minimumSizeHint(self) -> QSize:
+        return shortened(super().minimumSizeHint(), self.SHORT)
 
 
 def _label(text="", *, bold=False, muted=False, size=0,
@@ -397,9 +430,15 @@ class CharacterCard(QObject):
         self.hp = root.findChild(Bar, f"card_{index}_hp")
         self.xp = [root.findChild(Bar, f"card_{index}_xp_{j}") for j in range(3)]
 
-
-
-
+        #: What is in hand, under the bars. Readied only -- the whole
+        #: inventory would swamp the card -- and a **blank line** for a
+        #: character carrying nothing readied: the absence is the information,
+        #: and the word "none" is not. The line stays either way, so the cards
+        #: below do not shift when a sword is put away.
+        self.readied_items: tuple[str, ...] = ()
+        self.readied = root.findChild(ReadiedLabel, f"card_{index}_readied")
+        if self.readied is not None:
+            self.readied.setStyleSheet(f"color: {MUTED.name()}")
 
     @staticmethod
     def ready_to_level(who) -> tuple[str, ...]:
@@ -478,9 +517,24 @@ class CharacterCard(QObject):
             if bar is not None:
                 bar.hide()
 
+        self.show_readied(who.readied)
+
         if self.quickfight is not None:
             self.quickfight.set_icons(("person-running",) if who.quickfight else ())
             self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
+
+    def show_readied(self, items) -> None:
+        """One line of what is in hand, shortened to the room the card has.
+
+        The label holds the whole string and `ReadiedLabel` draws as much of
+        it as fits, so nothing here measures a font: the elide is the
+        painter's and the card's floor is a constant. The full list stays
+        readable because the label sets no tooltip of its own and so answers
+        with the frame's, which already carries it.
+        """
+        self.readied_items = tuple(items)
+        if self.readied is not None:
+            self.readied.setText(", ".join(self.readied_items))
 
 
 class RosterPanel(QObject):

@@ -29,6 +29,7 @@ from goldbox.record import CharacterRecord, FieldNotStored
 from goldbox.savegame import (
     RECORD_SLOT_COUNT,
     ROSTER_STRIDE,
+    SAVE0_LOAD_ADDRESS,
     SAVE1_LOAD_ADDRESS,
     SLOT_AREA_BASE,
     SLOT_STRIDE,
@@ -37,6 +38,7 @@ from goldbox.savegame import (
 )
 from goldbox.traits import traits
 
+from .live import active_effects
 from .render import Hatch, Label, Line, Rect, hatch_lines
 
 # Which overlay is running. LINKER's own dispatch byte.
@@ -72,6 +74,24 @@ RECORDS = SLOT_AREA_BASE
 RECORD_STRIDE = SLOT_STRIDE
 RECORD_COUNT = RECORD_SLOT_COUNT
 ROSTER_RECORD_SLOT = 0x0D
+
+# The record slots are inside the save image, and so are the four 64-entry
+# effect arrays at its head, so **one range covers both**: read from $4900
+# rather than from $4D00 and the conditions arrive with the records for $400
+# more bytes and not one more block. That matters because the cost of a read is
+# the round trip -- a sixth range would be free on `ViceTarget`, which stops the
+# machine once for the whole burst, and a whole extra trip on a backend that
+# only has `read`.
+SAVE_HEAD = SAVE0_LOAD_ADDRESS
+RECORDS_AT = RECORDS - SAVE0_LOAD_ADDRESS                 # $400
+SAVE_HEAD_LEN = RECORDS_AT + RECORD_COUNT * RECORD_STRIDE
+
+# `goldbox/traits.py` 31, PROBABLE. **Per-monster, so it cannot come from the
+# record**: eight GOBLIN GUARDs share record slot 8, and a condition written in
+# that record's trait slots would be true of all eight at once. The effect
+# arrays key on the combatant index instead -- 0-7 the party, 8 upward the
+# monsters -- which is the one place a single monster can be named.
+HELPLESS = 31
 
 # Drawing. The combat grid is 56 squares across where the area map is 16, so the
 # cell shrinks to fit rather than the window growing to 1900 pixels.
@@ -162,6 +182,10 @@ class Combatant:
     thac0: int | None = None
     movement: int | None = None
     record: CharacterRecord | None = None
+    #: Effect id 31 is on this combatant's index right now. Recomputed from the
+    #: `$4900` arrays every poll and never carried forward, so it goes the
+    #: moment the game clears the id.
+    helpless: bool = False
 
     @property
     def is_party(self) -> bool:
@@ -187,7 +211,20 @@ class Combatant:
 
     @property
     def kind(self) -> str:
-        base = "party" if self.is_party else "enemy"
+        """How the square is filled: the party green, an enemy red, and a
+        helpless enemy yellow.
+
+        **The party keeps its green when it is helpless.** The fill says which
+        side a square is on before it says anything else, and a yellow party
+        square would read as a third side; the tooltip carries the condition
+        for both.
+        """
+        if self.is_party:
+            base = "party"
+        elif self.helpless:
+            base = "helpless"
+        else:
+            base = "enemy"
         return f"{base}-dim" if self.dimmed else base
 
     @property
@@ -215,6 +252,8 @@ class Combatant:
             combat.append(f"move {self.movement}")
         if combat:
             out.append("   ".join(combat))
+        if self.helpless:
+            out.append("Helpless")
         if not self.alive:
             out.append("dead or gone from the fight")
         if self.record is None:
@@ -297,9 +336,26 @@ def _record(window: bytes) -> CharacterRecord | None:
         return None
 
 
+def helpless_indices(save_head: bytes) -> frozenset[int]:
+    """Which combatants effect id 31 is on right now, by combatant index.
+
+    Read out of the four `$4900` arrays every poll and never remembered: the
+    game clears the id when the condition ends (`docs/133-active-effects.md`),
+    and a set carried forward would keep a monster yellow after it woke up.
+
+    The owner byte is the combat combatant index -- 0-7 the party in save-slot
+    order, 8 upward the monsters, `$FF` the whole party -- which is why this can
+    say *which* GOBLIN GUARD is helpless where the shared record cannot.
+    `$FF` is dropped rather than trusted: no index reaches it, and a
+    party-wide helplessness is not a thing any spell does.
+    """
+    return frozenset(e.owner for e in active_effects(save_head)
+                     if e.id == HELPLESS and not e.party_wide)
+
+
 def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
-               initiative: bytes, shape: Shape,
-               previous: Battle | None) -> Combatant | None:
+               initiative: bytes, shape: Shape, previous: Battle | None,
+               helpless: frozenset[int] = frozenset()) -> Combatant | None:
     at = index * POSITION_STRIDE
     x, y, packed = positions[at], positions[at + 1], positions[at + 2]
     on_map = x != OFF_MAP and y != OFF_MAP
@@ -333,7 +389,8 @@ def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
         on_map=on_map, initiative=initiative[index] if index < len(initiative) else 0,
         hp=block.hit_points, hp_max=hp_max,
         armour_class=block.armour_class, thac0=block.thac0,
-        movement=block.movement, record=record)
+        movement=block.movement, record=record,
+        helpless=index in helpless)
 
 
 def _blocks(target, blocks) -> list[bytes]:
@@ -349,7 +406,8 @@ def read_battle(target, previous: Battle | None = None) -> Battle | None:
 
     Two bursts, because the map's address and length are in the first one: the
     mode byte, the parameter block and the camera, then the map, the roster,
-    the positions, the initiative bytes and the twelve record slots. The cost of
+    the positions, the initiative bytes and the head of the save image, which
+    carries the effect arrays and the twelve record slots together. The cost of
     a read is the round trip and not the bytes -- ~14.3 ms either way under
     VICE -- so the number that matters is two.
 
@@ -365,18 +423,20 @@ def read_battle(target, previous: Battle | None = None) -> Battle | None:
     shape = shape_from_params(params)
     if shape is None:
         return None
-    terrain, roster, positions, initiative, records = _blocks(target, (
+    terrain, roster, positions, initiative, save_head = _blocks(target, (
         (shape.map_base, shape.length),
         (ROSTER, shape.count * ROSTER_STRIDE),
         (shape.positions, shape.count * POSITION_STRIDE),
         (INITIATIVE, shape.count),
-        (RECORDS, RECORD_COUNT * RECORD_STRIDE)))
-    if len(terrain) < shape.length:
+        (SAVE_HEAD, SAVE_HEAD_LEN)))
+    if len(terrain) < shape.length or len(save_head) < SAVE_HEAD_LEN:
         return None
+    records = save_head[RECORDS_AT:]
+    helpless = helpless_indices(save_head)
     people = []
     for i in range(shape.count):
         who = _combatant(i, positions, roster, records, initiative, shape,
-                         previous)
+                         previous, helpless)
         if who is not None:
             people.append(who)
     return Battle(shape=shape, terrain=bytes(terrain),
@@ -480,8 +540,16 @@ def battlefield(battle: Battle, box=None, cell: int | None = None,
             # Still has initiative to spend, so it may still act this round.
             # $A380 counts down and the round ends when all 64 are zero.
             yield Rect(left - 1, top - 1, cell + 2, cell + 2, "ready")
-        yield Label(left + cell / 2, top + cell / 2, who.hp_text,
-                    "hp-dim" if who.dimmed else "hp")
+        # Hit points are written in the paper colour on the green and the
+        # red, which have the contrast for it. The helpless yellow does not --
+        # nothing that still reads as yellow does -- so its digits are inked.
+        if who.dimmed:
+            ink = "hp-dim"
+        elif who.kind == "helpless":
+            ink = "hp-ink"
+        else:
+            ink = "hp"
+        yield Label(left + cell / 2, top + cell / 2, who.hp_text, ink)
 
 
 def square_at(px: float, py: float, box, cell: int,

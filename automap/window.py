@@ -75,11 +75,27 @@ ALARM = QColor("#c0392b")       # something is wrong and it is not our doing
 # the tab agree with each other.
 FRIEND = QColor("#2f7d4f")
 FOE = QColor("#c0392b")
+# A helpless enemy. Gold rather than a highlighter yellow, because everything
+# else on this paper is a muted ink and a pure yellow would be the only thing
+# in the window shouting. It is the one combatant fill light enough to need the
+# hit points inked instead of papered: 6.9:1 against INK, where white on it is
+# 2.3:1 and would disappear.
+HELPLESS_FILL = QColor("#d4a017")
 FADED = QColor("#a9b4bf")
 # Solid rock. The old fill was ROOF's tint, which against paper reads as more
 # paper; the pen is ink thinned, never the wall ink. See render.ROCK_FILL.
 BLOCK = QColor("#c3d0dd")
 HATCH_PEN = QColor("#68809a")
+
+#: How a combatant's square is filled, by `combat.Combatant.kind` with any
+#: `-dim` taken off. Unknown kinds fall back to the enemy red, which is what
+#: the old `startswith("party")` test did for everything that was not the
+#: party.
+COMBATANT_FILL = {"party": FRIEND, "enemy": FOE, "helpless": HELPLESS_FILL}
+
+#: And what the hit points inside it are written in. Paper on the dark fills,
+#: ink on the light one, `FADED` on a dimmed square whatever colour it was.
+HP_INK = {"hp-dim": FADED, "hp-ink": INK}
 
 
 #: Said on the grid when there are no maps at all. The one failure that used
@@ -330,8 +346,9 @@ class CombatCanvas(QWidget):
 
     Same graph paper, same ink, same line art -- a player should not feel they
     have changed program because a fight started. What is new is the colour:
-    the party green and the enemy red, with current hit points written in the
-    square, because mid-fight that is the number you look for.
+    the party green, the enemy red and a helpless enemy gold, with current hit
+    points written in the square, because mid-fight that is the number you look
+    for.
 
     The geometry is `automap/combat.py`, which has no Qt in it; this paints what
     it yields and answers the tooltip.
@@ -464,7 +481,8 @@ class CombatCanvas(QWidget):
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawRect(rect)
             else:
-                colour = FRIEND if prim.kind.startswith("party") else FOE
+                base = prim.kind.removesuffix("-dim")
+                colour = COMBATANT_FILL.get(base, FOE)
                 if prim.kind.endswith("-dim"):
                     colour = QColor(colour)
                     colour.setAlpha(70)
@@ -476,7 +494,7 @@ class CombatCanvas(QWidget):
             p.setPen(QPen(INK, 2.5 if prim.kind == "rock-edge" else 1))
             p.drawLine(QPointF(prim.x1, prim.y1), QPointF(prim.x2, prim.y2))
         elif isinstance(prim, Label):
-            p.setPen(QPen(FADED if prim.kind == "hp-dim" else PAPER))
+            p.setPen(QPen(HP_INK.get(prim.kind, PAPER)))
             font = QFont("sans", max(7, int(self.cell * 0.36)),
                          QFont.Weight.Bold)
             p.setFont(font)

@@ -136,11 +136,19 @@ def test_a_round_is_over_when_every_initiative_byte_is_spent(battle):
 
 
 def test_the_whole_fight_costs_two_bursts():
+    """Five ranges in the second burst, not six.
+
+    The last one starts at the save image's head rather than at the record
+    slots, so the effect arrays and the twelve records arrive in the same
+    block: $400 more bytes and no extra round trip, which is the cost that
+    counts.
+    """
     machine = arena()
     combat.read_battle(machine)
     assert [addr for addr, _ in machine.reads] == [
         combat.MODE, combat.PARAMS, combat.CAMERA,
-        0x8C00, combat.ROSTER, 0x8B00, combat.INITIATIVE, combat.RECORDS]
+        0x8C00, combat.ROSTER, 0x8B00, combat.INITIATIVE, combat.SAVE_HEAD]
+    assert combat.SAVE_HEAD + combat.RECORDS_AT == combat.RECORDS
 
 
 # --- the tooltip ------------------------------------------------------------
@@ -295,3 +303,133 @@ def test_the_canvas_answers_a_tooltip(app, tmp_path, monkeypatch, battle):
     assert canvas.tooltip_at(px, py).startswith("8. ORC")
     assert canvas.tooltip_at(combat.MARGIN + cell / 2,
                              combat.MARGIN + cell / 2) is None
+
+
+# --- helpless ---------------------------------------------------------------
+
+def with_effect(machine, code: int, *owners: int) -> MemoryTarget:
+    """Put `code` on each owner in the save's own four arrays at `$4900`.
+
+    Writes the id and the owner and leaves duration and magnitude at zero,
+    which is what a slot the game has never used holds. `active_effects`
+    filters on the id and nothing else, so that is all it takes.
+    """
+    from automap import live
+    ids = bytearray(live.EFFECT_SLOTS)
+    who = bytearray(live.EFFECT_SLOTS)
+    for slot, owner in enumerate(owners):
+        ids[slot], who[slot] = code, owner
+    machine.memory[combat.SAVE_HEAD + live.EFFECT_ID_OFFSET] = bytes(ids)
+    machine.memory[combat.SAVE_HEAD + live.EFFECT_OWNER_OFFSET] = bytes(who)
+    return machine
+
+
+def test_the_helpless_code_is_the_one_the_trait_table_names():
+    """The tooltip's word and the id are two halves of one claim. If the
+    census ever renames 31 this fails, and the label gets looked at again."""
+    from goldbox.traits import NAMES
+    assert NAMES[combat.HELPLESS] == ("helpless", "PROBABLE")
+
+
+def test_a_helpless_enemy_is_yellow_and_says_so():
+    machine = with_effect(arena(), combat.HELPLESS, 8)
+    battle = combat.read_battle(machine)
+    orc = battle.enemies[0]
+    assert orc.helpless and orc.kind == "helpless"
+    assert "Helpless" in orc.lines()
+    kinds = [p.kind for p in combat.battlefield(battle)]
+    assert kinds.count("helpless") == 1 and "enemy" not in kinds
+    # Paper-coloured digits vanish on the yellow, so they are inked instead.
+    assert [p.kind for p in combat.battlefield(battle)
+            if isinstance(p, Label)] == ["hp", "hp-ink"]
+
+
+def test_the_yellow_goes_the_moment_the_effect_does():
+    """Expiry clears the id and leaves the owner byte behind (`CAMP $131F`),
+    so a reader that keyed on the owner would never let the monster wake up."""
+    machine = with_effect(arena(), combat.HELPLESS, 8)
+    lit = combat.read_battle(machine)
+    assert lit.enemies[0].kind == "helpless"
+
+    ids = bytearray(machine.memory[combat.SAVE_HEAD])
+    ids[0] = 0                                   # only the id, as the game does
+    machine.memory[combat.SAVE_HEAD] = bytes(ids)
+
+    # ...and read with the lit battle as `previous`, which is the path that
+    # carries a combatant's last square forward. Nothing else may travel.
+    after = combat.read_battle(machine, previous=lit)
+    orc = after.enemies[0]
+    assert not orc.helpless and orc.kind == "enemy"
+    assert "Helpless" not in orc.lines()
+    assert "helpless" not in [p.kind for p in combat.battlefield(after)]
+
+
+def test_a_plain_enemy_is_red_and_says_nothing():
+    """The arena with no effects at all, which is where every other test in
+    this file leaves it."""
+    orc = combat.read_battle(arena()).enemies[0]
+    assert not orc.helpless and orc.kind == "enemy"
+    assert "Helpless" not in orc.lines()
+
+
+def test_another_effect_on_the_same_monster_is_not_helplessness():
+    """39 is hasted. Keying on "has an effect" rather than on the id would
+    turn a hasted orc yellow."""
+    orc = combat.read_battle(with_effect(arena(), 39, 8)).enemies[0]
+    assert not orc.helpless and orc.kind == "enemy"
+
+
+def test_a_helpless_party_member_keeps_its_green():
+    """The fill says which side a square is on before it says anything else,
+    so a party square never takes the enemy yellow. The tooltip still says."""
+    battle = combat.read_battle(with_effect(arena(), combat.HELPLESS, 0))
+    brutus = battle.party[0]
+    assert brutus.helpless and brutus.kind == "party"
+    assert "Helpless" in brutus.lines()
+    kinds = [p.kind for p in combat.battlefield(battle)]
+    assert "helpless" not in kinds and "hp-ink" not in kinds
+
+
+def test_it_names_one_of_two_monsters_that_share_a_record():
+    """The finding this rests on: eight GOBLIN GUARDs all name record slot 8,
+    so a condition written in that record would be true of all eight. The
+    effect arrays key on the combatant index, which is the only place one
+    monster of a type can be named apart from the rest.
+    """
+    from gamedata import synthetic_arena
+
+    from goldbox.savegame import ROSTER_STRIDE
+    memory = synthetic_arena(fighters=((0, 25, 13), (8, 30, 13), (9, 30, 14)))
+    machine = MemoryTarget(memory)
+    # Point the second orc at the first one's record, which is what the game
+    # does for every monster of one type in an encounter.
+    page = bytearray(machine.memory[combat.ROSTER])
+    page[9 * ROSTER_STRIDE + combat.ROSTER_RECORD_SLOT] = 8
+    machine.memory[combat.ROSTER] = bytes(page)
+
+    battle = combat.read_battle(with_effect(machine, combat.HELPLESS, 9))
+    assert [c.name for c in battle.enemies] == ["ORC", "ORC"]
+    assert [(c.index, c.kind) for c in battle.enemies] == [
+        (8, "enemy"), (9, "helpless")]
+
+
+def test_the_canvas_paints_the_helpless_square_yellow(app):
+    """The colour, off the rendered pixels rather than off the kind string."""
+    from automap.window import FOE, HELPLESS_FILL, CombatCanvas
+
+    def fill_at(battle, x, y):
+        canvas = CombatCanvas()
+        canvas.show_battle(battle)
+        canvas.resize(canvas.sizeHint())
+        image = canvas.grab().toImage()
+        x0, y0, _, _ = canvas.box
+        cell = canvas.drawn_cell
+        # A few pixels inside the square's own fill: past the 1px inset and
+        # the ink outline, and well clear of the hit points in the middle.
+        return image.pixelColor(
+            combat.MARGIN + (x - x0) * cell + 4,
+            combat.MARGIN + (y - y0) * cell + 4).name()
+
+    machine = with_effect(arena(), combat.HELPLESS, 8)
+    assert fill_at(combat.read_battle(machine), 30, 13) == HELPLESS_FILL.name()
+    assert fill_at(combat.read_battle(arena()), 30, 13) == FOE.name()

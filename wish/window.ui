@@ -188,6 +188,18 @@
                     </item>
                    </layout>
                   </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_0_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
+                  </item>
                   </layout>
                 </widget>
                </item>
@@ -298,6 +310,18 @@
                      <widget class="Bar" name="card_1_xp_2" />
                     </item>
                    </layout>
+                  </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_1_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
                   </item>
                   </layout>
                 </widget>
@@ -410,6 +434,18 @@
                     </item>
                    </layout>
                   </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_2_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
+                  </item>
                   </layout>
                 </widget>
                </item>
@@ -520,6 +556,18 @@
                      <widget class="Bar" name="card_3_xp_2" />
                     </item>
                    </layout>
+                  </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_3_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
                   </item>
                   </layout>
                 </widget>
@@ -632,6 +680,18 @@
                     </item>
                    </layout>
                   </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_4_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
+                  </item>
                   </layout>
                 </widget>
                </item>
@@ -742,6 +802,18 @@
                      <widget class="Bar" name="card_5_xp_2" />
                     </item>
                    </layout>
+                  </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_5_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
                   </item>
                   </layout>
                 </widget>
@@ -854,6 +926,18 @@
                     </item>
                    </layout>
                   </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_6_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
+                  </item>
                   </layout>
                 </widget>
                </item>
@@ -964,6 +1048,18 @@
                      <widget class="Bar" name="card_7_xp_2" />
                     </item>
                    </layout>
+                  </item>
+                  <item>
+                   <widget class="ReadiedLabel" name="card_7_readied">
+                    <property name="text">
+                     <string />
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                     </font>
+                    </property>
+                   </widget>
                   </item>
                   </layout>
                 </widget>
@@ -2749,6 +2845,11 @@
   </customwidget>
   <customwidget>
    <class>ElidingLabel</class>
+   <extends>QLabel</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>ReadiedLabel</class>
    <extends>QLabel</extends>
    <header>automap.panel</header>
   </customwidget>
