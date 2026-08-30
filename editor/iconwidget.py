@@ -19,7 +19,15 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen
-from PyQt6.QtWidgets import QDialog, QMenu, QWidget, QVBoxLayout, QGroupBox, QComboBox, QPushButton, QFormLayout
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from goldbox.iconparts import PART_CLASSES
 from goldbox.icons import (
