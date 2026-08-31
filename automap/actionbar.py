@@ -73,6 +73,41 @@ class _OnePoll:
         return self.seen[key]
 
 
+class _NotAskingThePC(_OnePoll):
+    """A `_OnePoll` that answers the program counter as if the game were idle.
+
+    A button's enabled state is about the conditions that hold still: the mode
+    flag, which area the party is in, which side of the overland/indoors split
+    it is on. The program counter is not one of those. It is wherever the 6502
+    happened to be in the microsecond VICE stopped in, and about **3% of idle
+    samples** land in the KERNAL's interrupt path or the BASIC ROM's float
+    routines with the party standing at the game's own key prompt -- 12 of 400
+    samples a second apart, which is a Fast Travel button that goes grey for
+    one refresh about every thirty seconds while nothing is happening (#152).
+
+    So `legality` is asked with the PC already inside `DUNGEON`'s key-wait
+    loop. Every other question it asks is answered truthfully off the machine;
+    the real PC is waited for **after** the click, in
+    `FastTravelBar.wait_for_key_wait`, and `FastTravel.apply` still checks it
+    for real against the live target. Nothing that writes is handed one of
+    these.
+    """
+
+    def pc(self) -> int:
+        return engine.KEY_WAIT[0]
+
+
+def in_key_wait(pc: int) -> bool:
+    """Whether the CPU is somewhere `NEWECL` may be entered from.
+
+    The two windows are `automap/actions.py`'s -- P15's key-wait loop and the
+    key fetcher it calls -- and this is the test `FastTravel.legality` makes on
+    them. It is asked separately here because the wait after a click needs to
+    know when to stop, and `legality` answers about a whole trip.
+    """
+    return any(lo <= pc < hi for lo, hi in (engine.KEY_WAIT, engine.KEY_FETCH))
+
+
 #: Buttons per row. Three keeps the block no wider than the 596px map above
 #: it -- one long row made the map's column 900px wide and put 300px of blank
 #: paper beside a map that cannot use it.
@@ -218,6 +253,29 @@ class ActionBar(QObject):
 #: of a timeout that was too short.
 VERIFY_SECONDS = 30.0
 
+#: How long a click waits for the CPU to come back to somewhere a trip can
+#: start from, before saying the game is busy.
+#:
+#: **Measured on instance-pool slot 2, `PORSAVE11.D64`, the party at (4,2) in
+#: the world** (#152, `work/agent152/wait.json`). 5500 samples of the program
+#: counter -- 2000 idle 20 ms apart, 2000 idle 5 ms apart, 1500 while the
+#: party walked -- put 230 of them outside the two windows, and **every one of
+#: those 230 was a run of exactly one sample**: the next look was always back
+#: in the loop. The longest gap between an outside sample and the next inside
+#: one was **58 ms**. The KERNAL's interrupt handler is tens of microseconds
+#: long and every look hands the emulation ~14.3 ms of emulated time, so it is
+#: over before the wait can look twice.
+#:
+#: Two seconds is thirty times that worst gap, and a hundred looks. What would
+#: move it: a machine whose round trip to VICE is far slower than this one's,
+#: or a decision that a genuinely busy game -- loading, or running a script,
+#: which is the case this limit exists to end -- should be waited on longer.
+WAIT_SECONDS = 2.0
+
+#: How often to look while waiting. Each look is a round trip, so this is a
+#: floor rather than a period: on this machine a look costs 5-20 ms anyway.
+WAIT_EVERY = 0.02
+
 #: The Fast Travel button's own help text, and Donald's wording exactly. The
 #: same sentence is a framed box in the Preferences dialog's Fast travel
 #: section, because a tooltip is only read by somebody who already suspects
@@ -295,6 +353,15 @@ class FastTravelBar(QObject):
     **The choice narrows what is offered, never what is legal.**
     `FastTravel.legality` and the arrival-square logic are untouched.
 
+    **The button waits rather than greying itself out.** Where the 6502
+    happens to be is not a condition the button can show: about 3% of samples
+    land in the KERNAL's interrupt path with the party standing still, so the
+    button went grey for a second at a time with nothing happening in the game
+    (#152). The mode flag still disables it -- in a fight, and on a title whose
+    loader has never been read -- and the program counter is waited for after
+    the click instead, `wait_for_key_wait`. A click on a genuinely busy game
+    gives up after `WAIT_SECONDS` and says so in the messages panel.
+
     **One title has areas and the other five have none.** `AREAS` is Pool of
     Radiance's -- `POOL` disk numbers and `ECL` ids, both of which a trip
     writes into the machine -- so a session of any other title is offered
@@ -308,6 +375,17 @@ class FastTravelBar(QObject):
     """
 
     SHORT = 48
+
+    #: What the messages panel says when the wait ran out: the game was busy
+    #: for the whole of `WAIT_SECONDS` and nothing was written.
+    #: **Not approved wording** -- proposed on #152 and Donald's to settle.
+    STILL_BUSY = ("the game was busy and nothing was written; try again in a "
+                  "moment")
+
+    #: A connection that went away while the click was waiting. Not new
+    #: wording: it is the sentence `Action.legality` already answers with when
+    #: a read fails, said here because the wait meets that failure first.
+    LOST_WHILE_WAITING = "the machine is not readable right now"
 
     def __init__(self, root: QWidget, *, fasttravel=None, areas=None, say=None,
                  maps=None, settings: Settings | None = None,
@@ -550,7 +628,7 @@ class FastTravelBar(QObject):
         self._pending = ((geos, time.monotonic() + VERIFY_SECONDS)
                          if geos and self.maps else None)
 
-    def combat_verdict(self) -> engine.Verdict:
+    def combat_verdict(self, target=None) -> engine.Verdict:
         """Whether a fight refuses the dropdown.
 
         This is `Action.legality`'s own mode-flag gate, called directly and
@@ -559,14 +637,25 @@ class FastTravelBar(QObject):
         overland/indoors split), and gating the dropdown on that would lock a
         player out of picking a different area precisely because the one
         showing is bad. Combat is the one reason a bad pick cannot fix.
+
+        `target` is the one poll's worth of reads `refresh` is holding, so the
+        mode flag is read once for the whole row rather than once for each
+        thing that asks. None is the real target, for a caller that has none.
         """
-        return engine.Action.legality(self.fasttravel, self.target)
+        return engine.Action.legality(self.fasttravel,
+                                      self.target if target is None else target)
 
     def refresh(self) -> None:
+        # One poll's worth of reads for the whole row -- `$6E11` was being read
+        # three times a refresh, once for the dropdown, once for `Action`'s own
+        # gate and once for `FastTravel`'s, and each read hands the emulation
+        # ~14.3 ms of extra emulated time (#152). The proxy also answers the
+        # program counter as idle: see `_NotAskingThePC`.
+        once = self._idle_poll()
         area = self.area()
         if self.combo is not None:
             if self.rows:
-                gate = self.combat_verdict()
+                gate = self.combat_verdict(once)
                 self.combo.setEnabled(gate.ok)
                 self.combo.setToolTip(gate.reason)
             else:
@@ -585,14 +674,14 @@ class FastTravelBar(QObject):
                     f"and Pool of Radiance's disk numbers and area ids would be "
                     f"the wrong thing to write here.")
             else:
-                verdict = self.fasttravel.legality(self.target, area)
+                verdict = self.fasttravel.legality(once, area)
                 self.button.setEnabled(verdict.ok)
                 # `DANGER` when it is enabled, the refusal when it is not: the
                 # warning is about making a trip, and a disabled button is not
                 # about to make one.
                 self.button.setToolTip(verdict.reason or DANGER)
         if self.back_button is not None:
-            back = self.fasttravel.back_verdict(self.target)
+            back = self.fasttravel.back_verdict(once)
             self.back_button.setEnabled(back.ok)
             self.back_button.setToolTip(
                 back.reason or "return to the area the last trip started in")
@@ -611,10 +700,76 @@ class FastTravelBar(QObject):
         self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
         self.refresh()
 
+    def wait_for_key_wait(self) -> engine.Verdict:
+        """Wait until the CPU is somewhere a trip can start from.
+
+        Donald's design for #152: *"instead of greying the button out, why not
+        pause after the user clicks the Fast Travel button and wait for the
+        operation to be safe?"* The button no longer refuses on where the 6502
+        happens to be, so the click does, and it waits first.
+
+        Three ways out, and the wait can never be the reason nothing happens:
+
+        * **the PC is in one of the windows** -- the ordinary case, on the
+          first look;
+        * **`WAIT_SECONDS` goes by** -- the game is genuinely busy, loading or
+          running a script, and there is nothing to wait for;
+        * **the connection has gone** -- `program_counter` swallows a
+          `ViceTarget`'s failure and answers None, but a backend with a `pc()`
+          of its own raises, and a target that has given up raises
+          `NotConnected` from every call (#151). Either way the wait ends here
+          rather than spinning to the deadline.
+
+        A backend that cannot read the CPU at all answers None as well, and
+        that is not a busy game: the wait ends True and `FastTravel.legality`
+        says so in its own words when `apply` re-checks it.
+        """
+        deadline = time.monotonic() + WAIT_SECONDS
+        looks, seen = 0, None
+        while True:
+            try:
+                seen = engine.program_counter(self.target)
+            except Exception as exc:                        # noqa: BLE001
+                # `NotConnected` is the one that is expected; anything else a
+                # backend raises is the same answer to us -- there is no CPU
+                # to wait for -- and it must not leave a Qt button slot as a
+                # traceback.
+                _log("gave up waiting for the key-wait loop: %s", exc)
+                return engine.Verdict(False, self.LOST_WHILE_WAITING)
+            looks += 1
+            if seen is None or in_key_wait(seen):
+                return engine.Verdict(True)
+            if time.monotonic() >= deadline:
+                _log("the PC was outside the key-wait windows for all %d looks "
+                     "in %.1fs; last seen $%04X", looks, WAIT_SECONDS, seen)
+                return engine.Verdict(False, self.STILL_BUSY)
+            time.sleep(WAIT_EVERY)
+
+    def _idle_poll(self):
+        """The target `refresh` asks its questions of, or None with nothing
+        attached."""
+        return None if self.target is None else _NotAskingThePC(self.target)
+
+    def _ready(self, verdict: engine.Verdict) -> engine.Verdict:
+        """The durable refusals first, then the wait for a quiet machine.
+
+        In that order because a refusal that will not change -- a fight, an
+        area the party is already in -- is not worth two seconds of waiting,
+        and it is the same verdict the button was showing.
+        """
+        if not verdict:
+            return verdict
+        return self.wait_for_key_wait()
+
     def run(self) -> engine.Outcome | None:
         area = self.area()
         if area is None:
             return None
+        ready = self._ready(self.fasttravel.legality(self._idle_poll(), area))
+        if not ready:
+            outcome = engine.Outcome(False, ready.reason)
+            self._report("fast travel", outcome)
+            return outcome
         outcome = self.fasttravel.apply(self.target, area=area,
                                   arrival=self.arrival())
         if outcome.ok:
@@ -625,6 +780,11 @@ class FastTravelBar(QObject):
     def run_back(self) -> engine.Outcome | None:
         going = engine.area_by_id(self.fasttravel.back.area) \
             if self.fasttravel.back is not None else None
+        ready = self._ready(self.fasttravel.back_verdict(self._idle_poll()))
+        if not ready:
+            outcome = engine.Outcome(False, ready.reason)
+            self._report("travel back", outcome)
+            return outcome
         outcome = self.fasttravel.apply_back(self.target)
         if outcome.ok and going is not None:
             self._expect(going)
