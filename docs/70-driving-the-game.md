@@ -21,8 +21,10 @@ for the automapper.
 
 ## Run it in a nested X server
 
-`tools/rungame.sh <experiment>` starts **Xephyr** and runs VICE inside it. This
-is not cosmetic:
+Claim a slot from the instance pool (`tools/instance.py`) and launch through
+`tools/porlaunch.sh`, which starts VICE on that slot's own **Xephyr** display —
+see [`123-parallel-sessions.md`](123-parallel-sessions.md) for how to claim
+one. Running nested is not cosmetic:
 
 * Under Wayland there is no dependable way to give an XWayland window keyboard
   focus. `xdotool windowactivate` returns success, `xdotool getactivewindow`
