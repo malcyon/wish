@@ -36,7 +36,7 @@ from goldbox import strength as strengthmod
 from goldbox.geo import GRID
 from ui.iconpaint import draw_icon
 
-from . import actions, combat, live
+from . import actions, combat, live, rolls
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
@@ -804,7 +804,7 @@ class AutomapBinding(QObject):
                 # The last message of a fight is never painted over -- COMBAT
                 # returns to LINKER with it still on screen -- so without this
                 # it would be the one message the log lost.
-                self.log_combat(self.combat_log.flush())
+                self.log_combat(self.combat_log.flush(), was)
                 self.stack.setCurrentWidget(self.canvas)
                 self._refresh()
             return False
@@ -825,20 +825,32 @@ class AutomapBinding(QObject):
                                     for c in self.battle.combatants])
         self.log_combat(self.combat_log.poll(self.mapper.target))
 
-    def log_combat(self, messages) -> None:
-        """Combat lines into the Messages panel.
+    def log_combat(self, messages, battle=None) -> None:
+        """Combat lines into the Messages panel, each with its dice under it.
 
         **Passes `dedup=False`**, and that is the whole point of the feature:
         `MessagesPanel.say` drops a line identical to the one before it, which
         is right for "waiting for the game" on every tick and wrong for two
-        "MAGNUS MISSES." in a row. The log has already deduplicated, on
+        "MAGNUS MISSES." in a row -- and just as wrong for the identical roll
+        line under each of them. The log has already deduplicated, on
         consecutive identical *frames*, which is the only rule that can tell
         the two apart.
+
+        `battle` is who was in the fight; it is passed explicitly because the
+        last flush of a fight happens after `self.battle` has already gone to
+        None, and without it the last message of every fight would lose its
+        dice.
         """
+        battle = self.battle if battle is None else battle
+        names = ({c.index: c.name for c in battle.combatants}
+                 if battle is not None else {})
         for msg in messages:
             tag = f"round {msg.round}   " if msg.round else ""
             self.messages.say(f"{tag}{msg.text}", detail="\n".join(msg.lines),
                               dedup=False)
+            dice = rolls.roll_line(msg, names)
+            if dice:
+                self.messages.say(dice, dedup=False)
 
     @staticmethod
     def _battle_note(battle) -> str:

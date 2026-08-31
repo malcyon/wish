@@ -10,7 +10,7 @@ see the numbered list at the end of `docs/110-combat-log.md`.
 
 import pytest
 
-from automap import combatlog
+from automap import combatlog, rolls
 from automap.combatlog import CombatLog, message, parse
 from automap.screen import SCREEN_COLS, band
 from automap.target import MemoryTarget
@@ -431,3 +431,240 @@ def test_a_block_that_loses_its_follow_up_is_not_a_new_block():
         "MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE",
         "ORC GOES DOWN AND IS DYING",
     ]
+
+
+# --- the dice, beside what the game printed (#139) ---------------------------
+#
+# `docs/147-combat-rolls.md`. Everything here is constructed: the point is to
+# make the attacker's block and the target's block disagree, so a test can tell
+# which one was read.
+
+def fighter(thac0: int, ac: int, dice: int, die: int, bonus: int = 0) -> bytes:
+    """One 32-byte battle-roster block, as `$8300 + index * 32`."""
+    from goldbox.encoding import COMBAT_BIAS
+    from goldbox.savegame import (
+        ROSTER_ARMOUR_CLASS,
+        ROSTER_DAMAGE_BONUS,
+        ROSTER_DAMAGE_DICE,
+        ROSTER_DAMAGE_DIE,
+        ROSTER_STRIDE,
+        ROSTER_THAC0,
+    )
+    block = bytearray(ROSTER_STRIDE)
+    block[ROSTER_THAC0] = COMBAT_BIAS - thac0
+    block[ROSTER_ARMOUR_CLASS] = COMBAT_BIAS - ac
+    block[ROSTER_DAMAGE_DICE] = dice
+    block[ROSTER_DAMAGE_DIE] = die
+    block[ROSTER_DAMAGE_BONUS] = bonus
+    return bytes(block)
+
+
+#: BRUTUS with a long sword, and the orc of `docs/147`. THAC0 18 against AC 6
+#: needs 12; THAC0 19 against AC 2 needs 17. Both can do 7 damage, so a test
+#: that reads the wrong block gets a plausible wrong answer rather than none.
+BRUTUS = fighter(thac0=18, ac=2, dice=1, die=8, bonus=5)
+ORC = fighter(thac0=19, ac=6, dice=2, die=6)
+
+
+def roster(**blocks: bytes) -> bytes:
+    """The whole `$8300`-`$8AFF` table, with the named indices filled."""
+    from goldbox.savegame import ROSTER_STRIDE
+    out = bytearray(rolls.ROSTER_LEN)
+    for index, block in ((int(k[1:]), v) for k, v in blocks.items()):
+        out[index * ROSTER_STRIDE:(index + 1) * ROSTER_STRIDE] = block
+    return bytes(out)
+
+
+def attack(actor: int = 0, target: int = 8, hit: bool = True, damage: int = 7,
+           attempts: int = 1, landings: int = 1) -> bytes:
+    """`$A4F0`-`$A4FB`, as they stand while an attack is on screen."""
+    state = bytearray(rolls.ATTACK_LEN)
+    state[rolls.ACTOR] = actor
+    state[rolls.TARGET] = target
+    state[rolls.DAMAGE] = damage
+    state[rolls.ATTEMPTS] = attempts
+    state[rolls.LANDINGS] = landings
+    state[rolls.HIT] = 1 if hit else 0
+    return bytes(state)
+
+
+NAMES = {0: "BRUTUS", 8: "ORC"}
+BOTH = roster(x0=BRUTUS, x8=ORC)
+
+
+def dice_machine(rows=(), raw: int = 19, state: bytes | None = None,
+                 table: bytes = BOTH) -> MemoryTarget:
+    target = machine(rows)
+    target.memory[rolls.D20] = bytes([raw])
+    target.memory[rolls.ATTACK] = state if state is not None else attack()
+    target.memory[rolls.ROSTER] = table
+    return target
+
+
+def logged(target: MemoryTarget, rows) -> list:
+    """Poll a block onto the screen and then paint it over, which commits it."""
+    log = CombatLog()
+    log.poll(target)                     # the first poll only finds the screen
+    show(target, rows)
+    log.poll(target)
+    show(target, [])
+    return log.poll(target)
+
+
+def line(rows, **kw) -> str | None:
+    done = logged(dice_machine(**kw), rows)
+    assert len(done) == 1, [m.text for m in done]
+    return rolls.roll_line(done[0], NAMES)
+
+
+HIT = ["BRUTUS", "ATTACKS ORC AND", "HITS FOR 7", "POINTS OF DAMAGE"]
+MISS = ["ORC", "ATTACKS BRUTUS", "AND MISSES"]
+
+
+def test_a_hit_shows_the_roll_the_number_needed_and_the_dice():
+    assert line(HIT) == "BRUTUS rolled 19, needed 12, 1d8+5 = 7"
+
+
+def test_a_miss_shows_the_roll_and_the_number_needed():
+    """No damage clause: there was none, and the game printed none."""
+    assert line(MISS, raw=4,
+                state=attack(actor=8, target=0, hit=False, damage=0)) == \
+        "ORC rolled 4, needed 17"
+
+
+def test_a_natural_20_is_stored_as_100_and_shown_as_20():
+    """`$2B10` held 100 for MALCYON's natural 20 in the driven fight."""
+    assert line(HIT, raw=rolls.NATURAL_20) == \
+        "BRUTUS rolled 20, needed 12, 1d8+5 = 7"
+
+
+def test_a_natural_1_is_named_and_never_numbered():
+    """`$127F CMP #$01 / BEQ $12AF` returns before the store at `$1289`, so
+    `$2B10` still holds the previous attack's roll -- 19 here, which would
+    have hit. The miss and the number contradict each other, and that is the
+    only tell there is."""
+    said = line(["BRUTUS", "ATTACKS ORC AND", "MISSES"], raw=19,
+                state=attack(hit=False, damage=0))
+    assert said == "BRUTUS rolled a natural 1"
+    assert "19" not in said
+
+
+def test_the_dice_come_from_the_attacker_and_not_the_target():
+    """`$0CFE` makes the *target* resident, so the resident block's attack
+    table and THAC0 are the wrong creature's. Both blocks here could have
+    produced 7 damage and both give a plausible number needed -- 12 read the
+    right way round, 17 read the wrong way -- so the line says which was
+    read."""
+    assert line(HIT) == "BRUTUS rolled 19, needed 12, 1d8+5 = 7"
+    assert line(MISS, raw=4,
+                state=attack(actor=8, target=0, hit=False, damage=0)) == \
+        "ORC rolled 4, needed 17"
+
+
+def test_a_roll_that_names_somebody_else_is_not_shown():
+    """The rolls are read in the same poll as the message and are not
+    inherently tied to it. A line that confidently names the wrong attacker is
+    worse than no line."""
+    assert line(HIT, state=attack(actor=8, target=0)) is None
+
+
+def test_a_roll_whose_damage_disagrees_with_the_message_is_not_shown():
+    assert line(HIT, state=attack(damage=3)) is None
+
+
+def test_a_roll_is_not_shown_against_a_message_that_is_not_an_attack():
+    assert line(["ORC", "IS KILLED"]) is None
+    assert line(["ORC", "IS HIT FOR 7", "POINTS OF DAMAGE"]) is None
+
+
+def test_the_hit_flag_must_agree_with_the_message():
+    assert line(HIT, state=attack(hit=False)) is None
+
+
+def test_only_the_first_message_of_a_block_carries_a_roll():
+    """`$29BA` puts "ORC GOES DOWN" under the attack that killed it. The
+    follow-up is not an attack and has no dice of its own."""
+    log = CombatLog()
+    log.observe(HIT, top=10, roll=rolls.read(b"\x13", attack(), BOTH))
+    log.observe(HIT + ["ORC", "GOES DOWN"], top=14)
+    done = log.observe([], top=14)
+    assert [m.roll is not None for m in done] == [True, False]
+
+
+def test_the_dice_clause_is_left_off_when_the_damage_cannot_have_come_off_them():
+    """1d8+5 rolls 6 to 13 and nothing else. A damage outside that says the
+    block and the damage do not belong together."""
+    roll = rolls.read(b"\x13", attack(damage=20), BOTH)
+    assert roll.dice is None
+    assert roll.needed == 12
+
+
+def test_rolls_that_resolved_between_two_polls_are_counted():
+    """`$A4F9` counts attempts within an action, cleared at `COMBAT $11AC`, so
+    a jump of more than one is exactly the rolls polling never saw."""
+    watch = rolls.RollWatch()
+    for attempts in (1, 2, 4):
+        watch.update(rolls.read(b"\x13", attack(attempts=attempts), BOTH))
+    assert watch.take() == 1               # attempt 3 was never seen
+    watch.update(rolls.read(b"\x13", attack(attempts=3), BOTH))
+    assert watch.take() == 2               # a fresh action already at three
+
+
+def test_the_roll_is_the_one_read_when_the_block_first_appeared():
+    """A block is painted over one row at a time and committed later, and
+    `$2B10` can have moved on to the next attack by either point."""
+    target = dice_machine()
+    log = CombatLog()
+    log.poll(target)
+    show(target, HIT[:2])                          # the block, part printed
+    log.poll(target)
+    target.memory[rolls.D20] = bytes([3])          # the next attack, already in
+    show(target, HIT)                              # ...the rest of the same one
+    log.poll(target)
+    show(target, [])
+    done = log.poll(target)
+    assert rolls.roll_line(done[0], NAMES) == \
+        "BRUTUS rolled 19, needed 12, 1d8+5 = 7"
+
+
+def test_two_identical_roll_lines_are_both_kept(app, tmp_path, monkeypatch):
+    """The whole path, through the window: two identical misses, two roll
+    lines.
+
+    `log_combat` passes `dedup=False` for the roll line as well as for the
+    message, because `MessagesPanel.say` drops a line identical to the one
+    before it and two identical rolls in a row are two rolls. That flag cannot
+    be made to fail on its own -- a roll line is always preceded by its own
+    message line, so two of them are never adjacent -- so it is a guard rather
+    than something this test proves. What the test proves is that the line
+    reaches the panel at all, once per message.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+
+    memory = dict(arena_with_screen([]).memory)
+    memory[rolls.D20] = b"\x04"
+    memory[rolls.ATTACK] = attack(actor=8, target=0, hit=False, damage=0)
+    target = MemoryTarget(memory)
+    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    for _ in range(window.LIVE_EVERY):
+        window.tick()
+    assert window.battle is not None
+    name = next(c.name for c in window.battle.combatants if c.index == 8)
+
+    for frame in ([name, "ATTACKS AND", "MISSES"], [],
+                  [name, "ATTACKS AND", "MISSES"], []):
+        show(target, frame)
+        window.tick()
+    target.memory[combatlog.MODE] = b"\x01"
+    window.tick()
+
+    assert len([line for line in window.messages.lines()
+                if "rolled 4," in line]) == 2

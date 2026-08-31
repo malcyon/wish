@@ -78,6 +78,14 @@ up as a frame that no longer extends the last one. Where the clear itself falls
 between two polls there is a second, independent edge: `$03F4` going back to 10
 means `$2983` ran, which is a new block whatever the text says.
 
+## The dice, beside what was printed
+
+`poll` reads `$2B10` and `$A4F0`-`$A4FB` on the same burst as the screen, so
+the dice cost bytes and not a round trip, and hands them to `rolls.py`. They
+are kept on the frame that **starts** a block rather than at commit time,
+because a block is committed when the game paints over it and by then `$2B10`
+can belong to the next attack.
+
 ## What a live fight changed
 
 Two rules here were wrong, and both turn on bytes only a running game writes —
@@ -90,8 +98,9 @@ well as grows.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from . import rolls
 from .screen import SCREEN_COLS, SCREEN_ROWS, band, is_bitmap, screen_address
 
 # Which overlay is running. The same gate `combat.py` uses.
@@ -187,6 +196,10 @@ class Message:
     subject: str | None = None
     outcome: str | None = None
     damage: int | None = None
+    #: The dice as they stood when this block was first seen, or None. Only
+    #: the first message of a block carries one -- a follow-up like "ORC GOES
+    #: DOWN" is not an attack and has no roll of its own. See `rolls.py`.
+    roll: "rolls.Roll | None" = None
 
     def __str__(self) -> str:
         return self.text
@@ -239,13 +252,14 @@ def parse(text: str) -> tuple[str | None, str | None, int | None]:
 WIDTH = COMBAT_WINDOW[1] - COMBAT_WINDOW[0]
 
 
-def message(lines, round_no: int | None = None, width: int = WIDTH) -> Message:
+def message(lines, round_no: int | None = None, width: int = WIDTH,
+            roll: "rolls.Roll | None" = None) -> Message:
     """A `Message` from the rows of one block."""
     lines = tuple(lines)
     text = _join(lines, width)
     subject, outcome, damage = parse(text)
     return Message(lines=lines, text=text, round=round_no, subject=subject,
-                   outcome=outcome, damage=damage)
+                   outcome=outcome, damage=damage, roll=roll)
 
 
 def _join(lines: tuple[str, ...], width: int = WIDTH) -> str:
@@ -344,19 +358,29 @@ class CombatLog:
         self._last: tuple[str, ...] | None = None
         self._last_top: int | None = None
         self._heads: set[int] = set()
+        #: The dice read on the poll that first showed the block now building,
+        #: held until it is committed. Read then rather than at commit time
+        #: because a block is committed when the game paints over it, by which
+        #: point `$2B10` may belong to the *next* attack.
+        self._roll: rolls.Roll | None = None
+        self._watch = rolls.RollWatch()
         self._height = COMBAT_WINDOW[3] - MESSAGE_TOP
         self._width = WIDTH
         self._round_over = True
 
     # -- folding frames into messages -------------------------------------
 
-    def observe(self, rows, top: int | None = None) -> list[Message]:
+    def observe(self, rows, top: int | None = None,
+                roll: "rolls.Roll | None" = None) -> list[Message]:
         """One frame of the message panel. Returns whatever it completed.
 
         `top` is `$03F4`, which `$2983` sets to 10 for a fresh block and
         `$29BA` moves down for a follow-up. It is the second edge: a block
         that is textually identical to the one before it is still a new block
         if `$03F4` went back up.
+
+        `roll` is the dice as this frame read them, and is kept only where this
+        frame starts a block -- see `_roll`.
         """
         frame = _rows(rows)
         restarted = (top is not None and self._last_top is not None
@@ -373,9 +397,11 @@ class CombatLog:
             done += self._commit()
             self._heads.clear()
             return done
+        fresh = not self._pending
         if restarted:
             done += self._commit()
             self._heads = {top} if top is not None else set()
+            fresh = True
         elif _shrank(self._pending, frame):
             return done                 # a partial clear, not a new block
         elif _scrolled(self._pending, frame, self._height):
@@ -384,7 +410,11 @@ class CombatLog:
         elif not _extends(self._pending, frame):
             done += self._commit()
             self._heads = {top} if top is not None else set()
+            fresh = True
         self._pending = frame
+        if fresh:
+            self._roll = (None if roll is None
+                          else replace(roll, missed=self._watch.take()))
         return done
 
     def flush(self) -> list[Message]:
@@ -404,8 +434,12 @@ class CombatLog:
         block, self._pending = self._pending, ()
         if not block:
             return []
-        done = [message(part, self.round, self._width)
-                for part in self._split(block)]
+        # The roll goes on the first part only: `$29BA`'s follow-ups are
+        # not attacks and have no dice of their own.
+        done = [message(part, self.round, self._width,
+                        self._roll if i == 0 else None)
+                for i, part in enumerate(self._split(block))]
+        self._roll = None
         self.messages.extend(done)
         while len(self.messages) > self.limit:
             self.messages.pop(0)
@@ -450,8 +484,15 @@ class CombatLog:
                   # and 200 spare bytes cost nothing when the price is the
                   # round trip.
                   (self._address + MESSAGE_TOP * SCREEN_COLS,
-                   (SCREEN_ROWS - MESSAGE_TOP) * SCREEN_COLS))
-        d011, d018, dd00, mode, win, _cursor, codes = _burst(target, blocks)
+                   (SCREEN_ROWS - MESSAGE_TOP) * SCREEN_COLS),
+                  # The dice, on the same burst. `docs/147-combat-rolls.md`:
+                  # the cost of a read is the round trip and not the bytes, and
+                  # the battle roster comes whole because the block wanted is
+                  # named by `$A4F4`, which arrives in this same burst.
+                  (rolls.D20, 1), (rolls.ATTACK, rolls.ATTACK_LEN),
+                  (rolls.ROSTER, rolls.ROSTER_LEN))
+        (d011, d018, dd00, mode, win, _cursor, codes,
+         d20, attack, roster) = _burst(target, blocks)
         if not mode or mode[0] != COMBAT:
             return self.flush()
         if d011 and d011[0] & 0x20:
@@ -463,7 +504,9 @@ class CombatLog:
         left, right, top, bottom = message_window(win)
         self._height = max(1, bottom - MESSAGE_TOP)
         self._width = right - left
-        return self.observe(band(codes, left, right)[:self._height], top)
+        roll = rolls.read(d20, attack, roster)
+        self._watch.update(roll)
+        return self.observe(band(codes, left, right)[:self._height], top, roll)
 
     def _locate(self, target) -> int | None:
         """Where the screen is, as its own burst. Once, on the first poll."""
