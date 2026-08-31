@@ -1042,6 +1042,28 @@ read.
 
 Report failures with the shortest decisive line of output, not the whole log.
 
+**Explain a bug by the situation a person is in when they hit it, before any
+of the mechanism.** Not "`_flush` swallows a `ValueError` from
+`encode_record_name`" -- *"you rename a character to `Bel'ana`, the apostrophe
+is a curly one because you copied it off a web page, you click Save, it says
+'no changes', and the box still shows the name you typed."* Then the cause.
+
+The mechanism is what the explanation is *for*; it is not the explanation. A
+reader who has not seen the code cannot tell from a description of the code
+whether the bug matters, how often it happens, or whether they have ever hit
+it themselves -- and those are the questions that decide what to do about it.
+
+**Write the situation even when it is unflattering to the bug.** "No user can
+reach this" is an answer, and it is the answer that moves something down the
+list. If the honest scenario is "only if you edit the files out from under the
+program", say that in those words.
+
+This is the same discipline `goldbox-bugs.md` demands of an entry about the
+game -- "How a player ends up there" -- and it applies to our own defects, in
+replies, in issue bodies and in comments. It was written down after Donald
+read an explanation of a rename bug and answered: *"I don't understand. In
+what situation would a user be in when they run into this?"*
+
 **Name every issue you cite, here as much as anywhere** -- `#59 (Map the DOS
 saved game, not just the character record)`, never a bare `#59`. The rule is in
 the Issues section and it says it applies to replies, but it is three hundred
