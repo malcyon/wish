@@ -61,7 +61,7 @@ clock printer. CONFIRMED. A stale `$282E` for the scratch wipe was this mistake
 
 The restart re-enters `DUNGEON` at `$0809`, which loads whatever in
 `$6E13`-`$6E2B` carries bit 7 and then calls the new script's **entry 4**, the
-area-initialisation entry (`work/reports/ecl-opcodes.md`, CONFIRMED). Entry 4
+area-initialisation entry (CONFIRMED; the write-up, `work/reports/ecl-opcodes.md`, is lost). Entry 4
 looks like this, in 26 of 30 scripts:
 
 ```
@@ -145,10 +145,10 @@ watched it place a fasttraveled-in party. Fourteen areas still have none.
 | 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
 
 Names come from `docs/88-map-files.md` (nine city blocks matched by wall
-geometry), `work/reports/world-map.md` (the wilderness site list),
-`work/reports/quest-flags.md`, and — for the nine rows the first three could not
-name — the DOS area tables in `docs/128-guide-and-scripting.md` and
-`docs/126-forum-findings.md`.
+geometry), the wilderness site list and the quest flags (write-ups lost —
+`work/reports/world-map.md` and `work/reports/quest-flags.md`), and — for
+the nine rows the first three could not name — the DOS area tables in
+`docs/128-guide-and-scripting.md` and `docs/126-forum-findings.md`.
 
 **The five POOL5 areas are named, at PROBABLE.** The DOS guide's script list
 gives 3 north-west and south-east, 4 north-east, 5 the hedge maze, 6 south-west
@@ -387,7 +387,7 @@ Four cases, in order:
    can walk without being able to leave. Staying off the rim matters for its own
    reason: the edge squares are where the game's own exits live, so a party that
    starts on one is a keypress from leaving the area it was just fasttraveled into.
-   `work/reports/p20-arrivals.md`.
+   The pocket sizes are asserted in `tests/test_p20.py`'s `POCKETS`.
 4. **Two kinds of area get no square even though they have a `GEO`**, both P20's:
 
    * the **three overland** areas (25-27). Outdoors the position is
@@ -414,7 +414,7 @@ line up and (13,13) in the Slums is a wall in Sokol Keep.
 | PC mid-script or mid-load | the stack reset discards work in flight; the screen may be left half-drawn | refuse unless the PC is in the key-wait loop or its fetcher; refusing the fetcher alone made the button fail five times in seven |
 | target == current area | nothing happens, silently, and `$4A00` is not cleared | refuse, with the reason |
 | arrival square is a wall or off-map | **has never happened.** Fifteen fasttravels put the party on `(0, 0)` and it was inside the grid and had an open edge every time | choose the square from the map, never carry one over |
-| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `goldbox.areas.landing_square`, `work/reports/p20-arrivals.md` |
+| arrival square is in a **pocket** of the map | the party can walk, and cannot get out: `(0, 0)` is walled off from the bulk of `GEO05`, `GEO19`, `GEO1A` and `GEO1B` | **fixed**: the square comes from the map's largest connected component, off the outer ring — `goldbox.areas.landing_square` |
 | **area 30** | the attract-mode demo: `$C04B`-`$C04D` read `254, 127, 16`, no map is resident, no status line and no command bar appear, and the PC never returns to the key-wait loop, so nothing can be fasttraveled out again — the session is over | **fixed**: not offered in the dropdown, and refused by `FastTravel.legality` for a caller that did not come through it |
 | a script's own **menu** is up | the next fasttravel is refused, because the PC is in the script's handler and not in the key-wait loop. The Cave of Diogenes is the one that does it on arrival — the silver dragon asks `WHAT WILL YOU SAY IS YOUR REASON FOR BEING HERE?` and waits — and it cost P20 four probes. Not a defect: waiting does not clear it | dismiss the menu, then fasttravel. Anything that fasttravels repeatedly has to clear the arriving script's **menus**, not only its messages |
 | **quest flags are inconsistent** | the arriving script assumes things the party never did | unavoidable, and the honest answer is to say it under the row's help icon: a fasttravel is not the same as playing there |
@@ -426,7 +426,7 @@ is the one above it — **attach a copy to the emulator**, because the game's ow
 save command will happily write a fasttraveled party out.
 
 It was off by default for as long as nobody had measured where a trip lands.
-P20 did (`work/reports/p20-arrivals.md`): nothing landed off the map, inside a
+P20 did: nothing landed off the map, inside a
 wall or in a crash, the one area that was not a place is now unreachable, and
 the pocket the old rule could drop a party into is gone. What is left is a
 consequence that cannot be guarded against at all — the arriving script assumes
@@ -548,8 +548,9 @@ the sections above. Both entries below are answers rather than questions, and
 2. **Does a fasttravel to an area with no known arrival square land somewhere legal?
    Answered: mostly, and the exceptions are worth fixing.** All fifteen were
    fasttraveled into with the square `FastTravel` itself picks —
-   `work/reports/p20-arrivals.md` has the table. Nothing landed off the map or
-   inside a wall and nothing crashed. Three findings came out of it:
+   nothing landed off the map or inside a wall and nothing crashed. The table
+   of all fifteen was in `work/reports/p20-arrivals.md`, which is lost. Three
+   findings came out of it:
 
    * the fallback picked **`(0, 0)` on every map**, and on `GEO05`, `GEO19`,
      `GEO1A` and `GEO1B` that corner is a walled-off pocket;

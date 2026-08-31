@@ -26,7 +26,7 @@ is PROBABLE at best.
 ## Lead: the guide's GBVM address list *is* our character record
 
 Guide §12.4.2 lists the GBVM addresses the ECL scripts name. Our own
-`work/reports/quest-flags.md` §7 established that **the ECL bytecode, absolute
+(now-lost) `work/reports/quest-flags.md` §7 established that **the ECL bytecode, absolute
 operands included, is one artefact shared by every port** — the Amiga `ecl.dax`
 unpacks to the C64's own scripts, and DOS and C64 *Curse* differ only in a
 script's 2-byte header. So an address the DOS scripts use is an address our
@@ -110,7 +110,7 @@ is the damage bonus. PROBABLE, and worth a pass by whoever owns that file.
 ## The ECL instruction set: sixty-two for sixty-two
 
 Guide §12.3.3 lists the same 62 opcodes we derived from the VM's own dispatch
-tables in `DUNGEON` (`work/reports/ecl-opcodes.md`), with the same mnemonics and
+tables in `DUNGEON` (the write-up, `work/reports/ecl-opcodes.md`, is lost), with the same mnemonics and
 the same operand counts. No disagreement anywhere. The guide adds semantics we
 had not derived:
 
@@ -120,7 +120,7 @@ had not derived:
 | `$06 DIV` | dividend first; the remainder is discarded (kept in *Curse*); no division-by-zero trap |
 | `$08 RANDOM` | 0 to `var` **inclusive**, capped at 255 |
 | `$0A LOADCHAR` | index ≥ 128 puts monster `index - 128` on the party's side; zeroing `$6B00` and `$6C00` afterwards removes it. Pool of Radiance has no `DUMP`, which is how it manages without one |
-| `$1F` | **unimplemented.** Our table called it `ADDRESSOF`, a name inherited from the `coab` table. No Pool of Radiance script uses it — our own sweep counts 0 references — so the name was a guess and is withdrawn (P57); `work/reports/ecl-opcodes.md` now leaves `$1F` unnamed |
+| `$1F` | **unimplemented.** Our table called it `ADDRESSOF`, a name inherited from the `coab` table. No Pool of Radiance script uses it — our own sweep counts 0 references — so the name was a guess and is withdrawn (P57); the opcode table, `work/reports/ecl-opcodes.md`, is lost, but it left `$1F` unnamed before it went |
 | `$24 COMBAT` | the whole side-channel: `$6DC6` morale, `$6DC7` result (0 won, 128 lost, 129 ran), `$6DC8` kills, `$6DE2` temple instead, `$6E6C` shop instead, `$6E70`-`$6E72` THAC0 and movement modifiers |
 | `$27 TREASURE` | last operand: 0-127 a treasure list, 128-254 that many minus 128 random magic items, 255 none |
 | `$2D CALL` | the five recognised targets, all no-ops otherwise: `$2C90` redraw, `$8000` clone duel, `$8001` monster fight, `$BA03` sound, `$C018` refresh wall, `$C01E` step forward ignoring barriers |
@@ -158,7 +158,7 @@ derivations.
 ## The script-flag map: our boundaries, their meanings
 
 Guide §12.4.1 names 229 addresses in `$4A00`-`$4AF9`. Our
-`work/reports/quest-flags.md` derived the same region from the C64 bytecode
+(now-lost) `work/reports/quest-flags.md` derived the same region from the C64 bytecode
 without it. The agreement is exact where it can be:
 
 | claim | ours | theirs |
@@ -253,7 +253,8 @@ is why `goldbox/items.py`'s existing offsets all line up.
 
 Guide §12.2.3 enumerates **127 effect ids**. That is the namespace our
 `work/reports/effects.md` decoded structurally without ever getting names for
-the monster half. Three spot checks, all from `goldbox/items.py`'s own notes:
+the monster half; the write-up is lost, though a fuller live table of the
+same namespace's meanings is `goldbox/traits.py`. Three spot checks, all from `goldbox/items.py`'s own notes:
 
 | our note | the guide |
 |---|---|

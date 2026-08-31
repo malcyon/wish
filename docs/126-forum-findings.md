@@ -11,7 +11,8 @@ Bug and exploit reports are logged separately, as rumours, in
 [`125-bug-notes.md`](125-bug-notes.md). Nothing from the forums goes in
 `goldbox-bugs.md`.
 
-Method and the full 296-row thread index: `work/reports/forum-sweep.md`. Raw
+Method and the full 296-row thread index were in `work/reports/forum-sweep.md`,
+which is lost. Raw
 captures are `work/forums/print/<topic>.html` and `.txt` — the forum's own
 `action=printpage` rendering returns every page of a thread in one document, so
 there is never a reason to walk `.20`, `.40` by hand. Fetched non-forum
@@ -58,7 +59,7 @@ disks. An outside report agreeing is real evidence.
 | `ITEMNAMES` has **no name at indices 62 and 63** (`docs/125`) | marainein's DOS name-component list has two empty strings in exactly that position, between `Arrow` and `Potion` | **strong** — same table in both ports |
 | Monsters use the character record (`goldbox/record.py` parses `MON*`) | Nol Drek: "The monsters use the same data structure as the characters"; "every monster has maximum HP, current HP, and pre-drain HP" — our `0x076` / `0x119` / the drain pair at `0x0A1`–`0x0A2` | moderate |
 | Paladin, ranger, druid and monk are named and never instantiated in Pool of Radiance (`docs/20`, `0x073`) | GBC users who forced those classes report no sweep attack, and that level drain then restoration cycles the gender byte and awards 10,000,000 XP ([1913](https://forums.goldbox.games/index.php?topic=1913.0)) | moderate — behavioural, DOS |
-| `ECL0B` is the **training hall**, not the arena (`work/reports/analysis-batch.md`: `$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall", and Stephen S. Lee's guide independently: "Civilized Area (Training Hall)" | **strong**, three ways. `docs/118` and `goldbox/areas.py` both corrected (P61) |
+| `ECL0B` is the **training hall**, not the arena (`$9BB0` prints `THE ROOM IS FILLED WITH DUELING PAIRS.`) | Ishad Nha's DOS list: "`POOLRAD\ECL3.DAX` Record 11: Training Hall", and Stephen S. Lee's guide independently: "Civilized Area (Training Hall)" | **strong**, three ways. `docs/118` and `goldbox/areas.py` both corrected (P61) |
 | The disk grouping is a real constraint: `GEO<n>`, `ECL<n>`, `WALLDEF<n>`, `MON<n>CHA` all belong to floppy *n*, and a map may only use monsters and walls from its own disk | reported the same way for the DOS build; it is why the Cadorna Textile House is full of undead | moderate — our `$6E12` disk byte is the same constraint from the inside |
 
 On our bug 2 — Sokol Keep's dead elf returning on every re-entry — **the forums
@@ -174,9 +175,9 @@ could hide.
 **CONFIRMED negative: the C64 builds of Pool of Radiance and Curse of the Azure
 Bonds carry no trace of the DOS command-line cheat** — not the literals, not the
 message, not a dead comparison. It was compiled out for the port, as it was for
-Buck Rogers. Method, every hit, and the limit of the claim:
-`work/reports/sting-search.md`. Asserted in `tests/test_coabsource.py` so nobody
-looks again.
+Buck Rogers. Method, every hit and the limit of the claim were in
+`work/reports/sting-search.md`, which is lost; the finding is asserted in
+`tests/test_coabsource.py` so nobody looks again.
 
 A second, unrelated original-game patch from the same corner of the board:
 [topic 2103](https://forums.goldbox.games/index.php?topic=2103.0) gives five
@@ -190,10 +191,10 @@ disable the password check at save time.
 | claim | our position |
 |---|---|
 | Caldor, [4138](https://forums.goldbox.games/index.php?topic=4138.0): "So that must make the C64 use Big Endian I guess" | **Wrong, and now demonstrably so from his own source.** `GoldBoxEditor`'s `GameMaps.cs` defines exactly three offset maps — `getDQK_DOS_Map`, `getDQK_Amiga_Map`, `getDKK_DOS_Map` — and sets `bigEndian = true` only for the *Amiga*. **There is no C64 map and never was**, which confirms from the code what this page had recorded as "intended and never finished". The 6502 is little-endian and every multi-byte field we decode is LE: age at `0x074`, hit points at `0x076`, the seven money words at `0x0BB`, experience as `u24le` at `0x0E8` |
-| Ishad Nha, [1912](https://forums.goldbox.games/index.php?topic=1912.0): `GEO6.DAX` record **19** is the "Silver Dragon Den" | **Resolved: the same place.** Stephen S. Lee's guide lists script 19 as *Silver Dragon Lair*, and Diogenes **is** the silver dragon. `work/reports/world-map.md`'s "Cave of Diogenes" is not in conflict |
+| Ishad Nha, [1912](https://forums.goldbox.games/index.php?topic=1912.0): `GEO6.DAX` record **19** is the "Silver Dragon Den" | **Resolved: the same place.** Stephen S. Lee's guide lists script 19 as *Silver Dragon Lair*, and Diogenes **is** the silver dragon; this project's own "Cave of Diogenes" name for the same place is not in conflict |
 | The same list gives `GEO` record **30** "Lizard Man Catacombs" and **31** "Wealthy Area" | 30 is agreed by everyone: `GEO1E` is Lizardman Keep's catacombs, and our *script* 30 (`ECL1E`) is a different thing — the attract-mode demo, in a slot DOS's single numbering space left free. **Record 31 is an open conflict between two third-party DOS sources** — §5 |
 | Simeon Pilgrim, 2013: the Pool of Radiance ECL "command offset is `0x6700` compared to `0x8000` used in Curse" — while marainein's listings of the same game print addresses from `0x9800` up | Irreconcilable as stated, and neither is ours: the C64 `ECL` block is at **`$9900`** with its flag page at `$4A00`, which is what the addresses in the listings behave like. Take the *addresses in the listings*, not the prose |
-| The `coab` opcode table's `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` | **Do not exist in Pool of Radiance.** The dispatch tables at `$15A9`/`$15E7`/`$1625` are 62 entries, `$00`–`$3D` (`work/reports/ecl-opcodes.md`, CONFIRMED). Curse's DOS build having three more is a difference between titles, not an error in either |
+| The `coab` opcode table's `$3E DUMP`, `$3F FINDSPECIAL`, `$40 DESTROYITEMS` | **Do not exist in Pool of Radiance.** The dispatch tables at `$15A9`/`$15E7`/`$1625` are 62 entries, `$00`–`$3D` (CONFIRMED; the write-up, `work/reports/ecl-opcodes.md`, is lost). Curse's DOS build having three more is a difference between titles, not an error in either |
 | Nol Drek: FRUA's combat limits are memory partitioning — 50 monsters, 3 items each, 100 events, 24×24 maps | About FRUA, a later DOS product. Nothing here constrains the C64 engine. Draxinusom's 2026 measurements ([4677](https://forums.goldbox.games/index.php?topic=4677.0)) put FRUA's real ceiling at ~480 items live at combat start, sharing storage with the party's memorised spells. Interesting engineering, wrong engine |
 | marainein: the aggregation wall scheme exists "because they had to support architectures like the Commodore 64 and Apple II" | Plausible and unevidenced. Recorded as his speculation, not as a finding |
 
@@ -231,7 +232,7 @@ is Simeon's 512 exactly. A nibble holds 0–15; apply his arithmetic and `1..15`
 becomes **three wallsets of five walls**, precisely the three dynamically loaded
 blocks. So the C64 nibble is not an opaque art index: it is
 `wallset × 5 + slice + 1`, and `0` is "no wall". **A testable prediction, not a
-measurement** — it belongs to whoever owns `work/reports/walldef.md`.
+measurement** — nobody has verified it yet.
 
 Related, smaller: [3108](https://forums.goldbox.games/index.php?topic=3108.0) —
 a door is a non-zero wall slot whose type field is not "blocked", and **a secret
@@ -420,8 +421,8 @@ less 39, floored at 0; cleric level; magic-user level. The contribution is
 `(cleric×4 + hp + ac×5 + hitbonus×5 + magic×8) / 10`, summed over the party into
 a byte and stored to the operand address.
 
-**Opcode `$1E` has semantics**, not just a name; `work/reports/ecl-opcodes.md`
-can promote it. He names two neighbours — `$0B` LOAD MONSTER, `$0C` SETUP
+**Opcode `$1E` has semantics**, not just a name — an update the (now-lost)
+opcode table never received. He names two neighbours — `$0B` LOAD MONSTER, `$0C` SETUP
 MONSTER — and gives the DOS dispatch site as `ovr004:32DF`. The player-facing
 consequence, which Null Null spotted immediately: **unreadying your armour
 before an encounter reduces the size of the enemy party.**

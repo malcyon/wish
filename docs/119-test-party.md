@@ -3,8 +3,7 @@
 **Status: the level-up specification is measured, and four of the six ceilings
 the game implements are reached.** Twenty-nine trainings driven through the game's own
 school, every one diffed across the 580-byte record: the tables, the rules and
-the corrections are in `work/reports/p18-party.md`, and §7 below is the
-summary. The party is on `work/drive/P18PARTY.D64`.
+the corrections are summarised in §7 below. The party is on `work/drive/P18PARTY.D64`.
 
 The training hall is **area 11**, which has
 no map of its own: it reuses `GEO00`, so the schools are New Phlan's own
@@ -366,9 +365,9 @@ at all and can run beside them.
 
 ## 7. What the trainer actually wrote
 
-**Twenty-nine level-ups, 2026-08-22.** Full tables, evidence and the driving
-notes are in `work/reports/p18-party.md`; this is the part a reader of the plan
-needs.
+**Twenty-nine level-ups, 2026-08-22.** The full tables, evidence and driving
+notes were in `work/reports/p18-party.md`, which is lost; what follows is the
+part a reader of the plan needs.
 
 The party on `work/drive/P18PARTY.D64`:
 

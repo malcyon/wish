@@ -33,8 +33,8 @@ disks.
 
 **The three have no arrival square and must not be given one.** Outdoors the
 party's position is `$49C3`/`$49C4`, not the `GEO` pair, and every script that
-enters an overland area writes the world-map cell rather than a static square —
-`work/reports/p20-arrivals.md` §4. A `GEO` square written for one of them is
+enters an overland area writes the world-map cell rather than a static square
+(the write-up, `work/reports/p20-arrivals.md` §4, is lost). A `GEO` square written for one of them is
 meaningless at best.
 
 ## 2. Why nothing draws
@@ -61,7 +61,7 @@ read off the save.
 **c. No `GEO` is resident, so `ResidentGeo` never names an area.** It matches
 the 1024 bytes at `$0400` against the disk `GEO`s; outdoors the square engine's
 descriptor is there instead. FastTraveling into all three overland areas found
-`$49E6` = 0 and **no `GEO` resident** (`work/reports/p20-arrivals.md`).
+`$49E6` = 0 and **no `GEO` resident** (write-up lost, `work/reports/p20-arrivals.md`).
 `Fingerprint`, fed the frozen (15,1) fix from (b), never narrows either.
 CONFIRMED.
 

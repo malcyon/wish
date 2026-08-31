@@ -26,8 +26,10 @@ record, `goldbox.dos.write_dos_save` writes a whole C64 save into a DOS save
 directory over a template's `SAVGAM`, and DOS Pool of Radiance loads and
 plays the result under DOSBox — see "The reverse direction" below.
 
-The decode, with its evidence: `work/reports/dos-saves.md` for the character
-record and the saved game, `work/reports/dos-items.md` for the items. The
+The decode: `goldbox/dos_layout.py` is the character-record field table with
+confidence per field. The write-ups behind it — `work/reports/dos-saves.md`
+for the character record and the saved game, `work/reports/dos-items.md` for
+the items — are lost. The
 measurements are asserted in `tests/test_dossave.py` and `tests/test_dosbox.py`,
 which read the archives from Donald's machine and skip where there are none.
 `tools/dosbox.py` is the harness that drives the game: an isolated DOSBox on
@@ -493,11 +495,12 @@ This list was written when nothing below required writing a DOS file; the
 reverse direction has since been built and has its own section further down.
 
 **1. The quest flags — the correspondence is identity.**
-`$4A20`-`$4B7F` is 352 bytes. Every one of them has a disposition
-(`work/reports/quest-flags.md`): **179 named** from an ECL instruction that
+`$4A20`-`$4B7F` is 352 bytes. Every one of them has a disposition:
+**179 named** from an ECL instruction that
 writes them, **135** (`$4AF9`-`$4B7F`) shown not to be flag storage at all, and
 **38** unreferenced padding between the per-area blocks. The region is one
-private block per area script plus the City Hall's books.
+private block per area script plus the City Hall's books. The write-up
+that established this, `work/reports/quest-flags.md`, is lost.
 
 **And the other ports use the same addresses.** Two independent lines:
 
@@ -545,11 +548,13 @@ party from, and UI scratch. The mechanism is in the Curse reimplementation:
 `area_ptr.field_6A00_Set(0x6A00 + (location * 2), value)` — the operand
 address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
 
-Read that way, three saves of two different parties agree with
-`work/reports/quest-flags.md` line for line: the six Sokal Keep flags
+Read that way, three saves of two different parties agree line for line: the six Sokal Keep flags
 (`$4A21`, `$4A26`-`$4A29`, `$4AD7`) are 255 in the save whose party has taken
-the keep and 0 in the two that have not; the seven consecutive slum flags
-`$4ACA`-`$4AD0` are set together or not at all; `$4ABB` counts slum encounters
+the keep and 0 in the two that have not (asserted in
+`tests/test_dosconvert.py::test_the_sokal_keep_flags_are_set_together_or_not_at_all`);
+the seven consecutive slum flags
+`$4ACA`-`$4AD0` are set together or not at all
+(`tests/test_dossave.py::test_the_slums_flags_are_set_together`); `$4ABB` counts slum encounters
 cleared; and `$4AC1`, the commissions counter with ten `ADD 1` sites, reads
 0, 1 and 2 across the three saves in the order the parties progressed. Every
 nonzero word in the 217-entry window is 1, 2, 3 or 255 and none exceeds 255 —
@@ -664,12 +669,13 @@ needed the DOS container: a `u16le` index size, `size / 9` entries of
 run-length-coded blocks — all 46 blocks of the eight `ITEM*.DAX` decode to
 exactly their stated size and every size is a whole number of 63-byte records.
 
-Full working: `work/reports/dos-items.md`. Asserted in `tests/test_dosbox.py`.
+Full working was in `work/reports/dos-items.md`, which is lost. Asserted in `tests/test_dosbox.py`.
 
 **4. We have no DOS save. — CLOSED.** Donald's Steam copy of *Forgotten
 Realms: The Archives* carries three played slots, 18 saved characters and 6
-exports. Everything above was checked against them; see
-`work/reports/dos-saves.md` and `tests/test_dossave.py`.
+exports. Everything above was checked against them; the write-up,
+`work/reports/dos-saves.md`, is lost, and `tests/test_dossave.py` carries the
+assertions.
 
 **5. The DOS layout we have is community documentation, not our own decode.**
 `work/coab-research/formats/` is where the record table came from. **It has now

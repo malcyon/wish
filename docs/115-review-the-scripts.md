@@ -21,11 +21,11 @@ that clearing the pollution swaps an impassable-terrain table.
 ## What to look for
 
 * **Anything that reads or writes a byte we have not named.** 374 distinct
-  addresses are touched; far fewer are understood. `work/reports/ecl-opcodes.md`
-  has the cross-reference.
+  addresses are touched; far fewer are understood. The cross-reference that
+  established this, `work/reports/ecl-opcodes.md`, is lost.
 * ~~**The `$4A20`-`$4AFF` flags nobody has attributed.**~~ **Largely done, and
-  by machine rather than by reading.** `work/reports/quest-flags.md` gives every
-  one of the 352 bytes a disposition: 172 named by a direct ECL operand, 7 more
+  by machine rather than by reading.** Every
+  one of the 352 bytes has a disposition: 172 named by a direct ECL operand, 7 more
   as the interior of a proven table, and **135 shown not to be flag storage at
   all** — the region ends at `$4AF8`, not `$4AFF`, and `$4A00`-`$4A1F` is
   per-script scratch that `DUNGEON $202A` wipes on every area change. What is
@@ -43,15 +43,17 @@ that clearing the pollution swaps an impassable-terrain table.
 
 | | |
 |---|---|
-| the scripts | `work/ecl-scripts/dis_POOLn__ECLnn.txt` |
-| the decoder | `work/analysis6/ecl6.py` |
-| the opcode table and cross-reference | `work/reports/ecl-opcodes.md` |
-| the quest flags | `work/reports/quest-flags.md` |
-| encounters | `work/reports/encounters.md` |
+| the scripts | `work/ecl-scripts/dis_POOLn__ECLnn.txt` — not currently present |
+| the decoder | `work/analysis6/ecl6.py` — not currently present |
+| the opcode table and cross-reference | lost — was `work/reports/ecl-opcodes.md` |
+| the quest flags | lost — was `work/reports/quest-flags.md`; the counts are restated above |
+| encounters | lost — was `work/reports/encounters.md`; the finding survives in `docs/50-experiments.md`, "Does the game scale random encounters to the party?" |
 
 All under `work/`, which is gitignored — these are derived from the game's own
 files and **must not be committed**. See "What must never enter this repository"
-in `CLAUDE.md`.
+in `CLAUDE.md`. `work/ecl-scripts/` and `work/analysis6/` are gone along with
+`work/reports/`; the decode this document asks a human to read does not
+currently exist on disk and would need regenerating before the task is doable.
 
 ## A caution when reading
 
@@ -72,8 +74,9 @@ Two other things worth knowing before reading a listing:
 
 * **`$1F` is unimplemented.** Our table called it `ADDRESSOF`, a name inherited
   from the `coab` opcode table. No Pool of Radiance script references it — our
-  own sweep counts zero — so the name was a guess and is withdrawn (P57).
-  `work/reports/ecl-opcodes.md` leaves `$1F` unnamed.
+  own sweep counts zero — so the name was a guess and is withdrawn (P57). The
+  opcode table itself, `work/reports/ecl-opcodes.md`, is lost, but it left
+  `$1F` unnamed before it went.
 * **`ECL1E` is not an area script.** It is the attract-mode demo, in a slot DOS
   left free: DOS numbers maps and scripts in one space and has no script 30 at
   all, so the C64 port put one there. Thirty files, twenty-nine of them areas.

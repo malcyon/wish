@@ -1,9 +1,9 @@
 # One window — plan
 
 **Status: built.** `wish`, with `wish-editor` and `wish-automap` as aliases
-onto the tab each name implies. The build report is
-`work/reports/one-window.md`; the Ultimate backend in `wish/ultimate.py` is the
-one part that is **unverified**, because nobody has the hardware.
+onto the tab each name implies. The build report that verified it,
+`work/reports/one-window.md`, is lost; the Ultimate backend in `wish/ultimate.py`
+is the one part it flagged **unverified**, because nobody has the hardware.
 
 Two programs when this was written: `wish-editor` (a file tool) and
 `wish-automap` (a live map). They shared `goldbox/`, a toolkit and a purpose, and

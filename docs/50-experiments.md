@@ -3192,8 +3192,9 @@ own pre-generated party correctly — abilities, race, age, saves, money, levels
 class bits, experience. Paladin and ranger turn out to fit *existing* slots: the
 per-class array at `0x0C9` is eight wide, not four.
 
-Full survey in `work/reports/coab-research.md`; a proposed plan in
-`work/reports/coab-plan.md`.
+The full survey and the plan it proposed, `work/reports/coab-research.md` and
+`work/reports/coab-plan.md`, are lost; `docs/116-second-game.md` §7 corrects
+the plan's open questions against what was later confirmed.
 
 ## A real fight, and what it settles
 
@@ -3458,7 +3459,7 @@ map files a supplement. It does not, and it is the other way round.
 **Method.** Every area script has five entry points in its first `$14` bytes,
 and entry 4 is area initialisation — CONFIRMED, `LOADFILES`/`LOADPIECES` in the
 first fourteen instructions of 26 of 30 scripts
-(`work/reports/ecl-opcodes.md`). Walking each script from entry 4 and looking
+(the write-up, `work/reports/ecl-opcodes.md`, is lost). Walking each script from entry 4 and looking
 for a write into the persistent-flag region `$4A20`-`$4AF8` asks exactly the
 right question: what does a party set by *arriving*? The walk was then repeated
 from every entry with any of `PRINT`, a menu, a fight, an item search or a
@@ -3483,8 +3484,8 @@ record.**
 `$4A9E` looks like a candidate and is not: identical code in `ECL19`/`ECL1A`/
 `ECL1B` sets it 255 on entering a wilderness site and 0 on leaving, so it is
 current state, not history. `$4BC0`-`$4BD8` is the loader's file cache, also
-current state. The 44 one-shot "already happened" flags in
-`work/reports/quest-flags.md` §3.4 are each tied to a *scene*, not to arrival.
+current state. The 44 one-shot "already happened" flags (write-up lost,
+`work/reports/quest-flags.md` §3.4) are each tied to a *scene*, not to arrival.
 
 **What this means for the feature.** The visited list has to be wish's own
 record — one `GEO*.json` per area with a non-empty `seen` — which covers only
@@ -3494,7 +3495,7 @@ See [`118-debug-mode.md`](118-debug-mode.md) §2.1.
 
 **Worth knowing for Curse.** The same question will come up, and the same method
 answers it: the ECL bytecode is one artefact shared by every port, absolute
-address operands included (`work/reports/quest-flags.md` §7), so a Curse script
+address operands included (write-up lost, `work/reports/quest-flags.md` §7), so a Curse script
 can be walked from its entry 4 exactly as these were. Whether Curse's scripts
 happen to carry arrival flags is not settled by this — only that Pool of
 Radiance's do not.
@@ -4919,13 +4920,13 @@ writing: the refilled live cache read `GDRIVE00`, `SQRPACI00`, slot 2 still
 exactly as `140-loaded-files-cache.md` reads it.
 
 **The placement question is settled outdoors, unlike test B indoors.** A fasttravel
-with `$49C3`/`$49C4` = (0,0) came up at (0,0) (`work/reports/p20-arrivals.md`);
+with `$49C3`/`$49C4` = (0,0) came up at (0,0) (write-up lost, `work/reports/p20-arrivals.md`);
 test D with (5,2) came up at (5,2). Two different values, both honoured — on a
 load the arriving script does not re-place an outdoor party, and a converter's
 square survives.
 
 **A loose end worth recording: the hidden-site paint did not happen on either
-load.** `work/reports/p3-saves.md` measured the walk-in case at 647/648, the
+load.** The write-up, `work/reports/p3-saves.md`, is lost; it measured the walk-in case at 647/648, the
 one difference being the nomad camp square (12,11) painted `$39` over the
 disk's `$37` while its flag is clear. Both p47 loads read **648/648 — no square
 painted**, on the same flag bytes (test C is W1's own flags verbatim).
@@ -5039,8 +5040,8 @@ lost — whether entry 4's paint runs and the forced reload of dirty slot 4
 clobbers it after, or the paint branch never runs on a load — is SPECULATIVE
 either way; a write-watchpoint on `$8CD2` through a load would say. The other
 three hidden sites (all on window `1B`) reload revealed by the same one-shot
-paint — PROBABLE, measured painted together on walk-in in
-`work/reports/p3-saves.md` but not carried to a screenshot. Whether the reveal
+paint — PROBABLE, measured painted together on walk-in (write-up lost,
+`work/reports/p3-saves.md`) but not carried to a screenshot. Whether the reveal
 survives riding around the window is PROBABLE (nothing repaints between
 entries); a step-and-redump would confirm.
 

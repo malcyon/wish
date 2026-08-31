@@ -2,8 +2,8 @@
 
 **Status: closed (P69).** Donald: *"it basically is the same either way."*
 The measurement stands and the code keeps answering `Y`; no guidance is owed
-to a player. 24 boots, five per cell. `work/reports/p69-fastloader.md`
-is the run sheet, `work/p69/` holds the harness and the raw JSON.
+to a player. 24 boots, five per cell — the medians are in the segment table
+below.
 
 Donald: *"You have guidance on whether we should answer Y/N to the fastloader
 question, but in my experience, either option makes no difference at all. It
@@ -204,7 +204,9 @@ They were never distorting the loading; they were distorting the launch.
 | **D** | stock `N` | 75.0 | 121.1 | 4.4 | **199.6** | 217.4 |
 | **G** | defaults `Y` | 31.9 | 131.4 | 4.4 | **167.7** | 179.4 |
 
-Medians of five runs; the per-run numbers and ranges are in the run sheet.
+Medians of five runs; the per-run numbers and ranges were in the run sheet,
+`work/reports/p69-fastloader.md`, which is lost, along with the raw JSON that
+was in `work/p69/`.
 Read M2→M3 and M3→M4 together, for the reason under "Milestones".
 
 **M3→M4 has a floor of about 121 s**, hit by both `N` cells and by neither `Y`

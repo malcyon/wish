@@ -537,9 +537,7 @@ The editor is a consumer of the library, not an extension of it.
 
 ## Open tasks
 
-Everything below the icon picker landed; see
-[the editor fixes report](../work/reports/editor-fixes.md) for what each one
-does now. In short: the roster carries race and class and is sized to its rows,
+Everything below the icon picker landed. In short: the roster carries race and class and is sized to its rows,
 every box is as wide as the widest value its bytes can hold (derived from
 `goldbox/layout.py`), `Identity` is `Character`, the item column fits the longest
 of the 163 names the game disks carry, and two tables joined the sheet -- the

@@ -1,8 +1,8 @@
 # The overland travel map — plan
 
 **Status: researched, nothing built. No save has ever reached it**, so every
-line below rests on disk files, disassembly and one foreign save. The research
-is `work/reports/world-map.md`; this is what to do with it.
+line below rests on disk files, disassembly and one foreign save. This
+document is that research; what follows is what to do with it.
 
 The headline: **the overland map is not a `GEO`.** It is the combat square
 engine — `SQRPACI` descriptor, one byte a square at `$8C00` — pointed at

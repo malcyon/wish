@@ -136,7 +136,7 @@ owns `docs/125-bug-notes.md`; it is a DOS defect, not ours to log here.
 
 ### 4. `AC_Back` — an open question closed on the DOS side
 
-`work/reports/dos-saves.md` §10 asks which of DOS `0x111` / `0x112` is base
+An open question asked which of DOS `0x111` / `0x112` is base
 armour class and which is current. **Neither.** The spreadsheet names them
 `AC_Current` and `AC_Back`, and rear armour class is worse than front in
 **66 of 66** DOS records. CONFIRMED, for DOS.
@@ -243,8 +243,9 @@ and `GB_UA_SCRIPT.xlsx` / `SCRIPT.GLB`, which are Unlimited Adventures content.
 
 ## 2. Their DOS table against ours
 
-`work/reports/dos-saves.md` established the DOS Pool of Radiance record from 24
-specimens. `CHR_01` covers all 285 bytes. **Every field we claimed, they name at
+The DOS Pool of Radiance record, established from 24
+specimens (`goldbox/dos_layout.py`), is 285 bytes.
+`CHR_01` covers all of them. **Every field we claimed, they name at
 the same offset. Nothing contradicts.**
 
 | our offset | our name | their name | verdict |
@@ -391,7 +392,7 @@ Recorded here as leads, at the confidence a third-party document earns.
 
 | what | where | value | confidence |
 |---|---|---|---|
-| **256 effect names** indexed by effect id | `Enum` → `EffectName` | our `work/reports/effects.md` names about 30; theirs names about 130, and the twenty ids we both hold agree exactly (1 blessed, 2 cursed, 4 manual, 8/9 protection from evil/good, 10 resist cold, 11 charmed, 12 enlarged, 13 reduced, 14 friends, 16 read magic, 17 shield, 19 find traps, 20 resist fire, 21 silenced, 22 slow poison, 23 spiritual hammer). **The effect id space is shared between the ports.** | PROBABLE, and each name promotable one at a time |
+| **256 effect names** indexed by effect id | `Enum` → `EffectName` | our named effect codes — `work/reports/effects.md` (lost) named about 30, and a fuller table now lives in `goldbox/traits.py` — against theirs, about 130, and the twenty ids we both hold agree exactly (1 blessed, 2 cursed, 4 manual, 8/9 protection from evil/good, 10 resist cold, 11 charmed, 12 enlarged, 13 reduced, 14 friends, 16 read magic, 17 shield, 19 find traps, 20 resist fire, 21 silenced, 22 slow poison, 23 spiritual hammer). **The effect id space is shared between the ports.** | PROBABLE, and each name promotable one at a time |
 | **effect Modifier byte semantics** | `SFX_Modifier` | the byte usually holds the caster's level, `255` means permanent, and named exceptions pack two things into nibbles: Mirror Image is caster level in bits 0–4 and images remaining in 5–7; Haste and Prayer put the caster level in the low nibble and a flag above it | PROBABLE |
 | **item `Property1`/`2`/`3` semantics** | `ITM_Properties` | a dispatch on `Property1`: 128 equipment with an effect id in `Property2`, scrolls with spell ids in all three, and about fifteen special cases keyed by value | PROBABLE |
 | **the spell record**, 16 bytes | `SPL` | class, level, range base and per-level modifier, duration base and modifier, combat area, camp target, save action, save type, effect id, camp/combat type, casting time, AI priority, target-enemy flag, AI minimum targets. **Pool of Radiance has 67 of them.** We have spell *names* and ids; we have none of this | PROBABLE |

@@ -1,8 +1,8 @@
 # The council's commissions
 
 The City Hall's books, as `goldbox/commissions.py` reads them. `ECL08` on disk 3 is
-the authority for all of it; the working is in
-`work/reports/commissions.md` (P80) and `work/reports/quest-flags.md` (P30).
+the authority for all of it; the working that established it, `work/reports/commissions.md`
+(P80) and `work/reports/quest-flags.md` (P30), is lost.
 
 ## The ledger
 
@@ -112,5 +112,5 @@ meeting for good. `goldbox-bugs.md` #7.
 ## Ports
 
 The ECL bytecode is one artefact shared by every port, absolute operands
-included, so all of the above holds at the same addresses on Amiga and DOS.
-`work/reports/quest-flags.md` §7.
+included, so all of the above holds at the same addresses on Amiga and DOS
+(write-up lost, `work/reports/quest-flags.md` §7).

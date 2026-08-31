@@ -51,9 +51,11 @@ in whichever `ECL<1-8>.DAX` happens to carry it.** Of the 29 pairs:
 a second direction: DOS has no script 30, and the C64 port put its attract-mode
 demo in the slot DOS left free.
 
-What this is worth: our 62-opcode VM table (`work/reports/ecl-opcodes.md`), taken
+What this is worth: our 62-opcode VM table, taken
 from the C64 `DUNGEON` dispatch tables, **disassembles the DOS scripts directly**,
-and `work/analysis6/ecl6.py` can be pointed at a decompressed `.DAX` block as-is.
+and `work/analysis6/ecl6.py` can be pointed at a decompressed `.DAX` block as-is
+— both the table (`work/reports/ecl-opcodes.md`) and the decoder are currently
+absent from `work/`.
 It also answers, for Pool of Radiance, the experiment `docs/117-save-conversion.md`
 proposes for Curse ("decode DOS `ECL*.DAX` and diff against the C64 disks") —
 the technique works, and the answer is "the same bytes".
@@ -74,8 +76,8 @@ files are loaded at `$9900`, not `$1388`, and `ECL64`/`ECL65`, which are 6502
 code rather than bytecode, carry `00 10` there instead.
 
 The header is **five 4-byte records**, `[word][01 01]`, which is what the
-repository found on DOS and what `work/reports/ecl-opcodes.md` calls "the
-five-word entry header". On the C64 records 1–4 are plain absolute addresses in
+repository found on DOS and what the (now-lost) `work/reports/ecl-opcodes.md`
+called "the five-word entry header". On the C64 records 1–4 are plain absolute addresses in
 the block's own `$9900` space — `ECL12` reads `$99B9 $9AB7 $9914 $9960`, and the
 repository lists exactly those four for its DOS block 18.
 
@@ -219,8 +221,8 @@ Worth recording so nobody looks twice.
   `docs/88`.
 * **The 63-byte DOS item record**, which they reach from the treasure files and
   we from the character files. They read `ITEM1`–`ITEM4` and count 110 items;
-  our `work/reports/dos-items.md` reads `ITEM1`–`ITEM8` and reproduces 157 of
-  163 C64 records. Ours is the wider sample.
+  ours reads `ITEM1`–`ITEM8` and reproduces 157 of
+  163 C64 records, asserted in `tests/test_dosbox.py`. Ours is the wider sample.
 * **The ECL text codec is 6-bit**, four characters per three bytes. Ours has been
   decoded since the first ECL pass; theirs is the DOS closed form. Given §1 —
   the blocks are the same bytes — the two codecs must be the same codec, which

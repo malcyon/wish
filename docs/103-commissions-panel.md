@@ -6,7 +6,7 @@ Council has asked the party to do, and what it has already paid for.
 the right-hand column of the map tab under the notes, and
 `tests/test_commissions.py` holds the verification below.
 
-The research is done and is in `work/reports/quest-flags.md`. Four lines are
+The research is done. Four lines are
 CONFIRMED and buildable from 224 bytes that are already inside `SAVEDGAME0`, so
 this needs no new decoding — only a panel.
 

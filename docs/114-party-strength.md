@@ -8,7 +8,7 @@ twelve of the thirty area scripts it becomes the **count operand of `LOADMON`**
 Nothing stores it. The routine walks the eight roster slots every time a script
 asks, and writes only to the ECL variable its operand names. `goldbox/strength.py`
 recomputes it the same way, and the Automapper shows it live under the bottom
-strip. Found in `work/reports/encounters.md`; the entry in
+strip. The entry in
 `docs/50-experiments.md` is "Does the game scale random encounters to the
 party?".
 

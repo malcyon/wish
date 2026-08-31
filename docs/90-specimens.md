@@ -157,8 +157,8 @@ Twelve disks driven out of the game on 2026-08-22, the first specimens in the se
 that were *ordered* rather than found. They are the game's own writes: every one
 was produced by the game's `SAVE GAME`, from a state reached by playing, fasttraveling
 or poking, and every one has a recipe. They are game data, so they live in
-`work/p3/` and never in the repository. The recipes, byte for byte, are
-[`work/reports/p3-saves.md`](../work/reports/p3-saves.md); the party throughout
+`work/p3/` and never in the repository. The recipes, byte for byte, were in
+`work/reports/p3-saves.md`, which is lost; the party throughout
 is Donald's six off `work/drive/LVBEFORE.D64`.
 
 | specimen | file | what it is |

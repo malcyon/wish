@@ -2,8 +2,8 @@
 
 **Status: all five tiers are done.** Tiers 1, 2 and 5.1 are automated in
 `tests/test_curse.py`; tiers 3, 4 and 5.2 were done under VICE and what survives
-without an emulator is pinned in `tests/test_curselive.py`. The evidence for the
-live tiers is `work/reports/p8-curse-live.md`. The goal was a **base-level
+without an emulator is pinned in `tests/test_curselive.py`. The write-up for the
+live tiers, `work/reports/p8-curse-live.md`, is lost. The goal was a **base-level
 check**, not coverage: enough evidence to say "the tooling reads the second
 game" or "here is exactly where it stops", and to keep that answer from silently
 rotting.
@@ -194,8 +194,8 @@ and the renderer, and it is not a base-level question.
 
 ## Tier 3 — live memory under VICE
 
-**Done.** `work/reports/p8-curse-live.md` carries the evidence for every line
-below; `tests/test_curselive.py` pins the constants and the code paths.
+**Done.** The write-up, `work/reports/p8-curse-live.md`, carried the evidence for every line
+below and is lost; `tests/test_curselive.py` pins the constants and the code paths.
 
 **One resident address transfers between the two titles, and it is the one the
 automapper most needs: the loaded map block at `$0400`.** Everything else moved,
@@ -245,7 +245,8 @@ still writes only to `work/`, never to the player's own disks.
 ## Tier 4 — the automapper
 
 **Done.** Driven against a live Curse session with `automap/` **unmodified**;
-`work/reports/p8-curse-live.md` has the run, `tests/test_curselive.py` pins what
+the run was recorded in `work/reports/p8-curse-live.md`, now lost, and
+`tests/test_curselive.py` pins what
 can be checked without an emulator.
 
 | component | verdict | evidence |

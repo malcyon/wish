@@ -2,8 +2,8 @@
 
 **Status: phases 0 to 5 are done.** Phases 0-2 were a cold read of the disks
 with `goldbox/geo.py`, `goldbox/record.py` and `goldbox/savegame.py` **unmodified**;
-phases 3-5 were one driven session, and `work/reports/p9-ssb-live.md` is the
-account of it. `tests/test_ssblive.py` carries what a machine with the disks
+phases 3-5 were one driven session; the account of it, `work/reports/p9-ssb-live.md`,
+is lost. `tests/test_ssblive.py` carries what a machine with the disks
 can check again without an emulator.
 
 Three results from the run are worth reading first. **The Curse import changes
@@ -22,7 +22,9 @@ say.
 
 `SILVER-1.D64` ... `SILVER-6.D64` — three double-sided disks, sides 1 to 6,
 with no gap and no error-byte rip among them. `goldbox/d64.py` opens all six.
-`work/reports/goldbox-inventory.md` has the full inventory.
+The full inventory was in `work/reports/goldbox-inventory.md`, which is lost;
+the per-title base addresses it established are asserted in
+`tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
 **How the tests find them.** `tests/test_silverblades.py` looks behind an
 `SSB_DISKS` environment variable and then at a candidate list, in the same
@@ -61,11 +63,11 @@ What remains, in order:
 
 1. **Finish Curse** — `docs/120-curse-testing.md`. Tiers 1, 2 and 5.1 are done;
    what is left needs the emulator.
-2. ~~**Phases 3-5 here.**~~ Done — one session, `work/reports/p9-ssb-live.md`.
+2. ~~**Phases 3-5 here.**~~ Done — one driven session, write-up lost.
    Phase 4, the Curse-to-Silver-Blades import diff, was the single strongest
    experiment available in this project and it is spent.
 3. Gateway to the Savage Frontier and the two Krynn titles are on disk and are
-   read statically in `work/reports/goldbox-inventory.md`. They are a fourth
+   read statically (write-up lost). They are a fourth
    target, not a third.
 
 ## 3. What was expected to transfer, and what did
@@ -73,9 +75,9 @@ What remains, in order:
 Curse shares the 580-byte record with Pool of Radiance *at every offset*, and
 that is not a diff of two specimens — it is the game's own import arithmetic.
 The predictions below inherited their confidence from that. The outcome column
-is the cold read of the disks (`tests/test_silverblades.py`,
-`work/reports/goldbox-inventory.md`) for the first fourteen rows and the driven
-session (`work/reports/p9-ssb-live.md`, `tests/test_ssblive.py`) for the last
+is the cold read of the disks (`tests/test_silverblades.py`)
+for the first fourteen rows and the driven
+session (`tests/test_ssblive.py`) for the last
 six.
 
 | | Prediction | Outcome |
@@ -146,9 +148,12 @@ showed the seam is the save container's base address and nothing else, and
 ### What phase 2 corrected in its own pass criterion
 
 Phase 2's criterion was "`class_bits` is exactly one bit per non-zero slot of
-the array at `0x0C9`". `work/reports/goldbox-inventory.md` §3.3(a) reports it
-**failing** on PAINE (`0x80`) and GUY DE VALOIS (`0x40`), and concludes the
-criterion covers only the low four bits.
+the array at `0x0C9`". The report, `work/reports/goldbox-inventory.md` §3.3(a)
+(now lost), read it
+**failing** on PAINE (`0x80`) and GUY DE VALOIS (`0x40`), and concluded the
+criterion covers only the low four bits. The correction below is repeated as
+an assertion in
+`tests/test_silverblades.py::test_class_bits_is_one_bit_per_slot_of_the_eight_wide_level_array`.
 
 **That is wrong, and the criterion holds unchanged.** The report read the array
 at `0x0C9` as four bytes. It is eight — `goldbox/layout.py` names them

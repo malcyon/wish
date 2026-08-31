@@ -47,8 +47,8 @@ which is what makes twelve slots enough.
 terrain, where 0 is floor. The view checks the two against each other.
 
 **The shape is read at runtime, never hard-coded.** `SQRPACI01` carries a stride
-of 56 and bounds 55 x 25; `SQRPACI00` a stride of 20 and bounds 17 x 35.
-Full write-up in `work/reports/combat-terrain.md`.
+of 56 and bounds 55 x 25; `SQRPACI00` a stride of 20 and bounds 17 x 35. The
+write-up behind those numbers, `work/reports/combat-terrain.md`, is lost.
 
 The tooltip's own fields come off the character record, which is what a monster
 is: name `0x000`, hit dice `0x0A0`, armour class `0x0E1` (as `60 - AC`),
@@ -158,7 +158,6 @@ And live: VICE booted, `work/drive/SLUMS.D64` loaded, three steps out of (15, 4)
 into an orc ambush. `$6E11` read 1 and `read_battle` returned None; three steps
 later it read 2 and returned six party at 0-5 and **eight orcs from 8, all
 sharing record slot 8** — one record per type, exercised for the first time.
-Write-up in `work/reports/combat-view.md`.
 
 Still wanted: a tooltip checked against the game's own `VIEW` command for the
 same creature, which is the only check the game itself can give.
