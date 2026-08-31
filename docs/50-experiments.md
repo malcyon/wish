@@ -5592,3 +5592,61 @@ that is byte for byte what it leaves.
 `$49FC` as a party count — PROBABLE in one, GUESS in the other — and both
 should now say refuted, with this measurement as the reason. **Flagged, not
 edited**: those files belong to another lane.
+
+## What a Sleep writes, and what it does not
+
+**A Sleep that lands writes effect id 53 on each sleeper. It does not write
+31.** The three codes `goldbox/traits.py` carries as 31 helpless, 52 held or
+paralysed and 53 sleeping are genuinely three different things, and this is the
+first time any of them has been watched being written.
+
+The question mattered because the automapper's combat map had just been built
+to draw an enemy's square gold when it carried **31**, on the reasoning that a
+sleeping monster is helpless. The reasoning is sound in AD&D and wrong about
+this engine.
+
+### The measurement
+
+A magic-user cast Sleep on the slums orc ambush, in a fight driven out of
+`PORSAVE13.D64`. Reading the four effect arrays immediately afterwards:
+
+| slot | id | owner | duration | magnitude |
+|---|---|---|---|---|
+| 56 | 53 | `$0D` = 13 | 4 | 1 |
+| 57 | 53 | `$0B` = 11 | 4 | 1 |
+| 58 | 53 | `$08` = 8 | 4 | 1 |
+| 61 | 53 | `$03` = 3 | 5 | 1 |
+| 62 | 53 | `$0A` = 10 | 4 | 1 |
+
+**Five sleepers, five ids, all 53.** No slot anywhere in the 64 held 31. The
+owner bytes are combat combatant indices, so 8, 10, 11 and 13 are four of the
+eight orcs — and **3 is SILAS, one of the party's own**. Sleep is an area
+effect and it caught a party member; that is the game working, not a fault, and
+it is worth knowing before anything badges the party side.
+
+Slots 59, 60 and 63 held owner bytes with a **zero id**, which is the expiry
+behaviour `docs/133-active-effects.md` records: expiry clears only the id, so
+the other three arrays keep whatever they had.
+
+**This promotes 53 from PROBABLE to CONFIRMED.** 31 and 52 stay PROBABLE:
+nothing has been seen to write either, and what does write 31 is still unknown.
+
+### What it says about the drawing, which was separately proven
+
+The gold square itself was verified in the same fight by writing id 31 onto one
+orc's index with the machine paused, letting the poll run, and clearing it
+again: the square went **red, gold, red** and the tooltip gained and lost its
+line, without the program being restarted. So the path from the effect arrays
+to the pixels is sound; only the set of ids it watched was wrong.
+
+Donald's ruling, 2026-08-31: the square goes gold for **31, 52 and 53
+together** — the states where a creature cannot defend itself — with the
+tooltip naming which one it actually is rather than calling all three
+"helpless". A party member keeps its green fill and says the condition in its
+tooltip, because the fill's job is to say which side a square is on.
+
+### What is still open
+
+**What writes 31.** It is in the table as "helpless" and nothing observed has
+ever set it. A Hold Person cast at a monster would settle 52 the same way this
+settled 53, and is the obvious next measurement.
