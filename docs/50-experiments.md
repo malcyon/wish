@@ -5652,3 +5652,118 @@ tooltip, because the fill's job is to say which side a square is on.
 **What writes 31.** It is in the table as "helpless" and nothing observed has
 ever set it. A Hold Person cast at a monster would settle 52 the same way this
 settled 53, and is the obvious next measurement.
+
+---
+
+## The 68000 disassembler, and the `.pc` loader it was written to read (#148)
+
+`work/amiga/m68dis.py` went with `work/`, and `docs/124-amiga-port.md` phase 1
+had been stopped on it since: "read the `.pc` loader" needs a 68000
+disassembler and there was not one in the tree. Donald's ruling on 2026-08-31
+was to rebuild it and put it in `tools/`, which is where `CLAUDE.md` now says a
+tool that regenerates an artefact belongs. `tools/m68dis.py` is the first one
+written under that rule.
+
+### The rule the tool is built around
+
+**An encoding it does not recognise prints as `dc.w $xxxx`, never as the
+nearest instruction that fits.** This is not fastidiousness. A 316 KB code hunk
+has strings, jump tables and item data scattered through it, and a decoder that
+rounds every word to the nearest legal instruction produces a listing that
+looks exactly like code from the middle of a string table. The invented
+instruction is then quoted in a document, and nothing about it says it was
+invented.
+
+So every field is checked before a mnemonic is emitted: an addressing mode the
+opcode cannot take, a 68020 full-format index extension, a size field the
+opcode does not define, a branch whose displacement lands on an odd address, a
+word that runs off the end of the buffer. Each falls through to data.
+
+### How it was verified, and what that caught
+
+Plausible is not the same as correct, and a disassembler is unusually good at
+looking correct. The check was an **independent decoder**: `capstone` 5.0.7,
+which is in `.venv` and is not a dependency of `wish` and must not become one.
+Both were walked over the whole 316 KB code hunk of the Amiga *Pools of
+Darkness* executable, advancing by our own instruction lengths.
+
+| | |
+|---|---|
+| instructions both decoded | **100 385** |
+| instruction lengths that disagreed | **0** |
+| mnemonics that disagreed | **0** |
+| operands that disagreed, after normalising the two syntaxes | **0** |
+| we refused, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020-only index extensions, 97 index extensions with the 68020 format bit set |
+| capstone refused, we decoded | 0 |
+
+Every one of the 2 288 is inside string data, and in each the refusal is the
+stricter reading of a 68000. The 24 remaining textual differences are capstone
+writing `lea.l` and `pea.l` where we write `lea` and `pea`.
+
+**The cross-check earned its keep immediately.** The first draft read
+NEGX/CLR/NEG/NOT/TST out of bits 11-9 of a line-4 opcode. They live in bits
+11-8; bit 8 set is CHK, LEA, or nothing at all. So `$4552` — the letters `ER`
+in the middle of `PICK A GENDER` — came out as `neg.w (a2)`, and 199 words of
+string data across the binary decoded as instructions that do not exist. That
+is precisely the failure the "never guess" rule exists to prevent, and reading
+the listing would never have caught it: `neg.w (a2)` is a perfectly ordinary
+line. `tests/test_m68dis.py::test_bit_eight_is_not_a_unary_operation` is the
+regression, and it fails against the first draft.
+
+The committed tests build their encodings by hand from the Motorola manual, so
+the suite needs no game data and skips nothing.
+
+### Finding the routine, which is the other half of the job
+
+`docs/124` §1.2 gives three file offsets for the literal `pc` and calls them a
+load site and a save site. They are neither, and `--refs` says so: it walks the
+range a word at a time and reports every instruction whose resolved target is
+one address. Each literal is referenced exactly once in 316 KB:
+
+* `0x255B2` from `pea $255b2(pc)` at `0x25568` — the **picker**, which builds
+  the list of `*.pc` on the save disk;
+* `0x25802` from `pea $25802(pc)` at `0x257DC` — **delete**;
+* `0x265A2` from `lea $265a2(pc),a2` at `0x26476` — **save**.
+
+The loader references none of them, because the picker hands it a name that is
+already built. Getting to it needed one more step: the binary is an AmigaDOS
+hunk file whose data hunk begins with a table of `jmp abs.l` stubs, and A4 is
+set to `hunk1 + $7FFE` by a `lea $00007ffe,a4` with a relocation on it. So
+`jsr -$7722(a4)` is a call to hunk 1 offset `$8DC`, and the longword in that
+stub, relocated, is the real destination. Resolving the stubs by hand is what
+turned a wall of `jsr -$nnnn(a4)` into a call graph.
+
+### The answer phase 1 asked for
+
+`pcload(char *name, character *dest)` at `0x25BAE` hands a callback at
+`0x25806` to the engine's open-and-retry harness at `0x3F874`, which builds
+`DF0:SAVE/<name>`, opens it with AmigaDOS `Open` and `MODE_OLDFILE` (`$3EE`),
+and calls back with the handle. Every read reaches dos.library `Read` at
+`-42(a6)`.
+
+The callback reads **404 bytes** (`$194`) into the character record; then the
+longword at record `+8` tells it how many **20-byte** item records follow, and
+each item's own byte at `+$0C` how many 20-byte scroll records hang off it;
+then, if the longword at record `+4` is non-zero, a chain of **10-byte**
+effect records, each carrying the next one's pointer at its own `+6`.
+
+It checks four things and no more: that each read returned the length it asked
+for; that every item record begins with `$49`, ASCII `'I'`; that items plus
+scrolls stay within `$78` (120), and prints `SCROLLS DROPPED!` when they do
+not; and nothing else. **No file length is checked and the character record
+carries no signature at all** — which is the mechanism behind §2.2's
+experimental result that a 582-byte C64 export loads.
+
+### The correction it produced
+
+`docs/124` had "484 is the record with no appended item data". It is not: the
+record is 404 bytes and 484 is 404 plus four items. The arithmetic accounts for
+every size on disk 3 — 484, 504, 514, 524 are 404 + 4×20, 5×20, 5×20 + 10 and
+6×20 — and for §1.5's reading of `4`, `5` or `6` at offset `0x08`, which is the
+item count and not a mystery. The falsifiable part: the 514-byte file must hold
+5 at `0x08` **and** a non-zero longword at `0x04`, and nobody has re-read the
+files to check.
+
+Nothing about `goldbox.amiga.PodWriter` moves: it leaves both counts zero, so
+PoD reads 404 bytes and stops, and the 80 bytes after them are padding rather
+than a length the game wants.

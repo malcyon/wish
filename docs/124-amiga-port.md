@@ -42,8 +42,9 @@ confidence label.
   writes each character as `NAME.pc`, 484–524 bytes, **variable length**, and
   the first 0x60 bytes contain **live Amiga heap addresses** — `0x00C69FE0`,
   `0x00098FA0` and friends. They are don't-care: a record with zeros there
-  loads. The variable part is appended item data, and a record without it is
-  484 bytes, which is what the writer emits.
+  loads. The variable part is appended item and effect data; the record proper
+  is **404 bytes** and the loader stops there when the counts are zero (§1.16),
+  so the writer's 484 are 404 that matter and 80 PoD never reads.
 * **The first experiment ran, and PoD did not refuse it.** A genuine `.pc` on
   a disk we edited lists and adds; a C64 export's 582 bytes under the same name
   *also* lists and adds. That killed the two blockers that made the writer
@@ -181,7 +182,7 @@ zero.** Only ~158 bytes of the prefix vary at all. That is the search surface.
 | offset | observation | reading | confidence |
 |---|---|---|---|
 | `0x00`–`0x5F` | 24 big-endian longwords; 4–8 per file hold values in `0x098C58`–`0xC71842` | Amiga heap addresses — chip and fast RAM. The file is a struct dump with live pointers. | CONFIRMED (the values are addresses; what they point at is UNKNOWN) |
-| `0x08` | `4`, `5` or `6` | a count; does **not** determine the file size on its own | PROBABLE |
+| `0x08` | `4`, `5` or `6` | **the number of 20-byte item records appended after the 404-byte record** — the loader reads it and reads that many (§1.16) | CONFIRMED |
 | `0x0C`, `0x10`, `0x14`, `0x38` | pointer slots; which are populated tracks the file size loosely | list heads for the appended variable data | PROBABLE |
 | `0x44` | `0x0016E361` (1 500 001) in 11 of 12, `0x0007A120` (500 000) in one | a large scalar — experience or coin | GUESS |
 | `0x4C` | `0x00C8` = 200 in all twelve | a cap or a rate | GUESS |
@@ -944,6 +945,98 @@ immediately before the field that needs the alignment, which puts the pad at
 places the record's own second insertion at the end of its window (§1.12), and
 the same grade: an inference, not a probe.
 
+### 1.16 The `.pc` loader, read (#148, phase 1)
+
+**Phase 1 is done.** `tools/m68dis.py` was written for this and the routine was
+read in the Amiga *Pools of Darkness* executable. The answer the phase asked
+for, in one line: **the loader reads 404 bytes, then twenty bytes per item,
+then ten bytes per effect, and the only thing it checks is that each of those
+reads returned the length it asked for — plus one signature byte, `'I'`, on
+every item record.** There is no check on the file's length and none on the
+character record itself.
+
+The entry point is `pcload(char *name, character *dest)` at file offset
+`0x25BAE`. It copies the name, parks `dest` in a global, and hands the work to
+the engine's open-and-retry harness (`0x3F874`) with the disk code `$53`
+(`'S'`, the save disk), the mode `0` and a **callback** at `0x25806`:
+
+```
+00025bae  link    a5,#-$2a
+00025bb2  move.l  $8(a5),-(a7)          ; the file name
+00025bba  jsr     -$7416(a4)            ; strcpy into a local
+00025bbe  move.l  $c(a5),-$31da(a4)     ; the destination record, into a global
+00025bc4  pea     $25806(pc)            ; the callback that does the reading
+00025bce  move.w  #$53,-(a7)            ; 'S' -- the save disk
+00025bd2  jsr     -$771c(a4)            ; open, retry, call back, close
+```
+
+The harness builds `DF0:SAVE/<name>` (the literals at `0x3F868`), opens with
+AmigaDOS `Open` and `MODE_OLDFILE` (`$3EE`) through the glue at `0x45AC2`, and
+calls the callback as `callback(word handle, char *path)`. Every read goes
+through `0x460CC` to dos.library `Read` at `-42(a6)`. So the `Open`/`Read`
+pair is real AmigaDOS and not a private loader.
+
+**What the callback reads, in order:**
+
+| # | length | into | how many |
+|---|---|---|---|
+| 1 | **404** (`$194`) | the character record at offset 0 | once, always |
+| 2 | **20** (`$14`) | one item node each | the longword at record `+0x08` says how many |
+| 3 | **20** (`$14`) | one scroll node each, chained off the item | the item's own byte at `+0x0C` says how many |
+| 4 | **10** (`$0A`) | one effect node each | while the previous record's longword at `+6` is non-zero, starting from the longword at record `+0x04` |
+
+**What it checks:**
+
+* **Every read is length-checked.** `cmpi.w #$194,d0` after the first,
+  `cmpi.w #$14,d0` after each item, `cmpi.w #$a,d0` after each effect. A short
+  read sets the failure flag, the nodes already allocated are freed, and the
+  routine returns 0.
+* **One signature byte, and it is on the items, not the character.**
+  `cmpi.b #$49,$2e(a2)` — the first byte of every 20-byte item record must be
+  `$49`, ASCII `'I'`. An item that is not `'I'` ends the list.
+* **A capacity check.** Item count plus scroll count must stay within `$78`
+  (120); over that, the remaining records are read into a scratch buffer and
+  thrown away and the player is shown `SCROLLS DROPPED!`.
+* **Nothing else.** No file length, no magic on the character record, no
+  checksum. That is the same answer §2.2 got by experiment when a 582-byte C64
+  export loaded, and this is why.
+
+**This corrects §1.1 and §4 on where 484 comes from.** The record proper is
+**404 bytes**, not 484, and 484 is 404 plus four 20-byte item records. The
+arithmetic accounts for all four sizes seen on disk 3 and for §1.5's reading
+of `0x08`:
+
+| file size | = 404 + | and `0x08` reads |
+|---|---|---|
+| 484 | 4 × 20 | 4 |
+| 504 | 5 × 20 | 5 |
+| 514 | 5 × 20 + 1 × 10 | 5, with `0x04` non-zero |
+| 524 | 6 × 20 | 6 |
+
+CONFIRMED from the code; the match to the twelve files is PROBABLE until
+somebody re-reads them, and the experiment that settles it is one line: the
+514-byte file must hold 5 at `0x08` **and** a non-zero longword at `0x04`.
+
+`goldbox.amiga.PodWriter` is unaffected — it leaves `0x04` and `0x08` zero, so
+PoD reads its 404 bytes, finds no items and no effects, and never touches the
+80 zero bytes after them. Those 80 bytes are harmless padding rather than a
+length the game requires, and `RECORD_LENGTH = 484` says otherwise in a
+comment; see `#154 (goldbox/amiga.py says 484 is the shortest record Pools of
+Darkness will read, and 404 is)`.
+
+**Two of the three `pc` literals in §1.2 were attributed to the wrong sites**,
+and `tools/m68dis.py --refs` says so — each literal is referenced exactly once
+in 316 KB of code:
+
+| literal | referenced from | what that routine is |
+|---|---|---|
+| `0x255B2` | `pea $255b2(pc)` at `0x25568` | the **picker**: builds the list of `*.pc` on the save disk, and prints `No characters to load.` / `No characters to delete.` when it is empty |
+| `0x25802` | `pea $25802(pc)` at `0x257DC` | **delete**: builds `NAME.pc` from the record's name at `+0x60` and calls dos.library `DeleteFile` |
+| `0x265A2` | `lea $265a2(pc),a2` at `0x26476` | **save**, including the `Update %s?` / `New file name:` prompts |
+
+The loader references none of them: `pcload` is handed a name the picker
+already built.
+
 ## 2. The assumption to test first: can Amiga PoD read a C64 character?
 
 Donald flagged this himself and asked for it to be checked rather than
@@ -1331,7 +1424,7 @@ Ordered so the cheapest thing that could kill the approach runs first.
 | # | phase | produces | emulator? | cost | pass/fail |
 |---|---|---|---|---|---|
 | 0 | **Confirm §1 independently.** Re-extract both PoD and PoR ADFs, re-derive the file inventory and the twelve `.pc` constants. | a reproducible script under `work/` | no | an hour | the numbers in §1 come out again |
-| 1 | **Read the `.pc` loader.** Disassemble around `0x255B2` / `0x25802`. The 68000 disassembler this used, `work/amiga/m68dis.py`, is gone — no replacement exists in this tree; a fresh one is needed before this phase can run. Find the `Open`/`Read` pair and any length or signature check. | a written account of what the reader validates | no | a day | we can name the number of bytes it reads and say whether it checks anything |
+| 1 | ~~**Read the `.pc` loader.**~~ **DONE** (#148). `tools/m68dis.py` was rebuilt for it. 404 bytes, then 20 per item and 10 per effect; AmigaDOS `Open`/`Read`; the only checks are the read lengths and an `'I'` on each item. | §1.16 | no | done | run — see §1.16 |
 | 2 | ~~**The assumption test (§2.2), cases A–D.**~~ **DONE.** | A loads; **B loads too** | yes | one session | run — see §2.2 |
 | 3 | **An OFS ADF writer.** Round-trip: read every file off disk 3, rebuild an image, compare file contents byte for byte; then boot it in FS-UAE and let PoD list the twelve characters. | `goldbox/adf.py` (writer) with tests that read the player's own disks, never a committed image | yes, once | a week | PoD's `Add Character → Pools` shows all twelve names off our image |
 | 4 | ~~**Decode the `.pc` record.**~~ **Done for everything the sheet shows.** The ramp of §2.3 found the numbers; the plausible-value probe of §2.4 found the four enums, current hit points and the seventh level slot. What is left is undecoded rather than blocking: saving throws, thief skills, the class bitmask, the portrait indices and the appended item data. | `goldbox/amiga.py`, plus `tests/test_amiga.py` asserting the ramp offsets, the written record and the twelve real files | yes, repeatedly | done | every named field decodes to a legal AD&D value across all twelve |
@@ -1396,11 +1489,14 @@ Stated out loud, so nobody is surprised and nobody tries.
    one.** `PodWriter` leaves `0x00`–`0x43` entirely zero and PoD loaded the
    record and put it in the party. The longwords are don't-care, nothing has to
    be synthesised, and phase 5 is closed.
-4. ~~**The `.pc` length rule is not derived.**~~ **Answered.** Sizes 484 / 504 /
-   514 / 524, and **484 is the record with no appended item data** — which is
-   what `PodWriter` emits, and PoD loads it and puts it in the party. The extra
-   bytes are the item lists, still undecoded, and a converted character simply
-   arrives carrying nothing. `ERROR: INVALID ITEM (-1/29)` was never about
+4. ~~**The `.pc` length rule is not derived.**~~ **Answered, and then derived
+   from the loader itself in §1.16.** Sizes 484 / 504 / 514 / 524 — and the
+   rule is **404 bytes of character record, plus 20 per item and 10 per
+   effect**, so 484 is four items rather than "no items". `PodWriter` emits
+   484 with the item and effect counts zero, which PoD loads and puts in the
+   party: it reads its 404 bytes and never looks at the 80 after them. The
+   extra bytes are the item lists, still undecoded, and a converted character
+   simply arrives carrying nothing. `ERROR: INVALID ITEM (-1/29)` was never about
    items: it is the `GLIB` library reader asking `CHEAD.TLB` — 29 portrait
    heads — for item −1 (§2.4).
 5. ~~**All twelve specimens are a maxed party.**~~ **Answered, and by a cheaper
