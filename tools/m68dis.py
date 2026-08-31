@@ -13,6 +13,22 @@ opcode does not define, a word that runs off the end of the buffer -- each one
 falls through to ``dc.w`` rather than being rounded to the nearest instruction
 that fits.
 
+**Two of those refusals are judgement, not the instruction set**, and the
+distinction matters enough to say here: a 68020 index extension and a branch to
+an odd address are both encodings a 68000 will happily execute -- it ignores
+the reserved extension bits, and it takes the odd branch and address-errors
+afterwards.  Neither is refused because the CPU cannot do it.  They are refused
+because **no assembler emits them**, so a word carrying one is data rather than
+code, and telling those apart is most of the work in a binary with strings and
+tables scattered through its code hunk.  Do not cite this file for what a 68000
+can and cannot encode.
+
+Nothing outside the range the caller asked for is read.  An instruction whose
+extension words would cross the end of the window prints as ``dc.w`` instead,
+because a window landing one instruction short of a hunk boundary would
+otherwise disassemble the relocation table behind it and say nothing about
+having done so.
+
 Displacements are resolved: ``bcc``, ``bsr``, ``dbcc`` and every PC-relative
 effective address print the absolute address they reach, so a branch target can
 be looked up without arithmetic.  Addresses are file offsets unless ``--base``
@@ -86,15 +102,17 @@ class Instruction:
 class _Cursor:
     """Reads big-endian words and remembers which ones it consumed."""
 
-    def __init__(self, data: bytes, pos: int, address: int) -> None:
+    def __init__(self, data: bytes, pos: int, address: int,
+                 end: int | None = None) -> None:
         self._data = data
         self._start = pos
         self._pos = pos
         self._address = address
+        self._end = len(data) if end is None else min(end, len(data))
         self.words: list[int] = []
 
     def word(self) -> int:
-        if self._pos + 2 > len(self._data):
+        if self._pos + 2 > self._end:
             raise _Undecodable("ran off the end of the buffer")
         value = int.from_bytes(self._data[self._pos:self._pos + 2], "big")
         self.words.append(value)
@@ -146,10 +164,13 @@ def _ea_kind(mode: int, reg: int) -> str:
 
 
 def _brief_index(ext: int) -> str:
-    # Bit 8 selects the 68020 full extension format; bits 10-9 are its scale.
-    # Neither exists on a 68000, so an encoding using them is not ours.
+    # Bit 8 selects the 68020 full extension format and bits 10-9 are its
+    # scale.  A 68000 has neither and ignores the bits, so silicon would run
+    # this -- but no assembler targeting a 68000 emits it, which makes a word
+    # carrying it data rather than code.  Refusing is what separates the two
+    # in a binary with strings and tables scattered through its code hunk.
     if ext & 0x0700:
-        raise _Undecodable("68020 full-format index extension")
+        raise _Undecodable("68020 index extension: an assembler would not emit this")
     letter = "a" if ext & 0x8000 else "d"
     number = (ext >> 12) & 7
     width = "l" if ext & 0x0800 else "w"
@@ -453,7 +474,11 @@ def _line6(op: int, cur: _Cursor):
         suffix = ".b"
     target = pc + offset
     if target & 1:
-        raise _Undecodable("branch to an odd address")
+        # A legal encoding that faults when it runs: the 68000 takes the
+        # branch and then address-errors on the odd PC.  No assembler emits
+        # one, so in practice this is two letters of a string that happen to
+        # start with $6x -- which is most of what line 6 finds in data.
+        raise _Undecodable("odd branch target: an assembler would not emit this")
     name = {0: "bra", 1: "bsr"}.get(condition, f"b{CC[condition]}")
     return name + suffix, f"${target:x}", target
 
@@ -562,11 +587,16 @@ def _linee(op: int, cur: _Cursor):
     return f"{name}.{suffix}", f"{_imm(count or 8)},d{op & 7}", None
 
 
-def decode(data: bytes, offset: int, address: int | None = None) -> Instruction:
+def decode(data: bytes, offset: int, address: int | None = None,
+           end: int | None = None) -> Instruction:
     """Decode the one instruction at ``offset``.
 
     ``address`` is what to call that offset when printing; it defaults to the
-    offset itself, so the addresses in the output are file offsets.  An
+    offset itself, so the addresses in the output are file offsets.  ``end``
+    bounds how far the instruction may reach: an instruction whose extension
+    words would cross it comes back as ``dc.w`` rather than reading past it,
+    which is what keeps a window ending one instruction short of a hunk
+    boundary from disassembling the relocation table that follows.  An
     encoding this does not recognise comes back as a one-word ``dc.w`` with
     ``known`` false -- never as a guess.
     """
@@ -575,7 +605,7 @@ def decode(data: bytes, offset: int, address: int | None = None) -> Instruction:
     if offset + 2 > len(data):
         raise ValueError("offset is past the end of the buffer")
 
-    cur = _Cursor(data, offset, address)
+    cur = _Cursor(data, offset, address, end)
     op = cur.word()
     line = op >> 12
 
@@ -612,12 +642,18 @@ def decode(data: bytes, offset: int, address: int | None = None) -> Instruction:
 
 def disassemble(data: bytes, offset: int, length: int,
                 base: int = 0) -> list[Instruction]:
-    """Decode ``length`` bytes from ``offset``, one instruction at a time."""
+    """Decode ``length`` bytes from ``offset``, one instruction at a time.
+
+    Nothing outside the window is read.  An instruction that would run past
+    the end of it prints as ``dc.w`` instead, because the alternative is a
+    window that silently disassembles whatever the caller did not ask for --
+    a relocation table, the next hunk, another file's bytes.
+    """
     out: list[Instruction] = []
     end = min(offset + length, len(data))
     pos = offset
     while pos + 2 <= end:
-        item = decode(data, pos, base + pos)
+        item = decode(data, pos, base + pos, end)
         out.append(item)
         pos += item.size
     return out
@@ -640,7 +676,7 @@ def references_to(data: bytes, target: int, offset: int, length: int,
     hits: list[Instruction] = []
     end = min(offset + length, len(data))
     for pos in range(offset, end - 1, 2):
-        item = decode(data, pos, base + pos)
+        item = decode(data, pos, base + pos, end)
         if item.known and item.target == target:
             hits.append(item)
     return hits

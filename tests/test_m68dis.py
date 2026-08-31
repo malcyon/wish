@@ -136,8 +136,11 @@ def test_line_a_and_line_f_are_not_instructions():
 def test_bit_eight_is_not_a_unary_operation():
     # 0x4552 is the letters "ER".  NEGX/CLR/NEG/NOT/TST live in bits 11-8, so
     # a decoder reading only 11-9 calls this neg.w (a2) and means it.  That
-    # bug was in this file's first draft and a cross-check caught it.
+    # bug was in this file's first draft and a cross-check caught it.  This
+    # assertion is the proof of it: remove the bit-8 guard and it goes red.
     assert text([0x4552]) == "dc.w $4552"
+    # 0x4329 is the letters "C)".  A second refusal worth pinning, but not a
+    # second proof of the same bug -- the size-3 guard catches it either way.
     assert text([0x4329]) == "dc.w $4329"
 
 
@@ -158,6 +161,23 @@ def test_an_addressing_mode_the_instruction_cannot_take():
 def test_an_instruction_cut_off_by_the_end_of_the_buffer():
     assert m68dis.decode(b"\x48\xe7", 0).text == "dc.w $48e7"
     assert m68dis.decode(b"\x48\xe7", 0).known is False
+
+
+def test_nothing_outside_the_window_is_read():
+    # The instruction is four bytes and the caller asked for two.  Reading the
+    # other two would be reading bytes nobody asked about -- the next hunk, a
+    # relocation table -- and disassembling them as if they had been requested.
+    data = bytes.fromhex("4e55ffb6" "4e75")
+    assert [item.text for item in m68dis.disassemble(data, 0, 2)] == ["dc.w $4e55"]
+    assert [item.text for item in m68dis.disassemble(data, 0, 4)] == ["link a5,#-$4a"]
+
+
+def test_a_reference_scan_does_not_read_past_its_range():
+    # 0x4879 0x0002 0x55b2 is pea $255b2, and it starts two bytes inside a
+    # window that stops before its last word.
+    data = bytes.fromhex("4e71" "4879000255b2")
+    assert m68dis.references_to(data, 0x255B2, 0, 6) == []
+    assert [hit.mnemonic for hit in m68dis.references_to(data, 0x255B2, 0, 8)] == ["pea"]
 
 
 def test_a_decoded_instruction_says_it_is_known():
