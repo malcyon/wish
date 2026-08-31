@@ -234,7 +234,7 @@ def test_reading_a_save_leaves_its_bytes_alone():
 
 def test_the_summary_prints_the_lines_the_panel_shows():
     lines = book.summary_lines(game_file("SAVEDGAME0"))
-    assert lines[0] == "Commissions completed: 0"
+    assert lines[0] == "Quests completed: 0"
     assert "  clear Sokal Keep" in lines
 
 
@@ -341,7 +341,7 @@ def test_all_six_books_paid_is_one_paid_row_with_no_count(app):
 
 def test_a_party_that_has_done_nothing_sees_the_opening_three(app):
     panel = panel_for(app, blank())
-    assert panel.completed.text() == "Commissions completed: 0"
+    assert panel.completed.text() == "Quests completed: 0"
     assert rows(panel) == [
         ("Clear Sokal Keep", "offered", ""),
         ("Bring back books, maps and tomes", "offered", ""),

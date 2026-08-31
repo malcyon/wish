@@ -510,7 +510,7 @@ def read(source, party_strength: int | None = None) -> Commissions:
 def summary_lines(source) -> list[str]:
     """The panel as text, for a terminal. Same content, no Qt."""
     state = read(source)
-    lines = [f"Commissions completed: {state.completed}"]
+    lines = [f"Quests completed: {state.completed}"]
     lines.append("Available:")
     lines += [f"  {o.text}" for o in state.offers] or ["  nothing"]
     for heading, rows in (("In progress:", state.in_progress),

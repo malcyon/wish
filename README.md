@@ -123,7 +123,7 @@ flatpak override --user --share=network net.sf.VICE
 Some icons are from **Font Awesome Free 7.3.1** by Fonticons, Inc.
 (<https://fontawesome.com>) — icons licensed **CC BY 4.0**. Their path data is
 in `ui/icons.py`; the licence is in
-[`docs/licences/fontawesome-LICENSE.txt`](docs/licences/fontawesome-LICENSE.txt).
+[`fontawesome-LICENSE.txt`](fontawesome-LICENSE.txt).
 
 
 ## Documentation

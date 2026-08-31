@@ -411,7 +411,7 @@ class CommissionsPanel(QObject):
         state = book.read(flags)
         self.set_message("")
         if self.completed is not None:
-            self.completed.setText(f"Commissions completed: {state.completed}")
+            self.completed.setText(f"Quests completed: {state.completed}")
 
         self.groups["commissions"].show_rows(
             commission_rows(flags)

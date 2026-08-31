@@ -2124,7 +2124,7 @@ def test_the_tab_shows_the_commissions(app, tmp_path, monkeypatch):
     for _ in range(window.LIVE_EVERY):
         window.tick()
     assert window.commissions.completed.text().startswith(
-        "Commissions completed:")
+        "Quests completed:")
     assert window.commissions.heading.text() == "Quest Log"
 
 
