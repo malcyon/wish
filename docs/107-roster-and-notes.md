@@ -45,7 +45,15 @@ Each card carries one line of what that character has **in hand**, decoded by
 * **Readied only.** The whole inventory would swamp the card; what matters
   mid-crawl is what is in hand.
 * One line, comma separated, elided to the card's 248px, with the full list in
-  the tooltip.
+  the tooltip. The label sets no tooltip of its own, so it answers with the
+  card's, which already carries `Readied: ...`.
+* **The line never adds to the window's floor.** `panel.ReadiedLabel.SHORT` is
+  0, which makes it the first row on a card to give way: eight cards in a
+  column that does not scroll, each insisting on a line of height, is eight
+  lines added to a page that still has to fit a 720-high screen (#97, #100).
+  Anywhere above that floor it is drawn in full. Its point size is set in
+  `wish/window.ui` rather than inherited, so it does not get taller as the UI
+  font grows either.
 * A character with nothing readied gets a **blank line, not the word "none"** —
   the absence is the information — and the line stays, so the cards below do not
   shift when a sword is put away.
@@ -227,6 +235,9 @@ licence.
   the card does not change height.
 * A long readied list is elided to the card's width and kept whole in the
   tooltip.
+* The line asks for the same height at +0, +3, +6 and +10 point, and asks the
+  layout for nothing at all, so the window's floor with eight cards showing is
+  the floor without the feature.
 * `live.readied` returns the readied items and not the rest — checked against
   the player's own equipped party, and empty with no disk.
 * The attribution is in the README and the About box, and the licence file is in
