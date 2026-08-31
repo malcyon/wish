@@ -16,7 +16,7 @@ at `$0600` and the two combat files seen do not agree: `SQRPACI01` has a row
 bounds 55 x 25, `SQRPACI00` bounds 17 x 35 -- and 18 x 36 squares is exactly
 the 648 bytes that sit in front of the glyph table in a `SQRDATA` file.
 `COM.PREP $08C6` derives the camera clamps from the same bytes, which is what
-proves the reading. Full write-up in `work/reports/combat-terrain.md`.
+proves the reading. The write-up, `work/reports/combat-terrain.md`, is lost.
 """
 
 from __future__ import annotations

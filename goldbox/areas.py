@@ -24,13 +24,13 @@ two entries for the three doubled ones, and `areas_for_geo` returns a tuple as
 well -- there is nothing in the format that stops two scripts naming one map,
 and `ECL07` already loads `GEO03` on its way into area 5.
 
-Names come from `docs/88-map-files.md`, `work/reports/world-map.md` and
-`work/reports/quest-flags.md`; arrival squares were harvested from the
+Names come from `docs/88-map-files.md` and two write-ups since lost,
+`work/reports/world-map.md` and `work/reports/quest-flags.md`; arrival squares were harvested from the
 departing scripts' `SAVE <n>, mapX` and the arriving scripts' entry 4. Fourteen
 areas have no known arrival square and say so with `arrival = None`. FastTraveling
 into all fifteen that had none at the time and watching where the party ends up
-is `work/reports/p20-arrivals.md`: it found area 21's square in `ECL15`'s own
-bytecode, and `landing_square` at the foot of this module is the fallback that
+P20, whose write-up `work/reports/p20-arrivals.md` is lost: it found area 21's
+square in `ECL15`'s own bytecode, and `landing_square` at the foot of this module is the fallback that
 measurement put in place of "the first square with a passable edge".
 
 **A name is a title, so it is title-cased**, leading article included: "The
@@ -51,7 +51,10 @@ digits, rather than to a confident wrong answer.
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
-(`work/reports/goldbox-inventory.md`). Scan a directory; never a range.
+(write-up lost, `work/reports/goldbox-inventory.md`; the per-title base
+addresses are asserted in
+`tests/test_curse.py::test_the_addresses_are_the_ones_measured`). Scan a
+directory; never a range.
 """
 
 from __future__ import annotations
@@ -152,7 +155,8 @@ class Area:
     #:
     #: **And the inference is wrong for both.** FastTraveled into, area 3 loaded
     #: `GEO05` and area 5 loaded `GEO04` -- `$6E15` and the bytes at `$0400`
-    #: agreeing (`work/reports/p20-arrivals.md`). So a square chosen off
+    #: agreeing (write-up lost, `work/reports/p20-arrivals.md`). So a square
+    #: chosen off
     #: `geos[0]` is a square off a map the game was never going to show, and a
     #: caller with no arrival square should write none for these two and let
     #: the arriving script place the party, which is what it does.
@@ -162,7 +166,7 @@ class Area:
     #: `$C04B`-`$C04D` read `254, 127, 16`, no `GEO` is resident, no status
     #: line and no command bar appear, and the program counter never returns
     #: to `DUNGEON`'s key-wait loop, so **no later fasttravel can be started**
-    #: (`work/reports/p20-arrivals.md`).
+    #: (write-up lost, `work/reports/p20-arrivals.md`).
     fasttravelable: bool = True
 
     @property
@@ -238,7 +242,8 @@ AREAS: tuple[Area, ...] = (
     # `ECL15 $9A92` reads `SAVE 1, [$4A02] / SAVE 0, mapDir / SAVE 8, mapX /
     # SAVE 14, mapY`, immediately before the boat message, so the square is
     # the script's own and is gated on the scratch flag `$4A02` being zero.
-    # Watched placing a fasttraveled-in party (`work/reports/p20-arrivals.md`).
+    # Watched placing a fasttraveled-in party (write-up lost,
+    # `work/reports/p20-arrivals.md`).
     _a(21, "Sokol Keep", 4, ("GEO15",), Arrival(8, 14, 0), C),
     _a(22, "Yarash's Pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
     _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
@@ -400,7 +405,8 @@ def landing_square(geo) -> tuple[int, int, int] | None:
 
     **What `FastTravel` uses**, in place of the old rule -- the first square with any
     passable edge at all, which therefore took `(0, 0)` on every one of the
-    twenty-nine maps (`work/reports/p20-arrivals.md`). That was legal in the
+    twenty-nine maps (write-up lost, `work/reports/p20-arrivals.md`; the pocket
+    sizes are asserted in `tests/test_p20.py`'s `POCKETS`). That was legal in the
     narrow sense on most
     maps and wrong on four: `(0, 0)` is in a pocket of 32 squares in `GEO05`,
     30 in `GEO19`, 16 in `GEO1A` and 48 in `GEO1B`, cut off from the rest of
