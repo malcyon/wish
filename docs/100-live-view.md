@@ -67,12 +67,22 @@ reading a table. Show them as short labels on the card, and keep the separate
 Effects panel for the full picture including party-wide and monster entries.
 
 Colour them the way the game's own information reads: **good in green, bad in
-red** -- once there is anything to colour by. **As built they are numbers.**
-The forty-odd named codes in `editor/effects.py` are the *record's* list at
-`0x0AD`, and whether the `$4900` timed-effect ids share that namespace is
-unproven: no save we hold was taken mid-effect, so the arrays are zero in all
-of them and nothing on disk can settle it. Until it is settled an id shows as
-its number, which is visibly unknown rather than quietly mislabelled.
+red** -- once there is anything to colour by.
+
+**The objection this section used to raise is retired.** It said the `$4900`
+timed-effect ids might not share the record's `0x0AD` namespace, and that no
+save we hold was taken mid-effect so nothing could settle it. Both halves are
+wrong. `P3-EFFECTS.D64` was saved with twenty-six spells running
+([133](133-active-effects.md)), and the question is settled the other way:
+**it is one namespace**, because `LIBRARY $4028` reads the arrays first and
+falls back to the character's own slots, so `goldbox/traits.py` names both.
+A Sleep cast in a live fight writing id 53 on each sleeper is the same
+namespace seen from the running game ([50](50-experiments.md), "What a Sleep
+writes, and what it does not").
+
+An id with no name still shows as its number, which is visibly unknown rather
+than quietly mislabelled -- but that is now a gap in the name table, not a
+doubt about which table applies.
 
 **Effects is the panel that earns the tab.** Nothing else in the project shows
 them, the game itself only hints, and the decode is recent: the four parallel
@@ -160,37 +170,64 @@ number is only interesting while editing, it belongs on the editor tab.
 
 ## Order of work
 
-1. `snapshot.py` — the two reads and the dataclass, tested headless against
-   captured bytes. A save file *is* a captured snapshot, so
-   `PORSAVE11.D64` and `PORSAVE13.D64` are ready-made fixtures.
+1. **Done, as `automap/live.py`** — not a separate `snapshot.py`. The two
+   reads, `read_blocks`/`read_snapshot`, and the dataclasses (`Snapshot`,
+   `Character`, `Effect`, `ClassProgress`) are there, with no Qt. Tested
+   headless against captured bytes and against `PORSAVE11.D64` read straight
+   off a disk (`test_the_party_reads_the_same_live_as_it_does_off_the_disk`,
+   `tests/test_automap.py`).
 2. ~~The experience table~~ **Done, a different way.** `work/goldbox-research/por_xp_tables.txt`
    is gone; the table came instead from `goldbox/levels.py`, generated into
    [`89-level-tables.md`](89-level-tables.md) and verified against the game
    rather than transcribed. `automap/live.py` already draws the experience bar
    from `levels.progress()`.
-3. The party cards: hit point bar, experience bar, per-character effects.
-4. The effects panel — the full picture, including party-wide and monster rows.
-5. Where, and the collapsed loaded-files list.
-
-Step 1 is worth landing alone: it turns "read the live game" into a pure
-function, which is also what a future Ultimate backend needs.
+3. **The hit point bar and experience bar are done** — `automap/panel.py`'s
+   `CharacterCard.show_character`, `Bar` and `hp_colour`. **Per-character
+   effects are not.** `Character.effects` is decoded and carried on every
+   character, but nothing in `automap/panel.py` reads it; the card badges only
+   two conditions (dead/dying, levels drained). The rest waits on Donald
+   choosing an icon per effect — the decision sheet is
+   [`136-condition-badges.md`](136-condition-badges.md).
+4. **Done, folded into the bottom strip rather than a separate panel.**
+   `BottomStrip.show_state` (`automap/panel.py`) lists party-wide effects by
+   label and counts monster effects rather than listing them row by row —
+   deliberately: a monster's effects belong to whatever is being fought, and
+   the combat view is where they will mean something.
+5. **Where is done**, in the same strip. **The loaded-files list was built
+   collapsed, then taken back out.** `BottomStrip.__init__`'s comment says
+   why: a reverse-engineering number in a window somebody is playing a game in
+   was the wrong thing to show a player. It goes to the debug log now, and
+   only when it changes.
 
 ---
 
 ## Verification
 
-* `snapshot.py` against `PORSAVE11.D64`'s bytes gives six characters with
-  ROLAND at 5 of 7 and wounded — the same assertion the editor's roster test
-  makes, from the same bytes by a different path.
-* Against `PORSAVE13.D64`, the area reads `GEO14`, the Slums.
-* A snapshot of all zeros is rejected rather than shown as six dead characters.
-* Switching away from the tab stops the polling — assert no reads while hidden.
-* With the effects arrays zeroed, the panel says "none", not six blank rows.
-* A hit point bar at 5 of 7 is two-thirds full and coloured as hurt; at full it
-  is not coloured as hurt.
-* An experience bar sits between the character's current level threshold and the
-  next, and is checked against a character whose level the game itself displays.
-* A character with no effects shows an empty strip on their card, not a gap that
-  shifts the layout.
-* Live, in the game: cast a spell with a duration and watch it count down, then
-  confirm the row disappears when the game clears the id.
+* `automap/live.py` against `PORSAVE11.D64`'s bytes gives six characters with
+  ROLAND at 5 of 7 and wounded —
+  `test_the_party_reads_the_same_live_as_it_does_off_the_disk`
+  (`tests/test_automap.py`).
+* Against `PORSAVE13.D64`, the area reads `GEO14`, the Slums — proven on the
+  decode path `live.py` reuses unchanged rather than through the live reader
+  itself: `test_the_boundary_pair_settles_the_area_byte`
+  (`tests/test_savegame.py`), PORSAVE12 and PORSAVE13 either side of the
+  doorway.
+* A snapshot of all zeros is rejected — `test_a_machine_full_of_zeros_is_not_a_party`.
+* Switching away from the tab stops the polling —
+  `test_only_the_visible_tab_is_read` and `test_a_hidden_map_tab_reads_nothing`
+  (`tests/test_wish.py`).
+* With the effects arrays zeroed, `BottomStrip.show_state` sets the text to
+  "none" — but no test asserts it.
+  `test_the_strip_says_when_the_party_is_not_readable` never reads
+  `.effects.text()` despite its name, and is worth a look.
+* A hit point bar at 5 of 7 is coloured as hurt, and a full one is not —
+  `test_a_wounded_character_is_coloured_and_a_whole_one_is_not`, which cites
+  this page's own example.
+* The experience bar draws from `goldbox/levels.py`, checked against
+  twenty-nine level-ups driven through the training school and read off the
+  record before and after each one — `tests/test_levels.py`.
+* Not verified, because neither is buildable yet: an empty per-character
+  effects strip that leaves no gap in the layout, and a live spell's duration
+  counting down to a row that disappears on expiry. Nothing renders a
+  per-character effect anywhere today (item 3 above), so there is no strip and
+  no row for either to be true of.
