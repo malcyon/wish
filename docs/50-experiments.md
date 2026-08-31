@@ -5784,3 +5784,167 @@ files to check.
 Nothing about `goldbox.amiga.PodWriter` moves: it leaves both counts zero, so
 PoD reads 404 bytes and stops, and the 80 bytes after them are padding rather
 than a length the game wants.
+
+## Fast Travel out of New Phlan loses the wall art, and the loader never notices (#156)
+
+Donald reported that warping from the Slums to New Phlan draws New Phlan with
+corrupted wall art, twice. It reproduces, and the cause is one byte of the
+loaded-files cache that a real exit script writes and `FastTravel` does not.
+
+### What was measured
+
+Five driven sessions on instance-pool slot 0, all from the player's own save
+disks. Every arrival at New Phlan in `work/wallart/run4` is at New Phlan's own
+arrival square, `(15, 1)` facing west, so the pictures compare directly.
+
+| where the party was, and how it got there | `$ED50`-`$FF97` against `WALLS00` |
+|---|---|
+| the Slums, `PORSAVE13` freshly loaded | 879 of 4680 bytes |
+| New Phlan, **walked** east out of the Slums | **4086 of 4680** |
+| New Phlan, **first warp** out of the loaded Slums | **4086 of 4680** |
+| New Phlan, **warped** after a warp into the Slums | 879 of 4680 |
+| New Phlan, warped after `$6E1C` was poked to `$FF` | **4086 of 4680** |
+
+879 of 4680 is the chance agreement between `WALLS00` and whatever is at
+`$ED50` when it was never loaded; the three captures scoring it are byte-equal
+to each other. `cmp -l` between `run3/01-slums-loaded` and
+`run3/04-newphlan-fasttravel` is **0 of 4688 bytes different**: the region New
+Phlan draws its walls from still holds exactly what it held in the Slums.
+
+Everything else is identical between a walked and a warped arrival — the
+resident `GEO` at `$0400` (0 bytes differ), `SECSET` and the wall pieces at
+`$6500`-`$6AFF` (0), the staging buffer at `$8C00` (0), and the 25-byte cache
+at `$6E13` (0). The loader is not confused about which file it wants. It is
+confused about whether it already has it.
+
+### The mechanism
+
+`WALLS` is slot 9 of the loaded-files cache ([`140`](140-loaded-files-cache.md)),
+`$6E1C` live and `$4BC9` in a save, and it loads at `$ED50` under the KERNAL.
+`WALLS00` is 4680 bytes, `$ED50`-`$FF97`, and New Phlan is the only area that
+uses one.
+
+Everywhere else the walls come from a `WALLDEF` triple. `LOADPIECES`
+(`DUNGEON $276E`) marks the three slots dirty, `$145C` walks them 2 down to 0
+reloading each into the staging buffer at `$8C00`, and `$1485` unpacks each to
+**`$ED50`, `$F05C` and `$F368`** — the destinations are the three-byte tables
+at `$14BF` and `$14C2`. So the unpacked wall definitions and `WALLS00` are the
+same memory and cannot both be true. Eighteen of eighteen engine-written saves
+on the player's disks agree: twelve New Phlan saves carry slot 9 = `WALLS00`
+with `FF FF FF` in the `WALLDEF` slots, six Slums saves carry slot 9 = `$FF`
+with a `WALLDEF` triple, and none carries both.
+
+Two properties of the loader turn the collision into silent corruption. The
+unpack at `$1485` is not a `LIBRARY` load, so the overwrite scan at
+`LIBRARY $427E`-`$42C5` — which sets bit 7 on any slot whose memory a load has
+just written over — never sees it. And `LIBRARY $4225` returns without loading
+when the number asked for equals the number the slot already holds, so a later
+request for `WALLS00` against a slot that still says `00` loads nothing.
+
+What keeps the engine out of that state is the departing script. **`ECL00` is
+the only script of the thirty that releases `WALLS`**, and it does it on the
+way out, twice:
+
+| script | statement | effect |
+|---|---|---|
+| `ECL00` `$9955`, `$9BDC` | `LOADFILES 255, 255, 127` | leave the `GEO`, leave `SECSET`, **set `WALLS` empty** |
+| `ECL00` `$9B0A`, `$9B11` | `LOADFILES 0, 0, 0` / `LOADPIECES 127, 127, 127` | New Phlan's own arrival |
+| `ECL14` `$9A8B`, `$9A92` | `LOADFILES 20, 2, 255` / `LOADPIECES 2, 4, 1` | the Slums: **leave `WALLS` alone** |
+| `ECL12` `$9971`, `$9978` | `LOADFILES 18, 2, 255` / `LOADPIECES 1, 3, 5` | Podol Plaza, the same shape |
+| `ECL15` `$9A7C`, `$9A83` | `LOADFILES 21, 2, 255` / `LOADPIECES 1, 5, 9` | Sokol Keep, the same shape |
+
+`127` is the loader's "mark this slot empty without loading", `255` is "leave
+it alone". `ECL19`, `ECL1A` and `ECL1B` carry a `LOADFILES 127, 127, 127` for
+the wilderness caves and are the only other sites; no arriving script takes
+`WALLS` away, because nobody but New Phlan wants it.
+
+`FastTravel` enters `NEWECL` at its tail, `$2034`, which is past the whole
+departing script — that is the trick that makes fasttravelling possible at all
+([`118`](118-debug-mode.md)). So warping out of New Phlan skips
+`LOADFILES 255, 255, 127`, slot 9 keeps saying `WALLS00`, the arriving area
+unpacks its wall definitions over `$ED50`, and the next `LOADFILES 0, 0, 0` in
+New Phlan declines to reload the file it has just lost.
+
+**It takes two trips, and the one the player sees is the second.** A first warp
+out of a freshly loaded Slums is clean, because a save the engine wrote in the
+Slums already carries slot 9 = `$FF`.
+
+### Proved by intervention
+
+Poking `$6E1C = $FF` before the warp out of New Phlan, and changing nothing
+else, makes the next arrival in New Phlan **byte-identical** to the clean one:
+`cmp -l` on `$ED50`-`$FF97` between `run4/02-newphlan-first-warp` and
+`run4/06-newphlan-after-poke` is 0 of 4688. Counted: 3 of 3 arrivals with slot
+9 = `00` beforehand were corrupt, 2 of 2 with `$FF` were clean, and the one
+walked arrival was clean.
+
+### How the script opcodes were read, which is reusable
+
+`DUNGEON $1590` fetches a bytecode, indexes **`$15A9`** for the handler's low
+byte and **`$15E7`** for its high, writes the pair into the `JSR` operand at
+`$15A4` and calls it; **`$1625`** is the operand count per opcode. Index `$20`
+resolves to `$2011`, which [`118`](118-debug-mode.md) already names as
+`NEWECL`, so the tables are the right ones. That makes `LOADFILES` opcode
+**`$21`** (`$2041`, three operands) and `LOADPIECES` opcode **`$37`**
+(`$276E`, three operands). `DUNGEON $1663` decodes an operand: kind byte `00`
+means an immediate follows, which is the form all six statements above use.
+`work/wallart/loadfiles.py` prints them for any script.
+
+### Where the release sits, exactly
+
+`ECL00`'s five entry points are a table at the head of the file — `$9914`,
+`$99EB`, `$9A5E`, `$9A93`, `$9AF2` — so `$9955` is inside **entry 0**, the
+per-square event dispatcher, and the statements around it are the departing
+sequence [`118`](118-debug-mode.md) already describes:
+
+```
+$9950  SAVE 255, [$6DC9]            cancel the move the party was making
+$9955  LOADFILES 255, 255, 127      give $ED50 back
+$995C  SAVE 2, [$6E12]              the Slums is on POOL2
+$9962  NEWECL 20                    the Slums
+```
+
+The second release, `$9BDC`, sits in the same shape three statements before
+`NEWECL 21`, Sokol Keep, with `SAVE 4, [$6E12]` between them. So both are exit
+statements and neither is in the arrival entry.
+
+`FastTravel` writes `$6E12` and makes `NEWECL`'s writes, so of that block it
+reproduces the third and fourth statements and skips the first two. The
+`LOADFILES` is the one that costs; `$6DC9` is unmeasured, and a fast travel is
+taken from the key-wait loop where there is no move in flight.
+
+New Phlan's eight `NEWECL` exits, and whether each releases `WALLS`:
+
+| exit | to | release |
+|---|---|---|
+| `$9962` | 20, the Slums | yes |
+| `$9BF1` | 21, Sokol Keep | yes |
+| `$9C16`, `$9C2B`, `$9C40` | 26, 26, 27 — the travel grid | no |
+| `$A22D`, `$A230` | 11, the training hall | no |
+| `$AD7F` | 8 | no |
+
+That is not an oversight in the game: the travel maps draw from `SQRDATA` and
+their scripts open with `LOADFILES 127, 127, 127`, and `ECL08` and `ECL0B` have
+no `LOADFILES` at all, so none of the five takes `$ED50`. The engine releases
+the slot on exactly the exits that go somewhere which will overwrite it, which
+is why the collision never shows in ordinary play.
+
+### Refuted along the way
+
+* **That `newecl_writes` is missing one of `NEWECL`'s own writes.** It is not.
+  `DUNGEON $2011`-`$2032` is `$49F2 = $6E1B & $7F`, the operand test,
+  `$6E1B = new | $80`, and the 32-byte scratch wipe — exactly the five writes
+  `automap/actions.py` makes, in that order, and nothing else.
+* **That the staging buffer at `$8C00` is what goes wrong.** It looked that way
+  in `work/wallart/run2`, where a warped Slums held a mixture of three
+  `WALLDEF` files there. That capture was taken **mid-load**: a fixed settle of
+  40 s is not enough for an arrival that comes off a floppy, and the piece
+  loads were still running. With a wait that polls the program counter until it
+  is back in `DUNGEON`'s key-wait loop, `$8C00` is identical between a walked
+  and a warped arrival, 0 bytes of 1536. The lesson is the general one — a
+  capture that is not idle is a measurement of the harness.
+* **That `$49FD`/`$49FE`, the wall colours, are involved.** They are not: they
+  read 8 and 9 in both the walked and the warped arrival at New Phlan. Worth a
+  separate note that `$49FE` stays at the Slums' 9 after walking into New Phlan
+  and only becomes New Phlan's 10 after a step — so `ECL00` writes it somewhere
+  other than entry 4. Nothing here depends on it.
