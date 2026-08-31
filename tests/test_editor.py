@@ -341,6 +341,66 @@ def test_editing_quantity_and_readied_reaches_the_disk(editor, save):
 
 
 @game_disks
+def test_editing_weight_writes_tenths_of_a_pound_to_the_disk(editor, save):
+    """The lb column stores pounds; the bytes hold tenths -- a whole-number
+    edit of 12 must land as 120, not 12."""
+    from editor.window import EditorBinding
+    editor.roster.selectRow(0)                    # MALCYON, six darts
+    model = editor.items
+    assert model.setData(model.index(1, 6), 12)                       # lb
+    assert "wrote" in editor.save(interactive=False)
+
+    again = EditorBinding(make_root(), str(save), GAME_DISK)
+    again.roster.selectRow(0)
+    item = again.items.inventory.item(1)
+    assert item.weight_tenths == 120
+    assert item.weight_lb == 12.0
+
+
+@game_disks
+def test_a_fractional_weight_edits_to_the_nearest_tenth(editor):
+    """3.5 lb is 35 tenths, and the column shows it back as 3.5 -- the
+    conversion this task is actually about."""
+    editor.roster.selectRow(0)
+    model = editor.items
+    assert model.setData(model.index(1, 6), 3.5)
+    assert model.inventory.item(1).weight_tenths == 35
+    assert model.data(model.index(1, 6)) == "3.5"
+
+    # A value finer than a tenth rounds to the nearest one.
+    assert model.setData(model.index(1, 6), 3.54)
+    assert model.inventory.item(1).weight_tenths == 35
+
+
+@game_disks
+def test_weight_out_of_range_is_refused(editor):
+    editor.roster.selectRow(0)                    # MALCYON, six darts
+    model = editor.items
+    before = model.inventory.item(1).weight_tenths
+    assert not model.setData(model.index(1, 6), 6553.6)   # 65536 tenths
+    assert not model.setData(model.index(1, 6), -1)
+    assert model.inventory.item(1).weight_tenths == before
+
+
+@game_disks
+def test_rubbish_weight_is_refused(editor):
+    editor.roster.selectRow(0)                    # MALCYON, six darts
+    model = editor.items
+    before = model.inventory.item(1).weight_tenths
+    assert not model.setData(model.index(1, 6), "heavy")
+    assert model.inventory.item(1).weight_tenths == before
+
+
+@game_disks
+def test_an_empty_slot_is_not_weight_editable(editor):
+    from PyQt6.QtCore import Qt
+    editor.roster.selectRow(2)                    # ROLAND, slot 2 is empty
+    model = editor.items
+    assert not model.flags(model.index(2, 6)) & Qt.ItemFlag.ItemIsEditable
+    assert not model.setData(model.index(2, 6), 5)
+
+
+@game_disks
 def test_an_added_item_is_a_copy_of_the_games_own_record(editor, save):
     from editor.window import EditorBinding
     from goldbox.items import load_item_templates

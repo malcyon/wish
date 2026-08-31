@@ -110,6 +110,11 @@ class Inventory:
         """The numeric plus, signed -- a cursed -2 is stored as 254."""
         self._patch(n, 4, value)
 
+    def set_weight_tenths(self, n: int, tenths: int) -> None:
+        """Weight in tenths of a pound, 16-bit little-endian at +8/+9."""
+        self._patch(n, 8, tenths & 0xFF)
+        self._patch(n, 9, tenths >> 8)
+
     def set_readied(self, n: int, on: bool) -> None:
         flags = self.raws[n][6]
         self._patch(n, 6, (flags | READIED) if on else (flags & ~READIED))
@@ -176,7 +181,7 @@ LONGEST_ITEM_NAME = "TWO-HANDED SWORD +1 +3 VS UNDEAD"
 
 NUMBER, NAME, QTY, READIED_COL, IDENTIFIED, BONUS, WEIGHT, COST = range(8)
 HEADERS = ("#", "Item", "Qty", "Readied", "Identified", "Bonus", "lb", "gp")
-EDITABLE = (QTY, BONUS)
+EDITABLE = (QTY, BONUS, WEIGHT)
 CHECKABLE = (READIED_COL, IDENTIFIED)
 
 
@@ -252,7 +257,8 @@ class InventoryModel(QAbstractTableModel):
             return item.bonus if role == Qt.ItemDataRole.EditRole \
                 else (f"{item.bonus:+d}" if item.bonus else "")
         if col == WEIGHT:
-            return f"{item.weight_lb:g}"
+            return item.weight_lb if role == Qt.ItemDataRole.EditRole \
+                else f"{item.weight_lb:g}"
         if col == COST:
             return str(item.cost_gp)
         if col == READIED_COL:
@@ -293,6 +299,15 @@ class InventoryModel(QAbstractTableModel):
                 self.inventory.set_identified(row, on)
             else:
                 return False
+        elif role == Qt.ItemDataRole.EditRole and col == WEIGHT:
+            try:
+                pounds = float(value)
+            except (TypeError, ValueError):
+                return False
+            tenths = round(pounds * 10)
+            if not 0 <= tenths <= 65535:
+                return False
+            self.inventory.set_weight_tenths(row, tenths)
         elif role == Qt.ItemDataRole.EditRole and col in EDITABLE:
             try:
                 n = int(value)
