@@ -111,10 +111,26 @@ Recorded because each is cheap to try again and expensive to re-disprove.
 `$127F CMP #$01 / BEQ $12AF` returns before the store. PROBABLE rather than
 CONFIRMED: it is plain in the code and no natural 1 came up in either fight.
 
-**Polling cannot count rolls it did not see.** Two attacks resolved between two
-polls collapse to the last one. `$A4F9` counts attempts and `$A4FA` landings
-within an action, so a jump of more than one says rolls were missed — which is
-enough to say so honestly rather than to pretend to recover them.
+**Polling cannot count rolls it did not see — and so far it never has had to.**
+Two attacks resolved between two polls would collapse to the last one, because
+`$2B10` holds one d20. `$A4F9` counts attempts within an action, so a jump of
+more than one would say rolls were missed.
+
+**Measured on the recorded fight: it never happened.** Across 212 polls and 21
+driven turns, `$A4F9` reached 1 and never 2 — 194 of those polls were inside an
+attack action, four attempts were observed, and **none was missed**. That fits
+the persistence measurement above: a d20 value survives between 0.8 s and
+317.8 s where the poll gap is 0.1 s, so we read far faster than the game rolls.
+
+The hole is real but has not opened. A monster with several attacks a round has
+not been fought, and that is where it would show up first. The count is kept
+and goes to the **debug log**, never to the Messages panel — Donald's ruling,
+2026-08-31: the roll line says the roll and no more, and a number about our
+polling is not something a player should read.
+
+**The byte reads `$80` when no attack action is running**, which is not a
+count. An analysis that treats it as one reports almost every attack as missed;
+that was done once here and the answer looked plausible.
 
 ## Cost, if it is built
 

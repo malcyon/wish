@@ -864,6 +864,12 @@ class AutomapBinding(QObject):
             dice = rolls.roll_line(msg, names)
             if dice:
                 self.messages.say(recase(dice, names.values()), dedup=False)
+            # Rolls the poll rate lost. Not shown: the roll line says the roll
+            # and no more (#139). Here so the loss is measurable when somebody
+            # doubts the feature, and nowhere a player will read it.
+            if msg.roll is not None and msg.roll.missed:
+                _log.debug("%d roll(s) resolved between two polls, unseen",
+                           msg.roll.missed)
 
     @staticmethod
     def _battle_note(battle) -> str:
