@@ -172,7 +172,10 @@ def test_no_citation_points_at_a_write_up_that_is_not_there(files):
     for rel in files:
         if rel.parts[0] not in CITING or rel.suffix not in (".md", ".py"):
             continue
-        if str(rel) in OUTPUT_PATHS:
+        # `as_posix()`, not `str()`: on Windows a tracked path renders as
+        # `tools\\iconsheet.py` and never matches the allowlist, which is how
+        # this test went red on both Windows jobs and green on Linux.
+        if rel.as_posix() in OUTPUT_PATHS:
             continue
         lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
         for i, line in enumerate(lines):
@@ -184,7 +187,7 @@ def test_no_citation_points_at_a_write_up_that_is_not_there(files):
                 continue
             for cited in re.findall(r"work/reports/[A-Za-z0-9._/-]+", line):
                 if not (ROOT / cited.rstrip(".,;:`)")).exists():
-                    bad.append(f"{rel}:{i + 1}  {cited}")
+                    bad.append(f"{rel.as_posix()}:{i + 1}  {cited}")
     assert not bad, (
         "these cite a write-up under gitignored `work/reports/` without saying "
         "it is lost, and the file is not there:\n  " + "\n  ".join(bad)
