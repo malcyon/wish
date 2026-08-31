@@ -13,6 +13,7 @@ what is committed. Untracked scratch under `work/` is ignored and fine.
 
 
 import pathlib
+import re
 import subprocess
 
 import pytest
@@ -126,3 +127,66 @@ def test_no_hardcoded_user_paths(files):
             pass
     assert not bad, f"Hardcoded developer paths found in string literals: {bad}"
 
+
+
+# -- citations into gitignored scratch ---------------------------------------
+
+#: How far either side of a citation to look for the words that mark it lost.
+#: Three lines covers a citation wrapped across a sentence without reaching the
+#: next paragraph, which would let an unrelated "lost" excuse it.
+LOST_WINDOW = 3
+
+#: Wording that marks a citation as pointing at something no longer there.
+LOST = ("lost", "not currently present", "absent from", "no longer")
+
+#: Places where `work/reports/...` is where a tool *writes*, not where evidence
+#: *is*. These are not citations and the rule does not apply to them. Keep this
+#: short: a new entry is a claim that the path is an output, and if it is really
+#: a citation it belongs in `docs/` instead.
+OUTPUT_PATHS = {
+    "tools/iconsheet.py",
+    "tools/shotwindow.py",
+    "docs/109-icon-choices.md",       # the command line that runs iconsheet.py
+}
+
+CITING = ("docs", "automap", "goldbox", "editor", "wish", "ui", "tools")
+
+
+def test_no_citation_points_at_a_write_up_that_is_not_there(files):
+    """A `work/reports/` citation is a real file, or says it is lost.
+
+    `work/` is gitignored, so a permanent citation into it survives exactly as
+    long as one developer's scratch directory. `work/reports/` held 32
+    write-ups and all 32 went when it was deleted, taking the evidence for 80
+    citations across 29 documents with them (#136). `CLAUDE.md` now puts a
+    write-up's permanent home in `docs/`; this is what stops the rule being
+    forgotten.
+
+    **Scoped to `work/reports/` on purpose.** There are ~300 other references
+    to working directories -- `work/p60/`, `work/drive/`, the emulator's
+    scratch -- and those are records of where something was *done*, not
+    citations of reasoning. Widening this test to all of `work/` would fail
+    306 times today and is its own piece of work, not this one's.
+    """
+    bad = []
+    for rel in files:
+        if rel.parts[0] not in CITING or rel.suffix not in (".md", ".py"):
+            continue
+        if str(rel) in OUTPUT_PATHS:
+            continue
+        lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines):
+            if "work/reports/" not in line:
+                continue
+            window = " ".join(lines[max(0, i - LOST_WINDOW):
+                                    i + LOST_WINDOW + 1]).lower()
+            if any(word in window for word in LOST):
+                continue
+            for cited in re.findall(r"work/reports/[A-Za-z0-9._/-]+", line):
+                if not (ROOT / cited.rstrip(".,;:`)")).exists():
+                    bad.append(f"{rel}:{i + 1}  {cited}")
+    assert not bad, (
+        "these cite a write-up under gitignored `work/reports/` without saying "
+        "it is lost, and the file is not there:\n  " + "\n  ".join(bad)
+        + "\n\nA write-up's permanent home is `docs/` -- see CLAUDE.md, "
+          "Documentation.")

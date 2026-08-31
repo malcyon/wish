@@ -721,6 +721,28 @@ commit message only when it needs saying -- one sentence is still the rule.
 
 ## Documentation
 
+**A write-up's permanent home is `docs/`, never `work/`.** `work/` is for the
+game's own bytes and anything derived byte-for-byte from them -- disk images,
+raw disassembly listings, saved-game specimens -- and it is gitignored on
+purpose, because none of that may be committed. The *reasoning* about those
+bytes is not itself game data: quoting the handful of instructions a finding
+rests on is explicitly permitted, so a write-up that argues from evidence to a
+conclusion belongs in `docs/`, cited by a path that survives. **And a tool that
+regenerates an artefact belongs in `tools/`** -- losing `ecl6.py`, which decoded
+all thirty ECL scripts to 100% of every byte, cost more than losing any single
+report, and no rule about write-ups would have saved it.
+
+If a working file under `work/` would take more than a session to reproduce,
+that is the signal to write its findings into a `docs/` page -- under
+`docs/50-experiments.md`'s reasoning, or promoted to its own numbered doc --
+**before** the working file is deleted, not after.
+
+`work/reports/` held 32 such write-ups and all 32 are gone; nothing recovered
+them, and 80 citations across 29 documents had to be rewritten to say so (#136).
+`tests/test_repository_contents.py` fails the build on a new one: a `work/`
+path in `docs/` or in a package is either a file that exists, or is marked in
+its own text as lost.
+
 **A new file means a new row in that directory's `README.md`.** Every package
 directory carries one -- a table of `file` and `purpose`, one line each -- and
 `INDEX.md` at the top level says what each directory is for. Add the row in the
