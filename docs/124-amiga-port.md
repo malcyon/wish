@@ -948,7 +948,11 @@ the same grade: an inference, not a probe.
 ### 1.16 The `.pc` loader, read (#148, phase 1)
 
 **Phase 1 is done.** `tools/m68dis.py` was written for this and the routine was
-read in the Amiga *Pools of Darkness* executable. The answer the phase asked
+read in the Amiga *Pools of Darkness* executable. The disassembler was checked
+against capstone 5.0.7 in `CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000` over 100 385
+instructions of this same binary before any of the below was written down —
+`docs/50-experiments.md` §"The 68000 disassembler" has the counts and why the
+mode is part of the claim. The answer the phase asked
 for, in one line: **the loader reads 404 bytes, then twenty bytes per item,
 then ten bytes per effect, and the only thing it checks is that each of those
 reads returned the length it asked for — plus one signature byte, `'I'`, on

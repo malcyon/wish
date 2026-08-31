@@ -5687,18 +5687,32 @@ which is in `.venv` and is not a dependency of `wish` and must not become one.
 Both were walked over the whole 316 KB code hunk of the Amiga *Pools of
 Darkness* executable, advancing by our own instruction lengths.
 
+**The mode is part of the claim, so it is written down here:
+`CS_MODE_BIG_ENDIAN | CS_MODE_M68K_000`.** It is not a detail. Run the same
+comparison in `CS_MODE_M68K_020` and capstone decodes 616 more words —
+42 `chk.l`, 205 `fbf.l`, `frestore`, `fsave` and the rest of the 68881 — none
+of which exists on the CPU this binary runs on. The agreement numbers below
+are identical in both modes; what changes is the refusal count, and only the
+68000 mode accounts for it exactly.
+
 | | |
 |---|---|
 | instructions both decoded | **100 385** |
 | instruction lengths that disagreed | **0** |
 | mnemonics that disagreed | **0** |
 | operands that disagreed, after normalising the two syntaxes | **0** |
-| we refused, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020-only index extensions, 97 index extensions with the 68020 format bit set |
+| we refused, capstone decoded | 2 288 — 1 943 branches to an odd address, 248 68020 scaled or memory-indirect index extensions, 97 index extensions with the 68020 format bit set. That is the whole 2 288 with nothing left over |
 | capstone refused, we decoded | 0 |
 
 Every one of the 2 288 is inside string data, and in each the refusal is the
-stricter reading of a 68000. The 24 remaining textual differences are capstone
-writing `lea.l` and `pea.l` where we write `lea` and `pea`.
+stricter reading. **Two of the three are legal encodings that no assembler
+would emit**, which is a narrower claim than "a 68000 cannot do this" and a
+more useful one: real silicon ignores the reserved extension bits, and an odd
+branch target is taken and then address-errors at run time rather than being
+an illegal instruction. Refusing them is what separates code from string data
+in a binary with both scattered through one hunk, and the comments in
+`tools/m68dis.py` say so in those words. The 24 remaining textual differences
+are capstone writing `lea.l` and `pea.l` where we write `lea` and `pea`.
 
 **The cross-check earned its keep immediately.** The first draft read
 NEGX/CLR/NEG/NOT/TST out of bits 11-9 of a line-4 opcode. They live in bits
@@ -5711,7 +5725,10 @@ line. `tests/test_m68dis.py::test_bit_eight_is_not_a_unary_operation` is the
 regression, and it fails against the first draft.
 
 The committed tests build their encodings by hand from the Motorola manual, so
-the suite needs no game data and skips nothing.
+the suite needs no game data and skips nothing. The comparison script needs
+capstone and therefore cannot be one of them; it stays under `work/`, and the
+two numbers that matter — the mode and the counts — are in this section so the
+claim can be checked without it.
 
 ### Finding the routine, which is the other half of the job
 
