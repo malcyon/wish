@@ -149,6 +149,23 @@ is complicated; that is an argument for the model, not for making the player
 carry it, so the join now happens in `COMMISSIONS` and the complications are
 handled row by row above.
 
+## What the panel is not, and the first quest that showed it
+
+Every row is a City Hall ledger entry: `_table()` joins the sixteen board
+candidates to the entries they settle and adds the six with no candidate, so
+`COMMISSIONS` has one member per index in `0..25` and there is no other kind of
+row. The interface calls the panel the Quest Log, and an area script's own side
+quest is a quest the panel cannot draw.
+
+Ohlo's potion errand in the Slums is the first one found (#157): accepted from
+a man in the Slums, fetched from a booth in the old rope guild, and tracked in
+`$4A04` and `$4A81` rather than in any ledger byte
+([`134-commissions.md`](134-commissions.md)). Half of that state is in the
+scratch page below `$4A20`, which `goldbox.commissions.flags()` slices away and
+which the engine zeroes on every area change — so a side-quest row would need
+the decoder to keep `$4A00`-`$4A1F` as a separate block, and would need a rule
+for a state that is only true while the party stands in the area.
+
 ## Where the code is
 
 `goldbox/commissions.py`: the 26 ledger names and the script that finishes each, the

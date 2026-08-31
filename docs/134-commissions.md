@@ -100,6 +100,37 @@ summons flags (`$4A97`, `$4A98`, `$4A99`, `$4A9A`, `$4A9B`, `$4A8C`, `$4AB0`),
 and walking the whole list without filling three slots writes 254 into `$4ABE`
 — "Cadorna exposed as a traitor".
 
+## A quest the council never hears about: Ohlo's potion
+
+The Slums hold a side quest that is not a commission and touches no ledger
+byte, so nothing in this document's structures can carry it and the panel draws
+no row for it (#157). It is recorded here because it is the first evidence that
+area scripts keep quests of their own.
+
+A man in the Slums asks the party to fetch a potion his agent is holding in a
+booth in the old rope guild, and gives his name, `OHLO`, as the password.
+`ECL14` keeps the state in two bytes:
+
+| byte | 0 | 250 | 255 |
+|---|---|---|---|
+| `$4A04` | not spoken to, or wiped by an area change | the errand has been accepted | the encounter is closed |
+| `$4A81` | the potion is not in hand | collected from the booth | Ohlo dealt with: potion delivered, or he was killed |
+
+All CONFIRMED from `ECL14`'s own writes — `SAVE 250, [$4A04]` on the accept
+path, the booth writing `$4A19` = 255 and `$4A81` = 250 in one breath, `SAVE
+255` into both on delivery followed by `GOSUB $B695`/`GOSUB $B69C`, and `SAVE
+255, [$4A81]` after the fight-him `COMBAT`. The encounter's entry test is
+`COMPARE [$4A81], 250` then `COMPARE [$4A04], 250`, which is what picks his
+three speeches apart.
+
+**`$4A04` is scratch and does not survive leaving the Slums.** It is inside
+`$4A00`-`$4A1F`, which the engine zeroes on every area change
+([`41-memory-regions.md`](41-memory-regions.md)), so the game keeps no durable
+record that the errand was accepted; `$4A81` is the durable half. Four saves
+show the whole run — `$4A04` = 250 with `$4A81` = 0 twice, then `$4A81` = 250
+with the scratch back at 0 after a trip out of the area, then both at 255 with
+`$4ABB` counting the delivery as one more encounter.
+
 ## Appointments
 
 `$4A96`-`$4A9B`, plus `$4A8C` and `$4AC2`. A summons runs 254 = go there, 255 =
