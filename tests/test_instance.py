@@ -80,9 +80,47 @@ def test_a_slot_owns_six_things(pool):
     with instance.claim() as slot:
         assert slot.n == 0
         assert (slot.port, slot.text_port, slot.cmd_port) == (6520, 6540, 6560)
-        assert slot.display == ":10"
+        # The display is searched, not computed -- `tools/instance.py:247-263`
+        # takes the first free `DISPLAY_BASE + i` within the search's own
+        # 100-slot range, so only its bounds are deterministic (#138).
+        num = int(slot.display.lstrip(":"))
+        assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + 100, slot.display
+        assert slot.display != instance.RESERVED_DISPLAY, slot.display
         assert slot.dir == Path(os.environ["POR_INST"]) / "0"
         assert slot.vicerc == slot.dir / "vicerc"
+
+
+@posix
+def test_claiming_a_slot_whose_display_is_taken_still_gets_a_usable_one(pool):
+    """Pins #138: a display already held by something else must not stop the
+    claim, and the display handed back must still be a search result --
+    bounded, not `DISPLAY_BASE + n`. The lock is released and closed in
+    `finally` so a failing assertion cannot leave `:{DISPLAY_BASE}` wedged for
+    whatever else on the machine wants it next.
+    """
+    import fcntl  # local: unimportable on Windows, and @posix skips there
+
+    held = f":{instance.DISPLAY_BASE}"
+    fd = os.open(f"/tmp/.wish-x11-{instance.DISPLAY_BASE}.lock",
+                 os.O_RDWR | os.O_CREAT, 0o644)
+    ours = False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            ours = True
+        except BlockingIOError:
+            # Somebody already holds it -- a leased slot keeps this exact lock
+            # for its whole life. That *is* the condition under test, so run
+            # against theirs rather than failing the way #138 itself did.
+            pass
+        with instance.claim() as slot:
+            assert slot.display != held, slot.display
+            num = int(slot.display.lstrip(":"))
+            assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + 100, slot.display
+    finally:
+        if ours:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 @posix
