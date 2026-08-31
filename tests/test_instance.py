@@ -459,10 +459,44 @@ def test_the_slot_env_is_what_porlaunch_reads(pool):
         assert f"127.0.0.1:{slot.text_port}" in env["MONFLAGS"]
 
 
+@posix
+def test_a_claimed_slot_is_headless_by_default(pool, monkeypatch):
+    """#147: a slot is by definition something an agent claimed, so headless
+    is the default -- an agent must not remember to ask for it."""
+    monkeypatch.delenv("POR_HEADLESS", raising=False)
+    with instance.claim() as slot:
+        assert slot.env()["POR_HEADLESS"] == "1"
+
+
+@posix
+def test_a_human_watching_a_run_still_overrides_headless(pool, monkeypatch):
+    """A human who exports `POR_HEADLESS=0` to watch a run must still reach
+    `porlaunch.sh` with that value: every caller builds the launch environment
+    as `dict(os.environ, **slot.env())` (`tools/session.py:281-283`), so
+    `slot.env()`'s own value is what wins, and it must not silently overrule
+    an explicit `0` sitting in `os.environ`."""
+    monkeypatch.setenv("POR_HEADLESS", "0")
+    with instance.claim() as slot:
+        assert slot.env()["POR_HEADLESS"] == "0"
+
+
 def _code_lines(path: Path) -> list[str]:
     """Lines the shell will actually run: comments and blanks dropped."""
     return [ln for ln in path.read_text().splitlines()
             if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def test_porlaunch_disables_sound_in_the_headless_branch_only():
+    """#147: Donald can hear a headless emulator through his speakers even
+    though it draws no window. `+sound` (VICE's own flag, from `-help`) must
+    sit in the `POR_HEADLESS=1` (`Xvfb`) branch, and must not reach the
+    `Xephyr` branch a human watching a run still gets sound from."""
+    text = (TOOLS / "porlaunch.sh").read_text()
+    before_else, _, after_else = text.partition("else\n")
+    headless_part = before_else.rpartition("if ")[2]
+    visible_part = after_else.partition("\nfi\n")[0]
+    assert "+sound" in headless_part
+    assert "+sound" not in visible_part
 
 
 def test_porlaunch_kills_nothing():

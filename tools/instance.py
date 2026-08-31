@@ -192,13 +192,26 @@ class Slot:
         )
 
     def env(self) -> dict[str, str]:
-        """What a launcher needs in its environment to be this slot."""
+        """What a launcher needs in its environment to be this slot.
+
+        `POR_HEADLESS` defaults to `"1"` here rather than in every caller
+        (#147) -- a slot is by definition something an agent claimed, and an
+        agent must not put a window, or its sound, on Donald's screen. Every
+        caller that builds a launch environment does
+        `dict(os.environ, **slot.env())` (`tools/session.py:281-283`,
+        `tools/instance.py main()`), so `slot.env()`'s own values win over
+        whatever `os.environ` already held -- an unconditional `"1"` here
+        would silently overrule a human who exported `POR_HEADLESS=0` to
+        watch a run. Reading it from `os.environ` first, and only defaulting
+        when it is absent, is what lets that override reach `porlaunch.sh`.
+        """
         return {
             "POR_SLOT": str(self.n),
             "POR_DISPLAY": self.display,
             "POR_VICERC": str(self.vicerc),
             "POR_MONITOR": f"127.0.0.1:{self.port}",
             "MONFLAGS": self.monflags(),
+            "POR_HEADLESS": os.environ.get("POR_HEADLESS", "1"),
         }
 
     def seed_vicerc(self, template: Path | None = None) -> Path:

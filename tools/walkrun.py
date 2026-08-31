@@ -74,14 +74,13 @@ def main() -> int:
 
     os.makedirs(WALKS, exist_ok=True)
 
-    # `slot.env()` does not set this -- `POR_HEADLESS` swaps `Xephyr` for
-    # `Xvfb` in `porlaunch.sh`, but it is a separate switch the caller sets,
-    # not one of the five keys `Slot.env()` returns.  This tool is unattended
-    # by definition, so it defaults itself headless rather than depend on
-    # whoever invokes it having exported it first; `setdefault` still lets an
-    # explicit `POR_HEADLESS=0` win for someone deliberately watching a run.
-    os.environ.setdefault("POR_HEADLESS", "1")
-
+    # `Slot.env()` now defaults `POR_HEADLESS` to `"1"` itself (#147), and
+    # this tool always claims a slot before building a `Session` -- there is
+    # no path here that reaches `porlaunch.sh` without one -- so the
+    # `os.environ.setdefault("POR_HEADLESS", "1")` that used to live here is
+    # redundant and has been removed. An explicit `POR_HEADLESS=0`, for
+    # someone deliberately watching a run, still reaches the launcher: it is
+    # read out of `os.environ` inside `Slot.env()` itself.
     try:
         slot = claim_slot(args.slot)
     except (instance.PoolFull, instance.PoolUnavailable, RuntimeError) as exc:

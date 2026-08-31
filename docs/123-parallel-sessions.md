@@ -141,9 +141,14 @@ of them are the actual work:
 | 6 | `vicerc` | rewritten on exit; instances would race it | `-config <file>` |
 
 `Slot.env()` is the whole interface: `POR_SLOT`, `POR_DISPLAY`, `POR_VICERC`,
-`POR_MONITOR` and `MONFLAGS`, which `porlaunch.sh` reads and passes on.
+`POR_MONITOR`, `MONFLAGS` and `POR_HEADLESS`, which `porlaunch.sh` reads and
+passes on. `Slot.env()` sets `POR_HEADLESS` to `"1"` itself (#147) -- a slot
+is by definition something an agent claimed, so headless is the default an
+agent gets without asking for it; `os.environ`'s own value wins when a human
+has set one, so `POR_HEADLESS=0` still lets somebody deliberately watch a run.
 `POR_HEADLESS=1` swaps `Xephyr` for `Xvfb`, which is what keeps eight game
-windows off Donald's desktop.
+windows off Donald's desktop, and also passes VICE `+sound`, which keeps
+those eight instances from playing the game's sound through his speakers.
 
 Six, not four, because the text monitor and the command server are ports too
 and neither is currently parameterised.

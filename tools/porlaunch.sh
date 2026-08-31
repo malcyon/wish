@@ -10,7 +10,12 @@
 #   MONFLAGS     monitor addresses  (6502/6510 by default)
 #   PORFLAGS     anything else      (an experiment's extra flags)
 #   POR_HEADLESS 1 -> Xvfb instead of Xephyr, so eight instances do not put
-#                eight game windows on Donald's desktop
+#                eight game windows on Donald's desktop -- and `+sound`, so a
+#                headless instance is also silent.  Donald can hear a
+#                headless emulator through his speakers even when it draws no
+#                window, so the flag is added in the headless branch only; a
+#                human who asks to watch a run (`POR_HEADLESS=0`) still gets
+#                sound as before
 #
 # It kills nothing.  It used to `pkill -x x64sc` and `pkill -x Xephyr` on every
 # launch, which under the instance pool would kill every other agent's emulator
@@ -22,10 +27,12 @@ NESTED_DISPLAY="${POR_DISPLAY:-:7}"
 
 if [ "${POR_HEADLESS:-0}" = "1" ]; then
     Xvfb "$NESTED_DISPLAY" -screen 0 1400x1050x24 >/dev/null 2>&1 &
+    SOUNDFLAG="+sound"
 else
     Xephyr "$NESTED_DISPLAY" -screen 1400x1050 -resizeable \
         -title "PoR (${POR_SLOT:+slot }${POR_SLOT:-drive})" \
         >/dev/null 2>&1 &
+    SOUNDFLAG=""
 fi
 for _ in $(seq 20); do
     DISPLAY="$NESTED_DISPLAY" xdotool getdisplaygeometry >/dev/null 2>&1 && break
@@ -42,5 +49,6 @@ exec flatpak run --die-with-parent --share=network \
     -speed 100 -VICIIshowstatusbar -VICIIfilter 0 \
     -VICIIaspectmode 2 -VICIIglfilter 1 \
     ${MONFLAGS:--binarymonitor -binarymonitoraddress 127.0.0.1:6502} \
+    ${SOUNDFLAG:-} \
     ${PORFLAGS:-} \
     -autostart "$DISK"

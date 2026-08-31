@@ -134,12 +134,18 @@ def test_a_bad_slot_request_is_refused_rather_than_substituted(
 
 
 @posix
-def test_a_claimed_slot_reaches_session_and_sets_por_headless(
+def test_a_claimed_slot_reaches_session(
         pool, fake_session, args, monkeypatch):
-    """A real slot is passed through to `Session`, `POR_HEADLESS` is set
-    before it is constructed, and the lease is released once the run ends --
-    including a run that fails, which this one does (`FakeSession.boot()`
-    returns `False`)."""
+    """A real slot is passed through to `Session`, and the lease is released
+    once the run ends -- including a run that fails, which this one does
+    (`FakeSession.boot()` returns `False`).
+
+    `POR_HEADLESS` is no longer walkrun's own responsibility (#147): `Slot.env()`
+    defaults it, and walkrun always claims a slot before building a `Session`,
+    so `os.environ` is not touched here at all -- see
+    `tests/test_instance.py`'s `test_a_claimed_slot_is_headless_by_default` for
+    that guarantee.
+    """
     monkeypatch.delenv("POR_HEADLESS", raising=False)
 
     rc = walkrun.main()
@@ -148,7 +154,7 @@ def test_a_claimed_slot_reaches_session_and_sets_por_headless(
     assert len(FakeSession.instances) == 1
     sess = FakeSession.instances[0]
     assert isinstance(sess.slot, instance.Slot)
-    assert sess.headless_at_construction == "1"
+    assert sess.headless_at_construction is None  # walkrun itself sets nothing
     assert sess.closed is True
     assert instance.status()[sess.slot.n]["state"] == instance.CLEAN
 
