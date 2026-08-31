@@ -2186,7 +2186,10 @@ def test_a_fight_disables_what_a_fight_forbids(app):
     from automap.actionbar import ActionBar
     bar = ActionBar(make_root())
     bar.attach(MemoryTarget({0x6E11: b"\x02"}))
-    assert bar.buttons["heal"].isEnabled()            # legal mid-fight
+    # Heal used to be legal mid-fight and no longer is: healing during a
+    # fight writes the roster byte the engine is itself using (#146).
+    assert not bar.buttons["heal"].isEnabled()
+    assert "$6E11 is 2" in bar.buttons["heal"].toolTip()
     assert not bar.buttons["identify"].isEnabled()
     assert "$6E11 is 2" in bar.buttons["identify"].toolTip()
 

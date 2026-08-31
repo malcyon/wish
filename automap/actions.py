@@ -373,8 +373,11 @@ def _write_all(target, writes) -> tuple[tuple[int, bytes], ...]:
 class HealParty(Action):
     """Current hit points to maximum, for everyone standing.
 
-    **Legal anywhere**, including mid-fight: healing is a cheat rather than a
-    corruption risk, and nothing the game recomputes would notice.
+    **Illegal in combat.** Donald: the Heal Party button, and the fast-travel
+    dropdown alongside it, should refuse during a fight the way Store/Restore
+    Spells and Identify already do. It used to be legal mid-fight -- healing
+    is a cheat rather than a corruption risk, and nothing the game recomputes
+    would notice -- but that is no longer what the button offers.
 
     The write is the roster block at `Game.roster_base + slot * $20`, byte
     `+0x19`. Current hit points are not in the stored 256 bytes of a record --
@@ -385,21 +388,20 @@ class HealParty(Action):
     the game marks that with is not decoded; raising the hit point byte alone
     would be a half-write, which is the same objection that stops levelling.
 
-    Confirmed live: four wounded characters healed and the game's own party
-    list redrew at their maxima, and SILAS went 8 to 9 mid-fight at
-    `$6E11 = 2`. See `docs/50-experiments.md`.
+    Confirmed live, while the write was still allowed mid-fight: four wounded
+    characters healed and the game's own party list redrew at their maxima,
+    and SILAS went 8 to 9 at `$6E11 = 2`. See `docs/50-experiments.md`.
     """
 
     name = "heal"
     label = "Heal party"
     description = "Set current hit points to maximum for every concious character."
-    combat_legal = True
 
     def run(self, target, **kwargs) -> Outcome:
         party = read_party(target, self.game)
         if party is None:
             return Outcome(False, "no party to heal")
-        writes, notes = [], []
+        writes, notes, healed = [], [], []
         for m in party:
             if m.hp == 0:
                 notes.append(f"{m.name} is at 0 and was left alone: dead or "
@@ -413,10 +415,11 @@ class HealParty(Action):
                 continue
             writes.append((m.roster_base + ROSTER_HP_CURRENT,
                            bytes([target_hp])))
+            healed.append(m.name)
         _write_all(target, writes)
         if not writes:
             return Outcome(True, "All party members are at full health.", (), tuple(notes))
-        return Outcome(True, f"Healed {len(writes)} of {len(party)}.",
+        return Outcome(True, f"Healed {', '.join(healed)} up to full.",
                        tuple(writes), tuple(notes))
 
 

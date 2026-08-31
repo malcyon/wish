@@ -550,8 +550,28 @@ class FastTravelBar(QObject):
         self._pending = ((geos, time.monotonic() + VERIFY_SECONDS)
                          if geos and self.maps else None)
 
+    def combat_verdict(self) -> engine.Verdict:
+        """Whether a fight refuses the dropdown.
+
+        This is `Action.legality`'s own mode-flag gate, called directly and
+        not `self.fasttravel.legality`'s full chain: the full chain also
+        refuses on the *selected* area (already there, wrong side of the
+        overland/indoors split), and gating the dropdown on that would lock a
+        player out of picking a different area precisely because the one
+        showing is bad. Combat is the one reason a bad pick cannot fix.
+        """
+        return engine.Action.legality(self.fasttravel, self.target)
+
     def refresh(self) -> None:
         area = self.area()
+        if self.combo is not None:
+            if self.rows:
+                gate = self.combat_verdict()
+                self.combo.setEnabled(gate.ok)
+                self.combo.setToolTip(gate.reason)
+            else:
+                self.combo.setEnabled(False)
+                self.combo.setToolTip("")
         if self.button is not None:
             if area is None and not self.rows:
                 # Nothing ticked, or nothing to tick. Say that rather than the

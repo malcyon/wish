@@ -65,8 +65,8 @@ def test_the_mode_flag_is_what_decides_combat():
     assert not actions.in_combat(machine(WORLD))
 
 
-@pytest.mark.parametrize("name", ["identify", "store-spells", "restore-spells",
-                                  "level-up"])
+@pytest.mark.parametrize("name", ["heal", "identify", "store-spells",
+                                  "restore-spells", "level-up"])
 def test_the_actions_that_must_refuse_in_combat_do(name):
     action = find(name)
     verdict = action.legality(machine(COMBAT))
@@ -83,8 +83,12 @@ def test_refusing_in_combat_happens_at_apply_and_not_only_in_the_tooltip():
     assert target.memory == before
 
 
-def test_healing_is_legal_in_combat():
-    assert find("heal").legality(machine(COMBAT))
+def test_healing_is_legal_out_of_combat():
+    """The half of the gate `test_the_actions_that_must_refuse_in_combat_do`
+    does not cover: Donald asked for Heal Party to refuse mid-fight the way
+    Store/Restore Spells and Identify already do, and outside a fight it is
+    unchanged."""
+    assert find("heal").legality(machine(WORLD))
 
 
 def test_every_action_refuses_with_no_emulator():
@@ -143,11 +147,18 @@ def test_healing_writes_the_roster_byte_and_nothing_else():
     assert outcome.ok
     assert outcome.writes == ((0x8300 + ROSTER_HP_CURRENT, b"\x0b"),)
     assert target.read(0x8300 + ROSTER_HP_CURRENT, 1) == b"\x0b"
+    # One character: named, not counted -- "Healed 1 of 1." said nothing a
+    # player could act on.
+    assert outcome.message == "Healed BRUTUS up to full."
 
 
 def test_healing_a_whole_party_writes_nothing_when_nobody_is_hurt():
     outcome = find("heal").apply(machine())
     assert outcome.ok and outcome.writes == ()
+    # Nobody healed must not read "Healed  up to full.": the empty-list
+    # sentence never reaches this branch, because it returns before the
+    # "Healed ..." message is built.
+    assert outcome.message == "All party members are at full health."
 
 
 def test_healing_leaves_a_character_at_zero_alone():
@@ -168,6 +179,50 @@ def test_healing_says_so_when_maximum_hit_points_do_not_fit_the_roster_byte():
     outcome = find("heal").apply(target)
     assert outcome.writes == ((0x8300 + ROSTER_HP_CURRENT, b"\xff"),)
     assert any("255" in note for note in outcome.notes)
+
+
+def party_of(entries: list[tuple[str, int, int]]) -> MemoryTarget:
+    """`len(entries)` characters, each `(name, hp, hp_max)`, built from the
+    captured BRUTUS slot -- everything but the name and the two hit-point
+    fields is his, copied into as many slots as there are entries."""
+    from goldbox.savegame import ROSTER_SLOT_INDEX, ROSTER_STRIDE
+    save0, save1 = captured()
+    rec_base = games.POOL_OF_RADIANCE.slot_area_base - 0x4900
+    template_record = bytes(save0[rec_base:rec_base + 0x100])
+    template_roster = bytes(save1[:ROSTER_STRIDE])
+    for i, (name, hp, hp_max) in enumerate(entries):
+        record = CharacterRecord.from_bytes(
+            template_record.ljust(RECORD_SIZE, b"\x00"))
+        record.set("name", name)
+        record.set("hp_max", hp_max)
+        save0[rec_base + i * 0x100:rec_base + (i + 1) * 0x100] = \
+            bytes(record)[:0x100]
+        roster = bytearray(template_roster)
+        roster[ROSTER_SLOT_INDEX] = i
+        roster[ROSTER_HP_CURRENT] = hp
+        save1[i * ROSTER_STRIDE:(i + 1) * ROSTER_STRIDE] = roster
+    return MemoryTarget({0x4900: bytes(save0), 0x8300: bytes(save1),
+                         0x6E11: bytes([WORLD])})
+
+
+def test_healing_names_the_characters_it_healed():
+    """Three healed, comma-delimited, in party order -- not a count."""
+    target = party_of([("BRUTUS", 5, 11), ("MAGNUS", 3, 9),
+                       ("LADY KATHERINE", 6, 12)])
+    outcome = find("heal").apply(target)
+    assert outcome.ok
+    assert outcome.message == "Healed BRUTUS, MAGNUS, LADY KATHERINE up to full."
+
+
+def test_a_character_already_at_full_is_not_named():
+    """Only who was written, taken from `writes` and not from the whole
+    party -- MAGNUS is already at his maximum and is skipped."""
+    target = party_of([("BRUTUS", 5, 11), ("MAGNUS", 9, 9),
+                       ("LADY KATHERINE", 6, 12)])
+    outcome = find("heal").apply(target)
+    assert outcome.ok
+    assert outcome.message == "Healed BRUTUS, LADY KATHERINE up to full."
+    assert "MAGNUS" not in outcome.message
 
 
 # --- memorised spells --------------------------------------------------------
@@ -760,3 +815,51 @@ def test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances():
     verdict = next(a for a in actions.actions(game=CURSE)
                    if a.name == "identify").legality(fighting)
     assert not verdict and "$7F11 is 2" in verdict.reason
+
+
+# --- the row under the map, and the fast-travel dropdown ---------------------
+#
+# Qt widgets, offscreen -- `tests/conftest.py` builds the one `QApplication`
+# the whole session shares. `make_root` is the same small helper
+# `tests/test_automap.py` and `tests/test_debugmode.py` each carry their own
+# copy of, kept local here rather than imported so this file does not reach
+# into a test module owned by another change.
+
+
+def make_root():
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
+def test_the_heal_button_is_disabled_in_combat_and_not_just_the_gate():
+    """`ActionBar.refresh` applies every action's verdict the same way, so
+    `HealParty.combat_legal` being False (the default `Action` sets, now that
+    `HealParty` no longer overrides it) is meant to be the whole of what
+    disables the button -- checked here rather than assumed."""
+    from automap.actionbar import ActionBar
+
+    bar = ActionBar(make_root())
+    bar.attach(machine(COMBAT))
+    assert not bar.buttons["heal"].isEnabled()
+    assert "fight" in bar.buttons["heal"].toolTip()
+    bar.attach(machine(WORLD))
+    assert bar.buttons["heal"].isEnabled()
+
+
+def test_the_fast_travel_dropdown_is_disabled_in_combat():
+    """The button already refuses mid-fight; the dropdown used to stay
+    enabled regardless, so a destination could still be picked while the
+    button that would act on it was dead."""
+    from automap.actionbar import FastTravelBar
+
+    row = FastTravelBar(make_root())
+    assert row.rows                     # every fasttravelable area, no settings
+    row.attach(MemoryTarget({0x6E11: bytes([COMBAT])}))
+    assert not row.combo.isEnabled()
+    assert "fight" in row.combo.toolTip()
+    row.attach(MemoryTarget({0x6E11: bytes([WORLD])}))
+    assert row.combo.isEnabled()
