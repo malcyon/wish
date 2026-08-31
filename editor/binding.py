@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from goldbox.encoding import combat_value
 from goldbox.layout import LAYOUT, Confidence, Field, Kind
 
 PREFIX = "field_"
@@ -40,6 +41,12 @@ DERIVED = frozenset({
 # Not derived, but not ours to set either: these move only as a consequence of
 # something else happening in play.
 COMPUTED_IN_PLAY = frozenset({"levels_drained", "hp_lost_to_drain"})
+
+# The four fields `goldbox/encoding.py` stores as `60 - value`. Nothing else
+# in the record carries this bias (#149).
+COMBAT_FIELDS = frozenset({
+    "thac0_base", "thac0", "armour_class_base", "armour_class",
+})
 
 
 @dataclass(frozen=True)
@@ -94,14 +101,24 @@ def bindings(*, in_save: bool) -> dict[str, Binding]:
 
 
 def value_range(field: Field) -> tuple[int, int] | None:
-    """The values these bytes can hold, or None if the field is not a number."""
+    """The values these bytes can hold, or None if the field is not a number.
+
+    A combat field's byte range is `60 - x`, so the box's range is derived by
+    running the byte range through `combat_value` rather than shown as
+    0-255 -- the same 60-x arithmetic the box itself uses (#149).
+    """
     if field.kind is Kind.U8:
-        return 0, 0xFF
-    if field.kind is Kind.I8:
-        return -128, 127
-    if field.kind in (Kind.U16LE, Kind.UINT_LE):
-        return 0, (1 << (8 * field.size)) - 1
-    return None
+        span = 0, 0xFF
+    elif field.kind is Kind.I8:
+        span = -128, 127
+    elif field.kind in (Kind.U16LE, Kind.UINT_LE):
+        span = 0, (1 << (8 * field.size)) - 1
+    else:
+        return None
+    if field.name in COMBAT_FIELDS:
+        low, high = span
+        return combat_value(high), combat_value(low)
+    return span
 
 
 def widest_text(field: Field) -> str:

@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from goldbox import games as por_games
+from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
 from goldbox.icons import load_icon_charset
 from goldbox.items import load_item_names, load_item_templates, load_item_types
@@ -41,7 +42,7 @@ from goldbox.spells import capacity, load_spell_names
 from goldbox.spells import for_game as spell_table
 
 from . import changes, files, inventory
-from .binding import bindings, field_name, value_range, widest_text
+from .binding import COMBAT_FIELDS, bindings, field_name, value_range, widest_text
 from .enums import caster_bits, tables_for
 from .inventory import AddItemDialog, InventoryModel, ItemTraitsModel
 from .roster import Party
@@ -1091,8 +1092,10 @@ class EditorBinding(QObject):
                 continue
             try:
                 if isinstance(w, QSpinBox):
-                    if record.get(name) != w.value():
-                        record.set(name, w.value())
+                    stored = (combat_byte(w.value()) if name in COMBAT_FIELDS
+                              else w.value())
+                    if record.get(name) != stored:
+                        record.set(name, stored)
                 elif isinstance(w, QLineEdit) and name == "name":
                     if record.name != w.text():
                         record.name = w.text()
@@ -1156,6 +1159,8 @@ class EditorBinding(QObject):
                 _log.debug("no %s on this record: %s", name, exc)
                 value = None
             if isinstance(w, QSpinBox):
+                if name in COMBAT_FIELDS and isinstance(value, int):
+                    value = combat_value(value)
                 w.setValue(int(value) if isinstance(value, int) else 0)
             elif isinstance(w, QLineEdit):
                 if name == "name":

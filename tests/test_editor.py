@@ -57,6 +57,19 @@ def save(tmp_path):
 
 
 @pytest.fixture
+def newsave5(tmp_path):
+    """A throwaway copy of `NEWSAVE5.D64`, whose GARRETT is #149's specimen:
+    `thac0_base` stored as 39 and `armour_class_base` as 50, sheet values 21
+    and 10."""
+    src = disk_path("NEWSAVE5")
+    if src is None:
+        pytest.skip("needs the save disks")
+    out = tmp_path / "NEWSAVE5.D64"
+    out.write_bytes(src.read_bytes())
+    return out
+
+
+@pytest.fixture
 def party(tmp_path):
     """A save disk built from the format rather than copied off one.
 
@@ -256,6 +269,46 @@ def test_read_only_widgets_are_disabled_on_a_save(app, save):
     assert not w._widgets["hp_current"].isEnabled()
     assert not w._widgets["thac0_base"].isEnabled()
     assert w._widgets["strength"].isEnabled()
+
+
+# --- the combat box shows the sheet value, not the stored byte (#149) -------
+#
+# `thac0_base`, `thac0`, `armour_class_base` and `armour_class` are the only
+# four fields the record stores as `60 - value` (`goldbox/encoding.py`).
+# `CharacterRecord.get`/`set` hand back and take the byte exactly as stored;
+# the editor is the one place that has to undo the bias for a human to read
+# it, and until now it never did.
+
+
+@game_disks
+def test_combat_box_shows_the_sheet_value_not_the_stored_byte(app, newsave5):
+    """GARRETT's record holds 39 and 50. His sheet reads THAC0 21, AC 10."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(newsave5))
+    w.roster.selectRow(0)
+    assert w._widgets["thac0_base"].value() == 21
+    assert w._widgets["armour_class_base"].value() == 10
+
+
+@game_disks
+def test_typing_the_sheet_value_stores_the_biased_byte(app, newsave5):
+    """`thac0_base` is disabled -- the game recomputes it, and that is settled
+    behaviour, not this issue's business -- so this forces the box open to
+    prove the round trip through `combat_byte`, the same way #145's
+    forced-failure tests prove a mechanism independent of whether today's UI
+    can reach it.
+
+    GARRETT's stored byte is already 39 (THAC0 21), so typing 21 back in and
+    flushing must leave the record still holding 39 -- not the unconverted 21
+    a flush that forgot the bias would write."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(newsave5))
+    w.roster.selectRow(0)
+    box = w._widgets["thac0_base"]
+    box.setEnabled(True)
+    box.setValue(21)
+    w._flush()
+    assert w.party.member(0).record.get("thac0_base") == 39
 
 
 @game_disks
@@ -2027,6 +2080,18 @@ def test_the_widest_value_comes_from_the_kind_and_the_byte_width():
     assert widest_text(FIELDS_BY_NAME["name"]) == "W" * 20
     assert widest_text(FIELDS_BY_NAME["thief_open_locks"]) == "-128"
     assert value_range(FIELDS_BY_NAME["experience"]) == (0, 0xFFFFFF)
+
+
+def test_a_combat_fields_range_is_the_sheet_shape_not_the_byte_shape():
+    """`thac0_base` and the other three are U8 like `strength`, but stored as
+    `60 - value` (#149), so their range is `combat_value` run over the byte's
+    own 0-255 rather than 0-255 itself -- and armour class needs the negative
+    end: GRIMNIR and BRUTUS read -1 on `NEWSAVE5.D64`."""
+    from editor.binding import value_range, widest_text
+    from goldbox.layout import FIELDS_BY_NAME
+    for name in ("thac0_base", "thac0", "armour_class_base", "armour_class"):
+        assert value_range(FIELDS_BY_NAME[name]) == (-195, 60), name
+    assert widest_text(FIELDS_BY_NAME["armour_class_base"]) == "-195"
 
 
 @game_disks
