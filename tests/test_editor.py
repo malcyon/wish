@@ -291,6 +291,129 @@ def test_a_real_edit_is_written_and_backed_up(app, save):
     assert again._widgets["gold"].value() == 1234
 
 
+# --- renaming (#145) ---------------------------------------------------------
+#
+# `goldbox.petscii.encode_record_name` refuses a name over 20 bytes or holding
+# anything outside printable ASCII -- correctly, since the record has twenty
+# bytes and the C64 has no curly quote. Half one stops that refusal being
+# reachable by typing or pasting in the ordinary way; half two makes sure that
+# whatever still reaches `_flush` unencodable is reported rather than
+# swallowed into a false "no changes".
+
+
+@game_disks
+def test_a_name_too_long_to_type_is_kept_to_what_the_record_holds(app, save):
+    """`insert()` is how Qt delivers both typing and a paste, so this is the
+    paste case too -- and the answer is a silent truncation to twenty
+    characters, not a rejection of the whole paste. Recorded here because
+    #145 flagged that a validator does not, by itself, save you from this."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    field = w._widgets["name"]
+    field.clear()
+    field.insert("A" * 30)
+    assert field.text() == "A" * 20
+
+
+@game_disks
+def test_a_curly_quote_cannot_be_typed_into_the_name(app, save):
+    """The character a phone keyboard or a web paste actually produces (#145)
+    -- refused outright, the whole insertion, not trimmed to the good part."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    field = w._widgets["name"]
+    field.clear()
+    field.insert("Bru’tus")
+    assert field.text() == ""
+    field.insert("Brutus")
+    assert field.text() == "Brutus"
+
+
+@game_disks
+def test_a_name_of_exactly_twenty_characters_is_still_typable(app, save):
+    """The guard must not cost a legal name -- twenty bytes is not too many."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    field = w._widgets["name"]
+    field.clear()
+    field.insert("A" * 20)
+    assert field.text() == "A" * 20
+
+
+@game_disks
+def test_a_refused_name_is_reported_not_silently_dropped(app, save):
+    """Half two, proven independently of half one: force an unencodable value
+    into the widget the way `setText()` does -- it bypasses the validator, so
+    this is what a bug elsewhere, or a future field with the same shape,
+    would still be able to do. Before #145 this reached `_flush`, was
+    swallowed, and `save()` reported "no changes" while the disk kept the old
+    name."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    old_name = w._widgets["name"].text()
+    w._widgets["name"].setText("Bru’tus")
+    note = w.save(interactive=False)
+    assert "not saved" in note
+    assert note != "no changes"
+
+    again = EditorBinding(make_root(), str(save))
+    again.roster.selectRow(0)
+    assert again._widgets["name"].text() == old_name
+
+
+@game_disks
+def test_a_refused_name_is_reported_even_alongside_a_real_edit(app, save):
+    """The other field's write must not be lost, and the report must not
+    read as "no changes" when something plainly did change."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["name"].setText("Bru’tus")
+    w._widgets["gold"].setValue(4321)
+    note = w.save(interactive=False)
+    assert "not saved" in note and "wrote" in note
+
+    again = EditorBinding(make_root(), str(save))
+    again.roster.selectRow(0)
+    assert again._widgets["gold"].value() == 4321
+
+
+@game_disks
+def test_switching_character_away_from_a_refused_name_reports_it_too(app, save):
+    """The failure is not only found at Save -- switching rows also flushes,
+    and that flush's refusal must reach the user the same way."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    w._widgets["name"].setText("Bru’tus")
+    w.roster.selectRow(1)
+    assert "not saved" in w.root.statusBar().currentMessage()
+
+
+@game_disks
+def test_a_successful_rename_still_writes_and_is_reported(app, save):
+    """The existing behaviour the fix must not regress."""
+    from editor.window import EditorBinding
+    before = save.read_bytes()
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    field = w._widgets["name"]
+    field.clear()
+    field.insert("SIRDONALD")
+    w._edited()
+    note = w.save(interactive=False)
+    assert "wrote" in note
+    assert save.read_bytes() != before
+
+    again = EditorBinding(make_root(), str(save))
+    again.roster.selectRow(0)
+    assert again._widgets["name"].text() == "SIRDONALD"
+
+
 # --- the inventory ----------------------------------------------------------
 
 GAME_DISK = f"{DISKS}/POOL1.D64"

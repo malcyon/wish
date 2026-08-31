@@ -753,6 +753,7 @@ class Ui_WishWindow(object):
         self.label_name.setObjectName("label_name")
         self.form_identity_left.setWidget(0, QtWidgets.QFormLayout.ItemRole.LabelRole, self.label_name)
         self.field_name = QtWidgets.QLineEdit(parent=self.columns_identity)
+        self.field_name.setMaxLength(20)
         self.field_name.setObjectName("field_name")
         self.form_identity_left.setWidget(0, QtWidgets.QFormLayout.ItemRole.FieldRole, self.field_name)
         self.label_race = QtWidgets.QLabel(parent=self.columns_identity)

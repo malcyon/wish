@@ -10,8 +10,15 @@ from __future__ import annotations
 import logging
 import pathlib
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QIcon
+from PyQt6.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QObject,
+    QRegularExpression,
+    Qt,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QBrush, QColor, QIcon, QRegularExpressionValidator
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -56,6 +63,17 @@ from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
 #: it continue into. In record order, because they are read and written as one
 #: run of bytes.
 SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
+
+#: The characters `goldbox.petscii.encode_record_name` accepts in a record
+#: name -- printable ASCII, mirroring its own `0x20 <= code < 0x7F` check.
+#: One Python character encodes to exactly one byte in that range, so bounding
+#: the character count also bounds the encoded length -- #145.
+NAME_FIELD_CHARS = r"\x20-\x7E"
+
+#: Reported when a field's on-screen value could not be written back -- the
+#: record keeps whatever it held before. Wording awaits Donald's approval
+#: (`CLAUDE.md`, "Help text in the GUI") -- #145.
+FIELD_NOT_SAVED = "{label} was not saved: {reason}"
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off -- and
@@ -432,6 +450,7 @@ class EditorBinding(QObject):
 
         self._widgets = self._find_field_widgets()
         self._fill_combos()
+        self._constrain_name_field()
         self._size_fields()
         self._compact()
         self._weight_columns()
@@ -592,6 +611,23 @@ class EditorBinding(QObject):
                 continue
             for i in range(row.count()):
                 row.setStretch(i, stretch[i] if i < len(stretch) else 0)
+
+    def _constrain_name_field(self) -> None:
+        """Stop the name box holding anything the record cannot store.
+
+        `goldbox.petscii.encode_record_name` raises above 20 bytes or outside
+        printable ASCII (#145). `wish/window.ui` already caps `field_name` at
+        20 characters; the validator adds the character-set restriction, and
+        repeats the length in the regex so it holds even if the `.ui`'s
+        `maxLength` is ever edited out from under it.
+        """
+        w = self._widgets.get("name")
+        if not isinstance(w, QLineEdit):
+            return
+        size = FIELDS_BY_NAME["name"].size
+        w.setMaxLength(size)
+        w.setValidator(QRegularExpressionValidator(
+            QRegularExpression(fr"^[{NAME_FIELD_CHARS}]{{0,{size}}}$"), w))
 
     def _size_fields(self) -> None:
         """Give every box the width of the widest value its bytes can hold."""
@@ -982,7 +1018,7 @@ class EditorBinding(QObject):
         """Write the disk back. Returns what happened, for the status bar."""
         if self.party is None or self.path is None:
             return "nothing open"
-        self._flush()
+        failures = self._flush()
         try:
             self._write_back()
             note = files.save_disk(self.party.disk, self.path, self.backup_dir())
@@ -993,6 +1029,12 @@ class EditorBinding(QObject):
                 return "failed"
             raise
         self.dirty.clear()
+        if failures:
+            # A refused field is reported instead of "no changes" when it is
+            # the only thing that was touched -- "no changes" would be true
+            # of the bytes and false of what the user was told happened.
+            note = "; ".join(failures) if note == "no changes" \
+                else "; ".join(failures) + f"; {note}"
         self.status(note)
         self._retitle()
         return note
@@ -1055,19 +1097,27 @@ class EditorBinding(QObject):
 
     def _row_changed(self, current, previous) -> None:
         if previous is not None and previous.isValid():
-            self._flush(previous.row())
+            self._report_flush_failures(self._flush(previous.row()))
         self.current_row = current.row() if current is not None and current.isValid() else -1
         self._populate()
 
-    def _flush(self, row: int | None = None) -> None:
-        """Copy what is on screen into the record, before we leave it."""
+    def _flush(self, row: int | None = None) -> list[str]:
+        """Copy what is on screen into the record, before we leave it.
+
+        Returns one reported line per field whose on-screen value could not
+        be encoded -- the record keeps what it already held for that field.
+        A caller that swallows the return silently repeats the bug this
+        guards against (#145): a field refuses, nothing changes, and nothing
+        says so.
+        """
         row = self.current_row if row is None else row
         if self.party is None or not 0 <= row < len(self.party):
-            return
+            return []
         record = self.party.member(row).record
         icon_widget = self._widgets.get("icon")
         if icon_widget is not None and getattr(icon_widget, "icon", None) is not None:
             self.party.member(row).icon = icon_widget.icon
+        failures: list[str] = []
         for name, w in self._widgets.items():
             if name == "icon" or not w.isEnabled():
                 continue
@@ -1086,9 +1136,26 @@ class EditorBinding(QObject):
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
-            except Exception:
+            except Exception as exc:
                 _log.exception("could not flush %s", name)
+                field = FIELDS_BY_NAME.get(name)
+                failures.append(FIELD_NOT_SAVED.format(
+                    label=field.label if field is not None else name, reason=exc))
         self.party.member(row).name = record.name
+        return failures
+
+    def _report_flush_failures(self, failures: list[str]) -> str | None:
+        """Tell the user which fields did not save, on the status bar.
+
+        `save()`'s own report ("wrote ...", "no changes") is the same
+        mechanism -- see `status()` below -- so a refusal reads the same way
+        a success does, rather than needing a dialog of its own.
+        """
+        if not failures:
+            return None
+        text = "; ".join(failures)
+        self.status(text)
+        return text
 
     def _populate(self) -> None:
         if self.party is None or self.current_row < 0:
