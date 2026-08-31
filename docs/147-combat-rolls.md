@@ -1,8 +1,9 @@
 # What the game rolls when somebody attacks
 
-**Status: measured, and readable by ordinary polling.** Nothing is built —
-`docs/110-combat-log.md`'s Messages panel shows what the game *prints*, and this
-is what the game *rolled*, which is a different thing and is not shown anywhere.
+**Status: measured, and built.** `automap/rolls.py` reads these bytes and
+`automap/combatlog.py` says the roll under each combat message (#139).
+`docs/110-combat-log.md`'s Messages panel shows what the game *prints*; this is
+what the game *rolled*, which is a different thing.
 
 The question was Donald's: can we find out what the dice did, and could we print
 them into the Messages console? Yes to both. There is one random number
@@ -27,11 +28,21 @@ Established from a static read of `COMBAT` (loads at `$0800`) and `LIBRARY`
 | `$A4FB` | **hit flag**, 0 or 1 | `$1275`, `$12AA` |
 | `$A4F4` / `$A4F5` | acting combatant's index / target's index, 0–7 party and 8 upward monsters | `$12E3`, `$12C3` |
 | `$A4F9` / `$A4FA` | attempts and landings so far in this action | `$1222`, `$122D` |
-| `$6C0E` | attacker's `60 - THAC0` | `$129F` |
+| `$6C0E` | the **resident** block's `60 - THAC0` — the attacker's *inside the routine*, and **not reliably the attacker's when polled**, for the same reason as `$6C13` below. Take THAC0 and AC from the battle roster instead | `$129F` |
 | `$6DB9` | sides of the last die actually rolled | `$35CE` |
 | `$03C2`–`$03C7` | the generator's state, advanced on every die | `$2D88` |
 
 `$A4F7`–`$A4FC` are cleared once per **action** at `COMBAT $11AC`, not per roll.
+
+**The resident roster block is a trap in both directions.** `$6C00`–`$6C1F` is
+whichever combatant the engine last made resident, and `$2744` swaps it. Inside
+the attack routine that is the attacker where the code reads it; from outside,
+after a hit, `$0CFE` has made it the **target**. So nothing polled from
+`$6C00`–`$6C1F` can be trusted to belong to the attacker — take what you need
+from the battle roster at `$8300 + $A4F4 * 32`, which
+`automap/combat.read_battle` already reads. `automap/rolls.py` computes the
+number to beat as `THAC0(attacker) − AC(target)` from the two roster blocks for
+exactly this reason, and reproduces both worked examples below.
 
 ## The generator — `LIBRARY $2D88` — CONFIRMED
 
