@@ -1432,7 +1432,7 @@ class Ui_WishWindow(object):
         self.ft_button.setText(_translate("WishWindow", "Fast Travel"))
         self.ft_back_button.setText(_translate("WishWindow", "Return"))
         self.notes_heading.setText(_translate("WishWindow", "Notes"))
-        self.commissions_heading.setText(_translate("WishWindow", "Commissions"))
+        self.commissions_heading.setText(_translate("WishWindow", "Quest Log"))
         self.messages_heading.setText(_translate("WishWindow", "Messages"))
         self.tabs.setTabText(self.tabs.indexOf(self.tab_automap), _translate("WishWindow", "Automapper"))
         self.button_open.setText(_translate("WishWindow", "&Open…"))

@@ -399,8 +399,8 @@ class CommissionsPanel(QObject):
     def set_message(self, text: str) -> None:
         """No bytes to show, and why."""
         if self.heading is not None:
-            self.heading.setText(f"Commissions - {text}" if text
-                                 else "Commissions")
+            self.heading.setText(f"Quest Log - {text}" if text
+                                 else "Quest Log")
 
     def update_from(self, source) -> None:
         """Redraw from the flag block. Same input as `goldbox.commissions.read`."""

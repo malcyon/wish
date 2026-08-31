@@ -2125,7 +2125,7 @@ def test_the_tab_shows_the_commissions(app, tmp_path, monkeypatch):
         window.tick()
     assert window.commissions.completed.text().startswith(
         "Commissions completed:")
-    assert window.commissions.heading.text() == "Commissions"
+    assert window.commissions.heading.text() == "Quest Log"
 
 
 def test_a_poll_that_reads_nothing_leaves_the_commissions_alone(app, tmp_path,

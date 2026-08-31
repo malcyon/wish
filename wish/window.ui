@@ -1339,7 +1339,7 @@
                   </font>
                  </property>
                  <property name="text">
-                  <string>Commissions</string>
+                  <string>Quest Log</string>
                  </property>
                  <property name="textInteractionFlags">
                   <set>Qt::NoTextInteraction</set>

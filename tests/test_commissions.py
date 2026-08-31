@@ -428,9 +428,9 @@ def test_nothing_in_the_panel_is_editable(app):
 def test_the_panel_says_so_before_it_has_any_bytes(app):
     from automap.commissions import CommissionsPanel
     panel = CommissionsPanel(make_root())
-    assert panel.heading.text() == "Commissions - waiting for a game"
+    assert panel.heading.text() == "Quest Log - waiting for a game"
     panel.update_from(blank())
-    assert panel.heading.text() == "Commissions"
+    assert panel.heading.text() == "Quest Log"
 
 
 def test_every_board_candidate_and_ledger_entry_is_in_exactly_one_row():
