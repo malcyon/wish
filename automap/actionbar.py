@@ -250,7 +250,8 @@ class FastTravelBar(QObject):
 
     **Shown to everybody**, no longer only in debug mode: P20 fasttraveled into every
     area that had no arrival square and recorded where the party landed
-    (`work/reports/p20-arrivals.md`), which is what the gate was waiting for.
+    (write-up lost, `work/reports/p20-arrivals.md`), which is what the gate was
+    waiting for.
     The one area that turned out not to be a place is not offered at all.
 
     **The writes are proven; the arrival is chosen.** The writes are `NEWECL`'s
@@ -480,7 +481,7 @@ class FastTravelBar(QObject):
         the window for them rather than for the emulator.
 
         **Two kinds of area get no square at all**, and both are P20's findings
-        (`work/reports/p20-arrivals.md`):
+        (write-up lost, `work/reports/p20-arrivals.md`):
 
         * **overland** -- outdoors the party's position is `$49C3`/`$49C4` and
           every script entering one writes `[$4A18]`/`[$4A19]`, the world-map

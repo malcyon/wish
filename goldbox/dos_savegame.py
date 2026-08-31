@@ -230,8 +230,8 @@ def outdoors(save: bytes) -> bool:
 #: What the status line adds to the window-local x to print a world
 #: coordinate, per outdoor area.  Window 26 measured on-screen -- world
 #: `20,29` against `$49C3`/`$49C4` = (7,29), three of three (#59); 25 and 27
-#: are the C64 seam arithmetic (`work/reports/world-map.md` §3: window 25's
-#: x+13 is window 26's x, and 26's x+13 is 27's), PROBABLE for the DOS
+#: are the C64 seam arithmetic (write-up lost, `work/reports/world-map.md` §3:
+#: window 25's x+13 is window 26's x, and 26's x+13 is 27's), PROBABLE for the DOS
 #: display.  y is world y in every window.
 WINDOW_X_OFFSET = {25: 0, 26: 13, 27: 26}
 

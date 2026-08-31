@@ -43,8 +43,9 @@ The three places the formats diverge in kind
   C64's sixteen bytes, one field to a byte -- `item_to_c64` is the projection,
   and it reproduces 157 of the 163 distinct C64 item records byte for byte.
 
-Evidence: `work/reports/dos-saves.md`, `work/reports/dos-items.md`,
-`docs/117-save-conversion.md`.  Assertions: `tests/test_dosconvert.py`.
+The write-ups, `work/reports/dos-saves.md` and `work/reports/dos-items.md`, are
+lost. The plan is `docs/117-save-conversion.md` and the assertions are
+`tests/test_dosconvert.py`.
 """
 
 from __future__ import annotations
@@ -222,7 +223,8 @@ def item_to_c64(record: bytes) -> bytes:
     every offset -- including that readied and the hidden-name mask share the
     C64's byte +6 where DOS spends a byte on each, and that cursed is bit 7 of
     +7.  The six that do not match are items the two ports hand out in
-    different places, not near misses.  `work/reports/dos-items.md`.
+    different places, not near misses.  The write-up,
+    `work/reports/dos-items.md`, is lost; asserted in `tests/test_dosbox.py`.
     """
     if len(record) != ITEM_SIZE:
         raise DosRecordError(f"a DOS item is {ITEM_SIZE} bytes; got {len(record)}")
@@ -1439,9 +1441,9 @@ def export_party(folder: str | pathlib.Path, slot: str,
 #: checking within one commit of the second existing. `dos_savegame` depends on
 #: nothing but `struct`, so the edge runs this way and not the other.
 #:
-#: The persistent quest flags. `work/reports/quest-flags.md` gives all 352
-#: bytes of $4A20-$4B7F a disposition; $4AF9 upwards is provably not flag
-#: storage, so only this window transfers.
+#: The persistent quest flags. The write-up that gave all 352 bytes of
+#: $4A20-$4B7F a disposition, `work/reports/quest-flags.md`, is lost; $4AF9
+#: upwards is provably not flag storage, so only this window transfers.
 FLAGS_FIRST = dos_savegame.FLAGS_FIRST
 FLAGS_LAST = dos_savegame.FLAGS_LAST
 

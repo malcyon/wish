@@ -1170,7 +1170,8 @@ def landing_square(geo) -> tuple[int, int, int] | None:
     same guarded way as the table for the same reason. It replaces a rule that
     took the first square with any passable edge, which came to `(0, 0)` on all
     twenty-nine maps and left a party walled into a pocket on four of them --
-    P20, `work/reports/p20-arrivals.md`.
+    P20 (write-up lost, `work/reports/p20-arrivals.md`; the pocket sizes are
+    asserted in `tests/test_p20.py`'s `POCKETS`).
 
     Carrying the party's *current* square over remains the one option to avoid:
     the maps do not line up, and (13,13) in the Slums is a wall in Sokol Keep.
@@ -1533,7 +1534,7 @@ class FastTravel(Action):
     #: status line and no command bar, and the PC never came back to the
     #: key-wait loop, so nothing could be fasttraveled out again. `FastTravelBar` does not
     #: offer it; this refuses it for a caller that did not come through the
-    #: dropdown. `work/reports/p20-arrivals.md`.
+    #: dropdown (write-up lost, `work/reports/p20-arrivals.md`).
     ATTRACT_TRAP = ("this is the attract-mode demo, not a place: travelling "
                     "there leaves the world -- no map, no status line, and the "
                     "program counter never returns to DUNGEON's key-wait loop, "

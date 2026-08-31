@@ -108,7 +108,8 @@ MAP: tuple[Region, ...] = (
                 "operand references across all thirty scripts, 158 of them "
                 "with a printed string at the write site naming the event. "
                 "The remaining 38 are gaps between per-area blocks that no "
-                "script touches. See work/reports/quest-flags.md"),
+                "script touches. The write-up, "
+                "work/reports/quest-flags.md, is lost."),
     Region(0x4AF9, 0x87, "unused", OK, saved_in="SAVEDGAME0",
            note="not flag storage, on four independent grounds: no ECL "
                 "operand anywhere above $4AF8, no engine binary references "

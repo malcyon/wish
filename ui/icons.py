@@ -1,7 +1,7 @@
 """Small vector icons, as SVG path data. No Qt in here.
 
-**Why paths and not a font.** `work/reports/font-awesome.md` weighed three ways
-of getting icons: `qtawesome`, bundling `Font Awesome 7 Free-Solid-900.otf`, and
+**Why paths and not a font.** A write-up since lost,
+`work/reports/font-awesome.md`, weighed three ways of getting icons: `qtawesome`, bundling `Font Awesome 7 Free-Solid-900.otf`, and
 lifting the path data. The paths win for this program specifically:
 
 * the map draws with `QPainter`, not `QIcon`, so a font's only advantage --

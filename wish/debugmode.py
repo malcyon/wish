@@ -17,7 +17,8 @@ subprocess passes the mode on.
 under the map, and that row is now Fast Travel and is shown to everybody: P20
 fasttraveled into every area whose arrival square was unknown and measured where the
 party landed, which is what the gate was waiting for
-(`work/reports/p20-arrivals.md`, `docs/118-debug-mode.md`). What is left is the
+(write-up lost, `work/reports/p20-arrivals.md`; see `docs/118-debug-mode.md`).
+What is left is the
 flag itself -- `--debug`, the variable, and the line `note()` puts in the debug
 log and the About box -- kept because the log turns it on and off and because
 the next control that needs a gate will want one that is already wired.

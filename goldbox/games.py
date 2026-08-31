@@ -11,8 +11,9 @@ later title writes **one** file of exactly 7426 bytes: a `$1D00` payload of
 header `$400`, twelve `$100` character slots, twelve `$100` item pages, and a
 final `$100` page that is Pool of Radiance's roster folded in. Measured on the
 player's own disks for Curse, Silver Blades, Champions of Krynn, Death Knights
-of Krynn and Gateway to the Savage Frontier; see
-`work/reports/goldbox-inventory.md`.
+of Krynn and Gateway to the Savage Frontier. The write-up,
+`work/reports/goldbox-inventory.md`, is lost; the per-title base addresses are
+asserted in `tests/test_curse.py::test_the_addresses_are_the_ones_measured`.
 
 **The offsets inside the payload are identical in all six.** Items at `$1000`,
 the combat-icon table at `$2E0`, the slot area at `$400`, the position triple at
@@ -105,7 +106,7 @@ RACES_KRYNN = ((0, "silvanesti elf"), (1, "qualinesti elf"), (2, "half-elf"),
 # 36 shipped characters in all six titles. It is a cross-title check, not a
 # Pool of Radiance quirk, and `tests/test_gametables.py` asserts it.
 #
-# (`work/reports/goldbox-inventory.md` sec 3.3(a) says the rule fails for the
+# (An early report, since lost, said the rule fails for the
 # 0x10/0x40/0x80 classes. It read only the first four slots of an eight-slot
 # array; the levels are in the slots it did not read.)
 CLASS_BITS_CLASSIC = ((1, "magic-user"), (2, "cleric"), (4, "thief"),

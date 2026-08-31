@@ -12,9 +12,10 @@ Where the offsets come from
 ---------------------------
 Every entry below was measured against **24 real specimens** -- 18 characters
 in three played save slots and 6 exported `.CHA` files -- from Donald's Steam
-copy of *Forgotten Realms: The Archives*.  `work/reports/dos-saves.md` is the
-working, `tests/test_dossave.py` and `tests/test_dosconvert.py` are the
-assertions, and `docs/117-save-conversion.md` is the plan the table serves.
+copy of *Forgotten Realms: The Archives*.  The write-up that was the working,
+`work/reports/dos-saves.md`, is lost; `tests/test_dossave.py` and
+`tests/test_dosconvert.py` are the assertions, and
+`docs/117-save-conversion.md` is the plan the table serves.
 Nothing here is transcribed from a hex-editing guide: the community notes in
 `work/coab-research/formats/` predicted nine of these fields and were right
 about all nine, which is corroboration and is said as much in the notes.
