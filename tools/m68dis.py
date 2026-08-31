@@ -602,7 +602,13 @@ def decode(data: bytes, offset: int, address: int | None = None,
     """
     if address is None:
         address = offset
-    if offset + 2 > len(data):
+    # `end` bounds this the same way `len(data)` does, so a window with no
+    # whole word left in it is refused here rather than inside `_Cursor`.
+    # `decode` is public and `_Undecodable` is not: without this, a caller
+    # passing a narrow `end` got a private exception out of the one function
+    # whose contract is that an undecodable word comes back as `dc.w` (#148).
+    limit = len(data) if end is None else min(end, len(data))
+    if offset + 2 > limit:
         raise ValueError("offset is past the end of the buffer")
 
     cur = _Cursor(data, offset, address, end)

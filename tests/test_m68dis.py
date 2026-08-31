@@ -248,3 +248,26 @@ def test_references_to_finds_an_absolute_long_call():
     data = bytes.fromhex("4eb9000255b2")
     hits = m68dis.references_to(data, 0x255B2, 0, len(data))
     assert [hit.mnemonic for hit in hits] == ["jsr"]
+
+
+def test_a_window_with_no_whole_word_left_is_refused_the_same_way():
+    """`decode` is public; `_Undecodable` is private and must not escape it.
+
+    Asking to decode at an offset the window does not reach is the same
+    mistake as asking past the end of the buffer, and the two answered
+    differently: a short buffer raised `ValueError`, a narrow `end` raised
+    `_Undecodable` from inside the cursor. Nothing in the tree reaches it
+    today -- `disassemble` and `references_to` both bound `pos + 2 <= end`
+    before they call -- but `decode` is exported, and the next caller is the
+    one this is for (#148).
+    """
+    import pytest
+
+    from tools.m68dis import decode
+
+    data = bytes.fromhex("4e754e75")            # rts, rts
+    assert decode(data, 2, end=4).mnemonic == "rts"
+    with pytest.raises(ValueError):
+        decode(data, 2, end=2)                  # no whole word inside it
+    with pytest.raises(ValueError):
+        decode(data[:2], 2)                     # the same mistake, no window
