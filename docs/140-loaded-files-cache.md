@@ -38,6 +38,14 @@ Read straight out of `LIBRARY`: `$4209,X` maps a slot to a stem, the stem is at
 | 18 | `WALLDEF` | `$8C00` | wall definitions, piece 0 |
 | 19 | `WALLDEF` | `$8C00` | piece 1 |
 | 20 | `WALLDEF` | `$8C00` | piece 2 |
+
+**`WALLDEF` does not stop at `$8C00`.** `$8C00` is only the staging buffer:
+`LOADPIECES` (`DUNGEON $276E`) marks the three slots dirty, `$145C` reloads
+each one there, and `$1485` then **unpacks each of the three to `$ED50`,
+`$F05C` and `$F368`** -- the destinations in the three-entry tables at
+`$14BF`/`$14C2`. That is the same memory slot 9 (`WALLS`) loads at, and the
+two cannot both be resident at once; see `#156` for what happens when the
+loader is not told the wall pieces have overwritten it.
 | 21 | `CHARPIC` | `$9900` | the icon charset |
 | 22 | `CHARPIC` | `$8C00` | the same file, staged |
 | 23 | `COMPIC` | `$8C00` | a combat picture |
