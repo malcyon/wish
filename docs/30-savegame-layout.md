@@ -128,6 +128,42 @@ The icon table has **8** entries, which is what first suggested 8 slots. That
 match is real but it counts the *party*, not the slot array — icons are a party
 thing, and slots 8-11 never need one.
 
+### The slot array runs backwards from the marching order
+
+**The character the game lists first is in the *highest* occupied slot.**
+CONFIRMED in the running game: `ENCAMP ▸ ALTER ▸ ORDER` physically moves the
+records between slots, and all four of a character's blocks move with them —
+the 256-byte slot at `$4D00 + n*$100`, the roster block at `$8300 + n*$20`, the
+combat icon at `$4BE0 + n*$24` and the item block at `$5900 + n*$100`, each
+byte-identical to what the old slot held. Seven party lists were read off the
+screen across three reorders and three drops on one party, and every one of
+them is the occupied slots in descending index order.
+
+So the party list is **the occupied slots, highest first**, and reading them
+0 upwards gives the party upside down — which is what
+[`#160`](https://github.com/malcyon/wish/issues/160) is. `goldbox.dos.marching_slot`
+already carries the arithmetic, `count - 1 - index`, from
+[`#101`](https://github.com/malcyon/wish/issues/101).
+
+**There is no marching-order table.** No window of six or eight bytes anywhere
+in `SAVEDGAME0` or `SAVEDGAME1` is a permutation of 0..5 or 0..7, in any
+encoding tried — slot indices, slot page addresses, item page addresses, roster
+offsets — and with the party in a non-slot order the corresponding permutation
+is absent from the whole 64K of a running machine as well. The order is carried
+by *where a record sits*, and by nothing else.
+
+Two consequences worth holding:
+
+* **`ORDER` packs the party down to slot 0.** With four characters in slots 1–4
+  and both ends empty, one reorder put them in slots 0–3. That is why 29 of the
+  29 saves on this machine have no gap.
+* **`DROP` does not pack, so a gap can reach the disk.** It zeroes the first
+  byte of the dropped character's name where it stands ([`#104`](https://github.com/malcyon/wish/issues/104))
+  and leaves the hole; a player who drops somebody and saves without reordering
+  has a save whose occupied slots are not `0..n-1`. Whether the game *skips* a
+  hole in the middle or stops at it is UNKNOWN — every gap measured was at one
+  end of the range.
+
 ### Twelve slots, of which the party uses eight
 
 `LIBRARY $312B` computes **both** `$4D00 + n*$100` and `$5900 + n*$100`, and the
@@ -326,8 +362,14 @@ four different places, and an export matches a save in **579 of 580 bytes**:
 | `0x120`-`0x21F` | the item area at `$5900 + n * $100` |
 | `0x220`-`0x243` | the combat-icon table at `$4BE0 + n * $24` |
 
-The one real difference is `0x10D`: marching order in an export, record slot in
-a roster block.
+The one real difference is `0x10D`, and calling it "marching order in an export"
+overstates what was measured. `0x10D` **is** roster `+0x0D`, and in a roster
+block that byte is the slot index — it did not budge from 0..5 through three
+in-game reorders that moved the records themselves (`#160`). The export evidence
+was that a six-character party's exports carry a complete 0-5 permutation; so do
+the slot indices of a packed six-character party, so it does not separate the two
+readings. Treat it as the slot index until an export is taken from a party whose
+occupied slots are *not* `0..n-1`, which is the specimen that would settle it.
 
 **The "44 differing bytes" this section used to describe were an artefact of the
 comparison**, not of the format — they came from reading 580 contiguous bytes
@@ -363,7 +405,7 @@ self-checking against `docs/20-character-record.md`.
 | `+0x04` | spells memorised, **2nd level** | PROBABLE | |
 | `+0x05` | spells memorised, **3rd level** | PROBABLE | |
 | `+0x0C` | **quickfight**, bit 7 | CONFIRMED | set by QUICK, read by `COMBAT` at the start of the next fight, never cleared. See [`../goldbox-bugs.md`](../goldbox-bugs.md) bug 3 |
-| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot. Marching order in an export |
+| `+0x0D` | slot index | CONFIRMED | 0..7, matches the `SAVEDGAME0` slot — 29 of 29 saves on this machine, 0 mismatches. **Not the marching order**: it stayed 0..5 through three in-game reorders while the records themselves moved between slots (`#160`) |
 | `+0x0E` | **THAC0**, stored as `60 - THAC0` | PROBABLE | see below |
 | `+0x0F` | **armour class**, stored as `60 - AC` | CONFIRMED | AC 8 -> 52, AC 2 -> 58 |
 | `+0x10` | armour bonus (shield excluded), stored as `48 + bonus` | PROBABLE | none 48, leather 50, banded mail 54 — measured by putting armour on. Two outside sources read the same byte as **armour class from behind**, `60 - AC`; see below |
