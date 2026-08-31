@@ -373,7 +373,9 @@ def helpless_indices(save_head: bytes) -> dict[int, frozenset[int]]:
 
 def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
                initiative: bytes, shape: Shape, previous: Battle | None,
-               helpless: dict[int, frozenset[int]] = {}) -> Combatant | None:
+               helpless: dict[int, frozenset[int]] | None = None
+               ) -> Combatant | None:
+    helpless = helpless or {}
     at = index * POSITION_STRIDE
     x, y, packed = positions[at], positions[at + 1], positions[at + 2]
     on_map = x != OFF_MAP and y != OFF_MAP
