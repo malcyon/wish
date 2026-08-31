@@ -79,7 +79,12 @@ D20_SIDES = 20
 #: `$A4F0`-`$A4FB`: everything about the attack in progress, in one range.
 ATTACK = 0xA4F0
 ATTACK_LEN = 0x0C
-NEEDED = 0xA4F0 - ATTACK
+# `$A4F0` itself -- the number the roll had to reach -- has deliberately no
+# offset here, because nothing reads it. `needed` is `THAC0 of the attacker -
+# AC of the target`, computed from the two roster blocks: the alternative,
+# `$A4F0 - $6C0E`, subtracts the *resident* block's THAC0, and after a hit the
+# resident block is the target's. A constant sitting beside `ACTOR` and
+# `DAMAGE` reads as though the code touched the byte, and it does not.
 ACTOR = 0xA4F4 - ATTACK
 TARGET = 0xA4F5 - ATTACK
 DAMAGE = 0xA4F8 - ATTACK
@@ -204,6 +209,18 @@ class RollWatch:
         """How many have been missed since this was last asked."""
         missed, self._missed = self._missed, 0
         return missed
+
+    def reset(self) -> None:
+        """Forget the fight that just ended.
+
+        `$A4F9` is cleared per action, so it counts within one fight and
+        carries no meaning across two. Left at the value the last fight ended
+        on, the first poll of the next fight can read the same number back --
+        `update` then sees `now == before`, takes neither branch, and a real
+        missed roll is never counted.
+        """
+        self._attempts = 0
+        self._missed = 0
 
 
 def claimed_hit(text: str) -> bool | None:

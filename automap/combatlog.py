@@ -248,6 +248,53 @@ def parse(text: str) -> tuple[str | None, str | None, int | None]:
     return subject, outcome, int(damage.group(1)) if damage else None
 
 
+def _titled(name: str) -> str:
+    """`LADY KATHERINE` as `Lady Katherine`."""
+    return re.sub(r"[A-Za-z]+", lambda m: m.group(0).capitalize(), name.lower())
+
+
+def recase(text: str, names) -> str:
+    """The game's shouted line as ordinary prose. **Display only.**
+
+    The C64's character set is capitals, so the game prints in capitals and
+    `CombatLog` keeps exactly what it printed -- that text is the evidence, and
+    the tests assert on it. This runs on the way to the panel and nowhere else:
+    `observe`, `_commit` and `message` must never call it.
+
+    `names` is the fight's combatants, and is the only authority on which words
+    are names; guessing from the text would capitalise `ORC` in
+    `AND HITS FOR` as readily as in `ORC IS KILLED`. Longest first, so a name
+    that contains another does not half-match, and on whole words only, so a
+    name is not found inside a longer word. Everything else is lower-cased and
+    the first letter of the line is put back afterwards, so a line that starts
+    with a word which is not a name still reads.
+
+    A name the roster does not know -- a monster that has left the fight, a
+    line naming something that is not a combatant -- is simply lower-cased.
+    That is the honest answer: the alternative is capitalising words on a
+    guess, and a wrong name is worse than a quiet one.
+    """
+    known = {}
+    for name in names or ():
+        name = (name or "").strip()
+        if name:
+            known.setdefault(name.upper(), _titled(name))
+    if not known:
+        return _sentence(text.lower())
+    pattern = "|".join(re.escape(n) for n in
+                       sorted(known, key=len, reverse=True))
+    parts = re.split(rf"\b({pattern})\b", text, flags=re.IGNORECASE)
+    # `re.split` with one group alternates text, match, text, match...
+    return _sentence("".join(
+        known.get(part.upper(), part.lower()) if i % 2 else part.lower()
+        for i, part in enumerate(parts)))
+
+
+def _sentence(text: str) -> str:
+    """The first letter up, and nothing else touched."""
+    return text[:1].upper() + text[1:]
+
+
 #: Columns in the combat message window: `$0970` gives 23 to 38 inclusive.
 WIDTH = COMBAT_WINDOW[1] - COMBAT_WINDOW[0]
 
@@ -416,6 +463,28 @@ class CombatLog:
             self._roll = (None if roll is None
                           else replace(roll, missed=self._watch.take()))
         return done
+
+    def reset_fight(self) -> None:
+        """Forget everything that belonged to the fight that just ended.
+
+        Called **after** `flush`, so the last message of the fight keeps the
+        round it happened in. `CombatLog` is built once a session and reused,
+        so without this the round counter climbs across fights and reaches 50
+        in an evening.
+
+        What is reset here is what `flush` does not already clear: `_pending`,
+        `_last`, `_last_top` and `_heads` are cleared there, and `_roll` goes
+        with `_pending` in `_commit`, so clearing them again would be two
+        places to keep in step. What stays is `messages`, which is the log's
+        history and is what the player is still reading; `_address`, which is
+        where the screen is rather than anything about a fight, and is
+        re-checked against `$D018`/`$DD00` on every poll anyway; and
+        `_height`/`_width`, which `poll` reads out of `$03F2`-`$03F5` before
+        every `observe`.
+        """
+        self.round = None
+        self._round_over = True
+        self._watch.reset()
 
     def flush(self) -> list[Message]:
         """Commit whatever is on screen. Called when the fight ends.

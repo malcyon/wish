@@ -40,7 +40,7 @@ from . import actions, combat, live, rolls
 from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
-from .combatlog import CombatLog
+from .combatlog import CombatLog, recase
 from .commissions import CommissionsPanel
 from .config import Settings, remember_geometry
 from .noteeditor import NotePopover
@@ -805,6 +805,11 @@ class AutomapBinding(QObject):
                 # returns to LINKER with it still on screen -- so without this
                 # it would be the one message the log lost.
                 self.log_combat(self.combat_log.flush(), was)
+                # ...and then forget the fight. `CombatLog` is built once a
+                # session, so the round counter went on climbing from one
+                # fight to the next and reached 50 in an evening. After the
+                # flush, so that last message keeps its own round number.
+                self.combat_log.reset_fight()
                 self.stack.setCurrentWidget(self.canvas)
                 self._refresh()
             return False
@@ -840,17 +845,25 @@ class AutomapBinding(QObject):
         last flush of a fight happens after `self.battle` has already gone to
         None, and without it the last message of every fight would lose its
         dice.
+
+        **This is also where the shouting stops.** The game prints in capitals
+        because the C64's character set is capitals; `combatlog.recase` turns
+        the line into ordinary prose with the combatants' names capitalised,
+        and the combatant list is what says which words those are. It runs
+        here rather than in the log because `Message.text` is the evidence of
+        what the game actually printed. The tooltip keeps the rows verbatim
+        for the same reason.
         """
         battle = self.battle if battle is None else battle
         names = ({c.index: c.name for c in battle.combatants}
                  if battle is not None else {})
         for msg in messages:
             tag = f"round {msg.round}   " if msg.round else ""
-            self.messages.say(f"{tag}{msg.text}", detail="\n".join(msg.lines),
-                              dedup=False)
+            self.messages.say(f"{tag}{recase(msg.text, names.values())}",
+                              detail="\n".join(msg.lines), dedup=False)
             dice = rolls.roll_line(msg, names)
             if dice:
-                self.messages.say(dice, dedup=False)
+                self.messages.say(recase(dice, names.values()), dedup=False)
 
     @staticmethod
     def _battle_note(battle) -> str:

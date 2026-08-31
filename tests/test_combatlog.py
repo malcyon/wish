@@ -351,8 +351,11 @@ def test_the_messages_panel_keeps_both_identical_lines(app, tmp_path,
     target.memory[combatlog.MODE] = b"\x01"
     window.tick()
 
-    said = [line for line in window.messages.lines() if "MISSES" in line]
+    said = [line for line in window.messages.lines() if "misses" in line]
     assert len(said) == 2
+    # `MAGNUS` is not a combatant in the arena, so it is not a name the panel
+    # knows -- and the line still reads, because the first letter goes back up.
+    assert all(line.endswith("Magnus misses.") for line in said)
 
 
 def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
@@ -380,7 +383,7 @@ def test_the_log_survives_the_end_of_the_fight(app, tmp_path, monkeypatch):
         window.tick()
 
     assert window.battle is None
-    assert any("ORC IS KILLED" in line for line in window.messages.lines())
+    assert any("Orc is killed" in line for line in window.messages.lines())
 
 
 # --- what a live fight showed -----------------------------------------------
@@ -666,5 +669,215 @@ def test_two_identical_roll_lines_are_both_kept(app, tmp_path, monkeypatch):
     target.memory[combatlog.MODE] = b"\x01"
     window.tick()
 
-    assert len([line for line in window.messages.lines()
-                if "rolled 4," in line]) == 2
+    said = [line for line in window.messages.lines() if "rolled 4," in line]
+    assert len(said) == 2
+    # ...and the panel shows it recased, name and all.
+    assert all("Orc rolled 4," in line for line in said)
+
+
+# --- what belongs to a fight and what belongs to the session -----------------
+
+def _window():
+    """The three lines every window test here repeats."""
+    from PyQt6.QtWidgets import QMainWindow
+
+    from wish.ui_window import Ui_WishWindow
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    return root
+
+
+def fighting(window, target, on: bool) -> None:
+    """Start or end the fight, and tick until the window has noticed.
+
+    `poll_battle` only looks for a *new* fight every `LIVE_EVERY` ticks, so
+    starting one takes up to that many; noticing one has ended takes one.
+    """
+    target.memory[combatlog.MODE] = b"\x02" if on else b"\x01"
+    for _ in range(window.LIVE_EVERY + 1):
+        window.tick()
+        if (window.battle is not None) is on:
+            return
+    raise AssertionError("the window never noticed the fight change")
+
+
+def end_the_round(window, target) -> None:
+    """`$A380` all zero ends a round; the next non-zero starts the next one."""
+    from automap import combat
+    was = target.memory[combat.INITIATIVE]
+    target.memory[combat.INITIATIVE] = bytes(len(was))
+    window.tick()
+    target.memory[combat.INITIATIVE] = was
+    window.tick()
+
+
+def test_a_second_fight_starts_at_round_one(app, tmp_path, monkeypatch):
+    """Donald got the counter to 50 by running fights back to back.
+
+    `CombatLog` is built once a session and reused, so `round` climbed from one
+    fight into the next. Two fights here, with the first driven into its second
+    round: without the reset the second fight's first message says round 2.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    root = _window()
+
+    target = arena_with_screen([])
+    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    fighting(window, target, True)
+    assert window.battle is not None
+    assert window.combat_log.round == 1
+    end_the_round(window, target)
+    assert window.combat_log.round == 2
+
+    show(target, [])
+    fighting(window, target, False)
+
+    fighting(window, target, True)
+    for frame in (["MAGNUS", "MISSES."], []):
+        show(target, frame)
+        window.tick()
+    fighting(window, target, False)
+
+    said = [line for line in window.messages.lines() if "misses" in line]
+    assert said and all("round 1   Magnus misses." in line for line in said)
+
+
+def test_the_last_message_of_a_fight_keeps_the_round_it_happened_in(
+        app, tmp_path, monkeypatch):
+    """The reset runs after the flush, never before it.
+
+    Nothing paints over the last message of a fight, so it is committed by the
+    flush that the end of the fight triggers -- and a reset done first would
+    strip the round off exactly the message the player was reading.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from automap.state import Automapper
+    from automap.window import AutomapBinding
+    root = _window()
+
+    target = arena_with_screen([])
+    window = AutomapBinding(root, Automapper(target, {}), drive=False)
+    fighting(window, target, True)
+    end_the_round(window, target)
+    assert window.combat_log.round == 2
+
+    show(target, ["ORC", "IS KILLED"])
+    window.tick()
+    fighting(window, target, False)              # never painted over: flushed
+
+    said = [line for line in window.messages.lines() if "is killed" in line]
+    assert said and all("round 2   Orc is killed" in line for line in said)
+
+
+def test_the_reset_keeps_the_history_the_player_is_reading():
+    """`messages` is the log, not fight state. Everything else per-fight goes.
+
+    `_pending`, `_last`, `_last_top` and `_heads` are `flush`'s to clear, and
+    `_roll` goes with `_pending` in `_commit`; `reset_fight` takes what is
+    left, which is the round counter and the dice watch.
+    """
+    log = CombatLog()
+    log.note_round([1, 1])
+    log.observe(["ORC", "IS KILLED"], top=10)
+    assert [m.round for m in log.flush()] == [1]
+    log.reset_fight()
+    assert [m.text for m in log.messages] == ["ORC IS KILLED"]
+    assert log.round is None and log._round_over is True
+    assert log._pending == () and log._last is None and log._heads == set()
+    assert log._roll is None
+    assert log._watch._attempts == 0 and log._watch.take() == 0
+
+
+def test_the_missed_roll_count_does_not_carry_across_fights():
+    """`$A4F9` is cleared per action, so it means nothing across two fights.
+
+    Left where the last fight ended, a new fight whose first poll catches the
+    same number reads as no change at all -- `update` takes neither branch and
+    a roll polling never saw is never counted.
+    """
+    watch = rolls.RollWatch()
+    for attempts in (1, 2):
+        watch.update(rolls.read(b"\x13", attack(attempts=attempts), BOTH))
+    watch.take()
+    watch.reset()
+    watch.update(rolls.read(b"\x13", attack(attempts=2), BOTH))
+    assert watch.take() == 1               # the first attempt was never seen
+
+
+# --- the panel stops shouting -----------------------------------------------
+#
+# The C64's character set is capitals, so the game prints in capitals. The log
+# keeps what it printed; `recase` is what the panel shows.
+
+def test_the_capture_is_still_the_games_own_capitals():
+    """Recasing is a display rule and must stay one.
+
+    `Message.text` is the evidence of what the game actually printed -- it is
+    what `docs/110-combat-log.md` records and what every test in this file
+    asserts on. Moved into the capture, every one of those lines becomes a
+    guess about what was on screen.
+    """
+    log = CombatLog()
+    log.observe(["BRUTUS ATTACKS", "ORC AND HITS", "FOR 7 POINTS", "OF DAMAGE"],
+                top=10)
+    msg = log.flush()[0]
+    assert msg.text == "BRUTUS ATTACKS ORC AND HITS FOR 7 POINTS OF DAMAGE"
+    assert msg.lines[0] == "BRUTUS ATTACKS"
+    assert msg.subject == "BRUTUS"
+
+
+def test_a_line_is_recased_with_the_names_capitalised():
+    """Donald's example, exactly."""
+    assert combatlog.recase(
+        "BRUTUS ATTACKS ORC AND HITS FOR 7 POINTS OF DAMAGE",
+        NAMES.values()) == "Brutus attacks Orc and hits for 7 points of damage"
+
+
+def test_a_multi_word_name_keeps_both_words_capitalised():
+    """`Lady katherine` is what matching one word at a time would give."""
+    assert combatlog.recase("LADY KATHERINE ATTACKS AND MISSES",
+                            ["LADY KATHERINE"]) == \
+        "Lady Katherine attacks and misses"
+
+
+def test_the_longest_name_is_matched_first():
+    """One name inside another must not half-match."""
+    assert combatlog.recase("LADY KATHERINE IS HIT FOR 3 POINTS OF DAMAGE",
+                            ["KATHERINE", "LADY KATHERINE"]) == \
+        "Lady Katherine is hit for 3 points of damage"
+
+
+def test_a_name_is_not_found_inside_a_longer_word():
+    assert combatlog.recase("THE SORCERER ATTACKS ORC", ["ORC"]) == \
+        "The sorcerer attacks Orc"
+
+
+def test_a_line_that_does_not_start_with_a_name_still_reads():
+    assert combatlog.recase("AND HITS FOR 7 POINTS OF DAMAGE",
+                            NAMES.values()) == \
+        "And hits for 7 points of damage"
+
+
+def test_a_name_the_roster_does_not_know_is_left_lower_case():
+    """A monster that has left the fight, or a word that is not a combatant.
+
+    Capitalising it would be a guess, and a word wrongly presented as a name is
+    worse than a quiet one. At the start of a line it is capitalised anyway, by
+    the rule that puts the first letter of every line back up.
+    """
+    assert combatlog.recase("ORC ATTACKS GOBLIN AND MISSES", NAMES.values()) \
+        == "Orc attacks goblin and misses"
+    assert combatlog.recase("GOBLIN IS KILLED", NAMES.values()) == \
+        "Goblin is killed"
+    assert combatlog.recase("GOBLIN IS KILLED", []) == "Goblin is killed"
+
+
+def test_the_roll_line_is_recased_by_the_same_rule():
+    """It reaches the panel through `log_combat`, so it is recased there too."""
+    assert combatlog.recase("BRUTUS rolled 19, needed 12, 1d8+5 = 7",
+                            NAMES.values()) == \
+        "Brutus rolled 19, needed 12, 1d8+5 = 7"
