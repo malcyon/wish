@@ -931,6 +931,23 @@ ask. Donald's verdict on all three was *"they won't be understood by humans"* --
 machinery**, which is everybody who has ever reviewed them and nobody who is
 using the program.
 
+**A line in the Messages panel opens with a capital.** Donald, 2026-08-31:
+*"I want us to start making sure we capitalize the phrases that are going into
+the Messages panel. It looks more professional."* So it is `Fast travel: the
+game was busy and nothing was written; try again in a moment.` and not `fast
+travel: ...`.
+
+Capitalise **the composed line, not the strings**. The first word is usually
+the caller's -- `_report("fast travel", outcome)`, and `action.label.lower()`
+on the action bar -- so upper-casing each message constant leaves the prefix
+lowercase and changes nothing a user sees. `FastTravelBar._report` and
+`ActionBar._report` do it in one place each;
+`test_a_messages_panel_line_opens_with_a_capital` pins it.
+
+Only the first letter, never `str.capitalize()`, which lower-cases the rest and
+would turn `MAGNUS MISSES.` from the combat log into `Magnus misses.` and
+`$6E11` into something else again.
+
 **Look at the string in the running window before proposing it, not in the
 source.** The export line reads `the file name 'LADYKATH.pc' is already used by
 another character in this export; written instead as 'LADYKAT2.pc'` in the

@@ -230,3 +230,21 @@ def test_a_connection_lost_mid_wait_ends_the_wait_rather_than_spinning(app):
     assert said and said[-1][1] is True
     assert took < actionbar.WAIT_SECONDS / 2, (
         f"the wait spun on a dead connection for {took:.2f}s")
+
+
+def test_a_messages_panel_line_opens_with_a_capital(app):
+    """Donald, 2026-08-31: *"I want us to start making sure we capitalize the
+    phrases that are going into the Messages panel. It looks more
+    professional."*
+
+    Pinned on the composed line rather than on the strings, because the first
+    word is the caller's -- `_report("fast travel", ...)` here and
+    `action.label.lower()` on the action bar -- so capitalising every message
+    string would leave the prefix lowercase and change nothing a user sees.
+    """
+    said: list[str] = []
+    bar = row(app, say=lambda text, detail="", alarm=False: said.append(text))
+    bar._report("fast travel",
+                actions.Outcome(False, actionbar.FastTravelBar.STILL_BUSY))
+    assert said[-1] == ("Fast travel: the game was busy and nothing was "
+                        "written; try again in a moment.")

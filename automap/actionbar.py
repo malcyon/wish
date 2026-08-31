@@ -224,6 +224,12 @@ class ActionBar(QObject):
             line = outcome.message
         else:
             line = f"{what}: {outcome.message}"
+        # Donald, 2026-08-31: a line in the messages panel opens with a
+        # capital. Done here rather than in each string because `what` is
+        # a caller's word -- `action.label.lower()` at the action-bar call
+        # site -- so capitalising the strings would leave the prefix
+        # lowercase and fix nothing a user sees.
+        line = line[:1].upper() + line[1:]
         detail = "\n".join(outcome.notes)
         self.say(line, detail, alarm=not outcome.ok)
 
@@ -378,9 +384,10 @@ class FastTravelBar(QObject):
 
     #: What the messages panel says when the wait ran out: the game was busy
     #: for the whole of `WAIT_SECONDS` and nothing was written.
-    #: **Not approved wording** -- proposed on #152 and Donald's to settle.
+    #: Donald's wording, settled 2026-08-31. `_report` capitalises the first
+    #: letter, so this reads "Fast travel: the game was busy ...".
     STILL_BUSY = ("the game was busy and nothing was written; try again in a "
-                  "moment")
+                  "moment.")
 
     #: A connection that went away while the click was waiting. Not new
     #: wording: it is the sentence `Action.legality` already answers with when
@@ -697,6 +704,12 @@ class FastTravelBar(QObject):
             line = outcome.message
         else:
             line = f"{what}: {outcome.message}"
+        # Donald, 2026-08-31: a line in the messages panel opens with a
+        # capital. Done here rather than in each string because `what` is
+        # a caller's word -- `action.label.lower()` at the action-bar call
+        # site -- so capitalising the strings would leave the prefix
+        # lowercase and fix nothing a user sees.
+        line = line[:1].upper() + line[1:]
         self.say(line, "\n".join(outcome.notes), alarm=not outcome.ok)
         self.refresh()
 
