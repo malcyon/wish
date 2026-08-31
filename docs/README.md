@@ -41,7 +41,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [112-test-harness.md](112-test-harness.md) | two fixed test-harness faults: the suite opening real windows, and an intermittent findChild segfault |
 | [114-party-strength.md](114-party-strength.md) | what makes a random encounter bigger, term by term |
 | [113-world-map.md](113-world-map.md) | the overland travel map, which is the combat engine on other data |
-| [115-review-the-scripts.md](115-review-the-scripts.md) | the thirty decoded ECL scripts, waiting for a human read |
+| [115-review-the-scripts.md](115-review-the-scripts.md) | the ECL script reading, closed undone on 2026-08-31: what the decode had reached, what a rebuilt decoder would have to match, and the one item on its list that needs no decoder |
 | [116-second-game.md](116-second-game.md) | Curse of the Azure Bonds: the same 580-byte record, what differs, and the import routine that proves it |
 | [117-save-conversion.md](117-save-conversion.md) | converting characters between the DOS and C64 versions — the converter is written and `File > Import`/`Export` are wired, behind `WISH_EXPERIMENTAL_DOS_IMPORT`/`WISH_EXPERIMENTAL_EXPORT` |
 | [118-debug-mode.md](118-debug-mode.md) | `WISH_DEBUG=1`, Fast Travel, and what an area change actually is — built |
