@@ -188,11 +188,18 @@ number is only interesting while editing, it belongs on the editor tab.
    two conditions (dead/dying, levels drained). The rest waits on Donald
    choosing an icon per effect — the decision sheet is
    [`136-condition-badges.md`](136-condition-badges.md).
-4. **Done, folded into the bottom strip rather than a separate panel.**
-   `BottomStrip.show_state` (`automap/panel.py`) lists party-wide effects by
-   label and counts monster effects rather than listing them row by row —
-   deliberately: a monster's effects belong to whatever is being fought, and
-   the combat view is where they will mean something.
+4. **Built, folded into the bottom strip rather than a separate panel — and
+   then lost.** `BottomStrip.show_state` (`automap/panel.py`) still lists
+   party-wide effects by label and counts monster effects rather than listing
+   them row by row, deliberately: a monster's effects belong to whatever is
+   being fought, and the combat view is where they will mean something.
+
+   **But none of it reaches the screen.** The label it writes into,
+   `strip_effects`, was removed from `wish/window.ui` in the UI redesign, so
+   `findChild` returns `None` and the `if self.effects is not None:` guard
+   discards the line in silence. Whether the line is wanted back is Donald's
+   call — other things were removed from this strip on purpose — and it is
+   [#142](https://github.com/malcyon/wish/issues/142).
 5. **Where is done**, in the same strip. **The loaded-files list was built
    collapsed, then taken back out.** `BottomStrip.__init__`'s comment says
    why: a reverse-engineering number in a window somebody is playing a game in
