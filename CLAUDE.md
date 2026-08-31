@@ -1,5 +1,38 @@
 # Working notes for Claude
 
+## Name every issue you cite
+
+`#59 (Map the DOS saved game, not just the character record)`, never a bare
+`#59`. Every mention, in replies, issue bodies, comments, documents and
+tables -- there is no "already introduced it above" exemption.
+
+This is first in the file because it is the rule most often broken and the one
+that costs Donald the most. He reads replies without a browser open, and a
+number on its own carries nothing at all to him: *"when you only reference a
+number, it never means anything to me."* It was stated twice, in the Issues
+section and again in Replies three hundred lines later, and went on being
+broken anyway -- five times in one session on 2026-08-31, in the middle of
+work that was otherwise going well. A reply is written fast, the number is
+what the assistant has in hand, and the title feels like padding. It is not
+padding; it is the whole content of the reference.
+
+The number used as the subject of a sentence is the **worst** place for it,
+because that is where the reader most needs to know what is being talked
+about. "#102 is solved" and "the resizable columns with #135" are the shape
+that keeps recurring.
+
+```sh
+gh issue view N --json number,title -q '"#\(.number) (\(.title))"'
+```
+
+`.claude/hooks/check-issue-titles.py` refuses a reply that breaks this, so it
+is no longer a matter of remembering. **The one exception is a commit
+message**, where the Commits section rules the number goes bare in
+parentheses at the end of the one line -- a title there would break the
+sentence, and GitHub hotlinks it anyway. The hook knows about that exception
+and about code blocks; it does not know about anything else, so a false
+positive is a bug in the hook and not a reason to work around it.
+
 ## Conciseness
 
 Say the thing once, in as few words as carry it. Length is not thoroughness.
