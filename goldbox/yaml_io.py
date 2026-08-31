@@ -119,6 +119,11 @@ class ValueError_(ValueError):
     """Raised with a message a person can act on."""
 
 
+#: Donald's wording, approved verbatim (#145) -- no slot, no name, no second
+#: sentence. Kept as one constant so it only needs changing in one place.
+NAME_CHANGE_REFUSED = "ERROR: Name field cannot be changed."
+
+
 def _decode(table: dict[int, str], value: int, field: str) -> str | int:
     """Number -> name, leaving anything unrecognised as the raw number."""
     return table.get(value, value)
@@ -919,8 +924,17 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
             raise ValueError(f"slot {slot} holds no character")
         who = rec.name
 
+        # The name identifies the character in the file and is exported for
+        # that reason, but it is not editable through this import: #145 is
+        # what an unsanitised rename did to the GUI, and the fix there is to
+        # make the name unreachable rather than to guard it. The YAML path
+        # gets the same answer -- refuse the whole import rather than write a
+        # record whose name silently stayed the old one.
+        if "name" in entry and entry["name"] != who:
+            raise ValueError_(NAME_CHANGE_REFUSED)
+
         for f in EDITABLE:
-            if f not in entry or f in FRIENDLY:
+            if f not in entry or f in FRIENDLY or f == "name":
                 continue
             old = rec.get(f)
             new = entry[f]

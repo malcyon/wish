@@ -10,15 +10,8 @@ from __future__ import annotations
 import logging
 import pathlib
 
-from PyQt6.QtCore import (
-    QAbstractTableModel,
-    QModelIndex,
-    QObject,
-    QRegularExpression,
-    Qt,
-    pyqtSignal,
-)
-from PyQt6.QtGui import QBrush, QColor, QIcon, QRegularExpressionValidator
+from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QIcon
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -64,17 +57,6 @@ from .spellwidget import MemorisedEditor, SpellbookEditor, SpellEditor
 #: run of bytes.
 SPELLBOOK_FIELDS = ("spells_known", "spells_known_high")
 
-#: The characters `goldbox.petscii.encode_record_name` accepts in a record
-#: name -- printable ASCII, mirroring its own `0x20 <= code < 0x7F` check.
-#: One Python character encodes to exactly one byte in that range, so bounding
-#: the character count also bounds the encoded length -- #145.
-NAME_FIELD_CHARS = r"\x20-\x7E"
-
-#: Reported when a field's on-screen value could not be written back -- the
-#: record keeps whatever it held before. Wording awaits Donald's approval
-#: (`CLAUDE.md`, "Help text in the GUI") -- #145.
-FIELD_NOT_SAVED = "{label} was not saved: {reason}"
-
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off -- and
 #: `editor` still imports nothing from `wish`.
@@ -88,6 +70,12 @@ DISK_FILTER = "C64 disk image (*.d64 *.D64);;All files (*)"
 #: The Save As picker's title. `editor/dosimport.py`'s Browse… opens the same
 #: picker for the same purpose and reuses this rather than wording it again.
 SAVE_AS_TITLE = "Save the disk as"
+
+#: Donald's wording, approved verbatim (#145) -- one line per field that
+#: refused, `{label}` filled from the widget's own on-screen label
+#: (`_field_label`), never the internal snake_case field name. No reason, no
+#: value, no second sentence: he approved this sentence whole.
+FIELD_NOT_SAVED = "Error: {label} could not be saved."
 
 
 def _size_combo(combo: QComboBox) -> None:
@@ -450,7 +438,6 @@ class EditorBinding(QObject):
 
         self._widgets = self._find_field_widgets()
         self._fill_combos()
-        self._constrain_name_field()
         self._size_fields()
         self._compact()
         self._weight_columns()
@@ -611,23 +598,6 @@ class EditorBinding(QObject):
                 continue
             for i in range(row.count()):
                 row.setStretch(i, stretch[i] if i < len(stretch) else 0)
-
-    def _constrain_name_field(self) -> None:
-        """Stop the name box holding anything the record cannot store.
-
-        `goldbox.petscii.encode_record_name` raises above 20 bytes or outside
-        printable ASCII (#145). `wish/window.ui` already caps `field_name` at
-        20 characters; the validator adds the character-set restriction, and
-        repeats the length in the regex so it holds even if the `.ui`'s
-        `maxLength` is ever edited out from under it.
-        """
-        w = self._widgets.get("name")
-        if not isinstance(w, QLineEdit):
-            return
-        size = FIELDS_BY_NAME["name"].size
-        w.setMaxLength(size)
-        w.setValidator(QRegularExpressionValidator(
-            QRegularExpression(fr"^[{NAME_FIELD_CHARS}]{{0,{size}}}$"), w))
 
     def _size_fields(self) -> None:
         """Give every box the width of the widest value its bytes can hold."""
@@ -1019,6 +989,8 @@ class EditorBinding(QObject):
         if self.party is None or self.path is None:
             return "nothing open"
         failures = self._flush()
+        if failures and interactive:
+            self._report_flush_failures(failures)
         try:
             self._write_back()
             note = files.save_disk(self.party.disk, self.path, self.backup_dir())
@@ -1029,12 +1001,6 @@ class EditorBinding(QObject):
                 return "failed"
             raise
         self.dirty.clear()
-        if failures:
-            # A refused field is reported instead of "no changes" when it is
-            # the only thing that was touched -- "no changes" would be true
-            # of the bytes and false of what the user was told happened.
-            note = "; ".join(failures) if note == "no changes" \
-                else "; ".join(failures) + f"; {note}"
         self.status(note)
         self._retitle()
         return note
@@ -1104,11 +1070,13 @@ class EditorBinding(QObject):
     def _flush(self, row: int | None = None) -> list[str]:
         """Copy what is on screen into the record, before we leave it.
 
-        Returns one reported line per field whose on-screen value could not
-        be encoded -- the record keeps what it already held for that field.
-        A caller that swallows the return silently repeats the bug this
-        guards against (#145): a field refuses, nothing changes, and nothing
-        says so.
+        Returns the on-screen label of every field the user changed whose new
+        value could not be written back -- the record keeps what it already
+        held for that field. Every editable widget is bounded to what its
+        field can hold (a spin box's range, a combo box's own entries, a
+        spell widget's fixed-width bytes), so this is expected to come back
+        empty -- but a caller must not assume that and drop the return: a
+        refusal nobody is told about is what #145 was.
         """
         row = self.current_row if row is None else row
         if self.party is None or not 0 <= row < len(self.party):
@@ -1136,26 +1104,42 @@ class EditorBinding(QObject):
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
-            except Exception as exc:
+            except Exception:
                 _log.exception("could not flush %s", name)
-                field = FIELDS_BY_NAME.get(name)
-                failures.append(FIELD_NOT_SAVED.format(
-                    label=field.label if field is not None else name, reason=exc))
+                failures.append(self._field_label(name))
         self.party.member(row).name = record.name
         return failures
 
-    def _report_flush_failures(self, failures: list[str]) -> str | None:
-        """Tell the user which fields did not save, on the status bar.
+    def _field_label(self, name: str) -> str:
+        """The text beside `field_<name>` on the sheet, read live so a
+        message to the user never falls behind a rename in Designer -- a
+        hardcoded name -> label table is exactly the kind of drift #142 was.
 
-        `save()`'s own report ("wrote ...", "no changes") is the same
-        mechanism -- see `status()` below -- so a refusal reads the same way
-        a success does, rather than needing a dialog of its own.
+        A trailing colon is stripped so a sentence built around this does not
+        read "Error: HP rolled: could not be saved." A field with no label of
+        its own -- a table cell, something in a group box -- falls back to a
+        phrase that says nothing false rather than the internal field name.
+        """
+        label = self._child(f"label_{name}")
+        text = label.text().strip() if isinstance(label, QLabel) else ""
+        if text.endswith(":"):
+            text = text[:-1].rstrip()
+        return text or "a field"
+
+    def _report_flush_failures(self, failures: list[str]) -> None:
+        """Pop up Donald's sentence, once per field that refused (#145).
+
+        One dialog for the whole flush, not one pop-up per field -- several
+        of those in a row would be worse than the silent failure they
+        replace. `failures` only ever holds a field the user actually
+        changed: `_flush` assigns a record field, and only reaches that
+        assignment, only raises, when the new value differs from what was
+        already stored.
         """
         if not failures:
-            return None
-        text = "; ".join(failures)
-        self.status(text)
-        return text
+            return
+        text = "\n".join(FIELD_NOT_SAVED.format(label=label) for label in failures)
+        QMessageBox.critical(self.root, "Cannot save", text)
 
     def _populate(self) -> None:
         if self.party is None or self.current_row < 0:
@@ -1230,10 +1214,17 @@ class EditorBinding(QObject):
             if name == "icon":
                 w.setEnabled(self.party.save0 is not None)
                 continue
+            if name == "name":
+                # Disabled in wish/window.ui and left alone here -- #145 made
+                # the name unreachable everywhere rather than guarding it, and
+                # this loop would otherwise re-enable it every load, since a
+                # name is not `rule.read_only` by any of binding_for()'s three
+                # reasons.
+                continue
             rule = rules.get(name)
             if rule is None:
                 continue
-            passthrough = isinstance(w, QLineEdit) and name != "name"
+            passthrough = isinstance(w, QLineEdit)
             if hasattr(w, "setEnabled"):
                 w.setEnabled(not rule.read_only and not passthrough)
             if passthrough and not rule.read_only:

@@ -291,127 +291,146 @@ def test_a_real_edit_is_written_and_backed_up(app, save):
     assert again._widgets["gold"].value() == 1234
 
 
-# --- renaming (#145) ---------------------------------------------------------
+# --- the name is not editable (#145) -----------------------------------------
 #
-# `goldbox.petscii.encode_record_name` refuses a name over 20 bytes or holding
-# anything outside printable ASCII -- correctly, since the record has twenty
-# bytes and the C64 has no curly quote. Half one stops that refusal being
-# reachable by typing or pasting in the ordinary way; half two makes sure that
-# whatever still reaches `_flush` unencodable is reported rather than
-# swallowed into a false "no changes".
+# A rename that silently failed to save is what #145 was about. Donald's
+# decision was to remove the failure entirely rather than guard it: the name
+# is disabled in wish/window.ui, and nothing in this file re-enables it.
 
 
 @game_disks
-def test_a_name_too_long_to_type_is_kept_to_what_the_record_holds(app, save):
-    """`insert()` is how Qt delivers both typing and a paste, so this is the
-    paste case too -- and the answer is a silent truncation to twenty
-    characters, not a rejection of the whole paste. Recorded here because
-    #145 flagged that a validator does not, by itself, save you from this."""
+def test_the_name_field_is_disabled(app, save):
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
     w.roster.selectRow(0)
-    field = w._widgets["name"]
-    field.clear()
-    field.insert("A" * 30)
-    assert field.text() == "A" * 20
+    assert not w._widgets["name"].isEnabled()
 
 
 @game_disks
-def test_a_curly_quote_cannot_be_typed_into_the_name(app, save):
-    """The character a phone keyboard or a web paste actually produces (#145)
-    -- refused outright, the whole insertion, not trimmed to the good part."""
+def test_the_name_field_stays_disabled_after_switching_character(app, save):
+    """`_apply_read_only` runs once per file, not per row -- but the name must
+    not come back on switching character either."""
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
     w.roster.selectRow(0)
-    field = w._widgets["name"]
-    field.clear()
-    field.insert("Bru’tus")
-    assert field.text() == ""
-    field.insert("Brutus")
-    assert field.text() == "Brutus"
-
-
-@game_disks
-def test_a_name_of_exactly_twenty_characters_is_still_typable(app, save):
-    """The guard must not cost a legal name -- twenty bytes is not too many."""
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(0)
-    field = w._widgets["name"]
-    field.clear()
-    field.insert("A" * 20)
-    assert field.text() == "A" * 20
-
-
-@game_disks
-def test_a_refused_name_is_reported_not_silently_dropped(app, save):
-    """Half two, proven independently of half one: force an unencodable value
-    into the widget the way `setText()` does -- it bypasses the validator, so
-    this is what a bug elsewhere, or a future field with the same shape,
-    would still be able to do. Before #145 this reached `_flush`, was
-    swallowed, and `save()` reported "no changes" while the disk kept the old
-    name."""
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(0)
-    old_name = w._widgets["name"].text()
-    w._widgets["name"].setText("Bru’tus")
-    note = w.save(interactive=False)
-    assert "not saved" in note
-    assert note != "no changes"
-
-    again = EditorBinding(make_root(), str(save))
-    again.roster.selectRow(0)
-    assert again._widgets["name"].text() == old_name
-
-
-@game_disks
-def test_a_refused_name_is_reported_even_alongside_a_real_edit(app, save):
-    """The other field's write must not be lost, and the report must not
-    read as "no changes" when something plainly did change."""
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(0)
-    w._widgets["name"].setText("Bru’tus")
-    w._widgets["gold"].setValue(4321)
-    note = w.save(interactive=False)
-    assert "not saved" in note and "wrote" in note
-
-    again = EditorBinding(make_root(), str(save))
-    again.roster.selectRow(0)
-    assert again._widgets["gold"].value() == 4321
-
-
-@game_disks
-def test_switching_character_away_from_a_refused_name_reports_it_too(app, save):
-    """The failure is not only found at Save -- switching rows also flushes,
-    and that flush's refusal must reach the user the same way."""
-    from editor.window import EditorBinding
-    w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(0)
-    w._widgets["name"].setText("Bru’tus")
     w.roster.selectRow(1)
-    assert "not saved" in w.root.statusBar().currentMessage()
+    assert not w._widgets["name"].isEnabled()
 
 
 @game_disks
-def test_a_successful_rename_still_writes_and_is_reported(app, save):
-    """The existing behaviour the fix must not regress."""
+def test_the_name_is_still_shown_though_disabled(app, save):
+    """Disabled must not mean the value is hidden -- the player can still see
+    whose sheet this is."""
     from editor.window import EditorBinding
-    before = save.read_bytes()
     w = EditorBinding(make_root(), str(save))
     w.roster.selectRow(0)
-    field = w._widgets["name"]
-    field.clear()
-    field.insert("SIRDONALD")
-    w._edited()
-    note = w.save(interactive=False)
-    assert "wrote" in note
-    assert save.read_bytes() != before
+    assert w._widgets["name"].text() == "MALCYON"
 
-    again = EditorBinding(make_root(), str(save))
-    again.roster.selectRow(0)
-    assert again._widgets["name"].text() == "SIRDONALD"
+
+# --- a field that refuses to save is a pop-up (#145) -------------------------
+#
+# Donald's ruling: keep the reporting mechanism `4738b19` built, but as a
+# pop-up rather than a status-bar line, worded "Error: {label} could not be
+# saved." with the label read live off the sheet. No field can actually
+# refuse today -- every spin box is ranged to what its field holds, every
+# combo box offers only its own entries, and the two spell widgets always
+# hand back exactly the field's width -- so these tests force the failure at
+# `CharacterRecord.set` to prove the mechanism itself, independent of
+# whether anything can currently reach it.
+
+from goldbox.record import CharacterRecord  # noqa: E402
+
+
+@game_disks
+def test_a_field_that_refuses_to_save_pops_up_the_approved_sentence(
+        app, save, monkeypatch):
+    import editor.window as ew
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    real_set = CharacterRecord.set
+
+    def fail_on_gold(self, name, value):
+        if name == "gold":
+            raise ValueError("boom")
+        return real_set(self, name, value)
+
+    monkeypatch.setattr(CharacterRecord, "set", fail_on_gold)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w.save(interactive=True)
+    assert said == [("Cannot save", "Error: Gold could not be saved.")]
+
+
+@game_disks
+def test_two_refused_fields_in_one_flush_are_one_dialog_not_two(
+        app, save, monkeypatch):
+    """Consecutive pop-ups would be worse than the bug -- one dialog, one
+    line per field. `_widgets` is a dict in widget-tree order, not sheet
+    order, so this checks the two lines are both there rather than which
+    comes first."""
+    import editor.window as ew
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    real_set = CharacterRecord.set
+
+    def fail_on_both(self, name, value):
+        if name in ("gold", "hp_rolled"):
+            raise ValueError("boom")
+        return real_set(self, name, value)
+
+    monkeypatch.setattr(CharacterRecord, "set", fail_on_both)
+    w._widgets["gold"].setValue(w._widgets["gold"].value() + 1)
+    w._widgets["hp_rolled"].setValue(w._widgets["hp_rolled"].value() + 1)
+    w.save(interactive=True)
+    assert len(said) == 1
+    title, text = said[0]
+    assert title == "Cannot save"
+    assert sorted(text.splitlines()) == sorted([
+        "Error: Gold could not be saved.",
+        "Error: HP rolled could not be saved.",
+    ])
+
+
+@game_disks
+def test_a_field_left_untouched_never_triggers_the_dialog(app, save, monkeypatch):
+    """The trigger is a field the user changed. `record.set` is made to fail
+    for every field here, and nothing pops up because nothing on screen
+    differs from what the record already holds."""
+    import editor.window as ew
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    w.roster.selectRow(0)
+    said = []
+    monkeypatch.setattr(ew.QMessageBox, "critical",
+                        lambda *a, **k: said.append((a[1], a[2])))
+    monkeypatch.setattr(CharacterRecord, "set",
+                        lambda self, name, value: (_ for _ in ()).throw(
+                            ValueError("boom")))
+    w.save(interactive=True)
+    assert said == []
+
+
+@game_disks
+def test_the_field_label_strips_a_trailing_colon(app, save):
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    label = w._child("label_gold")
+    label.setText("Gold:")
+    assert w._field_label("gold") == "Gold"
+
+
+@game_disks
+def test_the_field_label_falls_back_for_a_field_with_no_label(app, save):
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(save))
+    assert w._field_label("no_such_field") == "a field"
 
 
 # --- the inventory ----------------------------------------------------------

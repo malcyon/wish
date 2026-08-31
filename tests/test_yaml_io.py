@@ -225,6 +225,46 @@ def test_editing_by_name_works(tmp_path):
     assert got["classes"] == ["magic-user", "thief", "fighter"]
 
 
+# --- the name is not editable through the YAML either (#145) ---------------
+#
+# The GUI's name field is disabled outright; the CLI gets the same answer by
+# refusing an import whose name does not match the record it targets. The
+# name is still exported -- it is what identifies the character in the file.
+
+
+@live
+def test_a_changed_name_is_refused_and_nothing_written(tmp_path):
+    """The whole import refuses, not just the name -- silently dropping the
+    user's other edits would be the same bug with smaller symptoms."""
+    data = export_save(SAVE, GAME)
+    k = next(e for e in data["party"] if e["name"] == "LADY KATHERINE")
+    k["name"] = "LADY KATH"
+    k["gold"] = 9999
+    out = tmp_path / "renamed.d64"
+    with pytest.raises(ValueError_) as e:
+        import_into(SAVE, data, str(out))
+    assert str(e.value) == "ERROR: Name field cannot be changed."
+    assert not out.exists()
+
+
+@live
+def test_an_unchanged_name_still_imports_every_other_field(tmp_path):
+    """The guard must not cost an ordinary edit -- only a changed name is
+    refused, and it must not stop the rest of the entry applying."""
+    data = export_save(SAVE, GAME)
+    k = next(e for e in data["party"] if e["name"] == "LADY KATHERINE")
+    k["gold"] = 9999
+    k["alignment"] = "chaotic evil"
+    out = tmp_path / "edited.d64"
+    changes = import_into(SAVE, data, str(out))
+    assert any("gold" in c for c in changes)
+    assert any("alignment" in c for c in changes)
+    after = export_save(str(out), GAME)
+    got = next(e for e in after["party"] if e["name"] == "LADY KATHERINE")
+    assert got["gold"] == 9999
+    assert got["alignment"] == "chaotic evil"
+
+
 @live
 def test_guidance_is_comments_not_data():
     """The header explains the file without becoming a field you could edit."""
