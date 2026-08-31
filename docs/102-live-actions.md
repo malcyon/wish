@@ -248,6 +248,35 @@ actions a wrapper that reads each address once —
 the same poll: it writes to a running machine on an edge nobody asked for
 otherwise.
 
+**A button whose gate is a sampled program counter blinks, and Fast Travel's
+is.** `FastTravel.legality` asks whether the PC is inside `DUNGEON`'s key-wait
+loop or the key fetcher it calls -- a correct guard on the *write*, and a claim
+about the microsecond VICE stopped in rather than about the game. Measured with
+the party standing still at the key prompt, three runs on slot 1, 3000 samples:
+
+| run | samples | outside both windows | `$6E11` | read failures |
+|---|---|---|---|---|
+| idle, 200 ms apart | 400 | 12 (3.0%) | always 1 | 0 |
+| idle, 20 ms apart | 2000 | 63 (3.15%) | always 1 | 0 |
+| while the party walks | 600 | 36 (6.0%) | always 1 | 0 |
+
+The misses are the KERNAL interrupt path (`$EA34`, `$EA93`, `$EACC`-`$EACF`,
+`$FFEA`), the BASIC ROM's floating-point routines (`$BA13`-`$BA39`,
+`$BC59`-`$BC6C`), and occasionally the game's own code. `FastTravelBar.refresh`
+runs once a second, so the button greys itself out for one refresh about once
+every thirty seconds with nothing happening in the game -- `#152`. It extends
+P36 in [50-experiments.md](50-experiments.md), which measured 2.2% at 400
+samples and whose number nobody had connected to the button.
+
+**Not the mode flag**, which read 1 on all 3000 samples, and **not a failed
+read**: `actions._read` swallows the exception, `mode()` answers None and
+`Action.legality` says "the machine is not readable right now", so a failed read
+greys the button too -- the same symptom from a different cause, and the reason
+this and `#151` look alike from the outside and are not the same fault.
+
+**`FastTravelBar` does not use `_OnePoll`** and reads `$6E11` three times per
+refresh where `ActionBar` reads it once.
+
 ---
 
 ## Verification

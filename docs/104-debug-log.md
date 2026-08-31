@@ -44,6 +44,7 @@ Three things make the claim checkable rather than a promise:
 | `save file: PORSAVE11.D64, 174848 bytes, 38 blocks, save disk, 6 characters, area GEO00` | a file is opened, or the log is turned on with one open |
 | `map area: GEO00 (from resident, certain)` | the identified area or the confidence changes |
 | `a poll took 410 ms (over 250 ms: the emulator stalled)` | a read takes longer than `SLOW_MS` |
+| `lost the monitor: TimeoutError: timed out` | a live connection fails and is hung up. **Which exception it was is the whole point of the line** -- Donald's log of a real disconnection recorded that a poll took 5004 ms and that the session gave up, and nothing at all about whether that was a socket timeout, a reset or a short read (`#151`) |
 | `the poll raised, and was swallowed` + traceback | `Session.poll` catches an exception to keep the window alive |
 
 The last is the point of the feature. A poll that throws leaves the window up

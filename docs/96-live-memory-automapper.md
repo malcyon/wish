@@ -279,6 +279,47 @@ costs a minute it records a false blocked edge, which is what
 `Fingerprint._narrow` now absorbs -- it refuses to narrow to zero candidates,
 keeps the last set that fitted, and counts the contradiction instead.
 
+## Giving up on a connection, and hanging up while doing it
+
+**VICE serves exactly one binary-monitor connection**, so a connection wish
+gives up on and does not close is one it then competes with itself for. That is
+what a random mid-session disconnection turned out to be (`#151`): `close()`
+was guarded on `_open`, every give-up path cleared `_open` before raising, and
+`wish/window.py` keeps a second reference to the dead target in
+`mapper.target`, so the socket stayed open and VICE went on serving it.
+
+Measured on slot 1 with one connection held and a second client attaching, which
+is exactly the state wish left itself in:
+
+| attach attempt | what wish reports | how long |
+|---|---|---|
+| first | `MonitorBusy`, "something else is attached" | 1000.8 ms |
+| second | `NotConnected: timed out` | 5004.7 ms |
+| third | `NotConnected: timed out` | 5004.5 ms |
+
+and `monitor_listening()` answered True, True, then False after 250.6 ms. Each
+failed attach leaves another connection in VICE's accept queue; once it is full
+every connect to the port hangs for the socket timeout. **It does not recover on
+its own.** The 5004 ms is `Monitor`'s own `timeout=5.0` and not a measurement of
+the emulator.
+
+So `ViceTarget` hangs up **where the give-up happens** -- `_lost()` logs which
+exception it was, closes the socket and returns the `NotConnected` -- rather
+than leaving it to a caller. `close()` is unconditional and idempotent, and
+`MonitorError` counts as a lost connection alongside `OSError`: it is a
+`RuntimeError`, so it used to escape every handler with the connection kept.
+After the fix the same situation reattaches in 117 ms.
+
+Two facts from the same session, so nobody pays for them twice:
+
+* **Abandoning a socket does not freeze the game.** The jiffy clock at `$A2`
+  went 42 to 164 across two seconds after a socket was closed with no `EXIT`
+  sent -- VICE resumes when the connection drops.
+* **Polling is nowhere near slow enough to be the trigger.** 3000 round trips
+  idle and walking: median 9.5-13.9 ms, worst 32.6 ms, none over `SLOW_MS`.
+  What made VICE go quiet for five seconds in the first place is still
+  **UNKNOWN**.
+
 ## Still open
 
 * **The multi-class experience split.** A card draws one bar per class, each

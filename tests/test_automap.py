@@ -2529,3 +2529,113 @@ def test_a_title_whose_loader_has_never_been_read_refuses_every_button(app):
         assert not button.isEnabled(), name
         assert button.toolTip() == actions.UNSUPPORTED.format(
             title=krynn.title), name
+
+
+# --- giving up on a connection, and hanging up while doing it ---------------
+
+
+class HangUpMonitor:
+    """A `Monitor` that answers the greeting and then fails every read.
+
+    Stands in for the one thing a stub socket cannot reproduce: an emulator
+    that stops answering part-way through a session, which is what
+    Donald's log of 2026-08-31 caught -- one poll of 5004 ms against a 5.0 s
+    socket timeout, then the session giving up.
+    """
+
+    def __init__(self, failure):
+        self.failure = failure
+        self.sock = None
+        self.exits = 0
+        self.resumes = 0
+
+    # what `ViceTarget.__init__` uses
+    def __enter__(self):
+        import socket as _socket
+        self.sock = _socket.socket()      # never connected; only its timeout
+        return self
+
+    def __exit__(self, *exc):
+        self.exits += 1
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+
+    def ping(self):
+        pass
+
+    def resume(self):
+        self.resumes += 1
+
+    def read(self, addr, length):
+        raise self.failure
+
+    def write(self, addr, data):
+        raise self.failure
+
+
+def _vice_target_over(monkeypatch, failure):
+    from automap import target as target_mod
+    monkeypatch.setattr(target_mod, "Monitor",
+                        lambda **kw: HangUpMonitor(failure))
+    return target_mod.ViceTarget()
+
+
+def test_a_connection_it_has_given_up_on_is_actually_closed(monkeypatch):
+    """The socket is hung up at the moment the read fails, not left for a
+    caller to remember.
+
+    `close()` used to be `if self._open:` and every give-up cleared that flag
+    first, so the `EXIT` was never sent and the socket was never closed. VICE
+    serves exactly one binary-monitor connection, so what wish reattached
+    against after that was its own abandoned socket, and the reattach was
+    answered and then never served -- which is the same thing on the wire as
+    somebody else holding the monitor.
+    """
+    from automap.target import NotConnected
+
+    t = _vice_target_over(monkeypatch, TimeoutError("timed out"))
+    with pytest.raises(NotConnected):
+        t.fix()
+    assert t._mon.exits == 1, "the give-up left the socket open"
+    t.close()                                    # and calling it again is safe
+    assert t._mon.exits == 2 or t._mon.sock is None
+
+
+def test_a_protocol_failure_is_a_lost_connection_and_not_mere_trouble(monkeypatch):
+    """A short read is not an `OSError`, and used to escape as a plain
+    exception with the connection kept.
+
+    `Monitor._recv_exactly` throws away the part of a message it had collected
+    when a read times out, so every command after one is reading the tail of
+    the last one as a header. Keeping that connection means the window says
+    "trouble reading the machine" once and then never reads anything again.
+    """
+    from automap.target import NotConnected
+    from automap.vice import MonitorError
+
+    assert not issubclass(MonitorError, OSError)       # why it used to escape
+    failure = MonitorError("asked 40 bytes at $0400, got 0")
+    for call in ("fix", "read", "read_blocks", "write"):
+        t = _vice_target_over(monkeypatch, failure)
+        args = {"fix": (), "read": (0x0400, 40), "write": (0x0400, b"x"),
+                "read_blocks": ([(0x0400, 40)],)}[call]
+        with pytest.raises(NotConnected) as gone:
+            getattr(t, call)(*args)
+        assert "asked 40 bytes" in str(gone.value), call
+        assert t._mon.exits == 1, call
+
+
+def test_a_greeting_that_fails_oddly_still_hangs_up(monkeypatch):
+    """`__init__` shut the connection for `TimeoutError` and `OSError` and for
+    nothing else, so a `MonitorError` out of the ping leaked a connected
+    socket -- and a leaked socket is what the next attach loses to."""
+    from automap import target as target_mod
+    from automap.vice import MonitorError
+
+    mon = HangUpMonitor(MonitorError("bad response magic 0x00"))
+    mon.ping = lambda: (_ for _ in ()).throw(mon.failure)
+    monkeypatch.setattr(target_mod, "Monitor", lambda **kw: mon)
+    with pytest.raises(MonitorError):
+        target_mod.ViceTarget()
+    assert mon.exits == 1, "a half-made connection was left open"

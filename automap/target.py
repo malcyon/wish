@@ -38,7 +38,7 @@ from typing import Protocol
 from goldbox import games
 
 from .screen import SCREEN_COLS, codes_to_text, is_bitmap, screen_address
-from .vice import Monitor, monitor_address
+from .vice import Monitor, MonitorError, monitor_address
 
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off.
@@ -284,6 +284,14 @@ class ViceTarget:
         except OSError as exc:
             self._shut()
             raise NotConnected(str(exc)) from exc
+        except BaseException:
+            # Anything else -- a `MonitorError` out of the greeting, most
+            # likely -- still has to hang up on the way out. It used to leave
+            # a connected socket behind, and VICE serves exactly one
+            # binary-monitor connection, so the leak is what the *next* attach
+            # then loses to.
+            self._shut()
+            raise
         self._open = True
 
     def _greet(self) -> None:
@@ -312,9 +320,48 @@ class ViceTarget:
             _log.debug("could not close a half-made connection: %s", exc)
 
     def close(self) -> None:
-        if self._open:
-            self._open = False
-            self._mon.__exit__(None, None, None)
+        """Hang up. Idempotent, and **not** conditional on `_open`.
+
+        It used to be `if self._open:`, and every path that gives up on a
+        connection clears that flag before raising -- so `close()` did nothing
+        at all afterwards, no `EXIT` was sent and the socket was never closed.
+        VICE serves exactly one binary-monitor connection, so what wish then
+        reattached against was its own abandoned socket. `Monitor.__exit__`
+        is itself idempotent, so calling this twice costs nothing (#151).
+        """
+        self._open = False
+        self._shut()
+
+    def _lost(self, exc: Exception) -> NotConnected:
+        """Give up on this connection: say why, hang up, and let a retry in.
+
+        **The socket is closed here rather than left to the caller.** Two
+        callers had no way to close it -- `automap/window.py` drops the target
+        and `wish/session.py` called a `close()` that this path had already
+        disarmed -- and a connection nobody closed is one VICE goes on serving.
+
+        The line it writes is the one Donald's log of a real disconnection did
+        not have: the log recorded that a poll took 5004 ms and that the
+        session gave up, and nothing at all about which failure it was.
+        """
+        _log.warning("lost the monitor: %s: %s", type(exc).__name__, exc)
+        self.close()
+        return NotConnected(str(exc))
+
+    def _resume_unless_lost(self) -> None:
+        """Let the machine run again, unless this connection has been given up.
+
+        `_lost` closes the socket, so a `finally:` that resumed unconditionally
+        would be sending on a `Monitor` whose `sock` is None -- and the
+        `AttributeError` that raises would replace the `NotConnected` on its
+        way out with something no caller catches.
+        """
+        if not self._open:
+            return
+        try:
+            self._mon.resume()
+        except (OSError, MonitorError) as exc:
+            _log.debug("could not resume after a burst: %s", exc)
 
     def __del__(self):                  # pragma: no cover - best effort
         try:
@@ -330,13 +377,20 @@ class ViceTarget:
     # -- Target ----------------------------------------------------------
 
     def read(self, addr: int, length: int) -> bytes:
-        data = self._mon.read(addr, length)
-        self._mon.resume()
-        return data
+        try:
+            return self._mon.read(addr, length)
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
+        finally:
+            self._resume_unless_lost()
 
     def write(self, addr: int, data: bytes) -> None:
-        self._mon.write(addr, data)
-        self._mon.resume()
+        try:
+            self._mon.write(addr, data)
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
+        finally:
+            self._resume_unless_lost()
 
     # -- what the automapper actually asks for ---------------------------
 
@@ -350,17 +404,22 @@ class ViceTarget:
 
         Raises `NotConnected` if the emulator has gone away, which is how the
         window knows to go back to waiting for it.
+
+        **`MonitorError` counts as gone away, and it is not an `OSError`.** A
+        short read, a bad magic byte or a monitor error code used to escape
+        this handler as a plain exception, leaving `_open` True: the session
+        swallowed it, kept the connection and said "trouble reading the
+        machine" once. That state never recovers -- `Monitor._recv_exactly`
+        throws away the half of a message it had when a read times out, so
+        every command after one is reading the tail of the last as a header
+        (#151).
         """
         try:
             return party_fix(self._mon.read, game)
-        except OSError as exc:
-            self._open = False
-            raise NotConnected(str(exc)) from exc
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
         finally:
-            try:
-                self._mon.resume()
-            except OSError:
-                pass
+            self._resume_unless_lost()
 
     def read_blocks(self, blocks) -> list[bytes]:
         """Several ranges, stopping the machine once and resuming once.
@@ -371,22 +430,20 @@ class ViceTarget:
         """
         try:
             return [self._mon.read(addr, length) for addr, length in blocks]
-        except OSError as exc:
-            self._open = False
-            raise NotConnected(str(exc)) from exc
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
         finally:
-            try:
-                self._mon.resume()
-            except OSError:
-                pass
+            self._resume_unless_lost()
 
     def screen(self):
         """A full screen snapshot, for debugging what the mapper is seeing."""
         from .screen import read_screen
         try:
             return read_screen(self._mon.read)
+        except (OSError, MonitorError) as exc:
+            raise self._lost(exc) from exc
         finally:
-            self._mon.resume()
+            self._resume_unless_lost()
 
 
 class ReplayTarget:
