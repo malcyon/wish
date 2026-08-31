@@ -331,6 +331,87 @@ def test_the_helpless_code_is_the_one_the_trait_table_names():
     assert NAMES[combat.HELPLESS] == ("helpless", "PROBABLE")
 
 
+@pytest.mark.parametrize("code, label", [
+    (combat.HELPLESS, "Helpless"),
+    (combat.HELD_OR_PARALYSED, "Held or paralysed"),
+    (combat.SLEEPING, "Sleeping"),
+])
+def test_each_helpless_trait_turns_an_enemy_gold_and_names_itself(code, label):
+    """31 alone was the wrong trigger: a live Sleep cast on a slums orc ambush
+    wrote 53, not 31, on all five sleeping orcs. All three codes must turn the
+    square gold and each names itself rather than a blanket 'Helpless'."""
+    machine = with_effect(arena(), code, 8)
+    battle = combat.read_battle(machine)
+    orc = battle.enemies[0]
+    assert orc.helpless == frozenset({code})
+    assert orc.kind == "helpless"
+    assert label in orc.lines()
+    kinds = [p.kind for p in combat.battlefield(battle)]
+    assert kinds.count("helpless") == 1 and "enemy" not in kinds
+
+
+@pytest.mark.parametrize("code", [
+    combat.HELPLESS, combat.HELD_OR_PARALYSED, combat.SLEEPING,
+])
+def test_each_helpless_trait_leaves_again_when_the_id_clears(code):
+    """The half of this that gets skipped: the game clears the id and the
+    square, and the tooltip line, must go back with it."""
+    machine = with_effect(arena(), code, 8)
+    lit = combat.read_battle(machine)
+    assert lit.enemies[0].kind == "helpless"
+
+    ids = bytearray(machine.memory[combat.SAVE_HEAD])
+    ids[0] = 0                                   # only the id, as the game does
+    machine.memory[combat.SAVE_HEAD] = bytes(ids)
+
+    after = combat.read_battle(machine, previous=lit)
+    orc = after.enemies[0]
+    assert not orc.helpless and orc.kind == "enemy"
+    assert "Helpless" not in orc.lines()
+    assert "Held or paralysed" not in orc.lines()
+    assert "Sleeping" not in orc.lines()
+    assert "helpless" not in [p.kind for p in combat.battlefield(after)]
+
+
+def test_a_sleeping_party_member_keeps_its_green_and_names_the_condition():
+    """The same Sleep landed on SILAS, a party member at combatant index 3.
+    Party squares stay green -- the fill says which side a square is on
+    before it says which condition it is in -- but the tooltip still says."""
+    battle = combat.read_battle(with_effect(arena(), combat.SLEEPING, 0))
+    brutus = battle.party[0]
+    assert brutus.helpless == frozenset({combat.SLEEPING})
+    assert brutus.kind == "party"
+    assert "Sleeping" in brutus.lines()
+    kinds = [p.kind for p in combat.battlefield(battle)]
+    assert "helpless" not in kinds and "hp-ink" not in kinds
+
+
+def test_two_helpless_traits_at_once_list_each_on_its_own_line_ascending():
+    """A combatant carrying more than one of the three shows each, in
+    ascending id order, so the tooltip is deterministic."""
+    machine = arena()
+    from automap import live
+    ids = bytearray(live.EFFECT_SLOTS)
+    who = bytearray(live.EFFECT_SLOTS)
+    ids[0], who[0] = combat.SLEEPING, 8
+    ids[1], who[1] = combat.HELPLESS, 8
+    machine.memory[combat.SAVE_HEAD + live.EFFECT_ID_OFFSET] = bytes(ids)
+    machine.memory[combat.SAVE_HEAD + live.EFFECT_OWNER_OFFSET] = bytes(who)
+    orc = combat.read_battle(machine).enemies[0]
+    lines = orc.lines()
+    assert lines.index("Helpless") < lines.index("Sleeping")
+
+
+def test_an_unrelated_effect_id_on_a_party_member_does_nothing():
+    """39 is hasted, not one of the three trigger ids."""
+    battle = combat.read_battle(with_effect(arena(), 39, 0))
+    brutus = battle.party[0]
+    assert not brutus.helpless and brutus.kind == "party"
+    assert "Helpless" not in brutus.lines()
+    assert "Sleeping" not in brutus.lines()
+    assert "Held or paralysed" not in brutus.lines()
+
+
 def test_a_helpless_enemy_is_yellow_and_says_so():
     machine = with_effect(arena(), combat.HELPLESS, 8)
     battle = combat.read_battle(machine)

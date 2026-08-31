@@ -8,7 +8,7 @@ creature that id's meaning demands. `docs/128-guide-and-scripting.md` is the
 write-up.
 
 **The names below are transcribed from a third-party document and then checked
-against the player's own disks.** 66 are CONFIRMED. Most were settled by the
+against the player's own disks.** 67 are CONFIRMED. Most were settled by the
 census: a `MON*` record or an item template carries the code on exactly the
 creature or item the meaning requires -- the anhkheg carries 121 "anhkheg acid
 squirt", the troll carries 100 and 101, the ghoul carries the paralysis that
@@ -16,9 +16,10 @@ spares elves, the wight carries "silver or magic" and the wraith the "silver
 does half" variant, which is the *Monster Manual* distinction between them.
 **Seventeen more were settled by playing**: `P3-EFFECTS.D64` was saved with 26
 spells running, and each one named the code it had just written -- 1 Bless, 25
-invisible, 39 hasted and the rest, `docs/90-specimens.md`. 62 are PROBABLE: the
-guide names them, nothing on the C64 exercises them, and a third-party document
-on its own is never CONFIRMED.
+invisible, 39 hasted and the rest, `docs/90-specimens.md`. **One more was
+settled by a live fight**: 53 sleeping, five Sleep-struck orcs in one slums
+ambush all naming it. 61 are PROBABLE: the guide names them, nothing on the C64
+exercises them, and a third-party document on its own is never CONFIRMED.
 
 The census is 108 `MON*` records across the eight `POOL` disks and the 163
 item templates in the `ITEMFILE*` lists. **52 of the 129 codes are carried by
@@ -145,7 +146,9 @@ NAMES: dict[int, tuple[str, str]] = {
     50: ("mummy rot, blocking healing", "PROBABLE"),
     51: ("Snake Charm", "PROBABLE"),
     52: ("held or paralysed", "PROBABLE"),
-    53: ("sleeping", "PROBABLE"),
+    # A Sleep cast on a slums orc ambush wrote 53 on all five sleeping orcs --
+    # not 31, which `automap/combat.py` had wrongly used as the sole trigger.
+    53: ("sleeping", "CONFIRMED"),
     54: ("repulsed (bronze dragon; the handler is unimplemented)", "PROBABLE"),
     55: ("poisoned", "PROBABLE"),
     56: ("wearing a Ring of Invisibility", "PROBABLE"),

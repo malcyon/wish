@@ -36,7 +36,7 @@ from goldbox.savegame import (
     RosterBlock,
     looks_occupied,
 )
-from goldbox.traits import traits
+from goldbox.traits import NAMES, traits
 
 from .live import active_effects
 from .render import Hatch, Label, Line, Rect, hatch_lines
@@ -92,6 +92,21 @@ SAVE_HEAD_LEN = RECORDS_AT + RECORD_COUNT * RECORD_STRIDE
 # arrays key on the combatant index instead -- 0-7 the party, 8 upward the
 # monsters -- which is the one place a single monster can be named.
 HELPLESS = 31
+
+# `goldbox/traits.py` 52, PROBABLE, and 53, CONFIRMED. A Sleep cast on a slums
+# orc ambush wrote 53 on all five sleeping orcs and not 31 -- so 31 alone was
+# the wrong trigger. All three are states a creature cannot defend itself in.
+HELD_OR_PARALYSED = 52
+SLEEPING = 53
+
+# Ascending, so a combatant carrying more than one reads out in a fixed order.
+HELPLESS_TRAITS = (HELPLESS, HELD_OR_PARALYSED, SLEEPING)
+
+# The tooltip's wording for each of `HELPLESS_TRAITS`, taken from
+# `goldbox/traits.py`'s own name and capitalised -- one table, so the word and
+# the id cannot drift apart.
+HELPLESS_LABELS = {code: NAMES[code][0][0].upper() + NAMES[code][0][1:]
+                   for code in HELPLESS_TRAITS}
 
 # Drawing. The combat grid is 56 squares across where the area map is 16, so the
 # cell shrinks to fit rather than the window growing to 1900 pixels.
@@ -182,10 +197,10 @@ class Combatant:
     thac0: int | None = None
     movement: int | None = None
     record: CharacterRecord | None = None
-    #: Effect id 31 is on this combatant's index right now. Recomputed from the
-    #: `$4900` arrays every poll and never carried forward, so it goes the
-    #: moment the game clears the id.
-    helpless: bool = False
+    #: Which of `HELPLESS_TRAITS` (31, 52, 53) is on this combatant's index
+    #: right now, empty if none. Recomputed from the `$4900` arrays every poll
+    #: and never carried forward, so it goes the moment the game clears the id.
+    helpless: frozenset[int] = frozenset()
 
     @property
     def is_party(self) -> bool:
@@ -252,8 +267,8 @@ class Combatant:
             combat.append(f"move {self.movement}")
         if combat:
             out.append("   ".join(combat))
-        if self.helpless:
-            out.append("Helpless")
+        for code in sorted(self.helpless):
+            out.append(HELPLESS_LABELS[code])
         if not self.alive:
             out.append("dead or gone from the fight")
         if self.record is None:
@@ -336,12 +351,12 @@ def _record(window: bytes) -> CharacterRecord | None:
         return None
 
 
-def helpless_indices(save_head: bytes) -> frozenset[int]:
-    """Which combatants effect id 31 is on right now, by combatant index.
+def helpless_indices(save_head: bytes) -> dict[int, frozenset[int]]:
+    """Which of `HELPLESS_TRAITS` is on which combatant right now, by index.
 
     Read out of the four `$4900` arrays every poll and never remembered: the
     game clears the id when the condition ends (`docs/133-active-effects.md`),
-    and a set carried forward would keep a monster yellow after it woke up.
+    and a set carried forward would keep a monster gold after it woke up.
 
     The owner byte is the combat combatant index -- 0-7 the party in save-slot
     order, 8 upward the monsters, `$FF` the whole party -- which is why this can
@@ -349,13 +364,16 @@ def helpless_indices(save_head: bytes) -> frozenset[int]:
     `$FF` is dropped rather than trusted: no index reaches it, and a
     party-wide helplessness is not a thing any spell does.
     """
-    return frozenset(e.owner for e in active_effects(save_head)
-                     if e.id == HELPLESS and not e.party_wide)
+    out: dict[int, set[int]] = {}
+    for effect in active_effects(save_head):
+        if effect.id in HELPLESS_TRAITS and not effect.party_wide:
+            out.setdefault(effect.owner, set()).add(effect.id)
+    return {owner: frozenset(codes) for owner, codes in out.items()}
 
 
 def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
                initiative: bytes, shape: Shape, previous: Battle | None,
-               helpless: frozenset[int] = frozenset()) -> Combatant | None:
+               helpless: dict[int, frozenset[int]] = {}) -> Combatant | None:
     at = index * POSITION_STRIDE
     x, y, packed = positions[at], positions[at + 1], positions[at + 2]
     on_map = x != OFF_MAP and y != OFF_MAP
@@ -390,7 +408,7 @@ def _combatant(index: int, positions: bytes, roster: bytes, records: bytes,
         hp=block.hit_points, hp_max=hp_max,
         armour_class=block.armour_class, thac0=block.thac0,
         movement=block.movement, record=record,
-        helpless=index in helpless)
+        helpless=helpless.get(index, frozenset()))
 
 
 def _blocks(target, blocks) -> list[bytes]:
