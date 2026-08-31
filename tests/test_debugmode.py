@@ -130,9 +130,13 @@ def test_the_debug_log_is_the_switch_a_user_gets(monkeypatch, tmp_path):
 # --- the write sequence ------------------------------------------------------
 
 def test_the_writes_are_newecls_own_in_newecls_order():
-    """`DUNGEON $2011`-`$2032`, with the operand fetch removed."""
+    """`DUNGEON $2011`-`$2032`, with the operand fetch removed. The first write
+    is not `NEWECL`'s own -- it is New Phlan's departing script, skipped the
+    same way (`#156`) -- and comes first because it happens before `NEWECL`
+    is even entered on a genuine exit."""
     writes = actions.newecl_writes(0, 20, disk=2, arrival=(1, 14, 1))
     assert writes == (
+        (0x6E1C, b"\xff"),                     # release the WALLS slot, #156
         (0x6E12, bytes([2])),                  # which POOL disk to ask for
         (0xC04B, bytes([1, 14, 1])),           # x, y, facing
         (0x49F2, bytes([0])),                  # where we came from
@@ -164,15 +168,37 @@ def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     outcome = fasttravel.apply(target, area=area(13))     # the kobold caves
     assert outcome.ok
     assert [addr for addr, _ in outcome.writes] == [
-        actions.FASTTRAVEL_DISK, actions.FASTTRAVEL_X, actions.FASTTRAVEL_FROM,
+        actions.FASTTRAVEL_WALLS_SLOT, actions.FASTTRAVEL_DISK,
+        actions.FASTTRAVEL_X, actions.FASTTRAVEL_FROM,
         actions.FASTTRAVEL_SLOT, actions.FASTTRAVEL_SCRATCH]
     assert target.jumps == [0x2034]
     assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
+    assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
 
 
 def test_the_quest_flags_are_said_out_loud():
     outcome = actions.FastTravel().apply(machine(), area=area(20))
     assert any("quest flags" in note for note in outcome.notes)
+
+
+def test_fasttraveling_out_of_new_phlan_releases_the_walls_slot():
+    """`#156`: a genuine exit from New Phlan runs `ECL00 $9955`/`$9BDC`,
+    `LOADFILES 255, 255, 127`, which empties slot 9 of the loaded-files cache
+    -- the resident `WALLS` file -- before `NEWECL` runs. `FastTravel` enters
+    `NEWECL` at its tail and skips that statement, so left unfixed the slot
+    keeps saying `WALLS00` after a fast travel out, the next area's
+    `LOADPIECES` unpacks its own wall definitions over the same `$ED50`, and
+    the next arrival in New Phlan finds slot 9 still `00` and declines to
+    reload the file it has just lost.
+
+    Simulated here as the loaded-files cache would actually read after a
+    warp into New Phlan followed by a warp back out: slot 9 claimed (`$00`)
+    rather than the `$FF` a genuine exit leaves."""
+    target = machine(area=0)                    # standing in New Phlan
+    target.memory[actions.FASTTRAVEL_WALLS_SLOT] = bytes([0x00])   # claimed
+    outcome = actions.FastTravel().apply(target, area=area(20))    # the Slums
+    assert outcome.ok
+    assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
 
 
 # --- what it refuses ---------------------------------------------------------

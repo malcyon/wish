@@ -1109,6 +1109,22 @@ FASTTRAVEL_X, FASTTRAVEL_Y, FASTTRAVEL_FACING = 0xC04B, 0xC04C, 0xC04D
 FASTTRAVEL_FROM = 0x49F2
 #: The `ECL` slot of the loaded-files cache. Bit 7 means "reload me".
 FASTTRAVEL_SLOT = 0x6E1B
+#: Slot 9 of the loaded-files cache -- the resident `WALLS` file, which loads
+#: at `$ED50` under the KERNAL. `#156`: every area but New Phlan uses a
+#: `WALLDEF` triple instead, unpacked over the same `$ED50` by `LOADPIECES`
+#: (`DUNGEON $1485`) without ever telling this slot its memory has been
+#: overwritten. A genuine exit empties it -- `ECL00 $9955`/`$9BDC`,
+#: `LOADFILES 255, 255, 127`, run on the way *out* of New Phlan -- but
+#: `FastTravel` enters `NEWECL` at its tail, past that statement, so a fast
+#: travel out of New Phlan never gives the slot back and the next arrival
+#: there finds it still saying `WALLS00` and skips the reload
+#: (`LIBRARY $4225`: masked `A` equal to the slot means no load).
+#: `$FF` is the value: it is the empty marker `docs/140-loaded-files-cache.md`
+#: names for this cache, it is what every engine-written save in a `WALLDEF`
+#: area carries in this slot, and it is the one value `LIBRARY $4225` leaves
+#: alone -- so the next `LOADFILES 0, 0, 0` in New Phlan reloads `WALLS00`
+#: rather than declining because the slot already says `00`.
+FASTTRAVEL_WALLS_SLOT = 0x6E1C
 #: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
 FASTTRAVEL_SCRATCH, FASTTRAVEL_SCRATCH_LEN = 0x4A00, 0x20
 #: Non-zero indoors, zero on the overland map. Read, never written: it decides
@@ -1231,8 +1247,16 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     `arrival` is `(x, y, facing)`, or `(x, y)` where the departing script sets
     the square but not the direction, or None to write no square at all and let
     the arriving script's entry 4 place the party.
+
+    **One write here is not `NEWECL`'s own: `FASTTRAVEL_WALLS_SLOT`.** It is
+    New Phlan's *departing* script, `ECL00 $9955`/`$9BDC`, run in front of
+    `NEWECL` on a genuine exit and skipped by entering the handler at its
+    tail (`#156`). Written unconditionally and first, before the writes that
+    are `NEWECL`'s own: every area but New Phlan leaves slot 9 alone on
+    arrival, so setting it empty costs nothing but a reload of `WALLS00` in
+    the one area that wants it, and it is the byte the whole bug turns on.
     """
-    writes: list[tuple[int, bytes]] = []
+    writes: list[tuple[int, bytes]] = [(FASTTRAVEL_WALLS_SLOT, b"\xff")]
     if disk is not None:
         writes.append((FASTTRAVEL_DISK, bytes([disk & 0xFF])))
     if arrival is not None:
