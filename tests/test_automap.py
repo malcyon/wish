@@ -2639,3 +2639,60 @@ def test_a_greeting_that_fails_oddly_still_hangs_up(monkeypatch):
     with pytest.raises(MonitorError):
         target_mod.ViceTarget()
     assert mon.exits == 1, "a half-made connection was left open"
+
+
+class NullSocketMonitor(HangUpMonitor):
+    """A `Monitor` that fails after hanging up the way the real one does.
+
+    `Monitor.__exit__` sets `sock = None` (`automap/vice.py:124`) and
+    `Monitor.read` opens with `self.sock.sendall(...)` (line 141), so a read
+    through a target that has already given up raises `AttributeError` -- not
+    an `OSError` and not a `MonitorError`, so none of `ViceTarget`'s handlers
+    catch it. `HangUpMonitor` cannot show this because it raises its failure
+    whatever state it is in.
+    """
+
+    def _wire(self):
+        if self.sock is None:
+            raise AttributeError(
+                "'NoneType' object has no attribute 'sendall'")
+
+    def read(self, addr, length):
+        self._wire()
+        raise self.failure
+
+    def write(self, addr, data):
+        self._wire()
+        raise self.failure
+
+
+def test_a_target_that_gave_up_refuses_a_later_call_rather_than_crashing(
+        monkeypatch):
+    """A user clicks Fast Travel a moment after the emulator stalls.
+
+    The button's enabled state is one poll interval stale, so it is still
+    drawn enabled when the connection has already gone -- and `Automapper`,
+    `ActionBar` and `FastTravelBar` each keep their own reference to the
+    target, none of which the give-up clears. Every one of those calls has to
+    answer `NotConnected`, which the action bar already handles, rather than
+    an `AttributeError` out of a Qt button slot (#151).
+    """
+    from automap import target as target_mod
+    from automap.target import NotConnected
+    from automap.vice import MonitorError
+
+    mon = NullSocketMonitor(MonitorError("bad response magic 0x00"))
+    monkeypatch.setattr(target_mod, "Monitor", lambda **kw: mon)
+    t = target_mod.ViceTarget()
+
+    with pytest.raises(NotConnected):
+        t.read(0x0400, 16)                  # the poll that loses the machine
+    assert mon.sock is None, "giving up did not hang up"
+
+    for what, call in (("read", lambda: t.read(0x0400, 16)),
+                       ("write", lambda: t.write(0x0400, b"\x00")),
+                       ("fix", lambda: t.fix()),
+                       ("read_blocks", lambda: t.read_blocks([(0x0400, 16)])),
+                       ("screen", lambda: t.screen())):
+        with pytest.raises(NotConnected):
+            call()

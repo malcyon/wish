@@ -376,7 +376,25 @@ class ViceTarget:
 
     # -- Target ----------------------------------------------------------
 
+    def _require_open(self) -> None:
+        """Refuse to use a connection that has been given up on.
+
+        `close()` nulls `Monitor.sock`, so a read through a target somebody
+        still holds a reference to raises `AttributeError` on `sock.sendall`
+        -- which is not an `OSError` and not a `MonitorError`, so none of the
+        handlers below catch it and it leaves a Qt button slot as a crash.
+
+        Three references outlive a give-up and none is cleared by it:
+        `Automapper.target`, `ActionBar.target` and `FastTravelBar.target`.
+        A button's enabled state is one poll interval stale, so the gap is
+        real: the connection drops, Fast Travel is still drawn enabled, and
+        the next click lands here (#151).
+        """
+        if not self._open:
+            raise NotConnected("the connection was given up on")
+
     def read(self, addr: int, length: int) -> bytes:
+        self._require_open()
         try:
             return self._mon.read(addr, length)
         except (OSError, MonitorError) as exc:
@@ -385,6 +403,7 @@ class ViceTarget:
             self._resume_unless_lost()
 
     def write(self, addr: int, data: bytes) -> None:
+        self._require_open()
         try:
             self._mon.write(addr, data)
         except (OSError, MonitorError) as exc:
@@ -414,6 +433,7 @@ class ViceTarget:
         every command after one is reading the tail of the last as a header
         (#151).
         """
+        self._require_open()
         try:
             return party_fix(self._mon.read, game)
         except (OSError, MonitorError) as exc:
@@ -428,6 +448,7 @@ class ViceTarget:
         polls. Through `read` that would be two resumes and ~28.6 ms of extra
         emulated time; batched it is one resume, the same as a single `peek`.
         """
+        self._require_open()
         try:
             return [self._mon.read(addr, length) for addr, length in blocks]
         except (OSError, MonitorError) as exc:
@@ -438,6 +459,7 @@ class ViceTarget:
     def screen(self):
         """A full screen snapshot, for debugging what the mapper is seeing."""
         from .screen import read_screen
+        self._require_open()
         try:
             return read_screen(self._mon.read)
         except (OSError, MonitorError) as exc:
