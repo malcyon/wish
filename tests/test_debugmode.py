@@ -201,6 +201,25 @@ def test_fasttraveling_out_of_new_phlan_releases_the_walls_slot():
     assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
 
 
+def test_the_walls_slot_is_released_leaving_anywhere_not_just_new_phlan():
+    """The release is unconditional, and that is a decision rather than an
+    accident -- so it is pinned here rather than only argued in a docstring.
+
+    Narrowing it to `if from_area == 0:` would still fix `#156`, because the
+    corruption is introduced on the way *out* of New Phlan, and every other
+    test in this file departs from New Phlan -- so that narrowing would pass
+    all of them. What it would cost is the three areas measured on `#156`
+    that already leave the same illegal cache state and are invisible only
+    because nothing there reads `$ED50`: warping into the Slums, Podol Plaza
+    and Sokol Keep. Releasing everywhere costs at most one reload of
+    `WALLS00` in the one area that wants it.
+    """
+    writes = actions.newecl_writes(from_area=20, to_area=18)   # Slums to Podol
+    assert writes[0] == (actions.FASTTRAVEL_WALLS_SLOT, b"\xff"), (
+        "the walls slot is released on every fast travel, not only the ones "
+        "leaving New Phlan")
+
+
 # --- what it refuses ---------------------------------------------------------
 
 def test_a_fasttravel_is_refused_when_dungeon_is_not_resident():

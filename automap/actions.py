@@ -1111,9 +1111,10 @@ FASTTRAVEL_FROM = 0x49F2
 FASTTRAVEL_SLOT = 0x6E1B
 #: Slot 9 of the loaded-files cache -- the resident `WALLS` file, which loads
 #: at `$ED50` under the KERNAL. `#156`: every area but New Phlan uses a
-#: `WALLDEF` triple instead, unpacked over the same `$ED50` by `LOADPIECES`
-#: (`DUNGEON $1485`) without ever telling this slot its memory has been
-#: overwritten. A genuine exit empties it -- `ECL00 $9955`/`$9BDC`,
+#: `WALLDEF` triple instead: `LOADPIECES` (`DUNGEON $276E`) marks the three
+#: slots dirty, `$145C` reloads each into the `$8C00` staging buffer, and
+#: `$1485` unpacks them on to `$ED50`, `$F05C` and `$F368` -- never telling
+#: this slot its memory has been overwritten. A genuine exit empties it -- `ECL00 $9955`/`$9BDC`,
 #: `LOADFILES 255, 255, 127`, run on the way *out* of New Phlan -- but
 #: `FastTravel` enters `NEWECL` at its tail, past that statement, so a fast
 #: travel out of New Phlan never gives the slot back and the next arrival
@@ -1236,7 +1237,9 @@ class Waypoint:
 
 def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
                   arrival=None) -> tuple[tuple[int, bytes], ...]:
-    """The bytes `NEWECL` writes, in its own order, minus the operand fetch.
+    """The bytes a fast travel writes: `NEWECL`'s own, in its own order and
+    minus the operand fetch, behind the one write a departing script would
+    have made first.
 
     **The whole write sequence lives here**, in one function, because it is a
     guess in the sense that matters: the individual writes are read off
