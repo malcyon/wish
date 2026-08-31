@@ -163,10 +163,11 @@ number is only interesting while editing, it belongs on the editor tab.
 1. `snapshot.py` — the two reads and the dataclass, tested headless against
    captured bytes. A save file *is* a captured snapshot, so
    `PORSAVE11.D64` and `PORSAVE13.D64` are ready-made fixtures.
-2. The experience table, generated from
-   `work/goldbox-research/por_xp_tables.txt` into `docs/` beside the spell and
-   item tables. Needed before any experience bar can be drawn, and useful to the
-   editor too.
+2. ~~The experience table~~ **Done, a different way.** `work/goldbox-research/por_xp_tables.txt`
+   is gone; the table came instead from `goldbox/levels.py`, generated into
+   [`89-level-tables.md`](89-level-tables.md) and verified against the game
+   rather than transcribed. `automap/live.py` already draws the experience bar
+   from `levels.progress()`.
 3. The party cards: hit point bar, experience bar, per-character effects.
 4. The effects panel — the full picture, including party-wide and monster rows.
 5. Where, and the collapsed loaded-files list.

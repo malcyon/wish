@@ -149,7 +149,9 @@ answers unknown 2 on its own.
 1. **Fix the stride** in `automap/combat.py` — `$0612 + 1`, not `$0607` — and
    the note in `docs/101-combat-view.md`. Cheap, and everything downstream
    depends on it.
-2. **`goldbox/world.py`**, transport-free, promoted out of `work/analysis9/wild.py`:
+2. **`goldbox/world.py`**, transport-free. `work/analysis9/wild.py`, the script
+   this was to be promoted out of, is gone (`work/` is gitignored) — the module
+   has to be written fresh against the format below, not copied out of it:
    read `SQRDATA0n` off a disk, expose the 18 x 36 grid and the 120 glyph
    entries, stitch the three at 13, carry the site tables and the two terrain
    tables, and answer `passable(map, x, y)` and `site_at(world_x, y)`. It needs
