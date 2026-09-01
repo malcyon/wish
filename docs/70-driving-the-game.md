@@ -270,6 +270,48 @@ that a step onto an occupied square is an attack. `Session.melee_turn` ranks
 the eight squares and drops any a party member is standing on; an enemy's
 square is never dropped, because that step is the point.
 
+### A blow spends no movement, and that is what hid it
+
+**`MOVE LEFT` does not go down when the step is an attack, and the character
+does not move.** ROLAND at (29,13) pressed `KP_1` into an orc on (28,14): the
+count read 9 before and 9 after, nobody moved, and **the orc went from 5 hit
+points to 1** (`work/issue127/sweep1.jsonl`, turn 15). So neither the count on
+row 24 nor the position table says a blow happened. What says it is the
+target's hit points, and the move sub-bar going away a moment later.
+
+That is what `#127` was: `melee_turn` read the count, found it unchanged,
+concluded "the step cost nothing so it did not happen", put the one key that
+would land the blow into `avoid`, and passed the turn — with the character
+standing next to the orc. **26 of 27 turns of one fight went that way.**
+
+**Do not decide a step on one read either.** Asking `await_bar` for the bar you
+are already looking at answers in 20 milliseconds without waiting for anything:
+all 27 of those reads came back in 0.02–0.03 s. `Session.await_step` waits for
+**either** the count to go down **or** the character's square to change, over
+several reads, and `Session.AFTER_MOVE` is the set of row-24 kinds that mean
+the sub-bar has gone.
+
+**A character with a missile weapon readied appears not to be able to strike
+this way** — PROBABLE, not confirmed. MALCYON with `13 DART` readied pressed
+into an adjacent orc six times, each watched for ten seconds with nothing else
+sent: no message, no damage, the sub-bar never went
+(`work/issue127/probe1.jsonl`). Every character who did land or attempt a blow
+in the same fight had a melee weapon — a mace, a long sword. It rests on one
+character on one side and four on the other, and the weapon was never changed
+and re-tried. `melee_turn` gives a blow `ATTACK_TIMEOUT` seconds and passes the
+turn if it has not resolved, so such a character does not stand there pressing
+a key that cannot work.
+
+**Nonzero terrain is impassable, confirmed in a driven fight.** LADY KATHERINE
+at (29,11) pressed `KP_9` into (30,10), terrain code 1: `MOVE LEFT` 5 and 5,
+nobody moved; every press into a code-0 square moved her. `docs/101-combat-view.md`
+said "0 is floor" from the renderer, and this is the same fact from the game.
+`Session.step_towards` does **not** consult it yet and will aim a character at a
+wall.
+
+**`KP_0` leaves move mode**; `KP_5` does nothing. Neither behaved as a fire
+button.
+
 **The game names whose turn it is** in the right-hand panel — the acting
 character's name, hit points, armour class and readied weapon, from column 22.
 That beats inferring it from initiative, which several combatants hold at once.
@@ -279,12 +321,20 @@ the bar becomes `VIEW AIM USE QUICK DONE`. A driver that recognises a command
 bar by `MOVE` *and* `DONE` sits waiting at a bar that is asking it for a
 command. Match on `DONE`.
 
-**A driven turn costs about twelve seconds**, and that is the number to budget
-against: three fights on the melee tactic ran 34, 36 and 36 turns inside a
-420-second budget and none of them finished. Most of it is monitor round
-trips -- a turn reads the whole fight once per step. `fight(budget=...)`
-defaults to 300 seconds, which is not enough for a fight of eight orcs against
-six characters; give it a number that matches the fight.
+**A driven turn costs about four seconds when it lands a blow**, and the number
+that used to be here — twelve — was almost all waste. `combat_bar` has no way
+of saying "that command is not on this bar": it waits for the label to appear
+and spins to its full timeout when it never does. `end_turn` asked for GUARD,
+DELAY and EXIT blind, and **441 of one 605-second fight's seconds, 73% of it,
+went on words that were not on row 24** (`work/issue127/diag1.jsonl`). It reads
+the bar once now and asks only for what is on it.
+
+**Never point `combat_bar` at a label you have not seen on the bar.** That is
+the general rule the 441 seconds are the specific case of.
+
+`fight(budget=...)` still defaults to 300 seconds, which is not enough for a
+fight of eight orcs against six characters; give it a number that matches the
+fight.
 
 `Session.melee_turn` is all of that together: read the fight, find the acting
 character, take `MOVE`, and step towards the nearest living enemy until the
