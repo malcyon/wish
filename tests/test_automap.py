@@ -1646,7 +1646,13 @@ def test_a_note_never_lands_on_a_wall():
              for y in range(GRID) for x in range(GRID)}
     for glyph in note_primitives(every):
         x0, y0, x1, y1 = icons.extent(glyph.name)
-        scale = glyph.size / icons.BOX
+        # `icons.box(name)`, not `icons.BOX`: game-icons.net glyphs are drawn
+        # on a 512 canvas and Font Awesome's on a wider one. Every note type
+        # is a Font Awesome name today, so the two agree -- but the moment a
+        # note is given one of Donald's game-icons glyphs, the constant makes
+        # `scale` too small, the box comes out narrower than what is drawn,
+        # and a real wall overlap goes unnoticed. Found in review of #4.
+        scale = glyph.size / icons.box(glyph.name)
         box = (glyph.x + x0 * scale, glyph.y + y0 * scale,
                glyph.x + x1 * scale, glyph.y + y1 * scale)
         for wall in walls:
