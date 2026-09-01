@@ -1129,6 +1129,18 @@ less than the plain phrase it replaced -- and "that's fair" is the worst of
 them, because it agrees with nothing in particular and ends a conversation
 that had somewhere to go.
 
+**`embrassed-energy` is spelled "embraced" in prose.** game-icons.net's own
+filename carries the typo, and Donald ruled on 2026-09-01: *"I think
+'embrassed' is a typo from game-icons.net. Let's refer to it as 'embraced'
+unless we are referring to the url."*
+
+So the identifier, the archive filename and **the licence credit** keep
+`embrassed-energy` -- the identifier because the committed path data is diffed
+against that file, and the credit because attribution names a work as its
+author titled it. Renaming somebody's work in the file that credits them is
+the one place a typo has to stay. Everywhere a person reads it, it is
+"embraced".
+
 **Code is the exception, and only where the API names it.** Qt's own methods
 are `setTextElideMode` and `ElideRight`, so `elide` in `editor/rosterview.py`
 is the framework's word and changing it would make the code harder to search,
