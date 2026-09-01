@@ -351,12 +351,57 @@ def test_the_editor_tab_is_never_given_the_machine(window):
     assert window.session.reader is None
 
 
+#: What `editor/` may not reach for. `INDEX.md` states the promise: the editor
+#: is a file tool that runs with no emulator installed anywhere.
+FORBIDDEN_IN_EDITOR = ("automap", "socket", "telnet", "telnetlib", "serial")
+
+#: How a module could import one of those without an `import` statement. The
+#: AST walk below sees statements only, so these are grepped for by name --
+#: `editor/` uses neither today, and a test that says so is what makes the walk
+#: enough.
+DYNAMIC_IMPORTS = ("importlib", "__import__")
+
+
 def test_editor_imports_nothing_live():
-    """A grep, deliberately: the promise is about the package, not this window."""
+    """`editor/` never touches the emulator side -- checked by import, not by
+    grepping prose.
+
+    It used to be a substring grep, and that made a **docstring** naming
+    `automap.panel.ColumnSplitter` fail the build while explaining a layout
+    parallel between the two windows. Mentioning a thing is not importing it,
+    and a test that cannot tell the difference punishes the comment that would
+    have helped the next reader.
+
+    `test_goldbox_imports_no_transport` had already solved this next door and
+    says why in its own docstring: three `goldbox/` modules mention `automap`
+    in comments, so a grep is a false positive on every one. This is the same
+    walk, applied to the promise `INDEX.md` makes for `editor/`.
+
+    **Stricter than the grep it replaces, not looser.** The grep would have
+    passed `importlib.import_module("automap.state")`, which is the one way
+    the walk could be evaded; that is grepped for separately below. A relative
+    import is checked as though it were absolute, which can only make this too
+    strict rather than blind -- no `editor/` module is named after a forbidden
+    root.
+    """
     for path in pathlib.Path("editor").glob("*.py"):
         source = path.read_text()
-        assert "automap" not in source, path
-        assert "socket" not in source, path
+        tree = ast.parse(source, filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module] if node.module else []
+            else:
+                continue
+            for name in names:
+                root = name.split(".")[0]
+                assert root not in FORBIDDEN_IN_EDITOR, (path, name)
+        for how in DYNAMIC_IMPORTS:
+            assert how not in source, (
+                f"{path} uses {how}, which the import walk above cannot see -- "
+                f"check by hand that it reaches for nothing live, and say so "
+                f"here")
 
 
 FORBIDDEN_TRANSPORT_ROOTS = ("automap", "socket", "telnet", "telnetlib", "serial")
