@@ -968,6 +968,15 @@ is worse than leaving it. The test is where the string ends up, not what it
 looks like in the source -- which is another reason to look at the running
 window rather than the diff.
 
+**Never open a sentence with a quotation that starts lowercase.** This is how
+the rule gets broken by somebody who is following it: quoting a lowercase
+string is correct, and starting a sentence with that quote makes the sentence
+lowercase anyway. Donald caught it in the reply that cited the rule --
+*"why isn't the sentence capitalized?"* -- where a table cell began
+`counts towards commissions completed names a label the window no longer
+shows`. Put words in front of the quotation: *The line reads `counts towards
+commissions completed`, and it names a label the window no longer shows.*
+
 **Look at the string in the running window before proposing it, not in the
 source.** The export line reads `the file name 'LADYKATH.pc' is already used by
 another character in this export; written instead as 'LADYKAT2.pc'` in the
