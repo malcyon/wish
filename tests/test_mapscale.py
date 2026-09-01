@@ -35,6 +35,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication
 
 from automap import live, paths
+from automap.panel import ColumnSplitter
 from automap.render import CELL, CELL_MIN, MARGIN
 from automap.state import AutomapState
 from automap.window import MapCanvas
@@ -657,3 +658,341 @@ def test_the_party_on_the_cards_is_not_in_the_windows_floor_at_all(
             f"+{extra}pt: eight cards added "
             f"{full.height() - empty.height()}px to the window's floor, so "
             f"the roster column is not scrolling")
+
+
+# --- and the columns the user drags them to (#162) --------------------------
+
+def _floor_with_columns(app, tmp_path, monkeypatch, widths, extra=0.0):
+    """The window's floor with the automapper's three columns at `widths`.
+
+    `#162 (Let the user resize the Quest Log and roster columns)` made the
+    roster and the reading column draggable, shut included, so the widths the
+    window is laid out at are no longer ours. What #41, #97 and #135 rest on
+    is that no width a user can reach puts the window over the screen, and the
+    extremes are what says so.
+
+    The window is given room before the columns are set, because a splitter
+    clamps what it is asked for to the width it has: in a window sitting at
+    its own floor there is nothing to drag with, and "both columns wide"
+    would measure the same layout as "both columns shut". The room asked for
+    is the window's own floor plus the two default column widths, so a machine
+    with a wider font gets a wider window rather than a squeezed one.
+
+    Returned beside the floor are the widths actually reached, so a test can
+    say it got to the extreme rather than assume it.
+    """
+    from wish.session import Session
+    from wish.window import MAP_TAB, WishWindow
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "_home", lambda: empty)
+    monkeypatch.chdir(empty)
+
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + extra)
+    app.setFont(bigger)
+    win = WishWindow(None, maps={}, tab=MAP_TAB,
+                     session=Session(find=lambda pref=None: None))
+    try:
+        win.show()
+        app.processEvents()
+        room = win.minimumSizeHint()
+        win.resize(room.width() + ColumnSplitter.ROSTER + ColumnSplitter.SIDE,
+                   room.height())
+        app.processEvents()
+        win.map.columns.splitter.setSizes(list(widths))
+        app.processEvents()
+        # `QLayout.activate()` pins a top-level window's `minimumSize` and does
+        # not un-pin it; `_floor`'s docstring above is the long version.
+        win.setMinimumSize(0, 0)
+        layout = win.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        return win.minimumSizeHint(), win.map.columns.widths()
+    finally:
+        win.session.close()
+        win.close()
+        app.setFont(base)
+
+
+#: Both side columns shut, and both dragged as wide as the window will let
+#: them go. The numbers are what is *asked* for and not what is measured: a
+#: splitter clamps them to the room there is, so these two rows reach the same
+#: two extremes on a machine whose fonts are nothing like this one's.
+SHUT = (0, 1 << 20, 0)
+WIDE = (1 << 20, 1, 1 << 20)
+EXTREMES = {"both columns shut": SHUT, "both columns dragged wide": WIDE}
+
+
+@pytest.mark.parametrize("what", sorted(EXTREMES))
+def test_the_window_still_fits_the_laptop_with_the_columns_at_either_extreme(
+        app, tmp_path, monkeypatch, what):
+    """A draggable column is a width we no longer choose, at every UI font.
+
+    The four fonts are the ones the rest of this file uses, and `SMALL` is the
+    screen rather than a pixel count -- CI's Linux and Windows both start from
+    a smaller base font than this desk and climb, so a floor that clears
+    `SMALL` here clears it there.
+    """
+    for extra in (0, 3, 6, 10):
+        floor, widths = _floor_with_columns(app, tmp_path, monkeypatch,
+                                            EXTREMES[what], extra)
+        assert floor.height() <= SMALL.height(), f"{what}, +{extra}pt"
+        assert floor.width() <= SMALL.width(), f"{what}, +{extra}pt"
+        # And the extreme was reached, or the two rows are one row measured
+        # twice. Shut is exactly zero; wide is the map down to its own floor
+        # with both side columns past their default widths.
+        roster, _map_at, side = widths
+        if EXTREMES[what] is SHUT:
+            assert (roster, side) == (0, 0), f"+{extra}pt: {widths}"
+        else:
+            assert roster > ColumnSplitter.ROSTER, f"+{extra}pt: {widths}"
+            assert side > ColumnSplitter.SIDE, f"+{extra}pt: {widths}"
+
+
+# --- and the character editor's two rows (#97) ------------------------------
+
+def _editor_window(app, tmp_path, monkeypatch, extra=0.0, settings=None):
+    """A window on the Character Editor tab with the synthetic party in it.
+
+    Shown, because `EditorBinding.showEvent` is what measures the roster: a
+    window built and never shown has never seen a column width or a row
+    height, and #63 is the record of what measuring the wrong one costs.
+    """
+    from gamedata import synthetic_save
+
+    from wish.session import Session
+    from wish.window import EDITOR_TAB, WishWindow
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "_home", lambda: empty)
+    monkeypatch.chdir(empty)
+
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + extra)
+    app.setFont(bigger)
+    win = WishWindow(str(synthetic_save(tmp_path)), maps={}, tab=EDITOR_TAB,
+                     settings=settings,
+                     session=Session(find=lambda pref=None: None))
+    win.show()
+    app.processEvents()
+    return win, base
+
+
+def _editor_floors(app, tmp_path, monkeypatch, fonts):
+    """The whole window's floor and the editor page's, at each UI font."""
+    out = []
+    for extra in fonts:
+        win, base = _editor_window(app, tmp_path, monkeypatch, extra)
+        try:
+            # `QLayout.activate()` pins a top-level window's `minimumSize` and
+            # does not un-pin it; `_floor`'s docstring above is the long
+            # version of why this is not optional.
+            win.setMinimumSize(0, 0)
+            layout = win.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+            out.append((win.minimumSizeHint().height(),
+                        win.ui.tab_editor.minimumSizeHint().height()))
+        finally:
+            win.session.close()
+            win.close()
+            app.setFont(base)
+    return out
+
+
+#: Points of extra UI font. Donald's desktop is 9pt, so this reaches 29 --
+#: well past the 25pt he was running when he reported that he could see the
+#: stats table and neither the roster nor Character. The range matters more
+#: here than in the tests above: this page's floor used to grow twice as fast
+#: as the window's chrome, so a range that stops at +10 never saw it.
+EDITOR_FONTS = (0, 6, 12, 16, 20)
+
+
+def test_the_editor_page_is_no_longer_as_tall_as_everything_on_it(
+        app, tmp_path, monkeypatch):
+    """#97, and what the divider bought.
+
+    **What a user saw.** You keep your desktop font large -- Donald runs 25pt
+    -- and you open the Character Editor. Character is eleven rows of dropdowns
+    and spin boxes and it is drawn at your font, so it wants 456px; the roster
+    beside it wants its own rows; and the sheet under them wants its tabs. All
+    three were in the window's minimum at once, so the window insisted on being
+    796px tall and there was no dragging it smaller. On a 1366x768 laptop the
+    bottom of it was off the screen.
+
+    The two rows are a `QSplitter` now, so the page's floor is the top row's
+    two lines of text plus the sheet's tabs, and how the rest of the height is
+    shared is the user's to drag.
+
+    **The assertion is the screen and the shape, not a pixel count.** `SMALL`
+    is a 1366x768 laptop; the height is what this issue is about and the width
+    is #41's, capped by constants that no font moves. Non-decreasing rather
+    than equal, because CI's Linux and Windows both start from a smaller base
+    font than this desk and climb where this one is already flat -- #77 was
+    reverted off both platforms for asserting equality here.
+
+    Measured on this machine, the synthetic party: the page's floor was 378,
+    471, 570, 630 and 705 at +0, +6, +12, +16 and +20, which put the window at
+    460, 585, 717, 796 and 897. It is 210, 251, 295, 322 and 355, and the
+    window 449, 511, 577, 617 and 667.
+    """
+    parts = _editor_floors(app, tmp_path, monkeypatch, EDITOR_FONTS)
+    pages = [page for _win, page in parts]
+    seen = dict(zip(EDITOR_FONTS, parts))
+    assert pages == sorted(pages), (
+        f"the editor page's floor moved about with the font: {seen}")
+    for extra, (window, _page) in zip(EDITOR_FONTS, parts):
+        assert window <= SMALL.height(), (
+            f"+{extra}pt: the character editor put a {window}px floor under a "
+            f"{SMALL.height()}px screen: {seen}")
+
+
+def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
+        app, tmp_path, monkeypatch):
+    """And the mechanism, said as a comparison rather than as a number.
+
+    What was wrong is that the page's floor *contained* the top row: whatever
+    Character asked for, the window had to be that tall. What is right is that
+    it no longer does -- the top row asks for one thing and the page's floor is
+    less than it, and the difference is what the user drags.
+
+    Both sides are measured on the same machine in the same run at the same
+    font, so there is no constant here to be wrong about anywhere else. At +0
+    the two are close and the claim is weak, which is why this runs at the
+    large fonts where the gap is the whole of the complaint.
+    """
+    from PyQt6.QtWidgets import QWidget
+    for extra in (12, 16, 20):
+        win, base = _editor_window(app, tmp_path, monkeypatch, extra)
+        try:
+            header = win.findChild(QWidget, "editor_header")
+            win.setMinimumSize(0, 0)
+            layout = win.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+            page = win.ui.tab_editor.minimumSizeHint().height()
+            wanted = header.sizeHint().height()
+            assert page < wanted, (
+                f"+{extra}pt: the editor page's floor is {page} and the top "
+                f"row asks for {wanted}, so the page is still as tall as "
+                f"everything on it")
+        finally:
+            win.session.close()
+            win.close()
+            app.setFont(base)
+
+
+def test_a_row_dragged_shut_still_has_a_divider_to_drag_it_back(
+        app, tmp_path, monkeypatch):
+    """Donald's condition on collapsing, and the case somebody loses a panel in.
+
+    *"Sure, let the user drag it down to nothing. As long as they can drag it
+    back out when they do that."* A row dragged shut has no height left to
+    aim at, so the divider is the whole of the way back -- and it has to be
+    there on the **first frame of a fresh start**, not only in the session
+    that shut it, which is why this opens a window from a settings file that
+    already holds the zero.
+
+    Two things are asserted and neither is a pixel measured here. The divider
+    is at least as tall as `RowSplitter.HANDLE` asks for, so a style that
+    draws it wider still passes and deleting the line that asks fails -- this
+    style's own answer is four, and four is a small thing to aim at when it is
+    the only thing there is. And it is **wholly inside the page**: with the
+    handle at zero Qt draws it `QRect(0, -2, w, 4)` against a collapsed top
+    row, which is half of the way back drawn off the top edge.
+    """
+    from PyQt6.QtWidgets import QSplitter
+
+    from automap.config import Settings
+    from editor.window import RowSplitter
+
+    settings = Settings()
+    settings.editor_rows = [0, 600]
+    win, base = _editor_window(app, tmp_path, monkeypatch, 16.0, settings)
+    try:
+        split = win.findChild(QSplitter, "editor_split")
+        assert split.sizes()[RowSplitter.HEADER_AT] == 0, (
+            f"the remembered zero did not survive the open: {split.sizes()}")
+        handle = split.handle(1)
+        assert handle is not None, (
+            "a row dragged shut left no divider to drag it back out")
+        assert split.rect().contains(handle.geometry()), (
+            f"the divider is drawn half off the page -- {handle.geometry()} "
+            f"in {split.rect()} -- so a row dragged shut leaves less of it to "
+            f"aim at than a row that is not")
+        assert handle.height() >= RowSplitter.HANDLE, (
+            f"the divider is {handle.height()}px tall against the "
+            f"{RowSplitter.HANDLE} it asks for, and it is the only thing left "
+            f"to grab")
+        # And out again: the way back is the same call the drag makes.
+        split.setSizes([300, 200])
+        app.processEvents()
+        assert split.sizes()[RowSplitter.HEADER_AT] > 0, (
+            "the top row could not be reopened once it was shut")
+    finally:
+        win.session.close()
+        win.close()
+        app.setFont(base)
+
+
+def test_a_dragged_divider_is_remembered_and_a_squeezed_window_is_not(
+        app, tmp_path, monkeypatch):
+    """What goes in the settings file, and what must never go in it.
+
+    A drag is the user saying how they want the height shared. A window
+    resized narrow for an afternoon is not, and writing the heights it forced
+    would lose the choice without anybody touching the divider --
+    `ColumnSplitter._dragged` says the same thing about the automapper's
+    columns.
+    """
+    from automap.config import Settings
+
+    settings = Settings()
+    win, base = _editor_window(app, tmp_path, monkeypatch, 0.0, settings)
+    try:
+        win.resize(win.width(), win.height() - 120)
+        app.processEvents()
+        assert settings.editor_rows is None, (
+            "resizing the window wrote a row height nobody dragged: "
+            f"{settings.editor_rows}")
+        win.editor_rows.splitter.setSizes([260, 300])
+        # `splitterMoved` is what a drag emits; `setSizes` does not, so the
+        # signal is emitted here rather than pretending a resize is a drag.
+        win.editor_rows.splitter.splitterMoved.emit(260, 1)
+        app.processEvents()
+        assert settings.editor_rows == win.editor_rows.heights(), (
+            f"a dragged divider was not remembered: {settings.editor_rows}")
+    finally:
+        win.session.close()
+        win.close()
+        app.setFont(base)
+
+
+def test_a_hand_edited_row_of_heights_that_is_not_one_opens_at_the_defaults():
+    """The settings file is documented as one you can read and fix, so
+    everything a person can type into it has to be survivable.
+
+    The whole row is refused rather than mended, for `Settings.column_widths`'
+    reason: a mended row is part somebody's and part ours. Zero passes,
+    because zero is a row dragged shut.
+    """
+    from automap.config import Settings
+
+    settings = Settings()
+    assert settings.row_heights(2) is None, "nothing chosen is not a row"
+    for bad in ([200], [200, 300, 400], ["200", 300], [200, -1], [200, None],
+                [200.5, 300], [True, 300], "200,300", 200):
+        settings.editor_rows = bad
+        assert settings.row_heights(2) is None, bad
+    settings.editor_rows = [0, 600]
+    assert settings.row_heights(2) == [0, 600]
+    settings.editor_rows = [260.0, 300]
+    assert settings.row_heights(2) == [260, 300], "a whole float is a height"

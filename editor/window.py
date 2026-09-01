@@ -325,6 +325,121 @@ def boxes_needing_class(game=None) -> dict[str, tuple[int, str]]:
     }
 
 
+class RowSplitter(QObject):
+    """The character editor's two rows, and the heights a user drags them to.
+
+    The roster and Character sat above the Stats / Inventory / Spells tabs in
+    one column that shared its height by rule: the tabs took every spare
+    pixel and the top row took exactly what its fields asked for. At a large
+    UI font that is a lot -- eleven rows of combo and spin boxes is 456px at
+    25pt against 202 at 9 -- and Donald, running his desktop at 25pt, could
+    see the stats table and neither the roster nor Character: *"Maybe the top
+    row of the Character Editor should be resizable?"* (#97).
+
+    So it is a divider now, and the person looking at the screen decides how
+    the height is shared. It is the answer `#162` gave for the map page's
+    three columns, and `ColumnSplitter` there is its twin -- named rather than
+    imported, because this package reads nothing from the live-reading side
+    and `tests/test_wish.py` greps for it. The same two rulings settle both:
+
+    * *"a dragged width on a column should be remembered when Wish opens
+      again"* -- `Settings.editor_rows`, two numbers in the JSON;
+    * *"Sure, let the user drag it down to nothing. As long as they can drag
+      it back out when they do that."*
+
+    **The second is the whole of the difficulty**, because a row dragged shut
+    has no height left to grab. The handle is `HANDLE` tall rather than the
+    style's four pixels, Qt goes on drawing it against the edge of a collapsed
+    pane, and the heights are restored with `QSplitter.setSizes`, which
+    honours a zero without hiding anything -- so a window opened from a
+    settings file that already holds a zero still has a divider in it on the
+    first frame.
+    """
+
+    #: Top to bottom, and the order the heights are written to the settings
+    #: file in.
+    HEADER_AT, SHEET_AT = 0, 1
+    ROWS = 2
+
+    #: How tall the divider is. Qt's style answers four, which is enough while
+    #: there is a pane beside it to aim at; a pane dragged shut leaves the
+    #: divider as the whole of the way back, so it is set rather than
+    #: inherited for that one case. `ColumnSplitter.HANDLE` is the same number
+    #: for the same reason.
+    HANDLE = 6
+
+    #: What the top row may be squeezed to when the window has no height to
+    #: spare, in lines of the user's own font. Not zero: a pane with no height
+    #: is one nobody can see is there, and the window would open looking as
+    #: though the roster had gone. Not the height of what is in it either --
+    #: that is the 456px at 25pt this exists to stop putting a floor under the
+    #: window. Two lines is enough to read the roster's headings and to aim
+    #: the divider at, and it is measured from the font rather than written
+    #: down, so it means the same on a machine whose text is bigger.
+    HEADER_LINES = 2
+
+    def __init__(self, root: QWidget, settings,
+                 parent: QObject | None = None):
+        super().__init__(parent)
+        self.settings = settings
+        from PyQt6.QtWidgets import QSplitter
+        self.splitter = root.findChild(QSplitter, "editor_split")
+        self.header = root.findChild(QWidget, "editor_header")
+        if self.splitter is None or self.splitter.count() != self.ROWS:
+            _log.debug("no character editor row splitter to manage")
+            self.splitter = None
+            return
+        self.splitter.setHandleWidth(self.HANDLE)
+        # Spare height goes to the sheet, which is what the column layout did
+        # before there was a divider: every box in the top row is sized to the
+        # widest value its bytes can hold, so a pixel more there is a pixel of
+        # nothing.
+        self.splitter.setStretchFactor(self.HEADER_AT, 0)
+        self.splitter.setStretchFactor(self.SHEET_AT, 1)
+        if self.header is not None:
+            self.header.setMinimumHeight(
+                self.HEADER_LINES * self.header.fontMetrics().height())
+        self.splitter.splitterMoved.connect(self._dragged)
+        self.restore()
+
+    def defaults(self) -> list[int]:
+        """What the two rows open at with nothing remembered: the top row as
+        tall as its fields, and the sheet asking for nothing, because the
+        stretch factors above hand it everything the top row does not want.
+        """
+        wanted = self.header.sizeHint().height() if self.header else 1
+        return [wanted, 1]
+
+    def heights(self) -> list[int]:
+        """What the two rows are, top to bottom, right now."""
+        return list(self.splitter.sizes()) if self.splitter else []
+
+    def restore(self) -> None:
+        """Open at the remembered heights, or at the defaults.
+
+        Before the window is shown, deliberately: `setSizes` records what each
+        row asked for and the splitter divides the real height against those
+        the moment there is one, so the first frame is already the right shape
+        rather than the default shape corrected afterwards.
+        """
+        if self.splitter is None:
+            return
+        remembered = self.settings.row_heights(self.ROWS)
+        self.splitter.setSizes(remembered
+                               if remembered is not None else self.defaults())
+
+    def _dragged(self, _pos: int, _index: int) -> None:
+        """Record a divider the user just moved.
+
+        Only a drag writes here, and not a window resize: the heights a
+        squeezed window forces on the rows are the window's, and overwriting
+        somebody's chosen height with them is how a preference goes missing
+        without anybody touching it. The file is written when the window
+        closes, by `Settings.save`.
+        """
+        self.settings.editor_rows = self.heights()
+
+
 class RosterModel(QAbstractTableModel):
     """Name, race, class, AC, HP.
 
@@ -545,6 +660,17 @@ class EditorBinding(QObject):
             if box is not None:
                 box.setMinimumHeight(floor)
 
+        # Before the loop below and not after it, because the loop reads
+        # `box_identity.minimumSizeHint()` and that number can be stale. A
+        # `QSplitter` measures a pane the moment it is given one, which is in
+        # `setupUi` -- before the dropdowns have anything in them -- and Qt
+        # caches what it measured against `columns_identity`'s layout item.
+        # Read cold, Character asks for 218px rather than 495 and is then held
+        # to a 200px floor it was never meant to have: the whole point of
+        # `HEADER_FLOOR` is that it may be squeezed to 480 and no further.
+        # `_pin_identity_columns` sets a minimum on `columns_identity`, and
+        # setting one is what throws the cache away.
+        self._pin_identity_columns()
         for name, floor in HEADER_FLOOR.items():
             box = self._child(name)
             if box is None:
@@ -554,7 +680,6 @@ class EditorBinding(QObject):
             button = self._child(name)
             if button is not None:
                 button.setMinimumWidth(TOOLBAR_BUTTON_MIN_WIDTH)
-        self._pin_identity_columns()
 
         for table in self.root.findChildren(QAbstractItemView):
             head = getattr(table, "verticalHeader", lambda: None)()

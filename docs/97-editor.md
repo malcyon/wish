@@ -197,6 +197,36 @@ after `show()` -- twice, because until it is shown there is no title bar to
 measure. It restates the mapper's `clamp_to_screen` rather than importing it:
 the editor package imports nothing from the live-reading side.
 
+**The height between the top row and the sheet is the user's to share.** The
+roster and Character sat above the Stats / Inventory / Spells tabs in one
+column that divided its height by rule: the tabs took every spare pixel, and
+the top row took exactly what its fields asked for. Character is eleven rows of
+dropdowns and spin boxes drawn at the user's own font, so at a large one that
+is a lot -- 202px at 9pt and 456 at 25 -- and all of it was inside the window's
+minimum. Donald, running his desktop at 25pt: *"I can see the stats table. I
+can't see the roster or character pane. Maybe the top row of the Character
+Editor should be resizable?"*
+
+It is a `QSplitter` now (`editor_split` in `wish/window.ui`, managed by
+`editor.window.RowSplitter`), and the divider is the answer rather than a
+guess about where the height should come from. That is the shape `#162` gave
+the automapper's three columns, and the two rulings behind it are the same:
+**a dragged position is remembered** -- `Settings.editor_rows`, two numbers in
+the JSON, written on a drag and never on a window resize -- and **a row may be
+dragged shut and must be draggable back**, which is why the handle is set to
+six pixels rather than the style's four and why the heights are restored with
+`setSizes`, so a window opened from a settings file holding a zero still has a
+divider in it on the first frame.
+
+The top row's own floor is two lines of the user's font, measured rather than
+written down. Below that the page's minimum height is the sheet's tab bar and
+that floor, and not the sum of everything on the page: it was 378, 471, 570,
+630 and 705 at +0, +6, +12, +16 and +20 points of extra UI font, putting the
+whole window at 460, 585, 717, **796** and **897** against a 768-high laptop;
+it is 210, 251, 295, 322 and 355, and the window 449, 511, 577, 617 and 667.
+`tests/test_mapscale.py` asserts the screen and the shape rather than any of
+those numbers.
+
 ## Opening and saving
 
 Two buttons on the form, `button_open` and `button_save`, wired to `QAction`s so

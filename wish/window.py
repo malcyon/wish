@@ -40,7 +40,7 @@ from automap.config import (
 )
 from automap.state import Automapper
 from automap.window import AutomapBinding
-from editor.window import EditorBinding
+from editor.window import EditorBinding, RowSplitter
 from goldbox import games
 from ui.appicon import app_icon
 
@@ -118,6 +118,12 @@ class WishWindow(QMainWindow):
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
         self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder)
+        # The divider between the roster and Character and the sheet below
+        # them, and the heights the user last dragged it to (#97). Built here
+        # rather than inside `EditorBinding` because the settings file is the
+        # window's, and a remembered height is the only part of this that
+        # outlives the run.
+        self.editor_rows = RowSplitter(self, self.settings, parent=self)
         # The backup folder follows whatever save is open until somebody
         # chooses one, so the window has to hear about every open. `""` above
         # is deliberate: the editor is managed from here, and until this says
