@@ -3,8 +3,18 @@
 import pathlib
 
 import pytest
+from gamedata import game_file
 
-from goldbox.icons import CELLS, ICON_COUNT, ICON_SIZE, ICON_TABLE_BASE, icon_for_slot
+from goldbox.icons import (
+    CELL_COLS,
+    CELLS,
+    COMBAT_BACKGROUND,
+    ICON_COUNT,
+    ICON_SIZE,
+    ICON_TABLE_BASE,
+    icon_for_slot,
+    icon_pixels,
+)
 from goldbox.savegame import SLOT_AREA_BASE, SaveGame0
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -43,3 +53,36 @@ def test_shape_and_colours_are_independently_editable(save):
 def test_scratch_slots_have_icons_too(save):
     for slot in (6, 7):
         assert len(icon_for_slot(save.to_bytes(), slot).raw) == ICON_SIZE
+
+
+def test_a_bit3_clear_cell_draws_hires_not_multicolour(save):
+    """#123: the VIC-II draws a cell in multicolour only when bit 3 of its
+    colour byte is set. LADY KATHERINE's weapon cell (index 2) has bit 3
+    clear on this save, which is her short sword -- a one-pixel-wide diagonal
+    blade, not the two-pixel-wide smear a multicolour decode would produce.
+
+    Cheaper than a photograph: with bit 3 clear, `icon_pixels` must reproduce
+    the glyph's eight bits one for one -- foreground where the bit is set,
+    `COMBAT_BACKGROUND` where it is clear -- for every one of the 8 columns
+    the cell owns. A multicolour decode only ever writes 4 distinct values
+    across those 8 columns, each doubled, so this is what tells the two
+    apart.
+    """
+    charset = game_file("CHARPIC00")
+    kath = next(c for c in save.characters if c.record.name.strip() == "LADY KATHERINE")
+    icon = icon_for_slot(save.to_bytes(), kath.index)
+    cell = 2
+    color_byte = icon.colours[cell]
+    assert not (color_byte & 0x08), "this specimen is only useful with bit 3 clear"
+    own = color_byte & 0x07
+
+    pixels = icon_pixels(icon, charset)
+    code = icon.shape[cell]
+    glyph = charset[code * 8: code * 8 + 8]
+    cx, cy = cell % CELL_COLS, cell // CELL_COLS
+    for row in range(8):
+        bits = glyph[row]
+        expected = [own if (bits >> (7 - bit)) & 1 else COMBAT_BACKGROUND
+                    for bit in range(8)]
+        actual = pixels[cy * 8 + row][cx * 8: cx * 8 + 8]
+        assert actual == expected, f"row {row}"
