@@ -162,7 +162,7 @@ def test_every_chosen_glyph_is_in_the_table_with_its_artist():
 
     The eight condition badges are the ones this file is about; `#167`
     (Replace the remaining Font Awesome icons with game-icons.net ones) added
-    twelve more names to `GAME_ICONS` for notes and the editor toolbar, so
+    fourteen more names to `GAME_ICONS` for notes and the editor toolbar, so
     this checks the badges are among them rather than that they are all of
     them."""
     assert set(icons.GAME_ICONS) == set(icons.ARTISTS)

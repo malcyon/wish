@@ -233,8 +233,15 @@ name we have not proved, which is a decision and not a detail.
 
 ## The licence, and its two traps
 
-Confirmed against the package's own `LICENSE.txt`, which is committed at
-`fontawesome-LICENSE.txt`. Font Awesome Free is triple-licensed —
+**Historical: Wish drew no Font Awesome icon after 2026-09-01.** `#167` replaced
+the last of them and `fontawesome-LICENSE.txt` came out with it; `git log --
+fontawesome-LICENSE.txt` has the file. The section is kept because the traps
+below are about attribution generally and cost this project real time. Every
+icon is now game-icons.net under **CC BY 3.0**, credited from
+`ui.icons.ARTISTS` into `THIRD_PARTY_LICENSES.md`.
+
+Confirmed at the time against the package's own `LICENSE.txt`. Font Awesome
+Free is triple-licensed —
 icons **CC BY 4.0**, fonts **SIL OFL 1.1**, code **MIT** — and all three are
 compatible with GPL-3.0. The obligation we carry is attribution: a line in the
 README and a line in the About box, both naming the work, the author and the

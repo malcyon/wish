@@ -148,11 +148,14 @@ sides of every edge, and it still reads greyscale.
 
 ## 3. The attribution question
 
-This project carries Font Awesome Free 7.3.1 path data under **CC BY 4.0**,
-licence text in [`fontawesome-LICENSE.txt`](../fontawesome-LICENSE.txt), and
-game-icons.net path data -- `pointy-hat` among them -- under **CC BY 3.0**,
-attribution generated into `THIRD_PARTY_LICENSES.md` from `ui.icons.ARTISTS`.
-Both are credited in the README's *Credits* and in `wish/about.py`.
+This project carries game-icons.net path data -- `pointy-hat` among them --
+under **CC BY 3.0**, attribution generated into `THIRD_PARTY_LICENSES.md` from
+`ui.icons.ARTISTS`, and credited in the README's *Credits* and in
+`wish/about.py`.
+
+It carried Font Awesome Free 7.3.1 under **CC BY 4.0** until 2026-09-01, when
+`#167` replaced the last glyph anything drew. `fontawesome-LICENSE.txt` went
+with it; `git log -- fontawesome-LICENSE.txt` has the file.
 
 **What CC BY obliges, for an application icon.** Wherever the work is
 distributed: name the creator (Lorc, for `pointy-hat`), name the licence, link
