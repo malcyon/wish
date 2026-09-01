@@ -747,9 +747,11 @@ working:
 
 * the six characters fill the roster down the left, with AC, THAC0, hit points
   and readied items;
-* the strip under the map reads the party's square, facing, the game clock and
-  the area — `(4,2) facing E   16:47   New Phlan   party effects: none`, which
-  should agree with the game's own status line;
+* the strip under the map reads the party's square, facing and the area —
+  `(4,2) facing E   New Phlan`, which should agree with the game's own status
+  line. **Above it is the party effects row**: blank while no party-wide spell
+  is running, and one icon per spell once one is, each named in the row's
+  tooltip. Cast Bless and a shield appears there;
 * the status bar counts squares — `13/256 seen   revealing   [status]`. The
   bracketed word is where the position came from, and `[status]` means the
   game's status line, which is the ordinary case.
