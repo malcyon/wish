@@ -43,7 +43,13 @@ from .area import NOT_OURS
 from .combatlog import CombatLog, recase
 from .config import Settings, remember_geometry
 from .noteeditor import NotePopover
-from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
+from .panel import (
+    BottomStrip,
+    ColumnSplitter,
+    MessagesPanel,
+    NotesPanel,
+    RosterPanel,
+)
 from .questlog import QuestLogPanel
 from .render import (
     CELL,
@@ -529,9 +535,11 @@ class AutomapBinding(QObject):
     #: it belongs in the settings file once the measurement says what it costs.
     COMBAT_LOG_EVERY = 1
 
-    #: The widest the notes, quest log and messages column may get. The
-    #: panels hold short rows; past this they are mostly paper.
-    SIDE_WIDTH = 460
+    #: The width the notes, quest log and messages column opens at. It was a
+    #: cap until `#162` made the divider draggable, and a cap is the one thing
+    #: a draggable column cannot have; the number itself did not move.
+    #: Defined once, in `panel.ColumnSplitter`, which is what divides the tab.
+    SIDE_WIDTH = ColumnSplitter.SIDE
 
     #: And the narrowest. A squeezed window still shows enough of a note or a
     #: commission to say which one it is; without a floor here the column was
@@ -563,6 +571,10 @@ class AutomapBinding(QObject):
         self.stack.addWidget(self.canvas)
         self.stack.addWidget(self.battle_canvas)
         self.battle = None
+        #: The two dividers down the tab, and the widths the user drags them
+        #: to. Built before the panels so that a column restored shut is shut
+        #: on the first frame rather than after one at the default width.
+        self.columns = ColumnSplitter(self.root, self.settings, parent=self)
         self.roster = RosterPanel(self.root)
         self.roster.level_up_requested.connect(self._level_up)
         #: Spell names, read off the player's disks the first time a wizard is

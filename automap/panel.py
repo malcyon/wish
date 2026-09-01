@@ -10,6 +10,11 @@ bar for when the exact value matters.
 
 Everything here is presentation. The decoding is `automap/live.py`, which has no
 Qt in it and is tested against captured bytes.
+
+`ColumnSplitter` is here rather than in `automap/window.py` because the width
+a card is drawn to is one of the widths it divides, and `RosterPanel` reads
+it. It is the tab's three columns and not a panel, which is the one thing in
+this file that is not.
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitter,
     QStyle,
     QStyleOptionButton,
     QStyleOptionComboBox,
@@ -622,6 +628,127 @@ class CharacterCard(QObject):
             self.readied.setText(", ".join(self.readied_items))
 
 
+class ColumnSplitter(QObject):
+    """The automapper's three columns, and the widths a user drags them to.
+
+    The roster, the map and the reading column used to be three cells of a
+    grid, two of them capped at a width chosen once. `#162` made the two
+    dividers draggable and the widths remembered, and Donald settled both of
+    the questions that came with it:
+
+    * *"a dragged width on a column should be remembered when Wish opens
+      again"* -- `Settings.automap_columns`, three numbers in the JSON;
+    * *"Sure, let the user drag it down to nothing. As long as they can drag
+      it back out when they do that."*
+
+    **The second is the whole of the difficulty**, because a column dragged
+    shut has no width left to grab: what the user aims at afterwards is the
+    divider, and if that went with the column the panel would be gone for
+    good and the only way back would be editing the settings file by hand.
+    Two things keep it reachable, and both are tested in
+    `tests/test_columns.py` against a window built from a settings file that
+    already holds a zero:
+
+    * the handle is `HANDLE` wide rather than the style's, and Qt keeps
+      drawing it at the edge of a collapsed pane -- measured at
+      `QRect(0, 0, 6, h)` with the roster at zero;
+    * the width is restored with `QSplitter.setSizes`, which honours a zero
+      without hiding anything, so the divider is in the window on the first
+      frame of a fresh start.
+
+    A column with a floor -- the roster's is the width of a card, the reading
+    column's is `AutomapBinding.SIDE_SQUEEZED` -- is therefore either wider
+    than its floor or shut, with nothing in between. That is Qt's own
+    collapsing and it is the behaviour Donald asked for: dragging inwards past
+    half the floor shuts the column, and dragging outwards opens it at the
+    floor again.
+    """
+
+    #: Left to right, and the order the widths are written to the settings
+    #: file in.
+    ROSTER_AT, MAP_AT, SIDE_AT = 0, 1, 2
+    COLUMNS = 3
+
+    #: The roster's width before anybody drags it, and the width a card is
+    #: drawn to. **Unchanged**: Donald ruled on `#162` that a multiclass
+    #: character whose name will not fit is a corner case, that the default
+    #: stays where it is, and that dragging is the answer for whoever meets it
+    #: (`#168`).
+    ROSTER = 220
+
+    #: And the reading column's. The panels hold short rows; past this they
+    #: are mostly paper.
+    SIDE = 460
+
+    #: The map asks for nothing of its own at startup, because the window has
+    #: not been shown yet and there is no width to divide. The stretch factors
+    #: below hand it everything the two side columns do not want, on the first
+    #: frame and on every resize after.
+    MAP_ASKS = 1
+
+    #: How wide the divider is. Qt's style answers 4 here, which is enough
+    #: while there is a column beside it to aim at -- but a column dragged
+    #: shut leaves the divider as the only thing left to grab, and it is then
+    #: the whole of the way back. Set rather than inherited for that one case.
+    HANDLE = 6
+
+    def __init__(self, root: QWidget, settings,
+                 parent: QObject | None = None):
+        super().__init__(parent)
+        self.settings = settings
+        self.splitter = root.findChild(QSplitter, "automap_columns")
+        if self.splitter is None or self.splitter.count() != self.COLUMNS:
+            log.debug("no automapper column splitter to manage")
+            self.splitter = None
+            return
+        self.splitter.setHandleWidth(self.HANDLE)
+        # Every pixel the window gains goes to the map. That is what the two
+        # width caps in the form used to do, and losing it would spend a wider
+        # window on blank paper beside a short note.
+        for at in range(self.COLUMNS):
+            self.splitter.setStretchFactor(at, 1 if at == self.MAP_AT else 0)
+        # The map is the one column that may not be shut. Dragging a divider
+        # across it would otherwise leave the automapper tab with no map on
+        # it, which is not a state anybody asked to be able to reach.
+        self.splitter.setCollapsible(self.MAP_AT, False)
+        self.splitter.splitterMoved.connect(self._dragged)
+        self.restore()
+
+    def defaults(self) -> list[int]:
+        """What the columns open at with nothing remembered."""
+        return [self.ROSTER, self.MAP_ASKS, self.SIDE]
+
+    def widths(self) -> list[int]:
+        """What the three columns are, left to right, right now."""
+        return list(self.splitter.sizes()) if self.splitter else []
+
+    def restore(self) -> None:
+        """Open at the remembered widths, or at the defaults.
+
+        Called before the window is shown, which is deliberate: `setSizes`
+        records what each column asked for and the splitter divides the real
+        width against those the moment there is one, so the first frame the
+        user sees is already the right shape rather than the default shape
+        corrected afterwards.
+        """
+        if self.splitter is None:
+            return
+        remembered = self.settings.column_widths(self.COLUMNS)
+        self.splitter.setSizes(remembered
+                               if remembered is not None else self.defaults())
+
+    def _dragged(self, _pos: int, _index: int) -> None:
+        """Record a divider the user just moved.
+
+        Only a drag writes here, and not a window resize: the widths a
+        squeezed window forces on the columns are the window's, and
+        overwriting somebody's chosen width with them is how a preference goes
+        missing without anybody touching it. The file is written when the
+        window closes, by `Settings.save`.
+        """
+        self.settings.automap_columns = self.widths()
+
+
 class RosterPanel(QObject):
     """The cards, down the left. Manages the 8 pre-created cards in the unified form.
 
@@ -659,15 +786,20 @@ class RosterPanel(QObject):
         collapsed to the width of its own heading, and a card was cut off
         somewhere in the middle of the name.
 
-        So the column asks for its own maximum, and only while it has
-        something to show. The number is read from the form rather than
-        written here as well, and an empty roster asks for nothing, which is
-        what the cards themselves used to do by being hidden.
+        So the column asks for a card's width, and only while it has something
+        to show; an empty roster asks for nothing, which is what the cards
+        themselves used to do by being hidden.
+
+        `ColumnSplitter.ROSTER` is where that width lives now. It was the
+        column's own `maximumWidth` in the form until `#162` made the divider
+        draggable, and a cap is the one thing a draggable column cannot have.
+        What it means here is unchanged -- a card is drawn to it -- and it is
+        a floor rather than a cap in both directions: the column can be
+        dragged wider, and Qt's own collapsing still shuts it altogether.
         """
         if self.scroll is None or self.column is None:
             return
-        self.scroll.setMinimumWidth(self.column.maximumWidth()
-                                    if showing else 0)
+        self.scroll.setMinimumWidth(ColumnSplitter.ROSTER if showing else 0)
 
     def set_levelling(self, allowed: bool) -> None:
         """Whether this title can be levelled at all, and so whether the Level

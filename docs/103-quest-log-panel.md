@@ -3,7 +3,9 @@
 **Status: built and wired.** A quest log on the Automapper tab: what the City
 Council has asked the party to do, and what it has already paid for.
 `goldbox/commissions.py` decodes it, `automap/questlog.py` draws it, it sits in
-the right-hand column of the map tab under the notes, and
+the right-hand column of the map tab under the notes — a column the user drags
+to whatever width suits, and may drag shut
+([107-roster-and-notes.md](107-roster-and-notes.md) §10) — and
 `tests/test_commissions.py` holds the verification below.
 
 The research is done. Four lines are

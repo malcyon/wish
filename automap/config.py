@@ -76,6 +76,37 @@ def migrate_game_folder(folder: str) -> dict[str, str]:
 #: which beats a settings file with two names for one setting in it.
 RENAMED = {"fasttravel_areas": "fast_travel_targets"}
 
+#: The largest number a widget width may be -- Qt's own `QWIDGETSIZE_MAX`,
+#: spelled out rather than imported because this module is the settings file
+#: and builds no widgets. It is here as a guard rather than as a layout
+#: opinion: a hand-edited width above it does not clamp when it reaches
+#: `QSplitter.setSizes`, it raises, and a settings file must not be able to
+#: stop the window opening.
+WIDTH_CEILING = 16777215
+
+
+def whole_sizes(raw, count: int) -> list[int] | None:
+    """A remembered row of widget sizes, or None for "nobody chose these".
+
+    None is what a hand-edited file gets: a size that is negative, is not a
+    number, is above `WIDTH_CEILING`, or a row of the wrong length after the
+    layout changed. **The whole row is refused rather than mended**, because a
+    mended row is part somebody's and part ours, and a window laid out from
+    that is harder to explain than one that opened at its defaults.
+
+    Zero passes, because zero is what a pane dragged shut is worth.
+    """
+    if not isinstance(raw, (list, tuple)) or len(raw) != count:
+        return None
+    sizes = []
+    for value in raw:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        if value != int(value) or not 0 <= value <= WIDTH_CEILING:
+            return None
+        sizes.append(int(value))
+    return sizes
+
 
 @dataclass
 class Settings:
@@ -149,6 +180,27 @@ class Settings:
     diagnostics: bool = False
     # Whether to clear quickfight after a fight ends.
     clear_quickfight: bool = False
+    # The automapper tab's three columns in pixels, left to right -- the
+    # roster, the map, and the Quest Log / Notes / Messages -- as the user
+    # last dragged a divider (#162). Written only when a divider is dragged,
+    # so a session that never touched one leaves whatever was there alone,
+    # and a window squeezed narrow for an afternoon does not overwrite the
+    # width somebody chose.
+    #
+    # **Zero is a legitimate width.** Donald ruled that a column may be
+    # dragged shut, so what has to survive a restart is not a usable width but
+    # a grabbable divider; `automap.panel.ColumnSplitter` is where that is
+    # kept true. `None`, and anything that does not read as a row of whole
+    # widths from 0 to `WIDTH_CEILING`, means nobody has dragged anything and
+    # the columns open at their defaults.
+    automap_columns: list[int] | None = None
+    # The character editor tab's two rows in pixels, top to bottom -- the
+    # roster and Character above, the Stats / Inventory / Spells tabs below --
+    # as the user last dragged the divider (#97). The rules are
+    # `automap_columns`' rules: written only on a drag, zero is a row dragged
+    # shut and is kept, and anything that does not read as a row of whole
+    # heights means nobody has dragged anything.
+    editor_rows: list[int] | None = None
     # Which areas the Fast Travel dropdown offers, by `goldbox/areas.py` id, and
     # **keyed by `goldbox.games.Game.key`** -- an area id means nothing without a
     # title, and fasttraveling on Pool of Radiance's ids in another game's machine is
@@ -195,6 +247,33 @@ class Settings:
             if isinstance(self.fast_travel_targets, dict) else {}
         table[game_key(game)] = sorted({int(i) for i in ids})
         self.fast_travel_targets = table
+
+    def column_widths(self, count: int) -> list[int] | None:
+        """The remembered automapper column widths, or None for "use the
+        defaults".
+
+        None is what a hand-edited file gets: a width that is negative, is not
+        a number, is above `WIDTH_CEILING`, or a row of the wrong length after
+        the layout changed. **The whole row is refused rather than mended**,
+        because a mended row is three widths of which one is somebody's and
+        two are ours, and a window laid out from that is harder to explain
+        than one that opened at its defaults.
+
+        Zero passes, because zero is what a column dragged shut is worth.
+        """
+        return whole_sizes(self.automap_columns, count)
+
+    def row_heights(self, count: int) -> list[int] | None:
+        """The remembered character-editor row heights, or None for "use the
+        defaults".
+
+        The same rule as `column_widths` above and for the same reasons: a
+        hand-edited number that is not a whole size between zero and
+        `WIDTH_CEILING`, or a row of the wrong length after the layout
+        changed, refuses the whole row rather than mending part of it. Zero
+        passes, because zero is what a row dragged shut is worth.
+        """
+        return whole_sizes(self.editor_rows, count)
 
     @classmethod
     def load(cls) -> "Settings":

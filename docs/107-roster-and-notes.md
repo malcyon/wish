@@ -91,11 +91,13 @@ Each card carries one line of what that character has **in hand**, decoded by
 ## 3. The top row: the name, the classes and level, and the Level up button
 
 **Three things, and the name is the only one that gives way.** The roster
-column is capped at 220px and the scrollbar takes 14 of them, so a card draws
-in 206. The row used to hold six things -- the name, the condition badges, the
-classes, the level, the quickfight badge and the button -- and asked for 277px
-with nothing running and 357 with five spells up. Whatever was rightmost fell
-off, cut rather than shortened and with nothing on the card to say so: a
+column opens at 220px and the scrollbar takes 14 of them, so a card draws in
+206 until somebody widens it -- see §10 below, which is what a player does
+about a card too narrow for the character on it. The row used to hold six
+things -- the name, the condition badges, the classes, the level, the
+quickfight badge and the button -- and asked for 277px with nothing running
+and 357 with five spells up. Whatever was rightmost fell off, cut rather than
+shortened and with nothing on the card to say so: a
 three-class character with four badges lit read `MU/C`, and a character who had
 earned a level got `Lev`, 32 of the button's 80 pixels
 (`#161 (A roster card loses a character's classes and its Level up button once
@@ -282,6 +284,51 @@ name we have not proved, which is a decision and not a detail.
 | 2, 36 | Curse, Bestow Curse | **none** | |
 | 29 | Ray of Enfeeblement | **none** | |
 
+## 10. The three columns are the user's to drag
+
+**Built, `#162 (Let the user resize the Quest Log and roster columns)`.** The
+roster, the map and the Quest Log / Notes / Messages column are the three
+panes of one horizontal `QSplitter`, `automap_columns` in `wish/window.ui`,
+driven by `panel.ColumnSplitter`. The two side columns used
+to be capped at 220px and 460px in the form; the numbers have not moved, but
+they are now the widths the columns *open* at rather than widths they may not
+pass.
+
+That is the answer to the one case a 220px card cannot show. A magic-user /
+fighter / cleric at levels 9, 8 and 7 draws `MU/F/C  L9/L8/L7  [Level up]`,
+which is more than the row holds, so the name is shortened to nothing at all
+on a machine whose fonts are Windows'. Donald: *"This is a corner case. Leave
+it the way it is and let users resize it."* Widening the column brings the
+name back, and nothing about the default changed for everybody else.
+
+Three decisions are worth knowing before touching this.
+
+**A dragged width is remembered**, in `Settings.automap_columns` -- three
+numbers in the same hand-editable JSON as everything else. Only a *drag*
+writes there: a column squeezed by a window that is briefly too narrow is not
+a width anybody chose, and writing it back is how a preference goes missing
+with nobody having touched it.
+
+**A column may be dragged shut, and must come back.** Donald: *"Sure, let the
+user drag it down to nothing. As long as they can drag it back out when they
+do that."* A pane at zero has no width to grab, so what the user aims at is
+the divider -- and a zero read out of the settings file on a fresh start is
+the case where somebody has lost a panel for good if it is not there. Qt keeps
+the handle at a collapsed edge, but only if the pane is *collapsed* rather
+than hidden, and its own default handle is narrow enough that Qt's two-pixel
+grab margin pushes half of it outside the window: at the style's width the
+handle draws at `x = -2`. `ColumnSplitter.HANDLE` is 6 for that one reason.
+
+**The map may not be shut.** Both other columns can, but dragging a divider
+across the map would leave the tab with no map on it, which is not a state
+anybody asked to be able to reach.
+
+A column with a floor -- the roster's is a card's width, the reading column's
+is `AutomapBinding.SIDE_SQUEEZED` -- is therefore either wider than its floor
+or shut, with nothing in between. That is Qt's own collapsing: dragging
+inwards past half the floor shuts the column, and dragging outwards opens it
+at the floor again.
+
 ## The licence, and its two traps
 
 **Historical: Wish drew no Font Awesome icon after 2026-09-01.** `#167` replaced
@@ -307,8 +354,8 @@ licence.
 ## Verification — in `tests/test_panel.py`
 
 What the card can hold in the width it is given, all of it against a real
-window laid out at the real 220px column, and none of it against a pixel count
-measured on one machine:
+window laid out at the column's own default width, and none of it against a
+pixel count measured on one machine:
 
 * A three-class character with every badge lit, quickfight on and a full hand
   keeps her classes, her level, both badge rows and the Level up button -- each
@@ -328,6 +375,32 @@ measured on one machine:
   what stops `#168 (A character ready to level loses the Level up button, even
   with nothing running)` coming back: a test party in which nobody can train
   cannot catch a fault in the control that trains them.
+
+## Verification — in `tests/test_columns.py`
+
+The three columns, and every assertion a bound rather than a pixel count:
+
+* Each side column can be dragged wider than it opens at, and shut, and
+  dragged back out again.
+* A column dragged shut and remembered as shut opens shut on the next start,
+  with a divider that is **shown**, lies wholly **inside the window**, and
+  **answers the mouse** -- a press, a move and a release, not a call to
+  anything private. Proved red three ways: with the divider left at the
+  style's own width, with the shut pane hidden instead of collapsed, and with
+  zero refused by the settings reader as if it were nonsense.
+* A dragged width is what the next start opens at; a window resize does not
+  overwrite it.
+* The map cannot be dragged shut from either side.
+* A wider window spends the extra on the map and not on the two side columns.
+* A settings file holding a negative width, a width past Qt's ceiling, a
+  string, a fraction, a row of the wrong length, or nothing that parses at all
+  opens the columns at their defaults with both dividers still working. The
+  ceiling matters: `QSplitter.setSizes` raises on a number too large for a C++
+  int, so an unchecked hand-edit stops the window opening.
+
+`tests/test_mapscale.py` adds the screen: the window's floor stays inside a
+1366x768 laptop at +0, +3, +6 and +10 point of UI font with both columns shut
+and with both dragged as wide as they go.
 
 ## Verification — in `tests/test_automap.py`
 
