@@ -141,9 +141,13 @@ them is the occupied slots in descending index order.
 
 So the party list is **the occupied slots, highest first**, and reading them
 0 upwards gives the party upside down — which is what
-[`#160`](https://github.com/malcyon/wish/issues/160) is. `goldbox.dos.marching_slot`
-already carries the arithmetic, `count - 1 - index`, from
-[`#101`](https://github.com/malcyon/wish/issues/101).
+[`#160`](https://github.com/malcyon/wish/issues/160) is.
+`SaveGame0.marching_order` is the fix: `reversed(self.characters)`, not
+`reversed(range(slot_count))`, because a dropped character can leave a hole
+and the range form would count it. `goldbox.dos.marching_slot`'s `count - 1 -
+index`, from [`#101`](https://github.com/malcyon/wish/issues/101), stays as
+it was: its one caller always writes a packed party, so the gap this section
+is about never reaches it.
 
 **There is no marching-order table.** No window of six or eight bytes anywhere
 in `SAVEDGAME0` or `SAVEDGAME1` is a permutation of 0..5 or 0..7, in any

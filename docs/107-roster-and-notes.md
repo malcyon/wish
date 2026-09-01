@@ -9,21 +9,20 @@ badge. `automap/panel.py` is the roster, `ui/icons.py` the icons, and
 
 ## The order the cards are in
 
-**The card at the top must be the character the game lists first, and today it
-is the one the game lists last.** `#160` — `automap/live.py`'s `characters()`
-walks `SaveGame0.characters`, which is ascending slot order, and the C64 lists
-the party from the **highest** occupied slot down. Measured in the running
-game: `read_snapshot` answered `GARRETT, GRIMNIR, ASTRID` while the C64 screen
-beside it read `ASTRID, GRIMNIR, GARRETT`.
+**Fixed, `#160`.** The card at the top is now the character the game lists
+first. `automap/live.py`'s `characters()` and `editor/roster.py`'s
+`_load_save` both walked `SaveGame0.characters`, ascending slot order, while
+the C64 lists the party from the **highest** occupied slot down. Measured in
+the running game: `read_snapshot` answered `GARRETT, GRIMNIR, ASTRID` while
+the C64 screen beside it read `ASTRID, GRIMNIR, GARRETT`.
 
-The rule is the occupied slots in descending index order, and the reason it is
-not simply `reversed(range(8))` is that `ALTER ▸ DROP` leaves a hole where the
-dropped character stood. See
+Both now walk `SaveGame0.marching_order`, the occupied slots in descending
+index order -- not simply `reversed(range(8))`, because `ALTER ▸ DROP` leaves
+a hole where the dropped character stood and that form would count it.
+`Character.slot` and `Member.index` still carry the real slot, so nothing
+downstream that writes by slot needed to change. See
 [`30-savegame-layout.md`](30-savegame-layout.md), "The slot array runs backwards
-from the marching order", for how that was established and for the arithmetic
-`goldbox.dos.marching_slot` already carries.
-
-The character editor's table has the same fault, from the same cause.
+from the marching order", for how the rule was established.
 
 ## 1. Hit point bar colours
 
