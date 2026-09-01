@@ -34,7 +34,7 @@ from PyQt6.QtCore import QRect
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication
 
-from automap import paths
+from automap import live, paths
 from automap.render import CELL, CELL_MIN, MARGIN
 from automap.state import AutomapState
 from automap.window import MapCanvas
@@ -525,3 +525,130 @@ def test_the_players_own_party_is_no_wider_than_the_synthetic_one(app, tmp_path,
     for extra, floor in zip((0, 3), theirs):
         assert floor.width() <= SMALL.width(), f"+{extra}pt"
         assert floor.height() <= SMALL.height(), f"+{extra}pt"
+
+
+# --- and the roster column, which is where the height went ------------------
+
+def _full_party_window(app, tmp_path, monkeypatch, extra, *, showing=8):
+    """A window with `showing` cards of the widest character on the roster.
+
+    The automapper's roster is fed from the emulator, so a window built from a
+    saved game leaves all eight cards hidden -- which is why nothing in this
+    file saw #135 until a party was put on the cards by hand. The character is
+    the widest the record allows: a fifteen-letter name, three classes, and
+    three readied items.
+
+    **The Qt trap `tests/test_automap.py::_eight_card_floor` documents.** A
+    card is `visible=false` in `wish/window.ui`; on `QWidget.show()` the
+    layouts above it go on answering the eight-hidden-cards number until every
+    ancestor is told its cached item sizes are stale, and `updateGeometry()`
+    up the chain is what does it.
+    """
+    from wish.session import Session
+    from wish.window import WishWindow
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "_home", lambda: empty)
+    monkeypatch.chdir(empty)
+
+    base = app.font()
+    bigger = QFont(base)
+    bigger.setPointSizeF(base.pointSizeF() + extra)
+    app.setFont(bigger)
+    classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 200_000)
+                    for name in ("magic-user", "cleric", "thief"))
+    party = tuple(live.Character(
+        slot=slot, name="W" * 15, classes=classes, level=8, armour_class=-3,
+        thac0=5, hp=0, hp_max=99, experience=100_000,
+        readied=("BANDED MAIL +1", "SHIELD +2", "LONG SWORD +3"))
+        for slot in range(showing))
+    win = WishWindow(None, maps={},
+                     session=Session(find=lambda pref=None: None))
+    win.show()
+    app.processEvents()
+    # Through `show_snapshot` and not by showing the frames by hand: that is
+    # the call the poll makes, and it is what tells the column how much width
+    # to ask for.
+    win.map.roster.show_snapshot(live.Snapshot(
+        characters=party, effects=(), x=1, y=1, facing=0,
+        clock_text="10:15", area_file="GEO04"))
+    widget = win.map.roster.cards[0].frame
+    while widget is not None:
+        widget.updateGeometry()
+        widget = widget.parentWidget()
+    app.processEvents()
+    return win, base
+
+
+def _full_party_floor(app, tmp_path, monkeypatch, extra, *, showing=8):
+    """The whole window's minimum with a party of `showing` on the cards."""
+    win, base = _full_party_window(app, tmp_path, monkeypatch, extra,
+                                   showing=showing)
+    try:
+        # `QLayout.activate()` pins a top-level window's `minimumSize` and does
+        # not un-pin it, so a hint asked for after the cards were shown answers
+        # the old number until the layout is re-activated. `_floor`'s docstring
+        # is the long version.
+        win.setMinimumSize(0, 0)
+        layout = win.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        return win.minimumSizeHint()
+    finally:
+        win.session.close()
+        win.close()
+        app.setFont(base)
+
+
+def test_the_window_still_fits_the_laptop_with_a_full_party_of_eight(
+        app, tmp_path, monkeypatch):
+    """#135, and the case every other test in this file misses.
+
+    **What a user saw.** You are running the automapper beside the game with
+    all eight slots filled. The roster column was eight cards tall, nothing in
+    it scrolled, and the window could not be dragged any shorter than the sum
+    of them -- so on a 1366x768 laptop the bottom of the window was off the
+    screen and there was nothing to be done about it.
+
+    The measurement, this machine, a party of eight fifteen-letter
+    three-class characters: the window's floor was 952 at the base font and
+    1179 at ten points more, against a screen of 768. With the roster's
+    scroll area back it is 540 and 669.
+
+    **The assertion is the screen and not a pixel count**, which is what makes
+    it true of a machine whose base font is not this one: CI's Linux and
+    Windows both start smaller than here and climb, so a floor that clears
+    `SMALL` here clears it there. A number copied out of the table above
+    would have been a measurement of this desk.
+    """
+    fonts = (0, 3, 6, 10)
+    for extra in fonts:
+        floor = _full_party_floor(app, tmp_path, monkeypatch, extra)
+        assert floor.height() <= SMALL.height(), (
+            f"+{extra}pt: a full party of eight put a {floor.height()}px "
+            f"floor under a {SMALL.height()}px screen")
+        assert floor.width() <= SMALL.width(), f"+{extra}pt"
+
+
+def test_the_party_on_the_cards_is_not_in_the_windows_floor_at_all(
+        app, tmp_path, monkeypatch):
+    """And the mechanism, said without a pixel in it.
+
+    A scrolling column reports the same minimum whatever it holds, so showing
+    a party costs the window's floor nothing. Eight cards against none is the
+    whole of #135 -- 852 of roster against 150 before the scroll area went
+    back, and the same number now.
+
+    Asserted as an equality between two measurements taken on the same
+    machine in the same run, so there is no constant here to be wrong about
+    somewhere else.
+    """
+    for extra in (0, 6):
+        empty = _full_party_floor(app, tmp_path, monkeypatch, extra, showing=0)
+        full = _full_party_floor(app, tmp_path, monkeypatch, extra, showing=8)
+        assert full.height() == empty.height(), (
+            f"+{extra}pt: eight cards added "
+            f"{full.height() - empty.height()}px to the window's floor, so "
+            f"the roster column is not scrolling")

@@ -63,7 +63,17 @@
             </widget>
            </item>
            <item>
-            <widget class="QWidget" name="automap_roster_inner">
+            <widget class="QScrollArea" name="automap_roster_scroll">
+             <property name="horizontalScrollBarPolicy">
+              <enum>Qt::ScrollBarAlwaysOff</enum>
+             </property>
+             <property name="widgetResizable">
+              <bool>true</bool>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <widget class="QWidget" name="automap_roster_inner">
               <layout class="QVBoxLayout" name="automap_roster_column">
                <property name="spacing">
                 <number>6</number>
@@ -1079,8 +1089,8 @@
                </item>
               </layout>
              </widget>
+            </widget>
            </item>
-          <item><spacer name="roster_bottom_spacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
           <item><widget class="ElidingLabel" name="strip_where">
              <property name="text">
               <string>-</string>

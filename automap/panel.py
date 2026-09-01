@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStyle,
     QStyleOptionButton,
@@ -561,12 +562,36 @@ class RosterPanel(QObject):
         self.root = root
         self.levelling = True
         self.heading = root.findChild(QLabel, "automap_roster_heading")
+        #: The column the cards scroll inside, and the column that holds it.
+        self.scroll = root.findChild(QScrollArea, "automap_roster_scroll")
+        self.column = root.findChild(QWidget, "automap_roster")
         self.cards: list[CharacterCard] = [
             CharacterCard(root, i, parent=self) for i in range(8)
         ]
         for card in self.cards:
             card.level_up_requested.connect(self.level_up_requested)
         self.set_message("waiting for a game")
+        self.ask_for_room(0)
+
+    def ask_for_room(self, showing: int) -> None:
+        """Ask the layout for the width a card needs, once there is one.
+
+        A `QScrollArea` reports a small minimum in *both* axes. Hiding the
+        height is the whole point -- eight cards in a column that could not
+        scroll put a 944px floor under the window (#135) -- but hiding the
+        width is not: with the cards behind the scroll area the roster column
+        collapsed to the width of its own heading, and a card was cut off
+        somewhere in the middle of the name.
+
+        So the column asks for its own maximum, and only while it has
+        something to show. The number is read from the form rather than
+        written here as well, and an empty roster asks for nothing, which is
+        what the cards themselves used to do by being hidden.
+        """
+        if self.scroll is None or self.column is None:
+            return
+        self.scroll.setMinimumWidth(self.column.maximumWidth()
+                                    if showing else 0)
 
     def set_levelling(self, allowed: bool) -> None:
         """Whether this title can be levelled at all, and so whether the Level
@@ -600,6 +625,7 @@ class RosterPanel(QObject):
         for card in self.cards[len(snap.characters):]:
             if card.frame is not None:
                 card.frame.hide()
+        self.ask_for_room(len(snap.characters))
         self.set_stale(False)
 
 
