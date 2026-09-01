@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -45,9 +46,16 @@ sys.path.insert(0, str(TOOLS))
 import instance  # noqa: E402
 import session as S  # noqa: E402
 
+from automap.paths import find_disks  # noqa: E402
+
 #: Where the player keeps the disks, unless `--disks` says otherwise.  Read
 #: only, ever: everything is copied into the slot's directory first.
-DISKS = pathlib.Path("/home/donald/c64/Pool of Radiance Disks")
+#:
+#: `$POR_DISKS` first, then the search `automap.paths` already does, which is
+#: what every other tool here uses -- a path spelled out in the source is one
+#: developer's machine written into a program that ships, and
+#: `test_no_hardcoded_user_paths` fails the build on one.
+DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 
 def claim_slot(want: int | None, note: str):
