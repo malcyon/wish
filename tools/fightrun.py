@@ -152,7 +152,18 @@ class Run:
         sub-bar went away after a step into an enemy's square -- so that is
         the count, rather than anything read off the message band.  A message
         cannot say who swung: the orcs are attacking the party in every fight
-        it is in, which is why `FightResult.acted` is not proof (`#163`).
+        it is in.
+
+        `FightResult.acted` now rests on the same answer, counted by `fight`
+        rather than here (`#163`).  This stays because it is the count **per
+        character**, which is what says one character took every turn
+        (`#165`).
+
+        **The two counts are not the same number and are not meant to be.**
+        `fight` counts every turn that ended in a blow; this counts only the
+        ones whose character already had an enemy in contact when the game
+        asked it, so a character that walked three squares and then struck is
+        in `blows` and not in this column.  `r.blows` is the total.
         """
         rows: dict[str, dict] = {}
         for t in self.turns:
@@ -162,7 +173,7 @@ class Run:
             r["turns"] += 1
             if t["dist"] == 1:
                 r["contact"] += 1
-                if t["chose"] == "ATTACK":
+                if t["chose"] == S.ATTACK:
                     r["blows"] += 1
         return sorted(rows.values(), key=lambda r: -r["turns"])
 
@@ -249,9 +260,16 @@ def main(argv=None) -> int:
             # 900 with no way of saying what the other 751 went on.
             run.emit("fight_end", fight=fight, outcome=r.outcome,
                      turns=r.turns, seconds=round(r.seconds, 1),
-                     acted=r.acted, lines=r.lines, bars=r.bars)
+                     acted=r.acted, blows=r.blows, evidence=r.evidence,
+                     anybody_swung=r.anybody_swung,
+                     lines=r.lines, bars=r.bars)
             run.say(f"fight {fight}: {r.outcome} turns={r.turns} "
                     f"seconds={round(r.seconds, 1)}")
+            # What `acted` rests on, beside `acted` itself.  A run whose
+            # summary says only True is a run somebody has to take on trust,
+            # and this one is the check that decides whether a conversion has
+            # been proven in combat.
+            run.say(r.evidence)
             run.report()
             if r.outcome in (S.LOST, S.NOT_FIGHTING):
                 break

@@ -396,8 +396,54 @@ sub-bar goes away.
 **A won fight is not a fought fight.** Six runs before `#126` ended with
 `THE PARTY HAS WON !` and no character having attacked — the party guarded, the
 monsters wandered off, and a log of command bars cannot tell that from a
-victory. `FightResult.acted` is the distinction: it looks for a `HITS`,
-`MISSES` or `DAMAGE` line, which is the only evidence a blow was struck.
+victory. `FightResult.acted` is the distinction.
+
+### `acted` counts turns, and does not read the message band
+
+**The message band cannot say who swung.** The game prints the party's blows
+and the monsters' into the same window in the same words, and the party is
+being attacked in every fight it is in — so `HITS`, `MISSES`, `SLAIN` and
+`POINTS OF DAMAGE` are true of any fight that lasts a round. `acted` used to
+be exactly that pattern, and it reported `True` on the Slums ambush where 26 of
+27 turns were passed with the party standing next to the orcs, on the strength
+of `AND MISSES...` — the orcs (`#163`).
+
+`acted` is now **the count of driven turns that ended with the blow struck**:
+`fight` counts the turns whose tactic answered `Session.ATTACK`, and
+`melee_turn` answers it only when a step into an enemy's square was followed by
+the move sub-bar going away, which is the measured signature of a blow that
+resolved. `FightResult.blows` is the number, and `FightResult.evidence` is the
+sentence a run's report prints beside `acted` so nobody has to take it on
+trust.
+
+**What it depends on is the tactic**, and that is the price. A caller passing a
+tactic of its own that strikes without answering `ATTACK` gets `acted` False.
+That is under-reporting, which is the direction a check that gets believed
+should fail in: it costs a re-run, where over-reporting costs a wrong
+conclusion about whether a converted party ever fought.
+
+`FightResult.anybody_swung` keeps the old reading under an honest name — did
+*anybody* swing, either side — because whether a fight lasted a round is still
+worth knowing.
+
+**The attacker's name is on the screen and was rejected anyway.** `COMBAT
+$2994` prints the speaker's name at `$6B00` as the first row of a message
+block, so `work/rolls/run2.jsonl` caught the band reading `ORC / ATTACKS /
+BRUTUS / AND MISSES...` down columns 23-38 — attacker, verb and target on three
+separate rows. Three things made it the worse foundation: a block lives about a
+second of *emulated* time (`automap/combatlog.py`) while `fight` polls once a
+second, so the row that names the attacker is often gone by the time anything
+looks; only one message wording has ever been captured, so a party that fought
+with a spell or a bow would read as a party that did nothing; and a character a
+player named `ORC` would read as an orc.
+
+**`$A4F4`, the acting combatant's index, was rejected for the same sampling
+reason plus a worse one.** It is written inside the attack routine and then
+holds its value — `docs/147-combat-rolls.md` — so a read says who attacked
+*last*, with no way of telling a stale party index left over from an earlier
+fight from a fresh one, and `0` is both a legitimate party index and what a
+cleared byte reads. Establishing when it is cleared needs an emulator run that
+the turn count does not need at all.
 
 ## The KERNAL keyboard buffer *does* work at text prompts
 

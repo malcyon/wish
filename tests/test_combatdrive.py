@@ -26,6 +26,7 @@ from gamedata import synthetic_arena
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 
 from session import (  # noqa: E402
+    ATTACK,
     BAR_BLANK,
     BAR_COMMAND,
     BAR_CONTINUE,
@@ -362,8 +363,114 @@ def test_the_party_standing_still_is_not_a_fight_it_fought():
     won = FakeSession([(COMBAT, bar_screen(""))])
     out = won.fight(budget=0.3, poll=0.0)
     assert out.acted is False
-    out.lines.append("THRENDER GRONE HITS FOR 6 POINTS OF DAMAGE")
+    assert out.blows == 0
+
+
+# -- who swung ---------------------------------------------------------------
+
+# The message band as `work/rolls/run2.jsonl` caught it, whole and unedited.
+# The game prints into columns 23-38 (`COMBAT $0970`), one phrase to a row,
+# and the **first row of a block is the name of whoever is speaking** --
+# `$2994 JSR $34C3` prints the name at `$6B00` before the message text, which
+# `automap/combatlog.py` documents.
+#
+# So the attacker's name is on the screen, two rows above the word that says
+# what the blow did, and `HITS`/`MISSES`/`POINTS OF DAMAGE` are the same words
+# whichever side swung.
+ORCS_SWINGING = ["ORC", "ATTACKS", "BRUTUS", "AND MISSES..."]
+PARTY_SWINGING = ["BRUTUS", "ATTACKS", "ORC", "AND HITS FOR 7",
+                  "POINTS OF DAMAGE"]
+
+
+def band(rows: list[str]) -> FakeScreen:
+    """A combat screen whose message band carries `rows`, where the game puts
+    them: down the right-hand window from row 10."""
+    return FakeScreen({24: "",
+                       **{10 + i: " " * 23 + t for i, t in enumerate(rows)}})
+
+
+def test_a_fight_only_the_monsters_swung_in_is_not_one_the_party_fought():
+    """The whole of `#163`, in the words the orcs actually printed.
+
+    One Slums ambush drove 27 turns, passed 26 of them with the party standing
+    next to the orcs, and reported `acted=True` -- off `AND MISSES...`, which
+    was the orcs.  `RE_STRUCK` cannot tell an attacker from a defender, and the
+    party is being attacked in every fight it is in, so the old `acted` was
+    true of any fight that lasted a round.
+    """
+    sess = FakeSession([(COMBAT, band(ORCS_SWINGING))])
+    out = sess.fight(budget=0.3, poll=0.0)
+    assert "AND MISSES..." in out.lines      # the band was read, as before
+    assert out.anybody_swung is True         # and somebody did swing
+    assert out.acted is False                # but not a party member
+    assert out.blows == 0
+
+
+def test_acted_ignores_the_message_band_even_when_the_party_is_named():
+    """The cost of not reading the band, stated rather than hidden.
+
+    `BRUTUS ATTACKS ORC` really is a party member striking, and `acted` still
+    answers False here because the driver did not strike -- it is the tactic's
+    count, not a screen read.  That is deliberate and it is the safe direction:
+    a check this one gets believed, and under-reporting costs a re-run where
+    over-reporting costs a wrong conclusion about whether a converted party
+    ever fought.
+
+    It is also what makes name-matching unattractive.  The name is two rows
+    above the verb, in a block that lives about a second of emulated time
+    (`automap/combatlog.py`) while `fight` polls once a second -- and a
+    character a player named `ORC` would read as an orc.
+    """
+    sess = FakeSession([(COMBAT, band(PARTY_SWINGING))])
+    out = sess.fight(budget=0.3, poll=0.0)
+    assert out.anybody_swung is True
+    assert out.acted is False
+
+
+def test_a_turn_that_ended_with_the_blow_struck_is_what_acted_counts():
+    """A fight with nothing on the message band at all, and `acted` True.
+
+    `melee_turn` answers `ATTACK` only when the step into an enemy's square
+    was followed by the move sub-bar going away, which is the measured
+    signature of a blow that resolved (`#127`).  `fight` counts those answers
+    and that is the whole of `acted`.
+    """
+    bar = "MOVE VIEW AIM USE QUICK DONE"
+    sess = FakeSession([(COMBAT, command_bar(bar, "DONE"))])
+    out = sess.fight(budget=0.5, poll=0.0, tactic=lambda s, st: ATTACK)
+    assert out.turns > 0
+    assert out.blows == out.turns
     assert out.acted is True
+
+
+def test_a_turn_the_tactic_passed_is_not_a_blow():
+    """The same bar and the same budget as the test above, and the only
+    difference is what the tactic did with the turn."""
+    bar = "MOVE VIEW AIM USE QUICK DONE"
+    sess = FakeSession([(COMBAT, command_bar(bar, "DONE"))])
+    out = sess.fight(budget=0.5, poll=0.0, tactic=lambda s, st: "GUARD")
+    assert out.turns > 0
+    assert out.blows == 0
+    assert out.acted is False
+
+
+def test_a_result_says_what_acted_rests_on():
+    """`#163` asks for the evidence beside the answer, and this is it.
+
+    A run whose report says only `acted=True` is one somebody has to take on
+    trust, and that is exactly how a fight nobody fought was believed.
+    """
+    sess = FakeSession([(COMBAT, band(ORCS_SWINGING))])
+    out = sess.fight(budget=0.3, poll=0.0)
+    assert out.evidence.startswith("A party member struck on 0 of ")
+    assert "monsters attacking the party" in out.evidence
+
+    bar = "MOVE VIEW AIM USE QUICK DONE"
+    fought = FakeSession([(COMBAT, command_bar(bar, "DONE"))]).fight(
+        budget=0.5, poll=0.0, tactic=lambda s, st: ATTACK)
+    assert fought.evidence.startswith("A party member struck on "
+                                      f"{fought.blows} of ")
+    assert "monsters attacking" not in fought.evidence
 
 
 # The two panel lines that made a fight nobody fought report a blow struck.
@@ -377,21 +484,27 @@ PANEL_LIES = [
 
 @pytest.mark.parametrize("line", PANEL_LIES)
 def test_a_panel_line_is_not_a_blow_struck(line):
-    """`acted` is the whole finding, so a pattern that matches the furniture
-    destroys it.  `work/p126/quick.log` reported a blow landed in a fight whose
-    213 turns were all the driver bouncing off a sub-bar."""
+    """The furniture is on the screen too, and it matches a loose pattern.
+
+    `work/p126/quick.log` reported a blow landed in a fight whose 213 turns
+    were all the driver bouncing off a sub-bar.  `acted` no longer reads the
+    band at all, so this now guards `anybody_swung` and `lines` -- which are
+    still what a run's log carries, and still what the next person to write a
+    pattern over will reach for.
+    """
     assert RE_NOTABLE.search(line.upper()) is None
     out = FakeSession([(COMBAT, bar_screen(""))]).fight(budget=0.3, poll=0.0)
     out.lines.append(line)
-    assert out.acted is False
+    assert out.anybody_swung is False
 
 
-def test_a_real_blow_still_counts():
+def test_a_real_blow_is_somebody_swinging_and_does_not_say_who():
     out = FakeSession([(COMBAT, bar_screen(""))]).fight(budget=0.3, poll=0.0)
     out.lines.append("PHINEAS MISSES")
-    assert out.acted is True
+    assert out.anybody_swung is True
     out.lines = ["THRENDER GRONE HITS FOR 6 POINTS OF DAMAGE"]
-    assert out.acted is True
+    assert out.anybody_swung is True
+    assert out.acted is False           # neither line says which side swung
 
 
 def test_fight_refuses_when_there_is_no_fight():

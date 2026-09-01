@@ -121,11 +121,27 @@ RE_NOTABLE = re.compile(
     r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|HAS WON"
     r"|DEFEATED|EXPERIENCE|GUARDING)\b|POINTS OF DAMAGE")
 
-# Of those, the ones only a blow can produce.
+# Of those, the ones only a blow can produce -- **by either side**.  This is
+# not who swung and cannot be made into it: the game prints the party's blows
+# and the monsters' in the same band in the same words, and the party is being
+# attacked in every fight it is in.  `FightResult.anybody_swung` is what this
+# answers, and `acted` deliberately does not use it (`#163`).
 RE_STRUCK = re.compile(r"\b(HITS|MISSES|SLAIN)\b|POINTS OF DAMAGE")
 
 WON, LOST, ENDED, BUDGET, NOT_FIGHTING = (
     "won", "lost", "ended", "budget", "not fighting")
+
+# What a tactic answers when the blow was struck.  `melee_turn` returns it
+# only after a step into an enemy's square and the move sub-bar then going
+# away, which is the measured signature of a blow that resolved: an attack
+# spends no movement and moves nobody, so nothing else on the screen says it
+# happened (`#127`, `work/issue127/sweep1.jsonl`, turn 15).
+#
+# `fight` counts these and `FightResult.acted` is that count.  A tactic that
+# strikes without saying so therefore leaves `acted` False, which is the safe
+# direction: this is a check that gets believed, and one that under-reports
+# costs a re-run where one that over-reports costs a wrong conclusion.
+ATTACK = "ATTACK"
 
 
 class CombatBar(NamedTuple):
@@ -141,10 +157,13 @@ class FightResult:
     """What one driven fight did.
 
     `bars` is every row-24 bar in the order it appeared, deduplicated against
-    the one before it, and `lines` the messages that say a blow landed.  Both
-    are kept because the interesting failure is a fight that ends with the
-    party having done nothing, and only the messages tell that apart from a
-    fight the party won.
+    the one before it, and `lines` the messages the fight printed.  Both are
+    kept because the interesting failure is a fight that ends with the party
+    having done nothing, and a log of command bars cannot tell that apart from
+    a fight the party won.
+
+    `blows` is the count `acted` rests on: the turns a tactic answered
+    `ATTACK`.
     """
 
     outcome: str
@@ -152,12 +171,55 @@ class FightResult:
     seconds: float
     bars: list[str]
     lines: list[str]
+    #: Turns whose tactic answered `ATTACK`.  Counted by `fight`.
+    blows: int = 0
 
     @property
     def acted(self) -> bool:
-        """Did a blow land, or miss?  The difference between a fight the party
-        fought and one it stood through."""
+        """Did a **party member** strike?  The difference between a fight the
+        party fought and one it stood through.
+
+        This is the driver's own count of turns that ended with the blow
+        struck, and **not** a read of the message band.  It used to be the
+        latter, and the latter cannot answer the question: `RE_STRUCK` matches
+        `HITS`, `MISSES`, `SLAIN` and `POINTS OF DAMAGE` for **either side**,
+        and the party is being attacked in every fight it is in.  One Slums
+        ambush drove 27 turns, passed 26 of them with the party standing next
+        to the orcs, and reported `acted=True` off `AND MISSES...` and `AND
+        HITS FOR 7 POINTS OF DAMAGE` -- the orcs (`#163`).
+
+        **What it depends on, said out loud:** the tactic.  `melee_turn`
+        answers `ATTACK` when the blow resolved and `fight` counts that, so a
+        caller passing a tactic of its own that strikes without answering
+        `ATTACK` gets `acted` False.  That is under-reporting, which is the
+        direction a check that gets believed should fail in.  `evidence` says
+        the same thing in words for a report.
+        """
+        return self.blows > 0
+
+    @property
+    def anybody_swung(self) -> bool:
+        """Did **anybody** swing, either side?  What `acted` used to mean.
+
+        Kept, and named for what it is, because it is worth knowing that a
+        fight lasted a round at all -- and because deleting it would leave the
+        trap undocumented for whoever next writes a pattern over `lines`.
+        """
         return any(RE_STRUCK.search(ln.upper()) for ln in self.lines)
+
+    @property
+    def evidence(self) -> str:
+        """What `acted` rests on, in words, for a run's report to print.
+
+        A number nobody states is a number nobody checks, and `acted` is the
+        check that decides whether a conversion has been proven in combat.
+        """
+        said = (f"A party member struck on {self.blows} of {self.turns} "
+                f"driven turns")
+        if not self.blows and self.anybody_swung:
+            said += ("; the HITS and MISSES on the message band are the "
+                     "monsters attacking the party")
+        return said
 
 
 # How a character moves in a fight, measured key by key in `work/p126/run1.log`:
@@ -1072,7 +1134,10 @@ class Session:
                 # for the turn to move on rather than for a square to be
                 # spent.
                 if self.await_bar(AFTER_MOVE, self.ATTACK_TIMEOUT) is not None:
-                    return "ATTACK"
+                    # The one place in this file that knows a party member
+                    # struck.  `fight` counts it and `FightResult.acted` is
+                    # that count -- see `ATTACK` at the top of the file.
+                    return ATTACK
                 # Still on the sub-bar six seconds later, so the blow was
                 # refused rather than struck.  Seen for a character with a
                 # **missile weapon readied** -- MALCYON with 13 DART, six
@@ -1136,6 +1201,7 @@ class Session:
         lines: list[str] = []
         seen: set[str] = set()
         turns = 0
+        blows = 0
         outcome: str | None = None
         if not self.in_combat():
             return FightResult(NOT_FIGHTING, 0, 0.0, bars, lines)
@@ -1154,7 +1220,8 @@ class Session:
                     lines.append(row)
             if mode == DUNGEON and RE_STATUS.search(text):
                 return FightResult(outcome or ENDED, turns,
-                                   time.time() - started, bars, lines)
+                                   time.time() - started, bars, lines,
+                                   blows)
             state = self.combat_state(s)
             if state.text and (not bars or bars[-1] != state.text):
                 bars.append(state.text)
@@ -1180,12 +1247,17 @@ class Session:
                 self.press_kernal(0x0D)      # back out of move mode
             elif state.kind == BAR_COMMAND:
                 turns += 1
-                act(self, state)
+                # The tactic's own answer, which is the only thing in this
+                # loop that knows whether the *party* struck.  Every other
+                # signal a fight offers -- the message band, the mode byte,
+                # row 24 -- says a blow was struck without saying by whom.
+                if act(self, state) == ATTACK:
+                    blows += 1
             else:
                 self.idle(poll)              # a monster's turn, or a redraw
             self.handle_prompt()
         return FightResult(outcome or BUDGET, turns, time.time() - started,
-                           bars, lines)
+                           bars, lines, blows)
 
 
 # -- command server ---------------------------------------------------------
