@@ -38,7 +38,7 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-from goldbox import games, levels
+from goldbox import games, levels, traits
 from goldbox.derive import CLASS_BITS
 from goldbox.items import items_for_slot, load_item_names
 from goldbox.record import FieldNotStored
@@ -111,6 +111,25 @@ CLASS_LEVEL_FIELD = {"magic-user": "level_magic_user", "cleric": "level_cleric",
                      "thief": "level_thief", "fighter": "level_fighter"}
 
 GRID = 16
+
+# The condition badges, in the order a card draws them, and the effect ids each
+# one covers. **The groupings are `docs/136-condition-badges.md`'s and the
+# glyphs are Donald's** -- neither is this file's to change. Every id here is
+# CONFIRMED in `goldbox/traits.py`; the PROBABLE radius pair 45/46 and Prayer
+# (49) are deliberately absent, because that grouping was left open.
+#
+# One glyph for six ids is what makes *warded* worth having: the badge says a
+# defence is up and the tooltip says which. Read from the save's effect arrays
+# and not from the trait slots at `0x0AD` -- a cast spell never reaches those,
+# so a trait-sourced badge would be blank on a party with every spell running
+# (`docs/133-active-effects.md`).
+CONDITION_BADGES: tuple[tuple[str, tuple[int, ...]], ...] = (
+    ("running-ninja", (39,)),                            # hasted
+    ("healing-shield", (1, 35)),                         # blessed
+    ("embrassed-energy", (8, 9, 17, 28, 41, 89)),        # warded
+    ("invisible", (25,)),                                # invisible
+    ("strong", (12, 38)),                                # strengthened
+)
 
 
 @dataclass(frozen=True)
@@ -227,29 +246,33 @@ class Character:
 
     @property
     def conditions(self) -> tuple[tuple[str, str], ...]:
-        """`(icon, what it means)` for every condition we can actually read.
+        """`(icon, what it means)` for every condition a card badges.
 
-        Still two, and no longer for the old reason. The effect ids at `$4900`
-        and the trait codes at `0x0AD` are **one namespace**, not two:
-        `LIBRARY $4028` reads the arrays first and falls back to the
-        character's own slots (`docs/133-active-effects.md`), so
-        `goldbox/traits.py` names both and a badge would not be invented. 66 of
-        its 129 names are CONFIRMED, 21 of them things that can be true of a
-        player character.
+        Two come from the record -- hit points at zero, and the drain count at
+        `0x0A1`. The rest come from the save's four effect arrays at `$4900`,
+        already filtered to this character by `characters()`, and are grouped
+        into the five badges Donald chose: `CONDITION_BADGES`.
 
-        What is missing is a chosen glyph for each, not a name. The candidates
-        and their verdicts at 13px are the table in
-        `docs/107-roster-and-notes.md`; Donald picks from it, and nothing is
-        badged until he has.
+        **A running spell is named, never counted.** The duration byte's unit
+        is in bits 6-7 and is not decoded, so "8" could be rounds, turns or
+        hours; the badge says the spell is up and says no more than that.
+
+        The order is the table's, not the effect table's, so a card's badges
+        do not shuffle between one poll and the next.
         """
         out = []
         if self.down:
-            out.append(("skull", ""))
+            out.append(("death-skull", ""))
         if self.levels_drained:
-            out.append(("arrow-down-long",
+            out.append(("oppression",
                         f"drained {self.levels_drained} level"
                         f"{'s' if self.levels_drained != 1 else ''} "
                         f"(record 0x0A1)"))
+        running = {e.id for e in self.effects}
+        for glyph, ids in CONDITION_BADGES:
+            named = [traits.describe(i) for i in ids if i in running]
+            if named:
+                out.append((glyph, "\n".join(named)))
         return tuple(out)
 
     @property

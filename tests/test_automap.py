@@ -1564,13 +1564,16 @@ def test_the_gem_survives_a_map_cell(app):
     assert middle > 200, f"the gem filled in: lightness {middle}"
 
 
-def test_no_icon_leaves_the_640_box():
+def test_no_icon_leaves_its_own_box():
     """`render.py` places a note by its box, not by its ink: an icon that
-    overhangs lands on a wall. See `test_a_note_never_lands_on_a_wall`."""
+    overhangs lands on a wall. See `test_a_note_never_lands_on_a_wall`. The two
+    sets have different boxes -- 640 for Font Awesome, 512 for game-icons.net
+    -- so the question is asked of each icon's own."""
     for name in icons.ICONS:
         x0, y0, x1, y1 = icons.extent(name)
-        assert 0 <= x0 and 0 <= y0 and x1 <= icons.BOX and y1 <= icons.BOX, \
-            f"{name} is {x0},{y0}..{x1},{y1}"
+        unit = icons.box(name)
+        assert 0 <= x0 and 0 <= y0 and x1 <= unit and y1 <= unit, \
+            f"{name} is {x0},{y0}..{x1},{y1} in a {unit} box"
 
 
 def test_ours_and_font_awesome_do_not_share_a_name():
@@ -2222,7 +2225,9 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     outcome = bar.run(identify)
     # The result is a line in the messages panel, not a pop-up to dismiss.
     assert outcome is not None
-    assert said == [f"identify: {outcome.message}"]
+    # A Messages panel line opens with a capital -- `CLAUDE.md`, "Help text
+    # in the GUI". The whole composed line is still what is pinned.
+    assert said == [f"Identify: {outcome.message}"]
 
 
 def test_the_quickfight_watcher_is_off_until_it_is_asked_for(app):
@@ -2347,14 +2352,14 @@ def test_the_messages_panel_drops_repeats_and_keeps_the_alarm(app, tmp_path,
 
 
 def test_a_character_at_zero_and_a_drained_one_are_marked(app):
-    """The two conditions the record actually tells us, and no others: the
-    effect ids at $4900 are a code space nothing in the project names."""
+    """The two conditions the *record* tells us, as opposed to the five the
+    save's effect arrays do -- those are `tests/test_conditionbadges.py`."""
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
     card.show_character(_character(hp=0))
-    assert card.conditions.names == ("skull",)
+    assert card.conditions.names == ("death-skull",)
     card.show_character(_character(hp=4, levels_drained=2))
-    assert card.conditions.names == ("arrow-down-long",)
+    assert card.conditions.names == ("oppression",)
     assert "drained 2 levels" in card.conditions.toolTip()
     card.show_character(_character())
     assert card.conditions.names == ()
@@ -2404,7 +2409,7 @@ def test_the_quickfight_badge_appears_only_when_the_bit_is_set(app):
     from automap.panel import CharacterCard
     card = CharacterCard(make_root(), 0)
     card.show_character(_character(quickfight=True))
-    assert card.quickfight.names == ("person-running",)
+    assert card.quickfight.names == ("sparkling-sabre",)
     assert card.quickfight.toolTip() == "Quickfight"
     # Not in with the conditions, and not shifting the card when it goes.
     assert card.conditions.names == ()
@@ -2433,28 +2438,33 @@ def test_the_quickfight_bit_reaches_the_snapshot_from_the_roster_page(app):
     assert actions.QUICKFIGHT.mask == live.QUICKFIGHT_BIT
 
 
-def test_the_running_figure_is_font_awesome_verbatim_and_reads_at_13px(app):
-    """Lifted from `svgs-full/solid/person-running.svg`, not redrawn: three
-    subpaths -- head, body, trailing arm -- which is what a runner looks like
-    and is why it passes the 13px rule despite not being one silhouette."""
+def test_the_quickfight_sabre_is_the_artists_own_drawing(app):
+    """Lorc's `sparkling-sabre`, verbatim from game-icons.net and drawn in its
+    own 512 box. It replaced `person-running` because Donald gave the running
+    figure to hasted, and two runners on one card at 13px cannot be told apart
+    -- `#4 (Condition badges on the roster card)`.
+
+    Pinned as ink rather than as a shape: the point is that a Qt or a parser
+    change that turned the glyph into nothing or into a blob fails here rather
+    than on somebody's card. 52 pixels at 13px, measured on this machine with
+    Qt 6."""
     from PyQt6.QtGui import QColor, QImage, QPainter
 
     from ui.iconpaint import draw_icon
-    assert "person-running" in icons.FONT_AWESOME
-    assert sum(1 for c in icons.commands("person-running") if c[0] == "M") == 3
+    assert "sparkling-sabre" in icons.GAME_ICONS
+    assert icons.ARTISTS["sparkling-sabre"] == "Lorc"
+    assert icons.box("sparkling-sabre") == 512
 
     size = 13
     image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(QColor("white"))
     p = QPainter(image)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    draw_icon(p, "person-running", 0, 0, size, QColor("black"))
+    draw_icon(p, "sparkling-sabre", 0, 0, size, QColor("black"))
     p.end()
     ink = sum(1 for y in range(size) for x in range(size)
               if QColor(image.pixel(x, y)).lightness() < 190)
-    # 34 pixels of ink at 13px, measured. A glyph that has come apart into
-    # nothing or filled into a blob fails here rather than on somebody's card.
-    assert 24 <= ink <= 60, ink
+    assert 40 <= ink <= 90, ink
 
 
 def test_the_effect_table_is_still_shown_by_number():

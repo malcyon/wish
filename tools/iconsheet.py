@@ -100,9 +100,23 @@ SHEET = [
         ("eye", "FA Free", "preview changes"),
     ]),
     ("Roster and popover", [
-        ("skull", "FA Free", "dead"),
-        ("arrow-down-long", "FA Free", "level-drained"),
+        ("skull", "FA Free", "no longer drawn -- `death-skull` replaced it"),
+        ("arrow-down-long", "FA Free",
+         "no longer drawn -- `oppression` replaced it"),
+        ("person-running", "FA Free",
+         "no longer drawn -- `sparkling-sabre` replaced it"),
         ("trash-can", "FA Free", "delete this note"),
+    ]),
+    ("Condition badges -- game-icons.net, CC BY 3.0, Donald's choices", [
+        ("death-skull", "sbed", "dead or dying"),
+        ("oppression", "Lorc", "levels drained"),
+        ("running-ninja", "Darkzaitzev", "hasted -- effect 39"),
+        ("healing-shield", "Delapouite", "blessed -- effects 1 and 35"),
+        ("embrassed-energy", "Lorc",
+         "warded -- effects 8, 9, 17, 28, 41 and 89"),
+        ("invisible", "Delapouite", "invisible -- effect 25"),
+        ("strong", "Lorc", "strengthened -- effects 12 and 38"),
+        ("sparkling-sabre", "Lorc", "quickfight -- the roster card's own row"),
     ]),
 ]
 

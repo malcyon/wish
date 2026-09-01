@@ -434,7 +434,7 @@ def to_svg(geo: Geo, visible=None, party=None, cell: int = CELL,
                        f'{SVG_STYLE["note-text"]}>'
                        f'{icons.TEXT_GLYPHS[p.name]}</text>')
         elif isinstance(p, Glyph):
-            scale = p.size / icons.BOX
+            scale = p.size / icons.box(p.name)
             out.append(f'<path transform="translate({p.x},{p.y}) '
                        f'scale({scale:.5f})" d="{icons.path_data(p.name)}" '
                        f'{style}/>')

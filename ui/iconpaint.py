@@ -38,7 +38,7 @@ _TEXT_CACHE: dict[tuple[str, int], tuple[QFont, object]] = {}
 
 
 def painter_path(name: str) -> QPainterPath:
-    """The icon in its own 640x640 box."""
+    """The icon in its own box -- 640 for Font Awesome, 512 for game-icons."""
     cached = _CACHE.get(name)
     if cached is not None:
         return cached
@@ -103,7 +103,8 @@ def draw_icon(p: QPainter, name: str, x: float, y: float, size: float,
         return
     p.save()
     p.translate(x, y)
-    p.scale(size / icons.BOX, size / icons.BOX)
+    unit = icons.box(name)
+    p.scale(size / unit, size / unit)
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(colour)
     p.drawPath(painter_path(name))

@@ -15,11 +15,18 @@ lifting the path data. The paths win for this program specifically:
   be told about, and the repository grows 12 KB of source rather than a 405 KB
   binary.
 
-The whole `_UNIT` box is 640x640, which is `svgs-full`'s uniform canvas, so
-placement is arithmetic-free: scale by `size / 640` and translate.
+Each set has its own square canvas -- 640 for Font Awesome's `svgs-full`, 512
+for game-icons.net -- so placement is scale by `size / box(name)` and
+translate. Nothing is rescaled into a common box on the way in: the path data
+is the artist's file byte for byte, which is what makes it diffable against the
+archive it came from.
 
-Only `M`, `L`, `C` and `Z` appear, all absolute -- checked across every icon
-lifted here -- so `commands()` is a twenty-line parser rather than a dependency.
+`commands()` reads the whole of the path grammar those two sets use -- absolute
+and relative moves, lines, `H`/`V`, cubics, smooth cubics and elliptical arcs
+-- and hands back moves, lines, cubics and closes. It grew from twenty lines
+when the game-icons set arrived, and it grew rather than the icons being
+redrawn into a simpler `d`, because redrawing somebody's art is the one thing
+this file must not do.
 
 ---
 
@@ -30,6 +37,20 @@ the **regular** weight; the licence text is in
 `fontawesome-LICENSE.txt` and the attribution is carried in the
 README and the About box. Brands are not used and must not be: the licence
 forbids brand-logo use and the set carries `wizards-of-the-coast`.
+
+---
+
+Icons under `GAME_ICONS` are from **game-icons.net**, licensed **CC BY 3.0**,
+each verbatim from the artist's own SVG. `ARTISTS` says who drew which, so an
+attribution file can be generated from what actually ships rather than retyped.
+Donald chose all eight by name; nothing here was picked by an assistant.
+
+**Wish ships both sets, deliberately.** The instruction to replace every Font
+Awesome icon was withdrawn on 2026-08-31 -- nine of them have no counterpart in
+the chosen list -- so `door-open`, `lock`, `stairs`, `check`,
+`triangle-exclamation`, `trash-can`, `folder-open`, `floppy-disk`, `eye` and
+`hat-wizard` stay as they are. Font Awesome's are line-weight glyphs and
+game-icons.net's are solid silhouettes, and a roster card now draws both.
 
 Icons under `OURS` are this project's own. Three reasons an icon gets drawn
 here rather than lifted: Font Awesome Free has **no sword** -- `sword` and
@@ -65,10 +86,17 @@ the rule to go in that list, and no longer has to pass it to go on the map.
 
 from __future__ import annotations
 
+import math
 import re
 
-#: Every icon is drawn in this box, matching Font Awesome's `svgs-full` canvas.
+#: Every Font Awesome icon is drawn in this box, matching `svgs-full`'s canvas.
+#: It is also the box a caller gets for an icon it does not ask `box()` about.
 BOX = 640
+
+#: game-icons.net draws on 512. Its SVGs are kept verbatim rather than rescaled
+#: into 640, so the committed path data can be diffed against the artist's file
+#: -- and `box()` is what stops a 512 glyph being drawn at four-fifths size.
+GAME_ICONS_BOX = 512
 
 FONT_AWESOME = {
     "location-dot":
@@ -238,9 +266,196 @@ FONT_AWESOME = {
 }
 
 
+#: Icons from **game-icons.net**, licensed **CC BY 3.0**
+#: (https://creativecommons.org/licenses/by/3.0/). Each one is verbatim from
+#: the artist's own SVG in the archive Donald keeps, drawn on that site's
+#: uniform **512** box rather than Font Awesome's 640 -- see `box()`.
+#:
+#: Donald chose every one of these by name and by artist; nothing here was
+#: picked, redrawn or nudged to fit. `ARTISTS` below records who drew what,
+#: because attribution is the whole of what CC BY asks for and a licence file
+#: is worth more generated from the table that ships than retyped beside it.
+GAME_ICONS = {
+    "death-skull":
+        "M255.997 16.004c-120 0-239.997 60-239.997 149.998C16 226.002 61 "
+        "256 61 316c0 45-15 45-15 75 0 14.998 48.01 32.002 89.998 "
+        "44.998v60h239.997v-60s90.567-27.957 "
+        "90-45c-.933-27.947-15-30-15-74.998 0-30 45.642-91.42 "
+        "44.998-149.998 0-90-119.998-149.998-239.996-149.998zm-90 "
+        "179.997c33.137 0 60 26.864 60 60 0 33.136-26.863 60-60 60C132.863 "
+        "316 106 289.136 106 256c0-33.136 26.862-60 59.998-60zm179.998 "
+        "0c33.136 0 60 26.864 60 60 0 33.136-26.864 60-60 60-33.136 "
+        "0-60-26.864-60-60 0-33.136 26.864-60 60-60zm-89.998 105c15 0 45 "
+        "60 45 75 0 29.998 0 29.998-15 29.998h-60c-15 0-15 0-15-30 0-15 "
+        "30-74.998 45-74.998z",
+    "oppression":
+        "M19.188 16.406V123.28l153.593 "
+        "81.75-70.655-188.624H19.187zm109.812 0L248.125 "
+        "161.22l5.25-144.814H129zm165.25 0 40.906 133.156 "
+        "60.72-133.156H294.25zm140.188 0-14.594 155.938 "
+        "74.75-69.5V16.406h-60.156zM19.188 167.062v97.532l99.874 "
+        "9.937L19.19 167.064zm409.406 40.313c-17.884-.094-38.853 "
+        "9.07-55.938 26.156a100.137 100.137 0 0 0-13.562 "
+        "16.845c-93.737-56.476-329.936 76.333-179 189.78H60.78l-26.468 "
+        "47.72H291.5L203 384.625c24.27-26.708 67.458-43.704 97-45.063 "
+        "13.793 45.098 36.265 113.497 71.75 "
+        "148.313h60.844c-43.07-46.547-76.538-109.09-81.938-179.844a33.574 "
+        "33.574 0 0 0 6.313 8.783c18.662 18.663 55.944 11.648 "
+        "83.28-15.688s34.35-64.618 "
+        "15.688-83.28c-7-7-16.614-10.413-27.344-10.47zM19.188 "
+        "323v59.563l77.687-23.938L19.187 323z",
+    "running-ninja":
+        "M378.321 58.818c-3.95 6.585-5.374 14.345-2.228 20.761 8.425 5.494 "
+        "50.968 15.802 47.286 29.773-.784 2.301-1.087 3.54-1.515 "
+        "5.224-7.4-6.764-22.462-10.05-27.902-9.049-4.832.843-9.721 "
+        "3.05-14.44 3.248-5.986-.032-11.34-1.516-15.925-4.254 3.24 8.943 "
+        "14.85 15.537 22.049 14.412 11.318-2.258 23.535 3.723 31.779 "
+        "6.67-5.055 13.86-22.014 7.334-22.014 7.334l-121.937-28.02L253.44 "
+        "90.45l-17.34 17.72 88.945 29.131-120.023 "
+        "2.676-29.907-12.486-40.77 23.617 182.99 13.291-56.212 "
+        "59.426h99.22c19.341-15.746 63.009-51.2 63.645-50.793 12.867 "
+        "29.973 33.256 19.023 48.815 1.55 4.515-5.069 9.47 12.362 "
+        "12.021-16.015.64-1 1.217-2.011 1.772-3.03-18.028-7.661-48.58 "
+        "5.732-31.817-17.992 5.135-7.262 20.776-5.296 36.871 "
+        "3.97.582-15.262-1.056-42.396-15.484-48.39-14.85-6.169-34.024-5.48-41.316 "
+        "2.682-9.946-16.88-39.574-19.07-51.307-20.764-3.453-5.429-4.558-10.479-5.223-16.226zm-188.328 "
+        "59.236-4.558 4.034 16.138 6.853 10.852-10.887zm276.578 "
+        "24.354c6.542 4.808 7.01 5.943 11.393 6.1 1.597-1.021 5.12-4.613 "
+        "1.857-5.37l-11.04-2.203c-1.14-.204-2.02.646-2.21 1.473zM148.167 "
+        "160.44l-5.95 5.264h22.43l5.952-5.264zm-39.285 13.598-12 "
+        "15.357h15.855l5.461-6.414h42.592l-7.937 "
+        "6.94h15.953l16-15.356zm15.664 15.933L20.251 309.592l23.027-4.516 "
+        "98.618-115.104zM251.3 234.216 119.878 373.16l-16.697 "
+        "4.265s-12.898 29.813-18.834 65.059c7.659 4.113 17.39-8.02 "
+        "17.39-8.02s-1.1 13.09 6.64 9.743c14.097-28.569 29.864-58.248 "
+        "29.864-58.248l159.721-121.877 20.994 5.584 27.758 7.386-62.557 "
+        "58.727-11.238-12.15s-34.319 38.069-47.305 66.224c4.13 4.74 "
+        "20.33-7.64 20.33-7.64s-5.369 9.615 1.932 9.31c17.808-16.694 "
+        "29.682-29.826 29.682-29.826l132.82-98.543-48.23-28.938z",
+    "healing-shield":
+        "M256 21.98c-64 48-128 68-224.03 100.02C31.97 234 112 394 256 "
+        "490c144-96 224-250 224-362-96-32.02-160-58.02-224-106.02zM229 "
+        "128h54v101h101v54H283v101h-54V283H128v-54h101V128z",
+    "embrassed-energy":
+        "M179.813 20.72v81.25L135.78 75.624l17.564 46.938-115.656-20.938 "
+        "84.718 49.906H20v27.345l110.47 14.875 "
+        "96.593-29.188c-11.303-11.87-18.594-30.743-18.594-52 0-35.926 "
+        "20.87-65.062 46.624-65.062 25.753 0 46.625 29.136 46.625 65.063 0 "
+        "20.847-7.038 39.375-17.97 51.28l99.03 29.907 "
+        "112.5-15.156V151.53H394.19l84.718-49.905-120.437 21.78 "
+        "17.874-47.718-48.656 29.126V20.72H179.813zM495.28 223.343l-112.5 "
+        "22.437-55.405-13.124-28.03 118.313 16.592 145h51.688L329.25 "
+        "351.22l46.53 27.842-21.31-56.937 124.436 "
+        "22.5-91.125-53.688h107.5v-67.593zM20 "
+        "223.75v67.188h108.813l-91.125 53.687L157.31 322.97 136.345 "
+        "379l38.47-23-28.595 "
+        "139.97h48.155l12.905-144.41-21.685-118.84-55.125 13.06L20 223.75z",
+    "invisible":
+        "M260.7 31.1c5.2.51 9.9 2.45 14.5 "
+        "4.9l9.1-16.3c-6.4-3.81-13.9-6.07-20.7-7.3-.9 6.24-1.9 12.47-2.9 "
+        "18.7zm-9.1-18.4c-7.6.51-14.1 2.52-21.1 6l8.3 16.7c5.1-1.88 "
+        "9.6-3.72 14.6-4l-1.8-18.7zm-38.5 18.7c-5 5.17-9.8 11.69-12.7 "
+        "17l16.3 9.1c3.1-4.71 5.9-9.09 "
+        "9.6-12.8-4.3-4.46-9-8.78-13.2-13.3zm88.1 1.9-14 12.4c3.8 3.98 6.6 "
+        "8.63 9.3 13.4l16.7-8.5c-3.5-6.29-7.8-12.54-12-17.3zM192.4 "
+        "67.4c-2.1 6.71-3.3 14.19-3.8 20.2l18.6 1.8c.6-6.22 1.4-10.74 "
+        "3-16.5zm128.2 2.2c-6 1.86-12 3.42-18.1 4.9 1.1 5.58 2.2 11.79 2.7 "
+        "16.6l18.7-1c-.8-7.04-1.8-14.28-3.3-20.5zm-113.2 36.6-18.5 1.9c.4 "
+        "7 2.6 14.3 4.3 20.1l17.8-5.7c-1.7-5.8-2.9-11-3.6-16.3zm97.2 "
+        "1.7c-.8 5.7-2.4 11.2-4 16.2l17.5 6.6c2.3-6.7 4.1-14 5-20zm-86.7 "
+        "29.4s-11.5 5.4-16.1 6.7c0 0 4.8 9.6 6.9 17.1 7.6-2.2 15.5-3.2 "
+        "23.3-4.5-4.7-6.9-10.5-13.4-14.1-19.3zm75.3 1.7c-4.2 6.3-9.2 "
+        "12-13.9 17.9 7.8 2.1 16 2.7 23.6 5.5 0 0 4.4-12.9 "
+        "6.1-17.7-5.7-1.9-15.8-5.7-15.8-5.7zm-108.9 12.7c-6.6 4.4-11.1 "
+        "8.1-16.1 13.4l13.5 12.9c4.6-4.5 7.8-7.5 12.6-10.5zm143.6 2.8-10.8 "
+        "15.2c4.6 3.1 8.7 6.9 12.3 "
+        "11.1l13.9-12.5c-5.4-5.6-9.4-9.8-15.4-13.8zm-172.1 27.4c-3.5 "
+        "5.7-6.3 11.8-8.7 18l17.4 6.9c2-5.4 4.5-10.7 7.5-15.6zm199.5 "
+        "3.2-16.2 9.2c2.8 5.1 5.4 10.4 7.6 15.8L364 "
+        "203c-2.4-6.2-5.5-12.1-8.7-17.9zm-214.2 33.8c-1.6 6.2-3 12.7-3.8 "
+        "19.2l18.4 2.8c.8-5.9 2.2-11.7 3.5-17.5zm229.1 3-18.1 4.8c1.8 5.7 "
+        "2.6 11.5 3.8 17.4l18.4-3.1c-1.1-6.4-2.3-12.8-4.1-19.1zm-235.1 "
+        "35.5c-.5 6.8-.6 12.6-.6 19.3h18.7c.1-6.3.2-12.9.6-18zm241.6 "
+        "2.9-18.7 1.5c.5 5.8.8 12 .8 "
+        "18l18.7-.1c-.1-7-.4-13.2-.8-19.4zm-223 34.6-18.7 1c.4 6.4 1 12.7 "
+        "1.7 19.1l18.6-2c-.8-6-1.2-12.1-1.6-18.1zm204.5 2.9c-.2 6-1 12-1.7 "
+        "18l18.5 2.4c1-6.3 1.4-12.7 1.9-19.1zM139 329.6c.5 6.3 2 12.9 2.9 "
+        "18.3h20.3v-18.7c-7.7-.2-15.4.1-23.2.4zm41.9-.4c-.1 6.4 0 12.3 0 "
+        "18.7l19.2-.5c-.5-6.1-.9-12.1-1.2-18.2zm130 0c-.5 6.3-1 12.7-1.5 "
+        "19l18.7 1.4-.2-20.4zm35.7 0v18.7h23.2c1.3-6.4 2.3-11.6 "
+        "3.4-18-8.8-.9-17.7-.7-26.6-.7zm-145.3 36.9-18.6 1.2 1.2 18.7 "
+        "18.6-1.3zm106.7.7-1.3 18.6 18.6 1.4 1.4-18.6zm-60.2 "
+        "11.9v18.7h18.6v-18.7zm-44 24.7-18.7 1.2 1.3 18.7L205 "
+        "422zm101.5.7-1.4 18.6 18.6 1.4 1.4-18.6zm-57.5 "
+        "12v18.7h18.6v-18.7zm-41.6 24.6-18.6 1.2 1.2 18.7 "
+        "18.7-1.3zm96.3.6-1.4 18.7 18.6 1.4 1.4-18.7zm-54.7 "
+        "12.2v18.7h18.6v-18.7zM208.7 478l-18.7 1.2c.5 6.8.9 13.6 1.4 "
+        "20.4h15.7zm91 .6.8 21h16.4c.4-6.5 1-13.1 1.5-19.6zm-73.9 "
+        "2.3v18.7h18.6v-18.7zm37.3 0v18.7h18.7v-18.7z",
+    "strong":
+        "M257.375 20.313c-13.418 0-26.07 7.685-35.938 21.75-9.868 "
+        "14.064-16.343 34.268-16.343 56.75 0 22.48 6.475 42.654 16.344 "
+        "56.718 9.868 14.066 22.52 21.75 35.937 21.75 13.418 0 "
+        "26.038-7.684 35.906-21.75 9.87-14.063 16.376-34.236 16.376-56.718 "
+        "0-22.48-6.506-42.685-16.375-56.75-9.867-14.064-22.487-21.75-35.905-21.75zm-150.25 "
+        "43.062c-20.305.574-23.996 13.892-31.78 29.03-23.298 45.304-55.564 "
+        "164.75-55.564 164.75l160.47-5.436 29.125 137.593-22.78 "
+        "106.03h149.093l-22.282-106 24.25-137.5 157.53 5.313c.002 "
+        "0-32.264-119.447-55.56-164.75-7.787-15.14-11.477-28.457-31.782-29.03-17.898 "
+        "0-32.406 15.552-32.406 34.718 0 19.166 14.508 34.72 32.406 34.72 "
+        "3.728 0 7.258-.884 10.594-2.126l7.937 74.406L309.437 "
+        "165c-.285.42-.552.867-.843 1.28-12.436 17.724-30.604 29.69-51.22 "
+        "29.69-20.614 "
+        "0-38.782-11.966-51.218-29.69-.277-.395-.54-.816-.812-1.218l-116.75 "
+        "40.032 7.937-74.406c3.337 1.242 6.867 2.125 10.595 2.125 17.898 0 "
+        "32.406-15.553 32.406-34.72 0-19.165-14.507-34.718-32.405-34.718z",
+    "sparkling-sabre":
+        "M403.563 16.875c-34.11 33.744-53.907 25.412-89.094 4.844 31.052 "
+        "27.848 44.703 40.722 9.25 76.124 32.57-26.112 44.422-29.22 "
+        "85.342-15-23.523-25.805-21.323-36.88-5.5-65.97zm90.312 "
+        "24.406C463.23 68.004 425.365 93.7 386.687 113c1.152 61.455-37.802 "
+        "117.82-99.125 165.406C221 330.06 127.345 372.848 24.344 "
+        "404.28v41.22A1179.51 1179.51 0 0 0 73 434.47c-2.655 14.497-11.253 "
+        "27.387-28.938 39.81 43.158-14.862 52.446-1.325 76.188 "
+        "18.814-7.644-26.835-5.256-36.344 34.625-58.438-32.328 "
+        "9.304-48.716 5.836-63.03-5.094 74.51-20.002 153.373-49.706 "
+        "221.25-93.625 6.362 31.056 5.325 56.495-36.19 94.282 "
+        "67.325-35.667 96.207-34.27 130.97 "
+        "7.155-34.905-53.113-30.953-75.32 14.063-123.97-42.665 33.767-70.8 "
+        "30.987-94.063 12.626.615-.427 1.23-.85 1.844-1.28 90.41-63.473 "
+        "157.526-153.397 164.155-283.47zM240.75 70.97c4.865 36.552-4.39 "
+        "56.492-23.938 78.53 31.65-24.863 39.97-22.61 "
+        "71.157-23-28.584-13.45-36.21-20.397-47.22-55.53zm-110.78 "
+        "40.686c-27.298 60.18-58.556 70.662-107.626 70.125 59.78 20.1 "
+        "64.886 52.96 69.906 106.25 19.34-58.957 36.19-76.01 "
+        "78.72-58.217-41.78-31.838-45.743-48.97-41-118.157zm237.936 "
+        "10.188c-30.864 13.607-61.587 22.598-88.937 24.28-2.278 "
+        "16.52-11.623 32.867-25.19 49-15.767 18.755-37.557 37.463-62.78 "
+        "55.69-49.014 35.414-110.962 68.736-166.656 "
+        "94.28v39.625c99.33-30.83 189.144-72.456 251.78-121.064 "
+        "55.735-43.25 89.362-90.922 91.782-141.812zm99.53 98.97c-7.594 "
+        "35.52-13.903 44.526-46.655 65.31 35.874-8.104 51.316-1.513 74.533 "
+        "15.032-22.447-30.02-28.5-41.96-27.875-80.344zM259.75 400.78c-30 "
+        "43.11-55.372 48.865-98.656 52.22 51.72 7.82 65.302 14.218 95.875 "
+        "41.094-12.9-35.393-15.344-48.14 2.78-93.313z",
+}
+
+#: Who drew each game-icons.net glyph, spelled as the site spells it.
+ARTISTS = {
+    "death-skull": "sbed",
+    "oppression": "Lorc",
+    "running-ninja": "Darkzaitzev",
+    "healing-shield": "Delapouite",
+    "embrassed-energy": "Lorc",
+    "invisible": "Delapouite",
+    "strong": "Lorc",
+    "sparkling-sabre": "Lorc",
+}
+
+
 OURS: dict[str, str] = {}
 
-ICONS: dict[str, str] = {**FONT_AWESOME, **OURS}
+ICONS: dict[str, str] = {**FONT_AWESOME, **GAME_ICONS, **OURS}
 
 #: Icons that are a **character**, not a path. `ui/iconpaint.py` draws these
 #: with the system font and fits them to the same box the paths are drawn in.
@@ -262,7 +477,25 @@ def is_text(name: str) -> bool:
     return name in TEXT_GLYPHS
 
 
-_NUMBER = re.compile(r"[MLCZmlczHhVvSsQqTtAa]|-?\d*\.?\d+(?:[eE][-+]?\d+)?")
+_TOKEN = re.compile(r"[A-Za-z]|-?\d*\.?\d+(?:[eE][-+]?\d+)?")
+
+#: How many numbers each command takes.
+_ARITY = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "A": 7, "Z": 0}
+
+#: A repeated coordinate group after `M` is a line, per SVG; every other
+#: command repeats itself.
+_AFTER = {"M": "L", "m": "l"}
+
+
+def box(name: str) -> float:
+    """The side of the square this icon is drawn in.
+
+    Two sets, two canvases: Font Awesome's `svgs-full` is 640 and
+    game-icons.net's is 512. Everything that paints an icon scales by
+    `size / box(name)`, so the two sets come out the same size beside each
+    other on a roster card.
+    """
+    return GAME_ICONS_BOX if name in GAME_ICONS else BOX
 
 
 def path_data(name: str) -> str:
@@ -270,16 +503,97 @@ def path_data(name: str) -> str:
     return ICONS[name]
 
 
+def _arc(x0: float, y0: float, rx: float, ry: float, rotation: float,
+         large: int, sweep: int, x: float, y: float) -> list[tuple]:
+    """One SVG elliptical arc as cubic segments, at most a quarter turn each.
+
+    Every renderer does this; Qt's `QPainterPath` cannot take an arc with a
+    rotated axis at all. The maths is the endpoint-to-centre conversion in
+    SVG 1.1 appendix F.6, and the 4/3*tan(step/4) tangent scale is the
+    standard circular-arc approximation.
+
+    Three arcs reach here, all in game-icons.net glyphs Donald chose:
+    `oppression` has two and `sparkling-sabre` one, and all three are circles
+    with no rotation.
+    """
+    if rx == 0 or ry == 0 or (x0, y0) == (x, y):
+        return [("L", x, y)]
+    rx, ry = abs(rx), abs(ry)
+    phi = math.radians(rotation)
+    cos_p, sin_p = math.cos(phi), math.sin(phi)
+    dx, dy = (x0 - x) / 2, (y0 - y) / 2
+    x1 = cos_p * dx + sin_p * dy
+    y1 = -sin_p * dx + cos_p * dy
+    # F.6.6: radii too small to span the chord are grown until they fit.
+    lam = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry)
+    if lam > 1:
+        rx *= math.sqrt(lam)
+        ry *= math.sqrt(lam)
+    numerator = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
+    denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1
+    coefficient = math.sqrt(max(0.0, numerator / denominator))
+    if large == sweep:
+        coefficient = -coefficient
+    cx1 = coefficient * rx * y1 / ry
+    cy1 = -coefficient * ry * x1 / rx
+    cx = cos_p * cx1 - sin_p * cy1 + (x0 + x) / 2
+    cy = sin_p * cx1 + cos_p * cy1 + (y0 + y) / 2
+
+    def angle(ux, uy, vx, vy):
+        dot = ux * vx + uy * vy
+        size = math.hypot(ux, uy) * math.hypot(vx, vy)
+        a = math.acos(max(-1.0, min(1.0, dot / size)))
+        return -a if ux * vy - uy * vx < 0 else a
+
+    ux, uy = (x1 - cx1) / rx, (y1 - cy1) / ry
+    vx, vy = (-x1 - cx1) / rx, (-y1 - cy1) / ry
+    theta = angle(1, 0, ux, uy)
+    sweep_angle = angle(ux, uy, vx, vy)
+    if not sweep and sweep_angle > 0:
+        sweep_angle -= 2 * math.pi
+    elif sweep and sweep_angle < 0:
+        sweep_angle += 2 * math.pi
+
+    pieces = max(1, math.ceil(abs(sweep_angle) / (math.pi / 2)))
+    step = sweep_angle / pieces
+    tangent = 4 / 3 * math.tan(step / 4)
+    out = []
+    for i in range(pieces):
+        a0 = theta + i * step
+        a1 = a0 + step
+        c0, s0 = math.cos(a0), math.sin(a0)
+        c1, s1 = math.cos(a1), math.sin(a1)
+        p0x = cx + rx * c0 * cos_p - ry * s0 * sin_p
+        p0y = cy + rx * c0 * sin_p + ry * s0 * cos_p
+        p1x = cx + rx * c1 * cos_p - ry * s1 * sin_p
+        p1y = cy + rx * c1 * sin_p + ry * s1 * cos_p
+        d0x = -rx * s0 * cos_p - ry * c0 * sin_p
+        d0y = -rx * s0 * sin_p + ry * c0 * cos_p
+        d1x = -rx * s1 * cos_p - ry * c1 * sin_p
+        d1y = -rx * s1 * sin_p + ry * c1 * cos_p
+        out.append(("C", p0x + tangent * d0x, p0y + tangent * d0y,
+                    p1x - tangent * d1x, p1y - tangent * d1y, p1x, p1y))
+    return out
+
+
 def commands(name: str) -> tuple[tuple, ...]:
     """`d` parsed into `("M", x, y)`, `("L", x, y)`, `("C", *6)` and `("Z",)`.
 
-    Absolute commands only. Everything lifted here uses exactly those four --
-    `svgs-full` emits no arcs and no relative form -- so an unexpected letter is
-    a mistake in a hand-written icon and is raised rather than guessed at.
+    Absolute moves, lines, cubics and closes come out; everything else in the
+    two sets is turned into one of those four. Font Awesome's `svgs-full`
+    writes nothing else to begin with, and game-icons.net's artists write the
+    lot -- relative forms, `H`/`V`, smooth cubics and elliptical arcs -- so the
+    parser grew rather than the icons being redrawn into a simpler `d`. The
+    art is the artist's; the reading of it is ours.
+
+    Quadratics (`Q`, `T`) are raised rather than guessed at: no icon that ships
+    uses one, and a silently mis-drawn glyph is worse than a failing import.
     """
-    tokens = _NUMBER.findall(ICONS[name])
+    tokens = _TOKEN.findall(ICONS[name])
     out: list[tuple] = []
     i, op = 0, ""
+    x = y = start_x = start_y = 0.0
+    control: tuple[float, float] | None = None
     while i < len(tokens):
         token = tokens[i]
         if token.isalpha():
@@ -287,20 +601,61 @@ def commands(name: str) -> tuple[tuple, ...]:
             i += 1
             if op in "Zz":
                 out.append(("Z",))
-                op = ""
+                x, y = start_x, start_y
+                control, op = None, ""
                 continue
         if not op:
             raise ValueError(f"{name}: coordinates before any command")
-        if op not in "MLC":
+        letter = op.upper()
+        if letter not in _ARITY:
             raise ValueError(f"{name}: unsupported path command {op!r}")
-        count = 6 if op == "C" else 2
-        numbers = tuple(float(t) for t in tokens[i:i + count])
-        if len(numbers) != count:
+        count = _ARITY[letter]
+        raw = tokens[i:i + count]
+        if len(raw) != count or any(t.isalpha() for t in raw):
             raise ValueError(f"{name}: {op} wants {count} numbers")
-        out.append((op, *numbers))
+        if letter == "A" and (raw[3] not in ("0", "1")
+                              or raw[4] not in ("0", "1")):
+            # `a1 1 0 011.5 2` packs the two flags into one token. No icon
+            # here is written that way, and guessing at one would draw the
+            # wrong curve silently.
+            raise ValueError(f"{name}: arc flags run together: {raw[3:5]}")
+        n = [float(t) for t in raw]
         i += count
-        if op == "M":
-            op = "L"                # a repeated pair after M is a line, per SVG
+        dx, dy = (x, y) if op.islower() else (0.0, 0.0)
+
+        if letter == "M":
+            x, y = n[0] + dx, n[1] + dy
+            out.append(("M", x, y))
+            start_x, start_y = x, y
+            control, op = None, _AFTER[op]
+        elif letter in "LHV":
+            if letter == "L":
+                x, y = n[0] + dx, n[1] + dy
+            elif letter == "H":
+                x = n[0] + dx
+            else:
+                y = n[0] + dy
+            out.append(("L", x, y))
+            control = None
+        elif letter in "CS":
+            if letter == "C":
+                x1, y1, x2, y2, x3, y3 = (n[0] + dx, n[1] + dy, n[2] + dx,
+                                          n[3] + dy, n[4] + dx, n[5] + dy)
+            else:
+                # A smooth cubic's first control point is the reflection of
+                # the last one, or the current point if there was not one.
+                x1, y1 = (2 * x - control[0], 2 * y - control[1]) \
+                    if control else (x, y)
+                x2, y2, x3, y3 = (n[0] + dx, n[1] + dy, n[2] + dx, n[3] + dy)
+            out.append(("C", x1, y1, x2, y2, x3, y3))
+            control = (x2, y2)
+            x, y = x3, y3
+        else:
+            x3, y3 = n[5] + dx, n[6] + dy
+            out.extend(_arc(x, y, n[0], n[1], n[2], int(n[3]), int(n[4]),
+                            x3, y3))
+            control = None
+            x, y = x3, y3
     return tuple(out)
 
 

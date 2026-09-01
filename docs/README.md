@@ -62,7 +62,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [133-active-effects.md](133-active-effects.md) | editing active effects: the `SAVEDGAME0` arrays distinct from the record's traits, and what the UI to edit them would need — planned |
 | [134-commissions.md](134-commissions.md) | the council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
-| [136-condition-badges.md](136-condition-badges.md) | which spell effects earn a badge on the roster card, measured at 13 px — a decision sheet for Donald |
+| [136-condition-badges.md](136-condition-badges.md) | the seven condition badges the roster card draws, which effect ids each covers, and what all eight game-icons.net glyphs measure at 13 px — including the one that draws nothing there |
 | [137-wilderness-automap.md](137-wilderness-automap.md) | why the automapper is blank outdoors, and what to draw the terrain with |
 | [138-multiple-games.md](138-multiple-games.md) | fast travel for more than one Gold Box title: what is per-title today, what data the other games have, and the dialog |
 | [139-per-title-validation.md](139-per-title-validation.md) | every shipped feature against every title we claim: what is verified, what refuses, what does not work |

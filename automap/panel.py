@@ -80,8 +80,10 @@ NOTE = QColor("#b8601f")
 # **There are no class icons.** There were, beside the class text; four
 # 13-pixel glyphs that nobody could tell apart at that size and that said
 # nothing the words "fighter/thief" beside them did not. `IconRow` stays,
-# because the conditions row and the quickfight badge use it, and a skull or a
-# running figure at 13px does read.
+# because the conditions row and the quickfight badge use it. How well each of
+# Donald's eight glyphs survives 13px is measured in
+# `docs/136-condition-badges.md`, from `tools/iconsheet.py`'s magnified column
+# and not from the name: `invisible` draws nothing at all at this size.
 ICON_SIZE = 13
 
 
@@ -488,7 +490,12 @@ class CharacterCard(QObject):
         conditions = who.conditions
         if self.conditions is not None:
             self.conditions.set_icons(icon for icon, _ in conditions)
-            self.conditions.setToolTip("\n".join(why for _, why in conditions))
+            # The skull carries no line -- "dead or dying, and which is not
+            # decoded" is what the badge already says -- so the empty ones are
+            # dropped rather than joined, or a dead character's tooltip opens
+            # with a blank line above whatever else is running.
+            self.conditions.setToolTip(
+                "\n".join(why for _, why in conditions if why))
 
         hp = "--" if who.hp is None else who.hp
         if self.hp is not None:
@@ -520,7 +527,8 @@ class CharacterCard(QObject):
         self.show_readied(who.readied)
 
         if self.quickfight is not None:
-            self.quickfight.set_icons(("person-running",) if who.quickfight else ())
+            self.quickfight.set_icons(
+                ("sparkling-sabre",) if who.quickfight else ())
             self.quickfight.setToolTip("Quickfight" if who.quickfight else "")
 
     def show_readied(self, items) -> None:
