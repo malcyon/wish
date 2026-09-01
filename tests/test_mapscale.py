@@ -863,13 +863,25 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
     it no longer does -- the top row asks for one thing and the page's floor is
     less than it, and the difference is what the user drags.
 
-    Both sides are measured on the same machine in the same run at the same
-    font, so there is no constant here to be wrong about anywhere else. At +0
-    the two are close and the claim is weak, which is why this runs at the
-    large fonts where the gap is the whole of the complaint.
+    Said as a **rate**, across two fonts, rather than as a gap at one.
+
+    It used to assert `page < wanted` at +12, +16 and +20 -- 21, 25 and 29
+    point. Donald: *"I don't think we should ever have unit tests that force
+    us to make a 25 point font work. I think that's an extremely contrived
+    situation that wastes our time."* He is right, and the test was at those
+    sizes only because the gap is obvious there: at +0 the two numbers are 210
+    and 202, so the old claim is not merely weak, it is **false**, and the test
+    passed by never being asked.
+
+    What is true at every font is the rate. Growing the font makes the top row
+    want much more; it must make the page's floor want much less than that, or
+    the floor is still following the row. Four measurements from one run on one
+    machine, compared against each other -- no constant, and nothing here a
+    wider font on another platform can invalidate.
     """
     from PyQt6.QtWidgets import QWidget
-    for extra in (12, 16, 20):
+
+    def measure(extra):
         win, base = _editor_window(app, tmp_path, monkeypatch, extra)
         try:
             header = win.findChild(QWidget, "editor_header")
@@ -878,16 +890,24 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
             if layout is not None:
                 layout.invalidate()
                 layout.activate()
-            page = win.ui.tab_editor.minimumSizeHint().height()
-            wanted = header.sizeHint().height()
-            assert page < wanted, (
-                f"+{extra}pt: the editor page's floor is {page} and the top "
-                f"row asks for {wanted}, so the page is still as tall as "
-                f"everything on it")
+            return (win.ui.tab_editor.minimumSizeHint().height(),
+                    header.sizeHint().height())
         finally:
             win.session.close()
             win.close()
             app.setFont(base)
+
+    # +0 and +10 -- this machine's own font, and 19pt, which is a large
+    # setting somebody really uses. `CLAUDE.md` records that +6 measures here
+    # about like Windows' base font, so +10 is Windows' normal with room on
+    # top.
+    small_page, small_row = measure(0)
+    big_page, big_row = measure(10)
+    grew_page = big_page - small_page
+    grew_row = big_row - small_row
+    assert grew_row > grew_page, (
+        f"the top row grew {grew_row}px between +0 and +10pt and the page's "
+        f"floor grew {grew_page}px -- the floor is still following the row")
 
 
 def test_a_row_dragged_shut_still_has_a_divider_to_drag_it_back(

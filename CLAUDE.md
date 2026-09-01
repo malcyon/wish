@@ -385,6 +385,29 @@ on `not isWindow()` passed with the fix reverted, because the fault *was* a
 parentless widget answering `isWindow() == True`; and a feature-flag test only
 earned its place once forcing the flag on made it fail.
 
+**The largest font worth testing is +10, and 9pt is the base here.** So the
+range is 9pt to 19pt, and `+6` is the one that matters most because
+`CLAUDE.md` records it measuring about like Windows' base font.
+
+Donald, 2026-09-01, after a test was found asserting things at +12, +16 and
++20 -- 21, 25 and 29 point: *"I don't think we should ever have unit tests
+that force us to make a 25 point font work. I think that's an extremely
+contrived situation that wastes our time."* And: *"This whole 25 point font
+with a tiny resolution just feels extremely contrived and a waste of our
+time."*
+
+He is right, and the measurements agree with him: at +10 the window's floor is
+553px against a 720-high screen. **There is no layout problem at any font a
+person uses.** Somebody who needs text that large uses display scaling, which
+enlarges the window too and never produces the squeeze.
+
+A test that only holds above +10 is not proving a guarantee, it is proving an
+artefact -- and it will be true forever while catching nothing. If a claim is
+weak at a realistic font, **say it differently rather than at a bigger font**:
+`test_the_top_row_asks_for_more_than_the_page_makes_room_for` was false at +0
+and passed only because it was never asked, and became true everywhere once it
+compared a *rate* across two fonts instead of a gap at one.
+
 **A number measured on this machine is not a number.** It is a measurement of
 this machine, and the moment it is written into an assertion it becomes a
 claim about every machine. Three of one night's failures were this: 1270 here

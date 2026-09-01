@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Photograph the editor's window offscreen, at a chosen UI font and width.
 
 Issue #71 was decided by looking at three of these. Donald could not tell from
