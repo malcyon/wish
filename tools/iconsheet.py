@@ -80,11 +80,8 @@ GAP = 10
 SHEET = [
 
     ("Note types", [
-        ("crossed-swords", "U+2694", "encounter -- a font character, not a "
-                                     "path: what it looks like is the "
-                                     "platform's"),
-        ("gem", "FA Free, regular", "treasure -- the one icon lifted from "
-                                    "`regular/` rather than `solid/`"),
+        ("crossed-sabres", "Lorc", "encounter"),
+        ("open-treasure-chest", "Skoll", "treasure"),
         ("user", "FA Free", "person"),
         ("exit-door", "Delapouite", "exit"),
         ("plain-padlock", "Delapouite", "locked"),
@@ -100,11 +97,6 @@ SHEET = [
         ("brass-eye", "Lorc", "preview changes"),
     ]),
     ("Roster and popover", [
-        ("skull", "FA Free", "no longer drawn -- `death-skull` replaced it"),
-        ("arrow-down-long", "FA Free",
-         "no longer drawn -- `oppression` replaced it"),
-        ("person-running", "FA Free",
-         "no longer drawn -- `sparkling-sabre` replaced it"),
         ("trash-can", "Delapouite", "delete this note"),
     ]),
     ("Condition badges -- game-icons.net, CC BY 3.0, Donald's choices", [

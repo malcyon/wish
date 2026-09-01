@@ -31,7 +31,6 @@ from automap.notes import Note
 from automap.render import (
     CELL,
     MARGIN,
-    NOTE_SIZE,
     Glyph,
     Label,
     Line,
@@ -1502,70 +1501,26 @@ def test_every_note_type_draws():
             assert icons.commands(name), name
 
 
-def test_the_encounter_note_is_the_one_glyph_we_do_not_draw():
-    """U+2694 is Donald's choice and it is a **font** character, so what it
-    looks like is the platform's. Here it resolves monochrome; on Windows and
-    macOS the same code point is commonly the colour emoji. Pinned so that a
-    later "tidy-up" into a path is a deliberate decision rather than a
-    silent one -- see `docs/109-icon-choices.md`."""
-    assert icons.TEXT_GLYPHS == {"crossed-swords": "\u2694"}
-    assert notemod.BY_NAME["encounter"].icon == "crossed-swords"
-    assert icons.is_text("crossed-swords")
-    assert "crossed-swords" not in icons.ICONS
+def test_the_encounter_and_treasure_notes_are_paths_now():
+    """`crossed-sabres` and `open-treasure-chest` replaced the Encounter
+    note's U+2694 font character and Font Awesome's `gem`, so `TEXT_GLYPHS`
+    is empty and both note kinds draw from `GAME_ICONS` like every other
+    kind -- see `docs/109-icon-choices.md`."""
+    assert icons.TEXT_GLYPHS == {}
+    assert notemod.BY_NAME["encounter"].icon == "crossed-sabres"
+    assert notemod.BY_NAME["treasure"].icon == "open-treasure-chest"
+    assert not icons.is_text("crossed-sabres")
+    assert "crossed-sabres" in icons.GAME_ICONS
+    assert "open-treasure-chest" in icons.GAME_ICONS
 
 
 def test_the_two_icons_that_were_ours_are_gone():
     """`chest` and `swords` were drawn here because Font Awesome Free has no
     sword and a filled rectangle reads as terrain. Both were replaced --
-    `gem` regular and U+2694 -- and an unused drawing left in the table is a
-    thing a later note will pick up by accident."""
+    `open-treasure-chest` and `crossed-sabres` -- and an unused drawing left
+    in the table is a thing a later note will pick up by accident."""
     assert "chest" not in icons.ICONS
     assert "swords" not in icons.ICONS
-
-
-def test_the_gem_survives_a_map_cell(app):
-    """The Treasure note, in Font Awesome's **regular** weight: an outline,
-    which is the whole reason Donald picked it over the solid. An outline is
-    the shape most at risk of coming apart, so it is measured rather than
-    eyeballed -- one connected silhouette, and the table facet still paper.
-    `docs/109-icon-choices.md` carries the counts at 13 and 26."""
-    from PyQt6.QtGui import QColor, QImage, QPainter
-
-    from ui.iconpaint import draw_icon
-
-    size = NOTE_SIZE
-    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(QColor("white"))
-    p = QPainter(image)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    draw_icon(p, "gem", 0, 0, size, QColor("black"))
-    p.end()
-
-    ink = [[QColor(image.pixel(x, y)).lightness() < 128 for x in range(size)]
-           for y in range(size)]
-    seen = [[False] * size for _ in range(size)]
-    pieces = []
-    for y in range(size):
-        for x in range(size):
-            if ink[y][x] and not seen[y][x]:
-                stack, count = [(x, y)], 0
-                seen[y][x] = True
-                while stack:
-                    cx, cy = stack.pop()
-                    count += 1
-                    for dy in (-1, 0, 1):
-                        for dx in (-1, 0, 1):
-                            nx, ny = cx + dx, cy + dy
-                            if (0 <= nx < size and 0 <= ny < size
-                                    and ink[ny][nx] and not seen[ny][nx]):
-                                seen[ny][nx] = True
-                                stack.append((nx, ny))
-                pieces.append(count)
-    assert len(pieces) == 1, f"the gem came apart into {sorted(pieces)}"
-    # The table -- the big facet under the crown -- is the hole that carries
-    # the reading. Dead centre of the box is inside it.
-    middle = QColor(image.pixel(size // 2, int(size * 0.62))).lightness()
-    assert middle > 200, f"the gem filled in: lightness {middle}"
 
 
 def test_no_icon_leaves_its_own_box():
@@ -1574,16 +1529,20 @@ def test_no_icon_leaves_its_own_box():
     sets have different boxes -- 640 for Font Awesome, 512 for game-icons.net
     -- so the question is asked of each icon's own.
 
-    **`brass-eye` is excluded, and it is a measured exception, not a loosened
-    bound.** `extent()` bounds every cubic's control points, which is a safe
-    over-estimate of the curve -- not the curve itself -- and the iris's outer
-    ring is drawn with a control point at x=-13.6 and one at x=523.0 in the
-    512 box. Rendered (`ui.iconpaint.draw_icon` at 512px, non-white pixels),
-    the actual ink is 19..489 by 19..488: comfortably inside. `brass-eye` is
-    never drawn as a map note -- only the editor's Preview button -- so no
-    wall-overlap question reaches it either way."""
+    **`brass-eye` and `crossed-sabres` are excluded, and both are measured
+    exceptions, not a loosened bound.** `extent()` bounds every cubic's
+    control points, which is a safe over-estimate of the curve -- not the
+    curve itself. `brass-eye`'s iris has a control point at x=-13.6 and one
+    at x=523.0 in the 512 box; rendered (`ui.iconpaint.draw_icon` at 512px,
+    non-white pixels), the actual ink is 19..489 by 19..488, comfortably
+    inside, and it is never drawn as a map note -- only the editor's Preview
+    button. `crossed-sabres` overshoots the same way, to x=-17.9 and
+    x=518.0, and its rendered ink is 19..492 by 19..496 -- also comfortably
+    inside, though it *is* drawn as the Encounter note; the module-level
+    test named above covers the real wall-overlap question for it against
+    GEO14, the densest map, and passes."""
     for name in icons.ICONS:
-        if name == "brass-eye":
+        if name in ("brass-eye", "crossed-sabres"):
             continue
         x0, y0, x1, y1 = icons.extent(name)
         unit = icons.box(name)
@@ -1636,7 +1595,7 @@ def test_a_square_with_several_notes_draws_the_first_and_nothing_else():
                                            Note("b", "treasure"),
                                            Note("c")]}))
     glyphs = [p for p in prims if isinstance(p, Glyph)]
-    assert [g.name for g in glyphs] == ["crossed-swords"]   # the first only
+    assert [g.name for g in glyphs] == ["crossed-sabres"]   # the first only
     assert not [p for p in prims if isinstance(p, Label)]
 
 

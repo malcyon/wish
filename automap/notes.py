@@ -42,9 +42,9 @@ class NoteType:
 #: The set, in picker order. Nine is still scannable and still fits one row of
 #: buttons.
 TYPES: tuple[NoteType, ...] = (
-    NoteType("encounter", "Encounter", "crossed-swords",
+    NoteType("encounter", "Encounter", "crossed-sabres",
              "a fight, set or remembered", "E"),
-    NoteType("treasure", "Treasure", "gem",
+    NoteType("treasure", "Treasure", "open-treasure-chest",
              "something to take, or taken", "T"),
     NoteType("person", "Person", "user",
              "trainer, shop, quest-giver", "P"),

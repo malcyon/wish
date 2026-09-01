@@ -32,8 +32,7 @@ this file must not do.
 
 Icons under `FONT_AWESOME` are **Font Awesome Free 7.3.1 by Fonticons, Inc.**
 (https://fontawesome.com), icons licensed **CC BY 4.0**. The path data is
-verbatim from `svgs-full/`, `solid/` except for `gem`, which Donald chose in
-the **regular** weight; the licence text is in
+verbatim from `svgs-full/solid/`; the licence text is in
 `fontawesome-LICENSE.txt` and the attribution is carried in the
 README and the About box. Brands are not used and must not be: the licence
 forbids brand-logo use and the set carries `wizards-of-the-coast`.
@@ -43,7 +42,7 @@ forbids brand-logo use and the set carries `wizards-of-the-coast`.
 Icons under `GAME_ICONS` are from **game-icons.net**, licensed **CC BY 3.0**,
 each verbatim from the artist's own SVG. `ARTISTS` says who drew which, so an
 attribution file can be generated from what actually ships rather than retyped.
-Donald chose all eighteen by name; nothing here was picked by an assistant.
+Donald chose all twenty-one by name; nothing here was picked by an assistant.
 
 **Nine of the ten remaining Font Awesome icons were replaced on `#167`** --
 `door-open`, `lock`, `stairs`, `triangle-exclamation`, `location-dot`, `check`,
@@ -52,9 +51,24 @@ Donald chose all eighteen by name; nothing here was picked by an assistant.
 `position-marker`, `check-mark`, `trash-can`, `open-folder`, `save` and
 `brass-eye` draw where they used to. `stairs` and `trash-can` are the same
 name in both sets; the Font Awesome entry is simply deleted rather than kept
-under another key, because nothing else drew it. **`hat-wizard` stays** -- it
-is the application icon, judged by a different bar, and is a separate
-decision (`#167`'s own text, and `docs/109-icon-choices.md`).
+under another key, because nothing else drew it.
+
+**The tenth's replacement finished `#167`'s note icons.** `gem` (the Treasure
+note) is gone from `FONT_AWESOME` and `crossed-sabres` and
+`open-treasure-chest` draw where `crossed-swords` (a `TEXT_GLYPHS` character,
+not a path -- see below) and `gem` used to, for Encounter and Treasure.
+`skull`, `arrow-down-long` and `person-running` are also deleted here: nothing
+has drawn them since the condition badges replaced them with `death-skull`,
+`oppression` and `sparkling-sabre`. That leaves exactly two Font Awesome
+names: `user` (the Person note -- `#166` reassigns it, not this issue) and
+`hat-wizard` -- parked, unreferenced, until the icon that replaces it is
+final (`ui/appicon.py`) and `user` is spoken for, so that Font Awesome's
+credit is not removed before every glyph it covers is actually gone.
+
+**`pointy-hat` is the application icon, temporarily** -- Donald's stand-in
+for `hat-wizard` while an artist is commissioned, drawn from `ui/appicon.py`.
+See `ui/appicon.py`'s own docstring; it is one commit on its own so it can be
+reverted without touching anything else here.
 
 Icons under `OURS` are this project's own. Three reasons an icon gets drawn
 here rather than lifted: Font Awesome Free has **no sword** -- `sword` and
@@ -63,18 +77,12 @@ meaning and illegible at twelve pixels; `hat-wizard`'s brim is a separate
 subpath that stops touching the cone at 13px and reads as a shark's fin; and
 `mask` stays perfectly legible while reading as goggles.
 
-`TEXT_GLYPHS` are neither: a **character**, drawn from whatever font the
-platform resolves it to. There is exactly one, the Encounter note's U+2694
-crossed swords, and it is Donald's choice. It is not path data and does not
-scale from the 640 box, so `ui/iconpaint.py` fits it to the box by its own ink
--- and it looks like whatever the machine has. Here that is DejaVu Sans and
-monochrome; on Windows and macOS the same code point is commonly resolved to
-the colour emoji font instead. See `docs/109-icon-choices.md`.
-
-**`hat-wizard` is in the table anyway**, because the *application* icon is
-drawn from it -- `ui/appicon.py`, at 16 px and up on a tile, where the sizes
-that matter are 32 and above. It is not the magic-user's glyph on the map and
-must not be used as one: at 13px the finding above still stands.
+`TEXT_GLYPHS` draws a **character** rather than a path, from whatever font the
+platform resolves it to. Its one entry was the Encounter note's U+2694 crossed
+swords, replaced above by `crossed-sabres`, so the table is empty now.
+`ui/iconpaint.py` and `automap/render.py` still know how to draw one -- fitted
+to the box by its own ink rather than the 640 box, because it is not path
+data -- against the day another glyph needs the same escape hatch.
 
 **The 13px rule these were drawn to.** One connected silhouette, with at most
 one hole and that hole no smaller than about 64 units in the 640 box. Hole
@@ -109,24 +117,6 @@ FONT_AWESOME = {
         "368C191.8 368 112 447.8 112 546.3C112 562.7 125.3 576 141.7 "
         "576L498.3 576C514.7 576 528 562.7 528 546.3C528 447.8 448.2 368 "
         "349.7 368L290.3 368z",
-    "skull":
-        "M480 491.4C538.5 447.4 576 379.8 576 304C576 171.5 461.4 64 320 "
-        "64C178.6 64 64 171.5 64 304C64 379.8 101.5 447.4 160 491.4L160 "
-        "528C160 554.5 181.5 576 208 576L240 576L240 536C240 522.7 250.7 "
-        "512 264 512C277.3 512 288 522.7 288 536L288 576L352 576L352 "
-        "536C352 522.7 362.7 512 376 512C389.3 512 400 522.7 400 536L400 "
-        "576L432 576C458.5 576 480 554.5 480 528L480 491.4zM160 320C160 "
-        "284.7 188.7 256 224 256C259.3 256 288 284.7 288 320C288 355.3 "
-        "259.3 384 224 384C188.7 384 160 355.3 160 320zM416 256C451.3 256 "
-        "480 284.7 480 320C480 355.3 451.3 384 416 384C380.7 384 352 "
-        "355.3 352 320C352 284.7 380.7 256 416 256z",
-    "arrow-down-long":
-        "M297.4 598.6C309.9 611.1 330.2 611.1 342.7 598.6L470.7 "
-        "470.6C483.2 458.1 483.2 437.8 470.7 425.3C458.2 412.8 437.9 "
-        "412.8 425.4 425.3L352 498.7L352 64C352 46.3 337.7 32 320 "
-        "32C302.3 32 288 46.3 288 64L288 498.7L214.6 425.3C202.1 412.8 "
-        "181.8 412.8 169.3 425.3C156.8 437.8 156.8 458.1 169.3 "
-        "470.6L297.3 598.6z",
     "hat-wizard":
         "M128 464L213.7 255.8C230.7 214.5 261.5 180.5 300.9 "
         "159.5L447.8 81.2C460.1 74.6 474.3 85.9 470.8 99.4L433.6 "
@@ -146,41 +136,6 @@ FONT_AWESOME = {
         "205.5zM96 512L544 512C561.7 512 576 526.3 576 544C576 561.7 "
         "561.7 576 544 576L96 576C78.3 576 64 561.7 64 544C64 526.3 "
         "78.3 512 96 512z",
-    # The Treasure note. **Regular weight, not solid** -- Donald picked
-    # the outline, and on graph paper a filled lozenge reads as terrain,
-    # which is what the drawn chest it replaces was avoiding. Verbatim
-    # from `svgs-full/regular/`, the one icon here not from `solid/`.
-    "gem":
-        "M232.5 136L320 229L407.5 136L232.5 136zM447.9 163.1L375.6 "
-        "240L504.6 240L448 163.1zM497.9 288L142.1 288L320 484.3L497.9 "
-        "288zM135.5 240L264.5 240L192.2 163.1L135.6 240zM569.8 "
-        "280.1L337.8 536.1C333.3 541.1 326.8 544 320 544C313.2 544 "
-        "306.8 541.1 302.2 536.1L70.2 280.1C62.5 271.6 61.9 258.9 "
-        "68.7 249.7L180.7 97.7C185.2 91.6 192.4 87.9 200 87.9L440 "
-        "87.9C447.6 87.9 454.8 91.5 459.3 97.7L571.3 249.7C578.1 "
-        "258.9 577.4 271.6 569.8 280.1z",
-    # The quickfight badge on a roster card -- `panel.CharacterCard`, drawn at
-    # `ICON_SIZE`. Three subpaths (head, body, trailing arm), which the 13px
-    # rule normally rejects; it passes because the separations are the ones a
-    # reader of a running figure expects to see, and every limb is wider than
-    # the 64-unit floor. Judged on `tools/iconsheet.py`'s magnified column.
-    "person-running":
-        "M352.5 32C383.4 32 408.5 57.1 408.5 88C408.5 118.9 383.4 144 352.5"
-        " 144C321.6 144 296.5 118.9 296.5 88C296.5 57.1 321.6 32 352.5 "
-        "32zM219.6 240C216.3 240 213.4 242 212.2 245L190.2 299.9C183.6 "
-        "316.3 165 324.3 148.6 317.7C132.2 311.1 124.2 292.5 130.8 "
-        "276.1L152.7 221.2C163.7 193.9 190.1 176 219.6 176L316.9 176C345.4 "
-        "176 371.7 191.1 386 215.7L418.8 272L480.4 272C498.1 272 512.4 "
-        "286.3 512.4 304C512.4 321.7 498.1 336 480.4 336L418.8 336C396 336 "
-        "375 323.9 363.5 304.2L353.5 287.1L332.8 357.5L408.2 380.1C435.9 "
-        "388.4 450 419.1 438.3 445.6L381.7 573C374.5 589.2 355.6 596.4 "
-        "339.5 589.2C323.4 582 316.1 563.1 323.3 547L372.5 436.2L276.6 "
-        "407.4C243.9 397.6 224.6 363.7 232.9 330.6L255.6 240L219.7 "
-        "240zM211.6 421C224.9 435.9 242.3 447.3 262.8 453.4L267.5 "
-        "454.8L260.6 474.1C254.8 490.4 244.6 504.9 231.3 515.9L148.9 "
-        "583.8C135.3 595 115.1 593.1 103.9 579.5C92.7 565.9 94.6 545.7 "
-        "108.2 534.5L190.6 466.6C195.1 462.9 198.4 458.1 200.4 452.7L211.6 "
-        "421z",
 }
 
 
@@ -453,6 +408,110 @@ GAME_ICONS = {
         "19.722 29.677 37.957 29.677 21.485 0 39.085-17.632 39.085-39.11 "
         "0-19.34-14.273-35.523-32.803-38.552 8.006-3.33 16.43-5.157 24.838"
         "-5.327a63.99 63.99 0 0 1 2.055-.007z",
+    # The application's own icon, temporarily -- `ui/appicon.py`.
+    # `#167`'s stand-in until Donald's artist delivers a logo.
+    "pointy-hat":
+        "M416.125 42.406c-57.576.457-104.863 25.804-144.813 64.875-41.984 4"
+        "1.063-75 97.61-100 155.5.78 4.503 3.06 8.946 7.094 13.658 5.158 6."
+        "024 13.183 12.113 23.188 17.593 20.01 10.962 47.79 19.545 75.5 24."
+        "47 27.71 4.925 55.505 6.21 75.156 3.438 9.825-1.386 17.538-3.91 21"
+        ".813-6.563 4.274-2.653 4.916-3.957 4.812-6.625l.72-.03c-3.408-42.8"
+        "28-6-88.797.092-131.94 2.82-19.972 7.668-39.434 15.22-57.624-31.57"
+        "3 31.44-62.918 65.425-86.844 94.72 35.418-70.2 86.2-121.398 141.12"
+        "5-168.97-11.376-1.71-22.42-2.584-33.063-2.5zM155.21 238.994a406.80"
+        "2 406.802 0 0 0-13.334.131c-23.138.575-44.227 2.91-61.876 7.188-23"
+        ".532 5.703-40.466 14.888-48.78 26.03-8.317 11.144-10.08 24.667-.97"
+        " 45.532 32.86 75.263 117.185 130.26 207.844 148.594 90.66 18.33 18"
+        "6.108.147 242.28-66.75 13.59-16.185 15.297-29.312 9.938-43.22-5.35"
+        "8-13.908-19.586-28.878-40.78-42.75-14.745-9.65-32.683-18.737-52.75"
+        "-27.03 1.506 22.59 3.555 44.877 5.124 65.967v.219c.607 11.402-5.49"
+        " 21.585-14.344 27.938-8.853 6.353-20.268 10.08-33.437 12.406-26.33"
+        "7 4.654-60.026 3.398-93.344-2.188-33.317-5.585-66.085-15.466-90.28"
+        "-29.312-12.097-6.923-22.145-14.85-28.875-24.47-6.73-9.617-9.76-21."
+        "554-6.594-33.374l.095-.375.125-.374c7.637-21.206 16.308-42.79 26.0"
+        "94-64.094a634.04 634.04 0 0 0-6.133-.068zm6.634 46.662A839.14 839."
+        "14 0 0 0 153.031 309c-1.595 6.246-.4 11.407 3.907 17.563 4.374 6.2"
+        "5 12.28 12.923 22.844 18.968 21.128 12.09 52.4 21.78 84.095 27.095"
+        " 31.694 5.314 64.016 6.28 87 2.22 11.492-2.032 20.53-5.42 25.78-9."
+        "19 5.25-3.766 6.864-6.726 6.595-11.78-.517-6.93-1.088-14.027-1.688"
+        "-21.25-7.448 4.03-16.47 6.367-26.718 7.813-22.732 3.206-51.79 1.66"
+        "5-81.03-3.532-29.242-5.196-58.5-14.055-81.22-26.5-11.36-6.222-21.1"
+        "22-13.34-28.375-21.812a58.994 58.994 0 0 1-2.376-2.938z",
+    # The Encounter note. Replaces the TEXT_GLYPHS character U+2694.
+    "crossed-sabres":
+        "M27.084 18.248C-17.903 146.478 143.15 277.92 314.496 381.074c-4.64"
+        "5 13.767-5.585 27.628-3.394 40.635 4.44 26.355 20.974 48.997 42.86"
+        " 62.425 21.884 13.428 49.776 17.57 75.645 5.765 25.87-11.804 48.69"
+        "-38.923 62.737-84.654l-17.865-5.488c-13 42.318-32.806 64.094-52.63"
+        " 73.14-19.825 9.047-40.69 5.998-58.116-4.693-17.425-10.69-30.75-29"
+        ".095-34.205-49.6-3.455-20.507 2.232-43.318 24.677-65.218 20.743-20"
+        ".24 32.068-41.615 30.434-61.24l-18.622 1.552c.74 8.89-4.35 22.76-1"
+        "6.684 37.486C222.057 230.8 73.838 128.622 27.084 18.248zm458.05 0C"
+        "451.34 98.03 364.527 173.53 270.93 247.166c19.492 15.878 39.56 31."
+        "622 59.195 45.012 110.756-84.836 187.878-180.243 155.01-273.93zM12"
+        "7.58 292.146c-1.634 19.626 9.69 41 30.434 61.24 22.445 21.9 28.132"
+        " 44.712 24.677 65.218-3.455 20.506-16.78 38.91-34.206 49.6-17.425 "
+        "10.692-38.29 13.74-58.115 4.694-19.825-9.046-39.632-30.822-52.63-7"
+        "3.14l-17.865 5.488c14.046 45.73 36.867 72.85 62.736 84.654 25.87 1"
+        "1.805 53.763 7.663 75.648-5.765 21.885-13.428 38.42-36.07 42.86-62"
+        ".426 2.19-13.005 1.25-26.863-3.393-40.628 13.986-8.42 27.905-17.02"
+        "2 41.648-25.803l-56.967-39.387c-6.55 5.103-13.063 10.2-19.52 15.29"
+        "3C150.55 316.46 145.46 302.59 146.2 293.7l-18.622-1.554zm18.1 73.6"
+        "14c-26.1 8.6-62.087 36.255-77.104 60.324 4.948 8.63 10.393 15.223 "
+        "16.05 20.14 25.846-8.953 59.85-37.406 74.733-60.257-3.007-6.6-7.45"
+        "4-13.386-13.68-20.207zm220.863 0c-6.225 6.822-10.67 13.61-13.68 20"
+        ".21 14.886 22.85 48.89 51.3 74.736 60.255 5.656-4.918 11.1-11.51 1"
+        "6.05-20.14-15.018-24.07-51.004-51.724-77.105-60.325z",
+    # The Treasure note. Replaces Font Awesome's `gem`.
+    "open-treasure-chest":
+        "M410.365 101.005c8.21-22.26 16.21-31.12 20.33-34.45 3.06-2.48 5.73"
+        "-3.42 7.92-2.81 4 1.13 8.49 7.45 11.88 16.89 10.89 30.34 10 84.28-"
+        ".93 129.51zm-286 72.92c7.52-31 10.28-66.13 7.77-94.92l-43.6-4.86zm"
+        "289.46-113-301.2-33.53c-2.5-.28-5.24 1.46-7.11 3-3.67 3-10.42 10.3"
+        "2-17.66 27.64l308.68 34.34c5.16-13.25 11.02-23.89 17.31-31.43zm-22"
+        "8.78 298.71v-70.72l10.76 1.19 42.24 5.18v70.51zm16-40.34a13 13 0 0"
+        " 0 5.34 10.29l-2.34 24.42 17 1.74-4-25a9.54 9.54 0 0 0 5-9.15 13.6"
+        "4 13.64 0 0 0-11.06-12.59s.17.1.13.1c-5.95-.68-11.07 3.9-10.07 10."
+        "1zm53 64.45-85-9.84v-86.72l-1.05-.09a8.14 8.14 0 0 1-7.27 6.71 8 8"
+        " 0 0 1 5.23 8.9 8 8 0 0 1-8 6.66c8.453 4.004 4.341 16.778-4.86 15."
+        "1a8 8 0 0 1-8 13.8 8.01 8.01 0 0 1-12.28 10.29v.09a8 8 0 0 1-3.86 "
+        "8.37l9.13 5.35v14.25l-12 7.13-12-7.12v-14.26l8.15-4.82a8.21 8.21 0"
+        " 0 1-5.07-5.92.418.418 0 0 1 0-.1 8 8 0 0 1-15.18-5c-6.851 7.214-1"
+        "8.094-2.065-12.31-10.16-8.346 4.519-16.217-6.676-9.14-13-9.17 2.66"
+        "1-14.453-10.083-6.09-14.69a8 8 0 0 1-3.21-15.67c-9.294-1.047-9.548"
+        "-14.463-.3-15.86-.669-.164-1.264-.473-1.83-.76l-17.24-1.86.6 167.1"
+        "1 309.18 34.49-.6-165.83-107-13.05zm140.06-164 4.72 1.91.91.58 38."
+        "72 4.31-23.26-64.77-12.82 37c-.16.46-3.41 9.8-8.27 20.99zm-208.54-"
+        "39.74 5 5.49 12.75-11.15 21.45-2.28 16.61 15.35 10.51 8.73 18.54-9"
+        ".29 3.44.5c.12-.67.25-1.34.38-2 3.08-16.1 7.35-30.16 7.53-30.75l13"
+        ".39-43.91 16.88 42.71 8.42 21.42 10.66-12.39 22.14-25.73 5.78 33.4"
+        "5 3.29 19.1 17.1-9.64 35.09-19.79-18.48-51.4-247.86-27.61c2.51 34."
+        "94-1.85 77.32-12.39 112h2.32l7-12.86h40.46zm-111.29 97.39c7.6 2.1 "
+        "7.9 12.766.43 15.29 7.737.867 9.802 11.153 3 14.94 7.653-.548 11.6"
+        "14 8.947 5.84 14 7.313-2.115 13.168 6.216 8.7 12.38 6.288-3.518 13"
+        ".657 2.417 11.56 9.31 4.53-4.723 12.506-2.304 13.65 4.14 2.057-5.7"
+        "13 9.48-7.141 13.51-2.6-1.285-6.404 5.23-11.566 11.17-8.85-4.564-5"
+        ".77.425-14.123 7.67-12.84-6.419-4.541-3.122-14.648 4.74-14.53-7.31"
+        "6-3.503-5.375-14.415 2.7-15.18a8 8 0 0 1-5.38-8l-76.43-8.26c-.41.1"
+        "9-.746.15-1.16.2zm367.54 139.08-.59-163.86-8.67 7-55.51 46.79.58 1"
+        "62zm-26.23-165.2-24.11-15.27-4.18-1.69c-5.91 11.52-13.39 23-22.66 "
+        "27.88-5.44 2.88-12.22 4.34-20.16 4.34-11.13 0-24.75-2.91-37.35-8-1"
+        "0-4-23.3-11-30.26-21.34-4.9-7.29-6.64-17.77-5.31-32.92l-21.78 10.9"
+        "3-19-15.8-11.42-10.53-9.16 1-20.45 17.83-11-11.7h-24.21l-17.61 32-"
+        "5.7-7.2-4.42 4.85-10.76 16.35-12.29 4.91L97.611 256h-12.2l-2.776 6"
+        ".005 76.9 8.21a8.15 8.15 0 0 1 2-2.9 8 8 0 0 1 10.31-.46 1.657 1.6"
+        "57 0 0 1-.14-.24c-4.955-8.368 6.459-16.62 12.87-9.375 6.412 7.245-"
+        "3.167 17.571-10.87 11.635a8 8 0 0 1 1.12 2.89l22.62 2.44 168.54 20"
+        ".57 51.49-43.38zm-28.34-57.73-36.88 20.79-7.14-41.47-28 32.51-18.1"
+        "3-46.11s-16.65 54.58-7 69c7.69 11.45 35.42 22.25 54.33 22.25 5 0 9"
+        ".43-.76 12.67-2.48 13.8-7.31 30.15-54.49 30.15-54.49zm-317.08 270."
+        "8v-.2c0-3.77-8.21-6.83-18.33-6.83-10.12 0-18.33 3.06-18.33 6.83 0 "
+        "3.21 6 5.9 14 6.63v.2c0 3.77 8.21 6.83 18.33 6.83 10.12 0 18.33-3."
+        "06 18.33-6.83-.01-3.21-5.98-5.9-14-6.63zm350 6.63c-10.13 0-18.33 3"
+        ".06-18.33 6.83s8.21 6.83 18.33 6.83c10.12 0 18.33-3.06 18.33-6.83s"
+        "-8.25-6.8-18.38-6.8zm40-16.28c-10.13 0-18.33 3.06-18.33 6.83s8.21 "
+        "6.83 18.33 6.83c10.12 0 18.33-3.06 18.33-6.83s-8.22-6.83-18.34-6.8"
+        "3z",
 }
 
 #: Who drew each game-icons.net glyph, spelled as the site spells it.
@@ -475,6 +534,9 @@ ARTISTS = {
     "open-folder": "Delapouite",
     "save": "Delapouite",
     "brass-eye": "Lorc",
+    "crossed-sabres": "Lorc",
+    "open-treasure-chest": "Skoll",
+    "pointy-hat": "Lorc",
 }
 
 
@@ -485,13 +547,11 @@ ICONS: dict[str, str] = {**FONT_AWESOME, **GAME_ICONS, **OURS}
 #: Icons that are a **character**, not a path. `ui/iconpaint.py` draws these
 #: with the system font and fits them to the same box the paths are drawn in.
 #:
-#: The Encounter note is the only one. `swords`, drawn here, was replaced by
-#: Donald's choice of U+2694 -- which buys a real pair of crossed swords in
-#: place of the starburst ours read as, and costs the guarantee that every
-#: note on the map is drawn by the same hand.
-TEXT_GLYPHS: dict[str, str] = {
-    "crossed-swords": "⚔",
-}
+#: Empty now. Its one entry, the Encounter note's U+2694, was replaced by
+#: `crossed-sabres` -- a path, so it is drawn by the same hand as every other
+#: note. Left in place, empty, in case a future glyph needs the same escape
+#: hatch a font character offers.
+TEXT_GLYPHS: dict[str, str] = {}
 
 #: Every name a caller may ask for, drawn by either route.
 NAMES: frozenset[str] = frozenset(ICONS) | frozenset(TEXT_GLYPHS)

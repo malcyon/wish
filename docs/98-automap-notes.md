@@ -18,48 +18,51 @@ type is one line.
 
 | type | icon | source | for |
 |---|---|---|---|
-| Encounter | **U+2694 ⚔** | the system font | a fight, set or remembered |
-| Treasure | `gem` | Font Awesome, **regular** | something to take, or taken |
+| Encounter | `crossed-sabres` | game-icons.net, Lorc | a fight, set or remembered |
+| Treasure | `open-treasure-chest` | game-icons.net, Skoll | something to take, or taken |
 | Person | `user` | Font Awesome | trainer, shop, quest-giver |
-| Exit | `door-open` | Font Awesome | where this map joins another |
-| Locked | `lock` | Font Awesome | a door that beat you |
-| Stairs | `stairs` | Font Awesome | up, down, or wherever the level changes |
-| Danger | `triangle-exclamation` | Font Awesome | traps, drains, whatever you avoid |
-| Note | `location-dot` | Font Awesome | anything that does not fit the others |
-| Done | `check` | Font Awesome | cleared, nothing left here |
+| Exit | `exit-door` | game-icons.net, Delapouite | where this map joins another |
+| Locked | `plain-padlock` | game-icons.net, Delapouite | a door that beat you |
+| Stairs | `stairs` | game-icons.net, Delapouite | up, down, or wherever the level changes |
+| Danger | `hazard-sign` | game-icons.net, Lorc | traps, drains, whatever you avoid |
+| Note | `position-marker` | game-icons.net, Delapouite | anything that does not fit the others |
+| Done | `check-mark` | game-icons.net, Delapouite | cleared, nothing left here |
 
-**The icons are path data, not a font.** `automap/icons.py` carries each icon's
-SVG path in a 640×640 box and `automap/iconpaint.py` fills it into a
-`QPainterPath`. Weighed against `qtawesome` and against bundling
-`Font Awesome 7 Free-Solid-900.otf` (405 KB), the paths win here: the map draws
-with `QPainter` and not `QIcon`, so the font's one advantage is the use this
-program has least of; `to_svg` exports the notes for free because it is already
-emitting paths; and nothing ships that `pyproject.toml`, PyInstaller and the
-release build have to be told about. The measured trap the font would have
-brought is also gone — at `setPixelSize(16)` the ink of `location-dot` is 14×18
-with a 3px descender and the advance differs per icon, so every glyph would need
-`tightBoundingRect` arithmetic.
+`Person` is the only note still drawing a Font Awesome path -- `#166` is what
+reassigns it, to `person` (Delapouite), not `#167`.
 
-`location-dot` is the generic marker because it is the only candidate that is a
-**solid silhouette with one counter**, and that counter is what stops it
-blobbing at 12px. Drawing it needs winding fill, not Qt's odd-even default, or
-the counter fills in.
+**The icons are path data, not a font.** `ui/icons.py` carries each icon's SVG
+path -- Font Awesome's in a 640×640 box, game-icons.net's in 512×512, `box()`
+says which -- and `ui/iconpaint.py` fills it into a `QPainterPath`. Weighed
+against `qtawesome` and against bundling `Font Awesome 7 Free-Solid-900.otf`
+(405 KB), the paths win here: the map draws with `QPainter` and not `QIcon`,
+so the font's one advantage is the use this program has least of; `to_svg`
+exports the notes for free because it is already emitting paths; and nothing
+ships that `pyproject.toml`, PyInstaller and the release build have to be told
+about. The measured trap the font would have brought is also gone — at
+`setPixelSize(16)` a glyph's ink and its advance are two different numbers, so
+every glyph would need `tightBoundingRect` arithmetic.
 
-**One note is a character and not a path.** Font Awesome Free has no sword —
-`sword` and `swords` are Pro, and `khanda` is a Sikh religious emblem, wrong in
-meaning and illegible at twelve pixels — so the Encounter note was a drawing of
-ours until Donald picked **U+2694**, which is a code point and renders from
-whatever font the machine has. `icons.TEXT_GLYPHS` holds it and `iconpaint.py`
-fits it to the same box the paths get. The cost is the obvious one: it looks
-like whatever the platform draws, which here is DejaVu Sans and monochrome and
-on Windows or macOS may be a colour emoji. `docs/109-icon-choices.md` carries
-the measurements.
+`position-marker` is the generic marker (and the unknown-kind fallback)
+because it is a **solid silhouette with one counter**, and that counter is
+what stops it blobbing at 12px. Drawing it needs winding fill, not Qt's
+odd-even default, or the counter fills in.
+
+**One note was a character, not a path, and no longer is.** Font Awesome Free
+has no sword — `sword` and `swords` are Pro, and `khanda` is a Sikh religious
+emblem, wrong in meaning and illegible at twelve pixels — so the Encounter
+note was a drawing of ours, then Donald's choice of **U+2694** rendered from
+whatever font the machine had, and is `crossed-sabres` (Lorc) now: a path like
+every other note, chosen from his game-icons.net archive on `#167`.
+`icons.TEXT_GLYPHS` held U+2694 and is empty since. `docs/109-icon-choices.md`
+carries the history, including what U+2694 cost while it was in use.
 
 Brands are not used and must not be: the licence forbids brand-logo use and the
 set carries `wizards-of-the-coast`.
 
-Attribution travels with the paths: `fontawesome-LICENSE.txt`, a
-line in the README, and a line in the About box.
+Attribution travels with the paths: Font Awesome's in `fontawesome-LICENSE.txt`
+and the README and About box, game-icons.net's generated into
+`THIRD_PARTY_LICENSES.md` from `ui.icons.ARTISTS`.
 
 ## Drawing
 
@@ -187,8 +190,8 @@ GEO00` clears one area's squares and keeps its notes.
 * Notes on a fogged square are still drawn.
 * No note primitive overlaps a wall segment anywhere on `GEO14`.
 * `--forget ALL` clears squares and leaves every note untouched.
-* Every type's icon parses, and `location-dot` keeps its counter under winding
-  fill.
+* Every type's icon parses, and `position-marker` keeps its counter under
+  winding fill.
 * Clicking an existing note opens it populated, with a Delete that removes it
   from the square and from the file; a new note has no Delete to press.
 * A boundary crossing puts no square of the new area into the old area's set or

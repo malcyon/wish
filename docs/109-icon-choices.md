@@ -9,8 +9,8 @@ what is left is what ships.
 | thief | `hood` | **ours** |
 | cleric | `cross` | Font Awesome Free |
 | fighter | `sword` | **ours** |
-| **`Treasure` note** | **`gem`** | **Font Awesome Free, `regular/`** |
-| **`Encounter` note** | **U+2694 ⚔** | **the system font** |
+| `Treasure` note | `open-treasure-chest` | game-icons.net, Skoll |
+| `Encounter` note | `crossed-sabres` | game-icons.net, Lorc |
 | `Exit` note | `exit-door` | game-icons.net, Delapouite |
 | `Locked` note | `plain-padlock` | game-icons.net, Delapouite |
 | map, `Stairs` note | `stairs` | game-icons.net, Delapouite |
@@ -22,12 +22,20 @@ what is left is what ships.
 | toolbar, save and save as | `save` | game-icons.net, Delapouite |
 | toolbar, preview changes | `brass-eye` | game-icons.net, Lorc |
 | Fast Travel help | `circle-info` | Font Awesome Free |
-| **roster, quickfight badge** | **`person-running`** | Font Awesome Free |
-| application icon | `hat-wizard` | Font Awesome Free |
+| roster, quickfight badge | `sparkling-sabre` | game-icons.net, Lorc |
+| Person note | `user` | Font Awesome Free -- `#166` reassigns it, not done yet |
+| application icon (temporary stand-in) | `pointy-hat` | game-icons.net, Lorc |
+
+`person-running` was the quickfight badge's Font Awesome original; nothing has
+drawn it since `sparkling-sabre` replaced it (`#4`/`#136`), and its path data
+is deleted from `ui/icons.py` along with `skull` and `arrow-down-long`, the
+other two condition-badge originals the same batch superseded.
 
 The last row is not one of these. It is the *app* icon, judged in
 [`132-logo.md`](132-logo.md) against a different bar — 16 px and up, on its own
-tile — and it is the one glyph the sheet below rejected.
+tile. `hat-wizard`, the glyph the sheet below rejected for every *other* slot,
+was the app icon until `#167` swapped in `pointy-hat` as a stand-in while an
+artist is commissioned; see `132-logo.md` and `ui/appicon.py`.
 
 The sheet is still buildable and now shows the chosen set:
 
@@ -328,11 +336,10 @@ the four buttons at `TOOLBAR_ICON = 16`.
 | combat | party, enemy, active | **no** — coloured squares with hit points in them are unambiguous |
 | roster | poisoned, paralysed | **blocked** — the effect codes are not decoded |
 
-## `#167` — nine of the ten remaining Font Awesome icons replaced
+## `#167` — Font Awesome leaves the note icons, the toolbar and the app icon
 
-`hat-wizard` is the tenth and is not part of this; it is the application icon,
-a separate decision, deferred with no time set. The other nine went, chosen
-by Donald and copied verbatim from his game-icons.net archive:
+Ten icons, then a further two, went this way: chosen by Donald and copied
+verbatim from his game-icons.net archive.
 
 | replaced | new glyph | artist |
 |---|---|---|
@@ -367,14 +374,34 @@ which is parametrised over every name in `GAME_ICONS` and renders each at 13,
 pass at every size — the parser reads the artist's `d` correctly, which is
 what proves nothing was redrawn.
 
+**The last two note icons, and the app icon.** `gem` (the Treasure note, drawn
+in `svgs-full/regular/`) is replaced by `open-treasure-chest` (Skoll), and the
+Encounter note's U+2694 -- the one glyph in the program that was a font
+character rather than a path, see `ui/icons.py`'s `TEXT_GLYPHS` -- is replaced
+by `crossed-sabres` (Lorc), a path like every other note now. `hat-wizard`,
+the application icon, is replaced by `pointy-hat` (Lorc) as a stand-in:
+Donald, *"I am paying an artist to create an app logo and icon. In the
+meantime, please use pointy-hat."* Both went through the same pixel-for-pixel
+check as the ten. `crossed-sabres`' control points overshoot its 512 box by
+`extent()`'s conservative bound the same way `brass-eye`'s do; its rendered
+ink does not, and `tests/test_automap.py`/`tests/test_conditionbadges.py`
+carry the same measured exclusion.
+
+That leaves two Font Awesome names in `ui/icons.py`: `user` (the Person note
+-- `#166` reassigns it, not `#167`) and `hat-wizard`, parked unreferenced
+until the app icon is final and `user` is spoken for too.
+
 ## Licence
 
-Font Awesome Free paths are verbatim from `svgs-full/`, from `solid/` except
-`gem`, which is `regular/`; licensed CC BY 4.0, attributed in the README and the
-About box with the text in `fontawesome-LICENSE.txt`. U+2694 is not Font Awesome and is
-not shipped at all — it is a code point, drawn by the reader's own font. Nothing is redrawn: the app icon recolours `hat-wizard` and
-puts it on a tile, and the path data is theirs, untouched, at every size.
-**Nothing comes from `brands/`** — the licence forbids
-brand-logo use and the set carries `wizards-of-the-coast`. The font itself is
-not shipped and not subset: subsetting makes an OFL "Modified Version" and may
-not keep the reserved name. Anything under `OURS` is ours outright.
+Font Awesome Free paths are verbatim from `svgs-full/solid/`; licensed CC BY
+4.0, attributed in the README and the About box with the text in
+`fontawesome-LICENSE.txt`. **Nothing comes from `brands/`** — the licence
+forbids brand-logo use and the set carries `wizards-of-the-coast`. The font
+itself is not shipped and not subset: subsetting makes an OFL "Modified
+Version" and may not keep the reserved name. Anything under `OURS` is ours
+outright. `TEXT_GLYPHS` is empty now that `crossed-sabres` replaced its one
+entry.
+
+Nothing is redrawn: the app icon recolours `pointy-hat` -- game-icons.net,
+CC BY 3.0, Lorc -- and puts it on a tile, and the path data is theirs,
+untouched, at every size.

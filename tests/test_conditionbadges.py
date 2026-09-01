@@ -162,8 +162,9 @@ def test_every_chosen_glyph_is_in_the_table_with_its_artist():
 
     The eight condition badges are the ones this file is about; `#167`
     (Replace the remaining Font Awesome icons with game-icons.net ones) added
-    ten more names to `GAME_ICONS` for notes and the editor toolbar, so this
-    checks the badges are among them rather than that they are all of them."""
+    twelve more names to `GAME_ICONS` for notes and the editor toolbar, so
+    this checks the badges are among them rather than that they are all of
+    them."""
     assert set(icons.GAME_ICONS) == set(icons.ARTISTS)
     badges = {
         "death-skull": "sbed",
@@ -185,14 +186,14 @@ def test_the_two_sets_are_drawn_in_their_own_boxes():
     by 640 would draw it at four-fifths size beside its neighbour, and nothing
     about the picture would say why.
 
-    `brass-eye` is excluded here for the same measured reason as
-    `tests/test_automap.py::test_no_icon_leaves_its_own_box`: its control
-    points overshoot the box by `extent()`'s conservative bound, its actual
-    rendered ink does not, and it is never drawn as a map note."""
+    `brass-eye` and `crossed-sabres` are excluded here for the same measured
+    reason as `tests/test_automap.py::test_no_icon_leaves_its_own_box`: their
+    control points overshoot the box by `extent()`'s conservative bound and
+    their actual rendered ink does not."""
     assert icons.box("death-skull") == icons.GAME_ICONS_BOX == 512
-    assert icons.box("skull") == icons.BOX == 640
+    assert icons.box("user") == icons.BOX == 640
     for name in icons.ICONS:
-        if name == "brass-eye":
+        if name in ("brass-eye", "crossed-sabres"):
             continue
         x0, y0, x1, y1 = icons.extent(name)
         unit = icons.box(name)
