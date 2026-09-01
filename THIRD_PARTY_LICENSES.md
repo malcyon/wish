@@ -18,10 +18,17 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 * [Brass Eye](https://game-icons.net/1x1/lorc/brass-eye.html)
 * [Pointy Hat](https://game-icons.net/1x1/lorc/pointy-hat.html)
 * [Crossed Sabres](https://game-icons.net/1x1/lorc/crossed-sabres.html)
+* [Barbute](https://game-icons.net/1x1/lorc/barbute.html)
+* [Anvil Impact](https://game-icons.net/1x1/lorc/anvil-impact.html)
+* [Cut Diamond](https://game-icons.net/1x1/lorc/cut-diamond.html)
+* [Beer Stein](https://game-icons.net/1x1/lorc/beer-stein.html)
+* [Tripwire](https://game-icons.net/1x1/lorc/tripwire.html)
+* [Dragon Head](https://game-icons.net/1x1/lorc/dragon-head.html)
 
 ### Darkzaitzev
 
 * [Running Ninja](https://game-icons.net/1x1/darkzaitzev/running-ninja.html)
+* [Ninja Heroic Stance](https://game-icons.net/1x1/darkzaitzev/ninja-heroic-stance.html)
 
 ### Delapouite
 
@@ -36,9 +43,21 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 * [Open Folder](https://game-icons.net/1x1/delapouite/open-folder.html)
 * [Save](https://game-icons.net/1x1/delapouite/save.html)
 * [Person](https://game-icons.net/1x1/delapouite/person.html)
+* [Pin](https://game-icons.net/1x1/delapouite/pin.html)
+* [Diamond Hilt](https://game-icons.net/1x1/delapouite/diamond-hilt.html)
+* [Bed](https://game-icons.net/1x1/delapouite/bed.html)
+* [Orc Head](https://game-icons.net/1x1/delapouite/orc-head.html)
+* [Goblin Head](https://game-icons.net/1x1/delapouite/goblin-head.html)
+* [Flanged Mace](https://game-icons.net/1x1/delapouite/flanged-mace.html)
+* [Wizard Face](https://game-icons.net/1x1/delapouite/wizard-face.html)
 
 ### Skoll
 
 * [Open Treasure Chest](https://game-icons.net/1x1/skoll/open-treasure-chest.html)
+* [Raise Zombie](https://game-icons.net/1x1/skoll/raise-zombie.html)
+
+### Willdabeast
+
+* [Gold Bar](https://game-icons.net/1x1/willdabeast/gold-bar.html)
 
 Game-icons.net is maintained by **Cathelineau** and provides these icons under the Creative Commons Attribution 3.0 Unported license. The original icon authors retain their respective copyrights.
