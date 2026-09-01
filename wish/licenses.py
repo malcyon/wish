@@ -11,10 +11,13 @@ actually draws from. Add a glyph without naming its artist there and
 `html()` fills the dialog. One source, two renderings, so the file on disk and
 the box on screen cannot disagree.
 
-Font Awesome is credited here too, because Wish ships both sets -- the
-instruction to replace every Font Awesome icon was withdrawn on 2026-08-31.
-Its licence text is not duplicated: `fontawesome-LICENSE.txt` is where it
-lives, and this points at it.
+Font Awesome is not credited here any more. `#167` finished replacing every
+icon it drew -- `person` for the Person note was the last -- so nothing in
+the program renders a Font Awesome glyph, and `fontawesome-LICENSE.txt` came
+out with the credit, and `ui.icons.FONT_AWESOME` is empty -- an
+unused path is still somebody's work distributed without attribution.
+bringing that icon back onto the screen means bringing the licence file and
+this credit back too.
 """
 
 from __future__ import annotations
@@ -32,13 +35,6 @@ TITLE = "Licenses"
 
 SITE = "https://game-icons.net/"
 CC_BY_3 = "https://creativecommons.org/licenses/by/3.0/"
-
-#: Which Font Awesome Free the path data in `ui/icons.py` came from. The
-#: README and the About box say the same number; `tests/test_licenses.py`
-#: checks they still agree.
-FONT_AWESOME_VERSION = "7.3.1"
-FONT_AWESOME_SITE = "https://fontawesome.com"
-FONT_AWESOME_LICENCE_FILE = "fontawesome-LICENSE.txt"
 
 
 def page(name: str) -> str:
@@ -88,13 +84,6 @@ def markdown() -> str:
         "under the Creative Commons Attribution 3.0 Unported license. The original "
         "icon authors retain their respective copyrights.")
     add("")
-    add("## Font Awesome")
-    add("")
-    add(f"Some icons are from **Font Awesome Free {FONT_AWESOME_VERSION}** by "
-        f"Fonticons, Inc. (<{FONT_AWESOME_SITE}>) — icons licensed **CC BY 4.0**. "
-        "Their path data is in `ui/icons.py`; the licence is in "
-        f"[`{FONT_AWESOME_LICENCE_FILE}`]({FONT_AWESOME_LICENCE_FILE}).")
-    add("")
     return "\n".join(out)
 
 
@@ -117,12 +106,6 @@ def html() -> str:
     add("<p>Game-icons.net is maintained by <b>Cathelineau</b> and provides these "
         "icons under the Creative Commons Attribution 3.0 Unported license. The "
         "original icon authors retain their respective copyrights.</p>")
-    add("<h2>Font Awesome</h2>")
-    add(f'<p>Some icons are from <b>Font Awesome Free {FONT_AWESOME_VERSION}</b> by '
-        f'Fonticons, Inc. (<a href="{FONT_AWESOME_SITE}">{FONT_AWESOME_SITE}</a>) — '
-        "icons licensed <b>CC BY 4.0</b>. Their path data is in "
-        f"<code>ui/icons.py</code>; the licence is in "
-        f"<code>{FONT_AWESOME_LICENCE_FILE}</code>.</p>")
     return "\n".join(out)
 
 

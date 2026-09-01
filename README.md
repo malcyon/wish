@@ -120,12 +120,7 @@ flatpak override --user --share=network net.sf.VICE
 
 ## Credits
 
-Some icons are from **Font Awesome Free 7.3.1** by Fonticons, Inc.
-(<https://fontawesome.com>) — icons licensed **CC BY 4.0**. Their path data is
-in `ui/icons.py`; the licence is in
-[`fontawesome-LICENSE.txt`](fontawesome-LICENSE.txt).
-
-Others are from **[Game-icons.net](https://game-icons.net/)**, licensed
+Icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
 **CC BY 3.0**. Every glyph and the artist who drew it is listed in
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md), which the program also
 shows under **Help ▸ Licenses**.

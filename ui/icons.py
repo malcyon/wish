@@ -30,19 +30,24 @@ this file must not do.
 
 ---
 
-Icons under `FONT_AWESOME` are **Font Awesome Free 7.3.1 by Fonticons, Inc.**
-(https://fontawesome.com), icons licensed **CC BY 4.0**. The path data is
-verbatim from `svgs-full/solid/`; the licence text is in
-`fontawesome-LICENSE.txt` and the attribution is carried in the
-README and the About box. Brands are not used and must not be: the licence
-forbids brand-logo use and the set carries `wizards-of-the-coast`.
+**Nothing draws a `FONT_AWESOME` icon any more.** `person` replacing `user` on
+`#167` was the last one, so the CC BY 4.0 attribution this path data drew while
+anything rendered it -- `fontawesome-LICENSE.txt`, the README and the About
+box -- came out in the same change; `git log -- fontawesome-LICENSE.txt` has
+it if a revert ever needs it back. `hat-wizard` is the one name still here,
+kept only as the path data `ui/appicon.py`'s `pointy-hat` stand-in would
+revert to; bringing it back onto the screen means bringing the licence back
+too. The path data that was here is verbatim from **Font Awesome Free 7.3.1
+by Fonticons, Inc.** (https://fontawesome.com), CC BY 4.0, `svgs-full/solid/`.
+Brands were never used and must not be: the licence forbids brand-logo use
+and the set carries `wizards-of-the-coast`.
 
 ---
 
 Icons under `GAME_ICONS` are from **game-icons.net**, licensed **CC BY 3.0**,
 each verbatim from the artist's own SVG. `ARTISTS` says who drew which, so an
 attribution file can be generated from what actually ships rather than retyped.
-Donald chose all twenty-one by name; nothing here was picked by an assistant.
+Donald chose all twenty-two by name; nothing here was picked by an assistant.
 
 **Nine of the ten remaining Font Awesome icons were replaced on `#167`** --
 `door-open`, `lock`, `stairs`, `triangle-exclamation`, `location-dot`, `check`,
@@ -59,11 +64,15 @@ note) is gone from `FONT_AWESOME` and `crossed-sabres` and
 not a path -- see below) and `gem` used to, for Encounter and Treasure.
 `skull`, `arrow-down-long` and `person-running` are also deleted here: nothing
 has drawn them since the condition badges replaced them with `death-skull`,
-`oppression` and `sparkling-sabre`. That leaves exactly two Font Awesome
-names: `user` (the Person note -- `#166` reassigns it, not this issue) and
-`hat-wizard` -- parked, unreferenced, until the icon that replaces it is
-final (`ui/appicon.py`) and `user` is spoken for, so that Font Awesome's
-credit is not removed before every glyph it covers is actually gone.
+`oppression` and `sparkling-sabre`.
+
+**`user`, the Person note's icon, is gone too** -- `person` (Delapouite)
+draws it now. That was the last Font Awesome glyph anything in the program
+drew, so `fontawesome-LICENSE.txt` and the README's Font Awesome credit come
+out in the same change. `hat-wizard` is the one name still in
+`FONT_AWESOME`, and nothing draws it: it is kept, unreferenced, because it is
+the path data a revert needs if `ui/appicon.py`'s stand-in is ever undone,
+not because it is still owed a credit.
 
 **`pointy-hat` is the application icon, temporarily** -- Donald's stand-in
 for `hat-wizard` while an artist is commissioned, drawn from `ui/appicon.py`.
@@ -110,33 +119,20 @@ BOX = 640
 #: -- and `box()` is what stops a 512 glyph being drawn at four-fifths size.
 GAME_ICONS_BOX = 512
 
-FONT_AWESOME = {
-    "user":
-        "M320 312C386.3 312 440 258.3 440 192C440 125.7 386.3 72 320 "
-        "72C253.7 72 200 125.7 200 192C200 258.3 253.7 312 320 312zM290.3 "
-        "368C191.8 368 112 447.8 112 546.3C112 562.7 125.3 576 141.7 "
-        "576L498.3 576C514.7 576 528 562.7 528 546.3C528 447.8 448.2 368 "
-        "349.7 368L290.3 368z",
-    "hat-wizard":
-        "M128 464L213.7 255.8C230.7 214.5 261.5 180.5 300.9 "
-        "159.5L447.8 81.2C460.1 74.6 474.3 85.9 470.8 99.4L433.6 "
-        "241.8C432.5 245.9 432 250.1 432 254.4C432 260.7 433.2 267 "
-        "435.6 272.9L512 464L304.9 464L316.7 428.6L357.1 415.1C363.6 "
-        "412.9 368 406.8 368 399.9C368 393 363.6 386.9 357.1 "
-        "384.7L316.7 371.2L303.2 330.8C301 324.4 294.9 320 288 "
-        "320C281.1 320 275 324.4 272.8 330.9L259.3 371.3L218.9 "
-        "384.8C212.4 387 208 393.1 208 400C208 406.9 212.4 413 218.9 "
-        "415.2L259.3 428.7L271.1 464.1L128 464.1zM343.6 205.5C342.5 "
-        "202.2 339.5 200 336 200C332.5 200 329.5 202.2 328.4 "
-        "205.5L321.7 225.7L301.5 232.4C298.2 233.5 296 236.5 296 "
-        "240C296 243.5 298.2 246.5 301.5 247.6L321.7 254.3L328.4 "
-        "274.5C329.5 277.8 332.5 280 336 280C339.5 280 342.5 277.8 "
-        "343.6 274.5L350.3 254.3L370.5 247.6C373.8 246.5 376 243.5 376 "
-        "240C376 236.5 373.8 233.5 370.5 232.4L350.3 225.7L343.6 "
-        "205.5zM96 512L544 512C561.7 512 576 526.3 576 544C576 561.7 "
-        "561.7 576 544 576L96 576C78.3 576 64 561.7 64 544C64 526.3 "
-        "78.3 512 96 512z",
-}
+#: Empty, and kept as a name rather than deleted: the two-canvas machinery
+#: below is what `box()` exists for, and a reader meeting `BOX` needs to
+#: know what it was for. Wish drew Font Awesome icons until 2026-09-01;
+#: every one is now a game-icons.net glyph Donald chose, so the CC BY 4.0
+#: attribution is no longer owed and `fontawesome-LICENSE.txt` has gone
+#: with the last path (#167).
+#:
+#: `hat-wizard` was parked here after `ui/appicon.py` took Donald's
+#: `pointy-hat` stand-in, so a revert would have its path data. It was
+#: removed instead: an unused path is still Fonticons' work distributed
+#: in a repository whose attribution has gone, and `git show` recovers it
+#: if it is ever wanted. The stand-in is replaced by a commissioned logo
+#: rather than reverted, so nothing is waiting on it.
+FONT_AWESOME: dict[str, str] = {}
 
 
 #: Icons from **game-icons.net**, licensed **CC BY 3.0**
@@ -512,6 +508,19 @@ GAME_ICONS = {
         "-8.25-6.8-18.38-6.8zm40-16.28c-10.13 0-18.33 3.06-18.33 6.83s8.21 "
         "6.83 18.33 6.83c10.12 0 18.33-3.06 18.33-6.83s-8.22-6.83-18.34-6.8"
         "3z",
+    # The Person note. Replaces Font Awesome's `user` -- the last Font
+    # Awesome glyph any note drew, so this is what let the licence come out.
+    "person":
+        "M250.882 22.802c-23.366 3.035-44.553 30.444-44.553 65.935 0 "
+        "19.558 6.771 36.856 16.695 48.815l11.84 14.263-18.217 "
+        "3.424c-12.9 2.425-22.358 9.24-30.443 20.336-8.085 11.097-14.266 "
+        "26.558-18.598 44.375-7.843 32.28-9.568 71.693-9.842 "
+        "106.436h42.868l11.771 157.836c29.894 6.748 61.811 6.51 "
+        "90.602.025l10.414-157.86h40.816c-.027-35.169-.477-75.126-7.584-1"
+        "07.65-3.918-17.934-9.858-33.372-18.04-44.343-8.185-10.97-18.08-1"
+        "7.745-32.563-19.989l-18.592-2.88 11.736-14.704c9.495-11.897 "
+        "15.932-28.997 15.932-48.082 "
+        "0-37.838-23.655-65.844-49.399-65.844z",
 }
 
 #: Who drew each game-icons.net glyph, spelled as the site spells it.
@@ -537,6 +546,7 @@ ARTISTS = {
     "crossed-sabres": "Lorc",
     "open-treasure-chest": "Skoll",
     "pointy-hat": "Lorc",
+    "person": "Delapouite",
 }
 
 

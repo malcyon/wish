@@ -23,7 +23,7 @@ what is left is what ships.
 | toolbar, preview changes | `brass-eye` | game-icons.net, Lorc |
 | Fast Travel help | `circle-info` | Font Awesome Free |
 | roster, quickfight badge | `sparkling-sabre` | game-icons.net, Lorc |
-| Person note | `user` | Font Awesome Free -- `#166` reassigns it, not done yet |
+| Person note | `person` | game-icons.net, Delapouite |
 | application icon (temporary stand-in) | `pointy-hat` | game-icons.net, Lorc |
 
 `person-running` was the quickfight badge's Font Awesome original; nothing has
@@ -387,20 +387,28 @@ check as the ten. `crossed-sabres`' control points overshoot its 512 box by
 ink does not, and `tests/test_automap.py`/`tests/test_conditionbadges.py`
 carry the same measured exclusion.
 
-That leaves two Font Awesome names in `ui/icons.py`: `user` (the Person note
--- `#166` reassigns it, not `#167`) and `hat-wizard`, parked unreferenced
-until the app icon is final and `user` is spoken for too.
+**The Person note's `user` is the last one, and it finishes `#167`
+completely.** `person` (Delapouite) replaces it, so nothing in the program
+renders a Font Awesome glyph any more. `hat-wizard` is the one name still in
+`ui.icons.FONT_AWESOME`, parked unreferenced as the path data a revert of
+`pointy-hat` would need; that is why it stays in the table even though the
+licence it drew has come out (see Licence, below).
 
 ## Licence
 
-Font Awesome Free paths are verbatim from `svgs-full/solid/`; licensed CC BY
-4.0, attributed in the README and the About box with the text in
-`fontawesome-LICENSE.txt`. **Nothing comes from `brands/`** — the licence
-forbids brand-logo use and the set carries `wizards-of-the-coast`. The font
-itself is not shipped and not subset: subsetting makes an OFL "Modified
-Version" and may not keep the reserved name. Anything under `OURS` is ours
-outright. `TEXT_GLYPHS` is empty now that `crossed-sabres` replaced its one
-entry.
+**Nothing draws a Font Awesome glyph any more**, so `fontawesome-LICENSE.txt`
+and the Font Awesome paragraph in the README and the About box came out with
+`person` replacing `user`. `ui.icons.FONT_AWESOME` still parks `hat-wizard`'s
+path data, unreferenced, as what a revert of `ui/appicon.py`'s `pointy-hat`
+stand-in would need back; bringing that icon back onto the screen means
+bringing the licence back too, recoverable from git history at the commit
+that removed it. While it drew, Font Awesome Free's paths were verbatim from
+`svgs-full/solid/`, licensed CC BY 4.0. **Nothing came from `brands/`** — the
+licence forbids brand-logo use and the set carries `wizards-of-the-coast`.
+The font itself was never shipped and never subset: subsetting makes an OFL
+"Modified Version" and may not keep the reserved name. Anything under `OURS`
+is ours outright. `TEXT_GLYPHS` is empty now that `crossed-sabres` replaced
+its one entry.
 
 Nothing is redrawn: the app icon recolours `pointy-hat` -- game-icons.net,
 CC BY 3.0, Lorc -- and puts it on a tile, and the path data is theirs,

@@ -1652,7 +1652,7 @@ def test_a_note_is_drawn_through_the_fog(new_phlan):
 def test_the_svg_export_carries_the_notes(new_phlan):
     svg = to_svg(new_phlan, notes={(1, 1): [Note("a", "person"),
                                             Note("b", "done")]})
-    assert icons.path_data("user") in svg
+    assert icons.path_data("person") in svg
     # The first note's icon and nothing else: no count, because a square
     # holds one note and there is nothing to count.
     assert 'text-anchor="end"' not in svg and ">2<" not in svg
@@ -2242,18 +2242,20 @@ def test_the_tab_polls_the_buttons_with_the_party(app, tmp_path, monkeypatch):
     assert window.actions_bar.buttons["heal"].isEnabled()
 
 
-def test_the_font_awesome_attribution_travels_with_the_icons():
-    """CC BY 4.0's one obligation. The paths are lifted from `svgs-full`, so
-    the notice has to be carried by us -- copying a path out of the `.svg`
-    leaves its inline comment behind."""
+def test_the_font_awesome_attribution_is_gone_with_the_icons():
+    """CC BY 4.0's one obligation stops applying once nothing renders the
+    material it covers. `person` replacing `user` on `#167` was the last
+    Font Awesome glyph anything in the program drew, so the credit and its
+    licence file came out in the same change -- see
+    `tests/test_licenses.py` for the fuller version of this check."""
     from wish.about import TEXT
     root = pathlib.Path(__file__).resolve().parent.parent
-    assert "Font Awesome" in TEXT and "CC BY 4.0" in TEXT
+    assert "Font Awesome" not in TEXT
     # `encoding=` is not optional: the default is the locale codec, which is
     # cp1252 on the Windows runners, and the README has an em dash in it.
-    assert "Font Awesome" in (root / "README.md").read_text(encoding="utf-8")
-    assert (root / "fontawesome-LICENSE.txt").exists()
-    assert "Font Awesome" in icons.__doc__
+    assert "Font Awesome" not in (root / "README.md").read_text(encoding="utf-8")
+    assert not (root / "fontawesome-LICENSE.txt").exists()
+    assert icons.FONT_AWESOME == {}
 
 
 # --- what Donald found while playing ----------------------------------------

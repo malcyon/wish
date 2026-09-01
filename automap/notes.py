@@ -46,7 +46,7 @@ TYPES: tuple[NoteType, ...] = (
              "a fight, set or remembered", "E"),
     NoteType("treasure", "Treasure", "open-treasure-chest",
              "something to take, or taken", "T"),
-    NoteType("person", "Person", "user",
+    NoteType("person", "Person", "person",
              "trainer, shop, quest-giver", "P"),
     NoteType("exit", "Exit", "exit-door",
              "where this map joins another", "X"),

@@ -20,7 +20,7 @@ type is one line.
 |---|---|---|---|
 | Encounter | `crossed-sabres` | game-icons.net, Lorc | a fight, set or remembered |
 | Treasure | `open-treasure-chest` | game-icons.net, Skoll | something to take, or taken |
-| Person | `user` | Font Awesome | trainer, shop, quest-giver |
+| Person | `person` | game-icons.net, Delapouite | trainer, shop, quest-giver |
 | Exit | `exit-door` | game-icons.net, Delapouite | where this map joins another |
 | Locked | `plain-padlock` | game-icons.net, Delapouite | a door that beat you |
 | Stairs | `stairs` | game-icons.net, Delapouite | up, down, or wherever the level changes |
@@ -28,18 +28,21 @@ type is one line.
 | Note | `position-marker` | game-icons.net, Delapouite | anything that does not fit the others |
 | Done | `check-mark` | game-icons.net, Delapouite | cleared, nothing left here |
 
-`Person` is the only note still drawing a Font Awesome path -- `#166` is what
-reassigns it, to `person` (Delapouite), not `#167`.
+**Every note now draws a game-icons.net path.** `Person` was the last one
+still drawing from Font Awesome (`user`); `person` (Delapouite) replaced it,
+which is what let Font Awesome's licence and credit come out of the program
+entirely -- see `docs/109-icon-choices.md`'s Licence section.
 
 **The icons are path data, not a font.** `ui/icons.py` carries each icon's SVG
-path -- Font Awesome's in a 640×640 box, game-icons.net's in 512×512, `box()`
-says which -- and `ui/iconpaint.py` fills it into a `QPainterPath`. Weighed
-against `qtawesome` and against bundling `Font Awesome 7 Free-Solid-900.otf`
-(405 KB), the paths win here: the map draws with `QPainter` and not `QIcon`,
-so the font's one advantage is the use this program has least of; `to_svg`
-exports the notes for free because it is already emitting paths; and nothing
-ships that `pyproject.toml`, PyInstaller and the release build have to be told
-about. The measured trap the font would have brought is also gone — at
+path -- game-icons.net's in a 512×512 box, and a 640×640 box for the one
+Font Awesome name still parked, unreferenced, in `FONT_AWESOME` -- and
+`ui/iconpaint.py` fills it into a `QPainterPath`. Weighed against `qtawesome`
+and against bundling `Font Awesome 7 Free-Solid-900.otf` (405 KB), the paths
+win here: the map draws with `QPainter` and not `QIcon`, so the font's one
+advantage is the use this program has least of; `to_svg` exports the notes
+for free because it is already emitting paths; and nothing ships that
+`pyproject.toml`, PyInstaller and the release build have to be told about.
+The measured trap the font would have brought is also gone — at
 `setPixelSize(16)` a glyph's ink and its advance are two different numbers, so
 every glyph would need `tightBoundingRect` arithmetic.
 
@@ -60,9 +63,10 @@ carries the history, including what U+2694 cost while it was in use.
 Brands are not used and must not be: the licence forbids brand-logo use and the
 set carries `wizards-of-the-coast`.
 
-Attribution travels with the paths: Font Awesome's in `fontawesome-LICENSE.txt`
-and the README and About box, game-icons.net's generated into
-`THIRD_PARTY_LICENSES.md` from `ui.icons.ARTISTS`.
+Attribution travels with the paths: game-icons.net's is generated into
+`THIRD_PARTY_LICENSES.md` from `ui.icons.ARTISTS`. Font Awesome's credit came
+out with `fontawesome-LICENSE.txt` once `person` replaced the last glyph it
+drew (`docs/109-icon-choices.md`'s Licence section).
 
 ## Drawing
 

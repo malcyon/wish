@@ -82,7 +82,7 @@ SHEET = [
     ("Note types", [
         ("crossed-sabres", "Lorc", "encounter"),
         ("open-treasure-chest", "Skoll", "treasure"),
-        ("user", "FA Free", "person"),
+        ("person", "Delapouite", "person"),
         ("exit-door", "Delapouite", "exit"),
         ("plain-padlock", "Delapouite", "locked"),
         ("stairs", "Delapouite", "stairs -- the level changes here"),

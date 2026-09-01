@@ -191,7 +191,7 @@ def test_the_two_sets_are_drawn_in_their_own_boxes():
     control points overshoot the box by `extent()`'s conservative bound and
     their actual rendered ink does not."""
     assert icons.box("death-skull") == icons.GAME_ICONS_BOX == 512
-    assert icons.box("user") == icons.BOX == 640
+    assert icons.box("hat-wizard") == icons.BOX == 640
     for name in icons.ICONS:
         if name in ("brass-eye", "crossed-sabres"):
             continue

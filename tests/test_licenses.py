@@ -67,20 +67,20 @@ def test_the_file_is_what_the_generator_would_write():
         f"{result.stdout}{result.stderr}\nRun tools/genlicenses.py to update it.")
 
 
-def test_font_awesome_is_credited_and_says_where_its_licence_is():
-    """Wish ships both sets, so the file has to name both."""
-    text = FILE.read_text(encoding="utf-8")
-    assert "Font Awesome Free 7.3.1" in text
-    assert "fontawesome-LICENSE.txt" in text
-    assert (ROOT / "fontawesome-LICENSE.txt").exists()
-
-
-def test_the_font_awesome_version_agrees_with_the_readme_and_the_about_box():
-    """Three places say the version; a bump that misses one is a wrong credit."""
+def test_font_awesome_is_credited_nowhere_now_that_nothing_draws_it():
+    """`#167` finished replacing every Font Awesome icon -- `person` for the
+    Person note was the last -- so the credit and its licence file came out.
+    `hat-wizard`'s path data went with it. It was parked here unreferenced so a
+    revert of `ui/appicon.py`'s stand-in would have it, and removed instead: an
+    unused path is still Fonticons' work distributed in a repository whose
+    attribution has gone, and `git show` recovers it if it is ever wanted."""
     from wish import about
-    version = licenses.FONT_AWESOME_VERSION
-    assert f"Font Awesome Free {version}" in (ROOT / "README.md").read_text(encoding="utf-8")
-    assert f"Font Awesome Free {version}" in about.TEXT
+    assert icons.FONT_AWESOME == {}, (
+        "a Font Awesome path is still in the repository with no licence file")
+    assert not (ROOT / "fontawesome-LICENSE.txt").exists()
+    assert "Font Awesome" not in FILE.read_text(encoding="utf-8")
+    assert "Font Awesome" not in (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Font Awesome" not in about.TEXT
 
 
 @pytest.mark.skipif(not ARCHIVE.is_dir(),
@@ -134,7 +134,7 @@ def test_the_licenses_item_opens_the_dialog(app):
     said = box.ui.content.toPlainText()
     for name in icons.GAME_ICONS:
         assert licenses.title(name) in said, name
-    assert "Font Awesome" in said
+    assert "Font Awesome" not in said
     box.deleteLater()
 
 

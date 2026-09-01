@@ -35,13 +35,10 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 * [Trash Can](https://game-icons.net/1x1/delapouite/trash-can.html)
 * [Open Folder](https://game-icons.net/1x1/delapouite/open-folder.html)
 * [Save](https://game-icons.net/1x1/delapouite/save.html)
+* [Person](https://game-icons.net/1x1/delapouite/person.html)
 
 ### Skoll
 
 * [Open Treasure Chest](https://game-icons.net/1x1/skoll/open-treasure-chest.html)
 
 Game-icons.net is maintained by **Cathelineau** and provides these icons under the Creative Commons Attribution 3.0 Unported license. The original icon authors retain their respective copyrights.
-
-## Font Awesome
-
-Some icons are from **Font Awesome Free 7.3.1** by Fonticons, Inc. (<https://fontawesome.com>) — icons licensed **CC BY 4.0**. Their path data is in `ui/icons.py`; the licence is in [`fontawesome-LICENSE.txt`](fontawesome-LICENSE.txt).
