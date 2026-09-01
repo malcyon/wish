@@ -798,6 +798,28 @@ give the evidence in one clause, link the experiment by name.
 Prune when a claim changes. A doc that accretes corrections without deleting the
 superseded text is how the contradictions got in.
 
+**A wrong document gets corrected, not escalated.** Donald, 2026-09-01:
+*"If you find something wrong in a document, you can just update the document.
+You don't need to block on me. Use your best judgement."*
+
+So a factual error found in `docs/` is fixed in the same session it is found,
+by whoever finds it. Do not open an issue for it, do not ask, and do not leave
+it for somebody else -- a correction nobody made is a claim the next reader
+believes.
+
+Two things a correction owes:
+
+* **Delete the superseded text rather than layering on it.** A page that
+  accretes corrections is how the contradictions got in, and pruning is
+  already the rule above.
+* **Say why it changed**, in a sentence, where the claim was. `#75` was a
+  paragraph and cost somebody a session; a correction with no reason is the
+  same trap with the values swapped.
+
+And if the wrong claim held up a *conclusion* rather than a detail, say so
+plainly rather than quietly fixing the line -- that is a different size of
+thing and the reader has to be able to see it.
+
 **Leave the top-level `README.md` alone** unless Donald asks for it by name. It
 is the page a stranger reads first and it is his, not a scratchpad the assistant
 tidies in passing. A finding goes in `docs/`; if it belongs in the README too,
