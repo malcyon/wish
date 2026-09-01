@@ -238,13 +238,13 @@ def _tip(commission, entries, on_board, open_gates) -> str:
         if entry.source:
             lines.append(f"  written by {entry.source}")
         if entry.major:
-            lines.append("  counts towards commissions completed")
+            lines.append("  Counts towards commissions completed")
     if many:
         sources = {entries[i].source for i in commission.ledger}
         if len(sources) == 1 and sources != {None}:
             lines.append(f"written by {sources.pop()}")
         if any(entries[i].major for i in commission.ledger):
-            lines.append("counts towards commissions completed")
+            lines.append("Counts towards commissions completed")
     return "\n".join(lines)
 
 
