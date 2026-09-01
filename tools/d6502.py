@@ -92,6 +92,31 @@ def run(path, base, start, count):
         pc += n
 
 
+USAGE = """usage: d6502.py <file> <load-address> <start-address> <count>
+
+    Disassembles `count` instructions from a raw image.
+    The two addresses are hexadecimal, with or without a leading $ or 0x.
+
+    d6502.py work/DUNGEON.prg 0800 0A3C 40
+
+Written for the combat-roll work; the listings behind
+docs/147-combat-rolls.md came out of it."""
+
+
+def _address(text: str) -> int:
+    return int(text.lstrip("$").removeprefix("0x"), 16)
+
+
 if __name__ == "__main__":
-    path, base, start, count = sys.argv[1], int(sys.argv[2], 16), int(sys.argv[3], 16), int(sys.argv[4])
+    # It used to index `sys.argv` straight and answer a missing argument with
+    # an IndexError traceback. That was fine while it lived in `work/` and had
+    # one user; in `tools/` it is a program somebody else runs.
+    if len(sys.argv) != 5 or sys.argv[1] in ("-h", "--help"):
+        print(USAGE, file=sys.stderr)
+        raise SystemExit(2 if len(sys.argv) != 5 else 0)
+    try:
+        path, base = sys.argv[1], _address(sys.argv[2])
+        start, count = _address(sys.argv[3]), int(sys.argv[4])
+    except ValueError as exc:
+        raise SystemExit(f"d6502.py: {exc}\n\n{USAGE}")
     run(path, base, start, count)
