@@ -111,6 +111,27 @@ def _write_settings(**values) -> None:
 
 # --- the defaults did not move ----------------------------------------------
 
+def assert_opens_at_defaults(win) -> None:
+    """The columns are the ones a first run would give.
+
+    **A default is what a column is asked for, not what it is given.** Three
+    tests asserted `ColumnSplitter.ROSTER` exactly and all three went red on
+    Windows with `312 == 220`: a `QSplitter` will not shrink a pane below what
+    the widgets inside it need, and a roster card at Windows' wider font needs
+    more than 220. So the claim is the default **unless the contents will not
+    fit in it**, and then the narrowest they will.
+    """
+    widths = win.map.columns.widths()
+    for at, default, what in (
+            (ColumnSplitter.ROSTER_AT, ColumnSplitter.ROSTER, "roster"),
+            (ColumnSplitter.SIDE_AT, ColumnSplitter.SIDE, "reading")):
+        floor = win.map.columns.splitter.widget(at).minimumSizeHint().width()
+        assert widths[at] == max(default, floor), (
+            f"the {what} column opened at {widths[at]}px, against a default "
+            f"of {default} and a content floor of {floor}")
+    assert widths[ColumnSplitter.MAP_AT] > 0
+
+
 def test_the_columns_open_at_the_widths_they_always_had(app):
     """Donald's ruling on `#168 (A character ready to level loses the Level up
     button, even with nothing running)`: *"This is a corner case. Leave it the
@@ -129,16 +150,7 @@ def test_the_columns_open_at_the_widths_they_always_had(app):
     """
     win = _window(app)
     try:
-        widths = win.map.columns.widths()
-        for at, default, what in (
-                (ColumnSplitter.ROSTER_AT, ColumnSplitter.ROSTER, "roster"),
-                (ColumnSplitter.SIDE_AT, ColumnSplitter.SIDE, "reading")):
-            pane = win.map.columns.splitter.widget(at)
-            floor = pane.minimumSizeHint().width()
-            assert widths[at] == max(default, floor), (
-                f"the {what} column opened at {widths[at]}px, against a "
-                f"default of {default} and a content floor of {floor}")
-        assert widths[ColumnSplitter.MAP_AT] > 0
+        assert_opens_at_defaults(win)
     finally:
         _close(win)
 
@@ -347,10 +359,7 @@ def test_a_settings_file_nobody_can_use_still_opens_a_usable_window(app, what):
     _write_settings(automap_columns=NONSENSE[what])
     win = _window(app, Settings.load())
     try:
-        widths = win.map.columns.widths()
-        assert widths[ColumnSplitter.ROSTER_AT] == ColumnSplitter.ROSTER
-        assert widths[ColumnSplitter.SIDE_AT] == ColumnSplitter.SIDE
-        assert widths[ColumnSplitter.MAP_AT] > 0
+        assert_opens_at_defaults(win)
         splitter = win.map.columns.splitter
         for handle in (1, 2):
             assert splitter.handle(handle).width() > 0
@@ -370,8 +379,6 @@ def test_a_settings_file_that_will_not_parse_at_all_opens_a_usable_window(app):
                                encoding="utf-8")
     win = _window(app, Settings.load())
     try:
-        widths = win.map.columns.widths()
-        assert widths[ColumnSplitter.ROSTER_AT] == ColumnSplitter.ROSTER
-        assert widths[ColumnSplitter.SIDE_AT] == ColumnSplitter.SIDE
+        assert_opens_at_defaults(win)
     finally:
         _close(win)
