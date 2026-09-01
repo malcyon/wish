@@ -127,7 +127,7 @@ CONDITION_BADGES: tuple[tuple[str, tuple[int, ...]], ...] = (
     ("running-ninja", (39,)),                            # hasted
     ("healing-shield", (1, 35)),                         # blessed
     ("embrassed-energy", (8, 9, 17, 28, 41, 89)),        # warded
-    ("invisible", (25,)),                                # invisible
+    ("eyelashes", (25,)),                                # invisible
     ("strong", (12, 38)),                                # strengthened
 )
 

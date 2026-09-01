@@ -84,7 +84,8 @@ NOTE = QColor("#b8601f")
 # because the conditions row and the quickfight badge use it. How well each of
 # Donald's eight glyphs survives 13px is measured in
 # `docs/136-condition-badges.md`, from `tools/iconsheet.py`'s magnified column
-# and not from the name: `invisible` draws nothing at all at this size.
+# and not from the name: `invisible`, the original choice for effect 25, drew
+# nothing at all at this size and was replaced by `eyelashes`.
 ICON_SIZE = 13
 
 

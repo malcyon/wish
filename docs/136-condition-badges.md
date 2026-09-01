@@ -15,7 +15,7 @@ was measured; the shipped set is the first table.
 | hasted | 39 | `running-ninja` | Darkzaitzev | 2 pieces, 27 |
 | blessed | 1, 35 | `healing-shield` | Delapouite | 1 piece, 71 |
 | warded | 8, 9, 17, 28, 41, 89 | `embrassed-energy` | Lorc | 4 pieces, 43 |
-| invisible | 25 | `invisible` | Delapouite | **0 pieces, 0** |
+| invisible | 25 | `eyelashes` | Delapouite | see below |
 | strengthened | 12, 38 | `strong` | Lorc | 1 piece, 55 |
 | quickfight | roster `+0x0C` bit 7 | `sparkling-sabre` | Lorc | 2 pieces, 51 |
 
@@ -23,14 +23,29 @@ Quickfight is not a condition and keeps its own row; it is here because Donald
 settled its glyph in the same breath, to stop two running figures landing on
 one card.
 
-**`invisible` draws nothing at 13 px.** 816 ink pixels at 128 px against
-5,000–9,500 for the rest of the set: it is a fine-line drawing and the lines
-fall below a pixel long before 13. Reported, not fixed — a replacement is
-Donald's to choose, and `CLAUDE.md`'s Art section forbids nudging the artist's
-geometry until it survives. `oppression`, `embrassed-energy`,
-`running-ninja` and `sparkling-sabre` all come apart into two to six pieces at
-13 px and are legible only as a general shape. The sheet is
-`tools/iconsheet.py`, which now carries all eight.
+**`invisible` drew nothing at 13 px, and was replaced.** 816 ink pixels at
+128 px against 5,000–9,500 for the rest of the set: it was a **dashed**
+outline of a person, and the dashes fell below a pixel long before 13 —
+on the card it was a pale smudge beside seven solid glyphs, not a badge.
+Donald chose `eyelashes` (Delapouite) in its place — *"how about this one for
+invisibility?"* — and it reads as a closed eye. `oppression`,
+`embrassed-energy`, `running-ninja` and `sparkling-sabre` all come apart into
+two to six pieces at 13 px and are legible only as a general shape. The sheet
+is `tools/iconsheet.py`, which now carries all eight, and a magnified render
+is `work/eyelashes-13px-x6.png`.
+
+**`eyelashes` is a genuine improvement, and it is worth saying by how much
+depending on how you count.** Counting any pixel the antialiased fill touches
+at all, it is 81 ink pixels in one connected piece — comparable to
+`running-ninja`'s 67 and nowhere near `invisible`'s 55 by the same loose
+count. Counting the way the rest of this table does — a pixel at least half
+covered, pieces 8-connected — it comes out at 3 pieces and 16 ink pixels,
+because eyelashes is itself drawn in thin strokes and much of a lash's length
+does not reach half coverage at this size. That is the same failure mode
+that killed `invisible`, to a lesser degree: a fine line is exactly what a
+50%-coverage threshold is worst at counting, even where a human eye reads the
+antialiased blur as one continuous stroke. The picture is the fairer judge
+here than either count — see it before choosing a ninth glyph.
 
 **The measurement is the same rig the rest of this file uses** — ink is a pixel
 at least half covered, pieces are 8-connected blobs — and it agrees pixel for

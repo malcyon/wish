@@ -97,7 +97,7 @@ def test_the_badges_keep_the_table_s_order_whatever_the_save_holds():
     backwards = _glyphs(_character(effects=_effects(39, 1, 8, 25, 38)))
     assert forwards == backwards
     assert forwards == ("running-ninja", "healing-shield", "embrassed-energy",
-                        "invisible", "strong")
+                        "eyelashes", "strong")
 
 
 def test_the_two_record_conditions_still_come_first():
@@ -166,7 +166,7 @@ def test_every_chosen_glyph_is_in_the_table_with_its_artist():
         "running-ninja": "Darkzaitzev",
         "healing-shield": "Delapouite",
         "embrassed-energy": "Lorc",
-        "invisible": "Delapouite",
+        "eyelashes": "Delapouite",
         "strong": "Lorc",
         "sparkling-sabre": "Lorc",
     }

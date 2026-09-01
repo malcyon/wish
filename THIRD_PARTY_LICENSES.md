@@ -22,7 +22,7 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 ### Delapouite
 
 * [Healing Shield](https://game-icons.net/1x1/delapouite/healing-shield.html)
-* [Invisible](https://game-icons.net/1x1/delapouite/invisible.html)
+* [Eyelashes](https://game-icons.net/1x1/delapouite/eyelashes.html)
 
 Game-icons.net is maintained by **Cathelineau** and provides these icons under the Creative Commons Attribution 3.0 Unported license. The original icon authors retain their respective copyrights.
 
