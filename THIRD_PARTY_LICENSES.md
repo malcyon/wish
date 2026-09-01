@@ -1,7 +1,5 @@
 # Third-Party Assets
 
-**Generated from `ui/icons.py` by `tools/genlicenses.py` — do not edit by hand.**
-
 ## Game-icons.net
 
 Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the artists listed below. These icons are used under the [Creative Commons Attribution 3.0 Unported (CC BY 3.0) license](https://creativecommons.org/licenses/by/3.0/).

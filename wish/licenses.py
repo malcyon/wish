@@ -72,8 +72,6 @@ def markdown() -> str:
 
     add("# Third-Party Assets")
     add("")
-    add("**Generated from `ui/icons.py` by `tools/genlicenses.py` — do not edit by hand.**")
-    add("")
     add("## Game-icons.net")
     add("")
     add(f"Wish uses icons from [Game-icons.net]({SITE}), created by the artists "
