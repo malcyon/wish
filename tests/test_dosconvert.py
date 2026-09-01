@@ -1180,12 +1180,41 @@ def test_animate00_is_written_where_the_cache_says_it_is():
     """
     icon, animate = _game_files()
     assert len(animate) == dos.ANIMATE_SIZE
-    _save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
+    save0, save1, _report = dos.new_save(_save_dir(), "A", icon, animate)
     at = dos.ANIMATE_AT - dos.SAVE1_BASE
     assert bytes(save1[at:at + len(animate)]) == animate
     end = at + len(animate)
     assert dos.SAVE1_BASE + end == dos.BITMAP_BUFFER[0]
     assert bytes(save1[end:]) == bytes(len(save1) - end)
+    # The two halves of the claim, in one place: the cache says the file is
+    # resident, and the bytes it points at are the file. Asserting only the
+    # first is how a save came to say `ANIMATE00` was in memory over a page
+    # of zeros (#122).
+    slot11 = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_ANIMATE
+    assert save0[slot11] == 0x00, "the file number, and ANIMATE00 is the only one"
+
+
+@needs_dos_saves
+def test_convert_save_with_no_animate_reports_the_region_as_inherited():
+    """Handed no `animate`, `convert_save` leaves `$8400`-`$8753` alone --
+    and says so, byte by byte, in `Report.unwritten`.
+
+    This is the invariant #122 was filed about, stated from the other side.
+    The cache is written to say slot 11 is resident whatever happens, so a
+    caller that does not supply the file has produced a save asserting
+    `ANIMATE00` is in memory over bytes nobody looked at. `new_save` is what
+    refuses that; the report is what makes it visible to anything else, and
+    a well-meant "just zero it" here would put the assertion back over a page
+    of zeros with nothing left to notice.
+    """
+    save0 = bytearray(dos.SAVE0_SIZE)
+    save1 = bytearray(dos.SAVE1_SIZE)
+    report = dos.convert_save(_save_dir(), "A", save0, save1)
+    at = len(save0) + dos.ANIMATE_AT - dos.SAVE1_BASE
+    inherited = set(report.unwritten)
+    assert set(range(at, at + dos.ANIMATE_SIZE)) <= inherited
+    slot11 = dos.FILE_CACHE[0] - dos.SAVE0_BASE + dos.CACHE_ANIMATE
+    assert save0[slot11] == 0x00, "the file number, and ANIMATE00 is the only one"
 
 
 @needs_dos_saves
