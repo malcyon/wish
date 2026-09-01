@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Tiny 6502 disassembler: disassemble a raw overlay image from a given address."""
+"""Tiny 6502 disassembler: disassemble a raw overlay image from a given address.
+
+An opcode this recognises decodes to its true mnemonic, size and addressing
+mode -- 151 of the 256 possible byte values are documented 6502 opcodes, and
+every one of those is in the table below. The 105 that are not decode as
+``.byte $xx`` instead of the nearest instruction that fits.
+
+That is a narrower guarantee than `tools/m68dis.py` makes, and it is worth
+saying so: on a 6502, unlike the 68000, an addressing mode carries no reserved
+field a decoder could check, so a run of PETSCII text will decode as a
+plausible sequence of real instructions and nothing here can tell the
+difference. The guarantee is "every printed instruction is the true decode of
+those bytes", not "these bytes are code" -- a listing out of this tool is not,
+on its own, evidence that the bytes it covers are a routine rather than a
+string table or an item name.
+"""
 import sys
 
 M_IMP, M_IMM, M_ZP, M_ZPX, M_ZPY, M_ABS, M_ABX, M_ABY, M_IND, M_IZX, M_IZY, M_REL, M_ACC = range(13)
@@ -24,7 +39,7 @@ B0 BCS REL;B1 LDA IZY;B4 LDY ZPX;B5 LDA ZPX;B6 LDX ZPY;B8 CLV IMP;B9 LDA ABY;BA 
 C0 CPY IMM;C1 CMP IZX;C4 CPY ZP;C5 CMP ZP;C6 DEC ZP;C8 INY IMP;C9 CMP IMM;CA DEX IMP;CC CPY ABS;CD CMP ABS;CE DEC ABS
 D0 BNE REL;D1 CMP IZY;D5 CMP ZPX;D6 DEC ZPX;D8 CLD IMP;D9 CMP ABY;DD CMP ABX;DE DEC ABX
 E0 CPX IMM;E1 SBC IZX;E4 CPX ZP;E5 SBC ZP;E6 INC ZP;E8 INX IMP;E9 SBC IMM;EA NOP IMP;EC CPX ABS;ED SBC ABS;EE INC ABS
-F0 BEQ REL;F1 SBC IZY;F5 SBC ZPX;F6 SBC ZPX;F8 SED IMP;F9 SBC ABY;FD SBC ABX;FE INC ABX
+F0 BEQ REL;F1 SBC IZY;F5 SBC ZPX;F6 INC ZPX;F8 SED IMP;F9 SBC ABY;FD SBC ABX;FE INC ABX
 """
 MODES = dict(
     IMP=M_IMP, IMM=M_IMM, ZP=M_ZP, ZPX=M_ZPX, ZPY=M_ZPY, ABS=M_ABS, ABX=M_ABX, ABY=M_ABY,
@@ -57,7 +72,7 @@ def fmt(pc, mn, mode, b):
         return f"{mn} (${b[1]:02X}),Y"
     if mode == M_REL:
         off = b[1] - 256 if b[1] > 127 else b[1]
-        return f"{mn} ${pc + 2 + off:04X}"
+        return f"{mn} ${(pc + 2 + off) & 0xFFFF:04X}"
     a = b[1] | (b[2] << 8)
     if mode == M_ABS:
         return f"{mn} ${a:04X}"
@@ -70,9 +85,13 @@ def fmt(pc, mn, mode, b):
     return None
 
 
-def run(path, base, start, count):
-    with open(path, "rb") as f:
-        data = f.read()
+def lines(data: bytes, base: int, start: int, count: int) -> list[str]:
+    """Disassemble `count` instructions from `data`, returning each printed line.
+
+    `run()` is the only caller; separated out so a test can assert on the
+    output without capturing stdout.
+    """
+    out = []
     pc = start
     for _ in range(count):
         i = pc - base
@@ -80,16 +99,33 @@ def run(path, base, start, count):
             break
         op = data[i]
         if op not in T:
-            print(f"${pc:04X}  {op:02X}           .byte ${op:02X}")
+            out.append(f"${pc:04X}  {op:02X}           .byte ${op:02X}")
             pc += 1
             continue
         mn, mode = T[op]
         n = SZ[mode]
         b = data[i:i + n]
         if len(b) < n:
-            break
-        print(f"${pc:04X}  {' '.join(f'{x:02X}' for x in b):<9s}  {fmt(pc, mn, mode, b)}")
+            # The image ends mid-instruction: `op` is a real opcode but there
+            # is no room for its operand. Print it as data, one byte at a
+            # time -- the next iteration takes the next leftover byte the
+            # same way an unknown opcode would, so nothing vanishes silently.
+            out.append(f"${pc:04X}  {op:02X}           .byte ${op:02X}")
+            pc += 1
+            continue
+        out.append(f"${pc:04X}  {' '.join(f'{x:02X}' for x in b):<9s}  {fmt(pc, mn, mode, b)}")
         pc += n
+    return out
+
+
+def run(path, base, start, count):
+    with open(path, "rb") as f:
+        data = f.read()
+    if start - base < 0 or start - base >= len(data):
+        print(f"d6502.py: ${start:04X} is outside the image", file=sys.stderr)
+        return
+    for line in lines(data, base, start, count):
+        print(line)
 
 
 USAGE = """usage: d6502.py <file> <load-address> <start-address> <count>

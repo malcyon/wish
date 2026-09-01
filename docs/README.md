@@ -74,6 +74,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [145-dos-decode-kit.md](145-dos-decode-kit.md) | a stranger's MIT-licensed DOS reverse-engineering kit read against our tables: the ECL bytecode proven to be the same bytes on both ports, the `88 13` header word, the GEO door slice, the DOS byte they misread as a class group, and the `GAME.OVR` overlay map we do not have |
 | [146-unified-ui.md](146-unified-ui.md) | the plan for one `wish/window.ui` holding the whole application layout, so Qt Designer shows the window a user sees: what gets inlined and pre-created at maximum capacity, what stays a separate dialog, and the standalone entry points it drops |
 | [147-combat-rolls.md](147-combat-rolls.md) | what the game rolls when somebody attacks: the generator, the d20 at `$2B10` with 20 stored as 100, the number to beat at `$A4F0` and the damage at `$A4F8`, all readable by ordinary polling, plus the five readings that do not work |
+| [148-d6502.md](148-d6502.md) | making `tools/d6502.py` trustworthy: the `$F6` table bug it shipped with (`INC $nn,X` printed as `SBC $nn,X`), fixed under a hand-built regression suite, plus the capstone sweeps that prove nothing else disagrees and the check that the bug never touched `docs/147-combat-rolls.md` |
 
 `20-character-record.md` is generated — run `python3 tools/gendocs.py` after
 changing `goldbox/layout.py`. `85-item-tables.md` and `86-spell-table.md` are generated too — run
