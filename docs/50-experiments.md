@@ -2719,6 +2719,19 @@ need the emulator: the same read-the-game's-own-code technique that solved level
 drain, the NPC flag and the item bytes solved this too, in one search for
 `STA $D02x`.
 
+**Correction: not every cell is multicolour, and the weapon usually is not
+(#123).** "Every colour byte in the specimen is at or above 8" was true of that
+one specimen and not of the format: the VIC-II draws a cell in multicolour only
+when bit 3 of its colour byte is set, and with bit 3 clear the cell is ordinary
+hires text -- eight single-width pixels, foreground `colour & 7`, background
+`$D021`. `goldbox/iconparts.py`'s `multicolour()` already reads this off bit 7
+of the glyph's class byte in `SPELLE64`, and `SPELLE64` gives every weapon glyph
+bit 7 clear. So the weapon is the one part class the game always draws in
+hires, at twice the horizontal resolution `icon_pixels()` gave it before this
+was noticed: a one-pixel-wide diagonal blade came out a two-pixel-wide smear.
+`icon_pixels()` now branches per cell on bit 3 rather than assuming multicolour
+throughout.
+
 ## The area id: `$4BC2`, and it was in the header all along
 
 **SOLVED.** `$4BC2` — `SAVEDGAME0` offset `+$2C4` — is the `GEO` file number,
