@@ -1302,3 +1302,24 @@ Before committing and pushing any changes, you MUST always run the following che
 1. `pytest` (to ensure all tests pass)
 2. `.venv/bin/ruff check .` (to ensure there are no unused imports or linting errors)
 3. `.venv/bin/python3 tools/genui.py --check` (to ensure all `.ui` files are compiled and up to date)
+
+**Run the whole suite, not the files you touched.** A scoped run is for working;
+it is not the check. `pytest tests/test_combatdrive.py` was green and `main`
+went red on all four jobs eight minutes later.
+
+**`git add` a new file *before* the last local run.**
+`tests/test_repository_contents.py` walks the files **git knows about** -- the
+allowlist for `tests/fixtures/`, the ban on committed disk images and
+executables, and `test_no_hardcoded_user_paths`. An untracked file is in none
+of those lists, so every one of those checks passes by not looking, and the
+file becomes visible to them at the moment it is committed -- which is after
+the run that was supposed to clear it.
+
+That is how `tools/fightrun.py` shipped `DISKS =
+pathlib.Path("/home/donald/c64/...")` on 2026-09-01, red on all four jobs
+against a suite that had passed twice locally. **A new file is the one case
+where a green local suite says nothing about the checks that govern it.**
+
+And when a new file needs a path to the player's disks, use what the other
+tools use -- `$POR_DISKS`, then `automap.paths.find_disks()` -- rather than a
+fourth way. `tools/geomap.py` is the one-liner.
