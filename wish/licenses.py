@@ -42,9 +42,21 @@ def page(name: str) -> str:
     return f"{SITE}1x1/{icons.ARTISTS[name].lower()}/{name}.html"
 
 
+#: Glyphs whose page title is not their filename. game-icons.net's URL slug
+#: for Lorc's *Embraced energy* misspells it, and Donald caught the credit
+#: repeating the typo: attribution names a work as its author titled it, and
+#: the author titled it "Embraced energy". The slug stays wrong in `page()`,
+#: because that is the address that resolves.
+TITLES = {"embrassed-energy": "Embraced Energy"}
+
+
 def title(name: str) -> str:
-    """`death-skull` as the site titles it: *Death Skull*."""
-    return name.replace("-", " ").title()
+    """`death-skull` as the site titles it: *Death Skull*.
+
+    Except where the site's own filename disagrees with its page title -- see
+    `TITLES`.
+    """
+    return TITLES.get(name) or name.replace("-", " ").title()
 
 
 def by_artist() -> list[tuple[str, list[str]]]:

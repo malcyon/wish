@@ -11,7 +11,7 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 ### Lorc
 
 * [Oppression](https://game-icons.net/1x1/lorc/oppression.html)
-* [Embrassed Energy](https://game-icons.net/1x1/lorc/embrassed-energy.html)
+* [Embraced Energy](https://game-icons.net/1x1/lorc/embrassed-energy.html)
 * [Strong](https://game-icons.net/1x1/lorc/strong.html)
 * [Sparkling Sabre](https://game-icons.net/1x1/lorc/sparkling-sabre.html)
 * [Hazard Sign](https://game-icons.net/1x1/lorc/hazard-sign.html)

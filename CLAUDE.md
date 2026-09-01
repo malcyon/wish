@@ -1134,12 +1134,20 @@ filename carries the typo, and Donald ruled on 2026-09-01: *"I think
 'embrassed' is a typo from game-icons.net. Let's refer to it as 'embraced'
 unless we are referring to the url."*
 
-So the identifier, the archive filename and **the licence credit** keep
-`embrassed-energy` -- the identifier because the committed path data is diffed
-against that file, and the credit because attribution names a work as its
-author titled it. Renaming somebody's work in the file that credits them is
-the one place a typo has to stay. Everywhere a person reads it, it is
-"embraced".
+**Only the URL slug carries the typo.** The icon's page on game-icons.net is
+titled *Embraced energy*; it is the filename that misspells it. So:
+
+* the **identifier and the archive filename** keep `embrassed-energy`, because
+  the committed path data is diffed against that file;
+* the **URL** keeps it, because that is the address that resolves;
+* **the licence credit says "Embraced Energy"**, because attribution names a
+  work as its author titled it -- and Lorc titled it that. `wish/licenses.py`'s
+  `TITLES` is the one-entry override that does it.
+
+Getting that last one backwards is easy and I did: I reasoned that a credit
+should keep the author's spelling, which is right, and then used the filename
+as the author's spelling, which is wrong. Donald: *"It's called 'Embraced
+energy icon'. It says so on the game-icons.net website."*
 
 **Code is the exception, and only where the API names it.** Qt's own methods
 are `setTextElideMode` and `ElideRight`, so `elide` in `editor/rosterview.py`
