@@ -44,7 +44,7 @@ from editor.window import EditorBinding
 from goldbox import games
 from ui.appicon import app_icon
 
-from . import backends, debuglog, debugmode, nativewatch
+from . import backends, debuglog, debugmode, licenses, nativewatch
 from .about import install as install_help
 from .preferences import (
     SHORTCUT,
@@ -258,7 +258,8 @@ class WishWindow(QMainWindow):
         view.addAction(self.show_log_action)
 
         self._make_backend_actions()
-        install_help(self)
+        help_menu = install_help(self)
+        self.licenses_action = licenses.install(self, help_menu)
         if getattr(self.settings, "diagnostics", False):
             self.debug_action.blockSignals(True)
             self.debug_action.setChecked(True)

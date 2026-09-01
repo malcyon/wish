@@ -18,6 +18,7 @@ of it is in `goldbox/`, `editor/` or `wish/`.
 | `genimports.py` | Reads the module-level import edges inside one package out of the AST, and writes the dependency graph `docs/117-save-conversion.md` carries. **Generates** that graph rather than drawing it by hand, because the edge it exists to catch -- a codec importing another codec -- is exactly the one somebody adds without noticing. |
 | `genicons.py` | **Generates** the platform icon files in `assets/` from `ui/appicon.py`, offscreen. Every size is rendered rather than scaled, because Windows picks the nearest entry and bilinearly scales it — a `.ico` holding only a 256 gives mush at the 16 px used in the title bar and Alt-Tab. `--check` asks whether `assets/` is in step. |
 | `genitems.py` | **Generates** `docs/85-item-tables.md` by reading `ITEMNAMES` and `ITEMS` straight off a game disk, so the names carry no transcription errors and none of the data enters the repository. |
+| `genlicenses.py` | **Generates** `THIRD_PARTY_LICENSES.md` from `ui/icons.py`, so the CC BY 3.0 attribution names exactly the game-icons.net glyphs that ship. `--check` fails if the committed file has drifted, which is what `tests/test_licenses.py` runs. |
 | `genlevels.py` | **Generates** `docs/89-level-tables.md` from `goldbox/levels.py`. |
 | `genmaps.py` | **Generates** `docs/88-map-files.md` from the GEO files on the game disks. Needs a set of disks — `POR_DISKS`, or a directory argument. |
 | `genmemory.py` | **Generates** `docs/41-memory-regions.md` from `goldbox/memory.py`. |

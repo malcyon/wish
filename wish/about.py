@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QMenu, QMessageBox
 
 from ui.appicon import pixmap
 
@@ -47,8 +47,14 @@ def about(parent: QMainWindow | None = None) -> None:
     box(parent).exec()
 
 
-def install(window: QMainWindow) -> None:
-    """Add the Help menu to a window's menu bar."""
+def install(window: QMainWindow) -> QMenu:
+    """Add the Help menu to a window's menu bar, and hand it back.
+
+    Returned rather than dropped so `window.py` can put Licenses beside About
+    without reaching into the menu bar to find the menu again.
+    """
     action = QAction("&About Wish", window)
     action.triggered.connect(lambda _checked=False: about(window))
-    window.menuBar().addMenu("&Help").addAction(action)
+    menu = window.menuBar().addMenu("&Help")
+    menu.addAction(action)
+    return menu
