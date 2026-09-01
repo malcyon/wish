@@ -176,6 +176,16 @@ function Read-Claim {
       if ($c['boot'] -ne (Boot-Stamp)) { return @{ state = 'stale'; claim = $c } }
       return @{ state = 'held'; claim = $c }
     }
+    # No holder line. Either a write in flight -- Try-TakeClaim holds the file
+    # with FileShare::None and writes `boot` before `holder`, so a reader in
+    # that instant sees neither -- or the wreck of one that was killed
+    # part-way, which is how this guest fails: an ssh drop takes the child
+    # PowerShell's whole process tree. Tell them apart by the clock. Anything
+    # written before this boot cannot be a write in flight now, and treating it
+    # as merely unreadable would deadlock every command until a person passed
+    # -Override, which is not what 1.1 promises about a claim outliving a boot.
+    $written = (Get-Item $ClaimFile -ErrorAction SilentlyContinue).LastWriteTime
+    if ($written -and $written -lt [datetime](Boot-Stamp)) { return @{ state = 'stale' } }
     Start-Sleep -Milliseconds 50
   }
   @{ state = 'unreadable' }
@@ -411,8 +421,33 @@ switch ($Cmd) {
           Claim-Way-Out $c 'take'
           exit 1
         }
-        if ($c['holder'] -ne $Holder) { $previous = $c['holder'] }
-        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+        if ($c['holder'] -eq $Holder) {
+          # Already ours, so there is nothing to write, and writing anyway is
+          # what the fault was: re-asserting a claim used to delete the file
+          # first, and for the couple of milliseconds in between the lane read
+          # plainly FREE -- not held, not unreadable -- so another holder's
+          # CreateNew landing in there won it without -Override, and its success
+          # line did not even say it had taken anything, because what it read
+          # was an empty lane. A holder retrying a claim whose ssh reply was
+          # lost is an ordinary thing to do.
+          #
+          # Measured with the gap widened to 200 ms so it could be seen at all:
+          # five intrusions in twelve seconds. Touching nothing removes the
+          # window rather than narrowing it, and `since` then keeps saying when
+          # the lane was actually taken.
+          #
+          # The first attempt at this wrote a temporary file and called
+          # [IO.File]::Replace to rename it over the claim. It never once
+          # worked: PowerShell turns the $null backup-path argument into an
+          # empty string, and Replace answers "The path is not of a legal
+          # form" -- so every re-claim failed, and said "the lane was taken by
+          # <yourself> while this call was running".
+          "ok claimed by $Holder (already yours since $($c['since']))"
+          exit 0
+        } else {
+          $previous = $c['holder']
+          Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+        }
       }
       elseif ($r['state'] -eq 'stale') {
         # From an earlier boot. Nobody can still be driving, because every
@@ -628,6 +663,14 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # Resolve-MyEmulator refuses when there is more than one winuae64 -- safety
     # belonging to a different check is not safety here. The driver knows the
     # right pid; anything else is refused.
+    # -match is not global, so it reads only the FIRST -TargetPid: given two,
+    # the check would pass on the good one while both were forwarded to
+    # winuae-send.ps1, whose binder's preference between them is not something
+    # this depends on. Refuse the shape instead of needing the answer.
+    if (@([regex]::Matches($sendargs, '-TargetPid')).Count -gt 1) {
+      'fail send was given more than one -TargetPid'
+      exit 1
+    }
     if ($sendargs -match '-TargetPid(?:\s+(\d+))?') {
       $given = $Matches[1]
       if (-not $given -or [int]$given -ne $p.Id) {

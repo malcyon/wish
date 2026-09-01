@@ -28,9 +28,14 @@ param(
   # likely; the scenario also says how many rounds actually raced, and fails
   # when that is none.
   [int]$HijackRounds = 0,
-  [ValidateSet('all','args','own','sendpid','hijack','claimrace','foreignstop','foreignkey','claim')][string]$Scenario = 'all'
+  [ValidateSet('all','args','own','sendpid','hijack','claimrace','reclaim','foreignstop','foreignkey','claim')][string]$Scenario = 'all'
 )
 if ($HijackRounds -le 0) { $HijackRounds = [Math]::Max(9, $Rounds * 3) }
+# The reclaim window is between one Remove-Item and one CreateNew -- a couple of
+# milliseconds -- so it is chased with a storm of calls over a few seconds
+# rather than with single shots.
+$ReclaimRounds  = [Math]::Max(4, $Rounds)
+$ReclaimSeconds = 12
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
@@ -219,6 +224,55 @@ function Scenario-Hijack {
   Reset-Lane | Out-Null
 }
 
+# A holder re-asserting a lane it already holds is the path that had no test,
+# and it is where the fault was the second time: the re-claim deleted the file
+# before writing it, and for the couple of milliseconds in between the lane read
+# plainly FREE -- so another holder's claim could win it without -Override, and
+# without its success line even saying it had taken anything.
+#
+# The window itself cannot be observed from outside; what is observable is that
+# the calls overlapped and that nobody but the holder was granted the lane. So
+# this storms both sides for a few seconds and reports how many attempts each
+# made, which is the honest form of "this had a chance to fire".
+function Scenario-Reclaim {
+  "reclaim: a holder re-asserting its own lane must not let anybody else in"
+  if (-not $HasClaim) { "  n/a $Driver has no claim"; return }
+  for ($n = 1; $n -le $ReclaimRounds; $n++) {
+    if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
+    $first = Drive @('claim', '-Holder', 'driverA')
+    if ($first.code -ne 0) { Verdict $false "round ${n}: driverA could not take the lane" $first.out; continue }
+    $at    = (Get-Date).AddSeconds(4)
+    $until = $at.AddSeconds($ReclaimSeconds)
+    $storm = @('driverA', 'driverB1', 'driverB2', 'driverB3') | ForEach-Object {
+      Start-Job -ScriptBlock {
+        param($drv, $who, $from, $to)
+        while ((Get-Date) -lt [datetime]$from) { Start-Sleep -Milliseconds 2 }
+        while ((Get-Date) -lt [datetime]$to) {
+          # Jitter, and it is the difference between a check that fires and one
+          # that cannot. Without it every job runs the same length of cycle from
+          # the same starting instant, so the other holders' reads keep landing
+          # in the same phase of the holder's -- always after its write, never
+          # in the gap. Measured: 131 attempts, not one intrusion; with jitter
+          # and the gap widened, five.
+          Start-Sleep -Milliseconds (Get-Random -Minimum 0 -Maximum 400)
+          '--- call'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $drv claim -Holder $who 2>&1 | Out-String
+        }
+      } -ArgumentList $Driver, $_, $at.ToString('o'), $until.ToString('o')
+    }
+    $outs = @($storm | ForEach-Object { (Receive-Job -Job $_ -Wait -AutoRemoveJob) -join "`n" })
+    $all  = $outs -join "`n"
+    $reasserted = @([regex]::Matches($all, '(?m)^ok claimed by driverA')).Count
+    $attempts   = @([regex]::Matches($all, '(?m)^--- call')).Count - $reasserted
+    $intruded   = @([regex]::Matches($all, '(?m)^ok claimed by driverB\d')).Count
+    $held = ((Drive @('status')).out -split "`r?`n" | Where-Object { $_ -match '^claim' }) -join ''
+    Verdict ($intruded -eq 0) `
+            "round ${n}: nobody but driverA was granted the lane (driverA re-asserted $reasserted times, others tried $attempts)" `
+            ("granted to others: $intruded`n$held")
+  }
+  Reset-Lane | Out-Null
+}
+
 # `send` is the one command that takes a pid from the caller, and a supplied
 # -TargetPid used to be preferred over the one the ownership check had just
 # proved. That it was inert depended on a different check refusing two
@@ -336,6 +390,7 @@ if ($Scenario -in @('all','claim'))       { Scenario-Claim }
 if ($Scenario -in @('all','own'))         { Scenario-Own }
 if ($Scenario -in @('all','sendpid'))     { Scenario-SendPid }
 if ($Scenario -in @('all','claimrace'))   { Scenario-ClaimRace }
+if ($Scenario -in @('all','reclaim'))     { Scenario-Reclaim }
 if ($Scenario -in @('all','hijack'))      { Scenario-Hijack }
 if ($Scenario -in @('all','foreignstop')) { Scenario-ForeignStop }
 if ($Scenario -in @('all','foreignkey'))  { Scenario-ForeignKey }

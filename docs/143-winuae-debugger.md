@@ -173,8 +173,27 @@ two callers both passing `-Override` can take the lane from each other, because
 a steal deletes and re-creates and both are entitled to; and a claim file that
 is present but unreadable is refused rather than assumed free — the first
 version assumed free, and the losers of a race then deleted the winner's claim
-and took the lane, which is how three of six calls were still being granted
-after the create was made atomic.
+and took the lane, which granted 2, 2 and 3 holders of six across five rounds
+even after the create was made atomic.
+
+**A holder re-asserting a lane it already holds touches nothing at all**, and
+that is the third thing this had to be taught. Re-claiming used to delete the
+file and write it again, and for the couple of milliseconds in between the lane
+read plainly *free* — not held, not unreadable — so another holder's `CreateNew`
+landing in there won it **without `-Override`**, and its success line did not
+even say it had taken anything, because what it read was an empty lane. A
+holder retrying a claim whose ssh reply was lost is an ordinary thing to do.
+Now the call reports `ok claimed by <id> (already yours since …)` and writes
+nothing, which removes the window rather than narrowing it.
+
+**A claim file that is present, has no `holder` line, and was last written
+before this boot is treated as stale.** `Try-TakeClaim` writes `boot` before
+`holder`, so a process killed between the two — an ssh drop takes the child
+PowerShell's whole tree, which is how this guest fails — leaves a wreck that
+would otherwise be `unreadable` for ever, refusing every command until a person
+passed `-Override`. The clock settles it: nothing written before this boot can
+be a write in flight now, and §1.1's promise that a claim cannot outlive its
+boot holds for the wreckage too.
 
 **Every refusal says how to get unstuck.** An agent whose predecessor died
 without releasing would otherwise read only "claimed by dead-agent since 09:14"
@@ -215,8 +234,9 @@ at `Position=1`, `winuae.ps1 key 7A` bound `cmd=[key] holder=[7A] rest=[]` and
 the keypress was refused for having no VK code.
 
 `tools/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
-of the driver it is pointed at, so the old one can be watched to fail. Measured
-2026-09-01, three rounds each:
+of the driver it is pointed at, so an older one can be watched to fail.
+Measured 2026-09-01; the round count is per row, because the rare ones need
+more of them:
 
 | scenario | before | after |
 |---|---|---|
@@ -224,6 +244,7 @@ of the driver it is pointed at, so the old one can be watched to fail. Measured
 | `key` from a second driver presses into the first's game | 3 of 3 | 0 of 3 |
 | `start` reports the neighbour's emulator as its own success | 7 of 9 | 0 of 9 |
 | six simultaneous `claim`s grant more than one holder | 2 of 3 rounds, all six granted | 0 of 8 rounds |
+| a second holder takes a lane while its holder re-asserts it | 4 of 4 rounds, with the window widened | 0 of 4 rounds, widened and not |
 | `send` obeys a `-TargetPid` that is not the lane's emulator | yes | refused |
 | the holder's own `start`, `key`, `send` and `stop` still work | works | works |
 
@@ -834,10 +855,34 @@ the WinUAE VM, and neither of them can tell)`:
   three holders of six, because a loser reading the winner's half-written file
   saw no claim and deleted it; create-then-confirm-the-token gives exactly one
   holder, 8 rounds of 8
+* **the re-claim window cannot be hit by chance, and had to be widened to be
+  seen at all.** Storming the committed driver with a holder re-asserting its
+  lane while three others claimed — 198 attempts over four rounds — produced no
+  intrusion; the gap between its `Remove-Item` and its `CreateNew` is a couple
+  of milliseconds and a fresh `powershell.exe` takes longer than that to reach
+  its first `Test-Path`. With a `Start-Sleep -Milliseconds 200` inserted in that
+  gap in a copy, the same storm let another holder in **five times in twelve
+  seconds**, with no `-Override` anywhere. The same 200 ms in the same place in
+  the fixed driver: no intrusion in four rounds and 228 attempts
+* **the storm only works because the callers jitter.** Without it every job runs
+  the same length of cycle from the same starting instant, so the other
+  holders' reads keep landing in the same phase of the holder's — always after
+  its write, never in the gap. Measured: 131 attempts against the widened copy,
+  not one intrusion; with `Start-Sleep -Milliseconds (Get-Random 0 400)`, five
+* **`[IO.File]::Replace` cannot take `$null` for its backup path from
+  PowerShell.** The first attempt at a windowless re-claim wrote a temporary
+  file and renamed it over the claim; it never once worked. PowerShell turns
+  the `$null` argument into an empty string and Replace answers *"The path is
+  not of a legal form"*, so every re-claim failed — and reported "the lane was
+  taken by \<yourself\> while this call was running". Caught by the scenario
+  that was written for the window itself, which counted the holder's own
+  re-assertions and found zero
 * **`send` obeyed a caller-supplied `-TargetPid`** over the pid its own
   ownership check had just proved. Refused now, and watched: `fail send was
   given -TargetPid 8272, but this lane's emulator is pid=6136`, with the lane's
-  own console read-back still returning `--- exit 0`
+  own console read-back still returning `--- exit 0`. A *duplicated*
+  `-TargetPid` is now refused outright rather than depending on which of the two
+  `winuae-send.ps1`'s binder would take — `-match` reads only the first
 * **`@($null).Count` is 1**, so `winuae.ps1 stop` with no other arguments walked
   into "Cannot index into a null array" the first time the argument scan was
   written against `@($Rest)`
