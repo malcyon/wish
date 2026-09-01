@@ -85,6 +85,13 @@ BAR_MESSAGE = "message"    # GUARDING, YOUR TEAMMATE IS DYING -- and a bar
 BAR_BLANK = "blank"        # a monster's turn: row 24 is empty
 BAR_NONE = "none"          # no readable screen at all
 
+# What row 24 becomes once the move sub-bar has gone and the turn has moved
+# on.  Deliberately not `BAR_MESSAGE` or `BAR_NONE`: a half-redrawn bar reads
+# as a message, and taking that for the end of a turn is the mistake
+# `combat_state` already refuses to make.
+AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
+              BAR_EXIT, BAR_BLANK)
+
 # `MOVE LEFT = 9` is the move sub-bar's own count of remaining squares, and it
 # is the one thing that tells that bar apart from the command bar, which also
 # begins with MOVE.
@@ -756,6 +763,12 @@ class Session:
             return CombatBar(BAR_YESNO, bar)
         return CombatBar(BAR_BLANK if not bar else BAR_MESSAGE, bar)
 
+    #: How long to give a blow to resolve before calling it refused.  Six
+    #: seconds because a landed one showed inside 1.6 s on every press
+    #: measured (`work/issue127/sweep1.jsonl`) and a refused one had not
+    #: moved after ten (`work/issue127/probe1.jsonl`).
+    ATTACK_TIMEOUT = 6.0
+
     #: Which bars `combat_bar` will walk the highlight along.  Not the move
     #: sub-bar: `MOVE LEFT = 9` is a prompt for a direction, not a menu, and
     #: sending Right there steps the character.
@@ -834,8 +847,21 @@ class Session:
         some characters get `DELAY QUIT SPEED EXIT` with no GUARD on it at all.
         `DELAY` postpones the character, which also gets the fight moving;
         `EXIT` only backs out, so it is the last resort rather than the answer.
+
+        **Ask only for a word that is on the bar.**  `combat_bar` has no way of
+        saying "that command is not here": it waits for the label to appear and
+        spins to its full timeout when it never does.  Trying the three blind
+        cost **441 of one 605-second fight's seconds -- 73% of it**.  GUARD was
+        missing on 34 turns at 8 seconds each, and 10 more turns spent 24
+        seconds apiece finding none of the three, because `fight` also calls
+        this at a bar that is not the sub-bar at all (`#127`,
+        `work/issue127/diag1.jsonl`).  One read of row 24 first turns every one
+        of those into a tenth of a second.
         """
+        bar = self.combat_state().text
         for choice in ("GUARD", "DELAY", "EXIT"):
+            if word_column(bar, choice) < 0:
+                continue
             if self.combat_bar(choice, timeout=8):
                 return choice
         return ""
@@ -883,6 +909,35 @@ class Session:
             if time.time() >= deadline:
                 return None
             time.sleep(interval)
+
+    def await_step(self, index, was, before, tries: int = 6,
+                   interval: float = 0.4):
+        """Wait for one combat step to show.  Returns `(moved, bar)`.
+
+        `bar` is None once the move sub-bar has gone, which is how a turn
+        ends.  Two signals, because either is enough and neither is good on
+        its own: row 24's count lags the keypress, and the position table is
+        the authority on where a character actually stands.
+
+        **Neither is read once.**  A single read 20 milliseconds after the key
+        says the game has not caught up yet, not that the step failed -- and
+        `melee_turn` concluded the latter on 27 of 27 turns of one fight,
+        passing 26 of them (`#127`).
+        """
+        for _ in range(max(1, tries)):
+            bar = self.combat_state()
+            if bar.kind in AFTER_MOVE:
+                return True, None
+            if before is not None and bar.moves_left is not None \
+                    and bar.moves_left != before:
+                return True, bar
+            b = self.battle()
+            me = None if b is None else next(
+                (c for c in b.combatants if c.index == index), None)
+            if me is not None and (me.x, me.y) != was:
+                return True, bar
+            time.sleep(interval)
+        return False, self.combat_state()
 
     @staticmethod
     def step_towards(battle, me, target, avoid=()) -> str | None:
@@ -977,13 +1032,44 @@ class Session:
             key = self.step_towards(b, me, target, avoid)
             if key is None:                     # nowhere to go that helps
                 break
+            delta = next(d for d, k in STEP_KEYS.items() if k == key)
+            into = b.at(me.x + delta[0], me.y + delta[1])
             before = moving.moves_left
+            was = (me.x, me.y)
             self.kbd.key(key, 0.15, 0.30)
-            moving = self.await_bar((BAR_MOVE,), timeout=3)
+            if into is not None and not into.is_party:
+                # **The blow, and it is not a step.**  An attack spends no
+                # movement and does not move the character, so neither the
+                # count on row 24 nor the position table says it happened --
+                # measured at a live sub-bar, ROLAND at (29,13) against an orc
+                # on (28,14): `MOVE LEFT` 9 before and 9 after, nobody moved,
+                # and the orc went from 5 hit points to 1
+                # (`work/issue127/sweep1.jsonl`, turn 15).
+                #
+                # Treating that as "the step cost nothing, so it did not
+                # happen" is what put the attack key in `avoid` on every turn
+                # of every fight, and passed 26 of 27 turns with the party
+                # standing next to the orcs (`#127`).  So: press it, and wait
+                # for the turn to move on rather than for a square to be
+                # spent.
+                if self.await_bar(AFTER_MOVE, self.ATTACK_TIMEOUT) is not None:
+                    return "ATTACK"
+                # Still on the sub-bar six seconds later, so the blow was
+                # refused rather than struck.  Seen for a character with a
+                # **missile weapon readied** -- MALCYON with 13 DART, six
+                # presses watched for ten seconds apiece, no message, no
+                # damage, nothing (`work/issue127/probe1.jsonl`).  Pass the
+                # turn; do not stand there pressing it again.
+                self.press_kernal(0x0D)
+                return self.combat_turn()
+            moved, moving = self.await_step(index, was, before)
             if moving is None:
-                return "MOVE"                   # attacked, spent, or dead
-            if before is not None and moving.moves_left == before:
-                # The step cost nothing, so it did not happen.  Try another.
+                return "MOVE"                   # spent, or dead
+            if not moved:
+                # A wall, and the count says so: a step into impassable
+                # terrain spends nothing and moves nobody -- LADY KATHERINE
+                # at (29,11) north-east into terrain code 1, `MOVE LEFT` 5
+                # and 5 (`work/issue127/sweep1.jsonl`, turn 5).  Try another.
                 avoid.add(key)
             else:
                 stepped = True

@@ -706,3 +706,166 @@ def test_a_turn_with_no_guard_offered_is_delayed_rather_than_left():
     sess = FakeSession(frames)
     assert sess.end_turn() == "DELAY"
     assert sess.kbd.sent == ["Return"]
+
+
+class RecordingBars(FakeSession):
+    """A `FakeSession` that remembers which labels it was asked for."""
+
+    def __init__(self, frames):
+        super().__init__(frames)
+        self.asked: list[str] = []
+
+    def combat_bar(self, label, timeout=20.0, row=24):
+        self.asked.append(label)
+        return super().combat_bar(label, timeout, row)
+
+
+def test_end_turn_asks_only_for_a_command_that_is_on_the_bar():
+    """`combat_bar` cannot say "not here"; it waits out its whole timeout.
+
+    Asking for GUARD, DELAY and EXIT blind spent 441 of one 605-second
+    fight's seconds -- 73% of it -- waiting for words that were not on row
+    24 (`#127`, `work/issue127/diag1.jsonl`).  Reading the bar first costs one
+    screen read.
+    """
+    sess = RecordingBars([(COMBAT, command_bar("DELAY QUIT SPEED EXIT",
+                                               "DELAY"))])
+    assert sess.end_turn() == "DELAY"
+    assert sess.asked == ["DELAY"]              # never GUARD, which is not there
+
+
+def test_end_turn_at_a_bar_with_no_way_out_asks_for_nothing():
+    """`fight` calls `end_turn` whenever row 24 reads as the sub-bar, and a
+    bar caught mid-redraw is not one.  Three blind tries there cost 24
+    seconds; reading first costs nothing and the turn is retried next poll."""
+    sess = RecordingBars([(COMBAT, command_bar("MOVE VIEW AIM USE QUICK DONE",
+                                               "MOVE"))])
+    assert sess.end_turn() == ""
+    assert sess.asked == []
+
+
+class AttackArena(ArenaSession):
+    """An arena where the orc is next door and the blow lands.
+
+    What the game actually does, measured at a live sub-bar: `MOVE LEFT` does
+    not go down, nobody moves, the target loses hit points and the move
+    sub-bar goes away a moment later -- ROLAND at (29,13) against an orc on
+    (28,14), 9 squares before and 9 after, the orc 5 hit points before and 1
+    after (`work/issue127/sweep1.jsonl`, turn 15).
+    """
+
+    def __init__(self, battle, name, steps, resolve=2, highlight="MOVE"):
+        super().__init__(battle, name, steps, highlight)
+        self.resolve = resolve
+        self.struck = False
+
+    def step(self):
+        if not self.moving_now:
+            self.moving_now = True
+            self.lag = self.LAG
+        else:
+            self.struck = True              # the blow spends no square
+
+    def screen(self):
+        if self.struck and self.moving_now:
+            self.resolve -= 1
+            if self.resolve <= 0:
+                self.moving_now = False
+        return super().screen()
+
+
+def test_a_step_onto_an_enemy_is_a_blow_and_is_never_avoided():
+    """The whole of `#127`.
+
+    An attack costs no movement, so "the count did not go down, therefore the
+    step did not happen" puts the one key that would land the blow into
+    `avoid` -- and the character then passes its turn standing next to the
+    orc.  26 of 27 turns of one fight went that way.
+    """
+    b = combat.read_battle(MemoryTarget(synthetic_arena(
+        fighters=((0, 25, 13), (8, 26, 13)))))
+    me = b.party[0]
+    assert chebyshev(me, b.enemies[0]) == 1
+    sess = AttackArena(b, me.name, steps=9, resolve=3)
+    assert sess.melee_turn(sess.combat_state()) == "ATTACK"
+    assert sess.kbd.sent == ["Return", "KP_6"]      # MOVE, then the blow
+
+
+class RefusedArena(ArenaSession):
+    """A blow the game will not let this character strike.
+
+    MALCYON with `13 DART` readied: six presses into the orc on the next
+    square, each watched for ten seconds with nothing else sent, and the
+    sub-bar never went away, no message and no damage
+    (`work/issue127/probe1.jsonl`).
+    """
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.left_move = False
+
+    def step(self):
+        if not self.moving_now and not self.left_move:
+            self.moving_now = True
+            self.lag = self.LAG
+        # and the attack key does nothing at all
+
+    def press_kernal(self, code):
+        """Backing out of move mode, and the bar comes back on `DONE`."""
+        self.injected.append(code)
+        self.moving_now = False
+        self.left_move = True
+        col = word_column(self.BAR, "DONE")
+        self.command = FakeScreen(
+            {24: self.BAR, 2: " " * PANEL_LEFT + self.name},
+            (24, col, col + len("DONE") - 1))
+
+
+def test_a_blow_the_game_refuses_passes_the_turn_rather_than_pressing_on():
+    b = combat.read_battle(MemoryTarget(synthetic_arena(
+        fighters=((0, 25, 13), (8, 26, 13)))))
+    me = b.party[0]
+    sess = RefusedArena(b, me.name, steps=9)
+    sess.ATTACK_TIMEOUT = 0.5
+    assert sess.melee_turn(sess.combat_state()) == "DONE"
+    assert sess.kbd.sent.count("KP_6") == 1         # pressed once, not eight
+    assert sess.injected == [0x0D]                  # and move mode left
+
+
+class LaggingCount(ArenaSession):
+    """Row 24's count lags the keypress by two reads."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.pending = 0
+
+    def step(self):
+        if not self.moving_now:
+            self.moving_now = True
+            self.lag = self.LAG
+        elif self.left > 0:
+            self.pending = 2                # it happened; the screen is behind
+
+    def screen(self):
+        if self.moving_now and self.pending:
+            self.pending -= 1
+            if self.pending == 0:
+                self.left -= 1
+                if self.left == 0:
+                    self.moving_now = False
+        return super().screen()
+
+
+def test_a_step_whose_count_lags_is_not_taken_for_one_that_failed():
+    """One read 20 ms after the key says the game has not caught up yet.
+
+    `melee_turn` used to read the count straight back and drop the direction
+    when it had not moved -- and the read came back in 0.02 s on all 27 turns
+    of the fight in `#127`, because it was asking for the bar it was already
+    looking at.
+    """
+    b = combat.read_battle(MemoryTarget(synthetic_arena()))
+    me = b.party[0]
+    sess = LaggingCount(b, me.name, steps=2)
+    assert sess.melee_turn(sess.combat_state()) == "MOVE"
+    assert sess.kbd.sent == ["Return", "KP_6", "KP_6"]
