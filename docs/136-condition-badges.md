@@ -1,10 +1,17 @@
-# Condition badges on the roster card
+# Condition badges
 
-**Donald chose the icons and they are built.** Seven badges, all from
+**Donald chose the icons and they are built.** Nine badges, all from
 game-icons.net under CC BY 3.0, each verbatim from the artist's own SVG —
-`#4 (Condition badges on the roster card)` carries his table and his wording.
-What is below is the reasoning they were chosen against and the record of what
-was measured; the shipped set is the first table.
+`#4 (Condition badges on the roster card)` carries his first table and his
+wording, and `#142 (The party effects line is computed every poll and shown
+nowhere)` the two glyphs and the two groupings that finished it. What is below
+is the reasoning they were chosen against and the record of what was measured;
+the shipped set is the first table.
+
+**The same badge is drawn in two places** — on a roster card for a spell that
+landed on one character, and on the automapper's bottom strip for one that
+landed on the whole party. `automap/live.py`'s `badges()` is the single
+function both go through, so the same spell cannot become two pictures.
 
 ## What ships
 
@@ -13,15 +20,23 @@ was measured; the shipped set is the first table.
 | dead or dying | hit points at 0 | `death-skull` | sbed | 1 piece, 103 |
 | levels drained | record `0x0A1` | `oppression` | Lorc | 6 pieces, 63 |
 | hasted | 39 | `running-ninja` | Darkzaitzev | 2 pieces, 27 |
-| blessed | 1, 35 | `healing-shield` | Delapouite | 1 piece, 71 |
-| warded | 8, 9, 17, 28, 41, 89 | `embrassed-energy` | Lorc | 4 pieces, 43 |
+| blessed | 1, 35, 49 | `healing-shield` | Delapouite | 1 piece, 71 |
+| warded | 8, 9, 17, 28, 41, 45, 46, 89 | `embrassed-energy` | Lorc | 4 pieces, 43 |
 | invisible | 25 | `eyelashes` | Delapouite | see below |
 | strengthened | 12, 38 | `strong` | Lorc | 1 piece, 55 |
+| silenced | 21 | `mute` | Delapouite | 1 piece, 85 |
+| slowed | 42 | `snail` | Lorc | 2 pieces, 66 |
 | quickfight | roster `+0x0C` bit 7 | `sparkling-sabre` | Lorc | 2 pieces, 51 |
 
 Quickfight is not a condition and keeps its own row; it is here because Donald
 settled its glyph in the same breath, to stop two running figures landing on
 one card.
+
+`mute` is the second-solidest glyph in the set — one piece and 85 ink at 13 px,
+behind only `death-skull` — but what survives is the silhouette and not the
+subject: magnified, it reads as a shape rather than legibly as a silenced
+face. `snail`'s shell is unmistakable at 13 px. The numbers come from
+`tools/inkcount.py` and the pictures from `tools/iconsheet.py`.
 
 **`invisible` drew nothing at 13 px, and was replaced.** 816 ink pixels at
 128 px against 5,000–9,500 for the rest of the set: it was a **dashed**
@@ -31,8 +46,11 @@ Donald chose `eyelashes` (Delapouite) in its place — *"how about this one for
 invisibility?"* — and it reads as a closed eye. `oppression`,
 `embrassed-energy`, `running-ninja` and `sparkling-sabre` all come apart into
 two to six pieces at 13 px and are legible only as a general shape. The sheet
-is `tools/iconsheet.py`, which now carries all eight, and a magnified render
-is `work/eyelashes-13px-x6.png`.
+is `tools/iconsheet.py`, which carries all ten, and a magnified render is
+`work/eyelashes-13px-x6.png` (lost with `work/` — `#136 (Thirty-two cited
+write-ups are gone, because the knowledge base pointed into gitignored
+scratch)`; re-render it with
+`tools/iconsheet.py`).
 
 **`eyelashes` is a genuine improvement, and it is worth saying by how much
 depending on how you count.** Counting any pixel the antialiased fill touches
@@ -45,18 +63,36 @@ does not reach half coverage at this size. That is the same failure mode
 that killed `invisible`, to a lesser degree: a fine line is exactly what a
 50%-coverage threshold is worst at counting, even where a human eye reads the
 antialiased blur as one continuous stroke. The picture is the fairer judge
-here than either count — see it before choosing a ninth glyph.
+here than either count — see it before choosing another glyph.
 
 **The measurement is the same rig the rest of this file uses** — ink is a pixel
 at least half covered, pieces are 8-connected blobs — and it agrees pixel for
-pixel with Qt's own SVG renderer reading the same `d`, at 13, 26 and 128 px,
-for all eight. `tests/test_conditionbadges.py` keeps it that way.
+pixel with Qt's own SVG renderer reading the same `d`, at 13, 26, 128 and
+512 px, for all ten. `tests/test_conditionbadges.py` keeps it that way, and
+the rig is `tools/inkcount.py`, which reproduces every number in the table
+above.
 
-**Every badged effect id is CONFIRMED in `goldbox/traits.py`.** Two groupings
-this document once left open stay open, because their ids are PROBABLE: the
-10' radius pair **45/46** could join *warded* and **49 Prayer** could join
-*blessed*, and neither is decided here. `#142 (The party effects line is
-computed every poll and shown nowhere)` is where they matter.
+**Five badged effect ids are PROBABLE rather than CONFIRMED, and that is
+deliberate.** The two groupings this document used to leave open are settled:
+the 10' radius pair **45/46** joins *warded* and **49 Prayer** joins *blessed*,
+both on Donald's ruling of 2026-09-01 — *"I do agree that protection from evil
+and good 10ft radius fits well with embraced energy."* **21 Silence 15' Radius**
+and **42 slowed** took `mute` and `snail` in the same breath.
+
+What changed the reasoning is not the grades — all five are still PROBABLE —
+but where the badges are drawn. Every one of the five is a spell that lands on
+the **whole party**, and no save this project holds carries a party-wide effect
+at all: the only effect in any fixture is id 73 with owner `0x00`, which is a
+character. So waiting for CONFIRMED would have left the party effects row
+permanently empty, which is the state `#142 (The party effects line is computed
+every poll and shown nowhere)` exists to end. `automap/live.py`'s
+`PROBABLE_BADGED` is the list of the five, and the test refuses a sixth: a
+PROBABLE id gets a picture only because somebody chose it.
+
+**A party effect no badge covers is drawn nowhere**, and that is the honest
+consequence of a set graded from the spell table rather than from anything
+watched. `BottomStrip` puts such an id in the debug log — once per id, not five
+times a second — so whoever comes to choose a glyph for it has a trail.
 
 ## Where the plan started
 
@@ -220,7 +256,8 @@ displaced collision without choosing between them.
   already filtered to that character by `characters()`. No new decoding was
   needed: `active_effects` had read the four arrays since
   `docs/133-active-effects.md`.
-* **`ui/icons.py`** gained `GAME_ICONS`, the eight paths verbatim, and
+* **`ui/icons.py`** gained `GAME_ICONS`, the paths verbatim — eight then,
+  ten since `mute` and `snail` — and
   `ARTISTS` beside them so an attribution file can be generated from what
   ships. game-icons.net draws on a **512** box where Font Awesome draws on 640,
   so `box(name)` was added and `ui/iconpaint.py` and `automap/render.py` scale
@@ -233,7 +270,7 @@ displaced collision without choosing between them.
   `CLAUDE.md`'s Art section forbids. `Q` and `T` are raised rather than guessed
   at.
 * **The card did not get any taller.** `IconRow` is a fixed 13 high and grows
-  only sideways, so a card with all seven badges lit has the same
+  only sideways, so a card with every badge lit has the same
   `sizeHint` and `minimumSizeHint` height as a bare one — 58 and 43 here, and
   the window's own minimum stayed 477. That matters because
   `#135 (The automapper's roster column does not scroll, so a full party puts a

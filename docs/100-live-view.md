@@ -181,25 +181,30 @@ number is only interesting while editing, it belongs on the editor tab.
    [`89-level-tables.md`](89-level-tables.md) and verified against the game
    rather than transcribed. `automap/live.py` already draws the experience bar
    from `levels.progress()`.
-3. **The hit point bar and experience bar are done** — `automap/panel.py`'s
-   `CharacterCard.show_character`, `Bar` and `hp_colour`. **Per-character
-   effects are not.** `Character.effects` is decoded and carried on every
-   character, but nothing in `automap/panel.py` reads it; the card badges only
-   two conditions (dead/dying, levels drained). The rest waits on Donald
-   choosing an icon per effect — the decision sheet is
-   [`136-condition-badges.md`](136-condition-badges.md).
-4. **Built, folded into the bottom strip rather than a separate panel — and
-   then lost.** `BottomStrip.show_state` (`automap/panel.py`) still lists
-   party-wide effects by label and counts monster effects rather than listing
-   them row by row, deliberately: a monster's effects belong to whatever is
-   being fought, and the combat view is where they will mean something.
+3. **The hit point bar, the experience bar and the per-character effects are
+   all done** — `automap/panel.py`'s `CharacterCard.show_character`, `Bar` and
+   `hp_colour`, and a row of condition badges beside the readied line. Donald
+   chose the glyphs on `#4 (Condition badges on the roster card)` and the last
+   two on `#142 (The party effects line is computed every poll and shown
+   nowhere)`; which effect ids each badge covers, and how each glyph survives
+   13 px, is [`136-condition-badges.md`](136-condition-badges.md).
+4. **Built, folded into the bottom strip rather than a separate panel — lost,
+   and rebuilt as icons.** `BottomStrip.show_effects` (`automap/panel.py`)
+   draws **one icon row for the whole roster** above the square and the area
+   name, with each spell's name in the row's tooltip. Monster effects are
+   counted in that tooltip rather than listed, deliberately: a monster's
+   effects belong to whatever is being fought, and the combat view is where
+   they will mean something.
 
-   **But none of it reaches the screen.** The label it writes into,
-   `strip_effects`, was removed from `wish/window.ui` in the UI redesign, so
-   `findChild` returns `None` and the `if self.effects is not None:` guard
-   discards the line in silence. Whether the line is wanted back is Donald's
-   call — other things were removed from this strip on purpose — and it is
-   [#142](https://github.com/malcyon/wish/issues/142).
+   **It reached nothing at all for months.** It was a `QLabel` called
+   `strip_effects`, removed from `wish/window.ui` in the UI redesign
+   (`72ee9a9`), so `findChild` returned `None` and the `if self.effects is not
+   None:` guard discarded the line in silence, five times a second. Donald
+   settled the shape it came back in on `#142 (The party effects line is
+   computed every poll and shown nowhere)`: one row of icons rather than eight
+   cards each holding a mostly-blank line. `automap/panel.py`'s `child()` now
+   names any widget the form does not have, in the debug log, so the same thing
+   cannot happen quietly again.
 5. **Where is done**, in the same strip. **The loaded-files list was built
    collapsed, then taken back out.** `BottomStrip.__init__`'s comment says
    why: a reverse-engineering number in a window somebody is playing a game in
