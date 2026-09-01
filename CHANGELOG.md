@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Combat messages now show what the dice actually did underneath the game's own line -- the d20 rolled, what was needed to hit, and the damage. ([#139](https://github.com/malcyon/wish/issues/139))
+- Inventory's weight column can now be edited directly, in tenths of a pound.
+
+### Changed
+
+- Heal Party and the Fast Travel dropdown are now refused during a fight, the same as Store/Restore Spells and Identify; Heal Party's message now names who was healed instead of giving a bare count. ([#146](https://github.com/malcyon/wish/issues/146))
+- Combat messages are now shown in ordinary sentence case, instead of the game's own all-capitals shouting.
+- Sleeping and held or paralysed enemies are now marked gold on the combat view, the same as helpless ones, and the tooltip names which condition applies.
+- The Commissions panel is now called the Quest Log, and its "Commissions completed" line now reads "Quests completed".
+
+### Removed
+
+- Renaming a character, which could fail silently and leave the save unchanged with no visible error. ([#145](https://github.com/malcyon/wish/issues/145))
+
+### Fixed
+
+- Character editor's Combat box now shows the number on the character sheet for THAC0 and armour class, instead of the raw stored byte. ([#149](https://github.com/malcyon/wish/issues/149))
+- Automapper reconnects to the emulator after losing it mid-session, instead of needing Wish restarted. ([#151](https://github.com/malcyon/wish/issues/151))
+- Fast Travel into New Phlan no longer draws it with the wall art of the area you warped from. ([#156](https://github.com/malcyon/wish/issues/156))
+- Fast Travel and Return no longer flicker off for a second while the party stands still; a click now waits briefly for the game to be ready instead. ([#152](https://github.com/malcyon/wish/issues/152))
+- Round counter shown beside combat messages now resets at the start of each fight, instead of climbing across every fight in the session.
+
 ## [0.1.2] - 2026-08-30
 
 
@@ -71,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for Pool of Radiance.
 - Partial support for Curse of the Azure Bonds and Secrets of the Silver Blades, where character editing should work but bugs are expected.
 
-[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/malcyon/wish/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/malcyon/wish/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/malcyon/wish/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/malcyon/wish/releases/tag/v0.1.0
