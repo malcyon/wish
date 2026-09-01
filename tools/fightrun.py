@@ -60,16 +60,23 @@ def claim_slot(want: int | None, note: str):
     if want is None:
         return instance.claim(note=note)
     holds, slot = [], None
-    while True:
-        s = instance.claim(note=note)
-        if s.n == want:
-            slot = s
-            break
-        holds.append(s)
-        if s.n > want:
-            break
-    for h in holds:
-        h.release()
+    try:
+        while True:
+            s = instance.claim(note=note)
+            if s.n == want:
+                slot = s
+                break
+            holds.append(s)
+            if s.n > want:
+                break
+    finally:
+        # `instance.claim` raises when the pool is full, and it can do so
+        # part way through -- so releasing has to happen on the way out
+        # rather than after the loop.  Process exit would drop the locks
+        # anyway; a slot held until then is a slot another agent is told
+        # is busy, for as long as it takes this one to die.
+        for h in holds:
+            h.release()
     if slot is None:
         raise RuntimeError(f"slot {want} is not free")
     return slot
@@ -188,19 +195,24 @@ def main(argv=None) -> int:
     run = Run(out, args.quiet)
     slot = claim_slot(args.slot, f"fightrun/{args.save}")
     run.say(f"slot {slot.n} display {slot.display}  log {out}")
-    slot.seed_vicerc()
-    here = pathlib.Path(slot.dir)
-    for i in range(1, 9):
-        src = disks / f"POOL{i}.D64"
-        if src.exists():
-            shutil.copy(src, here / f"SIDE{i}.D64")
-    shutil.copy(disks / args.save, here / "SIDE0.D64")
-
-    sess = S.Session(str(here / "SIDE1.D64"), slot=slot)
-    sess.save_disk = str(here / "SIDE0.D64")
     started = time.time()
     rc = 0
+    sess = None
     try:
+        # Everything that can fail belongs inside this `try`, and the disk
+        # copies are the ones that actually do: a misspelled `--save` is an
+        # ordinary morning's mistake, and outside here it exits through
+        # Python's own handler with the run's log unwritten and unclosed.
+        slot.seed_vicerc()
+        here = pathlib.Path(slot.dir)
+        for i in range(1, 9):
+            src = disks / f"POOL{i}.D64"
+            if src.exists():
+                shutil.copy(src, here / f"SIDE{i}.D64")
+        shutil.copy(disks / args.save, here / "SIDE0.D64")
+        # `Session` points itself at `SIDE0.D64` inside the slot, which is
+        # where the save was just copied, so nothing needs saying here.
+        sess = S.Session(str(here / "SIDE1.D64"), slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed")
         if not sess.load_save():
@@ -235,17 +247,28 @@ def main(argv=None) -> int:
             run.report()
             if r.outcome in (S.LOST, S.NOT_FIGHTING):
                 break
-    except Exception:
+    except Exception as exc:
         import traceback
+        # Into the log as well as onto the terminal: an unattended overnight
+        # run is read the next morning through its `.jsonl`, and a failure
+        # that exists only in a terminal nobody was watching is a run that
+        # says nothing about why it stopped.
+        run.emit("failed", error=repr(exc), traceback=traceback.format_exc())
         traceback.print_exc()
         rc = 1
     finally:
-        try:
-            sess.close()
-        except Exception:
-            pass
-        slot.teardown()
-        slot.release()
+        # Each step guarded separately. Teardown failing is exactly when the
+        # log is worth having, and an unguarded raise here would take the
+        # release and the log's own close down with it.
+        for what, step in (("session close", lambda: sess and sess.close()),
+                           ("slot teardown", slot.teardown),
+                           ("slot release", slot.release)):
+            try:
+                step()
+            except Exception as exc:
+                run.emit("cleanup_failed", step=what, error=repr(exc))
+                run.say(f"Cleanup failed at {what}: {exc!r}")
+                rc = rc or 1
         run.close()
     return rc
 
