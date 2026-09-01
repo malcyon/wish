@@ -1265,7 +1265,32 @@ about. There is no "already introduced it above" exemption; a reply is skimmed,
 not read in order.
 
 ## Temp Files
-Any temporary or scratch files created during development should be written to the `work/` directory to keep the project root clean.
+
+Any temporary or scratch file created during development goes in `work/`, to
+keep the project root clean. **`work/` is for a run's output, not for the thing
+that produced it.** Logs, `.jsonl` traces, dumps, screenshots, disk images: all
+of those, and they are gitignored because most of them are derived from the
+game's own bytes.
+
+**A tool goes in `tools/`, committed, with a row in `tools/README.md`.** Donald,
+2026-09-01: *"If you develop tools, put them into tools/, not work/. That way,
+you don't have to rebuild them."*
+
+A runner, a probe, a sweep, a one-off script that drove an emulator and
+answered a question -- every one of those is a tool, however throwaway it felt
+while being written. The test is not whether it looks finished; it is whether
+somebody would otherwise write it again.
+
+The cost is already paid twice. `ecl6.py` decoded all thirty ECL scripts to
+100% of every byte and was lost. And on 2026-09-01, `work/issue127/proto.py`,
+`probe.py` and `sweep.py` -- written the night before for
+`#127 (A driven character stands next to an enemy and passes its turn instead
+of attacking)` -- were gone within a day, taking with them the breadth-first
+`step_towards` that walked round rock and round the party's own formation. Its
+measured results survived only because they had been pasted into an issue
+comment, which is what made `#170 (A driven character walks into rock, because
+step_towards never reads the terrain)` filable with evidence rather than as a
+rumour. The tool itself is simply gone and will have to be written again.
 
 ## Pre-commit Checklist
 Before committing and pushing any changes, you MUST always run the following checks locally to ensure CI will pass:
