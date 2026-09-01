@@ -169,8 +169,15 @@ SSH_ASKPASS_REQUIRE=never ssh -o BatchMode=yes ...
 
 `BatchMode=yes` makes ssh fail instead of prompting; `SSH_ASKPASS_REQUIRE=never`
 stops it reaching for a dialog even so. Set both, including for anything that
-shells out to `ssh` or `scp` -- `winvm ssh` does not pass `BatchMode`, so it is
-one of the things that needs wrapping rather than trusting.
+shells out to `ssh` or `scp`.
+
+**`winvm` now sets both itself and does not need wrapping** -- checked against
+`/usr/local/bin/winvm` on 2026-09-01: it exports `SSH_ASKPASS_REQUIRE=never`,
+and its one `SSH_OPTS` array carries `-o BatchMode=yes` and is passed by the
+`ssh` and `scp` subcommands alike. This file said the opposite until then,
+which was true when it was written -- `wait_ssh` had `BatchMode` and the `ssh`
+subcommand did not, and `winvm`'s own comment records the fix. The rule above
+still holds for every `ssh` an agent writes itself.
 
 A prompt an agent cannot answer is not a pause; it is a dialog on somebody
 else's desktop, waiting on somebody who did not ask for it.
