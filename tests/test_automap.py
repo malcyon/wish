@@ -1501,6 +1501,115 @@ def test_every_note_type_draws():
             assert icons.commands(name), name
 
 
+def test_every_note_kind_draws_its_own_picture_and_nobody_elses():
+    """Twenty-five wordless buttons only work if no two are the same picture,
+    and the picker shows no words at all -- two kinds sharing a glyph would be
+    two buttons a person cannot tell apart, with only a hover between them.
+
+    It also catches the copy-and-paste that adds a kind and forgets to change
+    the icon, which is the way this would actually go wrong.
+    """
+    seen: dict[str, str] = {}
+    for kind in notemod.TYPES:
+        assert kind.icon in icons.NAMES, kind.name
+        assert kind.icon not in seen, \
+            f"{kind.name} draws {kind.icon}, which is already {seen[kind.icon]}"
+        seen[kind.icon] = kind.name
+    assert len(notemod.TYPES) == 25
+    assert len(notemod.BY_NAME) == 25          # and no two share a file name
+
+
+def test_every_note_kind_is_credited_to_the_artist_who_drew_it():
+    """CC BY 3.0 asks for attribution and nothing else, so a kind drawing a
+    glyph `ARTISTS` does not name is the whole of a licence breach.
+    `tests/test_licenses.py` checks the generated file against `ARTISTS`; this
+    checks `ARTISTS` against what the notes actually draw."""
+    for kind in notemod.TYPES:
+        assert icons.ARTISTS.get(kind.icon), kind.icon
+
+
+def test_every_note_description_opens_with_a_capital():
+    """Donald: *"Make sure all descriptions start with a capital letter. This
+    is an problem across all AI text."* The tooltip reads
+    `Locked - A door that beat you`, so a lower-case description is visible
+    wherever a hover is."""
+    for kind in notemod.TYPES:
+        assert kind.hint[:1].isupper(), f"{kind.name}: {kind.hint!r}"
+        assert kind.label[:1].isupper(), kind.label
+
+
+def test_the_nine_kinds_that_existed_before_the_sixteen_still_mean_what_they_meant():
+    """**The test that matters most here**: somebody's own map annotations.
+
+    A notes file written by any earlier build stores `"type": "locked"` as a
+    string, and after sixteen kinds joined the table that string still has to
+    find the padlock -- not the kind that happens to sit where `locked` used
+    to. The picker was reordered when the grid arrived, so this is not
+    hypothetical: position moved and meaning must not have.
+    """
+    was = {"encounter": ("Encounter", "crossed-sabres"),
+           "treasure": ("Treasure", "open-treasure-chest"),
+           "person": ("Person", "person"),
+           "exit": ("Exit", "exit-door"),
+           "locked": ("Locked", "plain-padlock"),
+           "stairs": ("Stairs", "stairs"),
+           "danger": ("Danger", "hazard-sign"),
+           "note": ("Note", "position-marker"),
+           "done": ("Done", "check-mark")}
+    for name, (label, icon) in was.items():
+        kind = notemod.type_for(name)
+        assert (kind.label, kind.icon) == (label, icon), name
+    assert notemod.DEFAULT == "note"
+
+
+def test_an_old_notes_file_still_loads_after_the_sixteen_arrived(tmp_path,
+                                                                monkeypatch):
+    """Both shapes an old file comes in -- the bare string that predates
+    types, and a typed note -- read back as what they were. Adding kinds is
+    supposed to cost a saved file nothing, and this is where that is checked
+    rather than assumed."""
+    state = _area(tmp_path, monkeypatch)
+    state.notes_path().parent.mkdir(parents=True, exist_ok=True)
+    state.notes_path().write_text(json.dumps(
+        {"notes": {"6,2": "arena master",
+                   "1,1": [{"type": "locked", "text": "the north door"}],
+                   "3,3": [{"type": "wyvern", "text": "not a kind we know"}]},
+         "seen": []}), encoding="utf-8")
+    state.load_notes()
+    assert [(n.type, n.text) for n in state.notes_at(6, 2)] == \
+        [("note", "arena master")]
+    kept = state.notes_at(1, 1)[0]
+    assert (kept.type, kept.icon, kept.label) == \
+        ("locked", "plain-padlock", "Locked - the north door")
+    # A name no version knows keeps its own name and gets the neutral marker,
+    # which is the whole reason `type` is a string.
+    stranger = state.notes_at(3, 3)[0]
+    assert (stranger.type, stranger.icon) == ("wyvern", "position-marker")
+
+
+def test_a_note_of_a_new_kind_is_still_that_kind_when_it_is_opened_again(
+        tmp_path, monkeypatch):
+    """Every one of the sixteen, written out and read back. A kind that does
+    not survive a save is a kind that quietly becomes another one, and the
+    only way anybody would find out is by looking at their own map."""
+    new = ("point-of-interest", "warrior", "smith", "silversmith", "jeweler",
+           "magic-items", "inn", "tavern", "trap", "orcs", "goblins",
+           "dragon", "undead", "cleric", "thief", "wizard")
+    assert len(new) == 16
+    state = _area(tmp_path, monkeypatch)
+    for n, name in enumerate(new):
+        state.add_note(n, 0, Note(f"note {n}", name))
+    state.save_notes()
+
+    again = _area(tmp_path, monkeypatch)
+    again.load_notes()
+    for n, name in enumerate(new):
+        note = again.notes_at(n, 0)[0]
+        assert note.type == name
+        assert note.icon == notemod.BY_NAME[name].icon
+        assert note.icon in icons.GAME_ICONS
+
+
 def test_the_encounter_and_treasure_notes_are_paths_now():
     """`crossed-sabres` and `open-treasure-chest` replaced the Encounter
     note's U+2694 font character and Font Awesome's `gem`, so `TEXT_GLYPHS`
@@ -1615,19 +1724,27 @@ def test_a_note_and_the_party_marker_share_one_square_marker_on_top():
 @game_disks
 def test_a_note_never_lands_on_a_wall():
     """Checked on GEO14, the densest map we have: a note that hides a wall has
-    made the map worse, and the map's job is the walls."""
+    made the map worse, and the map's job is the walls.
+
+    **Every kind, on every square.** It used to fill the map with `danger`
+    and prove one glyph, which was enough while eight of the nine were the
+    same Font Awesome silhouette. `#166` brought sixteen more pictures, drawn
+    by five different people, and one of those overhanging its box is exactly
+    the fault this test exists for -- so the map is filled once per kind.
+    """
     slums = Geo.from_bytes(game_file("GEO14"))
     walls = [p for p in map_primitives(slums) if isinstance(p, Line)]
-    every = {(x, y): [Note("x", "danger")]
-             for y in range(GRID) for x in range(GRID)}
-    for glyph in note_primitives(every):
+    every = [{(x, y): [Note("x", kind.name)]
+              for y in range(GRID) for x in range(GRID)}
+             for kind in notemod.TYPES]
+    for glyph in [g for square in every for g in note_primitives(square)]:
         x0, y0, x1, y1 = icons.extent(glyph.name)
         # `icons.box(name)`, not `icons.BOX`: game-icons.net glyphs are drawn
-        # on a 512 canvas and Font Awesome's on a wider one. Every note type
-        # is a Font Awesome name today, so the two agree -- but the moment a
-        # note is given one of Donald's game-icons glyphs, the constant makes
-        # `scale` too small, the box comes out narrower than what is drawn,
-        # and a real wall overlap goes unnoticed. Found in review of #4.
+        # on a 512 canvas and Font Awesome's on a wider one. Every note kind
+        # is a game-icons name now, so `icons.BOX` would make `scale` a fifth
+        # too small, the box would come out narrower than what is drawn, and
+        # a real wall overlap would go unnoticed. Found in review of #4, when
+        # the two sets still shared this loop.
         scale = glyph.size / icons.box(glyph.name)
         box = (glyph.x + x0 * scale, glyph.y + y0 * scale,
                glyph.x + x1 * scale, glyph.y + y1 * scale)
@@ -2273,6 +2390,89 @@ def test_clicking_a_note_opens_it_with_its_words_in_the_field(app, tmp_path,
     assert not pop.remove.isHidden()          # and it can be got rid of
 
 
+def test_the_picker_offers_every_kind_in_the_rows_the_table_groups_them_in(
+        app, tmp_path, monkeypatch):
+    """Twenty-five buttons, no words on any of them, laid out five to a row --
+    and the rows are `notes.TYPES`' own order, which is a grouping: marks,
+    what the square holds, a fight, a person, a place you come back to.
+
+    Asserted against the table rather than against a picture of the grid, so
+    adding a kind in the middle of a row moves the rest and this still holds.
+    """
+    from automap.noteeditor import COLUMNS
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    pop = window._popover
+    picker = pop.ui.picker
+
+    assert set(pop.buttons) == {k.name for k in notemod.TYPES}
+    assert picker.count() == len(notemod.TYPES) == 25
+    assert COLUMNS == notemod.PICKER_COLUMNS == 5
+    for n, kind in enumerate(notemod.TYPES):
+        row, column = divmod(n, COLUMNS)
+        at = picker.itemAtPosition(row, column)
+        assert at is not None and at.widget() is pop.buttons[kind.name], \
+            f"{kind.name} is not at row {row}, column {column}"
+        # No words: the picture is the whole of what the button says, and the
+        # description is a hover away.
+        assert at.widget().text() == ""
+        assert at.widget().toolTip() == f"{kind.label} - {kind.hint}"
+    assert picker.rowCount() == 5 and picker.columnCount() == 5
+    window.root.close()
+
+
+def test_the_picker_is_still_a_popover_at_the_square_and_not_a_dialog(
+        app, tmp_path, monkeypatch):
+    """The one thing twenty-five kinds must not have cost. Notes get made
+    mid-game with a fight waiting in the other window, so the editor is a
+    `Popup` that goes away by itself -- never a modal dialog somebody has to
+    dismiss before they can look at the map again."""
+    from PyQt6.QtCore import Qt as _Qt
+    from PyQt6.QtWidgets import QDialog
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    pop = window._popover
+    assert not isinstance(pop, QDialog)
+    assert pop.windowType() == _Qt.WindowType.Popup
+    assert not pop.isModal()
+    window.root.close()
+
+
+def test_the_picker_fits_a_720_high_screen_with_room_for_the_map(
+        app, tmp_path, monkeypatch):
+    """Donald said the picker could get bigger; it still has to open on his
+    screen, and it opens *over* the map rather than beside it.
+
+    **The bound is computed, not measured.** A pixel count taken here is a
+    measurement of this machine -- CI's Linux and Windows draw the buttons'
+    frames and the field's font differently -- so what is asserted is that
+    the popover asks for no more than its own five rows of buttons plus the
+    rest of the form, and that the total is a fraction of a 720-high screen.
+    """
+    from automap.noteeditor import BUTTON, COLUMNS
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.edit_note(6, 2)
+    pop = window._popover
+    wanted = pop.sizeHint()
+    rows = -(-len(notemod.TYPES) // COLUMNS)
+
+    # The grid is the biggest thing in it, and it is bounded by its own rows.
+    grid = pop.ui.picker
+    assert grid.sizeHint().height() >= rows * BUTTON
+    assert grid.sizeHint().height() <= rows * BUTTON + \
+        (rows - 1) * grid.verticalSpacing() + 2 * BUTTON
+
+    # A quarter of a 720-high screen, so the square being annotated is still
+    # visible under it. Generous on purpose: what would fail is a picker that
+    # grew a row per kind, not one that is a few pixels taller on Windows.
+    assert wanted.height() <= 720 // 2, wanted
+    assert wanted.width() <= 1280 // 2, wanted
+    window.root.close()
+
+
 def test_a_new_note_has_nothing_to_delete(app, tmp_path, monkeypatch):
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
     window.edit_note(6, 2)
@@ -2470,11 +2670,20 @@ def book_flags() -> bytes:
     return book.flags(save0).to_bytes()
 
 
-def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
-                                                     monkeypatch):
-    """`N` opens a note and `E`, `T`, `P`... pick its type, so both could take
-    a letter out of the words being typed. Neither does: the popover holds the
-    keyboard, and the type letters are ignored while the field has focus."""
+def test_typing_a_note_is_not_eaten_by_the_shortcut_that_opened_it(
+        app, tmp_path, monkeypatch):
+    """`N` opens a note, so it could take the `n` out of the words being
+    typed. It does not: the popover holds the keyboard while the field has
+    focus.
+
+    **The per-kind letters are gone, and this test used to cover them too.**
+    `NoteType.key` gave each of the nine a letter -- `E T P X L S D N C` --
+    and `keyPressEvent` picked that kind when the letter was pressed outside
+    the field. Nothing in the window ever said so, and Donald did not know
+    they existed: *"I didn't even know we had keyboard shortcuts... That isn't
+    necessary at all"* (`#166`). So the assertion that `e` picked nothing has
+    become the assertion below, that there is no letter left to press.
+    """
     from PyQt6.QtTest import QTest
     window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
     window.root.show()
@@ -2484,7 +2693,31 @@ def test_typing_a_note_is_not_eaten_by_the_shortcuts(app, tmp_path,
     QTest.keyClicks(pop.field, "north gate")
     assert pop.field.text() == "north gate"
     assert window._popover is pop            # no second popover opened
-    assert pop.chosen == "note"              # and no type was picked by "e"
+    assert pop.chosen == "note"              # and no kind was picked by "n"
+    window.root.close()
+
+
+def test_no_note_kind_carries_a_keyboard_letter(app, tmp_path, monkeypatch):
+    """The removal, pinned from both ends: nothing on a kind says a letter,
+    and pressing one outside the text field picks nothing.
+
+    Twenty-five kinds could not each have had one anyway, but that is not why
+    they went -- an undocumented shortcut the program's author did not know
+    about is not a feature anybody was using."""
+    from PyQt6.QtCore import Qt as _Qt
+    from PyQt6.QtTest import QTest
+
+    assert not hasattr(notemod.NoteType, "key")
+    assert "key" not in notemod.NoteType.__dataclass_fields__
+
+    window = make_window(app, tmp_path, monkeypatch, None, area="GEO14")
+    window.root.show()
+    window.edit_note(3, 3)
+    pop = window._popover
+    pop.setFocus()                              # not the field: the popover
+    for letter in ("E", "T", "P", "X", "L", "S", "D", "C"):
+        QTest.keyClick(pop, getattr(_Qt.Key, f"Key_{letter}"))
+        assert pop.chosen == "note", letter
     window.root.close()
 
 

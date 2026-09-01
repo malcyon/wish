@@ -3,8 +3,18 @@
 The dialog this replaces was wrong in one specific way: it made adding a note a
 modal interruption, and notes are made *while playing*, with the game in the
 other window and a fight probably waiting. So this is a popover at the square --
-nine icons, one line of text, Enter to keep, Escape to cancel -- and it goes
-away by itself when it loses focus.
+a grid of icons, one line of text, Enter to keep, Escape to cancel -- and it
+goes away by itself when it loses focus. It stayed a popover when the kinds
+went from nine to twenty-five (`#166`); a dialog would have been the easy
+answer and the wrong one.
+
+**The picker is `notemod.TYPES` laid out `PICKER_COLUMNS` to a row**, because
+the order in that table is a grouping -- marks, what the square holds, a
+fight, a person, a place -- and five rows of five is that grouping made
+visible. There are no words on the buttons: twenty-five wordless pictures are
+scannable only if where a picture sits tells you something, so the layout
+comes from the table rather than the table being poured into whatever width
+fits.
 
 **Clicking a square that already has a note opens that note**, with its type
 picked and its words in the field, and a **Delete** button beside them. The
@@ -34,8 +44,18 @@ from .notes import Note
 from .panel import CARD, INK, LATTICE, MUTED, NOTE
 from .ui_noteeditor import Ui_NotePopover
 
-BUTTON = 26
-ICON = 15
+#: Where the rows break. `automap.notes` groups the kinds five to a row, so
+#: this is that table's number, not a width chosen here.
+COLUMNS = notemod.PICKER_COLUMNS
+
+#: The picker's buttons. Bigger than they were for nine kinds -- Donald's
+#: *"you can make the picker bigger"* on `#166` -- because a wordless picture
+#: is the whole of what a button says, and 15px was as small as the notes
+#: panel draws them. Five to a row makes the grid narrower than the old
+#: single row of nine even so.
+BUTTON = 32
+ICON = 22
+
 
 class NotePopover(QWidget):
     """The type picker, the text field, and what is already on the square.
@@ -76,7 +96,7 @@ class NotePopover(QWidget):
         self.head.setText(f"({x},{y})" + ("" if note is None else "  editing"))
 
         self.buttons: dict[str, QToolButton] = {}
-        for kind in notemod.TYPES:
+        for n, kind in enumerate(notemod.TYPES):
             button = QToolButton()
             button.setCheckable(True)
             button.setAutoExclusive(True)
@@ -87,7 +107,7 @@ class NotePopover(QWidget):
             button.setChecked(kind.name == self.chosen)
             button.clicked.connect(
                 lambda _checked=False, name=kind.name: self.choose(name))
-            self.ui.picker.addWidget(button)
+            self.ui.picker.addWidget(button, *divmod(n, COLUMNS))
             self.buttons[kind.name] = button
 
         self.field = self.ui.field
@@ -108,8 +128,6 @@ class NotePopover(QWidget):
         self.hint = self.ui.hint
 
     # -- editing ---------------------------------------------------------
-
-
 
     def choose(self, name: str) -> None:
         self.chosen = name
@@ -148,13 +166,3 @@ class NotePopover(QWidget):
         self.state.set_notes(*self.square, items)
         self.changed.emit(*self.square)
         self.close()
-
-    def keyPressEvent(self, event):
-        # A popup already closes on Escape; typing a type's letter picks it,
-        # which is what makes the whole thing usable one-handed.
-        letter = event.text().upper()
-        for kind in notemod.TYPES:
-            if kind.key and letter == kind.key and not self.field.hasFocus():
-                self.choose(kind.name)
-                return
-        super().keyPressEvent(event)

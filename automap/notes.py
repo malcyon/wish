@@ -17,7 +17,10 @@ Three deliberate choices in the storage:
   type `note`; `tests/test_automap.py` pins it. Nobody's notes get eaten by an
   upgrade.
 
-The type table is data, so adding a type is a line here and nothing else.
+The type table is data, so adding a type is a line here and nothing else --
+but the *order* is the picker's layout as well as its order, five to a row
+with each row one idea, so a new kind joins the row it belongs to rather than
+the end. `PICKER_COLUMNS` is the width those rows were grouped for.
 """
 
 from __future__ import annotations
@@ -36,31 +39,82 @@ class NoteType:
     label: str          #: what the picker shows
     icon: str           #: a key into `automap.icons`
     hint: str           #: one line, for the picker's tooltip
-    key: str = ""       #: a letter that selects it in the picker
 
 
-#: The set, in picker order. Nine is still scannable and still fits one row of
-#: buttons.
+#: The set, **in picker order**, and the order is the layout: five rows of
+#: five, each row one idea. Reading across -- marks, what the square holds, a
+#: fight, a person, a place you come back to. The picker shows no words, so
+#: the grouping is the only thing helping somebody find a picture, and a row
+#: that means something is worth more than an alphabet.
+#:
+#: The names and the descriptions are Donald's, settled on `#166`, and
+#: `work/note-icons.md` renders every one at the two sizes he judged them at.
 TYPES: tuple[NoteType, ...] = (
-    NoteType("encounter", "Encounter", "crossed-sabres",
-             "a fight, set or remembered", "E"),
-    NoteType("treasure", "Treasure", "open-treasure-chest",
-             "something to take, or taken", "T"),
-    NoteType("person", "Person", "person",
-             "trainer, shop, quest-giver", "P"),
-    NoteType("exit", "Exit", "exit-door",
-             "where this map joins another", "X"),
-    NoteType("locked", "Locked", "plain-padlock",
-             "a door that beat you", "L"),
-    NoteType("stairs", "Stairs", "stairs",
-             "up, down, or wherever the level changes", "S"),
-    NoteType("danger", "Danger", "hazard-sign",
-             "traps, drains, whatever you want to avoid", "D"),
+    # Marks: where you are, where you are going, how you get out.
     NoteType("note", "Note", "position-marker",
-             "anything that does not fit the others", "N"),
+             "Anything that does not fit the others"),
+    NoteType("point-of-interest", "Point of Interest", "pin",
+             "Somewhere you've been, or somewhere you intend to go."),
+    NoteType("exit", "Exit", "exit-door",
+             "Where this map joins another"),
+    NoteType("stairs", "Stairs", "stairs",
+             "Up, down, or wherever the level changes"),
     NoteType("done", "Done", "check-mark",
-             "cleared, nothing left here", "C"),
+             "Cleared, nothing left here"),
+
+    # What the square itself holds.
+    NoteType("locked", "Locked", "plain-padlock",
+             "A door that beat you"),
+    NoteType("danger", "Danger", "hazard-sign",
+             "Traps, drains, whatever you want to avoid"),
+    NoteType("trap", "Trap", "tripwire",
+             "A trap you found, sprung or not"),
+    NoteType("treasure", "Treasure", "open-treasure-chest",
+             "Something to take, or taken"),
+    NoteType("magic-items", "Magic items", "diamond-hilt",
+             "Magic items"),
+
+    # A fight, and what you are fighting.
+    NoteType("encounter", "Encounter", "crossed-sabres",
+             "A fight, set or remembered"),
+    NoteType("orcs", "Orcs", "orc-head",
+             "Orcs"),
+    NoteType("goblins", "Goblins", "goblin-head",
+             "Goblins, Hobgoblins, etc."),
+    NoteType("undead", "Undead", "raise-zombie",
+             "Undead"),
+    NoteType("dragon", "Dragon", "dragon-head",
+             "Dragon"),
+
+    # Somebody standing there.
+    NoteType("person", "Person", "person",
+             "Trainer, shop, quest-giver"),
+    NoteType("warrior", "Warrior", "barbute",
+             "A fighter — guard, soldier, someone who blocks the way"),
+    NoteType("cleric", "Cleric", "flanged-mace",
+             "A cleric — healing, or a temple"),
+    NoteType("thief", "Thief", "ninja-heroic-stance",
+             "A thief — picking, hiding, or someone who steals"),
+    NoteType("wizard", "Wizard", "wizard-face",
+             "A spellcaster"),
+
+    # Somewhere you come back to.
+    NoteType("smith", "Smith", "anvil-impact",
+             "A smith, for mending and buying arms"),
+    NoteType("silversmith", "Silversmith", "gold-bar",
+             "Silversmith"),
+    NoteType("jeweler", "Jeweler", "cut-diamond",
+             "Jeweler"),
+    NoteType("inn", "Inn", "bed",
+             "Somewhere to rest and get the spells back"),
+    NoteType("tavern", "Tavern", "beer-stein",
+             "Drink, gossip, and the people who have it"),
 )
+
+#: How many kinds go on one row of the picker. The rows above are the
+#: grouping, so this is not a width the layout may choose for itself: change
+#: it and the five ideas run into each other.
+PICKER_COLUMNS = 5
 
 #: What an untyped note becomes, and what the picker starts on.
 DEFAULT = "note"

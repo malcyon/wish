@@ -28,9 +28,12 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="picker">
-     <property name="spacing">
+    <layout class="QGridLayout" name="picker">
+     <property name="horizontalSpacing">
       <number>2</number>
+     </property>
+     <property name="verticalSpacing">
+      <number>4</number>
      </property>
     </layout>
    </item>

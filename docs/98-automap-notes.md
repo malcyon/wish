@@ -1,6 +1,6 @@
 # Note-taking on the automap
 
-**Status: built.** `automap/notes.py` is the model, `automap/icons.py` the
+**Status: built.** `automap/notes.py` is the model, `ui/icons.py` the
 icons, `automap/noteeditor.py` the popover, `NotesPanel` in `automap/panel.py`
 the list, and `tests/test_automap.py` holds the verification below.
 
@@ -11,23 +11,55 @@ words are the tooltip.
 
 ---
 
-## The types
+## The kinds
 
-`TYPES` in `automap/notes.py`, in picker order. The table is data, so adding a
-type is one line.
+`TYPES` in `automap/notes.py`, **in picker order, and the order is
+the layout**: five rows of five, each row one idea. The picker shows no
+words at all, so where a picture sits is the only thing helping somebody
+find it, and a new kind joins the row it belongs to rather than the end.
 
-| type | icon | source | for |
-|---|---|---|---|
-| Encounter | `crossed-sabres` | game-icons.net, Lorc | a fight, set or remembered |
-| Treasure | `open-treasure-chest` | game-icons.net, Skoll | something to take, or taken |
-| Person | `person` | game-icons.net, Delapouite | trainer, shop, quest-giver |
-| Exit | `exit-door` | game-icons.net, Delapouite | where this map joins another |
-| Locked | `plain-padlock` | game-icons.net, Delapouite | a door that beat you |
-| Stairs | `stairs` | game-icons.net, Delapouite | up, down, or wherever the level changes |
-| Danger | `hazard-sign` | game-icons.net, Lorc | traps, drains, whatever you avoid |
-| Note | `position-marker` | game-icons.net, Delapouite | anything that does not fit the others |
-| Done | `check-mark` | game-icons.net, Delapouite | cleared, nothing left here |
+Every name and every description is Donald's, settled on `#166`; the
+descriptions are tooltip only, and each opens with a capital because he
+asked for that across the whole program. `work/note-icons.md` rendered
+all twenty-five at 32px and 13px, which is what he chose them from --
+`work/` is gitignored, so that file may not survive; the table below is
+the record that does.
 
+| row | kind | icon | artist | description |
+|---|---|---|---|---|
+| Marks | Note | `position-marker` | Delapouite | Anything that does not fit the others |
+|  | Point of Interest | `pin` | Delapouite | Somewhere you've been, or somewhere you intend to go. |
+|  | Exit | `exit-door` | Delapouite | Where this map joins another |
+|  | Stairs | `stairs` | Delapouite | Up, down, or wherever the level changes |
+|  | Done | `check-mark` | Delapouite | Cleared, nothing left here |
+| What the square holds | Locked | `plain-padlock` | Delapouite | A door that beat you |
+|  | Danger | `hazard-sign` | Lorc | Traps, drains, whatever you want to avoid |
+|  | Trap | `tripwire` | Lorc | A trap you found, sprung or not |
+|  | Treasure | `open-treasure-chest` | Skoll | Something to take, or taken |
+|  | Magic items | `diamond-hilt` | Delapouite | Magic items |
+| A fight | Encounter | `crossed-sabres` | Lorc | A fight, set or remembered |
+|  | Orcs | `orc-head` | Delapouite | Orcs |
+|  | Goblins | `goblin-head` | Delapouite | Goblins, Hobgoblins, etc. |
+|  | Undead | `raise-zombie` | Skoll | Undead |
+|  | Dragon | `dragon-head` | Lorc | Dragon |
+| Somebody standing there | Person | `person` | Delapouite | Trainer, shop, quest-giver |
+|  | Warrior | `barbute` | Lorc | A fighter — guard, soldier, someone who blocks the way |
+|  | Cleric | `flanged-mace` | Delapouite | A cleric — healing, or a temple |
+|  | Thief | `ninja-heroic-stance` | Darkzaitzev | A thief — picking, hiding, or someone who steals |
+|  | Wizard | `wizard-face` | Delapouite | A spellcaster |
+| Somewhere you come back to | Smith | `anvil-impact` | Lorc | A smith, for mending and buying arms |
+|  | Silversmith | `gold-bar` | Willdabeast | Silversmith |
+|  | Jeweler | `cut-diamond` | Lorc | Jeweler |
+|  | Inn | `bed` | Delapouite | Somewhere to rest and get the spells back |
+|  | Tavern | `beer-stein` | Lorc | Drink, gossip, and the people who have it |
+
+**Sixteen of those arrived at once**, on `#166`: Point of Interest,
+Warrior, Smith, Silversmith, Jeweler, Magic items, Inn, Tavern, Trap,
+Orcs, Goblins, Dragon, Undead, Cleric, Thief and Wizard. Donald picked
+twenty-three glyphs and three went unused -- `swords-emblem`,
+`power-ring` and `disintegrate` -- so they are not in `ui/icons.py`
+either: a credit that outlives its icon fails
+`tests/test_licenses.py` exactly as an uncredited icon does.
 **Every note now draws a game-icons.net path.** `Person` was the last one
 still drawing from Font Awesome (`user`); `person` (Delapouite) replaced it,
 which is what let Font Awesome's licence and credit come out of the program
@@ -81,9 +113,14 @@ with several notes draws the first one's icon and a count.
 
 ## Interaction
 
-* **Click an empty square** — a popover at that square: nine icons, a one-line
-  text field, Enter to keep, Escape to drop. No modal dialog. A type's initial
-  letter picks it while the text field does not have focus.
+* **Click an empty square** — a popover at that square: a five-by-five grid of
+  icons, a one-line text field, Enter to keep, Escape to drop. No modal dialog,
+  and that is the part that must not change: notes are made mid-game with a
+  fight waiting in the other window.
+* **No keyboard shortcut picks a kind.** Each of the original nine had a letter
+  — `E T P X L S D N C` — that nothing in the window ever mentioned. Donald did
+  not know they existed and did not want them, so `NoteType.key` and the
+  `keyPressEvent` branch that read it came out on `#166`.
 * **Click a square that already has a note** — the same popover, **opened on
   that note**: its type picked, its words in the field, and a **Delete** button
   beside Keep. The first version opened blank and offered no way to remove
@@ -192,10 +229,19 @@ GEO00` clears one area's squares and keeps its notes.
 * A square with three notes draws one icon and a count, and its tooltip lists
   all three.
 * Notes on a fogged square are still drawn.
-* No note primitive overlaps a wall segment anywhere on `GEO14`.
+* No note primitive overlaps a wall segment anywhere on `GEO14`, for **every**
+  kind on every square -- it used to prove one glyph, which was enough while
+  they were nearly all the same silhouette.
 * `--forget ALL` clears squares and leaves every note untouched.
-* Every type's icon parses, and `position-marker` keeps its counter under
-  winding fill.
+* Every kind's icon parses, no two kinds draw the same picture, and
+  `position-marker` keeps its counter under winding fill.
+* A notes file written before the sixteen kinds arrived still reads back as
+  what it was -- the bare-string format, the nine original type names, and
+  a name no version knows keeping its own name and the neutral marker.
+* Each of the sixteen new kinds survives being written and read again.
+* The picker holds every kind, five to a row in the table's own order, with
+  no words on any button; it is a `Popup` and not a dialog; and what it asks
+  for is a fraction of a 720-high screen.
 * Clicking an existing note opens it populated, with a Delete that removes it
   from the square and from the file; a new note has no Delete to press.
 * A boundary crossing puts no square of the new area into the old area's set or

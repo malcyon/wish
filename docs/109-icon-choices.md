@@ -26,6 +26,10 @@ what is left is what ships.
 | Person note | `person` | game-icons.net, Delapouite |
 | application icon (temporary stand-in) | `pointy-hat` | game-icons.net, Lorc |
 
+The map-note kinds went from nine to twenty-five on `#166`; the sixteen
+that joined are in the section at the foot of this page, and
+`docs/98-automap-notes.md` is the table a reader should go to.
+
 `person-running` was the quickfight badge's Font Awesome original; nothing has
 drawn it since `sparkling-sabre` replaced it (`#4`/`#136`), and its path data
 is deleted from `ui/icons.py` along with `skull` and `arrow-down-long`, the
@@ -327,7 +331,7 @@ the four buttons at `TOOLBAR_ICON = 16`.
 
 | place | what | worth it? |
 |---|---|---|
-| map | `stairs` | **done** — a `Stairs` note type, key `S`, in `automap/notes.py` |
+| map | `stairs` | **done** — a `Stairs` note kind in `automap/notes.py` |
 | roster | class icons | **done** — beside the class text, never instead of it |
 | roster | dead, level-drained | **already done** — skull and a down arrow |
 | toolbar | open, save, save as, preview | **done** — `editor/window.py::_toolbar_icons`, 16 px |
@@ -389,10 +393,13 @@ carry the same measured exclusion.
 
 **The Person note's `user` is the last one, and it finishes `#167`
 completely.** `person` (Delapouite) replaces it, so nothing in the program
-renders a Font Awesome glyph any more. `hat-wizard` is the one name still in
-`ui.icons.FONT_AWESOME`, parked unreferenced as the path data a revert of
-`pointy-hat` would need; that is why it stays in the table even though the
-licence it drew has come out (see Licence, below).
+renders a Font Awesome glyph any more.
+
+`hat-wizard` was parked in `ui.icons.FONT_AWESOME` for a moment, unreferenced,
+as the path data a revert of `pointy-hat` would need -- and deleted in the same
+change as the licence. An unused path is still Fonticons' work distributed in a
+repository whose attribution has gone, and `git show <sha>:ui/icons.py`
+recovers it exactly if it is ever wanted. `FONT_AWESOME` is empty.
 
 ## Licence
 
@@ -413,3 +420,49 @@ its one entry.
 Nothing is redrawn: the app icon recolours `pointy-hat` -- game-icons.net,
 CC BY 3.0, Lorc -- and puts it on a tile, and the path data is theirs,
 untouched, at every size.
+
+## `#166` — sixteen more note kinds
+
+Donald picked twenty-three glyphs for map notes and named every one of them
+himself, working from `work/note-icons.md`, which drew each at 32px and at
+13px. Sixteen became new kinds; the nine that already existed kept their names
+and had been repictured on `#167` already.
+
+| kind | glyph | artist |
+|---|---|---|
+| Point of Interest | `pin` | Delapouite |
+| Warrior | `barbute` | Lorc |
+| Smith | `anvil-impact` | Lorc |
+| Silversmith | `gold-bar` | Willdabeast |
+| Jeweler | `cut-diamond` | Lorc |
+| Magic items | `diamond-hilt` | Delapouite |
+| Inn | `bed` | Delapouite |
+| Tavern | `beer-stein` | Lorc |
+| Trap | `tripwire` | Lorc |
+| Orcs | `orc-head` | Delapouite |
+| Goblins | `goblin-head` | Delapouite |
+| Dragon | `dragon-head` | Lorc |
+| Undead | `raise-zombie` | Skoll |
+| Cleric | `flanged-mace` | Delapouite |
+| Thief | `ninja-heroic-stance` | Darkzaitzev |
+| Wizard | `wizard-face` | Delapouite |
+
+**Three of the twenty-three ship nowhere and are not in `ui/icons.py`.**
+`swords-emblem` and `crossed-sabres` both say *fighting* and `crossed-sabres`
+had already taken Encounter; `power-ring` and `cut-diamond` both say *a magic
+item* and `cut-diamond` took Jeweler; `disintegrate` had nothing to attach it
+to. A credit in `THIRD_PARTY_LICENSES.md` for a glyph nothing draws fails
+`tests/test_licenses.py` the same way an uncredited glyph does, so an unused
+icon is not a harmless spare.
+
+**None of the sixteen needed an exclusion from the box test.**
+`test_no_icon_leaves_its_own_box` bounds every cubic by its control points,
+which over-estimates the curve, and `brass-eye` and `crossed-sabres` overshoot
+that way and are excluded by measurement. Measured on the sixteen, the widest
+is `dragon-head` at x=21.26..503.63 in the 512 box and the tallest
+`ninja-heroic-stance` at y=16.90..495.10; every one is inside its own box on
+control points alone, so nothing was excluded.
+
+**No per-kind keyboard shortcut.** The original nine each had a letter that
+nothing in the window mentioned; they came out with this change. See
+`docs/98-automap-notes.md`.
