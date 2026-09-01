@@ -148,8 +148,9 @@ character.
 **The roster card shows who is on it.** `live.Character.quickfight` reads the
 same byte and the same mask — `live.ROSTER_QUICKFIGHT` and
 `live.QUICKFIGHT_BIT`, which `QUICKFIGHT` is built from, so the read side and
-the write side cannot drift — and the card draws `person-running` under the
-readied line. See [the roster](107-roster-and-notes.md).
+the write side cannot drift — and the card draws `sparkling-sabre` at the
+right-hand end of the readied line, beside the condition badges. See
+[the roster](107-roster-and-notes.md).
 
 **Legal anywhere**, and `QuickfightWatcher` will clear it on the tick `$6E11`
 leaves 2, if the caller turns that on. It fires on the edge only, so it does
