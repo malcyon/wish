@@ -13,6 +13,7 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 * [Oppression](https://game-icons.net/1x1/lorc/oppression.html)
 * [Embraced Energy](https://game-icons.net/1x1/lorc/embrassed-energy.html)
 * [Strong](https://game-icons.net/1x1/lorc/strong.html)
+* [Snail](https://game-icons.net/1x1/lorc/snail.html)
 * [Sparkling Sabre](https://game-icons.net/1x1/lorc/sparkling-sabre.html)
 * [Hazard Sign](https://game-icons.net/1x1/lorc/hazard-sign.html)
 * [Brass Eye](https://game-icons.net/1x1/lorc/brass-eye.html)
@@ -34,6 +35,7 @@ Wish uses icons from [Game-icons.net](https://game-icons.net/), created by the a
 
 * [Healing Shield](https://game-icons.net/1x1/delapouite/healing-shield.html)
 * [Eyelashes](https://game-icons.net/1x1/delapouite/eyelashes.html)
+* [Mute](https://game-icons.net/1x1/delapouite/mute.html)
 * [Exit Door](https://game-icons.net/1x1/delapouite/exit-door.html)
 * [Plain Padlock](https://game-icons.net/1x1/delapouite/plain-padlock.html)
 * [Stairs](https://game-icons.net/1x1/delapouite/stairs.html)

@@ -105,9 +105,11 @@ SHEET = [
         ("running-ninja", "Darkzaitzev", "hasted -- effect 39"),
         ("healing-shield", "Delapouite", "blessed -- effects 1 and 35"),
         ("embrassed-energy", "Lorc",
-         "warded -- effects 8, 9, 17, 28, 41 and 89"),
+         "warded -- effects 8, 9, 17, 28, 41, 45, 46 and 89"),
         ("eyelashes", "Delapouite", "invisible -- effect 25"),
         ("strong", "Lorc", "strengthened -- effects 12 and 38"),
+        ("mute", "Delapouite", "silenced -- effect 21"),
+        ("snail", "Lorc", "slowed -- effect 42"),
         ("sparkling-sabre", "Lorc", "quickfight -- the roster card's own row"),
     ]),
 ]
