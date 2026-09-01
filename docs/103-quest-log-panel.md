@@ -1,8 +1,8 @@
-# A commissions panel
+# The Quest Log panel
 
 **Status: built and wired.** A quest log on the Automapper tab: what the City
 Council has asked the party to do, and what it has already paid for.
-`goldbox/commissions.py` decodes it, `automap/commissions.py` draws it, it sits in
+`goldbox/commissions.py` decodes it, `automap/questlog.py` draws it, it sits in
 the right-hand column of the map tab under the notes, and
 `tests/test_commissions.py` holds the verification below.
 
@@ -51,7 +51,7 @@ The byte's four states, from `goldbox/commissions.py`:
 | 255 | paid |
 
 **So the panel draws one row per commission**, sorted by first ledger index,
-which is roughly the plot's own order. `automap/commissions.py` builds the list
+which is roughly the plot's own order. `automap/questlog.py` builds the list
 once, at import, in `COMMISSIONS`: every board candidate paired with the ledger
 entries its gate settles, plus the six entries (0, 2, 11, 22, 24, 25) no
 candidate offers. A row appears when the party has met the commission — any
@@ -122,7 +122,7 @@ Counts every fight won in the Slums: 10 set encounters and 15 wandering.
 That number is the only thing the row has to settle — a PC walkthrough quotes
 15 for the same job, which is `$4A80`'s separate cap on the wandering half
 ([`134-commissions.md`](134-commissions.md)) — and Donald asked in 2026-08 for
-that sentence and nothing under it. `TOOLTIPS` in `automap/commissions.py` is
+that sentence and nothing under it. `TOOLTIPS` in `automap/questlog.py` is
 the override, keyed by ledger index.
 
 ### Place names are capitalised at display time
@@ -175,9 +175,9 @@ rendering for the CLI, which still groups by state. `source` is the 224 flags,
 the `$4A00` page, a whole `SAVEDGAME0` payload or a `SaveGame0` — the lengths
 are distinct, so no flag is needed. No Qt.
 
-`automap/commissions.py` is the panel: `COMMISSIONS`, the joined list;
+`automap/questlog.py` is the panel: `COMMISSIONS`, the joined list;
 `commission_rows(flags)`, which turns a flag block into the drawn tuples and is
-what the tests read; `CommissionsPanel()` with one entry point `update_from(source)`
+what the tests read; `QuestLogPanel()` with one entry point `update_from(source)`
 taking exactly what the decoder takes, and `set_message(text)` for when there
 are no bytes. It redraws only when the flag block changes, and holds nothing
 that can be typed into. **Nothing here is editable** — making it writable would
@@ -212,7 +212,7 @@ log that blanked every time somebody opened one would be a flicker.
 ## The other titles have no equivalent, and this is why the panel refuses (#40)
 
 **Curse of the Azure Bonds and Secret of the Silver Blades have nothing a
-commissions panel could draw.** Established by reading every string in both
+Quest Log could draw.** Established by reading every string in both
 games' scripts off the player's own C64 disks — **2683 from Curse's 26 scripts
 and 1856 from Silver Blades'** — and looking for the vocabulary a job register
 needs.

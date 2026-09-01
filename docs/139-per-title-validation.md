@@ -27,7 +27,7 @@ the one that now ships.
 | written against | the editor, the CLI and the automapper's map | the same, plus `goldbox/games.py` |
 | "the editor" means | the character sheet, inventory, icons, YAML | the shipped party decoding |
 | "the automapper" means | `Geo`, `ResidentGeo`, `party_fix`, `Fingerprint` | the same five |
-| never mentions | Fast Travel, Level Up, the commissions panel, the combat log, the combat view, condition badges, the quickfight badge, map notes, the roster cards, the live actions (heal, store/restore spells, identify), Preferences, the debug log, the DOS converter | all of the same, plus the whole editor UI |
+| never mentions | Fast Travel, Level Up, the Quest Log, the combat log, the combat view, condition badges, the quickfight badge, map notes, the roster cards, the live actions (heal, store/restore spells, identify), Preferences, the debug log, the DOS converter | all of the same, plus the whole editor UI |
 
 Ten shipped features are absent from both documents. `docs/120`'s tier 4 is a
 five-row table of the automapper; the automapper tab today has fifteen rows in
@@ -100,7 +100,7 @@ applicable.
 | C12 | live roster cards (HP, XP, AC, THAC0, readied) | V | V | V | `test_automap.py::test_a_curse_machine_is_read_at_4b00_and_not_4900` and `…::test_curses_roster_comes_from_6700_inside_the_payload` (#29) — **and both have now been read for real**: Curse's BRUTUS/MAGNUS/LADY KATHERINE and Silver Blades' six, names and hit point maxima matching each game's own panel (`docs/120` tier 3, `docs/121` §4). One hazard fell out: while a full-screen picture is up the roster page is scrap and the cards read zeroes — issue #82 |
 | C13 | condition badges | V | **U** | **U** | rides C12, which is now V on both -- but no badge has been *drawn* from a real Curse or SSB roster, only the numbers behind it read |
 | C14 | quickfight badge | V | **U** | **U** | rides C12. `quickfight_flag` resolved to `$670C` on both live machines (#29) and nobody was on quickfight, so the bit has never been seen set on either |
-| C15 | commissions panel | V | — | — | `goldbox/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
+| C15 | the Quest Log | V | — | — | `goldbox/commissions.py:67` is the Council of Phlan's ledger at `$4A20`; the other titles have no such thing |
 | C16 | heal party | V | **U** | V | Addresses and gate both done (#29). `Member.record_base`/`item_base`/`roster_base` come off the descriptor -- `test_actions.py::test_every_address_a_curse_action_would_write_is_curses_own` -- and `Game.mode_flag` is `$7F11` on both later titles, `…::test_curses_gate_is_read_at_its_own_linker_byte_and_not_pool_of_radiances`. **V for Silver Blades because it was done to a real party**: `HealParty` wrote `$6719`/`$6739` on a live machine and MORGAINE and MALACHITE came back to 35/35 and 58/58 (`docs/121` §4). On Curse the same call ran and legitimately had nothing to heal, so the write half is untried there. The combat gate was exercised for real on Silver Blades: `1` -> `4` -> `2` on a wandering encounter, `heal` legal, `identify` refused |
 | C17 | store / restore spells | V | **U** | **U** | rides C16 -- the gate passes on both titles now (#29), but no spell block has been written on either |
 | C18 | identify items | V | **U** | **U** | rides C16; the payload offset comes off `Game.save_load_address` and the gate is measured (#29). Neither party carried an item, so nothing has been identified on either title |
@@ -266,7 +266,7 @@ C10, C11, C15. Curse ships no `SQRPACI`/`SQRDATA` and its `COMBAT` is a
 different build, so re-deriving those addresses is a project, not a check —
 `docs/120` "Out of scope" already ruled it out and that ruling still looks
 right. The work here is therefore **labelling, not measuring**: the combat view,
-the combat log and the commissions panel should say which title they are for and
+the combat log and the Quest Log should say which title they are for and
 show nothing rather than garbage on the others, the way Fast Travel now does.
 
 ### G8 — already tracked elsewhere

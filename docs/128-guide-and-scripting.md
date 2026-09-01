@@ -176,7 +176,7 @@ Two people, two ports, two methods, one flag.
 What the guide adds is the part we could not get from bytecode: **what each flag
 means in the story.** Our report attributes 172 addresses to scripts; the guide
 names 229 in English. Merging them is a cheap, high-value job for whoever next
-touches `goldbox/commissions.py` or the quest panel. It also fills `$4A00`-`$4A1F`,
+touches `goldbox/commissions.py` or the Quest Log. It also fills `$4A00`-`$4A1F`,
 the per-script scratch page, which we deliberately left alone: the guide lists
 each of those 32 bytes with the different meaning every area gives it.
 

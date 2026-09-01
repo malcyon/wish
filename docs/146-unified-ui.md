@@ -25,7 +25,7 @@ Standalone entry points (`python -m editor`, `python -m automap`) are dropped.
 | FastTravelBar | 1 | From `fasttravelbar.ui` | Inlined |
 | BottomStrip labels | 4 (`where`, `clock`, `area`, `effects`) | From `bottomstrip.ui` | Inlined as `ElidingLabel`s (promoted) |
 | NotesPanel | 1 (`heading` + `QListWidget`) | From `notes.ui` | Inlined |
-| CommissionsPanel | 1 (`heading` + scroll + `completed` label) | From `commissions.ui` | Inlined |
+| QuestLogPanel | 1 (`heading` + scroll + `completed` label) | From `commissions.ui` | Inlined |
 | MessagesPanel | 1 (`heading` + `QListWidget`) | From `messages.ui` | Inlined |
 | RosterPanel frame | 1 (`heading` + scroll + column layout) | From `roster.ui` | Inlined |
 | ActionBar frame | 1 (grid + `watch_box` + `note`) | From `actionbar.ui` | Inlined |
@@ -136,14 +136,14 @@ QMainWindow "WishWindow"
                 │           │   └── QVBoxLayout
                 │           │       ├── QLabel "notes_heading" [bold, "Notes"]
                 │           │       └── QListWidget "notes_list"
-                │           ├── QWidget "commissions_panel"
+                │           ├── QWidget "questlog_panel"
                 │           │   └── QVBoxLayout
-                │           │       ├── QLabel "commissions_heading" [bold]
-                │           │       ├── QScrollArea "commissions_scroll"
+                │           │       ├── QLabel "questlog_heading" [bold]
+                │           │       ├── QScrollArea "questlog_scroll"
                 │           │       │   └── QWidget
-                │           │       │       └── QVBoxLayout "commissions_column"
-                │           │       │           └── QLabel "commissions_completed" [8pt]
-                │           │       └── (Groups/Rows created in code within commissions_column)
+                │           │       │       └── QVBoxLayout "questlog_column"
+                │           │       │           └── QLabel "questlog_completed" [8pt]
+                │           │       └── (Groups/Rows created in code within questlog_column)
                 │           └── QWidget "messages_panel"
                 │               └── QVBoxLayout
                 │                   ├── QLabel "messages_heading" [bold, "Messages"]
@@ -190,7 +190,7 @@ QMainWindow "WishWindow"
 ```
 
 > [!NOTE]
-> **Commission rows** are the one element that stays partially dynamic. The `CommissionsPanel` creates `Group` and `Row` widgets within `commissions_column` at runtime because the number of commissions varies by game state (0–20+). The `.ui` provides the container (`commissions_column` layout) and the static elements (`commissions_heading`, `commissions_completed`, `commissions_scroll`). The rows themselves are lightweight label pairs and are not worth pre-creating at maximum because the maximum is the full commission table (20+ entries) and they would clutter Designer without adding design value — they are single-line text items in a scroll area, not layout elements you'd want to reposition.
+> **Commission rows** are the one element that stays partially dynamic. The `QuestLogPanel` creates `Group` and `Row` widgets within `questlog_column` at runtime because the number of commissions varies by game state (0–20+). The `.ui` provides the container (`questlog_column` layout) and the static elements (`questlog_heading`, `questlog_completed`, `questlog_scroll`). The rows themselves are lightweight label pairs and are not worth pre-creating at maximum because the maximum is the full commission table (20+ entries) and they would clutter Designer without adding design value — they are single-line text items in a scroll area, not layout elements you'd want to reposition.
 
 ---
 
@@ -208,7 +208,7 @@ Grows from 24 lines to ~2500+ lines. Built by:
 4. Inline the 5 action buttons from `actionbar.ui`'s pattern, plus the watch checkbox and note label.
 5. Inline the fast travel row from `fasttravelbar.ui`.
 6. Inline the bottom strip's 4 `ElidingLabel`s from `bottomstrip.ui`.
-7. Inline notes, commissions, messages panel content from their `.ui` files.
+7. Inline notes, quest log, messages panel content from their `.ui` files.
 8. Add `tab_editor` as the second tab page. Move the entire content of `editor/character.ui`'s central widget here verbatim.
 9. Inline `spellbook.ui`'s `QListWidget` and `memorised.ui`'s widgets directly into the Spells tab.
 10. Merge all `<customwidgets>` declarations from all absorbed `.ui` files into one block.
@@ -311,7 +311,7 @@ The automap's tick/poll/combat/drawing logic is extracted similarly. `MapCanvas`
               card.frame.hide()
   ```
 
-- `BottomStrip`, `NotesPanel`, `MessagesPanel`, `CommissionsPanel` become controllers that find their widgets by objectName in the unified form.
+- `BottomStrip`, `NotesPanel`, `MessagesPanel`, `QuestLogPanel` become controllers that find their widgets by objectName in the unified form.
 
 #### [MODIFY] automap/actionbar.py — `ActionBar`, `FastTravelBar`
 
@@ -448,7 +448,7 @@ python tools/genui.py --check
 
 1. **Open in Designer:** `./designer wish/window.ui`
    - Both tabs visible
-   - Automapper tab shows: 8 card frames in the roster column, 5 action buttons, fast travel row, notes/commissions/messages panels in a splitter, bottom strip with 4 labels, strength label
+   - Automapper tab shows: 8 card frames in the roster column, 5 action buttons, fast travel row, notes/quest log/messages panels in a splitter, bottom strip with 4 labels, strength label
    - Character Editor tab shows: the full form (all group boxes, fields, tables) — same as opening `editor/character.ui` today
    - All promoted widgets appear as labelled rectangles (Bar, IconRow, RosterView, EffectsView, IconEditor)
 

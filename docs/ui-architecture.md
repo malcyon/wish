@@ -26,7 +26,7 @@ graph TD
     Panels --> Card[CharacterCard]
     Panels --> Msg[MessagesPanel]
     Panels --> Notes[NotesPanel]
-    Panels --> Comm[CommissionsPanel]
+    Panels --> Comm[QuestLogPanel]
     
     Editor --> Spell[SpellbookEditor]
     Editor --> Mem[MemorisedEditor]
@@ -105,7 +105,7 @@ def _add_bar(self, bar_widget):
 |--------------|----------|---------|
 | `CharacterCard` | `automap/` | Detailed stats for a single character (HP, AC, etc.). |
 | `RosterPanel` | `automap/` | The list of all party members. |
-| `CommissionsPanel` | `automap/` | Tracks major and minor quests/commissions. |
+| `QuestLogPanel` | `automap/` | The Quest Log: the City Council's commissions and summonses, read-only. |
 | `NotesPanel` | `automap/` | List of user-created map notes. |
 | `MessagesPanel` | `automap/` | Logs the history of game events and dialogue. |
 | `ActionBar` | `automap/` | Quick-action buttons (rest, quickfight). |

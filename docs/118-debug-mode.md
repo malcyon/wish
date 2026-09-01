@@ -465,7 +465,7 @@ to reach.
   else's code.
 * **Combat and the combat view**, by fasttraveling to a floor with a fixed patrol
   rather than waiting on a wandering-monster roll.
-* **The commissions panel**, against `ECL08` (City Hall), where the ledger the
+* **The Quest Log**, against `ECL08` (City Hall), where the ledger the
   panel reads is actually written.
 * **`GEO1E`, `GEO1F`, `GEO20`** — the three maps that share a script with
   another and that no fingerprint has ever seen. They are now *named* —

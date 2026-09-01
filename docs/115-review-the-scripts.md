@@ -43,7 +43,7 @@ that clearing the pollution swaps an impassable-terrain table.
   left for a human is the *meanings*: the DOS guide names 229 of these addresses
   in English (`docs/128` §"The script-flag map"), and merging its names onto our
   addresses is a cheap, high-value job for whoever next touches
-  `goldbox/commissions.py` or the quest panel.
+  `goldbox/commissions.py` or the Quest Log.
 * **Anything that contradicts a doc.** Several corrections have already come
   from a careful read, and there are likely more.
 * **Encounters that are not what they look like** — `ECL00` shifts the monster
@@ -68,8 +68,8 @@ in `CLAUDE.md`. The decoder itself was never game data and could have lived in
 **One piece of this page's reading list does not need the decoder** and stays
 available: the DOS guide names 229 of the `$4A20`-`$4AFF` addresses in English
 (`docs/128` §"The script-flag map"), and merging its names onto our addresses is
-a small job for whoever next touches `goldbox/commissions.py` or the quest
-panel.
+a small job for whoever next touches `goldbox/commissions.py` or the Quest
+Log.
 
 ## A caution when reading
 

@@ -99,7 +99,7 @@ whole place, and where you have been.
 * **The cave**, when `$4A9E` is 255, is an ordinary `GEO` and the existing area
   map draws it with no new code at all. Only the label changes.
 
-The commissions panel already reads plot flags out of `SAVEDGAME0`; the site
+The Quest Log already reads plot flags out of `SAVEDGAME0`; the site
 labels want the same five bytes (`$4A8C`, `$4A9F`, `$4AA0`, `$4AA1`, `$4AB3`),
 so there is no new transport.
 

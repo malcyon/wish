@@ -29,7 +29,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [97-editor.md](97-editor.md) | the PyQt6 character editor: the `.ui` form, the read-only rules, and the icon editor |
 | [96-live-memory-automapper.md](96-live-memory-automapper.md) | the live automapper in `automap/`: how it reads a running game, draws the map and shows the party |
 | [102-live-actions.md](102-live-actions.md) | buttons that change the running game — built |
-| [103-commissions-panel.md](103-commissions-panel.md) | a quest log from the ledger at `$4AA6` — built |
+| [103-quest-log-panel.md](103-quest-log-panel.md) | the Quest Log panel, drawn from the council's ledger at `$4AA6` — built |
 | [104-debug-log.md](104-debug-log.md) | an opt-in local log for bug reports — built |
 | [105-content-audit.md](105-content-audit.md) | what the repository must not carry, and the findings from the 2026-08-20 audit — all fixed, kept as the record |
 | [106-releases.md](106-releases.md) | versioning, PyInstaller packaging and GitHub Actions — built, no tag pushed yet |

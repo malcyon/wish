@@ -41,10 +41,10 @@ from . import notes as notemod
 from .actionbar import ActionBar, FastTravelBar
 from .area import NOT_OURS
 from .combatlog import CombatLog, recase
-from .commissions import CommissionsPanel
 from .config import Settings, remember_geometry
 from .noteeditor import NotePopover
 from .panel import BottomStrip, MessagesPanel, NotesPanel, RosterPanel
+from .questlog import QuestLogPanel
 from .render import (
     CELL,
     CELL_MIN,
@@ -529,7 +529,7 @@ class AutomapBinding(QObject):
     #: it belongs in the settings file once the measurement says what it costs.
     COMBAT_LOG_EVERY = 1
 
-    #: The widest the notes, commissions and messages column may get. The
+    #: The widest the notes, quest log and messages column may get. The
     #: panels hold short rows; past this they are mostly paper.
     SIDE_WIDTH = 460
 
@@ -571,18 +571,18 @@ class AutomapBinding(QObject):
         self.strip = BottomStrip(self.root)
         self.notes_panel = NotesPanel(self.root)
         self.notes_panel.chosen.connect(self.point_at)
-        self.commissions = CommissionsPanel(self.root)
-        # `CommissionsPanel` fixes its own width for a window where it is the
+        self.questlog = QuestLogPanel(self.root)
+        # `QuestLogPanel` fixes its own width for a window where it is the
         # only thing beside the map. Here it shares a column with the notes, so
         # the cap comes off and the column decides -- otherwise every pixel the
         # window gains lands as blank paper beside a fixed 270px panel.
-        if hasattr(self.commissions, 'scroll') and self.commissions.scroll:
-            self.commissions.scroll.setMaximumWidth(QWIDGETSIZE_MAX)
+        if hasattr(self.questlog, 'scroll') and self.questlog.scroll:
+            self.questlog.scroll.setMaximumWidth(QWIDGETSIZE_MAX)
         # And the floor comes off with it, for the same reason in the other
         # direction: a fixed 270px was the whole of this column's minimum
         # width, and the rows inside it scroll and wrap already (#41).
-        if hasattr(self.commissions, 'scroll') and self.commissions.scroll:
-            self.commissions.scroll.setMinimumWidth(self.SIDE_SQUEEZED)
+        if hasattr(self.questlog, 'scroll') and self.questlog.scroll:
+            self.questlog.scroll.setMinimumWidth(self.SIDE_SQUEEZED)
         self.messages = MessagesPanel(self.root)
         self.combat_log = CombatLog()
         self.strength_label = self.root.findChild(QLabel, "strength_label")
@@ -931,7 +931,7 @@ class AutomapBinding(QObject):
             # In camp, in a menu, mid-load or at the title screen. Hold the
             # last good snapshot and say it is stale rather than blank the
             # cards, which would flicker every time the game opened a menu.
-            # The commissions panel is left alone for the same reason, and a
+            # The quest log is left alone for the same reason, and a
             # better one: plot flags do not move while the game is in a menu.
             self.roster.set_stale(True)
             self.strip.show_state(self.state, self.snapshot)
@@ -939,7 +939,7 @@ class AutomapBinding(QObject):
         self.snapshot = snap
         self.roster.show_snapshot(snap)
         self.strip.show_state(self.state, snap)
-        self.commissions.update_from(save0_bytes)
+        self.questlog.update_from(save0_bytes)
         self.show_strength(save0_bytes, roster_bytes)
 
     def show_strength(self, save0_bytes: bytes, roster_bytes: bytes) -> None:

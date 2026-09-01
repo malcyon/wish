@@ -2128,20 +2128,20 @@ def test_a_notes_row_flashes_its_square(app, tmp_path, monkeypatch):
     assert window.canvas.flash == (9, 3)
 
 
-# --- the commissions panel, wired -------------------------------------------
+# --- the quest log panel, wired -------------------------------------------
 
-def test_the_tab_shows_the_commissions(app, tmp_path, monkeypatch):
+def test_the_tab_shows_the_quest_log(app, tmp_path, monkeypatch):
     save0, save1 = captured()
     window = make_window(app, tmp_path, monkeypatch,
                          MemoryTarget({0x4900: save0, 0x8300: save1}))
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert window.commissions.completed.text().startswith(
+    assert window.questlog.completed.text().startswith(
         "Quests completed:")
-    assert window.commissions.heading.text() == "Quest Log"
+    assert window.questlog.heading.text() == "Quest Log"
 
 
-def test_a_poll_that_reads_nothing_leaves_the_commissions_alone(app, tmp_path,
+def test_a_poll_that_reads_nothing_leaves_the_quest_log_alone(app, tmp_path,
                                                                 monkeypatch):
     """Plot flags do not change while the game is in a menu, and a blanked
     quest log every time somebody opens one would be a flicker."""
@@ -2150,11 +2150,11 @@ def test_a_poll_that_reads_nothing_leaves_the_commissions_alone(app, tmp_path,
     window = make_window(app, tmp_path, monkeypatch, machine)
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    before = window.commissions.completed.text()
+    before = window.questlog.completed.text()
     machine.memory[0x4900] = bytes(0x1C00)
     for _ in range(window.LIVE_EVERY):
         window.tick()
-    assert window.commissions.completed.text() == before
+    assert window.questlog.completed.text() == before
 
 
 # --- the action buttons -----------------------------------------------------

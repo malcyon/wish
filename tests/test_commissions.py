@@ -244,8 +244,8 @@ SLUMS = {"Clear the Slums", "Slums cleared"}   # the panel capitalises
 
 
 def panel_for(app, flags):
-    from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel(make_root())
+    from automap.questlog import QuestLogPanel
+    panel = QuestLogPanel(make_root())
     panel.update_from(flags)
     return panel
 
@@ -390,8 +390,8 @@ def test_the_panel_hides_the_summonses_when_there_are_none(app):
 
 
 def test_the_panel_takes_a_whole_savedgame0(app):
-    from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel(make_root())
+    from automap.questlog import QuestLogPanel
+    panel = QuestLogPanel(make_root())
     payload = game_file("SAVEDGAME0")
     before = bytes(payload)
     panel.update_from(payload)
@@ -426,15 +426,15 @@ def test_nothing_in_the_panel_is_editable(app):
 
 
 def test_the_panel_says_so_before_it_has_any_bytes(app):
-    from automap.commissions import CommissionsPanel
-    panel = CommissionsPanel(make_root())
+    from automap.questlog import QuestLogPanel
+    panel = QuestLogPanel(make_root())
     assert panel.heading.text() == "Quest Log - waiting for a game"
     panel.update_from(blank())
     assert panel.heading.text() == "Quest Log"
 
 
 def test_every_board_candidate_and_ledger_entry_is_in_exactly_one_row():
-    from automap.commissions import COMMISSIONS
+    from automap.questlog import COMMISSIONS
     seen = [i for c in COMMISSIONS for i in c.ledger]
     assert sorted(seen) == list(range(book.LEDGER_COUNT))
     orders = [c.order for c in COMMISSIONS if c.order is not None]
@@ -446,7 +446,7 @@ def test_the_slums_says_how_many_encounters_are_cleared(app):
     encounters cleared, of 25 -- `docs/134-commissions.md`."""
     flags = bytearray(book.FLAGS_SIZE)
     flags[book.LEDGER_BASE - book.FLAGS_BASE + 21] = 4
-    from automap.commissions import commission_rows
+    from automap.questlog import commission_rows
     rows = [r for r in commission_rows(bytes(flags)) if r[0] == "Clear the Slums"]
     assert len(rows) == 1
     assert rows[0][3] == "4 of 25 encounters cleared"

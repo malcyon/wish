@@ -153,15 +153,15 @@ Each stage is one component touching only its own files. Ordered easiest → har
 
 ---
 
-### Stage 8 — CommissionsPanel
+### Stage 8 — QuestLogPanel
 **Difficulty:** ★★★☆☆ — 16 layout calls, nested scroll area with dynamic groups
-**File:** [automap/commissions.py](file:///home/donald/src/wish/automap/commissions.py) `CommissionsPanel` (line 359)
+**File:** [automap/questlog.py](file:///home/donald/src/wish/automap/questlog.py) `QuestLogPanel` (line 359)
 **Layout:** QWidget → QVBoxLayout → heading + QScrollArea (inner VBox with dynamic Row/Group widgets)
 **Note:** `Row` and `Group` are dynamically created — they stay as Python.
 
-#### [NEW] automap/commissions.ui
-#### [NEW] automap/ui_commissions.py
-#### [MODIFY] automap/commissions.py
+#### [NEW] automap/questlog.ui
+#### [NEW] automap/ui_questlog.py
+#### [MODIFY] automap/questlog.py
 **Test:** `tests/test_automap.py tests/test_commissions.py`
 
 ---

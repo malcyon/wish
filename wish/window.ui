@@ -1324,8 +1324,8 @@
                </item>
               </layout>
              <property name="maximumSize"><size><width>16777215</width><height>138</height></size></property></widget>
-             <widget class="QWidget" name="commissions_panel">
-              <layout class="QVBoxLayout" name="commissions_layout">
+             <widget class="QWidget" name="questlog_panel">
+              <layout class="QVBoxLayout" name="questlog_layout">
                <property name="spacing">
                 <number>4</number>
                </property>
@@ -1342,7 +1342,7 @@
                 <number>0</number>
                </property>
                <item>
-                <widget class="QLabel" name="commissions_heading">
+                <widget class="QLabel" name="questlog_heading">
                  <property name="font">
                   <font>
                    <bold>true</bold>
@@ -1357,7 +1357,7 @@
                 </widget>
                </item>
                <item>
-                <widget class="QScrollArea" name="commissions_scroll">
+                <widget class="QScrollArea" name="questlog_scroll">
                  <property name="minimumSize"><size><width>0</width><height>138</height></size></property><property name="frameShape">
                   <enum>QFrame::StyledPanel</enum>
                  </property>
@@ -1367,8 +1367,8 @@
                  <property name="widgetResizable">
                   <bool>true</bool>
                  </property>
-                 <widget class="QWidget" name="commissions_inner">
-                  <layout class="QVBoxLayout" name="commissions_column">
+                 <widget class="QWidget" name="questlog_inner">
+                  <layout class="QVBoxLayout" name="questlog_column">
                    <property name="spacing">
                     <number>8</number>
                    </property>
@@ -1385,7 +1385,7 @@
                     <number>6</number>
                    </property>
                    <item>
-                    <widget class="QLabel" name="commissions_completed">
+                    <widget class="QLabel" name="questlog_completed">
                      <property name="font">
                       <font>
                        <pointsize>8</pointsize>

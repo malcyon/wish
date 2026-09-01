@@ -13,7 +13,7 @@ the *method* turns on it.
 
 **This is a decoding checklist, not a test plan.** It says nothing about
 whether the shipped features — the editor's tabs, the CLI, the live actions,
-Fast Travel, Level Up, the combat log, the commissions panel — work on a title
+Fast Travel, Level Up, the combat log, the Quest Log — work on a title
 once it is decoded. Decoding a title is not supporting it. That is
 [139-per-title-validation.md](139-per-title-validation.md), the feature × title
 matrix.

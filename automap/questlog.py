@@ -1,4 +1,4 @@
-"""The City Council's books, drawn beside the map.
+"""The Quest Log: the City Council's books, drawn beside the map.
 
 A quest log the game itself only shows one City Hall visit at a time: what has
 been asked for, what is finished, and -- the line worth having -- what is
@@ -25,7 +25,7 @@ no candidate offers, and each pair draws exactly one row.
 The row carries only facts about the party's game -- the commission's name, its
 state, and for the books how many of the six are in. Raw marker values, ledger
 indices, addresses and the gate's other conditions are in the tooltip, where
-they are useful and harmless. See `docs/103-commissions-panel.md`.
+they are useful and harmless. See `docs/103-quest-log-panel.md`.
 """
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ def _table() -> tuple[Commission, ...]:
     Candidate 9 is dropped: it settles nothing and an unconditional `GOTO` puts
     it beyond reach, so it is not a commission and gets no row. Nothing on
     the face says so -- a slot no party can be offered is not the player's
-    problem; the finding is `docs/103-commissions-panel.md`.
+    problem; the finding is `docs/103-quest-log-panel.md`.
     """
     out, claimed = [], set()
     for offer in book.BOARD:
@@ -356,7 +356,7 @@ def commission_rows(flags) -> list[tuple]:
     return rows
 
 
-class CommissionsPanel(QObject):
+class QuestLogPanel(QObject):
     """The whole log: one row per commission, and the summonses under it.
 
     One entry point -- `update_from(source)`. Nothing here writes.
@@ -365,22 +365,22 @@ class CommissionsPanel(QObject):
     def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
-        self.heading = root.findChild(QLabel, "commissions_heading")
-        self.scroll = root.findChild(QScrollArea, "commissions_scroll")
+        self.heading = root.findChild(QLabel, "questlog_heading")
+        self.scroll = root.findChild(QScrollArea, "questlog_scroll")
         if self.scroll is not None:
             self.scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid "
                                       f"{LATTICE.name()}; border-radius: 4px; }}")
             if self.scroll.widget() is not None:
                 self.scroll.widget().setStyleSheet(f"background: {CARD.name()};")
 
-        self.completed = root.findChild(QLabel, "commissions_completed")
+        self.completed = root.findChild(QLabel, "questlog_completed")
         if self.completed is not None:
             self.completed.setStyleSheet(f"color: {MUTED.name()}")
             self.completed.setToolTip(
                 f"${book.COMPLETED:04X}, bumped by the clerk for the ten "
                 "commissions that count as major")
 
-        self.column = root.findChild(QVBoxLayout, "commissions_column")
+        self.column = root.findChild(QVBoxLayout, "questlog_column")
         if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
             self.column = self.scroll.widget().layout()
 

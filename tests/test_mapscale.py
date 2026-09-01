@@ -357,7 +357,7 @@ def _test_the_automapper_pages_floor_does_not_follow_the_ui_font(
     floor runs 580, 605, 635, 670 and the last two differ, which is what makes
     this bite.
 
-    The roster panel and the notes/commissions/messages column are not capped.
+    The roster panel and the notes/quest log/messages column are not capped.
     They do follow the font -- 89 to 132 and 281 to 410 between +0 and +24 --
     and neither comes near the map column's 514, so neither is in this
     number. If one ever overtakes it this test goes red, which is the right
