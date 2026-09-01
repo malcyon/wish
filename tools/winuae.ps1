@@ -12,14 +12,16 @@
 #
 #   export SSH_ASKPASS_REQUIRE=never
 #   ps='powershell -NoProfile -ExecutionPolicy Bypass -File C:\Amiga\winuae.ps1'
-#   winvm ssh "$ps roms"                        # once, then winvm promote
-#   winvm ssh "$ps start -log -f C:\Amiga\configs\goldbox-a500.uae"
-#   winvm ssh "$ps key 7A"                      # F11: enter the debugger
-#   winvm ssh "$ps send '-File C:\Amiga\cmds.txt'"
-#   winvm ssh "$ps send '-DumpOnly -Tail 40'"   # read the console back
-#   winvm ssh "$ps front"
+#   winvm ssh "$ps claim -Holder por-run"       # first: the VM is single-tenant
+#   winvm ssh "$ps roms -Holder por-run"        # once, then winvm promote
+#   winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
+#   winvm ssh "$ps key 7A -Holder por-run"      # F11: enter the debugger
+#   winvm ssh "$ps send '-File C:\Amiga\cmds.txt' -Holder por-run"
+#   winvm ssh "$ps send '-DumpOnly -Tail 40' -Holder por-run"
+#   winvm ssh "$ps front -Holder por-run"
 #   winvm ssh "$ps status"
-#   winvm ssh "$ps stop"                        # before clean, always
+#   winvm ssh "$ps stop -Holder por-run"        # before clean, always
+#   winvm ssh "$ps release -Holder por-run"     # let the next lane in
 #   winvm ssh "$ps clean"                       # before winvm promote
 #
 # -log is not optional if you want the debugger: it is what makes WinUAE
@@ -39,12 +41,58 @@
 # console, so a `key` that reported "pressed" would leave the debugger closed,
 # a `send` typing into a console that was never created, and the whole run
 # looking fine until somebody read the empty dumps hours later.
+#
+# THE VM IS SINGLE-TENANT, AND THAT IS WHAT `claim` SAYS OUT LOUD.
+# There is one scheduled task, one interactive session and one winuae64 on this
+# machine, and `key`, `send` and `front` find their target by process NAME. So a
+# second driver does not get a second emulator: it gets yours. It types into
+# your game, and its `stop` ends your run -- three Pools of Darkness sessions
+# died that way in one night, and nothing in any output said so. So:
+#
+#   * `claim` refuses a second holder, and `start`, `stop`, `key`, `send`,
+#     `front` and `roms` refuse a caller who is not the holder;
+#   * `start` verifies that the emulator it found is running the command line
+#     THIS call passed, and was started after this call was made -- so a
+#     neighbour's emulator can never be reported as your own success;
+#   * `start` writes a receipt naming the pid it launched, and `stop`, `key`,
+#     `send` and `front` refuse a winuae64 that is not the one in it.
+#
+# See docs/143-winuae-debugger.md 1.1 and
+# #116 (Two agents cannot share the WinUAE VM, and neither of them can tell).
 
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('start','stop','front','status','send','key','roms','clean')][string]$Cmd,
+  [ValidateSet('start','stop','front','status','send','key','roms','clean','claim','release')][string]$Cmd,
   [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest
 )
+
+# -Holder and -Override are read out of the remaining arguments by hand rather
+# than declared as parameters, and that is not a matter of taste. PowerShell
+# fills a positional parameter BEFORE it fills a ValueFromRemainingArguments
+# one, wherever each is declared and whatever Position each is given -- so a
+# declared -Holder eats the `7A` of `key 7A` and the quoted argument of `send`.
+# Measured, with -Holder at Position 99 and $Rest at Position 1:
+# `key 7A` bound cmd=[key] holder=[7A] rest=[], and the keypress was then
+# refused for having no VK code. Reading them here leaves every existing call
+# shape exactly as it was.
+#
+# For the same family of reasons neither name may be abbreviated by the caller:
+# PowerShell would match `-f` to -Holder-like names by prefix, and `-f`, `-log`
+# and `-s` belong to WinUAE.
+$Holder   = ''
+$Override = $false
+# @($null) is an array of one $null, not an empty one, so a command with no
+# remaining arguments at all -- `stop`, `status` -- has Count 1 and indexes into
+# nothing. Measured: "Cannot index into a null array" on plain `stop`.
+$given    = if ($Rest) { @($Rest) } else { @() }
+$passthru = New-Object System.Collections.ArrayList
+for ($i = 0; $i -lt $given.Count; $i++) {
+  $a = $given[$i]
+  if ($a -eq '-Holder') { $i++; if ($i -lt $given.Count) { $Holder = $given[$i] } }
+  elseif ($a -eq '-Override') { $Override = $true }
+  else { [void]$passthru.Add($a) }
+}
+$Rest = $passthru.ToArray()
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
@@ -52,9 +100,93 @@ $Task    = 'winuae-run'
 $Helpers = 'winuae-front','winuae-key','winuae-send'
 $Receipt = "$Root\winuae-action.txt"    # what a session 1 helper writes back
 $SendLog = "$Root\send.log"
+$ClaimFile = "$Root\winuae-claim.txt"   # who holds the one Amiga lane
+$RunFile   = "$Root\winuae-run.txt"     # which winuae64 `start` launched, for whom
 $RomKey  = 'HKCU:\Software\Arabuusimiehet\WinUAE'
 $RomDir  = "$Root\Kickstarts\"
 
+# The claim and the run receipt are `key=value` lines. Not ConvertFrom-StringData,
+# which reads a backslash as an escape -- every path here is a Windows one, and
+# `-s floppy0=C:\Amiga\Disks\...` carries a second `=` as well. Split on the
+# first `=` and keep the rest of the line whole.
+function Read-Kv([string]$Path) {
+  $h = @{}
+  foreach ($line in @(Get-Content -Path $Path -ErrorAction SilentlyContinue)) {
+    $i = $line.IndexOf('=')
+    if ($i -gt 0) { $h[$line.Substring(0, $i)] = $line.Substring($i + 1) }
+  }
+  $h
+}
+
+function Write-Kv([string]$Path, [hashtable]$H) {
+  ($H.Keys | Sort-Object | ForEach-Object { "$_=$($H[$_])" }) | Set-Content -Path $Path -Encoding ASCII
+}
+
+function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o') }
+
+# A claim cannot outlive the boot that made it: a restart takes every emulator
+# and every run in flight with it, so a claim left behind by an agent that died
+# is not a claim about anything. Any other stale claim is a person's to release
+# or to steal with -Override, because nothing in the guest can see whether the
+# Linux process that took it is still alive.
+function Get-Claim {
+  $c = Read-Kv $ClaimFile
+  if (-not $c.ContainsKey('holder')) { return $null }
+  if ($c['boot'] -ne (Boot-Stamp)) { return $null }
+  $c
+}
+
+function Claim-Denial {
+  $c = Get-Claim
+  if (-not $c) {
+    return "fail the WinUAE lane is unclaimed; run: winuae.ps1 claim -Holder <id>"
+  }
+  if (-not $Holder) {
+    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); pass -Holder <id>"
+  }
+  if ($Holder -ne $c['holder']) {
+    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']), not by $Holder"
+  }
+  $null
+}
+
+# The one winuae64 this lane started -- or why the caller must not touch the one
+# that is there. `key`, `send` and `front` pick their target by process name, so
+# without the receipt they drive whatever emulator is running, which on a shared
+# VM is somebody else's game.
+function Resolve-MyEmulator {
+  $all = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
+  if ($all.Count -eq 0) { return @{ err = 'fail no winuae64 process' } }
+  if ($all.Count -gt 1) {
+    return @{ err = ('fail ' + $all.Count + ' winuae64 processes: ' +
+                     (($all | ForEach-Object { $_.Id }) -join ',') + '; stop all but one') }
+  }
+  $p = $all[0]
+  $r = Read-Kv $RunFile
+  if (-not $r.ContainsKey('pid')) {
+    return @{ err = "fail winuae64 pid=$($p.Id) has no run receipt, so nothing here started it" }
+  }
+  if ([int]$r['pid'] -ne $p.Id) {
+    return @{ err = "fail winuae64 pid=$($p.Id) is not the pid=$($r['pid']) this lane started" }
+  }
+  # A pid is reused within the hour on a busy guest, and the whole point here is
+  # to be sure of the process rather than of the number.
+  if ($r['started'] -and $r['started'] -ne $p.StartTime.ToString('o')) {
+    return @{ err = "fail winuae64 pid=$($p.Id) started $($p.StartTime.ToString('o')), not $($r['started']) as the receipt says" }
+  }
+  if ($Holder -and $r['holder'] -and $r['holder'] -ne $Holder) {
+    return @{ err = "fail winuae64 pid=$($p.Id) was started by $($r['holder']), not by $Holder" }
+  }
+  @{ proc = $p; run = $r }
+}
+
+# Register-ScheduledTask -Force is not to be trusted without reading the result
+# back. It is documented not to end a running instance of the task, and the
+# hijack in #116 was reported as -Force silently keeping the old action while
+# one was running. That was measured NOT to happen on this guest -- three of
+# three -Force calls over a running instance replaced the arguments -- but the
+# check costs three lines and it is the difference between a wrong config and an
+# error message on whatever Windows build does behave that way.
 function Register-Session1Task {
   param([string]$Name, [string]$Program, [string]$Arguments, [TimeSpan]$Limit)
   $a = New-ScheduledTaskAction -Execute $Program -Argument $Arguments -WorkingDirectory $Root
@@ -62,6 +194,14 @@ function Register-Session1Task {
   $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit $Limit `
          -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
   Register-ScheduledTask -TaskName $Name -Action $a -Principal $p -Settings $s -Force | Out-Null
+  $got = @((Get-ScheduledTask -TaskName $Name).Actions)[0]
+  if ($got.Execute -ne $Program) {
+    return "fail $Name runs '$($got.Execute)' after registering, not '$Program'"
+  }
+  if (($got.Arguments -replace '\s+', ' ').Trim() -ne ($Arguments -replace '\s+', ' ').Trim()) {
+    return "fail $Name kept the arguments of an earlier call: '$($got.Arguments)' instead of '$Arguments'"
+  }
+  $null
 }
 
 # Task Scheduler's MultipleInstances is IgnoreNew and there is nothing else to
@@ -106,9 +246,10 @@ function Invoke-Session1 {
   $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
   Remove-Item $Receipt -ErrorAction SilentlyContinue
   $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("`$Token = '$token'`r`n" + $Script))
-  Register-Session1Task $Name 'powershell.exe' `
+  $bad = Register-Session1Task $Name 'powershell.exe' `
     "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $enc" `
     ([TimeSpan]::FromMinutes(1))
+  if ($bad) { return $bad }
   Start-Session1Task $Name
   for ($i = 0; $i -lt $TimeoutSec * 10; $i++) {
     $r = (Get-Content -Raw $Receipt -ErrorAction SilentlyContinue)
@@ -153,6 +294,22 @@ if (`$all.Count -gt 1) {
 if (`$h -eq [IntPtr]::Zero) { Report "fail pid=`$(`$p.Id) has no main window"; exit 1 }
 "@
 
+# The caller checks the pid against the run receipt before it dispatches; the
+# helper checks it again, because between the two there is a whole
+# scheduled-task launch, and that is long enough for another lane's `start` to
+# have replaced the emulator underneath this one.
+#
+# The blank first and last lines are deliberate: this string is concatenated
+# between two others, and a here-string does not promise a newline at either
+# end of itself.
+function Pid-Guard([int]$Id) {
+  @"
+
+if (`$p.Id -ne $Id) { Report "fail winuae64 pid=`$(`$p.Id) is not the pid=$Id this lane started"; exit 1 }
+
+"@
+}
+
 # Raising the emulator is a prerequisite for `key` -- keybd_event goes to
 # whatever has focus -- and for `winvm shot`, since anything else open on the
 # guest desktop would otherwise sit on top of it.
@@ -166,21 +323,92 @@ $fg = ([W]::GetForegroundWindow() -eq $h)
 
 switch ($Cmd) {
 
+  'claim' {
+    # A tag is not a mutex: `winvm acquire wish-re` from two agents shares one
+    # lease file, and the second one's release shuts the VM down under the
+    # first. This refuses the second holder instead.
+    if (-not $Holder) { 'fail claim needs -Holder <id>'; exit 1 }
+    if ($Holder -notmatch '^[A-Za-z0-9._-]{1,64}$') { "fail '$Holder' is not a usable holder name"; exit 1 }
+    $c = Get-Claim
+    if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
+      "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); one Amiga lane at a time"
+      exit 1
+    }
+    $stolen = if ($c -and $c['holder'] -ne $Holder) { " (taken from $($c['holder']))" } else { '' }
+    Write-Kv $ClaimFile @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp) }
+    "ok claimed by $Holder$stolen"
+  }
+
+  'release' {
+    # Releasing does not stop the emulator: the next holder would find one it
+    # did not start and be refused by every command, which is the right way
+    # round -- an emulator nobody claims is somebody's unfinished run until a
+    # person says otherwise.
+    if (-not $Holder) { 'fail release needs -Holder <id>'; exit 1 }
+    $c = Get-Claim
+    if (-not $c) { 'ok nothing to release'; exit 0 }
+    if ($c['holder'] -ne $Holder -and -not $Override) {
+      "fail the WinUAE lane is claimed by $($c['holder']), not by $Holder"
+      exit 1
+    }
+    Remove-Item $ClaimFile -ErrorAction SilentlyContinue
+    "ok released by $Holder"
+  }
+
   'start' {
-    $already = Get-Process -Name winuae64 -ErrorAction SilentlyContinue
-    if ($already) {
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
+    $already = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
+    if ($already.Count -gt 0) {
       # Starting over a live emulator would be ignored by the scheduler and the
       # loop below would then report the OLD process as this call's success,
       # with whatever config that one was given.
-      ($already | ForEach-Object { "fail winuae64 already running pid=$($_.Id); stop it first" })
+      $r = Read-Kv $RunFile
+      $whose = if ($r['holder']) { " started by $($r['holder'])" } else { '' }
+      ($already | ForEach-Object { "fail winuae64 already running pid=$($_.Id)$whose; stop it first" })
       exit 1
     }
+    $wanted = ($Rest -join ' ')
     # No execution time limit: this one is meant to run until `stop`.
-    Register-Session1Task $Task $Exe ($Rest -join ' ') ([TimeSpan]::Zero)
+    $bad = Register-Session1Task $Task $Exe $wanted ([TimeSpan]::Zero)
+    if ($bad) { $bad; exit 1 }
+    # Everything below the launch is one question: is the emulator that is
+    # running the one THIS call asked for? Six keystrokes went into a stranger's
+    # Pools of Darkness because the old loop asked only whether a winuae64
+    # existed -- #116.
+    $launchedAt = Get-Date
     Start-Session1Task $Task
     for ($i = 0; $i -lt 120; $i++) {
-      $q = Get-Process -Name winuae64 -ErrorAction SilentlyContinue
-      if ($q) { $q | ForEach-Object { "ok pid=$($_.Id) session=$($_.SessionId)" }; exit 0 }
+      $q = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
+      if ($q.Count -gt 1) {
+        "fail $($q.Count) winuae64 processes after starting: $(($q | ForEach-Object { $_.Id }) -join ',')"
+        exit 1
+      }
+      if ($q.Count -eq 1) {
+        $proc = $q[0]
+        $cmdline = (Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
+        $expected = "`"$Exe`" $wanted"
+        if (($cmdline -replace '\s+', ' ').Trim() -ne ($expected -replace '\s+', ' ').Trim()) {
+          "fail winuae64 pid=$($proc.Id) is running a command line this call did not pass"
+          "  wanted: $expected"
+          "  found:  $cmdline"
+          exit 1
+        }
+        # Same command line and still not ours: a neighbouring lane restarting
+        # the same config would otherwise be reported as this call's success.
+        if ($proc.StartTime -lt $launchedAt.AddSeconds(-2)) {
+          "fail winuae64 pid=$($proc.Id) started $($proc.StartTime.ToString('o')), before this call did at $($launchedAt.ToString('o'))"
+          exit 1
+        }
+        Write-Kv $RunFile @{
+          holder  = $Holder
+          pid     = $proc.Id
+          started = $proc.StartTime.ToString('o')
+          args    = $wanted
+        }
+        "ok pid=$($proc.Id) session=$($proc.SessionId)"
+        exit 0
+      }
       Start-Sleep -Milliseconds 250
     }
     "fail no winuae64 process after 30s: $(Why-NotRun $Task)"; exit 1
@@ -188,17 +416,39 @@ switch ($Cmd) {
 
   'stop' {
     # Ends the tree this task started. Never a kill by name: nothing here
-    # touches a winuae64 somebody else launched.
+    # touches a winuae64 somebody else launched -- and "somebody else" is the
+    # ordinary case on a VM with one task and one process name, which is why
+    # the receipt is checked before anything is stopped.
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
+    if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) {
+      Remove-Item $RunFile -ErrorAction SilentlyContinue
+      'ok stopped'; exit 0
+    }
+    $mine = Resolve-MyEmulator
+    if ($mine.err -and -not $Override) {
+      $mine.err
+      'stop refuses an emulator it did not launch; pass -Override to end it anyway'
+      exit 1
+    }
+    if ($mine.err) { "ok overriding: $($mine.err)" }
     Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
     for ($i = 0; $i -lt 40; $i++) {
-      if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) { 'ok stopped'; exit 0 }
+      if (-not (Get-Process -Name winuae64 -ErrorAction SilentlyContinue)) {
+        Remove-Item $RunFile -ErrorAction SilentlyContinue
+        'ok stopped'; exit 0
+      }
       Start-Sleep -Milliseconds 250
     }
     'fail winuae64 still running 10s after Stop-ScheduledTask'; exit 1
   }
 
   'front' {
-    $r = Invoke-Session1 'winuae-front' ($Preamble + $RaiseAndCheck + @'
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
+    $mine = Resolve-MyEmulator
+    if ($mine.err) { $mine.err; exit 1 }
+    $r = Invoke-Session1 'winuae-front' ($Preamble + (Pid-Guard $mine.proc.Id) + $RaiseAndCheck + @'
 
 Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id) did not take the foreground" })
 '@)
@@ -216,9 +466,13 @@ Report $(if ($fg) { "ok raised pid=$($p.Id) hwnd=$h" } else { "fail pid=$($p.Id)
     # emulation thread held, `Responding` was still True and the title bar
     # still read "[goldbox-a500.uae] - WinUAE". The receipt for F11 is the ">"
     # prompt in what `send` reads back off the console.
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
     if (-not ($Rest[0] -match '^[0-9A-Fa-f]{1,2}$')) { "fail '$($Rest[0])' is not a hex VK code"; exit 1 }
     $vk = $Rest[0]
-    $r = Invoke-Session1 'winuae-key' ($Preamble + $RaiseAndCheck + @"
+    $mine = Resolve-MyEmulator
+    if ($mine.err) { $mine.err; exit 1 }
+    $r = Invoke-Session1 'winuae-key' ($Preamble + (Pid-Guard $mine.proc.Id) + $RaiseAndCheck + @"
 
 if (-not `$fg) { Report "fail pid=`$(`$p.Id) did not take the foreground, so the key would go elsewhere"; exit 1 }
 [W]::keybd_event(0x$vk, 0, 0, [IntPtr]::Zero)
@@ -241,15 +495,14 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # The injector has to run in session 1 too: consoles are per-session, so
     # AttachConsole from here -- session 0 -- can never see WinUAE's, and says
     # so with GetLastError 203.
-    $all = @(Get-Process -Name winuae64 -ErrorAction SilentlyContinue)
-    if ($all.Count -eq 0) { 'fail no winuae64'; exit 1 }
-    if ($all.Count -gt 1) {
-      # Two emulators means two consoles, and the injector would attach to
-      # whichever was listed first. Same rule as `front` and `key`.
-      "fail $($all.Count) winuae64 processes: $(($all | ForEach-Object { $_.Id }) -join ','); stop all but one"
-      exit 1
-    }
-    $p = $all[0]
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
+    # Two emulators means two consoles, and the injector would attach to
+    # whichever was listed first; an emulator this lane did not start means
+    # typing into somebody else's game. Same rule as `front` and `key`.
+    $mine = Resolve-MyEmulator
+    if ($mine.err) { $mine.err; exit 1 }
+    $p = $mine.proc
     Remove-Item $SendLog -ErrorAction SilentlyContinue
     $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
     $sendargs = $Rest -join ' '
@@ -257,9 +510,10 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     $sendargs = "$sendargs -Token $token"
     # Bounded, unlike `start`: this finishes or it has gone wrong. A command
     # costs ~0.7s and a batch is tens of lines, so ten minutes is generous.
-    Register-Session1Task 'winuae-send' 'powershell.exe' `
+    $bad = Register-Session1Task 'winuae-send' 'powershell.exe' `
       ("-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden " +
        "-File $Root\winuae-send.ps1 $sendargs") ([TimeSpan]::FromMinutes(10))
+    if ($bad) { $bad; exit 1 }
     Start-Session1Task 'winuae-send'
     # winuae-send.ps1 ends every path with "--- exit N token=...". Wait for it
     # rather than for the task, so what is reported is the injector's own
@@ -334,6 +588,8 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # its own `winuae64`, and for the minute it runs there are two, which is
     # exactly the ambiguity `front`, `key` and `send` now refuse. Nothing
     # enforced this, and `roms` is the one command that creates the condition.
+    $deny = Claim-Denial
+    if ($deny) { $deny; exit 1 }
     $live = Get-Process -Name winuae64 -ErrorAction SilentlyContinue
     if ($live) {
       ($live | ForEach-Object { "fail winuae64 running pid=$($_.Id); roms starts its own, stop this one first" })
@@ -395,16 +651,25 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
       'fail winuae64 is running; run `stop` first, or clean would strand it'
       exit 1
     }
+    $c = Get-Claim
+    if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
+      "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); clean would take the scaffolding out from under it"
+      exit 1
+    }
     foreach ($t in @($Task) + $Helpers) {
       Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
     }
-    Remove-Item $Receipt, $SendLog, "$Root\console.txt" -ErrorAction SilentlyContinue
+    Remove-Item $Receipt, $SendLog, $RunFile, $ClaimFile, "$Root\console.txt" -ErrorAction SilentlyContinue
     'ok cleaned'
   }
 
   'status' {
     Get-Process -Name winuae64 -ErrorAction SilentlyContinue |
       ForEach-Object { "pid=$($_.Id) session=$($_.SessionId) responding=$($_.Responding) start=$($_.StartTime)" }
+    $c = Get-Claim
+    if ($c) { "claim = $($c['holder']) since $($c['since'])" } else { 'claim = none' }
+    $r = Read-Kv $RunFile
+    if ($r.ContainsKey('pid')) { "run   = pid=$($r['pid']) holder=$($r['holder']) args=$($r['args'])" } else { 'run   = no receipt' }
     "System ROMs = $((Get-ItemProperty $RomKey -Name KickstartPath -ErrorAction SilentlyContinue).KickstartPath)"
     $n = if (Test-Path "$RomKey\DetectedROMs") {
            (Get-Item "$RomKey\DetectedROMs" | Select-Object -ExpandProperty Property).Count

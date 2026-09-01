@@ -21,8 +21,11 @@ QEMU/KVM. From here it is reached with:
 ```sh
 export SSH_ASKPASS_REQUIRE=never   # see below; set it once, for the session
 winvm acquire wish-re          # start the VM, take a lease
-winvm ssh "$ps start -log -f C:\Amiga\configs\goldbox-a500.uae"
+winvm ssh "$ps claim -Holder por-run"          # take the one Amiga lane -- 1.1
+winvm ssh "$ps start -Holder por-run -log -f C:\Amiga\configs\goldbox-a500.uae"
 winvm shot /tmp/screen.png     # see the emulator's screen, from a script
+winvm ssh "$ps stop -Holder por-run"
+winvm ssh "$ps release -Holder por-run"
 winvm release wish-re          # drop the lease; last one out shuts it down
 ```
 
@@ -32,13 +35,22 @@ Every scope of the guest's execution policy is `Undefined`, which on Windows 11
 client means `Restricted`, and `powershell -File` on any of these scripts fails
 with "running scripts is disabled on this system".
 
-**`SSH_ASKPASS_REQUIRE=never` is not decoration either.** `winvm ssh` shells out
-to `ssh` without `-o BatchMode=yes`, so when authentication falls through
-OpenSSH does not fail: with no tty and `DISPLAY` set it runs `SSH_ASKPASS`,
-which on this desktop is `ksshaskpass`, and a KDE password dialog appears in
-front of whoever is sitting at the machine. Three of them arrived that way in
-one night. Set it for anything that can reach `ssh` or `scp` — including
-`winvm up` and `winvm acquire` — so a failure stays a failure and can be read.
+**`SSH_ASKPASS_REQUIRE=never` is not decoration either.** When authentication
+falls through, OpenSSH does not fail: with no tty and `DISPLAY` set it runs
+`SSH_ASKPASS`, which on this desktop is `ksshaskpass`, and a KDE password
+dialog appears in front of whoever is sitting at the machine. Three of them
+arrived that way in one night. Set it for anything that can reach `ssh` or
+`scp` — including `winvm up` and `winvm acquire` — so a failure stays a failure
+and can be read.
+
+**`winvm ssh` does now pass `-o BatchMode=yes`, and this page used to say it
+did not.** Read on 2026-09-01, `/usr/local/bin/winvm` builds one `SSH_OPTS`
+array carrying `BatchMode=yes` and exports `SSH_ASKPASS_REQUIRE=never` at the
+top of the file, with a comment naming the drift that let the dialogs through:
+*"`wait_ssh` had BatchMode and the `ssh` subcommand did not"*. So it was true
+and has been fixed. Keep exporting the variable anyway — anything of ours that
+reaches `ssh` or `scp` directly is not covered by `winvm`'s options, and it
+costs nothing.
 
 | what | where |
 |---|---|
@@ -49,6 +61,7 @@ one night. Set it for anything that can reach `ssh` or `scp` — including
 | host → guest | `ssh donald@192.168.123.50`, key-only |
 | the machine config | `tools/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
 | the guest-side driver | `tools/winuae.ps1` and `tools/winuae-send.ps1`, deployed to `C:\Amiga\` |
+| the check on the driver | `tools/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
 
 **`winvm ssh` lands in Windows session 0; the VM's screen is session 1.** They
 are different window stations, and the consequences are not cosmetic:
@@ -109,11 +122,81 @@ target by process name — with two, the wrong one can be picked in silence.
 `roms` refuses while an emulator is running, and those three refuse when they
 find more than one, naming both pids. Stop the session first.
 
-`roms` is the only command that can create the condition, and that is measured
-rather than assumed: sshd ends its session's whole process tree when the call
-returns, so an emulator started from an SSH shell dies with the call that
-started it. The two-emulator window is exactly as long as a `roms` call, which
-is why reproducing it for a test means holding an SSH call open by hand.
+An SSH shell cannot leave one behind on its own: sshd ends its session's whole
+process tree when the call returns, so an emulator started from one dies with
+the call that started it. `roms` is one way to two emulators; **a second driver
+is the other**, and that one is not rare — `tools/winuae-lanecheck.ps1`'s
+`hijack` round produced `fail 2 winuae64 processes after starting: 1944,9640`
+from two `start` calls a second apart.
+
+### 1.1 One lane at a time, and the claim that enforces it
+
+**The hazard is not two emulators. It is two drivers of the one emulator**, and
+until 2026-09-01 nothing on this machine could tell them apart. There is one
+scheduled task, one interactive session and one `winuae64`, and `key`, `send`
+and `front` find their target by process *name* — so a second agent does not
+get a second emulator, it gets yours. `#116 (Two agents cannot share the WinUAE
+VM, and neither of them can tell)` is the night that cost: six keystrokes into
+a stranger's Pools of Darkness, a `start` that reported `ok pid=6644` for
+somebody else's config, and a `stop` that ended their session three times.
+
+`winvm acquire <tag>` does not help, and must not be mistaken for a mutex: two
+agents using the documented `wish-re` tag share one lease file, and
+`winvm release` shuts the VM down when the last lease goes — so the polite
+thing at the end of a run kills the other agent's emulator.
+
+`winuae.ps1` now says the constraint out loud and enforces it:
+
+| call | what it does |
+|---|---|
+| `claim -Holder <id>` | takes the lane; refuses a second holder, naming who has it and since when |
+| `release -Holder <id>` | gives it back. Does *not* stop the emulator |
+| `claim -Holder <id> -Override` | takes a lane whose holder has gone away, and says whose it was |
+| everything that touches the emulator | `start`, `stop`, `key`, `send`, `front` and `roms` refuse a caller who is not the holder |
+
+Two checks sit under the claim, because a claim only binds a caller who passes
+`-Holder`:
+
+* **`start` verifies what it launched.** After the task starts, it compares the
+  running `winuae64`'s command line with the one this call passed, and refuses
+  a process that started before the call did. That is what turns the hijack
+  into an error: `fail winuae64 pid=1568 is running a command line this call
+  did not pass`, quoting both.
+* **`start` writes a receipt** — `C:\Amiga\winuae-run.txt`, holding the pid, its
+  start time, the arguments and the holder — and `stop`, `key`, `send` and
+  `front` refuse a `winuae64` that is not the one in it. `stop -Override` ends
+  it anyway and says what it is overriding.
+
+The claim is a file in the guest, `C:\Amiga\winuae-claim.txt`, and it records
+the boot it was taken in: a claim cannot outlive a restart, because every
+emulator and every run in flight died with it. Nothing in the guest can see
+whether the *Linux* process that took a claim is still alive, so a claim left
+behind by an agent that died is taken with `-Override`, deliberately, by
+somebody who has looked.
+
+**`-Holder` and `-Override` are read out of the remaining arguments rather than
+declared as parameters**, and that is worth knowing before editing the script.
+PowerShell fills a positional parameter *before* a
+`ValueFromRemainingArguments` one, wherever each is declared and whatever
+`Position` each is given: measured, with `-Holder` at `Position=99` and `$Rest`
+at `Position=1`, `winuae.ps1 key 7A` bound `cmd=[key] holder=[7A] rest=[]` and
+the keypress was refused for having no VK code.
+
+`tools/winuae-lanecheck.ps1` is the proof, and it runs against whichever copy
+of the driver it is pointed at, so the old one can be watched to fail. Measured
+2026-09-01, three rounds each:
+
+| scenario | before | after |
+|---|---|---|
+| `stop` from a second driver ends the first's emulator | 3 of 3 | 0 of 3 |
+| `key` from a second driver presses into the first's game | 3 of 3 | 0 of 3 |
+| `start` reports the neighbour's emulator as its own success | 1 of 3 | 0 of 3 |
+| the holder's own `start`, `key` and `stop` still work | works | works |
+
+The hijack is the rare one because it needs the two calls to overlap inside the
+second WinUAE takes to become a process; over nine attempts across three runs
+it landed twice. The two deterministic ones are the ones that destroyed
+sessions.
 
 Windows Update is disabled in the guest. It is never going to be patched, and
 left on it wrote a 16 GB overlay in 25 minutes of uptime — update payloads and a
@@ -658,8 +741,10 @@ memory once §9 has located it.
   `Responding` was still `True` and the title bar unchanged — §5 said otherwise
   and was wrong
 * the configuration, the two driver scripts and the ROM database survive
-  `winvm revert`, having been folded into golden with `winvm promote`; golden's
-  copies of `winuae.ps1` and `winuae-send.ps1` hash equal to `tools/`
+  `winvm revert`, having been folded into golden with `winvm promote`. Golden's
+  copy of `winuae.ps1` is now the pre-`#116 (Two agents cannot share the WinUAE
+  VM, and neither of them can tell)` one and no longer matches `tools/` — see
+  the 2026-09-01 block below
 * **`front`, `key` and `send` refuse two emulators, and `roms` refuses one.**
   Watched to bite against a second `winuae64` started on purpose and stopped by
   its own pid: all three reported `fail 2 winuae64 processes: 1244,3652; stop
@@ -677,6 +762,41 @@ memory once §9 has located it.
   waiting out the timeout. Not diagnosed —
   `#95 (A WinUAE debugger batch can stop half-way through and leave the
   emulator halted)`
+
+**Checked on the VM itself, 2026-09-01**, for `#116 (Two agents cannot share
+the WinUAE VM, and neither of them can tell)`:
+
+* **`Register-ScheduledTask -Force` DOES replace a running task's action here,
+  and `#116 (Two agents cannot share the WinUAE VM, and neither of them can
+  tell)` says it does not.** Three of three `-Force` registrations over a
+  `winuae-run` instance that was running an emulator left
+  `Actions.Arguments` reading the arguments just passed, not the earlier ones.
+  So the hijack that issue describes is not a scheduler quirk: it is two
+  drivers of one task overlapping, and the fix has to be ownership rather than
+  a workaround for `-Force`. The read-back check in `Register-Session1Task`
+  stays, because it costs three lines and it is what would catch a Windows
+  build that does behave the reported way
+* **re-registering the task detaches the instance it had running.** After a
+  `-Force` register, `(Get-ScheduledTask winuae-run).State` read `Ready` while
+  the emulator that task launched was still alive — so the task's state is not
+  a reliable answer to "is my emulator running". `Stop-ScheduledTask` still
+  ended the process, 1.8 s later
+* the guards in 1.1, before and after, at three rounds each — the table there
+* **`@($null).Count` is 1**, so `winuae.ps1 stop` with no other arguments walked
+  into "Cannot index into a null array" the first time the argument scan was
+  written against `@($Rest)`
+* **a function's array return is unrolled**, so `(Emulators).Count` on a single
+  emulator asks a `CimInstance` for a property it has not got and gets `$null`.
+  `,@(...)` fixes the one-element case and breaks the empty one; `@()` at the
+  call site is the only form right at 0, 1 and n. It reported "A's emulator did
+  not start" about an emulator that had
+* **golden still carries the pre-`#116 (Two agents cannot share the WinUAE VM,
+  and neither of them can tell)` `winuae.ps1`.** The fixed copy was deployed
+  into the running guest's overlay and not promoted, so it does not survive
+  `winvm revert`, and the 2026-08-25 line above about golden's copies hashing
+  equal to `tools/` is no longer true. `scp tools/winuae.ps1
+  donald@192.168.123.50:'C:/Amiga/'` after any revert, and promote deliberately
+  when the overlay holds nothing else you would not want in the baseline
 
 **Not checked, and needing a session at the machine:**
 
