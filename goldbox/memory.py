@@ -148,8 +148,13 @@ MAP: tuple[Region, ...] = (
                 "roster agree in 31 of 32, differing only at 0x10D"),
     Region(0x8400, 0x700, "ANIMATE00 and a bitmap buffer", OK,
            saved_in="SAVEDGAME1",
-           note="not save data at all: resident code and graphics scratch that "
-                "happened to be in memory when the range was dumped"),
+           note="resident code and graphics scratch rather than party state -- "
+                "but $8400-$8753 is the file ANIMATE00 and loaded-files cache "
+                "slot 11 tells the engine it is already in memory, so nothing "
+                "reloads it and a save that carries the wrong bytes here is "
+                "carrying wrong code (#122). $8754-$8AFF is the bitmap buffer "
+                "and is scratch: 940 zeros there loaded, walked, fought and "
+                "changed area (#118)"),
 
     # --- live only --------------------------------------------------------
     Region(0x03DE, 3, "SETNAM arguments", OK,
