@@ -265,9 +265,8 @@ class Character:
             out.append(("death-skull", ""))
         if self.levels_drained:
             out.append(("oppression",
-                        f"drained {self.levels_drained} level"
-                        f"{'s' if self.levels_drained != 1 else ''} "
-                        f"(record 0x0A1)"))
+                        f"Drained {self.levels_drained} level"
+                        f"{'s' if self.levels_drained != 1 else ''}"))
         running = {e.id for e in self.effects}
         for glyph, ids in CONDITION_BADGES:
             named = [traits.describe(i) for i in ids if i in running]

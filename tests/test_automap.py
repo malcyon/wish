@@ -2370,7 +2370,7 @@ def test_a_character_at_zero_and_a_drained_one_are_marked(app):
     assert card.conditions.names == ("death-skull",)
     card.show_character(_character(hp=4, levels_drained=2))
     assert card.conditions.names == ("oppression",)
-    assert "drained 2 levels" in card.conditions.toolTip()
+    assert "Drained 2 levels" in card.conditions.toolTip()
     card.show_character(_character())
     assert card.conditions.names == ()
 

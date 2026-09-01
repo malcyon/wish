@@ -968,6 +968,28 @@ is worse than leaving it. The test is where the string ends up, not what it
 looks like in the source -- which is another reason to look at the running
 window rather than the diff.
 
+**No memory address, register or file offset in front of a player.** Donald,
+2026-08-31, of a tooltip reading `$4AC1, bumped by the clerk for the ten
+commissions that count as major`: *"we shouldn't be presenting memory addresses
+to players."*
+
+It is an easy fault to introduce here, because the address **is** the evidence
+and this whole project is written in addresses. In a docstring, a code comment,
+a `docs/` page or an issue, cite it -- that is what makes a finding checkable.
+In a tooltip, a label, a panel column or a message, it is a developer's note
+that escaped.
+
+The same goes for anything else only a developer knows: a script filename like
+`ECL08`, a record offset like `0x0A1`, a raw flag byte. `also needs $4A97
+(Cadorna's chambers) unpaid` becomes `also needs Cadorna's chambers unpaid`,
+and nothing is lost -- the address stays in `goldbox/commissions.py`, which is
+where somebody reading the code looks for it.
+
+`test_no_quest_log_tooltip_shows_a_memory_address` pins it for that panel.
+
+**The debug log is the exception**, and `WISH_DEBUG` output generally: it is
+read by whoever is debugging, and an address there is the point.
+
 **Never open a sentence with a quotation that starts lowercase.** This is how
 the rule gets broken by somebody who is following it: quoting a lowercase
 string is correct, and starting a sentence with that quote makes the sentence

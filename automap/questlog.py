@@ -69,17 +69,18 @@ UNBOARDED = {
 # What a candidate's gate reads besides its own ledger entries. `_gate` in
 # `goldbox/commissions.py` is the authority; this is the same thing in words, for
 # the tooltip, and it is why a row can be finished and still on the board.
+# The addresses each of these rests on are in `goldbox/commissions.py`; they are
+# deliberately not here, because a player reads these.
 GATE_NOTES = {
-    2: "gated on the book bounty flag $4AC2, not on the six entries",
-    4: "also needs $4A97 (Cadorna's chambers) unpaid and $4ABE "
-       "(Cadorna exposed) below 254",
-    5: "also needs Sokal Keep paid and $4A9B (the Bishop) unfinished",
+    2: "gated on the book bounty, not on the six entries",
+    4: "also needs Cadorna's chambers unpaid and Cadorna not yet exposed",
+    5: "also needs Sokal Keep paid and the Bishop unfinished",
     6: "also needs Sokal Keep paid",
     12: "also needs Sokal Keep paid",
-    13: "also needs $4A98 (the envoy) unpaid, and either $4ABE "
-        "(Cadorna exposed) or $4A97 (his chambers) paid",
-    14: "also needs $4ABE (Cadorna exposed) at 254 or more",
-    15: "also needs $4A9A (the council meeting) unfinished",
+    13: "also needs the envoy unpaid, and either Cadorna exposed or his "
+        "chambers paid",
+    14: "also needs Cadorna fully exposed",
+    15: "also needs the council meeting unfinished",
 }
 
 #: The one commission that settles more than one ledger entry, and its noun.
@@ -196,7 +197,7 @@ def _note(commission, entries) -> str:
 def _board_line(commission, on_board, open_gates) -> str:
     if commission.order is None:
         return "no candidate on the clerk's board offers this one"
-    where = f"candidate {commission.order} on ECL08's board at $A84D"
+    where = f"candidate {commission.order} on the clerk's board"
     if commission.order in on_board:
         return f"{where}: the clerk raises it on the next visit"
     if commission.order in open_gates:
@@ -226,7 +227,7 @@ def _tip(commission, entries, on_board, open_gates) -> str:
     many = len(commission.ledger) > 1
     for index in commission.ledger:
         entry = entries[index]
-        line = f"ledger {index} at ${entry.address:04X} = {entry.value}"
+        line = f"Ledger {index} = {entry.value}"
         speech = book.LEDGER[index][0]
         if many:
             lines.append(f"{line} ({entry.state})"
@@ -377,8 +378,8 @@ class QuestLogPanel(QObject):
         if self.completed is not None:
             self.completed.setStyleSheet(f"color: {MUTED.name()}")
             self.completed.setToolTip(
-                f"${book.COMPLETED:04X}, bumped by the clerk for the ten "
-                "commissions that count as major")
+                "Bumped by the clerk for the ten commissions that count "
+                "as major")
 
         self.column = root.findChild(QVBoxLayout, "questlog_column")
         if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
@@ -417,6 +418,6 @@ class QuestLogPanel(QObject):
             commission_rows(flags)
             or [("The clerk has nothing on the books for this party", "", "")])
         self.groups["summons"].show_rows(
-            [(_sentence(a.name), a.state, f"${a.address:04X} = {a.value}")
+            [(_sentence(a.name), a.state, "")
              for a in state.outstanding])
 

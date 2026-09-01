@@ -106,7 +106,7 @@ def test_the_two_record_conditions_still_come_first():
     does next, so they lead."""
     who = _character(hp=0, levels_drained=2, effects=_effects(39))
     assert _glyphs(who) == ("death-skull", "oppression", "running-ninja")
-    assert "drained 2 levels" in dict(who.conditions)["oppression"]
+    assert "Drained 2 levels" in dict(who.conditions)["oppression"]
 
 
 def test_every_badged_effect_is_confirmed():

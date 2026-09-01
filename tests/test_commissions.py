@@ -310,8 +310,11 @@ def test_the_slums_tooltip_is_one_sentence_and_nothing_else(app):
 def test_every_other_row_keeps_its_ledger_and_its_board_candidate(app):
     panel = panel_for(app, put_ledger(blank(), 12, 4))
     tip = [t for t in tips(panel) if t.startswith("clean out Kovel Mansion")][0]
-    assert "ledger 12 at $4AB2 = 4" in tip
-    assert "candidate 6 on ECL08's board at $A84D" in tip
+    assert "Ledger 12 = 4" in tip
+    assert "$4AB2" not in tip, "a player is being shown a memory address"
+    assert "candidate 6 on the clerk's board" in tip
+    assert "$A84D" not in tip and "ECL08" not in tip, (
+        "a player is being shown an address and a script filename")
     assert 'the clerk pays for it as "Kovel Mansion thieves"' in tip
 
 
@@ -325,9 +328,12 @@ def test_the_six_library_books_are_one_row_that_says_how_many_are_in(app):
                       "3 of 6 books recovered")]
     tip = [t for t in tips(panel) if t.startswith("bring back books")][0]
     for index in range(4, 10):
-        assert f"ledger {index} at ${LEDGER_BASE + index:04X}" in tip
+        assert f"Ledger {index} =" in tip
+        assert f"${LEDGER_BASE + index:04X}" not in tip, (
+            "a player is being shown a memory address")
     # Its gate is not the six entries, and the tooltip says which byte it is.
-    assert "$4AC2" in tip
+    assert "gated on the book bounty" in tip
+    assert "$4AC2" not in tip, "a player is being shown a memory address"
 
 
 def test_all_six_books_paid_is_one_paid_row_with_no_count(app):
@@ -455,3 +461,24 @@ def test_the_slums_says_how_many_encounters_are_cleared(app):
     # which is `$4A80`'s cap on the wandering half, and a reader who has seen
     # it needs the tooltip to say which number this row is.
     assert "10 set encounters and 15 wandering" in rows[0][2]
+
+
+def test_no_quest_log_tooltip_shows_a_memory_address():
+    """Donald, 2026-08-31: *"we shouldn't be presenting memory addresses to
+    players"* -- of the tooltip that read `$4AC1, bumped by the clerk for the
+    ten commissions that count as major`.
+
+    Every string this panel builds goes into a tooltip or a visible column, so
+    a `$XXXX` anywhere in one is a developer's note that reached a player. The
+    addresses themselves have not gone anywhere: `goldbox/commissions.py` is
+    the authority for them and its docstrings still carry them, which is where
+    somebody reading the code will look.
+    """
+    import re
+
+    from automap import questlog
+
+    address = re.compile(r"\$[0-9A-F]{4}\b")
+    shown = [*questlog.GATE_NOTES.values(), *questlog.TOOLTIPS.values()]
+    for text in shown:
+        assert not address.search(text), f"a memory address reaches a player: {text!r}"
