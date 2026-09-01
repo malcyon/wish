@@ -308,9 +308,12 @@ this table gave from a sample of three and adds two it did not have):
   `01` there where the other 93 read `00`. The same five are the ones with
   non-zero bytes at `$8754`.
 * **The 220 bytes at `$8754` are not zero in every specimen.** Five of 98 carry
-  the same 59 non-zero bytes — `work/drive/LVAFTER.D64`, `work/drive/P18PARTY.D64`
-  and three `work/inst/0/save-*6.D64` levelling saves, every one of them taken
-  after training. None of Donald's own 13 `PORSAVE` disks do.
+  the same 59 non-zero bytes, every one of them taken after training. None of
+  Donald's own 13 `PORSAVE` disks do. **The five disks themselves are gone** —
+  they were `LVAFTER.D64`, `P18PARTY.D64` and three levelling saves, all under
+  gitignored working directories that no longer exist (#136, #148), so the
+  count survives and the specimens do not. Training a party again is what
+  would produce another.
 * **A save carries `ANIMATE00` after the game has run it**, not as it comes off
   the disk — but the two are close. The file is 852 bytes, load address
   `$1000`, and is **byte-identical on all eight `POOL` sides**; a save's copy
@@ -342,12 +345,28 @@ decides:
 and changed area. So this section's original claim stands for a load, a walk
 and a transition, and the two documents were never really disagreeing.
 
-**What is not on the record**, and both are cheap: a **fight fought to its
-end** — `COMPIC` and `SPRITE` are what an encounter loads, and the harness
-could not drive a combat to a result — and **Sokol Keep's arrival**, area 21,
-which plays the boat animation. Those are the two things that could still call
-into a zeroed page. `#122 (A converted save says ANIMATE00 is resident and
-carries whatever the template had there)`.
+**What is not on the record with the page zeroed**: a **fight fought to its
+end** — `COMPIC` and `SPRITE` are what an encounter loads — and **Sokol Keep's
+arrival**, area 21. Those are the two things that could still call into a
+zeroed page, and neither has been driven with it zeroed.
+
+Both were tried on a save carrying the **real** `ANIMATE00`, read off
+`POOL1.D64` by the shipped converter (#122, 2026-08-31), which answers a
+different question — whether the conversion survives them — and answers it
+yes. The Sokol Keep party arrived: `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.`,
+`(8,14)` facing north, `$0400` matching `GEO15` in 1024 of 1024. The Slums
+party arrived at `(14,5)`, walked east across the boundary at `(15,4)` and
+completed the transition into New Phlan, `$0400` 1024 of 1024 against `GEO00`.
+
+**Two corrections come out of that run.** The Sokol Keep arrival is **a text
+message, not a picture** — `$D011` bit 5 never went up, the screen stayed in
+text mode throughout — so it exercises no animator and would not have caught a
+bad page either; something that actually draws an animation has still to be
+named. And the Slums party fought three encounters, seven minutes each, with
+monsters striking and characters dying and no crash, but **none was driven to
+a result**: a fight *won* is still nobody's measurement.
+`#122 (A converted save says ANIMATE00 is resident and carries whatever the
+template had there)`.
 
 The `EUD` / `PTTP` / `DQP` / `DPU` "ASCII runs" this section once flagged as a
 possible journal are `45 55 44` and `50 54 54 50` — pixel patterns.

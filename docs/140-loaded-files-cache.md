@@ -242,9 +242,17 @@ party loaded, walked and changed area anyway — `$0400` matching `GEO00` in 102
 of 1024 — as did the same save with slot 11 `$FF`, and one carrying `ANIMATE00`
 straight off `POOL1.D64`. Four variants, one load and one transition each. So
 slot 11 decides the transition and the bytes behind it did not have to be
-right for it. What has **not** been tried is a fight fought to its end or an
-arrival that plays an animation; `#122 (A converted save says ANIMATE00 is
-resident and carries whatever the template had there)`.
+right for it. What has **not** been tried with the page zeroed is a fight
+fought to its end or an arrival that plays an animation.
+
+**Sokol Keep's arrival is no longer the second of those.** Driven on a save
+the shipped converter built, carrying `ANIMATE00` off `POOL1.D64`, the party
+arrived at `(8,14)` with `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.` and `$0400`
+matching `GEO15` in 1024 of 1024 — and the screen never left text mode, so the
+arrival draws no picture and exercises no animator. Something that actually
+puts an animation on screen has still to be found.
+`#122 (A converted save says ANIMATE00 is resident and carries whatever the
+template had there)`.
 
 **What it costs.** An engine-written outdoor save standing on the ship's
 landing square, travel window `1A` (7,29), takes the boat into New Phlan:
