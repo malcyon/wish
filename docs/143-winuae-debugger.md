@@ -186,14 +186,23 @@ holder retrying a claim whose ssh reply was lost is an ordinary thing to do.
 Now the call reports `ok claimed by <id> (already yours since …)` and writes
 nothing, which removes the window rather than narrowing it.
 
-**A claim file that is present, has no `holder` line, and was last written
-before this boot is treated as stale.** `Try-TakeClaim` writes `boot` before
+**A claim file that is present, has no `holder` line, and has not been written
+for ten seconds is treated as stale.** `Try-TakeClaim` writes `boot` before
 `holder`, so a process killed between the two — an ssh drop takes the child
 PowerShell's whole tree, which is how this guest fails — leaves a wreck that
 would otherwise be `unreadable` for ever, refusing every command until a person
-passed `-Override`. The clock settles it: nothing written before this boot can
-be a write in flight now, and §1.1's promise that a claim cannot outlive its
-boot holds for the wreckage too.
+passed `-Override`.
+
+**Ten seconds of age, deliberately, rather than a comparison against the boot
+time.** Asking whether the file was written before this boot reads two
+different clock readings against each other, and a clock stepped *backwards*
+past its own recorded boot — an NTP correction after a resume, a reverted
+snapshot — would make a live write look stale and let a second holder take the
+lane with no `-Override`. That is this whole page's failure reopened by clock
+skew. An age is one clock compared with itself and it fails in the safe
+direction: a backwards step makes the age negative, the file reads as a write in
+flight, and the caller is refused rather than let in. A write lasts
+milliseconds, so ten seconds is margin rather than a measurement.
 
 **Every refusal says how to get unstuck.** An agent whose predecessor died
 without releasing would otherwise read only "claimed by dead-agent since 09:14"
@@ -245,6 +254,7 @@ more of them:
 | `start` reports the neighbour's emulator as its own success | 7 of 9 | 0 of 9 |
 | six simultaneous `claim`s grant more than one holder | 2 of 3 rounds, all six granted | 0 of 8 rounds |
 | a second holder takes a lane while its holder re-asserts it | 4 of 4 rounds, with the window widened | 0 of 4 rounds, widened and not |
+| …and the holder can still re-assert its own lane | 0 re-assertions against a build whose re-claim always failed | 18–22 a round |
 | `send` obeys a `-TargetPid` that is not the lane's emulator | yes | refused |
 | the holder's own `start`, `key`, `send` and `stop` still work | works | works |
 
@@ -855,6 +865,16 @@ the WinUAE VM, and neither of them can tell)`:
   three holders of six, because a loser reading the winner's half-written file
   saw no claim and deleted it; create-then-confirm-the-token gives exactly one
   holder, 8 rounds of 8
+* **UNKNOWN: whether a clock step invalidates a *held* claim.** A held claim
+  records `boot` and is stale when that no longer equals `Boot-Stamp`. If
+  Windows recomputes `LastBootUpTime` as "now minus uptime", then a clock step
+  of any size makes every live claim read stale and the next caller takes the
+  lane with no `-Override` — this issue reopened by clock skew. The wreck
+  branch was changed to an age precisely to get off the clock; this comparison
+  is still on it. The experiment is to read `Boot-Stamp` either side of a
+  deliberate clock step, or across a pause and resume of the VM, and it has not
+  been run. `docs/143-winuae-debugger.md` records the guest clock agreeing with
+  the host to the minute on 2026-08-25, which is not a monotonicity guarantee
 * **the re-claim window cannot be hit by chance, and had to be widened to be
   seen at all.** Storming the committed driver with a holder re-asserting its
   lane while three others claimed — 198 attempts over four rounds — produced no
@@ -874,15 +894,27 @@ the WinUAE VM, and neither of them can tell)`:
   file and renamed it over the claim; it never once worked. PowerShell turns
   the `$null` argument into an empty string and Replace answers *"The path is
   not of a legal form"*, so every re-claim failed — and reported "the lane was
-  taken by \<yourself\> while this call was running". Caught by the scenario
-  that was written for the window itself, which counted the holder's own
-  re-assertions and found zero
+  taken by \<yourself\> while this call was running".
+* **What caught that was a person reading a number in a passing run, not the
+  check.** `Scenario-Reclaim`'s verdict asked only whether anybody else got in,
+  and nobody could: a holder whose every re-claim fails is a holder that never
+  lets go, so the scenario reported PASS four times while the build underneath
+  it denied the holder its own normal operation. `driverA re-asserted 0 times`
+  was printed beside each of those passes and read by eye. The verdict now
+  requires both halves — nobody else in, **and** the holder still able to
+  re-assert — and that version fails 4 of 4 rounds against the same build, at
+  0 re-assertions against 18–22 for the fixed one
 * **`send` obeyed a caller-supplied `-TargetPid`** over the pid its own
   ownership check had just proved. Refused now, and watched: `fail send was
   given -TargetPid 8272, but this lane's emulator is pid=6136`, with the lane's
   own console read-back still returning `--- exit 0`. A *duplicated*
   `-TargetPid` is now refused outright rather than depending on which of the two
   `winuae-send.ps1`'s binder would take — `-match` reads only the first
+* **`[regex]::Matches` is case-sensitive and `-match` is not**, so the first
+  duplicate check counted `-targetpid 6136 -TargetPid 8272` as one occurrence
+  and let it through to be forwarded whole. `'IgnoreCase'` on the `Matches`
+  call settles it, and the check now watches it refuse: `fail send was given
+  more than one -TargetPid`
 * **`@($null).Count` is 1**, so `winuae.ps1 stop` with no other arguments walked
   into "Cannot index into a null array" the first time the argument scan was
   written against `@($Rest)`

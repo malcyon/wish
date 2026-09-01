@@ -266,8 +266,14 @@ function Scenario-Reclaim {
     $attempts   = @([regex]::Matches($all, '(?m)^--- call')).Count - $reasserted
     $intruded   = @([regex]::Matches($all, '(?m)^ok claimed by driverB\d')).Count
     $held = ((Drive @('status')).out -split "`r?`n" | Where-Object { $_ -match '^claim' }) -join ''
-    Verdict ($intruded -eq 0) `
-            "round ${n}: nobody but driverA was granted the lane (driverA re-asserted $reasserted times, others tried $attempts)" `
+    # Both halves, and the second half is not decoration. With only
+    # `$intruded -eq 0` this scenario passed four times against a build whose
+    # every re-claim failed -- nobody else could take a lane driverA was
+    # continuously refusing to give up, so nothing was intruded and nothing was
+    # asserted about driverA still being able to hold it. Denying the holder its
+    # own normal operation has to fail here too.
+    Verdict ($intruded -eq 0 -and $reasserted -gt 0) `
+            "round ${n}: nobody but driverA was granted the lane, and driverA could re-assert it (re-asserted $reasserted times, others tried $attempts)" `
             ("granted to others: $intruded`n$held")
   }
   Reset-Lane | Out-Null
@@ -289,6 +295,14 @@ function Scenario-SendPid {
   $wrong = Drive (@('send', "-TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
   Verdict ($wrong.code -ne 0 -and $wrong.out -match 'but this lane') `
           "a -TargetPid that is not the lane's emulator is refused" $wrong.out
+  # The lane's OWN pid first, in lower case, and a bogus one second. Getting the
+  # first one right is what makes this a test of the duplicate rule rather than
+  # of the equality check beside it -- and the lower case is the point, because
+  # [regex]::Matches is case-sensitive where the -match beside it is not.
+  $mypid = if ($a.out -match 'ok pid=(\d+)') { $Matches[1] } else { '0' }
+  $dupe = Drive (@('send', "-targetpid $mypid -TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
+  Verdict ($dupe.code -ne 0 -and $dupe.out -match 'more than one') `
+          'two -TargetPid flags of differing case are refused as a duplicate' $dupe.out
   $right = Drive (@('send', '-DumpOnly -Tail 5') + (Holder-Args 'lanecheck'))
   Verdict ($right.code -eq 0) 'the lane can still read its own console back' `
           (($right.out -split "`r?`n" | Select-Object -Last 2) -join ' / ')

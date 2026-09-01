@@ -168,6 +168,14 @@ function Try-TakeClaim([hashtable]$Content) {
 # other stale claim is a person's to release or to steal with -Override,
 # because nothing in the guest can see whether the Linux process that took it
 # is still alive.
+# UNKNOWN, and left as one deliberately: a held claim records `boot` and is
+# treated as stale when that string no longer equals Boot-Stamp. If Windows
+# recomputes LastBootUpTime as "now minus uptime", a clock step of any size
+# would make every live claim read stale, and the next caller could take the
+# lane without -Override. Not measured -- the experiment is to read Boot-Stamp
+# either side of a deliberate clock step, or across a pause and resume of the
+# VM. The wreck branch below no longer depends on the clock at all; this one
+# still does, and the failure would be this issue reopened by clock skew.
 function Read-Claim {
   for ($i = 0; $i -lt 10; $i++) {
     if (-not (Test-Path $ClaimFile)) { return @{ state = 'free' } }
@@ -180,12 +188,20 @@ function Read-Claim {
     # with FileShare::None and writes `boot` before `holder`, so a reader in
     # that instant sees neither -- or the wreck of one that was killed
     # part-way, which is how this guest fails: an ssh drop takes the child
-    # PowerShell's whole process tree. Tell them apart by the clock. Anything
-    # written before this boot cannot be a write in flight now, and treating it
-    # as merely unreadable would deadlock every command until a person passed
-    # -Override, which is not what 1.1 promises about a claim outliving a boot.
+    # PowerShell's whole process tree. Left as merely unreadable, a wreck
+    # deadlocks every command until a person passes -Override.
+    #
+    # Told apart by AGE, not against the boot time. Comparing the file's write
+    # time with Boot-Stamp reads two different clock readings against each
+    # other, and a clock stepped backwards past its own recorded boot -- an NTP
+    # correction after a resume, a reverted snapshot -- would then make a live
+    # write look stale and let a second holder take the lane with no -Override,
+    # which is this issue reopened by clock skew. An age is one clock compared
+    # with itself, and it fails in the safe direction: a backwards step makes
+    # the age negative, the file reads as in flight, and the caller is refused
+    # rather than let in. A write lasts milliseconds; ten seconds is the margin.
     $written = (Get-Item $ClaimFile -ErrorAction SilentlyContinue).LastWriteTime
-    if ($written -and $written -lt [datetime](Boot-Stamp)) { return @{ state = 'stale' } }
+    if ($written -and ((Get-Date) - $written).TotalSeconds -gt 10) { return @{ state = 'stale' } }
     Start-Sleep -Milliseconds 50
   }
   @{ state = 'unreadable' }
@@ -667,7 +683,12 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # the check would pass on the good one while both were forwarded to
     # winuae-send.ps1, whose binder's preference between them is not something
     # this depends on. Refuse the shape instead of needing the answer.
-    if (@([regex]::Matches($sendargs, '-TargetPid')).Count -gt 1) {
+    # 'IgnoreCase' is not decoration: [regex]::Matches is the static .NET call
+    # and is case-SENSITIVE, while the -match below is not. Without it,
+    # `-targetpid 6136 -TargetPid 8272` counts as one occurrence, the refusal
+    # never fires, -match reads the first, and both flags are forwarded exactly
+    # as they were before any of this was written.
+    if (@([regex]::Matches($sendargs, '-TargetPid', 'IgnoreCase')).Count -gt 1) {
       'fail send was given more than one -TargetPid'
       exit 1
     }
