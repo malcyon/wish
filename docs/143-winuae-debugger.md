@@ -154,6 +154,33 @@ thing at the end of a run kills the other agent's emulator.
 | `claim -Holder <id> -Override` | takes a lane whose holder has gone away, and says whose it was |
 | everything that touches the emulator | `start`, `stop`, `key`, `send`, `front` and `roms` refuse a caller who is not the holder |
 
+**The claim is a create, not a read-then-write**, and the difference was
+measured rather than reasoned about. Six `claim` calls released at the same
+instant against the first version — which read the lane, found it free, and
+wrote — granted the lane to **all six** in two rounds of three, and one of
+those rounds ended with no claim file at all, because `Set-Content` collided
+with itself: *"Set-Content : Stream was not readable"*. That is the belief this
+whole page exists to destroy, in the mechanism built to prevent it.
+
+What replaced it is one atomic NTFS create — `[IO.File]::Open` with
+`CreateNew` — followed by reading the file back and confirming this call's own
+token is in it. So **when `claim` prints ok, the file on disk carries that
+call's token**, and two callers cannot both see that. Eight rounds of six
+simultaneous claims since: exactly one holder, every time.
+
+Two things it does not promise, said here rather than left to be discovered:
+two callers both passing `-Override` can take the lane from each other, because
+a steal deletes and re-creates and both are entitled to; and a claim file that
+is present but unreadable is refused rather than assumed free — the first
+version assumed free, and the losers of a race then deleted the winner's claim
+and took the lane, which is how three of six calls were still being granted
+after the create was made atomic.
+
+**Every refusal says how to get unstuck.** An agent whose predecessor died
+without releasing would otherwise read only "claimed by dead-agent since 09:14"
+and have a lock nothing tells it how to clear, so each refusal carries the
+`-Override` line that clears it.
+
 Two checks sit under the claim, because a claim only binds a caller who passes
 `-Holder`:
 
@@ -166,6 +193,11 @@ Two checks sit under the claim, because a claim only binds a caller who passes
   start time, the arguments and the holder — and `stop`, `key`, `send` and
   `front` refuse a `winuae64` that is not the one in it. `stop -Override` ends
   it anyway and says what it is overriding.
+* **`send` refuses a `-TargetPid` that is not this lane's emulator.** It used to
+  prefer a caller's own `-TargetPid` over the pid the ownership check had just
+  proved, which walked straight past that check into whatever console the given
+  pid owns. It was inert only because a *different* check refuses two
+  emulators.
 
 The claim is a file in the guest, `C:\Amiga\winuae-claim.txt`, and it records
 the boot it was taken in: a claim cannot outlive a restart, because every
@@ -190,13 +222,26 @@ of the driver it is pointed at, so the old one can be watched to fail. Measured
 |---|---|---|
 | `stop` from a second driver ends the first's emulator | 3 of 3 | 0 of 3 |
 | `key` from a second driver presses into the first's game | 3 of 3 | 0 of 3 |
-| `start` reports the neighbour's emulator as its own success | 1 of 3 | 0 of 3 |
-| the holder's own `start`, `key` and `stop` still work | works | works |
+| `start` reports the neighbour's emulator as its own success | 7 of 9 | 0 of 9 |
+| six simultaneous `claim`s grant more than one holder | 2 of 3 rounds, all six granted | 0 of 8 rounds |
+| `send` obeys a `-TargetPid` that is not the lane's emulator | yes | refused |
+| the holder's own `start`, `key`, `send` and `stop` still work | works | works |
 
-The hijack is the rare one because it needs the two calls to overlap inside the
-second WinUAE takes to become a process; over nine attempts across three runs
-it landed twice. The two deterministic ones are the ones that destroyed
-sessions.
+**The hijack rounds say whether they actually raced**, and that is not a
+detail: it needs two `start` calls to overlap inside the second WinUAE takes to
+become a process, so a round that never reached that condition proves nothing
+and must not read as a pass. The check starts the intruder the instant the
+task's `LastRunTime` moves, samples for the intruder's config while the other
+call is still running, prints `N of R rounds actually raced`, and fails outright
+when that is none. Both runs above raced 8 or 9 rounds of 9.
+
+Its verdict is about **the pid the second call reported**, not about whatever is
+running when the round ends. Asking the second question failed a round against
+the *fixed* driver, where the second call had verified its own emulator and
+returned, and the intruder replaced it afterwards — a real thing, but a
+different one, and nothing `start` can prevent once it has returned. The run
+receipt is what refuses that caller's next command, and the check now says so on
+its own line rather than counting it either way.
 
 Windows Update is disabled in the guest. It is never going to be patched, and
 left on it wrote a 16 GB overlay in 25 minutes of uptime — update payloads and a
@@ -781,7 +826,18 @@ the WinUAE VM, and neither of them can tell)`:
   the emulator that task launched was still alive — so the task's state is not
   a reliable answer to "is my emulator running". `Stop-ScheduledTask` still
   ended the process, 1.8 s later
-* the guards in 1.1, before and after, at three rounds each — the table there
+* the guards in 1.1, before and after — the table there
+* **a read-then-write claim is not a claim.** Six `claim` calls released at one
+  instant against the first version granted the lane to all six in two rounds of
+  three, and one of those rounds ended with no claim file at all, `Set-Content`
+  having collided with itself. An atomic `CreateNew` alone still granted two and
+  three holders of six, because a loser reading the winner's half-written file
+  saw no claim and deleted it; create-then-confirm-the-token gives exactly one
+  holder, 8 rounds of 8
+* **`send` obeyed a caller-supplied `-TargetPid`** over the pid its own
+  ownership check had just proved. Refused now, and watched: `fail send was
+  given -TargetPid 8272, but this lane's emulator is pid=6136`, with the lane's
+  own console read-back still returning `--- exit 0`
 * **`@($null).Count` is 1**, so `winuae.ps1 stop` with no other arguments walked
   into "Cannot index into a null array" the first time the argument scan was
   written against `@($Rest)`

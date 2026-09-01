@@ -22,8 +22,15 @@
 param(
   [string]$Driver   = 'C:\Amiga\winuae.ps1',
   [int]$Rounds      = 3,
-  [ValidateSet('all','args','own','hijack','foreignstop','foreignkey','claim')][string]$Scenario = 'all'
+  # The hijack needs two calls to overlap inside the second WinUAE takes to
+  # become a process, so it lands about twice in nine tries and three rounds
+  # would usually prove nothing at all. More rounds only make the silence less
+  # likely; the scenario also says how many rounds actually raced, and fails
+  # when that is none.
+  [int]$HijackRounds = 0,
+  [ValidateSet('all','args','own','sendpid','hijack','claimrace','foreignstop','foreignkey','claim')][string]$Scenario = 'all'
 )
+if ($HijackRounds -le 0) { $HijackRounds = [Math]::Max(9, $Rounds * 3) }
 
 $Exe     = 'C:\Program Files\WinUAE\winuae64.exe'
 $Root    = 'C:\Amiga'
@@ -140,7 +147,8 @@ function Scenario-Own {
 
 function Scenario-Hijack {
   "hijack: B's `start` must not report success for an emulator B did not launch"
-  for ($n = 1; $n -le $Rounds; $n++) {
+  $raced = 0
+  for ($n = 1; $n -le $HijackRounds; $n++) {
     if (-not (Reset-Lane)) { Verdict $false "round ${n}: lane would not reset" ''; continue }
     if ($HasClaim) { Drive (@('claim') + (Holder-Args 'driverB')) | Out-Null }
     # B asks for its own config. A -- a second agent, a stale script, a person
@@ -164,13 +172,101 @@ function Scenario-Hijack {
       Start-Sleep -Milliseconds 20
     }
     $intruder = Start-AsIntruder $ArgsA
+    # Whether the race happened at all, which a PASS on its own cannot say: the
+    # intruder's config has to be up while B's call is still running, or B was
+    # never in a position to be handed anything.
+    #
+    # Sampled rather than looked at once. The first version asked only what
+    # Start-AsIntruder saw first, and against the old driver it called a round
+    # "no race" that then failed -- B's own emulator was up first and the
+    # intruder replaced it while B was still polling. A disclosure that misses
+    # the very rounds it exists to explain is worse than none.
+    $landed = $false
+    for ($w = 0; $w -lt 600; $w++) {
+      if ($job.State -ne 'Running') { break }
+      if (@(Emulators | Where-Object { $_.CommandLine -match [regex]::Escape($ConfigA) }).Count -ge 1) { $landed = $true }
+      Start-Sleep -Milliseconds 100
+    }
+    if ($landed) { $raced++ }
     $out = (Receive-Job -Job $job -Wait -AutoRemoveJob) -join "`n"
     $live = Emulators | Select-Object -First 1
-    $saidOk = $out -match '(?m)^ok pid='
-    $runsA  = $live -and $live.CommandLine -match [regex]::Escape($ConfigA)
-    Verdict (-not ($saidOk -and $runsA)) `
-            "round ${n}: B was not handed A's emulator as its own success" `
-            ("B said: $out`nrunning: $($live.CommandLine)")
+    # The verdict is about the pid B reported, not about whatever is running at
+    # the end of the round. Asking the second question failed a round against
+    # the FIXED driver: B had verified its own emulator and returned ok, and the
+    # intruder then replaced it -- which is A destroying B's run afterwards, a
+    # real thing but not this scenario's, and not something `start` can prevent
+    # once it has returned. What protects B there is the run receipt, which
+    # refuses B's next call. That case is now named on its own line instead of
+    # being counted as a hijack or hidden as a pass.
+    $okPid  = if ($out -match '(?m)^ok pid=(\d+)') { [int]$Matches[1] } else { 0 }
+    $okProc = if ($okPid) { @(Emulators | Where-Object { $_.ProcessId -eq $okPid })[0] } else { $null }
+    $handedA = ($okPid -ne 0) -and $okProc -and ($okProc.CommandLine -match [regex]::Escape($ConfigA))
+    $note = if ($landed) { '(raced)' } else { '(no race: B was not overtaken)' }
+    Verdict (-not $handedA) `
+            "round ${n}: B was not handed A's emulator as its own success $note" `
+            ("B said: $out`nfirst emulator up: $($intruder.CommandLine)`nrunning: $($live.CommandLine)")
+    if ($okPid -and -not $okProc) {
+      "        | note: A replaced B's emulator after B returned ok pid=$okPid; the run receipt is what refuses B's next call"
+    }
+  }
+  "  $raced of $HijackRounds rounds actually raced"
+  # A scenario that never reached the condition it is about has proved nothing,
+  # and reporting that as PASS is how a check outlives the bug it was written
+  # for.
+  if ($raced -eq 0) {
+    Verdict $false 'the race never landed, so this scenario proved nothing -- raise -HijackRounds' ''
+  }
+  Reset-Lane | Out-Null
+}
+
+# `send` is the one command that takes a pid from the caller, and a supplied
+# -TargetPid used to be preferred over the one the ownership check had just
+# proved. That it was inert depended on a different check refusing two
+# emulators, which is not the same as being safe.
+function Scenario-SendPid {
+  "sendpid: send must refuse a -TargetPid that is not this lane's emulator"
+  if (-not (Reset-Lane)) { Verdict $false 'lane would not reset' ''; return }
+  if ($HasClaim) { Drive @('claim', '-Holder', 'lanecheck') | Out-Null }
+  $a = Drive (@('start') + (Holder-Args 'lanecheck') + @('-log', '-f', $ConfigB, '-s', 'floppy0='))
+  if ($a.code -ne 0) { Verdict $false 'the lane could not start an emulator' $a.out; Reset-Lane | Out-Null; return }
+  $k = Drive (@('key', '7A') + (Holder-Args 'lanecheck'))
+  Verdict ($k.code -eq 0) 'F11 opened the debugger' $k.out
+  # $PID is this check's own process: a real pid, certainly not the emulator.
+  $wrong = Drive (@('send', "-TargetPid $PID -DumpOnly -Tail 5") + (Holder-Args 'lanecheck'))
+  Verdict ($wrong.code -ne 0 -and $wrong.out -match 'but this lane') `
+          "a -TargetPid that is not the lane's emulator is refused" $wrong.out
+  $right = Drive (@('send', '-DumpOnly -Tail 5') + (Holder-Args 'lanecheck'))
+  Verdict ($right.code -eq 0) 'the lane can still read its own console back' `
+          (($right.out -split "`r?`n" | Select-Object -Last 2) -join ' / ')
+  Drive (@('stop') + (Holder-Args 'lanecheck')) | Out-Null
+  if ($HasClaim) { Drive @('release', '-Holder', 'lanecheck') | Out-Null }
+  Reset-Lane | Out-Null
+}
+
+# The claim is the one thing here that two callers reach at the same instant on
+# purpose, so it gets a scenario of its own rather than being trusted to the
+# sequential one above.
+function Scenario-ClaimRace {
+  "claimrace: several claims arriving together, and only one holder"
+  if (-not $HasClaim) { "  n/a $Driver has no claim"; return }
+  for ($n = 1; $n -le $Rounds; $n++) {
+    Reset-Lane | Out-Null
+    # Every racer waits for the same wall-clock instant, because a job's own
+    # start-up is far longer than the window being aimed at.
+    $at = (Get-Date).AddSeconds(5).ToString('o')
+    $jobs = 1..6 | ForEach-Object {
+      Start-Job -ScriptBlock {
+        param($drv, $who, $when)
+        while ((Get-Date) -lt [datetime]$when) { Start-Sleep -Milliseconds 2 }
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $drv claim -Holder $who 2>&1 | Out-String
+      } -ArgumentList $Driver, "racer$_", $at
+    }
+    $outs = @($jobs | ForEach-Object { (Receive-Job -Job $_ -Wait -AutoRemoveJob) -join "`n" })
+    $oks = @($outs | Where-Object { $_ -match '(?m)^ok claimed by' })
+    $held = (Drive @('status')).out
+    Verdict ($oks.Count -eq 1) `
+            "round ${n}: exactly one of six claims was granted (granted $($oks.Count))" `
+            (($oks -join '') + "`n" + (($held -split "`r?`n" | Where-Object { $_ -match '^claim' }) -join ''))
   }
   Reset-Lane | Out-Null
 }
@@ -234,10 +330,12 @@ function Scenario-Claim {
   Reset-Lane | Out-Null
 }
 
-"driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Rounds rounds"
+"driver: $Driver (claim: $(if ($HasClaim) { 'yes' } else { 'no' })), $Rounds rounds, $HijackRounds hijack rounds"
 if ($Scenario -in @('all','args'))        { Scenario-Args }
 if ($Scenario -in @('all','claim'))       { Scenario-Claim }
 if ($Scenario -in @('all','own'))         { Scenario-Own }
+if ($Scenario -in @('all','sendpid'))     { Scenario-SendPid }
+if ($Scenario -in @('all','claimrace'))   { Scenario-ClaimRace }
 if ($Scenario -in @('all','hijack'))      { Scenario-Hijack }
 if ($Scenario -in @('all','foreignstop')) { Scenario-ForeignStop }
 if ($Scenario -in @('all','foreignkey'))  { Scenario-ForeignKey }

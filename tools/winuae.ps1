@@ -124,16 +124,76 @@ function Write-Kv([string]$Path, [hashtable]$H) {
 
 function Boot-Stamp { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('o') }
 
-# A claim cannot outlive the boot that made it: a restart takes every emulator
-# and every run in flight with it, so a claim left behind by an agent that died
-# is not a claim about anything. Any other stale claim is a person's to release
-# or to steal with -Override, because nothing in the guest can see whether the
-# Linux process that took it is still alive.
+# Creating the file IS the claim, and this is deliberately not a read-then-write.
+# Two `claim` calls arriving together would both read an empty lane, both write
+# it and both print "ok claimed by ...", which is exactly the belief #116 exists
+# to destroy -- the same shape of race as `winvm acquire`, with a narrower
+# window. [IO.File]::Open with CreateNew is one atomic NTFS operation: exactly
+# one caller creates the file and every other gets an IOException and is told it
+# lost.
+#
+# The guarantee, said plainly rather than left to be discovered: when `claim`
+# prints ok, the claim file on disk carries THIS call's token -- the create was
+# won and the result was read back and confirmed. Two callers cannot both see
+# that. What it does not promise is anything about two callers both passing
+# -Override: a steal deletes and re-creates, so two of them can take the lane
+# from each other. -Override is for a lane whose holder has gone away, not for
+# winning a race.
+function Try-TakeClaim([hashtable]$Content) {
+  try {
+    $fs = [System.IO.File]::Open($ClaimFile, [System.IO.FileMode]::CreateNew,
+                                 [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+  } catch { return $false }
+  try {
+    $sw = New-Object System.IO.StreamWriter($fs)
+    foreach ($k in ($Content.Keys | Sort-Object)) { $sw.WriteLine("$k=$($Content[$k])") }
+    $sw.Flush()
+    $sw.Dispose()
+  } catch {
+    $fs.Dispose()
+    return $false
+  }
+  $true
+}
+
+# Reading a claim has to tell "there is none" from "one is being written right
+# now", and that distinction is not academic: Try-TakeClaim holds the file with
+# FileShare::None while it writes, a reader in that instant gets nothing back,
+# and the first version of this treated nothing-back as a free lane -- so the
+# losers of a race deleted the winner's claim and took the lane themselves.
+# Measured with six simultaneous claims: 2 and 3 holders granted out of six.
+#
+# A claim also cannot outlive the boot that made it: a restart takes every
+# emulator and every run in flight with it, so what it recorded is gone. Any
+# other stale claim is a person's to release or to steal with -Override,
+# because nothing in the guest can see whether the Linux process that took it
+# is still alive.
+function Read-Claim {
+  for ($i = 0; $i -lt 10; $i++) {
+    if (-not (Test-Path $ClaimFile)) { return @{ state = 'free' } }
+    $c = Read-Kv $ClaimFile
+    if ($c.ContainsKey('holder')) {
+      if ($c['boot'] -ne (Boot-Stamp)) { return @{ state = 'stale'; claim = $c } }
+      return @{ state = 'held'; claim = $c }
+    }
+    Start-Sleep -Milliseconds 50
+  }
+  @{ state = 'unreadable' }
+}
+
 function Get-Claim {
-  $c = Read-Kv $ClaimFile
-  if (-not $c.ContainsKey('holder')) { return $null }
-  if ($c['boot'] -ne (Boot-Stamp)) { return $null }
-  $c
+  $r = Read-Claim
+  if ($r['state'] -eq 'held') { return $r['claim'] }
+  $null
+}
+
+# Every refusal says how to get unstuck, and that is not politeness either. An
+# agent whose predecessor died without releasing reads only "claimed by
+# dead-agent since 09:14" and has a lock nothing tells it how to clear. The
+# second line is the way out; `fail` stays lowercase because it is the status
+# token callers match on, not prose.
+function Claim-Way-Out([hashtable]$c, [string]$Verb) {
+  "If $($c['holder']) has gone, $Verb the lane with: winuae.ps1 claim -Holder <id> -Override"
 }
 
 function Claim-Denial {
@@ -142,10 +202,10 @@ function Claim-Denial {
     return "fail the WinUAE lane is unclaimed; run: winuae.ps1 claim -Holder <id>"
   }
   if (-not $Holder) {
-    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); pass -Holder <id>"
+    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); pass -Holder <id>`n$(Claim-Way-Out $c 'take')"
   }
   if ($Holder -ne $c['holder']) {
-    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']), not by $Holder"
+    return "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']), not by $Holder`n$(Claim-Way-Out $c 'take')"
   }
   $null
 }
@@ -326,17 +386,67 @@ switch ($Cmd) {
   'claim' {
     # A tag is not a mutex: `winvm acquire wish-re` from two agents shares one
     # lease file, and the second one's release shuts the VM down under the
-    # first. This refuses the second holder instead.
+    # first. This refuses the second holder instead -- and refuses it whether
+    # the two calls arrive an hour or a millisecond apart, which is the part
+    # that had to be built rather than asserted. See Try-TakeClaim for what is
+    # guaranteed and what is not.
     if (-not $Holder) { 'fail claim needs -Holder <id>'; exit 1 }
     if ($Holder -notmatch '^[A-Za-z0-9._-]{1,64}$') { "fail '$Holder' is not a usable holder name"; exit 1 }
-    $c = Get-Claim
-    if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
-      "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); one Amiga lane at a time"
+    # Decide from the claim's state, create the file atomically, then read it
+    # back and confirm this call's token is the one in it. The confirmation is
+    # what makes the answer true rather than merely likely: a delete-and-create
+    # pair racing another over a stale or stolen claim can still cross, and a
+    # caller whose token was overwritten reports the loss instead of announcing
+    # a lane it does not hold.
+    $token  = [guid]::NewGuid().ToString('N').Substring(0, 12)
+    $taken  = $false
+    $lost   = $null
+    for ($attempt = 0; $attempt -lt 4 -and -not $taken; $attempt++) {
+      $r = Read-Claim
+      $previous = $null
+      if ($r['state'] -eq 'held') {
+        $c = $r['claim']
+        if ($c['holder'] -ne $Holder -and -not $Override) {
+          "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); one Amiga lane at a time"
+          Claim-Way-Out $c 'take'
+          exit 1
+        }
+        if ($c['holder'] -ne $Holder) { $previous = $c['holder'] }
+        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+      }
+      elseif ($r['state'] -eq 'stale') {
+        # From an earlier boot. Nobody can still be driving, because every
+        # emulator and every run in flight died with the restart.
+        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+      }
+      elseif ($r['state'] -eq 'unreadable') {
+        if (-not $Override) {
+          'fail the claim file is there and cannot be read; another claim may be in flight'
+          'Try again, or take the lane with: winuae.ps1 claim -Holder <id> -Override'
+          exit 1
+        }
+        Remove-Item $ClaimFile -Force -ErrorAction SilentlyContinue
+      }
+      if (Try-TakeClaim @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp); token = $token }) {
+        Start-Sleep -Milliseconds 150
+        $after = Read-Claim
+        if ($after['state'] -eq 'held' -and $after['claim']['token'] -eq $token) {
+          $taken = $true
+          $stolen = if ($previous) { " (taken from $previous)" } else { '' }
+          "ok claimed by $Holder$stolen"
+        } else {
+          $lost = $after['claim']
+        }
+      } else {
+        $lost = (Read-Claim)['claim']
+        Start-Sleep -Milliseconds 50
+      }
+    }
+    if (-not $taken) {
+      $who = if ($lost -and $lost['holder']) { $lost['holder'] } else { 'another caller' }
+      "fail the WinUAE lane was taken by $who while this call was running; one Amiga lane at a time"
       exit 1
     }
-    $stolen = if ($c -and $c['holder'] -ne $Holder) { " (taken from $($c['holder']))" } else { '' }
-    Write-Kv $ClaimFile @{ holder = $Holder; since = (Get-Date).ToString('o'); boot = (Boot-Stamp) }
-    "ok claimed by $Holder$stolen"
   }
 
   'release' {
@@ -349,6 +459,7 @@ switch ($Cmd) {
     if (-not $c) { 'ok nothing to release'; exit 0 }
     if ($c['holder'] -ne $Holder -and -not $Override) {
       "fail the WinUAE lane is claimed by $($c['holder']), not by $Holder"
+      "If $($c['holder']) has gone, release it anyway with: winuae.ps1 release -Holder $Holder -Override"
       exit 1
     }
     Remove-Item $ClaimFile -ErrorAction SilentlyContinue
@@ -364,8 +475,13 @@ switch ($Cmd) {
       # loop below would then report the OLD process as this call's success,
       # with whatever config that one was given.
       $r = Read-Kv $RunFile
-      $whose = if ($r['holder']) { " started by $($r['holder'])" } else { '' }
-      ($already | ForEach-Object { "fail winuae64 already running pid=$($_.Id)$whose; stop it first" })
+      ($already | ForEach-Object {
+        # Only name a holder when the receipt is about THIS process. A leftover
+        # receipt would otherwise blame an emulator a person started at the
+        # console on whoever last used the lane.
+        $whose = if ($r['pid'] -and [int]$r['pid'] -eq $_.Id -and $r['holder']) { " started by $($r['holder'])" } else { '' }
+        "fail winuae64 already running pid=$($_.Id)$whose; stop it first"
+      })
       exit 1
     }
     $wanted = ($Rest -join ' ')
@@ -506,7 +622,22 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     Remove-Item $SendLog -ErrorAction SilentlyContinue
     $token = [guid]::NewGuid().ToString('N').Substring(0, 12)
     $sendargs = $Rest -join ' '
-    if ($sendargs -notmatch '-TargetPid') { $sendargs = "-TargetPid $($p.Id) $sendargs" }
+    # A caller-supplied -TargetPid used to be preferred verbatim, which walked
+    # straight past the ownership check above: the injector would attach to
+    # whatever console that pid owns. It was inert only because
+    # Resolve-MyEmulator refuses when there is more than one winuae64 -- safety
+    # belonging to a different check is not safety here. The driver knows the
+    # right pid; anything else is refused.
+    if ($sendargs -match '-TargetPid(?:\s+(\d+))?') {
+      $given = $Matches[1]
+      if (-not $given -or [int]$given -ne $p.Id) {
+        $shown = if ($given) { $given } else { '(no pid)' }
+        "fail send was given -TargetPid $shown, but this lane's emulator is pid=$($p.Id)"
+        exit 1
+      }
+    } else {
+      $sendargs = "-TargetPid $($p.Id) $sendargs"
+    }
     $sendargs = "$sendargs -Token $token"
     # Bounded, unlike `start`: this finishes or it has gone wrong. A command
     # costs ~0.7s and a batch is tens of lines, so ten minutes is generous.
@@ -654,6 +785,7 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     $c = Get-Claim
     if ($c -and $c['holder'] -ne $Holder -and -not $Override) {
       "fail the WinUAE lane is claimed by $($c['holder']) since $($c['since']); clean would take the scaffolding out from under it"
+      "If $($c['holder']) has gone, clean anyway with: winuae.ps1 clean -Override"
       exit 1
     }
     foreach ($t in @($Task) + $Helpers) {
