@@ -11,10 +11,16 @@ what is left is what ships.
 | fighter | `sword` | **ours** |
 | **`Treasure` note** | **`gem`** | **Font Awesome Free, `regular/`** |
 | **`Encounter` note** | **U+2694 ⚔** | **the system font** |
-| map, `Stairs` note | `stairs` U+E289 | Font Awesome Free |
-| toolbar, open | `folder-open` | Font Awesome Free |
-| toolbar, save and save as | `floppy-disk` | Font Awesome Free |
-| toolbar, preview changes | `eye` | Font Awesome Free |
+| `Exit` note | `exit-door` | game-icons.net, Delapouite |
+| `Locked` note | `plain-padlock` | game-icons.net, Delapouite |
+| map, `Stairs` note | `stairs` | game-icons.net, Delapouite |
+| `Danger` note | `hazard-sign` | game-icons.net, Lorc |
+| `Note` note, and the unknown-kind fallback | `position-marker` | game-icons.net, Delapouite |
+| `Done` note | `check-mark` | game-icons.net, Delapouite |
+| note editor, delete | `trash-can` | game-icons.net, Delapouite |
+| toolbar, open | `open-folder` | game-icons.net, Delapouite |
+| toolbar, save and save as | `save` | game-icons.net, Delapouite |
+| toolbar, preview changes | `brass-eye` | game-icons.net, Lorc |
 | Fast Travel help | `circle-info` | Font Awesome Free |
 | **roster, quickfight badge** | **`person-running`** | Font Awesome Free |
 | application icon | `hat-wizard` | Font Awesome Free |
@@ -79,9 +85,10 @@ The rule the shortlist was built on was "a solid silhouette with at most one
 hole". Two things on the sheet corrected it:
 
 * **a large second counter survives.** `mask` at 13 keeps both eye holes and
-  `floppy-disk` keeps both its shutter and its hub. The rule is about *feature
-  size*, not hole count, and 64 units in the 640 box — `location-dot`'s counter
-  — is about the floor.
+  Font Awesome's `floppy-disk` — since replaced by game-icons.net's `save`,
+  below — kept both its shutter and its hub. The rule is about *feature size*,
+  not hole count, and 64 units in the 640 box — Font Awesome's `location-dot`'s
+  counter, since replaced by `position-marker` — is about the floor.
 * **the failure that matters is separation, not mush.** `hat-wizard` reads as a
   fin because its brim is a *separate subpath* that stops touching the cone;
   `wand-sparkles`' stars come away as three loose dots for the same reason.
@@ -281,6 +288,10 @@ mark now.
 
 ### Toolbar
 
+**Superseded by `#167`, below** — the buttons now draw game-icons.net's
+`open-folder`, `save` and `brass-eye`. Left here as the record of why Font
+Awesome's `folder-open` and `floppy-disk` were picked at the time.
+
 Four buttons, three icons. `folder-open` and `floppy-disk` were the only
 candidates in their slots and both read at 13. **Save As shares the floppy**:
 the icon says which family the action belongs to and the label says which
@@ -316,6 +327,45 @@ the four buttons at `TOOLBAR_ICON = 16`.
 | map | doors, locked, wizard-locked | **no** — `render.py` draws these better than a font can |
 | combat | party, enemy, active | **no** — coloured squares with hit points in them are unambiguous |
 | roster | poisoned, paralysed | **blocked** — the effect codes are not decoded |
+
+## `#167` — nine of the ten remaining Font Awesome icons replaced
+
+`hat-wizard` is the tenth and is not part of this; it is the application icon,
+a separate decision, deferred with no time set. The other nine went, chosen
+by Donald and copied verbatim from his game-icons.net archive:
+
+| replaced | new glyph | artist |
+|---|---|---|
+| `door-open` | `exit-door` | Delapouite |
+| `lock` | `plain-padlock` | Delapouite |
+| `stairs` | `stairs` | Delapouite |
+| `triangle-exclamation` | `hazard-sign` | Lorc |
+| `location-dot` | `position-marker` | Delapouite |
+| `check` | `check-mark` | Delapouite |
+| `trash-can` | `trash-can` | Delapouite |
+| `folder-open` | `open-folder` | Delapouite |
+| `floppy-disk` | `save` | Delapouite |
+| `eye` | `brass-eye` | Lorc |
+
+**`stairs` and `trash-can` are the same name in both sets.** Font Awesome's
+`svgs-full` has an icon of each name, and so does game-icons.net. Nothing else
+in the program drew the Font Awesome originals — the `Stairs` note and the
+note editor's delete button, respectively, were their only callers, and both
+moved to the game-icons.net glyph. So the Font Awesome entries are deleted
+from `FONT_AWESOME` outright rather than kept under another key: there is
+nothing left to shadow, and a name that shipped under two sets with no caller
+for one of them would be a dead entry waiting to be picked up by accident.
+`tests/test_conditionbadges.py::test_the_two_sets_are_drawn_in_their_own_boxes`
+and the `ARTISTS` test both assert `GAME_ICONS` and `FONT_AWESOME` share no
+name, so a collision left in place would fail the build rather than ship
+silently.
+
+Every one of the ten went through
+`tests/test_conditionbadges.py::test_our_parser_draws_what_an_svg_renderer_draws`,
+which is parametrised over every name in `GAME_ICONS` and renders each at 13,
+26, 128 and 512 px against Qt's own SVG renderer, pixel for pixel. All ten
+pass at every size — the parser reads the artist's `d` correctly, which is
+what proves nothing was redrawn.
 
 ## Licence
 

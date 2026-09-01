@@ -459,10 +459,10 @@ class EditorBinding(QObject):
     def _toolbar_icons(self) -> None:
         """Icons beside the button text, never instead of it."""
         from ui.iconpaint import icon_pixmap
-        for name, icon in (("button_open", "folder-open"),
-                           ("button_save", "floppy-disk"),
-                           ("button_save_as", "floppy-disk"),
-                           ("button_preview", "eye")):
+        for name, icon in (("button_open", "open-folder"),
+                           ("button_save", "save"),
+                           ("button_save_as", "save"),
+                           ("button_preview", "brass-eye")):
             button = self._child(name)
             if button is not None:
                 button.setIcon(QIcon(icon_pixmap(icon, TOOLBAR_ICON, MUTED_INK)))

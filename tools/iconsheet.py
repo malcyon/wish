@@ -86,18 +86,18 @@ SHEET = [
         ("gem", "FA Free, regular", "treasure -- the one icon lifted from "
                                     "`regular/` rather than `solid/`"),
         ("user", "FA Free", "person"),
-        ("door-open", "FA Free", "exit"),
-        ("lock", "FA Free", "locked"),
-        ("stairs", "FA Free", "stairs -- the level changes here"),
-        ("triangle-exclamation", "FA Free", "danger"),
-        ("location-dot", "FA Free", "a plain note, and the 64-unit counter "
-                                    "the size floor is measured against"),
-        ("check", "FA Free", "done"),
+        ("exit-door", "Delapouite", "exit"),
+        ("plain-padlock", "Delapouite", "locked"),
+        ("stairs", "Delapouite", "stairs -- the level changes here"),
+        ("hazard-sign", "Lorc", "danger"),
+        ("position-marker", "Delapouite", "a plain note, and the "
+                                          "unknown-kind fallback"),
+        ("check-mark", "Delapouite", "done"),
     ]),
     ("Toolbar -- 16px beside the button text", [
-        ("folder-open", "FA Free", "open"),
-        ("floppy-disk", "FA Free", "save, and save as"),
-        ("eye", "FA Free", "preview changes"),
+        ("open-folder", "Delapouite", "open"),
+        ("save", "Delapouite", "save, and save as"),
+        ("brass-eye", "Lorc", "preview changes"),
     ]),
     ("Roster and popover", [
         ("skull", "FA Free", "no longer drawn -- `death-skull` replaced it"),
@@ -105,7 +105,7 @@ SHEET = [
          "no longer drawn -- `oppression` replaced it"),
         ("person-running", "FA Free",
          "no longer drawn -- `sparkling-sabre` replaced it"),
-        ("trash-can", "FA Free", "delete this note"),
+        ("trash-can", "Delapouite", "delete this note"),
     ]),
     ("Condition badges -- game-icons.net, CC BY 3.0, Donald's choices", [
         ("death-skull", "sbed", "dead or dying"),

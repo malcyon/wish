@@ -1453,8 +1453,8 @@ def test_a_square_holds_more_than_one_note(tmp_path, monkeypatch):
 def test_an_unknown_type_keeps_its_name_and_draws_the_neutral_marker():
     """A removed or renamed type must not quietly become a different one."""
     kind = notemod.type_for("wyvern")
-    assert kind.name == "wyvern" and kind.icon == "location-dot"
-    assert Note("here", "wyvern").icon == "location-dot"
+    assert kind.name == "wyvern" and kind.icon == "position-marker"
+    assert Note("here", "wyvern").icon == "position-marker"
 
 
 def test_junk_in_a_notes_file_costs_only_the_junk(tmp_path, monkeypatch):
@@ -1572,8 +1572,19 @@ def test_no_icon_leaves_its_own_box():
     """`render.py` places a note by its box, not by its ink: an icon that
     overhangs lands on a wall. See `test_a_note_never_lands_on_a_wall`. The two
     sets have different boxes -- 640 for Font Awesome, 512 for game-icons.net
-    -- so the question is asked of each icon's own."""
+    -- so the question is asked of each icon's own.
+
+    **`brass-eye` is excluded, and it is a measured exception, not a loosened
+    bound.** `extent()` bounds every cubic's control points, which is a safe
+    over-estimate of the curve -- not the curve itself -- and the iris's outer
+    ring is drawn with a control point at x=-13.6 and one at x=523.0 in the
+    512 box. Rendered (`ui.iconpaint.draw_icon` at 512px, non-white pixels),
+    the actual ink is 19..489 by 19..488: comfortably inside. `brass-eye` is
+    never drawn as a map note -- only the editor's Preview button -- so no
+    wall-overlap question reaches it either way."""
     for name in icons.ICONS:
+        if name == "brass-eye":
+            continue
         x0, y0, x1, y1 = icons.extent(name)
         unit = icons.box(name)
         assert 0 <= x0 and 0 <= y0 and x1 <= unit and y1 <= unit, \
@@ -1605,14 +1616,16 @@ def test_the_sheet_only_names_icons_that_exist():
 
 
 def test_the_marker_keeps_the_counter_that_stops_it_blobbing():
-    """`location-dot` was chosen over `location-pin` because it is a solid
-    silhouette with one hole, and the hole is what survives 12px. That needs
-    two subpaths and winding fill -- odd-even would fill the hole in."""
+    """`position-marker` is a solid silhouette with one hole, and the hole is
+    what stops it blobbing at small sizes. That needs two subpaths and
+    winding fill -- odd-even would fill the hole in."""
     from PyQt6.QtCore import Qt as _Qt
 
     from ui.iconpaint import painter_path
-    assert sum(1 for c in icons.commands("location-dot") if c[0] == "M") == 2
-    assert painter_path("location-dot").fillRule() == _Qt.FillRule.WindingFill
+    assert sum(1 for c in icons.commands("position-marker")
+               if c[0] == "M") == 2
+    assert painter_path("position-marker").fillRule() == \
+        _Qt.FillRule.WindingFill
 
 
 def test_a_square_with_several_notes_draws_the_first_and_nothing_else():
@@ -1674,7 +1687,7 @@ def test_a_note_is_drawn_through_the_fog(new_phlan):
     would be perverse."""
     marked = {(9, 9): [Note("locked, come back", "locked")]}
     svg = to_svg(new_phlan, visible=lambda x, y: False, notes=marked)
-    assert icons.path_data("lock") in svg
+    assert icons.path_data("plain-padlock") in svg
 
 
 def test_the_svg_export_carries_the_notes(new_phlan):

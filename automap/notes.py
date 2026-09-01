@@ -48,17 +48,17 @@ TYPES: tuple[NoteType, ...] = (
              "something to take, or taken", "T"),
     NoteType("person", "Person", "user",
              "trainer, shop, quest-giver", "P"),
-    NoteType("exit", "Exit", "door-open",
+    NoteType("exit", "Exit", "exit-door",
              "where this map joins another", "X"),
-    NoteType("locked", "Locked", "lock",
+    NoteType("locked", "Locked", "plain-padlock",
              "a door that beat you", "L"),
     NoteType("stairs", "Stairs", "stairs",
              "up, down, or wherever the level changes", "S"),
-    NoteType("danger", "Danger", "triangle-exclamation",
+    NoteType("danger", "Danger", "hazard-sign",
              "traps, drains, whatever you want to avoid", "D"),
-    NoteType("note", "Note", "location-dot",
+    NoteType("note", "Note", "position-marker",
              "anything that does not fit the others", "N"),
-    NoteType("done", "Done", "check",
+    NoteType("done", "Done", "check-mark",
              "cleared, nothing left here", "C"),
 )
 
@@ -77,7 +77,7 @@ def type_for(name: str) -> NoteType:
     known = BY_NAME.get(name)
     if known is not None:
         return known
-    return NoteType(name, name or "?", "location-dot",
+    return NoteType(name, name or "?", "position-marker",
                     f"{name!r} is not a note type this version knows")
 
 
