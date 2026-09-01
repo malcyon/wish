@@ -47,10 +47,15 @@ from .neutral import NeutralCharacter
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
 COMBAT_BIAS = 60
 
-#: The shortest genuine `.pc` on disk 3. Sizes run 484, 504, 514 and 524; the
-#: extra bytes are appended item data, and a record with none is 484. PoD
-#: checks no length -- a 582-byte C64 export loads -- but 484 is what its own
-#: files look like, so it is what the writer emits.
+#: The shortest genuine `.pc` on disk 3 -- but not the shortest PoD's loader
+#: will read. The loader reads 404 bytes of character record, then 20 bytes
+#: per item and 10 per effect, and stops (`docs/124-amiga-port.md` §1.16, from
+#: reading the loader in #148). A record with zero items and zero effects is
+#: 404 bytes, not 484: every genuine `.pc` on disk 3 happens to carry at least
+#: four items, which is why 484 is the smallest one there. PoD checks no
+#: length -- a 582-byte C64 export loads -- but 484 is what its own files
+#: look like, so it is what the writer emits, with 80 bytes of item/effect
+#: region that PoD never reads because both counts are zero.
 RECORD_LENGTH = 484
 
 EXPERIENCE = 0x044           # u32
