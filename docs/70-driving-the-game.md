@@ -180,6 +180,13 @@ and `fight()`. Before those existed every agent that needed a fight wrote its
 own loop, and `work/drive/qffight.py`, `work/combatlog/walkabout.py` and
 `work/p118-step3/run.py` are three of them.
 
+**`tools/fightrun.py` is the runner**: boot a pool slot, load a save, walk
+until something ambushes the party, drive every command bar with
+`melee_turn`, and print who took the turns, how many had an enemy in contact
+and how many of those ended with a blow. Three copies of it were written into
+`work/` for `#126`, `#127` and `#165` and thrown away with that directory; the
+log it writes still belongs in `work/`, the tool does not.
+
 **`$6E11` says whether there is a fight**: `1` DUNGEON, `2` COMBAT. It is
 LINKER's own dispatch byte and `automap/combat.py` documents the rest of it.
 
@@ -193,7 +200,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | move | `MOVE/ATTACK, MOVE LEFT = 9` | a direction, **not** a menu |
 | continue | `CONTINUE BATTLE : YES NO` | `NO` ends the fight |
 | press | `PRESS <RETURN> OR BUTTON TO CONTINUE` | inject `$0D` |
-| done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn |
+| done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn, and so does `QUIT` when GUARD is not offered |
 | exit | a treasure bar | take `EXIT` |
 | yesno | `ATTACK ALLY: YES NO` | answer `NO` |
 | message | `GUARDING`, `YOUR TEAMMATE IS DYING` | wait |
@@ -220,6 +227,25 @@ experience share and any treasure all run afterwards under POST.COM. A driver
 that stops at the mode byte leaves the party at a `PRESS <RETURN>` for ever, so
 `fight()` runs until DUNGEON is back **and** the status line is on screen.
 
+**And it is still not over there.** Two boots of `PORSAVE13.D64` on the same
+route each won at about 150 seconds and then spent the whole rest of the
+budget without handing the party back to the world. Row 24 after the win, in
+the order it appeared (`work/issue165/fix2.jsonl`):
+
+```
+CONTINUE BATTLE : YES NO
+PRESS <RETURN> OR BUTTON TO CONTINUE
+VIEW TAKE POOL SHARE EXIT          <- the treasure bar
+VIEW:ITEMS TRADE DROP EXIT         <- the item list, which re-arms itself
+GO BACK LEAVE TREASURE             <- and this is where it stayed
+```
+
+`GO BACK LEAVE TREASURE` matches no branch of `combat_state` — no DONE, no
+PRESS, no DELAY-and-SPEED, no EXIT, no YES and NO — so it reads as a message
+and `fight()` waits at it for ever. `#171 (A won fight leaves the driven
+party at the treasure screen instead of back in the world)` is the ticket;
+`LEAVE TREASURE` has never been pressed.
+
 **`DONE` does not end a turn — it opens a sub-bar.**
 `GUARD DELAY QUIT SPEED EXIT`, and **`GUARD` on that is what ends the turn**,
 which is where the `GUARDING` on row 24 in the older logs was coming from. A
@@ -227,6 +253,25 @@ driver that takes DONE and stops is asked for the same character's command
 again: 210 turns in 420 seconds, no blow struck (`work/p126/melee4.log`).
 Tell it apart from a treasure bar, which also carries EXIT, by `GUARD` and
 `DELAY` being on it.
+
+**Two of the five commands end the turn and two do not, and the difference is
+what starved a fight of turns.** `GUARD` ends it and leaves the character
+guarding; **`QUIT` ends it outright** — Donald, who plays this game,
+2026-09-01: *"In Combat, QUIT ends the turn immediately."* That is his
+testimony rather than a screen read, and it is the whole evidence for QUIT
+here. `DELAY` **postpones** a character instead of finishing with it, and
+`EXIT` only backs out to the same character's command bar; both leave the
+driver being asked for the same character again.
+
+**`GUARD` drops off the bar for some characters**, which leaves
+`DELAY QUIT SPEED EXIT` — and `end_turn` used to fall to DELAY there. One
+character who could not strike then took **50 of the 54 turns** that had an
+enemy in contact, in a fight of 56 driven turns, while the other five never
+acted again (`#165`, `work/issue127/after1.jsonl`). `Session.ENDS_TURN` is
+`GUARD` then `QUIT` and `Session.LEAVES_BAR` is `DELAY` then `EXIT`, in that
+order, so a bar with no GUARD gets QUIT. Why GUARD drops off is still not
+established; the obvious suspect is that it is only offered to a character
+that has not moved yet.
 
 **`QUICK` reached the same sub-bar** and the quickfight bit at roster `+0x0C`
 did not move on any of six characters (`work/p126/quick.log`). Whether QUICK
@@ -240,6 +285,14 @@ a turn.
 square is a blow. That is why six runs of `#118` step 3 could get the party to
 the end of a fight without any of them swinging — the driver kept entering move
 mode and pressing Return to get out again.
+
+Donald, who plays this game, says the same thing unprompted, 2026-09-01:
+*"When I play, I normally use MOVE to move my character into an enemy square,
+which causes them to attack the enemy. You can also AIM or CAST. Readied items
+affect whether you can attack from a distance or not."* That is how the
+commands work rather than a statement about what a dart-readied character can
+do in melee, so it supports the missile-weapon reading below without settling
+it. **Nothing in this project has driven `AIM` or `CAST`.**
 
 **Combat movement is the joystick, and under the pool's seeded `vicerc` that
 is the numeric keypad.** Measured key by key at a `MOVE LEFT = 12` bar, reading
