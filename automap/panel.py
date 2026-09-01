@@ -722,9 +722,14 @@ class ColumnSplitter(QObject):
         super().__init__(parent)
         self.settings = settings
         self.splitter = child(root, QSplitter, "automap_columns")
-        if self.splitter is None or self.splitter.count() != self.COLUMNS:
-            log.debug("no automapper column splitter to manage")
+        if self.splitter is not None and self.splitter.count() != self.COLUMNS:
+            # `child` reports a widget the form does not have; it cannot report
+            # one that is there with the wrong number of columns, which is the
+            # only fault left to say out loud here.
+            log.debug("automapper splitter has %d columns, not %d",
+                      self.splitter.count(), self.COLUMNS)
             self.splitter = None
+        if self.splitter is None:
             return
         self.splitter.setHandleWidth(self.HANDLE)
         # Every pixel the window gains goes to the map. That is what the two
@@ -926,6 +931,15 @@ class BottomStrip(QObject):
         what got it removed; a strip that says "party effects: none" five times
         a second is the same mistake with one line instead of eight.
 
+        **Nothing about the monsters, either.** The row briefly counted them
+        -- "2 effects on monsters" under the party's own spells -- and Donald
+        cut it on 2026-09-01: hovering the party's row to be told a number
+        about the orcs answers a question nobody asked, and it says neither
+        which monster nor which spell. It was also unreachable in the one case
+        that might have been interesting, because a party with nothing running
+        draws no icons and a row no icons wide cannot be hovered at all. The
+        combat view is where a monster's effects will mean something.
+
         **A party effect no badge covers is drawn nowhere**, and that is worth
         saying out loud rather than letting it look like a party with nothing
         running. `automap/live.py`'s badge set is graded from the spell table
@@ -941,15 +955,7 @@ class BottomStrip(QObject):
             return
         lit = snap.party_badges
         self.effects.set_icons(icon for icon, _ in lit)
-        lines = [why for _, why in lit if why]
-        # Monster effects are counted rather than listed: they belong to
-        # whatever is being fought, and the combat view is where they will mean
-        # something. Counting them at least says the table is not empty.
-        monsters = len(snap.monster_effects)
-        if monsters:
-            lines.append(f"{monsters} effect{'' if monsters == 1 else 's'}"
-                         " on monsters")
-        self.effects.setToolTip("\n".join(lines))
+        self.effects.setToolTip("\n".join(why for _, why in lit if why))
         for effect in snap.unbadged_party_effects:
             if effect.id not in self._unbadged:
                 self._unbadged.add(effect.id)

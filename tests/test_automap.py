@@ -1266,17 +1266,22 @@ def test_the_strip_draws_the_same_icon_as_the_card_for_the_same_spell(app):
     assert len(names) == len(live.CONDITION_BADGES)
 
 
-def test_effects_on_monsters_are_counted_in_the_tooltip_and_never_drawn(app):
-    """They belong to whatever is being fought and the combat view is where
-    they will mean something. Counting them at least says the effect table is
-    not empty; drawing them on the party's own row would say something false.
+def test_effects_on_monsters_are_never_mentioned_on_the_partys_row(app):
+    """The row said "2 effects on monsters" under the party's own spells until
+    Donald cut it on 2026-09-01: you hover the party's row to find out what is
+    running on your party, and a count of what the orcs have says neither
+    which orc nor which spell. The combat view is where they will mean
+    something.
+
+    Two monster effects here, one of them id 42, which *does* have a badge --
+    so a row that drew or named monster effects would show a snail or a second
+    tooltip line, and this fails.
     """
     names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE),
                                            (39, 9), (42, 10)))
     assert names == ("healing-shield",)
-    assert tip.splitlines() == ["Bless", "2 effects on monsters"]
-    _, one = shown(app, party_snapshot((1, live.PARTY_WIDE), (39, 9)))
-    assert one.splitlines()[-1] == "1 effect on monsters"
+    assert tip.splitlines() == ["Bless"]
+    assert "monster" not in tip
 
 
 def test_a_party_effect_no_badge_covers_is_reported_rather_than_dropped(
