@@ -931,22 +931,42 @@ ask. Donald's verdict on all three was *"they won't be understood by humans"* --
 machinery**, which is everybody who has ever reviewed them and nobody who is
 using the program.
 
-**A line in the Messages panel opens with a capital.** Donald, 2026-08-31:
-*"I want us to start making sure we capitalize the phrases that are going into
-the Messages panel. It looks more professional."* So it is `Fast travel: the
-game was busy and nothing was written; try again in a moment.` and not `fast
-travel: ...`.
+**Everything a person reads starts with a capital letter.** Donald,
+2026-08-31, first of the Messages panel -- *"I want us to start making sure we
+capitalize the phrases that are going into the Messages panel. It looks more
+professional."* -- and then of everything: *"There should be a rule that text
+we send to the user always has the first letter capitalized. This has been a
+recurring problem in all AI text."*
 
-Capitalise **the composed line, not the strings**. The first word is usually
-the caller's -- `_report("fast travel", outcome)`, and `action.label.lower()`
-on the action bar -- so upper-casing each message constant leaves the prefix
-lowercase and changes nothing a user sees. `FastTravelBar._report` and
-`ActionBar._report` do it in one place each;
+He is right that it is a habit rather than an oversight. Assistant-written
+strings start lowercase far more often than human-written ones, because they
+are written as fragments -- `no party to read`, `waiting for the game` -- and
+nobody looks at the finished line.
+
+It covers **every line presented to a person**: the Messages panel, the status
+bar, a dialog, a tooltip, a label, an empty-state line, the debug log, what the
+CLI prints, and the assistant's own replies in the terminal. If a person reads
+it, it opens with a capital.
+
+**Capitalise the composed line, not the strings that go into it.** The first
+word is usually the caller's -- `_report("fast travel", outcome)`, and
+`action.label.lower()` on the action bar -- so upper-casing each message
+constant leaves the prefix lowercase and changes nothing a user sees. Do it at
+the point the final line is assembled: `FastTravelBar._report` and
+`ActionBar._report` each do it in one place, and
 `test_a_messages_panel_line_opens_with_a_capital` pins it.
 
-Only the first letter, never `str.capitalize()`, which lower-cases the rest and
-would turn `MAGNUS MISSES.` from the combat log into `Magnus misses.` and
-`$6E11` into something else again.
+**Only the first letter, never `str.capitalize()`**, which lower-cases the rest
+-- it would turn the combat log's `MAGNUS MISSES.` into `Magnus misses.` and
+mangle `$6E11`. `line[:1].upper() + line[1:]` is the whole of it, and it is
+already correct for a line that starts with a proper noun, an address or the
+game's own shouted text.
+
+**A fragment stays a fragment.** A string that is only ever pasted into the
+middle of a sentence is not a line a person reads, and capitalising it mid-line
+is worse than leaving it. The test is where the string ends up, not what it
+looks like in the source -- which is another reason to look at the running
+window rather than the diff.
 
 **Look at the string in the running window before proposing it, not in the
 source.** The export line reads `the file name 'LADYKATH.pc' is already used by
