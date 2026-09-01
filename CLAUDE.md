@@ -1281,16 +1281,21 @@ answered a question -- every one of those is a tool, however throwaway it felt
 while being written. The test is not whether it looks finished; it is whether
 somebody would otherwise write it again.
 
-The cost is already paid twice. `ecl6.py` decoded all thirty ECL scripts to
-100% of every byte and was lost. And on 2026-09-01, `work/issue127/proto.py`,
-`probe.py` and `sweep.py` -- written the night before for
-`#127 (A driven character stands next to an enemy and passes its turn instead
-of attacking)` -- were gone within a day, taking with them the breadth-first
-`step_towards` that walked round rock and round the party's own formation. Its
-measured results survived only because they had been pasted into an issue
-comment, which is what made `#170 (A driven character walks into rock, because
-step_towards never reads the terrain)` filable with evidence rather than as a
-rumour. The tool itself is simply gone and will have to be written again.
+The cost has already been paid: `ecl6.py` decoded all thirty ECL scripts to
+100% of every byte and was lost.
+
+And a file under `work/` cannot be *found* either, which is the cheaper half of
+the same problem. `work/issue127/proto.py` holds the breadth-first
+`step_towards` that walks round rock and round the party's own formation,
+written for `#127 (A driven character stands next to an enemy and passes its
+turn instead of attacking)`. On 2026-09-01 the main window reported it lost --
+wrongly, off its own `ls | head` truncating the listing before the `.py` files
+-- and wrote that into this file and into
+`#170 (A driven character walks into rock, because step_towards never reads
+the terrain)` before a subagent that had actually opened the directory
+corrected it. A tool in `tools/` has a row in `tools/README.md` saying what it
+is for; a tool in `work/` is one entry among the logs and dumps of the run that
+produced it, and nothing anywhere says it exists.
 
 ## Pre-commit Checklist
 Before committing and pushing any changes, you MUST always run the following checks locally to ensure CI will pass:
