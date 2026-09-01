@@ -1140,6 +1140,9 @@
              </widget>
             </widget>
            </item>
+          <item alignment="Qt::AlignLeft|Qt::AlignVCenter">
+            <widget class="IconRow" name="strip_effects" />
+           </item>
           <item><widget class="ElidingLabel" name="strip_where">
              <property name="text">
               <string>-</string>

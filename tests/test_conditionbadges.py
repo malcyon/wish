@@ -78,11 +78,16 @@ def test_each_badge_appears_for_its_own_effects_and_for_nothing_else():
 
 
 def test_a_grouped_badge_is_drawn_once_and_says_which_spell():
-    """*Warded* covers six ids on one glyph, which is what makes it worth
+    """*Warded* covers eight ids on one glyph, which is what makes it worth
     having -- but a player looking at it has to be able to find out which
-    defence is up, and two of them must not draw two shields."""
+    defence is up, and two of them must not draw two shields.
+
+    The 10' radius pair, 45 and 46, joined the group on `#142 (The party
+    effects line is computed every poll and shown nowhere)` -- Donald: *"I do
+    agree that protection from evil and good 10ft radius fits well with
+    embraced energy."*"""
     assert dict(live.CONDITION_BADGES)["embrassed-energy"] == (
-        8, 9, 17, 28, 41, 89)
+        8, 9, 17, 28, 41, 45, 46, 89)
     who = _character(effects=_effects(8, 41))
     assert _glyphs(who) == ("embrassed-energy",)
     assert dict(who.conditions)["embrassed-energy"].splitlines() == [
@@ -93,11 +98,11 @@ def test_the_badges_keep_the_table_s_order_whatever_the_save_holds():
     """The effect arrays are 64 slots the game fills in whatever order it
     likes. A card whose badges reshuffle between two polls is unreadable, so
     the order is `CONDITION_BADGES`', not the save's."""
-    forwards = _glyphs(_character(effects=_effects(38, 25, 8, 1, 39)))
-    backwards = _glyphs(_character(effects=_effects(39, 1, 8, 25, 38)))
+    forwards = _glyphs(_character(effects=_effects(42, 38, 25, 8, 21, 1, 39)))
+    backwards = _glyphs(_character(effects=_effects(39, 1, 21, 8, 25, 38, 42)))
     assert forwards == backwards
     assert forwards == ("running-ninja", "healing-shield", "embrassed-energy",
-                        "eyelashes", "strong")
+                        "eyelashes", "strong", "mute", "snail")
 
 
 def test_the_two_record_conditions_still_come_first():
@@ -109,17 +114,32 @@ def test_the_two_record_conditions_still_come_first():
     assert "Drained 2 levels" in dict(who.conditions)["oppression"]
 
 
-def test_every_badged_effect_is_confirmed():
+def test_no_probable_effect_is_badged_without_being_named_first():
     """`goldbox/traits.py` grades each name, and a PROBABLE name drawn as a
-    picture reads as a fact. The PROBABLE radius pair 45/46 and Prayer 49 are
-    left out for exactly that reason and because `docs/136-condition-badges.md`
-    left their grouping open."""
+    picture reads as a fact -- so a PROBABLE id gets a badge only because
+    somebody decided it should, and `live.PROBABLE_BADGED` is where that
+    decision is written down.
+
+    Five are on that list, all of them from `#142 (The party effects line is
+    computed every poll and shown nowhere)`: 21 Silence 15' Radius, 42 slowed,
+    45 and 46 the 10' radius pair, and 49 Prayer. Every one is a spell that
+    lands on the **whole party**, and no save this project holds carries a
+    party-wide effect at all -- the only effect in any fixture is id 73 with
+    owner `0x00`, which is a character -- so waiting for one to be CONFIRMED
+    would have left the party line permanently empty.
+
+    What this catches is the next one: a sixth PROBABLE id joining a badge
+    row without anybody choosing it."""
     from goldbox import traits
     for _, ids in live.CONDITION_BADGES:
         for code in ids:
-            assert traits.confidence(code) == "CONFIRMED", code
+            if code in live.PROBABLE_BADGED:
+                assert traits.confidence(code) == "PROBABLE", code
+            else:
+                assert traits.confidence(code) == "CONFIRMED", code
     badged = {i for _, ids in live.CONDITION_BADGES for i in ids}
-    assert not badged & {45, 46, 49}
+    assert set(live.PROBABLE_BADGED) <= badged, (
+        "a name on the allowed list is not badged by anything")
 
 
 # --- on the card -------------------------------------------------------------
@@ -134,8 +154,8 @@ def test_the_card_is_no_taller_with_every_badge_lit(app):
     bare = (card.frame.sizeHint().height(),
             card.frame.minimumSizeHint().height())
     card.show_character(_character(hp=0, levels_drained=2, quickfight=True,
-                                   effects=_effects(39, 1, 8, 25, 38)))
-    assert len(card.conditions.names) == 5 + 2
+                                   effects=_effects(39, 1, 8, 25, 38, 21, 42)))
+    assert len(card.conditions.names) == len(live.CONDITION_BADGES) + 2
     assert (card.frame.sizeHint().height(),
             card.frame.minimumSizeHint().height()) == bare
 
@@ -160,11 +180,15 @@ def test_every_chosen_glyph_is_in_the_table_with_its_artist():
     """Attribution is the whole of what CC BY 3.0 asks for, and a licence file
     generated from what ships cannot go stale the way a retyped one does.
 
-    The eight condition badges are the ones this file is about; `#167`
+    The ten condition badges are the ones this file is about; `#167`
     (Replace the remaining Font Awesome icons with game-icons.net ones) added
     fourteen more names to `GAME_ICONS` for notes and the editor toolbar, so
     this checks the badges are among them rather than that they are all of
-    them."""
+    them.
+
+    `mute` and `snail` are Donald's choices for Silence 15' Radius and slowed,
+    from `#142 (The party effects line is computed every poll and shown
+    nowhere)`."""
     assert set(icons.GAME_ICONS) == set(icons.ARTISTS)
     badges = {
         "death-skull": "sbed",
@@ -174,6 +198,8 @@ def test_every_chosen_glyph_is_in_the_table_with_its_artist():
         "embrassed-energy": "Lorc",
         "eyelashes": "Delapouite",
         "strong": "Lorc",
+        "mute": "Delapouite",
+        "snail": "Lorc",
         "sparkling-sabre": "Lorc",
     }
     assert badges.items() <= icons.ARTISTS.items()

@@ -114,22 +114,65 @@ GRID = 16
 
 # The condition badges, in the order a card draws them, and the effect ids each
 # one covers. **The groupings are `docs/136-condition-badges.md`'s and the
-# glyphs are Donald's** -- neither is this file's to change. Every id here is
-# CONFIRMED in `goldbox/traits.py`; the PROBABLE radius pair 45/46 and Prayer
-# (49) are deliberately absent, because that grouping was left open.
+# glyphs are Donald's** -- neither is this file's to change.
 #
-# One glyph for six ids is what makes *warded* worth having: the badge says a
+# One glyph for eight ids is what makes *warded* worth having: the badge says a
 # defence is up and the tooltip says which. Read from the save's effect arrays
 # and not from the trait slots at `0x0AD` -- a cast spell never reaches those,
 # so a trait-sourced badge would be blank on a party with every spell running
 # (`docs/133-active-effects.md`).
+#
+# **Five of these ids are PROBABLE rather than CONFIRMED** -- 21, 42, 45, 46
+# and 49, the ones a spell has to land on the *whole party* to write, which no
+# save this project holds does. Donald added them anyway on `#142 (The party
+# effects line is computed every poll and shown nowhere)`, because that line is
+# what a party-wide spell would otherwise show up on and it would show nothing:
+# *"I do agree that protection from evil and good 10ft radius fits well with
+# embraced energy."* `PROBABLE_BADGED` below is the list, so a *sixth* PROBABLE
+# id cannot join without somebody deciding it.
 CONDITION_BADGES: tuple[tuple[str, tuple[int, ...]], ...] = (
     ("running-ninja", (39,)),                            # hasted
-    ("healing-shield", (1, 35)),                         # blessed
-    ("embrassed-energy", (8, 9, 17, 28, 41, 89)),        # warded
+    ("healing-shield", (1, 35, 49)),                     # blessed
+    ("embrassed-energy", (8, 9, 17, 28, 41, 45, 46, 89)),  # warded
     ("eyelashes", (25,)),                                # invisible
     ("strong", (12, 38)),                                # strengthened
+    ("mute", (21,)),                                     # silenced
+    ("snail", (42,)),                                    # slowed
 )
+
+#: The badged ids `goldbox/traits.py` grades PROBABLE, listed rather than
+#: counted: the test that guards this has to read as a set somebody chose and
+#: not as a number that drifts upwards. The reason they are drawn anyway is
+#: above; what this pins is that a sixth cannot arrive without an edit here.
+PROBABLE_BADGED = (21, 42, 45, 46, 49)
+
+
+def badges(running) -> tuple[tuple[str, str], ...]:
+    """`(icon, the spells it stands for)` for every badge `running` lights.
+
+    One function so **a roster card and the party line draw the same picture
+    for the same spell**: the only difference between them is whether the
+    effect landed on one character or on everybody, and Bless being one glyph
+    on a card and another on the strip would be a nonsense (`#142 (The party
+    effects line is computed every poll and shown nowhere)`).
+
+    The order is `CONDITION_BADGES`', not the save's, so badges do not
+    reshuffle between one poll and the next. An id no badge covers is **not**
+    drawn -- there is no glyph for it and inventing one is not this file's to
+    do -- so a caller that must not lose it says so itself.
+
+    **Each name opens with a capital**, because each one is a line of a
+    tooltip a person reads and `goldbox/traits.py` writes them as fragments --
+    `hasted`, `invisible`, `slowed`. Only the first letter: `str.capitalize()`
+    would turn "under an allied Prayer" into "under an allied prayer".
+    """
+    running = set(running)
+    out = []
+    for glyph, ids in CONDITION_BADGES:
+        named = [traits.describe(i) for i in ids if i in running]
+        if named:
+            out.append((glyph, "\n".join(n[:1].upper() + n[1:] for n in named)))
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -267,12 +310,7 @@ class Character:
             out.append(("oppression",
                         f"Drained {self.levels_drained} level"
                         f"{'s' if self.levels_drained != 1 else ''}"))
-        running = {e.id for e in self.effects}
-        for glyph, ids in CONDITION_BADGES:
-            named = [traits.describe(i) for i in ids if i in running]
-            if named:
-                out.append((glyph, "\n".join(named)))
-        return tuple(out)
+        return tuple(out) + badges(e.id for e in self.effects)
 
     @property
     def class_text(self) -> str:
@@ -317,6 +355,29 @@ class Snapshot:
     @property
     def monster_effects(self) -> tuple[Effect, ...]:
         return tuple(e for e in self.effects if e.monster)
+
+    @property
+    def party_badges(self) -> tuple[tuple[str, str], ...]:
+        """What the bottom strip draws: one icon row for the whole roster.
+
+        The same `badges` a roster card uses, so Bless is the same picture
+        whether it landed on one character or on everybody.
+        """
+        return badges(e.id for e in self.party_effects)
+
+    @property
+    def unbadged_party_effects(self) -> tuple[Effect, ...]:
+        """Party-wide effects no glyph covers, so a caller can say they exist.
+
+        Nothing draws these. The badge set is graded from the spell table
+        rather than from anything watched: **no save this project holds
+        carries a party-wide effect at all** -- checked 2026-08-31, the only
+        effect in any fixture is id 73 with owner `0x00`, a character. So an
+        id landing here is the signal that the set is short a glyph, and
+        `BottomStrip` puts it in the debug log for exactly that reason.
+        """
+        covered = {i for _, ids in CONDITION_BADGES for i in ids}
+        return tuple(e for e in self.party_effects if e.id not in covered)
 
 
 def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:

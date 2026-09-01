@@ -1133,19 +1133,225 @@ def test_a_card_at_a_class_ceiling_says_maximum(app):
     assert card.xp[0].fraction == 1.0
 
 
-def test_the_strip_says_when_the_party_is_not_readable(app):
+def test_the_strip_says_square_dash_until_the_party_has_been_located(app):
+    """Before the first fix, `(0,0) facing N` is not where the party is -- it
+    is `AutomapState`'s defaults -- so the strip says it does not know.
+
+    **This test used to end in a bare call to `show_state` with a real
+    snapshot and no assertion after it**, and that silence is what let
+    `#142 (The party effects line is computed every poll and shown nowhere)`
+    ship: had the line asserted anything about the effects widget it would
+    have raised `AttributeError` on `None` the moment `strip_effects` was
+    deleted from the form. The call has become the two assertions below.
+    """
     from automap.panel import BottomStrip
     strip = BottomStrip(make_root())
     state = AutomapState()
     state.area = "GEO00"
     strip.show_state(state, None)
-    
     assert strip.where.text() == "square --"     # no fix yet is not (0,0)
+    assert strip.effects.names == ()             # and nothing is readable yet
     state.source, state.x, state.y = "status", 3, 14
     strip.show_state(state, None)
     assert strip.where.text() == "(3,14) facing N"
     strip.show_state(state, live.snapshot_from_bytes(*captured()))
-    
+    assert strip.where.text() == "(3,14) facing N"
+    assert strip.effects.names == ()             # BRUTUS has no party spell up
+
+
+# --- the party effects row (#142) -------------------------------------------
+#
+# **No save this project holds carries a party-wide effect.** Checked
+# 2026-08-31: the only effect in any fixture is id 73 with owner `0x00`, which
+# is a character and not the party. So every test below writes its own effect
+# table over the captured machine rather than expecting a fixture to carry
+# one, and the badge set it draws is graded from the spell table rather than
+# from anything anybody has watched land.
+
+def party_snapshot(*effects):
+    """The captured machine with `(id, owner)` written into the effect table.
+
+    Every slot is cleared first, so a test's table is exactly what it says and
+    not what it says on top of whatever the fixture was already holding.
+    """
+    save0, save1 = captured()
+    raw = bytearray(save0)
+    for slot in range(live.EFFECT_SLOTS):
+        raw[live.EFFECT_ID_OFFSET + slot] = 0
+        raw[live.EFFECT_OWNER_OFFSET + slot] = 0
+    for slot, (eid, owner) in enumerate(effects):
+        raw[live.EFFECT_ID_OFFSET + slot] = eid
+        raw[live.EFFECT_OWNER_OFFSET + slot] = owner
+    return live.snapshot_from_bytes(bytes(raw), save1)
+
+
+def shown(app, snap):
+    """The strip after one poll: its icon names and its tooltip."""
+    from automap.panel import BottomStrip
+    strip = BottomStrip(make_root())
+    state = AutomapState()
+    state.area = "GEO00"
+    strip.show_state(state, snap)
+    return strip.effects.names, strip.effects.toolTip()
+
+
+def test_a_spell_on_the_whole_party_puts_its_icon_on_the_strip(app):
+    """What a player does: your cleric casts Bless before a fight, and one
+    icon appears above the coordinates with `Bless` in its tooltip.
+
+    Before this, nothing appeared at all -- the line was worked out five times
+    a second and written into a widget that had been deleted from the form.
+    """
+    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE)))
+    assert names == ("healing-shield",)
+    assert tip == "Bless"
+
+
+def test_prayer_and_bless_share_one_icon_and_the_tooltip_says_both(app):
+    """Donald's ruling on `#142 (The party effects line is computed every poll
+    and shown nowhere)`: Prayer joins *blessed* rather than taking a glyph of
+    its own, because to a player the two are the same idea. Two spells, one
+    picture, and the tooltip is what separates them."""
+    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE),
+                                           (49, live.PARTY_WIDE)))
+    assert names == ("healing-shield",)
+    assert tip.splitlines() == ["Bless", "Prayer"]
+
+
+def test_the_two_new_glyphs_draw_silence_and_slowed(app):
+    """`mute` and `snail`, Donald's choices, and the only two effects on the
+    party line that did not already have a badge from
+    `#4 (Condition badges on the roster card)`."""
+    names, tip = shown(app, party_snapshot((21, live.PARTY_WIDE),
+                                           (42, live.PARTY_WIDE)))
+    assert names == ("mute", "snail")
+    assert tip.splitlines() == ["Silence, 15' Radius", "Slowed"]
+
+
+def test_a_party_with_nothing_running_draws_nothing_at_all(app):
+    """The blank state is the one a player sees most, and the old shape's
+    fault was that it took up room saying so. No icons, no tooltip, and no
+    line reading `party effects: none`."""
+    names, tip = shown(app, party_snapshot((1, 0), (39, 3)))
+    assert names == () and tip == ""
+
+
+def test_a_spell_on_one_character_stays_off_the_party_line(app):
+    """The strip is the party's row. A spell on a single character is that
+    character's card's business and must not appear twice."""
+    names, _ = shown(app, party_snapshot((39, 0)))
+    assert names == ()
+
+
+def test_the_strip_draws_the_same_icon_as_the_card_for_the_same_spell(app):
+    """*"The party line and a roster card use the same icon for the same
+    spell"* -- the difference is only whether it landed on one character or on
+    everybody, and Bless being one picture on a card and another on the strip
+    would be a nonsense.
+
+    Pinned structurally rather than by listing pairs: both go through
+    `live.badges`, so a regrouping cannot move one without the other."""
+    from automap.panel import CharacterCard
+    spells = (1, 8, 21, 25, 38, 39, 42, 45, 49)
+    card = CharacterCard(make_root(), 0)
+    card.show_character(live.Character(
+        slot=0, name="BRUTUS", classes=(), level=1, armour_class=9, thac0=18,
+        hp=11, hp_max=11, experience=0,
+        effects=tuple(live.Effect(slot=i, id=n, owner=0, duration=8,
+                                  magnitude=0)
+                      for i, n in enumerate(spells))))
+    names, _ = shown(app, party_snapshot(*((n, live.PARTY_WIDE)
+                                           for n in spells)))
+    assert names == card.conditions.names
+    assert len(names) == len(live.CONDITION_BADGES)
+
+
+def test_effects_on_monsters_are_counted_in_the_tooltip_and_never_drawn(app):
+    """They belong to whatever is being fought and the combat view is where
+    they will mean something. Counting them at least says the effect table is
+    not empty; drawing them on the party's own row would say something false.
+    """
+    names, tip = shown(app, party_snapshot((1, live.PARTY_WIDE),
+                                           (39, 9), (42, 10)))
+    assert names == ("healing-shield",)
+    assert tip.splitlines() == ["Bless", "2 effects on monsters"]
+    _, one = shown(app, party_snapshot((1, live.PARTY_WIDE), (39, 9)))
+    assert one.splitlines()[-1] == "1 effect on monsters"
+
+
+def test_a_party_effect_no_badge_covers_is_reported_rather_than_dropped(
+        app, caplog):
+    """The badge set is graded from the spell table and nothing has been
+    watched landing on a party, so it can be a glyph short. An id that turns
+    up with no badge is drawn nowhere -- there is no picture for it and
+    inventing one is not ours to do -- so it goes to the debug log instead of
+    vanishing, once per id rather than five times a second."""
+    import logging
+
+    from automap.panel import BottomStrip
+    strip = BottomStrip(make_root())
+    state = AutomapState()
+    state.area, state.source = "GEO00", "status"
+    snap = party_snapshot((64, live.PARTY_WIDE))
+    with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
+        for _poll in range(5):
+            strip.show_state(state, snap)
+    assert strip.effects.names == () and strip.effects.toolTip() == ""
+    said = [r for r in caplog.records if "effect 64" in r.getMessage()]
+    assert len(said) == 1, [r.getMessage() for r in said]
+
+
+# --- a widget the code depends on and cannot find (#142) ---------------------
+
+def test_every_panel_finds_every_widget_it_wires(app, caplog):
+    """The one that would have caught `#142 (The party effects line is computed
+    every poll and shown nowhere)` the day it was made.
+
+    `BottomStrip` looked up a label called `strip_effects` that had been
+    deleted from the form, got `None`, and carried on computing the party's
+    effects five times a second and writing them behind a guard that was never
+    true. Every panel in `automap/panel.py` is wired the same way, so this asks
+    all of them at once and fails on the first name the form no longer has.
+    """
+    import logging
+
+    from automap import panel
+
+    class NoSettings:
+        automap_columns = None
+
+        def column_widths(self, _count):
+            return None
+
+    root = make_root()
+    with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
+        strip = panel.BottomStrip(root)
+        splitter = panel.ColumnSplitter(root, NoSettings())
+        panel.NotesPanel(root)
+        panel.MessagesPanel(root)
+        roster = panel.RosterPanel(root)
+    assert caplog.text == "", caplog.text
+    assert strip.effects is not None and strip.where is not None
+    assert splitter.splitter is not None
+    assert all(card.conditions is not None for card in roster.cards)
+
+
+def test_a_widget_the_form_does_not_have_is_named_in_the_debug_log(app, caplog):
+    """And the other direction, because a guard that cannot fail is not a
+    guard. Built against an empty window, every lookup misses, and each one
+    says which name it was looking for -- in the debug log and not in a dialog:
+    a missing widget is a fault in the build, not something the player did."""
+    import logging
+
+    from PyQt6.QtWidgets import QMainWindow
+
+    from automap.panel import BottomStrip
+    with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
+        strip = BottomStrip(QMainWindow())
+    assert strip.effects is None
+    assert "strip_effects" in caplog.text
+    assert "strip_where" in caplog.text
+    strip.show_state(AutomapState(), None)      # and does not raise
 
 
 # --- attaching --------------------------------------------------------------
@@ -2651,16 +2857,25 @@ def test_the_quickfight_sabre_is_the_artists_own_drawing(app):
     assert 40 <= ink <= 90, ink
 
 
-def test_the_effect_table_is_still_shown_by_number():
+def test_an_effect_with_no_badge_is_still_only_a_number():
     """The two lists share one namespace -- `LIBRARY $4028` reads the arrays
-    and falls back to the character's own slots -- so `goldbox/traits.py` could
-    name an effect. It does not here: the strip beside the map is a row of
-    running spells and a PROBABLE name in it reads as a fact.
-    `docs/133-active-effects.md` is where the naming is being designed."""
+    and falls back to the character's own slots -- so `goldbox/traits.py` can
+    name an effect, and since `#142 (The party effects line is computed every
+    poll and shown nowhere)` the strip does name them: an icon per spell with
+    the name in its tooltip, which is what Donald settled.
+
+    **That is a name behind a picture somebody chose**, and it is the choosing
+    that makes it safe to show. An effect with no badge has had nobody look at
+    it, so it stays a number -- `effect 64` in the debug log, never a name in
+    front of a player -- and 64 shows why: `goldbox/traits.py` calls it a melee
+    poison, which is a monster's attack and not a spell running on a party.
+    `docs/133-active-effects.md` is where the rest of the naming is designed."""
     effect = live.Effect(slot=0, id=64, owner=0, duration=3, magnitude=0)
     assert effect.label == "effect 64"
     from goldbox import traits
     assert traits.describe(64).startswith("melee poison")   # a trait, not this
+    covered = {i for _, ids in live.CONDITION_BADGES for i in ids}
+    assert 64 not in covered
 
 
 def book_flags() -> bytes:

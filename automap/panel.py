@@ -50,6 +50,31 @@ from ui.iconpaint import draw_icon, icon_pixmap
 #: `automap` importing `wish`.
 log = logging.getLogger("wish.automap.panel")
 
+
+def child(root: QWidget, kind, name: str):
+    """The widget `name` in the form, or `None` and a line saying which.
+
+    Every panel in this file is wired to `wish/window.ui` by `objectName`, and
+    every one of them carries on without a widget it cannot find -- which is
+    right, because a panel has to survive being built against a smaller form,
+    and wrong when nobody is told.
+
+    `strip_effects` is why this exists. It was deleted from the form in
+    `72ee9a9` while the layout was being simplified, and for months afterwards
+    `BottomStrip` worked out the party's active effects five times a second and
+    wrote them into `None`. Nothing errored and nothing was logged, so a player
+    who cast Bless saw nothing and no report ever said why -- `#142 (The party
+    effects line is computed every poll and shown nowhere)`.
+
+    The debug log and not a dialog: a missing widget is a fault in the build,
+    not something the player did or can do anything about.
+    """
+    found = root.findChild(kind, name)
+    if found is None:
+        log.warning("No widget named %s (%s) in the form", name, kind.__name__)
+    return found
+
+
 PAPER = QColor("#fbfcfd")
 CARD = QColor("#ffffff")
 LATTICE = QColor("#dbe3ec")
@@ -491,29 +516,29 @@ class CharacterCard(QObject):
         #: Radiance's -- the same default every other per-title reader takes.
         self.levelling = True
 
-        self.frame = root.findChild(QFrame, f"card_{index}")
+        self.frame = child(root, QFrame, f"card_{index}")
         if self.frame is not None:
             self.frame.setStyleSheet(
                 f"QFrame#card_{index} {{ background: {CARD.name()};"
                 f" border: 1px solid {LATTICE.name()}; border-radius: 4px; }}")
 
-        self.name = root.findChild(QLabel, f"card_{index}_name")
-        self.conditions = root.findChild(IconRow, f"card_{index}_conditions")
+        self.name = child(root, QLabel, f"card_{index}_name")
+        self.conditions = child(root, IconRow, f"card_{index}_conditions")
         if self.conditions is not None:
             self.conditions.colour = DANGER
 
 
-        self.klass = root.findChild(QLabel, f"card_{index}_klass")
+        self.klass = child(root, QLabel, f"card_{index}_klass")
         if self.klass is not None:
             self.klass.setStyleSheet(f"color: {MUTED.name()}")
-        self.quickfight = root.findChild(IconRow, f"card_{index}_quickfight")
-        self.level_up = root.findChild(QPushButton, f"card_{index}_level_up")
+        self.quickfight = child(root, IconRow, f"card_{index}_quickfight")
+        self.level_up = child(root, QPushButton, f"card_{index}_level_up")
         if self.level_up is not None:
             self.level_up.clicked.connect(self._level_up_clicked)
             self.level_up.hide()
 
-        self.hp = root.findChild(Bar, f"card_{index}_hp")
-        self.xp = [root.findChild(Bar, f"card_{index}_xp_{j}") for j in range(3)]
+        self.hp = child(root, Bar, f"card_{index}_hp")
+        self.xp = [child(root, Bar, f"card_{index}_xp_{j}") for j in range(3)]
 
         #: What is in hand, under the bars. Readied only -- the whole
         #: inventory would swamp the card -- and a **blank line** for a
@@ -521,7 +546,7 @@ class CharacterCard(QObject):
         #: and the word "none" is not. The line stays either way, so the cards
         #: below do not shift when a sword is put away.
         self.readied_items: tuple[str, ...] = ()
-        self.readied = root.findChild(ReadiedLabel, f"card_{index}_readied")
+        self.readied = child(root, ReadiedLabel, f"card_{index}_readied")
         if self.readied is not None:
             self.readied.setStyleSheet(f"color: {MUTED.name()}")
 
@@ -696,7 +721,7 @@ class ColumnSplitter(QObject):
                  parent: QObject | None = None):
         super().__init__(parent)
         self.settings = settings
-        self.splitter = root.findChild(QSplitter, "automap_columns")
+        self.splitter = child(root, QSplitter, "automap_columns")
         if self.splitter is None or self.splitter.count() != self.COLUMNS:
             log.debug("no automapper column splitter to manage")
             self.splitter = None
@@ -764,10 +789,10 @@ class RosterPanel(QObject):
         super().__init__(parent)
         self.root = root
         self.levelling = True
-        self.heading = root.findChild(QLabel, "automap_roster_heading")
+        self.heading = child(root, QLabel, "automap_roster_heading")
         #: The column the cards scroll inside, and the column that holds it.
-        self.scroll = root.findChild(QScrollArea, "automap_roster_scroll")
-        self.column = root.findChild(QWidget, "automap_roster")
+        self.scroll = child(root, QScrollArea, "automap_roster_scroll")
+        self.column = child(root, QWidget, "automap_roster")
         self.cards: list[CharacterCard] = [
             CharacterCard(root, i, parent=self) for i in range(8)
         ]
@@ -846,11 +871,21 @@ class BottomStrip(QObject):
     def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
-        self.where = root.findChild(QLabel, "strip_where")
-        self.area = root.findChild(QLabel, "strip_area")
-        self.effects = root.findChild(QLabel, "strip_effects")
-        if self.effects is not None:
-            self.effects.setStyleSheet(f"color: {MUTED.name()}")
+        self.where = child(root, QLabel, "strip_where")
+        self.area = child(root, QLabel, "strip_area")
+        #: One icon row for the **whole roster**, above the square and the area
+        #: name. It was a `QLabel` writing out `Bless   Prayer   Protection
+        #: from Evil, 10' Radius`, and the width of that is what made it
+        #: unaffordable; Donald settled the shape on `#142 (The party effects
+        #: line is computed every poll and shown nowhere)`: *"I think we should
+        #: have ONE line for the entire roster with party effects... Icons will
+        #: take up less space than text-only names of the spells. We can put
+        #: the name of the spell in the tooltip of the icon."*
+        self.effects = child(root, IconRow, "strip_effects")
+
+        #: Party-wide effect ids already reported as having no badge. Logged
+        #: once each rather than five times a second.
+        self._unbadged: set[int] = set()
 
         #: The loader's cache, last time it changed. It used to be a collapsed
         #: readout on this strip, which is a reverse-engineering number in a
@@ -874,27 +909,52 @@ class BottomStrip(QObject):
                 if state.source else "square --")
         if self.area is not None:
             self.area.setText(state.area_label)
+        self.show_effects(snap)
         if snap is None:
-            if self.effects is not None:
-                self.effects.setText("party effects: not readable right now")
             return
-        party = snap.party_effects
-        text = "party effects: " + ("   ".join(e.label for e in party)
-                                    if party else "none")
-        # Monster effects are counted rather than listed: they belong to
-        # whatever is being fought, and the combat view is where they will mean
-        # something. Counting them at least says the table is not empty.
-        monsters = snap.monster_effects
-        if monsters:
-            text += f"   (+{len(monsters)} on monsters)"
-        if self.effects is not None:
-            self.effects.setText(text)
-            self.effects.setToolTip("\n".join(e.detail for e in party + monsters))
         loaded = tuple(snap.loaded_files)
         if loaded != self._loaded:
             self._loaded = loaded
             log.info("loaded files: %s",
                      " ".join(f"{b:02X}" for b in loaded) or "none")
+
+    def show_effects(self, snap) -> None:
+        """One icon per party-wide spell, named in the row's tooltip.
+
+        **Nothing is drawn when nothing is running.** The old shape was one
+        line per character, blank on most of them, and eight blank lines is
+        what got it removed; a strip that says "party effects: none" five times
+        a second is the same mistake with one line instead of eight.
+
+        **A party effect no badge covers is drawn nowhere**, and that is worth
+        saying out loud rather than letting it look like a party with nothing
+        running. `automap/live.py`'s badge set is graded from the spell table
+        -- no save this project holds carries a party-wide effect at all -- so
+        an id turning up here means the set is a glyph short, and it goes to
+        the debug log once per id for whoever comes to choose one.
+        """
+        if self.effects is None:
+            return
+        if snap is None:
+            self.effects.set_icons(())
+            self.effects.setToolTip("")
+            return
+        lit = snap.party_badges
+        self.effects.set_icons(icon for icon, _ in lit)
+        lines = [why for _, why in lit if why]
+        # Monster effects are counted rather than listed: they belong to
+        # whatever is being fought, and the combat view is where they will mean
+        # something. Counting them at least says the table is not empty.
+        monsters = len(snap.monster_effects)
+        if monsters:
+            lines.append(f"{monsters} effect{'' if monsters == 1 else 's'}"
+                         " on monsters")
+        self.effects.setToolTip("\n".join(lines))
+        for effect in snap.unbadged_party_effects:
+            if effect.id not in self._unbadged:
+                self._unbadged.add(effect.id)
+                log.warning("Party-wide %s has no condition badge, so nothing "
+                            "on the strip shows it", effect.label)
 
 
 class NotesPanel(QObject):
@@ -914,8 +974,8 @@ class NotesPanel(QObject):
     def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
-        self.heading = root.findChild(QLabel, "notes_heading")
-        self.list = root.findChild(QListWidget, "notes_list")
+        self.heading = child(root, QLabel, "notes_heading")
+        self.list = child(root, QListWidget, "notes_list")
         if self.list is not None:
             self.list.setStyleSheet(
                 f"QListWidget {{ background: {CARD.name()}; border: 1px solid "
@@ -981,8 +1041,8 @@ class MessagesPanel(QObject):
     def __init__(self, root: QWidget, parent: QObject | None = None):
         super().__init__(parent)
         self.root = root
-        self.heading = root.findChild(QLabel, "messages_heading")
-        self.list = root.findChild(QListWidget, "messages_list")
+        self.heading = child(root, QLabel, "messages_heading")
+        self.list = child(root, QListWidget, "messages_list")
         if self.list is not None:
             self.list.setStyleSheet(
                 f"QListWidget {{ background: {CARD.name()}; border: 1px solid "

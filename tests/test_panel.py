@@ -46,9 +46,13 @@ NOT_READY = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 200_000)
 #: the sum of the widest strings its panels hold)`.
 READIED = ("BANDED MAIL +1", "SHIELD +2", "LONG SWORD +3")
 
-#: Every badge a card can show at once: dead, drained, and the five spell
-#: groups a living character can have running.
-ALL_EFFECTS = (39, 1, 8, 25, 38)
+#: Every badge a card can show at once: dead, drained, and the seven spell
+#: groups a living character can have running. `mute` and `snail` joined the
+#: set on `#142 (The party effects line is computed every poll and shown
+#: nowhere)`, which is why nine badges are asserted here where `#161 (A roster
+#: card loses a character's classes and its Level up button once four
+#: condition badges are lit)` measured seven.
+ALL_EFFECTS = (39, 1, 8, 25, 38, 21, 42)
 
 
 @pytest.fixture
