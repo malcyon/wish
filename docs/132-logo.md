@@ -1,39 +1,44 @@
 # A logo, and an icon Windows will show
 
-**Status: built and wired.** Task **P74**. Donald — *"We need an icon for the
-app that Windows will show in the task bar. Until I can hire an artist, we can
-use something from Font Awesome."*
+**Status: built and wired, with a stand-in for the current glyph.** Task
+**P74**. Donald — *"We need an icon for the app that Windows will show in the
+task bar. Until I can hire an artist, we can use something from Font
+Awesome."* That mark was Font Awesome's `hat-wizard`; it shipped from
+2026-08 until `#167`, when Donald asked for a different stand-in from his
+game-icons.net archive while an artist is commissioned: *"I am paying an
+artist to create an app logo and icon. In the meantime, please use
+`pointy-hat`."*
 
-The mark is Font Awesome's `hat-wizard` on an indigo tile. Donald, 2026-08:
-*"Change the logo icon used to the wizard hat from the font awesome set."* It
-is generated from `ui/icons.py`, so it cannot drift from the glyph the program
-paints, and there is no artist to wait for. §5 is what shipped, §6 is the gap
-between cone and brim and why it is left alone, and §1 and §2 are the brief for
-the artist, when there is one.
+The mark is `pointy-hat` (Lorc, game-icons.net) on an indigo tile. It is
+generated from `ui/icons.py`, so it cannot drift from the glyph the program
+paints, and there is no artist to wait for. §5 is what shipped, §6 is
+`pointy-hat`'s own geometry and why it is left alone, and §1 and §2 are the
+brief for the artist, when there is one. Most of what follows was written
+against `hat-wizard` and is kept as the record of that decision -- the
+sections that describe *today's* glyph rather than the brief are marked.
 
 ---
 
 ## The verdict
 
-* **The glyph is Font Awesome's `hat-wizard`**, path data verbatim from
-  `svgs-full/solid/`, in `ui/icons.py` under `FONT_AWESOME`. A leaning cone
-  with two sparkles cut out of it, over a rounded bar. Wish is a spell; the hat
-  is the spellcaster.
-* **Font Awesome as an app icon is legal.** CC BY 4.0 is satisfied by the
-  credit in the README and in Help > About — the attribution does not have to
-  be *on* the icon, which is as well, because an `.ico` has nowhere to carry
-  one. What CC BY does not grant is exclusivity: this is a mark anyone else may
-  also ship. §3.
+* **The glyph is `pointy-hat`** (Lorc, game-icons.net, CC BY 3.0), path data
+  verbatim from the artist's own SVG, in `ui/icons.py` under `GAME_ICONS`. A
+  peaked hat with a folded, curling brim. Wish is a spell; the hat is the
+  spellcaster. **This is a stand-in**, not the chosen mark -- see the intro.
+* **game-icons.net as an app icon is legal**, the same way Font Awesome was:
+  CC BY 3.0 is satisfied by the credit in the README and in Help > About, and
+  the attribution does not have to be *on* the icon. What CC BY does not grant
+  is exclusivity: this is a mark anyone else may also ship. §3.
 * **The drawing is not modified.** It is recoloured and placed on a tile, and
-  the path data is Fonticons', point for point, at every size. §6.
-* **The brim never touches the cone, at any size.** That is their drawing, not
-  a fault: a hat resting on a table. It is tightest at 16, where the gap is
-  about a pixel. §6.
-* **What it looks like at 16 px, honestly.** A white leaning cone with two dark
-  nicks in it, over a short white bar, inside a rounded indigo square. The
-  sparkles are what make it a hat rather than a fin, and they are two dark
-  pixels each at that size, so it is legible without being self-evident. It is
-  unmistakable from 32 up.
+  the path data is Lorc's, point for point, at every size. §6.
+* **The silhouette comes apart at 32px and up, and that is measured, not a
+  fault.** `pointy-hat` carries fold lines as fine strokes; at 16--24px they
+  are too fine to survive rasterising and the hat reads as one piece, and from
+  32px up they resolve into three. §6.
+* **What it looks like at 16 px, honestly.** A pale, curved cone over a
+  scalloped brim, inside a rounded indigo square -- narrower at the top,
+  flaring through the lower two-thirds. It reads as a hat at 16 and is
+  unmistakable from 32 up. Checked by rendering, not assumed.
 
 ---
 
@@ -115,8 +120,9 @@ artist asked for a scene will deliver one.
 sheet: **one connected silhouette, every feature at least about 64 units in the
 640 box** — a tenth of the width, which is 1.6 px at 16. The failure that kills
 a glyph is *separation*, not mush: `hat-wizard`'s brim stops touching its cone
-and the icon reads as a shark's fin. That is the app icon's own glyph, and §6
-is why it is shipped as drawn regardless.
+and the icon reads as a shark's fin. That was the app icon's own glyph until
+`#167`; the current one, `pointy-hat`, keeps to one piece at 16--24 for the
+same reason -- §6.
 
 | reads at 16 | does not |
 |---|---|
@@ -142,19 +148,21 @@ sides of every edge, and it still reads greyscale.
 
 ## 3. The attribution question
 
-This project already carries Font Awesome Free 7.3.1 path data in `ui/icons.py`
-under **CC BY 4.0**, licence text in
-[`fontawesome-LICENSE.txt`](../fontawesome-LICENSE.txt), credited
-in the README's *Credits* and in `wish/about.py`.
+This project carries Font Awesome Free 7.3.1 path data under **CC BY 4.0**,
+licence text in [`fontawesome-LICENSE.txt`](../fontawesome-LICENSE.txt), and
+game-icons.net path data -- `pointy-hat` among them -- under **CC BY 3.0**,
+attribution generated into `THIRD_PARTY_LICENSES.md` from `ui.icons.ARTISTS`.
+Both are credited in the README's *Credits* and in `wish/about.py`.
 
-**What CC BY 4.0 obliges, for an application icon.** Wherever the work is
-distributed: name the creator (Fonticons, Inc.), name the licence, link to it,
-link to the source, and say if you changed it. It does **not** have to appear on
-the icon or in the icon file — "any reasonable manner for the medium" is the
-licence's own wording, and a credit in an About box is the accepted form for
-software. **wish already discharges this**, in two places. There is no
-"changed the drawing" clause to answer, because the drawing is not changed: the
-glyph is recoloured and placed, and the path data is theirs, point for point.
+**What CC BY obliges, for an application icon.** Wherever the work is
+distributed: name the creator (Lorc, for `pointy-hat`), name the licence, link
+to it, link to the source, and say if you changed it. It does **not** have to
+appear on the icon or in the icon file — "any reasonable manner for the
+medium" is the licence's own wording, and a credit in an About box is the
+accepted form for software. **wish already discharges this**, in two places.
+There is no "changed the drawing" clause to answer, because the drawing is not
+changed: the glyph is recoloured and placed, and the path data is Lorc's,
+point for point.
 
 Two costs, accepted rather than avoided:
 
@@ -166,28 +174,33 @@ Two costs, accepted rather than avoided:
    every new place the mark appears: a store listing, a `.desktop` file, a
    favicon, a screenshot in someone else's article.
 
-And note the set's own trap, already recorded in `ui/icons.py`: **the brands are
-off limits** — the licence forbids brand-logo use and the set ships
-`wizards-of-the-coast`.
+And note Font Awesome's own trap, already recorded in `ui/icons.py`: **the
+brands are off limits** — the licence forbids brand-logo use and the set ships
+`wizards-of-the-coast`. game-icons.net carries no such set.
 
-### Why `hat-wizard`
+### Why `pointy-hat`, for now
 
-Donald asked for it by name. It suits the program: Wish is the ninth-level
-spell, and a wizard's hat is the one thing that says *magic* without saying
-*combat* — and the program is a character editor first.
+Donald asked for it by name, as the stand-in while an artist is commissioned
+-- see the intro. The reasoning that chose the *idea* of a wizard's hat still
+holds: Wish is the ninth-level spell, and a hat is the one thing that says
+*magic* without saying *combat* — and the program is a character editor
+first. Whether the final mark keeps that idea is the artist's call, not this
+document's.
 
-It is the glyph [`109-icon-choices.md`](109-icon-choices.md) rejected, and that
-rejection stands where it was made: **the map's magic-user icon is still ours**,
-because at 13 px in a map cell the brim comes away and the glyph is a fin. An
-app icon is a different job — 16 is the smallest it is ever drawn, it sits on
-its own tile rather than beside a wall, and the sizes that matter most are 32
-and up. §6 is the gap between cone and brim, which is left as drawn.
+`hat-wizard`, the previous stand-in, is the glyph
+[`109-icon-choices.md`](109-icon-choices.md) rejected for the map's
+magic-user badge, and that rejection stands where it was made: **the map's
+magic-user icon is still `wizard-hat`, ours**, because at 13 px in a map cell
+`hat-wizard`'s brim comes away and the glyph is a fin. An app icon is a
+different job — 16 is the smallest it is ever drawn, it sits on its own tile
+rather than beside a wall, and the sizes that matter most are 32 and up. §6
+covers `pointy-hat`'s own geometry at those sizes.
 
 Everything already available, judged as a logo:
 
 | candidate | source | as an app icon |
 |---|---|---|
-| **`hat-wizard`** | Font Awesome | **chosen** — Donald's call; drawn as Fonticons drew it, §6 |
+| `hat-wizard` | Font Awesome | **chosen, 2026-08 -- superseded by `pointy-hat` on `#167`** — Donald's call; drawn as Fonticons drew it, §6 as it was |
 | `wizard-hat` | ours | the previous mark, and still the map's magic-user glyph |
 | `sword` | ours | says combat; the program does not do combat |
 | `swords` | ours | reads as a starburst at small sizes, and already means "encounter" on the map |
@@ -217,12 +230,14 @@ that a cheap job will skip: **hand-tuned 16, 24 and 32**, not exports of the
 ## 5. What was built
 
 **The drawing** is `ui/appicon.py`, beside `iconpaint.py` because it is the same
-job: `icons.py` path data turned into pixels. `hat-wizard` on a rounded tile,
+job: `icons.py` path data turned into pixels. `pointy-hat` on a rounded tile,
 `#2b3a67` behind `#f7f9fb`, the glyph inset 10 % of the side and centred on its
-own ink rather than on the 640 box, which sits high in it. Indigo rather than
-the interface's near-black `#16202b`: a near-black tile is invisible on
-Windows' dark taskbar, and being visible against an unknown ground is the whole
-reason to have a tile.
+own ink rather than on its canvas -- which `paint()` never reads as a
+constant, so the same code drew `hat-wizard`'s 640 box correctly and draws
+`pointy-hat`'s 512 correctly too. Indigo rather than the interface's
+near-black `#16202b`: a near-black tile is invisible on Windows' dark
+taskbar, and being visible against an unknown ground is the whole reason to
+have a tile.
 
 **The generator** is `tools/genicons.py`, offscreen through `ui.iconpaint`
 exactly as `tools/iconsheet.py` renders the sheet. Every size is rendered from
@@ -276,12 +291,12 @@ three rows as a test, so the tolerance cannot quietly widen.
 
 **The tests measure the drawing, not the file list.** The tile is checked to be
 opaque on all four sides and rounded at the corners, the hat is checked to clear
-the edge at 16, its widest row is checked to be the bottom one and at least 8 px
-across so the brim is still there, and the 16 stored in the `.ico` is compared
-against a fresh 16 to prove it is not a squeezed 256.
-`test_the_brim_stays_where_font_awesome_put_it_at_every_size` is §6 as an
-assertion: two pieces, with at least one clear row of tile between them, from 16
-to 256.
+the edge at 16, its widest row is checked to be well below the apex and at
+least 8 px across so the brim reads, and the 16 stored in the `.ico` is
+compared against a fresh 16 to prove it is not a squeezed 256.
+`test_the_hat_stays_pointy_hats_own_shape_at_every_size` is §6 as an
+assertion: one piece from 16 to 24, three from 32 to 256, measured against
+`pointy-hat`'s own fold lines rather than `hat-wizard`'s cone-and-bar.
 
 **The no-images rule is gone**, so none of this needed working around. Donald,
 2026-08: *"You need to remove that test that blocks all pngs. We don't need
@@ -301,39 +316,51 @@ executables, audio and PDFs, which is the part that was ever about the game.
 
 ---
 
-## 6. The brim, and why it is left alone
+## 6. `pointy-hat`'s own geometry, and why it is left alone
 
-Font Awesome draw `hat-wizard` as three subpaths: the cone, with a four-point
-sparkle notched out of its foot; a second sparkle; and the brim, a rounded bar.
-**The bar never touches the cone.** The cone's last point is `y=464.1` and the
-bar starts at `y=512`, so there are 48 units of nothing between them — 7.5 % of
-the drawing's height, at every size. That is the drawing, not a defect: it is a
-hat resting on a table.
+**This section describes the current glyph.** §6 used to be about
+`hat-wizard`'s cone-and-bar, kept below for the record.
 
-Rasterised on the tile, with the glyph inset 10 %, the gap is `0.077 × size`
-pixels — 1.2 px at 16, 1.7 at 22, 2.5 at 32 and rising. At 16 and 20 it is
-tight enough that the rows either side of it are part-covered, so the gap reads
-as a smudge rather than as a line.
+Lorc draws `pointy-hat` with fold lines as separate strokes -- the brim's
+curl, a crease down the crown -- fine enough that at 16--24px they do not
+survive rasterising and the silhouette measures as **one** connected piece.
+From 32px up there is room to resolve them, and it measures as **three**:
+the main hat body, and two slivers where a fold line's antialiasing clears
+the paper-versus-tile threshold on both sides. Measured with
+`tools/genicons.py`'s own renderer, not assumed from the path.
 
-**It is shipped that way regardless.** An earlier pass cut the bar off the path
-at those two sizes and slid it up until it met the cone. Donald — *"Is the
-agent modifying the art? We don't want to change the art. We should not be
-changing the art."* That is the rule in `CLAUDE.md`: an icon from somebody
-else's set is drawn the way they drew it, and if it does not work at a size the
-answer is a different icon, or not using it at that size — never nudging the
-geometry. Recolouring it and putting it on a tile is composition; moving a
-point is making art.
+**It is shipped that way regardless**, for the same reason `hat-wizard` was:
+Donald — *"Is the agent modifying the art? We don't want to change the art.
+We should not be changing the art."* — and the rule in `CLAUDE.md`: an icon
+from somebody else's set is drawn the way they drew it, and if it does not
+work at a size the answer is a different icon, or not using it at that size —
+never nudging the geometry. Recolouring it and putting it on a tile is
+composition; moving a point is making art.
 
-So `ui/appicon.py` has no size-dependent geometry at all — `glyph()` hands back
-`painter_path("hat-wizard")` and that is the whole of it — and
-`tests/test_appicon.py::test_the_brim_stays_where_font_awesome_put_it_at_every_size`
-holds it there: two pieces, with at least one clear row of tile between cone and
-bar, at 16, 20, 22, 24, 32, 48, 128 and 256.
-
-One finding from the experiments is worth keeping. Filling the sparkles in, for
-a cleaner small silhouette, is **actively worse**: the notch in the cone's foot
-is not decoration, and without it the glyph is precisely the shark's fin `109`
-named.
+So `ui/appicon.py` has no size-dependent geometry at all — `glyph()` hands
+back `painter_path("pointy-hat")` and that is the whole of it — and
+`tests/test_appicon.py::test_the_hat_stays_pointy_hats_own_shape_at_every_size`
+holds it there: one piece at 16, 20, 22 and 24, three from 32 to 256.
 
 If 16 px is one day judged unacceptable, the remedy is a different mark — not
-an edited one.
+an edited one. It reads at 16 today: see the verdict at the top.
+
+### As it was: `hat-wizard`'s brim
+
+Font Awesome drew `hat-wizard` as three subpaths: the cone, with a four-point
+sparkle notched out of its foot; a second sparkle; and the brim, a rounded bar.
+**The bar never touched the cone.** The cone's last point was `y=464.1` and the
+bar started at `y=512`, so there were 48 units of nothing between them — 7.5 %
+of the drawing's height, at every size. That was the drawing, not a defect: a
+hat resting on a table.
+
+Rasterised on the tile, with the glyph inset 10 %, the gap was `0.077 × size`
+pixels — 1.2 px at 16, 1.7 at 22, 2.5 at 32 and rising. At 16 and 20 it was
+tight enough that the rows either side of it were part-covered, so the gap
+read as a smudge rather than as a line.
+
+One finding from those experiments is worth keeping regardless of the glyph:
+filling a sparkle or a fold line in, for a cleaner small silhouette, is
+**actively worse** -- a notch or a crease is not decoration, and without it a
+glyph loses exactly the feature that keeps it from reading as a blob or a
+fin.

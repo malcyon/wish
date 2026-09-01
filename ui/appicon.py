@@ -1,4 +1,11 @@
-"""The application's own icon: Font Awesome's `hat-wizard`, on a filled tile.
+"""The application's own icon, for now: game-icons.net's `pointy-hat`, on a
+filled tile.
+
+**This is a stand-in, not the chosen icon.** Donald: *"I am paying an artist
+to create an app logo and icon. In the meantime, please use `pointy-hat`."*
+It comes off, and `hat-wizard` or whatever replaces it goes back, the moment
+the artist delivers -- which is why it is its own commit, separate from the
+note icons and the toolbar (`#167`), so it can be reverted on its own.
 
 Beside `iconpaint.py` because it is the same job -- `icons.py` path data turned
 into pixels -- and because putting it here means the taskbar icon, the About
@@ -15,15 +22,20 @@ dark hole and there would be nothing to see. Filling it with paper is the same
 silhouette with a ground guaranteed on both sides of every edge, and it still
 reads in monochrome, which Windows sometimes wants.
 
-**The path data is drawn exactly as Fonticons drew it, at every size.** The
-brim is a separate bar that never touches the cone -- the cone closes at y=464
-and the bar starts at y=512 -- and that is their drawing, not a fault to fix.
-Colouring it and placing it on the tile is composition; moving a point would be
+**The path data is drawn exactly as Lorc drew it, at every size.** Colouring
+it and placing it on the tile is composition; moving a point would be
 redrawing somebody else's art, which this project does not do.
 
-The path data is Font Awesome Free 7.3.1, CC BY 4.0, attributed in the README
-and in Help > About, which is where the obligation for a Windows resource has
-to live -- an `.ico` has nowhere to carry one.
+**Scaled from the hat's own ink, not from a box constant.** `pointy-hat` sits
+on game-icons.net's 512 canvas rather than `hat-wizard`'s 640, and a
+different shape besides -- but `paint()` below never reads either box
+constant: it fits `glyph().boundingRect()` to the tile, so the scaling is
+correct for any glyph's own ink regardless of the canvas it was drawn on.
+Checked at 16, 32 and 256px; the hat reads at all three.
+
+The path data is game-icons.net, CC BY 3.0, attributed in the README and in
+Help > About, which is where the obligation for a Windows resource has to
+live -- an `.ico` has nowhere to carry one.
 """
 
 from __future__ import annotations
@@ -41,7 +53,7 @@ from PyQt6.QtGui import (
 
 from .iconpaint import painter_path
 
-NAME = "hat-wizard"
+NAME = "pointy-hat"
 
 #: Indigo rather than the interface's near-black `#16202b`: a near-black tile
 #: on Windows' dark taskbar is a tile nobody can see, and the whole point of
@@ -57,7 +69,7 @@ INSET = 0.10
 
 
 def glyph() -> QPainterPath:
-    """The hat, as Font Awesome draw it."""
+    """The hat, as Lorc drew it."""
     return painter_path(NAME)
 
 
@@ -68,8 +80,8 @@ def paint(p: QPainter, size: float, x: float = 0.0, y: float = 0.0) -> None:
     p.setPen(Qt.PenStyle.NoPen)
     p.fillPath(tile, TILE)
 
-    # Centred on the hat's own ink rather than on the 640 box, which it sits
-    # high in.
+    # Centred on the hat's own ink rather than on its canvas, which it does
+    # not fill.
     hat = glyph()
     ink = hat.boundingRect()
     inner = size * (1 - 2 * INSET)

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 Two different things are checked here and they fail for different reasons.
 
-**The drawing.** `ui/appicon.py` puts Font Awesome's `hat-wizard` on a tile,
-recoloured and inset and otherwise exactly as Fonticons drew it. What is
-measured here is the composition -- the tile is the ground on every side, the
-hat clears the edge at 16, it reads in monochrome -- and that the path data is
-still theirs: the brim is a separate bar that never touches the cone, at every
-size, because moving it would be redrawing somebody else's art.
+**The drawing.** `ui/appicon.py` puts game-icons.net's `pointy-hat` -- a
+stand-in, `#167` -- on a tile, recoloured and inset and otherwise exactly as
+Lorc drew it. What is measured here is the composition -- the tile is the
+ground on every side, the hat clears the edge at 16, it reads in monochrome
+-- and that the path data is still theirs: the connectivity of the drawing at
+each size is measured and pinned, because moving a point would be redrawing
+somebody else's art.
 
 **The files.** `assets/` is committed, which means it can go stale. Every
 artefact is re-rendered here and compared with what is on disk, so a change to
@@ -85,7 +86,7 @@ def _pieces(mask: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
     return sorted(out, key=len, reverse=True)
 
 
-def test_the_hat_is_the_font_awesome_path_and_nothing_else(app):
+def test_the_hat_is_pointy_hats_path_and_nothing_else(app):
     """The glyph is drawn, not redrawn. `appicon.glyph` has to hand back the
     same object `iconpaint` builds from the path data -- no cut, no translate,
     no boolean."""
@@ -95,33 +96,38 @@ def test_the_hat_is_the_font_awesome_path_and_nothing_else(app):
     assert _glyph_mask(16), "nothing was drawn"
 
 
-def test_the_brim_stays_where_font_awesome_put_it_at_every_size(app):
-    """Their drawing, not ours.
+def test_the_hat_stays_pointy_hats_own_shape_at_every_size(app):
+    """Their drawing, not ours -- a redraw guard, measured rather than
+    assumed, because `pointy-hat` is not `hat-wizard`'s simple cone-and-bar.
 
-    The bar never touches the cone -- the cone closes at y=464 and the bar
-    starts at y=512 -- so every size rasterises as two pieces with at least
-    one clear row of tile between them. Sliding the bar up at the sizes where
-    the gap is tight is the thing this asserts nobody has done again.
+    Lorc's drawing carries fold lines as separate strokes, which are too fine
+    to survive rasterising at the small sizes and resolve into gaps once
+    there is room: **one** connected piece from 16 to 24px, and **three**
+    from 32 up. Measured with `tools/genicons.py`'s own renderer; a different
+    count at any of these sizes means the drawing moved, not that PyQt
+    rounded a pixel differently.
     """
-    for size in (16, 20, 22, 24, 32, 48, 128, 256):
+    for size in (16, 20, 22, 24):
         pieces = _pieces(_glyph_mask(size))
-        assert len(pieces) == 2, f"{size}: {[len(p) for p in pieces]}"
-        cone, bar = pieces
-        assert max(y for _, y in cone) + 1 < min(y for _, y in bar), size
+        assert len(pieces) == 1, f"{size}: {[len(p) for p in pieces]}"
+    for size in (32, 48, 128, 256):
+        pieces = _pieces(_glyph_mask(size))
+        assert len(pieces) == 3, f"{size}: {[len(p) for p in pieces]}"
 
 
-def test_the_brim_is_the_widest_row_and_the_apex_the_narrowest(app):
-    """A hat, not a triangle: the silhouette has to flare at the bottom.
-
-    Measured because the brim is the feature most at risk -- 64 units thick in
-    the 640 box, which is 1.6 px at 16 -- and losing it leaves the fin.
-    """
+def test_the_hat_flares_below_the_apex_and_does_not_come_to_a_triangle(app):
+    """A hat, not a triangle: the silhouette has to flare well below the
+    apex, even though -- measured -- `pointy-hat`'s widest row is not
+    literally the bottom pixel row the way `hat-wizard`'s bar was. At 16px
+    the apex (y=2) is 3px wide, the widest row (y=10) is 10px, and that
+    widest row sits in the lower half of the shape (y=2..13)."""
     mask = _glyph_mask(16)
     rows = {y: sum(1 for x, yy in mask if yy == y) for _, y in mask}
-    bottom = max(rows)
-    assert rows[bottom] == max(rows.values()), rows
-    assert rows[bottom] >= 8, f"the brim is {rows[bottom]} px wide at 16"
-    assert rows[min(rows)] <= 3, "the apex is not a point"
+    top, bottom = min(rows), max(rows)
+    assert rows[top] <= 3, "the apex is not a point"
+    widest = max(rows, key=rows.get)
+    assert rows[widest] >= 8, f"the flare is only {rows[widest]}px wide"
+    assert widest > (top + bottom) / 2, "the flare is not below the midline"
 
 
 def test_the_tile_reads_in_monochrome(app):
