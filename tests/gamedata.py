@@ -304,6 +304,16 @@ PARTY_SLOTS = 6
 WIDEST_HP_MAX = 65535
 WIDEST_HP, WIDEST_AC, PARTY_ABILITY = 255, -195, 18
 
+#: Experience is three bytes (`goldbox/layout.py` `0x0E8`), so this is the
+#: field's ceiling -- and it is here for what it makes visible rather than for
+#: its width. A character at level 1 with no experience has nothing to train
+#: for, so **no card in this party ever showed a Level up button**, and every
+#: card-width measurement this project has taken was made with the widest
+#: thing on the card's top row absent; that is how #168 went unseen. At the
+#: ceiling all four of the party's classes are over their next threshold, so
+#: every card carries the button.
+WIDEST_EXPERIENCE = 0xFFFFFF
+
 
 def _widest(strings) -> str:
     """The longest of a table's labels, ties broken by the label itself.
@@ -381,8 +391,9 @@ def synthetic_party(game=None) -> bytes:
     label in `games.race_table`, the class bitmask whose name in
     `editor.enums.class_bit_names` is the longest -- all four classic classes
     at once, `magic-user/cleric/thief/fighter` -- three digits of hit points
-    each side of the slash, and a negative armour class so that column is three
-    characters too.
+    each side of the slash, a negative armour class so that column is three
+    characters too, and the experience field at its ceiling, which is what
+    puts a Level up button on every card (`WIDEST_EXPERIENCE`, #168).
 
     Widest and not plausible, because widths are the whole reason this exists.
     A party of six-letter names produces a floor that is true of nothing, and
@@ -420,6 +431,7 @@ def synthetic_party(game=None) -> bytes:
     record.set("race", next(c for c, n in races.items() if n == race))
     record.set("class_bits", next(b for b, n in classes.items() if n == mask))
     record.set("hp_max", WIDEST_HP_MAX)
+    record.set("experience", WIDEST_EXPERIENCE)
     head = record.to_bytes()[:SLOT_STRIDE]
 
     payload = bytearray(game.save_size)

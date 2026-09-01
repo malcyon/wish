@@ -61,9 +61,19 @@ Each card carries one line of what that character has **in hand**, decoded by
 
 * **Readied only.** The whole inventory would swamp the card; what matters
   mid-crawl is what is in hand.
-* One line, comma separated, elided to the card's 248px, with the full list in
-  the tooltip. The label sets no tooltip of its own, so it answers with the
-  card's, which already carries `Readied: ...`.
+* One line, comma separated, shortened with an ellipsis to whatever width the
+  card leaves it, with the full list in the tooltip. The label sets no tooltip
+  of its own, so it answers with the card's, which already carries
+  `Readied: ...`.
+* **It shares the row with the badges and it is the half that gives way.** The
+  condition badges and the quickfight badge sit at the right-hand end of this
+  same line, drawn at a fixed width, and `ReadiedLabel.SQUEEZED` is 0 so the
+  words take whatever is left -- however little. Donald settled the order:
+  *"I would rather see active effects than readied items. That is a fine
+  trade-off as far as space goes."* (`#161 (A roster card loses a character's
+  classes and its Level up button once four condition badges are lit)`.) With
+  every badge lit and a full hand the line draws about a word; with nothing
+  running it draws the lot.
 * **The line never adds to the window's floor.** `panel.ReadiedLabel.SHORT` is
   0, which makes it the first row on a card to give way: eight cards in a
   column that does not scroll, each insisting on a line of height, is eight
@@ -78,13 +88,50 @@ Each card carries one line of what that character has **in hand**, decoded by
 * Item names come from a game disk's `ITEMNAMES`, read once and cached. With no
   disk the line is blank rather than a row of word indices.
 
-## 3. Notes show their text on hover
+## 3. The top row: the name, the classes and level, and the Level up button
+
+**Three things, and the name is the only one that gives way.** The roster
+column is capped at 220px and the scrollbar takes 14 of them, so a card draws
+in 206. The row used to hold six things -- the name, the condition badges, the
+classes, the level, the quickfight badge and the button -- and asked for 277px
+with nothing running and 357 with five spells up. Whatever was rightmost fell
+off, cut rather than shortened and with nothing on the card to say so: a
+three-class character with four badges lit read `MU/C`, and a character who had
+earned a level got `Lev`, 32 of the button's 80 pixels
+(`#161 (A roster card loses a character's classes and its Level up button once
+four condition badges are lit)`,
+`#168 (A character ready to level loses the Level up button, even with nothing
+running)`).
+
+Both badge rows moved to the readied line and the name became a
+`panel.CardNameLabel`, whose `SQUEEZED` is 0: it yields the whole of its width
+before the classes or the button lose a pixel. Donald's reasoning is what makes
+that the cheap side of the trade -- *"The level up button will never be there
+for very long. It will be clicked as soon as it appears. So, cutting off the
+name for a little while is fine."* A name is also the one thing on the row
+still recognisable from its first few letters; `MU/C` for `MU/C/T  L8` is not.
+
+The floor is 0 rather than a number measured here on purpose. The classes label
+and the button are both set in points in `wish/window.ui`, so how many pixels
+they take is the machine's business, and any floor generous enough on this desk
+is a floor that cuts the button where the font is wider. **There is no spacer
+on the row either**: a `QSpacerItem` shrinks in proportion to its own size hint
+when the row is short, so it kept 40px of the width the name was giving up, and
+`BOB` beside a Level up button drew as `B...`.
+
+**The 32px stub was clickable**, measured before the fix: `visibleRegion()` on
+the button answered `QRect(0, 0, 32, 18)`, and `childAt` hands every one of
+those pixels to the button, which is the same recursion the mouse dispatcher
+uses. So the fault was ugly rather than disabling -- nothing was unreachable,
+and nothing on the card said it was a button.
+
+## 4. Notes show their text on hover
 
 `MapCanvas.tooltip_at` answers with every note on the square under the pointer,
 one per line, in the pattern the combat view's `tooltip_at` set. See
 `docs/98-automap-notes.md`.
 
-## 4. The icons
+## 5. The icons
 
 **Path data, not a font.** `ui/icons.py` holds each icon's SVG path in a
 uniform 640×640 box; `ui/iconpaint.py` fills it into a `QPainterPath` at
@@ -112,10 +159,10 @@ drew that read as a starburst at every size. It is the only one, and
 `docs/109-icon-choices.md` records what it renders as here and what is not known
 about the other platforms.
 
-## 5. Status icons — two, and only two
+## 6. Status icons — two, and only two
 
-The card marks the conditions the **record actually tells us**, beside the name
-and in the danger red:
+The card marks the conditions the **record actually tells us**, at the
+right-hand end of the readied line and in the danger red:
 
 | condition | where it comes from | icon |
 |---|---|---|
@@ -126,7 +173,7 @@ The tooltip says what each means, and the skull's says the thing the record does
 not: 0 is dead **or** dying and nothing decoded distinguishes them. That is the
 same reason `automap/actions.py` refuses to heal a character at 0.
 
-## 6. The quickfight badge
+## 7. The quickfight badge
 
 Roster block `+0x0C`, bit 7, CONFIRMED — the bit the combat menu's QUICK sets,
 which `automap/actions.py` also clears. `live.Character.quickfight` reads it
@@ -136,23 +183,27 @@ own, and `actions.QUICKFIGHT` is built from `live.ROSTER_QUICKFIGHT` and
 
 | | |
 |---|---|
-| glyph | `person-running`, Font Awesome Free solid, verbatim |
+| glyph | `sparkling-sabre`, game-icons.net, Lorc |
 | tooltip | `Quickfight` |
-| where | its own row **under the readied line**, right-aligned |
+| where | the right-hand end of the **readied line**, after the condition badges |
 
-**Not in the conditions row**, and the reason is what the two rows mean. The
-conditions row sits beside the name in the danger red and holds things that
-have happened *to* a character; quickfight is a setting that character's player
-made from the combat menu. It is also where Donald asked for it. The row is
-always present and always 13px tall, so turning quickfight on does not shift
-the cards below.
+**Its own `IconRow`, not the conditions one**, and the reason is what the two
+mean. The conditions are drawn in the danger red and are things that have
+happened *to* a character; quickfight is a setting that character's player made
+from the combat menu, and it keeps its own widget and its own colour. Both rows
+sit on the readied line because that is where Donald put them --
+*"Are you suggesting putting the icons on the right side of the row that
+contains readied items? I think that could work"*, and *"I think the quick
+fight icon should go where the active effects go."*
 
-`person-running` at 13px is three connected pieces — head, body, trailing arm —
-34 pixels of ink. The 13px rule wants one silhouette; this passes anyway,
-because the separations are the ones a reader of a running figure expects and
-every limb clears the 64-unit floor.
+**An `IconRow` is at most 13px tall and asks for none of it.** Height is a
+maximum with a `minimumSizeHint` of 0, not a fixed size: eight cards, each with
+two badge rows insisting on 13px, would hand back the floor
+`#135 (The automapper's roster column does not scroll, so a full party puts a
+944px floor under the window)` took off the window. Width is fixed, which is
+what makes the badges the half of the readied line that does not give way.
 
-## 7. The status effects we could badge, and what with
+## 8. The status effects we could badge, and what with
 
 **The old objection is retired.** This section used to say a poisoned or
 paralysed icon "would be an invented mapping", on the reading that the effect
@@ -252,6 +303,31 @@ licence.
   `wizards-of-the-coast`. None is used.
 * **Subsetting the font would make an OFL "Modified Version"** which may not
   keep the reserved name "Font Awesome". Moot: no font ships.
+
+## Verification — in `tests/test_panel.py`
+
+What the card can hold in the width it is given, all of it against a real
+window laid out at the real 220px column, and none of it against a pixel count
+measured on one machine:
+
+* A three-class character with every badge lit, quickfight on and a full hand
+  keeps her classes, her level, both badge rows and the Level up button -- each
+  asserted whole through `QWidget.visibleRegion()`, which is the clip the
+  column's edge actually applies.
+* The same, at +0, +3, +6 and +10 point of UI font.
+* A character ready to level with nothing running gets the **whole** button.
+* The name is what gives way: the button appearing costs the name label at
+  least the button's own width and costs the classes nothing. Both numbers are
+  measured in the same run.
+* A three-letter name beside a Level up button is not shortened.
+* The badges are drawn whole and the readied line shortens, with the full list
+  still in the card's tooltip.
+* The badge rows cost the card's floor no height -- the control is the same
+  card with them hidden.
+* `gamedata.synthetic_party` contains characters who **can** level, which is
+  what stops `#168 (A character ready to level loses the Level up button, even
+  with nothing running)` coming back: a test party in which nobody can train
+  cannot catch a fault in the control that trains them.
 
 ## Verification — in `tests/test_automap.py`
 

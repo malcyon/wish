@@ -538,6 +538,11 @@ def _full_party_window(app, tmp_path, monkeypatch, extra, *, showing=8):
     the widest the record allows: a fifteen-letter name, three classes, and
     three readied items.
 
+    **Every one of them has earned a level**, so every card carries the Level
+    up button -- the widest thing on the card's top row, and the one this file
+    measured without for as long as it existed. A `next_threshold` under the
+    character's experience is what puts it there (#168).
+
     **The Qt trap `tests/test_automap.py::_eight_card_floor` documents.** A
     card is `visible=false` in `wish/window.ui`; on `QWidget.show()` the
     layouts above it go on answering the eight-hidden-cards number until every
@@ -556,7 +561,7 @@ def _full_party_window(app, tmp_path, monkeypatch, extra, *, showing=8):
     bigger = QFont(base)
     bigger.setPointSizeF(base.pointSizeF() + extra)
     app.setFont(bigger)
-    classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 200_000)
+    classes = tuple(live.ClassProgress(name, 8, 100_000, 0.5, 90_000)
                     for name in ("magic-user", "cleric", "thief"))
     party = tuple(live.Character(
         slot=slot, name="W" * 15, classes=classes, level=8, armour_class=-3,

@@ -103,12 +103,28 @@ class IconRow(QWidget):
         self.size = size
         self.colour = colour
         self.names: tuple[str, ...] = ()
-        self.setFixedHeight(size)
+        # Width is fixed and height is only capped. The row shares the card's
+        # readied line with `ReadiedLabel`, and the whole point of putting it
+        # there is that the badges are drawn whole and the words give way, so
+        # the width has to hold. The height must not: eight of these, one per
+        # party slot, would otherwise each add 13px to what the roster column
+        # insists on, which is the shape of `#135` all over again.
+        self.setMaximumHeight(size)
         self.setFixedWidth(0)
+
+    def _row_width(self) -> int:
+        return len(self.names) * (self.size + 3)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self._row_width(), self.size)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(self._row_width(), 0)
 
     def set_icons(self, names) -> None:
         self.names = tuple(n for n in names if n)
-        self.setFixedWidth(len(self.names) * (self.size + 3))
+        self.setFixedWidth(self._row_width())
+        self.updateGeometry()
         self.update()
 
     def paintEvent(self, _event):
@@ -334,13 +350,45 @@ class ElidingLabel(QLabel):
                                   self.foregroundRole())
 
 
+class CardNameLabel(ElidingLabel):
+    """The character name on a roster card: the one thing on the top row that
+    gives way.
+
+    The row holds the name, the classes and level, and the Level up button
+    when the character has earned one, inside a column capped at 220px. The
+    classes and the level are the character; the button is a control, and a
+    control cut in half reads `Lev` (#168). So the name yields all of the
+    width, down to nothing if that is what it takes, and says it has by
+    drawing an ellipsis.
+
+    Donald's reasoning, and it is what makes a shortened name the cheap side
+    of the trade: *"The level up button will never be there for very long. It
+    will be clicked as soon as it appears. So, cutting off the name for a
+    little while is fine."* A name is also the one thing on the row still
+    recognisable from its first few letters -- `LADY KATH...` is unmistakably
+    LADY KATHERINE, where `MU/C` for `MU/C/T  L8` is not.
+
+    `SQUEEZED = 0` rather than a number measured here: the classes label and
+    the button are both set in points, so how many pixels they take is the
+    machine's business, and any floor big enough on this one is a floor that
+    cuts the button on a machine with a wider font.
+    """
+
+    #: The widest this name may hold the row open. Zero, deliberately.
+    SQUEEZED = 0
+
+
 class ReadiedLabel(ElidingLabel):
     """The card's line of what is in hand: bounded in both axes.
 
-    Width comes from `ElidingLabel` -- the item names are read off the
-    player's disk and a card whose floor was the width of `BANDED MAIL +1,
-    SHIELD +2, LONG SWORD +3` would put that string under the whole window
-    (#41).
+    Width is the first of the two. The item names are read off the player's
+    disk, and a card whose floor was the width of `BANDED MAIL +1, SHIELD +2,
+    LONG SWORD +3` would put that string under the whole window (#41). The
+    floor is zero rather than `ElidingLabel`'s 44 because the condition
+    badges share this row and are drawn at a fixed width: this line takes
+    whatever they leave, however little that is. Donald settled the order --
+    *"I would rather see active effects than readied items. That is a fine
+    trade-off as far as space goes."* (#161)
 
     Height is the reason for the subclass. There are eight of these, one per
     party slot, in a column that does not scroll, so a line that insisted on
@@ -351,6 +399,10 @@ class ReadiedLabel(ElidingLabel):
     already pushed to its minimum. Anywhere above that floor the line is
     drawn in full.
     """
+
+    #: The widest this line may hold the row open. Zero: the badges beside it
+    #: are drawn whole and this takes the remainder.
+    SQUEEZED = 0
 
     #: The tallest this line may hold the window open. Zero, deliberately.
     SHORT = 0

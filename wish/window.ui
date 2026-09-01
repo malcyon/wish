@@ -111,7 +111,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_0_top">
                     <item>
-                     <widget class="QLabel" name="card_0_name">
+                     <widget class="CardNameLabel" name="card_0_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -121,22 +127,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_0_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_0_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_0_klass">
@@ -149,9 +139,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_0_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_0_level_up">
@@ -199,16 +186,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_0_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_0_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_0_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_0_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_0_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -234,7 +240,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_1_top">
                     <item>
-                     <widget class="QLabel" name="card_1_name">
+                     <widget class="CardNameLabel" name="card_1_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -244,22 +256,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_1_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_1_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_1_klass">
@@ -272,9 +268,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_1_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_1_level_up">
@@ -322,16 +315,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_1_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_1_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_1_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_1_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_1_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -357,7 +369,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_2_top">
                     <item>
-                     <widget class="QLabel" name="card_2_name">
+                     <widget class="CardNameLabel" name="card_2_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -367,22 +385,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_2_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_2_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_2_klass">
@@ -395,9 +397,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_2_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_2_level_up">
@@ -445,16 +444,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_2_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_2_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_2_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_2_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_2_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -480,7 +498,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_3_top">
                     <item>
-                     <widget class="QLabel" name="card_3_name">
+                     <widget class="CardNameLabel" name="card_3_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -490,22 +514,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_3_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_3_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_3_klass">
@@ -518,9 +526,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_3_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_3_level_up">
@@ -568,16 +573,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_3_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_3_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_3_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_3_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_3_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -603,7 +627,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_4_top">
                     <item>
-                     <widget class="QLabel" name="card_4_name">
+                     <widget class="CardNameLabel" name="card_4_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -613,22 +643,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_4_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_4_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_4_klass">
@@ -641,9 +655,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_4_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_4_level_up">
@@ -691,16 +702,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_4_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_4_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_4_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_4_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_4_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -726,7 +756,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_5_top">
                     <item>
-                     <widget class="QLabel" name="card_5_name">
+                     <widget class="CardNameLabel" name="card_5_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -736,22 +772,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_5_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_5_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_5_klass">
@@ -764,9 +784,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_5_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_5_level_up">
@@ -814,16 +831,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_5_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_5_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_5_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_5_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_5_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -849,7 +885,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_6_top">
                     <item>
-                     <widget class="QLabel" name="card_6_name">
+                     <widget class="CardNameLabel" name="card_6_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -859,22 +901,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_6_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_6_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_6_klass">
@@ -887,9 +913,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_6_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_6_level_up">
@@ -937,16 +960,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_6_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_6_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_6_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_6_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_6_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -972,7 +1014,13 @@
                   <item>
                    <layout class="QHBoxLayout" name="card_7_top">
                     <item>
-                     <widget class="QLabel" name="card_7_name">
+                     <widget class="CardNameLabel" name="card_7_name">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
                       <property name="text">
                        <string />
                       </property>
@@ -982,22 +1030,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                    <item>
-                     <widget class="IconRow" name="card_7_conditions" />
-                    </item>
-                    <item>
-                     <spacer name="card_7_top_spacer">
-                      <property name="orientation">
-                       <enum>Qt::Horizontal</enum>
-                      </property>
-                      <property name="sizeHint" stdset="0">
-                       <size>
-                        <width>40</width>
-                        <height>20</height>
-                       </size>
-                      </property>
-                     </spacer>
                     </item>
                     <item>
                      <widget class="QLabel" name="card_7_klass">
@@ -1010,9 +1042,6 @@
                        </font>
                       </property>
                      </widget>
-                    </item>
-                   <item alignment="Qt::AlignRight">
-                     <widget class="IconRow" name="card_7_quickfight" />
                     </item>
                     <item alignment="Qt::AlignRight">
                      <widget class="QPushButton" name="card_7_level_up">
@@ -1060,16 +1089,35 @@
                    </layout>
                   </item>
                   <item>
-                   <widget class="ReadiedLabel" name="card_7_readied">
-                    <property name="text">
-                     <string />
+                   <layout class="QHBoxLayout" name="card_7_readied_row">
+                    <property name="spacing">
+                     <number>6</number>
                     </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                     </font>
-                    </property>
-                   </widget>
+                    <item>
+                     <widget class="ReadiedLabel" name="card_7_readied">
+                      <property name="sizePolicy">
+                       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+                        <horstretch>1</horstretch>
+                        <verstretch>0</verstretch>
+                       </sizepolicy>
+                      </property>
+                      <property name="text">
+                       <string />
+                      </property>
+                      <property name="font">
+                       <font>
+                        <pointsize>8</pointsize>
+                       </font>
+                      </property>
+                     </widget>
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_7_conditions" />
+                    </item>
+                    <item alignment="Qt::AlignRight|Qt::AlignVCenter">
+                     <widget class="IconRow" name="card_7_quickfight" />
+                    </item>
+                   </layout>
                   </item>
                   </layout>
                 </widget>
@@ -2859,6 +2907,11 @@
   </customwidget>
   <customwidget>
    <class>ElidingLabel</class>
+   <extends>QLabel</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>CardNameLabel</class>
    <extends>QLabel</extends>
    <header>automap.panel</header>
   </customwidget>
