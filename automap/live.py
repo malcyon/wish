@@ -437,9 +437,11 @@ def _disk_images(root: pathlib.Path, game=None) -> list[pathlib.Path]:
 def characters(save0: SaveGame0, save1: SaveGame1,
                effects: tuple[Effect, ...] = (),
                names: dict[int, str] | None = None) -> tuple[Character, ...]:
+    """The party in the game's own marching order -- highest occupied slot
+    first, via `SaveGame0.marching_order` (`#160`)."""
     payload = save0.to_bytes()
     out = []
-    for slot in save0.characters:
+    for slot in save0.marching_order:
         record = slot.record
         block = save1.roster(slot.index)
         live = block.occupied

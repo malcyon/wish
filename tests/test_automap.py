@@ -866,7 +866,11 @@ def test_a_snapshot_decodes_a_party_from_captured_bytes():
 @game_disks
 def test_the_party_reads_the_same_live_as_it_does_off_the_disk():
     """The assertion the editor's roster test makes, by a different path: the
-    same bytes, read as a running machine rather than as a file."""
+    same bytes, read as a running machine rather than as a file.
+
+    PORSAVE11 holds MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS, BRUTUS in
+    slots 0-5, and `snap.characters` lists the game's own marching order --
+    the occupied slots, highest first (`#160`)."""
     from goldbox.d64 import D64
     disk = D64.open(f"{DISKS}/PORSAVE11.D64")
     snap = live.read_snapshot(live_machine(
@@ -875,8 +879,8 @@ def test_the_party_reads_the_same_live_as_it_does_off_the_disk():
     roland = next(c for c in snap.characters if c.name == "ROLAND")
     assert (roland.hp, roland.hp_max) == (5, 7) and roland.hurt
     assert [c.name for c in snap.characters] == [
-        "MALCYON", "LADY KATHERINE", "ROLAND", "SILAS", "MAGNUS", "BRUTUS"]
-    katherine = snap.characters[1]
+        "BRUTUS", "MAGNUS", "SILAS", "ROLAND", "LADY KATHERINE", "MALCYON"]
+    katherine = snap.characters[4]
     assert katherine.class_text == "MU/T"      # two bars, not one
     assert len(katherine.classes) == 2
 

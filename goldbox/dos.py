@@ -1914,6 +1914,15 @@ def marching_slot(index: int, count: int) -> int:
 
     The party stays in the low slots, `count - 1` down to 0, which is where
     every engine-written save keeps it.
+
+    **This assumes a packed party** -- `count` members in slots `0..count-1`
+    with no gap -- which is what this function's one caller, `convert_save`,
+    always builds. It is not the arithmetic for reading a party back off a
+    save that may hold a hole: `ALTER > DROP` can leave one, and `count - 1 -
+    index` has no way to skip it. `SaveGame0.marching_order` (`#160`) is the
+    one that reads a real save's occupied slots and descends over exactly
+    those, so it is the home for that case rather than a generalisation of
+    this formula.
     """
     return count - 1 - index
 

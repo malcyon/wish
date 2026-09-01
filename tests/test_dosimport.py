@@ -387,11 +387,12 @@ def test_the_import_lands_with_no_file_behind_it_and_save_as_writes_it(
 
     assert window.dirty                      # unsaved, and the title says so
     assert window.path is None, "an import has no file behind it"
-    # Slot order, which the C64 reads back to front: the character DOS lists
-    # first is the one the game puts at the head of the marching order, and
-    # that is the *highest* slot (#101, `dos.marching_slot`).
+    # The converter puts DOS marching position 0 in the *highest* C64 slot
+    # (#101, `dos.marching_slot`), and the roster now lists the highest
+    # occupied slot first (`#160`) -- so the window's own order is DOS's,
+    # not its reverse.
     names = [m.name for m in window.party.members if m.name]
-    assert names == [c.name for c in dos.read_party(dos_save, "A")][::-1]
+    assert names == [c.name for c in dos.read_party(dos_save, "A")]
     assert "slot A" in note or "A" in note
 
     out = tmp_path / "NEW.D64"

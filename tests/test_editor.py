@@ -241,11 +241,15 @@ def test_the_window_binds_every_field_widget(app, save):
 
 @game_disks
 def test_selecting_a_character_fills_the_sheet(app, save):
+    """PORSAVE11 holds MALCYON, LADY KATHERINE, ROLAND, SILAS, MAGNUS, BRUTUS
+    in slots 0-5, and the roster lists them the game's own way -- highest
+    occupied slot first (`#160`): BRUTUS, MAGNUS, SILAS, ROLAND,
+    LADY KATHERINE, MALCYON."""
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(2)
+    w.roster.selectRow(3)
     assert w._widgets["name"].text() == "ROLAND"
-    w.roster.selectRow(0)
+    w.roster.selectRow(5)
     assert w._widgets["name"].text() == "MALCYON"
 
 
@@ -282,10 +286,13 @@ def test_read_only_widgets_are_disabled_on_a_save(app, save):
 
 @game_disks
 def test_combat_box_shows_the_sheet_value_not_the_stored_byte(app, newsave5):
-    """GARRETT's record holds 39 and 50. His sheet reads THAC0 21, AC 10."""
+    """GARRETT's record holds 39 and 50. His sheet reads THAC0 21, AC 10.
+
+    NEWSAVE5 holds GARRETT, ASTRID, MAGNUS, ROLAND, GRIMNIR, BRUTUS in slots
+    0-5, and the roster lists BRUTUS first, GARRETT last (`#160`)."""
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(newsave5))
-    w.roster.selectRow(0)
+    w.roster.selectRow(5)
     assert w._widgets["thac0_base"].value() == 21
     assert w._widgets["armour_class_base"].value() == 10
 
@@ -300,15 +307,16 @@ def test_typing_the_sheet_value_stores_the_biased_byte(app, newsave5):
 
     GARRETT's stored byte is already 39 (THAC0 21), so typing 21 back in and
     flushing must leave the record still holding 39 -- not the unconverted 21
-    a flush that forgot the bias would write."""
+    a flush that forgot the bias would write. GARRETT is row 5: NEWSAVE5
+    lists BRUTUS, GRIMNIR, ROLAND, MAGNUS, ASTRID, GARRETT (`#160`)."""
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(newsave5))
-    w.roster.selectRow(0)
+    w.roster.selectRow(5)
     box = w._widgets["thac0_base"]
     box.setEnabled(True)
     box.setValue(21)
     w._flush()
-    assert w.party.member(0).record.get("thac0_base") == 39
+    assert w.party.member(5).record.get("thac0_base") == 39
 
 
 @game_disks
@@ -373,10 +381,11 @@ def test_the_name_field_stays_disabled_after_switching_character(app, save):
 @game_disks
 def test_the_name_is_still_shown_though_disabled(app, save):
     """Disabled must not mean the value is hidden -- the player can still see
-    whose sheet this is."""
+    whose sheet this is. Row 5 is MALCYON, PORSAVE11's lowest occupied slot
+    and so the last the roster lists (`#160`)."""
     from editor.window import EditorBinding
     w = EditorBinding(make_root(), str(save))
-    w.roster.selectRow(0)
+    w.roster.selectRow(5)
     assert w._widgets["name"].text() == "MALCYON"
 
 
@@ -500,7 +509,7 @@ def editor(app, save):
 
 @game_disks
 def test_items_are_shown_by_name_not_by_number(editor):
-    editor.roster.selectRow(2)                    # ROLAND
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160
     names = [editor.items.data(editor.items.index(r, 1)) for r in range(16)]
     assert names[:2] == ["BANDED MAIL", "MACE"]
     assert names[2] == "—"                           # a free slot, shown as one
@@ -589,7 +598,7 @@ def test_rubbish_weight_is_refused(editor):
 @game_disks
 def test_an_empty_slot_is_not_weight_editable(editor):
     from PyQt6.QtCore import Qt
-    editor.roster.selectRow(2)                    # ROLAND, slot 2 is empty
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; item slot 2 is empty
     model = editor.items
     assert not model.flags(model.index(2, 6)) & Qt.ItemFlag.ItemIsEditable
     assert not model.setData(model.index(2, 6), 5)
@@ -599,19 +608,19 @@ def test_an_empty_slot_is_not_weight_editable(editor):
 def test_an_added_item_is_a_copy_of_the_games_own_record(editor, save):
     from editor.window import EditorBinding
     from goldbox.items import load_item_templates
-    editor.roster.selectRow(2)                    # ROLAND, two items
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; two items
     assert "slot 2" in editor.add_item("POTION OF HEALING")
     editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
-    again.roster.selectRow(2)
+    again.roster.selectRow(3)
     raw = again.items.inventory.raws[2]
     assert raw == load_item_templates(GAME_DISK)["POTION OF HEALING"]
 
 
 @game_disks
 def test_deleting_closes_the_gap(editor):
-    editor.roster.selectRow(2)                    # BANDED MAIL, MACE
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; BANDED MAIL, MACE
     assert "slot 0" in editor.delete_item(0)
     assert editor.items.inventory.item(0).name == "MACE"
     assert editor.items.inventory.is_empty(1)
@@ -642,7 +651,7 @@ def test_a_no_op_save_writes_nothing_with_a_game_disk_open(editor, save):
 
 @game_disks
 def test_spells_are_shown_by_name(editor):
-    editor.roster.selectRow(2)                    # ROLAND, a cleric
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160; a cleric
     book, memorised = editor._spell_widgets()
     assert book.known() == [1, 2, 3, 4, 5, 6, 7, 8]
     assert memorised.list.item(0).text() == "CURE LIGHT WOUNDS (cleric 1)"
@@ -650,7 +659,7 @@ def test_spells_are_shown_by_name(editor):
 
 @game_disks
 def test_the_capacity_is_shown_beside_the_memorised_list(editor):
-    editor.roster.selectRow(2)
+    editor.roster.selectRow(3)                    # ROLAND -- row 3, #160
     _book, memorised = editor._spell_widgets()
     assert "cleric: L1 3/3" in memorised.capacity.text()
 
@@ -658,7 +667,7 @@ def test_the_capacity_is_shown_beside_the_memorised_list(editor):
 @game_disks
 def test_editing_the_spellbook_reaches_the_disk(editor, save):
     from editor.window import EditorBinding
-    editor.roster.selectRow(0)                    # MALCYON, a magic-user
+    editor.roster.selectRow(5)                    # MALCYON -- row 5, #160; a magic-user
     book, _memorised = editor._spell_widgets()
     assert book.known() == [11, 18, 19, 21]
     book.set_ids([11, 18, 19, 21, 9])                # BURNING HANDS
@@ -666,7 +675,7 @@ def test_editing_the_spellbook_reaches_the_disk(editor, save):
     assert "wrote" in editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
-    again.roster.selectRow(0)
+    again.roster.selectRow(5)
     assert again._spell_widgets()[0].known() == [9, 11, 18, 19, 21]
 
 
@@ -675,14 +684,14 @@ def test_a_memorised_spell_the_character_does_not_know_is_allowed(editor, save):
     """Shown, never refused: the CLI reports the same inconsistency and writes
     it anyway, because trying what the game has not been shown is the point."""
     from editor.window import EditorBinding
-    editor.roster.selectRow(0)
+    editor.roster.selectRow(5)                    # MALCYON -- row 5, #160
     _book, memorised = editor._spell_widgets()
     assert memorised.add_spell(36)                   # a cleric 3 spell
     assert "not in the spellbook" in memorised.capacity.text()
     assert "wrote" in editor.save(interactive=False)
 
     again = EditorBinding(make_root(), str(save), GAME_DISK)
-    again.roster.selectRow(0)
+    again.roster.selectRow(5)
     assert again._spell_widgets()[1].ids() == [36]
 
 
@@ -816,7 +825,7 @@ def test_changing_a_cell_colour_reaches_the_disk(editor, save):
 
 @game_disks
 def test_race_class_alignment_and_sex_are_named(editor):
-    editor.roster.selectRow(1)                    # LADY KATHERINE
+    editor.roster.selectRow(4)                    # LADY KATHERINE -- row 4, #160
     shown = {n: editor._widgets[n].currentText()
              for n in ("race", "char_class", "class_bits", "alignment", "sex")}
     assert shown["race"] == "4  HALF-ELF"
@@ -893,7 +902,7 @@ def test_preview_of_an_untouched_save_reports_no_changes(editor):
 
 @game_disks
 def test_preview_lists_fields_items_and_the_icon(editor):
-    editor.roster.selectRow(0)
+    editor.roster.selectRow(5)                    # MALCYON -- row 5, #160; slot 0
     editor._widgets["gold"].setValue(999)
     editor.items.setData(editor.items.index(1, 2), 9)
     editor.add_item("POTION OF HEALING")
@@ -1774,15 +1783,15 @@ def test_a_fighter_is_shown_no_spellbook_and_no_thief_skills(app, save):
     w = EditorBinding(make_root(), str(save))
     thief, spells = w._child("box_thief_skills"), w._child("box_spells")
     # isHidden, not isVisible: nothing is visible until the window is shown.
-    w.roster.selectRow(5)                         # BRUTUS, a fighter
+    w.roster.selectRow(0)                         # BRUTUS -- row 0, #160; a fighter
     assert not thief.isHidden() and not spells.isHidden()
     assert not thief.isEnabled() and not spells.isEnabled()
     assert "not one" in thief.toolTip()
     assert "casts no spells" in spells.toolTip()
-    w.roster.selectRow(1)                         # LADY KATHERINE, mu/thief
+    w.roster.selectRow(4)                         # LADY KATHERINE -- row 4, #160; mu/thief
     assert thief.isEnabled() and spells.isEnabled()
     assert thief.toolTip() == "" and spells.toolTip() == ""
-    w.roster.selectRow(2)                         # ROLAND, a cleric
+    w.roster.selectRow(3)                         # ROLAND -- row 3, #160; a cleric
     assert not thief.isEnabled()
     assert spells.isEnabled()
 
@@ -1854,7 +1863,7 @@ def test_a_silver_blades_ranger_is_shown_his_spellbook(app, tmp_path):
 @game_disks
 def test_a_non_caster_s_spells_box_says_why_it_is_empty(app, editor):
     """A disabled box with nothing in it and nothing to read is a broken box."""
-    editor.roster.selectRow(5)                    # BRUTUS, a fighter
+    editor.roster.selectRow(0)                    # BRUTUS -- row 0, #160; a fighter
     book, memorised = editor._spell_widgets()
     assert book.known() == []
     assert memorised.ids() == []
@@ -1947,13 +1956,16 @@ def test_nothing_looks_editable_that_cannot_be_written(app, save):
 
 @game_disks
 def test_the_roster_names_the_race_and_class(app, save):
-    """"The dwarf fighter" is how you pick who to edit."""
+    """"The dwarf fighter" is how you pick who to edit.
+
+    PORSAVE11 lists BRUTUS, MAGNUS, SILAS, ROLAND, LADY KATHERINE, MALCYON --
+    the game's own marching order, highest occupied slot first (`#160`)."""
     from editor.window import EditorBinding, RosterModel
     w = EditorBinding(make_root(), str(save))
     assert RosterModel.HEADERS == ("Name", "Race", "Class", "AC", "HP")
     row = [w.model.data(w.model.index(0, c)) for c in range(5)]
-    assert row == ["MALCYON", "elf", "magic-user", "6", "4 / 4"]
-    assert w.model.data(w.model.index(4, 1)) == "dwarf"
+    assert row == ["BRUTUS", "human", "fighter", "2", "6 / 11"]
+    assert w.model.data(w.model.index(1, 1)) == "dwarf"          # MAGNUS
 
 
 @game_disks
@@ -2133,7 +2145,7 @@ def test_the_item_column_fits_the_longest_name_the_disks_hold(editor):
 
 @game_disks
 def test_the_traits_of_the_selected_item_are_shown(editor):
-    editor.roster.selectRow(2)                     # ROLAND
+    editor.roster.selectRow(3)                     # ROLAND -- row 3, #160
     editor._child("inventory").selectRow(0)           # BANDED MAIL
     assert editor._show_traits() == "BANDED MAIL"
     traits = dict(editor.traits.rows)
@@ -2145,7 +2157,7 @@ def test_the_traits_of_the_selected_item_are_shown(editor):
 
 @game_disks
 def test_a_free_slot_has_no_traits(editor):
-    editor.roster.selectRow(2)
+    editor.roster.selectRow(3)                     # ROLAND -- row 3, #160
     editor._child("inventory").selectRow(15)
     assert editor._show_traits() == "Select an item"
     assert editor.traits.rowCount() == 0
@@ -2177,12 +2189,12 @@ def test_the_effect_list_shows_an_elfs_racial_resistance(editor):
     showed no sign of it before."""
     from editor import effects
     view = editor._widgets["item_effects"]
-    editor.roster.selectRow(0)                     # MALCYON, an elf
+    editor.roster.selectRow(5)                     # MALCYON -- row 5, #160; an elf
     assert view.codes()[0] == 107
     assert view.model_.data(view.model_.index(0, 1)) == \
         "elf: 90% resistance to sleep and charm"
     assert view.model_.rowCount() == effects.SLOTS
-    editor.roster.selectRow(2)                     # ROLAND, a human
+    editor.roster.selectRow(3)                     # ROLAND -- row 3, #160; a human
     assert not any(view.codes())
     assert view.model_.data(view.model_.index(0, 1)) == effects.EMPTY
 

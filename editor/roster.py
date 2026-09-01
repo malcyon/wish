@@ -154,9 +154,13 @@ class Party:
     # -- kinds of file ----------------------------------------------------
 
     def _load_save(self) -> None:
+        """Read the save's characters into `self.members`, in the game's own
+        marching order -- highest occupied slot first, not slot order
+        (`#160`). `Member.index` still carries the real slot, since both
+        write-back paths key off it and are unaffected by list order."""
         self.game, self.save0, self.save1 = load_save(self.disk, self.game)
         payload = self.save0.to_bytes()
-        for slot in self.save0.characters:
+        for slot in self.save0.marching_order:
             record = slot.record
             icon = icon_for_slot(payload, slot.index)
             member = Member(slot.index, record, record.name,

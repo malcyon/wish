@@ -433,6 +433,25 @@ class SaveGame0:
     def characters(self) -> list[Slot]:
         return [s for s in self.slots if s.occupied]
 
+    @property
+    def marching_order(self) -> list[Slot]:
+        """The party as the game itself lists it: occupied slots, highest first.
+
+        Not the slot array -- other code depends on `characters` staying slot
+        order -- this is the second, named view for anything that draws the
+        party the way the C64 does. CONFIRMED (`#160`): `ENCAMP > ALTER >
+        ORDER` moves all four of a character's blocks between slots, and seven
+        party lists read off the C64 screen across three reorders and three
+        drops all match "the occupied slots, descending".
+
+        Deliberately `reversed(self.characters)` rather than
+        `reversed(range(slot_count))`: `ALTER > DROP` leaves a hole without
+        packing the party down, so an unoccupied slot must be skipped rather
+        than counted. See docs/30-savegame-layout.md, "The slot array runs
+        backwards from the marching order".
+        """
+        return list(reversed(self.characters))
+
     # -- mutation ---------------------------------------------------------
     def write_record(self, index: int, record: CharacterRecord | bytes) -> None:
         """Write a record into a slot -- only the 256 bytes the slot stores.

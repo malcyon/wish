@@ -124,6 +124,40 @@ class TestSingleCharacterSave:
         assert save0.slot(0).record.name == "BRUTUS"
 
 
+def _record_named(name: str) -> CharacterRecord:
+    record = CharacterRecord.blank()
+    record.set("name", name)
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        record.set(ability, 10)
+    return record
+
+
+class TestMarchingOrder:
+    """`#160`: the C64 lists the party from the highest occupied slot down,
+    not the slot array's own ascending order."""
+
+    def test_a_packed_party_lists_highest_slot_first(self, party6):
+        assert [s.index for s in party6.marching_order] == [5, 4, 3, 2, 1, 0]
+        assert [s.record.name for s in party6.marching_order] == list(reversed(PARTY))
+
+    def test_a_gap_is_skipped_not_counted(self):
+        """`ALTER > DROP` can leave a hole without packing the party down.
+
+        A party in slots 1-4 must list 4, 3, 2, 1 -- not
+        `reversed(range(SLOT_COUNT))`, which would insert the empty slots 0
+        and 5 into the middle of the list.
+        """
+        sg0 = SaveGame0(bytes(SAVE0_SIZE))
+        for index, name in {1: "BRUTUS", 2: "ROLAND",
+                            3: "MAGNUS", 4: "SILAS"}.items():
+            sg0.write_record(index, _record_named(name))
+        assert [s.index for s in sg0.characters] == [1, 2, 3, 4]
+        assert [s.index for s in sg0.marching_order] == [4, 3, 2, 1]
+        assert [s.record.name for s in sg0.marching_order] == [
+            "SILAS", "MAGNUS", "ROLAND", "BRUTUS"]
+
+
 class TestRoundTrip:
     def test_prg_round_trip_is_byte_exact(self, party6):
         raw = (FIXTURES / "party6_savedgame0.bin").read_bytes()
