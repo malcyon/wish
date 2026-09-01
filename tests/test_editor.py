@@ -319,6 +319,85 @@ def test_typing_the_sheet_value_stores_the_biased_byte(app, newsave5):
     assert w.party.member(5).record.get("thac0_base") == 39
 
 
+# --- a save slot's missing byte draws blank, not a fabricated zero (#150) ---
+#
+# A save slot holds only the first 256 of the record's 580 bytes. `thac0`,
+# `armour_class`, `hp_current`, `roster_in_use`, `party_order` and
+# `roster_movement` all sit past that boundary, so `record.get()` raises
+# `FieldNotStored` for every one of them on a save disk. The fallback used to
+# be a literal 0, indistinguishable from a character who really has 0 hit
+# points.
+
+TRUNCATED_IN_SAVE = (
+    "thac0", "armour_class", "hp_current",
+    "roster_in_use", "party_order", "roster_movement",
+)
+
+
+def _standalone_disk(tmp_path, name: str = "ZERO", **field_values):
+    """A roster-disk PRG holding one full 580-byte record -- the twin case to
+    a save slot's 256, so every field named here is actually stored."""
+    from gamedata import _disk_with
+
+    from goldbox.record import CharacterRecord
+
+    record = CharacterRecord.blank()
+    record.set("name", name)
+    for field, value in field_values.items():
+        record.set(field, value)
+    out = tmp_path / "ROSTER.D64"
+    out.write_bytes(_disk_with([(name.encode(), record.to_prg())]))
+    return out
+
+
+@game_disks
+def test_a_field_a_save_slot_does_not_carry_draws_blank(app, newsave5):
+    """GARRETT's Thac0 and Armour class *current* boxes have no byte at all
+    on a save disk -- the record stops at 256 bytes and both are past it.
+    They must read blank, not the 0 a reader would take for his real score."""
+    from editor.window import EditorBinding
+    w = EditorBinding(make_root(), str(newsave5))
+    w.roster.selectRow(5)
+    for name in TRUNCATED_IN_SAVE:
+        box = w._widgets[name]
+        assert box.value() == box.minimum()
+        assert box.text().strip() == ""
+    # The base boxes sit one row up on the sheet and are the real numbers.
+    assert w._widgets["thac0_base"].value() == 21
+    assert w._widgets["armour_class_base"].value() == 10
+
+
+def test_the_same_fields_read_real_values_off_a_full_record(app, tmp_path):
+    """The twin of the test above: a roster disk carries every byte, so none
+    of these fields is ever absent there -- `PORSAVE10.D64` is a real
+    specimen of exactly this shape."""
+    from editor.window import EditorBinding
+    disk = _standalone_disk(tmp_path, hp_current=9, roster_in_use=1,
+                             party_order=3, roster_movement=9,
+                             thac0=39, armour_class=54)
+    w = EditorBinding(make_root(), str(disk))
+    w.roster.selectRow(0)
+    assert w._widgets["hp_current"].value() == 9
+    assert w._widgets["roster_in_use"].value() == 1
+    assert w._widgets["party_order"].value() == 3
+    assert w._widgets["roster_movement"].value() == 9
+    assert w._widgets["thac0"].value() == 21          # 60 - 39, sheet value
+    assert w._widgets["armour_class"].value() == 6    # 60 - 54
+
+
+def test_a_genuinely_zero_field_still_reads_zero(app, tmp_path):
+    """The over-reach this fix must not make: a stored field whose real value
+    is its lowest legal one must still show that number, not blank -- a
+    blank record's `hp_current` is a real, stored 0."""
+    from editor.window import EditorBinding
+    disk = _standalone_disk(tmp_path)
+    w = EditorBinding(make_root(), str(disk))
+    w.roster.selectRow(0)
+    box = w._widgets["hp_current"]
+    assert box.value() == 0
+    assert box.text().strip() == "0"
+
+
 @game_disks
 def test_a_no_op_save_writes_nothing_at_all(app, save):
     """The bar the CLI holds, and it matters more here because Save overwrites

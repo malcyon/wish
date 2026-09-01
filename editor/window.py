@@ -1161,7 +1161,26 @@ class EditorBinding(QObject):
             if isinstance(w, QSpinBox):
                 if name in COMBAT_FIELDS and isinstance(value, int):
                     value = combat_value(value)
-                w.setValue(int(value) if isinstance(value, int) else 0)
+                field = FIELDS_BY_NAME.get(name)
+                span = value_range(field) if field is not None else None
+                if isinstance(value, int) or span is None:
+                    if span is not None:
+                        w.setSpecialValueText("")
+                        w.setRange(*span)
+                    w.setValue(value if isinstance(value, int) else 0)
+                else:
+                    # A save slot holds only the first 256 of the 580 bytes a
+                    # record carries, so this byte is not in the file at all
+                    # -- draw blank, not a fabricated zero (#150). The
+                    # sentinel sits one below the field's real floor, and
+                    # only while there is nothing to show: whenever this
+                    # field genuinely holds its lowest legal value the range
+                    # above is what applies, so that value still reads as
+                    # itself rather than blank.
+                    low, high = span
+                    w.setRange(low - 1, high)
+                    w.setSpecialValueText(" ")
+                    w.setValue(low - 1)
             elif isinstance(w, QLineEdit):
                 if name == "name":
                     w.setText(record.name)
