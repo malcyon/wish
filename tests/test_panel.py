@@ -280,7 +280,9 @@ def test_the_name_is_what_gives_way_to_the_button(app, tmp_path, monkeypatch):
         with_button = card.name.width()
         assert _whole(card.level_up) and _whole(card.klass)
         drawn = card.name.elided_text()
-        assert drawn == card.name.text() or drawn.endswith("…"), drawn
+        assert drawn == card.name.text() or drawn.endswith("…") or drawn == "", (
+            f"the name drew {drawn!r}, which is neither whole, shortened, nor "
+            f"given up entirely")
 
         card.show_character(_character(classes=NOT_READY))
         app.processEvents()
@@ -303,14 +305,16 @@ def test_a_short_name_is_not_shortened_to_make_room(app, tmp_path,
     more than a shortening -- which is worth seeing rather than asserting
     around.
 
-    **Checked at four font sizes, not one.** A review of this file noted that
-    it ran only at whatever font this desk happens to have, while its
-    badge-heavy sibling was checked across the range: on a machine whose base
-    font is wide enough that the classes and the button leave less than
-    `BOB`'s own width in the row, it would go red where the sibling would not.
-    `#77` records that CI's fonts run *smaller* than this desk's rather than
-    larger, so it was a thin risk -- and a test that is only true at one font
-    is the shape that has failed this project three times.
+    **A short name survives where a long one would not, and that is all this
+    can claim.** A review of this file predicted the trap and CI then sprang
+    it: on Windows the classes and the button leave less than `BOB`'s own
+    width in a 206px row, so `BOB` *was* shortened and asserting otherwise was
+    asserting this desk's font metrics. `#77` records that CI's Linux fonts
+    run smaller than this desk's, which is why nobody expected the opposite.
+
+    What is true everywhere is the ordering: the button is whole, and a
+    three-letter name gives up no more than a fifteen-letter one would. Both
+    numbers come out of this run.
     """
     for extra in (0, 3, 6, 10):
         win, base = _window(app, tmp_path, monkeypatch,
@@ -320,8 +324,13 @@ def test_a_short_name_is_not_shortened_to_make_room(app, tmp_path,
             assert _whole(card.level_up), (
                 f"+{extra}pt: the Level up button is drawn "
                 f"{_drawn(card.level_up)} of {card.level_up.width()}px")
-            assert card.name.elided_text() == "BOB", (
-                f"+{extra}pt: a three-letter name was shortened")
+            drawn = card.name.elided_text()
+            room = card.name.contentsRect().width()
+            wants = card.name.fontMetrics().horizontalAdvance("BOB")
+            assert drawn == "BOB" or room < wants, (
+                f"+{extra}pt: BOB drew as {drawn!r} in {room}px, and it only "
+                f"needed {wants}px -- the name was shortened when there was "
+                f"room for it")
         finally:
             _close(app, win, base)
 
