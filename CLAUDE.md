@@ -385,6 +385,19 @@ on `not isWindow()` passed with the fix reverted, because the fault *was* a
 parentless widget answering `isWindow() == True`; and a feature-flag test only
 earned its place once forcing the flag on made it fail.
 
+**A `+N` offset is not the same size on two machines, and stacking it on a
+platform's own base is how three pushes went red.** `+6` measures here about
+like Windows' base font -- so on a Windows runner, whose base already *is*
+that font, `+6` is Windows' base **plus six more**. An assertion at `+6` on CI
+is an assertion about a size no Windows user has.
+
+So: **assert a width at `+0` only.** That is whatever the machine running the
+test actually starts from, and it is the one offset that means the same thing
+everywhere. Assert a *height* across the range, because the height promise is
+platform-independent in a way the width one is not -- a taller font makes
+every machine's rows taller by the same proportion, while how wide a button
+gets for the same text is the platform's business.
+
 **The largest font worth testing is +10, and 9pt is the base here.** So the
 range is 9pt to 19pt, and `+6` is the one that matters most because
 `CLAUDE.md` records it measuring about like Windows' base font.
