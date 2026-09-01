@@ -129,7 +129,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_0_klass">
+                     <widget class="CardClassLabel" name="card_0_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -258,7 +258,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_1_klass">
+                     <widget class="CardClassLabel" name="card_1_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -387,7 +387,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_2_klass">
+                     <widget class="CardClassLabel" name="card_2_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -516,7 +516,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_3_klass">
+                     <widget class="CardClassLabel" name="card_3_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -645,7 +645,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_4_klass">
+                     <widget class="CardClassLabel" name="card_4_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -774,7 +774,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_5_klass">
+                     <widget class="CardClassLabel" name="card_5_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -903,7 +903,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_6_klass">
+                     <widget class="CardClassLabel" name="card_6_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -1032,7 +1032,7 @@
                      </widget>
                     </item>
                     <item>
-                     <widget class="QLabel" name="card_7_klass">
+                     <widget class="CardClassLabel" name="card_7_klass">
                       <property name="text">
                        <string />
                       </property>
@@ -2912,6 +2912,11 @@
   </customwidget>
   <customwidget>
    <class>CardNameLabel</class>
+   <extends>QLabel</extends>
+   <header>automap.panel</header>
+  </customwidget>
+  <customwidget>
+   <class>CardClassLabel</class>
    <extends>QLabel</extends>
    <header>automap.panel</header>
   </customwidget>

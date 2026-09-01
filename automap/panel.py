@@ -349,6 +349,30 @@ class ElidingLabel(QLabel):
                                   self.foregroundRole())
 
 
+class CardClassLabel(ElidingLabel):
+    """The classes and level on a roster card: the second thing to give way.
+
+    `CardNameLabel` yields first and yields everything, which is enough on a
+    machine whose fonts are this one's. It was not enough on Windows: CI
+    reported the Level up button drawn 99 of 102px inside a 220px column with
+    the name already down to `LAD...`, because **the classes and the button
+    alone are wider than the column there**. A plain `QLabel` cannot give way,
+    so the button was the thing that got cut -- which is the whole of `#168`,
+    reappearing on a platform the fix was not measured on.
+
+    So the order is: the name goes to nothing, then the classes shorten, and
+    the button is never touched. That is Donald's priority read down --
+    `MU/C` is worse than a shortened name and better than a control cut in
+    half, and the button is the one thing on the row a player has to be able
+    to hit.
+
+    `SQUEEZED = 0` for the same reason as the name's: any floor measured here
+    is a floor that cuts the button on a machine with a wider font.
+    """
+
+    SQUEEZED = 0
+
+
 class CardNameLabel(ElidingLabel):
     """The character name on a roster card: the one thing on the top row that
     gives way.

@@ -372,3 +372,39 @@ def test_the_synthetic_party_has_characters_who_can_level():
     ready = [ready_classes(slot.record) for slot in save.characters]
     assert ready and all(ready), (
         f"nobody in the synthetic party can level: {ready}")
+
+
+def test_the_classes_give_way_before_the_button_does(app, tmp_path,
+                                                     monkeypatch):
+    """CI found this on Windows, where every fix so far had been measured on
+    one Linux desk: `the Level up button: 99 of 102px drawn inside a 220px
+    column`, with the name already down to `LAD...`.
+
+    The name yielding everything is enough here and was not enough there,
+    because **the classes and the button alone are wider than the column** on
+    a machine whose base font is wider. A plain `QLabel` cannot give way, so
+    the button was what got cut -- which is `#168` again, on a platform the
+    fix was never run on.
+
+    Reproduced by widening the two the way a wider font does: a
+    six-class character and a button asked for more room. The button must be
+    whole and the classes must be the thing that shortened.
+
+    No pixel count is asserted. The button being whole is the player's
+    question, and the widths here are this machine's business.
+    """
+    win, base = _window(app, tmp_path, monkeypatch, [_character()])
+    try:
+        card = win.map.roster.cards[0]
+        card.level_up.setMinimumWidth(card.level_up.width() + 40)
+        card.klass.setText("MU/C/T/R/P/B  L18")
+        for _ in range(3):
+            app.processEvents()
+        assert _whole(card.level_up), (
+            f"the Level up button drawn {_drawn(card.level_up)} of "
+            f"{card.level_up.width()}px -- the classes did not give way")
+        assert card.klass.elided_text().endswith("…"), (
+            "the classes were not shortened, so nothing gave way and the "
+            "button must have been cut instead")
+    finally:
+        _close(app, win, base)
