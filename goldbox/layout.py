@@ -789,12 +789,18 @@ _DECLARED: Sequence[Field] = (
            "256 bytes a save slot holds, so it exists in an export and not in "
            "a save"),
     _field(0x10D, 1, _U8, "party_order", "Party order", _MAYBE,
-           "the only byte where an export and the roster block disagree, and "
-           "across a six-character party the export values form a complete 0-5 "
-           "permutation -- so it is marching order at the moment of export. In "
-           "a roster block the same byte is the record slot index, which is "
-           "how the combat code finds a combatant's record; 8 means not in a "
-           "party"),
+           "the only byte where an export and the roster block disagree. In a "
+           "roster block it is the record slot index, which is how the combat "
+           "code finds a combatant's record; 8 means not in a party. It was "
+           "read as marching order in an export, because across a six-"
+           "character party the values form a complete 0-5 permutation -- but "
+           "#160 showed the marching order is carried by the slot arrangement "
+           "itself (the party lists from the highest occupied slot down) and "
+           "no order table exists anywhere in the machine, and the slot "
+           "indices of a packed six-character party are also a complete 0-5 "
+           "permutation. So that evidence cannot separate the two readings. "
+           "Treat it as the slot index until an export is taken from a party "
+           "whose occupied slots are not 0..n-1"),
     _field(0x10E, 1, _U8, "thac0", "THAC0 current (60 - value)", _MAYBE,
            "current THAC0 including strength and the readied weapon, stored as "
            "60 - THAC0, sitting immediately before the current armour class at "
