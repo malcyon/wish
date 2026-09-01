@@ -269,10 +269,15 @@ def test_the_name_is_what_gives_way_to_the_button(app, tmp_path, monkeypatch):
     is fine."*
 
     The same fifteen-letter name twice, in the same window: once on a
-    character who has earned a level and once on one who has not. The button
-    appearing costs the name at least the button's own width, and costs the
-    classes and the button nothing at all. Both numbers come out of this run,
-    so neither is this machine's.
+    character who has earned a level and once on one who has not. Both numbers
+    come out of this run, so neither is this machine's.
+
+    **The name pays first, up to everything it has** -- not "the name pays all
+    of it". CI found the difference on Windows, where the button is 102px and
+    the name had only 91 to give: it went to nothing and the classes covered
+    the rest, which is the order `CardClassLabel` exists to enforce. Asserting
+    the name alone covers the button is asserting that this desk's fonts leave
+    it enough room to.
     """
     win, base = _window(app, tmp_path, monkeypatch, [_character()])
     try:
@@ -287,11 +292,12 @@ def test_the_name_is_what_gives_way_to_the_button(app, tmp_path, monkeypatch):
         card.show_character(_character(classes=NOT_READY))
         app.processEvents()
         assert not card.level_up.isVisible()
-        assert card.name.width() - with_button >= card.level_up.width(), (
+        gave = card.name.width() - with_button
+        assert gave >= card.level_up.width() or with_button == 0, (
             f"the name label was {with_button}px wide beside the button and "
             f"{card.name.width()}px without it, against a button of "
-            f"{card.level_up.width()}px -- something other than the name gave "
-            f"way")
+            f"{card.level_up.width()}px -- it gave up {gave}px and still had "
+            f"room to spare, so something other than the name gave way first")
     finally:
         _close(app, win, base)
 
