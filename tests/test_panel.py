@@ -245,17 +245,21 @@ def test_a_character_ready_to_level_gets_the_whole_button(
     has earned a level, and where the button should be the card said `Lev`.
 
     Nothing is running and nothing is readied -- the plainest card there is.
+    Checked at four font sizes, because the row this button sits on is wider
+    at every one of them and a machine's base font is not this desk's.
     """
-    win, base = _window(app, tmp_path, monkeypatch, [_character()])
-    try:
-        card = win.map.roster.cards[0]
-        assert card.ready == ("magic-user", "cleric", "thief")
-        assert _whole(card.level_up), (
-            f"{_drawn(card.level_up)} of {card.level_up.width()}px of the "
-            f"Level up button drawn")
-        assert _whole(card.klass)
-    finally:
-        _close(app, win, base)
+    for extra in (0, 3, 6, 10):
+        win, base = _window(app, tmp_path, monkeypatch, [_character()],
+                            extra=extra)
+        try:
+            card = win.map.roster.cards[0]
+            assert card.ready == ("magic-user", "cleric", "thief")
+            assert _whole(card.level_up), (
+                f"+{extra}pt: {_drawn(card.level_up)} of "
+                f"{card.level_up.width()}px of the Level up button drawn")
+            assert _whole(card.klass), f"+{extra}pt: the classes were cut"
+        finally:
+            _close(app, win, base)
 
 
 def test_the_name_is_what_gives_way_to_the_button(app, tmp_path, monkeypatch):
@@ -298,14 +302,28 @@ def test_a_short_name_is_not_shortened_to_make_room(app, tmp_path,
     If this fails, the top row has no room even for that, and the card needs
     more than a shortening -- which is worth seeing rather than asserting
     around.
+
+    **Checked at four font sizes, not one.** A review of this file noted that
+    it ran only at whatever font this desk happens to have, while its
+    badge-heavy sibling was checked across the range: on a machine whose base
+    font is wide enough that the classes and the button leave less than
+    `BOB`'s own width in the row, it would go red where the sibling would not.
+    `#77` records that CI's fonts run *smaller* than this desk's rather than
+    larger, so it was a thin risk -- and a test that is only true at one font
+    is the shape that has failed this project three times.
     """
-    win, base = _window(app, tmp_path, monkeypatch, [_character(name="BOB")])
-    try:
-        card = win.map.roster.cards[0]
-        assert _whole(card.level_up)
-        assert card.name.elided_text() == "BOB"
-    finally:
-        _close(app, win, base)
+    for extra in (0, 3, 6, 10):
+        win, base = _window(app, tmp_path, monkeypatch,
+                            [_character(name="BOB")], extra=extra)
+        try:
+            card = win.map.roster.cards[0]
+            assert _whole(card.level_up), (
+                f"+{extra}pt: the Level up button is drawn "
+                f"{_drawn(card.level_up)} of {card.level_up.width()}px")
+            assert card.name.elided_text() == "BOB", (
+                f"+{extra}pt: a three-letter name was shortened")
+        finally:
+            _close(app, win, base)
 
 
 def test_the_whole_row_survives_a_larger_ui_font(app, tmp_path, monkeypatch):
