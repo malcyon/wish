@@ -463,7 +463,11 @@ def test_a_result_says_what_acted_rests_on():
     sess = FakeSession([(COMBAT, band(ORCS_SWINGING))])
     out = sess.fight(budget=0.3, poll=0.0)
     assert out.evidence.startswith("A party member struck on 0 of ")
-    assert "monsters attacking the party" in out.evidence
+    # Never attributed to a side: `melee_turn` is the only tactic that
+    # lands a blow today, so "the monsters did it" would be true and
+    # would stop being true silently the day an AIM tactic is written.
+    assert "cannot be attributed to either side" in out.evidence
+    assert "monsters" not in out.evidence
 
     bar = "MOVE VIEW AIM USE QUICK DONE"
     fought = FakeSession([(COMBAT, command_bar(bar, "DONE"))]).fight(

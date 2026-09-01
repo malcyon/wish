@@ -426,6 +426,24 @@ conclusion about whether a converted party ever fought.
 *anybody* swing, either side — because whether a fight lasted a round is still
 worth knowing.
 
+**The chosen mechanism has the bow-and-spell blind spot too, and it is not a
+theoretical one.** `melee_turn` is the only tactic in this project that ever
+answers `ATTACK`, it answers it for a step into an enemy's square and for
+nothing else, and **nothing here drives `AIM` or `CAST`**. A character with a
+missile weapon readied cannot strike by stepping, so its turn is passed rather
+than counted —
+`test_a_blow_the_game_refuses_passes_the_turn_rather_than_pressing_on` pins
+exactly that. So a party that fought only with bows or spells reads as a party
+that did nothing.
+
+That is `#163 (A fight nobody in the party fought is reported as one they did)`
+with the sign flipped, and the only thing that makes it survivable is the
+direction: it under-reports, so a fight it calls unproven may have been fought,
+and a fight it calls fought was. **What removes it is a tactic that drives
+`AIM`**, which nobody has written. Until then, a run whose party carries bows
+is a run whose `acted` says nothing, and the report should not be read as if it
+did.
+
 **The attacker's name is on the screen and was rejected anyway.** `COMBAT
 $2994` prints the speaker's name at `$6B00` as the first row of a message
 block, so `work/rolls/run2.jsonl` caught the band reading `ORC / ATTACKS /

@@ -190,10 +190,23 @@ class FightResult:
 
         **What it depends on, said out loud:** the tactic.  `melee_turn`
         answers `ATTACK` when the blow resolved and `fight` counts that, so a
-        caller passing a tactic of its own that strikes without answering
-        `ATTACK` gets `acted` False.  That is under-reporting, which is the
-        direction a check that gets believed should fail in.  `evidence` says
-        the same thing in words for a report.
+        tactic that strikes without answering `ATTACK` gets `acted` False.
+        That is under-reporting, which is the direction a check that gets
+        believed should fail in.  `evidence` says the same thing in words for
+        a report.
+
+        **And that is not hypothetical: it is `melee_turn` itself, today.**
+        Nothing in this project drives `AIM` or `CAST`, and `melee_turn` is
+        the only tactic that ever answers `ATTACK` -- which it does for a step
+        into an enemy's square and for nothing else.  A character with a
+        missile weapon readied cannot strike that way, so its turn is passed
+        rather than counted; `test_a_blow_the_game_refuses_passes_the_turn_
+        rather_than_pressing_on` pins exactly that.  **So a party that fought
+        only with bows or spells reads here as a party that did nothing**, and
+        `evidence` cannot tell the two apart.  That is the same fault `#163`
+        fixed with the sign flipped, and it is survivable only because it errs
+        towards saying nothing was proven.  What removes it is a tactic that
+        drives `AIM`, which is unwritten.
         """
         return self.blows > 0
 
@@ -213,12 +226,21 @@ class FightResult:
 
         A number nobody states is a number nobody checks, and `acted` is the
         check that decides whether a conversion has been proven in combat.
+
+        **The band is not attributed to either side, and must not be.**  With
+        no blow counted it is tempting to say the `HITS` and `MISSES` on it
+        are the monsters', and today that would even be right, because
+        `melee_turn` is the only tactic that lands one and it always answers
+        `ATTACK`.  It would stop being right the day somebody writes an `AIM`
+        tactic, and it would stop silently -- a sentence asserting more than
+        the evidence carries, which is `#163` itself.  So it says what can be
+        checked and no more.
         """
         said = (f"A party member struck on {self.blows} of {self.turns} "
                 f"driven turns")
         if not self.blows and self.anybody_swung:
-            said += ("; the HITS and MISSES on the message band are the "
-                     "monsters attacking the party")
+            said += ("; the HITS and MISSES on the message band cannot be "
+                     "attributed to either side")
         return said
 
 
