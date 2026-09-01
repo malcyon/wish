@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Combat messages now show what the dice actually did underneath the game's own line -- the d20 rolled, what was needed to hit, and the damage. ([#139](https://github.com/malcyon/wish/issues/139))
-- Inventory's weight column can now be edited directly, in tenths of a pound.
+- Inventory's weight column can now be edited directly, in pounds.
 
 ### Changed
 
