@@ -117,15 +117,27 @@ def test_the_columns_open_at_the_widths_they_always_had(app):
     way it is and let users resize it."*
 
     So the roster still opens at a card's width and the reading column still
-    opens at its own, and what is new is that either can be dragged. Both are
-    constants this code sets, not numbers measured off a font, which is why
-    they can be asserted exactly.
+    opens at its own, and what is new is that either can be dragged.
+
+    **A default is what the column is asked for, not what it is given.** This
+    asserted the two constants exactly and went red on Windows with
+    `312 == 220`: a `QSplitter` will not shrink a pane below what the widgets
+    in it need, and a roster card at Windows' wider font needs more than 220.
+    The constants are ours, but the floor underneath them is the machine's, so
+    the honest claim is that a column opens at its default **unless its
+    contents will not fit in it** -- and then at the narrowest they will.
     """
     win = _window(app)
     try:
         widths = win.map.columns.widths()
-        assert widths[ColumnSplitter.ROSTER_AT] == ColumnSplitter.ROSTER
-        assert widths[ColumnSplitter.SIDE_AT] == ColumnSplitter.SIDE
+        for at, default, what in (
+                (ColumnSplitter.ROSTER_AT, ColumnSplitter.ROSTER, "roster"),
+                (ColumnSplitter.SIDE_AT, ColumnSplitter.SIDE, "reading")):
+            pane = win.map.columns.splitter.widget(at)
+            floor = pane.minimumSizeHint().width()
+            assert widths[at] == max(default, floor), (
+                f"the {what} column opened at {widths[at]}px, against a "
+                f"default of {default} and a content floor of {floor}")
         assert widths[ColumnSplitter.MAP_AT] > 0
     finally:
         _close(win)
