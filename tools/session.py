@@ -840,26 +840,45 @@ class Session:
             return "DONE"
         return self.end_turn()
 
+    #: The commands on the sub-bar `DONE` opens that **finish with the
+    #: character**, so the game asks somebody else next.  `GUARD` ends the
+    #: turn and leaves the character guarding; `QUIT` ends it outright --
+    #: Donald, who plays this game, on 2026-09-01: *"In Combat, QUIT ends the
+    #: turn immediately."*  That is testimony rather than a screen read, and
+    #: it is the whole evidence for QUIT here.
+    ENDS_TURN = ("GUARD", "QUIT")
+
+    #: The ones that only get off the bar.  **`DELAY` postpones a character
+    #: rather than finishing with it**: it comes straight back to the front of
+    #: the queue, and one character that could not strike took 50 of the 54
+    #: turns of a fight that way while the other five never acted again
+    #: (`#165`, `work/issue127/after1.jsonl`).  `EXIT` backs out to the same
+    #: character's command bar, which is no better.  Both are last resorts for
+    #: a bar carrying neither of the two above.
+    LEAVES_BAR = ("DELAY", "EXIT")
+
     def end_turn(self) -> str:
         """Get off the sub-bar `DONE` opens, and end the turn if it can.
 
-        `GUARD` is the one that ends it, and it is **not always offered** --
-        some characters get `DELAY QUIT SPEED EXIT` with no GUARD on it at all.
-        `DELAY` postpones the character, which also gets the fight moving;
-        `EXIT` only backs out, so it is the last resort rather than the answer.
+        **Take a command that finishes with the character before one that only
+        gets off the bar.**  `GUARD` is not always offered -- some characters
+        get `DELAY QUIT SPEED EXIT` with no GUARD on it at all -- and the
+        driver used to fall to `DELAY` there, which postpones the character
+        instead of ending its turn.  `QUIT` is on both shapes of the bar and
+        ends the turn, so it is what a bar with no GUARD gets.
 
         **Ask only for a word that is on the bar.**  `combat_bar` has no way of
         saying "that command is not here": it waits for the label to appear and
-        spins to its full timeout when it never does.  Trying the three blind
+        spins to its full timeout when it never does.  Trying the choices blind
         cost **441 of one 605-second fight's seconds -- 73% of it**.  GUARD was
         missing on 34 turns at 8 seconds each, and 10 more turns spent 24
-        seconds apiece finding none of the three, because `fight` also calls
-        this at a bar that is not the sub-bar at all (`#127`,
+        seconds apiece finding none of them, because `fight` also calls this at
+        a bar that is not the sub-bar at all (`#127`,
         `work/issue127/diag1.jsonl`).  One read of row 24 first turns every one
         of those into a tenth of a second.
         """
         bar = self.combat_state().text
-        for choice in ("GUARD", "DELAY", "EXIT"):
+        for choice in self.ENDS_TURN + self.LEAVES_BAR:
             if word_column(bar, choice) < 0:
                 continue
             if self.combat_bar(choice, timeout=8):

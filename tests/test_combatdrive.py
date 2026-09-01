@@ -240,6 +240,11 @@ def test_a_command_is_found_where_it_is_a_word_and_nowhere_else():
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "MOVE") == 0
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "DONE") == 24
     assert word_column("MOVE VIEW AIM USE QUICK DONE", "ON") == -1
+    # `QUICK` is on the command bar and `QUIT` is not, and `end_turn` asks for
+    # QUIT at every bar `fight` calls it at.  A plain `find` gets this one
+    # wrong the other way -- it answers -1 correctly here, but the guard is
+    # what stops `QUIT` ever being read out of `QUICK`.
+    assert word_column("MOVE VIEW AIM USE QUICK DONE", "QUIT") == -1
     assert word_column("MOVE/ATTACK, MOVE LEFT = 9", "DONE") == -1
     assert word_column("CONTINUE BATTLE : YES NO", "NO") == 22
 
@@ -698,14 +703,109 @@ def test_the_sub_bar_is_still_itself_without_guard_on_it():
     assert sess.combat_state().kind == BAR_DONE
 
 
-def test_a_turn_with_no_guard_offered_is_delayed_rather_than_left():
+SUB_NO_GUARD = "DELAY QUIT SPEED EXIT"
+
+
+def test_a_turn_with_no_guard_offered_is_quit_rather_than_delayed():
+    """`DELAY` postpones a character; it does not finish with it.
+
+    That is the whole of `#165`.  The driver took DELAY at this bar, the same
+    character came straight back to the front of the queue, and one character
+    who could not strike took **50 of the 54 turns** of a fight while the
+    other five never acted again (`work/issue127/after1.jsonl`).
+
+    `QUIT` is on this bar and on the one with GUARD, and it ends the turn --
+    Donald, who plays this game, on 2026-09-01: *"In Combat, QUIT ends the
+    turn immediately."*  This test replaces one that asserted DELAY here,
+    which pinned the behaviour that starved the fight.
+    """
     frames = [
-        (COMBAT, command_bar("DELAY QUIT SPEED EXIT", "DELAY")),
-        (COMBAT, bar_screen("")),
+        (COMBAT, command_bar(SUB_NO_GUARD, "DELAY")),
+        (COMBAT, command_bar(SUB_NO_GUARD, "QUIT")),
     ]
     sess = FakeSession(frames)
-    assert sess.end_turn() == "DELAY"
-    assert sess.kbd.sent == ["Return"]
+    assert sess.end_turn() == "QUIT"
+    assert sess.kbd.sent == ["Right", "Return"]
+
+
+def test_guard_is_still_preferred_when_the_bar_offers_it():
+    """Both end the turn, and GUARD leaves the character guarding as well."""
+    sess = FakeSession([(COMBAT, command_bar("GUARD DELAY QUIT SPEED EXIT",
+                                             "GUARD"))])
+    assert sess.end_turn() == "GUARD"
+
+
+class TurnQueue(FakeSession):
+    """Two characters, and a sub-bar that does what the game's does.
+
+    `GUARD` is offered to the second and not to the first -- the shape
+    MALCYON's bar had all through the fight in `#165`.  Taking `DELAY` hands
+    the turn back to **the same** character; `GUARD` and `QUIT` move on to the
+    next.  That is the only difference between a fight that goes round the
+    party and one that asks one character 50 times.
+    """
+
+    ORDER = ("MALCYON", "MAGNUS")
+    BAR = "MOVE VIEW AIM USE QUICK DONE"
+
+    def __init__(self):
+        super().__init__([(COMBAT, None)])
+        self.who = 0
+        self.bar = self.BAR
+        self.cursor = 0
+        self.asked: list[str] = []          # who was asked for a command
+
+    def sub_bar(self) -> str:
+        return SUB_NO_GUARD if self.who == 0 else "GUARD " + SUB_NO_GUARD
+
+    def words(self) -> list[str]:
+        return self.bar.split()
+
+    def screen(self):
+        word = self.words()[self.cursor]
+        col = word_column(self.bar, word)
+        return FakeScreen({24: self.bar,
+                           2: " " * PANEL_LEFT + self.ORDER[self.who]},
+                          (24, col, col + len(word) - 1))
+
+    def mode(self):
+        return COMBAT
+
+    def step(self):
+        key = self.kbd.sent[-1]
+        if key == "Right":
+            self.cursor = min(self.cursor + 1, len(self.words()) - 1)
+        elif key == "Left":
+            self.cursor = max(self.cursor - 1, 0)
+        elif key == "Return":
+            self.take(self.words()[self.cursor])
+
+    def take(self, word: str) -> None:
+        if word == "DONE":
+            self.bar = self.sub_bar()
+        else:
+            if word in ("GUARD", "QUIT"):
+                self.who = (self.who + 1) % len(self.ORDER)
+            self.bar = self.BAR             # DELAY and EXIT: the same one again
+        self.cursor = 0
+
+    def combat_turn(self):
+        self.asked.append(self.ORDER[self.who])
+        return super().combat_turn()
+
+
+def test_a_character_that_cannot_guard_does_not_take_every_turn():
+    """The outcome `#165` is about, rather than the command that produces it.
+
+    One character whose sub-bar carries no GUARD, and four turns driven.  With
+    `DELAY` taken there the answer is MALCYON four times and MAGNUS never --
+    which is what a fight of 56 driven turns looked like, 50 of them one
+    character's.
+    """
+    sess = TurnQueue()
+    for _ in range(4):
+        sess.combat_turn()
+    assert sess.asked == ["MALCYON", "MAGNUS", "MALCYON", "MAGNUS"]
 
 
 class RecordingBars(FakeSession):
@@ -728,10 +828,10 @@ def test_end_turn_asks_only_for_a_command_that_is_on_the_bar():
     24 (`#127`, `work/issue127/diag1.jsonl`).  Reading the bar first costs one
     screen read.
     """
-    sess = RecordingBars([(COMBAT, command_bar("DELAY QUIT SPEED EXIT",
-                                               "DELAY"))])
-    assert sess.end_turn() == "DELAY"
-    assert sess.asked == ["DELAY"]              # never GUARD, which is not there
+    sess = RecordingBars([(COMBAT, command_bar(SUB_NO_GUARD, "DELAY")),
+                          (COMBAT, command_bar(SUB_NO_GUARD, "QUIT"))])
+    assert sess.end_turn() == "QUIT"
+    assert sess.asked == ["QUIT"]               # never GUARD, which is not there
 
 
 def test_end_turn_at_a_bar_with_no_way_out_asks_for_nothing():
