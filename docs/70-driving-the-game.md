@@ -85,7 +85,6 @@ send.
 | connecting to the text monitor first | it never breaks in on connect and sends no banner; it answers only while the machine is already stopped |
 | a **second** binary-monitor connection while one is open | VICE accepts the TCP connection and then never answers it — the read times out with zero bytes. One binary monitor client at a time, so `automap` and `tools/session.py` cannot both be live |
 | a stray **`wish` GUI** left running | the same failure wearing a different hat: it holds `6502` open, so every later `Monitor()` times out and the game looks frozen. `ss -tnp \| grep 6502` names the process holding it; nothing recovers but closing that client |
-| `select_bar` on the **items** command bar | its highlight was recorded as colour **7** rather than 1, so `highlight_span` finds nothing and the call returns `False` after silently sending nothing. Read row 24's colour RAM and step the highlight yourself. **The row used to name the combat bar too and that half is wrong** (#125): Pool of Radiance's combat bar reads `1 1 1 1 5 5 5 …` in `$D800 + 24 * 40` with `MOVE VIEW AIM USE QUICK DONE` on screen — colour 1 on the highlighted cells, the same shape as every other bar — on four runs across three saves. The items half has not been re-measured and no specimen was ever recorded for it |
 | `EXIT` out of `VIEW:ITEMS` → `READY` | the item list re-arms itself: choosing its `EXIT` returns to the bar, and the next `Return` drops straight back into the list. Rebooting the session was faster than escaping it |
 | **XTEST keys while a binary-monitor client holds the socket** | thirty `Right` presses moved nothing; the first press after the client closed moved the highlight. A driver that both watches and types must **connect, read, close** for every poll, the way `tools/session.py` does — which is also why `automap` and a driving script cannot be one process |
 | **entering area 11 (the training hall) by fasttraveling** | `ECL0B` reads `$6E82`, which the *departing* square's attribute byte sets, so a fasttravel arrives with nothing to dispatch on and the game drops the party back into New Phlan within eight seconds. Walk in; do not fasttravel in |
@@ -134,6 +133,37 @@ The order of operations, all of it in `tools/session.py`:
 | in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y |
 | `MOVE` | `I` forward, `J` turn left, `K` turn right, **`M` steps *backward*** without turning; `Return` leaves |
 | `ENCAMP` → `SAVE` → `SAVE GAME` | writes `SAVEDGAME0`/`SAVEDGAME1` to whatever disk is in the drive |
+
+### Casting a spell from the world, and two traps on the way
+
+`CAST` on `MOVE VIEW CAST AREA ENCAMP SEARCH LOOK` puts the highlight into the
+**roster column**, not on row 24 -- row 24 keeps the world bar, undrawn and
+stale. Pick the caster there, and the memorised list arrives with row 24 reading
+`PICK A SPELL TO CAST`. ROLAND in `PORSAVE13.D64` is a level 1 cleric with
+`BLESS` at the top of his list, which is the shortest route this project has to
+a spell running on the party.
+
+**`select_row` sends no keys at all at that list**, and looks exactly like a
+list that ignores the keyboard. `Screen.highlighted_rows()` with no `column`
+takes each row's *dominant* colour, and on this screen the map view sits beside
+the roster and outvotes it -- so no row answers colour 1, `select_row` finds no
+highlight, and it spins to its whole timeout without pressing anything. Pass
+the column the names start in (`column=17` here) and it works.
+
+**The menu timing is too fast for this list.** Three `Down`s at the menu hold
+and gap -- 0.10 s and 0.14 s -- moved the highlight not at all; one at the
+text-entry timing, 0.15 s and 0.30 s, moved it a row. That is one trial each
+and the first burst after a screen change is swallowed anyway, so treat it as
+PROBABLE and use the slower pair at this list.
+
+**`select_bar` can press `Return` on the command next to the one asked for.**
+Asked for `CAST` on the world bar it opened `VIEW`, twice. It reads the bar's
+text from a screen snapshot and the highlight from a **second** monitor
+connection, so the two come from different moments -- which is the fault
+`span_in` and `combat_bar` were written to remove inside a fight and which
+`select_bar` still has outside one. Mechanism PROBABLE, the wrong menu
+CONFIRMED. Read the colour RAM, count the steps and send them yourself where it
+matters.
 
 **Read the position off the status line, not `$49C0`.** The memory copy is real
 and it is what reaches the disk, but it lags a move — reading it straight after
@@ -202,6 +232,7 @@ hold 18 distinct bars, and every one of them is one of these:
 | press | `PRESS <RETURN> OR BUTTON TO CONTINUE` | inject `$0D` |
 | done | `GUARD DELAY QUIT SPEED EXIT` — what `DONE` opens | `GUARD` ends the turn, and so does `QUIT` when GUARD is not offered |
 | exit | a treasure bar | take `EXIT` |
+| leave | `GO BACK LEAVE TREASURE` | take `LEAVE TREASURE`; `GO BACK` only returns to the treasure bar |
 | yesno | `ATTACK ALLY: YES NO` | answer `NO` |
 | message | `GUARDING`, `YOUR TEAMMATE IS DYING` | wait |
 | blank | empty | a monster's turn; wait |
@@ -219,32 +250,50 @@ menu.
 
 **Take the highlight from the same snapshot as the text.** `Screen` carries its
 own colour RAM; `Session.highlight_span` does a second monitor read, so the two
-come from different moments. Outside a fight that never shows. In one the bar is
-redrawn for every character in turn, and the walk goes the wrong way.
+come from different moments. In a fight the bar is redrawn for every character
+in turn, so the two disagree and the walk goes the wrong way — which is what
+`span_in` and `combat_bar` were written for. **The claim that this never shows
+outside a fight is withdrawn**: `select_bar`, which still reads the highlight
+the old way, opened `VIEW` twice when asked for `CAST` on the world bar
+(`#173 (The world menu driver takes the command next to the one it was asked
+for, and the character list it opens ignores it entirely)`).
 
 **The fight is not over when `$6E11` leaves 2.** `THE PARTY HAS WON !`, the
 experience share and any treasure all run afterwards under POST.COM. A driver
 that stops at the mode byte leaves the party at a `PRESS <RETURN>` for ever, so
 `fight()` runs until DUNGEON is back **and** the status line is on screen.
 
-**And it is still not over there.** Two boots of `PORSAVE13.D64` on the same
-route each won at about 150 seconds and then spent the whole rest of the
-budget without handing the party back to the world. Row 24 after the win, in
-the order it appeared (`work/issue165/fix2.jsonl`):
+**And it is still not over there: a won fight ends on the treasure screens.**
+Two boots of `PORSAVE13.D64` on the same route each won at about 150 seconds
+and then spent the whole rest of the budget without handing the party back to
+the world, because row 24's last bar matched no branch of `combat_state` and
+`fight()` idled at what it read as a message. Both commands on that bar have
+now been pressed at a live one -- pool slot 1, `PORSAVE13.D64`, 2026-09-01,
+after the Slums ambush was won:
 
-```
-CONTINUE BATTLE : YES NO
-PRESS <RETURN> OR BUTTON TO CONTINUE
-VIEW TAKE POOL SHARE EXIT          <- the treasure bar
-VIEW:ITEMS TRADE DROP EXIT         <- the item list, which re-arms itself
-GO BACK LEAVE TREASURE             <- and this is where it stayed
-```
+| what row 24 says | what it does |
+|---|---|
+| `VIEW TAKE POOL SHARE EXIT` | the treasure bar. `EXIT` on it opens the row below while there is treasure left |
+| `GO BACK LEAVE TREASURE`, under `THERE IS STILL TREASURE LEFT` | `GO BACK` -- **the command the highlight starts on** -- returns to the treasure bar with the highlight on `EXIT`, so it is a loop and never a way out. `LEAVE TREASURE` hands the party back to the world |
 
-`GO BACK LEAVE TREASURE` matches no branch of `combat_state` — no DONE, no
-PRESS, no DELAY-and-SPEED, no EXIT, no YES and NO — so it reads as a message
-and `fight()` waits at it for ever. `#171 (A won fight leaves the driven
-party at the treasure screen instead of back in the world)` is the ticket;
-`LEAVE TREASURE` has never been pressed.
+`LEAVE TREASURE` is what `fight()` takes. After it `$6E11` reads 1 within a
+second and the status line is back about ten seconds later. `#171 (A won fight
+leaves the driven party at the treasure screen instead of back in the world)`
+is the ticket.
+
+**`$6E11` reads 5 at the treasure screens** -- neither DUNGEON nor COMBAT. The
+mode byte has already left 2 while the party is still being asked questions,
+which is the same fact as "the fight is not over when `$6E11` leaves 2" with a
+number on it.
+
+**One `Return` per prompt, not one per reading**, and this is what walked the
+driver into the item list. `PRESS <RETURN> OR BUTTON TO CONTINUE` stays on
+screen for about a second after the keystroke has been taken, and a poll loop
+comes round in a fraction of that -- so a branch that injects on every reading
+sends several, and the spare ones land on whatever the prompt gave way to.
+After a won fight that is the treasure bar, whose highlight starts on `VIEW`,
+and `VIEW` opens the item list that re-arms itself. `Session.await_change`
+waits for row 24 to stop saying what it said before answering it again.
 
 **`DONE` does not end a turn — it opens a sub-bar.**
 `GUARD DELAY QUIT SPEED EXIT`, and **`GUARD` on that is what ends the turn**,
@@ -496,6 +545,22 @@ white (colour 1), the rest green (colour 5). Colour RAM is always at `$D800`
 regardless of VIC bank. `goldbox`-side helpers read it to find the highlight, then
 press Up/Down the right number of times and Return. That is far more robust than
 counting rows.
+
+**Colour 1 is the highlight on every bar that has been measured, the items one
+included.** This file claimed for months, in the table above and with no
+specimen behind it, that the combat and items command bars highlighted in
+colour **7** — so a driver reading it wrote a colour-7 selector, got nothing,
+and concluded the highlight could not be found. Both halves are now measured
+and both are colour 1, so the claim is withdrawn (`#125 (The driving notes
+give the wrong colour for the combat command bar's highlight)`):
+
+| bar | row 24's colour RAM at `$D800 + 24 * 40` | specimen |
+|---|---|---|
+| `MOVE VIEW AIM USE QUICK DONE`, combat | `1 1 1 1 5 5 5 …`, colour 1 on `MOVE` | four runs across three saves |
+| `READY TRADE DROP EXIT`, the items bar | `1 1 1 1 1 5 5 …`, colour 1 on `READY` | ROLAND's items, `PORSAVE13.D64`, pool slot 1, 2026-09-01 |
+| `VIEW:ITEMS EXIT`, what opens it | colour 1 on the five cells of `ITEMS` | the same character, the same run |
+
+Nothing in this project has ever read a 7 out of row 24.
 
 ## Screenshots
 

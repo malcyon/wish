@@ -98,8 +98,12 @@ def snapshot(party, monsters: int):
                          facing=0, clock_text="", area_file="GEO00")
 
 
-def shoot(app, party, monsters: int, zoom: int, full: bool):
+def shoot(app, party, monsters: int, zoom: int, full: bool, snap=None):
     """Draw the roster column and return `(image, tooltip, icon names)`.
+
+    `snap` is a `Snapshot` to draw instead of the made-up one -- what
+    `tools/livestrip.py` passes, so the same picture can be taken of a real
+    party in a running emulator rather than of an invented effect table.
 
     Cropped to the strip by default -- the icon row, the square, the area name
     and the party strength line -- because the eight empty cards above it are
@@ -114,7 +118,8 @@ def shoot(app, party, monsters: int, zoom: int, full: bool):
     state = AutomapState()
     state.area = "GEO00"
     state.source, state.x, state.y = "status", 3, 14
-    strip.show_state(state, snapshot(party, monsters))
+    strip.show_state(state, snap if snap is not None
+                     else snapshot(party, monsters))
 
     column = ui.automap_roster
     column.resize(column.sizeHint().width() or 260,

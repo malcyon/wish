@@ -32,6 +32,7 @@ from session import (  # noqa: E402
     BAR_CONTINUE,
     BAR_DONE,
     BAR_EXIT,
+    BAR_LEAVE,
     BAR_MESSAGE,
     BAR_MOVE,
     BAR_NONE,
@@ -188,6 +189,14 @@ MEASURED = [
     # classifier that keyed on GUARD stopped recognising it.
     ("DELAY QUIT SPEED EXIT", 0, BAR_DONE),
     ("TAKE POOL SHARE DETECT VIEW EXIT", 0, BAR_EXIT),
+    # The treasure bar a won fight actually put up -- `work/issue171/`, and
+    # the same five commands in a different order from the one above.
+    ("VIEW TAKE POOL SHARE EXIT", 0, BAR_EXIT),
+    # What `EXIT` on that bar opens while there is treasure left, with
+    # `THERE IS STILL TREASURE LEFT` printed above it.  It matched no branch
+    # at all until 2026-09-01, read as a message, and two won fights idled at
+    # it for the whole of their budgets (`#171`).
+    ("GO BACK LEAVE TREASURE", 0, BAR_LEAVE),
     # What the game asks when a step would walk into a party member --
     # `work/p126/melee.log`.  It is the proof that a step onto an occupied
     # square is a blow.
@@ -320,6 +329,94 @@ def test_a_fight_runs_to_the_world_and_says_the_party_won():
     assert 0x0D in sess.injected          # the PRESS <RETURN> was answered
     assert out.bars[0] == bar
     assert "CONTINUE BATTLE : YES NO" in out.bars
+
+
+def test_the_bar_a_won_fight_ends_on_is_not_a_message():
+    """`GO BACK LEAVE TREASURE` is row 24 asking a question, not saying one.
+
+    Every other branch of `combat_state` missed it -- no DONE, no PRESS, no
+    DELAY with SPEED, no EXIT, no YES and NO -- so it fell through to
+    `BAR_MESSAGE`, which `fight` waits at.  Two won fights spent 751 and 267
+    seconds there (`#171`).
+    """
+    sess = FakeSession([(COMBAT, bar_screen("GO BACK LEAVE TREASURE"))])
+    state = sess.combat_state()
+    assert state.kind == BAR_LEAVE
+    assert state.kind != BAR_MESSAGE
+
+
+def test_a_won_fight_leaves_the_treasure_rather_than_waiting_at_it():
+    """The whole tail of a won fight, as the emulator played it.
+
+    Bar for bar out of `work/issue171/`: the withdrawal offer, the prompt,
+    the treasure bar, and the `GO BACK LEAVE TREASURE` that the driver used
+    to stop dead at.  `GO BACK` is where the highlight starts and it only
+    returns to the treasure bar, so the walk has to reach `LEAVE`.
+    """
+    treasure = "VIEW TAKE POOL SHARE EXIT"
+    leave = "GO BACK LEAVE TREASURE"
+    frames = [
+        (COMBAT, command_bar("CONTINUE BATTLE : YES NO", "NO")),
+        (DUNGEON, FakeScreen({6: "THE PARTY HAS WON !",
+                              24: "PRESS <RETURN> OR BUTTON TO CONTINUE"})),
+        (DUNGEON, command_bar(treasure, "EXIT")),
+        # `GO BACK` is two words and the highlight covers both; the walk
+        # matches on `LEAVE`, which is where its own run starts.
+        (DUNGEON, bar_screen(leave, (24, 0, 6))),
+        (DUNGEON, bar_screen(leave, (24, 8, 21))),
+        (DUNGEON, FakeScreen({14: STATUS, 24: "MOVE VIEW CAST AREA ENCAMP"})),
+    ]
+    sess = FakeSession(frames)
+    out = sess.fight(budget=20.0, poll=0.0)
+    assert out.outcome == WON
+    assert leave in out.bars
+    # It walked off GO BACK and pressed Return, rather than idling.
+    assert "Right" in sess.kbd.sent
+    assert sess.kbd.sent[-1] == "Return"
+
+
+def test_the_highlight_is_logged_beside_the_bar_it_was_read_from():
+    """What `#171` could not answer from its own logs.
+
+    The runs recorded the bars and not the highlight, so nothing said whether
+    the driver had reached the treasure screen with the highlight on the
+    wrong command.  Both come from one snapshot, so both are recorded.
+    """
+    treasure = "VIEW TAKE POOL SHARE EXIT"
+    frames = [
+        (COMBAT, command_bar("CONTINUE BATTLE : YES NO", "NO")),
+        (DUNGEON, command_bar(treasure, "VIEW")),
+        (DUNGEON, FakeScreen({14: STATUS, 24: "MOVE VIEW CAST AREA ENCAMP"})),
+    ]
+    sess = FakeSession(frames)
+    out = sess.fight(budget=20.0, poll=0.0)
+    assert len(out.highlights) == len(out.bars)
+    assert out.highlights[out.bars.index(treasure)] == "VIEW"
+
+
+def test_one_return_per_prompt_and_not_one_per_reading():
+    """The spare Return is what walked the driver into the item list.
+
+    `PRESS <RETURN>` stays on screen for about a second after the keystroke
+    has been taken, and `fight`'s loop comes round in a fraction of that. A
+    branch that injects on every reading sends several, and the spare ones
+    land on whatever the prompt gave way to -- after a won fight the treasure
+    bar, whose highlight starts on `VIEW`, which opens the item list
+    (`#171`).
+
+    The prompt here does **not** clear on the first Return, which is exactly
+    the case the old code answered again and again.
+    """
+    press = "PRESS <RETURN> OR BUTTON TO CONTINUE"
+    frames = [
+        (COMBAT, command_bar("CONTINUE BATTLE : YES NO", "NO")),
+        (DUNGEON, bar_screen(press)),
+        (DUNGEON, bar_screen(press)),           # still up after the keystroke
+        (DUNGEON, FakeScreen({14: STATUS, 24: "MOVE VIEW CAST AREA ENCAMP"})),
+    ]
+    sess = FakeSession(frames)
+    sess.fight(budget=3.0, poll=0.0)
+    assert sess.injected.count(0x0D) == 1
 
 
 def test_a_fight_the_party_loses_is_classified_from_the_screen():

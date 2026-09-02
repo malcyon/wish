@@ -34,7 +34,6 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import sys
 import time
 
@@ -43,7 +42,6 @@ ROOT = TOOLS.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(TOOLS))
 
-import instance  # noqa: E402
 import session as S  # noqa: E402
 
 from automap.paths import find_disks  # noqa: E402
@@ -58,36 +56,10 @@ from automap.paths import find_disks  # noqa: E402
 DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 
-def claim_slot(want: int | None, note: str):
-    """A pool slot, or the specific one asked for.
-
-    Claiming is first-free, so getting a named slot means holding the ones
-    before it and letting them go again.  Nothing is ever killed to make room:
-    a slot whose lease is held belongs to somebody.
-    """
-    if want is None:
-        return instance.claim(note=note)
-    holds, slot = [], None
-    try:
-        while True:
-            s = instance.claim(note=note)
-            if s.n == want:
-                slot = s
-                break
-            holds.append(s)
-            if s.n > want:
-                break
-    finally:
-        # `instance.claim` raises when the pool is full, and it can do so
-        # part way through -- so releasing has to happen on the way out
-        # rather than after the loop.  Process exit would drop the locks
-        # anyway; a slot held until then is a slot another agent is told
-        # is busy, for as long as it takes this one to die.
-        for h in holds:
-            h.release()
-    if slot is None:
-        raise RuntimeError(f"slot {want} is not free")
-    return slot
+#: Claiming a slot and staging the player's disks both live in
+#: `tools/session.py` now: every tool that drives a session needs them, and
+#: this file's copy was one of two.
+claim_slot = S.claim_slot
 
 
 class Run:
@@ -222,16 +194,10 @@ def main(argv=None) -> int:
         # copies are the ones that actually do: a misspelled `--save` is an
         # ordinary morning's mistake, and outside here it exits through
         # Python's own handler with the run's log unwritten and unclosed.
-        slot.seed_vicerc()
-        here = pathlib.Path(slot.dir)
-        for i in range(1, 9):
-            src = disks / f"POOL{i}.D64"
-            if src.exists():
-                shutil.copy(src, here / f"SIDE{i}.D64")
-        shutil.copy(disks / args.save, here / "SIDE0.D64")
         # `Session` points itself at `SIDE0.D64` inside the slot, which is
-        # where the save was just copied, so nothing needs saying here.
-        sess = S.Session(str(here / "SIDE1.D64"), slot=slot)
+        # where `stage_disks` just copied the save, so nothing needs saying
+        # here.
+        sess = S.Session(S.stage_disks(slot, disks, args.save), slot=slot)
         if not sess.boot():
             raise RuntimeError("boot failed")
         if not sess.load_save():
@@ -253,16 +219,20 @@ def main(argv=None) -> int:
                     f"t={round(time.time() - started, 1)}s")
             run.emit("fight_start", fight=fight, steps=steps)
             r = sess.fight(budget=args.budget, tactic=run.tactic)
-            # `bars` as well as `lines`.  A fight that is won and then does
-            # not hand the party back to the world spends the rest of its
-            # budget somewhere, and the row-24 bars are the only record of
-            # where: one run reported `won` at 149 seconds and returned at
-            # 900 with no way of saying what the other 751 went on.
+            # `bars` and `highlights` as well as `lines`.  A fight that is
+            # won and then does not hand the party back to the world spends
+            # the rest of its budget somewhere, and row 24 is the only record
+            # of where: one run reported `won` at 149 seconds and returned at
+            # 900 with no way of saying what the other 751 went on.  The
+            # highlight is logged beside the bar because the bar alone could
+            # not say whether the driver was sitting on the wrong command
+            # (`#171`).
             run.emit("fight_end", fight=fight, outcome=r.outcome,
                      turns=r.turns, seconds=round(r.seconds, 1),
                      acted=r.acted, blows=r.blows, evidence=r.evidence,
                      anybody_swung=r.anybody_swung,
-                     lines=r.lines, bars=r.bars)
+                     lines=r.lines, bars=r.bars,
+                     highlights=r.highlights)
             run.say(f"fight {fight}: {r.outcome} turns={r.turns} "
                     f"seconds={round(r.seconds, 1)}")
             # What `acted` rests on, beside `acted` itself.  A run whose

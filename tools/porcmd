@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# c <command...> : send one line to the running session driver
+# porcmd <command...> : send one line to the running session driver.
+#
+# The port is $POR_CMD_PORT, and 6600 -- the human's -- when that is unset.
+# A pooled session prints its own on the line beginning `slot N:`; slot 1's
+# is 6561.  Without this every agent driving a pooled session wrote its own
+# copy of the six lines below.
 python3 - "$@" <<'PY'
-import socket,sys
-s=socket.create_connection(("127.0.0.1",6600),timeout=300); s.settimeout(300)
+import os,socket,sys
+port=int(os.environ.get("POR_CMD_PORT") or 6600)
+s=socket.create_connection(("127.0.0.1",port),timeout=300); s.settimeout(300)
 s.sendall((" ".join(sys.argv[1:])+"\n").encode())
 out=b""
 while True:

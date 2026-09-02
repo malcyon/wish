@@ -30,7 +30,7 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 # From this file, not from a path measured on one machine.  These were three
@@ -78,6 +78,8 @@ BAR_MOVE = "move"          # MOVE/ATTACK, MOVE LEFT = 9
 BAR_CONTINUE = "continue"  # CONTINUE BATTLE : YES NO
 BAR_YESNO = "yesno"        # any other YES NO bar
 BAR_EXIT = "exit"          # the treasure and end-of-fight bars
+BAR_LEAVE = "leave"        # GO BACK LEAVE TREASURE -- what EXIT on the
+                           # treasure bar opens when treasure is still there
 BAR_DONE = "done"          # GUARD DELAY QUIT SPEED EXIT -- what DONE opens
 BAR_PRESS = "press"        # PRESS <RETURN> OR BUTTON TO CONTINUE
 BAR_MESSAGE = "message"    # GUARDING, YOUR TEAMMATE IS DYING -- and a bar
@@ -173,6 +175,16 @@ class FightResult:
     lines: list[str]
     #: Turns whose tactic answered `ATTACK`.  Counted by `fight`.
     blows: int = 0
+    #: One entry per bar in `bars`: the word the highlight was covering when
+    #: that bar was read, or `-` for a bar carrying no highlight at all.
+    #:
+    #: Beside `bars` rather than folded into it, because they are two facts
+    #: read from one snapshot and the interesting failure needs both.  A run
+    #: that logged only the bars could say the driver had reached the
+    #: treasure screen and not whether it had reached it *with the highlight
+    #: on the wrong command* -- which is exactly the question `#171` was left
+    #: unable to answer.
+    highlights: list[str] = field(default_factory=list)
 
     @property
     def acted(self) -> bool:
@@ -469,12 +481,22 @@ class Session:
             if line.strip():
                 print(f"{r:2d} {s.row_colour(r):2d} |{line}|")
 
-    def colours(self) -> bytes:
+    def colours(self, row: int | None = None) -> bytes:
+        """Colour RAM, whole screen or one row.
+
+        `row` is not decoration: the command server's `colours 24` has asked
+        for one row since it was written and this took no argument at all, so
+        the command raised `TypeError` at every caller -- which is why the
+        items command bar's highlight colour was never read (`#125`).
+        """
         with self.mon(5) as m:
-            return bytes(c & 0x0F for c in m.read(0xD800, 1000))
+            all_of_it = bytes(c & 0x0F for c in m.read(0xD800, 1000))
+        if row is None:
+            return all_of_it
+        return all_of_it[row * 40 : (row + 1) * 40]
 
     def highlight_span(self, row: int) -> tuple[int, int] | None:
-        c = self.colours()[row * 40 : (row + 1) * 40]
+        c = self.colours(row)
         idx = [i for i, v in enumerate(c) if v == 1]
         return (idx[0], idx[-1]) if idx else None
 
@@ -841,6 +863,18 @@ class Session:
         # bouncing off `DELAY QUIT SPEED EXIT` (`work/p126/melee5.log`).
         if word_column(up, "DELAY") >= 0 and word_column(up, "SPEED") >= 0:
             return CombatBar(BAR_DONE, bar)
+        # `THERE IS STILL TREASURE LEFT` prints above this one, and the two
+        # commands do what they say -- measured at a live bar on 2026-09-01,
+        # pool slot 1, `PORSAVE13.D64`, after the Slums ambush was won:
+        # `GO BACK` returns to `VIEW TAKE POOL SHARE EXIT` with the highlight
+        # on `EXIT`, so it only loops back into the treasure, and `LEAVE
+        # TREASURE` hands the party back to the world -- `$6E11` reads 1
+        # within a second and the status line is back about ten seconds
+        # later.  Until it was measured this bar matched no branch at all,
+        # read as `BAR_MESSAGE`, and `fight()` idled at it for the whole of
+        # whatever budget it had been given (`#171`).
+        if word_column(up, "LEAVE") >= 0 and word_column(up, "TREASURE") >= 0:
+            return CombatBar(BAR_LEAVE, bar)
         if word_column(up, "EXIT") >= 0:
             return CombatBar(BAR_EXIT, bar)
         if word_column(up, "YES") >= 0 and word_column(up, "NO") >= 0:
@@ -857,7 +891,7 @@ class Session:
     #: sub-bar: `MOVE LEFT = 9` is a prompt for a direction, not a menu, and
     #: sending Right there steps the character.
     SELECTABLE = (BAR_COMMAND, BAR_CONTINUE, BAR_YESNO, BAR_EXIT,
-                  BAR_DONE)
+                  BAR_DONE, BAR_LEAVE)
 
     def combat_bar(self, label: str, timeout: float = 20.0, row: int = 24) -> bool:
         """Put the combat highlight on `label` and press Return.
@@ -1011,6 +1045,29 @@ class Session:
                 return state
             if time.time() >= deadline:
                 return None
+            time.sleep(interval)
+
+    def await_change(self, was: str, timeout: float = 6.0,
+                     interval: float = 0.4) -> CombatBar:
+        """Read row 24 until its text is no longer `was`, then give up.
+
+        The prompt a keystroke answers stays on screen for about a second
+        after the keystroke has been taken, and `fight`'s loop comes back
+        round in a fraction of that -- so a branch that acts on every reading
+        acts several times, and the extra ones land on whatever the prompt
+        gave way to.
+
+        Returns whatever row 24 says at the end, changed or not: a prompt
+        that has not moved after `timeout` is one the caller should answer
+        again, which is the retry the rest of this file already insists on.
+        """
+        deadline = time.time() + timeout
+        while True:
+            state = self.combat_state()
+            if state.text != was:
+                return state
+            if time.time() >= deadline:
+                return state
             time.sleep(interval)
 
     def await_step(self, index, was, before, tries: int = 6,
@@ -1220,6 +1277,7 @@ class Session:
         started = time.time()
         end = started + budget
         bars: list[str] = []
+        highlights: list[str] = []
         lines: list[str] = []
         seen: set[str] = set()
         turns = 0
@@ -1243,10 +1301,16 @@ class Session:
             if mode == DUNGEON and RE_STATUS.search(text):
                 return FightResult(outcome or ENDED, turns,
                                    time.time() - started, bars, lines,
-                                   blows)
+                                   blows, highlights)
             state = self.combat_state(s)
             if state.text and (not bars or bars[-1] != state.text):
                 bars.append(state.text)
+                # The highlight from the **same** snapshot as the text, so a
+                # log can say not only which bar the driver was looking at
+                # but which command it was looking at on it.
+                span = None if s is None else span_in(s, 24)
+                highlights.append("-" if span is None
+                                  else s.row(24)[span[0]:span[1] + 1].strip())
             if state.kind == BAR_CONTINUE:
                 # The game offering a withdrawal is how a driven fight ends.
                 self.combat_bar("NO", timeout=min(12.0, left()))
@@ -1254,9 +1318,30 @@ class Session:
                 self.end_turn()      # left open by a turn that did not finish
             elif state.kind == BAR_EXIT:
                 self.combat_bar("EXIT", timeout=min(12.0, left()))
+            elif state.kind == BAR_LEAVE:
+                # `GO BACK LEAVE TREASURE`, and `GO BACK` -- which is the
+                # command the highlight starts on -- only returns to the
+                # treasure bar this came from.  `LEAVE TREASURE` is the way
+                # out to the world.
+                self.combat_bar("LEAVE", timeout=min(12.0, left()))
             elif state.kind == BAR_PRESS:
                 # XTEST Return is not dependable at a prompt; the buffer is.
                 self.press_kernal(0x0D)
+                # And **once per prompt, not once per reading**.  The prompt
+                # stays up for about a second after the keystroke is taken
+                # and this loop comes round in a fraction of that, so
+                # injecting on every reading sends several Returns and the
+                # spare ones land on whatever the prompt gave way to.  After
+                # a won fight that is the treasure bar, whose highlight
+                # starts on `VIEW`, and `VIEW` opens the item list -- the
+                # trap `docs/70-driving-the-game.md` already records as one
+                # that re-arms itself (`#171`).
+                #
+                # A prompt with a second page of message behind it draws the
+                # same row 24 again, so this waits out its timeout and the
+                # loop answers it on the next pass.  That costs seconds; the
+                # spare Return cost a whole budget.
+                self.await_change(state.text, timeout=min(6.0, left()))
             elif state.kind == BAR_YESNO:
                 # `ATTACK ALLY: YES NO`, which the game puts up when a step
                 # would walk into a party member.  `NO` is the conservative
@@ -1279,7 +1364,69 @@ class Session:
                 self.idle(poll)              # a monster's turn, or a redraw
             self.handle_prompt()
         return FightResult(outcome or BUDGET, turns, time.time() - started,
-                           bars, lines, blows)
+                           bars, lines, blows, highlights)
+
+
+# -- claiming a slot, and putting the player's disks in it ------------------
+
+
+def claim_slot(want: int | None = None, note: str = ""):
+    """A pool slot, or the specific one a brief named.
+
+    `instance.claim` is first-free and has no way to ask for slot *n*, so
+    getting a named slot means holding the ones before it and letting them go
+    again.  Nothing is ever killed to make room: a slot whose lease is held
+    belongs to somebody.
+
+    This lived in `tools/fightrun.py` and is here because every tool that
+    drives a session needs it, and the second copy of it would be the third
+    in this directory.
+    """
+    if want is None:
+        return instance.claim(game="por", note=note)
+    holds, slot = [], None
+    try:
+        while True:
+            s = instance.claim(game="por", note=note)
+            if s.n == want:
+                slot = s
+                break
+            holds.append(s)
+            if s.n > want:
+                break
+    finally:
+        # `instance.claim` raises when the pool is full, and it can do so
+        # part way through -- so releasing has to happen on the way out
+        # rather than after the loop.  Process exit would drop the locks
+        # anyway; a slot held until then is a slot another agent is told
+        # is busy, for as long as it takes this one to die.
+        for h in holds:
+            h.release()
+    if slot is None:
+        raise RuntimeError(f"slot {want} is not free")
+    return slot
+
+
+def stage_disks(slot, disks, save: str = "") -> str:
+    """Copy the eight sides and a save into the slot, and say what to boot.
+
+    **The player's disks are read and never written.**  `Session.attach`
+    refuses any path outside the slot's own directory, so everything the game
+    is ever shown is one of these copies: `SIDE1.D64` to `SIDE8.D64`, and the
+    save as `SIDE0.D64`, which is what `Session.save_disk` points at.
+    """
+    import shutil
+
+    slot.seed_vicerc()
+    here = pathlib.Path(slot.dir)
+    disks = pathlib.Path(disks)
+    for i in range(1, 9):
+        src = disks / f"POOL{i}.D64"
+        if src.exists():
+            shutil.copy(src, here / f"SIDE{i}.D64")
+    if save:
+        shutil.copy(disks / save, here / "SIDE0.D64")
+    return str(here / "SIDE1.D64")
 
 
 # -- command server ---------------------------------------------------------
@@ -1360,6 +1507,16 @@ def handle(sess: Session, line: str) -> bool:
                       f"init {c.initiative:3d} hp {c.hp_text} {c.name}")
     elif cmd == "fight":
         print(sess.fight(float(args[0]) if args else 300.0))
+    elif cmd == "melee":
+        # The same fight, driven to *strike* rather than to pass every turn.
+        # `fight`'s default tactic guards with DONE, which wins nothing and
+        # cannot answer whether the party can fight at all.
+        print(sess.fight(float(args[0]) if args else 300.0,
+                         tactic=lambda s, state: s.melee_turn(state)))
+    elif cmd == "load":
+        print(sess.load_save())
+    elif cmd == "begin":
+        print(sess.begin_adventuring())
     elif cmd == "shot":
         print("ok" if sess.kbd.screenshot(
             args[0] if args else f"{sess.here}/shot.png") else "failed")
@@ -1400,15 +1557,33 @@ if __name__ == "__main__":
     # `--pool` claims an instance slot and holds its lease for as long as this
     # process lives; without it the session is the legacy one on 6502/6510/6600
     # and `work/drive/`, which is what `tools/porcmd` still talks to.
+    #
+    # `--pool N` demands slot *N*, which is what a brief names; `--disks DIR`
+    # and `--save NAME` copy the player's disks into the slot first, so the
+    # session comes up ready to load a save rather than needing a `work/drive`
+    # laid out by hand.
     argv = sys.argv[1:]
     slot = None
     if argv and argv[0] == "--pool":
         argv = argv[1:]
-        slot = instance.claim(game="por", note=os.environ.get("POR_AGENT", ""))
+        want = None
+        if argv and argv[0].isdigit():
+            want, argv = int(argv[0]), argv[1:]
+        slot = claim_slot(want, note=os.environ.get("POR_AGENT", ""))
         slot.seed_vicerc()
         print(f"slot {slot.n}: monitor {slot.port} text {slot.text_port} "
               f"cmd {slot.cmd_port} display {slot.display} dir {slot.dir}",
               flush=True)
+    disks = save = ""
+    while len(argv) > 1 and argv[0] in ("--disks", "--save"):
+        if argv[0] == "--disks":
+            disks = argv[1]
+        else:
+            save = argv[1]
+        argv = argv[2:]
+    if disks:
+        assert slot is not None, "--disks needs --pool: nothing stages work/drive"
+        argv = [stage_disks(slot, disks, save)] + list(argv)
     sess = Session(argv[0] if argv else None, slot=slot)
     if len(argv) > 1:
         sess.save_disk = os.path.abspath(argv[1])
