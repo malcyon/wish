@@ -72,7 +72,11 @@ def press(holder: str, name: str, settle: float) -> str:
         raise SystemExit(f"'{name}' is not a key this knows; "
                          f"names are {', '.join(sorted(KEYS))}")
     out = _winvm("ssh", f"{PS} key {code:02X} -Holder {holder}")
-    if "ok" not in out:
+    # Anchored, because `winuae.ps1` anchors its own reply check
+    # (`$r -notmatch '^ok'`) and a substring test would read any future
+    # failure message containing "ok" -- "unlocked", "broken" -- as a
+    # keystroke that landed. This script exists to decide exactly that.
+    if not out.startswith("ok"):
         raise SystemExit(f"Key {name} was not pressed: {out}")
     time.sleep(settle)
     return out

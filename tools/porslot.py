@@ -60,8 +60,15 @@ def read_slot(disk: AmigaDisk, slot: str):
                 except AmigaDiskError:
                     pass
             characters.append(amiga.read_amiga_por(here))
-    savegame = disk.read_file(
-        f"/{amiga.POR_SAVE_DRAWER}/{amiga.por_savegame_filename(letter)}")
+    try:
+        savegame = disk.read_file(
+            f"/{amiga.POR_SAVE_DRAWER}/{amiga.por_savegame_filename(letter)}")
+    except AmigaDiskError:
+        # The characters above already fail with a sentence rather than a
+        # traceback; a slot with records and no saved game is the same kind of
+        # half-built disk and deserves the same answer.
+        raise SystemExit(
+            f"Slot {letter} has character files but no saved game") from None
     return characters, savegame
 
 
@@ -76,6 +83,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="where to write the result; the input is never "
                              "modified")
     args = parser.parse_args(argv)
+
+    # "The input is never modified" is a promise in `--out`'s own help text,
+    # and writing the result back over the source is the one way to break it.
+    # The player keeps their disks somewhere this script is pointed at by
+    # hand, so the mistake is a typo away.
+    if pathlib.Path(args.out).resolve() == pathlib.Path(args.disk).resolve():
+        raise SystemExit(
+            f"--out is the input disk ({args.disk}); write somewhere else")
 
     disk = AmigaDisk.open(args.disk)
     print(f"Slot list before: "

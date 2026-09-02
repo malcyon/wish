@@ -872,7 +872,19 @@ LOAD WHICH GAME: A  B  D  F
 through `MELCAR` AC 7 HP 6, standing at `0,4 W 05:48`. That is the
 demonstration `#109 (A save slot written onto an Amiga disk is not offered by
 the game's picker)` asked for, and the first time a slot list *written by our
-code* has been put in front of the picker; `#36` proved a hand-edited one.
+code* has been put in front of the picker; `#36 (Write an Amiga disk image,
+not just the character files)` proved a hand-edited one.
+
+**What this run does *not* prove, because it is easy to read as if it did:
+the savegame repointing.** Slot F was written from slot A's own party, so the
+two are the same six characters -- and a `savgam` that had never been pointed
+at `CHRDATF<n>` would have loaded `CHRDATA<n>` and shown exactly the same
+sheet. This run separates nothing on that half. The evidence for the
+repointing is `test_a_saved_game_moved_to_another_slot_is_retargeted` and the
+measurement in 1.9b, where the game's own save to B rewrote all six entries;
+what would settle it in the running game is **two different parties on one
+disk**, which is `#28 (Decode an Amiga saved game, not just a character
+file)`. What this run proves is the slot-list mechanism, and only that.
 
 Then, from that loaded slot F, the game was made to save to `C`, and it wrote:
 
