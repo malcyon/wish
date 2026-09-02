@@ -947,8 +947,18 @@ the WinUAE VM, and neither of them can tell)`:
   end is the cracked release waiting for something or an emulation fault. The
   game keeps running behind it — memory reads and `g` both work — so it has not
   been chased
-* anything at all about *Pools of Darkness*, *Pool of Radiance* or *Secret of
-  the Silver Blades* specifically — only Curse has been booted, and the Pool
-  of Radiance and Pools of Darkness images in the guest are still `.zip`
+* anything at all about *Pools of Darkness* or *Secret of the Silver Blades*
+  specifically. **Pool of Radiance now boots and plays unattended**, on
+  2026-09-01 for `#109 (A save slot written onto an Amiga disk is not offered
+  by the game's picker)`: `C:\Amiga\Disks\por\por1.adf` and `por2.adf` are
+  unpacked in the guest, the cracked release's code-wheel screen takes a bare
+  RETURN, and about forty `winuae.ps1 key` calls carried a party from the
+  title screen through `LOAD SAVED GAME`, the path prompt (`SAVE/`, because
+  the default `POOLSAVE:` is a volume the disk does not carry), the slot
+  picker, `ENCAMP`, `SAVE` and two saved slots. **No debugger and no `send`
+  were needed for any of it** — `key` alone drives a Gold Box menu, and the
+  receipt is a `winvm shot` of the screen. The two run-throughs took about
+  twenty minutes each, almost all of it the ssh round trip per keystroke; the
+  emulation itself is faster than a person
 
 §1 to §8 are reliable. §9 and §10 are a plan.

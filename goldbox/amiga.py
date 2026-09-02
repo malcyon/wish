@@ -1793,11 +1793,15 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
 # ---------------------------------------------------------------------------
 #
 # `save/save` is **the slot list**, not a note about which slot is current.
-# Ten bytes: `"A         "` on the shipped disk and `"AB        "` after the
-# game itself saved to B (#36).  A disk carrying a complete slot B that does
-# not name B here is offered only `A` at the picker -- measured, one run wasted
-# on it -- so a writer that puts the files down and leaves this alone has
-# written a slot the player cannot load and reported success.
+# Ten bytes, one per slot, indexed by letter: `A` is byte 0 and `J` is byte 9,
+# and a slot that does not exist is a space.  `"A         "` on the shipped
+# disk, `"AB        "` after the game saved to B (#36), and `"AB D      "`
+# after it was made to save to D and then to B (#109) -- the gap at byte 2 is
+# where `C` would go, and it is what says this is an array and not a list.
+# A disk carrying a complete slot B that does not name B here is offered only
+# `A` at the picker -- measured, one run wasted on it -- so a writer that puts
+# the files down and leaves this alone has written a slot the player cannot
+# load and reported success.
 #
 # Hence the rule this module enforces: **a slot that cannot be listed is not
 # written.**  The feasibility check runs before anything touches the disk, and
@@ -1883,11 +1887,17 @@ def _all_or_nothing(disk):
 
 
 def read_slot_list(disk) -> list[str]:
-    """The slots the picker will offer, in the order the file names them.
+    """The slots the picker will offer.
 
     A disk with no `save/save` returns an empty list: the file is what the
     picker reads, so a disk without one offers nothing whatever else is in
     the drawer.
+
+    Any letter counts wherever it sits, rather than only in its own byte.
+    The game writes each letter at its own index (:func:`slot_list_bytes`), so
+    on a disk the game wrote the two readings agree; a letter out of place is
+    a file somebody else made badly, and reading it as present and writing it
+    back in its proper place is a repair rather than a loss.
     """
     try:
         raw = disk.read_file(POR_SLOT_LIST)
@@ -1902,26 +1912,27 @@ def read_slot_list(disk) -> list[str]:
 
 
 def slot_list_bytes(slots: Sequence[str]) -> bytes:
-    """The ten bytes for a set of slots, space-padded, in the order given.
+    """The ten bytes for a set of slots: each letter in its own place.
 
-    **Nothing is sorted.**  Whether the game sorts the list or appends to it
-    is UNKNOWN: the two specimens are `"A         "` and `"AB        "`, and
-    A before B is both the sorted order and the order they were created in,
-    so they cannot tell the two apart.  Writing the list back in the order it
-    was found leaves slots we did not write exactly where they were, which is
-    the only choice that cannot be wrong about a slot somebody else made.
-    Saving to a later letter and then an earlier one settles it in one run --
-    `ABD` is sorted, `ADB` is creation order.
+    **The file is a ten-slot array indexed by letter, not a list**, so the
+    order the letters are given in cannot matter: `A` is byte 0 and `J` is
+    byte 9, and a slot that does not exist is a space.  Measured in the
+    running game on 2026-09-01 (#109) -- Amiga Pool of Radiance was made to
+    save to `D` and then to `B` from one loaded party, and `save/save` came
+    back `"AB D      "`, with the gap at byte 2 where `C` would go.  That is
+    neither the sorted `ABD` nor the creation-order `ADB` this module used to
+    guess between; both would have closed the gap.
+
+    So a compacted list is wrong even though the picker would still draw the
+    same four letters from it: the game reads this array back into memory and
+    stores the next save's letter at that letter's own index, which in a
+    compacted list is somebody else's entry.
     """
-    wanted: list[str] = []
+    out = bytearray(b" " * POR_SLOT_LIST_SIZE)
     for slot in slots:
         letter = _por_slot_letter(slot)
-        if letter not in wanted:
-            wanted.append(letter)
-    if len(wanted) > POR_SLOT_LIST_SIZE:
-        raise AmigaRecordError(
-            f"{len(wanted)} slots will not fit in {POR_SLOT_LIST_SIZE} bytes")
-    return "".join(wanted).ljust(POR_SLOT_LIST_SIZE, " ").encode("ascii")
+        out[POR_SLOT_LETTERS.index(letter)] = ord(letter)
+    return bytes(out)
 
 
 def retarget_savegame(save: bytes, slot: str) -> bytes:

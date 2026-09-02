@@ -1388,19 +1388,34 @@ def test_the_slot_list_is_ten_bytes_and_space_padded():
     assert len(amiga.slot_list_bytes(list("ABCDEFGHIJ"))) == 10
 
 
-def test_the_slot_list_keeps_the_order_it_was_given():
-    """Adding a slot must not shuffle the ones already on the disk.
+def test_each_slot_letter_sits_in_its_own_byte_and_a_gap_stays_a_gap():
+    """The exact ten bytes Amiga Pool of Radiance wrote for A, B and D.
 
-    Whether the game sorts or appends is unmeasured, so the safe thing is to
-    move nothing: a list found as `ADB` comes back as `ADB` with the new
-    letter after it.
+    Measured 2026-09-01 (#109): one loaded party saved to `D` and then to `B`
+    left `save/save` reading `"AB D      "`. The space at byte 2 is `C`, and
+    it is what says the file is an array indexed by letter rather than a list
+    -- sorting would have given `ABD` and appending `ADB`, and both close the
+    gap. The order the letters are handed over cannot matter, so `D` first
+    gives the same bytes.
     """
-    assert amiga.slot_list_bytes(["B", "A"]) == b"BA        "
+    assert amiga.slot_list_bytes(["A", "B", "D"]) == b"AB D      "
+    assert amiga.slot_list_bytes(["D", "B", "A"]) == b"AB D      "
+    assert amiga.slot_list_bytes(list("ABCDEFGHIJ")) == b"ABCDEFGHIJ"
+
+
+def test_a_new_slot_does_not_take_another_slots_byte():
+    """Adding `F` to a disk holding A, B and D leaves all three where they are.
+
+    The old writer appended, so this came back `ABDF      ` -- `D` in `C`'s
+    byte and `F` in `D`'s. The picker draws the same four letters either way,
+    which is why this needed the game to be watched writing the file rather
+    than reasoned about.
+    """
     disk = save_disk_with("A")
-    disk.write_file(amiga.POR_SLOT_LIST, b"ADB       ")
-    amiga.write_por_slot(disk, "C", [sample()],
+    disk.write_file(amiga.POR_SLOT_LIST, b"AB D      ")
+    amiga.write_por_slot(disk, "F", [sample()],
                          savegame=synthetic_savegame())
-    assert disk.read_file(amiga.POR_SLOT_LIST) == b"ADBC      "
+    assert disk.read_file(amiga.POR_SLOT_LIST) == b"AB D F    "
 
 
 def test_a_slot_letter_outside_the_ten_is_refused_before_anything_is_written():
@@ -1475,9 +1490,17 @@ def test_a_disk_with_no_slot_list_lists_nothing():
 
 
 def test_the_slot_list_ignores_the_padding_and_keeps_the_letters():
+    """A letter counts wherever it sits, spaces and all.
+
+    `"ADB       "` is not a shape the game writes -- it is what our own writer
+    produced before #109 measured the file -- and reading it as three slots is
+    what lets the next write put all three in their proper bytes.
+    """
     disk = save_disk_with("A")
     disk.write_file(amiga.POR_SLOT_LIST, b"ADB       ")
     assert amiga.read_slot_list(disk) == ["A", "D", "B"]
+    disk.write_file(amiga.POR_SLOT_LIST, b"AB D      ")
+    assert amiga.read_slot_list(disk) == ["A", "B", "D"]
 
 
 @pytest.mark.parametrize("party", [[], [1] * 7])

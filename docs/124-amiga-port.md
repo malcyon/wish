@@ -652,7 +652,9 @@ and loaded it: the six-character roster with its own AC and HP, standing at
 `"A         "` on the shipped disk and `"AB        "` after the game saved to
 B. A disk carrying a complete slot B that does not name B here is offered only
 `A` at the picker — measured, one run wasted on it. §1.1's "which save letter
-is current" is superseded.
+is current" is superseded. §1.13 goes further: the ten bytes are an array
+indexed by the slot letter, not a list, which those two specimens cannot show
+because A and B are the first two bytes either way.
 
 **A cracked release reads blocks the bitmap says are free, and this cost two
 runs.** On Pool of Radiance disk 1:
@@ -819,7 +821,7 @@ somebody boots the game.
 |---|---|
 | `save/CHRDAT<slot><n>.sav`, `.itm`, `.spc` | the party, through `write_por` |
 | `save/savgam<slot>.dat`, **retargeted** | the engine loads the party the saved game's character table names, not the party the slot letter implies -- measured, because the game's own save to B rewrote all six entries from `CHRDATA<n>` to `CHRDATB<n>` (§1.9b) |
-| `save/save` | the slot list: whatever the disk already named, in the order it named them, with the new letter after it, space-padded to ten bytes |
+| `save/save` | the slot list: ten bytes, one per slot, each letter in its own place -- `A` is byte 0 and `J` is byte 9, and a slot that does not exist is a space |
 
 Three things it refuses rather than doing badly: a slot letter outside
 `A`-`J`, which is what the ten-byte list can hold; a party that is not one to
@@ -829,15 +831,58 @@ game can load. It also **removes the previous occupant's files** for character
 slots the new party does not fill, so a six-character save followed by a
 four-character one does not leave two loadable strangers behind.
 
-**Whether the game sorts the list or appends to it is still UNKNOWN.** The two
-specimens are `"A         "` and `"AB        "`, and A before B is *both* the
-sorted order and the order they were created in, so they cannot tell the two
-apart. So we sort nothing: the list is written back in the order it was found,
-with the new letter after it, which leaves slots we did not write exactly
-where they were. **Saving to a later letter and then an earlier one settles it
-in one run** -- load slot A, camp, save to `D`, then save to `B`, and read
-`save/save` off the disk: `ABD` is sorted, `ADB` is creation order. What the
-file holds for a full disk is the same run carried on.
+**`save/save` is an array indexed by the slot letter, not a list, and that
+was measured rather than guessed.** The question this section used to leave
+open -- does the game sort the letters or append them? -- had a third answer
+that neither candidate covered. Amiga Pool of Radiance was booted on a
+writable copy of disk 1, slot A was loaded, and the party saved to `D` and
+then to `B` from one camp. The file came back:
+
+```
+"AB D      "
+```
+
+`A` at byte 0, `B` at byte 1, **a space at byte 2 where `C` would go**, and
+`D` at byte 3. Sorting would have given `ABD` and appending `ADB`; both close
+the gap. So byte *n* is slot `chr(ord('A') + n)`, holding its own letter when
+that slot exists and a space when it does not -- which is also what the two
+earlier specimens, `"A         "` and `"AB        "`, say once you know to
+read them that way. **A full disk is `"ABCDEFGHIJ"`**, and the camp's own
+`SAVE WHICH GAME:` line draws exactly `A B C D E F G H I J`, so ten is the
+game's number and not an inference from the file's size.
+
+**That made the old writer wrong, and it was fixed in the same session.** It
+appended, so adding `F` to a disk holding A, B and D produced `"ABDF      "` --
+`D` in `C`'s byte and `F` in `D`'s. The picker draws the same four letters
+either way, which is why this needed watching the game write the file rather
+than reasoning about it; what breaks is the *next* save, because the game
+reads this array into memory and stores the new letter at its own index. From
+`"ABDF      "` a save to `C` would overwrite the `D` entry and the picker
+would stop offering D.
+
+**Both halves were then proved in the running game (2026-09-01).**
+`tools/porslot.py` wrote slot `F` onto that same disk with `write_por_slot`,
+which produced `"AB D F    "`. Booted, `LOAD SAVED GAME`, path `SAVE/`:
+
+```
+LOAD WHICH GAME: A  B  D  F
+```
+
+`F` was offered and loaded -- the same six characters, `GARWAN` AC 1 HP 14
+through `MELCAR` AC 7 HP 6, standing at `0,4 W 05:48`. That is the
+demonstration `#109 (A save slot written onto an Amiga disk is not offered by
+the game's picker)` asked for, and the first time a slot list *written by our
+code* has been put in front of the picker; `#36` proved a hand-edited one.
+
+Then, from that loaded slot F, the game was made to save to `C`, and it wrote:
+
+```
+"ABCD F    "
+```
+
+It read our file, filled byte 2, and left `F` at byte 5 exactly where we put
+it. So the game and this writer now agree about the whole ten bytes, and not
+merely about which letters appear.
 
 **And it is all or nothing on the disk.** `write_file` allocates the
 replacement before it frees the original (§1.10), so a slot that runs the disk
