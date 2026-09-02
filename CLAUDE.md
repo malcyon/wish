@@ -454,6 +454,28 @@ assertion that states the outcome a user cares about -- "the window fits a
 720-high screen at +6pt" survived both platforms untouched, while two
 structural proxies for it did not.
 
+**A timing measured on this machine is not a timing.** The rule above is
+about numbers; this is the same trap wearing a stopwatch, and it is worse
+because the test passes locally every time.
+
+`test_a_directory_being_written_to_is_not_called_quiet` ran a background thread
+writing every 20 ms while `settle_files` waited for a 200 ms quiet window. It
+passed here and went red on CI within the hour: on a loaded runner the thread
+was not scheduled inside that window, so `settle_files` correctly saw nothing
+change and answered "quiet". **The test was measuring the runner.**
+
+**A concurrency test whose failure mode is "the other thread did not get a
+turn" will find that out on somebody else's hardware.** The fix is the same
+shape as for a measured constant -- drive the thing from what it actually
+does, rather than racing it. `settle_files` sleeps between reads, so every
+sleep now stamps the file forward with `os.utime`: that is what a save in
+flight looks like from outside, it cannot be starved out, and counted stamps
+mean no filesystem's mtime granularity can make two writes look like one.
+
+Prefer, in order: no thread at all; a thread the code under test drives; a
+real thread with a margin you have argued for out loud. Never a sleep chosen
+because it worked once.
+
 **Say what the sample size was.** "24 of 24 records round-trip byte for byte" is
 evidence. "It worked on my character" is not. Where a rule has exceptions, count
 them and name them rather than rounding them away.
@@ -1313,6 +1335,26 @@ Before committing and pushing any changes, you MUST always run the following che
 **Run the whole suite, not the files you touched.** A scoped run is for working;
 it is not the check. `pytest tests/test_combatdrive.py` was green and `main`
 went red on all four jobs eight minutes later.
+
+**`git add X && git commit` commits the whole index, not just `X`.** Several
+agents share this tree and they stage files; a commit made after naming your
+own paths sweeps in whatever anybody else had staged. That is how
+`tools/livestrip.py` reached `main` on 2026-09-01 inside a commit about
+something else -- and, because its `tools/README.md` row was still uncommitted,
+it landed as a file the table does not describe, which is the exact "only
+mostly true" failure the Documentation section is about.
+
+**So run `git diff --cached --name-only` and read it before every commit.** If
+somebody else's file is staged, `git reset` the index (that touches no working
+file), stage yours again, and check once more. Where two agents have edited the
+same file -- `tools/README.md`, always -- build the version you mean to commit
+in the scratchpad, `git hash-object -w` it and `git update-index --cacheinfo`
+it into the index: that lands your rows without ever rewriting the file
+somebody else is still editing.
+
+**And tell subagents not to `git add` at all.** The main window commits; an
+agent that stages is an agent whose half-finished work is one `git commit`
+away from `main`.
 
 **`git add` a new file *before* the last local run.**
 `tests/test_repository_contents.py` walks the files **git knows about** -- the
