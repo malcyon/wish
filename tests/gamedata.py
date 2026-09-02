@@ -449,8 +449,14 @@ def _disk_with(files) -> bytes:
     return bytes(data)
 
 
-def synthetic_party(game=None) -> bytes:
+def synthetic_party(game=None, race=None, trait_codes=()) -> bytes:
     """A save disk built from the format, not copied from one.
+
+    `race` and `trait_codes` override the two bytes a per-title table is read
+    through -- the race byte at `0x072` and the ten trait slots at `0x0AD`.
+    A shipped party cannot exercise either: all six of Silver Blades'
+    `SAVEDBASH` characters are human or dwarf, so the codes its own character
+    generation gives an elf appear in no save anybody has (#186).
 
     Six characters, every one of them as wide as the record and the title's own
     tables allow: a name of `layout.NAME_SIZE` capital Ws, the longest race
@@ -482,10 +488,11 @@ def synthetic_party(game=None) -> bytes:
         ROSTER_THAC0,
         SLOT_STRIDE,
     )
+    from goldbox.traits import SLOTS as TRAIT_SLOTS
 
     game = game or games.POOL_OF_RADIANCE
     races = games.race_table(game)
-    race = _widest(races.values())
+    race_label = _widest(races.values())
     classes = class_bit_names(game)
     mask = _widest(classes.values())
 
@@ -494,10 +501,14 @@ def synthetic_party(game=None) -> bytes:
     for ability in ("strength", "intelligence", "wisdom", "dexterity",
                     "constitution", "charisma"):
         record.set(ability, PARTY_ABILITY)
-    record.set("race", next(c for c, n in races.items() if n == race))
+    record.set("race", next(c for c, n in races.items() if n == race_label)
+               if race is None else race)
     record.set("class_bits", next(b for b, n in classes.items() if n == mask))
     record.set("hp_max", WIDEST_HP_MAX)
     record.set("experience", WIDEST_EXPERIENCE)
+    if trait_codes:
+        record.set_raw("item_effects",
+                       bytes(trait_codes).ljust(TRAIT_SLOTS, b"\x00"))
     head = record.to_bytes()[:SLOT_STRIDE]
 
     payload = bytearray(game.save_size)

@@ -12,6 +12,13 @@ a monster's specials and an item's passive power. The live effects are four
 
 **The list is shown, not edited**, for now, and the plan says what editing it
 would have to be careful about.
+
+**The codes are per title**, which is why the model carries the game and not
+just the bytes: Secret of the Silver Blades gives an elf 95 where Pool of
+Radiance gives 107, and 95 is Pool of Radiance's "fights on from -6 to 0 hit
+points". Reading every save through one table put that sentence on the sheet
+of an elf who has the ordinary elf's resistance to sleep and charm (#186).
+`goldbox.traits.for_game` is the one place that chooses.
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QTableView
 
 # EMPTY is re-exported: the form's tests read it as `effects.EMPTY`.
-from goldbox.traits import EMPTY, NAMES, SLOTS, describe  # noqa: F401
+from goldbox.traits import EMPTY, NAMES, SLOTS, describe, for_game  # noqa: F401
 
 FADED = QColor("#808080")
 UNSURE = QColor("#7d6608")     # a GUESS, coloured the way an NPC name is
@@ -40,16 +47,23 @@ class EffectsModel(QAbstractTableModel):
     # second spelling of the name beside it.
     HEADERS = ("Slot", "Trait")
 
-    def __init__(self, raw: bytes = b"", parent=None):
+    def __init__(self, raw: bytes = b"", game=None, parent=None):
         # Parented, so the C++ view and its model die together. An unparented
         # model outliving -- or predeceasing -- its view segfaults PyQt in a
         # test run that builds a dozen windows.
         super().__init__(parent)
         self.raw = bytes(raw)
+        self.names = for_game(game)
 
     def set_bytes(self, raw: bytes) -> None:
         self.beginResetModel()
         self.raw = bytes(raw)
+        self.endResetModel()
+
+    def set_game(self, game) -> None:
+        """Name the codes the way the open title does."""
+        self.beginResetModel()
+        self.names = for_game(game)
         self.endResetModel()
 
     def rowCount(self, _parent=QModelIndex()) -> int:
@@ -75,14 +89,14 @@ class EffectsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:
                 return str(row)
-            return describe(code)
+            return describe(code, self.names)
         if role == Qt.ItemDataRole.ForegroundRole:
             if not code:
                 return QBrush(FADED)
-            if NAMES.get(code, ("", "GUESS"))[1] == "GUESS":
+            if self.names.get(code, ("", "GUESS"))[1] == "GUESS":
                 return QBrush(UNSURE)
         if role == Qt.ItemDataRole.ToolTipRole and code:
-            named = NAMES.get(code)
+            named = self.names.get(code)
             if named is None:
                 return f"code {code}; the trait census does not name it"
             return f"{named[0]} ({named[1]})"
@@ -108,6 +122,13 @@ class EffectsView(QTableView):
 
     def set_bytes(self, raw: bytes) -> None:
         self.model_.set_bytes(raw)
+        self.resizeColumnsToContents()
+        self.horizontalHeader().setStretchLastSection(True)
+
+    def set_game(self, game) -> None:
+        """The open title changed, so the names may have. `editor/window.py`
+        calls this from `_fill_combos`, beside the other per-title tables."""
+        self.model_.set_game(game)
         self.resizeColumnsToContents()
         self.horizontalHeader().setStretchLastSection(True)
 

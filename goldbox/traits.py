@@ -64,6 +64,13 @@ $83. The fourth, LONG SWORD +3 at $84, is **not** evidence about any code:
 `$84` is the alignment-locked sword and its `+14` is two nibbles, not an id.
 POTION OF HEALING reads 85 / $00 and is a potion, not a level drain.
 
+**The table below is Pool of Radiance's, and Curse of the Azure Bonds shares
+it. Secret of the Silver Blades does not** -- it gives an elf 95 where Pool of
+Radiance gives 107, and five of the nine codes its character generation seeds
+mean something else here. `NAMES_SILVER_BLADES` below is that title's own, and
+:func:`for_game` is how a caller asks for the right one; the evidence for the
+split is in the comment above the table.
+
 Lives in `goldbox/` rather than in the editor because the combat view names the same
 codes on a monster's tooltip, and one table cannot be allowed to become two.
 """
@@ -280,7 +287,105 @@ LAST_DOCUMENTED = 127
 EMPTY = "—"
 
 
-def describe(code: int) -> str:
+# ---------------------------------------------------------------------------
+# The table is Pool of Radiance's, and one title does not share it
+# ---------------------------------------------------------------------------
+# Curse of the Azure Bonds uses the same numbers for the same things. Its
+# `GEN $24EA` seeds three trait slots per race from `$24FF`, `$2506` and
+# `$250D`, and every code it writes lands on the race this table's name is
+# about: dwarf 26, 47, 97; gnome 18, 48, 97; elf 107; half-elf 124; paladin 45;
+# ranger 134. Read off the player's own disks by `tools/coldread.py traits
+# curse-of-the-azure-bonds`, and asserted in `tests/test_coldread.py`.
+#
+# **Secret of the Silver Blades does not.** Its `GEN $0C4B` seeds two slots
+# from `$0C5B` and `$0C62`, seven bytes each, indexed by the race byte:
+#
+#     $0C5B: 95 95 18 26 48 0 0     races 0-6, 0 also being an elf
+#     $0C62:  0  0  0 47  7 92 0
+#
+# so elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human
+# nothing -- and `GEN $0FF0` writes 45 for a paladin and 105 for a ranger.
+# Five of those nine codes mean something else in Pool of Radiance, so a
+# Silver Blades elf read through the table above says "fights on from -6 to 0
+# hit points" (#186).
+#
+# **The reassignment is not confined to the racial codes**, which is why this
+# title gets a table of its own rather than Pool of Radiance's with a few
+# entries changed. A census of the 69 `MON*` records on the six Silver Blades
+# sides against the 108 on the eight Pool of Radiance sides:
+#
+# * PHASE SPIDER carries 37 and 139 in Pool of Radiance and 37 and **86** in
+#   Silver Blades -- the same creature, one code moved, and 86 is Pool of
+#   Radiance's two-level drain, which a spider does not have;
+# * FROST GIANT carries 98, Pool of Radiance's "regenerates 3 hit points a
+#   round", and GARGOYLE and MARGOYLE carry 103, its "can assume gaseous
+#   form";
+# * GIANT SLUG carries 90, which in Pool of Radiance is a dwarf's and a
+#   halfling's constitution bonus to saves;
+# * 24 is on 36 of the 48 Silver Blades records that carry anything at all,
+#   against one of Pool of Radiance's 59.
+#
+# So the names below are the ones the seed tables themselves establish, by the
+# race or class the game gives them to, and nothing else. Every other code
+# falls back to `trait <n>`, which is the honest answer: this is a table of
+# what has been read, not of what a reader might like to see.
+
+#: Secret of the Silver Blades' codes, as far as its own `GEN` establishes
+#: them. Six of the nine it seeds; the strings are Pool of Radiance's own,
+#: pointed at the numbers this title uses for the same abilities.
+#:
+#: PROBABLE throughout. The evidence is which race or class the game seeds
+#: each code on -- the same argument the Pool of Radiance names were earned
+#: by -- and no Silver Blades record has been watched using one.
+NAMES_SILVER_BLADES: dict[int, tuple[str, str]] = {
+    18: (NAMES[124][0], "PROBABLE"),
+    26: (NAMES[26][0], "PROBABLE"),
+    45: (NAMES[45][0], "PROBABLE"),
+    47: (NAMES[47][0], "PROBABLE"),
+    # 48 is the gnome's, and Curse of the Azure Bonds seeds its gnome the
+    # same 48 -- alongside the 18 and 97 this title does not give it.
+    48: (NAMES[48][0], "PROBABLE"),
+    95: (NAMES[107][0], "PROBABLE"),
+}
+# Three of the nine are seeded and unnamed, and stay that way until somebody
+# establishes what they do: **7**, the gnome's second, which is a different
+# code from the 18 Curse of the Azure Bonds gives a gnome because this title
+# spent 18 on the half-elf; **92**, the halfling's only one, which Silver
+# Blades' DREADLORD also carries, so no reading that is purely a halfling's
+# survives; and **105**, the ranger's, where Curse of the Azure Bonds writes
+# an equally unnamed 134. Naming them would be inventing prose for a player to
+# read, and wrong words are worse than no words.
+
+#: Code table per title key. A title that is not here gets Pool of Radiance's,
+#: which is what every caller written before this table existed means.
+TABLES: dict[str, dict[int, tuple[str, str]]] = {
+    "pool-of-radiance": NAMES,
+    "curse-of-the-azure-bonds": NAMES,
+    "secret-of-the-silver-blades": NAMES_SILVER_BLADES,
+}
+
+#: What a caller gets when it says nothing.
+DEFAULT_NAMES = NAMES
+
+
+def for_game(game=None) -> dict[int, tuple[str, str]]:
+    """The code table for a title.
+
+    Takes a `goldbox.games.Game`, a game key, a table, or None. Duck-typed on
+    `.key` rather than importing `goldbox.games`, which is what
+    `goldbox/spells.py:for_game` does and for the same reason: a whole module
+    of coupling for one string.
+
+    An unrecognised title gets Pool of Radiance's -- the Krynn pair and Gateway
+    have never had their seeds read, and this is the behaviour they have always
+    had.
+    """
+    if isinstance(game, dict):
+        return game
+    return TABLES.get(getattr(game, "key", game), DEFAULT_NAMES)
+
+
+def describe(code: int, game=None) -> str:
     """What a slot says. An unnamed code is visibly unnamed, never blank.
 
     An unnamed code keeps its **number**: two slots we cannot name still have
@@ -288,26 +393,36 @@ def describe(code: int) -> str:
     """
     if not code:
         return EMPTY
-    named = NAMES.get(code)
+    named = for_game(game).get(code)
     return named[0] if named else f"trait {code}"
 
 
-def confidence(code: int) -> str:
+def confidence(code: int, game=None) -> str:
     """How sure the name is. `UNNAMED` codes have no confidence to report."""
-    named = NAMES.get(code)
+    named = for_game(game).get(code)
     return named[1] if named else ""
 
 
 @dataclass(frozen=True)
 class Trait:
-    """One occupied slot, named if we can and numbered either way."""
+    """One occupied slot, named if we can and numbered either way.
+
+    `game` is whatever :func:`for_game` takes, and None means Pool of
+    Radiance's table -- which is what every caller written before the second
+    title means.
+    """
 
     slot: int
     code: int
+    game: object | None = None
+
+    @property
+    def names(self) -> dict[int, tuple[str, str]]:
+        return for_game(self.game)
 
     @property
     def named(self) -> bool:
-        return self.code in NAMES
+        return self.code in self.names
 
     @property
     def is_fill(self) -> bool:
@@ -320,16 +435,19 @@ class Trait:
         The number is what makes a new code visible rather than silently
         dropped, which is how the census grew in the first place.
         """
-        return describe(self.code) if self.named else f"trait {self.code}"
+        return (describe(self.code, self.game) if self.named
+                else f"trait {self.code}")
 
     @property
     def detail(self) -> str:
         where = f"0x{FIRST + self.slot:03X}"
         if not self.named:
             return f"{where} holds {self.code}, which the census does not name"
-        return f"{where}: {describe(self.code)} ({confidence(self.code)})"
+        return (f"{where}: {describe(self.code, self.game)} "
+                f"({confidence(self.code, self.game)})")
 
 
-def traits(raw: bytes) -> tuple[Trait, ...]:
+def traits(raw: bytes, game=None) -> tuple[Trait, ...]:
     """The occupied slots of one ten-byte trait block."""
-    return tuple(Trait(i, code) for i, code in enumerate(raw[:SLOTS]) if code)
+    return tuple(Trait(i, code, game)
+                 for i, code in enumerate(raw[:SLOTS]) if code)

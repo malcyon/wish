@@ -451,3 +451,102 @@ def test_synthetic_party_builds_a_save_for_every_title():
             assert record.hp_max == 65535, game.title
         assert sg1 is not None, game.title
         assert sg1.roster(0).thac0 == 20, game.title
+
+
+# --- the Character Traits list ----------------------------------------------
+#
+# #186: the trait codes are per title too, and the panel read every save
+# through Pool of Radiance's table. A Silver Blades elf is seeded 95, which
+# that table calls "fights on from -6 to 0 hit points" -- a monster's ability,
+# on an elf who has the ordinary elf's resistance to sleep and charm.
+#
+# The shipped `SAVEDBASH` party cannot catch it: all six of its characters are
+# human or dwarf, and a dwarf's 26 and 47 mean the same in both titles. So the
+# record is built rather than opened, which is what `synthetic_party`'s `race`
+# and `trait_codes` are for.
+
+#: What Pool of Radiance's table calls 95, and what a Silver Blades elf must
+#: therefore not be called.
+POOL_NAME_FOR_95 = "fights on from -6 to 0 hit points"
+
+#: Pool of Radiance's 107 and Curse's alike: the elf's own racial ability, in
+#: the wording already on the sheet.
+ELF_RESISTANCE = "elf: 90% resistance to sleep and charm"
+
+
+def _sheet_traits(window, tmp_path, game, race, codes):
+    """The Trait column of the panel, for one built save's first character."""
+    from goldbox.traits import SLOTS
+    from tests.gamedata import synthetic_party
+
+    path = tmp_path / f"{game.key}.d64"
+    path.write_bytes(synthetic_party(game, race=race, trait_codes=codes))
+    window.load(str(path))
+    view = window._widgets["item_effects"]
+    return [view.model_.index(row, 1).data() for row in range(SLOTS)]
+
+
+def test_a_silver_blades_elf_is_not_given_pool_of_radiances_ability(
+        window, tmp_path):
+    """The fault a player sees: click the elf, read somebody else's ability."""
+    rows = _sheet_traits(window, tmp_path, SSB, race=1, codes=(95,))
+    assert rows[0] != POOL_NAME_FOR_95
+    assert rows[0] == ELF_RESISTANCE
+
+
+def test_a_curse_elf_still_reads_the_way_it_always_did(window, tmp_path):
+    """The control. Curse seeds its elf 107 and shares Pool of Radiance's
+    table, so this row passes before the per-title split and after it -- which
+    is what says the fix moved Silver Blades and nothing else."""
+    rows = _sheet_traits(window, tmp_path, CURSE, race=2, codes=(107,))
+    assert rows[0] == ELF_RESISTANCE
+
+
+def test_a_silver_blades_code_nobody_has_read_keeps_its_number(
+        window, tmp_path):
+    """The halfling's 92 and the ranger's 105 are seeded and unnamed. The
+    number is the honest answer; Pool of Radiance's "50% magic resistance" for
+    105 is not."""
+    rows = _sheet_traits(window, tmp_path, SSB, race=5, codes=(0, 92, 105))
+    assert rows[1] == "trait 92"
+    assert rows[2] == "trait 105"
+
+
+# --- the table itself, with no window --------------------------------------
+
+def test_curse_shares_pool_of_radiances_trait_table():
+    """`GEN $24EA` seeds dwarf 26, 47, 97, gnome 18, 48, 97, elf 107 and
+    half-elf 124, every one landing on the race its Pool of Radiance name is
+    about. `tests/test_coldread.py` reads that off the disks; this pins that
+    the table the editor uses says so."""
+    from goldbox import traits
+    assert traits.for_game(CURSE) is traits.for_game(POOL)
+    assert traits.for_game(None) is traits.for_game(POOL)
+
+
+def test_silver_blades_reuses_the_string_and_not_the_number():
+    """95 is the elf's there and 107 is the elf's here, and both say the same
+    sentence -- the approved one, pointed at the right code."""
+    from goldbox import traits
+    assert traits.describe(95, SSB) == traits.describe(107, POOL)
+    assert traits.describe(18, SSB) == traits.describe(124, POOL)
+    assert traits.describe(95, POOL) == POOL_NAME_FOR_95
+
+
+def test_silver_blades_names_only_what_its_own_gen_establishes():
+    """Six of the nine codes `GEN` seeds, and nothing else. Naming the rest
+    from Pool of Radiance would be the same fault in a different place: the
+    monster census shows the reassignment reaches past the racial codes --
+    PHASE SPIDER carries 37 and 139 there and 37 and 86 here."""
+    from goldbox import traits
+    assert sorted(traits.for_game(SSB)) == [18, 26, 45, 47, 48, 95]
+    assert traits.describe(39, SSB) == "trait 39"      # "hasted" in Pool's
+    assert traits.confidence(39, SSB) == ""
+
+
+def test_a_title_nobody_has_read_keeps_pool_of_radiances_table():
+    """The Krynn pair and Gateway have never had their seeds read, so they get
+    what they have always had rather than an empty table."""
+    from goldbox import traits
+    assert traits.for_game(KRYNN) is traits.for_game(POOL)
+    assert traits.for_game(UNTABLED) is traits.for_game(POOL)

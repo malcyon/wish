@@ -279,13 +279,30 @@ then removes any class trait and writes 45 for a paladin or 105 for a ranger.
 | paladin | 45, where Curse `GEN $2515` also writes 45 |
 | ranger | 105, where Curse writes 134 |
 
-**The codes are not Pool of Radiance's, and that is a defect a player can see.**
-Curse's seeds all land on the race their Pool of Radiance name demands; Silver
-Blades' elf 95 and half-elf 18 read as "fights on from -6 to 0 hit points" and a
-gnome's bonus against kobolds. Three ids agree — 26, 47 and the paladin's 45 —
-and five do not, so it is a reassignment rather than an offset. The character
-sheet names four of the six races wrongly today: `#186 (The character sheet
-gives a Silver Blades elf a Pool of Radiance ability)`.
+**The codes are not Pool of Radiance's, and that was a defect a player could
+see.** Curse's seeds all land on the race their Pool of Radiance name demands;
+Silver Blades' elf 95 and half-elf 18 read as "fights on from -6 to 0 hit
+points" and a gnome's bonus against kobolds. Four ids agree — 26, 47, the
+gnome's 48 and the paladin's 45 — and five do not, so it is a reassignment
+rather than an offset.
+`#186 (The character sheet gives a Silver Blades elf a Pool of Radiance
+ability)` gave this title its own table in `goldbox/traits.py`: six of the nine
+seeded codes now carry Pool of Radiance's own wording pointed at this title's
+numbers — 18, 26, 45, 47, 48 and 95 — and 7, 92 and 105 show their number,
+because nobody has established what they mean and a wrong sentence is worse
+than a number.
+
+**The reassignment reaches past the racial codes**, which is why that table is
+this title's own rather than Pool of Radiance's with six entries changed. A
+census of the 69 `MON*` records on these six sides against the 108 on the eight
+Pool of Radiance sides: PHASE SPIDER carries 37 and 139 there and 37 and **86**
+here, the same creature with one code moved and 86 being Pool of Radiance's
+two-level drain; FROST GIANT carries 98, its "regenerates 3 hit points a
+round"; GARGOYLE and MARGOYLE carry 103, its "can assume gaseous form"; GIANT
+SLUG carries 90, a dwarf's and a halfling's constitution bonus to saves; and 24
+is on 36 of the 48 records here that carry anything, against one of Pool of
+Radiance's 59. What each of those means in Silver Blades is unread, and every code the
+seed tables do not establish shows its number.
 
 **The level tables**, all at base `$0800`: experience `$162D` (6 rows x 19
 entries x 3 bytes big-endian), class ceilings `$17D0`, racial class limits

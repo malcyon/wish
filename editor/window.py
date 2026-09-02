@@ -636,6 +636,11 @@ class EditorBinding(QObject):
                 for code, label in sorted(tables[name].items()):
                     w.addItem(f"{code}  {label}", code)
                 _size_combo(w)
+            elif hasattr(w, "set_game"):
+                # The Character Traits list, whose codes are per title too:
+                # Silver Blades gives an elf 95 where Pool of Radiance gives
+                # 107, and 95 is another ability entirely (#186).
+                w.set_game(game)
 
     def _compact(self) -> None:
         """Squeeze the whitespace out of every form and table on the sheet."""

@@ -10,7 +10,7 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 22.** §2 | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 23.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
@@ -68,7 +68,7 @@ applicable.
 | A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | V | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; **SSB decodes to AD&D on 42 of 43 named items**, 30 weapons and 13 armour, through the unmodified decoder against its own `ITEM<nn>` lists — `test_coldread.py::test_a_titles_item_types_decode_to_the_rulebooks_numbers`. The exception is the hammer's damage against large opponents, which SSB stores as 1d4+1 where the other two store the rulebook's 1d4; both are sane dice out of the same three bytes, so it is a data difference and not a misread offset |
 | A13 | inventory edit, add, remove | V | **U** | **U** | `docs/120` blockers: "no Curse save from a *played* party with inventory … no Curse item record has ever been seen" |
 | A14 | combat icon editor and its charset | V | V | V | `CHARPIC00` is on all twenty sides of the three titles, 2030 bytes every time. **Curse's is Pool of Radiance's byte for byte** (only the PRG load address moves, `$8000` → `$3000`) and **Silver Blades redraws three glyphs of 253** — 132, 133 and 207 — which its own eight-bytes-per-glyph reading takes unchanged. `test_curse.py::test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte`, `test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`. The editor reads the open title's own disks: `editor/window.py:_disk_candidates` globs on `game.disk_glob` |
-| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | **X** | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds, so the panel names four of its six races wrongly — #186. `test_coldread.py`, six tests, corroborated on the shipped party |
+| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | V | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds. **Closed by #186**: `goldbox/traits.py` is a table per title now, Curse pointing at Pool of Radiance's and Silver Blades carrying its own — six of its nine seeded codes named by pointing the existing wording at this title's number, and 7, 92 and 105 showing their number because nobody has read what they mean. `test_coldread.py`, six tests, corroborated on the shipped party; `test_pertitle_ui.py`, seven more, on a record built with an elf in it because the shipped party is all humans and dwarves |
 | A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
 | A17 | an unchanged save writes back byte-identically | V | V | **U** | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; no SSB equivalent |
 | A18 | YAML export → import → byte-identical disk | V | V | **U** | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; SSB has no save disk in the tests, only the shipped `SAVEDBASH` party |
@@ -148,11 +148,12 @@ every address they write is the descriptor's now, and the one address that
 cannot be derived, the loader's mode flag, is unmeasured on both titles, so the
 buttons refuse and say so.
 
-**Silver Blades has one `X` again**, and it is new information rather than a
-regression: A15's trait codes are not Pool of Radiance's, so the character
-sheet has been naming four of its six races' abilities wrongly all along and
-nobody had looked (#186). Curse has none. Pool of Radiance's one `U` is the
-Ultimate backend, which nobody can test.
+**Silver Blades briefly had one `X` again** -- A15's trait codes are not Pool
+of Radiance's, so the character sheet named four of its six races' abilities
+wrongly all along and nobody had looked. #186 closed it with a table per title,
+and the three codes nobody has read show their number rather than another
+title's sentence. Curse has none. Pool of Radiance's one `U` is the Ultimate
+backend, which nobody can test.
 
 **C22 was never what made the live actions safe.** It covers the case the
 window has the title *wrong* -- a machine running a game the disks folder does
@@ -199,8 +200,9 @@ with the two that did not close.
   Curse does not have. `CAMP $2A25` walks spell ids to 100 and indexes the mask
   at byte 12. A9.
 * Trait codes — **the seeding is per title and so is the namespace.** Curse's
-  codes are Pool of Radiance's; Silver Blades' are not, which makes A15 an `X`
-  for that title and #186 a bug a user can see.
+  codes are Pool of Radiance's; Silver Blades' are not, which made A15 an `X`
+  for that title and #186 a bug a user could see. Closed: the table is per
+  title now, and a Silver Blades code nobody has read shows its number.
 * The effect arrays — **all four at the same payload offsets in all three**,
   from `CAMP`'s and `DUNGEON`'s own loops rather than from a shipped party,
   which is all zeroes. A16, whose row also needed correcting.
