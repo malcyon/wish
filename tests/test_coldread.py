@@ -173,9 +173,17 @@ def test_silver_blades_seeds_an_elf_a_code_that_is_not_an_elfs():
     An elf's racial ability is the 90% resistance to sleep and charm in every
     edition of the rules and in both earlier titles. Silver Blades seeds its
     elf 95 and its half-elf 18, and Pool of Radiance's table calls those two
-    something else entirely. This test exists to go red on the day somebody
-    gives Silver Blades a trait table of its own, because that is the day the
-    assertion below stops describing what the editor does.
+    something else entirely, which is *why* Silver Blades needed a table of
+    its own.
+
+    This docstring used to say the test would go red the day that table was
+    written. It did not and could not: the assertion is against the flat
+    `traits.NAMES`, which is Pool of Radiance's table by definition and does
+    not move when a per-title one is added. Corrected in the code review of
+    #186 on 2026-09-02. What the test still pins is the fact the split rests
+    on -- that Silver Blades seeds these two codes and that Pool of Radiance
+    means something else by them -- so it earns its place; it is simply not
+    the guard the old sentence claimed.
     """
     gen = _gen(SSB)
     _, tables = coldread.trait_seeds(gen, SSB, BASE)

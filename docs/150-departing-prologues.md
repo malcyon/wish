@@ -153,7 +153,7 @@ load and unpack its own file; it is the relocation `$49E7,X` turns off.
 
 **Only one of the two pinned pieces came out wrong, and that is not
 explained.** Both `$49E7` and `$49E8` read 1, and the whole difference is in
-`$F05C`-`$F367`; `$ED50`-`$F05B` matches the control byte for byte. A piece
+`$F05D`-`$F367`; `$ED50`-`$F05C` matches the control byte for byte. A piece
 whose relocation delta is zero could not show the fault, but the deltas have
 not been measured.
 
