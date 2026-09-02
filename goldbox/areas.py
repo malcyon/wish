@@ -151,6 +151,15 @@ class Area:
     #: `automap/actions.py` writes this field instead
     #: (`#178 (Fast Travel to the wilderness leaves the party on whatever
     #: overland square it last stood on)`).
+    #:
+    #: **`confidence` below does not grade this field.** It is one grade for
+    #: the row and it was written for the area itself, so a row can read
+    #: CONFIRMED while its `overland` is inferred -- area 25's is, because no
+    #: script names an (x, y) in that window at all. The per-square grade is
+    #: in the comment beside each row. Anything that ever shows a confidence
+    #: to a user must not read this field's trustworthiness off `confidence`;
+    #: raised in the code review of #178 on 2026-09-02, when nothing displayed
+    #: it yet and the trap was one dropdown column away.
     overland: tuple[int, int] | None = None
     confidence: Confidence = Confidence.UNKNOWN
     #: Names for individual maps of a two-map area, where the second map is a
