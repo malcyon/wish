@@ -103,7 +103,16 @@ PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 #: Qt keeps two pixels each side of the text inside a line edit for the cursor,
 #: on top of the frame and the text margins, and `CT_LineEdit` does not add
 #: them. Without it the last letter of the placeholder is a pixel short.
-CARET = 4
+#:
+#: 4 was exact for two placeholders and one pixel short for a third: the
+#: Saves box's own (`#66`) elided to "...starts" at `room_for`'s computed
+#: width with `CARET` at 4, and still did at 5 -- `horizontalAdvance` is an
+#: approximation of what the text layout engine that actually elides it
+#: draws, and the gap is not the same for every string. 8, twice the
+#: original, was the smallest of 4/5/6/7/8 tried that stopped eliding with a
+#: pixel to spare either side, checked by grabbing the rendered box and
+#: reading the rightmost dark pixel.
+CARET = 8
 
 #: A backend's state is a badge, not more words in its label. Both colours are
 #: named on every one of them: a badge that set only its ink would be dark on
@@ -339,7 +348,15 @@ class PreferencesDialog(QDialog):
         box = QVBoxLayout(self._general)
         box.setContentsMargins(0, 0, 0, 0)
         box.addWidget(self._disks_group())
-        box.addWidget(self._backups_group())
+        # Side by side, not stacked: both are a folder, a Browse… and a
+        # Clear, and stacking a third one of those pushed the tab's minimum
+        # height past what `fit` can give it on Donald's own 1280x675 desktop
+        # (§12) -- the same reason Diagnostics and Automap already share a
+        # row below.
+        folders_row = QHBoxLayout()
+        folders_row.addWidget(self._saves_group())
+        folders_row.addWidget(self._backups_group())
+        box.addLayout(folders_row)
         box.addWidget(self._backend_group())
         box.addWidget(self._combat_group())
         bottom_row = QHBoxLayout()
@@ -444,6 +461,57 @@ class PreferencesDialog(QDialog):
             form.addRow(name, value)
         outer.addLayout(form)
         return box
+
+    # -- where `File > Open` starts ----------------------------------------
+
+    def _saves_group(self) -> QGroupBox:
+        """Where `File > Open` starts (#66 steps 2 and 3).
+
+        Set, it wins over everything `editor.files.open_start_dir` tries
+        automatically -- even the folder beside a save that is already
+        open -- the same way the game disks folder above beats searching
+        beside the open save. Left empty, `File > Open` starts beside the
+        currently open save, or otherwise wherever a save was last opened
+        from; this box does not report either of those, because they change
+        on their own as the player opens saves and a box that quietly
+        changed under a user's cursor would be a worse fault than an unset
+        one.
+        """
+        box = QGroupBox("Saves")
+        outer = QVBoxLayout(box)
+        row = QHBoxLayout()
+        self.saves = QLineEdit(getattr(self.win.settings, "saves_folder", "")
+                               or "")
+        self.saves.setPlaceholderText("where File > Open starts")
+        self.saves.setMinimumWidth(room_for(self.saves,
+                                            self.saves.placeholderText()))
+        self.saves.editingFinished.connect(self._saves_edited)
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(self.browse_saves)
+        clear = QPushButton("Clear")
+        clear.clicked.connect(lambda: self.set_saves_folder(""))
+        row.addWidget(QLabel("Folder"))
+        row.addWidget(self.saves, 1)
+        row.addWidget(browse)
+        row.addWidget(clear)
+        outer.addLayout(row)
+        return box
+
+    def browse_saves(self) -> None:
+        """The folder picker. A method so a test can replace it."""
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Where File > Open should start",
+            self.saves.text() or str(pathlib.Path.home()))
+        if chosen:
+            self.set_saves_folder(chosen)
+
+    def set_saves_folder(self, folder: str) -> None:
+        """Type this in and apply it, as Browse and Clear do."""
+        self.saves.setText(folder)
+        self._saves_edited()
+
+    def _saves_edited(self) -> None:
+        self.win.set_saves_folder(self.saves.text().strip())
 
     # -- where the backups go ---------------------------------------------
 

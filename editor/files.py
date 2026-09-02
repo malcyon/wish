@@ -37,17 +37,27 @@ def automatic_dir(target: str | pathlib.Path) -> pathlib.Path:
     return pathlib.Path(target).parent / BACKUP_DIR
 
 
-def open_start_dir(remembered: str, current: str | pathlib.Path | None) -> str:
+def open_start_dir(remembered: str, current: str | pathlib.Path | None,
+                    preference: str = "") -> str:
     """Where `File > Open` should start (#66).
 
-    Beside the currently open save if there is one -- unchanged from before
-    this remembered anything. Otherwise `remembered`, the folder a save was
-    last opened from, but only if it still exists: a remembered path always
-    eventually hits a folder that has since been moved, renamed or deleted,
-    and the fallback is to let the dialog decide for itself rather than open
-    on a path that is not there. `""` is that fallback -- what this returned
-    for every user before there was anything to remember.
+    `preference` wins first, if the player has chosen one and it still
+    exists -- a deliberate choice, so it beats even the folder beside a save
+    that is already open, the same way the game disks preference in
+    `automap.paths.resolve_disks` beats searching beside the open save.
+
+    Below that, beside the currently open save if there is one -- unchanged
+    from before this remembered anything. Otherwise `remembered`, the folder
+    a save was last opened from, but only if it still exists: a remembered
+    path always eventually hits a folder that has since been moved, renamed
+    or deleted, and the fallback is to let the dialog decide for itself
+    rather than open on a path that is not there. `""` is that fallback --
+    what this returned for every user before there was anything to
+    remember, and still what it returns with no preference set either.
     """
+    preference = (preference or "").strip()
+    if preference and pathlib.Path(preference).is_dir():
+        return preference
     if current:
         return str(pathlib.Path(current).parent)
     remembered = (remembered or "").strip()

@@ -244,12 +244,12 @@ class DosImportDialog(QDialog):
         self.files = files
         self.conversion: Conversion | None = None
         #: Where a suggested path is put. `editor/window.py` hands over what
-        #: `editor/files.py`'s `open_start_dir` answered -- beside the open
-        #: save, or the folder one was last opened from -- so an import and a
-        #: `File > Open` start in the same place rather than under two rules.
-        #: That answer is empty when there is neither, and a field that has to
-        #: show a path cannot be empty, so the home directory is the last
-        #: resort.
+        #: `editor/files.py`'s `open_start_dir` answered -- the saves folder
+        #: preference if one is set, otherwise beside the open save, or the
+        #: folder one was last opened from -- so an import and a `File > Open`
+        #: start in the same place rather than under two rules. That answer is
+        #: empty when none of those apply, and a field that has to show a path
+        #: cannot be empty, so the home directory is the last resort.
         self.start_dir = start_dir or str(pathlib.Path.home())
         #: The user has typed a path or browsed to one, and the slot must stop
         #: rewriting it.

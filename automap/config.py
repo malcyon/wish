@@ -138,6 +138,13 @@ class Settings:
     # for a folder that has since been moved or deleted lives -- this field
     # only ever holds what was last seen to work, never a guess.
     last_save_folder: str = ""
+    # Where `File > Open` should start, if the player has chosen one (#66
+    # steps 2 and 3). A deliberate choice, unlike `last_save_folder` above --
+    # once set it wins over both the currently open save's own folder and
+    # the remembered one, the same way `disks` beats `paths.resolve_disks`'s
+    # search beside the open save. Empty means nobody has set one, and
+    # `editor.files.open_start_dir` falls back to the automatic behaviour.
+    saves_folder: str = ""
     # Per-title disk folders, keyed by `Game.key` (#22): the shared `disks`
     # folder above answers "Pool of Radiance" for a machine that holds several
     # titles, whatever is actually being played, because that title is first

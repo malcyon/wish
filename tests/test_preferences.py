@@ -396,10 +396,6 @@ def test_a_chosen_folder_survives_a_restart(app, tmp_path, monkeypatch):
 
 
 # --- the remembered `File > Open` folder (#66, steps 1 and 4) ---------------
-#
-# Steps 2 and 3 -- a Preferences row for this, and the preference winning over
-# it -- need a label, which is Donald's to word, and are deliberately not
-# built here.
 
 def test_the_open_folder_is_remembered_and_used_with_nothing_open(tmp_path):
     from editor import files
@@ -478,6 +474,101 @@ def test_opening_a_save_remembers_its_folder_and_the_next_open_starts_there(
         assert captured["directory"] == str(folder)
     finally:
         again.close()
+
+
+# --- the saves-folder preference (#66, steps 2 and 3) ------------------------
+
+def test_the_saves_preference_wins_over_everything_else(tmp_path):
+    """Set and still there, it beats even the folder beside a save that is
+    already open -- the same way the game disks preference beats searching
+    beside the open save in `paths.resolve_disks`."""
+    from editor import files
+
+    preference = tmp_path / "always-here"
+    preference.mkdir()
+    remembered = tmp_path / "old-party"
+    remembered.mkdir()
+    current = tmp_path / "new-party" / "PORSAVE11.D64"
+    assert files.open_start_dir(str(remembered), str(current),
+                                str(preference)) == str(preference)
+    assert files.open_start_dir(str(remembered), None,
+                                str(preference)) == str(preference)
+
+
+def test_a_saves_preference_that_no_longer_exists_falls_back(tmp_path):
+    """A chosen folder can move or be deleted like any other -- the fallback
+    is the order that already existed (#66 steps 1 and 4), not a crash or a
+    dead path handed to the dialog."""
+    from editor import files
+
+    gone = tmp_path / "moved-away"
+    assert not gone.exists()
+    remembered = tmp_path / "old-party"
+    remembered.mkdir()
+    current = tmp_path / "new-party" / "PORSAVE11.D64"
+    assert (files.open_start_dir(str(remembered), str(current), str(gone))
+            == str(current.parent))
+    assert (files.open_start_dir(str(remembered), None, str(gone))
+            == str(remembered))
+    assert files.open_start_dir("", None, str(gone)) == ""
+
+
+def test_the_saves_preference_is_a_setting_and_survives_a_restart(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    settings = Settings()
+    assert settings.saves_folder == ""
+    settings.saves_folder = str(tmp_path / "always-here")
+    settings.save()
+    assert Settings.load().saves_folder == str(tmp_path / "always-here")
+
+
+def test_the_dialog_has_a_saves_row_that_writes_the_preference(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert dialog.saves.text() == ""
+        chosen = tmp_path / "my saves"
+        dialog.set_saves_folder(str(chosen))
+        assert win.settings.saves_folder == str(chosen)
+        assert win.editor.saves_folder == str(chosen)
+        assert Settings.load().saves_folder == str(chosen)
+
+        dialog.set_saves_folder("")
+        assert win.settings.saves_folder == ""
+        assert win.editor.saves_folder == ""
+    finally:
+        win.close()
+
+
+def test_setting_the_saves_folder_changes_where_file_open_starts(
+        app, tmp_path, monkeypatch):
+    """The acceptance case: pick it once in the dialog, and `File > Open`
+    starts there from then on -- even with a different save already open,
+    because the preference is the deliberate choice and beats the automatic
+    guess beside it."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        opens(win, tmp_path / "elsewhere" / "PORSAVE11.D64")
+        chosen = tmp_path / "my saves"
+        chosen.mkdir()
+        PreferencesDialog(win).set_saves_folder(str(chosen))
+
+        captured = {}
+
+        def fake_dialog(_parent, _caption, directory, _filter):
+            captured["directory"] = directory
+            return "", ""
+
+        monkeypatch.setattr(
+            "editor.window.QFileDialog.getOpenFileName", fake_dialog)
+        win.editor.open_file()
+        assert captured["directory"] == str(chosen)
+    finally:
+        win.close()
 
 
 def test_asking_where_the_backups_go_creates_nothing(app, tmp_path,

@@ -10,9 +10,10 @@ backend … The backend option should move into the preferences dialog."*
 
 ## The verdict
 
-* **The dialog holds four things: where the game disks are, where backups go,
-  which live backend to use, and the debug log.** Nothing else. Fog of war and the map's own knobs
-  stay on the map, where you change them mid-play.
+* **The dialog holds where the game disks are, where `File > Open` starts,
+  where backups go, which live backend to use, and the debug log.** Fog of
+  war and the map's own knobs stay on the map, where you change them
+  mid-play.
 * **One directory setting, not two.** The editor's game disk and the
   automapper's map disks are the same box of `.D64`s in practice, and the
   editor already expands a named disk into its whole directory. One folder,
@@ -72,6 +73,7 @@ Preferences…**, in the window.
 | *(new)* `disks` | — | **in the dialog** | the point of the exercise |
 | *(new)* `ultimate_host` | was `$POR_ULTIMATE` only | **in the dialog** | see §6 |
 | *(new)* `backup_folder`, `backup_folder_chosen` | — | **in the dialog** | it was two implicit folders and no way to choose either. See §5c |
+| *(new)* `saves_folder` | — | **in the dialog** | where `File > Open` starts (`#66`). See §5d |
 
 **The rule the table applies:** a preferences dialog collects the settings you
 set *once*, about this machine. Everything you set *while playing* belongs on
@@ -281,6 +283,42 @@ writing to. Anything that landed in `~/.local/share/wish/backups` under the old
 fallback is still there and still a file; nothing in the application ever
 listed those, and nothing does now.
 
+### 5d. Where `File > Open` starts (`#66`)
+
+Donald: *"When I open Wish and click Open, I always have to navigate multiple
+subdirectories to find my save file. I should only have to do this once."*
+
+Two halves, built in separate sessions. The first (`#66` steps 1 and 4) needed
+no new UI at all: `editor.files.open_start_dir` remembers the folder a save was
+last opened from (`Settings.last_save_folder`) and `File > Open` starts there
+once there is nothing more specific to go on. That is a convenience and changes
+silently as the player works, which is right for it and wrong for a deliberate
+choice.
+
+The second half is the box in this section — `Settings.saves_folder`, steps 2
+and 3. **Set, it wins over everything automatic**, including the folder beside
+a save that is already open: the same precedence the game disks folder already
+has over searching beside the open save in `paths.resolve_disks`. Left empty,
+`File > Open` falls back to the order steps 1 and 4 already built.
+
+* **No report row.** The disks box has "In use" and "Titles" because what is
+  actually used can differ from what the box says — a search, an environment
+  variable, a flag can all override it, and the report is how a user finds
+  that out. This box has no such gap: what is typed is what is used, or
+  nothing is and the automatic folder applies. Donald had "Set by" out of the
+  disks report in 2026-08 for the same reason a report here would repeat —
+  "a GUI is not the place for documentation" (`tests/test_preferences.py`'s
+  `test_the_report_prints_two_lines_and_not_six`).
+* **Existence is checked, like the remembered folder.** A chosen folder can be
+  renamed or deleted like any other, and `open_start_dir` refuses a preference
+  that is no longer there rather than handing a dead path to the dialog — the
+  same rule `#66` step 4 already applied to the remembered one.
+* **`editor.files` is the one place this resolves**, alongside
+  `open_start_dir`'s existing two arguments: `WishWindow.set_saves_folder`
+  writes the setting and hands the string to `EditorBinding.saves_folder`,
+  exactly as `set_backup_folder` and `set_disks` already do for their own
+  fields.
+
 ---
 
 ## 6. The backend section
@@ -403,10 +441,15 @@ before a `v*` tag still stands.
 
 ## 8. Files that changed
 
-**Not a Designer form.** `editor/character.ui` is the only `.ui` in the tree,
-and `tools/genui.py` hard-codes that one pair of paths. Every other dialog and
-panel in this project is hand-written PyQt, and this one re-probes backends and
-re-runs a directory search as you type, which is code either way.
+**The dialog's shell is a `.ui` file; its contents are not.**
+`wish/preferences.ui` (compiled to `ui_preferences.py` by `tools/genui.py`) is
+just the `QDialog`, the `QTabWidget` and the `Close` button — the group boxes
+inside each tab are still built in `_disks_group`, `_saves_group`,
+`_backups_group` and the rest, in Python, because this dialog re-probes
+backends and re-runs a directory search as you type, which is code either way.
+This was hand-written PyQt throughout until `wish/preferences.ui` was
+extracted in `af5c3a8`; the sentence above was true before that and is
+corrected here rather than left to contradict the code.
 
 | file | change |
 |---|---|

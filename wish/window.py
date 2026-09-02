@@ -117,7 +117,7 @@ class WishWindow(QMainWindow):
             settings=self.settings)
         apply_ultimate_host(getattr(self.settings, "ultimate_host", "") or "")
 
-        self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder)
+        self.editor = EditorBinding(self, save, game_disk, disks=self.disks_text(), backups="", last_save_folder=self.settings.last_save_folder, saves_folder=self.settings.saves_folder)
         # The divider between the roster and Character and the sheet below
         # them, and the heights the user last dragged it to (#97). Built here
         # rather than inside `EditorBinding` because the settings file is the
@@ -438,6 +438,20 @@ class WishWindow(QMainWindow):
         self.settings.backup_folder_chosen = bool(folder)
         self.settings.save()
         self.follow_save()
+
+    def set_saves_folder(self, folder: str) -> None:
+        """The user typed, browsed or cleared the saves folder in the
+        dialog (#66 steps 2 and 3).
+
+        Unlike the backup folder above, this has no automatic state to fall
+        back to: it is either set or it is not, and clearing it goes back to
+        the folder a save was last opened from, or beside the one already
+        open.
+        """
+        folder = (folder or "").strip()
+        self.settings.saves_folder = folder
+        self.settings.save()
+        self.editor.set_saves_folder(folder)
 
     def set_ultimate_host(self, host: str) -> None:
         """Where the Commodore 64 Ultimate is. Empty means "no device"."""

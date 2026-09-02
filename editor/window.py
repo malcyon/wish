@@ -496,7 +496,8 @@ class EditorBinding(QObject):
 
     def __init__(self, root: QWidget, path: str | None = None,
                  game_disk: str | None = None, disks: str | None = None,
-                 backups: str | None = None, last_save_folder: str = ""):
+                 backups: str | None = None, last_save_folder: str = "",
+                 saves_folder: str = ""):
         super().__init__(root)
         self.root = root
         self.party: Party | None = None
@@ -505,6 +506,7 @@ class EditorBinding(QObject):
         self.disks = disks
         self.backups = backups
         self.last_save_folder = last_save_folder
+        self.saves_folder = saves_folder
         self.game_disk_found: str | None = None
         self.icon_parts_disk: str | None = None
         self.charset: bytes = b""
@@ -796,7 +798,8 @@ class EditorBinding(QObject):
     def open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self.root, "Open a save disk",
-            files.open_start_dir(self.last_save_folder, self.path),
+            files.open_start_dir(self.last_save_folder, self.path,
+                                 self.saves_folder),
             DISK_FILTER)
         if path:
             self.load(path)
@@ -891,7 +894,8 @@ class EditorBinding(QObject):
             return "no DOS save"
         dialog = DosImportDialog(
             folder, game_files, self.root,
-            start_dir=files.open_start_dir(self.last_save_folder, self.path))
+            start_dir=files.open_start_dir(self.last_save_folder, self.path,
+                                           self.saves_folder))
         while True:
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return "cancelled"
@@ -1082,6 +1086,10 @@ class EditorBinding(QObject):
     def set_backup_folder(self, folder: str | None) -> None:
         """Where a copy of the save goes before it is overwritten."""
         self.backups = folder
+
+    def set_saves_folder(self, folder: str | None) -> None:
+        """Where `File > Open` should start, if the player has chosen one (#66)."""
+        self.saves_folder = folder
 
     def set_disks(self, disks: str | None) -> None:
         """The Game directory changed. Re-read, and redraw what it feeds."""
