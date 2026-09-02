@@ -1126,6 +1126,18 @@ FASTTRAVEL_SLOT = 0x6E1B
 #: alone -- so the next `LOADFILES 0, 0, 0` in New Phlan reloads `WALLS00`
 #: rather than declining because the slot already says `00`.
 FASTTRAVEL_WALLS_SLOT = 0x6E1C
+#: `$49E7`-`$49E9`, one flag per wall piece -- `goldbox/memory.py` calls it
+#: "wall slot pinned". `DUNGEON $14CB` reads `$49E7,X` before unpacking piece
+#: `X` and returns at once when it is non-zero, so the piece keeps whatever
+#: screen codes the previous area's wall set left in it. Only `ECL06`
+#: (Valjevo Castle south-west), `ECL07` (the Inner Tower) and `ECL0A`
+#: (Valhingen Graveyard) ever set it, and each clears it only on the way out
+#: -- the part a fast travel skips (`#179`). Written unconditionally and
+#: zero, the same shape as `FASTTRAVEL_WALLS_SLOT` above: it costs nothing in
+#: the areas that never set it, and one extra relocation pass in `ECL06`'s
+#: Valjevo-to-Valjevo route, which is the one place the game left it set on
+#: purpose.
+WALL_SLOT_PINNED, WALL_SLOT_PINNED_LEN = 0x49E7, 3
 #: Zeroed by `$202A`-`$2032`: the origin of the scratch/persistent split.
 FASTTRAVEL_SCRATCH, FASTTRAVEL_SCRATCH_LEN = 0x4A00, 0x20
 #: Non-zero indoors, zero on the overland map. Read, never written: it decides
@@ -1251,15 +1263,23 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     the square but not the direction, or None to write no square at all and let
     the arriving script's entry 4 place the party.
 
-    **One write here is not `NEWECL`'s own: `FASTTRAVEL_WALLS_SLOT`.** It is
-    New Phlan's *departing* script, `ECL00 $9955`/`$9BDC`, run in front of
+    **Two writes here are not `NEWECL`'s own.** `FASTTRAVEL_WALLS_SLOT` is New
+    Phlan's *departing* script, `ECL00 $9955`/`$9BDC`, run in front of
     `NEWECL` on a genuine exit and skipped by entering the handler at its
     tail (`#156`). Written unconditionally and first, before the writes that
     are `NEWECL`'s own: every area but New Phlan leaves slot 9 alone on
     arrival, so setting it empty costs nothing but a reload of `WALLS00` in
     the one area that wants it, and it is the byte the whole bug turns on.
+
+    `WALL_SLOT_PINNED` is the same shape: three departing scripts --
+    `ECL06`, `ECL07`, `ECL0A` -- clear it only on the way out, which a fast
+    travel skips, so a piece can keep the previous area's wall art
+    (`#179`). Written unconditionally and zero.
     """
-    writes: list[tuple[int, bytes]] = [(FASTTRAVEL_WALLS_SLOT, b"\xff")]
+    writes: list[tuple[int, bytes]] = [
+        (FASTTRAVEL_WALLS_SLOT, b"\xff"),
+        (WALL_SLOT_PINNED, bytes(WALL_SLOT_PINNED_LEN)),
+    ]
     if disk is not None:
         writes.append((FASTTRAVEL_DISK, bytes([disk & 0xFF])))
     if arrival is not None:

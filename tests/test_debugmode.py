@@ -130,13 +130,16 @@ def test_the_debug_log_is_the_switch_a_user_gets(monkeypatch, tmp_path):
 # --- the write sequence ------------------------------------------------------
 
 def test_the_writes_are_newecls_own_in_newecls_order():
-    """`DUNGEON $2011`-`$2032`, with the operand fetch removed. The first write
-    is not `NEWECL`'s own -- it is New Phlan's departing script, skipped the
-    same way (`#156`) -- and comes first because it happens before `NEWECL`
-    is even entered on a genuine exit."""
+    """`DUNGEON $2011`-`$2032`, with the operand fetch removed. The first two
+    writes are not `NEWECL`'s own -- the WALLS slot release is New Phlan's
+    departing script, skipped the same way (`#156`), and the wall-pin clear
+    is `ECL06`/`ECL07`/`ECL0A`'s departing clean-up, skipped the same way
+    (`#179`) -- and both come first because they happen before `NEWECL` is
+    even entered on a genuine exit."""
     writes = actions.newecl_writes(0, 20, disk=2, arrival=(1, 14, 1))
     assert writes == (
         (0x6E1C, b"\xff"),                     # release the WALLS slot, #156
+        (0x49E7, bytes(3)),                    # unpin the three wall pieces, #179
         (0x6E12, bytes([2])),                  # which POOL disk to ask for
         (0xC04B, bytes([1, 14, 1])),           # x, y, facing
         (0x49F2, bytes([0])),                  # where we came from
@@ -168,7 +171,8 @@ def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     outcome = fasttravel.apply(target, area=area(13))     # the kobold caves
     assert outcome.ok
     assert [addr for addr, _ in outcome.writes] == [
-        actions.FASTTRAVEL_WALLS_SLOT, actions.FASTTRAVEL_DISK,
+        actions.FASTTRAVEL_WALLS_SLOT, actions.WALL_SLOT_PINNED,
+        actions.FASTTRAVEL_DISK,
         actions.FASTTRAVEL_X, actions.FASTTRAVEL_FROM,
         actions.FASTTRAVEL_SLOT, actions.FASTTRAVEL_SCRATCH]
     assert target.jumps == [0x2034]
@@ -218,6 +222,21 @@ def test_the_walls_slot_is_released_leaving_anywhere_not_just_new_phlan():
     assert writes[0] == (actions.FASTTRAVEL_WALLS_SLOT, b"\xff"), (
         "the walls slot is released on every fast travel, not only the ones "
         "leaving New Phlan")
+
+
+def test_the_wall_pins_are_cleared_on_every_fast_travel():
+    """`ECL06` (Valjevo Castle south-west), `ECL07` (the Inner Tower) and
+    `ECL0A` (Valhingen Graveyard) pin one flag apiece at `$49E7`-`$49E9` so
+    `DUNGEON $14CB` skips relocating that wall piece, and each clears its own
+    pin only on the way out -- the part `FastTravel` skips by entering
+    `NEWECL` at its tail (`#179`). Cleared unconditionally, the same shape as
+    `FASTTRAVEL_WALLS_SLOT` (`#156`): a piece nobody pinned is already zero,
+    so the write costs nothing there."""
+    writes = actions.newecl_writes(from_area=10, to_area=18)   # Graveyard to Podol
+    assert (actions.WALL_SLOT_PINNED,
+            bytes(actions.WALL_SLOT_PINNED_LEN)) in writes, (
+        "$49E7-$49E9 must be zeroed on every fast travel, or a piece pinned "
+        "by the area left behind keeps its old wall art")
 
 
 # --- what it refuses ---------------------------------------------------------
