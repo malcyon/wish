@@ -664,10 +664,37 @@ wrong.** An agent asked for `enhancement`, Donald had set `question`, the
 mismatch was reported as a fault, and the assistant "fixed" it -- destroying his
 work. He curates labels and priorities by hand and will keep doing so.
 
-So: **an agent never removes or changes a label it did not itself just add**,
-and never re-applies a label that has since been changed. A label that is not
-what you expected is Donald's decision until proven otherwise. If it looks
-wrong, say so in the reply and leave it alone. The same goes for a title,
+So: **an agent never changes a label silently, and never on a judgement.**
+A label that is not what you expected is Donald's decision until proven
+otherwise.
+
+**It may change one when it can state the evidence in a comment on the issue
+in the same breath**, saying what it changed and why. The bar is a fact about
+the world rather than an opinion about the work:
+
+* *"The body says nothing is observed and nobody can name what a player sees,
+  so it is a question rather than a bug"* -- a fact, checkable by reading the
+  issue. Change it and say so.
+* *"This feels more important now"*, *"this looks doable"* -- a judgement.
+  Leave it alone and say so in the reply.
+
+**The thing that must never happen is a change with no comment**, because
+that is what destroyed his curation with no record anybody could read or
+reverse.
+
+**And the rule cuts the other way too, which cost a night.** `#69 (No
+WRITE_UNSOURCED zero has been tested during combat)` carried `bug` for months
+while its own body said *"Nothing observed. This is a gap in the evidence
+rather than a seen fault."* On 2026-09-01 an assistant worked a whole bug
+queue around it, put it in every list it gave Donald, and never asked whether
+the label was right -- the label was doing its thinking. Donald caught it:
+*"You were unable to explain convincingly how it would affect an end user."*
+
+A mislabelled issue is an **invisible** error. It fails no test, turns no CI
+red, and produces no symptom except work quietly going to the wrong place for
+as long as nobody looks. So the question `CLAUDE.md` already asks of a bug --
+**what does the player see?** -- is worth asking of the label as well as of
+the work, and "nothing, we do not know yet" means `question`. The same goes for a title,
 a priority, a milestone, or an issue somebody closed.
 
 **`blocked` is the one exception, and only in the one direction.** An agent may
