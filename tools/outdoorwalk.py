@@ -23,7 +23,7 @@ record)` -- through the binary monitor, before and after every key.  A turn
 then shows as "the square did not move, and it was not meant to", and a step
 shows as the square moving, which is the thing worth proving:
 
-    tools/outdoorwalk.py --disk work/p50-outdoor/OUTC.D64 --slot 2 --moves KIKIKI
+    tools/outdoorwalk.py --disk work/p50-outdoor/OUTC.D64 --slot 2 --moves 8484
 
 Written for `#50 (Lift the wilderness refusal from the DOS save converter)`,
 whose end-to-end proof is "convert a wilderness DOS save, load it, and walk".
@@ -153,9 +153,16 @@ def main(argv=None) -> int:
     p.add_argument("--disks", default=str(DISKS),
                    help="where the player's game disks are; read, never written")
     p.add_argument("--slot", type=int, default=None, help="the pool slot")
-    p.add_argument("--moves", default="KIKIKIKI",
-                   help="the game's own letters: I forward, J left, K right, "
-                        "M back")
+    # Compass digits, not `I J K M`. The travel grid's bar is
+    # `1-8, RETURN OR BUTTON`, and a driver pressing the dungeon's letters out
+    # here moves the party not at all while looking exactly like a save that
+    # cannot walk -- which is what an hour of `#50 (Lift the wilderness refusal
+    # from the DOS save converter)` was spent on. This default was that hour
+    # written back into the tool meant to prevent it. `8` and `4` are the two
+    # driven on 2026-09-02, each moving the party a square.
+    p.add_argument("--moves", default="8484",
+                   help="the compass digits 1-8, not the dungeon's I J K M; "
+                        "Return leaves the bar")
     p.add_argument("--tag", default="outdoorwalk",
                    help="prefix for the screenshots")
     p.add_argument("--out", default=None, help="where the run's output goes")

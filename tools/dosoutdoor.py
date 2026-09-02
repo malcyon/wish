@@ -131,8 +131,19 @@ def make(*, source: str = "A", target: str = "C", area: int = 26,
             por.load_game(source)
             shutil.copy(s.shot("outdoor-loaded"), out / "loaded.png")
 
+            # `step` answers False when the world bar does not come back --
+            # an unhandled prompt, or a blocked heading. Letting that through
+            # would save a specimen and call it walked on no evidence, which
+            # is the whole claim this argument makes.
+            walked = 0
             for i in range(steps):
-                por.step()
+                if not por.step():
+                    raise SystemExit(
+                        f"step {i + 1} of {steps} did not complete, so the "
+                        f"square this would save is the one the seed asked "
+                        f"for rather than one the engine moved the party to")
+                walked += 1
+            report["walked"] = walked
             if steps:
                 shutil.copy(s.shot("outdoor-walked"), out / "walked.png")
 
