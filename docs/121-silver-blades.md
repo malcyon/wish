@@ -11,9 +11,14 @@ three bytes** for a plain character, against fifteen for Pool of Radiance into
 Curse — because the Curse record is already in the successor engine's shape,
 and what is left is only what is per-*title*: the race code and the starting
 purse. **`spells_known` is sixteen bytes**, `0x078`-`0x087`, spell ids 0-127,
-read out of `GEN`'s own clear loop. And **the live party position is at
-`$C04B`, not `$4BC0`** — the header copy is stale during play, and so is the
+read out of `GEN`'s own clear loop at `$09DC`. And **the live party position is
+at `$C04B`, not `$4BC0`** — the header copy is stale during play, and so is the
 on-screen status line.
+
+A fourth, added by #31: **`GEN` and `CAMP` run at `$0800`**, and every Silver
+Blades overlay address this document and `goldbox/spells.py` carried was
+computed at the PRG header's `$4000` instead. §4.3 lists the seven corrected
+addresses across three titles.
 
 The title is *Secret* of the Silver Blades, singular, which is what the disks
 say.
@@ -218,17 +223,113 @@ than the fifteen was.
 The load address is Curse's and the marker is not — and it is `5`, not `3`, so
 the marker is an identifier out of some list rather than a count of sequels.
 
+### 4.3 The cold read of `GEN`, and an overlay base this document got wrong
+
+Done for `#31 (Cold-read Curse and Silver Blades for the fields the editor
+shows)`, with no emulator. `tools/coldread.py` reads all of it again in three
+commands and `tests/test_coldread.py` keeps it true.
+
+**`GEN` and `CAMP` run at `$0800`, not at the `$4000` their PRG headers claim.**
+Every Silver Blades `GEN` address this project had written down was `$3800` too
+high, and the same fault put Curse's at `$2800` and `$1A00` too high and Pool of
+Radiance's at `$0800` too high — seven citations in `goldbox/layout.py`,
+`goldbox/spells.py`, `docs/20-character-record.md` and two test docstrings. The
+findings they carried were all correct; only the addresses were wrong, and four
+of the seven named bytes **outside the overlay altogether**, so anyone checking
+one with `tools/overlay.py` — whose `--base` is `$0800` — would have been told
+the address is not in the file.
+
+The base is settled by the operands, which cannot move: `GEN $18C9` reads its
+own scratch at `$1BFD` and its ceiling table at `$17D0`, and `CAMP $2871` calls
+`$1478` and stores to `$2862`. Every one of those is inside the file at `$0800`
+and outside it at `$4000`.
+
+| cited as | is really |
+|---|---|
+| Silver Blades `GEN $41DC`, the sixteen-byte clear | `GEN $09DC` |
+| Silver Blades `GEN $50C9`, the sixteen-byte walk | `GEN $18C9` |
+| Silver Blades `CAMP $6071`, the memorise loop | `CAMP $2871` |
+| Curse `CAMP $5225`, the same loop | `CAMP $2A25` |
+| Curse `GEN $2D4A`, the druid spells | `GEN $232A` |
+| Curse `GEN $2C2F`, the 32-byte copy | `GEN $220F` |
+| Pool of Radiance `GEN $296B`, the same copy | `GEN $216B` |
+
+**The trait seeds.** `GEN $0C4B` clears all ten slots and seeds two of them
+from tables at `$0C5B` and `$0C62`, indexed by the race byte — which is why the
+shipped dwarf carries two entries where the Curse import wrote one. `GEN $0FF0`
+then removes any class trait and writes 45 for a paladin or 105 for a ranger.
+
+| race | seeded with |
+|---|---|
+| elf 1 | 95 |
+| half-elf 2 | 18 |
+| dwarf 3 | 26, 47 |
+| gnome 4 | 48, 7 |
+| halfling 5 | 92 |
+| human 6 | nothing |
+
+| class | seeded with |
+|---|---|
+| paladin | 45, where Curse `GEN $2515` also writes 45 |
+| ranger | 105, where Curse writes 134 |
+
+**The codes are not Pool of Radiance's, and that is a defect a player can see.**
+Curse's seeds all land on the race their Pool of Radiance name demands; Silver
+Blades' elf 95 and half-elf 18 read as "fights on from -6 to 0 hit points" and a
+gnome's bonus against kobolds. Three ids agree — 26, 47 and the paladin's 45 —
+and five do not, so it is a reassignment rather than an offset. The character
+sheet names four of the six races wrongly today: `#186 (The character sheet
+gives a Silver Blades elf a Pool of Radiance ability)`.
+
+**The level tables**, all at base `$0800`: experience `$162D` (6 rows x 19
+entries x 3 bytes big-endian), class ceilings `$17D0`, racial class limits
+`$17E0`, THAC0 `$106F` / `$107F` / `$108F` with the fighter group computed
+`21 - fighting level` at `$1045`, hit dice `$1845` / `$184D` / `$1855`, level-1
+saving throws `$1148` with a two-bit-per-level improvement mask at `$115C`, the
+constitution hit-point bonus `$0E80`, and thief skills `$126D`. The full table
+is in `docs/139-per-title-validation.md`'s A6 and A7 rows; building a
+`LevelTables` out of it is `#187 (Silver Blades characters are shown Pool of
+Radiance's level progression)`.
+
+Three of those are worth reading even if the rest is a lookup table.
+
+**The experience rows are Curse's, carried on** — all 61 thresholds the two
+share are identical. That includes the Curse fighter's eleventh, 749937 where
+750001 is expected, which `goldbox/levels.py` recorded as possibly bit rot in
+the one Curse rip that carries `GEN`. A second rip, of a different game, cracked
+by a different group, holds the same number. It is SSI's.
+
+**The saving-throw rule is Silver Blades' own.** Fill five columns with 20,
+subtract a two-bit improvement per level per column, keep the best across every
+class held, take 2 off every column for a paladin (`$11C0`), and take
+`constitution * 2 / 7` off columns 0, 2 and 4 for **race 3 alone** — the dwarf,
+where Pool of Radiance gives that bonus to the dwarf, the gnome and the halfling
+and to all five columns. It reproduces all six shipped characters' stored saves.
+
+**The racial limits are a third independent source for the race table.** The
+routine at `$178A` refuses to look one up for race 6 or above — the human rule —
+and the five rows below it are AD&D's elf, half-elf, dwarf, gnome and halfling
+in exactly the order `goldbox/games.py:RACES_SILVER_BLADES` already had from the
+label pool and from the import's own arithmetic.
+
+**And the item type table decodes.** 42 of 43 of Silver Blades' own named items
+come out at their AD&D 1st edition damage or armour class through
+`goldbox/items.py` unmodified. The exception is the hammer, which does 1d4+1
+against large opponents here and 1d4 in the rulebook and in both earlier titles.
+The type *indices* are renumbered — 54 is scale mail in the earlier two and the
+CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean.
+
 ### What is left, and what blocks it
 
 | left | blocked on |
 |---|---|
 | items and coins across the import | no specimen carried either; a Curse party with an inventory settles the 256-byte item block |
 | `0x0EC` | class-shaped after an import, `0xFB` in every native pregen. UNKNOWN |
-| Silver Blades' per-race trait table at `0x0AD` | elf 95 and half-elf 18 observed; the shipped dwarf carries **two** entries where the import wrote one, so an imported dwarf may come out short |
+| ~~Silver Blades' per-race trait table at `0x0AD`~~ **read** (#31) | `GEN $0C4B` seeds **two** slots from `$0C5B` and `$0C62`, which is why the shipped dwarf carries two entries where the import wrote one. Elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92, human none; `GEN $0FF0` then writes 45 for a paladin and 105 for a ranger. §4.3 |
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
-| whether the sixteen-byte spellbook is also Curse's and Gateway's | the same code scan on their disks; no emulator needed |
+| ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
-| `goldbox/levels.py`'s caps for this title | table data on the disks; no emulator needed |
+| ~~`goldbox/levels.py`'s caps for this title~~ **measured, not built** (#31) | every table is read off `GEO`'s neighbour `GEN` and written into `docs/139-per-title-validation.md`'s A6 and A7 rows; the `LevelTables` that would put them on the character sheet is #187 |
 
 **The loader's mode flag is `$7F11` (#29).** `LINKER` is 149 bytes on
 `SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and

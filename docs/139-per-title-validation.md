@@ -10,7 +10,7 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 24, Silver Blades 16.** §2 | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 22.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
@@ -59,17 +59,17 @@ applicable.
 | A3 | 580-byte record decodes to sane fields | V | V | V | `test_curse.py::test_every_curse_character_parses_with_fields_a_person_would_recognise`, `test_silverblades.py::test_the_shipped_party_decodes_with_fields_a_person_would_recognise` |
 | A4 | record round-trips byte-identically | V | V | V | `test_curse.py::test_a_curse_character_export_round_trips_byte_for_byte`, `test_silverblades.py::test_every_slot_round_trips_byte_identically` |
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
-| A6 | saving throws satisfy the derived rule | V | V | **U** | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`; `goldbox/levels.py` has no Silver Blades tables at all |
-| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | **U** | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours; nothing for SSB |
+| A6 | saving throws satisfy the derived rule | V | V | **U** | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **SSB's rule is now measured and the cell still cannot go V**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone. That reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` — but `goldbox/levels.py` still has no Silver Blades tables, so the editor does not show them (#31, #187) |
+| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | **U** | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **All four measured for SSB and not built**: experience `GEN $162D` (6 x 19 x 3, big-endian, and it reproduces Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855` — `test_coldread.py`, five tests. Same blocker as A6 (#31, #187) |
 | A8 | the seven money fields | V | V (gold only) | **U** | `docs/120` §5.2 — gold `0` → `777` read back off the game's own sheet; the other six purses untested on any title but PoR |
-| A9 | spellbook width | V | **U** | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; `docs/120` blockers — no Curse specimen writes past `0x07C` |
-| A10 | spell names resolve | V | V | **U** | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; SSB's two tables are inventoried (`test_silverblades.py::test_silver_blades_ships_two_spell_name_tables`) and never resolved |
+| A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31) |
+| A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
 | A11 | item names resolve | V | V | V | `test_titletables.py::test_every_title_names_its_first_item_battle_axe` — all six titles |
-| A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | **U** | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; SSB is shape-only (`test_silverblades.py::test_the_item_table_is_a_whole_number_of_sixteen_byte_records`) |
+| A12 | item **types** (`ITEMS`) decode to damage/AC/usage | V | V | V | `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added`; **SSB decodes to AD&D on 42 of 43 named items**, 30 weapons and 13 armour, through the unmodified decoder against its own `ITEM<nn>` lists — `test_coldread.py::test_a_titles_item_types_decode_to_the_rulebooks_numbers`. The exception is the hammer's damage against large opponents, which SSB stores as 1d4+1 where the other two store the rulebook's 1d4; both are sane dice out of the same three bytes, so it is a data difference and not a misread offset |
 | A13 | inventory edit, add, remove | V | **U** | **U** | `docs/120` blockers: "no Curse save from a *played* party with inventory … no Curse item record has ever been seen" |
-| A14 | combat icon editor and its charset | V | **U** | **U** | `goldbox/icons.py:95` reads `CHARPIC00`; nothing has checked that file exists, or is the same charset, on either later title |
-| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | **U** | **U** | trait codes were read on PoR; `docs/121` §4.1 shows the SSB import re-seeding `0x0AD` from **its own** per-race table, so the codes are per-title |
-| A16 | active effects panel | V | **U** | **U** | `docs/133`; the effect arrays were read at `$4900` in PoR and never looked for elsewhere |
+| A14 | combat icon editor and its charset | V | V | V | `CHARPIC00` is on all twenty sides of the three titles, 2030 bytes every time. **Curse's is Pool of Radiance's byte for byte** (only the PRG load address moves, `$8000` → `$3000`) and **Silver Blades redraws three glyphs of 253** — 132, 133 and 207 — which its own eight-bytes-per-glyph reading takes unchanged. `test_curse.py::test_the_combat_icon_charset_is_pool_of_radiances_byte_for_byte`, `test_silverblades.py::test_the_combat_icon_charset_is_pool_of_radiances_but_for_three_glyphs`. The editor reads the open title's own disks: `editor/window.py:_disk_candidates` globs on `game.disk_glob` |
+| A15 | character traits panel (`0x0AD`–`0x0B6`) | V | V | **X** | The seed tables are found by the read that uses them — `LDX <race> / LDA <table>,X / STA <slot>` — and the number of slots seeded is per title: Pool of Radiance one (`GEN $0BF3`), Curse three (`$24EA`), Silver Blades two (`$0C4B`). **Curse's codes are Pool of Radiance's**, every one landing on the race its name demands. **Silver Blades' are not**: its elf is seeded 95 and its half-elf 18, which read as "fights on from -6 to 0 hit points" and a gnome's bonus against kobolds, so the panel names four of its six races wrongly — #186. `test_coldread.py`, six tests, corroborated on the shipped party |
+| A16 | the four active-effect arrays are read | V | V | V | **This row said "active effects panel" and marked it V for Pool of Radiance; there is no such panel in the program for any title.** `docs/133-active-effects.md` opens "A plan, not a record of work", and the box that carried that title is now `Character Traits`, which is A15. What exists is `automap/live.py:active_effects`, feeding the combat view and the condition badges — and its four payload offsets `$000`, `$040`, `$080`, `$280` and its 64 slots are now measured on all three titles: `CAMP`'s owner-renumber loop is instruction for instruction the same in each with `LDX #$3F`, and `DUNGEON`'s duration tick likewise. `test_coldread.py::test_the_effect_arrays_sit_where_the_save_image_puts_them` and `…::test_camp_renumbers_sixty_four_effect_owners_in_every_title`. **What an id *means* on a later title is not settled** and A15 is a reason to doubt it — see C13 |
 | A17 | an unchanged save writes back byte-identically | V | V | **U** | `test_curse.py::test_the_editor_writes_a_curse_save_back_unchanged`; no SSB equivalent |
 | A18 | YAML export → import → byte-identical disk | V | V | **U** | `test_curse.py::test_a_curse_save_disk_survives_yaml_byte_for_byte`; SSB has no save disk in the tests, only the shipped `SAVEDBASH` party |
 | A19 | a save of one title refuses to import into another | V | V | **U** | `test_curse.py::test_a_curse_party_will_not_import_into_a_pool_of_radiance_disk` and its mirror; SSB in neither direction |
@@ -124,8 +124,22 @@ applicable.
 | | features | V | R | U | X | — |
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
-| Curse of the Azure Bonds | 49 | **24** | 6 | 14 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **16** | 6 | 22 | 0 | 5 |
+| Curse of the Azure Bonds | 49 | **28** | 2 | 14 | 0 | 5 |
+| Secret of the Silver Blades | 49 | **22** | 2 | 19 | 1 | 5 |
+
+**These numbers are counted from the rows above and the previous ones were
+not.** The table said Curse 24 and Silver Blades 16 where the rows read 24 and
+18, and gave both titles six `R` where only C20 and C21 carry one. Counting
+`V (gold only)` under A8 and the two `U, expected broken` cells under C10 and
+C11 as `U`, which is what they are, every row is now in exactly one column and
+each title's five add to 49.
+
+#31 moved eight of them, all by reading files this project already opens:
+A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to
+`V` for Curse, and A16 to `V` for both after the row was corrected to say what
+it is about. A6 and A7 stayed `U` for Silver Blades with every number they need
+measured and written down, because the cells are about what the editor shows
+and `goldbox/levels.py` has no Silver Blades tables to show it from.
 
 Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
 `U` (C12–C14) when #29 and #30 landed, and a third when #21 closed C22. The
@@ -134,8 +148,11 @@ every address they write is the descriptor's now, and the one address that
 cannot be derived, the loader's mode flag, is unmeasured on both titles, so the
 buttons refuse and say so.
 
-**Neither title has an `X` left.** Pool of Radiance's one `U` is the Ultimate
-backend, which nobody can test.
+**Silver Blades has one `X` again**, and it is new information rather than a
+regression: A15's trait codes are not Pool of Radiance's, so the character
+sheet has been naming four of its six races' abilities wrongly all along and
+nobody had looked (#186). Curse has none. Pool of Radiance's one `U` is the
+Ultimate backend, which nobody can test.
 
 **C22 was never what made the live actions safe.** It covers the case the
 window has the title *wrong* -- a machine running a game the disks folder does
@@ -166,18 +183,33 @@ Grouped by what they share, so each group is one sitting.
 
 ### G1 — a cold read of the Curse and Silver Blades disks · no emulator
 
-Closes A9 for Curse; A6, A7, A10 and A12 for Silver Blades; A14, A15 and A16
-for both.
+**Done (#31), six cells of the eight.** `tools/coldread.py` is what it produced
+and `tests/test_coldread.py` is what keeps it true; the six answers are below,
+with the two that did not close.
 
-* `CHARPIC00`: is it on a Curse and a Silver Blades side, and is it byte-identical to Pool of Radiance's? One directory walk. If it differs, the icon editor draws the wrong glyphs and A14 becomes an `X`.
-* `ITEMS`: decode SSB's 128 records and assert the same fields land in range as Curse's — a copy of `test_second_game.py::test_curse_item_types_are_the_same_table_with_ranger_added` with a third column.
-* Spell names: find SSB's table the way Curse's was found in `COMBAT2` — `test_curselevels.py::test_curse_reads_its_names_out_of_combat2` is the recipe.
-* Curse's spellbook width: the `GEN` clear-loop scan that settled it for SSB (`docs/121` §3), run against Curse's `GEN`.
-* Trait codes: the per-race seed table each title indexes at `0x0AD`. SSB's is partly known already — elf 95, half-elf 18 (`docs/121` §4.1).
-* SSB's level tables: experience, THAC0, hit dice, saving throws, ceilings, off the disks. Closes A6 and A7 and is the prerequisite for ever measuring SSB's trainer.
+* `CHARPIC00` — **on all twenty sides of the three titles**, 2030 bytes every
+  time. Curse's is Pool of Radiance's byte for byte and Silver Blades redraws
+  three glyphs of 253. A14 for both.
+* `ITEMS` — **Silver Blades decodes to AD&D on 42 of 43 named items**, against
+  its own `ITEM<nn>` template lists rather than another title's indices, which
+  are renumbered. A12.
+* Spell names — **already done** in `goldbox/spells.py` when this was written,
+  with four tests. A10.
+* Curse's spellbook width — **13, and not from a `GEN` clear loop**, which
+  Curse does not have. `CAMP $2A25` walks spell ids to 100 and indexes the mask
+  at byte 12. A9.
+* Trait codes — **the seeding is per title and so is the namespace.** Curse's
+  codes are Pool of Radiance's; Silver Blades' are not, which makes A15 an `X`
+  for that title and #186 a bug a user can see.
+* The effect arrays — **all four at the same payload offsets in all three**,
+  from `CAMP`'s and `DUNGEON`'s own loops rather than from a shipped party,
+  which is all zeroes. A16, whose row also needed correcting.
 
-All of it is disk reading, all of it skips cleanly when the player has no disks,
-and none of it needs a machine.
+**A6 and A7 did not close, and it is not for want of measurement.** Every
+Silver Blades table those cells need is read and written into the matrix rows
+above, and the saving-throw rule reproduces all six shipped characters. What is
+missing is a `LevelTables` for the title in `goldbox/levels.py`, which is a
+build rather than a read — #187.
 
 ### G2 — thread the save geometry into the live reader · code, no emulator
 
