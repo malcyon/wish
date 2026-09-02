@@ -106,6 +106,20 @@ def _curse_candidates():
              home / "c64", home / "roms", home / "Downloads"]
     out = [r / n for r in roots for n in names]
     out += [_REPO / "work" / "curse", _REPO / "work" / "coab-research" / "disks"]
+    # A rip is often unpacked under a name nobody would guess -- the set on
+    # this machine is `~/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS`, which
+    # matches none of `names` and was found by hand after every Curse test had
+    # been quietly skipping. So also take one level of subdirectory under each
+    # root and under `~/c64/All Games`, and let the `CURSE*.D64` glob in
+    # `curse_dir` decide which of them is real. A test that skips is not a test
+    # that passes, and a suite green because ninety of them skipped has said
+    # nothing.
+    for root in roots + [home / "c64" / "All Games"]:
+        try:
+            out.extend(sorted(child for child in root.iterdir()
+                              if child.is_dir()))
+        except OSError:
+            continue
     return out
 
 
