@@ -105,6 +105,26 @@ $RunFile   = "$Root\winuae-run.txt"     # which winuae64 `start` launched, for w
 $RomKey  = 'HKCU:\Software\Arabuusimiehet\WinUAE'
 $RomDir  = "$Root\Kickstarts\"
 
+# The injector appends to send.log while this script reads it ten times a
+# second, and the two used to collide: Get-Content against an Add-Content
+# writer raised IOException 16344 times in 20000 tight-loop reads, and every
+# collision on the WRITER's side killed the injector outright -- #95. The
+# injector now writes through a handle that shares the file; this reads through
+# one too, so the poll never prints a red error into the caller's output, and
+# a read that fails anyway is a null, which the poll treats as "not yet".
+function Read-SendLog {
+  if (-not (Test-Path $SendLog)) { return $null }
+  try {
+    $fs = New-Object IO.FileStream($SendLog, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+            ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+    try {
+      $r = New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)
+      $text = $r.ReadToEnd()
+    } finally { $fs.Close() }
+  } catch { return $null }
+  return @(($text -split "\r?\n") | Where-Object { $_ -ne '' })
+}
+
 # The claim and the run receipt are `key=value` lines. Not ConvertFrom-StringData,
 # which reads a backslash as an escape -- every path here is a Windows one, and
 # `-s floppy0=C:\Amiga\Disks\...` carries a second `=` as well. Split on the
@@ -720,8 +740,8 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
     # going" then look identical. The extra minute lets Why-NotRun report the
     # scheduler's own reason instead.
     $verdict = {
-      if (-not (Test-Path $SendLog)) { return $null }
-      $tail = Get-Content $SendLog
+      $tail = Read-SendLog
+      if (-not $tail) { return $null }
       $last = $tail | Select-String -Pattern "--- exit (\d+) token=$token" | Select-Object -Last 1
       if ($last) { return @{ code = [int]$last.Matches[0].Groups[1].Value; log = $tail } }
       return $null
@@ -750,7 +770,7 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
           $v = & $verdict
           if (-not $v) {
             "fail winuae-send ended without writing a verdict: $(Why-NotRun 'winuae-send')"
-            Get-Content $SendLog -ErrorAction SilentlyContinue
+            Read-SendLog
             exit 1
           }
         }

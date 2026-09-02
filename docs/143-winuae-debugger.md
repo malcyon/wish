@@ -62,6 +62,14 @@ costs nothing.
 | the machine config | `tools/goldbox-a500.uae`, deployed to `C:\Amiga\configs\` |
 | the guest-side driver | `tools/winuae.ps1` and `tools/winuae-send.ps1`, deployed to `C:\Amiga\` |
 | the check on the driver | `tools/winuae-lanecheck.ps1` — proves one driver cannot destroy another's run, 1.1 |
+| the check on `send` | `tools/winuae-sendcheck.ps1` — provokes the batch that dies half-way, §7 trap 7 |
+
+**The guest's login shell is PowerShell, and it expands `$name` inside double
+quotes before anything you ran gets to see it.** `winvm ssh 'powershell
+-Command "$PSVersionTable"'` reaches the inner PowerShell as
+`System.Collections.Hashtable`. Anything more than a word goes to the guest as
+a file — `winvm scp x.ps1 donald@192.168.123.50:'C:/Amiga/x.ps1'` and then
+`-File` — rather than as a quoted command.
 
 **`winvm ssh` lands in Windows session 0; the VM's screen is session 1.** They
 are different window stations, and the consequences are not cosmetic:
@@ -616,6 +624,51 @@ Six traps, each of which reads as "the route does not work":
    task went back to `Ready` with `LastTaskResult = 1`, and the caller sat for
    the full timeout. Watching the task state as well as the log turns that into
    a five-second failure that quotes how far the injector actually got.
+7. **After `AttachConsole`, the first error PowerShell's host has to print
+   kills the process.** Windows PowerShell 5.1's console host opens its
+   `CONOUT$` handle once, at startup, and keeps it; the injector's
+   `FreeConsole`/`AttachConsole` leaves that handle pointing at a console that
+   no longer exists, and the host does not find out until it has to render
+   something through it — an error, a warning, a progress bar, anything
+   coloured. Then it throws `The Win32 internal error "The handle is invalid"
+   0x6 occurred while getting console output buffer information`, the
+   pipeline stops, the task ends with `LastTaskResult = 1`, no `--- exit` is
+   written, and whatever the batch had left is never typed — the emulator
+   stays halted. That is `#95 (A WinUAE debugger batch can stop half-way
+   through and leave the emulator halted)`, and it was reproduced on
+   2026-09-01 without an emulator at all: a probe that swapped its console
+   and then ran `Write-Warning` died that way 2 of 2 times.
+
+   What raised the error was `send.log` itself. The injector appended to it
+   with `Add-Content` while `winuae.ps1` read it ten times a second with
+   `Get-Content`, and the two do not share the file: a tight-loop test
+   failed 574 of 600 appends with `Stream was not readable`, and an
+   instrumented injector caught 12 of those in 20 real batches. Unguarded,
+   each one went to the host to be printed in red, and that was the death.
+   Stock scripts, 2026-09-01: 4 of 24 four-line batches died, 2 of 12 against
+   a loading emulator and 2 of 12 against a settled one — **so the loading
+   correlation the issue recorded was coincidence**, one observation each
+   way. The batch always stopped at the third line, or at the second `Say`,
+   because the poll and the injector start from the same instant and the
+   collision is periodic rather than random.
+
+   Three things keep it out now, and each was watched on its own. The log is
+   written and read through handles that share the file
+   (`FileShare.ReadWrite|Delete`): 0 collisions in 600 appends against 20,000
+   reads whichever side opened that way, so fixing either side removes the
+   trigger, and both are fixed. The injector makes every error terminating
+   and silences warnings and progress, so nothing reaches the host's renderer.
+   And a `trap` writes anything that still escapes to the log as `died: …`
+   and ends with `--- exit 7`, which the caller reports in under a second;
+   a `Write-Error` planted inside the loop came back as `fail winuae-send
+   exited 7` with the message and line number in the log. Redirecting the
+   host's output does **not** help — `Write-Warning` threw the same 0x6 with
+   stdout and stderr sent to a file, and `AttachConsole` resets the standard
+   handles anyway, which is why the host's error text lands in WinUAE's
+   console. `tools/winuae-sendcheck.ps1` provokes it: 1 of 20 eight-line
+   batches died against the old driver and injector, 0 of 20 against the
+   fixed pair, 0 of 20 with either half fixed alone, and 0 of 24 four-line
+   batches with F11 between each from a fresh start.
 
 The rejected alternative was **`SendKeys` after `AppActivate`**: simpler, and
 fragile in exactly the way that matters, since it depends on window focus.
@@ -835,7 +888,7 @@ memory once §9 has located it.
   own host reported `The handle is invalid` 0x6 into the attached console and
   the injector stopped, leaving the emulator halted with two lines of the batch
   unsent. The caller's no-verdict guard reported it in five seconds rather than
-  waiting out the timeout. Not diagnosed —
+  waiting out the timeout. Diagnosed and fixed on 2026-09-01 — §7 trap 7, and
   `#95 (A WinUAE debugger batch can stop half-way through and leave the
   emulator halted)`
 
@@ -930,6 +983,34 @@ the WinUAE VM, and neither of them can tell)`:
   equal to `tools/` is no longer true. `scp tools/winuae.ps1
   donald@192.168.123.50:'C:/Amiga/'` after any revert, and promote deliberately
   when the overlay holds nothing else you would not want in the baseline
+
+**Checked on the VM itself, 2026-09-01**, for `#95 (A WinUAE debugger batch
+can stop half-way through and leave the emulator halted)` — the detail is §7
+trap 7:
+
+* **PowerShell 5.1's host keeps the `CONOUT$` handle it opened at startup**,
+  and after a console swap its first `Write-Warning` throws the 0x6
+  `HostException` and stops the pipeline: 2 of 2 probes, no emulator involved.
+  Pre-touching `$Host.UI.RawUI` first changed nothing, because the handle is
+  already open by the time the script runs
+* **`Add-Content` and a polling `Get-Content` do not share a file**: 574 of
+  600 appends failed with `Stream was not readable` and 16,344 of 20,000 reads
+  with `IOException`; `[IO.File]::AppendAllText` still lost 20 of 600; a
+  `FileStream` sharing `ReadWrite|Delete` on either side lost 0 of 600 and 0
+  of 20,000
+* **the stock scripts die 4 of 24 batches**, 2 of 12 loading and 2 of 12
+  settled, always at the same `Say` — the loading correlation was coincidence
+* **an instrumented injector that caught its own `Add-Content` error finished
+  20 of 20 batches** and logged 12 `Stream was not readable` across three of
+  them, which is the error that had been reaching the host
+* **redirecting the host's stdout and stderr does not save it** — the warning
+  path queries the screen buffer regardless, and `AttachConsole` resets the
+  standard handles to the new console, which is why the error text appears
+  in WinUAE's own window
+* **the fixed pair: 0 of 20 eight-line batches and 0 of 24 four-line batches
+  with F11 between each**, against 1 of 20 for the old pair under
+  `tools/winuae-sendcheck.ps1`; the planted-error trap came back as
+  `exit 7` with the message and line in the log
 
 **Not checked, and needing a session at the machine:**
 

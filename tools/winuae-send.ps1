@@ -20,6 +20,21 @@
 # The read half is the same trick backwards: ReadConsoleOutputCharacter over
 # the attached screen buffer gives the debugger's own output as text, so a
 # reply never has to be scraped off a screenshot.
+#
+# NOTHING IN HERE MAY LET AN ERROR REACH POWERSHELL'S HOST. Windows PowerShell's
+# console host opens its CONOUT$ handle once, at startup, and keeps it; the
+# FreeConsole/AttachConsole below leaves that handle pointing at a console that
+# no longer exists. The host does not notice until it has to render something
+# through it -- an error, a warning, a progress bar -- and then it throws `The
+# Win32 internal error "The handle is invalid" 0x6 occurred while getting
+# console output buffer information`, the pipeline stops, and the batch is left
+# half-typed with the emulator halted (#95). Measured: 2 of 2 probes died on
+# their first Write-Warning after the swap, and 4 of 24 stock batches died the
+# same way. So errors are made terminating, warnings and progress are silenced,
+# a trap turns anything that still escapes into a logged verdict, and the log
+# is written through a handle that shares the file with the caller polling it,
+# because that poll was the error: Add-Content against a Get-Content reader
+# raised `Stream was not readable` 12 times in 20 batches.
 param(
   [int]$TargetPid,
   [string]$File,
@@ -89,13 +104,54 @@ public static class Con {
 }
 "@
 
-function Say($m) { "$((Get-Date).ToString('HH:mm:ss.fff'))  $m" | Add-Content -Path $Log }
+# See the header: an error record that reaches the host kills the process.
+$ErrorActionPreference   = 'Stop'
+$WarningPreference       = 'SilentlyContinue'
+$ProgressPreference      = 'SilentlyContinue'
+$VerbosePreference       = 'SilentlyContinue'
+$DebugPreference         = 'SilentlyContinue'
+$InformationPreference   = 'SilentlyContinue'
+
+# The caller reads this file ten times a second while it is being written.
+# Add-Content does not share it: against that reader it failed 574 of 600
+# appends in a tight loop and a dozen times across 20 real batches. A stream
+# opened with FileShare.ReadWrite|Delete failed 0 of 600 against the same
+# reader, whichever way the reader opened the file. The retry is for a share
+# mode the reader might one day get wrong; the count is so a lost line is
+# reported rather than silently missing from the caller's account.
+$script:lost = 0
+function Say($m) {
+  $text = "$((Get-Date).ToString('HH:mm:ss.fff'))  $m`r`n"
+  for ($try = 0; $try -lt 5; $try++) {
+    try {
+      $fs = New-Object IO.FileStream($Log, [IO.FileMode]::Append, [IO.FileAccess]::Write,
+              ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+      try {
+        $b = [Text.Encoding]::UTF8.GetBytes($text)
+        $fs.Write($b, 0, $b.Length)
+      } finally { $fs.Close() }
+      return
+    } catch { Start-Sleep -Milliseconds 20 }
+  }
+  $script:lost++
+}
 function LastErr { [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
 # Every path out ends with this line, and winuae.ps1 waits for it. Without a
 # marker the caller cannot tell "still working" from "died before it started".
 # The token is the caller's own, so a log left behind by an earlier run cannot
 # be mistaken for this one's verdict.
-function Finish([int]$code) { Say "--- exit $code token=$Token"; exit $code }
+function Finish([int]$code) {
+  if ($script:lost -gt 0) { Say "--- $script:lost log lines could not be written" }
+  Say "--- exit $code token=$Token"; exit $code
+}
+# Anything that still escapes is written here, by us, and becomes exit 7 --
+# never handed to the host to print. `exit` inside Finish ends the script from
+# inside the trap, so the trap never falls through to the host's own error
+# output, which is the call that dies.
+trap {
+  Say "died: $($_.Exception.GetType().FullName): $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))"
+  Finish 7
+}
 
 $status = 0
 Say "--- pid=$TargetPid file=$File dumponly=$DumpOnly token=$Token"
