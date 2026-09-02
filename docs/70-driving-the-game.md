@@ -143,27 +143,42 @@ stale. Pick the caster there, and the memorised list arrives with row 24 reading
 `BLESS` at the top of his list, which is the shortest route this project has to
 a spell running on the party.
 
-**`select_row` sends no keys at all at that list**, and looks exactly like a
-list that ignores the keyboard. `Screen.highlighted_rows()` with no `column`
-takes each row's *dominant* colour, and on this screen the map view sits beside
-the roster and outvotes it -- so no row answers colour 1, `select_row` finds no
-highlight, and it spins to its whole timeout without pressing anything. Pass
-the column the names start in (`column=17` here) and it works.
+**The roster's highlight is invisible to a scan by dominant colour**, and
+that is why `select_row` used to send no keys at all here.
+`Screen.highlighted_rows()` with no `column` takes each row's *dominant*
+colour, and the map view beside the roster outvotes the six white cells of the
+highlighted name -- so no row answered colour 1, every pass took the
+`continue`, and the whole timeout went by without a keypress, which from
+outside is exactly a list ignoring the keyboard.
+
+Fixed in `select_row` for `#173 (The world menu driver takes the command next
+to the one it was asked for, and the character list it opens ignores it
+entirely)`: a caller that knows its list passes `column`, and one that does not
+gets the label's own column tried when the plain scan finds nothing. Driven on
+slot 1 on 2026-09-01 the fallback said `No row is mostly white; reading the
+highlight in column 17, where ROLAND starts`, walked the highlight from BRUTUS
+to ROLAND and pressed Return -- read out of the colour RAM before and after.
+And when no highlight can be found at all it now says so instead of returning
+`False` off a silent timeout: `ROLAND never appeared on the screen` is what a
+`select_row` aimed at the wrong screen prints.
 
 **The menu timing is too fast for this list.** Three `Down`s at the menu hold
 and gap -- 0.10 s and 0.14 s -- moved the highlight not at all; one at the
 text-entry timing, 0.15 s and 0.30 s, moved it a row. That is one trial each
 and the first burst after a screen change is swallowed anyway, so treat it as
-PROBABLE and use the slower pair at this list.
+PROBABLE and use the slower pair at this list. `select_row` sends at the menu
+timing and reads the highlight back before deciding anything, so a swallowed
+press costs it a pass round the loop rather than a wrong answer.
 
-**`select_bar` can press `Return` on the command next to the one asked for.**
-Asked for `CAST` on the world bar it opened `VIEW`, twice. It reads the bar's
-text from a screen snapshot and the highlight from a **second** monitor
-connection, so the two come from different moments -- which is the fault
-`span_in` and `combat_bar` were written to remove inside a fight and which
-`select_bar` still has outside one. Mechanism PROBABLE, the wrong menu
-CONFIRMED. Read the colour RAM, count the steps and send them yourself where it
-matters.
+**`select_bar` used to press `Return` on the command next to the one asked
+for.** Asked for `CAST` on the world bar it opened `VIEW`, twice. It read the
+bar's text from a screen snapshot and the highlight from a **second** monitor
+connection, so the two came from different moments -- the fault `span_in` and
+`combat_bar` were written to remove inside a fight, still there outside one.
+It now takes both from the one snapshot, and the mechanism is no longer
+PROBABLE: with every keypress instrumented on slot 1, `select_bar("VIEW")` from
+a bar highlighted on `MOVE` sent `Right` then `Return` and BRUTUS's character
+sheet came up.
 
 **Read the position off the status line, not `$49C0`.** The memory copy is real
 and it is what reaches the disk, but it lags a move — reading it straight after
@@ -253,10 +268,12 @@ own colour RAM; `Session.highlight_span` does a second monitor read, so the two
 come from different moments. In a fight the bar is redrawn for every character
 in turn, so the two disagree and the walk goes the wrong way — which is what
 `span_in` and `combat_bar` were written for. **The claim that this never shows
-outside a fight is withdrawn**: `select_bar`, which still reads the highlight
-the old way, opened `VIEW` twice when asked for `CAST` on the world bar
+outside a fight is withdrawn**: `select_bar` read the highlight the old way and
+opened `VIEW` twice when asked for `CAST` on the world bar
 (`#173 (The world menu driver takes the command next to the one it was asked
-for, and the character list it opens ignores it entirely)`).
+for, and the character list it opens ignores it entirely)`). It uses `span_in`
+now, so `combat_bar` and `select_bar` read the highlight the same way and
+`highlight_span` is left with no caller inside `Session` at all.
 
 **The fight is not over when `$6E11` leaves 2.** `THE PARTY HAS WON !`, the
 experience share and any treasure all run afterwards under POST.COM. A driver

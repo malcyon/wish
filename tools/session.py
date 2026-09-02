@@ -560,8 +560,32 @@ class Session:
         Driven by where the highlight is, not by counting from an assumed
         start, because a swallowed keypress otherwise puts every later count
         out by one.
+
+        **`column` is which column the list's names start in**, and on a
+        screen with the map view drawn beside the list it is the difference
+        between working and sending no keys at all (`#173`).
+        `Screen.highlighted_rows()` with no column takes each row's *dominant*
+        colour, and the map view to the left of the in-world roster outvotes
+        the six white cells of the highlighted name -- so no row answers
+        colour 1, every pass takes the `continue`, and the whole timeout goes
+        by without a keypress.  From the outside that is indistinguishable
+        from a list ignoring the keyboard, which is how it was read for
+        several minutes.
+
+        A caller that knows its list passes `column`.  One that does not gets
+        it worked out here: when the dominant-colour scan finds nothing, the
+        label's own column is tried, since the highlighted row is another
+        entry in the same list and so starts where the label starts.  That
+        runs **only** when the plain scan came up empty, so no screen this
+        already drove is driven differently.
+
+        And when neither finds a highlight, this says so rather than
+        returning `False` off a silent timeout that looks exactly like a menu
+        that ignored the keys.
         """
         deadline = time.time() + timeout
+        seen_label = seen_highlight = False
+        fell_back = False
         while time.time() < deadline:
             s = self.screen()
             if s is None:
@@ -569,6 +593,14 @@ class Session:
                 continue
             hit = s.find(label)
             hot = s.highlighted_rows(column=column)
+            if hit is not None and not hot and column is None:
+                hot = s.highlighted_rows(column=hit[1])
+                if hot and not fell_back:
+                    fell_back = True
+                    self.log(f"  No row is mostly white; reading the highlight "
+                             f"in column {hit[1]}, where {label.upper()} starts")
+            seen_label = seen_label or hit is not None
+            seen_highlight = seen_highlight or bool(hot)
             if hit is None or not hot:
                 self.handle_prompt(s)   # a disk prompt can sit over any menu
                 time.sleep(0.3)
@@ -580,10 +612,28 @@ class Session:
                 self.kbd.key("Return")
                 return True
             self.kbd.key("Down" if cur < hit[0] else "Up")
+        if not seen_label:
+            self.log(f"  {label.upper()} never appeared on the screen")
+        elif not seen_highlight:
+            self.log(f"  Found {label.upper()} but no highlighted row, so no "
+                     f"key was sent; pass column= the one the names start in")
+        else:
+            self.log(f"  Could not walk the highlight onto {label.upper()}")
         return False
 
     def select_bar(self, label: str, row: int = 24, timeout=30.0) -> bool:
-        """Horizontal command bar: the highlight is a run of cells, not a row."""
+        """Horizontal command bar: the highlight is a run of cells, not a row.
+
+        **The text and the highlight come from the same snapshot**, which is
+        what `span_in` is for.  `Session.highlight_span` opens a second
+        monitor connection and reads `$D800` again, so the two are readings
+        from different moments -- and this walked the highlight by one of them
+        towards a word found by the other.  Asked for `CAST` on the world's
+        `MOVE VIEW CAST AREA ENCAMP SEARCH LOOK` it pressed Return on `VIEW`,
+        twice, minutes apart, and returned `True` both times (`#173`).  It is
+        the same fault `span_in` and `Session.combat_bar` were written to
+        remove inside a fight, and it was believed not to show outside one.
+        """
         deadline = time.time() + timeout
         while time.time() < deadline:
             s = self.screen()
@@ -591,7 +641,7 @@ class Session:
                 time.sleep(0.3)
                 continue
             col = s.row(row).find(label.upper())
-            span = self.highlight_span(row)
+            span = span_in(s, row)
             if col < 0 or span is None:
                 self.handle_prompt(s)   # a disk prompt can sit over any bar
                 time.sleep(0.3)
@@ -1101,35 +1151,90 @@ class Session:
 
     @staticmethod
     def step_towards(battle, me, target, avoid=()) -> str | None:
-        """The key for the step that gets closest, without walking into an ally.
+        """The first step of the shortest walkable path to the target.
 
-        Aiming straight at the target and pressing that key walks into whoever
-        is in the way, and a step into a party member is a blow like any other
-        -- the game asks `ATTACK ALLY: YES NO` first, which is how this was
-        found (`work/p126/melee.log`).  So the eight squares are ranked by how
-        much closer they get, and any square a party member is standing on is
-        dropped.  An enemy's square is not dropped: stepping onto it is the
-        attack.
+        A breadth-first walk outwards from the target over squares that can
+        actually be stood on, which is the whole reason this is not the
+        obvious "pick the neighbour that gets closest" (`#170`).  Greedy
+        picked the closest square without ever asking `battle.square(x, y)`,
+        so it aimed a character at rock: from `(19,13)` at an orc on
+        `(25,13)`, with the arena's own block at x 20-22, it pressed `KP_6`
+        into `(20,13)` and spent the turn on a key that cannot work.
+        **Impassable terrain is confirmed in the running game**, not inferred
+        from the renderer -- in the `#127` key sweep a press into a code-1
+        square moved nobody and spent no movement.
 
-        `avoid` is the keys already tried this turn that spent no square --
-        a wall, or something else the position table does not show.  Without it
-        a character pinned against one burns its whole turn on the same press.
+        What counts as blocked:
+
+        * any square whose terrain code is nonzero -- rock;
+        * any square a combatant is standing on, **except** the target's own,
+          because stepping onto that is the blow.  That includes other
+          enemies: walking into one attacks it rather than the character this
+          turn is aimed at.
+
+        The character's own square is never blocked, so a path can start.
+
+        `avoid` is the keys already tried this turn that spent no square -- a
+        wall, or something else neither the terrain nor the position table
+        shows.  Without it a character pinned against one burns its whole turn
+        on the same press.
+
+        The second half of `#170` falls out of the same change: greedy passed
+        the turn whenever no neighbour got closer, even when a step sideways
+        would round the obstruction next turn.  Breadth-first walks round it
+        now, and `None` means what it says -- there is no path at all, or
+        every first step on one is in `avoid`.
         """
+        shape = battle.shape
+        start = (me.x, me.y)
+        goal = (target.x, target.y)
+        if goal == start or not shape.holds(*start):
+            return None
+
+        blocked = {(x, y)
+                   for y in range(shape.height) for x in range(shape.width)
+                   if battle.square(x, y)}
+        for c in battle.combatants:
+            if not shape.holds(c.x, c.y):
+                continue
+            if (c.x, c.y) in (start, goal):
+                continue
+            blocked.add((c.x, c.y))
+
+        # Outwards from the target, so every square learns its distance to it
+        # in one sweep and the first step is a lookup rather than a search.
+        dist = {goal: 0}
+        frontier = [goal]
+        while frontier:
+            nxt = []
+            for at in frontier:
+                for dx, dy in STEP_KEYS:
+                    sq = (at[0] + dx, at[1] + dy)
+                    if sq in dist or not shape.holds(*sq) or sq in blocked:
+                        continue
+                    dist[sq] = dist[at] + 1
+                    nxt.append(sq)
+            frontier = nxt
+
+        here = dist.get(start)
         best = None
         for (dx, dy), key in STEP_KEYS.items():
             if key in avoid:
                 continue
-            x, y = me.x + dx, me.y + dy
-            if not battle.shape.holds(x, y):
+            sq = (me.x + dx, me.y + dy)
+            if not shape.holds(*sq) or sq in blocked:
                 continue
-            who = battle.at(x, y)
-            if who is not None and who.is_party:
+            d = dist.get(sq)
+            if d is None:
                 continue
-            reach = max(abs(target.x - x), abs(target.y - y))
-            if best is None or reach < best[0]:
-                best = (reach, key)
-        if best is None or best[0] >= chebyshev(me, target):
-            # Every step either blocked or no better than standing still.
+            # Ties on path length go to the square that is physically nearest,
+            # which keeps the open-arena answers the greedy ones.
+            score = (d, max(abs(target.x - sq[0]), abs(target.y - sq[1])))
+            if best is None or score < best[0]:
+                best = (score, key)
+        if best is None:
+            return None
+        if here is not None and best[0][0] >= here:
             return None
         return best[1]
 

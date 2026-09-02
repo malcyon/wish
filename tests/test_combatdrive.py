@@ -54,7 +54,7 @@ from session import (  # noqa: E402
     word_column,
 )
 
-from automap import combat  # noqa: E402
+from automap import combat, screen  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402
 
 COLS = 40
@@ -854,28 +854,82 @@ def test_a_step_that_costs_nothing_is_not_tried_twice():
 def test_a_character_boxed_in_by_its_own_party_passes_its_turn():
     """The 638-turn stall, and the whole of why it never ended.
 
-    PHINEAS at (26,11) had orcs two squares south and three party members on
-    every square between.  `step_towards` was right to find nothing -- but
-    taking MOVE and backing out does not end a turn, so the same command bar
-    came back and the driver did it again for the whole 420-second budget with
-    not one blow struck (`work/p126/melee3.log`).  A turn that cannot attack
-    has to be passed.
+    PHINEAS at (26,11) had orcs two squares south and party members between.
+    `step_towards` was right to find nothing -- but taking MOVE and backing
+    out does not end a turn, so the same command bar came back and the driver
+    did it again for the whole 420-second budget with not one blow struck
+    (`work/p126/melee3.log`).  A turn that cannot attack has to be passed.
+
+    **Every one of the eight squares is shut here**, which is a change of
+    fixture rather than of guarantee (`#170`).  Three friends on the squares
+    that got closer used to be enough, because greedy ranked the neighbours
+    by distance and gave up when none of them helped -- and that answer was a
+    statement about the implementation, not about the turn: the character
+    could have walked round.  Breadth-first does walk round, so a test of
+    "the turn is passed" has to shut every way out.
+
+    It takes rock as well as friends: a party holds eight, so seven friends
+    is the most there can ever be and one side has to be the map's.  BRUTUS
+    stands at (23,13) against the arena's own block at x 20-22, with five
+    friends on the five open squares.
+    """
+    b = combat.read_battle(MemoryTarget(synthetic_arena()))
+    orc = b.enemies[0]
+    me = dataclasses.replace(b.party[0], x=23, y=13)
+    shut = [(23, 12), (23, 14), (24, 12), (24, 13), (24, 14)]
+    assert all(b.square(22, y) != 0 for y in (12, 13, 14))   # rock, west
+    walls = [dataclasses.replace(me, index=i, x=x, y=y)
+             for i, (x, y) in enumerate(shut, start=1)]
+    boxed = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+                          combatants=(me,) + tuple(walls) + (orc,))
+    assert Session.step_towards(boxed, me, orc) is None
+
+    sess = ArenaSession(boxed, me.name, steps=3, highlight="DONE")
+    assert sess.melee_turn(sess.combat_state()) == "DONE"
+    assert sess.kbd.sent == ["Return"]           # DONE, and no MOVE at all
+
+
+def test_a_character_walks_round_the_friends_in_the_way_rather_than_stopping():
+    """Three friends on every square that gets closer is not boxed in.
+
+    BRUTUS at (25,13), the orc at (30,13), and party members on (26,12),
+    (26,13) and (26,14) -- the formation that pinned PHINEAS.  Greedy ranked
+    the eight neighbours by distance, found none of the open ones closer, and
+    passed the turn.  Breadth-first sees that (25,12) is one square further
+    along a path that exists, so it steps north and rounds them next turn.
     """
     b = combat.read_battle(MemoryTarget(synthetic_arena()))
     me, enemy = b.party[0], b.enemies[0]
-    # Only the squares that get closer need blocking, which is exactly what
-    # the party formation did to PHINEAS: three friends between him and the
-    # orcs.  BRUTUS is at (25,13) and the orc at (30,13), so the three are
-    # (26,12), (26,13) and (26,14).
     walls = [dataclasses.replace(me, index=i, x=me.x + 1, y=me.y + dy)
              for i, dy in enumerate((-1, 0, 1), start=1)]
     penned = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
                            combatants=(me,) + tuple(walls) + (enemy,))
-    assert Session.step_towards(penned, me, enemy) is None
+    assert Session.step_towards(penned, me, enemy) == "KP_8"
 
-    sess = ArenaSession(penned, me.name, steps=3, highlight="DONE")
-    assert sess.melee_turn(sess.combat_state()) == "DONE"
-    assert sess.kbd.sent == ["Return"]           # DONE, and no MOVE at all
+
+def test_a_step_is_never_taken_into_rock():
+    """The defect `#170` is named for: a key pressed into terrain.
+
+    `tests/gamedata.py`'s arena carries a block of impassable squares at
+    x 20-22, y 11-15.  Put a character at (19,13) and an orc at (25,13) and
+    the straight line east runs into it: greedy pressed `KP_6` into (20,13),
+    which in the running game moves nobody and spends no movement.  The step
+    has to be one whose square can be stood on, and one that a path to the
+    orc actually runs through.
+    """
+    b = combat.read_battle(MemoryTarget(synthetic_arena()))
+    me, enemy = b.party[0], b.enemies[0]
+    west = dataclasses.replace(me, x=19, y=13)
+    far = dataclasses.replace(enemy, x=25, y=13)
+    walled = combat.Battle(shape=b.shape, terrain=b.terrain, camera=b.camera,
+                           combatants=(west, far))
+    assert b.square(20, 13) != 0                 # the rock is really there
+    assert b.square(19, 12) == 0                 # and the way round is not
+
+    key = Session.step_towards(walled, west, far)
+    assert key == "KP_8"
+    dx, dy = next(d for d, k in STEP_KEYS.items() if k == key)
+    assert b.square(west.x + dx, west.y + dy) == 0
 
 
 def test_passing_a_turn_takes_done_and_then_guard():
@@ -1183,3 +1237,193 @@ def test_a_step_whose_count_lags_is_not_taken_for_one_that_failed():
     sess = LaggingCount(b, me.name, steps=2)
     assert sess.melee_turn(sess.combat_state()) == "MOVE"
     assert sess.kbd.sent == ["Return", "KP_6", "KP_6"]
+
+
+# -- the world menus (#173) -------------------------------------------------
+#
+# These use the real `automap.screen.Screen` rather than `FakeScreen`, because
+# what is under test is `Screen.highlighted_rows` and `span_in` reading the
+# same bytes the game leaves -- a fake that reimplemented either would agree
+# with the code by construction.
+
+def _screen_codes(text: str) -> int:
+    """One character as the C64 screen code the game would have written."""
+    return ord(text) - 64 if "A" <= text <= "Z" else ord(text)
+
+
+def real_screen(rows: dict[int, str], colours: dict[int, str],
+                ground: int = 5) -> screen.Screen:
+    """A `Screen` from text rows and a per-cell colour map.
+
+    `colours` is one string per row, a hex digit per column, padded with
+    `ground` -- so a highlight is written where it is seen rather than as a
+    span somebody worked out.
+    """
+    codes = bytearray(0x20 for _ in range(ROWS * COLS))
+    cram = bytearray(ground for _ in range(ROWS * COLS))
+    for r, text in rows.items():
+        for i, ch in enumerate(text[:COLS]):
+            codes[r * COLS + i] = _screen_codes(ch)
+    for r, text in colours.items():
+        for i, ch in enumerate(text[:COLS]):
+            cram[r * COLS + i] = int(ch, 16)
+    return screen.Screen(bytes(codes), bytes(cram), 0xCC00)
+
+
+WORLD_BAR = "MOVE VIEW CAST AREA ENCAMP SEARCH LOOK"
+
+
+class WorldBar(Session):
+    """The world command bar, with colour RAM that answers from another moment.
+
+    `Session.highlight_span` opens a **second** monitor connection and reads
+    `$D800` again, so where it says the highlight is has nothing to do with
+    the snapshot the text came from.  Here it is stuck on `CAST` while the
+    highlight really sits on `MOVE`, which is the shape of what `#173` saw:
+    `select_bar("CAST")` pressed Return at once and opened `VIEW`.
+    """
+
+    def __init__(self, on: str = "MOVE", stale: str = "CAST"):
+        self.words = WORLD_BAR.split(" ")
+        self.on = self.words.index(on)
+        self.stale = stale
+        self.kbd = FakeKeyboard(self)
+        self.taken: str | None = None
+
+    def _span(self, word: str) -> tuple[int, int]:
+        col = word_column(WORLD_BAR, word)
+        return col, col + len(word) - 1
+
+    def screen(self):
+        lo, hi = self._span(self.words[self.on])
+        cram = "5" * lo + "1" * (hi - lo + 1)
+        return real_screen({24: WORLD_BAR}, {24: cram})
+
+    def colours(self, row: int | None = None) -> bytes:
+        """The second read, and it is stuck where it is."""
+        lo, hi = self._span(self.stale)
+        out = bytearray(5 for _ in range(COLS))
+        for i in range(lo, hi + 1):
+            out[i] = 1
+        return bytes(out)
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def step(self):
+        key = self.kbd.sent[-1]
+        if key == "Right":
+            self.on = min(self.on + 1, len(self.words) - 1)
+        elif key == "Left":
+            self.on = max(self.on - 1, 0)
+        elif key == "Return":
+            self.taken = self.words[self.on]
+
+
+def test_the_command_taken_is_the_one_the_highlight_is_really_on():
+    """`select_bar("CAST")` opened `VIEW`, twice, minutes apart (`#173`).
+
+    The bar's text came from a screen snapshot and its highlight from a
+    separate monitor read, so the walk was steered by one reading towards a
+    word found in another.  It returned `True` both times, so nothing upstream
+    could tell: the next screen is a character list either way, and the
+    difference only shows one keypress later.
+    """
+    sess = WorldBar(on="MOVE", stale="CAST")
+    assert sess.select_bar("CAST", timeout=5) is True
+    assert sess.kbd.sent == ["Right", "Right", "Return"]
+    assert sess.taken == "CAST"
+
+
+def test_the_highlight_a_stale_colour_read_reports_is_not_believed():
+    """The same fault the other way up: the second read says the highlight is
+    somewhere the walk has to leave, and the snapshot says it is already
+    there.  Take the snapshot's answer and press Return once."""
+    sess = WorldBar(on="ENCAMP", stale="MOVE")
+    assert sess.select_bar("ENCAMP", timeout=5) is True
+    assert sess.kbd.sent == ["Return"]
+    assert sess.taken == "ENCAMP"
+
+
+ROSTER = {"ROLAND": 10, "BRUTUS": 11, "PHINEAS": 12}
+ROSTER_COLUMN = 17
+
+
+class WorldRoster(Session):
+    """The in-world character list, with the map view drawn beside it.
+
+    The map fills columns 0 to 15 of the same rows the names are on, in the
+    map's own colour, and there is a great deal more of it than there is of a
+    six-letter name -- so `Screen.highlighted_rows()` with no column, which
+    takes each row's *dominant* colour, answers that no row is highlighted at
+    all.  `select_row` then took its `continue` every pass and reached its
+    whole 30-second deadline **without pressing anything**, which from outside
+    is exactly what a list ignoring the keyboard looks like (`#173`).
+    """
+
+    MAP = "................" # columns 0-15, and it outvotes the name
+
+    def __init__(self, on: str = "ROLAND", drawn: bool = True):
+        self.on = on
+        self.drawn = drawn          # is the map view beside the list?
+        self.kbd = FakeKeyboard(self)
+        self.taken: str | None = None
+
+    def screen(self):
+        rows, colours = {}, {}
+        for name, r in ROSTER.items():
+            text = (self.MAP if self.drawn else " " * 16) + " " + name
+            rows[r] = text
+            cram = ("3" * 16 if self.drawn else "5" * 16) + "5"
+            cram += ("1" if name == self.on else "5") * len(name)
+            colours[r] = cram
+        return real_screen(rows, colours)
+
+    def handle_prompt(self, s=None):
+        return False
+
+    def step(self):
+        order = list(ROSTER)
+        key = self.kbd.sent[-1]
+        at = order.index(self.on)
+        if key == "Down":
+            self.on = order[min(at + 1, len(order) - 1)]
+        elif key == "Up":
+            self.on = order[max(at - 1, 0)]
+        elif key == "Return":
+            self.taken = self.on
+
+
+def test_a_character_list_with_the_map_beside_it_is_still_driven():
+    """No key was sent at all before this, for the whole timeout (`#173`).
+
+    Driving the same list by hand with `key Down` moved it immediately, so
+    the list was reading the keyboard perfectly well; what could not read
+    anything was the driver.
+    """
+    sess = WorldRoster(on="ROLAND")
+    assert sess.screen().highlighted_rows() == []       # the map outvotes it
+    assert sess.select_row("PHINEAS", timeout=5) is True
+    assert sess.kbd.sent == ["Down", "Down", "Return"]
+    assert sess.taken == "PHINEAS"
+
+
+def test_a_list_with_no_map_beside_it_is_driven_the_way_it_always_was():
+    """The screens `boot` and `load_save` drive have no map on them, and the
+    dominant-colour scan finds their highlight.  The column fallback must not
+    be what drives those: it never runs, because the scan answered."""
+    sess = WorldRoster(on="ROLAND", drawn=False)
+    assert sess.screen().highlighted_rows() == [ROSTER["ROLAND"]]
+    assert sess.select_row("BRUTUS", timeout=5) is True
+    assert sess.kbd.sent == ["Down", "Return"]
+
+
+def test_a_list_whose_highlight_cannot_be_found_says_so(capsys):
+    """A silent timeout and a menu that ignored the keys look identical from
+    outside, and one of them was read for the other for several minutes."""
+    sess = WorldRoster(on=None)                 # nothing is highlighted at all
+    assert sess.select_row("ROLAND", timeout=1.0) is False
+    assert sess.kbd.sent == []
+    said = capsys.readouterr().out
+    assert "ROLAND" in said and "no highlighted row" in said
+    assert said[:1] == said[:1].upper()
