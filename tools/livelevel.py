@@ -63,9 +63,9 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description="Raise a character's level on a running emulator, by "
                     "replaying what the training hall writes.")
-    ap.add_argument("--port", type=int, default=6502, metavar="N",
-                    help="the binary monitor to drive (default: %(default)s, "
-                         "the human's; a pool slot prints its own)")
+    ap.add_argument("--port", type=int, required=True, metavar="N",
+                    help="the binary monitor to drive; a pool slot prints its "
+                         "own. Required, and 6502/6510/6600 are refused")
     ap.add_argument("--name", default="", metavar="WHO",
                     help="the character to raise, by the name the game shows")
     ap.add_argument("--levels", type=int, default=1, metavar="N",
@@ -79,6 +79,20 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="print the party and write nothing")
     args = ap.parse_args(argv[1:])
+
+    # **Donald's own ports, and this tool writes.** `CLAUDE.md` is flat about
+    # 6502, 6510 and 6600: anything listening there is a game a human started
+    # from the desktop menu -- do not attach, do not probe. The read-only
+    # tools beside this one default to 6502 and are harmless doing it; this
+    # one puts experience into a character and forces a level-up, so the same
+    # default would mean one forgotten flag corrupts a save somebody is in the
+    # middle of playing. `--port` is required rather than defaulted, and these
+    # three are refused outright: no version of this tool's job wants them.
+    if args.port in (6502, 6510, 6600):
+        print(f"Port {args.port} is the human's own game, and this tool "
+              f"writes to it. Claim a pool slot and pass the port it prints.",
+              file=sys.stderr)
+        return 2
 
     target = ViceTarget(host="127.0.0.1", port=args.port)
     try:

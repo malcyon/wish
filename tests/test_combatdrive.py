@@ -1426,4 +1426,10 @@ def test_a_list_whose_highlight_cannot_be_found_says_so(capsys):
     assert sess.kbd.sent == []
     said = capsys.readouterr().out
     assert "ROLAND" in said and "no highlighted row" in said
-    assert said[:1] == said[:1].upper()
+    # `.strip()`, and the reason is worth the line: `select_row` indents its
+    # log two spaces, so `said[:1]` is a space -- and `" " == " ".upper()` is
+    # true whatever follows it. The assertion read like a capitalisation guard
+    # and could not fail. CLAUDE.md's rule covers what the CLI prints, so the
+    # first letter of the sentence is the thing to look at.
+    first = said.strip()[:1]
+    assert first.isupper(), f"The line opens lowercase: {said.strip()[:60]!r}"
