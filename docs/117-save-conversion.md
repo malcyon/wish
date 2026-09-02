@@ -380,6 +380,52 @@ ranger grant table `tests/test_silverblades.py` reads mechanically out of the
 spellbook `0x071` bytes into a 439-byte record. Its two clerics hold the
 cleric grant's levels 1–4 the same way.
 
+### The container, per title
+
+`goldbox/dos_savegame.py`'s `SAVE_SHAPES` is the record table's sibling and
+works the same way: a title is a row of region widths, and the widths have to
+add up to the size the file is or the row raises at import.
+[`141-dos-savegame.md`](141-dos-savegame.md) has the region map and the
+evidence; the short version is that **all four containers end the same way and
+differ only in front of that**.
+
+| | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
+|---|---|---|---|---|
+| file | `SAVGAM?.DAT` 13137 | `SAVGAM?.DAT` 13149 | `SAVGAM?.DAT` 5469 | `SAVGAM?.PTY` 1364 + `VAULT?.DAT` 12 |
+| undecoded head | — | — | — | **1024** |
+| container-number byte | 1 | 1 | 1 | — |
+| ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — |
+| staged `ECL<n>.DAX` script | 7680 | 7680 | — | — |
+| unnamed, before the square | — | 12 | 12 | 4 |
+| square block, ending in the party size | 8 | 8 | 8 | 8 |
+| six 41-byte `CHRDAT` entries | 246 | 246 | 246 | 246 |
+| UI scratch | 82 | 82 | 82 | 82 |
+
+**Silver Blades stages no script, and that is the whole of why its save is
+less than half the size.** Its own scripts are no smaller — its largest
+`ECL<n>.DAX` block is 7678 bytes against Pool of Radiance's 7679 — so the
+engine reloads them from the container instead of carrying them in the save.
+That matters to a conversion: writing the target area's script into the
+buffer is the one write in the recipe for moving a Pool of Radiance save to
+another area that needs the player's own game files, and Silver Blades and
+Pools of Darkness would not need it at all.
+
+**Curse and Silver Blades share Pool of Radiance's variable array**, at the
+same file offset and the same ECL addresses — CONFIRMED on the four
+containers by two readings 1602 words apart: `$5012` equals the header byte
+(2 and 2 in Curse, 1 and 1 in Silver Blades) and `$503E` equals the party-size
+byte (6 in both). `$49E6`, the indoors flag, reads 1 in all four.
+
+**Pools of Darkness' first 1024 bytes are undecoded.** No header byte, and
+neither `$5012` nor `$503E` is at any offset under Pool of Radiance's origin.
+Five nonzero bytes in the whole region, because the shipped container is a
+party that has never been played.
+
+**The size names the shape, not the game.** Treasures of the Savage Frontier
+writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
+that Pools of Darkness does, with the same 328-byte tail; only the directory
+says which game a file came from.
+
 ### What the other three titles cost to *convert*, which is not the same thing
 
 Reading is per title and now works for all four. **Converting is Pool of

@@ -779,8 +779,21 @@ class DosShapeError(ValueError):
 def shape_for(what: "int | str | DosShape") -> DosShape:
     """The shape for a record size, a key, or a shape.
 
-    The size is enough on its own -- no two of the four are the same length --
-    which is what lets a reader identify a file it was handed with no title.
+    **The size names the shape, and among these four it names the title too**
+    -- no two of the four are the same length -- which is what lets a reader
+    identify a file it was handed with no title.
+
+    It does not name the title beyond them, and the machine that holds these
+    archives holds the counter-example (#53).  Treasures of the Savage
+    Frontier's fourteen shipped records are **510 bytes and read straight
+    through the Pools of Darkness table**: 14 of 14 rebuild byte for byte and
+    14 of 14 balance the encumbrance identity, on characters carrying real
+    items, 400 to 1413.  Gateway to the Savage Frontier's twelve `.GUY`
+    exports are **422 bytes and read through the Curse table** -- 12 of 12
+    rebuild, and 11 of 12 balance once its `.SWG` file is read as the item
+    file (KAUNAS is 10 over and is not diagnosed).  Neither is a title this
+    project reads, and neither has a row here; what they establish is that a
+    size answers "which shape", and only the directory answers "which game".
     """
     if isinstance(what, DosShape):
         return what

@@ -5,9 +5,10 @@ the saved game around it, the DOS counterpart of `docs/30-savegame-layout.md`.
 Everything here was established by differential analysis in DOSBox: twelve
 specimens -- Donald's own slots A, B and J, four saves taken one action
 apart, two engine resaves of converted parties, and three saves made on the
-overland travel map by playing there (#59's outdoor pass, `work/p59-outdoor`).  The Curse and Secret
-file sizes above are a spot check and are PROBABLE at best; the five-region
-map is Pool of Radiance's.  `docs/141-dos-savegame.md` is the prose
+overland travel map by playing there (#59's outdoor pass, `work/p59-outdoor`).
+The five-region map below is Pool of Radiance's; the other three titles are
+`SAVE_SHAPES`, one row of region widths each, and what is graded there is
+graded there.  `docs/141-dos-savegame.md` is the prose
 form; `docs/50-experiments.md` "Mapping the DOS saved game" is the reasoning.
 
 The file, in five regions
@@ -42,6 +43,7 @@ The file, in five regions
 """
 from __future__ import annotations
 
+import dataclasses
 import struct
 
 
@@ -68,7 +70,8 @@ class DaxError(DosSaveError):
 SAVGAM_SIZE = 13137          # Pool of Radiance; Curse is 13149, Secret 5469,
                              # and Pools of Darkness has no SAVGAM?.DAT at all
                              # -- 1364 bytes of SAVGAM?.PTY beside a 12-byte
-                             # VAULT?.DAT (#53). Only this one is decoded.
+                             # VAULT?.DAT (#53). All four are in SAVE_SHAPES;
+                             # only this one is decoded to the field.
 DAX_NUMBER = 0               # byte 0: which GEO/ECL container holds the area
 VAR_BASE = 0x4900
 VAR_WORDS = 2560             # $4900-$52FF
@@ -116,6 +119,164 @@ PARTY_TABLE = 12809          # six entries of 41 bytes
 PARTY_ENTRY = 41
 PARTY_ENTRIES = 6
 PARTY_NAME_LEN = 9           # length byte + up to 8 of "CHRDAT<letter><n>"
+#: The trailing menu-text and heap scratch after the six character entries.
+#: The same 82 bytes in all four titles, and it really is text scratch: it
+#: holds `Camp: ` in a Pool of Radiance save and `Choose a FUNCTION` in a
+#: Silver Blades one.
+UI_SCRATCH = 82
+
+
+# ---------------------------------------------------------------------------
+# The container, per title (#53)
+# ---------------------------------------------------------------------------
+#: One title's saved-game container, as a run of region widths (#53).
+#:
+#: `goldbox/dos_layout.py`'s `DosShape` is this table's sibling and the same
+#: idea: a title is **a row of widths**, not a branch, and the widths have to
+#: add up to the size the file actually is or the row raises at import.
+#:
+#: What all four share is the last 328 bytes: an eight-byte square block whose
+#: last byte is the party size, six 41-byte character entries, and 82 bytes of
+#: UI scratch.  What they differ in is everything in front of that.
+#:
+#: Measured against **eleven containers** -- Donald's played Pool of Radiance
+#: A/B/J out of the Steam `SavesDir`, the archives' own Pool of Radiance A/B,
+#: Curse A/B, Silver Blades A/B and Pools of Darkness A/B -- deduplicated on
+#: their bytes, because the archives ship most save directories twice and for
+#: three of the four titles the copies are identical.
+#: `tools/dossavgam.py` is what surveys them and `docs/141-dos-savegame.md`
+#: is the prose.
+@dataclasses.dataclass(frozen=True)
+class DosSaveShape:
+    """One title's `SAVGAM<slot>` file, as widths rather than offsets."""
+
+    key: str
+    title: str
+    size: int
+    #: `.DAT` for the first three; Pools of Darkness writes `.PTY` and keeps
+    #: a 12-byte `VAULT<slot>.DAT` beside it, all zero in both specimens.
+    suffix: str = ".DAT"
+    #: Bytes before the header byte that nothing here has decoded.
+    head: int = 0
+    #: 1 where byte `head` is the area's `.DAX` container number, 0 where the
+    #: file has no such byte.
+    dax_bytes: int = 1
+    #: `u16le` ECL variables from `$4900` up.
+    var_words: int = VAR_WORDS
+    #: The staged `ECL<n>.DAX` script, or 0 where the title does not stage one.
+    script_bytes: int = ECL_BUFFER[1] - ECL_BUFFER[0]
+    #: Bytes between the script buffer and the square block that no specimen
+    #: has explained.  Zero in Pool of Radiance.
+    unnamed: int = 0
+
+    def __post_init__(self) -> None:
+        total = (self.head + self.dax_bytes + 2 * self.var_words
+                 + self.script_bytes + self.unnamed + 8
+                 + PARTY_ENTRIES * PARTY_ENTRY + UI_SCRATCH)
+        if total != self.size:
+            raise DosSaveError(
+                f"{self.key}: the region widths add up to {total} bytes, not "
+                f"the {self.size} the file is")
+
+    @property
+    def var_offset(self) -> "int | None":
+        """File offset of the word for `$4900`, or None where there is none."""
+        return self.head + self.dax_bytes if self.var_words else None
+
+    @property
+    def script_buffer(self) -> "tuple[int, int] | None":
+        """Where the staged script sits, or None where none is staged."""
+        if not self.script_bytes:
+            return None
+        start = self.head + self.dax_bytes + 2 * self.var_words
+        return start, start + self.script_bytes
+
+    @property
+    def square(self) -> int:
+        """The eight-byte square block; its last byte is the party size."""
+        return self.size - UI_SCRATCH - PARTY_ENTRIES * PARTY_ENTRY - 8
+
+    @property
+    def party_table(self) -> int:
+        return self.square + 8
+
+
+#: Pool of Radiance, 13137 bytes.  Every offset above is this row's.
+SAVE_POOL_OF_RADIANCE = DosSaveShape(
+    key="pool-of-radiance", title="Pool of Radiance", size=13137)
+
+#: Curse of the Azure Bonds, 13149.  **The same file as Pool of Radiance's
+#: with twelve more bytes in front of the square block**, and the variable
+#: array is at the same offset holding the same ECL addresses: `$5012` equals
+#: the header byte (2 and 2), `$503E` is the party size (6 and 6) and `$49E6`
+#: is the indoors flag (1 and 1) in both specimens.  The twelve bytes read
+#: `07 0d 00 00 00 00 00 00 00 01 00 ff` in A and B alike; what they are is
+#: UNKNOWN and a played save would say.
+SAVE_CURSE_OF_THE_AZURE_BONDS = DosSaveShape(
+    key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
+    size=13149, unnamed=12)
+
+#: Secret of the Silver Blades, 5469 -- and the reason it is less than half
+#: the size is that **it stages no script**.  Its variable array is Pool of
+#: Radiance's, at the same offset with the same three addresses reading the
+#: same way; what is missing is the 7680-byte ECL text buffer, and the same
+#: twelve unnamed bytes Curse has sit where it would have ended.  Silver
+#: Blades' own scripts are no smaller -- its largest `ECL<n>.DAX` block is
+#: 7678 bytes against Pool of Radiance's 7679 -- so the engine reloads them
+#: from the container rather than carrying them in the save.
+SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
+    key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
+    size=5469, script_bytes=0, unnamed=12)
+
+#: Pools of Darkness, 1364 bytes of `SAVGAM<slot>.PTY` and a 12-byte
+#: `VAULT<slot>.DAT` that is all zero in both specimens.  Its last 328 bytes
+#: are the other three titles' -- the square block ending in a party size of
+#: 6, six 41-byte `CHRDAT` entries, 82 bytes of UI scratch -- with four
+#: unnamed bytes of its own in front of them, where Curse and Silver Blades
+#: have twelve and Pool of Radiance none.
+#: **Everything before that is undecoded**: 1024 bytes holding five nonzero
+#: bytes between them, with no header byte and no variable array at Pool of
+#: Radiance's addresses.  `$5012` and `$503E` are not there under any origin
+#: tried.
+SAVE_POOLS_OF_DARKNESS = DosSaveShape(
+    key="pools-of-darkness", title="Pools of Darkness", size=1364,
+    suffix=".PTY", head=1024, dax_bytes=0, var_words=0, script_bytes=0,
+    unnamed=4)
+
+SAVE_SHAPES: "tuple[DosSaveShape, ...]" = (
+    SAVE_POOL_OF_RADIANCE, SAVE_CURSE_OF_THE_AZURE_BONDS,
+    SAVE_SECRET_OF_THE_SILVER_BLADES, SAVE_POOLS_OF_DARKNESS)
+SAVE_SHAPES_BY_KEY = {s.key: s for s in SAVE_SHAPES}
+SAVE_SHAPES_BY_SIZE = {s.size: s for s in SAVE_SHAPES}
+
+
+def save_shape_for(what: "int | str | DosSaveShape") -> DosSaveShape:
+    """The container shape for a size, a title key, or a shape.
+
+    **The size names the shape, not the title.**  Treasures of the Savage
+    Frontier writes a 1364-byte `SAVGAM<slot>.PTY` and a 12-byte
+    `VAULT<slot>.DAT` beside it, exactly as Pools of Darkness does, and its
+    two shipped containers carry the same tail -- six `CHRDAT` entries 41
+    bytes apart, a party size of 6, 82 bytes of UI scratch.  So a 1364-byte
+    file is answered with the Pools of Darkness row and a caller that needs
+    to know *which game* has to look at where the file came from (#53).
+    """
+    if isinstance(what, DosSaveShape):
+        return what
+    if isinstance(what, int):
+        try:
+            return SAVE_SHAPES_BY_SIZE[what]
+        except KeyError:
+            raise DosSaveError(
+                f"{what} bytes is no DOS Gold Box saved game; the four this "
+                f"project reads are "
+                f"{', '.join(str(n) for n in sorted(SAVE_SHAPES_BY_SIZE))}"
+            ) from None
+    try:
+        return SAVE_SHAPES_BY_KEY[what]
+    except KeyError:
+        raise DosSaveError(f"no DOS title keyed {what!r}") from None
+
 
 # -- the named VM variables --------------------------------------------------
 TRAVEL_X = 0x49C3            # the overland square, window-local, live only
@@ -149,34 +310,63 @@ VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
 ECL_SHARED_LAST = FLAGS_LAST
 
 
-def word_offset(address: int) -> int:
-    """File offset of the VM word for an ECL address."""
-    if not VAR_BASE <= address < VAR_BASE + VAR_WORDS:
+def word_offset(address: int, shape: "DosSaveShape | None" = None) -> int:
+    """File offset of the VM word for an ECL address.
+
+    The default shape is Pool of Radiance's, whose array Curse and Silver
+    Blades share offset for offset -- see `SAVE_CURSE_OF_THE_AZURE_BONDS`.
+    Pools of Darkness has no array here at all and raises.
+    """
+    shape = shape or SAVE_POOL_OF_RADIANCE
+    if not shape.var_words:
+        raise DosSaveError(
+            f"a {shape.title} saved game holds no ECL variable array")
+    if not VAR_BASE <= address < VAR_BASE + shape.var_words:
         raise DosSaveError(f"${address:04X} is outside the variable space")
-    return VAR_OFFSET + 2 * (address - VAR_BASE)
+    return shape.var_offset + 2 * (address - VAR_BASE)
+
+
+def _shaped(save: bytes, shape: "DosSaveShape | None" = None) -> DosSaveShape:
+    """The title this buffer is, refusing one that is no title's size.
+
+    Every accessor here reads an offset a shape computes, so a buffer of the
+    wrong length would read somebody else's region and hand back a plausible
+    number.  Four sizes, four shapes -- 13137, 13149, 5469, 1364 -- and see
+    `save_shape_for` for why that is a shape rather than a title.
+    """
+    if shape is None:
+        return save_shape_for(len(save))
+    shape = save_shape_for(shape)
+    if len(save) != shape.size:
+        raise DosSaveError(
+            f"a {shape.title} saved game is {shape.size} bytes; this is "
+            f"{len(save)}")
+    return shape
 
 
 def _whole(save: bytes) -> bytes:
-    """Refuse a truncated buffer before indexing a fixed offset into it.
+    """Refuse a buffer that is not a Pool of Radiance saved game.
 
-    Every accessor here reads an offset established for a 13137-byte Pool of
-    Radiance save.  Without this a short buffer raises `IndexError` or
-    `struct.error` from somewhere inside, which says nothing useful.  Curse
-    and Secret are other sizes and are not this module's yet.
+    The writers below encode the Pool of Radiance conversion and its offsets;
+    reading is shape-aware and reading is what the other three titles get.
     """
-    if len(save) < SAVGAM_SIZE:
-        raise DosSaveError(
-            f"a DOS saved game is {SAVGAM_SIZE} bytes; this is {len(save)}")
+    _shaped(save, SAVE_POOL_OF_RADIANCE)
     return save
 
 
-def word(save: bytes, address: int) -> int:
-    return struct.unpack_from("<H", _whole(save), word_offset(address))[0]
+def word(save: bytes, address: int,
+         shape: "DosSaveShape | None" = None) -> int:
+    shape = _shaped(save, shape)
+    return struct.unpack_from("<H", save, word_offset(address, shape))[0]
 
 
-def dax_number(save: bytes) -> int:
+def dax_number(save: bytes, shape: "DosSaveShape | None" = None) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
-    return _whole(save)[DAX_NUMBER]
+    shape = _shaped(save, shape)
+    if not shape.dax_bytes:
+        raise DosSaveError(
+            f"a {shape.title} saved game has no container-number byte")
+    return save[shape.head]
 
 
 def area_id(save: bytes) -> int:
@@ -201,20 +391,31 @@ def clock(save: bytes) -> tuple[int, int, int, int]:
     return d[3], d[2] * 10 + d[1], d[4], d[5]
 
 
-def party_size(save: bytes) -> int:
-    return _whole(save)[PARTY_SIZE_BYTE]
+def party_size(save: bytes, shape: "DosSaveShape | None" = None) -> int:
+    """The party-size byte, the last of the square block.
+
+    Reads 6 in all nine shipped containers of all four titles, which is what
+    says the block sits in the same place in each.
+    """
+    shape = _shaped(save, shape)
+    return save[shape.party_table - 1]
 
 
-def position(save: bytes) -> tuple[int, int, int]:
+def position(save: bytes, shape: "DosSaveShape | None" = None
+             ) -> tuple[int, int, int]:
     """(x, y, facing) with facing in the C64's units, 0 N 1 E 2 S 3 W.
 
     Indoors only for x and y: an outdoor save freezes 12801/12802 at the last
     indoor square (the pier, in all three specimens) while the facing byte
     stays live -- read `travel_square` when `outdoors(save)`.  The mirror of
     the C64, whose stale copy outdoors is `$49C0`-`$49C2` (#47, #59).
+
+    The shipped Curse and Silver Blades containers hold `$FF` in all three,
+    which is a party that has never stood anywhere rather than a square.
     """
-    save = _whole(save)
-    return save[POS_X], save[POS_Y], save[POS_FACING] // FACING_SCALE
+    shape = _shaped(save, shape)
+    at = shape.square
+    return save[at], save[at + 1], save[at + 2] // FACING_SCALE
 
 
 def outdoors(save: bytes) -> bool:
@@ -279,12 +480,17 @@ def put_character_files(save: bytearray, slot: str) -> None:
         save[at + 1:at + 1 + len(name)] = name
 
 
-def character_files(save: bytes) -> list[str]:
-    """The CHRDAT filenames the engine will load the party from."""
-    save = _whole(save)
+def character_files(save: bytes,
+                    shape: "DosSaveShape | None" = None) -> list[str]:
+    """The CHRDAT filenames the engine will load the party from.
+
+    Six of six in all nine shipped containers of all four titles, which is
+    the anchor the per-title region map was measured from.
+    """
+    shape = _shaped(save, shape)
     out = []
     for n in range(PARTY_ENTRIES):
-        at = PARTY_TABLE + n * PARTY_ENTRY
+        at = shape.party_table + n * PARTY_ENTRY
         length = save[at]
         # An entry is one length byte, the name, then 32 bytes of heap
         # scratch, so a real name cannot exceed eight -- which is exactly

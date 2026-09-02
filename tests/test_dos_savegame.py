@@ -403,3 +403,156 @@ def test_the_shared_ecl_space_stops_at_the_last_quest_flag():
     for dos_only in (sg.WALLSET, sg.DISK, sg.PARTY_SIZE, sg.VM_SCRATCH,
                      sg.ENCOUNTER_TEXT):
         assert dos_only > sg.ECL_SHARED_LAST
+
+
+# --- the container in every title (#53) --------------------------------------
+#
+# Everything above is Pool of Radiance's, synthetic and offline. These read the
+# player's own archives and skip without them, which means CI never runs them:
+# what stands behind the other three shapes on a machine with no archives is
+# the width sum in `DosSaveShape.__post_init__` and
+# `test_every_shape_tiles_its_own_container`, and neither says a field is in
+# the right place. Say in the commit that you ran these somewhere the archives
+# exist.
+
+
+def _containers():
+    """Every distinct DOS saved game the archives hold, by shape key.
+
+    By *shape*, not by title: Treasures of the Savage Frontier writes the same
+    1364-byte container Pools of Darkness does, so on this machine its two
+    files land in the Pools of Darkness bucket and the assertions below hold
+    for them too.  That is a fact about the format rather than a slip -- see
+    `save_shape_for`.
+    """
+    from tools import dossavgam
+    found = dossavgam.containers()
+    if not found:
+        pytest.skip("needs the DOS archives; set FR_ARCHIVES")
+    out = {}
+    for path in found:
+        data = path.read_bytes()
+        out.setdefault(sg.save_shape_for(len(data)).key, []).append(
+            (path, data))
+    return out
+
+
+def _of(key):
+    found = _containers().get(key)
+    if not found:
+        pytest.skip(f"no DOS {key} saved game here; set FR_ARCHIVES")
+    return found
+
+
+_ALL_SHAPES = pytest.mark.parametrize(
+    "key", [s.key for s in sg.SAVE_SHAPES])
+
+
+def test_every_shape_tiles_its_own_container():
+    """The widths add up to the size the file is, which is the check that
+    makes a fifth title cheap to try -- a region declared too wide moves
+    every one after it and the shape raises at import rather than reading
+    somebody else's bytes."""
+    for shape in sg.SAVE_SHAPES:
+        assert shape.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY \
+            + sg.UI_SCRATCH == shape.size, shape.key
+        assert shape.square == shape.party_table - 8, shape.key
+    assert len(sg.SAVE_SHAPES_BY_SIZE) == len(sg.SAVE_SHAPES)
+
+
+def test_the_pool_of_radiance_shape_is_the_offsets_the_module_was_built_on():
+    """The generator must reproduce the hand-measured constants exactly.
+    Without this the other three shapes would be free to drift the one that
+    twelve engine-written specimens stand behind."""
+    shape = sg.SAVE_POOL_OF_RADIANCE
+    assert shape.size == sg.SAVGAM_SIZE
+    assert shape.var_offset == sg.VAR_OFFSET
+    assert shape.var_words == sg.VAR_WORDS
+    assert shape.script_buffer == sg.ECL_BUFFER
+    assert shape.square == sg.POS_X
+    assert shape.party_table == sg.PARTY_TABLE
+
+
+@_ALL_SHAPES
+def test_every_container_names_six_character_files(key):
+    """The party table is the anchor the whole per-title map was measured
+    backwards from: six length-prefixed `CHRDAT<letter><n>` names, 41 bytes
+    apart, ending 82 bytes before the end of the file. A shape whose head
+    region is one byte out finds five names, or none."""
+    for path, data in _of(key):
+        names = sg.character_files(data, sg.save_shape_for(key))
+        assert len(names) == sg.PARTY_ENTRIES, path
+        slot = path.name[len("SAVGAM")]
+        assert names == [f"CHRDAT{slot}{n + 1}" for n in
+                         range(sg.PARTY_ENTRIES)], path
+
+
+@_ALL_SHAPES
+def test_the_party_size_byte_is_the_last_of_the_square_block(key):
+    """Six in every shipped container of every title, which is what says the
+    square block sits immediately before the party table in each of them."""
+    for path, data in _of(key):
+        assert sg.party_size(data, sg.save_shape_for(key)) == 6, path
+
+
+@pytest.mark.parametrize("key", ["pool-of-radiance", "curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_the_container_number_is_also_a_variable(key):
+    """`$5012` equals byte 0 in all nine containers of the three titles that
+    have both -- 3/4/2/2/3 across the five Pool of Radiance ones, 2/2 in
+    Curse, 1/1 in Silver Blades. Two independent readings of the same fact
+    3620 bytes apart, so a variable array at the wrong offset in Curse or
+    Silver Blades could not agree with the header byte by accident."""
+    shape = sg.save_shape_for(key)
+    for path, data in _of(key):
+        assert sg.word(data, sg.DISK, shape) == sg.dax_number(data, shape), \
+            path
+
+
+@pytest.mark.parametrize("key", ["pool-of-radiance", "curse-of-the-azure-bonds",
+                                 "secret-of-the-silver-blades"])
+def test_the_party_size_is_also_a_variable(key):
+    """`$503E` and the square block's last byte hold the same count. The
+    second anchor for the shared variable array, 1602 words from the first."""
+    shape = sg.save_shape_for(key)
+    for path, data in _of(key):
+        assert sg.word(data, sg.PARTY_SIZE, shape) == \
+            sg.party_size(data, shape), path
+
+
+def test_pools_of_darkness_has_no_variable_array_to_read():
+    """Its container carries the same tail as the other three and nothing
+    else this project can name: no header byte, and `$5012` and `$503E` are
+    at no offset under Pool of Radiance's origin. Reading one anyway would
+    hand back a number out of the undecoded 1024 bytes, so it raises."""
+    shape = sg.save_shape_for("pools-of-darkness")
+    assert shape.var_offset is None
+    assert shape.script_buffer is None
+    for _, data in _of("pools-of-darkness"):
+        with pytest.raises(sg.DosSaveError):
+            sg.word(data, sg.PARTY_SIZE, shape)
+        with pytest.raises(sg.DosSaveError):
+            sg.dax_number(data, shape)
+
+
+def test_silver_blades_stages_no_script_and_its_scripts_are_no_smaller():
+    """The reason a Silver Blades save is less than half a Pool of Radiance
+    one is the missing 7680-byte script buffer, and it is not that its
+    scripts are small: its largest `ECL<n>.DAX` block is within two bytes of
+    Pool of Radiance's. So the engine reloads the script from the container
+    rather than carrying it, which is the one thing moving a Pool of Radiance
+    save to another area needs the player's own game files for."""
+    assert sg.SAVE_SECRET_OF_THE_SILVER_BLADES.script_buffer is None
+    assert sg.SAVE_CURSE_OF_THE_AZURE_BONDS.script_buffer == sg.ECL_BUFFER
+    assert (sg.SAVE_POOL_OF_RADIANCE.size
+            - sg.SAVE_SECRET_OF_THE_SILVER_BLADES.size
+            == sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0] - 12)
+
+
+def test_a_container_of_an_unknown_length_is_refused():
+    """A file that is none of the four sizes names no shape, and guessing is
+    how a reader hands back a party that is not there."""
+    with pytest.raises(sg.DosSaveError):
+        sg.save_shape_for(9999)
+    with pytest.raises(sg.DosSaveError):
+        sg.character_files(bytes(9999))

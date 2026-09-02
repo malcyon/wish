@@ -16,6 +16,10 @@ it holds nine nonzero VM words, no quest flags and a 00:00 clock. `goldbox/dos_s
 reasoning is in [`50-experiments.md`](50-experiments.md) "Mapping the DOS
 saved game" and "The DOS saved game outdoors".
 
+**The other three titles are in their own section below.** Every offset in
+this page is Pool of Radiance's; Curse and Silver Blades put the same regions
+in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
+
 ## The file, in five regions
 
 | offset | size | what | grade |
@@ -117,17 +121,78 @@ the Slums onto template A comes up at 15,4 W 21:15, and `PORSAVE12` in New
 Phlan onto template J at 0,4 W 16:58 — each party's own square, facing and
 clock, with six characters on the roster (`work/p60/run3` and `run4`).
 
-## Per-title sizes
+## The container in the other three titles
 
-| title | SAVGAM size |
-|---|---|
-| Pool of Radiance | 13137 |
-| Curse of the Azure Bonds | 13149 — same shape: `$503E` = 6, CHRDAT table at 12822, +12 throughout the tail | 
-| Secret of the Silver Blades | 5469 — `$503E` = 6 holds, CHRDAT table at 5142; the variable array is far smaller |
-| Pools of Darkness | 1364, plus a separate `SAVGAM<slot>.PTY` — not this shape |
+Measured for `#53 (Read and write DOS saves for Curse, Silver Blades and
+Pools of Darkness)`. This section replaced a table of file sizes and two spot
+checks, three of whose claims were wrong; they are corrected here rather than
+layered on. The `CHRDAT` table was given as 12822 and 5142, which is where
+the ASCII starts and not
+where the entry does (the length byte is at 12821 and 5141, and Pool of
+Radiance's own `PARTY_TABLE` is the length byte's offset, so the table
+disagreed with itself); Silver Blades' variable array was called "far
+smaller", and it is not smaller at all — what is missing is the script buffer;
+and Pools of Darkness was given a `SAVGAM<slot>.DAT` "plus a separate
+`SAVGAM<slot>.PTY`", where it writes the `.PTY` **instead** and keeps a
+12-byte `VAULT<slot>.DAT` beside it.
 
-Only Pool of Radiance is mapped; the other three rows are file sizes and two
-spot checks, PROBABLE at best.
+`goldbox/dos_savegame.py`'s `SAVE_SHAPES` is the machine-readable form: one
+row per title, region widths rather than offsets, and the widths must add up
+to the size the file is or the row raises at import. `tools/dossavgam.py`
+prints the map and the anchors.
+
+Measured against **thirteen containers** — Donald's played Pool of Radiance
+A/B/J out of the Steam `SavesDir`, the archives' own Pool of Radiance A/B,
+Curse A/B, Silver Blades A/B, Pools of Darkness A/B and Treasures of the
+Savage Frontier A/B — deduplicated on their bytes, because the archives ship
+most save directories twice and for three titles the copies are identical.
+
+| region | Pool of Radiance | Curse | Silver Blades | Pools of Darkness | grade |
+|---|---|---|---|---|---|
+| undecoded head | — | — | — | **1024** | UNKNOWN, and see below |
+| container-number byte | 1 | 1 | 1 | — | CONFIRMED — it equals `$5012` in all nine containers that have both |
+| ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — | CONFIRMED for the three; the word count is Pool of Radiance's and untested in the other two |
+| staged `ECL<n>.DAX` script | 7680 | 7680 | — | — | CONFIRMED for Pool of Radiance; PROBABLE for Curse, whose buffer is all zero in both shipped saves |
+| unnamed, before the square block | — | 12 | 12 | 4 | UNKNOWN — Curse and Silver Blades read `07 0d 00 00 00 00 00 00 00 01 00 ff` in both specimens each, Pools of Darkness `07 0d 00 00` |
+| square block, last byte the party size | 8 | 8 | 8 | 8 | CONFIRMED — the party-size byte reads 6 in all thirteen |
+| six 41-byte `CHRDAT` entries | 246 | 246 | 246 | 246 | CONFIRMED — six names, 41 apart, in all thirteen |
+| UI scratch | 82 | 82 | 82 | 82 | CONFIRMED — and it really is text scratch: `Camp: ` in a Pool of Radiance save, `Choose a FUNCTION` in a Silver Blades one |
+
+**Curse and Silver Blades share Pool of Radiance's variable array**, at the
+same offset with the same ECL addresses. Two readings 1602 words apart agree:
+`$5012` equals the header byte (2 and 2 in Curse, 1 and 1 in Silver Blades)
+and `$503E` equals the party-size byte (6 in both). `$49E6`, the indoors flag,
+reads 1 in all four. A variable array at any other offset could not agree with
+the header byte by accident.
+
+**Silver Blades stages no script.** That is the whole of why its save is less
+than half the size: 13137 − 7680 + 12 = 5469. Its scripts are not smaller —
+its largest `ECL<n>.DAX` block is 7678 bytes against Pool of Radiance's 7679,
+and every one of the four titles' 132 blocks fits the 7680-byte buffer — so
+the engine reloads the script from the container rather than carrying it. The
+one write of the recipe above that needs the player's own game files is the
+one Silver Blades and Pools of Darkness would not need.
+
+**Pools of Darkness' first 1024 bytes are undecoded.** There is no header
+byte, and neither `$5012` nor `$503E` sits at any offset under Pool of
+Radiance's origin. Five nonzero bytes in the whole region — because the
+shipped container is a party that has never been played, which is the same
+limit every claim above runs into.
+
+**What is missing is a played save.** Every Curse, Silver Blades and Pools of
+Darkness container on this machine is a shipped starting party: 272 to 295
+nonzero bytes in the whole file, an all-`$FF` square where the title has one,
+a zero clock, no quest flags and a script buffer that is entirely zero. Nothing about the variable array's *contents* can
+be measured from them, and the `07 0d` block cannot be attributed. The
+Steam `SavesDir` holds Pool of Radiance's app id and no other, so no played
+save of the other three exists here — the same specimen
+`#113 (Play DOS Curse far enough to save a party with items)` is about.
+
+**The size names the shape, not the game.** Treasures of the Savage Frontier
+writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
+that Pools of Darkness does, with the same 328-byte tail, and its two
+containers read cleanly through the Pools of Darkness row. Only the directory
+a file came from says which game wrote it.
 
 ## The outdoor form (#59's outdoor pass)
 
