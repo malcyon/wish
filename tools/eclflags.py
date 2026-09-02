@@ -24,6 +24,17 @@ opcode comes from the instruction set in
 [`128-guide-and-scripting.md`](../docs/128-guide-and-scripting.md) §12.3.3,
 checked against 62 handlers in `DUNGEON`; `DESTINATIONS` below carries it.
 Everything else is a read.
+
+**Not every row of `DESTINATIONS` is corroborated by a real hit.** The
+classification comes from the handlers, but the thirty scripts only exercise
+some of it: `$08 RANDOM`, `$0F`/`$10 INPUT NUMBER`/`INPUT STRING`,
+`$1E CHECKPARTY`, `$22 PARTY SURPRISE`, `$23 SURPRISE`, `$2C PARLEY` and
+`$3B SPELL` never touch `$4A00`-`$4AF8` anywhere, and `$29 ENCMENU`'s
+declared destination operand never lands on an in-range address in any of its
+five firings -- so all five are classified as reads without the write rule
+being tested. None of that moves a number in today's output. It means a flag
+written by one of those opcodes would be classified on the handler reading
+alone, so check that reading again before trusting a new quest that uses one.
 """
 import argparse
 import collections
@@ -117,7 +128,12 @@ def known_names():
         for address, parts in per_address.items():
             out[address] = f"{quest.name}: " + "; ".join(parts)
     out[commissions.COMPLETED] = "count of major commissions paid"
-    out.setdefault(0x4A80, "slums: won wandering fights, capped at 15")
+    # `commissions.py` knows this byte as SLUM_WANDERING but has no name-lookup
+    # entry for it, so the cap is read from there rather than repeated as a
+    # number here.  The wording is this file's; the value is not.
+    out.setdefault(
+        0x4A80,
+        f"slums: won wandering fights, capped at {commissions.SLUM_WANDERING}")
     return out
 
 
