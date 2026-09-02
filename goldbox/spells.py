@@ -275,8 +275,15 @@ _RANGER_GRANT_SILVER_BLADES = (
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
 #: in each game's own code, not carried across from another one.** The one
-#: thing that looks like proof and is not: Curse's `GEN $2C2F` copies 32 bytes
-#: out of `$7C78` -- and Pool of Radiance's `GEN $296B` copies the identical 32
+#: (Every address in this block was written at the overlay's PRG header base
+#: until 2026-09-02 and named the wrong bytes -- four of them fell outside the
+#: file entirely. `GEN` and `CAMP` run at `$0800` in all three titles. The
+#: findings were right and only the addresses were unusable; `#31 (Cold-read
+#: Curse and Silver Blades for the fields the editor shows)` corrected them,
+#: and `tests/test_coldread.py` now checks the opcodes are really there.)
+#:
+#: thing that looks like proof and is not: Curse's `GEN $220F` copies 32 bytes
+#: out of `$7C78` -- and Pool of Radiance's `GEN $216B` copies the identical 32
 #: out of `$6B78`, where the mask is seven. A copy that is wider than the field
 #: says nothing about the field.
 #:
@@ -287,19 +294,19 @@ _RANGER_GRANT_SILVER_BLADES = (
 #:   LEAPER trainer's LEARN ALL SPELLS writes `$FE` and six `$FF`, which is the
 #:   same claim in somebody else's hand, and no character in any Pool of
 #:   Radiance save sets `0x07D`, `0x07E` or `0x07F`.
-#: * **Curse of the Azure Bonds, 13 -- CONFIRMED.** `CAMP $5225` builds the
+#: * **Curse of the Azure Bonds, 13 -- CONFIRMED.** `CAMP $2A25` builds the
 #:   list of spells a character may memorise by walking spell ids from 1 with
 #:   `INY / CPY #$65 / BCC`, so it stops after id 100, and it reads the mask as
 #:   `TYA / LSR / LSR / LSR / TAX / LDA $7C78,X`. Id 100 puts X at 12, so the
-#:   game itself reads `0x078`-`0x084`. `GEN $2D4A` writes there too, ORing
+#:   game itself reads `0x078`-`0x084`. `GEN $232A` writes there too, ORing
 #:   `$E0` into `$7C81` and `$01` into `$7C82` to grant the four first-level
 #:   druid spells 77-80. Curse's `GEN` has no clear loop, so **whether bytes
 #:   `0x085`-`0x087` are also the mask is UNKNOWN**; thirteen is what the game
 #:   reads, and no more is claimed.
 #: * **Secret of the Silver Blades, 16 -- CONFIRMED**, and by three
-#:   independent sightings. `GEN $41DC` clears sixteen bytes --
-#:   `LDX #$0F / LDA #$00 / STA $7C78,X / DEX / BPL`. `GEN $50C9` walks the
-#:   same sixteen. `CAMP $6071` is Curse's memorise loop with the ceiling moved
+#:   independent sightings. `GEN $09DC` clears sixteen bytes --
+#:   `LDX #$0F / LDA #$00 / STA $7C78,X / DEX / BPL`. `GEN $18C9` walks the
+#:   same sixteen. `CAMP $2871` is Curse's memorise loop with the ceiling moved
 #:   to `CPY #$76`, id 117, which reads as far as `0x086`.
 #:
 #: The pattern is ceil(last spell / 8) rounded up to what the title cleared:

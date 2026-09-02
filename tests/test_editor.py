@@ -2453,7 +2453,7 @@ def test_a_silver_blades_casters_spellbook_reaches_past_spell_fifty_five(
     """#81. MORGAINE knows twenty-nine spells and the sheet showed twenty-four.
 
     Seven bytes is 56 bits, which is Pool of Radiance's spell count and nothing
-    else's. Silver Blades' mask is sixteen bytes -- `GEN $41DC` clears exactly
+    else's. Silver Blades' mask is sixteen bytes -- `GEN $09DC` clears exactly
     that many -- so `CONFUSION`, `FIRE SHIELD`, `MINOR GLOBE OF INVULNERABLITY`
     and `HOLD MONSTERS`, ids 82, 85, 88 and 94, had no tick box to appear in.
     """

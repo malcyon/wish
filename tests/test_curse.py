@@ -927,8 +927,8 @@ def test_camp_reads_curses_mask_as_far_as_spell_one_hundred():
     still UNKNOWN in Curse, which is why `spellbook_size` says 13 and not 16.
 
     **The near-miss that is not evidence**, kept here because it is the thing a
-    reader will find first: `GEN $2C2F` copies 32 bytes out of `$7C78`. Pool of
-    Radiance's `GEN $296B` copies the identical 32 out of `$6B78`, where the
+    reader will find first: `GEN $220F` copies 32 bytes out of `$7C78`. Pool of
+    Radiance's `GEN $216B` copies the identical 32 out of `$6B78`, where the
     mask is seven bytes. A copy wider than the field says nothing about the
     field, so both are asserted together.
     """
@@ -950,7 +950,7 @@ def test_camp_reads_curses_mask_as_far_as_spell_one_hundred():
 
 
 def test_curses_druid_grant_writes_into_the_eleventh_mask_byte():
-    """`GEN $2D4A` is the sharpest single write: it ORs `$E0` into `$7C81` and
+    """`GEN $232A` is the sharpest single write: it ORs `$E0` into `$7C81` and
     `$01` into `$7C82`, which is spell ids 77-80, the four first-level druid
     spells. `0x082` is byte ten, so the mask is at least eleven bytes on that
     line alone."""
