@@ -1445,6 +1445,31 @@ Before committing and pushing any changes, you MUST always run the following che
 it is not the check. `pytest tests/test_combatdrive.py` was green and `main`
 went red on all four jobs eight minutes later.
 
+**And in a shared tree, run it somewhere the other agents are not.** With two
+subagents mid-edit -- the normal state on a busy night -- a run in place tests
+*their* half-finished code and says nothing about the commits you are about to
+push. A detached worktree at `HEAD` is the way to test exactly what will land:
+
+```sh
+git worktree add -q --detach "$WT" HEAD
+ln -sfn "$PWD/work" "$WT/work"          # gitignored, so a fresh checkout has none
+(cd "$WT" && /path/to/.venv/bin/python -m pytest -q)
+git worktree remove "$WT" --force
+```
+
+**The symlink is the part that is easy to miss, and without it the run lies by
+omission.** `work/` is gitignored, so a bare worktree skips every test that
+reads a specimen out of it -- 204 skipped against the working tree's 103 on
+2026-09-02, and the hundred that vanished were exactly the ones with real game
+data behind them. With `work/` linked the numbers match to the test: 2783
+passed, 103 skipped, both ways.
+
+That gap is also the useful fact about CI. **CI has no `work/` either**, so a
+*bare* worktree run is the closest thing to what CI will do, and the in-tree
+run is what covers the specimen-backed tests. Neither is the whole check on its
+own, which is the Testing section's point about a suite that is green because
+forty tests skipped.
+
 **`git add X && git commit` commits the whole index, not just `X`.** Several
 agents share this tree and they stage files; a commit made after naming your
 own paths sweeps in whatever anybody else had staged. That is how
