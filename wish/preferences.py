@@ -96,7 +96,7 @@ SETTLE_MS = 400
 #: What the backup box says while it is empty, which is the state a fresh
 #: config is in. It is also what sets that box's width -- `room_for` measures
 #: it -- so it says the rule in as few words as carry it.
-BACKUPS_PLACEHOLDER = "set when you open a save"
+BACKUPS_PLACEHOLDER = "Where to store backup saves"
 
 PASSWORD_ENV = "POR_ULTIMATE_PASSWORD"
 
@@ -429,7 +429,7 @@ class PreferencesDialog(QDialog):
         outer = QVBoxLayout(box)
         row = QHBoxLayout()
         self.folder = QLineEdit(getattr(self.win.settings, "disks", "") or "")
-        self.folder.setPlaceholderText("the folder holding your .D64 images")
+        self.folder.setPlaceholderText("Location of your game disks")
         # Wide enough to read what it says. This is what sets the width of the
         # whole dialog, and it is measured off the placeholder rather than
         # chosen, so a longer sentence or a wider font widens the dialog with
@@ -482,7 +482,7 @@ class PreferencesDialog(QDialog):
         row = QHBoxLayout()
         self.saves = QLineEdit(getattr(self.win.settings, "saves_folder", "")
                                or "")
-        self.saves.setPlaceholderText("where File > Open starts")
+        self.saves.setPlaceholderText("Default save folder")
         self.saves.setMinimumWidth(room_for(self.saves,
                                             self.saves.placeholderText()))
         self.saves.editingFinished.connect(self._saves_edited)
@@ -500,7 +500,7 @@ class PreferencesDialog(QDialog):
     def browse_saves(self) -> None:
         """The folder picker. A method so a test can replace it."""
         chosen = QFileDialog.getExistingDirectory(
-            self, "Where File > Open should start",
+            self, "Change default save folder",
             self.saves.text() or str(pathlib.Path.home()))
         if chosen:
             self.set_saves_folder(chosen)
