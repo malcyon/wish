@@ -663,3 +663,56 @@ def test_the_file_menu_carries_the_import(app, tmp_path, monkeypatch):
     assert [a.text() for a in submenu.actions()] == [MENU_DOS_SAVE]
     assert window.import_dos_action.text() == MENU_DOS_SAVE
     window.close()
+
+
+# --- the refusal a player reads (#176) --------------------------------------
+
+def test_a_refused_title_tells_the_player_which_game_and_no_issue_number():
+    """`#176 (A player importing a Curse of the Azure Bonds save is shown an
+    issue number)`.
+
+    The exception is written for the tracker and keeps its issue number,
+    because that is what a traceback and a log are for. What a player reads is
+    the other half, and it carries no `#123` and no talk of pairs of ports.
+    Donald wrote the sentence, 2026-09-02.
+    """
+    import re
+
+    exc = dos.WrongTitleError(
+        "Curse of the Azure Bonds records read, but only Pool of Radiance "
+        "converts: no other pair of ports has been measured against each "
+        "other (#53)",
+        title="Curse of the Azure Bonds")
+
+    assert "(#53)" in str(exc), "the developer's reason lost its issue number"
+
+    shown = exc.player_message
+    assert shown == "Curse of the Azure Bonds imports not yet supported."
+    assert not re.search(r"#\d", shown), f"an issue number reaches a player: {shown!r}"
+    assert "pair of ports" not in shown
+
+
+@needs_dos_saves
+@needs_disks
+def test_the_pane_shows_the_players_sentence_and_not_the_exception(
+        app, dos_save, files, monkeypatch):
+    """The routing, which is the half a unit test of the exception cannot see.
+
+    `_attempt` used to put `str(exc)` straight into the pane. Reverting that
+    turns this red: the pane fills with the tracker's sentence instead.
+    """
+    from editor import dosimport
+
+    def refuse(*_args, **_kwargs):
+        raise dos.WrongTitleError(
+            "Curse of the Azure Bonds records read, but only Pool of "
+            "Radiance converts: no other pair of ports has been measured "
+            "against each other (#53)",
+            title="Curse of the Azure Bonds")
+
+    dialog = dosimport.DosImportDialog(dos_save, files)
+    monkeypatch.setattr(dosimport, "rehearse", refuse)
+    dialog._rehearse()
+
+    assert dialog.report_pane.toPlainText() == (
+        "Curse of the Azure Bonds imports not yet supported.")

@@ -126,7 +126,23 @@ class WrongTitleError(DosRecordError):
     Pool of Radiance's alone**, because that is the only pair whose two ports
     have been measured against each other.  Raising here is the difference
     between "not yet" and a conversion that silently reads the wrong bytes.
+
+    The message carries the developer's reason, including the issue number,
+    because that is what a traceback and a log are for.  `player_message` is
+    the other half: one sentence for somebody who is not reading the tracker,
+    which is what a dialog shows.  Donald wrote it (#176) after the exception
+    text reached the import pane verbatim and put an issue number in front of
+    a player.
     """
+
+    def __init__(self, message: str, title: str = "") -> None:
+        super().__init__(message)
+        self.title = title
+
+    @property
+    def player_message(self) -> str:
+        """What a player is shown.  Donald's wording, 2026-09-02."""
+        return f"{self.title} imports not yet supported."
 
 
 #: Race -> infravision range.  The table lives with the C64 writer, which is
@@ -710,7 +726,8 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
         raise WrongTitleError(
             f"{dos.shape.title} records read, but only Pool of Radiance "
             f"converts: no other pair of ports has been measured against "
-            f"each other (#53)")
+            f"each other (#53)",
+            title=dos.shape.title)
     out = NeutralCharacter("DOS", source=dos.source)
 
     # -- the name: a count byte and fifteen characters -----------------------
