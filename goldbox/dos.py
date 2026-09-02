@@ -296,35 +296,55 @@ INNATE_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x00))
 EFFECT_NEXT_NULL = bytes(4)
 
 #: Race code -> the innate ids a **C64** record cannot hand over, because the
-#: C64 engine works them out at combat time instead of storing them anywhere.
+#: C64 engine either works them out when the blow lands or keeps them inside
+#: another field, and stores no trait id for them at all.
 #:
-#: The DOS engine's own dwarf carries four: 90, 97, 26 and 47.  Two of those
-#: must not be written from a C64 source and two must:
+#: Two races have a DOS specimen, and each is written the whole set the
+#: engine's own save holds for it:
 #:
-#: * **90 and 97 are the constitution save bonus, and the C64 has already
-#:   spent it.**  Measured both ways.  A DOS dwarf's five stored saves are the
-#:   plain class row -- THRENDER GRONE, a fighter 1 with constitution 16,
-#:   stores `14 15 16 17 17`, which is the table's own row with no bonus in it
-#:   -- so DOS keeps the bonus in these two records.  The C64 does the
-#:   opposite: HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11`
-#:   where the class row is `13 12 14 16 15`, four better in every column
-#:   (`goldbox/levels.py`, "the saving-throw rule is the game's own").  The
-#:   conversion copies those five bytes, so the bonus arrives with them, and
-#:   writing 90 and 97 as well would apply it twice.
-#: * **26 and 47 are situational and no stored number can hold them** -- a
-#:   THAC0 bonus against orcs, half-orcs, goblins and hobgoblins, and an
-#:   armour-class bonus against ogres, trolls, ogre magi, giants and titans.
-#:   The C64 dwarf gets them from his race byte when the blow lands; the DOS
-#:   dwarf gets them from these records or not at all.  So they are written.
+#: * **the dwarf (1): 90, 97, 26 and 47** -- THRENDER GRONE's `.SPC`, in both
+#:   of the archives' Pool of Radiance save directories;
+#: * **the halfling (5): 90 and 97** -- PHINEAS's, in the same two.  He has no
+#:   26 or 47; the bonuses against orcs and against giants are the dwarf's.
+#:
+#: **90 and 97 are the constitution bonus to saving throws, and they have to
+#: be written even though the C64 has already spent that bonus inside the five
+#: saving-throw bytes.**  This note argued the opposite until #191 (A
+#: converted dwarf loses his constitution bonus to saving throws) measured it:
+#: the DOS engine recomputes all five saves on load from class, level and the
+#: character's `.SPC` records, so the copied numbers are discarded before
+#: anybody can read them and the records that would have replaced them were
+#: never written.  MAGNUS, a dwarf fighter, was converted with
+#: `14 14 13 11 12` and the engine's own resave held `17 17 16 14 15` -- three
+#: worse in every column, permanently.  The C64 half of the old note is still
+#: true and is still why nothing can be read off the source record: HOGARTH, a
+#: dwarf with constitution 17, stores `9 8 10 12 11` where the class row is
+#: `13 12 14 16 15` (`goldbox/levels.py`, "the saving-throw rule is the game's
+#: own"), and THRENDER GRONE, a DOS fighter 1 with constitution 16, stores the
+#: plain row `14 15 16 17 17` and keeps his bonus in these two records.
+#:
+#: **26 and 47 are situational and no stored number can hold them** -- a THAC0
+#: bonus against orcs, half-orcs, goblins and hobgoblins, and an armour-class
+#: bonus against ogres, trolls, ogre magi and giants.  The C64 dwarf gets them
+#: from his race byte at the moment of the blow; the DOS dwarf gets them from
+#: these records or not at all.
 #:
 #: **The gnome is not here and that is deliberate**: 47 is named for gnomes
-#: too and 18 is the gnome's own, but nobody in any save the archives hold is
-#: a gnome, so both would be a guess.  A converted gnome is reported instead.
-RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {1: (26, 47)}
+#: too, 18 is the gnome's own, and 97 is named for all three sturdy races
+#: where 90 is named for the dwarf and the halfling only.  Nobody in any save
+#: the archives hold is a gnome, so every one of those would be a guess.  A
+#: converted gnome is reported instead.
+RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {
+    1: (90, 97, 26, 47),
+    5: (90, 97),
+}
 
-#: Races the C64 gives a constitution save bonus to, and so the races whose
-#: innate ids are already inside the five saving-throw bytes.  `goldbox/levels.py`
-#: reads the same three out of the game's own `GEN`.
+#: Races the C64 gives a constitution save bonus to.  `goldbox/levels.py`
+#: reads the same three out of the game's own `GEN`.  On the C64 that bonus
+#: lives inside the five saving-throw bytes; on DOS it lives in the `.SPC`
+#: records above, and the five bytes on disk are not where the engine reads it
+#: from -- see #191 (A converted dwarf loses his constitution bonus to saving
+#: throws).
 STURDY_RACES = (1, 3, 5)
 
 #: The race with an innate effect this conversion cannot name.  Kept apart
@@ -1345,9 +1365,10 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
                 f"record is written for it")
     if race == UNWITNESSED_RACE:
         rep.dropped.append(
-            "a gnome's innate bonuses against giants: no gnome appears in "
-            "any DOS save we hold, so the effect ids the DOS engine writes "
-            "for one are unmeasured and are not guessed at")
+            "A gnome's innate bonuses against giants, and his constitution "
+            "bonus to saving throws: no gnome appears in any DOS save we "
+            "hold, so the effect ids the DOS engine writes for one are "
+            "unmeasured and are not guessed at")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)

@@ -146,13 +146,74 @@ def test_a_filled_character_lands_field_for_field():
         min(sum(back.money.values()) + weight, 0xFFFF)
     # `_filled` carries innate effects 18 and 47 and is race 1, so a `.SPC`
     # goes beside the record: nine bytes each, id + INNATE_PAYLOAD + a NULL
-    # next pointer.  26 comes first because a dwarf's two situational combat
-    # bonuses are derived from the race byte, and 47 is already carried.
+    # next pointer.  90, 97 and 26 come first because a dwarf's four innate
+    # ids are derived from the race byte, and 47 is already carried.
     assert _spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD + bytes(4)
-                            for e in (26, 18, 47))
+                            for e in (90, 97, 26, 18, 47))
     # And every byte of all three outputs has a provenance.
     assert rep.total == dos_layout.RECORD_SIZE + len(itm) + len(_spc)
     assert rep.unaccounted == []
+
+
+def _spc_ids(spc: bytes) -> list[int]:
+    """The effect ids of a `.SPC` payload, one per nine-byte record."""
+    assert len(spc) % dos.EFFECT_SIZE == 0
+    return [spc[n] for n in range(0, len(spc), dos.EFFECT_SIZE)]
+
+
+def test_a_converted_dwarf_carries_his_constitution_bonus_to_saves():
+    """#191 (A converted dwarf loses his constitution bonus to saving throws).
+
+    The five saving-throw bytes a conversion copies are not where the DOS
+    engine reads the bonus from: it recomputes all five on load out of class,
+    level and the character's `.SPC` records, so a dwarf written with 26 and
+    47 alone arrives three worse in every column and stays that way.  90 and
+    97 have to be in the file, as the engine's own dwarf has them.
+    """
+    char = _filled()                        # race 1, and carrying 18 and 47
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [90, 97, 26, 47]
+    # THRENDER GRONE's own file, record for record: the id, the four bytes
+    # every innate specimen holds, and a NULL next pointer the loader relinks.
+    assert spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD
+                           + dos.EFFECT_NEXT_NULL
+                           for e in (90, 97, 26, 47))
+
+
+def test_a_converted_halfling_carries_the_two_records_his_own_kind_has():
+    """The halfling is the second sturdy race with a DOS specimen: PHINEAS
+    carries 90 and 97 and nothing else, where the dwarf beside him carries 26
+    and 47 as well.  So a converted halfling gets the constitution records
+    without the dwarf's bonuses against orcs and giants."""
+    char = _filled()
+    char.set("race", 5, "made up: halfling")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [90, 97]
+
+
+def test_a_converted_gnome_is_told_about_rather_than_guessed_at():
+    """The third sturdy race has no specimen anywhere, so nothing is written
+    for one and the report says what was lost."""
+    char = _filled()
+    char.set("race", dos.UNWITNESSED_RACE, "made up: gnome")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, rep = dos.write(char)
+    assert spc == b""
+    assert any("gnome" in d and "saving throws" in d for d in rep.dropped)
+
+
+def test_a_race_with_no_innate_effects_gets_no_spc_file():
+    """A human carries nothing and the writer invents nothing for him: the
+    three races the constitution bonus does not reach are the control on the
+    two that do."""
+    for race in (2, 4, 7):              # elf, half-elf, human
+        char = _filled()
+        char.set("race", race, "made up")
+        char.set("innate_effects", [], "made up: nothing in the trait slots")
+        _, _, spc, _ = dos.write(char)
+        assert spc == b"", race
 
 
 def test_a_value_graded_unknown_is_not_written_to_dos():
@@ -434,7 +495,9 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
 
     The dwarf is the case the C64 record cannot answer on its own: it holds no
     trait id for him at all, because the C64 works his bonus against orcs out
-    when the blow lands.  `RACE_COMBAT_EFFECTS` is where that comes from.
+    when the blow lands and keeps his constitution bonus to saving throws
+    inside the five stored saves.  `RACE_COMBAT_EFFECTS` is where all four of
+    his come from.
     """
     import pathlib
 
@@ -455,11 +518,13 @@ def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
     elf = party.index(by_name["MALCYON"]) + 1
     assert (tmp_path / f"CHRDATB{elf}.SPC").read_bytes() == \
         bytes((107,)) + dos.INNATE_PAYLOAD + dos.EFFECT_NEXT_NULL
-    # MAGNUS the dwarf: 26 against orcs and 47 against giants, from the race
-    # byte.  90 and 97 are *not* here -- the C64 has already spent the
-    # constitution save bonus inside the five saving-throw bytes this
-    # conversion copies, so writing them too would apply it twice.
-    assert by_name["MAGNUS"].effect_ids == [26, 47]
+    # MAGNUS the dwarf: 90 and 97 for the constitution bonus to saving throws,
+    # 26 against orcs and 47 against giants, all four from the race byte.  The
+    # C64 spends the constitution bonus inside the five saving-throw bytes,
+    # but the DOS engine recomputes those on load and reads the bonus out of
+    # these records instead -- #191 (A converted dwarf loses his constitution
+    # bonus to saving throws).
+    assert by_name["MAGNUS"].effect_ids == [90, 97, 26, 47]
     # The three humans carry nothing, and an empty file is not how the engine
     # says so.
     for who in ("BRUTUS", "SILAS", "ROLAND"):

@@ -1775,13 +1775,28 @@ dwarf's four bonuses down the middle:
 
 | effect | C64 | DOS | what the writer does |
 |---|---|---|---|
-| 90, 97 — the constitution bonus to saves | **baked into the five stored saving throws.** HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11` where the class row is `13 12 14 16 15` | not baked: THRENDER GRONE, a fighter 1 with constitution 16, stores the plain class row `14 15 16 17 17` and keeps the bonus in these two records | **does not write them.** The conversion copies the five saving-throw bytes, so the bonus arrives inside them; writing the records too would apply it twice |
+| 90, 97 — the constitution bonus to saves | **baked into the five stored saving throws.** HOGARTH, a dwarf with constitution 17, stores `9 8 10 12 11` where the class row is `13 12 14 16 15` | not baked: THRENDER GRONE, a fighter 1 with constitution 16, stores the plain class row `14 15 16 17 17` and keeps the bonus in these two records | **derives them from race**, because the five copied bytes never reach the player: the engine recomputes them on load out of class, level and the `.SPC` records — `#191 (A converted dwarf loses his constitution bonus to saving throws)` |
 | 26, 47 — THAC0 against orcs, armour class against giants | nowhere. Situational, so no stored number can hold them; the C64 derives them from the race byte when the blow lands | the two records | **derives them from race** (`RACE_COMBAT_EFFECTS`), because otherwise a converted dwarf loses them outright |
 | 107, 124 — elf and half-elf sleep and charm resistance | in the trait slots | the record | **copies** |
 
-The gnome is the hole. 47 is named for gnomes as well as dwarves and 18 is the
-gnome's own, but no gnome appears in any save the archives hold, so both would
-be a guess: a converted gnome gets no record and the report says why.
+Until #191 (A converted dwarf loses his constitution bonus to saving throws)
+the first row read *does not write them*, on the reasoning that the copied
+saving-throw bytes already carried the bonus and the records would apply it
+twice. The run refuted it: the copied bytes are discarded on load, so the
+bonus was lost and the records that would have replaced it were never
+written. `RACE_COMBAT_EFFECTS` now holds all four for the dwarf.
+
+**The halfling is measured too, and he is not the dwarf.** PHINEAS, the
+archives' halfling, carries 90 and 97 and nothing else, where THRENDER GRONE
+beside him carries 90, 97, 26 and 47 — in both of the two Pool of Radiance
+save directories the archives hold. So a converted halfling gets the two
+constitution records without the dwarf's bonuses against orcs and giants.
+
+The gnome is the hole. 47 is named for gnomes as well as dwarves, 18 is the
+gnome's own, and 97 is named for all three sturdy races where 90 is named for
+the dwarf and the halfling only. No gnome appears in any save the archives
+hold, so every one of those would be a guess: a converted gnome gets no
+record and the report says why.
 
 **Confirmed in the running game.** `PORSAVE.D64` — MALCYON an elf, LADY
 KATHERINE a half-elf, MAGNUS a dwarf with empty trait slots — converted into a
@@ -2004,13 +2019,31 @@ The three characters carrying no racial adjustment kept their five saves to
 the byte, so this is a recompute of what the race and class imply and not a
 blanket rewrite.
 
-**One of those is a loss and it has an issue.** The C64 stores a dwarf's
-constitution save bonus *inside* the five bytes and DOS keeps it in two
-`.SPC` records instead, so a conversion that copies the bytes and writes no
-records loses the bonus the first time the engine looks at the character —
+**One of those was a loss, and it is fixed.** The C64 stores a dwarf's
+constitution save bonus *inside* the five bytes and DOS keeps it in two `.SPC`
+records instead, so a conversion that copied the bytes and wrote no records
+lost the bonus the first time the engine looked at the character —
 `#191 (A converted dwarf loses his constitution bonus to saving throws)`.
-`RACE_COMBAT_EFFECTS`'s note says writing 90 and 97 "would apply it twice";
-the run refutes that, because the copied bytes do not survive the load.
+`RACE_COMBAT_EFFECTS` now writes 90 and 97 for a dwarf and for a halfling.
+
+Measured again with the fix in, same party and same recipe
+(`tools/dosnewsave.py --steps 0`, resaving over the loaded slot so the
+engine's own records could be read back — `work/p26/issue191`):
+
+| | breath | spell | wands | paralysis | petrification | `.SPC` |
+|---|---|---|---|---|---|---|
+| the conversion writes | 14 | 14 | 13 | 11 | 12 | 90, 97, 26, 47 |
+| the engine's resave holds | 17 | 17 | 16 | 14 | 15 | 90, 97, 26, 47 |
+| THRENDER GRONE, the engine's own dwarf | 17 | 17 | 16 | 14 | 15 | 90, 97, 26, 47 |
+
+The five bytes are still overwritten with the plain fighter-1 row, and that is
+now the *right* answer rather than the loss: a converted MAGNUS and a dwarf
+the game made itself are the same shape, the plain row in the record and the
+bonus in the records beside it. **The engine kept all four records and relinked
+them**, which is what says they were read rather than copied: the file goes in
+with four NULL next pointers and comes back with three live far pointers and a
+NULL, so each record was a node in the character's own effect list. Before the
+fix (`work/p26/run6`) the same dwarf's file held 26 and 47 and nothing else.
 
 The rest are derived values a conversion need not carry at all, which is a
 finding in the useful direction: they cannot be got wrong.
