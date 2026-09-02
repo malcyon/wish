@@ -31,7 +31,26 @@ gh issue view N --json number,title -q '"#\(.number) (\(.title))"'
 ```
 
 `.claude/hooks/check-issue-titles.py` refuses a reply that breaks this, so it
-is no longer a matter of remembering. **The one exception is a commit
+is no longer a matter of remembering. It is a `Stop` hook, so it only sees a
+turn once the turn has ended: prose written mid-turn, with tool calls still to
+come, reaches Donald before anything checks it. `check-gh-issue-titles.py`
+covers the other half, `gh issue comment` and `gh api .../issues/comments`,
+which the `Stop` hook never sees at all.
+
+**A mid-turn `PreToolUse` guard was tried on 2026-09-02 and withdrawn the same
+hour. Do not rebuild it without solving this first.** It refused the next tool
+call whenever the turn's prose so far carried a bare number, which worked in
+the main window and **disabled subagents completely**: a subagent's
+`transcript_path` is the shared one, so it was refused for citations the main
+window had written, could not edit them, and had no way to clear the block --
+`gh issue view`, the remedy the message recommends, is itself a `Bash` call it
+refused. One agent lost its whole task that way and reported that even `echo
+ok` was refused.
+
+The lesson is the general one rather than the specific: **a guard that blocks
+tool use has to be clearable by whoever it blocks.** This one was not, and its
+failure mode -- no agent can do anything -- was worse than the fault it caught,
+which is a sentence Donald has to read twice. **The one exception is a commit
 message**, where the Commits section rules the number goes bare in
 parentheses at the end of the one line -- a title there would break the
 sentence, and GitHub hotlinks it anyway. The hook knows about that exception
