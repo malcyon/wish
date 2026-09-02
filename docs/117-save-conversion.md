@@ -1042,6 +1042,26 @@ under each figure compares directly with what the conversion wrote:
 
 Six of six and none of seven.
 
+**A second fight, and it is four of six.** The same check was run on the Sokol
+Keep party (DOS slot B), whose panel lists all six of BRUTUS, MAGNUS, ROLAND,
+GILES, ASTRID and SILAS. Fourteen figures were on the floor: ten monster
+blocks, none matching, and **four** party blocks, all four matching
+`0E 0F 0E 0E 0E 0E 0E 0E 0E`. Two party members were never drawn as a figure
+at all -- not scanned and missed, but absent from the floor, which
+`work/p119b/NEWB3-combat.png` shows directly.
+
+So the honest sample across both fights is **10 of 10 party blocks that
+appeared matched the composed icon, and 0 of 17 monster blocks did**. The
+colour finding holds and is strengthened by the second fight. What is
+**UNKNOWN** is why two of six were not on the floor -- whether the battlefield
+was larger than the visible window, whether those two were placed out of view,
+or whether something about the conversion left them undrawn. Nothing here
+distinguishes those, and none of them was investigated.
+
+That last one would be a defect a player sees, so it is
+`#185 (Two of six party members were not drawn on the combat floor at Sokol Keep)`
+rather than a footnote.
+
 **An icon's own screen codes never appear on the combat floor**, and a first
 pass that searched for them found nothing and read like a failure. The six
 party figures were drawn from codes `$5E`-`$93` — six runs of nine consecutive

@@ -879,9 +879,11 @@ screen without the bias being taken off.
 **D5.** Walk two or three squares, and check the square and the clock on the
 status line move with the party.
 
-**D6.** Walk into another area, through a door rather than by fast travel. From
-New Phlan the short route is the training hall: from `(4,2)` face east and walk
-to `(7,2)`. The game prints a room description, waits on `PRESS <RETURN> OR
+**D6.** Walk into another area, through a door rather than by fast travel.
+**This step needs slot A**, whose party is in New Phlan; run D1 again with
+`--slot A` if you followed it with slot J, which arrives in the Slums and where
+the coordinates below name nothing. From New Phlan the short route is the
+training hall: from `(4,2)` face east and walk to `(7,2)`. The game prints a room description, waits on `PRESS <RETURN> OR
 BUTTON TO CONTINUE`, loads for twenty-odd seconds and then asks two `YES NO`
 questions; answer `NO` to both.
 
