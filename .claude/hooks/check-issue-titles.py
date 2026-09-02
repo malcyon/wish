@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Refuse a reply that cites an issue number without saying what it is.
 
-Donald reads these replies without a browser open, and a bare `#59` carries
-nothing at all to him: *"when you only reference a number, it never means
-anything to me."* The rule has been in `CLAUDE.md` since the Issues section
+A bare `#59` makes Donald do the lookup: fast for the assistant, which has
+the number in hand, and slow for him, who has to go and find out what it is
+before the sentence means anything -- *"when you only reference a number, it
+never means anything to me."* This docstring used to say the reason was that
+he reads replies with no browser open. It is not, and he corrected it on
+2026-09-02: *"It should not matter if I have a web browser open or not.
+You're forcing me to manually look up every number. That is fast for you, but
+slow for me."* The rule has been in `CLAUDE.md` since the Issues section
 was written, it is restated in the Replies section three hundred lines later,
 and it went on being broken -- so this stops being a matter of remembering it.
 
@@ -126,8 +131,8 @@ def main() -> int:
         "Rewrite the reply before sending it: "
         + ", ".join(bare)
         + " each cite an issue without saying what it is.\n\n"
-        "Donald reads these without a browser open, so a bare number carries "
-        "nothing to him. Name every one, at every mention -- there is no "
+        "A bare number makes Donald look it up: fast for you, slow for him. "
+        "Name every one, at every mention -- there is no "
         '"already introduced it above" exemption, and this includes tables '
         "and the prose around them.\n\n"
         "    #59 (Map the DOS saved game, not just the character record)\n\n"

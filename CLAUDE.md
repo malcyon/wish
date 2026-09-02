@@ -7,9 +7,14 @@
 tables -- there is no "already introduced it above" exemption.
 
 This is first in the file because it is the rule most often broken and the one
-that costs Donald the most. He reads replies without a browser open, and a
-number on its own carries nothing at all to him: *"when you only reference a
-number, it never means anything to me."* It was stated twice, in the Issues
+that costs Donald the most. **The reason is that a bare number makes him do
+the lookup.** It is fast for the assistant, which has the number in hand, and
+slow for him, who has to go and find out what it is before the sentence means
+anything: *"when you only reference a number, it never means anything to me."*
+It is not about whether he has a browser open -- this file used to say that,
+and Donald corrected it on 2026-09-02: *"It should not matter if I have a web
+browser open or not. You're forcing me to manually look up every number. That
+is fast for you, but slow for me."* It was stated twice, in the Issues
 section and again in Replies three hundred lines later, and went on being
 broken anyway -- five times in one session on 2026-08-31, in the middle of
 work that was otherwise going well. A reply is written fast, the number is
@@ -832,8 +837,8 @@ where the Documentation section says.
 **Name an issue when you cite it: `#59 (Map the DOS saved game, not just the
 character record)`.** A bare `#59` is an opaque number in a commit message, in
 `git blame`, in a terminal and in a reply -- and this project's archaeology
-happens in all four. The title is what makes a reference readable a year later
-without a browser.
+happens in all four. The title is what saves the reader a lookup, now and a
+year later.
 
 This applies to **replies, issue comments and documents** -- everywhere a
 person reads the reference somewhere GitHub is not rendering it.
@@ -853,10 +858,12 @@ and do not treat one as a defect in an audit. It is not a factual error, so
 "Reply, never rewrite" governs and the answer is to leave it.
 
 **The rule still binds hardest in a terminal**, which is where it keeps being
-broken and where the cost is real: Donald reads replies with no browser open,
-so a bare number carries nothing at all -- *"when you only reference a number,
-it never means anything to me."* Write new citations with their titles
-everywhere; simply do not rewrite old bodies to match.
+broken and where the cost is real: a bare number there is a lookup Donald has
+to go and do -- *"when you only reference a number, it never means anything to
+me."* That is also why an issue *body* is exempt and this is not: on the web
+the hover does the lookup for him, and in a terminal nothing does. Write new
+citations with their titles everywhere; simply do not rewrite old bodies to
+match.
 
 **Every finding goes in a comment on its issue, when it arrives.** Not at the
 end of the work, not only in the reply, not only in `docs/` -- on the issue,
@@ -1360,9 +1367,9 @@ saved game, not just the character record)`, never a bare `#59`. The rule is in
 the Issues section and it says it applies to replies, but it is three hundred
 lines away from here and that is exactly why it gets broken: a reply is written
 fast, the number is what the assistant has in hand, and the title feels like
-padding. It is not padding. Donald reads these replies without the browser
-open, and a bare number carries nothing at all to him: *"when you only
-reference a number, it never means anything to me."*
+padding. It is not padding. Leaving it out moves the work from the writer to
+the reader: *"You're forcing me to manually look up every number. That is fast
+for you, but slow for me."*
 
 **This includes tables**, which is where it is dropped most often -- a column
 of bare numbers is the least readable thing in a reply, not the most. Put the

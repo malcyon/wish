@@ -2,7 +2,8 @@
 """Put the open issue list, with titles, into context at the start of a session.
 
 `CLAUDE.md`'s first rule is that an issue is cited by number *and* title,
-because Donald reads replies with no browser open. The rule was stated twice
+because a bare number makes Donald look it up -- fast for the assistant,
+slow for him. The rule was stated twice
 and broken five times in one session anyway, and the reason was not
 disagreement: writing fast, the number is in hand and the title is not, and
 looking each one up mid-sentence is friction that gets skipped.
