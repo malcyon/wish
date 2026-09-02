@@ -202,6 +202,11 @@ class Recorder:
             "t": round(time.time() - self.t0, 2),
             "bar": bar,
             "ink": screen.ink(BAR),
+            # `ink` and not `glyphs`, and only because nothing reads this
+            # back: `STATUS` is a different rectangle from `BAR` and
+            # nobody has measured whether its paper in a fight is the
+            # `#555555` that made `ink` useless on the bar. Diagnostic
+            # only -- do not decide anything on it without measuring.
             "status": screen.ink(STATUS),
             "frame": screen.digest(),
             "note": note,

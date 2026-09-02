@@ -113,7 +113,9 @@ the cleric's, did not recognise it, and stood at it.
 **The first seventeen characters are the same for every variant** --
 `MOVE VIEW AIM USE`, the leftmost 136 pixels -- and they differ from every
 other bar in the table above. So that is what a command bar is recognised by:
-`PoolOfRadiance.COMMAND_PREFIX_RECT`, checked *after* the whole-strip table,
+`PoolOfRadiance.COMBAT_BARS`, whose entries are `(width, digest, label)` and
+are walked widest-first by `bar_kind` -- so a prefix is only ever reached after
+the whole strip has failed to match,
 because a bar caught mid-redraw is one flat colour and so has a flat prefix
 too.
 

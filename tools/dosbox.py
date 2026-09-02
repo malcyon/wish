@@ -1126,9 +1126,17 @@ class PoolOfRadiance:
 
     # -- the fight ---------------------------------------------------------
     #
-    # Every digest below is `Screen.ink(BAR)` -- the bottom text row
-    # thresholded to lit and unlit, so the highlight colour and the
-    # white-then-green recolour are both discarded.  The words beside each one
+    # Every digest below is `Screen.glyphs(BAR)` -- the bottom text row
+    # reduced to lit and unlit against **its own paper**, so the highlight
+    # colour and the white-then-green recolour are both discarded.
+    #
+    # Not `Screen.ink`, and the difference is this whole section's reason for
+    # existing: the combat screen's paper is `#555555`, above `ink`'s fixed
+    # threshold, so `ink` reads the entire strip as lit and every bar in a
+    # fight hashes to the sha1 of 2240 ones. A driver holding these digests
+    # and computing with `ink` matches the first row against everything --
+    # which is how `QUICK` came to be pressed at `CONTINUE BATTLE : YES NO`,
+    # over and over.  The words beside each one
     # were read **once, by a person, off the PNG named in the comment**, and
     # are here so the next reader knows what the number is.  Nothing in this
     # class ever matches them: a digest cannot be misread, only unequal.
