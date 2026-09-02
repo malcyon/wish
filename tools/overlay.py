@@ -62,11 +62,20 @@ def load(name: str, root: str) -> tuple[int, bytes]:
     for path in game_disks(root):
         try:
             image = D64.open(path)
-        except Exception:
+        except Exception as exc:
+            print(f"  ({path}: {exc})", file=sys.stderr)
             continue
         for entry in image.iter_directory():
             if entry.name.decode("latin1").rstrip("\xa0 ") == name:
-                return split_load_address(image.read_file(name))
+                # A broken sector chain is one bad side, not the end of the
+                # search -- the same file is usually on several.  Saying so
+                # keeps "the disk is unreadable" from looking like "the file
+                # is not here", which is the message below.
+                try:
+                    return split_load_address(image.read_file(name))
+                except Exception as exc:
+                    print(f"  ({path}: {name}: {exc})", file=sys.stderr)
+                    break
     raise SystemExit(f"No file called {name} on any disk under {root}")
 
 

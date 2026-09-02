@@ -56,7 +56,8 @@ def every_file(root: str) -> dict[str, tuple[int, bytes]]:
     for path in game_disks(root):
         try:
             image = D64.open(path)
-        except Exception:
+        except Exception as exc:
+            print(f"  ({path}: {exc})", file=sys.stderr)
             continue
         for entry in image.iter_directory():
             name = entry.name.decode("latin1").rstrip("\xa0 ")
@@ -64,7 +65,8 @@ def every_file(root: str) -> dict[str, tuple[int, bytes]]:
                 continue
             try:
                 seen[name] = split_load_address(image.read_file(name))
-            except Exception:
+            except Exception as exc:
+                print(f"  ({path}: {name}: {exc})", file=sys.stderr)
                 continue
     return seen
 
