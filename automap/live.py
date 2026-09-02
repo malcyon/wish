@@ -86,6 +86,19 @@ def memory_blocks(game: games.Game | None = None):
 
 
 # Owner encoding: a party member by slot, a monster, or everybody.
+#
+# **The engine uses both shapes for a spell on the party, and neither can be
+# dropped.** Measured in the running game on `#142 (The party effects line is
+# computed every poll and shown nowhere)`, two casts on one party:
+#
+# * **Bless** writes **six rows, one per character**, each owner byte holding
+#   that character's own slot. No `0xFF` row at all.
+# * **Prayer** writes **one row with owner `0xFF`**, id 35, and nothing per
+#   character.
+#
+# So `0xFF` is CONFIRMED rather than assumed -- and a row reading only `0xFF`
+# still draws nothing for Bless, which is why
+# `Snapshot.whole_party_effects` is the union of the two.
 FIRST_MONSTER = 8
 PARTY_WIDE = 0xFF
 
@@ -125,11 +138,18 @@ GRID = 16
 # **Five of these ids are PROBABLE rather than CONFIRMED** -- 21, 42, 45, 46
 # and 49, the ones a spell has to land on the *whole party* to write, which no
 # save this project holds does. Donald added them anyway on `#142 (The party
-# effects line is computed every poll and shown nowhere)`, because that line is
-# what a party-wide spell would otherwise show up on and it would show nothing:
-# *"I do agree that protection from evil and good 10ft radius fits well with
-# embraced energy."* `PROBABLE_BADGED` below is the list, so a *sixth* PROBABLE
-# id cannot join without somebody deciding it.
+# effects line is computed every poll and shown nowhere)`: *"I do agree that
+# protection from evil and good 10ft radius fits well with embraced energy."*
+# `PROBABLE_BADGED` below is the list, so a *sixth* PROBABLE id cannot join
+# without somebody deciding it.
+#
+# **Casting the spells in the running game promoted none of them.** A cast
+# Prayer writes **35**, `under an allied Prayer` -- already CONFIRMED and
+# already in the *blessed* row, so the picture was right and 49 is still a
+# name nobody has watched the game write. Silence, 15' Radius cast outside a
+# fight wrote no effect row at all. And 45 and 46 are unreachable for a cleric
+# in this title: the 3rd-level book has no radius Protection from Evil or Good
+# (`docs/136-condition-badges.md`).
 CONDITION_BADGES: tuple[tuple[str, tuple[int, ...]], ...] = (
     ("running-ninja", (39,)),                            # hasted
     ("healing-shield", (1, 35, 49)),                     # blessed
@@ -350,11 +370,74 @@ class Snapshot:
 
     @property
     def party_effects(self) -> tuple[Effect, ...]:
+        """Rows whose **owner byte** says the whole party, and only those.
+
+        Prayer writes exactly one of these -- id 35, owner `0xFF`, measured in
+        the running game. Bless writes none, which is what
+        `whole_party_effects` is for.
+        """
         return tuple(e for e in self.effects if e.party_wide)
 
     @property
     def monster_effects(self) -> tuple[Effect, ...]:
         return tuple(e for e in self.effects if e.monster)
+
+    @property
+    def standing(self) -> tuple[Character, ...]:
+        """Everyone whose hit points read and are not zero.
+
+        Zero is dead or dying and the record does not say which
+        (`Character.down`); either way a corpse must not be the reason a
+        blessing stops being shown. A character whose roster block did not
+        read is excluded for the opposite reason -- its effects cannot be
+        counted, so it can neither confirm nor deny that everybody has one.
+        """
+        return tuple(c for c in self.characters
+                     if c.hp is not None and not c.down)
+
+    @property
+    def whole_party_effects(self) -> tuple[Effect, ...]:
+        """Every effect the whole party is under, however the game wrote it.
+
+        **Two ways in, and the row draws the union.**
+
+        * An **owner byte of `$FF`**. **Prayer** writes exactly this: one row,
+          id 35, owner `$FF`, and nothing per character.
+        * An effect **every standing character is carrying**. **Bless** writes
+          exactly this: one row per character, each owner byte that
+          character's own slot, and no `$FF` row at all -- six rows, owners 0
+          to 5. To a player that is one spell on the party, and it is what the
+          row exists to say.
+
+        Both were cast on one party in the running game on `#142 (The party
+        effects line is computed every poll and shown nowhere)`, which is why
+        neither branch can be dropped.
+
+        **It takes two standing characters, not one.** With one, "everybody"
+        and "that character" are the same event and the row would be a copy of
+        that character's own card -- and Donald ruled on the same issue that a
+        spell on a single character is that card's business and must not
+        appear twice. So a party of one, and a party cut down to one survivor,
+        draw nothing derived here; the survivor's card still badges whatever
+        is running on them.
+
+        With nobody standing there is no "everybody" either: an empty
+        intersection would otherwise be vacuously true of every id in the
+        table. Both cases leave the `$FF` rows, which need no party at all.
+        """
+        out = list(self.party_effects)
+        standing = self.standing
+        if len(standing) < 2:
+            return tuple(out)
+        shared = set.intersection(*({e.id for e in c.effects}
+                                    for c in standing))
+        already = {e.id for e in out}
+        for eid in sorted(shared - already):
+            # A real row rather than a made-up one, so a report about it can
+            # name a slot: the lowest-numbered slot carrying that id.
+            out.append(min((e for c in standing for e in c.effects
+                            if e.id == eid), key=lambda e: e.slot))
+        return tuple(out)
 
     @property
     def party_badges(self) -> tuple[tuple[str, str], ...]:
@@ -363,21 +446,22 @@ class Snapshot:
         The same `badges` a roster card uses, so Bless is the same picture
         whether it landed on one character or on everybody.
         """
-        return badges(e.id for e in self.party_effects)
+        return badges(e.id for e in self.whole_party_effects)
 
     @property
     def unbadged_party_effects(self) -> tuple[Effect, ...]:
-        """Party-wide effects no glyph covers, so a caller can say they exist.
+        """Effects on the whole party that no glyph covers, so a caller can
+        say they exist.
 
-        Nothing draws these. The badge set is graded from the spell table
-        rather than from anything watched: **no save this project holds
-        carries a party-wide effect at all** -- checked 2026-08-31, the only
-        effect in any fixture is id 73 with owner `0x00`, a character. So an
-        id landing here is the signal that the set is short a glyph, and
-        `BottomStrip` puts it in the debug log for exactly that reason.
+        Nothing draws these. Most of the badge set is graded from the spell
+        table rather than from anything watched -- only Bless and Prayer have
+        been seen landing on a party. So an id landing here is the signal that
+        the set is short a glyph, and `BottomStrip` puts it in the debug log
+        for exactly that reason.
         """
         covered = {i for _, ids in CONDITION_BADGES for i in ids}
-        return tuple(e for e in self.party_effects if e.id not in covered)
+        return tuple(e for e in self.whole_party_effects
+                     if e.id not in covered)
 
 
 def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:

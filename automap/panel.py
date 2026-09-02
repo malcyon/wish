@@ -924,7 +924,13 @@ class BottomStrip(QObject):
                      " ".join(f"{b:02X}" for b in loaded) or "none")
 
     def show_effects(self, snap) -> None:
-        """One icon per party-wide spell, named in the row's tooltip.
+        """One icon per spell the whole party is under, named in the tooltip.
+
+        **What counts as the whole party is `Snapshot.whole_party_effects`**,
+        and it is not only the `$FF` owner byte the decode named: Bless cast
+        from the adventure menu writes one row per character and no `$FF` row
+        at all, so a rule that read only the owner byte drew nothing for the
+        one party spell anybody has watched land.
 
         **Nothing is drawn when nothing is running.** The old shape was one
         line per character, blank on most of them, and eight blank lines is
@@ -959,8 +965,9 @@ class BottomStrip(QObject):
         for effect in snap.unbadged_party_effects:
             if effect.id not in self._unbadged:
                 self._unbadged.add(effect.id)
-                log.warning("Party-wide %s has no condition badge, so nothing "
-                            "on the strip shows it", effect.label)
+                log.warning("The whole party is under %s and no condition "
+                            "badge covers it, so nothing on the strip shows "
+                            "it", effect.label)
 
 
 class NotesPanel(QObject):

@@ -21,7 +21,8 @@ The effect ids are `goldbox/traits.py`'s. Each one is written into the party
 row -- owner `$FF` -- because **no save this project holds carries a
 party-wide effect**: checked 2026-08-31, the only effect in any fixture is id
 73 with owner `0x00`, which is a character. Making the table up here is what
-lets the row be looked at at all.
+lets every badge be looked at at once. `tools/livestrip.py` is the other half
+and reads a real one off a running machine.
 
 **Output goes under `work/`, which is `.gitignore`d**, and the tooltip text is
 printed to the terminal, because a `grab()` does not draw one.
@@ -118,6 +119,12 @@ def shoot(app, party, monsters: int, zoom: int, full: bool, snap=None):
     state = AutomapState()
     state.area = "GEO00"
     state.source, state.x, state.y = "status", 3, 14
+    if snap is not None:
+        # A picture of a running machine has to say where that party really
+        # is. It said `(3,14)` and `New Phlan` over a party standing in the
+        # Slums, which is a caption that contradicts its own evidence.
+        state.area = snap.area_file or state.area
+        state.x, state.y, state.facing = snap.x, snap.y, snap.facing
     strip.show_state(state, snap if snap is not None
                      else snapshot(party, monsters))
 

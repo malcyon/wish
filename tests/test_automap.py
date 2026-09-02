@@ -1243,6 +1243,101 @@ def test_a_spell_on_one_character_stays_off_the_party_line(app):
     assert names == ()
 
 
+# --- what the running game actually writes (#142) ---------------------------
+#
+# Two casts on one party, measured on a pool slot 2026-09-01/02:
+# **Bless** writes **one row per character**, each owner byte holding that
+# character's own slot and no `$FF` row at all; **Prayer** writes **one row
+# with owner `$FF`**, id 35, and nothing per character. So the row's rule is
+# the union of the two, and neither branch can be dropped.
+#
+# These build their party rather than reading it off `captured()`, which is a
+# party of one -- and one character carrying a spell is exactly the case the
+# rule refuses.
+
+def party_of(*people):
+    """A snapshot of a made-up party: `(hit points, effect ids)` each."""
+    slot = 0
+    chars, effects = [], []
+    for index, (hp, ids) in enumerate(people):
+        mine = []
+        for eid in ids:
+            mine.append(live.Effect(slot=slot, id=eid, owner=index,
+                                    duration=6, magnitude=0))
+            slot += 1
+        effects.extend(mine)
+        chars.append(live.Character(
+            slot=index, name=f"HERO{index}", classes=(), level=1,
+            armour_class=9, thac0=18, hp=hp, hp_max=11, experience=0,
+            effects=tuple(mine)))
+    return live.Snapshot(characters=tuple(chars), effects=tuple(effects),
+                         x=3, y=14, facing=0, clock_text="10:15",
+                         area_file="GEO14")
+
+
+def test_bless_on_all_six_lights_the_row_though_no_owner_byte_says_party(app):
+    """The measurement this row was rebuilt around. Your cleric casts Bless,
+    the game prints `IS BLESSED`, and the effect table holds six rows -- one
+    per character, each owner byte that character's own slot -- and no `$FF`
+    row, so a row reading only the owner byte drew nothing at all while every
+    card in the column showed the shield."""
+    snap = party_of(*[(11, (1,))] * 6)
+    assert snap.party_effects == ()             # nothing owns it party-wide
+    names, tip = shown(app, snap)
+    assert names == ("healing-shield",) and tip == "Bless"
+
+
+def test_a_spell_five_of_six_are_under_is_not_the_partys(app):
+    """One character short is not the party, and this is what separates the
+    rule from "any effect anybody is carrying"."""
+    snap = party_of(*([(11, (1,))] * 5 + [(11, ())]))
+    assert shown(app, snap)[0] == ()
+
+
+def test_a_corpse_does_not_take_the_partys_blessing_off_the_row(app):
+    """A character at 0 hit points is dead or dying and the record does not
+    say which -- but either way the five still standing are still blessed, and
+    the row must not go dark because one of them fell."""
+    snap = party_of(*([(11, (1,))] * 5 + [(0, ())]))
+    names, tip = shown(app, snap)
+    assert names == ("healing-shield",) and tip == "Bless"
+
+
+def test_one_survivor_draws_nothing_the_survivors_own_card_does_not(app):
+    """With one character standing, "on everybody" and "on that character" are
+    the same event, and Donald's ruling is that a spell on a single character
+    is that card's business and must not appear twice. So the derivation takes
+    two standing characters; the survivor's own card still badges it."""
+    snap = party_of((11, (1,)), (0, ()), (0, ()))
+    assert [c.name for c in snap.standing] == ["HERO0"]
+    assert shown(app, snap)[0] == ()
+    assert snap.characters[0].conditions == (("healing-shield", "Bless"),)
+
+
+def test_a_party_that_is_all_down_draws_nothing_rather_than_everything(app):
+    """Nobody standing means no "everybody": an intersection over an empty
+    party is vacuously true of every id in the table, which would badge the
+    lot."""
+    snap = party_of((0, (1,)), (0, (39,)))
+    assert snap.standing == ()
+    assert shown(app, snap)[0] == ()
+
+
+def test_the_owner_byte_for_the_whole_party_draws_on_its_own(app):
+    """The other half of the measurement: **Prayer** writes one row with owner
+    `$FF` -- id 35, nothing per character -- so this branch is what draws it,
+    and a party where nobody is carrying anything individually still lights
+    the row."""
+    snap = party_of((11, ()), (11, ()))
+    snap = live.Snapshot(
+        characters=snap.characters,
+        effects=(live.Effect(slot=0, id=39, owner=live.PARTY_WIDE,
+                             duration=6, magnitude=0),),
+        x=3, y=14, facing=0, clock_text="10:15", area_file="GEO14")
+    names, tip = shown(app, snap)
+    assert names == ("running-ninja",) and tip == "Hasted"
+
+
 def test_the_strip_draws_the_same_icon_as_the_card_for_the_same_spell(app):
     """*"The party line and a roster card use the same icon for the same
     spell"* -- the difference is only whether it landed on one character or on

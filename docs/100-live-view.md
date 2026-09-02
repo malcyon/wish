@@ -91,6 +91,32 @@ the whole party, and bits 6–7 of the duration byte selecting the time unit.
 Expiry clears only the id, so **filter on a non-zero id** or you will show
 effects that ended.
 
+**The engine writes a spell on the party in two different shapes, and both
+are CONFIRMED.** Two casts on one party in the running game, on `#142 (The
+party effects line is computed every poll and shown nowhere)`:
+
+| spell | what the effect table holds |
+|---|---|
+| **Bless** | **six rows, one per character**, each owner byte holding that character's own slot. No `$FF` row at all |
+| **Prayer** | **one row, owner `$FF`**, id **35** (`under an allied Prayer`), and nothing per character |
+
+So a row filtered on `$FF` alone shows Prayer and misses Bless entirely, which
+is what `BottomStrip` did. What the bottom strip draws is the union: an `$FF`
+owner byte, **or** an effect every standing character is carrying — which is
+what a player means by a spell on the party.
+
+**A cast Prayer writes 35, not 49.** Effect 49 is named `Prayer` and graded
+PROBABLE in `goldbox/traits.py`; nothing has been watched writing it, and 35
+was already CONFIRMED and already in the *blessed* badge row, so the picture
+was right by accident of grouping. **Silence, 15' Radius cast outside a fight
+wrote no effect row at all** — the spell was spent and the table stayed empty
+— so 21 is still unwatched too.
+
+**The table is filled a slot at a time, downward from the highest free slot**,
+and a read taken a second after a cast can be one character short: the same
+Bless read once as five rows in slots 59–63 and, a few seconds later, as six
+in 58–63. Anything measuring a cast has to read twice.
+
 ---
 
 ## How it reads
@@ -189,9 +215,12 @@ number is only interesting while editing, it belongs on the editor tab.
    nowhere)`; which effect ids each badge covers, and how each glyph survives
    13 px, is [`136-condition-badges.md`](136-condition-badges.md).
 4. **Built, folded into the bottom strip rather than a separate panel — lost,
-   and rebuilt as icons.** `BottomStrip.show_effects` (`automap/panel.py`)
-   draws **one icon row for the whole roster** above the square and the area
-   name, with each spell's name in the row's tooltip. Monster effects are
+   rebuilt as icons, and then proven in the running game.** `BottomStrip.show_effects`
+   (`automap/panel.py`) draws **one icon row for the whole roster** above the
+   square and the area name, with each spell's name in the row's tooltip. What
+   it counts as a spell on the party is `Snapshot.whole_party_effects` — an
+   `$FF` owner byte, or an effect every standing character is carrying —
+   because the engine writes Prayer as the first and Bless as the second. Monster effects are
    counted in that tooltip rather than listed, deliberately: a monster's
    effects belong to whatever is being fought, and the combat view is where
    they will mean something.
@@ -228,10 +257,12 @@ number is only interesting while editing, it belongs on the editor tab.
 * Switching away from the tab stops the polling —
   `test_only_the_visible_tab_is_read` and `test_a_hidden_map_tab_reads_nothing`
   (`tests/test_wish.py`).
-* With the effects arrays zeroed, `BottomStrip.show_state` sets the text to
-  "none" — but no test asserts it.
-  `test_the_strip_says_when_the_party_is_not_readable` never reads
-  `.effects.text()` despite its name, and is worth a look.
+* **The row was watched lighting in the running game**, on pool slot 2,
+  `NEWSAVE6.D64`, 2026-09-02. Cast Bless with the party's cleric and
+  `tools/livestrip.py` reads six per-character rows off the machine and draws
+  `healing-shield` with `Bless` in the tooltip; cast Prayer and it reads one
+  `$FF` row, id 35, and draws the same shield with `Under an allied Prayer`.
+  Pictures in `work/issue-142-slot2/`, which is gitignored.
 * A hit point bar at 5 of 7 is coloured as hurt, and a full one is not —
   `test_a_wounded_character_is_coloured_and_a_whole_one_is_not`, which cites
   this page's own example.

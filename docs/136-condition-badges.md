@@ -81,13 +81,39 @@ and **42 slowed** took `mute` and `snail` in the same breath.
 
 What changed the reasoning is not the grades — all five are still PROBABLE —
 but where the badges are drawn. Every one of the five is a spell that lands on
-the **whole party**, and no save this project holds carries a party-wide effect
-at all: the only effect in any fixture is id 73 with owner `0x00`, which is a
-character. So waiting for CONFIRMED would have left the party effects row
-permanently empty, which is the state `#142 (The party effects line is computed
-every poll and shown nowhere)` exists to end. `automap/live.py`'s
-`PROBABLE_BADGED` is the list of the five, and the test refuses a sixth: a
-PROBABLE id gets a picture only because somebody chose it.
+the **whole party**, and none of the five has been watched landing there. No
+save this project holds carries a party-wide effect: the only effect in any
+fixture is id 73 with owner `0x00`, which is a character. Nor can one be cast
+by any party on any disk here — **the highest cleric is level 2**, and the
+lowest of the five, 21 Silence 15' Radius, is a level 3 cleric's.
+`automap/live.py`'s `PROBABLE_BADGED` is the list of the five, and the test
+refuses a sixth: a PROBABLE id gets a picture only because somebody chose it.
+
+**The argument that used to be here was that the row would be permanently
+empty without them, and it is no longer true.** Two spells have since been
+cast in the running game on `#142 (The party effects line is computed every
+poll and shown nowhere)`, and both light the row off ids that were already
+CONFIRMED: **1 Bless** and **35 `under an allied Prayer`**. The five stay
+because Donald chose them and because an id with no glyph is drawn nowhere,
+not because the row needs them to have anything to show.
+
+**What counts as "on the party" is not the owner byte alone.** Bless writes one
+row per character, each owner byte holding that character's own slot and no
+`$FF` row at all; Prayer writes one row with owner `$FF` and nothing per
+character. So the row draws the union: an `$FF` owner byte, or an effect every
+standing character is carrying. A card and the row still share `badges()`, so
+Bless is the same shield either way.
+
+**Casting Prayer did not promote 49.** What it writes is **35**, which was
+already CONFIRMED and already in the *blessed* row — so the shield was the
+right picture, and 49 remains a name nobody has watched the game write.
+Silence, 15' Radius cast outside a fight wrote no effect row at all, so 21 is
+unwatched too. And **45 and 46 cannot come from a cleric in this title at
+all**: with a level 5 cleric the 3rd-level book is ANIMATE DEAD, CURE
+BLINDNESS, CAUSE BLINDNESS, CURE DISEASE, CAUSE DISEASE, DISPEL MAGIC, PRAYER,
+REMOVE CURSE, BESTOW CURSE, and the only Protection from Evil and Protection
+from Good in it are the single-target 1st-level pair. Whether a magic-user
+reaches the 10' radius versions is untested.
 
 **A party effect no badge covers is drawn nowhere**, and that is the honest
 consequence of a set graded from the spell table rather than from anything
