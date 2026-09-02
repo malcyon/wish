@@ -292,6 +292,36 @@ class Screen:
         )
         return hashlib.sha1(bits).hexdigest()[:16]
 
+    def glyphs(self, rect: tuple[int, int, int, int] | None = None) -> str:
+        """A digest of the same rectangle's shape, against its own background.
+
+        `ink` compares every pixel with one fixed threshold, and that is only
+        safe where the paper is dark.  **On the combat screen it is not**: the
+        background there is `#555555`, whose channels sum to 255 and so count
+        as ink, and the whole bar strip comes back lit.  Every combat bar then
+        hashes to the same number -- `MOVE VIEW AIM USE QUICK DONE` and
+        `CONTINUE BATTLE : YES NO` both to `02d05064ee41da5f`, which is not a
+        bar at all but the sha1 of 2240 ones.  A driver reading that table
+        pressed `QUICK` at a yes-or-no question and went on pressing it.
+
+        So the paper is not assumed, it is measured: whatever colour the strip
+        has most of.  A bar is text on a filled row, so the background always
+        wins that count by a wide margin, and everything else is a glyph.  It
+        is colour-blind in the way `ink` was meant to be -- the white-then-green
+        recolour of the world bar leaves the same pixels not-background -- and
+        it works on grey paper as well as black.
+        """
+        px = self.rows(rect)
+        counts: dict[bytes, int] = {}
+        for i in range(0, len(px), 3):
+            k = px[i:i + 3]
+            counts[k] = counts.get(k, 0) + 1
+        paper = max(counts, key=lambda k: counts[k])
+        bits = bytes(
+            0 if px[i:i + 3] == paper else 1 for i in range(0, len(px), 3)
+        )
+        return hashlib.sha1(bits).hexdigest()[:16]
+
 
 # --------------------------------------------------------------------------
 # Which window is ours, and whether anything is in it
@@ -553,6 +583,13 @@ class Session:
         self.stage(fresh=fresh)
         env = dict(os.environ, DISPLAY=self.display, SDL_AUDIODRIVER="dummy")
         env.pop("XAUTHORITY", None)
+        # A GTK or SDL2 child prefers `WAYLAND_DISPLAY` over whatever `DISPLAY`
+        # says, so a private `Xvfb` is not a sandbox while it is set: that is
+        # how DOSBox-X's file chooser drew on the desktop of the person sitting
+        # at this machine.  DOSBox 0.74 is SDL 1.2 and has no Wayland backend,
+        # so this is the belt to that brace and costs nothing.
+        for var in ("WAYLAND_DISPLAY", "XDG_SESSION_TYPE"):
+            env.pop(var, None)
         if server_on(self.display):
             raise RuntimeError(
                 f"{self.display} already has an X server on it, so this "
@@ -757,6 +794,16 @@ class Session:
     ) -> bool:
         return self.wait_for(lambda s: s.ink(rect) != same, timeout)
 
+    def wait_until_glyphs(
+        self, rect: tuple[int, int, int, int], want: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.glyphs(rect) == want, timeout)
+
+    def wait_while_glyphs(
+        self, rect: tuple[int, int, int, int], same: str, timeout: float = 30.0
+    ) -> bool:
+        return self.wait_for(lambda s: s.glyphs(rect) != same, timeout)
+
 
 # --------------------------------------------------------------------------
 # Pool of Radiance, driven
@@ -874,6 +921,26 @@ def items(data: bytes):
         yield data[i * ITEM_SIZE:(i + 1) * ITEM_SIZE]
 
 
+def settle_files(folder: Path, quiet: float = 0.5, timeout: float = 30.0) -> bool:
+    """Wait until nothing in `folder` has been written for `quiet` seconds.
+
+    A DOS save is seven files and the one this harness watches is not the last
+    of them, so "the save game changed" is true a few milliseconds before the
+    character records are on disk.  Returns whether it went quiet in time.
+    """
+    deadline = time.time() + timeout
+    last, since = None, time.time()
+    while time.time() < deadline:
+        now = max((p.stat().st_mtime for p in folder.glob("*") if p.is_file()),
+                  default=0.0)
+        if now != last:
+            last, since = now, time.time()
+        elif time.time() - since >= quiet:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 class PoolOfRadiance:
     """The keystroke protocol of DOS Pool of Radiance, verified by effect.
 
@@ -890,12 +957,27 @@ class PoolOfRadiance:
     def __init__(self, session: Session):
         self.s = session
         self.world_bar: str | None = None
+        #: The same bar by `Screen.glyphs`, which is what the fight compares
+        #: against.  Kept beside `world_bar` rather than replacing it: the
+        #: world and camp screens are black-papered, where the two agree on
+        #: every bar measured, and the movement and camp paths were proven
+        #: against `ink`.
+        self.world_glyphs: str | None = None
 
     # -- screen predicates, as digests rather than text ------------------
 
     def bar(self) -> str:
         """The command bar, by shape.  See `Screen.ink` for why not by colour."""
         return self.s.capture().ink(BAR)
+
+    def combat_bar(self) -> str:
+        """The command bar by `Screen.glyphs`, which a fight needs.
+
+        `ink` cannot separate one combat bar from another -- the combat
+        screen's paper is `#555555`, which is above its threshold, so the whole
+        strip reads as lit and every bar hashes the same.  See `Screen.glyphs`.
+        """
+        return self.s.capture().glyphs(BAR)
 
     def status(self) -> str:
         return self.s.capture().ink(STATUS)
@@ -938,8 +1020,9 @@ class PoolOfRadiance:
         self.s.key(letter.lower())
         if not self.s.wait_for(lambda s: s.digest() != before, timeout=timeout):
             raise TimeoutError(f"slot {letter} never loaded")
-        self.s.settle()
-        self.world_bar = self.bar()
+        screen = self.s.settle()
+        self.world_bar = screen.ink(BAR)
+        self.world_glyphs = screen.glyphs(BAR)
 
     # -- the map ----------------------------------------------------------
 
@@ -961,7 +1044,9 @@ class PoolOfRadiance:
         self.s.key(key)
         self.s.settle()
         if self.world_bar is None:
-            self.world_bar = self.bar()
+            screen = self.s.capture()
+            self.world_bar = screen.ink(BAR)
+            self.world_glyphs = screen.glyphs(BAR)
             return True
         return self.s.wait_until_ink(BAR, self.world_bar, timeout)
 
@@ -1005,6 +1090,13 @@ class PoolOfRadiance:
             time.sleep(0.3)
         else:
             raise TimeoutError(f"{path.name} never changed")
+        # `SAVGAM<slot>.DAT` is not the last file the save writes.  The six
+        # `CHRDAT<slot><n>.SAV` records land 1 to 11 milliseconds *after* it --
+        # measured, on both slots of three runs -- so a caller that reads the
+        # records the moment this returns is racing the game for them.  Nothing
+        # has lost that race yet, and eleven milliseconds is not a margin to
+        # rely on.
+        settle_files(self.s.save_dir, timeout=timeout)
         data = path.read_bytes()
 
         self.leave_camp(world)
@@ -1031,6 +1123,190 @@ class PoolOfRadiance:
                 self.s.settle()
         self.s.shot("leave_camp_stuck", allow_blank=True)
         raise TimeoutError("could not get back to the map from camp")
+
+    # -- the fight ---------------------------------------------------------
+    #
+    # Every digest below is `Screen.ink(BAR)` -- the bottom text row
+    # thresholded to lit and unlit, so the highlight colour and the
+    # white-then-green recolour are both discarded.  The words beside each one
+    # were read **once, by a person, off the PNG named in the comment**, and
+    # are here so the next reader knows what the number is.  Nothing in this
+    # class ever matches them: a digest cannot be misread, only unequal.
+    #
+    # What would move them: a different `machine=` or `scaler` in the DOSBox
+    # config, or a different release of the game.  Not a different host --
+    # `output=surface` with `scaler=none` is the VGA framebuffer pixel for
+    # pixel, so the same build on any machine hashes the same.  They were
+    # measured on DOSBox 0.74-3, `machine=vga`, `cycles=fixed 20000`, from the
+    # Forgotten Realms Archives Collection Two copy of `POOLRAD`.
+
+    #: How a fight's screens are told apart: the leftmost `width` pixels of the
+    #: bar row, by `Screen.glyphs`, to a label.  Tried in the order written.
+    #:
+    #: **A prefix and not the whole strip, because these bars have variants.**
+    #: What a bar carries depends on who is acting and on what is in front of
+    #: the party: a fighter is offered `MOVE VIEW AIM USE QUICK DONE` and a
+    #: cleric `MOVE VIEW AIM USE CAST TURN QUICK DONE`; goblins are met with
+    #: `COMBAT WAIT FLEE ADVANCE` and orcs, who will talk, with
+    #: `COMBAT WAIT FLEE PARLAY`.  Each of those is a different bar by any
+    #: whole-strip hash, and each one cost a run to a driver holding whole-strip
+    #: hashes.  The words they share come first, because the bar is a
+    #: left-aligned list, so the leftmost pixels are the same for every variant
+    #: and differ from every other bar.
+    #:
+    #: The whole-strip rows come first in the order because a bar caught
+    #: mid-redraw is one flat colour and has to be called `blank` rather than
+    #: matched on a prefix.
+    #:
+    #: **What would move a prefix**: `MOVE` dropping off once a character's
+    #: movement is spent, which no run has yet seen.  `fight()` gives up after a
+    #: minute at a bar it does not know, with a screenshot named for the digest,
+    #: so the day it happens the evidence to add the row is on disk -- which is
+    #: how `claim_treasure` and the PARLAY variant were added.
+    COMBAT_BARS: tuple[tuple[int, str, str], ...] = (
+        # The bar row in one flat colour, caught mid-redraw.  The C64 side
+        # called one of these the end of a turn and starved a fight of them.
+        # work/dosbox/p114/bar02_f399fe870112b71a.png
+        (320, "f399fe870112b71a", "blank"),
+        # `A BATTLE BEGINS...` -- a message occupying the bar row, not a bar.
+        # It is what a *surprised* encounter shows instead of the menu.
+        # work/dosbox/p114/bar03_e5b3317d2142242d.png
+        (320, "e5b3317d2142242d", "message"),
+        # `CONTINUE BATTLE : YES NO`, asked once the fight can be called off.
+        # work/dosbox/p114/continue-battle.png
+        (320, "c545a9ecbcaa33dc", "continue_battle"),
+        # `PRESS <ENTER>/<RETURN> TO CONTINUE`, under `THE PARTY HAS WON.  EACH
+        # CHARACTER RECEIVES 8 EXPERIENCE POINTS.`
+        # work/dosbox/p114/bar05_f1672ba1064bf2b1.png
+        (320, "f1672ba1064bf2b1", "press_return"),
+        # `VIEW TAKE POOL SHARE EXIT` -- the treasure the fight left behind.
+        # The fight is not over here, and a driver that stopped at the win
+        # message would leave the party at this prompt for ever.
+        # work/dosbox/p114/bar06_39afdcc0f8704784.png
+        (320, "39afdcc0f8704784", "treasure"),
+        # `YES NO`, under `THERE IS STILL TREASURE LEFT.  DO YOU WANT TO GO
+        # BACK AND CLAIM YOUR TREASURE?`, asked because the driver leaves the
+        # treasure where it lies.  work/dosbox/p114/claim-treasure.png
+        (320, "c576b6838d2e460b", "claim_treasure"),
+        # `MOVE VIEW AIM USE` -- the first seventeen characters of every
+        # character's turn.  work/dosbox/p114/bar04_02d05064ee41da5f.png and
+        # work/dosbox/p114/command-bar-with-cast.png
+        (136, "32c20bb6efbb99ed", "command"),
+        # `COMBAT WAIT FLEE` -- the first sixteen of every encounter menu.
+        # work/dosbox/p114/bar01_327fcbaaeb46c2fb.png and
+        # work/dosbox/p114/encounter-with-parlay.png
+        (128, "dbac174b6033b5e9", "encounter"),
+    )
+
+    #: What to press at each label.  A label with no key here is a screen the
+    #: driver watches and does not touch.
+    COMBAT_KEYS: dict[str, str] = {
+        "encounter": "c",       # COMBAT.  `q`, `Return`, `Escape`, `e` and `n`
+                                # were each pressed at this menu for eight
+                                # seconds and none of them moved it, so it
+                                # takes first letters only.
+        "command": "q",         # QUICK
+        "continue_battle": "n",  # NO.  The party has already won by the time
+                                # this is asked; YES would start another round
+                                # against whatever is left standing.
+        "claim_treasure": "n",  # NO, which is the answer that matches EXIT
+                                # below.  Saying yes would go back to a screen
+                                # the driver has just declined.
+        "press_return": "Return",
+        "treasure": "e",        # EXIT.  Nothing is taken: the party's items
+                                # are not what any of this is measuring, and
+                                # TAKE would change a record the diff reads.
+        # `message` and `blank` carry no commands, so they get no key and the
+        # driver waits them out.
+    }
+
+    def bar_kind(self, screen: Screen | None = None) -> str | None:
+        """What the bar on this frame is, or None for one we have not seen.
+
+        In the order `COMBAT_BARS` is written, which is whole-strip rows
+        before prefixes: a bar that is one flat colour has a flat prefix too
+        and must be called `blank` rather than a command bar.
+        """
+        screen = screen if screen is not None else self.s.capture()
+        for width, digest, label in self.COMBAT_BARS:
+            if screen.glyphs((BAR[0], BAR[1], width, BAR[3])) == digest:
+                return label
+        return None
+
+    def in_combat(self) -> bool:
+        """Whether the screen is one of the fight's own command bars."""
+        return self.bar_kind() is not None
+
+    def fight(self, budget: float = 900.0, settled: float = 4.0,
+              dwell: float = 1.5, patience: float = 60.0) -> bool:
+        """Answer an encounter and press the fight to its end.
+
+        Returns True only when the world command bar recorded at load time
+        came back and stayed `settled` seconds; False, with a screenshot, when
+        the budget ran out.  It never returns True off a screen it merely
+        stopped seeing.
+
+        **Nothing here waits for the picture to hold still.**  It does not: the
+        left panel animates on its own -- 165 pixels of the treasure chest
+        moved between eight consecutive captures with no key pressed and
+        nobody acting -- so `settle()` inside a fight is a wait that never
+        ends, and "the frame has not changed for N seconds" is a condition
+        that never comes true.  That is the blink hazard, measured rather than
+        assumed.
+
+        **The bar cannot say a turn passed either.**  Every character's turn
+        shows the same `MOVE VIEW AIM USE QUICK DONE`, so its ink is identical
+        from one turn to the next.  So a press is not confirmed by effect at
+        all; it is *rate limited* instead -- one key, then the bar is watched
+        for `dwell` seconds and the loop goes round whether it moved or not.
+        That is safe because of the rule below.
+
+        **A bar we do not recognise is pressed at not at all.**  It is a
+        monster's turn, an animation, `A BATTLE BEGINS...`, or a screen nobody
+        has labelled.  Every key this sends therefore lands on a bar that
+        carries it, so a repeat is at worst the same command given twice at
+        the same kind of screen -- `QUICK` to the next character in the queue.
+        The C64 side measured what the other policy costs: asking a bar for a
+        word that is not on it spins to the full timeout, 441 of 605 seconds
+        of one fight.
+
+        This does not read a word off the screen and it cannot say whether the
+        party *fought*.  Only the files say that, and only experience does:
+        `tools/dosfightrun.py`'s `fought()`.
+        """
+        if self.world_glyphs is None:
+            raise RuntimeError("fight() needs the world bar load_game recorded")
+        deadline = time.time() + budget
+        world_since: float | None = None
+        unknown_since: float | None = None
+        while time.time() < deadline:
+            screen = self.s.capture()
+            bar = screen.glyphs(BAR)
+            if bar == self.world_glyphs:
+                world_since = world_since or time.time()
+                if time.time() - world_since >= settled:
+                    return True
+                time.sleep(0.25)
+                continue
+            world_since = None
+            key = self.COMBAT_KEYS.get(self.bar_kind(screen) or "")
+            if key is None:
+                # A monster's turn or an animation passes in a second or two.
+                # A bar nobody has labelled does not, and standing at one until
+                # the budget runs out throws away the evidence needed to add
+                # it -- so give up early and name the screenshot for the
+                # digest, which is what the next reader has to look up.
+                unknown_since = unknown_since or time.time()
+                if time.time() - unknown_since >= patience:
+                    self.s.shot(f"fight_unknown_bar_{bar}", allow_blank=True)
+                    return False
+                time.sleep(0.25)
+                continue
+            unknown_since = None
+            self.s.key(key)
+            self.s.wait_while_glyphs(BAR, bar, timeout=dwell)
+        self.s.shot("fight_stuck", allow_blank=True)
+        return False
 
 
 # --------------------------------------------------------------------------
