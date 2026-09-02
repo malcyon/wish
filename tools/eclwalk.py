@@ -21,8 +21,10 @@ A script is walked from its five entry addresses, following `GOTO`, `GOSUB`,
 `ONGOTO` and `ONGOSUB` and both arms of every `IF`, rather than swept linearly:
 a linear sweep runs into the data tables `$2A` indexes and turns them into
 nonsense. What the walk does not reach is reported as a percentage, and on the
-thirty area scripts it is 94% of all bytes with the rest accounted for by those
-tables.
+thirty area scripts the walk reaches 98% of all bytes with the rest accounted
+for by those tables. Do not trust that figure from here: `eclwalk.py list`
+prints the measured one, and this sentence said 94% until 2026-09-02, when a
+run showed 98.04%.
 
 **Why this exists.** `FastTravel` enters `NEWECL` at its tail, `$2034`, which
 is past everything the departing script would have run -- see
@@ -143,6 +145,21 @@ class Machine:
         self.handler = [lo | (hi << 8) for lo, hi in
                         zip(at(HANDLER_LO, OPCODES), at(HANDLER_HI, OPCODES))]
         self.table_operands = list(at(OPERAND_COUNT, OPCODES))
+        # Every handler address has to land inside DUNGEON itself.  One that
+        # does not means the tables were read from the wrong offsets -- a
+        # different build, or a DUNGEON that is not this one -- and every
+        # operand count below it would then be somebody else's bytes.  Refuse
+        # rather than decode confidently from them.
+        top = DUNGEON_BASE + len(body)
+        stray = [(op, a) for op, a in enumerate(self.handler)
+                 if not DUNGEON_BASE <= a < top]
+        if stray:
+            op, a = stray[0]
+            raise SystemExit(
+                f"DUNGEON's handler table is not where this expects it: "
+                f"opcode {op:#04x} points at ${a:04X}, outside "
+                f"${DUNGEON_BASE:04X}-${top - 1:04X}. "
+                f"{len(stray)} of {OPCODES} opcodes are out of range.")
 
     def operands(self, op):
         return HANDLER_OPERANDS.get(op, self.table_operands[op])
@@ -186,12 +203,19 @@ def _operand(kind, value):
 
 
 def _size(body, i):
-    """How long the operand at offset `i` is, and what it holds."""
+    """How long the operand at offset `i` is and what it holds, or None.
+
+    None means the operand runs off the end of the body, which is not a
+    statement and must not be guessed at.  An address operand is three bytes
+    and the caller has only proved two are there, so the check belongs here.
+    """
     kind = body[i]
     if kind == 0x80:
         return 2 + body[i + 1], kind, body[i + 1]
     if kind == 0x00:
         return 2, kind, body[i + 1]
+    if i + 2 >= len(body):
+        return None
     return 3, kind, body[i + 1] | (body[i + 2] << 8)
 
 
@@ -206,7 +230,10 @@ def decode(machine, body, i):
     for _ in range(wanted):
         if j + 1 >= len(body):
             return None
-        size, kind, value = _size(body, j)
+        got = _size(body, j)
+        if got is None:
+            return None
+        size, kind, value = got
         operands.append((kind, value))
         j += size
     if op in COUNTED:
@@ -217,7 +244,10 @@ def decode(machine, body, i):
         for _ in range(count):
             if j + 1 >= len(body):
                 return None
-            size, kind, value = _size(body, j)
+            got = _size(body, j)
+            if got is None:
+                return None
+            size, kind, value = got
             operands.append((kind, value))
             j += size
     if j > len(body):
