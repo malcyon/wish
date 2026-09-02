@@ -716,3 +716,16 @@ def test_the_pane_shows_the_players_sentence_and_not_the_exception(
 
     assert dialog.report_pane.toPlainText() == (
         "Curse of the Azure Bonds imports not yet supported.")
+
+
+def test_a_refusal_cannot_be_raised_without_naming_the_title():
+    """`title` is required, so a caller that forgets it fails at the raise
+    site rather than putting `" imports not yet supported."` -- leading space,
+    lower case, no game named -- in front of a player.
+
+    Found in the code review of `#176 (A player importing a Curse of the Azure
+    Bonds save is shown an issue number)`. It was unreachable when it was
+    found; this is what keeps it that way.
+    """
+    with pytest.raises(TypeError):
+        dos.WrongTitleError("the developer's reason")

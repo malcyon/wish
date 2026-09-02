@@ -135,13 +135,19 @@ class WrongTitleError(DosRecordError):
     a player.
     """
 
-    def __init__(self, message: str, title: str = "") -> None:
+    def __init__(self, message: str, title: str) -> None:
         super().__init__(message)
         self.title = title
 
     @property
     def player_message(self) -> str:
-        """What a player is shown.  Donald's wording, 2026-09-02."""
+        """What a player is shown.  Donald's wording, 2026-09-02.
+
+        `title` is required rather than defaulted, so a caller that forgets it
+        is a `TypeError` at the raise site instead of a dialog reading
+        `" imports not yet supported."` -- leading space, lower case, and
+        nothing naming the game.  Found in the code review of #176.
+        """
         return f"{self.title} imports not yet supported."
 
 
