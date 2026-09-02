@@ -104,12 +104,21 @@ MAP: tuple[Region, ...] = (
     Region(0x4A20, 0xD9, "persistent quest flags", MAYBE,
            saved_in="SAVEDGAME0",
            note="survives an area change, unlike $4A00-$4A1F. 179 of these "
-                "217 bytes are named from the bytecode itself -- 1415 ECL "
-                "operand references across all thirty scripts, 158 of them "
-                "with a printed string at the write site naming the event. "
-                "The remaining 38 are gaps between per-area blocks that no "
-                "script touches. The write-up, "
-                "work/reports/quest-flags.md, is lost."),
+                "217 bytes are named from the bytecode itself -- 172 by an "
+                "ECL operand and 7 more only as the interior of a table a "
+                "GETTABLE or SAVETABLE indexes, out of 1415 operand "
+                "references across all thirty scripts. The remaining 38 are "
+                "gaps between per-area blocks that no script touches. All of "
+                "that was regenerated on 2026-09-02 by tools/eclflags.py "
+                "into docs/151-quest-flags.md, replacing the lost "
+                "work/reports/quest-flags.md, and every figure came back "
+                "identical. The one that did not is how many carry a naming "
+                "string: the old note said 158 'with a printed string at the "
+                "write site', the rule it meant by 'at' was never written "
+                "down, and no rule tried reproduces it -- 104 have one in the "
+                "same basic block as a write and 150 within sixteen "
+                "statements. Take the string count as unreproduced rather "
+                "than as 158."),
     Region(0x4AF9, 0x87, "unused", OK, saved_in="SAVEDGAME0",
            note="not flag storage, on four independent grounds: no ECL "
                 "operand anywhere above $4AF8, no engine binary references "

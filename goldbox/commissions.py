@@ -69,6 +69,11 @@ FLAGS_BASE = 0x4A20
 FLAGS_END = 0x4B00
 FLAGS_SIZE = FLAGS_END - FLAGS_BASE                 # 224
 
+# The scratch page below the persistent block. An area change zeroes it, so
+# it is read through `scratch()` and never mixed into `Flags`.
+SCRATCH_BASE = 0x4A00
+SCRATCH_SIZE = FLAGS_BASE - SCRATCH_BASE            # 32
+
 LEDGER_BASE = 0x4AA6
 LEDGER_COUNT = 26
 COMPLETED = 0x4AC1
@@ -214,6 +219,15 @@ class Flags:
         self._data = bytes(data)
 
     def __getitem__(self, address: int) -> int:
+        # The bound below matters and used to be missing. `$4A04` minus
+        # `$4A20` is -28, which Python happily reads as the 28th byte from
+        # the end -- so asking a `Flags` for a scratch-page address quietly
+        # answered with `$4AE4`'s value instead of failing. Found while
+        # wiring up the scratch page for #158.
+        if not FLAGS_BASE <= address < FLAGS_END:
+            raise IndexError(
+                f"${address:04X} is outside ${FLAGS_BASE:04X}-"
+                f"${FLAGS_END - 1:04X}; the scratch page is `scratch()`")
         return self._data[address - FLAGS_BASE]
 
     def ledger(self, index: int) -> int:
@@ -466,6 +480,214 @@ def appointments(source) -> tuple[Appointment, ...]:
         out.append(Appointment(address=address, name=name, kind=kind,
                                value=value, state=state,
                                outstanding=outstanding))
+    return tuple(out)
+
+
+# --- side quests an area script keeps for itself ----------------------------
+#
+# A quest the City Council never hears about: an area script hands it out, an
+# area script closes it, and no ledger byte moves. Ohlo's potion errand in the
+# Slums is the first one found (#157) and the shape is built for the rest.
+#
+# **The accept flag and the finish flag are not in the same half of the page.**
+# `$4A00`-`$4A1F` is scratch the engine zeroes on every area change -- the
+# `NEWECL` handler's `LDX #$1F / LDA #$00 / STA $4A00,X / DEX / BPL` at
+# `DUNGEON $202A`-`$2032`, re-derived 2026-09-02 -- and `$4A20`-`$4AF8`
+# survives one. So a quest whose acceptance is recorded in the scratch half is
+# a quest the game forgets the moment the party walks out of the area, and
+# `durable` on each flag is what says which half it is in.
+#
+# Every `where` below is a script address, which is unambiguous: an `ECL`
+# loads at `$9900`. The offsets quoted on #157 and #158 are not -- two of the
+# four are file offsets, one is an offset into the body after the two-byte
+# load address, and one points four bytes into the instruction it names.
+
+#: A quest's state, as an identifier. Not interface text: what a panel says
+#: about a side quest is #158 step 4 and is Donald's to word.
+QUEST_UNSEEN = "not seen"
+QUEST_ACCEPTED = "accepted"
+QUEST_IN_HAND = "part done"
+QUEST_FINISHED = "finished"
+QUEST_UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class QuestFlag:
+    """One byte at one value, and the instruction that puts it there."""
+
+    address: int
+    value: int
+    meaning: str
+    durable: bool
+    where: str
+
+    @property
+    def scratch(self) -> bool:
+        """True when an area change wipes this byte."""
+        return SCRATCH_BASE <= self.address < FLAGS_BASE
+
+
+@dataclass(frozen=True)
+class SideQuest:
+    """A quest on its own flag bytes, outside the council's ledger."""
+
+    key: str
+    name: str
+    script: str
+    area: int
+    accept: QuestFlag
+    finish: QuestFlag
+    progress: tuple[QuestFlag, ...] = ()
+
+    @property
+    def flags(self) -> tuple[tuple[int, int, str], ...]:
+        """Every (address, value, meaning) this quest is made of."""
+        return tuple((f.address, f.value, f.meaning)
+                     for f in (self.accept, *self.progress, self.finish))
+
+    @property
+    def durable(self) -> bool:
+        """True when the game itself remembers the whole quest."""
+        return all(f.durable for f in (self.accept, *self.progress, self.finish))
+
+
+SIDE_QUESTS = (
+    SideQuest(
+        key="ohlo",
+        name="Ohlo's potion",
+        script="ECL14",
+        area=0x14,
+        # One `SAVE 250, [$4A04]` in the whole script: a scan of the raw
+        # bytes for `09 00 FA 01 04 4A` finds exactly one occurrence, and the
+        # walk reaches it. It sits after the menu arm that agrees to serve
+        # him rather than fight him.
+        accept=QuestFlag(
+            0x4A04, 250, "the errand has been accepted",
+            durable=False, where="ECL14 $A251 SAVE 250, [$4A04]"),
+        # The booth in the old rope guild, gated on `$AE1E COMPARE [$4A81],
+        # 250 / IF>= / EXIT` -- it will not serve a party that already has
+        # the potion or has finished with him -- and on the password.
+        progress=(QuestFlag(
+            0x4A81, 250, "the potion has been collected from the booth",
+            durable=True, where="ECL14 $B048 SAVE 250, [$4A81], after "
+                                "$B042 SAVE 255, [$4A19]"),),
+        # Two routes to 255 and the flag does not tell them apart: the
+        # delivery at $A3A2/$A3A8, after the `TREASURE`/`COMBAT` pair that
+        # pays 150 platinum and one random magic item, and the kill at
+        # $A084/$A0B8, after the `COMBAT` at $A0B3. Both then `GOSUB $B69C`,
+        # which is what counts it as one of the slums' 25 encounters.
+        finish=QuestFlag(
+            0x4A81, 255, "Ohlo dealt with: the potion delivered, or he was killed",
+            durable=True, where="ECL14 $A3A8 (delivered) and $A0B8 (killed)"),
+    ),
+)
+
+
+@dataclass(frozen=True)
+class SideQuestState:
+    """What a save says about one side quest."""
+
+    quest: SideQuest
+    state: str
+    accept_value: int | None
+    finish_value: int
+
+    @property
+    def ambiguous(self) -> bool:
+        """`QUEST_UNSEEN` here could equally mean "accepted, then left".
+
+        True whenever the accept flag is in the scratch page and the durable
+        half says nothing. It is not a claim that the party accepted
+        anything -- it is the statement that this save cannot tell the two
+        apart, which is the whole reason #158 exists. All 16 saves on the
+        machine that never met Ohlo read exactly like a party that accepted
+        the errand and walked out of the Slums.
+        """
+        return self.state == QUEST_UNSEEN and not self.quest.accept.durable
+
+
+class Scratch:
+    """`$4A00`-`$4A1F`, the page an area change zeroes.
+
+    Kept apart from `Flags` on purpose: a byte in here means something only
+    while the script that wrote it is still resident, so a caller has to ask
+    for it by name rather than get it mixed into the persistent block.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: bytes):
+        if len(data) != SCRATCH_SIZE:
+            raise ValueError(
+                f"expected {SCRATCH_SIZE} scratch bytes, got {len(data)}")
+        self._data = bytes(data)
+
+    def __getitem__(self, address: int) -> int:
+        return self._data[address - SCRATCH_BASE]
+
+    def to_bytes(self) -> bytes:
+        return self._data
+
+
+def scratch(source) -> Scratch | None:
+    """`$4A00`-`$4A1F` out of whichever container the caller holds.
+
+    `None` where the source cannot carry it -- the 224 persistent bytes, or a
+    `Flags`. Everything else `flags()` accepts does carry it: a `$4A00` page
+    and `SAVEDGAME0` both start at or below `$4A00`.
+    """
+    if isinstance(source, Scratch):
+        return source
+    if isinstance(source, Flags):
+        return None
+    if hasattr(source, "to_bytes"):
+        source = source.to_bytes()
+    data = bytes(source)
+    if len(data) == SCRATCH_SIZE:
+        return Scratch(data)
+    if len(data) == FLAGS_SIZE:
+        return None
+    if len(data) == 0x100:                     # a $4A00 page
+        return Scratch(data[:SCRATCH_SIZE])
+    if len(data) >= FLAGS_BASE - 0x4900:       # SAVEDGAME0 from $4900
+        start = SCRATCH_BASE - 0x4900
+        return Scratch(data[start:start + SCRATCH_SIZE])
+    return None
+
+
+def side_quests(source) -> tuple[SideQuestState, ...]:
+    """What a save says about each side quest, as far as it can say anything.
+
+    The durable flag is read from `flags()`; the accept flag is read from
+    `scratch()` when the source carries it. A quest whose accept flag is in
+    the scratch page and whose durable flag is still 0 reads as
+    `QUEST_UNSEEN` from a save made outside its area **whether or not the
+    party accepted it**, which is the whole reason #158 exists.
+    """
+    f = flags(source)
+    s = scratch(source)
+    out = []
+    for quest in SIDE_QUESTS:
+        finish_value = f[quest.finish.address]
+        accept_value = None
+        if quest.accept.durable:
+            accept_value = f[quest.accept.address]
+        elif s is not None:
+            accept_value = s[quest.accept.address]
+        if finish_value == quest.finish.value:
+            state = QUEST_FINISHED
+        elif any(f[p.address] == p.value for p in quest.progress
+                 if p.durable):
+            state = QUEST_IN_HAND
+        elif accept_value is None:
+            state = QUEST_UNKNOWN
+        elif accept_value == quest.accept.value:
+            state = QUEST_ACCEPTED
+        else:
+            state = QUEST_UNSEEN
+        out.append(SideQuestState(quest=quest, state=state,
+                                  accept_value=accept_value,
+                                  finish_value=finish_value))
     return tuple(out)
 
 

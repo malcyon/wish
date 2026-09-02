@@ -4,6 +4,12 @@ The City Hall's books, as `goldbox/commissions.py` reads them. `ECL08` on disk 3
 the authority for all of it; the working that established it, `work/reports/commissions.md`
 (P80) and `work/reports/quest-flags.md` (P30), is lost.
 
+**The quest-flag half of that working is back and is now generated.**
+[`151-quest-flags.md`](151-quest-flags.md) is every reference the thirty
+scripts make to `$4A00`-`$4AF8`, rebuilt by `tools/eclflags.py` rather than
+written by hand, and it reproduces the lost report's counts exactly: 179 of
+the 217 persistent bytes named, 1415 operand references, 38 gaps.
+
 ## The ledger
 
 26 bytes at `$4AA6`, one per commission, indexed by the clerk's own
@@ -116,12 +122,27 @@ booth in the old rope guild, and gives his name, `OHLO`, as the password.
 | `$4A04` | not spoken to, or wiped by an area change | the errand has been accepted | the encounter is closed |
 | `$4A81` | the potion is not in hand | collected from the booth | Ohlo dealt with: potion delivered, or he was killed |
 
-All CONFIRMED from `ECL14`'s own writes — `SAVE 250, [$4A04]` on the accept
-path, the booth writing `$4A19` = 255 and `$4A81` = 250 in one breath, `SAVE
-255` into both on delivery followed by `GOSUB $B695`/`GOSUB $B69C`, and `SAVE
-255, [$4A81]` after the fight-him `COMBAT`. The encounter's entry test is
-`COMPARE [$4A81], 250` then `COMPARE [$4A04], 250`, which is what picks his
-three speeches apart.
+All CONFIRMED from `ECL14`'s own writes, re-derived on 2026-09-02 with
+`tools/eclflags.py sites 4A04 4A81` and given here as **script addresses**,
+which are unambiguous because an `ECL` loads at `$9900`:
+
+| where | what |
+|---|---|
+| `$A251` | `SAVE 250, [$4A04]` — the accept path. A scan of the raw bytes for `09 00 FA 01 04 4A` finds exactly one occurrence in the script |
+| `$B042`/`$B048` | `SAVE 255, [$4A19]` then `SAVE 250, [$4A81]` — the booth hands the potion over |
+| `$A3A2`/`$A3A8` | `SAVE 255` into both, after the `TREASURE`/`COMBAT` pair that pays 150 platinum and one random magic item — the delivery |
+| `$A084`/`$A0B8` | `SAVE 255, [$4A04]`, then the fight, then `SAVE 255, [$4A81]` — he was killed instead |
+| `$9F13`, `$9F1B`, `$9F30`, `$9F3B` | the entry test: 255 in either byte exits, then `[$4A81] == 250` and `[$4A04] == 250` pick his three speeches apart |
+| `$AE1E` | `COMPARE [$4A81], 250 / IF>= / EXIT` — the booth refuses a party that already has the potion or has finished with him |
+
+**The file offsets quoted on `#157` and `#158` do not all point where they
+say.** They were `0x957`, `0x1748`, `0xaa4` and `0x7b8`, and they are not
+measured from one base: `0xaa4` is an offset into the raw file, `0x7b8` an
+offset into the body after the two-byte load address, `0x1748` the body offset
+of the *second* of the two instructions quoted beside it, and `0x957` points
+four bytes into the instruction it names, which begins at `0x953`. Nothing
+about the claims is wrong — every instruction exists, exactly once each — but
+cite the script address rather than any of those.
 
 **`$4A04` is scratch and does not survive leaving the Slums.** It is inside
 `$4A00`-`$4A1F`, which the engine zeroes on every area change
@@ -130,6 +151,20 @@ record that the errand was accepted; `$4A81` is the durable half. Four saves
 show the whole run — `$4A04` = 250 with `$4A81` = 0 twice, then `$4A81` = 250
 with the scratch back at 0 after a trip out of the area, then both at 255 with
 `$4ABB` counting the delivery as one more encounter.
+
+**`SIDE_QUESTS` in `goldbox/commissions.py` is the table**, one entry per
+quest, each naming the accept flag, the finish flag, the values that mean each
+and the instruction that writes them. `side_quests()` reads a save through it,
+and `scratch()` is how the `$4A00`-`$4A1F` half is reached — deliberately a
+separate call from `flags()`, because a scratch byte means nothing unless the
+script that wrote it is still resident.
+
+**Sixteen of the twenty saves on the machine cannot tell "never met him" from
+"accepted and left".** `side_quests()` reports that as `ambiguous` rather than
+guessing: a party that took the errand and walked out of the Slums leaves a
+save that is byte for byte the same, in these two flags, as one that never
+spoke to him. That is what `#158 (Track the quests the game itself forgets,
+starting with Ohlo's potion)` exists to work round.
 
 ## Appointments
 
