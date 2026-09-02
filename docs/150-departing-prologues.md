@@ -132,14 +132,52 @@ pins cleared, and leaving any other way goes to area 3, which is another
 quarter of the same castle and wants the same wall art. It is an optimisation
 between areas that share a wall set, and a fast travel takes neither branch.
 
-**Grade: PROBABLE, not CONFIRMED.** The mechanism is read off `$14CB` and the
-scripts; nobody has yet warped out of one of the three and looked at the walls.
-The experiment is the one `#156 (Warping from the Slums to New Phlan draws New
-Phlan with the Slums' walls)` used -- capture `$ED50`-`$FF97` after a walked
-arrival and after a warped one and `cmp -l` them.
+**Grade: CONFIRMED**, in the emulator on 2026-09-02 by `tools/wallpins.py`.
+This said PROBABLE until then, on the grounds that nobody had warped out of one
+of the three and looked. Three arrivals at Podol Plaza's own arrival square,
+one party, one session, `$ED50`-`$FF97` read through the monitor's `ram` bank:
+
+| how the party reached Podol Plaza | `$49E7`-`$49E9` there | against the control |
+|---|---|---|
+| warped from the Slums -- the control | `0 0 0` | — |
+| warped out of the graveyard, the `$49E7` write dropped | `1 1 0` | **545 of 4680 bytes differ** |
+| warped out of the graveyard, the whole of `newecl_writes` | `0 0 0` | 0 of 4680 |
+
+The wall pieces at `$6500`, the cache at `$6E13` and the resident `GEO` are
+byte-identical across all three, so the loader wanted and got the right files.
+
+**Unrelocated, not inherited.** All 545 differing bytes differ by the same
+constant: the pinned piece holds Podol Plaza's own wall data with every screen
+code 50 (`$32`) below where it belongs. The arriving area's `LOADPIECES` does
+load and unpack its own file; it is the relocation `$49E7,X` turns off.
+
+**Only one of the two pinned pieces came out wrong, and that is not
+explained.** Both `$49E7` and `$49E8` read 1, and the whole difference is in
+`$F05C`-`$F367`; `$ED50`-`$F05B` matches the control byte for byte. A piece
+whose relocation delta is zero could not show the fault, but the deltas have
+not been measured.
+
+**A warp *into* the graveyard sets the pins too**, so the route in does not
+matter: `ECL0A` entry 4 opens with its two `SAVE 1` unconditionally, before
+its own `LOADFILES`. Watched -- the fast travel writes `$49E7`-`$49E9` as zero
+immediately before jumping to `$2034`, and the capture taken once the game is
+idle reads `1 1 0`.
+
+**Do not compare the two routes at the travel grid**, which is what this
+section used to propose. `ECL1A` entry 4 issues no `LOADPIECES` at all, so the
+wilderness never unpacks a wall piece and neither arrival touches `$ED50`:
+measured, the graveyard capture and the capture after one step west on to the
+travel grid differ in 0 of 4680 bytes. The damage appears at the next area that
+does unpack pieces.
+
+**The game's own clearing was watched as well.** One step west off the
+graveyard's west edge runs `ECL0A $9932`/`$9938` and `NEWECL 26`, and
+`$49E7`-`$49E9` go from `1 1 0` to `0 0 0` across it -- twice, in two sessions.
+That is the statement a fast travel enters past.
 
 Filed as `#179 (Warping out of Valhingen Graveyard or Valjevo Castle leaves
-two wall pieces unrelocated)`.
+two wall pieces unrelocated)`, and fixed there: `newecl_writes` writes
+`$49E7`-`$49E9` as zero on every fast travel.
 
 ## Latent, and not understood: the Kobold Caves and the party's own membership
 
