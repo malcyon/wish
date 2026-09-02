@@ -110,7 +110,7 @@ def run(args) -> int:
             if args.shots:
                 sess.kbd.screenshot(str(out / f"{args.tag}-{i}{move}-menu.png"))
             if not sess.outdoor_key(move):
-                print(f"  {move}: no direction prompt to press it at")
+                print(f"  {move}: No direction prompt to press it at")
                 continue
             if args.shots:
                 time.sleep(1.5)

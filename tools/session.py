@@ -836,13 +836,26 @@ class Session:
         the party walks, so a driver watching it concludes every outdoor step
         was blocked (`#189`, `docs/141-dos-savegame.md`).
         """
+        got = self.square_and_world()
+        return None if got is None else (got[0], got[1])
+
+    def square_and_world(self) -> tuple[int, int, bool] | None:
+        """`square()`, plus the `$49E6` it had to read to choose the pair.
+
+        One monitor block, so the square and the world it was chosen for
+        cannot come from either side of a boundary crossing.  `position()`
+        used to call `square()` and then `indoors()` separately, which is two
+        reads of one fact -- the same shape `select_bar`'s docstring names as
+        `#173`, where two `$D800` reads were treated as one snapshot.  Found
+        in the code review of #189.
+        """
         try:
             with self.mon(5) as m:
                 inside = m.read(INDOORS_AT, 1)[0] != 0
                 x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
         except (OSError, MonitorError):
             return None
-        return x, y
+        return x, y, inside
 
     def position(self) -> tuple[int, int, int | None]:
         """x, y, facing -- and **facing is None on the travel grid**.
@@ -866,13 +879,14 @@ class Session:
                 if at is not None:
                     return at.x, at.y, at.facing
             time.sleep(0.3)
-        here = self.square()          # fallback: the lagging memory copy
+        here = self.square_and_world()   # fallback: the lagging memory copy
         if here is None:
             return 0, 0, None
-        if self.indoors() is False:
-            return here[0], here[1], None
+        x, y, inside = here
+        if not inside:
+            return x, y, None
         with self.mon(5) as mon:
-            return here[0], here[1], mon.read(DUNGEON_XY + 2, 1)[0]
+            return x, y, mon.read(DUNGEON_XY + 2, 1)[0]
 
     def walk(self, moves: str, hold=0.15, gap=0.30) -> None:
         """One move per character of `moves`.
