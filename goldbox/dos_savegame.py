@@ -135,7 +135,7 @@ UI_SCRATCH = 82
 #: idea: a title is **a row of widths**, not a branch, and the widths have to
 #: add up to the size the file actually is or the row raises at import.
 #:
-#: What all four share is the last 328 bytes: an eight-byte square block whose
+#: What all four share is the last 336 bytes: an eight-byte square block whose
 #: last byte is the party size, six 41-byte character entries, and 82 bytes of
 #: UI scratch.  What they differ in is everything in front of that.
 #:
@@ -229,7 +229,7 @@ SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
     size=5469, script_bytes=0, unnamed=12)
 
 #: Pools of Darkness, 1364 bytes of `SAVGAM<slot>.PTY` and a 12-byte
-#: `VAULT<slot>.DAT` that is all zero in both specimens.  Its last 328 bytes
+#: `VAULT<slot>.DAT` that is all zero in both specimens.  Its last 336 bytes
 #: are the other three titles' -- the square block ending in a party size of
 #: 6, six 41-byte `CHRDAT` entries, 82 bytes of UI scratch -- with four
 #: unnamed bytes of its own in front of them, where Curse and Silver Blades

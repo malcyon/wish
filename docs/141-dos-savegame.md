@@ -190,7 +190,7 @@ save of the other three exists here — the same specimen
 
 **The size names the shape, not the game.** Treasures of the Savage Frontier
 writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
-that Pools of Darkness does, with the same 328-byte tail, and its two
+that Pools of Darkness does, with the same 336-byte tail, and its two
 containers read cleanly through the Pools of Darkness row. Only the directory
 a file came from says which game wrote it.
 

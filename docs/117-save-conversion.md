@@ -423,7 +423,7 @@ party that has never been played.
 
 **The size names the shape, not the game.** Treasures of the Savage Frontier
 writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
-that Pools of Darkness does, with the same 328-byte tail; only the directory
+that Pools of Darkness does, with the same 336-byte tail; only the directory
 says which game a file came from.
 
 ### What the other three titles cost to *convert*, which is not the same thing
