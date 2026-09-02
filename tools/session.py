@@ -61,9 +61,95 @@ MONFLAGS = (
 # The game asks for a disk in three different wordings, on two different rows.
 RE_GAME_SIDE = re.compile(r"INSERT\s+(?:YOUR\s+)?(?:SIDE|GAME\s+DISK)\s*#?\s*(\d)")
 SAVE_PROMPT = "SAVE GAME DISK"
-# The in-game status line: facing, clock, x,y -- `E 16:48 5,2`
-RE_STATUS = re.compile(r"([NESW]) +(\d+):(\d+) +(\d+),(\d+)")
+
+# The in-game status line, and **it has two shapes**.  Indoors it carries the
+# facing letter -- `E 16:48 5,2`.  On the travel grid the word `OUTDOORS`
+# stands where that letter goes -- `OUTDOORS 22:02 7,28` -- and there is no
+# facing out there at all.
+#
+# The lookarounds are not decoration.  Without them the final `S` of
+# `OUTDOORS` matched, so `status()` answered facing 2, south, for every
+# outdoor party on every square, and `tools/savecheck.py` printed `facing=2`
+# as though it were a reading (`#189`).
+RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
+RE_OUTDOOR_STATUS = re.compile(r"OUTDOORS +(\d+):(\d+) +(\d+),(\d+)")
 FACING = {"N": 0, "E": 1, "S": 2, "W": 3}
+
+# -- the two worlds ---------------------------------------------------------
+# `$49E6` is non-zero in a `GEO` area and zero on the travel grid
+# (`docs/118-debug-mode.md`, `docs/140-loaded-files-cache.md`).  Nothing in
+# this file asked it until `#189`, which is the whole of why the driver could
+# not move an outdoor party: it was written against the dungeon and assumed it.
+INDOORS_AT = 0x49E6
+#: The dungeon's live position triple: x, y, facing.  It freezes outdoors at
+#: the square the party left the grid on, so reading it out there answers the
+#: pier rather than where the party is standing.
+DUNGEON_XY = 0x49C0
+#: The live travel-grid square, window-local -- `#47`, `#59`,
+#: `docs/141-dos-savegame.md`.  Two bytes, and no facing.
+TRAVEL_XY = 0x49C3
+
+#: What row 24 reads while the travel grid is waiting for a direction:
+#: `1-8, RETURN OR BUTTON`.  Matched on `1-8` because that is the part no
+#: other bar in the game carries.
+OUTDOOR_PROMPT = "1-8"
+
+#: The travel grid's directions, **clockwise from north**, and they are not
+#: the numpad: measured on 2026-09-02 by writing `$49C3`/`$49C4`, pressing one
+#: digit and reading the square back -- `3` took (11,26) to (12,26), east, and
+#: `6` took it to (10,27), south-west (`#189`).
+COMPASS = {
+    "1": (0, -1), "2": (1, -1), "3": (1, 0), "4": (1, 1),
+    "5": (0, 1), "6": (-1, 1), "7": (-1, 0), "8": (-1, -1),
+}
+
+
+class Status(NamedTuple):
+    """The status line, read: where the party is and what time it is.
+
+    **`facing` is None on the travel grid**, and that is a reading rather than
+    a failure -- the game prints no facing out there.  A NamedTuple so the
+    four values still index and compare as the plain tuple this used to
+    return, which is what `walk_one` and `tools/savecheck.py` do with it; the
+    change a caller has to cope with is `facing` being absent, not the shape.
+    """
+
+    facing: int | None
+    minutes: int
+    x: int
+    y: int
+
+    @property
+    def outdoors(self) -> bool:
+        """True when the line said `OUTDOORS` rather than a facing letter."""
+        return self.facing is None
+
+    def where(self) -> str:
+        """The reading in words, for a line a person reads."""
+        way = "outdoors" if self.outdoors else "NESW"[self.facing]
+        return (f"{way} {self.minutes // 60}:{self.minutes % 60:02d} "
+                f"{self.x},{self.y}")
+
+
+def parse_status(text: str) -> Status | None:
+    """The status line out of a screen's text, whichever of the two it is.
+
+    Indoors first, then the travel grid.  Either shape or None, and None means
+    no status line was on the screen -- a menu, a bitmap, camp -- rather than
+    an error.
+    """
+    m = RE_STATUS.search(text)
+    if m:
+        return Status(FACING[m.group(1)],
+                      int(m.group(2)) * 60 + int(m.group(3)),
+                      int(m.group(4)), int(m.group(5)))
+    m = RE_OUTDOOR_STATUS.search(text)
+    if m:
+        return Status(None,
+                      int(m.group(1)) * 60 + int(m.group(2)),
+                      int(m.group(3)), int(m.group(4)))
+    return None
+
 
 # -- combat -----------------------------------------------------------------
 # LINKER's dispatch byte, and the two values a driver cares about: `1` DUNGEON,
@@ -726,33 +812,81 @@ class Session:
         hit, _ = self.wait_text("ENCAMP", 240)
         return hit is not None
 
-    def position(self) -> tuple[int, int, int]:
-        """x, y, facing.
+    # -- which of the two worlds ------------------------------------------
 
-        Read off the game's own status line, not out of `$49C0`.  The memory
+    def indoors(self) -> bool | None:
+        """`$49E6`: True in a `GEO` area, False on the travel grid.
+
+        None is "the read failed", not a world -- the same degradation
+        `mode()` makes, and for the same reason: a caller that took a failed
+        read for the travel grid would press compass digits at a dungeon.
+        """
+        try:
+            with self.mon(5) as m:
+                return m.read(INDOORS_AT, 1)[0] != 0
+        except (OSError, MonitorError):
+            return None
+
+    def square(self) -> tuple[int, int] | None:
+        """Where the party stands, out of memory, from whichever pair is live.
+
+        `$49C0` indoors and `$49C3` on the travel grid.  Reading `$49C0`
+        outdoors answers the square the party **left the grid on** -- the
+        pier, in all three outdoor specimens -- and it never moves however far
+        the party walks, so a driver watching it concludes every outdoor step
+        was blocked (`#189`, `docs/141-dos-savegame.md`).
+        """
+        try:
+            with self.mon(5) as m:
+                inside = m.read(INDOORS_AT, 1)[0] != 0
+                x, y = m.read(DUNGEON_XY if inside else TRAVEL_XY, 2)
+        except (OSError, MonitorError):
+            return None
+        return x, y
+
+    def position(self) -> tuple[int, int, int | None]:
+        """x, y, facing -- and **facing is None on the travel grid**.
+
+        Read off the game's own status line, not out of memory.  The memory
         copy is real and it does end up on the disk, but it lags a move --
         reading it straight after a step gives the *previous* square, which
         silently turns a good step into a "blocked" one.  The status line
         (`E 16:48 5,2`) is correct the moment the screen settles.
+
+        **Outdoors the status line lags too**, measured on 2026-09-02: after a
+        step from (11,26) to (12,26), `$49C3`/`$49C4` read 12,26 and the line
+        still read 11,26.  So out there the memory pair is the better source
+        and `walk_outdoors` uses it directly; this stays screen-first because
+        that is what every indoor caller wants.
         """
         for _ in range(12):
             s = self.screen()
             if s is not None:
-                m = RE_STATUS.search(s.text())
-                if m:
-                    return int(m.group(4)), int(m.group(5)), FACING[m.group(1)]
+                at = parse_status(s.text())
+                if at is not None:
+                    return at.x, at.y, at.facing
             time.sleep(0.3)
-        with self.mon(5) as mon:  # fallback: the lagging memory copy
-            x, y, f = mon.read(0x49C0, 3)
-        return x, y, f
+        here = self.square()          # fallback: the lagging memory copy
+        if here is None:
+            return 0, 0, None
+        if self.indoors() is False:
+            return here[0], here[1], None
+        with self.mon(5) as mon:
+            return here[0], here[1], mon.read(DUNGEON_XY + 2, 1)[0]
 
     def walk(self, moves: str, hold=0.15, gap=0.30) -> None:
-        """`moves` in the game's own letters: I forward, J left, K right, M about."""
+        """One move per character of `moves`.
+
+        Indoors those are the game's own letters -- I forward, J left, K
+        right, M about.  On the travel grid they are the compass digits `1`
+        to `8`, because that is what the bar out there asks for; `walk_one`
+        reads `$49E6` and works out which world it is in.
+        """
         for ch in moves.upper():
             self.walk_one(ch, hold, gap)
 
     def walk_one(self, move: str, hold=0.15, gap=0.30, tries: int = 4) -> bool:
-        """One move, verified by the status line.
+        """One move, verified -- by the status line indoors, by memory outdoors.
 
         Nothing here can be taken on trust.  Selecting `MOVE` succeeds against
         a **stale** row 24 -- the game does not always redraw the command bar
@@ -760,7 +894,15 @@ class Session:
         is swallowed.  So the move is re-sent until the status line moves, and
         a move that never moves it is reported as blocked, which for a forward
         step is exactly the map fact worth having.
+
+        **None of that paragraph is true on the travel grid**, which is why
+        the world is asked for first.  Out there the bar takes compass digits
+        rather than `I J K M`, a turn does not exist so nothing may be re-sent
+        on the strength of an unchanged line, and the line itself lags the
+        step.  `walk_outdoors` is that world's version of this.
         """
+        if self.indoors() is False:
+            return self.walk_outdoors(move, hold, gap)
         before = self.status()
         for _ in range(tries):
             if not self.select_bar("MOVE", timeout=8):
@@ -775,19 +917,101 @@ class Session:
         self.leave_move()
         return False
 
-    def status(self):
-        """(facing, minutes, x, y) off the status line, or None."""
+    def walk_outdoors(self, move: str, hold=0.15, gap=0.30,
+                      patience: float = 25.0) -> bool:
+        """One compass step on the travel grid, verified in memory.
+
+        **Pressed once, never re-sent.**  `walk_one` re-sends a move until the
+        status line changes, and out here that line carries no facing, so a
+        move it does not shift is indistinguishable from a turn -- which is
+        how one key became four presses and walked the party in a circle.
+
+        Verified by `$49C3`/`$49C4` rather than by the screen, because the
+        status line lags a step out here and the memory pair does not.  Polled
+        rather than slept: an overland step is hours of game time and can go
+        to the disk, so a fixed wait measures this machine rather than the
+        game.
+        """
+        if move not in COMPASS:
+            self.log(f"  {move} is not a compass digit; the travel grid takes "
+                     f"1-8, not the dungeon's I J K M")
+            return False
+        before = self.square()
+        if before is None:
+            self.log("  Could not read the travel square")
+            return False
+        if not self.outdoor_key(move, hold, gap):
+            return False
+        deadline = time.time() + patience
+        after = before
+        while time.time() < deadline:
+            now = self.square()
+            if now is not None and now != before:
+                after = now
+                break
+            time.sleep(0.5)
+        self.leave_outdoor_move()
+        return after != before
+
+    def outdoor_key(self, key: str, hold=0.15, gap=0.30,
+                    timeout: float = 20.0) -> bool:
+        """Press one compass digit, whichever bar the travel grid is showing.
+
+        **A walked exit on to the grid lands with the movement prompt already
+        up**: row 24 reads `1-8, RETURN OR BUTTON` straight away, so asking
+        for `MOVE` finds no such word and spins to its timeout -- which from
+        the outside looks exactly like an outdoor party that cannot move, and
+        is how one run of this was read.  A warped arrival lands on the
+        command bar and does need MOVE taking first.  So row 24 is read and
+        whichever bar is there is answered.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            row = "" if s is None else s.row(24)
+            if OUTDOOR_PROMPT in row:
+                self.kbd.key(key, hold, gap)
+                return True
+            if word_column(row, "MOVE") >= 0:
+                if self.select_bar("MOVE", timeout=10):
+                    time.sleep(0.6)
+                    self.kbd.key(key, hold, gap)
+                    return True
+            self.handle_prompt(s)
+            time.sleep(0.5)
+        self.log(f"  Neither a 1-8 prompt nor MOVE on row 24 within "
+                 f"{timeout:.0f}s")
+        return False
+
+    def leave_outdoor_move(self, tries: int = 4) -> bool:
+        """Get off the travel grid's direction prompt, and only if it is up.
+
+        Not `leave_move`, which presses Return before it looks: outdoors the
+        prompt may already have given way to the command bar, and a Return
+        there runs whichever command the highlight is sitting on rather than
+        backing out of anything.
+        """
+        for _ in range(tries):
+            s = self.screen()
+            if s is not None and OUTDOOR_PROMPT not in s.row(24):
+                return True
+            self.kbd.key("Return", 0.20, 0.30)
+            time.sleep(0.6)
+        return False
+
+    def status(self) -> Status | None:
+        """The status line as a `Status`, or None if none was on screen.
+
+        `facing` is None on the travel grid.  Callers that print it say
+        "outdoors" rather than a number, and callers that compare two readings
+        -- `walk_one` -- are comparing whole tuples and need no change.
+        """
         for _ in range(8):
             s = self.screen()
             if s is not None:
-                m = RE_STATUS.search(s.text())
-                if m:
-                    return (
-                        FACING[m.group(1)],
-                        int(m.group(2)) * 60 + int(m.group(3)),
-                        int(m.group(4)),
-                        int(m.group(5)),
-                    )
+                at = parse_status(s.text())
+                if at is not None:
+                    return at
                 self.handle_prompt(s)
             time.sleep(0.3)
         return None
@@ -1403,7 +1627,11 @@ class Session:
                 if row and row not in seen and RE_NOTABLE.search(row.upper()):
                     seen.add(row)
                     lines.append(row)
-            if mode == DUNGEON and RE_STATUS.search(text):
+            # `parse_status`, not `RE_STATUS`: an ambush on the travel grid
+            # ends back on `OUTDOORS 22:02 7,28`, which carries no facing
+            # letter, so a pattern that wants one never matches and the fight
+            # runs to its whole budget after it is over (`#189`).
+            if mode == DUNGEON and parse_status(text) is not None:
                 return FightResult(outcome or ENDED, turns,
                                    time.time() - started, bars, lines,
                                    blows, highlights)

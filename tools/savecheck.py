@@ -359,9 +359,16 @@ def run(args, log: Log) -> int:
 
         where = sess.status()
         rows, named = panel(sess)
-        log.emit("arrived", status=where, panel=rows, named=named)
-        log.say(f"status line: facing={where[0]} clock={where[1] // 60}:"
-                f"{where[1] % 60:02d} square={where[2]},{where[3]}")
+        log.emit("arrived", status=where, panel=rows, named=named,
+                 outdoors=None if where is None else where.outdoors)
+        # `Status.where()` rather than `facing=<number>`.  On the travel grid
+        # there is no facing at all, and this printed `facing=2` -- south --
+        # for every outdoor party on every square, because the old pattern
+        # took the final `S` of `OUTDOORS` for a reading (`#189`).
+        if where is None:
+            log.say("No status line was on the screen")
+        else:
+            log.say(f"Status line: {where.where()}")
         log.say(f"the party panel lists {len(named)} characters:")
         for r in rows:
             log.say(f"    |{r}|")
@@ -383,13 +390,23 @@ def run(args, log: Log) -> int:
                 # A walked area change is several screens, not one keypress.
                 log.say(f"  after {move}: {answer_bars(sess, log, args.answer)}")
             now = area(sess)
-            log.emit("walk", move=move, moved=moved, status=sess.status(),
-                     area=now)
-            log.say(f"walk {move}: moved={moved} status={sess.status()} "
+            # Read once and reported three times.  It used to be read three
+            # times, which is up to 24 screen reads for one line of log -- and
+            # outdoors the three could disagree, because the status line lags
+            # a step out there.
+            at = sess.status()
+            # The square out of memory beside it, because that is what proves
+            # an outdoor step: `$49C3`/`$49C4` move on the press and the
+            # status line catches up afterwards (`#189`).
+            here = sess.square()
+            log.emit("walk", move=move, moved=moved, status=at, area=now,
+                     square=here)
+            log.say(f"Walk {move}: moved={moved} "
+                    f"status={'none' if at is None else at.where()} "
+                    f"square={'?' if here is None else f'{here[0]},{here[1]}'} "
                     f"area={now}")
             if now != was:
-                log.emit("area_change", before=was, after=now,
-                         status=sess.status())
+                log.emit("area_change", before=was, after=now, status=at)
                 log.say(f"** the area changed, {was} -> {now} **")
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-area-{now}.png"))
                 was = now
@@ -481,11 +498,13 @@ def main(argv=None) -> int:
     p.add_argument("--view", type=int, default=0,
                    help="how many VIEW sheets to read, stepped with NEXT")
     p.add_argument("--walk", default="",
-                   help="moves in the game's own letters: I J K M")
+                   help="Moves: the game's own letters I J K M in a dungeon, "
+                        "the compass digits 1-8 on the travel grid")
     p.add_argument("--fight", action="store_true",
                    help="walk until something ambushes the party, then fight")
     p.add_argument("--fight-move", default="I",
-                   help="the move to repeat while looking for a fight")
+                   help="The move to repeat while looking for a fight; "
+                        "a compass digit if the party is on the travel grid")
     p.add_argument("--steps", type=int, default=60,
                    help="give up looking for a fight after this many steps")
     p.add_argument("--budget", type=float, default=900.0,

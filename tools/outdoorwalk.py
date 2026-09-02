@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """Walk a party on the C64 travel grid, reading the square out of memory.
 
-`tools/savecheck.py` proves a converted save loads and reads the party off the
-screen.  It cannot prove an **outdoor** party took a step, and the reason is
-the status line itself: indoors it reads `E 16:48 5,2` and outdoors it reads
-`OUTDOORS 22:02 7,28`, with the word where the facing letter goes.  So a driver
-that watches the status line to decide whether a move happened has, outdoors:
+The status line has two shapes: indoors it reads `E 16:48 5,2` and outdoors it
+reads `OUTDOORS 22:02 7,28`, with the word where the facing letter goes.  A
+driver that watches it to decide whether a move happened therefore has, on the
+travel grid, no facing to turn from, and a step it will see late -- the line
+lags `$49C3`/`$49C4` by about a second.
 
-* no facing to turn from -- `Session.walk_one` re-sends a move until the status
-  line changes, and a *turn* never changes it, so a single `K` is sent four
-  times and the party comes back round to where it started;
-* a facing it reads wrongly anyway -- `tools/session.py`'s `RE_STATUS` matches
-  the final `S` of `OUTDOORS`, so every outdoor status reports the party facing
-  south, filed as its own issue;
-* a memory fallback pointed at `$49C0`-`$49C2`, which outdoors is the frozen
-  square the party left the grid on rather than where it is standing.
+This tool was written when `tools/session.py` knew none of that: it pressed the
+dungeon's `I J K M` out here, read the facing out of the middle of the word
+`OUTDOORS`, and fell back to `$49C0`-`$49C2`, which outdoors is the frozen
+square the party left the grid on.  All three are fixed in `Session` now
+(`#189 (The emulator driver cannot move a party on the travel grid, and reads
+its facing out of the word OUTDOORS)`), so `savecheck --walk` can walk an
+outdoor party too.  What is left here is the screenshot-per-press sweep, which
+is the thing to reach for when the question is *which* digit went where.
 
-What this does instead is read `$49C3`/`$49C4` -- the live travel square,
+It reads `$49C3`/`$49C4` -- the live travel square,
 `#47 (Decode the travel grid's cache entries, so the wilderness can be
 retargeted too)` and `#59 (Map the DOS saved game, not just the character
 record)` -- through the binary monitor, before and after every key.  A turn
@@ -56,10 +56,17 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 
 #: The live overland square.  `$49C0`-`$49C2` is the dungeon one and goes
 #: stale out here, which is the whole reason this tool reads memory at all.
-TRAVEL_X = 0x49C3
+#: `Session.square` now reads whichever pair is live, so this is kept only as
+#: the name the address was documented under.
+TRAVEL_X = S.TRAVEL_XY
 
 
 def travel_square(sess) -> tuple[int, int]:
+    """The travel square, straight out of `$49C3`/`$49C4`.
+
+    Not `Session.square`, which asks `$49E6` first: this tool is only ever run
+    outdoors, and the extra read is one more monitor stop per poll.
+    """
     with sess.mon(5) as mon:
         x, y = mon.read(TRAVEL_X, 2)
     return x, y
@@ -95,16 +102,16 @@ def run(args) -> int:
 
         for i, move in enumerate(args.moves):
             before = travel_square(sess)
-            if not sess.select_bar("MOVE", timeout=10):
-                print(f"  {move}: the MOVE command could not be selected")
-                sess.leave_move(2)
-                continue
-            time.sleep(0.6)
-            if args.shots:
-                sess.kbd.screenshot(str(out / f"{args.tag}-{i}{move}-menu.png"))
+            # `Session.outdoor_key`, not `select_bar("MOVE")`: a walked exit
+            # on to the grid lands with `1-8, RETURN OR BUTTON` already up, so
+            # asking for MOVE finds no such word and spins to its timeout.
             # One press, not `walk_one`'s four: a turn is invisible to the
             # status line, so re-sending it would spin the party in a circle.
-            sess.kbd.key(move.lower(), 0.15, 0.30)
+            if args.shots:
+                sess.kbd.screenshot(str(out / f"{args.tag}-{i}{move}-menu.png"))
+            if not sess.outdoor_key(move):
+                print(f"  {move}: no direction prompt to press it at")
+                continue
             if args.shots:
                 time.sleep(1.5)
                 sess.kbd.screenshot(
@@ -120,7 +127,7 @@ def run(args) -> int:
                 if after != before:
                     break
                 time.sleep(0.5)
-            sess.leave_move()
+            sess.leave_outdoor_move()
             moved = after != before
             trail.append({"move": move, "before": list(before),
                           "after": list(after), "moved": moved})
@@ -158,11 +165,16 @@ def main(argv=None) -> int:
     # here moves the party not at all while looking exactly like a save that
     # cannot walk -- which is what an hour of `#50 (Lift the wilderness refusal
     # from the DOS save converter)` was spent on. This default was that hour
-    # written back into the tool meant to prevent it. `8` and `4` are the two
-    # driven on 2026-09-02, each moving the party a square.
+    # written back into the tool meant to prevent it.
+    #
+    # The eight are the compass **clockwise from north**, not the numpad:
+    # 1 N, 2 NE, 3 E, 4 SE, 5 S, 6 SW, 7 W, 8 NW, measured on 2026-09-02 by
+    # writing `$49C3`/`$49C4`, pressing a digit and reading the square back.
+    # So this default is north-west and south-east twice over, which is why it
+    # moved the party a square each time without saying which way.
     p.add_argument("--moves", default="8484",
-                   help="the compass digits 1-8, not the dungeon's I J K M; "
-                        "Return leaves the bar")
+                   help="The compass digits 1-8 clockwise from north, not the "
+                        "dungeon's I J K M; Return leaves the bar")
     p.add_argument("--tag", default="outdoorwalk",
                    help="prefix for the screenshots")
     p.add_argument("--out", default=None, help="where the run's output goes")

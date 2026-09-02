@@ -879,6 +879,19 @@ screen without the bias being taken off.
 **D5.** Walk two or three squares, and check the square and the clock on the
 status line move with the party.
 
+**D5a.** Walk an **outdoor** party, if the save under test is one. The travel
+grid takes the compass digits rather than `I J K M`, so this is
+`tools/savecheck.py --disk <save> --slot N --walk 1357` -- north, east, south,
+west, which is a closed box and ends where it began.
+
+*Expect:* `moved=True` on all four, a square that changes on each, and a status
+line that says `outdoors` rather than a facing. Driven on pool slot 3 on
+2026-09-02 against `work/p50-outdoor/OUTC.D64`: `(7,28)` to `(7,27)` to
+`(8,27)` to `(8,28)` and back to `(7,28)`. Before `#189 (The emulator driver
+cannot move a party on the travel grid, and reads its facing out of the word
+OUTDOORS)` this reported `moved=False` at every heading and `facing=2` on every
+square, both of which read exactly like a save that cannot walk.
+
 **D6.** Walk into another area, through a door rather than by fast travel.
 **This step needs slot A**, whose party is in New Phlan; run D1 again with
 `--slot A` if you followed it with slot J, which arrives in the Slums and where
