@@ -24,13 +24,12 @@ Once it fires it will keep firing for the rest of the turn, because the text
 it is reading cannot be taken back. That is deliberate: the way out is to end
 the turn and say it again properly, which is the behaviour being asked for.
 """
+import importlib.util
 import json
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-
-import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
     "_titles", os.path.join(HERE, "check-issue-titles.py"))

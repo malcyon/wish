@@ -27,6 +27,7 @@ web. A **comment** is read in a terminal and in a notification mail, so it is
 not exempt -- which is why `gh issue create` is checked only for the parts
 that are not the body, and `gh issue comment` is checked whole.
 """
+import importlib.util
 import json
 import os
 import re
@@ -35,8 +36,6 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-
-import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
     "_titles", os.path.join(HERE, "check-issue-titles.py"))
