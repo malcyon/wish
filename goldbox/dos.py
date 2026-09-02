@@ -52,6 +52,8 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import shutil
+import tempfile
 from typing import Any, Sequence
 
 from . import areas, c64_codec, dos_savegame, neutral, traits
@@ -2758,12 +2760,47 @@ def new_dos_save(save0: bytes, save1: bytes | None,
     source is a byte written zero by accident instead of by measurement, and
     the difference between those two is invisible in the file.
     """
-    report = write_dos_save(save0, save1, None, out, slot, game=game)
-    if report.unwritten:
-        raise DosRecordError(
-            f"{len(report.unwritten)} bytes of the saved game have no source "
-            f"and were left zero by accident rather than by measurement; the "
-            f"first is {report.address(report.unwritten[0])}")
+    # **Built somewhere else first, and moved in only once it is known
+    # good.**  The refusal below used to fire *after* `write_dos_save` had
+    # already cleared the slot and written all seven files, so a caller who
+    # hit it was left with exactly the save this function exists to refuse --
+    # a stranger's bytes on disk, with nothing about the directory saying so.
+    # The sibling refusal in `_area_script` gets this right by firing before
+    # anything is written; this one could not, because the count it refuses on
+    # is only known at the end.  So the write goes to a staging directory on
+    # the same filesystem and `out` is not touched at all unless the count is
+    # zero.
+    out = pathlib.Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    staging = pathlib.Path(tempfile.mkdtemp(prefix=f".wish-{slot}-", dir=out))
+    try:
+        report = write_dos_save(save0, save1, None, staging, slot, game=game)
+        if report.unwritten:
+            raise DosRecordError(
+                f"{len(report.unwritten)} bytes of the saved game have no "
+                f"source and were left zero by accident rather than by "
+                f"measurement; the first is "
+                f"{report.address(report.unwritten[0])}")
+
+        # The slot is the unit a conversion overwrites, and the clearing has
+        # to happen here rather than in `write_dos_save`, which only ever saw
+        # the empty staging directory.  Same enumeration, same reason (#68).
+        cleared = 0
+        for n in range(1, dos_savegame.PARTY_ENTRIES + 1):
+            stale = out / f"CHRDAT{slot}{n}"
+            for suffix in (".SAV", ".ITM", ".SPC"):
+                path = stale.with_suffix(suffix)
+                if path.exists():
+                    path.unlink()
+                    cleared += 1
+        if cleared:
+            report.carried.append(
+                f"slot {slot} was already written here: {cleared} stale "
+                f"CHRDAT{slot}<n> file(s) from the previous party removed")
+        for built in sorted(staging.iterdir()):
+            shutil.move(str(built), str(out / built.name))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
     return report
 
 

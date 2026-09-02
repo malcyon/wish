@@ -284,7 +284,10 @@ overwrites it and puts it back, so nothing outlives a visit; the two ports
 disagree on it besides. `$49FF` is named by none of the thirty.
 
 **3. Nobody has decoded it, and zero is what the running game accepted.**
-`$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`,
+`$4FC0`, `$4FC6` and `$4FC8` were in this list until 2026-09-02 and are not
+any more: the fight run in group 1 above watched the engine write all three,
+so they belong there rather than here. `$4FC1` alone is still unseen.
+`$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC1`,
 `$507A`-`$507C`, `$507F`-`$5080`, `$5203`, `$5204`, `$5207`,
 `$520A`-`$520E`, most of the message buffer from `$5227`, and the 274 bytes
 of character-table heap and menu text. What each **means** is still UNKNOWN

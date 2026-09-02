@@ -2017,7 +2017,7 @@ finding in the useful direction: they cannot be got wrong.
 
 ### What is not settled
 
-* **Fifteen words the engine has never been seen writing** -- listed in
+* **Twenty words the engine has never been seen writing** -- listed in
   `141-dos-savegame.md`'s "What this leaves open". Zero in them is CONFIRMED
   survivable across all five runs and nothing says what would put a value
   there.

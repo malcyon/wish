@@ -799,8 +799,20 @@ def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
     report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A",
                                 game=_game_dir())
     assert report.unwritten, "a template save is not written byte for byte"
-    assert len(report.unwritten) == sg.SAVGAM_SIZE - (
-        len(report.sources) - len(report.unwritten))
+    # `sources` covers every offset after the backfill loop, so
+    # `len(unwritten) == SAVGAM_SIZE - (len(sources) - len(unwritten))`
+    # reduces to `len(sources) == SAVGAM_SIZE` and is true whatever the
+    # template supplied. It was asserted here until 2026-09-02 and tested
+    # nothing. What does the work is comparing the two paths: the same party
+    # written from nothing owes a stranger no bytes at all.
+    assert len(report.sources) == sg.SAVGAM_SIZE
+    scratch = tmp_path / "nothing"
+    fresh = dos.new_dos_save(save0, save1, scratch, "A", _game_dir())
+    assert not fresh.unwritten
+    assert len(report.unwritten) > len(fresh.unwritten), (
+        "converting onto a template took no more from it than converting "
+        "from nothing did, which cannot be true while the template path "
+        "exists at all")
     # Every one of them is a variable or a tail byte, addressed the way a
     # reader of `docs/141-dos-savegame.md` would look it up.
     assert report.address(report.unwritten[0]).startswith(("$", "byte "))
@@ -810,7 +822,7 @@ def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
 def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     """The gate has to be able to fail, or it is not a gate.
 
-    With the zero account taken away the same conversion leaves 454 bytes
+    With the zero account taken away the same conversion leaves 4854 bytes
     with no source, and `new_dos_save` refuses rather than handing back a
     file whose zeroes nobody stands behind.
     """
@@ -819,6 +831,37 @@ def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
     with pytest.raises(dos.DosRecordError) as e:
         dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
     assert "no source" in str(e.value)
+
+
+@needs_dos_saves
+def test_a_refused_conversion_leaves_the_directory_exactly_as_it_found_it(
+        tmp_path, monkeypatch):
+    """A refusal that has already written the file it refuses is not a
+    refusal.
+
+    `new_dos_save` can only know the count at the end, so it used to clear the
+    slot, write all seven files, and raise afterwards -- leaving the caller
+    with precisely the save the refusal exists to prevent, and nothing about
+    the directory saying so. The previous party's files were gone too.
+    """
+    save0, save1 = _fixture_payloads()
+    out = tmp_path / "out"
+    out.mkdir()
+    # A previous conversion's slot, which a refusal must not disturb either.
+    keep = out / "CHRDATA1.SAV"
+    keep.write_bytes(b"the party that was already here")
+    before = sorted(p.name for p in out.iterdir())
+
+    monkeypatch.setattr(dos, "savgam_zeroes", lambda savgam, report: None)
+    with pytest.raises(dos.DosRecordError):
+        dos.new_dos_save(save0, save1, out, "A", _game_dir())
+
+    assert not (out / "SAVGAMA.DAT").exists(), \
+        "the saved game it refused was written anyway"
+    assert sorted(p.name for p in out.iterdir()) == before, \
+        "the refusal changed the directory"
+    assert keep.read_bytes() == b"the party that was already here", \
+        "the refusal cleared the slot it refused to replace"
 
 
 @needs_dos_saves
