@@ -797,10 +797,28 @@ character record)`.** A bare `#59` is an opaque number in a commit message, in
 happens in all four. The title is what makes a reference readable a year later
 without a browser.
 
-This applies to replies, issue bodies, issue comments and documents. **The one
-exception is a commit message**, where the Commits section already rules that
-the number goes in parentheses at the end of the one line -- a title there would
-break the sentence, and GitHub hotlinks the number anyway.
+This applies to **replies, issue comments and documents** -- everywhere a
+person reads the reference somewhere GitHub is not rendering it.
+
+**Two exceptions, and both are about where the reader is.**
+
+* **A commit message**, where the Commits section already rules the number goes
+  in parentheses at the end of the one line -- a title there would break the
+  sentence, and GitHub hotlinks the number anyway.
+* **The body of an issue.** Donald, 2026-09-01: *"Leave them alone.
+  GitHub.com shows the ticket details on hover and makes it a hotlink, so it
+  will be fine."* An issue body is read on the web, where the number **is** the
+  title to anybody with a pointer.
+
+**So do not go back and add titles to bare numbers in existing issue bodies**,
+and do not treat one as a defect in an audit. It is not a factual error, so
+"Reply, never rewrite" governs and the answer is to leave it.
+
+**The rule still binds hardest in a terminal**, which is where it keeps being
+broken and where the cost is real: Donald reads replies with no browser open,
+so a bare number carries nothing at all -- *"when you only reference a number,
+it never means anything to me."* Write new citations with their titles
+everywhere; simply do not rewrite old bodies to match.
 
 **Every finding goes in a comment on its issue, when it arrives.** Not at the
 end of the work, not only in the reply, not only in `docs/` -- on the issue,
