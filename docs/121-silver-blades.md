@@ -234,10 +234,16 @@ Every Silver Blades `GEN` address this project had written down was `$3800` too
 high, and the same fault put Curse's at `$2800` and `$1A00` too high and Pool of
 Radiance's at `$0800` too high — seven citations in `goldbox/layout.py`,
 `goldbox/spells.py`, `docs/20-character-record.md` and two test docstrings. The
-findings they carried were all correct; only the addresses were wrong, and four
-of the seven named bytes **outside the overlay altogether**, so anyone checking
-one with `tools/overlay.py` — whose `--base` is `$0800` — would have been told
-the address is not in the file.
+findings they carried were all correct; only the addresses were wrong, and
+**five** of the seven named bytes **outside the overlay altogether**, so anyone
+checking one with `tools/overlay.py` — whose `--base` is `$0800` — would have
+been told the address is not in the file.
+
+Five rather than four, corrected 2026-09-02 by measuring each overlay's real
+extent rather than counting by eye: Curse's `GEN $2D4A` (file ends `$2CEE`),
+Curse's `CAMP $5225` (`$2C6E`), and all three Silver Blades addresses
+(`$2AE0`). The two that stayed inside are Pool of Radiance's `GEN $296B` and
+Curse's `GEN $2C2F`, the two whose header-base error was smallest.
 
 The base is settled by the operands, which cannot move: `GEN $18C9` reads its
 own scratch at `$1BFD` and its ceiling table at `$17D0`, and `CAMP $2871` calls

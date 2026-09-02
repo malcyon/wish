@@ -123,24 +123,76 @@ def _curse_candidates():
     return out
 
 
+def _curse_sides(path):
+    """The `CURSE*.D64` sides in one directory, or None if it holds none."""
+    try:
+        sides = sorted(path.glob("CURSE*.[dD]64"))
+    except OSError:
+        return None
+    return sides or None
+
+
 @functools.lru_cache(maxsize=1)
 def curse_dir():
-    """Where the player keeps their Curse of the Azure Bonds disks, or None."""
+    """Where the player keeps their Curse of the Azure Bonds disks, or None.
+
+    **Prefers a rip with no error bytes on any side.** Widening the search to
+    one level of subdirectory made two full sets match on this machine, and
+    `Curse_of_the_Azure_Bonds_with_docs.SSI` carries a 175531-byte
+    `CURSE4.D64` -- 174848 plus a 683-byte error table. Taking the first match
+    in path order would have chosen between them on where a `.` sorts against
+    a `_` and said nothing about it: rename a folder, and the whole Curse
+    suite moves onto the damaged release in silence.
+
+    `curse_disks`'s docstring says `goldbox.d64` refuses that side. It does
+    not -- `D64.open` reads it as the error-bytes variant, `writable` False and
+    `error_base` 174848 -- so "does it open" cannot tell the two sets apart and
+    scoring on that left path order deciding after all. What separates them is
+    the error table, so that is what is scored.
+
+    Where no candidate is clean the best is used and the rest are recorded in
+    `curse_dir.also_matched`, so an ambiguous choice can be seen rather than
+    guessed at.
+    """
+    best, best_score, others = None, (False, False, -1, 0), []
     for path in _curse_candidates():
-        try:
-            if path.is_dir() and (any(path.glob("CURSE*.D64"))
-                                  or any(path.glob("CURSE*.d64"))):
-                return path
-        except OSError:
+        if not path.is_dir():
             continue
-    return None
+        sides = _curse_sides(path)
+        if sides is None:
+            continue
+        readable = clean = 0
+        for side in sides:
+            try:
+                disk = D64.open(side)
+            except Exception:
+                continue
+            readable += 1
+            if disk.variant.error_base is None:
+                clean += 1
+        score = (clean == len(sides), readable == len(sides), clean, readable)
+        if score > best_score:
+            if best is not None:
+                others.append(best)
+            best, best_score = path, score
+        else:
+            others.append(path)
+    curse_dir.also_matched = others
+    return best
+
+
+curse_dir.also_matched = []
 
 
 def curse_disks(engine_only: bool = True):
     """Every readable Curse side, skipping when there are none.
 
-    One of the three published rips carries error bytes and is 175531 bytes,
-    which `goldbox.d64` refuses; that side is simply skipped rather than failed.
+    One of the three published rips carries error bytes on one side and is
+    175531 bytes -- 174848 plus a 683-byte error table. This said `goldbox.d64`
+    refuses it until 2026-09-02; it does not. `D64.open` reads it as the
+    error-bytes variant, `writable` False and `error_base` 174848. The `except`
+    below therefore never fires for that side, and the reason the rip is not
+    used is `curse_dir`'s preference for a set with no error table at all.
 
     `engine_only` keeps the default to game sides, because a save disk matches
     the glob too and carries its own `SAVEAZURE`. Pass False to reach the save

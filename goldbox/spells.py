@@ -274,15 +274,18 @@ _RANGER_GRANT_SILVER_BLADES = (
 )
 
 #: How wide the spellbook bitmask at record `0x078` is, per title. **Measured
-#: in each game's own code, not carried across from another one.** The one
-#: (Every address in this block was written at the overlay's PRG header base
-#: until 2026-09-02 and named the wrong bytes -- four of them fell outside the
-#: file entirely. `GEN` and `CAMP` run at `$0800` in all three titles. The
-#: findings were right and only the addresses were unusable; `#31 (Cold-read
-#: Curse and Silver Blades for the fields the editor shows)` corrected them,
-#: and `tests/test_coldread.py` now checks the opcodes are really there.)
+#: in each game's own code, not carried across from another one.**
 #:
-#: thing that looks like proof and is not: Curse's `GEN $220F` copies 32 bytes
+#: Every address in this block was written at the overlay's PRG header base
+#: until 2026-09-02 and named the wrong bytes -- **five of the seven fell
+#: outside the overlay entirely**, measured against each file's real extent.
+#: `GEN` and `CAMP` run at `$0800` in all three titles. The findings were
+#: right and only the addresses were unusable; `#31 (Cold-read Curse and
+#: Silver Blades for the fields the editor shows)` corrected them, and
+#: `tests/test_coldread.py` now reads the opcodes off the disks so it cannot
+#: happen again.
+#:
+#: The one thing that looks like proof and is not: Curse's `GEN $220F` copies 32 bytes
 #: out of `$7C78` -- and Pool of Radiance's `GEN $216B` copies the identical 32
 #: out of `$6B78`, where the mask is seven. A copy that is wider than the field
 #: says nothing about the field.

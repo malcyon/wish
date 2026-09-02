@@ -14,7 +14,7 @@ disagrees.** `GEN` declares `$1000` in Pool of Radiance, `$1220` in Curse and
 is where `LINKER` puts an overlay it dispatches to, and the operands settle it:
 Silver Blades' `GEN $18C9` reads its own scratch at `$1BFD`, Curse's `CAMP
 $2A25` calls `$1CE9` -- addresses inside the file at `$0800` and outside it at
-the header's. Six citations in this repository were written at the header base
+the header's. Seven citations in this repository were written at the header base
 and are corrected in `goldbox/layout.py`.
 
 The finders live in `tools/coldread.py` rather than here, because the point of
@@ -244,6 +244,11 @@ ADND_DAMAGE = {
     "TRIDENT": ("1d6+1", "3d4"), "BARDICHE": ("2d4", "3d4"),
     "GLAIVE": ("1d6", "1d10"), "JAVELIN": ("1d6", "1d6"),
     "CLUB": ("1d6", "1d3"), "BASTARD SWORD": ("2d4", "2d8"),
+    # Added 2026-09-02. Its absence meant the comparison never reached
+    # `KNOWN_DIFFERENT`, so the one named exception was skipped rather than
+    # counted -- the rounding-away this table exists to prevent, and what made
+    # "42 of 43" really 41.
+    "HAMMER": ("1d4+1", "1d4"),
 }
 
 #: The armour class each suit grants, same source.
@@ -254,11 +259,21 @@ ADND_ARMOUR = {"LEATHER ARMOR": 8, "PADDED ARMOR": 8, "STUDDED LEATHER": 7,
                "CHAIN ARMOR": 5, "SCALE ARMOR": 6, "RING ARMOR": 7,
                "ELFIN CHAIN": 5}
 
-#: Silver Blades gives its hammer 1d4+1 against large opponents where the
-#: rulebook and the two earlier titles give 1d4. Named and counted rather than
-#: rounded away: both readings come out of the same three bytes and both are
-#: sane dice, so the field is being read right and the table differs.
-KNOWN_DIFFERENT = {(SSB.key, "HAMMER")}
+#: Named exceptions, **keyed on the item's whole name** rather than on the
+#: stripped one, because the difference is not a property of the weapon.
+#:
+#: Silver Blades gives `HAMMER +4` 1d4+1 against large opponents where the
+#: Players Handbook gives 1d4. Its plain `HAMMER`, `HAMMER +1` and `HAMMER +2`
+#: all read 1d4+1 against small and medium and 1d4 against large, as do every
+#: hammer in the two earlier titles -- so keying this on the stripped name, as
+#: it was until 2026-09-02, would stop checking four items to excuse one.
+#:
+#: This exception never actually ran before that date: `HAMMER` was not a key
+#: in `ADND_DAMAGE`, so the comparison skipped every hammer in all three
+#: titles and the exception it named was rounded away by omission. Adding the
+#: key is what surfaced the real difference, and it is narrower than the one
+#: recorded here.
+KNOWN_DIFFERENT = {(SSB.key, "HAMMER +4")}
 
 
 def _plain(name: str) -> str:
@@ -314,7 +329,7 @@ def test_a_titles_item_types_decode_to_the_rulebooks_numbers(game):
         if base in ADND_DAMAGE:
             checked += 1
             got = (kind.damage_vs_medium, kind.damage_vs_large)
-            if got != ADND_DAMAGE[base] and (game.key, base) not in KNOWN_DIFFERENT:
+            if got != ADND_DAMAGE[base] and (game.key, name) not in KNOWN_DIFFERENT:
                 wrong.append((name, got, ADND_DAMAGE[base]))
         elif base in ADND_ARMOUR:
             checked += 1
