@@ -89,12 +89,22 @@ the review.
 This does not apply to a subagent that only wrote documentation or only ran
 experiments. It applies to code.
 
-**The `reverse-engineering` subagent runs on Fable and is not to be used
-unless the work genuinely cannot be done without it.** It is not the default
-for anything technical, and "this is a reverse-engineering project" is not a
-reason to reach for it. **Do not launch it without asking Donald first.**
-It exhausted a monthly spend limit in one night on 2026-08-26, and what it had
-produced by then a general-purpose agent went on to match.
+**The `reverse-engineering` subagent runs on Opus and costs no more than a
+general-purpose one, so use it for what its definition describes.** This file
+said the opposite until 2026-09-01 -- that it ran on Fable, that it had
+exhausted a monthly spend limit in one night on 2026-08-26, and that Donald had
+to be asked before it was launched. All of that was true when it was written and
+none of it is true now: `.claude/agents/reverse-engineering.md` carries
+`model: opus`. Donald: *"I think the reverse engineering agent used to use fable
+as the model, but it has since been changed to Opus. Using the
+reverse-engineering agent is fine and no more expensive than a general purpose
+agent."*
+
+**The two agents that still run on Fable are `architect` and `deep-research`,**
+and the caution that used to sit here belongs to them. `deep-research` is for
+the hardest problems by its own description; `architect` writes a plan for
+somebody else to execute. Neither is the default for anything, and an overnight
+run should think before spending on either.
 
 **Reverse-engineering work goes to a general-purpose agent, and most of it
 turns out to be ordinary work.** Diffing two files against a layout we already
@@ -106,9 +116,9 @@ from 8016 bytes to 444 and how the Amiga Pool of Radiance record was read.
 **The escape hatch, and use it rather than pressing on:** if a general-purpose
 agent finds the task genuinely needs a disassembly -- reading 68000 or 6502
 code rather than watching an address or diffing a file -- it should stop and
-say so, and the work comes back to Donald to decide whether it is worth Fable.
-That is a signal, not a failure. Stopping is cheap; an agent grinding at a
-disassembly on the wrong model is not.
+say so, and the work is re-routed to `reverse-engineering`, whose definition
+already describes it. That is a signal, not a failure. Stopping is cheap; an
+agent grinding at a disassembly it was not sent to read is not.
 
 **Emulator work goes through the instance pool.** VICE serves exactly one
 binary-monitor connection *per process*, so running two things at once means
@@ -215,15 +225,17 @@ the routing.
 
 | agent | model | when |
 |---|---|---|
-| `reverse-engineering` | Fable | **Ask Donald before launching it.** Only when the work needs a disassembly read, not merely a measurement. Exhausted a monthly limit in one night |
-| `quick-fix` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
+| `reverse-engineering` | Opus | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. No dearer than general-purpose; no permission needed |
+| `deep-research` | **Fable** | the hardest reverse engineering only, where rigorous analysis is the whole job. The expensive one; think before spending on it |
+| `architect` | **Fable** | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. Also Fable |
+| `junior-dev` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it. Called `quick-fix` in this table until 2026-09-01; the agent was renamed and the row was not |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
 | `code-reviewer` | Sonnet | after **every** subagent that wrote code, on the local commit, before it is pushed. It runs in the shared tree, so scope it to the files it owns |
 | `docs-reviewer` | Sonnet | when documentation may have drifted from the code -- after a run of findings lands. It runs in the shared tree, so scope it to the files it owns |
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**: the banned-words sweep of titles, bodies and comments, and the fixing of them, are its work and not a `general-purpose` agent's |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
 
-**`quick-fix`'s filter is a property of the issue body** -- does it name the
+**`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? #71 looked like ordinary work and took nine
 rounds and a `QTableView` subclass. #73 named the two candidate shapes and
 said which was smaller, and that is what made it assignable.
