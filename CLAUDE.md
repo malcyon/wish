@@ -1404,6 +1404,27 @@ not read in order.
 
 ## Temp Files
 
+**`work/` is backed up to OneDrive by a `Stop` hook, and that is not a reason
+to leave anything valuable there.** `.claude/hooks/backup-work.sh` writes a
+dated `tar.zst` to `/data/OneDrive/wish-work/` at most once every ten minutes,
+keeps the last fourteen, and pushes that one folder with
+`onedrive --sync --single-directory` -- the systemd service stays masked,
+which is Donald's setting, and the other 282G is untouched. It runs detached
+so it never delays a turn; a snapshot of the whole directory is about 25MB and
+takes twenty seconds.
+
+**Snapshots, never a mirror**, and that is the whole design. `work/` has been
+lost twice (`#136 (Rewrite the 80 citations of the 32 lost work/reports
+write-ups)` and `#148`), and Donald established the cause on 2026-09-02: he ran
+out of Claude quota, drove the project with Google Gemini for a while, and it
+deleted the directory -- probably because it does not read this file. An
+`rsync --delete` mirror would have replicated that deletion on its next run and
+destroyed the backup as well. A dated tarball cannot be eaten by a later `rm`.
+
+It is a restore of last resort, not a filing system: a tarball nobody has
+opened does not tell the next session that a tool exists. The rules below still
+hold.
+
 Any temporary or scratch file created during development goes in `work/`, to
 keep the project root clean. **`work/` is for a run's output, not for the thing
 that produced it.** Logs, `.jsonl` traces, dumps, screenshots, disk images: all
