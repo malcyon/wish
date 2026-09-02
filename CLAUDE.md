@@ -212,6 +212,32 @@ bytecode cache, so the program goes on running the broken code while
 minutes against a correct file that way on 2026-08-27. Only the main window
 touches git's history, and only deliberately.
 
+**A copy-back is a `git checkout` with a different name, and it is only safe on
+a file nobody else is in.** The rule above says copy aside and copy back, and it
+is right for the ordinary case -- but the copy is a snapshot of the file at the
+moment it was taken, so putting it back deletes every edit anybody made in
+between. On 2026-09-02 the main window did exactly that: it had given
+`goldbox/dos.py` to an agent working `#191 (A converted dwarf loses his
+constitution bonus to saving throws)`, then edited the same file itself for
+`#176 (A player importing a Curse of the Azure Bonds save is shown an issue
+number)`, and its copy-back restore silently reverted the agent's one-line fix
+after that agent had already seen the whole suite green on it. Nothing failed
+loudly; the line simply went back to what it had been.
+
+So, in order: **do not edit a file you have assigned to an agent** -- that is
+the mistake, and the copy-back was only how it landed. If you must touch one,
+say so in a message to the agent, and **prefer a targeted edit to a copy-back**:
+put back the one hunk you changed rather than the whole file you remember. Take
+the copy immediately before the change you are testing, never at the start of a
+run, and `diff` against the *live* file rather than against your memory of it.
+
+**And commit a shared file by staging the version you mean, not the file.**
+Where a file holds your change and somebody else's half-finished one, build the
+version you intend to commit in the scratchpad, `git hash-object -w` it and
+`git update-index --cacheinfo` it into the index. That is how `#176`'s hunk went
+in while the `#191` work beside it stayed uncommitted and untouched in the
+working tree.
+
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to `/home/donald/c64/Pool of Radiance Disks/`, never commit the
 game's code, art or data ("What must never enter this repository"), never run
