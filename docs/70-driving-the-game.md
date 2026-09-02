@@ -130,8 +130,9 @@ The order of operations, all of it in `tools/session.py`:
 | `INSERT YOUR SAVE GAME DISK` | attach the save disk, press a key |
 | main menu | `LOAD SAVED GAME`, then `Return` on the already-white `YES` |
 | party menu | `BEGIN ADVENTURING` |
-| in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y |
-| `MOVE` | `I` forward, `J` turn left, `K` turn right, **`M` steps *backward*** without turning; `Return` leaves |
+| in the world | row 14 is the status line — `E 16:48 5,2`: facing, clock, x, y. **Outdoors it reads `OUTDOORS 22:02 7,28`**, with the word where the facing letter goes, so there is no facing to read on the travel grid and the square is window-local |
+| `MOVE`, in a dungeon | `I` forward, `J` turn left, `K` turn right, **`M` steps *backward*** without turning; `Return` leaves |
+| `MOVE`, on the travel grid | **a different bar: `1-8, RETURN OR BUTTON`** — the compass, not `I J K M`. A driver that presses `I` out here moves the party not at all and looks exactly like a save that cannot walk, which is what an hour of #50's proof was spent on. `8` and `4` were driven on 2026-09-02 and each moved the party a square; `Return` leaves |
 | `ENCAMP` → `SAVE` → `SAVE GAME` | writes `SAVEDGAME0`/`SAVEDGAME1` to whatever disk is in the drive |
 
 ### Casting a spell from the world, and two traps on the way
