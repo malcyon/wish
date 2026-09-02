@@ -112,6 +112,8 @@ $RomDir  = "$Root\Kickstarts\"
 # injector now writes through a handle that shares the file; this reads through
 # one too, so the poll never prints a red error into the caller's output, and
 # a read that fails anyway is a null, which the poll treats as "not yet".
+$script:readFailures = 0
+
 function Read-SendLog {
   if (-not (Test-Path $SendLog)) { return $null }
   try {
@@ -121,7 +123,15 @@ function Read-SendLog {
       $r = New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)
       $text = $r.ReadToEnd()
     } finally { $fs.Close() }
-  } catch { return $null }
+  } catch {
+    # Counted, because "not written yet" and "cannot be read at all" look the
+    # same to the poll and one of them is a fault. A permissions problem or an
+    # antivirus lock would otherwise spend the whole eleven-minute wait looking
+    # exactly like an injector that had not started. `Say` keeps the matching
+    # count on the writer's side; this is the reader's.
+    $script:readFailures++
+    return $null
+  }
   return @(($text -split "\r?\n") | Where-Object { $_ -ne '' })
 }
 
@@ -769,7 +779,11 @@ Report "ok pressed VK 0x$vk at pid=`$(`$p.Id) responding=`$(`$p.Responding)"
           Start-Sleep -Milliseconds 500
           $v = & $verdict
           if (-not $v) {
-            "fail winuae-send ended without writing a verdict: $(Why-NotRun 'winuae-send')"
+            # `Why-NotRun` carries the task's own `lastResult`, so a verdict
+            # line lost to a failing write still surfaces the injector's real
+            # exit code -- the line is lost, the code is not.
+            "fail winuae-send ended without writing a verdict: $(Why-NotRun 'winuae-send')" +
+              $(if ($script:readFailures) { " (send.log could not be read $script:readFailures times)" } else { '' })
             Read-SendLog
             exit 1
           }

@@ -589,7 +589,7 @@ Kickstart idle instruction — `00fc0f90 stop #$2000`, which is why `CPU: 0%` is
 normal and not a sign of a wedge — while `VPOS` had moved from 104 to 208. The
 beam had run; the emulator had run.
 
-Six traps, each of which reads as "the route does not work":
+Seven traps, each of which reads as "the route does not work":
 
 1. **The debugger needs a console, and `use_debugger=true` does not make one.**
    `AttachConsole` then fails with `GetLastError 5`. `-log` makes WinUAE call
