@@ -448,15 +448,32 @@ _ALL_SHAPES = pytest.mark.parametrize(
     "key", [s.key for s in sg.SAVE_SHAPES])
 
 
-def test_every_shape_tiles_its_own_container():
-    """The widths add up to the size the file is, which is the check that
-    makes a fifth title cheap to try -- a region declared too wide moves
-    every one after it and the shape raises at import rather than reading
-    somebody else's bytes."""
-    for shape in sg.SAVE_SHAPES:
-        assert shape.party_table + sg.PARTY_ENTRIES * sg.PARTY_ENTRY \
-            + sg.UI_SCRATCH == shape.size, shape.key
-        assert shape.square == shape.party_table - 8, shape.key
+def test_a_shape_whose_widths_do_not_add_up_is_refused_at_import():
+    """The check that makes a fifth title cheap to try: a region declared too
+    wide moves every one after it, and the shape raises rather than reading
+    somebody else's bytes.
+
+    Asserting that the *existing* shapes tile is not this check and cannot
+    fail -- `square` is computed backwards from `size`, so
+    `party_table + entries + scratch == size` reduces to `size == size` for
+    any widths at all.  Building a wrong one is what exercises the guard.
+    """
+    good = dict(key="fifth", title="A Fifth Title",
+                size=sg.SAVGAM_SIZE, script_bytes=0, unnamed=0)
+    # The real Pool of Radiance widths less its script buffer: too narrow now.
+    with pytest.raises(sg.DosSaveError) as raised:
+        sg.DosSaveShape(**good)
+    assert "add up to" in str(raised.value)
+    assert str(sg.SAVGAM_SIZE) in str(raised.value)
+
+    # And the same shape with the missing width put back is accepted.
+    width = sg.ECL_BUFFER[1] - sg.ECL_BUFFER[0]
+    assert sg.DosSaveShape(**{**good, "script_bytes": width}).size == sg.SAVGAM_SIZE
+
+
+def test_no_two_shapes_collide_on_the_size_that_selects_them():
+    """`save_shape_for` picks a title by the file's size, so two titles of the
+    same size would make one of them unreachable."""
     assert len(sg.SAVE_SHAPES_BY_SIZE) == len(sg.SAVE_SHAPES)
 
 
