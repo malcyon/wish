@@ -1095,6 +1095,16 @@ FASTTRAVEL_DISK = 0x6E12
 #: the save's own bytes, which is why the arrival square is written before the
 #: jump and not after.
 FASTTRAVEL_X, FASTTRAVEL_Y, FASTTRAVEL_FACING = 0xC04B, 0xC04C, 0xC04D
+#: The live travel-grid square, window-local x then y. Outdoors `$C04B`-
+#: `$C04D` is not the party's position -- `GDRIVE00` is not resident -- and
+#: no arriving script places an outdoor party
+#: (`docs/140-loaded-files-cache.md`), so the departing script's write is
+#: the only thing that ever sets it, and a fast travel used to skip that
+#: (`#178 (Fast Travel to the wilderness leaves the party on whatever
+#: overland square it last stood on)`). Two bytes: the travel facing is
+#: `$033D`, page 3, unsaved and of unknown encoding (`docs/113-world-map.md`
+#: unknown 3), and is not written here.
+FASTTRAVEL_TRAVEL_X = 0x49C3
 #: Where the party came *from*: `$2011`-`$2016` sets it, and the arriving
 #: script's entry 4 compares it against its own id.
 #:
@@ -1239,6 +1249,12 @@ class Waypoint:
     area: int
     disk: int | None
     square: tuple[int, int, int] | None
+    #: `$49C3`/`$49C4` at departure, taken when the party was outdoors
+    #: (`$49E6` read 0). `square` is `$C04B`, which is not `GDRIVE00`'s
+    #: square outdoors, so `FastTravel Back` from a window needs this
+    #: instead (`#178 (Fast Travel to the wilderness leaves the party on
+    #: whatever overland square it last stood on)`).
+    overland: tuple[int, int] | None = None
 
     @property
     def id(self) -> int:
@@ -1248,7 +1264,9 @@ class Waypoint:
 
 
 def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
-                  arrival=None) -> tuple[tuple[int, bytes], ...]:
+                  arrival=None,
+                  overland: tuple[int, int] | None = None
+                  ) -> tuple[tuple[int, bytes], ...]:
     """The bytes a fast travel writes: `NEWECL`'s own, in its own order and
     minus the operand fetch, behind the one write a departing script would
     have made first.
@@ -1263,6 +1281,15 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     the square but not the direction, or None to write no square at all and let
     the arriving script's entry 4 place the party.
 
+    `overland` is `(x, y)` for the three overland areas' own position,
+    `$49C3`/`$49C4`, written in the same slot `arrival` occupies -- `$C04B`
+    is not `GDRIVE00`'s square outdoors, and no arriving script places one
+    there, so this is the only write that ever puts a fast-travelled party
+    on a known overland square (`#178 (Fast Travel to the wilderness leaves
+    the party on whatever overland square it last stood on)`). `arrival` and
+    `overland` are mutually exclusive -- an area is one or the other, never
+    both -- and passing both is a caller bug, not a choice between writes.
+
     **Two writes here are not `NEWECL`'s own.** `FASTTRAVEL_WALLS_SLOT` is New
     Phlan's *departing* script, `ECL00 $9955`/`$9BDC`, run in front of
     `NEWECL` on a genuine exit and skipped by entering the handler at its
@@ -1276,6 +1303,10 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
     travel skips, so a piece can keep the previous area's wall art
     (`#179`). Written unconditionally and zero.
     """
+    if arrival is not None and overland is not None:
+        raise ValueError("newecl_writes: arrival and overland are mutually "
+                         "exclusive -- an area is indoors or outdoors, "
+                         "never both")
     writes: list[tuple[int, bytes]] = [
         (FASTTRAVEL_WALLS_SLOT, b"\xff"),
         (WALL_SLOT_PINNED, bytes(WALL_SLOT_PINNED_LEN)),
@@ -1284,6 +1315,9 @@ def newecl_writes(from_area: int, to_area: int, disk: int | None = None,
         writes.append((FASTTRAVEL_DISK, bytes([disk & 0xFF])))
     if arrival is not None:
         writes.append((FASTTRAVEL_X, bytes(int(v) & 0xFF for v in arrival)))
+    elif overland is not None:
+        writes.append((FASTTRAVEL_TRAVEL_X,
+                       bytes(int(v) & 0xFF for v in overland)))
     writes.append((FASTTRAVEL_FROM, bytes([from_area & 0x7F])))
     writes.append((FASTTRAVEL_SLOT, bytes([(to_area & 0x7F) | 0x80])))
     writes.append((FASTTRAVEL_SCRATCH, bytes(FASTTRAVEL_SCRATCH_LEN)))
@@ -1474,6 +1508,18 @@ class FastTravel(Action):
         raw = _read(target, FASTTRAVEL_X, 3)
         return (raw[0], raw[1], raw[2]) if raw and len(raw) == 3 else None
 
+    @staticmethod
+    def current_indoors(target) -> int | None:
+        """`$49E6`: non-zero indoors, zero on the travel grid."""
+        raw = _read(target, FASTTRAVEL_INDOORS, 1)
+        return raw[0] if raw else None
+
+    @staticmethod
+    def current_overland(target) -> tuple[int, int] | None:
+        """`$49C3`/`$49C4`, the live travel-grid square."""
+        raw = _read(target, FASTTRAVEL_TRAVEL_X, 2)
+        return (raw[0], raw[1]) if raw and len(raw) == 2 else None
+
     # -- may we -----------------------------------------------------------
 
     def legality(self, target, area=None) -> Verdict:
@@ -1518,16 +1564,18 @@ class FastTravel(Action):
     def run(self, target, area=None, arrival=None, **kwargs) -> Outcome:
         here = self.current_area(target)
         to = getattr(area, "id", area)
-        if arrival is None:
-            arrival = self.arrival_of(area)
-        notes = list(self.warnings(target, area, arrival))
+        arrival, overland = self._square_writes(area, arrival=arrival)
+        notes = list(self.warnings(target, area, arrival, overland))
         # Read before writing: the first write is $6E12 and the second is
-        # $C04B, so a waypoint taken afterwards would record where we are
-        # going rather than where we were.
+        # $C04B or $49C3, so a waypoint taken afterwards would record where
+        # we are going rather than where we were.
         was = Waypoint(here, self.current_disk(target),
-                       self.current_square(target)) if here is not None else None
+                       self.current_square(target),
+                       self.current_overland(target)
+                       if self.current_indoors(target) == 0 else None
+                       ) if here is not None else None
         writes = newecl_writes(here or 0, to, getattr(area, "disk", None),
-                               arrival)
+                               arrival, overland=overland)
         _write_all(target, writes)
         if not jump(target, NEWECL_TAIL):
             return Outcome(False,
@@ -1553,11 +1601,32 @@ class FastTravel(Action):
             return (got.x, got.y)
         return (got.x, got.y, got.facing)
 
-    def warnings(self, target, area, arrival) -> tuple[str, ...]:
+    @classmethod
+    def _square_writes(cls, area, arrival=None, overland=None):
+        """Which of `$C04B` (`arrival`) or `$49C3` (`overland`) to write for
+        a trip into `area`, and never both -- `newecl_writes` raises if they
+        collide.
+
+        Outdoors takes `overland`, falling back to `Area.overland`, and never
+        `arrival`: `$C04B` is not `GDRIVE00`'s square there
+        (`#178 (Fast Travel to the wilderness leaves the party on whatever
+        overland square it last stood on)`). Indoors takes `arrival`,
+        falling back to the area's own square.
+        """
+        if getattr(area, "outdoors", False):
+            if overland is None:
+                overland = getattr(area, "overland", None)
+            return None, overland
+        if arrival is None:
+            arrival = cls.arrival_of(area)
+        return arrival, None
+
+    def warnings(self, target, area, arrival, overland=None) -> tuple[str, ...]:
         """Everything true about this fasttravel that the caller should know first."""
         out = ["the arriving script assumes quest flags the party never set; "
                "arriving this way is not the same as having played there"]
-        if arrival is None:
+        outdoors_target = getattr(area, "outdoors", False)
+        if not outdoors_target and arrival is None:
             out.append("no arrival square is known for this area, so the party "
                        "lands wherever the arriving script leaves it -- which "
                        "it does: $49F2 survives the restart, so the arriving "
@@ -1565,16 +1634,24 @@ class FastTravel(Action):
         if not getattr(area, "has_map", True):
             out.append(f"{getattr(area, 'ecl', 'this area')} loads no map of "
                        "its own")
-        if getattr(area, "outdoors", False):
-            out.append("this is an overland area and loads a SQRDATA rather "
-                       "than a GEO; an arrival square is pointless there, "
-                       "because outdoors the party's position is $49C3/$49C4 "
-                       "and $C04B is not even GDRIVE00's any more")
+        if outdoors_target:
+            if overland is not None:
+                x, y = overland
+                out.append(f"this is an overland area; the party is put at "
+                           f"$49C3/$49C4 = ({x}, {y}), the departing script's "
+                           f"own square, since no arriving script places an "
+                           f"outdoor party")
+            else:
+                name = getattr(area, "name", None) or getattr(
+                    area, "ecl", "this window")
+                out.append(f"no overland square is known for {name}, so the "
+                           f"party stays on whatever square $49C3/$49C4 "
+                           f"last held")
         raw = _read(target, FASTTRAVEL_INDOORS, 1)
         indoors = raw[0] if raw else None
         if indoors is not None:
             outdoors_now = indoors == 0
-            if outdoors_now != bool(getattr(area, "outdoors", False)):
+            if outdoors_now != outdoors_target:
                 out.append(f"$49E6 is {indoors}, so LOADFILES will ask for a "
                            f"{'SQRDATA' if outdoors_now else 'GEO'}")
         return tuple(out)
@@ -1616,14 +1693,21 @@ class FastTravel(Action):
             return Outcome(False, verdict.reason)
         was, self.back = self.back, None
         here = self.current_area(target)
-        writes = newecl_writes(here or 0, was.area, was.disk, was.square)
+        area = area_by_id(was.area)
+        # `was.square` is $C04B at departure; `was.overland` is $49C3/$49C4
+        # at departure. The area we are returning to decides which one is
+        # its real position -- $C04B is not GDRIVE00's square outdoors
+        # (#178) -- the same choice `run` makes for the outward trip.
+        arrival, overland = self._square_writes(
+            area or was, arrival=was.square, overland=was.overland)
+        writes = newecl_writes(here or 0, was.area, was.disk, arrival,
+                               overland=overland)
         _write_all(target, writes)
         if not jump(target, NEWECL_TAIL):
             self.back = was
             return Outcome(False, "the writes were made but the program "
                                   "counter could not be set", writes)
-        row = area_by_id(was.area)
-        name = getattr(row, "name", None) or f"area {was.area}"
+        name = getattr(area, "name", None) or f"area {was.area}"
         return Outcome(True, f"travelled back to {name}", writes)
 
 

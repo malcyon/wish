@@ -95,6 +95,24 @@ def test_the_three_outdoor_areas_carry_a_sqrdata():
     assert all(not a.outdoors for a in areas.AREAS if a.id not in (25, 26, 27))
 
 
+def test_the_three_windows_carry_an_overland_square_inside_the_walkable_band():
+    """`Area.overland` is `$49C3`/`$49C4`, written by a fast travel to areas
+    25-27 (`#178 (Fast Travel to the wilderness leaves the party on whatever
+    overland square it last stood on)`), never the `$C04B` `arrival` these
+    three do not have. The walkable band is `docs/113-world-map.md`'s: (0, 0)
+    is inside the 18x36 grid and outside it, and a fasttraveled party has had
+    to walk to the first legal square from there."""
+    for a in areas.AREAS:
+        if a.id in (25, 26, 27):
+            assert a.overland is not None, a.id
+            x, y = a.overland
+            assert 2 <= x <= 15, a.id
+            assert 2 <= y <= 33, a.id
+            assert a.arrival is None, "$C04B is not GDRIVE00's square here"
+        else:
+            assert a.overland is None, a.id
+
+
 def test_ecl1e_is_unidentified_and_says_so():
     a = areas.area(30)
     assert a.name is None

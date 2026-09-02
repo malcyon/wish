@@ -137,9 +137,9 @@ watched it place a fasttraveled-in party. Fourteen areas still have none.
 | 22 | `16` | `16` | POOL7 | Yarash's Pyramid | 15,7 E | CONFIRMED |
 | 23 | `17` | `17` | POOL7 | Yarash's Pyramid, Lower | 15,0 S | PROBABLE |
 | 24 | `18` | `18`, `1F` | POOL1 | the Wealthy Area (`GEO1F` is the Temple of Bane) | 15,4 W | CONFIRMED |
-| 25 | `19` | `19` + `SQRDATA04` | POOL6 | Wilderness, West Window | — | CONFIRMED |
-| 26 | `1A` | `1A` + `SQRDATA05` | POOL7 | Wilderness, Middle Window | — | CONFIRMED |
-| 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — | CONFIRMED |
+| 25 | `19` | `19` + `SQRDATA04` | POOL6 | Wilderness, West Window | — (overland 14,29 †) | CONFIRMED |
+| 26 | `1A` | `1A` + `SQRDATA05` | POOL7 | Wilderness, Middle Window | — (overland 7,29 †) | CONFIRMED |
+| 27 | `1B` | `1B` + `SQRDATA06` | POOL8 | Wilderness, East Window | — (overland 9,29 †) | CONFIRMED |
 | 28 | `1C` | `1C` | POOL6 | Zhentil Keep Outpost | 7,0 S | CONFIRMED |
 | 29 | `1D` | `1D`, `20` | POOL8 | Kuto's Well (and its catacombs) | — | CONFIRMED |
 | 30 | `1E` | — | POOL1 | The Attract-Mode Demo (**not fasttravelable**) | — | CONFIRMED |
@@ -185,6 +185,16 @@ numbering left free (`docs/50-experiments.md`, P20).
 
 Fifteen areas have no known arrival square. For those the fasttravel supplies one
 itself — see below — and the dropdown says so.
+
+**† The "arrival" column is `$C04B`, and stays `—` for 25-27 on purpose --
+that address is not `GDRIVE00`'s square outdoors.** The overland square in
+parentheses is a different thing, `Area.overland`, written to `$49C3`/`$49C4`
+instead: 26's (7,29) is the WEST-boat landing a party has been watched
+standing on, 27's (9,29) is the EAST-boat landing named the same way but
+never watched live, and 25's (14,29) is PROBABLE -- argued from the crossing
+column and the other two windows' row, not measured, because no script names
+an (x, y) in that window at all. `#178 (Fast Travel to the wilderness leaves
+the party on whatever overland square it last stood on)`.
 
 ---
 
@@ -312,8 +322,13 @@ question the dialog asked was the one the game asks again a second later. The
 `$6E12` reader stays: `Travel Back` records the disk it has to restore.
 
 The area table is data, not UI: **`goldbox/areas.py`**, a frozen dataclass per area
-carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square, generated
-into this document by `tools/gendocs.py` the way `goldbox/layout.py` already is.
+carrying id, `ECL`, `GEO`s, disk, name, confidence and arrival square.
+**The table above is not generated from it** -- `grep 118 tools/gendocs.py`
+finds nothing, and only `goldbox/layout.py` is generated into `docs/20-character-record.md`
+that way -- so a row changed in one place has to be changed by hand in the
+other; corrected here while fixing `#178 (Fast Travel to the wilderness
+leaves the party on whatever overland square it last stood on)`, whose rows
+25-27 were edited by hand.
 `automap/state.py`'s `AREA_NAMES` becomes a view over it, so there is one table
 and not two.
 
@@ -388,11 +403,21 @@ Four cases, in order:
    reason: the edge squares are where the game's own exits live, so a party that
    starts on one is a keypress from leaving the area it was just fasttraveled into.
    The pocket sizes are asserted in `tests/test_p20.py`'s `POCKETS`.
-4. **Two kinds of area get no square even though they have a `GEO`**, both P20's:
+4. **Two kinds of area get no `$C04B` square even though they have a `GEO`:**
 
    * the **three overland** areas (25-27). Outdoors the position is
-     `$49C3`/`$49C4`, and every script entering one writes `[$4A18]`/`[$4A19]`,
-     the world-map cell, and no static square anywhere;
+     `$49C3`/`$49C4`, not `$C04B`-`$C04D` -- `$C04B` is not `GDRIVE00`'s
+     square there. This used to say every script entering one writes
+     `[$4A18]`/`[$4A19]`, "the world-map cell"; that is wrong on both counts
+     -- those bytes are scratch, zeroed by every `NEWECL`, and the only
+     writers are `ECL19`/`ECL1A`/`ECL1B` on the way into their own cave,
+     copying that cave's *indoor* arrival square into `$C04B`, not a
+     world-map cell at all. No arriving script places an outdoor party
+     (`docs/140-loaded-files-cache.md`); until
+     `#178 (Fast Travel to the wilderness leaves the party on whatever
+     overland square it last stood on)`, nothing else did either, which is
+     why the table above marks `$C04B` `—` for these three and carries the
+     overland square separately;
    * the **two `dynamic_geo`** areas (3 and 5), which choose their map at run
      time with `GETTABLE ..., mapDir`. FastTraveled into, area 3 loaded `GEO05` and
      area 5 loaded `GEO04` — neither the map the table names — so a square off

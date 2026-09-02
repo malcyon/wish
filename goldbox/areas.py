@@ -143,6 +143,15 @@ class Area:
     #: The overland square-data file, for areas 25-27 only.
     sqrdata: str | None = None
     arrival: Arrival | None = None
+    #: Where a fast travel puts the party on the travel grid, window-local
+    #: (x, y), for areas 25-27 only -- written to `$49C3`/`$49C4`.
+    #: `arrival` is the `GEO` square in `$C04B`, and stays None for these
+    #: three: `$C04B` is not `GDRIVE00`'s square outdoors, so a caller must
+    #: never write one there for a window. `newecl_writes` in
+    #: `automap/actions.py` writes this field instead
+    #: (`#178 (Fast Travel to the wilderness leaves the party on whatever
+    #: overland square it last stood on)`).
+    overland: tuple[int, int] | None = None
     confidence: Confidence = Confidence.UNKNOWN
     #: Names for individual maps of a two-map area, where the second map is a
     #: place in its own right -- area 29's `GEO20` is the catacombs under
@@ -248,12 +257,20 @@ AREAS: tuple[Area, ...] = (
     _a(22, "Yarash's Pyramid", 7, ("GEO16",), Arrival(15, 7, 1), C),
     _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
     _a(24, "Temple of Bane", 1, ("GEO18", "GEO1F"), Arrival(15, 4, 3), C),
+    # `overland`: window-local (x, y), written to $49C3/$49C4 by a fast
+    # travel (#178). West Window PROBABLE -- no script names an (x, y) in
+    # this window; (14, 29) is the crossing column x and the row the other
+    # two windows' squares are on. Middle Window CONFIRMED -- ECL00 $9C04's
+    # WEST boat landing, and the only wilderness square a party has been
+    # watched standing on (DOS SAVGAMC, world 20,29). East Window
+    # CONFIRMED as script-named -- ECL00 $9C2E's EAST boat landing -- but
+    # never watched live.
     _a(25, "Wilderness, West Window", 6, ("GEO19",), None, C,
-       sqrdata="SQRDATA04"),
+       sqrdata="SQRDATA04", overland=(14, 29)),
     _a(26, "Wilderness, Middle Window", 7, ("GEO1A",), None, C,
-       sqrdata="SQRDATA05"),
+       sqrdata="SQRDATA05", overland=(7, 29)),
     _a(27, "Wilderness, East Window", 8, ("GEO1B",), None, C,
-       sqrdata="SQRDATA06"),
+       sqrdata="SQRDATA06", overland=(9, 29)),
     _a(28, "Zhentil Keep Outpost", 6, ("GEO1C",), Arrival(7, 0, 2), C),
     _a(29, "Kuto's Well", 8, ("GEO1D", "GEO20"), None, C,
        geo_names=MappingProxyType({"GEO20": "Kuto's Well Catacombs"})),
@@ -418,9 +435,14 @@ def landing_square(geo) -> tuple[int, int, int] | None:
 
     Two kinds of area the caller must not call this for at all, because the
     answer would be meaningless rather than merely imperfect: the **three
-    overland** areas, where the position is `$49C3`/`$49C4` and the departing
-    scripts write `[$4A18]`/`[$4A19]`, the world-map cell, not a `GEO` square;
-    and the two **`dynamic_geo`** areas, which load a map `geos` does not name.
+    overland** areas, where the position is `$49C3`/`$49C4`, not a `GEO`
+    square -- `Area.overland` carries it and `FastTravel` writes it directly
+    (`#178 (Fast Travel to the wilderness leaves the party on whatever
+    overland square it last stood on)`; this used to say every arriving
+    script writes `[$4A18]`/`[$4A19]`, "the world-map cell" -- those bytes are
+    scratch, and the only writers copy an *indoor* square into `$C04B` on the
+    way into a window's own cave, corrected while fixing #178); and the two
+    **`dynamic_geo`** areas, which load a map `geos` does not name.
     """
     from goldbox.geo import GRID
 

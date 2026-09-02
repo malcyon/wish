@@ -165,6 +165,28 @@ def test_a_square_is_only_written_when_there_is_one():
     assert partial[actions.FASTTRAVEL_X] == bytes([5, 7])
 
 
+def test_an_outdoor_target_writes_the_travel_square_and_not_the_geo_one():
+    """Areas 25-27's position is `$49C3`/`$49C4`, not `$C04B`
+    (`#178 (Fast Travel to the wilderness leaves the party on whatever
+    overland square it last stood on)`). The write sits where `$C04B`'s
+    would: after `$6E12` (the disk) and before `$49F2` (where we came
+    from)."""
+    writes = actions.newecl_writes(0, 26, disk=7, overland=(7, 29))
+    assert (actions.FASTTRAVEL_TRAVEL_X, bytes([7, 29])) in writes
+    assert actions.FASTTRAVEL_X not in dict(writes)
+    addrs = [addr for addr, _ in writes]
+    assert (addrs.index(actions.FASTTRAVEL_DISK)
+            < addrs.index(actions.FASTTRAVEL_TRAVEL_X)
+            < addrs.index(actions.FASTTRAVEL_FROM))
+
+
+def test_newecl_writes_refuses_arrival_and_overland_together():
+    """An area is indoors or outdoors, never both, so a caller supplying
+    both squares is a bug and not a choice between writes."""
+    with pytest.raises(ValueError):
+        actions.newecl_writes(0, 26, arrival=(1, 2, 3), overland=(7, 29))
+
+
 def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     target = machine(area=0)
     fasttravel = actions.FastTravel()
@@ -178,6 +200,41 @@ def test_a_fasttravel_writes_then_jumps_into_the_tail_of_newecl():
     assert target.jumps == [0x2034]
     assert target.memory[actions.FASTTRAVEL_SLOT] == bytes([13 | 0x80])
     assert target.memory[actions.FASTTRAVEL_WALLS_SLOT] == b"\xff"
+
+
+def test_a_fasttravel_to_a_window_puts_the_party_on_the_windows_square():
+    """`#178 (Fast Travel to the wilderness leaves the party on whatever
+    overland square it last stood on)`: area 26's own `Area.overland` goes
+    to `$49C3`/`$49C4`, and `$C04B` -- meaningless outdoors -- is left
+    exactly as it was."""
+    target = machine(area=0)                       # New Phlan, indoors
+    outcome = actions.FastTravel().apply(target, area=area(26))  # Middle Window
+    assert outcome.ok
+    assert target.memory[actions.FASTTRAVEL_TRAVEL_X] == bytes([7, 29])
+    assert target.memory[actions.FASTTRAVEL_X] == bytes([5, 6, 1]), (
+        "$C04B is not GDRIVE00's square outdoors and must be left alone")
+
+
+def test_a_window_with_no_overland_square_says_so():
+    """A stand-in area with no `overland` -- none of the three real windows
+    are in this state any more, so this is the shape rather than a live
+    case."""
+    class _NoOverlandWindow:
+        id = 63
+        ecl = "ECL3F"
+        name = "Nowhere Window"
+        outdoors = True
+        overland = None
+        disk = None
+        fasttravelable = True
+
+    target = machine(area=0)
+    outcome = actions.FastTravel().apply(target, area=_NoOverlandWindow())
+    assert outcome.ok
+    assert actions.FASTTRAVEL_TRAVEL_X not in dict(outcome.writes)
+    assert actions.FASTTRAVEL_X not in dict(outcome.writes)
+    assert any("Nowhere Window" in note and "$49C3" in note
+               for note in outcome.notes), outcome.notes
 
 
 def test_the_quest_flags_are_said_out_loud():
@@ -299,6 +356,26 @@ def test_fasttravel_back_returns_to_the_square_the_fasttravel_started_on():
     assert dict(outcome.writes)[actions.FASTTRAVEL_X] == bytes([5, 6, 1])
     assert dict(outcome.writes)[actions.FASTTRAVEL_SLOT] == bytes([0x80])
     assert fasttravel.back is None                              # and no further back
+
+
+def test_fasttravel_back_from_a_window_returns_to_the_travel_square():
+    """`Waypoint.square` is `$C04B`, which is not `GDRIVE00`'s square
+    outdoors -- Back from window 27 to window 26 must restore
+    `$49C3`/`$49C4` instead
+    (`#178 (Fast Travel to the wilderness leaves the party on whatever
+    overland square it last stood on)`)."""
+    target = machine(area=26, disk=7, indoors=0)
+    target.memory[actions.FASTTRAVEL_TRAVEL_X] = bytes([4, 20])
+    fasttravel = actions.FastTravel()
+    assert fasttravel.apply(target, area=area(27)).ok  # East Window
+    assert fasttravel.back.overland == (4, 20)
+    target.memory[actions.FASTTRAVEL_SLOT] = bytes([27])   # the game arrived
+    target._pc = IN_THE_LOOP
+    outcome = fasttravel.apply_back(target)
+    assert outcome.ok
+    writes = dict(outcome.writes)
+    assert writes[actions.FASTTRAVEL_TRAVEL_X] == bytes([4, 20])
+    assert actions.FASTTRAVEL_X not in writes
 
 
 def test_fast_travel_asks_nothing_and_names_no_disk():

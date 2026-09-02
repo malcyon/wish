@@ -31,11 +31,22 @@ map the existing renderer already draws. The open world is the `SQRDATA`.
 All CONFIRMED; `tests/test_p3.py` pins the arithmetic against the player's own
 disks.
 
-**The three have no arrival square and must not be given one.** Outdoors the
-party's position is `$49C3`/`$49C4`, not the `GEO` pair, and every script that
-enters an overland area writes the world-map cell rather than a static square
-(the write-up, `work/reports/p20-arrivals.md` §4, is lost). A `GEO` square written for one of them is
-meaningless at best.
+**The three have no `$C04B` arrival square and must not be given one.**
+Outdoors the party's position is `$49C3`/`$49C4`, not the `GEO` pair --
+`$C04B` is not `GDRIVE00`'s square there, and no arriving script sets it. A
+`GEO` square written for one of them is meaningless at best.
+
+Corrected 2026-09-02: this used to say every script entering an overland area
+writes `[$4A18]`/`[$4A19]`, "the world-map cell", which is wrong on both
+counts -- those bytes are scratch, zeroed by every `NEWECL`, and the only
+writers are `ECL19`/`ECL1A`/`ECL1B` on the way into their own cave, copying
+that cave's *indoor* arrival square into `$C04B`. Ten departing scripts *do*
+write `$49C3`/`$49C4` on the way out to one of the three windows
+(`docs/150-departing-prologues.md`), and
+`#178 (Fast Travel to the wilderness leaves the party on whatever overland
+square it last stood on)` made `FastTravel` repeat that write from
+`goldbox.areas.Area.overland`, so a fast travel to a window now puts the
+party on a known square there -- it is just never `$C04B`'s square.
 
 ## 2. Why nothing draws
 

@@ -568,9 +568,17 @@ class FastTravelBar(QObject):
         **Two kinds of area get no square at all**, and both are P20's findings
         (write-up lost, `work/reports/p20-arrivals.md`):
 
-        * **overland** -- outdoors the party's position is `$49C3`/`$49C4` and
-          every script entering one writes `[$4A18]`/`[$4A19]`, the world-map
-          cell. A `GEO` square in `$C04B` there is meaningless;
+        * **overland** -- outdoors the party's position is `$49C3`/`$49C4`, so
+          a `GEO` square in `$C04B` there is meaningless and this method
+          keeps returning None for these three. That is not the same as
+          nothing being written any more: `FastTravel.run` writes
+          `$49C3`/`$49C4` itself, from `Area.overland`, not from this method
+          (`#178 (Fast Travel to the wilderness leaves the party on whatever
+          overland square it last stood on)`; this used to say every
+          arriving script writes `[$4A18]`/`[$4A19]`, "the world-map cell" --
+          those bytes are scratch and only a window's own cave entry writes
+          them, an *indoor* square into `$C04B`, corrected while fixing
+          #178);
         * **`dynamic_geo`** -- areas 3 and 5 choose their map at run time and
           the run caught them loading `GEO05` and `GEO04`, neither of which is
           the map `geos` names, so any square off `geos[0]` is off the wrong
