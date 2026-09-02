@@ -16,9 +16,19 @@ Deliberately not flagged, because each is a place the number is already
 readable or is not an issue reference at all:
   * a commit message -- `CLAUDE.md` rules the number goes bare in parentheses
     at the end of the one line, and GitHub hotlinks it there;
-  * anything inside a fenced code block or backticks, which is quoted output
-    rather than prose;
+  * anything inside a **fenced** code block, which is quoted output rather
+    than prose;
   * a `#` that is a heading, a colour, a Python comment or an issue URL.
+
+**A single-backtick span is prose and is checked.** It did not used to be,
+and that hole swallowed the rule for the commonest case: citations in this
+project are written as `` `#59 (Map the DOS saved game...)` ``, so blanking
+backticks meant every citation -- named or bare -- was invisible to this
+hook, and a bare `` `#53` `` sailed through. Found on 2026-09-02 after six
+issue comments went out with bare numbers in backticks. A `#` followed by
+digits inside backticks is overwhelmingly an issue reference here; if a real
+false positive ever turns up, fix it by narrowing the pattern rather than by
+restoring the blanket exemption.
 """
 import json
 import re
@@ -37,7 +47,9 @@ NAMED = re.compile(r"\s*\(")
 # sentence, so quoting a commit message must not be refused here.
 COMMIT_FORM = re.compile(r"\((?:closes\s+|close\s+|fixes\s+|fix\s+)?$", re.I)
 
-FENCE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
+# Fenced blocks only. Single-backtick spans are prose here -- see the module
+# docstring for why blanking them defeated the rule.
+FENCE = re.compile(r"```.*?```", re.S)
 
 
 def prose_only(text: str) -> str:
