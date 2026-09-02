@@ -248,9 +248,15 @@ fought to its end or an arrival that plays an animation.
 **Sokol Keep's arrival is no longer the second of those.** Driven on a save
 the shipped converter built, carrying `ANIMATE00` off `POOL1.D64`, the party
 arrived at `(8,14)` with `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.` and `$0400`
-matching `GEO15` in 1024 of 1024 — and the screen never left text mode, so the
-arrival draws no picture and exercises no animator. Something that actually
-puts an animation on screen has still to be found.
+matching `GEO15` in 1024 of 1024. The screen never left text mode, and this
+concluded from that that the arrival "draws no picture" — which is wrong: it
+**draws a boat** in the view window, in character graphics, and waits on
+`(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a converted Sokol
+Keep party built from nothing, `work/p119b/NEWB2-boat.png` (#119, 2026-09-02,
+gitignored). Bitmap mode and a picture are not the same question. Whether that
+picture is drawn by the animator at `$8400` is still unknown, so what is
+outstanding is unchanged: nothing that provably calls into `$8400` has been
+driven with the page zeroed.
 `#122 (A converted save says ANIMATE00 is resident and carries whatever the
 template had there)`.
 

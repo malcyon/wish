@@ -358,11 +358,17 @@ yes. The Sokol Keep party arrived: `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.`,
 party arrived at `(14,5)`, walked east across the boundary at `(15,4)` and
 completed the transition into New Phlan, `$0400` 1024 of 1024 against `GEO00`.
 
-**Two corrections come out of that run.** The Sokol Keep arrival is **a text
-message, not a picture** — `$D011` bit 5 never went up, the screen stayed in
-text mode throughout — so it exercises no animator and would not have caught a
-bad page either; something that actually draws an animation has still to be
-named. And the Slums party fought three encounters, seven minutes each, with
+**Two corrections come out of that run.** The Sokol Keep arrival keeps the
+screen in text mode — `$D011` bit 5 never goes up. This said it was therefore
+"a text message, not a picture", and that is wrong: it **draws a boat** in the
+view window, in character graphics, over `THE BOAT DISEMBARKS YOU AT SOKAL
+KEEP.` and under `(PRESS <RETURN> OR BUTTON TO CONTINUE)`. Photographed on a
+converted Sokol Keep party built from nothing, `work/p119b/NEWB2-boat.png`
+(#119, 2026-09-02, gitignored). Bitmap mode and a picture are not the same
+question, and the earlier reading answered the second from the first. Whether
+the boat is drawn *by the animator* is still unknown, so "something that draws
+an animation has still to be named" stands as a statement about `$8400` and
+not about pictures. And the Slums party fought three encounters, seven minutes each, with
 monsters striking and characters dying and no crash, but **none was driven to
 a result**: a fight *won* is still nobody's measurement.
 `#122 (A converted save says ANIMATE00 is resident and carries whatever the

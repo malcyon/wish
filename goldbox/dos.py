@@ -2127,9 +2127,14 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     report.note(dos_savegame.CLOCK - SAVE0_BASE, dos_savegame.CLOCK_DIGITS,
                 note)
     report.warnings.extend(complaints)
+    # "differed from the template's" until #118 removed the template, after
+    # which the sentence described something that no longer exists: from
+    # nothing the payload is zero, so what this counts is the DOS party's own
+    # set flags.  It is a count either way, so the wording says what was
+    # compared rather than naming a save that may not be there.
     report.warnings.append(
         f"{changed} of {FLAGS_LAST - FLAGS_FIRST + 1} quest-flag bytes "
-        f"differed from the template's")
+        f"differed from what the payload already held")
     if save1 is not None:
         at = BITMAP_BUFFER[0] - SAVE1_BASE
         save1[at:at + BITMAP_BUFFER[1]] = bytes(BITMAP_BUFFER[1])

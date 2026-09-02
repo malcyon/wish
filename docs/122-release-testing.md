@@ -817,6 +817,96 @@ both ends of the party panel it is drawn in. Legible enough to act on, ugly.
 
 ---
 
+## 6b. A DOS import, played (#119)
+
+**Only if `WISH_EXPERIMENTAL_DOS_IMPORT=1` and only where the player's DOS
+*Forgotten Realms: The Archives* is unpacked.** This is not a per-platform row
+in the table below: it needs the archives, the C64 game disks and a working
+VICE, so it is a check somebody does once on the machine that has all three
+rather than once per package.
+
+It is here because it is the part of `#119 (Play a converted DOS save in VICE,
+off a disk Wish built from nothing)` that **no test can hold**.
+`tests/test_dosdisk.py` pins everything a file can say -- that the built `.d64`
+carries the two files a save disk needs, that every number on the sheet is the
+DOS party's own, that the panel would list six and not seven, that the clock
+and the square are the DOS save's, and that no character's combat icon is a
+hole. What it cannot say is whether the *game* accepts the disk. That is the
+`#109 (A save slot written onto an Amiga disk is not offered by the game's
+picker)` failure: a file written correctly that the game's own load screen does
+not list, and it passes every byte-level check there is.
+
+**D1.** Convert a DOS save to a `.d64`: `File ▸ Import ▸ DOS Save Folder…`,
+choose the folder holding `SAVGAM?.DAT`, choose a slot, choose where the file
+goes, press **Convert**. Or, without the GUI:
+
+```sh
+tools/dosdisk.py --slot J --out work/NEWJ.D64 --report --sheet
+```
+
+*Expect:* `Bytes left to the payload: 0`. Anything else is a byte the
+conversion did not write, and `new_save` should have refused rather than
+produced the file.
+
+**D2.** Keep the `--sheet` output. It is the other half of every comparison
+below -- the DOS party as the C64's `VIEW` screen lays it out, with armour
+class and THAC0 already decoded through the family's `60 - value`.
+
+**D3.** Boot the disk in VICE with the game's own eight sides, and choose
+**LOAD SAVED GAME**.
+
+*Expect:* the game finds it and reaches **BEGIN ADVENTURING**. *If it does
+not*, stop: that is the `#109`-shaped failure and nothing further is worth
+checking.
+
+**D4.** Begin adventuring and read three things off the screen:
+
+* the **status line**, `S 10:56 14,5` -- the facing, the clock and the square
+  are the DOS save's own, not a default and not another save's;
+* the **party panel**, which lists a name, an armour class and current hit
+  points per character. Count the rows: a DOS save holds six characters and a
+  C64 save eight, so a **seventh name is a fault** (`#104 (A converted DOS
+  party arrives with the template save's spare characters still in it)`);
+* one **character sheet**, through `VIEW`. Every line of it is in the `--sheet`
+  output: sex, race, age, alignment, class, the six abilities, the money by
+  coin type, level, experience, hit points, armour class, THAC0.
+
+A negative armour class is right and is worth looking at twice — `AC -3` for a
+fighter in plate mail with a shield and 18 dexterity. An armour class in the
+fifties is the fault that shipped once, where the stored byte reached the
+screen without the bias being taken off.
+
+**D5.** Walk two or three squares, and check the square and the clock on the
+status line move with the party.
+
+**D6.** Walk into another area, through a door rather than by fast travel. From
+New Phlan the short route is the training hall: from `(4,2)` face east and walk
+to `(7,2)`. The game prints a room description, waits on `PRESS <RETURN> OR
+BUTTON TO CONTINUE`, loads for twenty-odd seconds and then asks two `YES NO`
+questions; answer `NO` to both.
+
+*Expect:* the party is standing in the new area with a new wall set drawn and
+the same six names in the panel. This is the check `#102 (A minimally-cached
+save cannot walk into an area, and the party is stuck where it stands)` is
+about -- a converted save whose loaded-files cache is wrong loads and walks
+perfectly well and only fails here.
+
+**D7.** Get into a fight -- walking the Slums usually manages it within two
+steps -- and look at the party on the combat floor.
+
+*Expect:* one small figure per character, all of them alike, holding nothing.
+They are alike because a converted party has no C64 art to carry, so every
+character gets the icon the game's own character creation writes. *If instead
+a character is a 3x3 block of black hooks*, its combat icon reached the disk as
+zero: screen code 0 is a real glyph and a zeroed icon is not "no icon" (`#57
+(Carry the character portrait across ports)`).
+
+`tools/savecheck.py` does D3 to D7 unattended through the instance pool and
+prints what it read, which is how it was last checked; `--icon` is the D7
+check made mechanical.
+
+---
+
 ## 7. Results
 
 Tick as you go. `n/a` where a row does not apply to that platform.

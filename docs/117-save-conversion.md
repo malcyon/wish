@@ -978,8 +978,12 @@ the same `$49C3`/`$49C4` pair, window-local, `$49E6` = 0, and the area id in
 `dos_savegame.current_area`). The converted outdoor shape follows #47's
 live-proven cold-boot recipe exactly, but **the conversion itself has not
 been loaded on a C64 end to end** — that run is the remaining proof for the
-outdoor shape. The indoor one has run: `work/p119/` boots a save Wish built
-from nothing and the party in it loads, reads right on the sheet and walks.
+outdoor shape. The indoor one has run three times, on all three of the
+player's DOS saves: `tools/dosdisk.py` builds the disk and `tools/savecheck.py`
+boots it, and the party loads, reads right on the sheet, walks and changes area
+— §"Three from-nothing disks played". (This cited `work/p119/`, which was the
+first run's scripts and went with the rest of `work/`; the tools that replaced
+them are in `tools/` and cannot.)
 
 The cache is written this way **every time**, even when the party is going to
 an area the save already names — #121 removed the branch that kept an existing
@@ -1004,7 +1008,7 @@ here — and with those missing the import refuses rather than inventing them.
 | the clock `$49C6`-`$49CB` | the DOS save's own six digit words |
 | the four effect arrays, and `$4A00`-`$4A1F` | zeroed — "nothing running" is a legal state, and `DUNGEON $202A` zeroes the scratch on every area change |
 | the loaded-files cache `$4BC0`-`$4BD8`, and `$49EA`, `$49C5`, `$49F2`, `$49E6` with it | **`$FF` in all twenty-five slots**, then slot 2 = the area's `GEO` number and slot 8 = the area id, with the disk hint, the map and the script id to match |
-| the combat icons of the party's slots `$4BE0`+ | **composed** — `(large, weapon 0, head 1)` out of `SPELLE64`/`SPELLN64`, which is what the game's own character creation writes, 8 of 8 (#57) |
+| the combat icons of the party's slots `$4BE0`+ | **composed** — `(large, weapon 0, head 1)` out of `SPELLE64`/`SPELLN64`, which is what the game's own character creation writes, 8 of 8 (#57), and which the engine has now been watched drawing (§"The composed icon, seen in a fight") |
 | `SAVEDGAME1` `$8400`-`$8753` | **`ANIMATE00`** off a `POOL` side |
 | the slots, item blocks, icons and roster blocks above the party | **zero**, entire — not the one `DROP`-style byte the engine writes |
 | the 193 unattributed header bytes, and `$8754`-`$8AFF` | **zero**, each with a run behind it (#118 step 3) |
@@ -1013,6 +1017,91 @@ here — and with those missing the import refuses rather than inventing them.
 9216 bytes has a one-line provenance, and none of them says "carried through
 from the template save". `unwritten` is what makes that checkable rather than
 asserted — `new_save` refuses to return a save with an entry in it.
+
+### The composed icon, seen in a fight (#118)
+
+The 216 bytes of the six party icons were the last region on #118's list with
+only a file-level measurement behind them: composed from part numbers, checked
+against the two NPC slots on all fourteen of the player's save disks, and never
+watched. A converted Slums party built onto a `D64.blank()` was booted, walked
+into an ambush, and the combat floor read out of the running machine —
+`tools/savecheck.py --icon`.
+
+**Six identical blue figures, and no black hooks.** Six identical is what the
+conversion predicts, because every converted character gets the same composed
+icon; and a figure rather than a hook is what says the icon is not zero.
+
+**The colours are the measurement.** An icon's second eighteen bytes go into
+colour RAM cell for cell and nothing renumbers them, so the 3x3 colour block
+under each figure compares directly with what the conversion wrote:
+
+| block on the floor | colour RAM, 3x3 | the composed icon's pose |
+|---|---|---|
+| the six party figures | `0E 0F 0E 0E 0E 0E 0E 0E 0E`, all six | matches |
+| the seven monster blocks | `0B 0A 0B 0B 0E 0B 0B 0B 0B` | does not |
+
+Six of six and none of seven.
+
+**An icon's own screen codes never appear on the combat floor**, and a first
+pass that searched for them found nothing and read like a failure. The six
+party figures were drawn from codes `$5E`-`$93` — six runs of nine consecutive
+codes — and the seven monster blocks from one run of nine reused, while every
+icon in the save is the same 18 codes `20 A0 20 86 87 88 06 07 08`. So the
+engine copies each icon's glyph *bitmaps* into a combat character set and hands
+out sequential codes; the icon's codes index `CHARPIC00` and are not what sits
+in screen memory during a fight. Anything looking for a figure on the floor
+looks for a 3x3 block of nine consecutive codes.
+
+**The glyph half is still unread.** The combat character set's base computes to
+`$D000`, which in VIC bank 3 is RAM under the I/O area, and a plain monitor read
+there returns the registers rather than the font. Reading it needs the monitor's
+`ram` bank rather than its default and nobody has done it, so what carries this
+finding is the colours and the picture.
+
+### Three from-nothing disks played, one per DOS save (#119)
+
+All three of the DOS saves in the player's archives were built onto a
+`D64.blank()` by `tools/dosdisk.py` and driven by `tools/savecheck.py`. **The
+game's own `LOAD SAVED GAME` accepted all three**, which is the check bytes
+cannot make and the shape `#109 (A save slot written onto an Amiga disk is not
+offered by the game's picker)` was.
+
+| DOS slot | where | the status line | the panel | the sheet |
+|---|---|---|---|---|
+| J | The Slums, 21 | `S 10:56 14,5` | six rows, no seventh | THRENDER GRONE, every field |
+| A | New Phlan, 0 | `N 10:02 4,3` | six rows, no seventh | BRUTUS, every field |
+| B | Sokol Keep, 21 | `N 1:22 8,14` | six rows, no seventh | BRUTUS, every field |
+
+Every armour class and every current hit point in all three panels is the DOS
+save's own — eighteen of eighteen. **The negative armour classes are the ones
+worth reading twice**: `AC -3` for a fighter in plate mail with a shield and 18
+dexterity is right, and an armour class in the fifties is the fault this
+project shipped once. Slots A and B are the same party at two points in the
+game, and everything that differs between them differs the right way — SILAS is
+`-2 56` in B and `-3 70` in A, BRUTUS's experience 5333 against 7670, his
+readied weapon a `LONG SWORD +1` against a `BROAD SWORD +1`.
+
+**An area change by walking, which had never been driven on a from-nothing
+disk.** #118's four area changes were `NEWECL` warps performed from outside on
+template-based saves. The New Phlan party walked from `(4,2)` east into `(7,2)`
+— the training hall's door — and `$6E1B & $7F` went **0 to 11**, with the room
+description, the `PRESS <RETURN>`, the twenty-second load, the trainer's two
+`YES NO` questions, the new area's own wall art drawn and the same six names in
+the panel. That is the `#102 (A minimally-cached save cannot walk into an area,
+and the party is stuck where it stands)` check through a real exit script
+rather than a poke.
+
+**Sokol Keep's arrival draws its boat**, on a save whose `$8400` is `ANIMATE00`
+read off the player's own disk. What it does not settle is the zeroed variant,
+which has still never been taken into an arrival that draws.
+
+**Two things about the harness, not about the conversion.**
+`Session.begin_adventuring` waits for the world bar without answering a
+`PRESS <RETURN> OR BUTTON TO CONTINUE`, so it reports a healthy Sokol Keep save
+as `begin_adventuring failed` while the game sits on the boat picture. And
+`VIEW` is not a list of names: asking for it puts the *first* character's sheet
+straight up with the bar `VIEW:ITEMS EXIT`, there is no `NEXT` on it, and how
+the other five sheets are reached is not known.
 
 ## The design, drawn
 
