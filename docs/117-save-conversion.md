@@ -1792,10 +1792,14 @@ beside him carries 90, 97, 26 and 47 — in both of the two Pool of Radiance
 save directories the archives hold. So a converted halfling gets the two
 constitution records without the dwarf's bonuses against orcs and giants.
 
-The gnome is the hole. 47 is named for gnomes as well as dwarves, 18 is the
-gnome's own, and 97 is named for all three sturdy races where 90 is named for
-the dwarf and the halfling only. No gnome appears in any save the archives
-hold, so every one of those would be a guess: a converted gnome gets no
+The gnome is the hole, and it is **four** ids wide rather than the three this
+paragraph used to name -- 48 was omitted here and in `goldbox/dos.py`'s note,
+found in the code review of #191. 18 is the gnome's own THAC0 bonus against
+kobolds and goblins and 48 his own armour-class bonus against gnolls and
+bugbears; 47 is named for gnomes as well as dwarves; 97 is named for all three
+sturdy races where 90 is the dwarf's and the halfling's only, so a gnome would
+not get 90 at all. No gnome appears in any save the archives
+hold, so every one of the four would be a guess: a converted gnome gets no
 record and the report says why.
 
 **Confirmed in the running game.** `PORSAVE.D64` — MALCYON an elf, LADY
@@ -1803,6 +1807,11 @@ KATHERINE a half-elf, MAGNUS a dwarf with empty trait slots — converted into a
 DOS slot and loaded: the party stands on its square with six names on the
 roster, and the live effect lists read 107, 124 and `26 -> 47` respectively,
 with the three humans at NULL and no `.SPC` written for them at all.
+
+**That dwarf reading is what the converter wrote before #191** and is kept as
+the record of this run, not as what happens today: a dwarf now gets
+`90, 97, 26, 47`, measured on its own run further down. The run above has not
+been repeated with the fix in, so its numbers are left as they were taken.
 
 ### The round trip, which is the bar
 

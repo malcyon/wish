@@ -335,11 +335,13 @@ EFFECT_NEXT_NULL = bytes(4)
 #: from his race byte at the moment of the blow; the DOS dwarf gets them from
 #: these records or not at all.
 #:
-#: **The gnome is not here and that is deliberate**: 47 is named for gnomes
-#: too, 18 is the gnome's own, and 97 is named for all three sturdy races
-#: where 90 is named for the dwarf and the halfling only.  Nobody in any save
-#: the archives hold is a gnome, so every one of those would be a guess.  A
-#: converted gnome is reported instead.
+#: **The gnome is not here and that is deliberate**, and there are *four* ids
+#: at stake rather than the three this note used to name -- 48 was left out.
+#: 18 is the gnome's own THAC0 bonus and 48 his own armour-class bonus; 47 is
+#: named for gnomes as well as dwarves; 97 is named for all three sturdy races
+#: where 90 is the dwarf's and the halfling's only, so a gnome would not get
+#: 90 at all.  Nobody in any save the archives hold is a gnome, so every one of
+#: the four would be a guess.  A converted gnome is reported instead.
 RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {
     1: (90, 97, 26, 47),
     5: (90, 97),
@@ -1371,10 +1373,12 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
                 f"record is written for it")
     if race == UNWITNESSED_RACE:
         rep.dropped.append(
-            "A gnome's innate bonuses against giants, and his constitution "
-            "bonus to saving throws: no gnome appears in any DOS save we "
-            "hold, so the effect ids the DOS engine writes for one are "
-            "unmeasured and are not guessed at")
+            "A gnome's four innate racial bonuses -- his to-hit against "
+            "kobolds and goblins, his armour class against gnolls and "
+            "bugbears and against giants, and his constitution bonus to "
+            "saving throws: no gnome appears in any DOS save we hold, so "
+            "the effect ids the DOS engine writes for one are unmeasured "
+            "and are not guessed at")
 
     # -- computed, not copied ------------------------------------------------
     count = min(len(projected), 0xFF)
