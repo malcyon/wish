@@ -115,19 +115,47 @@ def test_refuses_when_no_slot_is_available(pool, fake_session, args, monkeypatch
 
 
 @posix
-def test_a_bad_slot_request_is_refused_rather_than_substituted(
+def test_the_named_slot_is_claimed_though_a_lower_one_is_free(
         pool, fake_session, args, monkeypatch):
-    """`instance.claim()` cannot ask for a slot by number -- it always hands
-    back the lowest free one.  `--slot 3` while slot 0 is free must refuse
-    rather than silently run on slot 0."""
+    """`--slot 3` on an idle pool must reach slot 3 (#174).
+
+    `instance.claim()` is first-free and cannot be asked for a slot by
+    number, and walkrun used to claim whatever came back and refuse when it
+    was not the one named -- so the ordinary case, a brief that names a slot
+    and an empty pool at the start of a night, failed.  It now uses
+    `session.claim_slot`, which holds the lower slots until it has the one
+    asked for and lets them go again.
+    """
     monkeypatch.setattr(sys, "argv", [*sys.argv, "--slot", "3"])
 
     rc = walkrun.main()
 
-    assert rc == 1
-    assert FakeSession.instances == []
-    # refusing released the slot it briefly held, rather than leaking it
-    assert instance.status()[0]["state"] == instance.CLEAN
+    assert rc == 1                       # FakeSession.boot() fails, as always
+    assert len(FakeSession.instances) == 1
+    assert FakeSession.instances[0].slot.n == 3
+    # The slots held on the way to 3 were let go, not leaked.
+    assert [row["state"] for row in instance.status()[:4]] == [instance.CLEAN] * 4
+
+
+@posix
+def test_a_named_slot_somebody_else_holds_is_refused(
+        pool, fake_session, args, monkeypatch):
+    """Refusing is still right when the named slot is genuinely taken: run
+    somewhere else and two agents share one emulator."""
+    held = instance.claim()             # slot 0
+    mine = instance.claim()             # slot 1
+    try:
+        monkeypatch.setattr(sys, "argv", [*sys.argv, "--slot", "1"])
+
+        rc = walkrun.main()
+
+        assert rc == 1
+        assert FakeSession.instances == []
+        # and the slots it held looking for 1 were released again
+        assert instance.status()[2]["state"] == instance.CLEAN
+    finally:
+        mine.release()
+        held.release()
 
 
 # -- the pass-through ---------------------------------------------------------

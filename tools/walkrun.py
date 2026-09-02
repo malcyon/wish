@@ -28,7 +28,7 @@ _ROOT = _TOOLS.parent
 
 sys.path.insert(0, str(_TOOLS))
 import instance  # noqa: E402
-from session import HERE, Session  # noqa: E402
+from session import HERE, Session, claim_slot  # noqa: E402
 
 sys.path.insert(0, str(_ROOT))
 from automap.paths import find_disks  # noqa: E402
@@ -36,27 +36,6 @@ from automap.paths import find_disks  # noqa: E402
 WALKS = f"{HERE}/walks"
 _disks = find_disks()
 BASE_SAVE = str(_disks / "PORSAVE11.D64") if _disks else "PORSAVE11.D64"
-
-
-def claim_slot(n: int | None) -> instance.Slot:
-    """Claim a pool slot -- required, never the human's ports (#144).
-
-    `instance.claim()` has no way to ask for slot *n* by number; it always
-    hands back the lowest-numbered free one.  So when a brief names a slot,
-    this claims whatever comes back and, if it is not the one asked for,
-    releases it and refuses rather than run on a different slot.  That still
-    gets the named slot in the case a brief actually describes -- the lower
-    slots already held by other agents, and the named one free.
-    """
-    slot = instance.claim(game="por", note=os.environ.get("POR_AGENT", ""))
-    if n is not None and slot.n != n:
-        got = slot.n
-        slot.release()
-        raise RuntimeError(
-            f"--slot {n} was requested but instance.claim() only hands out "
-            f"the lowest free slot, which was {got}; refusing to run on it"
-        )
-    return slot
 
 
 def main() -> int:
@@ -82,7 +61,7 @@ def main() -> int:
     # someone deliberately watching a run, still reaches the launcher: it is
     # read out of `os.environ` inside `Slot.env()` itself.
     try:
-        slot = claim_slot(args.slot)
+        slot = claim_slot(args.slot, os.environ.get("POR_AGENT", ""))
     except (instance.PoolFull, instance.PoolUnavailable, RuntimeError) as exc:
         print(f"could not claim an instance-pool slot: {exc}", file=sys.stderr)
         return 1
