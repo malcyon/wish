@@ -475,23 +475,31 @@ def test_waiting_for_a_save_waits_for_the_whole_directory(tmp_path):
     assert dosbox.settle_files(tmp_path, quiet=0.05, timeout=5.0) is True
 
 
-def test_a_directory_being_written_to_is_not_called_quiet(tmp_path):
-    import threading
+def test_a_directory_being_written_to_is_not_called_quiet(tmp_path,
+                                                          monkeypatch):
+    """A save still in flight must not be called finished.
 
-    (tmp_path / "SAVGAMC.DAT").write_bytes(b"x")
-    stop = threading.Event()
+    **This was a background thread scribbling every 20 ms, and it went red on
+    CI within the hour.** The thread has to be scheduled inside the quiet
+    window for the test to mean anything, and on a loaded runner it was not:
+    `settle_files` saw an unchanged mtime for the whole 200 ms and answered
+    True. The test was measuring the runner, not the function.
 
-    def scribble():
-        n = 0
-        while not stop.is_set():
-            (tmp_path / f"CHRDATC{n % 6 + 1}.SAV").write_bytes(bytes([n % 256]))
-            n += 1
-            time.sleep(0.02)
+    So the writing is driven by the polling instead. `settle_files` sleeps
+    between reads; every sleep stamps the file forward, which is exactly what
+    a save in flight looks like from the outside and cannot be starved out.
+    `os.utime` with counted stamps rather than a real write, so no filesystem's
+    mtime granularity can make two writes look like one.
+    """
+    save = tmp_path / "SAVGAMC.DAT"
+    save.write_bytes(b"x")
+    stamps = iter(range(1, 100_000))
+    real_sleep = time.sleep
 
-    writer = threading.Thread(target=scribble, daemon=True)
-    writer.start()
-    try:
-        assert dosbox.settle_files(tmp_path, quiet=0.2, timeout=1.0) is False
-    finally:
-        stop.set()
-        writer.join(timeout=2.0)
+    def write_then_sleep(seconds):
+        n = next(stamps)
+        os.utime(save, (n, n))
+        real_sleep(0.01)
+
+    monkeypatch.setattr(dosbox.time, "sleep", write_then_sleep)
+    assert dosbox.settle_files(tmp_path, quiet=0.2, timeout=1.0) is False
