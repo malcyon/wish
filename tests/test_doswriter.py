@@ -419,7 +419,7 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
                                    save0[0x49C1 - 0x4900],
                                    save0[0x49C2 - 0x4900])
-    assert any("retargeted" in c for c in report.carried)
+    assert any(c.startswith("the place: area") for c in report.carried)
 
 
 @needs_dos_saves
@@ -589,24 +589,32 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     assert savgam[start:start + len(body)] == body
     assert not report.warnings or not any(
         "stand on the template's square" in w for w in report.warnings)
-    assert any("retargeted" in c for c in report.carried)
+    assert any(c.startswith("the place: area") for c in report.carried)
 
 
 @needs_dos_saves
-def test_a_retarget_with_no_game_directory_keeps_the_template_s_square(
+def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
         tmp_path):
-    """The script has to come from the game's own files, and if they are not
-    there the honest answer is the template's square and a line saying so."""
+    """With no `ECL<n>.DAX` the party's own area cannot be staged, and the
+    only other answer is the area somebody else's save was made in.
+
+    This used to leave the party on the template's square with a warning, and
+    a warning is not enough: the file loads, the party is standing somewhere
+    it has never been, and nothing about the run says so.  Donald's ruling in
+    the other direction, 2026-08-27, is the same question -- *"We should
+    never attempt to write a save file if we don't have the game disks and we
+    need them.  That would mean making up data, which we will not do."*
+    """
     save0 = _c64_in_the_slums()
     empty = tmp_path / "no-game"
     empty.mkdir()
-    report = dos.write_dos_save(save0, None, _save_dir(), tmp_path, "A",
-                                game=empty)
-    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
-    template = (_save_dir() / "SAVGAMA.DAT").read_bytes()
-    assert sg.area_id(savgam) == sg.area_id(template)
-    assert sg.position(savgam) == sg.position(template)
-    assert any("ECL2.DAX" in w for w in report.warnings)
+    with pytest.raises(dos.DosRecordError) as e:
+        dos.write_dos_save(save0, None, _save_dir(), tmp_path / "out", "A",
+                           game=empty)
+    assert "ECL2.DAX" in str(e.value)
+    # And nothing was written, so a slot the conversion refuses is a slot the
+    # previous conversion left alone.
+    assert not (tmp_path / "out" / "SAVGAMA.DAT").exists()
 
 
 @pytest.mark.parametrize("area, wanted", [
@@ -749,3 +757,122 @@ def test_the_script_scratch_is_the_c64s_and_not_the_templates(tmp_path):
     # accident: at least one address moved.
     assert any(sg.word(savgam, a) != before[a] for a in dos.SHARED_SCRATCH)
     assert len(dos.SHARED_SCRATCH) == 33     # $49EB plus the 32-word window
+
+
+# --- the whole saved game, from nothing (#26) --------------------------------
+#
+# `write_dos_save` used to copy an existing `SAVGAM<slot>.DAT` and rewrite the
+# fields it could source, so every byte nobody had decoded kept a value
+# belonging to **a different party in a different place**.  These are the
+# tests of the other shape: 13137 zero bytes, and every one of them written
+# from the C64 party, written to a measured constant, or written zero with the
+# reason it is nobody's.  The proof that the zeroes are survivable is not here
+# -- it is `tools/dosnewsave.py`, whose party loads, walks, changes area and
+# is saved back by the engine's own ENCAMP > SAVE.
+
+
+@needs_dos_saves
+def test_a_saved_game_built_from_nothing_accounts_for_every_byte(tmp_path):
+    """`unwritten` empty is what "no template" means, checkably."""
+    save0, save1 = _fixture_payloads()
+    report = dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    assert report.unwritten == []
+    assert len(report.sources) == report.total == sg.SAVGAM_SIZE
+    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    # And it is the party's own save rather than a plausible-looking one.
+    assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
+    assert sg.party_size(savgam) == 1
+    assert sg.area_id(savgam) == save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE]
+    for i in range(sg.CLOCK_DIGITS):
+        assert sg.word(savgam, sg.CLOCK + i) == \
+            save0[sg.CLOCK + i - dos.SAVE0_BASE], i
+
+
+@needs_dos_saves
+def test_a_saved_game_built_on_a_template_counts_what_it_took_from_it(
+        tmp_path):
+    """The template path still exists for an experiment, and it says how much
+    of the file is somebody else's -- which is the number this issue is
+    about.  A template that supplied a byte in silence is what the count
+    exists to prevent."""
+    save0, save1 = _fixture_payloads()
+    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A",
+                                game=_game_dir())
+    assert report.unwritten, "a template save is not written byte for byte"
+    assert len(report.unwritten) == sg.SAVGAM_SIZE - (
+        len(report.sources) - len(report.unwritten))
+    # Every one of them is a variable or a tail byte, addressed the way a
+    # reader of `docs/141-dos-savegame.md` would look it up.
+    assert report.address(report.unwritten[0]).startswith(("$", "byte "))
+
+
+@needs_dos_saves
+def test_new_dos_save_refuses_a_byte_it_did_not_write(tmp_path, monkeypatch):
+    """The gate has to be able to fail, or it is not a gate.
+
+    With the zero account taken away the same conversion leaves 454 bytes
+    with no source, and `new_dos_save` refuses rather than handing back a
+    file whose zeroes nobody stands behind.
+    """
+    save0, save1 = _fixture_payloads()
+    monkeypatch.setattr(dos, "savgam_zeroes", lambda savgam, report: None)
+    with pytest.raises(dos.DosRecordError) as e:
+        dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    assert "no source" in str(e.value)
+
+
+@needs_dos_saves
+def test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared():
+    """A field the engine writes that this conversion neither sources nor
+    names is the failure this test exists for: it would be written zero in
+    silence, and a zero nobody decided on is indistinguishable in the file
+    from one that was measured.
+
+    Measured over every genuine Pool of Radiance container in the player's
+    own DOS save directory.
+    """
+    written = set(range(dos.FLAGS_FIRST, dos.FLAGS_LAST + 1))
+    written |= set(dos.SHARED_SCRATCH)
+    written |= set(range(sg.CLOCK, sg.CLOCK + sg.CLOCK_DIGITS))
+    written |= {sg.AREA, sg.SCRIPT, sg.DISK, sg.INDOORS, sg.PARTY_SIZE,
+                sg.TRAVEL_X, sg.TRAVEL_Y}
+    written |= set(range(sg.WALLSET, sg.WALLSET + 3))
+    written |= set(range(sg.WALLMAP, sg.WALLMAP + 3))
+    written |= {a for a, _, _ in sg.SAVGAM_CONSTANTS}
+    declared = {a + i for a, n, _ in dos.SAVGAM_UNSOURCED for i in range(n)}
+
+    saves = sorted(_save_dir().glob("SAVGAM?.DAT"))
+    assert saves, "the save directory holds no SAVGAM<slot>.DAT"
+    seen = 0
+    for path in saves:
+        data = path.read_bytes()
+        if len(data) != sg.SAVGAM_SIZE:
+            continue
+        seen += 1
+        for addr in range(sg.VAR_BASE, sg.VAR_LAST + 1):
+            if sg.word(data, addr) and addr not in written | declared:
+                raise AssertionError(
+                    f"{path.name} holds {sg.word(data, addr)} at ${addr:04X}, "
+                    f"which the conversion neither writes nor declares")
+    assert seen >= 2, f"only {seen} Pool of Radiance containers were read"
+
+
+def test_the_unsourced_words_are_addresses_and_do_not_overlap():
+    """A table that names the same word twice, or one outside the array, is a
+    table whose count is wrong -- and the count is the claim."""
+    seen = set()
+    for address, words, why in dos.SAVGAM_UNSOURCED:
+        assert why.strip(), hex(address)
+        for a in range(address, address + words):
+            assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
+            assert a not in seen, hex(a)
+            seen.add(a)
+    # 510 bytes of variables carry a stated reason for their zero, and 274
+    # more are the character table's heap scratch and the menu text after it.
+    # Only 180 of the 510 have ever been seen holding anything in a container
+    # on this machine -- the rest is the message buffer's own tail, declared
+    # whole because it is one buffer and not 217 findings, and $507A-$507C,
+    # which #59 named live off specimens that no longer exist.
+    assert 2 * len(seen) == 510
+    assert (sg.PARTY_ENTRIES * (sg.PARTY_ENTRY - sg.PARTY_NAME_LEN)
+            + sg.UI_SCRATCH) == 274

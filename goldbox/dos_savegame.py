@@ -99,13 +99,14 @@ FACING_SCALE = 2             # 0 N, 2 E, 4 S, 6 W
 # place data and none is read by the load path, but a conversion that leaves
 # them at the template's values is inheriting somebody else's state, so each
 # has a measured value to write instead.
-SCRATCH_BYTE = 12804         # unnamed, and the value depends on where the
-                             # party stands: 0 in the eight walked-in indoor
-                             # saves, 14 in B and in all three outdoor ones.
-                             # The engine replaced a hand-built 0 with 9 by
-                             # itself, so it maintains this -- but a writer
-                             # still puts the value measured for the situation
-                             # it is writing, not the one measured elsewhere
+SCRATCH_BYTE = 12804         # unnamed and engine-maintained: it replaced a
+                             # hand-built 0 with 9 in #59's run 9 and a
+                             # from-nothing 0 with 14 in #26's. **Not a
+                             # function of indoors**: this said so until
+                             # 2026-09-02, and an indoor resave holding 14
+                             # refuted it. 0 is written indoors because 8 of
+                             # the 9 indoor specimens hold it and a save
+                             # carrying it loads, not because 0 means indoors
 SCRATCH_INDOORS, SCRATCH_OUTDOORS = 0, 14
 VM_COPY_BYTE = 12805         # the low byte of $5200, equal in 13 of 13 files
 VIEW_MODE_BYTE = 12806       # 1 indoors, 3 outdoors -- perfectly correlated
@@ -308,6 +309,23 @@ VM_SCRATCH = 0x5200          # byte 12805 is this word's low byte
 # slots -- so nothing the DOS save holds above this can be sourced from a C64
 # save, however tempting the address looks (#59).
 ECL_SHARED_LAST = FLAGS_LAST
+VAR_LAST = VAR_BASE + VAR_WORDS - 1          # $52FF
+
+#: Words that hold the same value in every genuine specimen, as
+#: `(address, value, why)`.  A conversion writes these rather than inheriting
+#: them: the value is the same wherever it was measured, so it is a fact about
+#: the file and not about the party the template belonged to.
+#:
+#: Measured over the four engine-written Pool of Radiance containers still on
+#: this machine -- Donald's played A, B and J, and the archives' own
+#: `Default files/Saves/SAVGAMA.DAT` -- and reported the same over twelve in
+#: #59, eight of which lived under `work/` and are gone.  None of the three
+#: has a name; what is known is that the value does not move.
+SAVGAM_CONSTANTS: tuple[tuple[int, int, str], ...] = (
+    (0x4FE1, 255, "255 in every specimen"),
+    (0x506D, 16, "16 in every specimen"),
+    (0x50F6, 1, "1 in every specimen"),
+)
 
 
 def word_offset(address: int, shape: "DosSaveShape | None" = None) -> int:
@@ -635,13 +653,15 @@ def put_position(save: bytearray, x: int, y: int, facing: int) -> None:
 def put_tail_state(save: bytearray, *, indoors: bool = True) -> None:
     """Bytes 12804-12807, from measurement rather than from the template.
 
-    `indoors` sets **two** of them, not one: the view-mode byte, and the
-    scratch byte at 12804, which reads 0 in every indoor specimen and 14 in
-    every outdoor one.  Writing 0 outdoors would put a value measured indoors
-    into a save that stands outdoors -- inheriting a different situation's
-    state, which is the thing this function exists to stop.  The engine
-    maintains 12804 itself, so it is probably harmless either way; "probably
-    harmless" is not a reason to write the wrong one.
+    `indoors` sets **two** of them, not one: the view-mode byte, which is a
+    function of `$49E6` in 12 of 12 specimens, and the scratch byte at 12804,
+    which is not.  12804 reads 0 in eight of the nine indoor specimens and 14
+    in the ninth and in all three outdoor ones, so 0 and 14 are the values an
+    engine-written save of a party standing in each place has held -- and
+    that is all they are.  The engine maintains the byte itself: it replaced
+    a written 0 with 9 in #59's run 9 and with 14 in #26's, the second of
+    those standing **indoors**, which is what refuted reading it as an
+    indoors flag.
 
     `TAIL_CONSTANT_BYTE` is 2 in all twelve genuine specimens regardless.
     `VM_COPY_BYTE` is written from `$5200` as it stands in this save, which is

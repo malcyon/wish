@@ -22,8 +22,8 @@ work, field by field, not a question about whether the game will accept it.
 The plan below was written for one direction — DOS into C64 — and that
 narrowing was what made it tractable. **The reverse now exists too** (#26):
 `goldbox.dos.write` builds a DOS character record and its `.ITM` from the neutral
-record, `goldbox.dos.write_dos_save` writes a whole C64 save into a DOS save
-directory over a template's `SAVGAM`, and DOS Pool of Radiance loads and
+record, `goldbox.dos.new_dos_save` writes a whole C64 save into a DOS save
+directory owing nothing to another save, and DOS Pool of Radiance loads and
 plays the result under DOSBox — see "The reverse direction" below.
 
 The decode: `goldbox/dos_layout.py` is the character-record field table with
@@ -584,12 +584,15 @@ the address the ECL bytecode itself uses:
 file offset of ECL address A  =  1 + 2 × (A − $4900)
 ```
 
-2560 entries cover `$4900`-`$58FF`; the remaining 8016 bytes are mapped in
+2560 entries cover `$4900`-`$52FF`; the remaining 8016 bytes are mapped in
 [`141-dos-savegame.md`](141-dos-savegame.md) (#59): 7680 of them are the
-current area's ECL script, byte-identical to its `ECL<n>.DAX` block and
-reloaded from the DAX on load — dead data for a converter — and the rest is
-the square, the party size, the `CHRDAT` filename table the engine loads the
-party from, and UI scratch. The mechanism is in the Curse reimplementation:
+current area's ECL script, byte-identical to its `ECL<n>.DAX` block from byte
+2 on, and the rest is the square, the party size, the `CHRDAT` filename table
+the engine loads the party from, and UI scratch. **The script buffer is live
+on load** — this said it was "reloaded from the DAX on load, dead data for a
+converter", and #60 refuted it: a save carrying the wrong area's script dies
+in `Load3DMap` however many variables it writes, so writing the target's own
+script is one of the retarget's writes. The mechanism is in the Curse reimplementation:
 `vm_SetMemoryValue` in `work/coab/engine/ovr008.cs` ends in
 `area_ptr.field_6A00_Set(0x6A00 + (location * 2), value)` — the operand
 address doubled — and `ovr021.cs` annotates the same array `// as WORD[]`.
@@ -1620,16 +1623,19 @@ the block above ever drifts from what the tool prints.
 
 `goldbox.dos.write` builds the 285-byte character record and its `.ITM` payload
 from a `NeutralCharacter`; `goldbox.dos.item_from_c64` is the inverse of the item
-projection; `goldbox.dos.write_dos_save` writes a whole C64 save into a DOS save
-directory. The player's own DOS files are still never written — the template
-is read, the output goes where the caller says, and the two may not be the
-same directory.
+projection; `goldbox.dos.new_dos_save` writes a whole C64 save into a DOS save
+directory, building the saved-game container from 13137 zero bytes and
+inheriting none of them. The player's own DOS files are still never written:
+the game directory is read for the area's script, the output goes where the
+caller says, and the two may not be the same directory.
 
 ### What the whole-save writer carries
 
-`SAVGAM<slot>.DAT` is the template's, with six things rewritten from the C64
-save. Every one is reported in the `SaveReport`'s `carried` list, and
-`warnings` is only for what could not be done.
+`SAVGAM<slot>.DAT` is built from 13137 zero bytes, and everything below is
+written into it from the C64 save. Every one is reported in the
+`SaveReport`'s `carried` list, and `warnings` is only for what could not be
+done. Everything *else* in the file is written zero with a reason -- see "A
+DOS save from nothing" below.
 
 | what | where | grade |
 |---|---|---|
@@ -1649,8 +1655,8 @@ writes. All twelve of #59's variants
 happened to carry the target area's buffer, so it was never a variable in
 that bisection; `work/p60/run2`'s X1 is the control, and it fails. The buffer
 is the target's `ECL<dax>.DAX` block from byte 2 on — every block opens
-`88 13` — which is why `write_dos_save` takes a `game` directory as well as a
-template, and falls back to the template's own directory and its parent.
+`88 13` — which is why the conversion takes a `game` directory, and why it
+refuses rather than writing a save without one.
 
 Two DOSBox runs, both through the real converter, both walked:
 
@@ -1668,11 +1674,17 @@ converter sources the triple from the C64 and does not refuse the empty case
 (`work/p60/run3` Z0 against `run2` X3, 229 differing pixels and every one of
 them in the colour-cycling command bar).
 
-Three kinds of area are still refused, each because there is no legal answer
-rather than because it is untested: an area this project has no row for, an
-area whose script picks its map at run time or loads none at all, and the
-travel grid, where no DOS specimen exists at all (#50). Moving a save to an
-area with no `ECL<n>.DAX` to read keeps the template's square and says so.
+Four kinds of area are refused, each because there is no legal answer rather
+than because it is untested: an area this project has no row for, an area
+whose script picks its map at run time or loads none at all, the travel grid,
+where no DOS specimen exists at all (#50), and an area whose `ECL<n>.DAX` is
+not there to read. The last of those used to leave the party on the
+template's square with a warning, and a warning is not enough: the file
+loads, the party is standing somewhere it has never been, and nothing about
+the run says so. Donald's ruling in the other direction, 2026-08-27, is the
+same question -- *"We should never attempt to write a save file if we don't
+have the game disks and we need them. That would mean making up data, which
+we will not do."*
 
 ### Where every DOS byte comes from
 
@@ -1930,21 +1942,92 @@ And for the reverse direction, `tests/test_doswriter.py`:
 * **A party converted from another area is moved to where it actually stood**,
   every write checked against the byte map and the staged script against the
   `ECL<n>.DAX` block it came from; and with no game directory to read, the
-  template's square is kept and the report says which file was missing.
+  conversion refuses and names the file that was missing.
 * **A converted save loads and plays in DOS Pool of Radiance** under
   DOSBox — the four driven runs above, and the two area-moved parties of
   #60.
 
-## What a converted DOS save still inherits (#59)
+## A DOS save from nothing (#26)
 
-`write_dos_save` builds on a template, so every byte it does not write keeps a
-value belonging to another party in another place. The full accounting — what
-the engine rebuilds, what the C64 format has no counterpart for, and the
-blocker list of what nobody has decoded, with the experiment against each — is
-["What a conversion still has to inherit"](141-dos-savegame.md) in
-`141-dos-savegame.md`. After #59's file-level pass it is the byte count
-that table states, none of it party or place data; the 8016 resident-state bytes this
-document once called unattributed are attributed.
+**`goldbox.dos.new_dos_save` writes all 13137 bytes and inherits none of
+them.** This section used to say the opposite: that the writer built on a
+template, and that every byte it did not write kept a value belonging to
+another party in another place. That is what the count below removed.
+
+The account is `SaveReport.sources`, one line per byte, and `unwritten` is
+what has no source. `new_dos_save` **raises** on a non-empty `unwritten`
+rather than handing back a file whose zeroes nobody stands behind -- the same
+refusal `new_save` makes in the other direction (#118). Where each byte comes
+from is ["What a conversion inherits: nothing"](141-dos-savegame.md) in
+`141-dos-savegame.md`; what follows is the run that made the zeroes evidence
+rather than a census.
+
+### The four runs, and what each settled
+
+`tools/dosnewsave.py` builds the save into a staged copy of the game tree,
+boots DOSBox, loads it through the game's own `LOAD SAVED GAME`, walks, and
+lets the engine's own `ENCAMP > SAVE` write it back. The resave is the
+oracle: what the engine fills in for itself is what a converted save never
+had to carry. The party is `PORSAVE13`'s six, standing in the Slums at 15,4
+facing west at 21:15.
+
+| run | what happened | what it settled |
+|---|---|---|
+| `work/p26/run1` | loaded; two steps; a wandering encounter interrupted the resave | the party panel lists all six with their real AC and HP; the map draws |
+| `work/p26/run2` | loaded, walked 15,4 → 14,4, resaved | the engine rewrote 10 words and **all 274 bytes** of character-table heap and menu text, from zero, with heap pointers and the words `Save View M` and `Camp: ` |
+| `work/p26/run3` | the `VIEW` sheet and the item list | BRUTUS reads AC 3, THAC0 18, HP 11, `LONG SWORD`, `BANDED MAIL`, encumbrance 1787, and 17 items with the mail readied -- no garbage weapon line |
+| `work/p26/run4` | walked out of the Slums into New Phlan | the engine loaded a **new map, script and wallset** from a save it did not write: `$49C5`, `$49F2`, `$5012`, byte 0 and the whole wallset triple came back rewritten |
+| `work/p26/run5` | a wandering encounter, fought | the engine filled the pending-encounter record and the message buffer itself -- `$5202`, `$5205`, `$5206`, and `$522C`+ spelling out the sentence it shouted |
+| `work/p26/run7` | a **second party into a second slot**: `PORSAVE12`, standing in New Phlan, written as slot B | comes up at **0,4 W 16:58** with all six -- that party's own square and clock, and the same numbers the template-based run of #60 got |
+
+So a converted party in a save with no template loads, is looked at, walks,
+changes area and fights. Every byte the engine rewrote is one this
+conversion had declared zero; **no byte it needed was missing**. Two parties,
+two slot letters, two areas, six runs.
+
+### What the engine recomputes on load, which nobody had measured
+
+Diffing what the conversion wrote against the engine's own `ENCAMP > SAVE`
+of the same six characters — `work/p26/run6`, loaded and resaved with
+nothing in between — shows the DOS engine **rewriting derived combat numbers
+before anybody can read them**:
+
+| field | who | ours → the engine's |
+|---|---|---|
+| the five `save_*` bytes | MAGNUS, a dwarf | 14/14/13/11/12 → 17/17/16/14/15, the plain fighter-1 row |
+| `thac0_base` | LADY KATHERINE, MALCYON | 39 → 40 |
+| the five `thief_*` skills | LADY KATHERINE | all five replaced |
+| `armour_class` | BRUTUS | 58 → 57, which is AC 2 → AC 3 |
+| `hands_used`, `item_chain`, `heap_104`, `effect_chain` | most of the party | zero → live heap, which is what `WRITE_UNSOURCED` already said |
+
+The three characters carrying no racial adjustment kept their five saves to
+the byte, so this is a recompute of what the race and class imply and not a
+blanket rewrite.
+
+**One of those is a loss and it has an issue.** The C64 stores a dwarf's
+constitution save bonus *inside* the five bytes and DOS keeps it in two
+`.SPC` records instead, so a conversion that copies the bytes and writes no
+records loses the bonus the first time the engine looks at the character —
+`#191 (A converted dwarf loses his constitution bonus to saving throws)`.
+`RACE_COMBAT_EFFECTS`'s note says writing 90 and 97 "would apply it twice";
+the run refutes that, because the copied bytes do not survive the load.
+
+The rest are derived values a conversion need not carry at all, which is a
+finding in the useful direction: they cannot be got wrong.
+
+### What is not settled
+
+* **Fifteen words the engine has never been seen writing** -- listed in
+  `141-dos-savegame.md`'s "What this leaves open". Zero in them is CONFIRMED
+  survivable across all five runs and nothing says what would put a value
+  there.
+* **An outdoor C64 party is still refused** (#50). No overland DOS retarget
+  has been driven, and the converter will not guess one.
+* **The sweep's census is nine indoor specimens, not twelve.** Six words are
+  nonzero only in three overland saves that no longer exist; a conversion
+  that refuses an outdoor party never writes one of those saves, but the
+  claim is PROBABLE rather than CONFIRMED until `tools/dosoutdoor.py` makes
+  another specimen and the census is re-run.
 
 ## The template's spare characters (#104)
 
