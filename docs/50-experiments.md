@@ -5901,7 +5901,10 @@ resolves to `$2011`, which [`118`](118-debug-mode.md) already names as
 **`$21`** (`$2041`, three operands) and `LOADPIECES` opcode **`$37`**
 (`$276E`, three operands). `DUNGEON $1663` decodes an operand: kind byte `00`
 means an immediate follows, which is the form all six statements above use.
-`work/wallart/loadfiles.py` prints them for any script.
+`tools/loadfiles.py` prints them for any script; it was `work/wallart/loadfiles.py`
+until `#159 (Nobody has read what Fast Travel skips in the other twenty-nine
+scripts)` moved it somewhere it can be found. `tools/eclwalk.py` reads the same
+scripts statement by statement.
 
 ### Where the release sits, exactly
 
@@ -5911,11 +5914,18 @@ per-square event dispatcher, and the statements around it are the departing
 sequence [`118`](118-debug-mode.md) already describes:
 
 ```
-$9950  SAVE 255, [$6DC9]            cancel the move the party was making
+$9945  SAVE 1, [$49EB]              a script scratch byte
+$994B  CALL [$C01E]                 step forward, ignoring barriers
+$994F  SAVE 255, [$6DC9]            cancel the move the party was making
 $9955  LOADFILES 255, 255, 127      give $ED50 back
 $995C  SAVE 2, [$6E12]              the Slums is on POOL2
 $9962  NEWECL 20                    the Slums
 ```
+
+The `SAVE` was written here as `$9950`; it starts at `$994F`, because the
+`CALL` before it is four bytes from `$994B`. Corrected when
+`tools/eclwalk.py` walked the script statement by statement and the two
+statements above it came out as well -- `docs/150-departing-prologues.md`.
 
 The second release, `$9BDC`, sits in the same shape three statements before
 `NEWECL 21`, Sokol Keep, with `SAVE 4, [$6E12]` between them. So both are exit
