@@ -80,6 +80,7 @@ from .record import CharacterRecord
 __all__ = [
     "DosRecordError",
     "WrongTitleError",
+    "CANNOT_CONVERT",
     "CLASS_SLOTS_FOR_CLASS",
     "CLASS_BIT_FOR_SLOT",
     "class_bits_for",
@@ -115,8 +116,35 @@ __all__ = [
 ]
 
 
+#: The fallback shown to a player for any refusal that is not a wrong title --
+#: bytes with no source, the two outdoor signals disagreeing, an area with no
+#: row in `goldbox/areas.py`, and anything else `DosRecordError` is raised
+#: for.  Donald's wording, 2026-09-02 (#195), chosen over a longer version
+#: adding "not all of it has been decoded yet".  `CLAUDE.md` warns this
+#: interface kept growing sentences explaining itself and every one was
+#: removed on request, so this is the only sentence and it covers every case.
+CANNOT_CONVERT = "This save cannot be converted."
+
+
 class DosRecordError(ValueError):
-    """A file that is not a DOS Gold Box character record."""
+    """A file that is not a DOS Gold Box character record, or a conversion
+    that refuses for any other reason.
+
+    The message carries the developer's reason -- offsets, addresses, source
+    file names, issue numbers -- because that is what a traceback and a log
+    are for.  `player_message` is the other half: one sentence for somebody
+    who is not reading the tracker, which is what a dialog shows.  The
+    default is `CANNOT_CONVERT`; a subclass overrides it when it has
+    something more specific and still player-safe to say, as `WrongTitleError`
+    does below.  Generalised from `WrongTitleError` alone (#176) to cover
+    every refusal (#195), after `editor/dosimport.py` was found showing a
+    memory address and a source file name for everything else.
+    """
+
+    @property
+    def player_message(self) -> str:
+        """What a player is shown.  Donald's wording, 2026-09-02 (#195)."""
+        return CANNOT_CONVERT
 
 
 class WrongTitleError(DosRecordError):

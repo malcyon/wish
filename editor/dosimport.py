@@ -362,14 +362,18 @@ class DosImportDialog(QDialog):
             return ""
         try:
             self.conversion = rehearse(self.folder, self.slot, self.files)
-        except dos.WrongTitleError as exc:
-            # The exception text is written for the tracker and carries an
-            # issue number; a player reads `player_message` instead (#176).
+        except dos.DosRecordError as exc:
+            # The exception text is written for the tracker and may carry an
+            # issue number, an address or a source file name; a player reads
+            # `player_message` instead -- `WrongTitleError`'s own sentence, or
+            # `dos.CANNOT_CONVERT` for every other refusal (#176, #195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
             return exc.player_message
-        except Exception as exc:
+        except Exception:
+            # Anything `DosRecordError` does not cover is still not a
+            # developer's traceback in front of a player (#195).
             _log.exception("could not convert %s slot %s",
                            self.folder, self.slot)
-            return str(exc)
+            return dos.CANNOT_CONVERT
         return dropped_text(self.conversion.report)

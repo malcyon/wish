@@ -729,3 +729,90 @@ def test_a_refusal_cannot_be_raised_without_naming_the_title():
     """
     with pytest.raises(TypeError):
         dos.WrongTitleError("the developer's reason")
+
+
+# --- every other refusal a player reads (#195) ------------------------------
+
+#: The two developer sentences `#195 (The import pane shows a player a
+#: memory address when the conversion refuses for any reason but the wrong
+#: title)` names as confirmed reachable from `rehearse` -> `dos.new_save`,
+#: quoted from `goldbox/dos.py:new_save` and `goldbox/dos.py:apply_file_cache`
+#: so the test forces the real wording rather than a guess at it.
+_UNWRITTEN_BYTES_MESSAGE = (
+    "29 bytes of the save have no source and were left zero by accident "
+    "rather than by measurement; the first is SAVEDGAME0 $8300")
+_OUTDOOR_DISAGREEMENT_MESSAGE = (
+    "the save's own $49E6 says outdoors, but script id 12 (Kuto's Well) is "
+    "marked indoors in goldbox/areas.py -- these two disagree and neither "
+    "is trusted over the other")
+
+
+def _fake_dos_dir(tmp_path):
+    """A folder `dos.slots_available` reads as holding slot A, with none of
+    a real DOS save's files in it. `rehearse` is monkeypatched in every test
+    below, so nothing here ever reads a character out of it."""
+    (tmp_path / "SAVGAMA.DAT").write_bytes(b"")
+    return tmp_path
+
+
+def _fake_files():
+    from editor.dosimport import GameFiles
+    return GameFiles(icon=b"\x00" * 36, animate=b"\x00" * 852)
+
+
+@pytest.mark.parametrize("message", [
+    _UNWRITTEN_BYTES_MESSAGE, _OUTDOOR_DISAGREEMENT_MESSAGE,
+    "an area with no row in our table",
+])
+def test_the_pane_shows_the_fallback_and_not_the_developers_sentence(
+        message, app, tmp_path, monkeypatch):
+    """`_attempt` used to catch `dos.WrongTitleError` specially and fall
+    through to `str(exc)` for everything else, so a real refusal -- the
+    unwritten-bytes one, or the outdoor-signals one -- filled the pane with
+    `SAVEDGAME0 $8300` or `goldbox/areas.py`. This forces each of those two
+    confirmed developer sentences through the real dialog and checks what a
+    player would actually read, not a list of expected strings: it asserts
+    the exact approved sentence, and separately that nothing matching a
+    memory address, a source path or an issue number reaches the pane, so a
+    fallback that echoed part of `message` back would still be caught.
+    """
+    import re
+
+    from editor import dosimport
+
+    def refuse(*_args, **_kwargs):
+        raise dos.DosRecordError(message)
+
+    folder = _fake_dos_dir(tmp_path)
+    dialog = dosimport.DosImportDialog(folder, _fake_files())
+    monkeypatch.setattr(dosimport, "rehearse", refuse)
+    dialog._rehearse()
+
+    shown = dialog.report_pane.toPlainText()
+    assert shown == "This save cannot be converted."
+    assert not re.search(r"\$[0-9A-F]{4}\b", shown), (
+        f"a memory address reaches the pane: {shown!r}")
+    assert not re.search(r"\.py\b", shown), (
+        f"a source file name reaches the pane: {shown!r}")
+    assert not re.search(r"#\d", shown), (
+        f"an issue number reaches the pane: {shown!r}")
+
+
+def test_the_pane_shows_the_fallback_for_a_refusal_dos_record_error_never_names(
+        app, tmp_path, monkeypatch):
+    """Not every refusal is a `DosRecordError` -- `_attempt`'s bare `except
+    Exception` is what stands between an unanticipated one and a raw
+    traceback in the pane. It must show the same approved sentence, not
+    `str(exc)`.
+    """
+    from editor import dosimport
+
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("$49E6 disagrees with goldbox/areas.py (#99)")
+
+    folder = _fake_dos_dir(tmp_path)
+    dialog = dosimport.DosImportDialog(folder, _fake_files())
+    monkeypatch.setattr(dosimport, "rehearse", refuse)
+    dialog._rehearse()
+
+    assert dialog.report_pane.toPlainText() == "This save cannot be converted."
