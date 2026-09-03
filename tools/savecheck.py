@@ -8,7 +8,7 @@ not sufficient -- an AC of 9 displayed as 51, a dropped combat tail and a
 garbage weapon line are three faults this project has shipped that passed
 every byte-level check that existed.
 
-    tools/savecheck.py --disk work/NEWJ.D64 --slot 1 --walk II
+    tools/savecheck.py --disk work/NEWJ.D64 --slot 1 --view --walk II
 
 What it reads, in order:
 
@@ -19,7 +19,9 @@ What it reads, in order:
 * the party panel: every name the game lists, with its armour class and hit
   points, and **how many** rows it lists, which is what catches a stranger
   left in slot 7;
-* each character's `VIEW` sheet, verbatim;
+* each character's `VIEW` sheet, verbatim -- all of them with `--view` and no
+  number, because the party panel is the selector and `Up`/`Down` on it is
+  what reaches characters two to six (`#183`);
 * the combat floor, when `--fight` is given, and the screen codes each party
   figure is drawn from -- which is the only place a converted combat icon is
   ever seen.
@@ -63,14 +65,17 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 #: Reading it by column rather than splitting on whitespace matters either
 #: way: a scratch reader that split on spaces counted three of six party
 #: members during #118 and the panel really showed all six.
-PANEL_LEFT = 17
-PANEL_ROWS = range(0, 12)
-
-#: The header the panel's rows hang under.  Counting *rows with a name under
-#: it* is what says how many characters the game is listing, which is the
-#: number a converted save has to get right (#104) -- counting non-blank rows
-#: instead counts the panel's own frame and answers eight every time.
-PANEL_HEADER = "AC"
+#:
+#: One definition, in `session`, because the panel is a menu that
+#: `Session.select_party` drives and not only a read-out this file prints
+#: (`#183`).  The header is what the panel's rows hang under: counting *rows
+#: with a name under it* is what says how many characters the game is
+#: listing, which is the number a converted save has to get right (#104) --
+#: counting non-blank rows instead counts the panel's own frame and answers
+#: eight every time.
+PANEL_LEFT = S.PARTY_COLUMN
+PANEL_ROWS = S.PARTY_ROWS
+PANEL_HEADER = S.PARTY_HEADER
 
 #: Where a fight draws the party.  Each combatant is a 3x3 block of
 #: `CHARPIC00` screen codes, and screen code 0 is a real glyph rather than a
@@ -188,37 +193,56 @@ def panel(sess) -> tuple[list[str], list[str]]:
     return rows, named
 
 
+def sheet_name(lines: list[str]) -> str:
+    """The character's own name off a `VIEW` sheet.
+
+    It is the sheet's second line -- the first is the panel's top frame --
+    and the frame draws in the first and last columns of every line, so those
+    glyphs come off before the name is read.
+    """
+    for line in lines[1:]:
+        who = line.strip(" $@[]")
+        if who:
+            return who
+    return "(blank)"
+
+
 def sheets(sess, count: int, log: Log, tag: str) -> list[list[str]]:
     """Every character's `VIEW` screen, verbatim, then back to the world bar.
 
-    **`VIEW` is not a list.**  Asking for it on the world bar puts the *first*
-    character's sheet straight up, with a bar carrying `NEXT`; there is no
-    menu of names to walk a highlight down, and a driver that looked for one
-    reported `THRENDER GRONE never appeared in the VIEW list` against a screen
-    that was already showing his sheet.  So the party is stepped through with
-    `NEXT` and the name is read off the sheet rather than chosen.
+    **`VIEW` is not a list**, and there is no `NEXT` on the sheet either --
+    the bar it puts up is `VIEW:ITEMS EXIT` and nothing on it changes
+    character.  This file used to say otherwise and to step the party with a
+    `NEXT` that does not exist, so every run it drove read the first
+    character's sheet and reported that one six times over or stopped after
+    it (`#183`).
+
+    **The party panel on the world screen is the selector.**  One of its
+    names is drawn in the highlight colour, `Up` and `Down` move that
+    highlight, and `VIEW` puts up whoever carries it -- so the choosing is
+    done before `VIEW`, and `Session.character_sheet` is what does it.
+
+    `count` is how many to read; a negative one means every character the
+    panel lists, which is what a conversion has to be checked on.  The faults
+    this project has shipped -- an armour class of 9 displayed as 51, a
+    dropped combat tail, a garbage weapon line -- are all sheet faults, and a
+    conversion proven on one sheet of six is proven on one sixth of it.
     """
     out: list[list[str]] = []
-    if not sess.select_bar("VIEW", timeout=20):
-        log.say("  could not open VIEW")
+    listed = len(sess.party_rows())
+    if listed == 0:
+        log.say("  the party panel lists nobody; this is not the world screen")
         return out
-    for n in range(count):
-        time.sleep(1.2)
-        s = sess.screen()
-        lines = [] if s is None else \
-            [line.rstrip() for line in s.rows() if line.strip()]
+    want = listed if count < 0 else min(count, listed)
+    if count > listed:
+        log.say(f"  the panel lists {listed} characters, so reading {listed} "
+                f"sheets rather than the {count} asked for")
+    for n in range(want):
+        lines = sess.character_sheet(n, shot=str(log.dir / f"{tag}-sheet-{n}.png"))
+        if lines is None:
+            log.say(f"  no sheet for party slot {n + 1}; stopping there")
+            break
         out.append(lines)
-        sess.kbd.screenshot(str(log.dir / f"{tag}-sheet-{n}.png"))
-        if n + 1 < count and not sess.select_bar("NEXT", timeout=12):
-            log.say(f"  no NEXT after sheet {n + 1}; stopping there")
-            break
-    # `EXIT` off the sheet.  Ask for it by name rather than pressing Return at
-    # whatever happens to be highlighted; a stale row 24 is not evidence.
-    for _ in range(3):
-        if sess.select_bar("EXIT", timeout=8):
-            break
-        sess.leave_move(2)
-    time.sleep(1.0)
     return out
 
 
@@ -480,11 +504,24 @@ def run(args, log: Log) -> int:
         sess.kbd.screenshot(str(log.dir / f"{args.tag}-arrived.png"))
 
         if args.view:
-            for n, lines in enumerate(sheets(sess, args.view, log, args.tag)):
+            read = sheets(sess, args.view, log, args.tag)
+            for n, lines in enumerate(read):
                 log.emit("sheet", n=n, lines=lines)
-                log.say(f"  -- sheet {n + 1} --")
+                # The name is the sheet's own first line, so say it here: a
+                # log of six sheets headed `sheet 1` to `sheet 6` cannot be
+                # checked against a `--sheet` listing without counting.
+                log.say(f"  -- sheet {n + 1} of {len(named)}: "
+                        f"{sheet_name(lines)} --")
                 for line in lines:
                     log.say(f"    {line}")
+            log.emit("sheets", read=len(read), listed=len(named))
+            if len(read) < len(named):
+                # Not a footnote.  A conversion checked on one sheet of six is
+                # checked on one sixth of the thing that has historically been
+                # wrong (`#183`), so a short read has to be as loud as a bad
+                # number on one of them.
+                log.say(f"  Only {len(read)} of the {len(named)} characters "
+                        f"the panel lists had a sheet read")
 
         if args.resave:
             # The control `#185` wanted and nobody had: the **engine's** own
@@ -650,8 +687,10 @@ def main(argv=None) -> int:
     p.add_argument("--tag", default=None, help="prefix for the screenshots")
     p.add_argument("--out", default=None,
                    help="the log (default work/savecheck/<disk>.jsonl)")
-    p.add_argument("--view", type=int, default=0,
-                   help="how many VIEW sheets to read, stepped with NEXT")
+    p.add_argument("--view", type=int, nargs="?", const=-1, default=0,
+                   help="read this many VIEW sheets, walking the party panel's "
+                        "highlight; with no number, every character the panel "
+                        "lists")
     p.add_argument("--walk", default="",
                    help="Moves: the game's own letters I J K M in a dungeon, "
                         "the compass digits 1-8 on the travel grid")

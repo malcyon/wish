@@ -103,6 +103,35 @@ COMPASS = {
     "5": (0, 1), "6": (-1, 1), "7": (-1, 0), "8": (-1, -1),
 }
 
+#: The world screen's party panel, which is a **menu** and not a read-out:
+#: one of its names is drawn in the highlight colour, `Up` and `Down` move
+#: that highlight, and `VIEW` puts up the sheet of whichever name carries it.
+#: That is what reaches characters two to six; there is nothing on the sheet
+#: itself that does (`#183`).
+#:
+#: `PARTY_COLUMN` is where the names start and `PARTY_HEADER` is the heading
+#: over the column beside them.  The rows are not constants because a party
+#: of six and a party of eight fill different ones -- they are read off the
+#: screen, under the header.
+#:
+#: **These are not `PANEL_LEFT` and `PANEL_ROWS` further down**, which are
+#: combat's panel at column 22: slicing the world panel there cuts five
+#: letters off every name, and `THRENDER GRONE` arrives as `DER GRONE`.  Two
+#: different panels, so two different names -- the first draft of this called
+#: them the same thing and the combat pair, defined lower in the file, simply
+#: overwrote it.
+#:
+#: `PARTY_ROWS` stops at 12 and that is not slack: **row 14 is the status
+#: line**, `W 21:15 15,4`, which starts in the panel's own name column and
+#: would otherwise be read as a seventh character.  Eight names fill rows 4
+#: to 11, so twelve is exactly enough for the largest party the game holds.
+PARTY_COLUMN = 17
+PARTY_HEADER = "AC"
+PARTY_ROWS = range(0, 12)
+
+#: The bar the character sheet puts on row 24.  It carries no `NEXT`.
+SHEET_BAR = "VIEW:ITEMS"
+
 
 class Status(NamedTuple):
     """The status line, read: where the party is and what time it is.
@@ -736,6 +765,150 @@ class Session:
                 self.kbd.key("Return")
                 return True
             self.kbd.key("Right" if span[0] < col else "Left")
+        return False
+
+    # -- the party panel, which is a menu ---------------------------------
+
+    def party_rows(self, s=None) -> list[int]:
+        """The screen rows the world panel lists a character on, in order.
+
+        Read under the panel's own `NAME  AC HP` heading rather than at fixed
+        rows, because the number of them is the party size and that is one of
+        the things a driven run is checking (`#104`).
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return []
+        head = None
+        for r in PARTY_ROWS:
+            if PARTY_HEADER in s.row(r)[PARTY_COLUMN:]:
+                head = r
+                break
+        if head is None:
+            return []
+        # Everything left of where `AC` starts is the name field; a row with
+        # nothing there is the panel's own frame rather than a character.
+        width = s.row(head)[PARTY_COLUMN:].index(PARTY_HEADER)
+        out = []
+        for r in PARTY_ROWS:
+            if r <= head:
+                continue
+            if s.row(r)[PARTY_COLUMN:PARTY_COLUMN + width].strip():
+                out.append(r)
+            elif out:
+                break   # the list is contiguous; what follows it is not a name
+        return out
+
+    def party_highlight(self, s=None) -> int | None:
+        """Which party slot the panel's highlight is on, or None.
+
+        The heading is drawn in the highlight colour too, which is why this
+        looks only at the rows `party_rows` found under it.
+        """
+        if s is None:
+            s = self.screen()
+        if s is None:
+            return None
+        rows = self.party_rows(s)
+        for i, r in enumerate(rows):
+            if s.colours[r * 40 + PARTY_COLUMN] == 1:
+                return i
+        return None
+
+    def select_party(self, index: int, timeout: float = 25.0) -> bool:
+        """Put the world panel's highlight on party slot *index*, 0 first.
+
+        **This is the whole of how a driven run reaches a character other
+        than the first one** (`#183`).  `VIEW` is not a list of names: it puts
+        up the sheet of whoever the panel is highlighting, and the sheet's own
+        bar is `VIEW:ITEMS EXIT` with nothing on it that changes character.
+        So the selection happens before `VIEW`, on the world screen, and it is
+        `Up` and `Down` that make it.
+
+        Driven by where the highlight actually is after each press, the same
+        way `select_row` is, so a swallowed keypress costs a pass round the
+        loop rather than putting every later count out by one.
+        """
+        deadline = time.time() + timeout
+        seen = False
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(0.3)
+                continue
+            rows = self.party_rows(s)
+            at = self.party_highlight(s)
+            if at is None:
+                self.handle_prompt(s)   # a disk prompt can sit over the panel
+                time.sleep(0.3)
+                continue
+            seen = True
+            if not 0 <= index < len(rows):
+                self.log(f"  the panel lists {len(rows)} characters, so there "
+                         f"is no slot {index}")
+                return False
+            if at == index:
+                return True
+            self.kbd.key("Down" if at < index else "Up", 0.15, 0.30)
+        if not seen:
+            self.log("  no name in the party panel is highlighted, so no key "
+                     "was sent; this is not the world screen")
+        else:
+            self.log(f"  could not walk the panel highlight onto slot {index}")
+        return False
+
+    def character_sheet(self, index: int | None = None,
+                        timeout: float = 30.0,
+                        shot: str | None = None) -> list[str] | None:
+        """One character's `VIEW` sheet, verbatim, back at the world bar after.
+
+        `index` is the party slot, 0 first; None reads whoever the panel is
+        already highlighting.  `shot` is photographed while the sheet is still
+        up, which is the only moment it can be -- this leaves the sheet before
+        it returns, so a caller cannot take that picture itself.  Returns the
+        sheet's non-blank rows, or None if it never came up.
+        """
+        if index is not None and not self.select_party(index):
+            return None
+        if not self.select_bar("VIEW", timeout=20):
+            self.log("  VIEW could not be selected on the world bar")
+            return None
+        deadline = time.time() + timeout
+        lines = None
+        while time.time() < deadline:
+            s = self.screen()
+            # The name row fills in after the bar does, so wait for both --
+            # a sheet read on the first screen that says `VIEW:ITEMS` comes
+            # back half drawn.
+            if s is not None and SHEET_BAR in s.row(24) and s.row(1).strip():
+                time.sleep(0.6)
+                s = self.screen()
+                if s is not None:
+                    lines = [line.rstrip() for line in s.rows() if line.strip()]
+                    if shot:
+                        self.kbd.screenshot(shot)
+                    break
+            time.sleep(0.3)
+        if lines is None:
+            self.log("  no character sheet came up after VIEW")
+        self.leave_sheet()
+        return lines
+
+    def leave_sheet(self, tries: int = 3) -> bool:
+        """`EXIT` off a character sheet, by name.
+
+        Asked for by name and never by pressing Return at whatever happens to
+        be highlighted: the sheet's bar starts on `ITEMS`, and `ITEMS` opens
+        the item list that re-arms itself -- choosing its `EXIT` returns to
+        the bar and the next `Return` drops straight back in
+        (`docs/70-driving-the-game.md`).
+        """
+        for _ in range(tries):
+            if self.select_bar("EXIT", timeout=8):
+                time.sleep(1.0)
+                return True
+            self.leave_move(2)
         return False
 
     # -- the game ---------------------------------------------------------

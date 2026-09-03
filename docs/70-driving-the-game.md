@@ -221,6 +221,50 @@ Three things made this look like a wedge:
 Do not conclude "wedged" because row 24 lacks the label you wanted. Match
 `PRESS <RETURN>` and `YES NO` and answer them.
 
+### Reading a character sheet — the party panel is the menu
+
+**`VIEW` shows whichever name the party panel is highlighting, and `Up` and
+`Down` on the world screen are what move that highlight.** That is the whole
+answer to `#183 (Nothing knows how to reach the other five character sheets in
+a driven session)`, and it means the character is chosen *before* `VIEW`
+rather than after it.
+
+The panel is not a read-out. One of its names is drawn in colour 1 and the
+rest in colour 3, exactly like every other menu in the game — measured on pool
+slot 0 against `PORSAVE13.D64` on 2026-09-03:
+
+| what was pressed | what happened |
+|---|---|
+| `Down` on the world screen | the white row went BRUTUS → MAGNUS → SILAS → ROLAND → LADY KATHERINE → MALCYON, and once more **wrapped back to BRUTUS** |
+| `Up` | the same, backwards |
+| `VIEW` after each | that character's sheet, all six read in one session |
+| `EXIT` off a sheet | back to the world with the panel highlight left where it was |
+
+`Session.select_party`, `Session.party_rows`, `Session.party_highlight` and
+`Session.character_sheet` are that, and `tools/savecheck.py --view` reads
+every character the panel lists.
+
+**Nothing on the sheet itself changes character**, and this is the expensive
+half of the finding, because it is what three earlier runs assumed. The
+sheet's bar is `VIEW:ITEMS EXIT` with the highlight on `ITEMS`; there is no
+`NEXT` on it, and `tools/savecheck.py` used to step the party with one, so
+every run it drove read the first character and stopped. Pressed at a live
+sheet and **none of them did anything at all**: `Up`, `Down`, `N`, `P`, `+`,
+`-`, `>`, `<`, space, Tab, `F1`, `F3`, `F5`, `F7`, `.`, `,`, `/`, `*`, `@`,
+`:`, `;`, `=` and the digits `1` to `6`.
+
+That ladder could not have found anything, and the reason is already in this
+file: **`$306D` is the menu key reader and it accepts eleven keys** — `<`,
+`,`, CRSR-up, `>`, `.`, CRSR-down, CRSR-left, CRSR-right, `$0D`, `$5F` and the
+joystick. There is no such thing as a command on a bar that is not printed on
+it.
+
+**Row 14 is the status line and it starts in the panel's own name column**, so
+"every non-blank row under the header" reads `W 21:15 15,4` as one more
+character. `Session.PARTY_ROWS` stops at 12 for that reason; eight names fill
+rows 4 to 11.
+
+
 ## Driving a fight
 
 `tools/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`

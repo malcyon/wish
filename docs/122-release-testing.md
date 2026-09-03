@@ -867,9 +867,30 @@ checking.
   points per character. Count the rows: a DOS save holds six characters and a
   C64 save eight, so a **seventh name is a fault** (`#104 (A converted DOS
   party arrives with the template save's spare characters still in it)`);
-* one **character sheet**, through `VIEW`. Every line of it is in the `--sheet`
-  output: sex, race, age, alignment, class, the six abilities, the money by
-  coin type, level, experience, hit points, armour class, THAC0.
+* **every character's sheet**, through `VIEW`. Every line of one is in the
+  `--sheet` output: sex, race, age, alignment, class, the six abilities, the
+  money by coin type, level, experience, hit points, armour class, THAC0.
+
+**All six, not one.** This step read the first character's sheet and took the
+rest on trust until 2026-09-03, and that is the wrong sixth of the check to
+make: the faults this project has actually shipped — an armour class of 9
+displayed as 51, a dropped combat tail, a garbage weapon line — passed every
+byte-level check there was and were visible only on a sheet. The party panel
+above carries armour class and hit points and nothing else, so five characters
+were being checked on two numbers.
+
+The party panel is the selector: one of its names is drawn in the highlight
+colour, `Up` and `Down` move that highlight, and `VIEW` puts up whoever
+carries it. `#183 (Nothing knows how to reach the other five character sheets
+in a driven session)` is where that was measured;
+`docs/70-driving-the-game.md` carries the keys, and the driven form is
+
+```sh
+tools/savecheck.py --disk work/NEWJ.D64 --slot N --view
+```
+
+with `--view` taking no number, which reads every character the panel lists
+and says so if it read fewer.
 
 A negative armour class is right and is worth looking at twice — `AC -3` for a
 fighter in plate mail with a shield and 18 dexterity. An armour class in the
