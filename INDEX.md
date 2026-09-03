@@ -15,7 +15,7 @@ What each directory in this repository is for.
 | `packaging/` | The PyInstaller entry script and the Windows console-borrowing shim. |
 | `assets/` | Shipped non-code files — the application icons and the `.desktop` entry. |
 | `images/` | The screenshots the README links. |
-| `designer/` | A launcher for Qt Designer, for editing `editor/character.ui`. |
+| `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
 | `.claude/agents/` | The subagent definitions -- each one a model, a tool list and a system prompt for a kind of work this project keeps handing out. Tracked; the rest of `.claude/` is local state and is gitignored. |
 | `work/` | Scratch: disk images, dumps, analysis runs. **Gitignored**, and where anything derived from the game lives so it never enters the repository. |
 | `build/` | PyInstaller's intermediate output. Gitignored. |

@@ -1,7 +1,8 @@
 # Versioning, packaging and CI
 
-**Status: built.** Versioning, three workflows and a PyInstaller spec are in the
-tree. No tag has been pushed yet, so no release page exists.
+**Status: built and released.** Versioning, three workflows and a PyInstaller
+spec are in the tree. `v0.1.0`, `v0.1.1` and `v0.1.2` have been tagged and
+pushed, each with its own GitHub release page and PyPI upload.
 
 ---
 
@@ -209,9 +210,9 @@ leave a half-made release page behind it.
 | the Windows zip runs with no Python | **unverified.** There is no Windows machine here |
 | the Linux build runs on another distribution | **unverified** |
 | CI is green on a checkout with no game disks | **unverified as a whole**; locally, disks hidden, 539 pass and 30 skip |
-| a release page carries every artefact | **unverified** — no tag has been pushed |
+| a release page carries every artefact | verified — `v0.1.2`'s GitHub release carries `SHA256SUMS`, the Linux tarball, the Windows zip and the wheel |
 | the wheel and sdist come out named `wish_goldbox-*` | verified — `python3 -m build` on 2026-08-22 produced `wish_goldbox-0.0.1.dev173+gba225aeab.d20260822-py3-none-any.whl` and the matching `.tar.gz` |
-| Trusted Publishing uploads to PyPI | **unverified** — no tag has been pushed, and the publisher has still to be registered on PyPI |
+| Trusted Publishing uploads to PyPI | verified — `wish-goldbox` on PyPI carries `0.1.0`, `0.1.1` and `0.1.2` |
 
 Two known failures waiting for CI, neither of them the packaging's:
 

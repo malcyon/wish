@@ -10,7 +10,7 @@ actually backed by — and what it would take to back the rest.
 |---|---|---|
 | Does a test plan for this exist? | **No.** `docs/120` and `docs/121` are *decoding* plans for a second and third title; `docs/122` is packaging. Nothing enumerates the shipped features against a title | CONFIRMED, read |
 | Is `docs/144-decoding-a-new-title.md` that plan? | **No.** It is the recipe for decoding a title the project has not done yet. Its nineteen steps end at "a mapper you can believe" and never mention the editor, the CLI, the live actions, Fast Travel or Level Up | CONFIRMED, read |
-| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 23.** §2 | CONFIRMED, cited per row |
+| How much of the README promise is verified? | **49 features. Pool of Radiance 48 verified, Curse 28, Silver Blades 25.** §2 | CONFIRMED, cited per row |
 | Where is the promise thinnest? | **The live actions.** Reader and writer are both per-title now (#29): every address in `automap/live.py`, `automap/target.py` and `automap/actions.py` comes off the `Game` descriptor. What is left is the loader's mode flag, which is outside the save image and measured on Pool of Radiance alone — so the five buttons **refuse** on Curse and Silver Blades rather than write, and nobody has yet watched them work on either | CONFIRMED, `goldbox/games.py:Game.mode_flag`, `tests/test_actions.py` |
 
 The honest one-line version: **the file path works on three titles, the live
@@ -125,7 +125,7 @@ applicable.
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
 | Curse of the Azure Bonds | 49 | **28** | 2 | 14 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **24** | 2 | 17 | 1 | 5 |
+| Secret of the Silver Blades | 49 | **25** | 3 | 16 | 0 | 5 |
 
 **These numbers are counted from the rows above and the previous ones were
 not.** The table said Curse 24 and Silver Blades 16 where the rows read 24 and
@@ -133,6 +133,13 @@ not.** The table said Curse 24 and Silver Blades 16 where the rows read 24 and
 `V (gold only)` under A8 and the two `U, expected broken` cells under C10 and
 C11 as `U`, which is what they are, every row is now in exactly one column and
 each title's five add to 49.
+
+**Silver Blades' own two numbers above, and the §0 summary, are a fresh count,
+not the ones this table carried when it was written.** `#196 (The
+automapper's condition badges name a Silver Blades trait with Pool of
+Radiance's meaning)` (row C13) turned one more `U` into `R` since `#31` last
+counted these rows, without anyone returning to update the totals here — the
+table said 24 `V` and 2 `R` where the rows now read 25 and 3.
 
 #31 moved eight of them, all by reading files this project already opens:
 A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to

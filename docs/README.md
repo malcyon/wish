@@ -58,7 +58,7 @@ Reverse-engineering notes for Pool of Radiance (Commodore 64), supporting the
 | [129-one-binary.md](129-one-binary.md) | folding `wish-cli` into the one `wish` executable — built |
 | [130-preferences.md](130-preferences.md) | `File > Preferences…` (`Ctrl+,`): where the game disks are, which live backend, the debug log — built |
 | [131-fastloader.md](131-fastloader.md) | whether answering the fastloader prompt Y or N changes anything — measured; it does not |
-| [132-logo.md](132-logo.md) | the app icon: Font Awesome's `hat-wizard`, generated from `ui/icons.py` — built and wired |
+| [132-logo.md](132-logo.md) | the app icon: game-icons.net's `pointy-hat` (Lorc), generated from `ui/icons.py` — `hat-wizard` was the original stand-in and is superseded, `#167` — built and wired |
 | [133-active-effects.md](133-active-effects.md) | editing active effects: the `SAVEDGAME0` arrays distinct from the record's traits, and what the UI to edit them would need — planned |
 | [134-commissions.md](134-commissions.md) | the council's ledger, its progress markers, the offer board and the byte two scripts share |
 | [135-levelling.md](135-levelling.md) | what the training hall writes, routine by routine, and the button that does it without walking there |
@@ -99,7 +99,7 @@ dragging in throwaway discovery scripts.
 | `automap/` | everything that reads a *running* machine, quarantined here so the first decision below is structural rather than a convention |
 | `wish/` | the one window: two tabs, the single shared live connection, the backend registry, and `File > Preferences…`. See [99-one-window.md](99-one-window.md) and [130-preferences.md](130-preferences.md) |
 | `ui/` | drawing code both the editor and the map need, owned by neither |
-| `designer/` | the Qt Designer `.ui` forms, loaded at runtime |
+| `designer` | a launcher script for Qt Designer, opening `wish/window.ui` |
 | `packaging/` | the PyInstaller entry points and the Windows console-stream repair |
 | `tools/` | discovery scripts — dumps, diffs, generators, experiment runners. `tools.wish` is the body of the `wish export`/`wish import` subcommands and `tools.genui` runs at window startup, so the package ships even though the rest of it is scaffolding; [129-one-binary.md](129-one-binary.md) is the CLI folded into `wish` itself |
 | `work/` | scratch disk copies — `.gitignore`d, and where every disk image belongs |

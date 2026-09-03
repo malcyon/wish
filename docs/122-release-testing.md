@@ -1,11 +1,14 @@
 # Testing the release packages by hand
 
 **Status: the Linux half was run on 2026-08-22, and the first Windows run
-followed the same day.** No tag has been pushed, so none of it has been done
-against a real release page — the Linux run used artefacts built locally by
-`§0b`, at version `0.0.1.dev165+g24a77e835.d20260822`. `§7` says which rows each
-run covered, and each Linux section carries a note saying what was actually
-watched. Anything without such a note is still expectation.
+followed the same day.** No tag had been pushed at the time, so none of it was
+done against a real release page — the Linux run used artefacts built locally
+by `§0b`, at version `0.0.1.dev165+g24a77e835.d20260822`. `v0.1.0`, `v0.1.1` and
+`v0.1.2` have since been tagged and pushed, each with its own release page
+(`docs/106-releases.md`), but this walkthrough has not been re-run against one.
+`§7` says which rows the 2026-08-22 run covered, and each Linux section
+carries a note saying what was actually watched. Anything without such a note
+is still expectation.
 
 **The Windows run answered the console questions and found four real defects.**
 `wish.exe` from Explorer opens the window with no console anywhere behind it,

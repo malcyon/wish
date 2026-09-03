@@ -1579,14 +1579,21 @@ Stated out loud, so nobody is surprised and nobody tries.
    logic, which would make "PoD accepted our save disk" weaker evidence than it
    looks. Run phase 2 against the untagged rip and repeat it on a second rip
    before believing it.
-7. **FS-UAE is not VICE.** There is no binary monitor with the shape
-   `automap/vice.py` expects, so none of the live-memory technique in
-   `docs/144-decoding-a-new-title.md` transfers. The mitigation is that **phase 4 does
-   not need live memory** — differential *saves* are files, and the emulator is
-   only needed to produce them. Anything that does want live memory (a PoD
-   automapper) is a separate project and is out of scope here. Kickstart ROMs
-   are present at `/home/donald/FS-UAE/Kickstarts` (1.3 and 3.1), so booting is
-   not itself a blocker.
+7. ~~**FS-UAE is not VICE, and no live-memory path exists on the Amiga
+   side.**~~ **Half-answered, as of 2026-09-03.** FS-UAE still has no binary
+   monitor. But `docs/143-winuae-debugger.md` drives WinUAE from Linux instead
+   — boot, halt, memory reads, watchpoints, breakpoints and single-stepping,
+   unattended, over `winvm` and `tools/winuae.ps1` — and that path has been run
+   for real (`#91`), reliably as far as its own §8. What it has **not** been run
+   against is *Pools of Darkness* or *Secret of the Silver Blades*
+   specifically — everything exercised so far is Pool of Radiance. Phase 4 of
+   this plan still does not need it: differential *saves* are files, and the
+   emulator is only needed to produce them. A PoD automapper is still a
+   separate project and out of scope here, but it is no longer blocked on a
+   missing debugger — it is blocked on nobody having pointed this one at PoD.
+   Kickstart ROMs are present at `/home/donald/FS-UAE/Kickstarts` (1.3 and 3.1)
+   for FS-UAE, and at `C:\Amiga\Kickstarts` in the WinUAE guest, so booting is
+   not itself a blocker either way.
 8. ~~**Nothing here has been run against a real emulator yet.**~~ Phase 2 has
    run (P51). What has **not** been checked is blocker 6's cross-rip repeat —
    everything observed is on the single untagged rip.
@@ -1596,11 +1603,13 @@ Stated out loud, so nobody is surprised and nobody tries.
 ## 9. What is explicitly not in this plan
 
 * **Automapping Pools of Darkness.** Donald's story has Wish mapping all four
-  games, but PoD on the Amiga needs a live-memory path FS-UAE does not offer in
-  the shape this project uses, plus a `GLIB` container reader for `GEO.GLB`
-  and `ECL.GLB`. It is a separate document. Note one encouraging fact for
-  whoever writes it: PoD's `GEO.GLB` is 33 050 bytes for the whole game, so the
-  map family is small.
+  games, and it also needs a `GLIB` container reader for `GEO.GLB` and
+  `ECL.GLB`. **As of 2026-09-03 the live-memory path itself is no longer
+  missing** — `docs/143-winuae-debugger.md`'s WinUAE debugger reads, halts and
+  single-steps a running Amiga title — but nobody has pointed it at PoD, so
+  what memory it would read there is unmeasured. It is still a separate
+  document. Note one encouraging fact for whoever writes it: PoD's `GEO.GLB`
+  is 33 050 bytes for the whole game, so the map family is small.
 * **Amiga → C64.** One direction only, as with `117-save-conversion.md`. No
   C64 Pools of Darkness exists, so there is nowhere to go back to.
 * **Writing a `.pty` or a `Vault?.DAT`.** §3.

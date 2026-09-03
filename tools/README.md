@@ -1,9 +1,14 @@
 # tools
 
-Developer scripts, not shipped — the emulator harness, the instance pool, the
-disassembly and dump helpers, the code generators. Anything here may talk to a
-live emulator, an X server or the player's own disks, which is exactly why none
-of it is in `goldbox/`, `editor/` or `wish/`.
+Developer scripts, but the package ships anyway — the emulator harness, the
+instance pool, the disassembly and dump helpers, the code generators, and
+`tools.wish`/`tools.genui`, which `wish` reaches into at runtime
+(`tools.wish` is named explicitly in `wish.spec`'s `hiddenimports`, since it
+is the body of the `wish export`/`wish import` subcommands and no static scan
+sees the import that reaches it; `tools.genui` is imported directly by
+`wish/__main__.py`). Anything here may talk to a live emulator, an X server or
+the player's own disks, which is exactly why none of it is in `goldbox/`,
+`editor/` or `wish/`.
 
 **The 95 Python files under `work/` were swept on 2026-09-02** for
 `#181 (Ninety-five Python files sit under work/, and some of them are tools
