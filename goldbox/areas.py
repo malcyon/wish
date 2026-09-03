@@ -153,13 +153,15 @@ class Area:
     #: overland square it last stood on)`).
     #:
     #: **`confidence` below does not grade this field.** It is one grade for
-    #: the row and it was written for the area itself, so a row can read
-    #: CONFIRMED while its `overland` is inferred -- area 25's is, because no
-    #: script names an (x, y) in that window at all. The per-square grade is
-    #: in the comment beside each row. Anything that ever shows a confidence
-    #: to a user must not read this field's trustworthiness off `confidence`;
-    #: raised in the code review of #178 on 2026-09-02, when nothing displayed
-    #: it yet and the trap was one dropdown column away.
+    #: the row and it was written for the area itself, so a row could read
+    #: CONFIRMED while its `overland` was still inferred. All three are now
+    #: CONFIRMED in the running game -- a party arrived on each square and
+    #: walked off it -- but the two gradings remain separate things, and the
+    #: per-square evidence is in the comment beside the rows. Anything that
+    #: ever shows a confidence to a user must not read this field's
+    #: trustworthiness off `confidence`; raised in the code review of #178 on
+    #: 2026-09-02, when nothing displayed it yet and the trap was one
+    #: dropdown column away.
     overland: tuple[int, int] | None = None
     confidence: Confidence = Confidence.UNKNOWN
     #: Names for individual maps of a two-map area, where the second map is a
@@ -267,13 +269,29 @@ AREAS: tuple[Area, ...] = (
     _a(23, "Yarash's Pyramid, Lower", 7, ("GEO17",), Arrival(15, 0, 2), P),
     _a(24, "Temple of Bane", 1, ("GEO18", "GEO1F"), Arrival(15, 4, 3), C),
     # `overland`: window-local (x, y), written to $49C3/$49C4 by a fast
-    # travel (#178). West Window PROBABLE -- no script names an (x, y) in
-    # this window; (14, 29) is the crossing column x and the row the other
-    # two windows' squares are on. Middle Window CONFIRMED -- ECL00 $9C04's
-    # WEST boat landing, and the only wilderness square a party has been
-    # watched standing on (DOS SAVGAMC, world 20,29). East Window
-    # CONFIRMED as script-named -- ECL00 $9C2E's EAST boat landing -- but
-    # never watched live.
+    # travel (#178).
+    #
+    # West Window CONFIRMED in the running game, 2026-09-02, by
+    # `tools/windowsquare.py` on pool slot 0: a fast travel out of the Slums
+    # with $49C3/$49C4 seeded (0, 0) came up on (14, 29) reading `OUTDOORS
+    # 21:15 14,29`, with the movement bar up and no event, and all eight
+    # compass digits walked the party off it. No script names an (x, y) in
+    # this window at all, so until that run the square was argued from the
+    # crossing column and the row the other two windows use.
+    #
+    # Middle Window CONFIRMED -- ECL00 $9C04's WEST boat landing, watched in
+    # the same run: arrived on (7, 29) and walked off it north, north-east,
+    # east, west and north-west.
+    #
+    # East Window CONFIRMED -- ECL00 $9C2E's EAST boat landing, watched in
+    # the same run: arrived on (9, 29) and walked off it north, north-east,
+    # west and north-west.
+    #
+    # **Both are event squares and the West one is not.** Arriving on (7, 29)
+    # or (9, 29) draws the boat and asks whether to sail back to Phlan, and
+    # the player answers STAY before walking anywhere; each window's script
+    # words that question differently, so they are two events and not one.
+    # Arriving on (14, 29) puts up the movement bar and nothing else.
     _a(25, "Wilderness, West Window", 6, ("GEO19",), None, C,
        sqrdata="SQRDATA04", overland=(14, 29)),
     _a(26, "Wilderness, Middle Window", 7, ("GEO1A",), None, C,
