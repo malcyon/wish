@@ -326,6 +326,46 @@ Three facts from the same session, so nobody pays for them twice:
   What made VICE go quiet for five seconds in the first place is still
   **UNKNOWN**.
 
+## The travel grid: no fix at all, and a stale marker
+
+**CONFIRMED in the running game, 2026-09-03, both ways in** -- `tools/mapmarker.py`
+on pool slot 2, photographing the real map tab after every step. `party_fix`
+produces **nothing** while the party is on the overland travel grid, so
+`Automapper.poll` returns before anything is recorded and `AutomapState` keeps
+its last square, facing and `Geo`.
+
+| what the game shows | what the map shows |
+|---|---|
+| `OUTDOORS 21:16 7,29` one step after leaving the Slums | `(14,4) facing W`, `The Slums`, marker on the square the party left |
+| `OUTDOORS 22:02 7,28` on a save that starts outdoors | an empty grid, `square --`, `identifying...` |
+
+Neither source survives out there:
+
+* the **status line** is refused by `_plausible`, which caps y at `GRID` = 16 --
+  a dungeon's size -- while wilderness y runs to 28 and 29;
+* the **fallback**, `Game.live_position` = `$C04B`, reads `4C 2F C5` outdoors,
+  unchanged over four steps: `DUNGEON` is not the resident overlay there, so
+  those are somebody else's code bytes and not a triple. Indoors the same three
+  read `0F 04 03` then `0E 04 03`, matching the status line, while `$49C0`
+  lagged a move at `0F 04 03`.
+
+`RE_STATUS` also still takes the final `S` of `OUTDOORS` for a facing -- the
+`#189 (The emulator driver cannot move a party on the travel grid, and reads
+its facing out of the word OUTDOORS)` fault, fixed in `tools/session.py` and
+not here -- but that is not what
+decides the outcome: the fix is discarded on y before the facing is used.
+
+And because `poll` returns on `fix is None` **before** `_ticks` is incremented,
+`_check_resident` never runs outdoors: `$0400` is not re-read, the area is never
+re-identified, and `title_check` stays `UNKNOWN`. That is why a window opened on
+an outdoor party says `identifying...` for ever.
+
+Everything else on the tab is unaffected -- the roster, the clock and the Quest
+Log keep up, because `poll_live` reads its own blocks. Drawing the world itself
+is [113-world-map.md](113-world-map.md), researched and unbuilt; what a player
+sees today is `#205 (A party that walks out onto the travel grid leaves the
+automapper's marker behind)`.
+
 ## Still open
 
 * **The multi-class experience split.** A card draws one bar per class, each
