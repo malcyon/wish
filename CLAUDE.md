@@ -1406,10 +1406,24 @@ not read in order.
 
 **`work/` is backed up to OneDrive by a `Stop` hook, and that is not a reason
 to leave anything valuable there.** `.claude/hooks/backup-work.sh` writes a
-dated `tar.zst` to `/data/OneDrive/wish-work/` at most once every ten minutes,
-keeps the last fourteen, and pushes that one folder with
+dated `tar.zst` to `/data/OneDrive/wish-work/`, which is the OneDrive root's
+`wish-work` folder, and pushes that one folder with
 `onedrive --sync --single-directory` -- the systemd service stays masked,
-which is Donald's setting, and the other 282G is untouched. It runs detached
+which is Donald's setting, and the other 282G is untouched.
+
+**It runs on `Stop` and on `SessionStart`.** `Stop` fires at the end of every
+turn, which is far too often, so a stamp file caps it at one snapshot per ten
+minutes; `SessionStart` catches the beginning of a night before anything has
+changed. Neither is cron, because this machine is not always on and a hook
+fires exactly when it is.
+
+**Retention keeps the last fourteen snapshots *and* the first snapshot of each
+of the last thirty days**, and the second half is the part that matters. The
+first version kept only the last fourteen, which at a ten-minute cadence is
+about two hours of history -- so a deletion nobody noticed for an evening would
+have rolled the good copies off the end while the hook faithfully snapshotted
+the empty directory. That is the exact failure this exists to survive. Donald
+asked how often the hook fired, which is what turned it up. It runs detached
 so it never delays a turn; a snapshot of the whole directory is about 25MB and
 takes twenty seconds.
 
