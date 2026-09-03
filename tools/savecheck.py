@@ -47,6 +47,7 @@ sys.path.insert(0, str(TOOLS))
 
 import session as S  # noqa: E402
 
+from automap import combat as C  # noqa: E402
 from automap.paths import find_disks  # noqa: E402
 
 #: Where the player keeps the C64 game disks.  Read only.
@@ -235,7 +236,7 @@ def floor(sess) -> list[str]:
             for r in FLOOR_ROWS]
 
 
-def combatants(sess) -> list[tuple[int, int, bytes]]:
+def combatants(sess, s=None) -> list[tuple[int, int, bytes]]:
     """Every 3x3 block of nine **consecutive** screen codes on the screen.
 
     That is what a figure on the combat floor is, and it is not the icon's
@@ -249,7 +250,8 @@ def combatants(sess) -> list[tuple[int, int, bytes]]:
 
     Returns `(row, column, codes)`.
     """
-    s = sess.screen()
+    if s is None:
+        s = sess.screen()
     if s is None:
         return []
     out = []
@@ -261,6 +263,88 @@ def combatants(sess) -> list[tuple[int, int, bytes]]:
             if block[0] > 0x20 and list(block) == list(
                     range(block[0], block[0] + 9)):
                 out.append((r, c, block))
+    return out
+
+
+def roll_call(sess) -> dict:
+    """Who the engine has in the fight, out of its own combatant table.
+
+    The floor scan can only ever count what is **drawn**, and the game draws a
+    7x7 window (`automap.combat.VIEW`, `COM.PREP $08C6 LDA #$07`) onto a map
+    that has been 56x26 in every fight read here.  So "four figures for a party
+    of six" is not by itself a fault: two members standing more than six
+    squares from the camera's corner are off the drawn portion and there is
+    nothing wrong with them.
+
+    `read_battle` settles it without an inference.  The position table says
+    where all `count` combatants are, `$FF` says a combatant has left the map
+    altogether, and `$037E` is the window's own top-left square -- so a member
+    that is absent from the floor can be told apart three ways: outside the
+    window, off the map, or not in the table at all.  Only the last two are
+    defects, and only the last would be the conversion's (`#185`).
+
+    Returns the counts and a row per party member; `{}` if there is no
+    readable fight.
+    """
+    battle = sess.battle()
+    if battle is None:
+        return {}
+    x0, y0 = battle.camera
+
+    def inside(c) -> bool:
+        return (c.on_map and x0 <= c.x < x0 + C.VIEW
+                and y0 <= c.y < y0 + C.VIEW)
+
+    party = [{"index": c.index, "name": c.name.strip(), "x": c.x, "y": c.y,
+              "on_map": c.on_map, "hp": c.hp, "alive": c.alive,
+              "in_window": inside(c)}
+             for c in battle.party]
+    return {
+        "map": [battle.shape.width, battle.shape.height],
+        "camera": [x0, y0],
+        "view": C.VIEW,
+        "count": battle.shape.count,
+        "party": party,
+        "party_size": len(party),
+        "party_on_map": sum(1 for c in party if c["on_map"]),
+        "party_in_window": sum(1 for c in party if c["in_window"]),
+        "enemies": len(battle.enemies),
+        "enemies_in_window": sum(1 for c in battle.enemies if inside(c)),
+    }
+
+
+def undrawn(roll: dict, blocks: int) -> list[str]:
+    """The complaint a floor scan on its own cannot make.
+
+    `--icon` counted the figures it found and said nothing about how many it
+    should have found, so a converted party of six that draws four was reported
+    as a pass (`#185`).  What it is compared against is **not** the party size
+    -- that would fail on every fight where somebody is legitimately outside
+    the 7x7 window -- but the number the position table says are inside it.
+
+    **Only a shortfall is reported.**  The screen and the position table are
+    two reads a few milliseconds apart, and the camera moves between one
+    combatant's turn and the next, so the screen can still be carrying the
+    figures from before a scroll: on the engine-written Sokol Keep control
+    (`work/p185/SOKOLENG.log`) 27 of 30 turns matched exactly and the other
+    three drew **two more** than the table put in the window, never fewer.  An
+    extra figure is that frame and is not a fault anybody could have; a missing
+    one is the thing being looked for.
+    """
+    if not roll:
+        return ["The fight's combatant table could not be read, so the "
+                "figures on the floor were not checked against it"]
+    out = []
+    want = roll["party_in_window"] + roll["enemies_in_window"]
+    if blocks < want:
+        out.append(f"The floor drew only {blocks} figures where the combatant "
+                   f"table puts {want} inside the {roll['view']}x{roll['view']}"
+                   f" window ({roll['party_in_window']} of the party, "
+                   f"{roll['enemies_in_window']} enemies)")
+    gone = [c for c in roll["party"] if not c["on_map"]]
+    if gone:
+        out.append("Off the map altogether: "
+                   + ", ".join(c["name"] or f"#{c['index']}" for c in gone))
     return out
 
 
@@ -313,6 +397,30 @@ def icon_evidence(sess, icon: bytes) -> dict:
             out["distinct_figures"].append(shape)
     out["distinct_figures"] = len(out["distinct_figures"])
     return out
+
+
+def watch_turns(seen: list) -> object:
+    """A fight tactic that takes a roll call every time the party is asked.
+
+    The floor is read once, before the first blow, and one reading cannot show
+    the thing `#185` turns on: that the seven-square window **moves**, so which
+    party members are drawn changes from turn to turn while the party itself
+    does not.  Watching every command bar is what turns "they were probably
+    off the window" into a measurement -- a turn where the table puts five of
+    six inside the window and the floor draws five party figures says it
+    outright.
+
+    Passes the turn, which is `Session.fight`'s own default: this is here to
+    look, not to play.
+    """
+    def tactic(sess, state):
+        s = sess.screen()
+        roll = roll_call(sess)
+        if roll:
+            roll["blocks"] = len(combatants(sess, s))
+            seen.append(roll)
+        return sess.combat_turn()
+    return tactic
 
 
 def run(args, log: Log) -> int:
@@ -381,6 +489,21 @@ def run(args, log: Log) -> int:
                 for line in lines:
                     log.say(f"    {line}")
 
+        if args.resave:
+            # The control `#185` wanted and nobody had: the **engine's** own
+            # save of the party now standing here.  `ENCAMP > SAVE` writes over
+            # the slot's copy of the disk -- never the player's -- so what
+            # comes out is the same party in the same place with every byte
+            # written by the game, which is the one thing a converted save
+            # cannot be compared against any other way.
+            ok = sess.save_game()
+            log.emit("resave", ok=ok, to=args.resave)
+            log.say(f"The game's own ENCAMP > SAVE wrote the party back: {ok}")
+            if ok:
+                shutil.copy(sess.save_disk, args.resave)
+                log.say(f"The engine-written disk is at {args.resave}")
+            sess.settle(3)
+
         was = area(sess)
         log.say(f"the resident area is {was}")
         for move in args.walk:
@@ -428,6 +551,24 @@ def run(args, log: Log) -> int:
                 for line in codes:
                     log.say(f"    {line}")
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-combat.png"))
+                roll = roll_call(sess)
+                log.emit("roll_call", **roll)
+                if not roll:
+                    log.say("The fight's combatant table could not be read")
+                else:
+                    log.say(f"The battlefield is {roll['map'][0]}x"
+                            f"{roll['map'][1]} and the game draws "
+                            f"{roll['view']}x{roll['view']} of it from "
+                            f"{roll['camera'][0]},{roll['camera'][1]}; the "
+                            f"table holds {roll['count']} combatants, "
+                            f"{roll['party_size']} of them the party")
+                    for c in roll["party"]:
+                        where = (f"{c['x']},{c['y']}" if c["on_map"]
+                                 else "off the map")
+                        log.say(f"    {c['index']}. {c['name'] or '?'} "
+                                f"at {where}, {c['hp']} hp, "
+                                f"{'in' if c['in_window'] else 'outside'} "
+                                f"the drawn window")
                 if args.icon:
                     icon = icon_bytes(pathlib.Path(args.disks))
                     found = icon_evidence(sess, icon)
@@ -440,12 +581,29 @@ def run(args, log: Log) -> int:
                                 f"pose match {row[3]}")
                     for row in found.get("top_row", []):
                         log.say(f"    glyphs at {row[0]},{row[1]}: {row[2]}")
-                r = sess.fight(budget=args.budget)
+                    # The count on its own is not a check: what says a figure
+                    # is missing is the combatant table, not the party size.
+                    for line in undrawn(roll, found.get("blocks", 0)):
+                        log.say(f"  ** {line}")
+                        log.emit("undrawn", complaint=line)
+                seen: list = []
+                r = sess.fight(budget=args.budget,
+                               tactic=watch_turns(seen) if args.icon else None)
                 log.emit("fight", outcome=r.outcome, turns=r.turns,
                          acted=r.acted, blows=r.blows, lines=r.lines,
                          evidence=r.evidence)
                 log.say(f"fight: {r.outcome} turns={r.turns} acted={r.acted} "
                         f"blows={r.blows}")
+                for n, roll in enumerate(seen, 1):
+                    log.emit("turn_roll", turn=n, **roll)
+                    log.say(f"  turn {n}: camera "
+                            f"{roll['camera'][0]},{roll['camera'][1]}; "
+                            f"{roll['party_in_window']} of "
+                            f"{roll['party_size']} party in the window, "
+                            f"{roll['enemies_in_window']} enemies, "
+                            f"{roll['blocks']} figures drawn")
+                    for line in undrawn(roll, roll["blocks"]):
+                        log.say(f"  ** {line}")
                 log.say(r.evidence)
                 sess.kbd.screenshot(str(log.dir / f"{args.tag}-fight-end.png"))
             else:
@@ -509,6 +667,9 @@ def main(argv=None) -> int:
                    help="give up looking for a fight after this many steps")
     p.add_argument("--budget", type=float, default=900.0,
                    help="seconds to give the fight")
+    p.add_argument("--resave", default=None,
+                   help="After arriving, have the game's own ENCAMP > SAVE "
+                        "write the party back, and copy that disk here")
     p.add_argument("--icon", action="store_true",
                    help="check the combat floor against the composed icon")
     p.add_argument("--route", action="store_true",

@@ -1055,15 +1055,31 @@ at all -- not scanned and missed, but absent from the floor, which
 
 So the honest sample across both fights is **10 of 10 party blocks that
 appeared matched the composed icon, and 0 of 17 monster blocks did**. The
-colour finding holds and is strengthened by the second fight. What is
-**UNKNOWN** is why two of six were not on the floor -- whether the battlefield
-was larger than the visible window, whether those two were placed out of view,
-or whether something about the conversion left them undrawn. Nothing here
-distinguishes those, and none of them was investigated.
+colour finding holds and is strengthened by the second fight.
 
-That last one would be a defect a player sees, so it is
-`#185 (Two of six party members were not drawn on the combat floor at Sokol Keep)`
-rather than a footnote.
+**The two that were not drawn were standing outside the window, and the
+conversion has nothing to do with it.** This paragraph said the reason was
+UNKNOWN until 2026-09-02, when it was measured:
+`#185 (Two of six party members were not drawn on the combat floor at Sokol Keep)`.
+The battlefield is **56 x 26** and the game draws a **7 x 7** window of it
+(`automap.combat.VIEW`, `COM.PREP $08C6 LDA #$07`), so a party member seven
+squares from the camera's corner is off the drawn portion and there is nothing
+wrong with them. `tools/savecheck.py` now reads the engine's own position table
+beside the floor, which says where every combatant is and where the window is
+(`$037E`).
+
+The control settles it. The party was converted, loaded, and then written back
+by **the game's own `ENCAMP > SAVE`**, so every byte of the save was the
+engine's; that disk was booted and fought at Sokol Keep, and it drew the same
+**four of six** — the same two absent, ASTRID at (29,14) and BRUTUS at (30,13),
+against a camera at (22,10) whose window ends at x 28. The screenshot of the
+control fight is pixel-identical to the converted one. A converted save cannot
+be the cause of something a save the engine wrote does identically.
+
+The screen code a figure is drawn from is `$5E + 9 * party slot`, which is what
+lets the original run be read back: its four blocks were `$5E` SILAS, `$70`
+GILES, `$79` ROLAND and `$82` MAGNUS, and the gaps at `$67` and `$8B` are
+ASTRID and BRUTUS. The engine had numbered all six.
 
 **An icon's own screen codes never appear on the combat floor**, and a first
 pass that searched for them found nothing and read like a failure. The six
