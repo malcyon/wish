@@ -1404,8 +1404,20 @@ not read in order.
 
 ## Temp Files
 
-**`work/` is backed up to OneDrive by a `Stop` hook, and that is not a reason
-to leave anything valuable there.** `.claude/hooks/backup-work.sh` writes a
+**`work/` is backed up to OneDrive on this machine, and that is not a reason
+to leave anything valuable there.**
+
+**It is deliberately Donald's machine only.** The script is tracked, so the
+technique survives and this section can point at it, but it is registered in
+`.claude/settings.local.json`, which is gitignored -- a fresh clone gets the
+citation hooks, which are project rules and right for anybody, and not this
+one. The script also refuses unless the destination's parent directory
+exists, which is the second lock for the case where somebody copies the
+registration too. Donald asked what would happen if another person cloned the
+repository and ran Claude Code on it, 2026-09-02: without that, a stranger's
+machine would tar up their `work/` and run `onedrive --sync` against **their**
+account. `$WISH_BACKUP_DEST` overrides the destination for anybody who does
+want it. `.claude/hooks/backup-work.sh` writes a
 dated `tar.zst` to `/data/OneDrive/wish-work/`, which is the OneDrive root's
 `wish-work` folder, and pushes that one folder with
 `onedrive --sync --single-directory` -- the systemd service stays masked,

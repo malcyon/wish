@@ -23,13 +23,27 @@
 set -euo pipefail
 
 SRC="${CLAUDE_PROJECT_DIR:-/home/donald/src/wish}/work"
-DEST="/data/OneDrive/wish-work"
+DEST="${WISH_BACKUP_DEST:-/data/OneDrive/wish-work}"
 STAMP="$DEST/.last"
 KEEP=14          # recent snapshots, whatever their date
 KEEP_DAYS=30     # plus the first snapshot of each of the last 30 days
 THROTTLE=$((60 * 60))   # Donald, 2026-09-02: "once an hour is enough"
 
+# **This machine only.** The script is tracked so the technique is not lost
+# and `CLAUDE.md` can point at it, but it is registered in
+# `.claude/settings.local.json`, which is gitignored -- so a fresh clone runs
+# the citation hooks (project rules, right for anybody) and not this one.
+#
+# The guard below is the second lock, for the case where somebody copies the
+# registration along with the file: without it, a stranger's Claude Code would
+# tar up their `work/` and run `onedrive --sync` against **their** account.
+# Uploading somebody's files to their cloud storage because they cloned a
+# repository is not a thing this should ever do.
+#
+# The test is the destination's parent existing, not a hostname, so it keeps
+# working if Donald renames the box and stays false everywhere else.
 [ -d "$SRC" ] || exit 0
+[ -d "$(dirname "$DEST")" ] || exit 0
 mkdir -p "$DEST"
 
 # Throttle: at most one snapshot per THROTTLE seconds, however many turns run.
