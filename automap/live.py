@@ -392,13 +392,23 @@ class Character:
     def class_text(self) -> str:
         """`MU/T`, and the class's own name for anything without a letter.
 
-        The four abbreviations are Pool of Radiance's four classes and are
-        Donald's wording. **Paladin, ranger and knight have no letter yet**
-        and get their name capitalised instead, which is the class's own word
-        rather than an invented one -- an abbreviation is a thing a player
-        reads, so it is his to choose (#197).
+        Every letter here is Donald's. `MU`, `F`, `C` and `T` are Pool of
+        Radiance's four; `P` and `R` he approved on 2026-09-02 when the
+        paladin and the ranger first reached a roster card (#197).
+
+        **`K` for the knight is the one he did not say**, and it is applied by
+        the same pattern rather than asked about, because no player can reach
+        it: `Game.live_position` is None for both Krynn titles, so the
+        automapper refuses a Krynn machine outright and no card is ever drawn.
+        If a Krynn title is ever supported, the letter wants confirming before
+        anybody sees it.
+
+        Anything else falls back to the class's own name capitalised, which is
+        the game's word rather than an invented one.
         """
-        abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C", "thief": "T"}
+        abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C",
+                   "thief": "T", "paladin": "P", "ranger": "R",
+                   "knight": "K"}
         return "/".join(abbrevs.get(c.name.lower(),
                                     c.name[:1].upper() + c.name[1:])
                         for c in self.classes) or "?"

@@ -207,6 +207,8 @@ def test_a_curse_paladin_gets_a_class_and_an_experience_bar():
     assert paladin.name == "paladin"
     assert paladin.level == 8
     assert paladin.next_threshold == 350_001
+    # `P` is Donald's letter, approved 2026-09-02 (#197).
+    assert _snapshot(CURSE, record).characters[0].class_text == "P"
 
 
 def test_the_ranger_takes_her_level_from_her_own_slot_and_not_the_level_byte():
@@ -226,7 +228,11 @@ def test_the_card_names_a_silver_blades_ranger_and_her_level():
     record = _record(class_bits=0x80, level_ranger=8, level=8,
                      experience=200_000)
     who = _snapshot(SSB, record).characters[0]
-    assert who.class_text != "?"
+    # `R` is Donald's letter, approved 2026-09-02 alongside `P` for the
+    # paladin. Pinned rather than asserted as "not ?", because it is a word a
+    # player reads and the earlier version of this test passed whatever the
+    # label said.
+    assert who.class_text == "R"
     assert who.level_text == "L8"
     assert len(who.classes) == 1
 
