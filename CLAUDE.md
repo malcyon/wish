@@ -1236,6 +1236,43 @@ automatically -- `<dir>/<name>.ui` becomes `<dir>/ui_<name>.py` -- and
 `ensure_current()` at startup regenerates anything stale. `--check` is what CI
 runs. A `.ui` added in a new directory needs a row in `genui.py`'s `UI_DIRS`.
 
+## Working unattended overnight
+
+**A turn that ends with nothing running is the end of the night.** This
+session works by being re-invoked: a subagent finishing, a background command
+exiting, a scheduled wake-up. When a turn ends with **no agent working and no
+background command pending**, nothing ever calls back, and the session sits
+idle until a human types something.
+
+That is how 2026-09-03 lost its small hours. The last turn said "running the
+suite at `HEAD` before pushing" and never started it -- no agent, no
+background command -- so four reviewed commits sat unpushed for hours while
+the session waited for an event that could not arrive. Donald: *"Apparently
+that didn't happen this time."*
+
+**The discipline, and it is the whole rule:** before ending a turn, check that
+at least one of these is true.
+
+* a subagent is running;
+* a background command is pending (`run_in_background`, or a `Monitor`);
+* a wake-up is scheduled.
+
+**"I will do X next" is not one of them.** An intention is not an event. If the
+next thing is a suite run, *start* it before the turn ends rather than
+promising it -- the promise is what breaks the chain.
+
+**The mechanism for an overnight run is `/loop`.** Invoked with no interval it
+self-paces, scheduling its own next wake-up, so the chain does not depend on an
+agent happening to be in flight. Without it, an overnight session is only as
+long as its longest-running subagent. Ask Donald to start the night that way
+rather than relying on the pipeline never emptying.
+
+**A killed background command is not a finished one.** Twice on 2026-09-02 and
+twice more on 2026-09-03 a backgrounded `pytest` came back `killed` rather than
+with a result. A long run belongs in the foreground with an explicit timeout --
+the suite takes about six minutes and the tool allows ten -- or it has to be
+checked for a real result rather than assumed to have passed.
+
 ## Ending a session, and starting the next one
 
 **The session is not the knowledge base and must never become it.** A fact
