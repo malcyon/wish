@@ -59,8 +59,8 @@ applicable.
 | A3 | 580-byte record decodes to sane fields | V | V | V | `test_curse.py::test_every_curse_character_parses_with_fields_a_person_would_recognise`, `test_silverblades.py::test_the_shipped_party_decodes_with_fields_a_person_would_recognise` |
 | A4 | record round-trips byte-identically | V | V | V | `test_curse.py::test_a_curse_character_export_round_trips_byte_for_byte`, `test_silverblades.py::test_every_slot_round_trips_byte_identically` |
 | A5 | race, class, alignment named in the sheet | V | V | V | `test_pertitle_ui.py::test_the_race_table_follows_the_title`, `…test_a_silver_blades_save_shows_its_own_races` |
-| A6 | saving throws satisfy the derived rule | V | V | **U** | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **SSB's rule is now measured and the cell still cannot go V**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone. That reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` — but `goldbox/levels.py` still has no Silver Blades tables, so the editor does not show them (#31, #187) |
-| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | **U** | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **All four measured for SSB and not built**: experience `GEN $162D` (6 x 19 x 3, big-endian, and it reproduces Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855` — `test_coldread.py`, five tests. Same blocker as A6 (#31, #187) |
+| A6 | saving throws satisfy the derived rule | V | V | V | `test_curselevels.py::test_curse_matches_ssis_own_pregenerated_party`. **Built (#187)**: `GEN $1148` and `$115C` give the level-1 rows and a two-bit-per-level improvement mask, `$11C0` takes 2 off every column for a paladin and `$11D8` takes `constitution * 2 / 7` off columns 0, 2 and 4 for race 3 alone, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`. Reproduces all six shipped characters' stored saves — `test_coldread.py::test_silver_blades_saving_throws_reproduce_ssis_own_party` and `…test_silver_blades_saves_match_the_modules_own_table` — and the sheet now shows them, via `automap/live.py:_classes` |
+| A7 | experience thresholds, ceilings, THAC0, hit dice | V | V | V | `test_curselevels.py::test_curse_experience_is_the_games_own_table` and six neighbours. **Built (#187)**: experience `GEN $162D` (6 x 19 x 3, big-endian, reproducing Curse's 61 overlapping thresholds), ceilings `$17D0`, THAC0 `$106F`/`$107F`/`$108F` with the fighter group computed `21 - fighting level`, hit dice `$1845`/`$184D`/`$1855`, all in `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` — `test_coldread.py` and `test_ssblevels.py` |
 | A8 | the seven money fields | V | V (gold only) | **U** | `docs/120` §5.2 — gold `0` → `777` read back off the game's own sheet; the other six purses untested on any title but PoR |
 | A9 | spellbook width | V | V | V | `test_silverblades.py::test_a_silver_blades_caster_writes_past_pool_of_radiances_spellbook`; **Curse is 13 and the game's own code says so** — `CAMP $2A25` walks spell ids to 100 and reads `LDA $7C78,X` with X at 12, `test_curse.py::test_camp_reads_curses_mask_as_far_as_spell_one_hundred`. No Curse specimen writes past `0x07C` and none has to (#31) |
 | A10 | spell names resolve | V | V | V | `test_curselevels.py::test_curse_reads_its_names_out_of_combat2`; **SSB's are resolved** — `goldbox/spells.py:SECRET_OF_THE_SILVER_BLADES`, `COMBAT2` at `$E000`, 194 entries, spells to 117, with `test_silverblades.py::test_silver_blades_keeps_its_spell_names_in_combat2_like_curse` and `…::test_ids_one_to_fifty_six_mean_the_same_spell_but_for_heal_and_harm` |
@@ -125,7 +125,7 @@ applicable.
 |---|---|---|---|---|---|---|
 | Pool of Radiance | 49 | **48** | 0 | 1 | 0 | 0 |
 | Curse of the Azure Bonds | 49 | **28** | 2 | 14 | 0 | 5 |
-| Secret of the Silver Blades | 49 | **22** | 2 | 19 | 1 | 5 |
+| Secret of the Silver Blades | 49 | **24** | 2 | 17 | 1 | 5 |
 
 **These numbers are counted from the rows above and the previous ones were
 not.** The table said Curse 24 and Silver Blades 16 where the rows read 24 and
@@ -137,9 +137,9 @@ each title's five add to 49.
 #31 moved eight of them, all by reading files this project already opens:
 A9 and A14 to `V` for Curse, A10, A12 and A14 to `V` for Silver Blades, A15 to
 `V` for Curse, and A16 to `V` for both after the row was corrected to say what
-it is about. A6 and A7 stayed `U` for Silver Blades with every number they need
-measured and written down, because the cells are about what the editor shows
-and `goldbox/levels.py` has no Silver Blades tables to show it from.
+it is about. A6 and A7 stayed `U` for Silver Blades at that point, with every
+number they need measured and written down but no `LevelTables` in
+`goldbox/levels.py` to show it from; #187 built one and moved both to `V`.
 
 Curse and Silver Blades each gained two `V` (C4, C9) and turned three `X` into
 `U` (C12–C14) when #29 and #30 landed, and a third when #21 closed C22. The
@@ -207,11 +207,16 @@ with the two that did not close.
   from `CAMP`'s and `DUNGEON`'s own loops rather than from a shipped party,
   which is all zeroes. A16, whose row also needed correcting.
 
-**A6 and A7 did not close, and it is not for want of measurement.** Every
-Silver Blades table those cells need is read and written into the matrix rows
-above, and the saving-throw rule reproduces all six shipped characters. What is
-missing is a `LevelTables` for the title in `goldbox/levels.py`, which is a
-build rather than a read — #187.
+**A6 and A7, closed by #187 (Silver Blades characters are shown Pool of
+Radiance's level progression).** Every Silver Blades table those cells need
+was read and written into the matrix rows above during #31, and the
+saving-throw rule reproduces all six shipped characters; what was missing was
+a `LevelTables` for the title in `goldbox/levels.py`, which #187 built --
+`SECRET_OF_THE_SILVER_BLADES`, checked row by row against `GEN` in
+`tests/test_coldread.py` and `tests/test_ssblevels.py`. Its trainer stays
+unread (thief-skill racial adjustment, constitution hit-point bonus, wisdom
+bonus spells, turning table), so `levels.trainer_measured` and
+`goldbox/levelup.py:plan` still refuse it.
 
 ### G2 — thread the save geometry into the live reader · code, no emulator
 

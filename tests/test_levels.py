@@ -275,8 +275,9 @@ def test_only_pool_of_radiances_trainer_has_been_measured():
         if game is games.POOL_OF_RADIANCE:
             continue
         assert not levels.trainer_measured(game), game.title
-    # Curse has tables and is still refused; Silver Blades has none and
-    # `for_game` hands back Pool of Radiance's, which is the silent case.
+    # Curse and Silver Blades both have tables now (#187) and are both still
+    # refused: having a table is not having read the trainer.
     assert levels.for_game(games.CURSE_OF_THE_AZURE_BONDS).key == \
         "curse-of-the-azure-bonds"
-    assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES) is levels.DEFAULT
+    assert levels.for_game(games.SECRET_OF_THE_SILVER_BLADES).key == \
+        "secret-of-the-silver-blades"

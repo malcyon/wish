@@ -534,9 +534,7 @@ def test_silver_blades_hit_dice_are_the_rulebooks():
     gen = _gen(SSB)
     assert _at(gen, SSB_HIT_DIE, 8) == [4, 8, 6, 10, 10, 0, 10, 8]
     assert _at(gen, SSB_FLAT, 8) == [1, 2, 2, 3, 2, 0, 3, 2]
-    rolled = _at(gen, SSB_LAST_ROLLED, 8)
-    for bit in (0, 1, 2, 3, 6, 7):
-        assert 10 <= rolled[bit] <= 12, bit
+    assert _at(gen, SSB_LAST_ROLLED, 8) == [12, 10, 11, 10, 10, 0, 10, 11]
 
 
 def test_silver_blades_thac0_is_the_rulebooks_and_the_fighter_is_computed():
@@ -558,9 +556,16 @@ def test_silver_blades_thac0_is_the_rulebooks_and_the_fighter_is_computed():
 
 
 def _ssb_improvement(gen, cls, column, level):
-    """The game's own loop: two bits a level out of a 32-bit word."""
+    """The game's own loop: two bits a level out of a 40-bit word.
+
+    **All five mask bytes, not four.** The fifth carries the thief's level
+    17-18 improvements -- with only four bytes the helper reproduces all six
+    shipped characters because no shipped thief is above level 8, which is
+    exactly the "plausible and wrong" failure that #187 (Silver Blades
+    characters are shown Pool of Radiance's level progression) found in it.
+    """
     mask = _at(gen, SSB_SAVE_MASKS + cls * 25 + column * 5, 5)
-    word = mask[0] | mask[1] << 8 | mask[2] << 16 | mask[3] << 24
+    word = sum(b << (8 * i) for i, b in enumerate(mask))
     total = 0
     for _ in range(level):
         low, word = word & 1, word >> 1
@@ -647,16 +652,225 @@ def test_only_the_dwarf_gets_silver_blades_constitution_save_bonus():
     assert bytes([0xCA, 0xCA]) in body, "it does not step two columns at a time"
 
 
-def test_a_silver_blades_party_still_has_no_level_tables_of_its_own():
-    """The measurements above are not in `goldbox/levels.py`, and A6 and A7
-    stay unverified until they are.
+def test_a_silver_blades_party_has_level_tables_and_its_trainer_is_still_unread():
+    """`goldbox/levels.py` has Silver Blades' own tables now (#187), and its
+    trainer is still refused -- the constitution hit-point bonus, the
+    thief-skill racial adjustment, the wisdom bonus spells and the turning
+    table remain unread or unattributed.
 
-    Written down as a test rather than as a sentence somewhere, because a
-    matrix cell that says "measured but not built" is the kind of thing that
-    quietly becomes "done". The day somebody adds the tables this fails, and
-    the failure is the reminder to move the two cells.
+    This test used to assert the opposite: that Silver Blades fell back to
+    Pool of Radiance's tables entirely, with a docstring saying the day the
+    tables landed the assertion would go red. It did, which was the point --
+    see #187 (Silver Blades characters are shown Pool of Radiance's level
+    progression).
     """
     from goldbox import levels
 
+    assert levels.for_game(SSB).key == levels.SECRET_OF_THE_SILVER_BLADES.key
     assert not levels.trainer_measured(SSB)
-    assert levels.for_game(SSB) is levels.for_game(POOL)
+
+
+# --- #187: every literal `goldbox/levels.py` holds for Silver Blades, ------
+# --- checked against `GEN` row by row rather than only against Curse's -----
+# --- overlapping levels (the test above the A6/A7 section already does that)
+
+def test_silver_blades_experience_matches_the_modules_own_table():
+    """All 93 rows (15+15+18+15+15+15), not just the 61 shared with Curse."""
+    from goldbox import levels
+
+    gen = _gen(SSB)
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    checked = 0
+    for row, name in enumerate(SSB_CLASSES):
+        values = _ssb_experience(gen, row)
+        for entry in tables.table(name):
+            assert values[entry.level - 1] == entry.experience, (name,
+                                                                 entry.level)
+            checked += 1
+    assert checked == 93, checked
+
+
+def test_silver_blades_thac0_matches_the_modules_own_table():
+    """The three packed rows and the computed fighter group, against the
+    rows `SECRET_OF_THE_SILVER_BLADES` actually holds."""
+    from goldbox import levels
+
+    gen = _gen(SSB)
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    checked = 0
+    for name, where in zip(("magic-user", "cleric", "thief"), SSB_THAC0):
+        for entry in tables.table(name):
+            assert 60 - _at(gen, where + entry.level, 1)[0] == entry.thac0, (
+                name, entry.level)
+            checked += 1
+    for name in ("fighter", "paladin", "ranger"):
+        for entry in tables.table(name):
+            assert entry.thac0 == 21 - entry.level, (name, entry.level)
+            checked += 1
+    assert checked == 15 + 15 + 18 + 15 + 15 + 15
+    assert coldread.fighter_thac0_is_computed(gen, SSB, BASE)
+
+
+def test_silver_blades_saves_match_the_modules_own_table():
+    """Every level to every class's ceiling, the five-byte mask expansion
+    against the row `SECRET_OF_THE_SILVER_BLADES` holds -- not only the six
+    shipped characters, which never reach a thief past level 8."""
+    from goldbox import levels
+
+    gen = _gen(SSB)
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    cls_index = {"magic-user": 0, "cleric": 1, "thief": 2, "fighter": 3}
+    checked = 0
+    for name in ("magic-user", "cleric", "thief"):
+        cls = cls_index[name]
+        for entry in tables.table(name):
+            got = tuple(
+                _at(gen, SSB_SAVE_ROW + cls * 5 + column, 1)[0]
+                - _ssb_improvement(gen, cls, column, entry.level)
+                for column in range(5))
+            assert got == entry.saves, (name, entry.level)
+            checked += 1
+    cls = cls_index["fighter"]
+    for entry in tables.table("fighter"):
+        got = tuple(
+            _at(gen, SSB_SAVE_ROW + cls * 5 + column, 1)[0]
+            - _ssb_improvement(gen, cls, column, entry.level)
+            for column in range(5))
+        assert got == entry.saves, entry.level
+        checked += 1
+    for paladin_entry, fighter_entry in zip(tables.table("paladin"),
+                                            tables.table("fighter")):
+        assert paladin_entry.saves == tuple(
+            v - 2 for v in fighter_entry.saves), paladin_entry.level
+        checked += 1
+    for ranger_entry, fighter_entry in zip(tables.table("ranger"),
+                                           tables.table("fighter")):
+        assert ranger_entry.saves == fighter_entry.saves, ranger_entry.level
+        checked += 1
+    assert checked == 15 + 15 + 18 + 15 + 15 + 15
+
+
+def test_silver_blades_hit_dice_match_the_three_arrays_through_the_module():
+    """The shape of `test_curse_hit_dice_come_from_the_games_three_arrays`,
+    for the six Silver Blades classes."""
+    from goldbox import levels
+
+    gen = _gen(SSB)
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    die = _at(gen, SSB_HIT_DIE, 8)
+    stop = _at(gen, SSB_LAST_ROLLED, 8)
+    flat = _at(gen, SSB_FLAT, 8)
+    bits = {"magic-user": 0, "cleric": 1, "thief": 2, "fighter": 3,
+           "paladin": 6, "ranger": 7}
+    for name, bit in bits.items():
+        roll_to = stop[bit] - 1
+        for entry in tables.table(name):
+            level = entry.level
+            expect = (min(level, roll_to) * die[bit]
+                     + max(0, level - roll_to) * flat[bit])
+            assert entry.hp_max == expect, (name, level)
+
+
+def test_silver_blades_attacks_match_the_modules_own_bands():
+    """`$13EF` and `$13F7` pinned, and `level >= n` -- not `level > n` --
+    against the rows the module holds for the three fighting classes."""
+    gen = _gen(SSB)
+    from goldbox import levels
+
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    three_to_two = _at(gen, 0x13EF, 8)
+    two_attacks = _at(gen, 0x13F7, 8)
+    assert three_to_two == [99, 99, 99, 7, 7, 99, 7, 8]
+    assert two_attacks == [99, 99, 99, 13, 99, 99, 13, 15]
+    bits = {"fighter": 3, "paladin": 6, "ranger": 7}
+    for name, bit in bits.items():
+        a, b = three_to_two[bit], two_attacks[bit]
+        for entry in tables.table(name):
+            expect = 1 if entry.level < a else 1.5 if entry.level < b else 2
+            assert entry.attacks == expect, (name, entry.level)
+
+
+def test_silver_blades_ceilings_and_racial_limits_match_the_module():
+    """`$17D0` against `ceilings`, `$17E0` rows 1-5 against `racial_limits`,
+    and row 6 (human) asserted to be the synthesised row rather than read."""
+    from goldbox import levels
+
+    gen = _gen(SSB)
+    tables = levels.SECRET_OF_THE_SILVER_BLADES
+    order = tables.class_order
+    caps = _at(gen, 0x17D0, 8)
+    for bit, name in enumerate(order):
+        if name is None:
+            continue
+        assert caps[bit] == tables.ceiling(name), name
+    where, guard = coldread.racial_limits(gen, SSB, BASE)
+    assert (where, guard) == (0x17E0, 6)
+    rows = dict(tables.racial_limits)
+    for code in range(1, guard):
+        assert rows[code] == tuple(_at(gen, where + (code - 1) * 8, 8)), code
+    # Row 6, the human, is not read: $178A refuses to index race 6 at all.
+    assert rows[6] == (levels.UNLIMITED, levels.UNLIMITED, levels.UNLIMITED,
+                       levels.UNLIMITED, 0, 0, levels.UNLIMITED,
+                       levels.UNLIMITED)
+
+
+def test_the_shipped_partys_saves_reproduce_through_the_module():
+    """The same six characters as
+    `test_silver_blades_saving_throws_reproduce_ssis_own_party` above, now
+    through `goldbox/levels.py:saving_throws` -- what the character sheet and
+    `goldbox/levelup.py` actually call -- rather than a hand-rolled
+    reproduction of the GEN masks."""
+    from goldbox import levels
+    from tests.test_silverblades import _party
+
+    sg0, _sg1 = _party()
+    checked = 0
+    for slot in sg0.characters:
+        record = slot.record
+        class_levels = {}
+        for field, name in (("level_magic_user", "magic-user"),
+                            ("level_cleric", "cleric"),
+                            ("level_thief", "thief"),
+                            ("level_fighter", "fighter"),
+                            ("level_paladin", "paladin"),
+                            ("level_ranger", "ranger")):
+            level = record.get(field)
+            if level:
+                class_levels[name] = level
+        stored = tuple(record.get(f) for f in
+                       ("save_paralysis", "save_petrification", "save_wands",
+                        "save_breath", "save_spell"))
+        got = levels.saving_throws(class_levels, record.get("race"),
+                                   record.get("constitution"), game=SSB)
+        assert got == stored, (record.name, got, stored)
+        checked += 1
+    assert checked == 6, f"the shipped party is six characters, not {checked}"
+
+
+def test_the_shipped_partys_cards_read_silver_blades_thresholds():
+    """MORGAINE, DOMINIC and EPONA each hold a level Pool of Radiance's tables
+    have no room for -- this is the test that fails if `automap/live.py`
+    passes `game` to `_classes` but `characters` forgets to pass it on."""
+    from automap import live
+    from tests.test_silverblades import _party
+
+    sg0, sg1 = _party()
+    characters = {c.name: c for c in live.characters(sg0, sg1)}
+
+    morgaine = next(c for c in characters["MORGAINE"].classes
+                    if c.name == "magic-user")
+    assert morgaine.next_threshold == 250001 and not morgaine.at_ceiling
+
+    dominic = next(c for c in characters["DOMINIC"].classes
+                  if c.name == "cleric")
+    assert dominic.next_threshold == 225001 and not dominic.at_ceiling
+
+    epona = next(c for c in characters["EPONA"].classes
+                if c.name == "fighter")
+    assert epona.next_threshold == 250001 and not epona.at_ceiling
+
+    # MALACHITE is the control: Pool of Radiance and Silver Blades agree at
+    # thief 8 / fighter 7, so this was already right before #187.
+    malachite = {c.name: c for c in characters["MALACHITE"].classes}
+    assert malachite["thief"].next_threshold == 110001
+    assert malachite["fighter"].next_threshold == 125001

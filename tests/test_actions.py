@@ -384,9 +384,11 @@ def test_levelling_a_character_in_another_title_refuses_and_writes_nothing():
                                   "death-knights-of-krynn",
                                   "gateway-to-the-savage-frontier"])
 def test_every_title_but_pool_of_radiance_is_refused_by_name(game):
-    """The other four have no tables at all, so `levels.for_game` falls back to
-    Pool of Radiance's -- which is exactly the silent wrong answer the blocker
-    is here to stop."""
+    """Curse and Silver Blades have level tables of their own now (#187); the
+    other three still have none at all, so `levels.for_game` falls back to
+    Pool of Radiance's. Either way `trainer_measured` refuses every one of
+    them, which is exactly the silent wrong answer the blocker is here to
+    stop."""
     from goldbox import games
 
     blockers = actions.level_up_blockers(None, games.by_key(game))

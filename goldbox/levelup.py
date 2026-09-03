@@ -119,9 +119,7 @@ def _tables_for(game):
     tables for. That is right for reading a spell name and wrong for writing a
     character record: every number `plan` writes -- thresholds, THAC0, saving
     throws, the hit die, thief skills, spell slots -- would be another game's,
-    and nothing on the way out would say so. Silver Blades is the live case,
-    and the old guard here (`not tables.thief_skills`) never fired for it,
-    because the fallback has thief skills.
+    and nothing on the way out would say so.
 
     Refusing is the visible half of the same rule `goldbox.spells.capacity`
     follows by returning nothing: an unread table shows as unread.
@@ -136,7 +134,7 @@ def _tables_for(game):
         raise CannotLevel(f"{key} has no level tables of its own; only "
                           f"{', '.join(t.title for t in levels.TITLES)} "
                           f"have been read")
-    if not tables.thief_skills:
+    if not levels.trainer_measured(tables):
         raise CannotLevel(f"{tables.title}'s trainer tables have not been read")
     return tables
 

@@ -11,23 +11,24 @@ different *kind* of table, so this module is data per title -- the same choice
 from AD&D 1st edition and then checked against them.** The tables the game
 carries, and where:
 
-| table | Pool of Radiance | Curse |
-|---|---|---|
-| experience | `GEN` `$1DB5`, parallel low/mid/high arrays, 9 wide | `GEN` `$136E`, 6 rows x 13 entries x 3 bytes **big-endian** |
-| class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same shape |
-| racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race |
-| THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead |
-| hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount |
-| spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` payload `0x88D`, magic-user 11 rows then cleric 10, x 5 |
-| saving throws | `GEN` `$1FA2` level-1 row then two per-column bitmasks at `$1FB6` and `$1FCA` | level-1 rows only, `GEN` `$0F49` |
-| racial save bonus | `GEN` `$2359`, `CON * 2 / 7` for the races flagged at `$2380` | -- |
-| thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | -- |
-| hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` |
-| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score | -- |
-| wisdom bonus spells | `GEN` `$10AD`, indexed by the score | -- |
-| turning level | `GEN` `$2399`, indexed by cleric level | -- |
+| table | Pool of Radiance | Curse | Silver Blades |
+|---|---|---|---|
+| experience | `GEN` `$1DB5`, parallel low/mid/high arrays, 9 wide | `GEN` `$136E`, 6 rows x 13 entries x 3 bytes **big-endian** | `GEN` `$162D`, 6 rows x 19 entries x 3 bytes big-endian, row stride `0x39` |
+| class ceiling | `GEN` `$1E5C`, 8 bytes in class-bit order | `GEN` `$15A1`, same shape | `GEN` `$17D0`, same shape |
+| racial class limit | `GEN` `$1E60`, 4 bytes a race | `GEN` `$15A9`, 8 bytes a race | `GEN` `$17E0`, 8 bytes a race, races 1-5 only ($178A refuses 6+) |
+| THAC0 | `GEN` `$1F1F`, 4 rows x 9, `LDA $1F1F,X` with `X = class * 9 + level` | `GEN` `$0E2C`/`$0E39`/`$0E46`, 13 wide, indexed by level; the fighter group is arithmetic instead | `GEN` `$106F`/`$107F`/`$108F`, packed (not strided) rows of `ceiling + 1`; the fighter group is `21 - level` at `$1045`, the same rule as Curse |
+| hit dice | -- (no class reaches the flat-hit-point rule) | `GEN` `$161E` die, `$1626` first flat level, `$162E` flat amount | `GEN` `$1845` die, `$184D` first flat level, `$1855` flat amount |
+| spell slots | `GEN` `$222C` cleric then `$224C` magic-user, 8 rows x 4 | `ECL65` payload `0x88D`, magic-user 11 rows then cleric 10, x 5 | not read (trainer input, #89) |
+| saving throws | `GEN` `$1FA2` level-1 row then two per-column bitmasks at `$1FB6` and `$1FCA` | level-1 rows only, `GEN` `$0F49` | `GEN` `$1148` level-1 rows, `$115C` a five-byte two-bit-a-level improvement mask a column, `$11C0` the paladin's -2 (code), `$11D8` the dwarf-only constitution bonus (code) |
+| racial save bonus | `GEN` `$2359`, `CON * 2 / 7` for the races flagged at `$2380` | -- | `GEN` `$11D8`, same formula, dwarf (race 3) alone |
+| thief skills | `GEN` `$102E`, 9 rows of 8, plus a racial row at `$1076` | -- | `GEN` `$126D`, 17 rows of 8; the level clamps to 17 at `$1213`. Read, not attributed -- see `thief_skills` below |
+| hit die | `GEN` `$20A7`, 4 bytes in class-bit order | `GEN` `$161E` | `GEN` `$1845` |
+| constitution hit-point bonus | `GEN` `$247B` fighter, `$2486` everyone else, indexed by the score | -- | `GEN` `$0E80`, indexed by the score; not read into this module (trainer input) |
+| wisdom bonus spells | `GEN` `$10AD`, indexed by the score | -- | not read (#89) |
+| turning level | `GEN` `$2399`, indexed by cleric level | -- | not read (#89) |
 
-`GEN` is resident at `$0800` in both games whatever its PRG header claims.
+`GEN` is resident at `$0800` in all three games whatever its PRG header
+claims.
 
 **Not one Pool of Radiance address survives into Curse**, which is the
 measurement `TRAINER_MEASURED` rests on. The two files were compared byte for
@@ -272,9 +273,11 @@ _SLOTS_CLERIC = ((1,), (2,), (2, 1), (3, 2), (3, 3, 1), (3, 3, 2),
 #: -- 2001 to leave fighter 1 -- with two exceptions the disk is emphatic
 #: about: the ranger's first threshold is a bare 2250, and the fighter's
 #: eleventh reads 749937 where 750001 is expected. That is one bit (`$40`) in
-#: the middle byte of `0B 71 B1`, and only one of the player's Curse rips
-#: carries `GEN`, so a damaged image cannot be ruled out. The number the disk
-#: holds is the number kept here; a second rip would settle it.
+#: the middle byte of `0B 71 B1`. Settled 2026-09-02: Silver Blades' `GEN
+#: $162D`, a different file from a different release, carries the same
+#: 749937 (`tests/test_coldread.py::
+#: test_the_fighters_eleventh_threshold_is_the_same_on_a_second_rip`). It is
+#: SSI's own number, not bit rot in one Curse rip.
 _XP_MAGIC_USER = (0, 2501, 5001, 10001, 22501, 40001, 60001, 90001, 135001,
                   250001, 375001)
 _XP_CLERIC = (0, 1501, 3001, 6001, 13001, 27501, 55001, 110001, 225001, 450001)
@@ -309,6 +312,71 @@ CURSE_PALADIN = _progression(
 CURSE_RANGER = _progression(
     ceiling=11, experience=_XP_RANGER, thac0=_THAC0_FIGHTER,
     saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_FIGHTER)
+
+
+# --- Secret of the Silver Blades ----------------------------------------------
+# GEN $162D / $17D0 / $17E0 / $106F-$108F / $1045 / $13EF-$13F7 / $1845-$1855 /
+# $1148-$115C / $11C0 / $11D8, all at base $0800, read by tests/test_coldread.py.
+#
+# The experience rows are Curse's, carried on: all 61 thresholds the two
+# titles share are identical, including the fighter's anomalous 749937 at
+# level 11 (see `_XP_FIGHTER` above). The saving-throw *encoding* is not
+# Curse's -- Curse keeps only level-1 rows and this file transcribes the
+# rest, where Silver Blades unpacks a two-bit improvement a level out of
+# `$115C` -- but the *rows* it produces are the same AD&D bands extended, and
+# the constitution bonus goes to the dwarf alone (race 3) on columns 0, 2 and
+# 4 rather than to all five columns for three races the way Pool of Radiance
+# does it.
+_XP_MAGIC_USER_SSB = _XP_MAGIC_USER + (750001, 1125001, 1500001, 1875001)
+_XP_CLERIC_SSB = _XP_CLERIC + (675001, 900001, 1125001, 1350001, 1575001)
+_XP_THIEF_SSB = _XP_THIEF + (660001, 880001, 1100001, 1320001, 1540001,
+                             1760001)
+_XP_FIGHTER_SSB = _XP_FIGHTER + (1250001, 1500001, 1750001)
+_XP_PALADIN_SSB = _XP_PALADIN + (1400001, 1750001, 2100001, 2450001)
+_XP_RANGER_SSB = _XP_RANGER + (975001, 1300001, 1625001, 1950001)
+
+_SAVES_CLERIC_SSB = _SAVES_CLERIC + ((15, (5, 8, 9, 11, 10)),)
+_SAVES_THIEF_SSB = _SAVES_THIEF + ((16, (10, 9, 8, 13, 9)),
+                                   (18, (9, 8, 6, 12, 7)))
+_SAVES_FIGHTER_SSB = _SAVES_FIGHTER + ((14, (5, 6, 7, 5, 8)),
+                                       (15, (4, 5, 6, 4, 7)))
+#: `$11C0` is code (`LDA $7CCF / BEQ / LDX #$04 ...`): 2 off every column.
+#: GUY DE VALOIS, paladin 8, stores `8 9 10 10 11` against the fighter row's
+#: `10 11 12 12 13`.
+_SAVES_PALADIN_SSB = tuple((top, tuple(v - 2 for v in row))
+                           for top, row in _SAVES_FIGHTER_SSB)
+
+_THAC0_CLERIC_SSB = _THAC0_CLERIC + ((15, 12),)
+_THAC0_THIEF_SSB = _THAC0_THIEF + ((16, 14), (18, 12))
+#: `$1045`, `21 - fighting level`, the same rule as Curse's fighter group.
+_THAC0_FIGHTER_SSB = tuple((level, 21 - level) for level in range(1, 16))
+
+#: `$13EF`/`$13F7`: level >= n, not level > n -- MALACHITE at exactly
+#: fighter 7 stores 3 (3/2, doubled) at `0x0D9`, so the band tops are `n - 1`.
+_ATTACKS_FIGHTER_SSB = ((6, 1), (12, 1.5), (99, 2))
+_ATTACKS_RANGER_SSB = ((7, 1), (14, 1.5), (99, 2))
+
+SSB_MAGIC_USER = _progression(
+    ceiling=15, experience=_XP_MAGIC_USER_SSB, thac0=_THAC0_MAGIC_USER,
+    saves=_SAVES_MAGIC_USER, die=4, roll_to=11, flat=1)
+SSB_CLERIC = _progression(
+    ceiling=15, experience=_XP_CLERIC_SSB, thac0=_THAC0_CLERIC_SSB,
+    saves=_SAVES_CLERIC_SSB, die=8, roll_to=9, flat=2)
+SSB_THIEF = _progression(
+    ceiling=18, experience=_XP_THIEF_SSB, thac0=_THAC0_THIEF_SSB,
+    saves=_SAVES_THIEF_SSB, die=6, roll_to=10, flat=2)
+SSB_FIGHTER = _progression(
+    ceiling=15, experience=_XP_FIGHTER_SSB, thac0=_THAC0_FIGHTER_SSB,
+    saves=_SAVES_FIGHTER_SSB, die=10, roll_to=9, flat=3,
+    attacks=_ATTACKS_FIGHTER_SSB)
+SSB_PALADIN = _progression(
+    ceiling=15, experience=_XP_PALADIN_SSB, thac0=_THAC0_FIGHTER_SSB,
+    saves=_SAVES_PALADIN_SSB, die=10, roll_to=9, flat=3,
+    attacks=_ATTACKS_FIGHTER_SSB)
+SSB_RANGER = _progression(
+    ceiling=15, experience=_XP_RANGER_SSB, thac0=_THAC0_FIGHTER_SSB,
+    saves=_SAVES_FIGHTER_SSB, die=8, roll_to=10, flat=2,
+    attacks=_ATTACKS_RANGER_SSB)
 
 
 # --- what the trainer rolls and looks up --------------------------------------
@@ -447,9 +515,12 @@ class LevelTables:
     racial_limits: tuple[tuple[int, tuple[int, ...]], ...]
     #: Which of the five save columns the racial constitution bonus reaches.
     constitution_save_columns: tuple[int, ...]
-    #: Race codes that take it at all: dwarf, gnome, halfling. Derivable from
-    #: `games.Game.races` and would live better there; it is here because
-    #: nothing else needs it yet and this module does not import that one.
+    #: Race codes that take it at all. The default, `(1, 3, 5)`, is Pool of
+    #: Radiance's dwarf, gnome and halfling; Silver Blades overrides it to the
+    #: dwarf alone (`(3,)` -- race 3 there, not the gnome it is in Pool of
+    #: Radiance). Derivable from `games.Game.races` and would live better
+    #: there; it is here because nothing else needs it yet and this module
+    #: does not import that one.
     sturdy_races: tuple[int, ...] = (1, 3, 5)
     #: The trainer's own tables, read out of the title's `GEN`. Empty means
     #: nobody has read this title's copy, and every caller treats that as
@@ -604,7 +675,35 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
     constitution_save_columns=(0, 2, 4),
 )
 
-TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)
+#: Race 3 is the dwarf in this title (`games.RACES_SILVER_BLADES`), not the
+#: gnome it is in Pool of Radiance. Row 6, the human, is not on disk -- `$178A`
+#: refuses to look one up for race 6 or above, which is "no limit" -- and is
+#: synthesised the same way Curse's row 7 is.
+SECRET_OF_THE_SILVER_BLADES = LevelTables(
+    key="secret-of-the-silver-blades",
+    title="Secret of the Silver Blades",
+    class_order=("magic-user", "cleric", "thief", "fighter",
+                 None, None, "paladin", "ranger"),
+    classes=(("magic-user", SSB_MAGIC_USER), ("cleric", SSB_CLERIC),
+             ("thief", SSB_THIEF), ("fighter", SSB_FIGHTER),
+             ("paladin", SSB_PALADIN), ("ranger", SSB_RANGER)),
+    ceilings=(("magic-user", 15), ("cleric", 15), ("thief", 18),
+              ("fighter", 15), ("paladin", 15), ("ranger", 15)),
+    racial_limits=(
+        (1, (11, 0, UNLIMITED, 7, 0, 0, 0, 0)),      # elf
+        (2, (8, 5, UNLIMITED, 8, 0, 0, 0, 8)),       # half-elf
+        (3, (0, 0, UNLIMITED, 9, 0, 0, 0, 0)),       # dwarf
+        (4, (0, 0, UNLIMITED, 6, 0, 0, 0, 0)),       # gnome
+        (5, (0, 0, UNLIMITED, 6, 0, 0, 0, 0)),       # halfling
+        (6, (UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, 0, 0,
+             UNLIMITED, UNLIMITED)),                  # human -- synthesised
+    ),
+    constitution_save_columns=(0, 2, 4),
+    sturdy_races=(3,),          # the dwarf alone, and 3 is the dwarf here
+)
+
+TITLES: tuple[LevelTables, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS,
+                                   SECRET_OF_THE_SILVER_BLADES)
 BY_KEY = {t.key: t for t in TITLES}
 
 #: What a caller gets when it says nothing. Every caller predates the second
@@ -619,6 +718,12 @@ DEFAULT = POOL_OF_RADIANCE
 #: saving-throw masks at `$1F44`, the constitution tables at `$247B`/`$2486`,
 #: the spell capacity at `$20BC` -- and nothing has confirmed Curse's `GEN`
 #: agrees. Measuring it is what would move a key into this set.
+#:
+#: Silver Blades is the same case: its level tables are in this module now
+#: (#187), and its trainer's own inputs -- the constitution hit-point bonus,
+#: thief-skill racial adjustment, wisdom bonus spells, turning table -- are
+#: either unread or unattributed (`docs/121-silver-blades.md`). Reading them
+#: is what would move it into this set; nothing here does that.
 #:
 #: `for_game` deliberately falls back to Pool of Radiance for a title it has no
 #: tables for, which is right for reading a spell name and wrong for writing a

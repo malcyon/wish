@@ -310,9 +310,13 @@ entries x 3 bytes big-endian), class ceilings `$17D0`, racial class limits
 `21 - fighting level` at `$1045`, hit dice `$1845` / `$184D` / `$1855`, level-1
 saving throws `$1148` with a two-bit-per-level improvement mask at `$115C`, the
 constitution hit-point bonus `$0E80`, and thief skills `$126D`. The full table
-is in `docs/139-per-title-validation.md`'s A6 and A7 rows; building a
-`LevelTables` out of it is `#187 (Silver Blades characters are shown Pool of
-Radiance's level progression)`.
+is in `docs/139-per-title-validation.md`'s A6 and A7 rows, both now `V`;
+`goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES` is the `LevelTables` built
+from it (`#187 (Silver Blades characters are shown Pool of Radiance's level
+progression)`). The trainer's own inputs -- the thief-skill racial
+adjustment, the constitution hit-point bonus, the wisdom bonus spells, the
+turning table -- stay unread or unattributed, so `levels.trainer_measured`
+and `goldbox/levelup.py` still refuse the title.
 
 Three of those are worth reading even if the rest is a lookup table.
 
@@ -352,7 +356,7 @@ CANARY here — so only a title's own `ITEM<nn>` lists say what its indices mean
 | the area byte across a boundary | the run never left `GEO10`, so `Fingerprint`'s narrowing is untested here |
 | ~~whether the sixteen-byte spellbook is also Curse's~~ **it is not** (#31) | Curse reads thirteen bytes: `CAMP $2A25` walks spell ids to 100 and indexes the mask at byte 12. Gateway is still unread |
 | `ITEMNAMES` and `LIBRARY` resident bases | fittable statically, not done here |
-| ~~`goldbox/levels.py`'s caps for this title~~ **measured, not built** (#31) | every table is read off `GEO`'s neighbour `GEN` and written into `docs/139-per-title-validation.md`'s A6 and A7 rows; the `LevelTables` that would put them on the character sheet is #187 |
+| ~~`goldbox/levels.py`'s caps for this title~~ **built** (#31, #187) | every table is read off `GEO`'s neighbour `GEN` and written into `goldbox/levels.py:SECRET_OF_THE_SILVER_BLADES`; the character sheet shows it through `automap/live.py:_classes`. The trainer's own inputs stay unread, so `goldbox/levelup.py` still refuses to level the title |
 
 **The loader's mode flag is `$7F11` (#29).** `LINKER` is 149 bytes on
 `SILVER-1.D64`, is resident at `$2D00` byte-identical to the disk copy, and

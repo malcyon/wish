@@ -485,7 +485,7 @@ def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:
     return tuple(out)
 
 
-def _classes(record) -> tuple[ClassProgress, ...]:
+def _classes(record, game=None) -> tuple[ClassProgress, ...]:
     """The character's classes, each with its own experience bar.
 
     **The multi-class split is not proven.** AD&D divides earned experience
@@ -507,8 +507,8 @@ def _classes(record) -> tuple[ClassProgress, ...]:
             name=name,
             level=level,
             experience=experience,
-            fraction=levels.progress(name, level, experience),
-            next_threshold=levels.next_threshold(name, level),
+            fraction=levels.progress(name, level, experience, game),
+            next_threshold=levels.next_threshold(name, level, game),
         ))
     return tuple(out)
 
@@ -592,7 +592,7 @@ def characters(save0: SaveGame0, save1: SaveGame1,
         out.append(Character(
             slot=slot.index,
             name=record.name,
-            classes=_classes(record),
+            classes=_classes(record, save0.game),
             level=record.get("level"),
             armour_class=block.armour_class if live else None,
             thac0=block.thac0 if live else None,

@@ -93,10 +93,13 @@ def test_for_game_takes_a_key_a_descriptor_or_nothing():
     assert levels.for_game("curse-of-the-azure-bonds") is CURSE
     assert levels.for_game(CURSE) is CURSE
     assert spells.for_game("curse-of-the-azure-bonds").file == b"COMBAT2"
-    # A title whose progression has never been read falls back rather than
-    # raising: the caller gets Pool of Radiance's tables, which is what it got
-    # before this module knew about titles at all.
-    assert levels.for_game("secret-of-the-silver-blades") is levels.DEFAULT
+    # Silver Blades has its own tables now (#187); a title whose progression
+    # has genuinely never been read still falls back, which is what a Krynn
+    # key gets -- the caller receives Pool of Radiance's tables, the same as
+    # before this module knew about any title at all.
+    assert (levels.for_game("secret-of-the-silver-blades")
+            is levels.SECRET_OF_THE_SILVER_BLADES)
+    assert levels.for_game("champions-of-krynn") is levels.DEFAULT
 
 
 def test_curse_raises_every_ceiling_and_adds_two_classes():
@@ -518,14 +521,17 @@ def test_the_castable_row_reaches_curses_fifth_spell_level():
     assert [b >> 4 for b in pool] == [3, 3, 2, 0, 0, 0]
 
 
-def test_levelling_a_title_with_no_tables_of_its_own_refuses():
-    """Silver Blades has no `goldbox/levels.py` entry, so `for_game` hands back
-    Pool of Radiance's. Writing those would be a corrupt record that looks
-    right, so `plan` refuses and names the title instead."""
+def test_levelling_a_title_with_an_unread_trainer_refuses():
+    """Silver Blades has its own `goldbox/levels.py` entry now (#187), and
+    `plan` still refuses it: the trainer's own inputs -- the constitution
+    hit-point bonus, the thief-skill racial adjustment, the wisdom bonus
+    spells, the turning table -- remain unread or unattributed, so
+    `levels.trainer_measured` is still False and `_tables_for` names the
+    title in its refusal."""
     rec = _caster(0x02, 5)
     with pytest.raises(levelup.CannotLevel) as exc:
         levelup.plan(rec, "cleric", game=SSB_KEY)
-    assert SSB_KEY in str(exc.value)
+    assert levels.SECRET_OF_THE_SILVER_BLADES.title in str(exc.value)
 
     # And the same rule read from the other end: nothing is claimed about how
     # many spells a Silver Blades cleric may memorise either.
