@@ -54,3 +54,36 @@ def test_importing_one_of_the_six_leaves_wish_importable_afterwards(name):
                              cwd=REPO, capture_output=True, text=True)
     assert result.returncode == 0 and "OK" in result.stdout, (
         f"import {name}, then import wish, failed:\n{result.stderr}")
+
+
+@pytest.mark.parametrize("name", SIX)
+def test_importing_one_of_the_six_leaves_tools_off_sys_path(name):
+    """The assertion above is only sharp for two of the six, so this one.
+
+    Reverted to the pre-fix form, only `test_instance` and `test_genimports`
+    actually raise: the other four are saved by an unrelated
+    `sys.path.insert(0, repo_root)` in `tools/coldread.py`, `tools/drive.py`
+    and `tools/savecheck.py`, which happens to put the real `wish` package
+    back in front of `tools/wish.py`. That is luck two layers deep, and it is
+    somebody else's file — delete one of those inserts and four of the
+    subtests above go on passing while the fault is wide open again.
+
+    So this asserts the property `#203 (Six test files shadow the wish
+    package with tools/wish.py, which stops the suite collecting)` actually
+    established, which is not incidentally true of any of the six: **after
+    importing the module, `tools/` is not left on `sys.path`.** Raised in the
+    code review of #183 and #203.
+    """
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(REPO / 'tests')!r})\n"
+        f"sys.path.insert(0, {str(REPO)!r})\n"
+        f"import {name}\n"
+        f"left = [p for p in sys.path if p == {str(REPO / 'tools')!r}]\n"
+        "assert not left, f'tools/ left on sys.path: {left}'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code],
+                             cwd=REPO, capture_output=True, text=True)
+    assert result.returncode == 0 and "OK" in result.stdout, (
+        f"import {name} left tools/ on sys.path:\n{result.stderr}")

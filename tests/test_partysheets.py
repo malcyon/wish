@@ -266,3 +266,27 @@ def test_a_sheet_is_photographed_while_it_is_still_up():
     game = FakeGame()
     game.character_sheet(1, shot="/tmp/nowhere-magnus.png")
     assert game.shots == ["/tmp/nowhere-magnus.png"]
+
+
+def test_the_sheets_name_is_read_past_the_frame_and_its_glyphs():
+    """`sheet_name` off a hand-built sheet, which nothing else here exercises.
+
+    The `FakeScreen` the other tests use models no frame row, so they read
+    `character_sheet(n)[0]` directly and never reach this. Raised in the code
+    review of `#183 (Nothing knows how to reach the other five character
+    sheets in a driven session)` as the one new piece of logic with no test.
+
+    Line 0 is the panel's top frame; the frame also draws in the first and
+    last column of every line, which is what the strip is for.
+    """
+    savecheck = load_tools_module("savecheck")
+
+    sheet_name = savecheck.sheet_name
+
+    assert sheet_name(["$----------$",
+                       "$ MAGNUS    $",
+                       "$ AC 2      $"]) == "MAGNUS"
+    # A blank second line is skipped rather than answered.
+    assert sheet_name(["$----------$", "$          $", "$ ROLAND   $"]) == "ROLAND"
+    # Nothing but frame is not a name, and must not raise.
+    assert sheet_name(["$----------$", "$          $"]) == "(blank)"

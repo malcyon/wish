@@ -264,7 +264,6 @@ it.
 character. `Session.PARTY_ROWS` stops at 12 for that reason; eight names fill
 rows 4 to 11.
 
-
 ## Driving a fight
 
 `tools/session.py` drives one: `in_combat()`, `combat_state()`, `combat_bar()`
