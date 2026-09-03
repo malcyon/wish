@@ -39,7 +39,6 @@ import pathlib
 from dataclasses import dataclass
 
 from goldbox import games, levels, traits
-from goldbox.derive import CLASS_BITS
 from goldbox.items import items_for_slot, load_item_names
 from goldbox.record import FieldNotStored
 from goldbox.savegame import (
@@ -120,8 +119,17 @@ DURATION_UNIT = 6
 # Which level field goes with which class bit. The bitmask at 0x0EB is the field
 # to prefer -- char_class at 0x073 says the same thing a second way and the two
 # are allowed to disagree.
+#
+# **Seven entries, not four**, because the array at 0x0C9 is eight slots and
+# the bit number *is* the slot number: bit 4 the knight at 0x0CD, bit 6 the
+# paladin at 0x0CF, bit 7 the ranger at 0x0D0. Which of the seven a title
+# offers is `Game.class_bits`, not this table -- see `_classes`. Four entries
+# is what left a Curse paladin and a Silver Blades ranger reading `?  L8`
+# (#197).
 CLASS_LEVEL_FIELD = {"magic-user": "level_magic_user", "cleric": "level_cleric",
-                     "thief": "level_thief", "fighter": "level_fighter"}
+                     "thief": "level_thief", "fighter": "level_fighter",
+                     "knight": "level_knight", "paladin": "level_paladin",
+                     "ranger": "level_ranger"}
 
 GRID = 16
 
@@ -166,8 +174,43 @@ CONDITION_BADGES: tuple[tuple[str, tuple[int, ...]], ...] = (
 #: above; what this pins is that a sixth cannot arrive without an edit here.
 PROBABLE_BADGED = (21, 42, 45, 46, 49)
 
+#: Which groups a title draws, where they are not Pool of Radiance's.
+#:
+#: **The ids above are Pool of Radiance's, and so is the decision that they
+#: are worth a glyph.** Curse of the Azure Bonds shares them -- it seeds every
+#: racial trait code Pool of Radiance does, on the race each name demands
+#: (`goldbox/traits.py`, #186) -- and a title nobody has read gets them too,
+#: which is the behaviour it has always had and matches `traits.for_game`.
+#:
+#: **Secret of the Silver Blades draws none.** Sixteen of the seventeen badged
+#: ids are unnamed in `traits.NAMES_SILVER_BLADES`, so a running ninja on one
+#: of its cards would be a picture saying "hasted" over a tooltip saying
+#: "Trait 39" -- an inferred meaning in front of a player, which is what #186
+#: and #196 are both about. Naming the codes is not this file's to do and
+#: neither is guessing which of them earn a glyph.
+#:
+#: **What would fill this in**: a Silver Blades save taken with spells
+#: running, read the way `P3-EFFECTS.D64` was for Pool of Radiance -- 26
+#: spells cast, each naming the code it had just written, which promoted
+#: seventeen ids at once (`docs/90-specimens.md`). Until then
+#: `Snapshot.unbadged_party_effects` is what makes the ids visible, and
+#: `automap/panel.py` puts them in the debug log.
+BADGE_TABLES: dict[str, tuple[tuple[str, tuple[int, ...]], ...]] = {
+    "secret-of-the-silver-blades": (),
+}
 
-def badges(running) -> tuple[tuple[str, str], ...]:
+
+def condition_badges(game=None) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    """The badge groups for a title, or Pool of Radiance's.
+
+    Takes a `goldbox.games.Game`, a game key, or None -- duck-typed on `.key`
+    the way `goldbox/traits.py:for_game` is, so a caller holding a
+    `levels.LevelTables` or nothing at all still gets an answer.
+    """
+    return BADGE_TABLES.get(getattr(game, "key", game), CONDITION_BADGES)
+
+
+def badges(running, game=None) -> tuple[tuple[str, str], ...]:
     """`(icon, the spells it stands for)` for every badge `running` lights.
 
     One function so **a roster card and the party line draw the same picture
@@ -185,11 +228,16 @@ def badges(running) -> tuple[tuple[str, str], ...]:
     tooltip a person reads and `goldbox/traits.py` writes them as fragments --
     `hasted`, `invisible`, `slowed`. Only the first letter: `str.capitalize()`
     would turn "under an allied Prayer" into "under an allied prayer".
+
+    `game` picks **both** the groups and the names, and None means Pool of
+    Radiance exactly as it does in `traits.for_game`. Dropping it was #196:
+    the group list was Pool of Radiance's ids and `traits.describe` was called
+    with no title, so a Silver Blades card named somebody else's spell.
     """
     running = set(running)
     out = []
-    for glyph, ids in CONDITION_BADGES:
-        named = [traits.describe(i) for i in ids if i in running]
+    for glyph, ids in condition_badges(game):
+        named = [traits.describe(i, game) for i in ids if i in running]
         if named:
             out.append((glyph, "\n".join(n[:1].upper() + n[1:] for n in named)))
     return tuple(out)
@@ -297,6 +345,14 @@ class Character:
     #: the player made from the combat menu, so the card badges it apart from
     #: the conditions row rather than in the danger red beside the name.
     quickfight: bool = False
+    #: Which title this record came out of, so `conditions` can reach that
+    #: title's effect-code table. `characters()` always sets it from
+    #: `SaveGame0.game`; None means Pool of Radiance, the same thing it means
+    #: in `traits.for_game` and `levels.for_game`. Defaulted rather than
+    #: required only because every field above `effects` would otherwise have
+    #: to move -- #196 is what happens when the title is dropped one call
+    #: short of where it is needed.
+    game: games.Game | None = None
 
     @property
     def down(self) -> bool:
@@ -330,12 +386,22 @@ class Character:
             out.append(("oppression",
                         f"Drained {self.levels_drained} level"
                         f"{'s' if self.levels_drained != 1 else ''}"))
-        return tuple(out) + badges(e.id for e in self.effects)
+        return tuple(out) + badges((e.id for e in self.effects), self.game)
 
     @property
     def class_text(self) -> str:
+        """`MU/T`, and the class's own name for anything without a letter.
+
+        The four abbreviations are Pool of Radiance's four classes and are
+        Donald's wording. **Paladin, ranger and knight have no letter yet**
+        and get their name capitalised instead, which is the class's own word
+        rather than an invented one -- an abbreviation is a thing a player
+        reads, so it is his to choose (#197).
+        """
         abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C", "thief": "T"}
-        return "/".join(abbrevs.get(c.name.lower(), c.name) for c in self.classes) or "?"
+        return "/".join(abbrevs.get(c.name.lower(),
+                                    c.name[:1].upper() + c.name[1:])
+                        for c in self.classes) or "?"
 
     @property
     def level_text(self) -> str:
@@ -367,6 +433,10 @@ class Snapshot:
     clock_text: str
     area_file: str
     loaded_files: tuple[int, ...] = ()
+    #: The title these bytes came from, for the same reason `Character` carries
+    #: it: the bottom strip's badges are per title too, and it draws through
+    #: the same `badges()` a card does.
+    game: games.Game | None = None
 
     @property
     def party_effects(self) -> tuple[Effect, ...]:
@@ -446,7 +516,7 @@ class Snapshot:
         The same `badges` a roster card uses, so Bless is the same picture
         whether it landed on one character or on everybody.
         """
-        return badges(e.id for e in self.whole_party_effects)
+        return badges((e.id for e in self.whole_party_effects), self.game)
 
     @property
     def unbadged_party_effects(self) -> tuple[Effect, ...]:
@@ -458,8 +528,13 @@ class Snapshot:
         been seen landing on a party. So an id landing here is the signal that
         the set is short a glyph, and `BottomStrip` puts it in the debug log
         for exactly that reason.
+
+        **On Silver Blades that is every id**, because `BADGE_TABLES` gives it
+        no groups at all until somebody reads what its effect codes mean. The
+        log is then the whole of what the program says about them, which is
+        the honest amount.
         """
-        covered = {i for _, ids in CONDITION_BADGES for i in ids}
+        covered = {i for _, ids in condition_badges(self.game) for i in ids}
         return tuple(e for e in self.whole_party_effects
                      if e.id not in covered)
 
@@ -503,14 +578,27 @@ def _classes(record, game) -> tuple[ClassProgress, ...]:
     specimen, is level 1 in both classes and so cannot tell the two readings
     apart. Each class's bar is drawn against the same stored number, which is
     right if it is a per-class share and optimistic if it is a total.
+
+    **Which bits exist is the title's business**, `Game.class_bits`: Pool of
+    Radiance's four, Curse and Silver Blades' six, Krynn's seven. Walking the
+    classic four whatever was running is what gave a Curse paladin and a
+    Silver Blades ranger a card reading `?  L8`, with no class name and no
+    experience bar (#197).
+
+    `getattr` rather than `games.class_table` because this is also called with
+    a `levels.LevelTables` (`tests/test_ssblevels.py`), and because a title
+    whose class list nobody has is better read as the classic four -- which is
+    what it has always been read as -- than as no classes at all.
     """
     bits = record.get("class_bits")
     experience = record.get("experience")
     out = []
-    for bit, name in CLASS_BITS:
+    for bit, name in (getattr(game, "class_bits", None)
+                      or games.class_table(None)):
         if not bits & bit:
             continue
-        level = record.get(CLASS_LEVEL_FIELD[name]) or record.get("level") or 1
+        field = CLASS_LEVEL_FIELD.get(name)
+        level = (field and record.get(field)) or record.get("level") or 1
         out.append(ClassProgress(
             name=name,
             level=level,
@@ -590,7 +678,12 @@ def characters(save0: SaveGame0, save1: SaveGame1,
                effects: tuple[Effect, ...] = (),
                names: dict[int, str] | None = None) -> tuple[Character, ...]:
     """The party in the game's own marching order -- highest occupied slot
-    first, via `SaveGame0.marching_order` (`#160`)."""
+    first, via `SaveGame0.marching_order` (`#160`).
+
+    **`save0.game` goes on to every `Character`**, not just into `_classes`.
+    A card's condition badges are per title as well as its experience bars,
+    and the title reaching here and stopping was #196.
+    """
     payload = save0.to_bytes()
     out = []
     for slot in save0.marching_order:
@@ -612,6 +705,7 @@ def characters(save0: SaveGame0, save1: SaveGame1,
             levels_drained=record.get("levels_drained") or 0,
             quickfight=live and bool(block.raw[ROSTER_QUICKFIGHT]
                                      & QUICKFIGHT_BIT),
+            game=save0.game,
         ))
     return tuple(out)
 
@@ -698,6 +792,7 @@ def snapshot_from_bytes(save0_bytes: bytes, roster_bytes: bytes,
         clock_text=position.clock_text,
         area_file=save0.area_file,
         loaded_files=tuple(save0.loaded_files),
+        game=game,
     )
 
 

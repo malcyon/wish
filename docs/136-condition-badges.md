@@ -319,3 +319,32 @@ displaced collision without choosing between them.
   a character, so the only badges a live poll has ever lit are the two the record
   carries — `P3-EFFECTS.D64` would have shown all five and went with `work/`
   (#136).
+
+## Which title's ids these are
+
+**Pool of Radiance's, and Curse of the Azure Bonds shares them.** Curse seeds
+every racial trait code Pool of Radiance does, on the race each name demands
+(`goldbox/traits.py`, `#186 (The character sheet gives a Silver Blades elf a
+Pool of Radiance ability)`), so one table serves both — and a title nobody has
+read gets the same one, which is what `traits.for_game` already does.
+
+**Secret of the Silver Blades draws no badges at all.** Sixteen of the
+seventeen ids in the table above are unnamed in
+`goldbox/traits.py:NAMES_SILVER_BLADES`; only 45 is established, and it is
+what `GEN $0FF0` writes for a paladin. Drawing a running ninja for effect 39
+on that title would be a picture asserting "hasted" over a tooltip reading
+`Trait 39` — an inferred meaning in front of a player, which is the fault
+`#196 (The automapper's condition badges name a Silver Blades trait with Pool
+of Radiance's meaning)` was filed for. Which codes earn a glyph is per title
+just as much as what the glyph is called, so `automap/live.py:BADGE_TABLES`
+gives Silver Blades an empty set rather than a guessed one.
+
+Nothing is hidden by that: `Snapshot.unbadged_party_effects` is every party
+effect no glyph covers, and `automap/panel.py` puts them in the debug log —
+which on Silver Blades is all of them, and is the honest amount the program
+can say.
+
+**What would fill the set in**: a Silver Blades save taken with spells
+running, read the way `P3-EFFECTS.D64` was for Pool of Radiance — 26 spells
+cast, each naming the code it had just written, seventeen ids promoted at once
+(`docs/90-specimens.md`).
