@@ -310,8 +310,14 @@ than leaving it to a caller. `close()` is unconditional and idempotent, and
 `RuntimeError`, so it used to escape every handler with the connection kept.
 After the fix the same situation reattaches in 117 ms.
 
-Two facts from the same session, so nobody pays for them twice:
+Three facts from the same session, so nobody pays for them twice:
 
+* **A read that times out does not leave the stream out of step.** On one
+  connection, a `read($0400, 40)` given 0.5 ms to answer raised `TimeoutError`
+  and the next two reads of `$A2` on the *same socket* both came back correct.
+  So the give-up path needs no resynchronisation and a timeout is safe to
+  retry on: what has to happen after one is the hanging up, and nothing else.
+  `tools/monitorchain.py` step 5.
 * **Abandoning a socket does not freeze the game.** The jiffy clock at `$A2`
   went 42 to 164 across two seconds after a socket was closed with no `EXIT`
   sent -- VICE resumes when the connection drops.
