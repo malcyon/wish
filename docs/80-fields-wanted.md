@@ -421,12 +421,15 @@ edit, and covered by constructed-state tests in `tests/test_pairs.py`.
   edited saves without complaint ([the thirteen-field edit](50-experiments.md)).
   They sit immediately before experience, where the DOS record puts a one-byte
   per-monster index; the C64 spends two.
-* `0x0EC` — went 0 → 1 after combat for MALCYON and LADY KATHERINE and nobody
-  else. Those are exactly the two spellcasters, so it is more likely spell state
-  than damage.
 
-Those two are the only leads left here. Six entries previously listed have since
-been resolved. `0x117` is roster
+That is the only lead left here. Seven entries previously listed have since
+been resolved. `0x0EC` was on this list as "0 → 1 after combat for MALCYON and
+LADY KATHERINE and nobody else — exactly the two spellcasters, so more likely
+spell state than damage"; it is the **missile attack adjustment**, and those
+two are also exactly the two characters with a dexterity of 16
+([the byte that moves a THAC0 when darts are readied](50-experiments.md), #202).
+
+`0x117` is roster
 `+0x17`, the damage bonus — its 5, 0, 1 across three exports is three different
 strength-and-weapon totals, not an anomaly. Item byte `+5` is a signed
 saving-throw bonus, and `0x0B8` is the NPC flag in bit 7 with the trainer flag

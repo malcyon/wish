@@ -440,6 +440,10 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("roster_in_use", "roster bookkeeping, not character state"),
     ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
                    "colours, a C64 character set no other port can draw"),
+    ("missile_attack_adjustment",
+     "a cache of what dexterity is worth to hit at range. COM.PREP $1633 "
+     "rebuilds it from the record's own dexterity, which is carried, at the "
+     "start of every fight and before anything reads it (#202)"),
 )
 
 #: What :func:`read` does with every named field of the C64 layout -- the

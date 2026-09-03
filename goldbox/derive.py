@@ -12,8 +12,10 @@ rather than leaving you to notice.
 Every formula below is checked against real saves in the tests. BRUTUS used to
 come out one point of armour class better than the rules predicted; that was the
 dexterity table below being AD&D's rather than the game's, and with the boundary
-corrected every character in every save is consistent. The one discrepancy left
-anywhere is MALCYON's THAC0 improving by one when he readies darts.
+corrected every character in every save is consistent. MALCYON's THAC0 improving
+by one when he readies darts was the last discrepancy, and it was his dexterity:
+a ranged weapon takes the missile attack adjustment at record 0x0EC where a
+melee one takes the strength bonus (#202).
 See docs/30-savegame-layout.md.
 """
 
@@ -117,12 +119,37 @@ def expected_armour_class(record, readied: list[tuple[object, ItemType]]) -> int
 
 
 def expected_thac0(record, readied: list[tuple[object, ItemType]]) -> int:
-    """THAC0 after strength and the readied weapon's own bonus."""
+    """THAC0 after the readied weapon's adjustment and its own bonus.
+
+    **Which adjustment is the weapon's business, not the character's.**
+    LIBRARY $36A0 rebuilds the roster THAC0 from the record's base and then
+    tests the readied weapon's type +14: bit 1, ranged, adds the missile
+    attack adjustment at record 0x0EC, and bit 2 adds the strength hit bonus.
+    The two blocks are independent -- a heavy crossbow sets both bits and
+    takes both -- and a dart sets neither bit 2 nor any strength, which is
+    why MALCYON's THAC0 improved by one when he bought darts (#202).
+
+    With nothing readied the strength bonus is used, which is what the six
+    unarmoured characters of PORSAVE.D64 hold: three of them cache a THAC0
+    two better than their base, and two is their strength bonus. PROBABLE --
+    no specimen distinguishes "the game applies it bare-handed" from "the
+    cache is left over from the last weapon that was readied".
+    """
     hit, _ = strength_bonuses(record.get("strength"),
                               record.get("exceptional_strength"))
-    weapon = next((i for i, k in readied if k.is_weapon), None)
+    found = next(((i, k) for i, k in readied if k.is_weapon), None)
+    if found is None:
+        adjustment, bonus = hit, 0
+    else:
+        weapon, kind = found
+        adjustment = 0
+        if kind.is_ranged:
+            adjustment += record.get("missile_attack_adjustment") or 0
+        if kind.adds_strength:
+            adjustment += hit
+        bonus = getattr(weapon, "bonus", 0) or 0
     return (base_thac0(record.get("class_bits"), record.get("level"))
-            - hit - (getattr(weapon, "bonus", 0) or 0))
+            - adjustment - bonus)
 
 
 def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int:

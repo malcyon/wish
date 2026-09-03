@@ -115,6 +115,34 @@ TYPE_PROTECTION = 6
 TYPE_DAMAGE_MEDIUM = 9       # three bytes: dice, sides, bonus
 TYPE_RANGE = 12
 TYPE_CLASS_USAGE = 13
+TYPE_WEAPON_FLAGS = 14
+
+# Type byte +14, how a weapon is used. Named from `GB_ITM-Base.hexpat`'s
+# reading of the DOS table (docs/128-guide-and-scripting.md) and checked
+# against the engine for the two bits anything acts on:
+#
+# * **bit 1, ranged.** LIBRARY $36A0 tests it and, when it is set, adds the
+#   character's missile attack adjustment -- record 0x0EC -- to the roster's
+#   THAC0. Every bow, crossbow and sling carries it, and so does everything
+#   whose only use is thrown: the dart, the javelin, the vial of holy water.
+# * **bit 2, add strength.** The block at LIBRARY $36B1 tests it and adds the
+#   strength hit bonus instead. The melee weapons carry it, including the five
+#   that can also be thrown -- the dagger, hand axe, club, hammer and spear
+#   carry bit 2 and bit 4 and a range, and never bit 1.
+#
+# **They are not alternatives, though they read like them.** Of the 58 POOL1
+# type records that carry damage dice, 54 hold one bit or the other; four hold
+# **both** -- the HEAVY CROSSBOW, and the DECK, DRUMS and DUST, three magic
+# items that reuse the weapon shape -- and four hold neither, BILL-GUISARME,
+# GUISARME-VOULGE, BAG and the unnamed record 0. The engine's two blocks each
+# add when their own bit is set and neither excludes the other, so a heavy
+# crossbow takes both adjustments.
+WEAPON_NEEDS_ARROWS = 0x01
+WEAPON_RANGED = 0x02
+WEAPON_ADDS_STRENGTH = 0x04
+WEAPON_MULTI_SHOT = 0x08
+WEAPON_THROWABLE = 0x10
+WEAPON_NEEDS_BOLTS = 0x80
 
 # The third byte of each damage triple -- type +4 and +11 -- is the flat damage
 # bonus and it is **signed two's complement**, so $FF is -1 and not +255.
@@ -260,6 +288,26 @@ class ItemType:
     @property
     def range(self) -> int:
         return self.raw[TYPE_RANGE]
+
+    @property
+    def weapon_flags(self) -> int:
+        """Type byte +14: how the weapon is used, as a mask."""
+        return self.raw[TYPE_WEAPON_FLAGS]
+
+    @property
+    def is_ranged(self) -> bool:
+        """Bit 1: to hit with it, the game uses the missile adjustment.
+
+        A bow, a crossbow, a sling and everything thrown. `range` is not the
+        same question: six records carry a range with the bit clear, the melee
+        weapons that can also be thrown.
+        """
+        return bool(self.weapon_flags & WEAPON_RANGED)
+
+    @property
+    def adds_strength(self) -> bool:
+        """Bit 2: to hit with it, the game uses the strength bonus."""
+        return bool(self.weapon_flags & WEAPON_ADDS_STRENGTH)
 
     @property
     def usable_by(self) -> list[str]:

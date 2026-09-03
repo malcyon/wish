@@ -36,6 +36,9 @@ SLOT_BYTES = 0x100
 DERIVED = frozenset({
     "armour_class", "armour_class_base", "thac0", "thac0_base",
     "strength_index",
+    # Written from a dexterity table by the combat-preparation overlay, so an
+    # edit survives only until the next fight (#202).
+    "missile_attack_adjustment",
 })
 
 # Not derived, but not ours to set either: these move only as a consequence of
@@ -171,6 +174,11 @@ NOT_ON_THE_SHEET = (
     # because which of them a spell id falls in is the title's business and not
     # the form's.
     "spells_known_high",
+    # The character's missile attack adjustment. It is a cache the game
+    # rebuilds out of dexterity whenever a fight starts, so there is nothing
+    # here for a player to set; `goldbox/derive.py` reads it to say whether
+    # the cached THAC0 beside it is stale (#202).
+    "missile_attack_adjustment",
 )
 
 

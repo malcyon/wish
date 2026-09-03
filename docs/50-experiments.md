@@ -394,8 +394,12 @@ mean hit points — the four bytes holding 4 or 5 are all accounted for (race,
 `hp_max`, a thief skill, alignment, `class_bits`, `hp_rolled`).
 
 The only unexplained byte that moved after combat was `0x0EC` (0 -> 1), and it
-moved for **MALCYON and LADY KATHERINE** — precisely the two spellcasters, not
-the wounded character. So it is far more likely spell state than damage.
+moved for **MALCYON and LADY KATHERINE** rather than for the wounded character.
+It was read here as spell state, because those two are the party's
+spellcasters. They are also the party's only two characters with a dexterity
+of 16, which is what it turned out to be: the byte is the missile attack
+adjustment, rebuilt from dexterity whenever a fight starts ([the byte that
+moves a THAC0 when darts are readied](#the-byte-that-moves-a-thac0-when-darts-are-readied-202)).
 
 **What this suggests.** The game may simply not persist current hit points, and
 restore characters to full on load. That is easy to check and worth doing before
@@ -1879,10 +1883,13 @@ the refresh.
   the one character whose spell count moved. They sit in the run the roster
   section calls "zero in every specimen". Unexplained, and the obvious thing to
   watch on the next save with spells prepared.
-* **`0x0EC` went 1 to 3 for MALCYON and moved for nobody else.** It is the byte
-  recorded as "probably spell state rather than damage" because it rose for the
-  two spellcasters after a fight. LADY KATHERINE cast a sleep here too and hers
-  did not move, so whatever it counts, it is not simply spells cast.
+* **`0x0EC` went 1 to 3 for MALCYON and moved for nobody else.** LADY KATHERINE
+  cast a sleep here too and hers did not move, which was already enough to
+  refute the "spells cast" reading. It is his **missile attack adjustment**
+  catching up with the dexterity of 18 the thirteen-field edit gave him: 1 is
+  the table value for 16 and 3 for 18, and the fight is what rebuilt it ([the
+  byte that moves a THAC0 when darts are
+  readied](#the-byte-that-moves-a-thac0-when-darts-are-readied-202)).
 * **ROLAND died and was healed, and his record barely noticed.** His slot shows
   silver spent and experience gained and nothing else; his current hit points,
   5 of 7, are in the roster. If the game records having died, or having been
@@ -6039,3 +6046,129 @@ water, and Silver Blades types 54, the canary, and 85. Six hold 8: types 87
 either, so they are unreachable rather than wrong. Type 127 in Pool of Radiance
 and Silver Blades is `2d20` at range 60 with AC 6 and no name — the same shape
 of unreachable record.
+
+---
+
+## The byte that moves a THAC0 when darts are readied (#202)
+
+**Question.** `goldbox/derive.py` recomputed every cached combat number in
+every save the player owns except one: MALCYON's THAC0 improved by a point
+when he bought darts, and nothing in the rules said it should. Record `0x0EC`
+moved over the same shopping trip, and `LIBRARY $36A0` adds that byte to the
+roster's THAC0 when the readied weapon's type `+14` has bit 1 set. What *is*
+`0x0EC`?
+
+**Method.** Three passes, cheapest first, because each was capable of settling
+it on its own.
+
+1. **Who writes it.** Every file on all eight sides, searched for the literal
+   two bytes `EC 6B`, with the opcode in front of each hit.
+2. **The population.** All 114 character records on the player's 19 save
+   disks, `0x0EC` against the AD&D 1st edition missile attack adjustment for
+   the character's own dexterity.
+3. **The running machine, twice.** `PORSAVE4` booted under VICE with a
+   *stale* `0x0EC` in slot 0 — MALCYON, dexterity 18, byte 1 where the table
+   says 3 — reading `$4D00 + slot * $100 + $EC` and the staging page at
+   `$6BEC` around an un-readying of his darts. Then `PORSAVE13`, whose party
+   is three steps from the Slums ambush, with `$7F` poked into all six
+   records first.
+
+**Result. CONFIRMED: it is the missile attack adjustment, cached, signed, and
+rebuilt when a fight starts.**
+
+Four files mention `$6BEC` and exactly one writes it:
+
+| file | address | instruction |
+|---|---|---|
+| `COM.PREP` | `$1639` | `STA $6BEC` |
+| `LIBRARY` | `$36A8` | `LDA $6BEC` |
+| `COMBAT` | `$0899` | `ADC $6BEC` |
+| `POOLRB` | — | the same `LDA`, in the resident image |
+
+The write is three instructions:
+
+```
+$1633  AE 17 6B   LDX $6B17      ; record 0x017, dexterity
+$1636  BD 82 16   LDA $1682,X    ; the table
+$1639  8D EC 6B   STA $6BEC      ; record 0x0EC
+```
+
+and the table at `$1682`, read at dexterity 3 upwards, is `FD FE FF 00 …` to
+15, then `01 02 03` at 16, 17 and 18 and on through `03 03 04 04 04 05 05` to
+25. That is the missile attack adjustment of the Players Handbook exactly,
+including the tail past 18 that only a magically raised score reaches. The
+field is therefore **signed**: `$FF` is −1.
+
+**The running machine agrees, and the prediction was made first.** With
+`$7F` — a value no dexterity produces — poked into all six records of the
+`PORSAVE13` party and four steps walked into the Slums ambush, the six bytes
+came back `[3, 1, 0, 0, 0, 0]` against dexterities `[18, 16, 13, 12, 15, 14]`.
+Six values, six right, from a table read out of a file rather than fitted to
+the numbers. In the other run, un-readying MALCYON's darts moved nothing: the
+item list went from `YES 15 DART` to `NO 15 DART` and every byte stayed at
+`127`. So readying reads `0x0EC` and only combat writes it, which is the
+opposite of what this issue expected to find.
+
+**`$6B00` is a staging page, not the first party slot.** In the same run
+`$6BEC` read 1 on the world screen and 127 the moment MALCYON's sheet came up,
+so the page is a copy taken from `$4D00 + slot * $100` when a character is
+looked at. Anything that reads `$6BEC` outside a routine that staged it is
+reading whoever was staged last.
+
+**It is a cache, and `COM.PREP` is the combat-preparation overlay** — so it is
+rebuilt when a fight starts and at no other moment anybody has found. That
+makes the observed staleness ordinary rather than surprising: 96 of the 114
+records hold the table value for their own dexterity, all 18 that disagree
+hold a value *below* it, and every one of the 18 belongs to a character whose
+dexterity `wish` raised with no fight since. MALCYON is the series in full:
+`0x0EC` = 1 at dexterity 16 in PORSAVE2 and PORSAVE3, still 1 after the edit
+to 18 in PORSAVE4 through PORSAVE9, and 3 in PORSAVE11 after the next fight.
+
+### What the flags actually gate
+
+`LIBRARY $369A` rebuilds the roster THAC0 from the record's base and then runs
+two independent blocks: `AND #$02` adds `$6BEC`, `AND #$04` adds the strength
+hit bonus at `$6DE8`. They read like alternatives and are not. Of the 58
+`POOL1` type records carrying damage dice, 54 hold one bit or the other; the
+HEAVY CROSSBOW holds **both**, and so do the DECK, DRUMS and DUST, three magic
+items built on the weapon shape. Four hold neither: BILL-GUISARME,
+GUISARME-VOULGE, BAG and the unnamed record 0. The five melee weapons that can
+also be thrown — dagger, hand axe, club, hammer, spear — carry bit 2 and bit 4
+and a range, and never bit 1, so throwing a dagger is a strength attack and
+throwing a dart is a dexterity one.
+
+`goldbox/derive.py` now mirrors those two blocks. Across the same 114 records
+the recomputed THAC0 matches the game's cached one for **112**, against 96
+under the rule it replaced. The two left are GARRETT in NEWSAVE1 and NEWSAVE2,
+whose record was edited and never played — which is the staleness the check
+exists to report, so they are counted rather than excused.
+
+### The refuted reading was ours, and the coincidence was a good one
+
+`goldbox/layout.py` carried `0x0EC` as probable spell state for months, on the
+observation that it went 0 → 1 after a fight "for MALCYON and LADY KATHERINE
+and nobody else — exactly the two spellcasters". They are also exactly the two
+characters in that party with a dexterity of 16. The other four are 12 to 15,
+whose table entry is zero, so there was nothing for their byte to do. Two
+readings fitted the same six numbers, and the one that fitted 114 numbers is
+the other one.
+
+### What this does *not* settle
+
+* **Damage.** `expected_damage_bonus` still adds the strength damage bonus
+  whatever is readied, and the engine gates that on the same bit 2
+  (`LIBRARY $36CC`, and [the item type table's damage bonus is
+  signed](#the-item-type-tables-damage-bonus-is-signed-188)). MALCYON's
+  damage bonus staying 0 with a thrown dart and strength 18 is the specimen
+  that says so. That is
+  `#201 (A readied vial of holy water is expected to add 255 to a character's
+  damage)`'s to fix, and `goldbox/items.py` now carries the constants for it.
+* **Bare hands.** With nothing readied `derive` keeps using the strength
+  bonus, because that is what the six unarmoured characters of `PORSAVE.D64`
+  cache. No specimen distinguishes "the engine applies it bare-handed" from
+  "the cache is left over from the last weapon readied", and the experiment
+  that would is to un-ready everything in game, start a fight, and read the
+  roster's `+0x0E`.
+* **The later titles.** `docs/121-silver-blades.md` records `0x0EC` reading
+  `$FB` in every Silver Blades pregen, which is −5 signed and off the bottom
+  of this table. Whether that game reuses the offset is untested here.
