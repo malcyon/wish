@@ -8,7 +8,9 @@ with `tools/session.py`, builds the **real** map tab offscreen against the same
 emulator, ticks it, and saves a PNG of the window and of the map canvas after
 every step.
 
-    tools/mapmarker.py --disk work/p50-outdoor/OUTC.D64 --slot 2 --walk 1357
+    env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
+        GDK_BACKEND=x11 .venv/bin/python tools/mapmarker.py \\
+        --disk work/p50-outdoor/OUTC.D64 --slot 2 --walk 1357
 
 Three things make it a fair reproduction of what a player has rather than a
 model of it:
@@ -23,11 +25,9 @@ model of it:
   own keys and not by writing memory.
 
 `--slot` is a pool slot, and `POR_HEADLESS=1` keeps the emulator off the
-desktop.  Run the Python side offscreen -- a Qt window built with a live
-`WAYLAND_DISPLAY` lands on whoever is at the machine:
-
-    env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE QT_QPA_PLATFORM=offscreen \\
-        GDK_BACKEND=x11 .venv/bin/python tools/mapmarker.py ...
+desktop.  `_offscreen()` forces the Python side offscreen as well, so the
+environment above is belt and braces rather than the only thing standing
+between a run and a window on somebody's desktop.
 
 Its settings and its notes go to `--out/config` and `--out/data`, so a run
 never writes into the player's own automapper notes.
@@ -206,6 +206,31 @@ def _root_first() -> None:
     while str(ROOT) in sys.path:
         sys.path.remove(str(ROOT))
     sys.path.insert(0, str(ROOT))
+
+
+def _offscreen() -> None:
+    """Make it impossible for this process to draw on the user's desktop.
+
+    Forced rather than defaulted, and `WAYLAND_DISPLAY` unset.  This was a
+    `setdefault` and that is a no-op for the one person most likely to run it:
+    a desktop session exports `QT_QPA_PLATFORM` for its own compositor --
+    COSMIC and KDE both do, and this machine reads `wayland;xcb` -- so the
+    default never applied and `build_window` would have opened a real window
+    on the live session.  `tests/conftest.py` records the same mistake being
+    made and fixed in the suite.  A Qt child also prefers Wayland over
+    whatever is set for X, so unsetting `WAYLAND_DISPLAY` is what makes a
+    private X display a sandbox rather than a suggestion.
+
+    `WISH_SHOT_PLATFORM` is the escape hatch, and it is the same name
+    `tools/shotstrip.py` and `tools/shotwindow.py` use: set it to look at the
+    window while it runs.
+    """
+    os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_SHOT_PLATFORM",
+                                                   "offscreen")
+    if "WISH_SHOT_PLATFORM" not in os.environ:
+        os.environ.pop("WAYLAND_DISPLAY", None)
+        os.environ.pop("XDG_SESSION_TYPE", None)
+        os.environ["GDK_BACKEND"] = "x11"
 
 
 def private_settings(out: pathlib.Path) -> None:
@@ -405,7 +430,7 @@ def main(argv=None) -> int:
     args.tag = args.tag or pathlib.Path(args.disk).stem.lower()
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    _offscreen()
     log = Log(out / f"{args.tag}.jsonl")
     try:
         return run(args, log)
