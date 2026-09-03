@@ -340,7 +340,7 @@ def run(args, log: Log) -> int:
             raise RuntimeError("the game did not load the save")
         if not sess.select_row("BEGIN ADVENTURING"):
             raise RuntimeError("BEGIN ADVENTURING could not be selected")
-        arrived = answer_bars(sess, log, "NO", seconds=args.arrive)
+        arrived = answer_bars(sess, log, args.answer, seconds=args.arrive)
         if arrived != "world":
             raise RuntimeError(f"no world bar {args.arrive}s after BEGIN ADVENTURING")
         sess.settle(3)
