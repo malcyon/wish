@@ -443,21 +443,18 @@ def run(args, log: Log) -> int:
         log.say(f"the game's LOAD SAVED GAME accepted the disk: {listed}")
         if not listed:
             raise RuntimeError("the game did not load the save")
-        # Not `Session.begin_adventuring`, which waits 240 seconds for the
-        # world bar.  An arrival that plays an animation takes longer than
-        # that -- Sokol Keep's boat -- and the difference between "the game is
-        # still loading" and "the conversion wedged it" is what this whole run
-        # is for, so the wait is the caller's and a failure is photographed
-        # rather than reported as a boolean.
+        # Not `Session.begin_adventuring`.  It now answers a continue prompt
+        # itself (`Session.wait_for_world`, #182 -- Sokol Keep's boat draws,
+        # prints `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.` and waits on `PRESS
+        # <RETURN> OR BUTTON TO CONTINUE`), but it only answers that one
+        # prompt and returns a bare bool.  This run wants more: a scene can
+        # also ask `YES NO`, which `answer_bars` answers and
+        # `wait_for_world` does not, and the difference between "the game is
+        # still loading" and "the conversion wedged it" is what this whole
+        # run is for, so a failure is photographed and logged as "stuck"
+        # rather than raised through 240 seconds of silence.
         if not sess.select_row("BEGIN ADVENTURING"):
             raise RuntimeError("BEGIN ADVENTURING could not be selected")
-        # **An arrival can have a scene in front of it**, and `Session`'s own
-        # `begin_adventuring` waits for the world bar without answering one.
-        # Loading a Sokol Keep party draws the boat, prints `THE BOAT
-        # DISEMBARKS YOU AT SOKAL KEEP.` and waits on `(PRESS <RETURN> OR
-        # BUTTON TO CONTINUE)` -- so a driver that only waits reports a
-        # perfectly healthy save as `begin_adventuring failed`, which is what
-        # the first run of this said.
         arrived = answer_bars(sess, log, args.answer, seconds=args.arrive)
         log.emit("arrival", outcome=arrived)
         if arrived != "world":

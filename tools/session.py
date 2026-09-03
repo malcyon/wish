@@ -809,8 +809,49 @@ class Session:
     def begin_adventuring(self) -> bool:
         if not self.select_row("BEGIN ADVENTURING"):
             return False
-        hit, _ = self.wait_text("ENCAMP", 240)
-        return hit is not None
+        return self.wait_for_world(240)
+
+    def wait_for_world(self, timeout: float = 240.0, interval: float = 0.35) -> bool:
+        """Wait for the world's command bar, answering a continue prompt on
+        the way.
+
+        **An arrival can have a scene in front of it.**  Loading a Sokol Keep
+        party draws the boat, prints `THE BOAT DISEMBARKS YOU AT SOKAL KEEP.`
+        and puts up `PRESS <RETURN> OR BUTTON TO CONTINUE` -- and a wait that
+        only watches for `ENCAMP` sits out its whole budget in front of a game
+        that is waiting on the driver, not stuck.  New Phlan and the Slums
+        hand control straight back with no scene, which is why this went
+        unseen until an arrival that was neither of those two was driven
+        (#182).
+
+        Same shape as `outdoor_key`: read what row 24 actually says and act on
+        it, rather than sitting for the one thing that was expected.
+        `combat_state` and `BAR_PRESS` are reused rather than a second copy of
+        the same classification, and the prompt is answered the way `fight`'s
+        own `BAR_PRESS` branch already does -- `press_kernal`, because XTEST
+        Return is not dependable at a prompt and the keyboard buffer is, and
+        once per prompt via `await_change` rather than once per reading, since
+        the prompt stays up about a second after the keystroke and answering
+        it again on the next poll sends the Return on to whatever it gave way
+        to.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            s = self.screen()
+            if s is None:
+                time.sleep(interval)
+                continue
+            if s.contains("ENCAMP"):
+                return True
+            state = self.combat_state(s)
+            if state.kind == BAR_PRESS:
+                self.press_kernal(0x0D)
+                self.await_change(state.text,
+                                  timeout=max(1.0, min(6.0, deadline - time.time())))
+                continue
+            self.handle_prompt(s)
+            time.sleep(interval)
+        return False
 
     # -- which of the two worlds ------------------------------------------
 
