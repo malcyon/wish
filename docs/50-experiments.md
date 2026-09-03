@@ -6172,3 +6172,129 @@ the other one.
 * **The later titles.** `docs/121-silver-blades.md` records `0x0EC` reading
   `$FB` in every Silver Blades pregen, which is −5 signed and off the bottom
   of this table. Whether that game reuses the offset is untested here.
+
+---
+
+## Walking out of the Kobold Caves drops Princess Fatima; fast travelling out keeps her (#180)
+
+**Hypothesis.** `ECL0D $9A9D`, the only exit in the thirty area scripts that
+touches who is in the party, removes the NPC travelling with the party — and a
+fast travel, which enters `NEWECL` at its tail `$2034`, does not. Stated in
+`#180 (What the Kobold Caves exit does to an NPC in the party is not
+understood, and Fast Travel skips it)` and predicted from the bytecode before
+any emulator ran.
+
+**Method.** `tools/koboldnpc.py`, on pool slot 1, `POR_HEADLESS=1`. Both plans
+boot the **same** save disk — a party standing in the Kobold Caves, area 13,
+with `PRINCESS FATIMA` in master slot 3 — and both end in area 27, so the one
+thing that differs between the capture sets is how the party left. `walk` puts
+the party on `GEO0D` (6,14) facing south and walks the one step on to (6,15),
+so the game's own square-attribute dispatch reaches `$99C1`; `warp` calls
+`automap.actions.FastTravel` the way the automapper does. Each capture reads
+the eight master slots — the record at `$4D00 + slot*$100` and the roster block
+at `$8300 + slot*$20` — plus the resident `$6B00`/`$6C00`, and takes a
+screenshot.
+
+**Result. CONFIRMED.** Sample size: **two runs of the warp plan and one of the
+walk**, all three off the same save disk. The two warp runs agree byte for byte
+on every field captured.
+
+| master slot | walk, `02-walked-out` | warp, `02-warped-out` (both runs) |
+|---|---|---|
+| 0 `GENHEERIS` | name `$47`, `0x0B8` = `$B2`, status 1 | same |
+| 1 `XAVIER` | name `$58`, `0x0B8` = `$01`, status 1 | same |
+| 2 `MAD MAN` | name `$4D`, `0x0B8` = `$80`, status 1 | same |
+| **3 `PRINCESS FATIMA`** | **name byte 0, status 0** — the slot is empty | **name `$50`, status 1** — she is still there |
+| 4 `DIRTEN` | name `$44`, `0x0B8` = `$B1`, status 1 | same |
+| 5 `SIMON` | name `$53`, `0x0B8` = `$01`, status 1 | same |
+| 6 `SKULLCRUSHER` | name `$53`, `0x0B8` = `$B2`, status 1 | same |
+| 7 `GRON` | name `$47`, `0x0B8` = `$01`, status 1 | same |
+
+Slot 3's `0x0B8` stays `$B2` in the walked capture — the NPC bit is not
+cleared, only the name's first byte and the roster status, which is exactly
+what `docs/41-memory-regions.md` records the engine's own DROP CHARACTER doing
+(`#104 (There is no party count in a C64 save)`).
+
+**And the party panel says the same thing**, which is the half a byte
+comparison cannot give. Walking out, the panel lists seven names — `GRON`,
+`SKULLCRUSHER`, `SIMON`, `DIRTEN`, `MAD MAN`, `XAVIER`, `GENHEERIS`. Fast
+travelling out, it lists eight, with `PRINCESS FATIMA` between `DIRTEN` and
+`MAD MAN` at AC 0 and 33 hit points, in both runs. `work/issue180/walk/`,
+`work/issue180/warp/` and `work/issue180/warp2/` hold the screenshots.
+
+**What the player answers on the way out.** The exit square prints
+`DO YOU WANT TO LEAVE?` over a `YES NO` bar, and the panel at that moment still
+has all eight names on it — `work/issue180/walk/walk-bar-01.png`. She goes
+after `YES`.
+
+**The resident `$6B00`/`$6C00` are not the evidence and were misread as such
+while this was being set up.** `$6B00`'s first byte reads 3 after the walk and
+2 after the warp, and `$6C00` is byte-identical across all three captures.
+Neither is a measurement of the party: the resident record and roster block are
+a one-slot staging buffer, and by the time the game is idle in area 27 whatever
+was staged last is sitting in them. The master slots at `$4D00`/`$8300` are
+where membership lives, and that is what the table above reads.
+
+**The two `02-*` captures differ in one more thing than the party**, and it
+should not be read as part of this result: the walked party lands with
+`$49C3`/`$49C4` still `(6,15)` and the fast-travelled one at `(9,29)`, because
+`newecl_writes` writes the area's own overland square and the caves' exit does
+not. That is `#178 (Fast Travel to the wilderness leaves the party on whatever
+overland square it last stood on)`, measured elsewhere and not this experiment.
+
+### Exactly one exit in the game does this
+
+`tools/eclwalk.py exits` reaches 79 `NEWECL` statements across the thirty area
+scripts. Grepping that output for the party's own storage finds `$6B00`,
+`$6C00` and `LOADCHAR` in **one** prologue, `ECL0D $9A9D`, and nowhere else.
+The name `PRINCESS FATIMA` as a 12-byte packed operand also appears once in all
+thirty scripts, at `$99FB`, the compare that finds her. CONFIRMED — the
+listing regenerates from the player's disks and is not transcribed.
+
+### Why "run the exit's own handler" is not a one-line change
+
+`ECL0D` has **two** `NEWECL 27` statements: `$9A20`, which is the plain exit and
+is the one exit in the whole corpus with nothing at all in front of it, and
+`$9A9D`, which is the four statements above. Which one the game runs depends on
+walking the eight slots and finding a record whose `0x0B8` has bit 7 set and
+whose roster status has bit 7 clear, *and* on the player answering `YES`. So an
+area pair does not name a handler: 13 → 27 has two, and 12 more script/target
+pairs in the corpus are reached by more than one exit —
+
+| script | target area | exits | statements in each block |
+|---|---|---|---|
+| `ECL00` | 11 | 2 | 0, 0 |
+| `ECL00` | 26 | 2 | 3, 3 |
+| `ECL01` | 25 | 2 | 3, 2 |
+| `ECL0B` | 0 | 2 | 0, 6 |
+| `ECL0D` | 27 | 2 | 0, 4 |
+| `ECL0E` | 26 | 2 | 3, 3 |
+| `ECL13` | 25 | 2 | 1, 0 |
+| `ECL16` | 23 | 2 | 4, 3 |
+| `ECL19` | 25 | 2 | 13, 4 |
+| `ECL1A` | 14 | 2 | 5, 5 |
+| `ECL1A` | 26 | 2 | 15, 4 |
+| `ECL1B` | 27 | 2 | 13, 2 |
+| `ECL1C` | 25 | 4 | 1, 1, 1, 2 |
+
+That is 13 pairs of the 73 exits whose target is an immediate; the remaining
+six read their target out of a table with opcode `$2A` and the walk cannot say
+where they go at all.
+
+**The two shapes an implementation could take**, neither built:
+
+* **Let the game's own VM run it.** Point the interpreter at the prologue's
+  first address and let `DUNGEON` execute to the `NEWECL`, instead of writing
+  `newecl_writes` from outside. That is the honest one — every statement runs,
+  including the ones nobody has read — and it needs a way to choose *which*
+  prologue when a target has more than one, and a decision about what to do
+  with the prologues that print text and wait for a keypress.
+* **Extend `newecl_writes`.** It already reimplements a fixed set of writes
+  from outside; the drop is two `SAVE 0` and a `LOADCHAR`, and the slot to
+  write is found by the same scan the script does. Cheap, exact for this one
+  exit, and it does not generalise — every new prologue is another hand-written
+  case.
+
+**Donald's decision, 2026-09-03: Fast Travel out of the area should run the
+exit's own handler before warping.** That is a design ruling and not a finding;
+the work it implies is not scheduled here.

@@ -38,7 +38,7 @@ matters: two blocks reach it, and only one of them clears the wall-slot pins.
 | bytes | 178035 |
 | statements the walk reaches | 98.0% of those bytes; the rest is the data tables opcode `$2A` indexes |
 | `NEWECL` statements | **79** |
-| exits with at least one statement before them | **78** |
+| exits with at least one statement before them | **78** -- counting the inbound block a jump arrives through. 68 have a statement in their own block; the one exit with nothing on either count is `ECL0D $9A20`, the Kobold Caves' plain exit |
 
 A raw scan for the bytes `20 00 nn` finds 77, of which three are inside another
 statement and one is inside a data table, and it misses the two `NEWECL`s whose
@@ -68,7 +68,7 @@ reads and a handful of tests.
 | `$49FB` | 2 | no, but 22 of the thirty scripts write it on the straight path out of entry 4 | harmless |
 | `$4A00`-`$4A1F`, per-script scratch | 1 | yes -- `NEWECL` wipes all 32 bytes and so does a fast travel | harmless |
 | `$6DE1` | 1 | no | latent: `DUNGEON` never writes it and four places read it, but 22 of the thirty scripts do. Whether a stale value survives the arriving area's first step is unmeasured |
-| `$6B00`/`$6C00` and a `LOADCHAR`, the party's own membership | 1 | no | **latent, and not understood** -- see below |
+| `$6B00`/`$6C00` and a `LOADCHAR`, the party's own membership | 1 | no | **visible** -- see below |
 | `$6E79`-`$6E7E`, `$49EB`, `$6DC6`, `$6DCB` | — | no | the VM's own working registers and per-fight values; nothing carries them across an area change |
 
 **The framing that decides most of the rows.** A prologue is what the game
@@ -80,6 +80,13 @@ story -- the loader's cache, the wall tables, the party's position -- because
 the arriving area assumes those and nobody has told it otherwise. `#156
 (Warping from the Slums to New Phlan draws New Phlan with the Slums' walls)`
 was one of those, and there are two more.
+
+**The party's own membership does not fit that split, and the split did not
+decide it.** Losing an NPC at the caves' mouth is story, by the framing above,
+and a fast travel keeping her is still wrong -- she is on the panel for the
+rest of the game and in the save, and no other script can take her off it.
+Donald ruled on 2026-09-03 that a fast travel should run the exit's own
+handler, which settles this row and every future row like it.
 
 ## Visible: the overland square is whatever the party last stood on
 
@@ -179,10 +186,20 @@ Filed as `#179 (Warping out of Valhingen Graveyard or Valjevo Castle leaves
 two wall pieces unrelocated)`, and fixed there: `newecl_writes` writes
 `$49E7`-`$49E9` as zero on every fast travel.
 
-## Latent, and not understood: the Kobold Caves and the party's own membership
+## Visible: fast travelling out of the Kobold Caves keeps an NPC the game meant to take away
 
-`ECL0D $9A9D`, the exit from the Kobold Caves (area 13) to the wilderness east
-window, ends:
+**What the player sees.** Princess Fatima is travelling with the party inside
+the Kobold Caves. Walk south out of the caves, answer `YES` to
+`DO YOU WANT TO LEAVE?`, read her farewell, and she is gone -- the party panel
+in the wilderness lists seven names instead of eight. Use Fast Travel to leave
+the caves instead and the panel still lists eight, with `PRINCESS FATIMA` on
+it, at AC 0 and 33 hit points. She stays for the rest of the session and goes
+into the save, and **no other script in the game removes her**: her name
+appears as a compare operand once in all thirty scripts.
+
+**Why.** `ECL0D` dispatches `GEO0D` square-attribute id 28 -- squares (6,15)
+and (10,15) -- to `$99C1`, which asks whether to leave, walks the eight party
+slots looking for her by name, and on finding her runs:
 
 ```
 $9A84  SAVE 0, [$6B00]
@@ -192,20 +209,49 @@ $9A99  LOADCHAR [$6E7A]
 $9A9D  NEWECL 27
 ```
 
-It is reached from a loop over the party's slots that stops on a record whose
-`$6BB8` is `>= 128` and whose roster byte `$6C00` is `> 127` -- an NPC -- and it
-prints seventy-two bytes of text first. `$6B00` is the resident character
-record and `$6C00` the resident roster block ([`41`](41-memory-regions.md)), and
-the DOS guide's note on `LOADCHAR` is that an index of 128 or more puts a
-monster on the party's side and that zeroing those two afterwards takes it away
-again ([`128`](128-guide-and-scripting.md)).
+`LOADCHAR` with bit 7 set writes the resident record **out** to the slot rather
+than reading one in -- `DUNGEON $1BD0` takes `AND #$7F / STA $6DB4 / JSR $3729
+/ JSR $441E` on `CMP #$80 / BCS`, and `LIBRARY $441E` copies `$6C00`-`$6C1F` to
+`$8300 + slot*$20` and `$6B00` to `$4D00 + slot*$100`. So the four statements
+are one thing: zero the name and the roster status, and write the emptied slot
+back. That is the same pair of bytes the engine's own DROP CHARACTER zeroes
+([`41`](41-memory-regions.md), `#104 (There is no party count in a C64 save)`).
+The DOS guide's note that a `LOADCHAR` index of 128 or more adds a monster to
+the party ([`128`](128-guide-and-scripting.md)) describes `ADDNPC` (`$36`), not
+this opcode; `ECL0D $A8AB ADDNPC 104, 100` is how she joins.
 
-So this exit does something to who is in the party, and a fast travel out of
-the Kobold Caves does not do it. **What exactly, nobody here knows**, and the
-order -- zero, then load -- is not the order the guide describes.
+**Grade: CONFIRMED**, in the emulator on 2026-09-03 by `tools/koboldnpc.py`.
+Two runs of the warp plan and one of the walk plan, all three booting the same
+save disk with the party in area 13 and ending in area 27, so the only thing
+that differs is how the party left. Master slot 3 -- the record at `$4D00 +
+3*$100` and the roster block at `$8300 + 3*$20`:
 
-Filed as `#180 (What the Kobold Caves exit does to an NPC in the party is not
-understood, and Fast Travel skips it)`.
+| how the party left area 13 | slot 3's name byte | slot 3's roster status | on the panel |
+|---|---|---|---|
+| walked out through `$99C1` | 0 | 0 | seven names |
+| fast travelled, run 1 | `$50` (`PRINCESS FATIMA`) | 1 | eight names |
+| fast travelled, run 2 | `$50` (`PRINCESS FATIMA`) | 1 | eight names |
+
+The NPC bit at record `0x0B8` stays `$B2` in the walked capture; only the name
+and the status are cleared. The other seven slots are untouched in all three.
+The reasoning, the captures and what they do *not* show is
+[walking out of the Kobold Caves drops Princess
+Fatima](50-experiments.md#walking-out-of-the-kobold-caves-drops-princess-fatima-fast-travelling-out-keeps-her-180).
+
+**What Fast Travel is meant to do about it, and does not yet.** Donald ruled on
+2026-09-03 that a fast travel out of an area should run the exit's own handler
+before warping, so a party leaving the Kobold Caves would lose her the way the
+game intends. **Nothing implements that today** -- a fast travel still enters
+`NEWECL` at `$2034` and skips all four statements -- so the gap between the two
+is open work, tracked on `#180 (What the Kobold Caves exit does to an NPC in
+the party is not understood, and Fast Travel skips it)`.
+
+The hard part is not this exit. **An area pair does not name a handler**:
+`ECL0D` has two `NEWECL 27` statements, `$9A20` with nothing in front of it and
+`$9A9D` with the drop, and which one runs depends on the party's contents and
+on the player's answer to a `YES`/`NO` question. Twelve more script/target
+pairs in the corpus are reached by more than one exit, and six exits read their
+target out of a table so the walk cannot say where they go at all.
 
 ## Settled: `SAVE 255, [$6DC9]` costs nothing
 
@@ -247,6 +293,10 @@ it as belt-and-braces for a path that returns; on the path that reaches
   walk cannot say which areas they reach without running them.
 * **Only one level of inbound blocks is reported** for a `NEWECL` something
   jumps to. A route two jumps back may run statements this page does not list.
-* **Nothing here has been watched in the running game.** Every claim is read
-  off the bytecode and off `DUNGEON`; the two graded visible carry the
-  experiment that would confirm them.
+* **Two of the three visible entries have now been watched in the running
+  game** -- the pinned wall slots by `tools/wallpins.py` on 2026-09-02 and the
+  Kobold Caves' NPC by `tools/koboldnpc.py` on 2026-09-03, both graded
+  CONFIRMED above. This bullet said nothing here had been watched at all,
+  which was true when the page was written and stopped being true with the
+  first of those runs. The overland-square entry is still read off the
+  bytecode only.
