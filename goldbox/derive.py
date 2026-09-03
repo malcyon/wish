@@ -21,7 +21,7 @@ See docs/30-savegame-layout.md.
 
 from __future__ import annotations
 
-from .items import TYPE_DAMAGE_MEDIUM, ItemType
+from .items import TYPE_DAMAGE_MEDIUM, WEAPON_ADDS_STRENGTH, ItemType
 
 # The third byte of a damage expression is its flat bonus: a mace is 1d6+1, so
 # its type record carries 1 here and readying it is worth a point of damage.
@@ -153,12 +153,24 @@ def expected_thac0(record, readied: list[tuple[object, ItemType]]) -> int:
 
 
 def expected_damage_bonus(record, readied: list[tuple[object, ItemType]]) -> int:
-    """Strength damage bonus plus the readied weapon's own."""
+    """Strength damage bonus plus the readied weapon's own.
+
+    The weapon's own bonus is signed two's complement -- $FF is -1, not +255
+    (#201, the same fault #188 fixed in `goldbox/items.py`). And the strength
+    term is the weapon's business, not the character's: LIBRARY $36D2 adds it
+    only when the readied type's +14 has bit 2 set, `WEAPON_ADDS_STRENGTH`. A
+    vial of holy water is ranged and thrown, not "add strength", so readying
+    it gets none.
+    """
     _, damage = strength_bonuses(record.get("strength"),
                                  record.get("exceptional_strength"))
     for item, kind in readied:
         if kind.is_weapon:
-            return damage + kind.raw[_TYPE_DAMAGE_BONUS]
+            bonus = kind.raw[_TYPE_DAMAGE_BONUS]
+            if bonus > 127:
+                bonus -= 256
+            strength = damage if kind.weapon_flags & WEAPON_ADDS_STRENGTH else 0
+            return strength + bonus
     return damage
 
 

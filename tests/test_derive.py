@@ -30,17 +30,18 @@ from goldbox.savegame import SaveGame0, SaveGame1
 FIGHTER, LEVEL_1 = 8, 1
 
 
-def a_weapon(flags: int) -> ItemType:
+def a_weapon(flags: int, bonus: int = 0) -> ItemType:
     """A type record carrying damage dice and nothing else but `flags`.
 
     Built here rather than read off a disk: what is under test is the
     arithmetic each flag bit provokes, and the game's own records happen to
     pair the bits with ranges, rates of fire and damage bonuses that would
-    make a failure ambiguous.
+    make a failure ambiguous. `bonus` is the raw byte, not a signed value --
+    pass `0xFF` for a -1 the way the vial of holy water's record does.
     """
     raw = bytearray(16)
-    raw[2:5] = bytes([1, 6, 0])          # 1d6 vs large, so it is a weapon
-    raw[9:12] = bytes([1, 6, 0])         # 1d6 vs medium
+    raw[2:5] = bytes([1, 6, bonus & 0xFF])   # 1d6 vs large, so it is a weapon
+    raw[9:12] = bytes([1, 6, bonus & 0xFF])  # 1d6 vs medium
     raw[14] = flags
     return ItemType(0, bytes(raw))
 
@@ -110,6 +111,32 @@ def test_nothing_readied_keeps_the_strength_bonus():
     assert derive.expected_thac0(rec, []) == base - hit
 
 
+def test_a_readied_vial_of_holy_water_is_expected_to_subtract_one():
+    """The bug a player saw: a fighter strong enough for a damage bonus reads
+    the vial's own $FF byte as 255 and the strength bonus on top, and `wish`
+    called the resulting 257 the rules' answer (#201).
+
+    The vial's type record is ranged and thrown (bit 1) and never carries
+    `WEAPON_ADDS_STRENGTH` (bit 2), so a strength of 17 should add nothing.
+    """
+    rec = a_character(strength=17)
+    hit, damage = derive.strength_bonuses(17, 0)
+    assert damage == 2, "a strength-17 fighter has a damage bonus to lose"
+    vial = [(FakeItem(), a_weapon(WEAPON_RANGED, bonus=0xFF))]
+    assert derive.expected_damage_bonus(rec, vial) == -1
+
+
+def test_a_melee_weapon_still_adds_strength_to_its_own_bonus():
+    """The other half of the fix: `WEAPON_ADDS_STRENGTH` still adds the
+    strength term, so a sword with a +1 keeps reading +3 for an 18-strength
+    fighter."""
+    rec = a_character(strength=18, percentile=0)
+    hit, damage = derive.strength_bonuses(18, 0)
+    assert damage == 2
+    sword = [(FakeItem(), a_weapon(WEAPON_ADDS_STRENGTH, bonus=1))]
+    assert derive.expected_damage_bonus(rec, sword) == 3
+
+
 # --- the population, off the player's own disks -----------------------------
 
 def _party(path, types):
@@ -150,6 +177,36 @@ def test_every_cached_thac0_but_two_agrees_with_the_recomputed_one():
             agree += derive.expected_thac0(record, readied) == roster.thac0
     assert total >= 100, f"only {total} records; the disks look incomplete"
     assert agree >= total - 2
+
+
+@needs_disks
+def test_every_cached_damage_bonus_but_five_agrees_with_the_recomputed_one():
+    """Before #201, only 91 of 114 records agreed -- the unsigned byte and the
+    ungated strength term between them threw off every readied weapon with a
+    negative bonus or a bit-1-only flag. After it, 109 agree, and the five
+    left are on GARRETT's own NEWSAVE1 and NEWSAVE2: every character on those
+    two disks disagrees on *something* (armour class too), the same
+    edited-and-never-played saves the THAC0 population test above already
+    excuses two records on, for GARRETT.
+    """
+    from gamedata import disk_dir, game_disk
+
+    types = load_item_types(str(game_disk("POOL1")))
+    disks = sorted(p for p in disk_dir().glob("*.[dD]64")
+                   if p.name.upper().startswith(("PORSAVE", "NEWSAVE")))
+    if not disks:
+        pytest.skip("no save disks")
+    total = agree = 0
+    for path in disks:
+        try:
+            party = list(_party(path, types))
+        except Exception:            # PORSAVE10 is a roster disk with no save
+            continue
+        for record, roster, readied in party:
+            total += 1
+            agree += derive.expected_damage_bonus(record, readied) == roster.damage_bonus
+    assert total >= 100, f"only {total} records; the disks look incomplete"
+    assert agree >= total - 5
 
 
 @needs_disks
