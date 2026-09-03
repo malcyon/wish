@@ -20,12 +20,11 @@ wrong.  What is compared is the position table: how many combatants the engine
 puts *inside* the window.
 """
 
-import pathlib
-import sys
+from conftest import load_tools_module
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-from savecheck import roll_call, undrawn  # noqa: E402
+savecheck = load_tools_module("savecheck")
+roll_call = savecheck.roll_call
+undrawn = savecheck.undrawn
 
 from automap.combat import VIEW, Battle, Combatant, Shape  # noqa: E402
 

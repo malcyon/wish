@@ -14,45 +14,38 @@ the game offered to stop".  Both look identical in a log of command bars.
 """
 
 import dataclasses
-import pathlib
-import sys
 
 import pytest
+from conftest import load_tools_module
 from gamedata import synthetic_arena
 
-# From this file, not from a path measured on somebody's machine: an absolute
-# one exists here and nowhere else, and `tests/gamedata.py` carries the same
-# lesson in its own docstring after two tests were invisible on CI that way.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-from session import (  # noqa: E402
-    ATTACK,
-    BAR_BLANK,
-    BAR_COMMAND,
-    BAR_CONTINUE,
-    BAR_DONE,
-    BAR_EXIT,
-    BAR_LEAVE,
-    BAR_MESSAGE,
-    BAR_MOVE,
-    BAR_NONE,
-    BAR_PRESS,
-    BAR_YESNO,
-    COMBAT,
-    DUNGEON,
-    ENDED,
-    LOST,
-    LOST_TEXT,
-    NOT_FIGHTING,
-    PANEL_LEFT,
-    RE_NOTABLE,
-    STEP_KEYS,
-    WON,
-    Session,
-    chebyshev,
-    span_in,
-    word_column,
-)
+session = load_tools_module("session")
+ATTACK = session.ATTACK
+BAR_BLANK = session.BAR_BLANK
+BAR_COMMAND = session.BAR_COMMAND
+BAR_CONTINUE = session.BAR_CONTINUE
+BAR_DONE = session.BAR_DONE
+BAR_EXIT = session.BAR_EXIT
+BAR_LEAVE = session.BAR_LEAVE
+BAR_MESSAGE = session.BAR_MESSAGE
+BAR_MOVE = session.BAR_MOVE
+BAR_NONE = session.BAR_NONE
+BAR_PRESS = session.BAR_PRESS
+BAR_YESNO = session.BAR_YESNO
+COMBAT = session.COMBAT
+DUNGEON = session.DUNGEON
+ENDED = session.ENDED
+LOST = session.LOST
+LOST_TEXT = session.LOST_TEXT
+NOT_FIGHTING = session.NOT_FIGHTING
+PANEL_LEFT = session.PANEL_LEFT
+RE_NOTABLE = session.RE_NOTABLE
+STEP_KEYS = session.STEP_KEYS
+WON = session.WON
+Session = session.Session
+chebyshev = session.chebyshev
+span_in = session.span_in
+word_column = session.word_column
 
 from automap import combat, screen  # noqa: E402
 from automap.target import MemoryTarget  # noqa: E402

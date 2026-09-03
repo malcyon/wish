@@ -21,11 +21,11 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import load_tools_module
 
 TOOLS = Path(__file__).resolve().parent.parent / "tools"
-sys.path.insert(0, str(TOOLS))
 
-import instance  # noqa: E402
+instance = load_tools_module("instance")
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 

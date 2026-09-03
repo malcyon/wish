@@ -15,25 +15,19 @@ cannot walk.  An hour of `#50 (Lift the wilderness refusal from the DOS save
 converter)`'s end-to-end proof went on it.
 """
 
-import pathlib
-import sys
+from conftest import load_tools_module
 
-# From this file, not from a path measured on somebody's machine -- the same
-# lesson `tests/gamedata.py` and `tests/test_combatdrive.py` carry.
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-from session import (  # noqa: E402
-    COMBAT,
-    COMPASS,
-    DUNGEON,
-    DUNGEON_XY,
-    ENDED,
-    INDOORS_AT,
-    TRAVEL_XY,
-    Session,
-    Status,
-    parse_status,
-)
+session = load_tools_module("session")
+COMBAT = session.COMBAT
+COMPASS = session.COMPASS
+DUNGEON = session.DUNGEON
+DUNGEON_XY = session.DUNGEON_XY
+ENDED = session.ENDED
+INDOORS_AT = session.INDOORS_AT
+TRAVEL_XY = session.TRAVEL_XY
+Session = session.Session
+Status = session.Status
+parse_status = session.parse_status
 
 COLS = 40
 ROWS = 25

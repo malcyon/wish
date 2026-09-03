@@ -21,9 +21,58 @@ See `docs/112-test-harness.md` for the measurements.
 
 
 import gc
+import importlib.util
 import os
+import pathlib
+import sys
 
 import pytest
+
+_TOOLS = pathlib.Path(__file__).resolve().parent.parent / "tools"
+
+
+def load_tools_module(name: str):
+    """Import ``tools/<name>.py`` by file path, without leaving ``tools/`` on
+    ``sys.path`` for whatever pytest collects next.
+
+    ``tools/wish.py`` is a plain module that happens to share the real
+    ``wish`` *package*'s name. Six test files used to put ``tools/`` on
+    ``sys.path`` permanently with a bare ``sys.path.insert(0, ...)``, which
+    let ``tools/wish.py`` shadow the package for every later ``from wish
+    import ...`` in the same process -- collection-order luck, not safety;
+    see #203 (Six test files shadow the wish package with tools/wish.py,
+    which stops the suite collecting). Importing the real package here,
+    first, and never leaving ``tools/`` on ``sys.path`` afterwards, is what
+    keeps that from happening regardless of what runs this function or when.
+
+    Reuses an already-loaded module by name rather than re-executing it, so
+    two test files asking for ``session`` get the same module object -- and
+    so the same classes -- rather than each getting its own copy that fails
+    ``isinstance`` against the other's.
+    """
+    import wish  # noqa: F401
+    cached = sys.modules.get(name)
+    if cached is not None:
+        return cached
+    added = str(_TOOLS) not in sys.path
+    if added:
+        sys.path.insert(0, str(_TOOLS))
+    try:
+        spec = importlib.util.spec_from_file_location(name, _TOOLS / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            # A module that failed half way through must not stay cached, or
+            # the next `load_tools_module(name)` in this process gets the
+            # broken object instead of a fresh error.
+            sys.modules.pop(name, None)
+            raise
+        return module
+    finally:
+        if added:
+            sys.path[:] = [p for p in sys.path if p != str(_TOOLS)]
 
 # Before Qt is imported by anything. Without this the suite opens real windows
 # on whoever is logged in -- and since many tests edit a character, closing one

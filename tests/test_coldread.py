@@ -28,13 +28,11 @@ and the disks are somewhere `tests/gamedata.py:curse_dir` does not look.
 
 
 import pathlib
-import sys
 
 import pytest
+from conftest import load_tools_module
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
-
-import coldread  # noqa: E402
+coldread = load_tools_module("coldread")
 
 from goldbox import games, items, traits  # noqa: E402
 from goldbox.d64 import D64  # noqa: E402

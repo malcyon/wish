@@ -8,11 +8,10 @@ document that is only mostly true.
 """
 
 import pathlib
-import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
+from conftest import load_tools_module
 
-import genimports  # noqa: E402
+genimports = load_tools_module("genimports")
 
 DOC = pathlib.Path(__file__).resolve().parent.parent / "docs/117-save-conversion.md"
 
