@@ -1421,6 +1421,15 @@ def test_a_per_character_effect_no_badge_covers_is_reported_rather_than_dropped(
     assert card.conditions.names == ()
     said = [r for r in caplog.records if "effect 64" in r.getMessage()]
     assert len(said) == 1, [r.getMessage() for r in said]
+    # A card is one roster slot, reused for whoever stands in it after a
+    # reorder or a different save -- so the same id on a different character
+    # is a new report, not a repeat.
+    other = _character(name="CASSIA", effects=(effect,))
+    with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
+        for _poll in range(5):
+            card.show_character(other)
+    said = [r for r in caplog.records if "effect 64" in r.getMessage()]
+    assert [r.getMessage().split()[3] for r in said] == ["BRUTUS", "CASSIA"]
 
 
 # --- a widget the code depends on and cannot find (#142) ---------------------

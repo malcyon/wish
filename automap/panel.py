@@ -527,11 +527,12 @@ class CharacterCard(QObject):
         if self.conditions is not None:
             self.conditions.colour = DANGER
 
-        #: Effect ids on this card already reported as having no badge.
-        #: Logged once each rather than five times a second, the same as
-        #: `BottomStrip._unbadged`.
-        self._unbadged: set[int] = set()
-
+        #: (character name, effect id) pairs this card has already reported
+        #: as having no badge. Logged once each rather than five times a
+        #: second, the same as `BottomStrip._unbadged` -- keyed by name as
+        #: well, because a card is one roster slot and is reused for whoever
+        #: stands in it after a reorder or a different save.
+        self._unbadged: set[tuple[str, int]] = set()
 
         self.klass = child(root, QLabel, f"card_{index}_klass")
         if self.klass is not None:
@@ -610,8 +611,8 @@ class CharacterCard(QObject):
             self.conditions.setToolTip(
                 "\n".join(why for _, why in conditions if why))
         for effect in who.unbadged_effects:
-            if effect.id not in self._unbadged:
-                self._unbadged.add(effect.id)
+            if (who.name, effect.id) not in self._unbadged:
+                self._unbadged.add((who.name, effect.id))
                 log.warning("The card for %s is under %s and no condition "
                             "badge covers it, so nothing on the card shows "
                             "it", who.name, effect.label)
