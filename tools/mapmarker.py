@@ -134,7 +134,12 @@ def probes(sess) -> dict:
             return {name: m.read(addr, length).hex()
                     for name, (addr, length) in PROBES.items()}
     except Exception as exc:                       # a read that failed is data
-        return {"error": f"{type(exc).__name__}: {exc}"}
+        # Every key still comes back, because `look` writes them into its own
+        # line.  Returning only the error truncated a whole run on the first
+        # transient timeout, minutes after the boot that paid for it.
+        failed = {name: None for name in PROBES}
+        failed["error"] = f"{type(exc).__name__}: {exc}"
+        return failed
 
 
 def status_row(sess) -> str:
