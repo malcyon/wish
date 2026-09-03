@@ -527,6 +527,11 @@ class CharacterCard(QObject):
         if self.conditions is not None:
             self.conditions.colour = DANGER
 
+        #: Effect ids on this card already reported as having no badge.
+        #: Logged once each rather than five times a second, the same as
+        #: `BottomStrip._unbadged`.
+        self._unbadged: set[int] = set()
+
 
         self.klass = child(root, QLabel, f"card_{index}_klass")
         if self.klass is not None:
@@ -604,6 +609,12 @@ class CharacterCard(QObject):
             # with a blank line above whatever else is running.
             self.conditions.setToolTip(
                 "\n".join(why for _, why in conditions if why))
+        for effect in who.unbadged_effects:
+            if effect.id not in self._unbadged:
+                self._unbadged.add(effect.id)
+                log.warning("The card for %s is under %s and no condition "
+                            "badge covers it, so nothing on the card shows "
+                            "it", who.name, effect.label)
 
         hp = "--" if who.hp is None else who.hp
         if self.hp is not None:

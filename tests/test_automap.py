@@ -1401,6 +1401,28 @@ def test_a_party_effect_no_badge_covers_is_reported_rather_than_dropped(
     assert len(said) == 1, [r.getMessage() for r in said]
 
 
+def test_a_per_character_effect_no_badge_covers_is_reported_rather_than_dropped(
+        app, caplog):
+    """The per-character counterpart of the test above
+    (`#200 (A per-character effect the badge set cannot name is dropped with
+    no record at all)`): a character carrying an id `badges()` cannot draw
+    loses it from the card with nothing said anywhere, unless the card also
+    logs it once per id -- exactly what `BottomStrip` already does for the
+    whole party."""
+    import logging
+
+    from automap.panel import CharacterCard
+    card = CharacterCard(make_root(), 0)
+    effect = live.Effect(slot=0, id=64, owner=0, duration=8, magnitude=0)
+    who = _character(effects=(effect,))
+    with caplog.at_level(logging.WARNING, logger="wish.automap.panel"):
+        for _poll in range(5):
+            card.show_character(who)
+    assert card.conditions.names == ()
+    said = [r for r in caplog.records if "effect 64" in r.getMessage()]
+    assert len(said) == 1, [r.getMessage() for r in said]
+
+
 # --- a widget the code depends on and cannot find (#142) ---------------------
 
 def test_every_panel_finds_every_widget_it_wires(app, caplog):

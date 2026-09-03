@@ -389,6 +389,25 @@ class Character:
         return tuple(out) + badges((e.id for e in self.effects), self.game)
 
     @property
+    def unbadged_effects(self) -> tuple[Effect, ...]:
+        """Effects on this character that no glyph covers, so a caller can
+        say they exist.
+
+        The per-character counterpart of `Snapshot.unbadged_party_effects`:
+        the same filter, against this character's own effects rather than the
+        whole party's. `conditions` above silently leaves these out of the
+        list it hands the card; nothing here draws them either, so
+        `CharacterCard.show_character` puts them in the debug log for the
+        same reason `unbadged_party_effects` gives -- an id landing here means
+        the badge set is short a glyph, not that nothing is running.
+
+        **On Silver Blades that is every id**, exactly as it is for the party
+        strip, because `BADGE_TABLES` gives that title no groups at all.
+        """
+        covered = {i for _, ids in condition_badges(self.game) for i in ids}
+        return tuple(e for e in self.effects if e.id not in covered)
+
+    @property
     def class_text(self) -> str:
         """`MU/T`, and the class's own name for anything without a letter.
 
