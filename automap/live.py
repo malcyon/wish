@@ -485,8 +485,16 @@ def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:
     return tuple(out)
 
 
-def _classes(record, game=None) -> tuple[ClassProgress, ...]:
+def _classes(record, game) -> tuple[ClassProgress, ...]:
     """The character's classes, each with its own experience bar.
+
+    `game` is required rather than defaulted, so a caller that forgets it is a
+    `TypeError` here instead of a roster card quietly showing Pool of
+    Radiance's thresholds for somebody else's game -- which is the fault #187
+    was filed for. `#196 (The automapper's condition badges name a Silver
+    Blades trait with Pool of Radiance's meaning)` is the same shape one
+    function away in this file, where a game reaches `characters()` and is
+    dropped before `badges()`. Raised in the code review of #187.
 
     **The multi-class split is not proven.** AD&D divides earned experience
     between a multi-class character's classes, and the record carries one
