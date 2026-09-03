@@ -339,10 +339,19 @@ of Radiance's meaning)` was filed for. Which codes earn a glyph is per title
 just as much as what the glyph is called, so `automap/live.py:BADGE_TABLES`
 gives Silver Blades an empty set rather than a guessed one.
 
-Nothing is hidden by that: `Snapshot.unbadged_party_effects` is every party
-effect no glyph covers, and `automap/panel.py` puts them in the debug log —
-which on Silver Blades is all of them, and is the honest amount the program
-can say.
+**What that does and does not record**, precisely, because the scope matters
+and the first version of this paragraph overstated it. `Snapshot.unbadged_party_effects`
+is every *whole-party* effect no glyph covers, and `automap/panel.py` puts
+each in the debug log once — which on Silver Blades is all of them.
+
+**A per-character effect gets no such record.** `Character.conditions` draws
+whatever `badges()` returns and `RosterCard` drops the rest silently: no log
+line, nothing anywhere. That predates the per-title split and is not caused by
+it, but it is the ordinary case — a Bless on one fighter, a Haste on one thief
+— so on Silver Blades, where no card badges anything, every per-character
+effect now vanishes without trace. Found in the code review of #197, filed as
+its own ticket, and named here because this paragraph used to say "nothing is
+hidden" and that was true only of the party strip.
 
 **What would fill the set in**: a Silver Blades save taken with spells
 running, read the way `P3-EFFECTS.D64` was for Pool of Radiance — 26 spells

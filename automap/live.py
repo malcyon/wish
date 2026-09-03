@@ -396,19 +396,23 @@ class Character:
         Radiance's four; `P` and `R` he approved on 2026-09-02 when the
         paladin and the ranger first reached a roster card (#197).
 
-        **`K` for the knight is the one he did not say**, and it is applied by
-        the same pattern rather than asked about, because no player can reach
-        it: `Game.live_position` is None for both Krynn titles, so the
-        automapper refuses a Krynn machine outright and no card is ever drawn.
-        If a Krynn title is ever supported, the letter wants confirming before
-        anybody sees it.
+        **The knight has no letter, deliberately.** `K` was shipped briefly on
+        the reasoning that no player could reach a Krynn card, and the code
+        review of #197 showed that reasoning was wrong: the gate is not a
+        refusal. `automap/window.py`'s `_refresh_roster` withholds the read
+        only when `title_check is NOT_OURS`, and `title_check` starts at
+        `UNKNOWN` and never leaves it when `read_fix` returns None -- so
+        `UNKNOWN` does not block. What actually keeps a Krynn card off screen
+        is that nobody has wired a path to open one, which is a gap in what
+        has been tried rather than a block in the code.
 
-        Anything else falls back to the class's own name capitalised, which is
-        the game's word rather than an invented one.
+        An unapproved string must not rest on that. The knight falls back to
+        the class's own name capitalised, like anything else without a letter
+        -- the game's word rather than an invented one -- and `K` wants
+        Donald's yes before it goes anywhere near a player.
         """
         abbrevs = {"magic-user": "MU", "fighter": "F", "cleric": "C",
-                   "thief": "T", "paladin": "P", "ranger": "R",
-                   "knight": "K"}
+                   "thief": "T", "paladin": "P", "ranger": "R"}
         return "/".join(abbrevs.get(c.name.lower(),
                                     c.name[:1].upper() + c.name[1:])
                         for c in self.classes) or "?"
