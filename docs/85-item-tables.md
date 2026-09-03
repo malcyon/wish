@@ -216,7 +216,7 @@ crossbow, `26` a sling.
 | 82 | — | — | — | — | — | 2 | — | — | magic-user, cleric, thief, fighter |
 | 83 | — | — | — | — | — | 1 | — | — | — |
 | 84 | — | — | — | — | — | 1 | — | — | fighter |
-| 85 | 1d1+255 | 1d1+255 | — | slashing | ranged, multi-shot, thrown | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
+| 85 | 1d1-1 | 1d1-1 | — | slashing | ranged, multi-shot, thrown | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
 | 86 | 2d6 | 2d6 | — | slashing | ranged, multi-shot, thrown | 1 | 2 | 4 | magic-user, cleric, thief, fighter |
 | 87 | 1d8+8 | 1d8+8 | — | bludgeoning | ranged, multi-shot, thrown | 2 | 2 | 10 | fighter |
 | 88 | 1d12+8 | 1d12+8 | — | bludgeoning | ranged, multi-shot, thrown | 2 | 2 | 20 | — |

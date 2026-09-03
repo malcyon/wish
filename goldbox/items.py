@@ -116,6 +116,29 @@ TYPE_DAMAGE_MEDIUM = 9       # three bytes: dice, sides, bonus
 TYPE_RANGE = 12
 TYPE_CLASS_USAGE = 13
 
+# The third byte of each damage triple -- type +4 and +11 -- is the flat damage
+# bonus and it is **signed two's complement**, so $FF is -1 and not +255.
+#
+# Read from the engine, not inferred. Readying a weapon copies the type's +11
+# into the roster's damage bonus verbatim (LIBRARY $36CC `LDA $6D97 / STA
+# $6C17`) and then adds the item's own plus; swapping to the vs-large triple
+# adjusts that same byte by `- type+11 + type+4` (COMBAT $17D1). When a blow
+# lands, COMBAT $0CC3 reads the roster byte and branches on bit 7: a positive
+# bonus is added to the roll, a negative one is negated (`EOR #$FF / ADC #$01`)
+# and **subtracted**, and a result at or below zero is clamped to zero at
+# $0CEA. The weapon-rating routine at COMBAT $1F8D tests the same bit and
+# refuses to add a negative at all. Nothing anywhere compares the byte with
+# $FF, so it is an ordinary negative number rather than a marker.
+#
+# The family stores its other small negative modifiers the same way: LIBRARY's
+# strength tables at $3651 and $3670 hold $FD for -3.
+#
+# Four records in three titles carry $FF, in both triples: Pool of Radiance and
+# Curse type 85, the VIAL OF HOLY WATER, and Silver Blades types 54, the
+# CANARY, and 85. All four read 1d1-1 -- one die of one side is always 1, so
+# they roll exactly zero. No other bit-7 bonus exists on any of the three
+# titles' disks; the only other values are 0, 1, 2 and 8.
+
 # Protection, type byte +6. **Bit 7 means the item affects armour class**, and
 # the low seven bits carry the family's standard `60 - value` bias -- the same
 # one THAC0 and armour class use everywhere else in this format. Body armour
@@ -180,10 +203,18 @@ class ItemType:
 
     @staticmethod
     def _dice(triple: bytes) -> str | None:
+        """A damage expression, `1d8+1` or `1d1-1`, or None with no dice.
+
+        The bonus is signed -- see the note beside `TYPE_CLASS_USAGE`. It read
+        unsigned until #188, which is why a vial of holy water was exported as
+        doing `1d1+255` damage.
+        """
         count, sides, bonus = triple
         if not count or not sides:
             return None
-        return f"{count}d{sides}" + (f"+{bonus}" if bonus else "")
+        if bonus > 127:
+            bonus -= 256
+        return f"{count}d{sides}" + (f"{bonus:+d}" if bonus else "")
 
     @property
     def damage_vs_large(self) -> str | None:

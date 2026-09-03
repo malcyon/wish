@@ -5971,3 +5971,71 @@ is why the collision never shows in ordinary play.
   separate note that `$49FE` stays at the Slums' 9 after walking into New Phlan
   and only becomes New Phlan's 10 after a step — so `ECL00` writes it somewhere
   other than entry 4. Nothing here depends on it.
+
+## The item type table's damage bonus is signed (#188)
+
+A YAML export described a vial of holy water as doing `1d1+255` damage, and
+Silver Blades' canary — a mine-gas detector, not a weapon — read the same. Both
+type records hold `01 01 FF` in each of their two damage triples, and `$FF` is
+not a damage bonus. Two readings were open: a signed −1, or a marker meaning
+"this item does not roll damage, ask the effect handler". They predict
+different things, so the bytecode decides.
+
+**It is signed. CONFIRMED.** Nothing anywhere compares either byte with `$FF`.
+
+The type record is resident at `$6D8C`, so type `+4` is `$6D90` and type `+11`
+is `$6D97`. `LIBRARY $363D` is what puts it there: it takes the item's `+0`,
+computes `$7B00 + type * 16` — `ITEMS` runs at `$7B00` — and copies sixteen
+bytes. That pins the offsets before anything else is argued.
+
+Readying a weapon copies type `+11` into the roster's damage bonus verbatim
+(`LIBRARY $36CC`, `LDA $6D97 / STA $6C17`), then adds the strength damage bonus
+if the type's `+14` bit 2 asks for it and the item's own plus at `+4`. Swapping
+to the vs-large triple adjusts the same byte by `- type+11 + type+4`
+(`COMBAT $17D1`), so two `$FF`s cancel.
+
+The blow itself is `COMBAT $0CAD`: dice count from `$6C13,Y`, sides from
+`$6C15,Y`, `JSR $35CB` to roll, and then
+
+```
+LDA $6C17,X
+BMI negative
+CLC / ADC damage          ; positive: add it
+...
+negative:
+EOR #$FF / ADC #$01       ; negate
+SEC / LDA damage / SBC    ; subtract it
+BCC zero / BNE keep       ; clamp at zero
+```
+
+`LIBRARY $2DE0` returns 1 to `sides`, so `1d1` is always 1 and `1d1-1` is
+always 0 — which is the right answer for a flask you throw at undead and
+resolve with a spell effect, and for a canary.
+
+Two corroborations. The weapon-rating loop at `COMBAT $1F73` tests the same bit
+and refuses to add a negative at all. And the family stores its other small
+negative modifiers the same way: `LIBRARY $3651` and `$3670` are the strength
+hit and damage tables and hold `$FD` for the −3 AD&D 1st edition gives strength
+3.
+
+### Refuted, and worth not re-reading
+
+* **The marker reading.** Six sites across `COMBAT` and `LIBRARY` touch
+  `$6D90`, `$6D97` or the roster copy `$6C17`; every one is arithmetic or a
+  bit-7 test. `DUNGEON` and `CAMP` do not read either byte.
+* **`COMBAT $1F73` is not the damage roll.** It looks like one and multiplies
+  the item's plus by eight, which no damage formula does. `LIBRARY $2E30` is an
+  8×8 multiply rather than a dice roll, so the routine is computing a weapon's
+  *maximum* damage as a score, and `COMBAT $1EE0` keeps the best. Reading it as
+  damage makes the engine look broken.
+
+### What the three titles actually carry
+
+300 non-zero type records across Pool of Radiance, Curse and Silver Blades. The
+bonus field takes five values in all: 0, 1, 2, 8 and 255. Four records hold
+255, in both triples — Pool of Radiance and Curse type 85, the vial of holy
+water, and Silver Blades types 54, the canary, and 85. Six hold 8: types 87
+(`1d8+8`) and 88 (`1d12+8`) in each title, and no item record on any disk names
+either, so they are unreachable rather than wrong. Type 127 in Pool of Radiance
+and Silver Blades is `2d20` at range 60 with AC 6 and no name — the same shape
+of unreachable record.

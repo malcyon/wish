@@ -178,7 +178,7 @@ bytes at `+13`–`+15`, which on a scroll are its spells.
 | TWO-HANDED SWORD | 30 gp | 25.0 lb | 1d10 damage (3d6 vs large); fighter |
 | TWO-HANDED SWORD +1 +3 VS UNDEAD | 3500 gp | 25.0 lb | 1d10 damage (3d6 vs large); fighter |
 | TWO-HANDED SWORD +2 | 4000 gp | 9.0 lb | 1d10 damage (3d6 vs large); fighter |
-| VIAL OF HOLY WATER | 25 gp | 1.0 lb | 1d1+255 damage (1d1+255 vs large); range 4; magic-user, cleric, thief, fighter |
+| VIAL OF HOLY WATER | 25 gp | 1.0 lb | 1d1-1 damage (1d1-1 vs large); range 4; magic-user, cleric, thief, fighter |
 | VOULGE | 2 gp | 12.5 lb | 2d4 damage (2d4 vs large); fighter |
 | WAND OF LIGHTNING BOLT | 900 gp | 3.0 lb | magic-user |
 | WAND OF MAGIC MISSILES | 35000 gp | 3.0 lb | magic-user, cleric, thief, fighter |

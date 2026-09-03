@@ -231,3 +231,133 @@ def test_the_type_table_says_where_an_item_is_worn():
     types = load_item_types(f"{DISKS}/POOL1.D64")
     seen = {LOCATIONS.get(t.raw[TYPE_LOCATION]) for t in types.values()}
     assert {"weapon", "shield", "body", "hands", "finger"} <= seen
+
+
+# --- the damage bonus is signed (#188) ---------------------------------------
+
+def _damage_expressions(types):
+    """Every damage expression the type table prints, as `1d8+1` strings."""
+    return [d for kind in types.values()
+            for d in (kind.damage_vs_medium, kind.damage_vs_large) if d]
+
+
+def _bonus(expression: str) -> int:
+    """The flat part of `1d8+1`, signed, and 0 where there is none."""
+    _, _, rest = expression.partition("d")
+    for sign in "+-":
+        _, mark, bonus = rest.partition(sign)
+        if mark:
+            return int(bonus) * (-1 if sign == "-" else 1)
+    return 0
+
+
+def _biggest_roll(expression: str) -> int:
+    """The most damage `1d8+1` can do: every die on its highest face."""
+    dice, _, rest = expression.partition("d")
+    sides = rest.partition("+")[0].partition("-")[0]
+    return int(dice) * int(sides) + _bonus(expression)
+
+
+def _other_type_tables():
+    """Curse's and Silver Blades' type tables, whichever the player has.
+
+    Neither title is required: a machine with only Pool of Radiance still
+    proves the rule, because the record is the same one in all three.
+    """
+    from goldbox.items import load_item_types
+    out = {}
+    try:
+        from gamedata import curse_dir
+        where = curse_dir()
+        if where is not None:
+            for side in sorted(where.glob("CURSE*.[dD]64")):
+                try:
+                    out["Curse"] = load_item_types(str(side))
+                    break
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    try:
+        from test_silverblades import ssb_dir
+        where = ssb_dir()
+        if where is not None:
+            for side in sorted(where.glob("SILVER*.[dD]64")):
+                try:
+                    out["Silver Blades"] = load_item_types(str(side))
+                    break
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return out
+
+
+@game_disks
+def test_the_vial_of_holy_water_takes_one_off_the_die_it_rolls():
+    """Type +4 and +11 are a **signed** damage bonus, so $FF is -1.
+
+    The vial's record is `1d1 FF` in both triples: one die of one side always
+    rolls 1, the bonus takes one off it, and COMBAT clamps what is left at
+    zero -- which is the right answer for a flask you throw at undead and
+    resolve with a spell effect. Read unsigned it said `1d1+255`, which is
+    256 points of damage from a vial of holy water (#188).
+    """
+    from goldbox.items import (
+        Item,
+        load_item_names,
+        load_item_templates,
+        load_item_types,
+    )
+    names = load_item_names(f"{DISKS}/POOL1.D64")
+    types = load_item_types(f"{DISKS}/POOL1.D64")
+    templates = load_item_templates(f"{DISKS}/POOL1.D64", names)
+    kind = types[Item(templates["VIAL OF HOLY WATER"], names).type_index]
+    assert (kind.damage_vs_medium, kind.damage_vs_large) == ("1d1-1", "1d1-1")
+    assert "1d1-1 damage (1d1-1 vs large)" in kind.summary()
+    assert _biggest_roll(kind.damage_vs_medium) == 0
+
+
+@game_disks
+def test_no_item_type_prints_a_damage_bonus_a_rulebook_would_not():
+    """A damage bonus is a number somebody wrote in a rulebook, and the
+    biggest one on any of the three titles' disks is +8.
+
+    A byte read the wrong way round is not: an unsigned $FF prints +255, which
+    is what a player saw in a YAML export before #188. The bonus is the only
+    part of the expression that can be read two ways, so it is the part
+    asserted; the dice and the sides come straight off the byte either way.
+    """
+    from goldbox.items import load_item_types
+    tables = {"Pool of Radiance": load_item_types(f"{DISKS}/POOL1.D64")}
+    tables.update(_other_type_tables())
+    checked = 0
+    for title, types in tables.items():
+        for expression in _damage_expressions(types):
+            checked += 1
+            assert -1 <= _bonus(expression) <= 8, (title, expression)
+    assert checked > 100, checked
+
+
+@game_disks
+def test_only_the_holy_water_and_the_canary_take_a_bonus_off_the_roll():
+    """Four records in three titles carry $FF, and no other negative bonus
+    exists anywhere: Pool of Radiance and Curse type 85, the vial of holy
+    water, and Silver Blades types 54, the canary, and 85."""
+    from goldbox.items import (
+        TYPE_DAMAGE_LARGE,
+        TYPE_DAMAGE_MEDIUM,
+        load_item_types,
+    )
+    tables = {"Pool of Radiance": load_item_types(f"{DISKS}/POOL1.D64")}
+    tables.update(_other_type_tables())
+    expected = {"Pool of Radiance": {85}, "Curse": {85},
+                "Silver Blades": {54, 85}}
+    for title, types in tables.items():
+        negative = {i for i, kind in types.items()
+                    if kind.raw[TYPE_DAMAGE_LARGE + 2] > 127
+                    or kind.raw[TYPE_DAMAGE_MEDIUM + 2] > 127}
+        assert negative == expected[title], (title, sorted(negative))
+        for index in negative:
+            assert types[index].raw[TYPE_DAMAGE_LARGE + 2] == 0xFF
+            assert types[index].raw[TYPE_DAMAGE_MEDIUM + 2] == 0xFF

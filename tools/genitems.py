@@ -35,9 +35,13 @@ WEAPON_FLAGS = ((1, "arrows"), (2, "ranged"), (4, "strength"),
 
 
 def dice(n: int, sides: int, bonus: int) -> str:
+    # The bonus is signed -- $FF is -1 -- for the reasons set out beside
+    # `TYPE_CLASS_USAGE` in goldbox/items.py (#188).
     if not n or not sides:
         return "—"
-    return f"{n}d{sides}" + (f"+{bonus}" if bonus else "")
+    if bonus > 127:
+        bonus -= 256
+    return f"{n}d{sides}" + (f"{bonus:+d}" if bonus else "")
 
 
 def flags(bits: int) -> str:
