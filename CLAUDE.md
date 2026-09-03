@@ -1411,16 +1411,19 @@ dated `tar.zst` to `/data/OneDrive/wish-work/`, which is the OneDrive root's
 `onedrive --sync --single-directory` -- the systemd service stays masked,
 which is Donald's setting, and the other 282G is untouched.
 
-**It runs on `Stop` and on `SessionStart`.** `Stop` fires at the end of every
-turn, which is far too often, so a stamp file caps it at one snapshot per ten
-minutes; `SessionStart` catches the beginning of a night before anything has
-changed. Neither is cron, because this machine is not always on and a hook
-fires exactly when it is.
+**It runs on `Stop` and on `SessionStart`, throttled to one snapshot an
+hour.** `Stop` fires at the end of every turn, which unthrottled would be
+dozens of 25MB uploads a night for no extra safety -- Donald, 2026-09-02:
+*"I don't think the backup should run every 10 minutes. Once an hour is
+enough."* A stamp file enforces it. `SessionStart` fires it as well, so a
+night beginning more than an hour after the last snapshot gets one before
+anything changes. Neither is cron, because this machine is not always on and a
+hook fires exactly when it is.
 
 **Retention keeps the last fourteen snapshots *and* the first snapshot of each
 of the last thirty days**, and the second half is the part that matters. The
-first version kept only the last fourteen, which at a ten-minute cadence is
-about two hours of history -- so a deletion nobody noticed for an evening would
+first version kept only the last fourteen, which at the ten-minute cadence it
+then had was about two hours of history -- so a deletion nobody noticed for an evening would
 have rolled the good copies off the end while the hook faithfully snapshotted
 the empty directory. That is the exact failure this exists to survive. Donald
 asked how often the hook fired, which is what turned it up. It runs detached

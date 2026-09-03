@@ -15,8 +15,11 @@
 # the entire point.
 #
 # A `Stop` hook rather than cron: this machine is not always on, and a hook
-# fires exactly when it is on *and* `work/` has just changed. Throttled, and
-# detached, so it never delays a turn.
+# fires exactly when it is on *and* `work/` has just changed. Detached, so it
+# never delays a turn, and throttled to an hour -- `Stop` fires at the end of
+# every turn, which would be dozens of 25MB uploads a night for no extra
+# safety. `SessionStart` fires it too, so a night that starts more than an
+# hour after the last snapshot gets one before anything changes.
 set -euo pipefail
 
 SRC="${CLAUDE_PROJECT_DIR:-/home/donald/src/wish}/work"
@@ -24,7 +27,7 @@ DEST="/data/OneDrive/wish-work"
 STAMP="$DEST/.last"
 KEEP=14          # recent snapshots, whatever their date
 KEEP_DAYS=30     # plus the first snapshot of each of the last 30 days
-THROTTLE=$((10 * 60))
+THROTTLE=$((60 * 60))   # Donald, 2026-09-02: "once an hour is enough"
 
 [ -d "$SRC" ] || exit 0
 mkdir -p "$DEST"
