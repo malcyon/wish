@@ -51,7 +51,15 @@ def _load_tools_module(name: str):
         spec = importlib.util.spec_from_file_location(name, _TOOLS / f"{name}.py")
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            # A module that failed half way through must not stay cached, or
+            # the next plain `import session` anywhere in this process gets
+            # the broken object instead of a fresh ImportError. Raised in the
+            # code review of #182.
+            sys.modules.pop(name, None)
+            raise
         return module
     finally:
         if added:
