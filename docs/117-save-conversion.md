@@ -1547,6 +1547,7 @@ graph LR
   c64_codec --> record
   c64_codec --> spells
   derive --> items
+  dos -.->|deferred| amiga
   dos --> areas
   dos --> c64_codec
   dos -.->|deferred| d64
@@ -1564,6 +1565,7 @@ graph LR
   dos --> traits
   dos -.->|deferred| yaml_io
   dos_layout --> layout
+  effects --> d64
   geo --> d64
   iconparts --> d64
   icons --> d64

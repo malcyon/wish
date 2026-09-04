@@ -39,6 +39,19 @@ import pathlib
 from dataclasses import dataclass
 
 from goldbox import games, levels, traits
+from goldbox.effects import (  # noqa: F401 -- re-exported, see the note below
+    DURATION_COUNT,
+    DURATION_UNIT,
+    EFFECT_DURATION_OFFSET,
+    EFFECT_ID_OFFSET,
+    EFFECT_MAGNITUDE_OFFSET,
+    EFFECT_OWNER_OFFSET,
+    EFFECT_SLOTS,
+    FIRST_MONSTER,
+    PARTY_WIDE,
+    Effect,
+    active_effects,
+)
 from goldbox.items import items_for_slot, load_item_names
 from goldbox.record import FieldNotStored
 from goldbox.savegame import (
@@ -54,19 +67,16 @@ _log = logging.getLogger("wish.automap.live")
 
 ROSTER_PAGE = ROSTER_COUNT * ROSTER_STRIDE            # $100
 
-# The four parallel 64-slot effect arrays. Four arrays and not one table of
-# records, so a slot is read across all four at the same index.
-#
-# **Payload offsets, not addresses**, which is the form that transfers: in Pool
-# of Radiance they are $4900, $4940, $4980 and $4B80, and in Curse the same
-# four offsets off $4B00. The arrays have only ever been *read* on Pool of
-# Radiance (`docs/139` A16) -- what is fixed here is that they follow the save
-# image wherever it loads, not that their contents mean the same thing.
-EFFECT_ID_OFFSET = 0x000
-EFFECT_OWNER_OFFSET = 0x040
-EFFECT_DURATION_OFFSET = 0x080
-EFFECT_MAGNITUDE_OFFSET = 0x280
-EFFECT_SLOTS = 0x40
+# EFFECT_ID_OFFSET, EFFECT_OWNER_OFFSET, EFFECT_DURATION_OFFSET,
+# EFFECT_MAGNITUDE_OFFSET, EFFECT_SLOTS, FIRST_MONSTER, PARTY_WIDE,
+# DURATION_COUNT, DURATION_UNIT, Effect and active_effects moved to
+# `goldbox/effects.py` on `#13 (Edit traits and active effects, in two
+# separate panels)`, because the editor's traits and active-effects panels
+# need them and `editor/` may not import `automap`
+# (`tests/test_wish.py::test_editor_imports_nothing_live`). Imported above
+# under the same names, so `automap/combat.py`, `tools/combatshot.py`,
+# `tools/livestrip.py` and `tests/test_coldread.py` still resolve
+# `live.EFFECT_ID_OFFSET` and the rest unchanged.
 
 
 def memory_blocks(game: games.Game | None = None):
@@ -84,22 +94,10 @@ def memory_blocks(game: games.Game | None = None):
     return (payload, (game.roster_base, ROSTER_PAGE))
 
 
-# Owner encoding: a party member by slot, a monster, or everybody.
-#
-# **The engine uses both shapes for a spell on the party, and neither can be
-# dropped.** Measured in the running game on `#142 (The party effects line is
-# computed every poll and shown nowhere)`, two casts on one party:
-#
-# * **Bless** writes **six rows, one per character**, each owner byte holding
-#   that character's own slot. No `0xFF` row at all.
-# * **Prayer** writes **one row with owner `0xFF`**, id 35, and nothing per
-#   character.
-#
-# So `0xFF` is CONFIRMED rather than assumed -- and a row reading only `0xFF`
-# still draws nothing for Bless, which is why
-# `Snapshot.whole_party_effects` is the union of the two.
-FIRST_MONSTER = 8
-PARTY_WIDE = 0xFF
+# `FIRST_MONSTER`, `PARTY_WIDE`, `DURATION_COUNT` and `DURATION_UNIT` moved to
+# `goldbox/effects.py` with the offsets above -- see the note beside the
+# import. A row reading only `PARTY_WIDE` still draws nothing for Bless, which
+# is why `Snapshot.whole_party_effects` below is the union of the two shapes.
 
 # The quickfight bit, in the roster block: byte `+0x0C`, bit 7. CONFIRMED --
 # "The quickfight bit is roster `+0x0C`" in `docs/50-experiments.md`, where
@@ -110,11 +108,6 @@ PARTY_WIDE = 0xFF
 # cannot drift apart.
 ROSTER_QUICKFIGHT = 0x0C
 QUICKFIGHT_BIT = 0x80
-
-# Bits 6-7 of the duration byte select the time unit. Which unit each value
-# means is NOT decoded, so the count is shown and the unit is not invented.
-DURATION_COUNT = 0x3F
-DURATION_UNIT = 6
 
 # Which level field goes with which class bit. The bitmask at 0x0EB is the field
 # to prefer -- char_class at 0x073 says the same thing a second way and the two
@@ -241,57 +234,6 @@ def badges(running, game=None) -> tuple[tuple[str, str], ...]:
         if named:
             out.append((glyph, "\n".join(n[:1].upper() + n[1:] for n in named)))
     return tuple(out)
-
-
-@dataclass(frozen=True)
-class Effect:
-    """One slot of the effect table.
-
-    **Expiry clears only the id**, so a slot with id 0 is free whatever the
-    other three arrays still hold. `active_effects` filters on exactly that,
-    and anything that skips it shows effects that ended hours ago.
-    """
-
-    slot: int
-    id: int
-    owner: int
-    duration: int
-    magnitude: int
-
-    @property
-    def party_wide(self) -> bool:
-        return self.owner == PARTY_WIDE
-
-    @property
-    def monster(self) -> bool:
-        return FIRST_MONSTER <= self.owner < PARTY_WIDE
-
-    @property
-    def remaining(self) -> int:
-        """How much time is left, in whatever unit the top two bits select."""
-        return self.duration & DURATION_COUNT
-
-    @property
-    def unit(self) -> int:
-        return self.duration >> DURATION_UNIT
-
-    @property
-    def label(self) -> str:
-        """`effect 12` -- there is no id-to-name table anywhere in the project.
-
-        Showing the number is the honest form: it is visibly unknown rather
-        than quietly dropped or confidently mislabelled.
-        """
-        return f"effect {self.id}"
-
-    @property
-    def detail(self) -> str:
-        who = ("the party" if self.party_wide else
-               f"monster {self.owner}" if self.monster else
-               f"party slot {self.owner}")
-        return (f"id {self.id} on {who}; duration byte ${self.duration:02X} "
-                f"= {self.remaining} in unit {self.unit} (the unit's meaning "
-                f"is not decoded); magnitude {self.magnitude}")
 
 
 @dataclass(frozen=True)
@@ -570,27 +512,6 @@ class Snapshot:
         covered = {i for _, ids in condition_badges(self.game) for i in ids}
         return tuple(e for e in self.whole_party_effects
                      if e.id not in covered)
-
-
-def active_effects(save0_bytes: bytes) -> tuple[Effect, ...]:
-    """Every effect slot whose id is non-zero, read across all four arrays.
-
-    Takes the payload, so it is already title-independent: the offsets are
-    inside the save image and follow it wherever the title loads it.
-    """
-    out = []
-    for i in range(EFFECT_SLOTS):
-        eid = save0_bytes[EFFECT_ID_OFFSET + i]
-        if not eid:
-            continue                       # expiry clears only the id
-        out.append(Effect(
-            slot=i,
-            id=eid,
-            owner=save0_bytes[EFFECT_OWNER_OFFSET + i],
-            duration=save0_bytes[EFFECT_DURATION_OFFSET + i],
-            magnitude=save0_bytes[EFFECT_MAGNITUDE_OFFSET + i],
-        ))
-    return tuple(out)
 
 
 def _classes(record, game) -> tuple[ClassProgress, ...]:
