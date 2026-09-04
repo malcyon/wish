@@ -385,3 +385,84 @@ def test_a_built_disk_lays_its_directory_out_the_way_the_drive_does():
     for i in range(len(pool.directory())):
         built.write_file(f"F{i:03d}".encode(), b"\x01\x08hi")
     assert built._directory_chain() == want
+
+
+# --- three properties `tests/test_d64.py` used to get for free -------------
+#
+# That file read a real `work/PORSAVE.D64` until #211: a bug in the lock bit,
+# in a name's leading control byte, or in the directory's slot accounting
+# would have shown up there without anyone asking for it by name. The disk is
+# gone, and what replaced it is a disk `write_file` built, so a bug shared
+# between `write_file` and `directory()`/`to_bytes()` now passes both ends of
+# that file and nothing catches it. These check the same three properties
+# against bytes the game and the drive actually wrote, each stated as a
+# relationship that holds regardless of how many characters get exported next
+# rather than as a count pinned to one save -- the trap #211 found is a check
+# that goes red the next time Donald plays.
+
+
+@gamedata.needs_disks
+def test_no_real_entry_is_locked_and_neither_is_one_this_module_builds():
+    """`is_locked` is the KERNAL's `$40` bit, set only by the `LOCK` command --
+    neither the game nor `SAVE` ever touches it. Every entry on every disk
+    here should read `False`, and so should everything `write_file` makes.
+
+    Counted rather than assumed, both ways: 143 real entries checked across
+    `POOL1` and all fourteen `PORSAVE*` disks, none locked -- which also means
+    no disk on this machine has ever carried a locked file, so this cannot
+    prove the bit *can* read `True`, only that ordinary play never sets it and
+    this reader never invents it.
+    """
+    checked = 0
+    for path in [gamedata.game_disk("POOL1"), *gamedata.save_disks()]:
+        for entry in D64.open(path).directory():
+            assert not entry.is_locked, f"{path.name}: {entry.display_name}"
+            checked += 1
+    assert checked >= 50, f"too small a sample to mean anything: {checked}"
+
+    built = D64.blank()
+    built.write_file(b"THING", _pattern(10))
+    assert not built.entry(b"THING").is_locked
+
+
+@gamedata.needs_disks
+def test_an_exported_characters_control_byte_survives_a_real_read():
+    """Pool of Radiance marks an export by prefixing the file name with
+    `\\x01`, not by anything in the name's text -- so this is stated over
+    whichever characters are actually exported on the machine's disks, not
+    over `BRUTUS` by name, and survives the roster changing.
+    """
+    found = []
+    for path in [gamedata.game_disk("POOL1"), *gamedata.save_disks()]:
+        for entry in D64.open(path).directory():
+            if entry.raw_name.startswith(b"\x01"):
+                found.append((path.name, entry))
+    assert len(found) >= 5, f"too small a sample to mean anything: {len(found)}"
+    for path_name, entry in found:
+        assert entry.raw_name[0] == 0x01, path_name
+        assert entry.name[0] == 0x01, path_name
+        assert entry.display_name.startswith("\\x01"), path_name
+
+
+@gamedata.needs_disks
+def test_every_real_directorys_slot_accounting_is_internally_consistent():
+    """However many files are really on a disk, the slots left over have to
+    be exactly the ones the directory chain provides -- eight per sector,
+    however many sectors the chain grew to -- and never fewer than the real
+    entries need.
+
+    This is the shape `test_directory_include_empty` used to pin at "3 files,
+    5 empty slots" before #211: a played disk moves the first number, so this
+    states the relationship between the two instead of one save's numbers.
+    """
+    checked = 0
+    for path in [gamedata.game_disk("POOL1"), *gamedata.save_disks()]:
+        disk = D64.open(path)
+        real = len(disk.directory())
+        every = disk.directory(include_empty=True)
+        empty = sum(1 for e in every if e.is_empty)
+        assert len(every) % ENTRIES_PER_DIR_SECTOR == 0, path.name
+        assert len(every) >= real, path.name
+        assert empty == len(every) - real, path.name
+        checked += 1
+    assert checked >= 5, f"too small a sample to mean anything: {checked}"

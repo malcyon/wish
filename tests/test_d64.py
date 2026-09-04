@@ -1,34 +1,42 @@
 from __future__ import annotations
 
-"""Tests for goldbox.d64 against the real Pool of Radiance disk images.
+"""Tests for goldbox.d64's format and directory handling.
 
-This file used to read two frozen images out of `work/PORSAVE.D64` and
-`work/POOL1.D64.orig`. `work/` is gitignored scratch that has been lost
-twice, and even where the same *names* exist on the player's own disks today
-they are not the same bytes: `PORSAVE.D64` is a save disk that keeps getting
-played, so the party of three (`BRUTUS`, `SAVEDGAME1`, `SAVEDGAME0`) the old
-fixtures were captured from is long gone from it -- the live disk now carries
-eight exported characters, and even `BRUTUS`'s own record has drifted a byte
-since. That specific three-file state cannot be reconstructed from any disk
-on the machine, and committing a disk image to freeze it would be committing
-the game's data, which `AGENTS.md` forbids.
+Most of what follows needs no disk at all: pure sector-geometry math, or a
+disk this file builds itself with `D64.blank()` and `write_file()` (#118,
+exercised directly in `tests/test_d64_blank.py`) around three saved-game
+fixtures already committed in `tests/fixtures/` -- `testing.md` names saved
+games as the one exception that stays in the repository, because they are the
+player's own data and "several of them capture states that no disk still
+holds". Three tests still open a real disk, `POOL1`, through
+`tests/gamedata.py`, and skip the normal way when there is no game disk on
+the machine.
 
-What *is* still legitimate to keep are the three saved-game fixtures already
-in `tests/fixtures/` -- `testing.md` names saved games as the one exception
-that stays in the repository, because they are the player's own data and
-"several of them capture states that no disk still holds". So the specimen
-this file needs is rebuilt at test time from those fixtures with
-`D64.blank()` and `write_file()` (#118, exercised directly in
-`tests/test_d64_blank.py`), rather than read from a frozen image. Every test
-below that used to need `work/PORSAVE.D64` now needs nothing but the
-fixtures already committed, and runs on a bare checkout with no game files at
-all.
+It was not always built this way. Until #211 this file read two frozen images
+out of `work/PORSAVE.D64` and `work/POOL1.D64.orig`. `work/` is gitignored
+scratch that has been lost twice, and even where the same *names* exist on
+the player's disks today they are not the same bytes: `PORSAVE.D64` is a save
+disk that keeps getting played, so the party of three (`BRUTUS`,
+`SAVEDGAME1`, `SAVEDGAME0`) the old fixtures were captured from is long gone
+from it -- the live disk now carries eight exported characters, and even
+`BRUTUS`'s own record has drifted a byte since. That specific three-file
+state cannot be reconstructed from any disk on the machine, and committing a
+disk image to freeze it would be committing the game's data, which
+`AGENTS.md` forbids -- so the disk below is built, not read, and every test
+that used to need `work/PORSAVE.D64` now needs nothing but the fixtures
+already committed, and runs on a bare checkout with no game files at all.
 
-`POOL1.D64.orig` has no such problem -- it is the unplayed distribution disk,
-so it never drifts -- and `tests/gamedata.py` already knows how to find one on
-whichever disks the player has; the three tests that need a whole 100-file
-directory to check now go through `gamedata.game_disk` and skip, same as the
-rest of the suite, when there is no game disk on the machine.
+That rebuild has a cost worth naming: it can only prove `write_file()` agrees
+with `directory()`/`to_bytes()`, not that either agrees with a real 1541 and
+KERNAL, since nothing here reads one any more. `tests/test_d64_blank.py`
+carries the checks that put that grounding back -- the lock bit, a name's
+leading control byte, and the directory's slot accounting -- each against
+whatever the player's disks actually hold today, stated so they stay true as
+that keeps changing rather than pinned to the save this file used to open.
+
+`POOL1.D64.orig` has no such drift problem -- it is the unplayed distribution
+disk -- so the three tests that need a whole 100-file directory to check
+still open a real one, found through `tests/gamedata.py`.
 """
 
 
