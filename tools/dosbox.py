@@ -711,7 +711,10 @@ class Session:
         name -- not this one -- to swap in `debug_env()`.  Renaming the
         method those calls dispatch through would have silently dropped that
         override, since a subclass overriding `_env` no longer overrides
-        `env`.
+        `env`.  **So add to what the environment contains in `_env()`, never
+        here**: this is the door callers come in at and `_env()` is the one
+        every method inside the class dispatches through, so a change made
+        here is a change the class itself never sees.
         """
         return self._env()
 
@@ -1051,6 +1054,13 @@ class PoolOfRadiance:
 
     def move(self, key: str, timeout: float = 20.0) -> bool:
         """Press a movement key and wait for the map's command bar to return.
+
+        **What the key does is the game's business and not this method's.**
+        Indoors the arrows turn the party; outdoors, on the travel grid, the
+        same arrows walk it a square.  This presses the key and waits, and
+        the caller is the one that knows which of those it just asked for --
+        `step`, `turn_left` and `turn_right` are the indoor vocabulary and
+        are wrappers over this.
 
         Public because outdoors the arrows move the party a square rather
         than turning it, and `step`/`turn_left`/`turn_right` cannot express a
