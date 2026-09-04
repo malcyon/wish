@@ -312,19 +312,47 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
                                 reason="the instance lease is an flock")
 
 
+def _band(module) -> range:
+    """The displays a pool starts from: `SLOTS` of them, from its own base.
+
+    Each module carries its own `SLOTS`, so read each one's rather than
+    sharing a width -- the three are 8 today and nothing ties them together.
+    """
+    return range(module.DISPLAY_BASE, module.DISPLAY_BASE + module.SLOTS)
+
+
 @posix_only
 def test_this_pools_displays_never_collide_with_the_other_two(tmp_path, monkeypatch):
-    """:10-:17 are VICE's, :30-:37 are `tools/dosbox.py`'s, :40-:47 are these."""
-    from tools import dosbox
+    """:10-:17 are VICE's, :30-:37 are `tools/dosbox.py`'s, :40-:47 are these.
+
+    Asserting the absolute number an idle machine hands out (`:40`) fails
+    whenever anything else already answers on it -- another agent's
+    `tools/dosboxx.py` session, running exactly as this harness is meant to be
+    used (#206).  What must hold regardless of the machine's state is the
+    property the docstring already states: this pool's two claims are distinct
+    from each other and land outside the other two pools' bands.
+
+    Landing *inside* its own band is deliberately not asserted, because
+    `claim` does not promise it: the search is `DISPLAY_BASE + i` for `i` in
+    `range(100)`, so a pool whose eight displays are all answering walks past
+    the end of its band by design.  What keeps two pools off one display is
+    the `/tmp/.wish-x11-<n>.lock` all three take, not the bands.
+    """
+    from tools import dosbox, instance
+
+    dosbox_band, vice_band = _band(dosbox), _band(instance)
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosboxx, "SLOTS", 2)
     first = dosboxx.claim("one")
     try:
-        assert first.display == ":40"
+        n1 = int(first.display.removeprefix(":"))
+        assert n1 not in dosbox_band and n1 not in vice_band
         assert first.dir != (dosbox.INST / str(first.n))
         second = dosboxx.claim("two")
-        assert {first.display, second.display} == {":40", ":41"}
+        n2 = int(second.display.removeprefix(":"))
+        assert n2 not in dosbox_band and n2 not in vice_band
+        assert n1 != n2
         with pytest.raises(dosbox.PoolFull):
             dosboxx.claim("three")
         second.release()
