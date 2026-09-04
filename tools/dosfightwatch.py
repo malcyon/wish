@@ -615,9 +615,11 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
 
     **And the one thing it cannot answer, which that run is what showed.**  For
     a field the engine only ever *carries*, an `ENCAMP > SAVE` hands back
-    whatever it was given: `unnamed_0ab`, `hands_used` and the four portrait
-    and icon bytes all came back `00` in `engine_slot`, because they were `00`
-    in the conversion it loaded.  So this says what the engine holds when a
+    whatever it was given: `hands_used`, the four portrait and icon bytes and
+    `unnamed_0ab` -- which this no longer watches, because #216 measured what
+    its zero costs and `goldbox.dos.write` now derives it -- all came back
+    `00` in `engine_slot`, because they were `00` in the conversion it
+    loaded.  So this says what the engine holds when a
     fight begins, and says nothing about what it would have chosen for a
     character it created itself.  For that, read the records the game ships.
     """

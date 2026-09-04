@@ -15,7 +15,9 @@ data lives in this repository.
 """
 
 
+import functools
 import pathlib
+import tempfile
 
 import pytest
 
@@ -666,19 +668,51 @@ def test_a_record_of_the_wrong_length_is_refused_by_name(length):
         AmigaPorCharacter.from_bytes(bytes(length))
 
 
+@functools.lru_cache(maxsize=1)
+def _extracted_records() -> tuple[pathlib.Path, ...]:
+    """The twenty specimens, pulled out of the Amiga disks themselves.
+
+    They are not loose files on any machine: six live in the `save/` drawer of
+    Pool of Radiance disk 1 and fourteen in the Curse of the Azure Bonds save
+    disk.  They were once extracted into `work/`, which is gitignored and has
+    been lost, so `$AMIGA_POR_SAVES` named nothing and thirty-one tests here
+    skipped on the machine that holds every byte of the corpus -- the shape of
+    #211.  `tools/amigasaves.py` finds them again from `gamedisks.toml`'s
+    `amiga` entry, and this unpacks them into a directory that lives as long
+    as the test process.
+    """
+    from tools import amigasaves, gamedisks
+    if not gamedisks.candidates("amiga"):
+        return ()
+    tmp = tempfile.TemporaryDirectory(prefix="amiga-por-saves-")
+    _KEEP.append(tmp)                       # deleted when the process exits
+    return tuple(amigasaves.extract(pathlib.Path(tmp.name)))
+
+
+#: Temporary directories held open for the life of the test process, so that
+#: `_extracted_records`'s paths stay readable after it returns.
+_KEEP: list[tempfile.TemporaryDirectory] = []
+
+
 def amiga_por_records() -> list[pathlib.Path]:
-    """`gamedisks.toml`'s `amiga-por-saves` entry (#212) -- no default
-    candidates: no exported Amiga Pool of Radiance record exists on any
-    machine yet."""
+    """`gamedisks.toml`'s `amiga-por-saves` entry (#212), or the disks.
+
+    `$AMIGA_POR_SAVES` still wins, because a run that wants a hand-picked
+    corpus -- one character, or a set nobody has shipped -- has to be able to
+    say so.  With nothing set, the specimens come out of the game's own disk
+    images instead of the tests skipping.
+    """
     from tools import gamedisks
     where = gamedisks.candidates("amiga-por-saves")
-    if not where:
-        pytest.skip("no Amiga Pool of Radiance records; set $AMIGA_POR_SAVES")
     found = sorted(p for root in where for p in root.rglob("*")
                    if p.is_file() and p.suffix.lower() in (".cha", ".sav")
                    and p.stat().st_size == AMIGA_POR_RECORD_SIZE)
     if not found:
-        pytest.skip(f"no 288-byte .cha or .sav records under {where}")
+        found = list(_extracted_records())
+    if not found:
+        pytest.skip(
+            "no Amiga Pool of Radiance records: set $AMIGA_POR_SAVES, or "
+            "$AMIGA_DISKS at disks tools/amigasaves.py can read them out of")
     return found
 
 
@@ -1019,18 +1053,39 @@ def test_the_neutral_record_agrees_with_what_the_game_drew_for_garwan():
         assert n.get("movement_current") == 9
         # Encumbrance is derived, so `goldbox/dos.py` drops it rather than
         # carrying it -- the identity that proves the item file is decoded
-        # is asserted on the reader above, not here.
+        # is asserted on the reader above, not here.  It is deliberately
+        # *not* in `dropped`: `#118 (Stop showing the player drops nobody
+        # would notice)` put it in `goldbox.dos.UNREPORTED_DROPS` on
+        # 2026-08-27, because money plus item weight is a number the
+        # destination works out for itself and there is nothing for a player
+        # to see go missing. This test asserted the old line until 2026-09-04
+        # and never went red, because the specimen corpus had been lost with
+        # `work/` and every test that reads one was skipping.
         assert n.get("encumbrance") is None
-        assert any("encumbrance" in d for d in n.dropped)
+        assert "encumbrance" in dos_unreported_drops()
+        assert not any("encumbrance" in d for d in n.dropped)
         assert n.get("strength") == 18
         assert n.get("age") == 18
         return
     pytest.skip("GARWAN is not in $AMIGA_POR_SAVES")
 
 
+def dos_unreported_drops() -> frozenset:
+    from goldbox import dos
+    return dos.UNREPORTED_DROPS
+
+
 def test_the_innate_effects_reach_the_neutral_record():
     """The dwarf's four racial ids and the elf's one, through the ten-byte
-    Amiga node and the nine-byte DOS one that `goldbox/dos.py` filters."""
+    Amiga node and the nine-byte DOS one that `goldbox/dos.py` filters.
+
+    `INNATE_EFFECTS` is the filter and the ids it turns away do **not** reach
+    the neutral record -- nine of the twelve specimens with a `.spc` file are
+    entirely racial and cross whole, and the other three are
+    `test_an_effect_the_neutral_record_cannot_hold_is_reported`'s business.
+    """
+    from goldbox import dos
+
     seen = 0
     for path in amiga_por_records():
         c = amiga.read_amiga_por(path)
@@ -1038,9 +1093,42 @@ def test_the_innate_effects_reach_the_neutral_record():
             continue
         seen += 1
         n = amiga.to_neutral(c)
-        assert n.get("innate_effects") == [e[0] for e in c.effects], path
+        assert n.get("innate_effects") == [
+            e[0] for e in c.effects if e[0] in dos.INNATE_EFFECTS], path
     if not seen:
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+
+
+def test_an_effect_the_neutral_record_cannot_hold_is_reported():
+    """A dropped `.spc` node has to be named, not left to a zero-byte file.
+
+    Three of the twenty specimens carry an effect `INNATE_EFFECTS` turns away
+    -- ADDERLY's extra strength (38), CONJURER's Ring of Fire Resistance (61)
+    and MAGICIAN's displacement (89), all three at duration zero, so none of
+    them is a spell that was going to expire anyway.  `write_por` writes them
+    a zero-byte `.spc`, and until
+    `#232 (An item-granted effect is dropped on the way through the neutral
+    record, with no report)` closes, the least the conversion owes the player
+    is a line saying which effect went.
+    """
+    from goldbox import dos
+
+    seen = 0
+    for path in amiga_por_records():
+        c = amiga.read_amiga_por(path)
+        lost = [e[0] for e in c.effects if e[0] not in dos.INNATE_EFFECTS]
+        if not lost:
+            continue
+        seen += 1
+        n = amiga.to_neutral(c)
+        for eid in lost:
+            assert any(f"Effect {eid} (" in d for d in n.dropped), (path, eid)
+        # And it really is gone, so the line is not decoration.
+        _, _, spc, _ = amiga.write_por(n)
+        assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * (
+            len(c.effects) - len(lost)), path
+    if not seen:
+        pytest.skip("no specimen carries a non-innate effect")
 
 
 # ---------------------------------------------------------------------------
@@ -1059,7 +1147,8 @@ def por_write_mask() -> set[int]:
 
     Built from the **declared** tables -- `amiga.POR_WRITE_UNSOURCED` for the
     three insertions and the heap pointer, and `goldbox.dos`'s own
-    `WRITE_UNSOURCED`, `WRITE_CONSTANTS`, `WRITE_DEFAULTS` and computed
+    `WRITE_UNSOURCED`, `WRITE_CONSTANTS`, `WRITE_DEFAULTS`, `WRITE_DERIVED`
+    and computed
     fields for everything the DOS writer already says it does not carry.  Masking by the diff
     instead would make the test agree with the code by construction.
     """
@@ -1081,6 +1170,8 @@ def por_write_mask() -> set[int]:
         mask |= field(name)
     for name, _, _, _ in dos.WRITE_DEFAULTS:
         mask |= field(name)
+    for name, _ in dos.WRITE_DERIVED:
+        mask |= field(name)
     # Computed rather than copied, and `goldbox.dos.WRITE_TARGETS` says so.
     mask |= field("encumbrance") | field("item_count")
     # Repacked: `goldbox.dos` reads the sixteen slots as a set and writes them
@@ -1098,7 +1189,7 @@ def test_every_masked_field_is_one_the_declared_tables_name():
     """The mask cannot quietly grow.
 
     Every offset it covers has to be inside a field named in
-    `amiga.POR_WRITE_UNSOURCED`, in one of `goldbox.dos`'s three declared tables,
+    `amiga.POR_WRITE_UNSOURCED`, in one of `goldbox.dos`'s four declared tables,
     or in the short computed/repacked list above -- so a new difference in a
     field nobody declared fails the round trip instead of being absorbed.
     """
@@ -1107,6 +1198,7 @@ def test_every_masked_field_is_one_the_declared_tables_name():
     named = {name for name, _ in dos.WRITE_UNSOURCED}
     named |= {name for name, _, _ in dos.WRITE_CONSTANTS}
     named |= {name for name, _, _, _ in dos.WRITE_DEFAULTS}
+    named |= {name for name, _ in dos.WRITE_DERIVED}
     named |= {"encumbrance", "item_count", "spells_memorised"}
     named |= {f.name for f in dos_layout.LAYOUT if f.name.startswith("gap_")}
     declared = {o for first, size, _ in amiga.POR_WRITE_UNSOURCED
@@ -1182,20 +1274,36 @@ def test_the_item_nodes_round_trip_past_their_cached_line():
 
 
 def test_the_effect_nodes_round_trip_past_their_next_pointer():
-    seen = 0
+    """Every node the neutral record can hold comes back byte for byte.
+
+    Fifteen of the eighteen nodes on the twenty specimens, and nine of the
+    twelve `.spc` files whole.  The other three files lose their only node to
+    `#232 (An item-granted effect is dropped on the way through the neutral
+    record, with no report)`; when that closes this becomes 18 of 18 and 12 of
+    12, and the counts below are what say so rather than a comment.
+    """
+    from goldbox import dos
+
+    nodes = files = whole = 0
     for path in amiga_por_records():
         c = amiga.read_amiga_por(path)
         if not c.effects:
             continue
+        files += 1
+        kept = [e for e in c.effects if e[0] in dos.INNATE_EFFECTS]
         _, _, spc, _ = amiga.write_por(amiga.to_neutral(c))
-        for n, node in enumerate(c.effects):
+        assert len(spc) == len(kept) * amiga.AMIGA_POR_EFFECT_SIZE, path
+        if len(kept) == len(c.effects):
+            whole += 1
+        for n, node in enumerate(kept):
             written = spc[n * amiga.AMIGA_POR_EFFECT_SIZE:
                           (n + 1) * amiga.AMIGA_POR_EFFECT_SIZE]
             assert written[:6] == node[:6], (path, n)
             assert written[6:] == bytes(4), (path, n)
-            seen += 1
-    if not seen:
+            nodes += 1
+    if not files:
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
+    assert nodes and whole <= files
 
 
 # -- the synthetic half: no game data, so these run everywhere --------------

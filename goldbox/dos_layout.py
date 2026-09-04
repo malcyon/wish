@@ -349,12 +349,23 @@ _DECLARED: Sequence[Field] = (
        "1 in all 24. The C64's aligned byte 0x0E2 is a *strength index* "
        "holding 15-22, so the two are different fields and neither should "
        "be copied onto the other"),
-    _f(0x0AB, 1, _U8, "unnamed_0ab", "unnamed @0x0AB", _NOPE,
-       "one byte, stable per character across the A/B save pair and "
-       "different for every character -- 165, 204, 0, 120, 154, 231 for the "
-       "party. It is not experience (that starts at 0x0AC and decodes), not "
-       "hit points rolled (0x0B1), and not any level. Unattributed",
-       candidate=True),
+    _f(0x0AB, 1, _U8, "unnamed_0ab", "unnamed @0x0AB", _OK,
+       "the byte that tells two characters of the same name apart. Stable "
+       "per character across the A/B save pair and different for every "
+       "character -- 165, 204, 0, 120, 154, 231 for the party. **ADD "
+       "CHARACTER TO PARTY refuses a candidate whose name *and* this byte "
+       "both match a character already in the party**, and that is measured "
+       "in the running game rather than argued: #216 offered one party two "
+       "records of the same name differing in this byte alone, and the "
+       "second was refused at 0x00 against 0x00 and let in at 0x42. The "
+       "write site is character creation, one call to the random routine, "
+       "which is a code read corroborated by the shipped records' entropy. "
+       "It is not experience (that starts at 0x0AC and decodes), not hit "
+       "points rolled (0x0B1), and not any level. Two limits: what the "
+       "engine calls it is unknown, which is why the name still says "
+       "unnamed, and the read site is the only one in a memory image dumped "
+       "at an encounter and after a fight -- an overlay not resident then "
+       "could hold another"),
     _f(0x0AC, 3, _UINT, "experience", "Experience", _OK,
        "u24le. 5333 -> 7670 for a fighter whose level byte says 3 and 7349 "
        "-> 9686 for one whose says 4, and all six party members gained the "

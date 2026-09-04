@@ -1713,7 +1713,7 @@ tables over the neutral vocabulary (`WRITE_DIRECT`, 49 copies;
 `WRITE_TRANSFORMED`, 9 rules; `WRITE_DROPPED`, 6 refusals) are checked
 complete against `FIELDS`, and a fourth, `WRITE_TARGETS`, accounts over the
 DOS layout's own names so a field added to `goldbox/dos_layout.py` and forgotten
-here fails a test. Three kinds of byte have no neutral source:
+here fails a test. Four kinds of byte have no neutral source:
 
 * **constants** — `icon_dimension` 1, `strength_bonus` 1, `field_83_87`
   `00 00 01 00 00`, `field_10c_10f` `00 01 00 00`, each the one value all 24
@@ -1722,13 +1722,24 @@ here fails a test. Three kinds of byte have no neutral source:
   from money plus item weight × quantity, the identity the engine itself
   uses;
 * **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
-  `item_chain`, `heap_104`, `hands_used`, `unnamed_0ab`, `portrait_head`,
-  `portrait_body`, `icon_head`, `icon_body` — live heap, the art ids and the
-  unattributed, ~74 bytes. Measured
+  `item_chain`, `heap_104`, `hands_used`, `portrait_head`,
+  `portrait_body`, `icon_head`, `icon_body` — live heap and the art ids,
+  ~73 bytes. Measured
   survivable for a character carrying items, and, since #62, for one carrying
   nothing too: the engine's own record for a character who dropped everything
   in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
   writes.
+* **derived from the record**, the `WRITE_DERIVED` list — `unnamed_0ab`
+  alone, a one-byte digest of the other 284 (`goldbox.dos.identity_byte`).
+  It was an unsourced zero until #216 measured what the zero costs: the byte
+  is the identity the engine compares, after the name, when a saved character
+  is being added to the party, so six converted characters all holding zero
+  are indistinguishable there and a second character of the same name is
+  refused in silence. A digest rather than a random draw because a converter
+  that writes different bytes on two runs of the same save cannot be diffed
+  against itself; distinct 6 of 6 in each of the four shipped parties, and
+  identical on a second write in all 24 records. See "Two same-named
+  characters and one byte" in `docs/50-experiments.md`.
 * **measured defaults**, the `WRITE_DEFAULTS` list — `icon_colours` alone so
   far, written `91 A2 B3 C4 E6 F7`. A default is not a constant: it is what a
   *newly made* character has, 42 of the 54 shipped records across the four
@@ -1857,8 +1868,8 @@ been repeated with the fix in, so its numbers are left as they were taken.
    question 2, answered yes. Re-saving from inside the game showed the
    engine rebuilding the item chain-head pointer itself and keeping most of
    our zeros: its own resave zeroes `icon_colours`, the extra item pointers,
-   `hands_used` and `unnamed_0ab` too. **For `icon_colours` that is a
-   defect and not a convenience** — those six bytes are the combat icon's
+   `hands_used` and, at the time, `unnamed_0ab` too. **For `icon_colours`
+   that is a defect and not a convenience** — those six bytes are the combat icon's
    colours (#57), the engine does not put them back, and nobody has looked
    at a converted character in a fight. Filed as
    `#112 (A converted DOS character's combat icon has no colours)`.

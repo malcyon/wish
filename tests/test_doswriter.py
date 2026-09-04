@@ -262,6 +262,12 @@ def _unsourced_offsets() -> set[int]:
     for name, _, _, _ in dos.WRITE_DEFAULTS:
         f = dos_layout.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
+    # Nor is a byte derived from the rest of the record: `unnamed_0ab` is the
+    # identity the engine draws at random, and a converted record gets a
+    # digest of its own bytes rather than the source's draw (#216).
+    for name, _ in dos.WRITE_DERIVED:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        out.update(range(f.offset, f.end))
     return out
 
 

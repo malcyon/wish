@@ -51,6 +51,7 @@ lost. The plan is `docs/117-save-conversion.md` and the assertions are
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import pathlib
 import shutil
 import tempfile
@@ -90,6 +91,8 @@ __all__ = [
     "DosItem",
     "Report",
     "WRITE_DEFAULTS",
+    "WRITE_DERIVED",
+    "identity_byte",
     "C64SaveReport",
     "item_to_c64",
     "item_from_c64",
@@ -1151,10 +1154,6 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
                      "itself. Measured -- a slot loaded twice puts the same "
                      "party's nodes at different addresses (#61). NULL in "
                      "the engine's own record with items and without"),
-    ("unnamed_0ab", "unattributed, and different for every DOS character. "
-                    "The engine neither reads nor rewrites it: it carries "
-                    "our zero through a resave, and keeps its own A5 when a "
-                    "character empties his pack. Measured both ways"),
     ("portrait_head", "indexes the DOS art set, which no other port "
                       "numbers; zero leaves the sheet portrait blank. "
                       "Cosmetic, and the same with items and without (#57)"),
@@ -1210,6 +1209,52 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "would be a choice rather than a conversion"),
 )
 
+#: Fields written from a rule over the **record itself** rather than from a
+#: neutral value, a constant or a default.  One so far, and it is here because
+#: a zero was measured harmful rather than merely unattributed.
+#:
+#: `tests/test_doswriter.py` masks these in the round trip beside
+#: :data:`WRITE_UNSOURCED` and :data:`WRITE_DEFAULTS`: the value is ours and
+#: not the source's, so a written record differing from the original here is
+#: expected.
+WRITE_DERIVED: tuple[tuple[str, str], ...] = (
+    ("unnamed_0ab",
+     "the identity byte the engine uses to tell two characters of the same "
+     "name apart. Written by character creation as one call to the random "
+     "routine and read in exactly one place -- ADD CHARACTER TO PARTY, which "
+     "refuses a candidate whose **name and this byte both** match a "
+     "character already in the party. Zero in every converted record made "
+     "the six of a party indistinguishable there, and #216 measured the "
+     "consequence in DOSBox: two different characters both named DUPLICO, "
+     "the second one silently refused with this byte 0x00 in both and let "
+     "in with 0x42 in the second, the engine's own save writing one "
+     "CHRDATC<n>.SAV against two. So it is derived from the rest of the "
+     "record instead -- a digest rather than a random draw, because a "
+     "converter that writes different bytes on two runs of the same save "
+     "cannot be diffed against itself"),
+)
+
+
+def identity_byte(record: bytes | bytearray) -> int:
+    """The `unnamed_0ab` byte for a record, derived from the rest of it.
+
+    The engine draws this at random when it creates a character, and uses it
+    for one thing: telling two characters of the same name apart when one is
+    being added to the party.  What it needs is therefore only that two
+    *different* characters rarely agree, which a digest gives -- and unlike a
+    random draw a digest gives it without making the same save convert to
+    different bytes twice running.
+
+    The byte's own position is excluded, so the answer does not depend on
+    what was there before.  Two characters identical in all 284 other bytes
+    do collide, and are the same character by every field the game has.
+    """
+    f = FIELDS_BY_NAME["unnamed_0ab"]
+    body = bytearray(record)
+    body[f.offset:f.end] = bytes(f.size)
+    return hashlib.blake2b(bytes(body), digest_size=1).digest()[0]
+
+
 #: What :func:`write` does with every field `goldbox/dos_layout.py` declares --
 #: the *output-side* account, over DOS field names, where
 #: :func:`write_field_disposition` accounts over the neutral vocabulary.
@@ -1233,6 +1278,7 @@ WRITE_TARGETS: dict[str, str] = (
     | {name: f"constant: {why}" for name, _, why in WRITE_CONSTANTS}
     | {name: f"default: {why}" for name, _, why, _ in WRITE_DEFAULTS}
     | {name: f"zero: {why}" for name, why in WRITE_UNSOURCED}
+    | {name: f"derived: {why}" for name, why in WRITE_DERIVED}
 )
 
 
@@ -1479,6 +1525,17 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
     for uname, why in WRITE_UNSOURCED:
         f = FIELDS_BY_NAME[uname]
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
+
+    # -- derived from the record, once everything else in it is written ------
+    # Last, so the digest covers the finished record: a field written after
+    # this would change the character without changing its identity byte.
+    # `WRITE_DERIVED` is the declaration the tests read; the rule itself is
+    # per field, and there is one.
+    (_derived_name, _derived_why), = WRITE_DERIVED
+    f = FIELDS_BY_NAME[_derived_name]
+    rec[f.offset] = identity_byte(rec)
+    rep.note(f.offset, f.size,
+             f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
 
     # -- the gaps, zero in every specimen held -------------------------------
     for f in LAYOUT:
