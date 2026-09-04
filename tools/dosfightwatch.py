@@ -319,7 +319,34 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
             "seconds": round(time.time() - started, 1)}
 
 
-def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int) -> dict:
+def _await_bar(por: dosbox.PoolOfRadiance, kind: str | None,
+              patience: float) -> tuple[str | None, bool]:
+    """Wait out a bar with no key, the way `PoolOfRadiance.fight()` does.
+
+    `blank` -- the bar row caught mid-redraw -- is carried in
+    `PoolOfRadiance.COMBAT_BARS` on purpose so a flat strip is never mistaken
+    for a command bar, and it is given no key on purpose because there is
+    nothing on it to press.  One appearance of it is a frame; a `blank` that
+    lasts is a stuck game, and the two are only told apart by waiting.  So
+    this keeps looking rather than judging the first frame: `(kind, True)`
+    once the bar resolves into one the walk can act on, `(kind, False)`, with
+    a screenshot named for the digest already taken, once `patience` seconds
+    pass with it still unresolved.
+    """
+    deadline = time.time() + patience
+    while kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
+        if time.time() >= deadline:
+            screen = por.s.capture()
+            por.s.shot(f"walk_unknown_bar_{screen.glyphs(dosbox.BAR)}",
+                      allow_blank=True)
+            return kind, False
+        time.sleep(0.25)
+        kind = por.bar_kind()
+    return kind, True
+
+
+def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
+                      patience: float = 90.0) -> dict:
     """Walk until the encounter menu comes up, dismissing whatever else does.
 
     A blocked step returns to the same bar with the same status line; the
@@ -332,6 +359,11 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int) -> dict:
     walking on is what this wants.  The first run of this tool armed its
     watchpoints at one of those, pressed `n`, watched the world bar come back
     in 4.7 seconds and reported a fight that never happened.
+
+    **A bar with no key is given `patience` seconds before it is called
+    stuck**, the same window `fight()` grants -- see `_await_bar`.  Without
+    it, one captured frame landing on `blank` mid-redraw threw away a whole
+    run one frame before the encounter it was walking towards.
     """
     walked = blocked = prompts = 0
     i = -1
@@ -348,14 +380,16 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int) -> dict:
             walked += 1
             continue
         kind = por.bar_kind()
+        if kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
+            kind, resolved = _await_bar(por, kind, patience)
+            if not resolved:
+                return {"met": False,
+                        "why": f"a bar nobody has labelled ({kind})",
+                        "at_step": i + 1, "walked": walked,
+                        "blocked": blocked, "prompts": prompts}
         if kind in FIGHT_BARS:
             return {"met": True, "at_step": i + 1, "bar": kind, "walked": walked,
                     "blocked": blocked, "prompts": prompts}
-        key = por.COMBAT_KEYS.get(kind or "")
-        if key is None:
-            return {"met": False, "why": f"a bar nobody has labelled ({kind})",
-                    "at_step": i + 1, "walked": walked, "blocked": blocked,
-                    "prompts": prompts}
         # Something answerable that is not the encounter menu: answer it and
         # keep walking.  `n` is the decline on every `YES NO` the map offers.
         # **Turn afterwards.**  Declining the inn's "IT WILL COST YOU 1
@@ -363,7 +397,7 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int) -> dict:
         # so the next step walks into it again -- 67 prompts and 10 squares
         # walked, in the run that found this out.
         prompts += 1
-        por.s.key(key)
+        por.s.key(por.COMBAT_KEYS[kind])
         por.s.wait_until_ink(dosbox.BAR, por.world_bar or "", timeout=20.0)
         por.turn_right()
     return {"met": False, "why": "no encounter in the steps asked",
