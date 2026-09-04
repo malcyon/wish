@@ -1775,3 +1775,417 @@ def test_a_slot_that_will_not_fit_leaves_the_disk_exactly_as_it_was():
                              savegame=synthetic_savegame())
     assert disk.to_bytes() == before
     assert disk.verify() == []
+
+
+# ---------------------------------------------------------------------------
+# Amiga Curse of the Azure Bonds and Secret of the Silver Blades (#55)
+# ---------------------------------------------------------------------------
+#
+# Silver Blades is the one with a twin: the two ports ship the *same six
+# characters*, so every field can be compared byte for byte across the port
+# boundary and a wrong offset cannot hide in a run of zeros.  Curse has no
+# twin -- the eleven Amiga pregens and the twelve DOS ones are different
+# people -- so its tests are arithmetic between fields instead: the class
+# bitmask against the class byte, the pregen experience split against the
+# class count, and `money + weight x quantity` against the stored
+# encumbrance.
+
+
+@functools.lru_cache(maxsize=1)
+def _later_specimens() -> tuple[pathlib.Path, ...]:
+    """The Curse and Silver Blades specimens, out of the disks themselves.
+
+    None of them is a loose file on any machine: eleven are `SAVE/*.guy` on
+    Amiga Curse disk 1 and the other ten are inside two saved games.
+    `tools/amigarecords.py` reads them out through `gamedisks.toml`'s `amiga`
+    entry, into a directory that lives as long as the test process -- so the
+    corpus is never only in `work/`, which is gitignored and has been lost.
+    """
+    from tools import amigarecords, gamedisks
+    if not gamedisks.candidates("amiga"):
+        return ()
+    tmp = tempfile.TemporaryDirectory(prefix="amiga-later-saves-")
+    _KEEP.append(tmp)
+    return tuple(amigarecords.extract(pathlib.Path(tmp.name)))
+
+
+def _later_files():
+    found = _later_specimens()
+    if not found:
+        pytest.skip("no Amiga Curse or Silver Blades disks; set $AMIGA_DISKS")
+    return found
+
+
+def curse_characters():
+    """The fifteen Amiga Curse specimens: eleven pregens and four played."""
+    out = []
+    for path in _later_files():
+        if path.suffix == ".guy":
+            out.append(amiga.read_amiga_guy(path))
+        elif path.name.startswith("CurseA-savgam"):
+            out.extend(amiga.party_in_savegame(path.read_bytes(),
+                                               amiga.CURSE_SHAPE))
+    if not out:
+        pytest.skip("no Amiga Curse records among the specimens")
+    return out
+
+
+def silver_blades_characters():
+    """The six Amiga Silver Blades specimens, all inside one saved game."""
+    out = []
+    for path in _later_files():
+        if path.name.startswith("Secret1-savgam"):
+            out.extend(amiga.party_in_savegame(path.read_bytes(),
+                                               amiga.SILVER_BLADES_SHAPE))
+    if not out:
+        pytest.skip("no Amiga Silver Blades records among the specimens")
+    return out
+
+
+def _dos_records(title: str, size: int) -> dict[str, bytes]:
+    """The shipped DOS party for a title, by file name."""
+    from tools import gamedisks
+    for root in gamedisks.candidates("dos-archives"):
+        if not root.is_dir():
+            continue
+        for where in root.glob(f"*/games/{title}/Default files/Saves"):
+            out = {p.name: p.read_bytes() for p in sorted(where.glob("*.SAV"))
+                   if p.stat().st_size == size}
+            if out:
+                return out
+    return {}
+
+
+def test_the_record_size_names_the_amiga_title():
+    """Three sizes, three titles, and a fourth is refused rather than read."""
+    assert amiga.AMIGA_SHAPES_BY_SIZE[428] is amiga.CURSE_SHAPE
+    assert amiga.AMIGA_SHAPES_BY_SIZE[340] is amiga.SILVER_BLADES_SHAPE
+    with pytest.raises(AmigaRecordError):
+        amiga.AmigaCharacter.from_bytes(bytes(288))
+
+
+def test_an_unplaced_window_is_refused_rather_than_guessed():
+    """Three Curse windows hold an insertion nobody has located.
+
+    `spells_castable_druid` is the one that matters: the cleric array is
+    measured at `0x12E` and the magic-user array at `0x13A`, so two bytes
+    between them are unaccounted for and the druid array could start at
+    `0x133`, `0x134` or `0x135`.  Reading it would be a guess.
+
+    And a field that only *straddles* a window is refused too:
+    `field_83_87` starts at a placed byte -- DOS `0x0F8` is a party flag at
+    the same offset on both ports -- and ends inside one.
+    """
+    shape = amiga.CURSE_SHAPE
+    assert shape.offset(0x0F2) == 0x0F2            # the effect chain
+    assert shape.offset(0x0F8) == 0x0F8            # the party flag
+    assert shape.offset(0x0FB) == 0x0FC            # copper, one byte along
+    assert shape.offset(0x137) == 0x13A            # the magic-user array
+    assert shape.offset(0x14C) == 0x150            # the item count
+    for dos_offset in (0x0F9, 0x0FA, 0x132, 0x136, 0x13C, 0x13E):
+        with pytest.raises(AmigaRecordError):
+            shape.offset(dos_offset)
+    char = curse_characters()[0]
+    for name in ("field_83_87", "spells_castable_druid", "gap_13c"):
+        with pytest.raises(AmigaRecordError):
+            char.get(name)
+    assert list(char.get("spells_castable_cleric")) == [0] * 5
+
+
+def test_the_silver_blades_spellbook_has_no_one_to_one_offset():
+    """It is 15 bytes of bitmask where DOS spends 117, so there is none."""
+    shape = amiga.SILVER_BLADES_SHAPE
+    assert shape.offset(0x070) == 0x070            # hp_max, just before it
+    with pytest.raises(AmigaRecordError):
+        shape.offset(0x071)
+    assert shape.offset(0x0E6) == 0x080            # attack_level, just after
+
+
+def test_every_curse_specimen_decodes_to_a_coherent_character():
+    """Arithmetic between fields, not a restatement of one.
+
+    The class bitmask has to decompose to the class byte, the per-class level
+    array's non-zero slots have to be that character's classes, and the
+    experience has to be the pregen's 25 000 divided by the number of
+    classes.  A shift wrong by one anywhere breaks at least one of them.
+    """
+    chars = curse_characters()
+    assert len(chars) >= 11
+    bits = {"cleric": 2, "fighter": 8, "mage": 1, "thief": 4, "paladin": 64,
+            "ranger": 16, "druid": 32}
+    for char in chars:
+        classes = dos_layout.CLASS_NUMBERS[char.get("char_class")].split("/")
+        assert char.get("class_bits") == sum(bits[c] for c in classes)
+        levels = char.get("class_levels")
+        slots = {i for i, v in enumerate(levels) if v}
+        assert slots == {dos_layout.CLASS_NUMBERS.index(c) for c in classes}
+        assert all(3 <= a <= 25 for a in char.abilities)
+        assert char.experience == 25000 // len(classes)
+        assert 1 <= char.get("level") <= max(levels)
+
+
+def test_the_curse_pregens_carry_the_racial_effects_their_race_names():
+    """Eleven files, and the effect ids have to land on the right race.
+
+    The id space is `goldbox/traits.py`'s: 107 elf, 124 half-elf, 97/26/47 on
+    a dwarf, 8 on a paladin.  A wrong `race` offset would put an elf's 107
+    on a dwarf.
+    """
+    expected = {"elf": 107, "half-elf": 124, "dwarf": 97, "gnome": 97}
+    seen = 0
+    for char in curse_characters():
+        race = dos_layout.RACE_NUMBERS[char.get("race")]
+        if race not in expected or not char.effects:
+            continue
+        assert expected[race] in {node[0] for node in char.effects}, char.name
+        seen += 1
+    assert seen >= 6
+
+
+def test_a_curse_block_is_the_record_then_its_items_then_its_effects():
+    """`428 + 66 x items + 10 x effects` is the block, 4 of 4 played.
+
+    That arithmetic is what fixes the item count at `0x150` and the 66-byte
+    stride together: no other pair of numbers makes all four blocks come out
+    at the offset the next character's name is actually at.
+    """
+    played = [c for c in curse_characters() if c.items]
+    assert len(played) == 4
+    for char in played:
+        assert len(char.items) == char.get("item_count")
+        assert all(len(i.raw) == 66 for i in char.items)
+
+
+def test_curse_encumbrance_is_money_plus_the_weight_of_what_is_carried():
+    """The identity that fixes the money block, the stride and the byte order.
+
+    All at once, and it cannot be satisfied by accident: the eleven pregens
+    carry 300 platinum and nothing else and read 300, and the four played
+    characters carry 283 or 282 coins plus 400, 400, 500 and 400 tenths of a
+    pound of gear and read 683, 683, 782 and 682.
+    """
+    for char in curse_characters():
+        carried = sum(i.get("weight") * max(i.get("quantity"), 1)
+                      for i in char.items)
+        assert sum(char.money.values()) + carried == char.get("encumbrance"), \
+            char.name
+
+
+def test_the_curse_shift_map_agrees_with_dos_on_every_shared_constant():
+    """23 constants, 12 DOS records and 15 Amiga ones, byte for byte.
+
+    A field that is the same in all twelve DOS records and all fifteen Amiga
+    ones is a free check on the offset it was read at: `attack_forms`'
+    `02 00 01 00 02 00 00 00` and `field_10c_10f`' `00 01 00 00` are eight
+    and four bytes of it each.  Nothing in the corpus disagrees.
+    """
+    dos = _dos_records("CURSE", 422)
+    if not dos:
+        pytest.skip("needs the DOS Curse party; set $FR_ARCHIVES")
+    chars = curse_characters()
+    shape = amiga.CURSE_SHAPE
+    checked = 0
+    for f in dos_layout.layout_for(shape.dos):
+        if f.name in ("name_length", "name_text"):
+            continue
+        try:
+            at = shape.offset(f.offset)
+        except AmigaRecordError:
+            continue
+        want = {r[f.offset:f.offset + f.size] for r in dos.values()}
+        got = {c.raw[at:at + f.size] for c in chars}
+        if len(want) != 1 or len(got) != 1:
+            continue
+        one = want.pop()
+        if f.kind in (dos_layout.Kind.U16LE, dos_layout.Kind.UINT_LE):
+            one = one[::-1]
+        assert got.pop() == one, f.name
+        checked += 1
+    assert checked >= 20
+
+
+def test_every_silver_blades_field_decodes_to_what_its_dos_twin_holds():
+    """The strongest evidence on this issue, and it needs no emulator.
+
+    Both ports ship Guy de Valois, PAINE, EPONA, MALACHITE, DOMINIC and
+    MORGAINE, so all 85 fields of the DOS Silver Blades record can be
+    compared across the port boundary on the same person.  Three groups are
+    allowed to differ and nothing else is: the two live pointers, and
+    MALACHITE's saving throws and thief percentages, where the two ports'
+    shipped copies of that one character are not the same rolls.
+    """
+    dos = {r[1:1 + r[0]].decode("latin1"): r
+           for r in _dos_records("SECRET", 439).values()}
+    if not dos:
+        pytest.skip("needs the DOS Silver Blades party; set $FR_ARCHIVES")
+    live = {"effect_chain", "heap_104"}
+    rolled = {"save_petrification", "save_wands", "save_breath", "save_spell"}
+    rolled |= {f"thief_{k}" for k in
+               ("pick_pockets", "open_locks", "find_traps", "move_silently",
+                "hide_in_shadows", "hear_noise", "climb_walls",
+                "read_languages")}
+    shape = amiga.SILVER_BLADES_SHAPE
+    fields = [f for f in dos_layout.layout_for(shape.dos)
+              if f.name not in ("name_length", "name_text", "spellbook")]
+    compared = differing = 0
+    chars = silver_blades_characters()
+    assert len(chars) == 6
+    for char in chars:
+        twin = dos.get(char.name)
+        assert twin is not None, char.name
+        for f in fields:
+            want = twin[f.offset:f.offset + f.size]
+            if f.kind in (dos_layout.Kind.U16LE, dos_layout.Kind.UINT_LE):
+                want = int.from_bytes(want, "little")
+            elif f.kind is dos_layout.Kind.I8:
+                want = int.from_bytes(want, "little", signed=True)
+            elif f.kind is dos_layout.Kind.U8:
+                want = want[0]
+            got = char.get(f.name)
+            compared += 1
+            if got == want:
+                continue
+            differing += 1
+            assert f.name in live or (char.name == "MALACHITE"
+                                      and f.name in rolled), \
+                f"{char.name} {f.name}: DOS {want!r}, Amiga {got!r}"
+    assert compared == 6 * len(fields)
+    assert differing == 20
+
+
+def test_the_silver_blades_spellbook_is_a_bitmask_lsb_first():
+    """15 bytes for 117 one-byte flags, and the ids come out identical.
+
+    62 set bits across the three characters who have a book. MSB-first
+    reproduces none of them, which is what makes the bit order measured
+    rather than assumed.
+    """
+    dos = {r[1:1 + r[0]].decode("latin1"): r
+           for r in _dos_records("SECRET", 439).values()}
+    if not dos:
+        pytest.skip("needs the DOS Silver Blades party; set $FR_ARCHIVES")
+    book = amiga.SILVER_BLADES_SHAPE.dos_field("spellbook")
+    total = wrong_way = 0
+    for char in silver_blades_characters():
+        twin = dos[char.name][book.offset:book.offset + book.size]
+        want = [i + dos_layout.SPELLBOOK_FIRST_ID
+                for i, v in enumerate(twin) if v]
+        assert char.spellbook == want, char.name
+        mask = char.raw[book.offset:book.offset + 15]
+        msb = [i + 1 for i in range(8 * len(mask))
+               if mask[i // 8] >> (7 - i % 8) & 1]
+        total += len(want)
+        wrong_way += msb == want and bool(want)
+    assert total == 62
+    assert wrong_way == 0
+
+
+def test_the_curse_spellbook_is_still_one_byte_a_spell():
+    """Silver Blades packs its book and Curse does not -- a per-title choice.
+
+    The ids that come out are class-coherent, which is what says the region
+    is being read the right way: the cleric holds 1-8, 22-28 and 37-44, and
+    every magic-user holds 10, 11, 12, 15, 18 and 21.
+    """
+    assert amiga.CURSE_SHAPE.spellbook_bytes is None
+    books = {c.name: c.spellbook for c in curse_characters()}
+    assert books["KAROLYN"] == ([1, 2, 3, 4, 5, 6, 7, 8]
+                                + [22, 23, 24, 25, 26, 27, 28]
+                                + [37, 38, 39, 40, 41, 42, 43, 44])
+    assert set(books["ARIEL"]) >= {10, 11, 12, 15, 18, 21}
+
+
+def test_the_record_signature_finds_the_party_and_nothing_else():
+    """A scan, not a parse -- so what it does not find matters too.
+
+    16 bytes of NUL-padded printable ASCII and six equal, legal ability
+    pairs. Across 22 454 bytes of two saved games it hits ten times, which is
+    the four Curse characters and the six Silver Blades ones, and no eleventh
+    time.
+    """
+    for path in _later_files():
+        if not path.name.endswith((".dat", ".sav")):
+            continue
+        data = path.read_bytes()
+        shape = (amiga.CURSE_SHAPE if path.name.startswith("CurseA")
+                 else amiga.SILVER_BLADES_SHAPE)
+        hits = [at for at in range(len(data) - shape.record_size + 1)
+                if amiga.looks_like_amiga_record(data, at, shape)]
+        assert len(hits) == len(amiga.party_in_savegame(data, shape))
+        assert len(hits) in (4, 6)
+
+
+def test_the_amiga_curse_item_is_the_dos_one_with_the_weight_it_should_have():
+    """Nine nodes, five distinct items, and the weights are AD&D's.
+
+    Chain Mail 300, Shield 100, Bastard Sword 100, Mace 100,
+    Glaive-Guisarme 100 -- and each item's value matches the price string
+    baked into its own display text, which is a check the record carries
+    with it.
+    """
+    weights = {"Chain Mail": 300, "Shield": 100, "Bastard Sword": 100,
+               "Mace": 100, "Glaive-Guisarme": 100}
+    seen = set()
+    for char in curse_characters():
+        for item in char.items:
+            words = item.words
+            name = words[0].strip().removeprefix("Yes").strip()
+            assert weights[name] == item.get("weight"), name
+            price = next((w.strip() for w in words if w.strip().isdigit()),
+                         None)
+            assert price is not None and int(price) == item.get("value")
+            assert item.get("type_index") == item.raw[0x032]
+            seen.add(name)
+    assert seen == set(weights)
+
+
+def test_the_curse_magic_user_slots_are_the_game_s_own_table():
+    """What pins the third insertion, and it comes from Curse's own code.
+
+    `goldbox/spells.py`'s `_MAGIC_USER_CURSE` was read out of Curse `ECL65`
+    at payload `0x88D`, so it is the game's table rather than the rulebook's.
+    Read at `0x13A` -- DOS `0x137` plus three -- every one of the six Amiga
+    casters holds exactly the row its magic-user level names, and the nine
+    non-casters hold five zeros.  At `0x139` or `0x13B` none of them would.
+    """
+    from goldbox.spells import _CLERIC_CURSE, _MAGIC_USER_CURSE
+    mage = dos_layout.CLASS_NUMBERS.index("mage")
+    cleric = dos_layout.CLASS_NUMBERS.index("cleric")
+    casters = 0
+    for char in curse_characters():
+        levels = char.get("class_levels")
+        got = list(char.get("spells_castable_magic_user"))
+        want = list(_MAGIC_USER_CURSE[levels[mage] - 1]) if levels[mage] else \
+            [0] * 5
+        assert got == want, f"{char.name} magic-user {levels[mage]}"
+        casters += bool(levels[mage])
+        # The cleric array is the same table plus the wisdom bonus, so it is
+        # never below the table and never above it past the second level.
+        got = list(char.get("spells_castable_cleric"))
+        want = list(_CLERIC_CURSE[levels[cleric] - 1]) if levels[cleric] else \
+            [0] * 5
+        assert all(g >= w for g, w in zip(got, want)), char.name
+        assert got[2:] == want[2:], char.name
+    assert casters == 7
+
+
+def test_the_curse_size_byte_is_one_for_the_small_races():
+    """What pins the fourth insertion: `size` at `0x148`, DOS `0x144` plus 4.
+
+    A dwarf and a gnome are size 1 and everybody else here is 2, 15 of 15 --
+    and the six icon colours land at `0x149` immediately after, reading the
+    same `145 162 179 196 230 247` that all twelve DOS records hold, in the
+    four Amiga specimens that are not carrying a custom icon.
+    """
+    small = {"dwarf", "gnome", "halfling"}
+    shape = amiga.CURSE_SHAPE
+    assert shape.offset(0x144) == 0x148
+    assert shape.offset(0x145) == 0x149
+    for char in curse_characters():
+        race = dos_layout.RACE_NUMBERS[char.get("race")]
+        assert char.get("size") == (1 if race in small else 2), char.name
+        assert char.get("icon_dimension") == 1
+    stock = bytes((145, 162, 179, 196, 230, 247))
+    matching = sum(char.get("icon_colours") == stock
+                   for char in curse_characters())
+    assert matching >= 4

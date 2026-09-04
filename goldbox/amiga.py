@@ -2110,3 +2110,556 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
                 f"slot {letter} is still not in {POR_SLOT_LIST} after writing "
                 f"it; the picker would not offer it")
         return written
+
+
+# ---------------------------------------------------------------------------
+# Amiga Curse of the Azure Bonds and Secret of the Silver Blades (#55)
+# ---------------------------------------------------------------------------
+#
+# Two more ports of the same record, and neither is a second field table:
+# each reads `goldbox/dos_layout.py`'s own shape for its title through a shift
+# map, big-endian, exactly as the Amiga Pool of Radiance reader above does.
+# `AmigaShape` is that map as data, so a third title is a row rather than a
+# module.
+#
+# **Silver Blades is where the evidence is strongest, because the two ports
+# ship the same six characters.**  `SAVE/savgamA.sav` on Amiga disk 1 carries
+# Guy de Valois, PAINE, EPONA, MALACHITE, DOMINIC and MORGAINE, and the DOS
+# archives ship `CHRDATA1`-`CHRDATA6` with those same six names.  Read through
+# the map below, **every one of the 85 fields in the DOS Silver Blades table
+# decodes to the byte-for-byte value its DOS twin holds, in 6 of 6
+# characters**, with three groups of exceptions and no others:
+#
+#   * `effect_chain` and `heap_104`, which are live pointers -- an Amiga heap
+#     address against a DOS far pointer.  They cannot agree and must not be
+#     carried;
+#   * MALACHITE's four saving throws and eight thief percentages, where the
+#     two ports' shipped copies of that character genuinely differ.  One
+#     specimen of six; the other five agree on both groups.
+#
+# That is what makes the Silver Blades offsets CONFIRMED rather than
+# consistent: a wrong offset anywhere would have shown up as a mismatch in a
+# field whose value is not zero, and 6 x 85 comparisons produced twenty
+# mismatches, all of them named above.
+#
+# **Curse has no such twin** -- the eleven `SAVE/*.guy` pregens on Amiga disk 1
+# are ARIEL, BJORN DARKSTONE, GALAIN and so on, and the DOS archives ship
+# MATHEW, MARK, TRAVIS and so on.  So its map rests on three things instead:
+# fields whose value is forced (a dwarf's `size` of 1, a level-5 magic-user's
+# `4 2 1` spell slots, 25 000 experience split between a character's classes),
+# the arithmetic identity `money + sum(weight x quantity) = encumbrance` on
+# 15 of 15 specimens, and **23 constants that hold across all 12 DOS records
+# and all 15 Amiga ones and agree byte for byte at the mapped offsets** --
+# including `attack_forms`' eight-byte `02 00 01 00 02 00 00 00` and
+# `field_10c_10f`' four-byte `00 01 00 00`.
+#
+# The five rules the shift maps are made of, all three titles:
+#
+#   1. **The name is 16 NUL-padded bytes** where DOS spends a count byte and
+#      fifteen.  Same width, so nothing after it moves.
+#   2. **Every `u16` and `u32` is big-endian.**  It is a 68000.
+#   3. **A `u16` or `u32` field is even-aligned**, and a pad byte goes in
+#      ahead of it when the DOS offset is odd.  That is where every insertion
+#      in all three titles comes from, and two of Silver Blades' three are
+#      located to the byte because the field either side of them is non-zero.
+#   4. **The record is padded to an even length.**  Curse's 422 + 5 = 427 is
+#      odd and the record is 428; Silver Blades' 340 is even and there is no
+#      trailing byte.  Pool of Radiance's 285 + 2 = 287 pads to 288.
+#   5. **Silver Blades, and only Silver Blades, packs the spellbook into
+#      bits** -- see `AMIGA_SSB_SPELLBOOK_BYTES`.
+#
+#: The name field, all three titles: 16 bytes, NUL-padded, no count byte.
+AMIGA_NAME_SIZE = 16
+
+
+@dataclass(frozen=True)
+class AmigaShape:
+    """One title's Amiga record, as a difference from its DOS record.
+
+    Everything here is a *map onto* `goldbox/dos_layout.py`, never a copy of
+    it: `offset` turns a DOS offset into an Amiga one and `AmigaCharacter`
+    reads the DOS field table through it, so a correction to the DOS side
+    reaches the Amiga side with no second edit.
+    """
+
+    key: str
+    title: str
+    dos: dos_layout.DosShape
+    record_size: int
+    #: `(first DOS offset, bytes inserted before it)`, ascending.
+    shifts: tuple[tuple[int, int], ...]
+    #: DOS offsets whose Amiga counterpart cannot be placed, because an
+    #: insertion sits somewhere inside a run that reads zero on both ports.
+    unplaced: tuple[range, ...] = ()
+    #: Bytes the spellbook takes on the Amiga when it is a bitmask rather
+    #: than DOS's one byte per spell.  `None` means it is DOS's shape.
+    spellbook_bytes: int | None = None
+    #: One item node.  `None` where no specimen carries an item.
+    item_size: int | None = None
+    item_shifts: tuple[tuple[int, int], ...] = ()
+    item_unplaced: tuple[range, ...] = ()
+    #: Bytes of NUL-separated display text before the item's `next` pointer.
+    item_text: int = 0x02A
+    #: One effect node: DOS's nine plus a pad byte at offset 1.
+    effect_size: int = AMIGA_POR_EFFECT_SIZE
+    #: The byte past the last field, present only to make the record even.
+    trailing_pad: int | None = None
+
+    def offset(self, dos_offset: int) -> int:
+        """Where a DOS record offset lands in this title's Amiga record.
+
+        Raises rather than guessing for an offset inside an unplaced window,
+        or inside a re-encoded spellbook, so a caller that wants those bytes
+        has to say so and read them raw.
+        """
+        if self.spellbook_bytes is not None:
+            book = self.dos_field("spellbook")
+            if book.offset <= dos_offset < book.offset + book.size:
+                raise AmigaRecordError(
+                    f"DOS offset {dos_offset:#05x} is inside the "
+                    f"{self.title} spellbook, which the Amiga packs into "
+                    f"{self.spellbook_bytes} bytes of bitmask; there is no "
+                    f"one-to-one Amiga offset for it")
+        for window in self.unplaced:
+            if dos_offset in window:
+                raise AmigaRecordError(
+                    f"DOS offset {dos_offset:#05x} is inside "
+                    f"{window.start:#05x}-{window.stop - 1:#05x}, where an "
+                    f"insertion has not been located; there is no Amiga "
+                    f"offset to give")
+        shift = 0
+        for first, amount in self.shifts:
+            if dos_offset >= first:
+                shift = amount
+        return dos_offset + shift
+
+    def item_offset(self, dos_offset: int) -> int:
+        """Where a DOS item offset lands in this title's Amiga item node."""
+        if self.item_size is None:
+            raise AmigaRecordError(
+                f"no Amiga {self.title} item node has been measured: no "
+                f"specimen on this machine carries an item")
+        for window in self.item_unplaced:
+            if dos_offset in window:
+                raise AmigaRecordError(
+                    f"DOS item offset {dos_offset:#05x} is inside "
+                    f"{window.start:#05x}-{window.stop - 1:#05x}, where the "
+                    f"insertion has not been located")
+        shift = 0
+        for first, amount in self.item_shifts:
+            if dos_offset >= first:
+                shift = amount
+        return dos_offset + shift
+
+    def dos_field(self, name: str):
+        """One `goldbox/dos_layout.py` field of this title's DOS record."""
+        for f in dos_layout.layout_for(self.dos):
+            if f.name == name:
+                return f
+        raise AmigaRecordError(
+            f"no field called {name!r} in the DOS {self.title} record")
+
+
+#: Curse of the Azure Bonds: the 422-byte DOS record, 428 bytes on the Amiga.
+#:
+#: Five insertions, and only two of them are located to the byte.
+#:
+#:   * one in Amiga `0x0F9`-`0x0FB`, which even-aligns the money block at
+#:     `0x0FC`.  DOS `0x0F8` is a **party flag** -- 1 in all twelve DOS
+#:     records and all four played Amiga blocks, 0 in all eleven pregens,
+#:     at the same offset on both ports -- so the pad is past it and the
+#:     window is three bytes rather than six.  Every one of them reads zero
+#:     on both ports;
+#:   * **two** between the cleric spell-slot array and the magic-user one.
+#:     The cleric array is measured at `0x12E` (KAROLYN's `4 3 1`, IILANDA's
+#:     `5 3`, TEUT HALF-ELFIN's `5 4`) and the magic-user array at `0x13A`
+#:     (ARIEL's `4 2 1`, which is `goldbox/spells.py`'s Curse table for a
+#:     level-5 magic-user, read out of the game's own `ECL65`), so twelve
+#:     Amiga bytes hold what DOS holds in ten.  **A compiler does not pad
+#:     inside an array**, so each five-byte array is still five consecutive
+#:     bytes and the cleric's are `0x12E`-`0x132` and the magic-user's
+#:     `0x13A`-`0x13E` whatever the two spare bytes turn out to be.  What is
+#:     unplaced is the **druid array**, which starts at `0x133`, `0x134` or
+#:     `0x135`: `0x131`-`0x139` is zero in 15 of 15, because no Curse pregen
+#:     is high enough for a fourth-level cleric slot and none is a ranger;
+#:   * one between the magic-user array and `portrait_head`, which is at
+#:     `0x143` because `size` is at `0x148` and the icon colours at `0x149`.
+#:     It lands somewhere in DOS's three-byte `gap_13c`, which is zero on
+#:     both ports;
+#:   * one at Amiga `0x151`, between `item_count` and the item pointer array.
+#:     **Located**, because the count is at `0x150` -- forced by
+#:     `428 + 66 x count + 10 x effects` matching the block length in 4 of 4
+#:     played characters -- and the pointers are at `0x152`, non-zero in
+#:     exactly those four;
+#:   * the trailing byte at `0x1AB`, which makes 427 into 428.
+#:
+#: Thirteen of these offsets were also **read off the game's own character
+#: sheet** under WinUAE, on GALAIN in `SAVE/savgamA.dat` -- race at `0x074`,
+#: age at `0x076`, class at `0x075`, the class levels at `0x10A`, the money
+#: block at `0x0FC`, experience at `0x128`, hit points at `0x078` and
+#: `0x1A9`, armour class at `0x19F` stored `60 - AC`, THAC0 base at `0x073`,
+#: encumbrance at `0x18C` and movement at `0x0E4` and `0x1AA`.
+#: `docs/124-amiga-port.md` §1.11 has the sheet beside the record. That is
+#: the instrument reading this map's other anchors could not be: a number a
+#: person read on a screen, not an arithmetic identity between two files.
+CURSE_SHAPE = AmigaShape(
+    key="curse-of-the-azure-bonds",
+    title="Curse of the Azure Bonds",
+    dos=dos_layout.CURSE_OF_THE_AZURE_BONDS,
+    record_size=428,
+    shifts=((0x000, 0), (0x0FB, 1), (0x137, 3), (0x13F, 4), (0x14D, 5)),
+    unplaced=(range(0x0F9, 0x0FB), range(0x132, 0x137), range(0x13C, 0x13F)),
+    item_size=66,
+    item_shifts=((0x000, 0), (0x031, 1), (0x03A, 2)),
+    item_unplaced=(range(0x02F, 0x031),),
+    trailing_pad=0x1AB,
+)
+
+#: Secret of the Silver Blades: the 439-byte DOS record, 340 on the Amiga.
+#:
+#: The spellbook is the whole of the difference in size, and the three
+#: insertions are what is left.  Two are located to the byte:
+#:
+#:   * Amiga `0x095`, ahead of the `u32` effect chain at `0x096` -- the eight
+#:     thief percentages fill `0x08D`-`0x094` on MALACHITE and the chain is
+#:     non-zero on four of the six, so the pad has nowhere else to be;
+#:   * Amiga `0x0C7`, ahead of the `u32` experience at `0x0C8` -- `0x0C6` is
+#:     `unnamed_0ab`, distinct in all six, and `0x0C8` reads 200 000 or
+#:     100 000 big-endian, which is what the DOS twin holds;
+#:   * Amiga `0x0FD`, between `item_count` at `0x0FC` and the item pointer
+#:     array at `0x0FE`.  **PROBABLE, not measured**: no Silver Blades
+#:     character on either port carries an item, so the whole region is zero.
+#:     It is where the other two titles put theirs -- Curse at `0x151` and
+#:     Pool of Radiance not at all, because its array is already even -- and
+#:     it is the only placement that lands `encumbrance` at `0x138`, which
+#:     *is* measured on MALACHITE's 4.
+SILVER_BLADES_SHAPE = AmigaShape(
+    key="secret-of-the-silver-blades",
+    title="Secret of the Silver Blades",
+    dos=dos_layout.SECRET_OF_THE_SILVER_BLADES,
+    record_size=340,
+    shifts=((0x000, 0), (0x0E6, -102), (0x0FB, -101), (0x12C, -100),
+            (0x161, -99)),
+    spellbook_bytes=15,
+)
+
+#: Every Amiga shape this module reads, and the size that names each.  The
+#: three sizes are distinct, as the DOS four are, so a reader handed a
+#: nameless file can say which title it belongs to.
+AMIGA_SHAPES = (CURSE_SHAPE, SILVER_BLADES_SHAPE)
+AMIGA_SHAPES_BY_SIZE = {s.record_size: s for s in AMIGA_SHAPES}
+
+#: Silver Blades' spellbook: 15 bytes of bitmask at `0x071`, **LSB first**
+#: within each byte, where DOS spends one byte per spell for ids 1..117.
+#:
+#: CONFIRMED on 6 of 6 specimens and 62 set bits: PAINE's `77 78 79 80`,
+#: DOMINIC's 29 ids and MORGAINE's 29 come out of the mask exactly as the DOS
+#: twin's byte array holds them, and MSB-first reproduces none of the three.
+#: The other three characters have an empty book on both ports.
+#:
+#: Curse does **not** do this: its Amiga spellbook is 100 bytes of 0 and 1 at
+#: `0x079`, DOS's own shape, and the ids that come out of the eleven pregens
+#: are clean class-coherent sets -- KAROLYN the cleric holds 1-8, 22-28 and
+#: 37-44, ARIEL the magic-user holds 10, 11, 12, 15, 18, 21, 31, 34.  So this
+#: is a per-title decision rather than a property of the port.
+AMIGA_SSB_SPELLBOOK_BYTES = 15
+AMIGA_SSB_SPELLBOOK_AT = 0x071
+
+
+@dataclass(frozen=True)
+class AmigaItem:
+    """One item node of a later Amiga Gold Box title.
+
+    Curse's is **66 bytes** where DOS spends 63 and Amiga Pool of Radiance
+    spends 65, and the difference from Pool of Radiance is one byte in the
+    name group: the same Chain Mail reads `37 00 30 37` at `0x02E` on Amiga
+    Pool of Radiance and `37 00 00 30 37` on Amiga Curse, so Curse has an
+    extra zero at `0x02F` or `0x030` and everything from `name3` on is one
+    further along.  That insertion uses up the pad Pool of Radiance keeps
+    ahead of the weight, which is why the weight is at `0x038` in both.
+
+    Nine nodes of five distinct items, from the four played characters in
+    `SAVE/savgamA.dat`.  Two bytes are constant and unexplained: `0x03B`
+    reads 52 in 9 of 9, where Pool of Radiance's pad reads zero, and `0x03E`
+    reads 47.  On the alignment rule that generates every other insertion,
+    `0x03B` is the pad that even-aligns the value word at `0x03C` and `0x03E`
+    is `charges` -- which would make charges 47 on a Chain Mail.  The corpus
+    cannot separate that from a second pad at `0x03E` with `charges` at
+    `0x03F`; **an Amiga Curse save holding a wand or any charged item settles
+    it in one read.**
+    """
+
+    raw: bytes
+    shape: AmigaShape
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray,
+                   shape: AmigaShape = CURSE_SHAPE) -> "AmigaItem":
+        if shape.item_size is None or len(data) != shape.item_size:
+            raise AmigaRecordError(
+                f"an Amiga {shape.title} item node is {shape.item_size} "
+                f"bytes, got {len(data)}")
+        return cls(bytes(data), shape)
+
+    @property
+    def text(self) -> str:
+        """The cached display line: the first NUL-terminated run.
+
+        **Never a source.**  It is whatever the ITEMS screen last painted --
+        one specimen reads `" Yes  Shield "` with the READY column baked in
+        and the other eight do not -- and `goldbox/dos.py` says the same of
+        the DOS buffer, which goes stale the same way.
+        """
+        return self.raw[:self.shape.item_text].split(b"\0")[0].decode("latin1")
+
+    @property
+    def words(self) -> list[str]:
+        """Every NUL-separated run in the text buffer, display line first."""
+        block = self.raw[:self.shape.item_text].rstrip(b"\0")
+        return [p.decode("latin1") for p in block.split(b"\0")]
+
+    @property
+    def next(self) -> int:
+        """The next node's Amiga heap address, `u32` big-endian, 0 at the
+        end of a character's chain."""
+        at = self.shape.item_text
+        return int.from_bytes(self.raw[at:at + 4], "big")
+
+    def get(self, field_name: str):
+        """One field, by its `goldbox/dos_layout.py` item-table name."""
+        f = dos_layout.item_field_by_name(field_name)
+        at = self.shape.item_offset(f.offset)
+        chunk = self.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            return int.from_bytes(chunk, "big")
+        if f.kind is Kind.I8:
+            return int.from_bytes(chunk, "big", signed=True)
+        if f.kind is Kind.U8:
+            return chunk[0]
+        return chunk
+
+
+@dataclass(frozen=True)
+class AmigaCharacter:
+    """One Amiga Curse or Silver Blades character, read through the DOS table.
+
+    `items` and `effects` are the nodes that follow the record -- inside the
+    saved game for a played character, and after the record in a `.guy` file
+    for a pregenerated one.  Neither title keeps them in sibling files the
+    way Pool of Radiance's `.itm` and `.spc` do.
+
+    An effect node is the same ten bytes in all three Amiga titles, so
+    `amiga_por_effect_to_dos` reads one of these too.  **The id space is
+    per-title**: 107 is an elf in Curse and PAINE's ranger effect in Silver
+    Blades is 105, so an id must never be carried from one title to another.
+    """
+
+    raw: bytes
+    shape: AmigaShape
+    source: str = ""
+    items: tuple[AmigaItem, ...] = ()
+    effects: tuple[bytes, ...] = ()
+
+    @classmethod
+    def from_bytes(cls, data: bytes | bytearray,
+                   shape: AmigaShape | int | None = None,
+                   source: str = "",
+                   items: Sequence[AmigaItem] = (),
+                   effects: Sequence[bytes] = ()) -> "AmigaCharacter":
+        if shape is None:
+            shape = len(data)
+        if isinstance(shape, int):
+            got = AMIGA_SHAPES_BY_SIZE.get(shape)
+            if got is None:
+                raise AmigaRecordError(
+                    f"{shape} bytes names no Amiga Gold Box record: Curse is "
+                    f"{CURSE_SHAPE.record_size}, Silver Blades "
+                    f"{SILVER_BLADES_SHAPE.record_size}, Pool of Radiance "
+                    f"{AMIGA_POR_RECORD_SIZE} and Pools of Darkness's .pc "
+                    f"{RECORD_LENGTH}")
+            shape = got
+        if len(data) != shape.record_size:
+            raise AmigaRecordError(
+                f"an Amiga {shape.title} record is {shape.record_size} "
+                f"bytes, got {len(data)}")
+        return cls(bytes(data), shape, source, tuple(items), tuple(effects))
+
+    @property
+    def name(self) -> str:
+        return self.raw[:AMIGA_NAME_SIZE].split(b"\0")[0].decode("latin1")
+
+    def get(self, field_name: str):
+        """One field, by its `goldbox/dos_layout.py` name.
+
+        `U16LE` and `UINT_LE` are read big-endian, which -- outside the name,
+        the shifts and Silver Blades' spellbook -- is the whole of the
+        difference between the two ports.
+        """
+        f = self.shape.dos_field(field_name)
+        at = self.shape.offset(f.offset)
+        # Every byte, not just the first: `field_83_87` straddles the window
+        # its own insertion is in, and a field half of which is placed is a
+        # field nobody has read.
+        for i in range(1, f.size):
+            self.shape.offset(f.offset + i)
+        chunk = self.raw[at:at + f.size]
+        if f.kind in (Kind.U16LE, Kind.UINT_LE):
+            return int.from_bytes(chunk, "big")
+        if f.kind is Kind.I8:
+            return int.from_bytes(chunk, "big", signed=True)
+        if f.kind is Kind.U8:
+            return chunk[0]
+        return chunk
+
+    @property
+    def abilities(self) -> list[int]:
+        """The six scores.  Both later titles store `(current, maximum)`
+        pairs where Pool of Radiance stores one byte; this is the current."""
+        return [self.get(k)[0] for k in ABILITY_KEYS]
+
+    @property
+    def money(self) -> dict[str, int]:
+        return {k: self.get(k) for k in
+                ("copper", "silver", "electrum", "gold", "platinum", "gems",
+                 "jewelry")}
+
+    @property
+    def experience(self) -> int:
+        return self.get("experience")
+
+    @property
+    def spellbook(self) -> list[int]:
+        """The spell ids the character has in the book, ascending.
+
+        Curse reads DOS's byte array straight; Silver Blades unpacks
+        `AMIGA_SSB_SPELLBOOK_BYTES` of bitmask, LSB first, id = bit + 1.
+        """
+        book = self.shape.dos_field("spellbook")
+        if self.shape.spellbook_bytes is None:
+            at = self.shape.offset(book.offset)
+            raw = self.raw[at:at + book.size]
+            return [i + dos_layout.SPELLBOOK_FIRST_ID
+                    for i, v in enumerate(raw) if v]
+        at = book.offset            # shift is zero where the book begins
+        mask = self.raw[at:at + self.shape.spellbook_bytes]
+        return [i + dos_layout.SPELLBOOK_FIRST_ID
+                for i in range(8 * len(mask))
+                if mask[i // 8] >> (i % 8) & 1]
+
+    @property
+    def effect_chain(self) -> int:
+        """The effect list head, `u32` big-endian, where DOS keeps an offset
+        word and a segment word."""
+        return int.from_bytes(self.get("effect_chain"), "big")
+
+
+def _amiga_block(data: bytes, at: int, shape: AmigaShape,
+                 source: str = "") -> "tuple[AmigaCharacter, int]":
+    """One character and everything hanging off it, and where it ends.
+
+    The layout is **record, then `item_count` item nodes, then the effect
+    chain**, and it is the same inside a saved game as it is in a `.guy`
+    file.  CONFIRMED on the four played Curse characters, whose blocks are
+    570, 590, 636 and 600 bytes: `428 + 66 x items + 10 x effects` is exact
+    in 4 of 4, and the effect count is what the chain's own NULL terminator
+    says it is.
+    """
+    end = at + shape.record_size
+    if end > len(data):
+        raise AmigaRecordError(
+            f"a {shape.title} record wants {shape.record_size} bytes at "
+            f"{at:#x} and only {len(data) - at} are there")
+    record = data[at:end]
+    count = record[shape.offset(shape.dos_field("item_count").offset)]
+    items = []
+    for _ in range(count):
+        if shape.item_size is None:
+            raise AmigaRecordError(
+                f"{shape.title} carries {count} items and no Amiga item node "
+                f"of that title has ever been measured")
+        items.append(AmigaItem.from_bytes(data[end:end + shape.item_size],
+                                          shape))
+        end += shape.item_size
+    effects = []
+    if int.from_bytes(record[shape.offset(shape.dos_field(
+            "effect_chain").offset):][:4], "big"):
+        while end + shape.effect_size <= len(data):
+            node = data[end:end + shape.effect_size]
+            end += shape.effect_size
+            effects.append(node)
+            if not int.from_bytes(node[6:10], "big"):
+                break
+        else:
+            raise AmigaRecordError(
+                f"the effect chain of the {shape.title} record at {at:#x} "
+                f"runs off the end of the data without a NULL next pointer")
+    return AmigaCharacter.from_bytes(record, shape, source, items,
+                                     effects), end
+
+
+def read_amiga_guy(path) -> AmigaCharacter:
+    """One `SAVE/<NAME>.guy` -- an Amiga Curse pregenerated character.
+
+    The eleven on Amiga Curse disk 1 are 428, 438, 458 and 468 bytes, which
+    is 0, 1, 3 and 4 effect nodes, and the ids land on the right race in 11
+    of 11: 107 for the two elves, 124 for the two half-elves, the dwarves'
+    97/26/47, the gnome's 97/18/47/48 and 8 for the paladin.
+    """
+    import pathlib
+    p = pathlib.Path(path)
+    char, end = _amiga_block(p.read_bytes(), 0, CURSE_SHAPE, str(p))
+    if end != p.stat().st_size:
+        raise AmigaRecordError(
+            f"{p.name} is {p.stat().st_size} bytes and its record, items and "
+            f"effects account for {end}")
+    return char
+
+
+def looks_like_amiga_record(data: bytes, at: int, shape: AmigaShape) -> bool:
+    """Whether a character record plausibly starts here.
+
+    Two things a saved game's other bytes do not do together: **16 bytes of
+    printable ASCII terminated and padded with NUL**, and **six
+    `(current, maximum)` ability pairs of equal, legal bytes** at `0x010`.
+    On the two saved games this project has, it finds the four Curse
+    characters at `0x3219`, `0x3453`, `0x36A1` and `0x391D` and the six
+    Silver Blades ones at `0x1417` onwards, and nothing else in 22 454 bytes.
+
+    **It would miss a character whose abilities have been drained**, because
+    the pair test wants current and maximum equal and a drained score is
+    below its maximum.  Every specimen this project has is undrained, so the
+    looser test has never been needed; a saved game taken after a shadow or
+    a wight is what would need it.
+    """
+    if at < 0 or at + shape.record_size > len(data):
+        return False
+    name = data[at:at + AMIGA_NAME_SIZE]
+    stop = name.find(b"\0")
+    if stop < 1 or any(name[stop:]):
+        return False
+    if not all(0x20 <= b < 0x7F for b in name[:stop]):
+        return False
+    for i in range(6):
+        low, high = data[at + 0x10 + 2 * i], data[at + 0x11 + 2 * i]
+        if low != high or not 1 <= low <= 25:
+            return False
+    return True
+
+
+def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
+    """Every character block in an Amiga `savgam<slot>.dat` or `.sav`.
+
+    A scan rather than a parse: the saved game's own table of contents is
+    `#28 (Decode an Amiga saved game, not just a character file)`'s to find,
+    and this needs only the character blocks.  `looks_like_amiga_record` says
+    what the signature is and what it found.
+    """
+    found: list[AmigaCharacter] = []
+    at = 0
+    while at + shape.record_size <= len(data):
+        if looks_like_amiga_record(data, at, shape):
+            char, at = _amiga_block(data, at, shape, "savegame")
+            found.append(char)
+        else:
+            at += 1
+    return found
