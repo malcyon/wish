@@ -110,7 +110,7 @@ def main(argv=None) -> int:
     total = 0
     for path, disk in sides(args.game, args.dir, args.glob):
         for entry in disk.directory():
-            if not entry.is_prg and entry.file_type != 0x02:
+            if not entry.is_prg:
                 continue
             name = entry.name.decode("latin-1").rstrip()
             try:

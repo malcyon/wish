@@ -433,7 +433,7 @@ _DECLARED: Sequence[Field] = (
            "cancelled. **Nothing anywhere reads bit 0 back**, so the forum "
            "rumour that altering a score carries a penalty in play has no code "
            "behind it on this port"),
-    _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _OK,
+    _field(0x0B9, 1, _U8, "dual_class_slot", "Dual class: old class slot", _MAYBE,
            "the slot in the per-class level array at 0x0C9 that a dual-classed "
            "human left behind, with the level it was left at in 0x0BA. Curse "
            "of the Azure Bonds' GEN writes the pair, and the gate at $2387 is "
@@ -452,8 +452,8 @@ _DECLARED: Sequence[Field] = (
            "references $6BB9 or $6BBA, against 42 references to $6BB8 beside "
            "them, and Champions of Krynn and Death Knights of Krynn are the "
            "same. That -- not a marker -- is why every Pool of Radiance "
-           "specimen reads zero here; see region_0e3 and #224"),
-    _field(0x0BA, 1, _U8, "dual_class_level", "Dual class: old level", _OK,
+           "specimen reads zero here; see region_0e3 and #224. **PROBABLE rather than CONFIRMED, and the difference is one specimen**: the routines are read byte for byte and cross-checked across three titles, but no save this project can reach holds a non-zero value here -- not the shipped Curse party, whose six characters are all zero. Driving Curse's training hall to dual-class a human fighter of level 2 or better is what lifts it"),
+    _field(0x0BA, 1, _U8, "dual_class_level", "Dual class: old level", _MAYBE,
            "the level the dual-classed character left its old class at, and "
            "the sentinel for the pair: GEN $18EB reads LDY #$FF / LDA 0x0BA / "
            "BEQ / LDY 0x0B9, so **zero here means 'not dual-classed'** and "
@@ -461,7 +461,7 @@ _DECLARED: Sequence[Field] = (
            "is what stops slot 0, the magic-user, being ambiguous. Written by "
            "Curse's GEN $23D2 with the whole of the gate dual_class_slot "
            "describes; zero in every Pool of Radiance specimen because that "
-           "title never touches it"),
+           "title never touches it. PROBABLE for the reason dual_class_slot gives"),
     _field(0x0E1, 1, _U8, "armour_class_base", "AC base (60 - AC)", _MAYBE,
            "base armour class, stored as 60 - AC, the same encoding used for "
            "THAC0 at 0x071 and for the current AC in the SAVEDGAME1 roster. It "
