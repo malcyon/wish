@@ -173,6 +173,39 @@ def test_a_position_is_written_with_the_facing_doubled():
     assert save[sg.POS_FACING] == 3 * sg.FACING_SCALE
 
 
+def test_a_pool_of_radiance_position_lands_on_the_module_constants():
+    """The default shape a bare `put_position`/`position` infer from a
+    13137-byte buffer's own length is Pool of Radiance's, so this must keep
+    landing on `POS_X`/`POS_Y`/`POS_FACING` exactly -- the fix for #220 must
+    not move Pool of Radiance's own offsets."""
+    save = blank()
+    sg.put_position(save, 8, 14, 3)
+    assert (save[sg.POS_X], save[sg.POS_Y], save[sg.POS_FACING]) == \
+        (8, 14, 3 * sg.FACING_SCALE)
+
+
+def test_a_curse_position_lands_twelve_bytes_past_pool_of_radiances():
+    """#220: Curse's square sits twelve bytes later than `POS_X`/`POS_Y`/
+    `POS_FACING` because its `unnamed` region is 12 bytes where Pool of
+    Radiance's is 0 -- measured in a played save, x/y/facing confirmed on
+    three squares (#113). A writer that used the bare module constants for
+    a Curse-shaped buffer would corrupt the "unnamed" bytes in front of the
+    square rather than the square itself, and `position()` would then read
+    back whatever the unnamed bytes held instead of the square just written.
+    """
+    shape = sg.SAVE_CURSE_OF_THE_AZURE_BONDS
+    assert shape.pos_x == sg.POS_X + 12
+    assert shape.pos_y == sg.POS_Y + 12
+    assert shape.pos_facing == sg.POS_FACING + 12
+
+    save = bytearray(shape.size)
+    sg.put_position(save, 8, 14, 3, shape)
+    assert sg.position(bytes(save), shape) == (8, 14, 3)
+    # And the bytes at Pool of Radiance's own offsets -- the "unnamed"
+    # region for this title -- are untouched.
+    assert save[sg.POS_X:sg.POS_FACING + 1] == b"\x00\x00\x00"
+
+
 def test_the_party_filenames_are_rewritten_for_the_slot():
     """The engine loads the party from these, not from the slot letter."""
     save = blank()
@@ -487,6 +520,9 @@ def test_the_pool_of_radiance_shape_is_the_offsets_the_module_was_built_on():
     assert shape.var_words == sg.VAR_WORDS
     assert shape.script_buffer == sg.ECL_BUFFER
     assert shape.square == sg.POS_X
+    assert shape.pos_x == sg.POS_X
+    assert shape.pos_y == sg.POS_Y
+    assert shape.pos_facing == sg.POS_FACING
     assert shape.party_table == sg.PARTY_TABLE
 
 

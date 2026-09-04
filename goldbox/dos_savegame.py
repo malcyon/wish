@@ -92,6 +92,14 @@ ECL_BUFFER = (5121, 12801)   # the loaded script text -- **live**, see below
 #: claim that it held stale remnants of longer previous scripts was wrong.
 ECL_HEADER = 2
 
+#: Pool of Radiance's own square offsets -- `SAVE_POOL_OF_RADIANCE.pos_x` and
+#: siblings equal these exactly, because Pool of Radiance's `unnamed` is 0.
+#: **Another title's square is not at these bytes**: Curse's twelve
+#: "unnamed" bytes in front of it push its square block twelve bytes later,
+#: measured in a played save (#220), and Silver Blades' own twelve are
+#: presumed the same by the shape but not driven-game confirmed. A writer
+#: for any title but Pool of Radiance must read `shape.pos_x`/`pos_y`/
+#: `pos_facing`, never these three names.
 POS_X, POS_Y, POS_FACING = 12801, 12802, 12803
 FACING_SCALE = 2             # 0 N, 2 E, 4 S, 6 W
 # The four bytes between the facing and the party size, measured over the
@@ -196,6 +204,28 @@ class DosSaveShape:
     def square(self) -> int:
         """The eight-byte square block; its last byte is the party size."""
         return self.size - UI_SCRATCH - PARTY_ENTRIES * PARTY_ENTRY - 8
+
+    @property
+    def pos_x(self) -> int:
+        """The square block's first byte, named rather than left for a
+        caller to add to `square` by hand.
+
+        Pool of Radiance's `POS_X`, `POS_Y` and `POS_FACING` are this row's
+        values -- `square` is 12801 only because `unnamed` is 0 here -- and
+        Curse's are twelve bytes later because its `unnamed` is 12, measured
+        in a played save (#220). A writer that hardcodes Pool of Radiance's
+        constants for another title's shape is the bug #220 found: use
+        `pos_x`/`pos_y`/`pos_facing` instead.
+        """
+        return self.square
+
+    @property
+    def pos_y(self) -> int:
+        return self.square + 1
+
+    @property
+    def pos_facing(self) -> int:
+        return self.square + 2
 
     @property
     def party_table(self) -> int:
@@ -448,8 +478,8 @@ def position(save: bytes, shape: "DosSaveShape | None" = None
     which is a party that has never stood anywhere rather than a square.
     """
     shape = _shaped(save, shape)
-    at = shape.square
-    return save[at], save[at + 1], save[at + 2] // FACING_SCALE
+    return (save[shape.pos_x], save[shape.pos_y],
+            save[shape.pos_facing] // FACING_SCALE)
 
 
 def outdoors(save: bytes) -> bool:
@@ -659,11 +689,19 @@ def put_word(save: bytearray, address: int, value: int) -> None:
     struct.pack_into("<H", save, word_offset(address), value & 0xFFFF)
 
 
-def put_position(save: bytearray, x: int, y: int, facing: int) -> None:
-    """The square, with `facing` in the C64's 0-3."""
-    _whole(save)
-    save[POS_X], save[POS_Y] = x, y
-    save[POS_FACING] = facing * FACING_SCALE
+def put_position(save: bytearray, x: int, y: int, facing: int,
+                  shape: "DosSaveShape | None" = None) -> None:
+    """The square, with `facing` in the C64's 0-3.
+
+    Writes through `shape.pos_x`/`pos_y`/`pos_facing`, not the Pool of
+    Radiance constants of the same shape -- #220 found those hardcoded here
+    put a Curse square twelve bytes into what is actually the "unnamed"
+    region in front of it. `shape` defaults to whichever the buffer's own
+    length names, so an existing Pool of Radiance caller is unaffected.
+    """
+    shape = _shaped(save, shape)
+    save[shape.pos_x], save[shape.pos_y] = x, y
+    save[shape.pos_facing] = facing * FACING_SCALE
 
 
 def put_tail_state(save: bytearray, *, indoors: bool = True) -> None:
