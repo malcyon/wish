@@ -529,7 +529,19 @@ class Automapper:
 
         changed = moved or fix.facing != self.state.facing or changed_area or returning
 
-        if self.fingerprint and not changed_area:
+        # Never on the tick that comes back in, even to the same area:
+        # `state.x`/`state.y` still hold the last *outdoor* square here (that
+        # is what let the strip show it), not a last indoor position, so
+        # `_adjacent` and `moved` above are answering a question about two
+        # different coordinate systems. Believed once, that fed a bogus
+        # `Fingerprint.moved` edge straight into the real area's own
+        # fingerprint -- found live: GEO14 at (14,4), out to (7,5), back to
+        # (7,4), one Manhattan step from the stale outdoor square, recorded
+        # as `moved(7, 5, 7, 4)`. A real map rejects that edge as impassable
+        # and the party's own correct area starts reading a spurious
+        # contradiction. `_poll_outdoors` never touches the fingerprint
+        # either, and this is the same rule on the way back in.
+        if self.fingerprint and not changed_area and not returning:
             if moved and self._adjacent(fix.x, fix.y):
                 self.fingerprint.moved(self.state.x, self.state.y, fix.x, fix.y)
             else:

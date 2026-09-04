@@ -72,8 +72,8 @@ CLOCK_BYTES = 3
 # fed the explored set and the fingerprint (`#189`, and finding A on
 # `#205 (A party that walks out onto the travel grid leaves the automapper's
 # marker behind)`). `tools/session.py`'s `RE_STATUS` already carries them;
-# `test_the_two_status_readers_agree_on_what_is_not_a_facing` pins that the
-# two cannot drift apart again.
+# `test_neither_status_reader_takes_a_word_ending_in_a_facing_letter`
+# (`tests/test_wish.py`) pins that the two cannot drift apart again.
 STATUS_ROW = 14
 RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
 FACING_LETTERS = {"N": 0, "E": 1, "S": 2, "W": 3}

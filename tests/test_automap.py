@@ -917,6 +917,49 @@ def test_an_outdoor_memory_fix_needs_a_standing_proof(tmp_path, monkeypatch):
     assert (mapper.state.x, mapper.state.y) == (7, 30)
 
 
+def test_returning_to_the_same_area_does_not_feed_it_a_bogus_edge(
+        tmp_path, monkeypatch):
+    """Code review's reproduction on #205: leave GEO14 at (14,4), out to
+    outdoor (7,5), back to (7,4) -- Manhattan distance 1 from the stale
+    outdoor square `_poll_outdoors` leaves in `state.x`/`state.y`.
+
+    Without a fix, the return tick's `moved`/`_adjacent` compare the new
+    indoor fix against that stale outdoor pair rather than resetting first,
+    `_adjacent` answers True by coincidence, and `Fingerprint.moved(7, 5, 7,
+    4)` writes a step across two different coordinate systems into the real,
+    *indoor* area's own fingerprint -- a bogus edge a real map is likely to
+    reject as impassable, which is what turns into a spurious "N
+    contradiction(s)" on the status line for a title that is right.
+    """
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    geo = narrow_sight_geo()
+    fixes = [Fix(14, 4, 3, "status"),
+             Fix(7, 5, None, "status", outdoors=True),
+             Fix(7, 4, 0, "status")]
+    mapper = Automapper(ReplayTarget(fixes), {"GEO14": geo}, area="GEO14")
+    mapper.poll()                # indoors, GEO14
+    mapper.poll()                # outdoors, (7,5)
+
+    calls = []
+    mapper.fingerprint.saw = lambda *a, **k: calls.append(("saw", a))
+    mapper.fingerprint.moved = lambda *a, **k: calls.append(("moved", a))
+    mapper.fingerprint.refused = lambda *a, **k: calls.append(("refused", a))
+
+    assert mapper.poll() is True                 # back indoors, same area
+    assert mapper.state.area == "GEO14"
+
+    # What must never happen is the outdoor square reaching the fingerprint --
+    # as the start of a step, or as a square the party was seen standing on.
+    # Asserting the fingerprint hears *nothing* would be asserting one of two
+    # correct implementations: resetting the state's square before the block
+    # fixes the same bug and legitimately calls `saw` on the real square (7,4).
+    def squares(args):
+        return {(args[i], args[i + 1]) for i in range(0, len(args) - 1, 2)}
+
+    bogus = [c for c in calls if (7, 5) in squares(c[1])]
+    assert not bogus, f"the outdoor square reached the fingerprint: {bogus}"
+
+
 # --- the live party ---------------------------------------------------------
 
 from automap import live  # noqa: E402
@@ -1666,6 +1709,43 @@ def make_window(app, tmp_path, monkeypatch, target, maps=None, area=None):
     Ui_WishWindow().setupUi(root)
     mapper = Automapper(target, maps or {}, area=area)
     return AutomapBinding(root, mapper, drive=False)
+
+
+def test_a_fresh_binding_over_an_outdoor_fix_never_reads_identifying(
+        app, tmp_path, monkeypatch):
+    """The harder half of #205: a save that starts outdoors used to show an
+    empty grid, `square --` and `identifying...` forever -- indistinguishable
+    from a machine with nothing on it at all. One tick after the first
+    screen, the outdoor wording is up instead, on the strip and the status
+    line, and never the other two."""
+    target = ReplayTarget([Fix(7, 28, None, "status", 22 * 60 + 2, outdoors=True)])
+    window = make_window(app, tmp_path, monkeypatch, target)
+    window.tick()
+    assert window.mapper.state.outdoors
+    assert window.strip.area.text() == "Wilderness"
+    assert window.strip.where.text() == "Outdoors (7,28)"
+    assert window.status_text() == "Outdoors, no map   [status]"
+    for text in (window.strip.area.text(), window.strip.where.text(),
+                window.status_text()):
+        assert "identifying" not in text
+        assert "square --" not in text
+
+
+def test_a_fresh_binding_with_no_game_still_reads_identifying(
+        app, tmp_path, monkeypatch):
+    """The other direction, so the two cannot be confused: a machine with
+    nothing on it (cold RAM, `$49E6` and `$49C3` both zero) reads exactly as
+    it always did and never once picks up the outdoor wording -- the cold-RAM
+    trap `test_an_outdoor_memory_fix_needs_a_standing_proof` covers at the
+    mapper level, checked here at the strip."""
+    window = make_window(app, tmp_path, monkeypatch, MemoryTarget())
+    for _ in range(10):
+        window.tick()
+    assert not window.mapper.state.outdoors
+    assert window.strip.where.text() == "square --"
+    assert "identifying" in window.strip.area.text()
+    assert "Outdoors" not in window.strip.area.text()
+    assert "Outdoors" not in window.strip.where.text()
 
 
 def test_the_party_is_read_once_every_five_ticks(app, tmp_path, monkeypatch):
