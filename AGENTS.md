@@ -67,7 +67,7 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | instead of | say |
 |---|---|
 | **load-bearing** | what holds it up, what depends on it, what breaks without it |
-| **fair** ("that's fair") | agree or disagree in words: "you're right", "I don't think so, because" |
+| **fair**, in any construction -- "fair", "fair enough", "fair point", "that's fair" | agree or disagree in words: "you're right", "I don't think so, because" |
 | **blast radius** | what else this touches, what it would break |
 | **elide** | truncate, shorten, cut off with an ellipsis |
 | **obviate** | it cannot happen any more, the fix is no longer needed |
@@ -77,12 +77,17 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
 | a sentence that rates itself: **"worth saying"**, **"to be clear"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
 
-A habit rather than a blocklist: reaching for jargon that sounds precise and
-carries less than the plain phrase it replaced. **Do not give a file the verb
-that belongs to the people in it** -- *"I don't know what a save walking
-means."* A save cannot walk; a **party** walks. Code is the exception where the
-API names it: Qt's `setTextElideMode` keeps its spelling. `embrassed-energy` is
-spelled **embraced** in prose, keeping the typo only in the identifier, the
+**The table is a floor, and a row's examples are examples rather than its
+scope.** `Fair --` opening a reply is the `fair` row, though that row quotes
+`"that's fair"`. Above the floor it is a habit rather than a blocklist:
+reaching for jargon that sounds precise and carries less than the plain phrase
+it replaced.
+
+**Do not give a file the verb that belongs to the people in it** -- *"I don't
+know what a save walking means."* A save cannot walk; a **party** walks. Code
+is the exception where the API names it: Qt's `setTextElideMode` keeps its
+spelling. `embrassed-energy` is spelled **embraced** in prose, keeping the
+typo only in the identifier, the
 archive filename and the URL.
 
 ## What must never enter this repository
