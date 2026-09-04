@@ -16,10 +16,14 @@ Two kinds of fragment are extracted from the old file:
   These are expected to be reworded by the split, so a missing one is a
   prompt to go and look rather than a failure.
 
-Run it from the repository root:
+Run it from the repository root, naming the revision to compare against:
 
-    python3 tools/rulescheck.py            # compare against the commit before the split
-    python3 tools/rulescheck.py --base REV # compare against some other revision
+    python3 tools/rulescheck.py --base 186d62a~1   # the commit before the split
+
+**`--base` is required on purpose.** It defaulted to `HEAD` once, which reads
+the *post-split* file and compares it against a corpus that contains it -- so
+the tool answered "3 of 3 quotations carried over" and looked like a pass. A
+check that cannot fail is worse than no check.
 """
 
 from __future__ import annotations
@@ -35,7 +39,13 @@ CORPUS = ("CLAUDE.md", ".claude/rules/*.md", "docs/160-why-these-rules.md")
 
 BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
 
-#: A quotation is `*"..."*`.  Bold markers are stripped before this runs,
+#: A quotation is `*"..."*`.  A bold-wrapped one, `**"..."**`, is invisible
+#: here: the `**` is stripped below and nothing is left for this to match.  That
+#: is deliberate.  Every `**"` in the old file opened a rule statement -- `**"X
+#: follows Y"**` -- rather than an attribution, and treating those as evidence
+#: would make an error out of the rewording a split is supposed to do.
+#:
+#: Bold markers are stripped before this runs,
 #: because `**"Follows" is ...` opens with `**"` and a pattern that allows
 #: anything inside then runs from there to a closing quote paragraphs away --
 #: which reported six whole sections as one missing quotation.  Forbidding a
@@ -53,6 +63,7 @@ def old_claude_md(base: str) -> str:
         ["git", "show", f"{base}:CLAUDE.md"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     if out.returncode:
         sys.exit(f"Cannot read CLAUDE.md at {base}: {out.stderr.strip()}")
@@ -69,15 +80,15 @@ def corpus_text(root: pathlib.Path) -> str:
     found = [p for p in parts if p.is_file()]
     if not found:
         sys.exit("Found none of the files the split was supposed to produce.")
-    return normalise("\n".join(p.read_text() for p in found))
+    return normalise("\n".join(p.read_text(encoding="utf-8") for p in found))
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--base",
-        default="HEAD",
-        help="Revision holding the CLAUDE.md to compare against (default: HEAD)",
+        required=True,
+        help="Revision holding the pre-split CLAUDE.md, e.g. 186d62a~1",
     )
     args = ap.parse_args()
 
