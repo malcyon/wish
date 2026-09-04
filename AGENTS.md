@@ -26,17 +26,14 @@ exemption; a reply is skimmed, not read in order.
 
 A bare number makes Donald do the lookup: fast for the assistant, which has the
 number in hand, slow for him. *"When you only reference a number, it never means
-anything to me."* A number used as the **subject** of a sentence is the worst
-place for it, because that is where the reader most needs to know the subject.
-
-```sh
-gh issue view N --json number,title -q '"#\(.number) (\(.title))"'
-```
+anything to me."* As the **subject** of a sentence it is worst of all, because
+that is where the reader most needs to know what is being talked about.
+`gh issue view N --json number,title` gives you the title.
 
 Two exceptions, both about where the reader is: a **commit message**, where the
 number goes bare in parentheses at the end of the one line, and the **body of an
-issue**, read on the web where the number hovers into its title. Do not go back
-and add titles to bare numbers in existing bodies.
+issue**, read on the web where the number hovers into its title -- so do not go
+back and add titles to bare numbers in existing bodies.
 
 ## Writing
 
@@ -75,15 +72,12 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
 | **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
-| a sentence that rates itself: **"worth saying"**, **"to be clear"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
+| a sentence that rates itself: **"worth saying"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
 | **floor**, for anything but a storey of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 
-**Every word in the table is banned in every construction, and a row's
-examples are examples rather than the whole of what it bans.** `Fair --`
-opening a reply is the `fair` row, though that row quotes `"that's fair"`. The
-table is not the whole rule either: the habit it comes from is reaching for
-jargon that sounds precise and carries less than the plain phrase it
-replaced.
+**A row's examples are examples. The word is banned however it is phrased.**
+And the table is not the whole rule: the habit behind it is reaching for jargon
+that sounds precise and carries less than the plain phrase it replaced.
 
 **Do not give a file the verb that belongs to the people in it** -- *"I don't
 know what a save walking means."* A save cannot walk; a **party** walks. Code
@@ -171,19 +165,16 @@ write it again. `ecl6.py` decoded all thirty ECL scripts and was lost.
 ## Delegating
 
 **The default is to delegate** -- reading a lot of files, a long experiment, a
-disassembly, driving the emulator, writing something up. The main window
-coordinates and answers questions. The reason is context: a subagent's tool
-output never enters the main window.
+disassembly, driving the emulator, writing something up. The reason is context:
+a subagent's tool output never enters the main window. **Give each agent its own
+files**, and say which in the brief along with the standing constraints above,
+because a subagent starts cold. **Every agent gets an escape hatch, and using it
+is a success**: work that needs something the agent is not for stops and says
+so, because pressing on into a decision that was not its own costs more than the
+re-route.
 
-**Give each agent its own files** -- several in one tree collide. Say which in
-the brief, along with the standing constraints above, because a subagent starts
-cold. Which agent for what, the brief, and the commit-review-push sequence are
-in `.claude/rules/delegating.md`.
-
-**Every agent gets an escape hatch, and using it is a success.** If the work
-needs something the agent is not for -- a general-purpose agent finding it needs
-a real disassembly -- it stops and says so. Pressing on into a decision that was
-not its own costs more than the re-route.
+Which agent for what, how to write the brief, and the commit-review-push
+sequence: `.claude/rules/delegating.md`.
 
 ## Findings go on the issue, when they arrive
 
