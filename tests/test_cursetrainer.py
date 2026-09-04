@@ -177,6 +177,18 @@ def test_the_racial_saving_throw_bonus_is_three_columns_and_three_races():
     Radiance's `$2359` computes. The subtract loop steps `DEX / DEX`, so it
     reaches columns 4, 2 and 0 -- which is `constitution_save_columns`, read
     off the disk instead of inferred from MAGNUS's two records.
+
+    **PROBABLE, not CONFIRMED, and this test is the whole of the evidence.**
+    It is bytecode and nothing else: **no Curse character anywhere has been
+    seen with this bonus in its stored saves**, because none of the six SSI
+    shipped is a sturdy race, and the disks carry no other Curse character.
+    This ticket has already found one routine that computes a correct value and
+    never reaches the record -- the spell capacity at `ECL65 $880D` -- so
+    "the code says so" is not the same claim as "the byte says so".
+
+    What would raise it: one Curse dwarf, gnome or halfling whose stored
+    `save_*` bytes are the class rows less `constitution * 2 // 7` on columns
+    0, 2 and 4 and unchanged on 1 and 3. A driven training would produce one.
     """
     payload = _gen()
     assert _at(payload, 0x0F19, 11) == (
@@ -194,7 +206,11 @@ def test_the_shipped_party_stores_the_saves_this_derivation_gives():
     """Six characters, five columns each: 30 of 30.
 
     None of the six is a sturdy race, so this corroborates the rows and the
-    best-column rule and says nothing about the constitution bonus.
+    best-column rule and says nothing about the constitution bonus -- which is
+    exactly why `$0F19` above is graded PROBABLE. The `assert` on `race` is
+    there to say so out loud rather than to pass quietly: if a Curse character
+    with a sturdy race ever reaches this test, it fails, and the person who
+    made it fail is holding the specimen that settles `$0F19`.
     """
     payload = _gen()
     stored = ("save_paralysis", "save_petrification", "save_wands",
@@ -312,6 +328,20 @@ def _hp_max(payload: bytes, record) -> int:
     That is three departures from `levelup.plan`, which uses the character's
     single `level`, one constitution row chosen by the fighter bit, and no
     division at all.
+
+    **Three branches here are unexercised by the six characters that check it**,
+    and each is a claim rather than a measurement until something reaches it:
+
+    * `total >= 0` is `$1233 BMI`, which skips the divide when the constitution
+      total came out negative. It is here because Python's `//` rounds towards
+      minus infinity and the 6502's does not, so `-7 // 2` would be -4 where the
+      game gives -3. **No shipped character has a constitution below 14**, so
+      nothing has ever taken this branch.
+    * `min(level, stop[slot] - 1)` is `$1204`'s `SBC $1282,Y`. All six are level
+      5 and every `roll_to` is 9 or more, so the cap has never bitten.
+    * `max(record.get("level"), ...)` is `$123C`, together with a clamp back to
+      the level for anything reaching 200 (`CMP #$C8`) that is not modelled here
+      at all, because no character can get near it at level 5.
     """
     table = _at(payload, HP_BONUS, 26)
     stop = _at(payload, CON_BONUS_STOP, 8)
@@ -661,10 +691,14 @@ def test_curse_never_stores_spell_capacity_in_the_record():
     into the character. No instruction in `GEN`, `ECL64` or `ECL65` writes
     `$7CEE` to `$7CF3`, and all six shipped characters hold six zero bytes
     there, the level-5 cleric with wisdom 18 included.
+
+    **The search below needs no base and is not given one.** It looks for the
+    two operand bytes of an absolute reference, which are the same wherever the
+    overlay is relocated to -- which matters for `ECL64`, whose resident base
+    nothing in this file establishes. `ECL65`'s `$8000` was fixed by its own
+    `LDA $888D,X`; `ECL64` has no such tell here, and it does not need one.
     """
-    for payload, base in ((_gen(), GEN_BASE), (_ecl65(), ECL65_BASE),
-                          (gamedata.curse_file("ECL64")[2:], ECL65_BASE)):
-        del base
+    for payload in (_gen(), _ecl65(), gamedata.curse_file("ECL64")[2:]):
         for offset in range(0x0EE, 0x0F4):
             assert bytes((offset, 0x7C)) not in payload, hex(offset)
     for slot in _party():
@@ -712,6 +746,15 @@ def test_the_wisdom_bonus_starts_at_thirteen_and_is_one_spell_a_point():
     `$10AD` holds 1 at wisdom **12** and is the off-by-one in
     `docs/125-bug-notes.md`. `levels.wisdom_bonus_spells` implements Pool of
     Radiance's and must not answer for this title.
+
+    **CONFIRMED, and it can never be corroborated against a character.** The
+    bonus lands in `$2BBB`, and `test_curse_never_stores_spell_capacity_in_the_record`
+    is the finding that nothing copies that back: there is no byte on any disk
+    that could agree or disagree with it. So it rests on the table read plus
+    the independent fact that `0 0 1 1 2 3 4` is the *Players Handbook* row --
+    two sources, and as strong as this one gets short of watching the game
+    memorise a spell. It is **not** the evidentiary shape of the constitution
+    bonus below, which six characters' `hp_max` votes for.
     """
     payload = _ecl65()
     assert _at(payload, 0x88F6, 10, ECL65_BASE) == (

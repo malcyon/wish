@@ -273,6 +273,50 @@ this needed the emulator.
 `GEN` runs at `$0800`. **`ECL65` runs at `$8000`**, which is settled by its own
 `LDA $888D,X` reading the spell-slot rows that sit at payload offset `0x88D`.
 
+### How far to trust each of these
+
+They are not all evidenced the same way, and reading them as though they were
+is the mistake this section exists to stop. Everything below was read out of
+the bytes; what differs is whether any **byte on a disk** votes for it as well.
+
+| finding | grade | what it rests on |
+|---|---|---|
+| saving-throw rows, `$0F49` + `$0F5D` | **CONFIRMED** | bit-unpacking reproduces all **45** rows that were previously transcribed, and the rows past Curse's ceilings match Silver Blades' separately measured extensions |
+| turning level, `$113F` | **CONFIRMED** | the bytecode, the two shipped characters that store one, and a ladder matching Pool of Radiance's independently read `$2399` digit for digit |
+| constitution hit points, `$11D7` + `$126D` | **CONFIRMED** | the table bytes, and `hp_max` reproduced on **6 of 6** shipped characters |
+| wisdom bonus spells, `ECL65 $8906` | **CONFIRMED**, and see below | the table bytes plus an exact match to the *Players Handbook* row |
+| racial saving-throw bonus, `$0F19` | **PROBABLE** | **the bytecode alone** |
+| hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
+| thief skills including dexterity, `$0FAD` | **CONFIRMED** | the bytecode and the one shipped thief, 8 of 8 columns |
+| spell capacity never stored | **CONFIRMED** | no write in any of 411 files, and 6 of 6 characters hold zero |
+
+**The racial saving-throw bonus is PROBABLE and was briefly written up as
+confirmed.** It is bytecode and nothing else: none of the six characters SSI
+shipped is a dwarf, gnome or halfling, and the disks carry no other Curse
+character, so **no stored `save_*` byte anywhere has ever been seen with this
+bonus subtracted into it**. That gap is the same shape as the one this section
+found for spell capacity — `ECL65 $880D` computes a perfectly correct number
+that never reaches the record — so "the routine says so" is a weaker claim than
+"a character's byte says so". What would raise it to CONFIRMED: one Curse
+dwarf, gnome or halfling whose five stored saves are the class rows less
+`constitution * 2 / 7` on columns 0, 2 and 4 and unchanged on 1 and 3. A driven
+training would make one.
+
+**The wisdom bonus is CONFIRMED and can never be corroborated against a
+character**, which is a different thing from being weakly evidenced. The bonus
+lands in `$2BBB`, and nothing copies `$2BBB` back into the record — so there is
+no byte on any disk that could agree or disagree. It rests on the table read
+plus the independent fact that `0 0 1 1 2 3 4` is AD&D 1st edition's row, which
+is two sources and as strong as this one gets without watching the running game
+memorise a spell. A reader should not assume the evidentiary shape of the
+constitution bonus, which six characters' `hp_max` votes for directly.
+
+**One caveat on the constitution bonus, which is otherwise fully earned.** No
+shipped character has a constitution below 14, so the *consequence* of the
+table having no floor — a character with constitution 6 or less losing a hit
+point a level — is read off the table's own signed bytes and has not been
+observed happening to anybody.
+
 ### The sequence
 
 `GEN $2041`, the trainer's own, against `$1B8C`'s fourteen `JSR`s in Pool of
@@ -324,7 +368,9 @@ maximum of all **eight** class slots).
 ### The six rules that are not Pool of Radiance's
 
 **The hit die is rolled twice and the better roll kept** (`$15FC`), for every
-class. Pool of Radiance rolls once and floors a *single-class fighter* at 4;
+class -- PROBABLE, and it is the one rule here that no stored byte can ever
+vote for, because `hp_rolled` is a running total and a roll leaves no trace of
+itself. Pool of Radiance rolls once and floors a *single-class fighter* at 4;
 Curse has no floor of any kind. A multi-class character's roll is then divided
 by how many classes it has, and the division rounds up *probabilistically* —
 `$11AB` rolls again against the remainder — so two identical characters can
