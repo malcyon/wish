@@ -109,7 +109,10 @@ def _runs(data: bytes, first: int, first_ok: set[int],
     """
     out = []
     span = first + second
-    for i in range(max(0, len(data) - span)):
+    # `- span + 1`: the last position a run of `span` bytes still fits at
+    # is `len(data) - span`, and `range` excludes its stop. A buffer that
+    # *is* the run returned nothing before this.
+    for i in range(max(0, len(data) - span + 1)):
         a, b = data[i:i + first], data[i + first:i + first + second]
         if not (set(a) <= first_ok and set(b) <= second_ok):
             continue
@@ -182,7 +185,7 @@ def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
     `BODY*` files its two tables name.  The order is the other way round
     there -- bodies first -- which is the only difference between the ports.
     """
-    from .d64 import D64
+    from .d64 import D64, D64Error
 
     disk = pathlib.Path(disk)
     image = D64(disk.read_bytes())
@@ -201,7 +204,11 @@ def tables_from_c64(disk: str | pathlib.Path) -> PortraitTables:
             f"the side that carries the creation menu")
     try:
         data = image.read_file(_C64_OVERLAY)
-    except Exception as e:
+    except D64Error as e:
+        # `D64Error`, not `Exception`: every way `read_file` can fail on a
+        # real image derives from it, and the broader catch turned an
+        # unrelated bug into "no GEN on it" -- a wrong answer that reads
+        # like a measurement.
         raise PortraitError(f"{disk.name}: no GEN on it ({e})") from e
     at = _only(_runs(data, BODY_COUNT, ids["BODY"], HEAD_COUNT, ids["HEAD"]),
                f"{disk.name}:GEN")

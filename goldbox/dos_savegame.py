@@ -228,9 +228,12 @@ POD_MODE_WILDERNESS, POD_MODE_DUNGEON = 3, 4
 #: idea: a title is **a row of widths**, not a branch, and the widths have to
 #: add up to the size the file actually is or the row raises at import.
 #:
-#: What all four share is the last 336 bytes: an eight-byte square block whose
-#: last byte is the party size, six 41-byte character entries, and 82 bytes of
-#: UI scratch.  What they differ in is everything in front of that.
+#: What all four share is a tail of `square_bytes` plus eight 41-byte name
+#: slots -- 336 bytes where the square block is eight and 340 where it is
+#: twelve, which is Pools of Darkness (#175).  Six of the eight slots are
+#: filled and the last two hold the stack; this comment called those 82 bytes
+#: "UI scratch" until `NAME_SLOTS` above was measured.  What the four titles
+#: differ in is everything in front of that tail.
 #:
 #: Measured against **eleven containers** -- Donald's played Pool of Radiance
 #: A/B/J out of the Steam `SavesDir`, the archives' own Pool of Radiance A/B,

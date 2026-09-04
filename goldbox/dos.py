@@ -2676,6 +2676,9 @@ PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
 #:
 #: **What it means is still unknown** and this does not claim otherwise --
 #: only what it does.
+#: The word `savgam_writes` skips when no portrait crossed -- see there.
+PORTRAIT_DRAWN = 0x49FF
+
 SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
     (0x49FF, 3, "the sheet portrait is not drawn at all when this word is "
                 "zero (#57), and 3 is what all three engine-written saved "
@@ -2746,7 +2749,8 @@ def _note_word(report: "SaveReport", address: int, words: int,
 
 
 def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
-                  slot: str, count: int, script: bytes) -> None:
+                  slot: str, count: int, script: bytes, *,
+                  portraits: bool = False) -> None:
     """Write everything a C64 save sources into a `SAVGAM<slot>.DAT` buffer.
 
     `savgam` is modified in place and every byte written gets a line in
@@ -2886,6 +2890,15 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
         _note_word(report, address, 1, f"a documented constant: {why}")
 
     for address, value, why in SAVGAM_MEASURED:
+        if address == PORTRAIT_DRAWN and not portraits:
+            # **Only when a portrait actually crossed.** Every specimen that
+            # holds 3 here also holds a real menu position in its records;
+            # "drawing enabled, position 0" is a combination nobody has run,
+            # and a conversion with no game directory produces exactly that
+            # -- `portrait_tables` returns nothing and both bytes stay zero.
+            # Writing 3 there would be inventing a state rather than
+            # reproducing a measured one (#57).
+            continue
         dos_savegame.put_word(savgam, address, value)
         _note_word(report, address, 1, f"measured in the running game: {why}")
 
@@ -3121,7 +3134,8 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                               if d not in report.dropped)
         report.warnings.extend(f"{who}: {w}" for w in one.warnings)
 
-    savgam_writes(savgam, report, save0, slot, len(party), script)
+    savgam_writes(savgam, report, save0, slot, len(party), script,
+                  portraits=bool(faces))
     if template is None:
         savgam_zeroes(savgam, report)
     where = areas.area(c64_area)
