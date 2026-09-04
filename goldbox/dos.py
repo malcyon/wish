@@ -1911,15 +1911,14 @@ ANIMATE_SIZE = 852
 #: when the template already stands in that same area, because then its own
 #: cache is real and is kept.
 #:
-#: `apply_file_cache` raises the first and third; the wilderness refusal came
-#: off it in #50, once #59's outdoor saves settled where a DOS save keeps the
-#: travel square.  `WILDERNESS` itself survives in one place only:
-#: `retarget_reason`, the *other* direction, where a C64 party standing
-#: outdoors still cannot be written into a DOS save because no outdoor DOS
-#: retarget has ever been driven.
+#: `apply_file_cache` raises both.  The wilderness refusal came off it in #50,
+#: once #59's outdoor saves settled where a DOS save keeps the travel square,
+#: and came off `retarget_reason` -- the other direction -- in #190, once an
+#: outdoor DOS retarget had actually been driven.  `WILDERNESS`, Donald's own
+#: wording for it, is gone with the last thing that raised it: neither
+#: direction refuses a party on the travel grid now.
 NOT_AN_AREA = ("the DOS party is in area {area}, which is not an area of Pool "
                "of Radiance, so there is no map file and no disk to name")
-WILDERNESS = "Saves from wilderness locations are not yet supported."
 UNSUPPORTED_LOCATION = "Saves from this location are not supported."
 
 
@@ -2346,6 +2345,33 @@ def c64_wall_triple(save0: bytes) -> tuple[int, int, int]:
     return tuple(out)
 
 
+#: Which way a converted party faces on the travel grid, and **the one field
+#: an outdoor conversion cannot carry** (#190).
+#:
+#: The C64 keeps its travel heading at `$033D` -- eight-way, one of eight
+#: rather than one of four (`docs/137-wilderness-automap.md`) -- and `$033D`
+#: is page 3, outside the `$4900`-`$64FF` that `SAVEDGAME0` is an image of.
+#: So no C64 saved game holds one, and there is nothing to read.  The DOS
+#: byte 12803 is live out there by contrast: it prints the facing letter on
+#: the status line, it reads 0, 0, 0 and 2 across the four engine-written
+#: overland saves in `work/p50-outdoor` and `work/p59-wallset/keep`, and the
+#: engine rewrote a written 0 to 2 after two steps in both of #190's runs.
+#:
+#: **The C64's own `$49C2` is not the answer**, tempting as it is: outdoors
+#: that byte is the *dungeon* facing, frozen with the square beside it at
+#: whatever the party last faced indoors.  Writing it here would put a
+#: direction on the DOS status line derived from an unrelated moment, which
+#: is wrong data that looks right.  North is a value the engine itself
+#: writes, and it is said out loud in the report instead.
+OUTDOOR_FACING = 0
+OUTDOOR_FACING_WHY = (
+    "which way the party faces on the travel grid: north. The C64 keeps its "
+    "outdoor heading at $033D, which is page 3 and outside the $4900-$64FF a "
+    "save is an image of, so no C64 save carries one -- while byte 12803 is "
+    "live on DOS and prints the facing letter. 0 is north, which is what three "
+    "of the four engine-written overland saves here hold, and the engine "
+    "rewrites it as soon as the party moves")
+
 #: The three reasons a DOS variable this conversion cannot source is written
 #: **zero** rather than left at somebody else's value.  Each is the head of a
 #: reason string in :data:`SAVGAM_UNSOURCED`, so a reader can tell the three
@@ -2391,9 +2417,13 @@ SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
     (0x4FC8, 1, DOS_ONLY),
     (0x4FD2, 2, ENGINE_REBUILT),
     (0x5079, 1, ENGINE_REBUILT),
-    (0x507A, 4, DOS_ONLY + " -- and zero in all nine indoor specimens #59 "
-                "held, so zero is the measured value for an indoor "
-                "conversion rather than merely the one nobody objected to"),
+    (0x507A, 4, DOS_ONLY + " -- and zero in all eleven indoor specimens. "
+                "$507A-$507C are also the only three words of the array an "
+                "**outdoor** save holds and an indoor one does not, and the "
+                "engine writes them for itself out there: ten overland saves "
+                "seeded with zero in all three came back holding values "
+                "(#59), so zero is the measured value in both worlds rather "
+                "than merely the one nobody objected to"),
     (0x507F, 2, DOS_ONLY),
     (0x5082, 1, ENGINE_REBUILT),
     (0x5200, 1, ENGINE_REBUILT),
@@ -2424,11 +2454,15 @@ PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
 def retarget_reason(area: int) -> str | None:
     """Why this area cannot be a retarget target, or `None` if it can.
 
-    The same three kinds the C64 converter refuses in the other direction: an
-    area this project has no row for, one whose script picks its map at run
-    time or loads none at all, and the travel grid, where no DOS specimen
-    exists at all.  Unapproved wording, except `WILDERNESS`, which is
-    Donald's and is reused verbatim.
+    Two kinds, both of which the C64 converter refuses in the other
+    direction: an area this project has no row for, and one whose script
+    picks its map at run time or loads none at all.  Unapproved wording.
+
+    **The travel grid was a third and is not any more** (#190).  It was
+    refused because no DOS retarget onto a travel window had ever been
+    driven; one has now, and an outdoor area needs no `GEO` for the same
+    reason `where.geos` is not consulted for it -- the overland loads none.
+    `WILDERNESS`, the refusal Donald wrote for it, has gone with it.
 
     **An empty wallset triple is not a reason.**  New Phlan is the one area
     the C64 loads no `WALLSET` for, and a save retargeted there with all
@@ -2440,7 +2474,7 @@ def retarget_reason(area: int) -> str | None:
         return (f"area {area} is not an area of Pool of Radiance, so there is "
                 f"no map file and no script to name")
     if where.outdoors:
-        return WILDERNESS
+        return None
     if where.dynamic_geo or not where.geos:
         return UNSUPPORTED_LOCATION
     return None
@@ -2492,6 +2526,13 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
     `Load3DMap` when it is somebody else's (#60), and a conversion that
     cannot read the game's files has nothing to put there but a stranger's
     area.  The caller refuses instead.
+
+    **A party on the travel grid takes a different value in four places**
+    (#190), and everything else about the write is the same: `$49C5` = 0
+    rather than the area id, the wallset triple is the overland's own
+    measured `(0, $FFFF, $FFFF)` rather than the C64 cache's, the square is
+    the travel pair at `$49C3`/`$49C4`, and `$49E6` = 0 is what boots the
+    engine into travel mode.  `put_tail_state` takes the fifth.
     """
     area = save0[CURRENT_SCRIPT - SAVE0_BASE]
     where = areas.area(area)
@@ -2499,19 +2540,35 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
                     save0[PARTY_FACING - SAVE0_BASE])
     indoors = not where.outdoors
 
+    # Outdoors the C64's own cache slots 15-17 read `$FF` -- the travel grid
+    # loads no `WALLSET` on either port -- which would make the triple
+    # `($FFFF, $FFFF, $FFFF)` where every engine-written outdoor DOS save
+    # holds `(0, $FFFF, $FFFF)`.  So the measured overland value is written
+    # instead of the empty read, and `OUTDOOR_WALLSET` carries the evidence.
+    wallset = (c64_wall_triple(save0) if indoors
+               else dos_savegame.OUTDOOR_WALLSET)
     dos_savegame.retarget(savgam, area=area, dax=where.disk,
-                          wallset=c64_wall_triple(save0), script=script)
+                          wallset=wallset, script=script,
+                          outdoors=not indoors)
     report.note(dos_savegame.DAX_NUMBER, 1,
                 f"the DAX container number, {where.disk}, for area "
                 f"{area} ({where.name or where.ecl})")
-    _note_word(report, dos_savegame.AREA, 1, "the area id")
+    _note_word(report, dos_savegame.AREA, 1,
+               "the area id" if indoors else
+               "zero: the overland names no GEO, which is what an outdoor "
+               "DOS save holds here in 10 of 10 -- and it is not the C64's "
+               "own $49C5, which outdoors holds the SQRDATA number (#59)")
     _note_word(report, dos_savegame.SCRIPT, 1, "the area's script id")
     _note_word(report, dos_savegame.DISK, 1,
                "the DAX container number again -- the geo load reads "
                "this word and not the header byte (#59)")
     _note_word(report, dos_savegame.WALLSET, 3,
                "the wallset triple, from the C64 loaded-files cache "
-               "slots 15-17, which carry the same three numbers")
+               "slots 15-17, which carry the same three numbers" if indoors
+               else "the overland wallset triple (0,$FFFF,$FFFF), which the "
+               "engine writes for itself out there -- it replaced a seeded "
+               "(1,5,9) three times of three, and no outdoor load reads it "
+               "(#59, #190)")
     _note_word(report, dos_savegame.WALLMAP, 3,
                "the wall-index map that goes with the triple")
     start, end = dos_savegame.ECL_BUFFER
@@ -2525,10 +2582,35 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
                "indoors" if indoors else "outdoors -- 0 boots the engine "
                "into travel mode")
 
-    dos_savegame.put_position(savgam, x, y, facing)
-    report.note(dos_savegame.POS_X, 3,
-                f"the square ({x},{y}) facing {facing}, the C64's own facing "
-                f"doubled")
+    if indoors:
+        dos_savegame.put_position(savgam, x, y, facing)
+        report.note(dos_savegame.POS_X, 3,
+                    f"the square ({x},{y}) facing {facing}, the C64's own "
+                    f"facing doubled")
+    else:
+        tx, ty = (save0[dos_savegame.TRAVEL_X - SAVE0_BASE],
+                  save0[dos_savegame.TRAVEL_Y - SAVE0_BASE])
+        dos_savegame.put_travel_square(savgam, tx, ty)
+        _note_word(report, dos_savegame.TRAVEL_X, 2,
+                   f"the travel square ({tx},{ty}), window-local, the C64's "
+                   f"own $49C3/$49C4 -- the same pair at the same address on "
+                   f"both ports (#47, #59)")
+        # 12801/12802 are the square the party last stood on **indoors**,
+        # frozen on both ports the moment it reached the grid -- C64
+        # `DUNGEON $1A3C` copies `$C04B` into `$49C0` only while `$49E6` is
+        # set, and DOS freezes 12801/12802 the same way.  So the C64's own
+        # stale pair is what belongs in the DOS one: same field, same
+        # meaning, and nothing reads either out here.
+        #
+        # 12803 is the exception and is the one field this conversion
+        # **cannot** carry outdoors.  See OUTDOOR_FACING.
+        dos_savegame.put_position(savgam, x, y, OUTDOOR_FACING)
+        report.note(dos_savegame.POS_X, 2,
+                    f"the stale indoor square ({x},{y}) the party left the "
+                    f"grid on, the C64's own $49C0/$49C1 -- frozen on both "
+                    f"ports out here and read by neither")
+        report.note(dos_savegame.POS_FACING, 1, OUTDOOR_FACING_WHY)
+        report.dropped.append(OUTDOOR_FACING_WHY)
     dos_savegame.put_tail_state(savgam, indoors=indoors)
     where_stood = "indoors" if indoors else "outdoors"
     report.note(dos_savegame.SCRATCH_BYTE, 4,
@@ -2594,14 +2676,17 @@ def savgam_zeroes(savgam: bytearray, report: "SaveReport") -> None:
     # The sweep, and the one claim here that rests on a census rather than on
     # a run: these words read zero in all four engine-written containers on
     # this machine, which is 2407 of the 2560 and the same count #59 got from
-    # its nine **indoor** specimens.  Over all twelve it got 2401, so six
-    # words are nonzero only in the three overland saves -- and this
-    # conversion refuses an outdoor party, so a save it writes is one of the
-    # nine.  PROBABLE rather than CONFIRMED because those three specimens
-    # lived under `work/` and are gone; `tools/dosoutdoor.py` makes another
-    # and a re-census would settle it.  What catches a word this line is
-    # wrong about is `test_every_nonzero_word_a_real_saved_game_holds_is_
-    # written_or_declared`, which reads the player's own saves.
+    # its eleven **indoor** specimens.  Over all twenty-one, ten of them
+    # overland, it got 2402: the five words in the difference are `$49C3`,
+    # `$49C4` and `$507A`-`$507C`, and every one of them is written or
+    # declared above -- so an **outdoor** save this conversion writes is
+    # covered by the same sweep and there is no sixth word (#59, #190).
+    # An earlier note here said six, on three overland specimens that lived
+    # under `work/` and are gone; the sixth belonged to a specimen nobody can
+    # re-read.  `tools/dossavcensus.py` re-takes the count in a second, and
+    # what catches a word this line is wrong about is
+    # `test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared`,
+    # which reads the player's own saves.
     rest = [i for i in range(dos_savegame.VAR_OFFSET,
                              dos_savegame.VAR_OFFSET
                              + 2 * dos_savegame.VAR_WORDS)
@@ -2794,11 +2879,21 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     x, y, facing = (save0[PARTY_X - SAVE0_BASE], save0[PARTY_Y - SAVE0_BASE],
                     save0[PARTY_FACING - SAVE0_BASE])
     hour, minute, day, month = dos_savegame.clock(bytes(savgam))
+    # Where the party is standing, said in the terms of the world it is in.
+    # Outdoors `$49C0`/`$49C1` are the frozen square it left the grid on, so
+    # a report that printed them would name a place the party is not, and the
+    # world coordinate is what the game's own status line shows.
+    if where.outdoors:
+        tx, ty = dos_savegame.travel_square(bytes(savgam))
+        world = tx + dos_savegame.WINDOW_X_OFFSET.get(c64_area, 0)
+        stood = (f"on the travel grid at ({tx},{ty}), window-local -- world "
+                 f"({world},{ty}) on the status line")
+    else:
+        stood = f"at ({x},{y}) facing {facing}"
     report.carried.extend((
-        f"the place: area {c64_area}, {where.name}, at ({x},{y}) facing "
-        f"{facing} -- every write dos_savegame.RETARGET_WRITES names, "
-        f"including the area's own script out of "
-        f"{ECL_DAX.format(dax=where.disk)}",
+        f"the place: area {c64_area}, {where.name}, {stood} -- every write "
+        f"dos_savegame.RETARGET_WRITES names, including the area's own "
+        f"script out of {ECL_DAX.format(dax=where.disk)}",
         f"the party's filenames: CHRDAT{slot.upper()}1-"
         f"{dos_savegame.PARTY_ENTRIES}, which is what the engine loads from",
         f"quest flags: {FLAGS_LAST - FLAGS_FIRST + 1} C64 bytes widened to "

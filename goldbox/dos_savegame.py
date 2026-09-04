@@ -298,6 +298,22 @@ FLAGS_FIRST, FLAGS_LAST = 0x4A20, 0x4AF8    # quest flags, shared ECL addresses
 WALLSET = 0x4AFA             # three words: WALLDEF/8X8D block ids, $FFFF empty
 WALLMAP = 0x4AFD             # three words: (1,2,3) with three sets loaded,
                              # (1,$FFFF,$FFFF) with one
+#: The wallset triple an **outdoor** save carries, and it is the engine's own
+#: value rather than one inherited from wherever the party left the grid.
+#:
+#: Six engine-written overland specimens hold it: `work/p50-outdoor` and #59's
+#: three of 2026-08, all of which departed New Phlan, which holds the same
+#: three words -- and the three of `work/p59-wallset/keep`, which departed
+#: **Sokol Keep's `(1, 5, 9)`** with that triple deliberately left in the
+#: seed.  The engine replaced a triple it had never held, three times of
+#: three, so live and stale are separated (#59, #190).
+#:
+#: **Nothing outdoors reads it.**  The seed carrying `(1, 5, 9)` on a travel
+#: window loaded and drew, where indoors a wrong triple kills the load in
+#: `LoadWallSet`.  So this is what an outdoor conversion writes because it is
+#: what was measured, not because the load depends on it.
+OUTDOOR_WALLSET = (0, EMPTY, EMPTY)
+
 PARTY_SIZE = 0x503E          # 6 -> 1 when a six-member save became one member
 DISK = 0x5012                # the DAX container number again, as a VM word;
                              # the geo load fails without it
@@ -709,17 +725,24 @@ def wall_map(wallset) -> tuple[int, int, int]:
     return tuple(EMPTY if w == EMPTY else i + 1 for i, w in enumerate(wallset))
 
 
-def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes
-             ) -> None:
+def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes,
+             outdoors: bool = False) -> None:
     """Move a saved game to another area.  `script` is its `ECL` DAX block.
 
     Every write `RETARGET_WRITES` lists except the square and the party
     size, which a conversion sets separately because they change on their
     own.  Take any of these away and the game exits to DOS.
+
+    **`outdoors` changes one of the nine writes, `$49C5`.**  A travel window
+    is an area like any other everywhere else -- byte 0 and `$5012` are its
+    DAX number, `$49F2` is its id, the ECL buffer is its own block -- but
+    `$49C5` is **0** rather than the id, in 10 of 10 outdoor specimens, and
+    that is the field that says the overland names no `GEO`.  The C64 is not
+    the same here: its `$49C5` outdoors holds the `SQRDATA` number.
     """
     _whole(save)
     save[0] = dax
-    put_word(save, AREA, area)
+    put_word(save, AREA, 0 if outdoors else area)
     put_word(save, SCRIPT, area)
     put_word(save, DISK, dax)
     for i, w in enumerate(wallset):
@@ -746,7 +769,7 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes
 #: it is a recipe for.
 RETARGET_WRITES = (
     "byte 0 = the target area's DAX number",
-    f"word ${AREA:04X} = the target area id",
+    f"word ${AREA:04X} = the target area id, or 0 onto a travel window",
     f"word ${SCRIPT:04X} = the target area id",
     f"word ${DISK:04X} = the target area's DAX number",
     f"words ${WALLSET:04X}-${WALLSET + 2:04X} = the target's wallset triple "
@@ -755,6 +778,8 @@ RETARGET_WRITES = (
     f"(1,$FFFF,$FFFF) for one",
     f"bytes {ECL_BUFFER[0]}-{ECL_BUFFER[1] - 1} = the target area's "
     f"ECL<n>.DAX block from byte {ECL_HEADER} on",
-    f"bytes {POS_X}-{POS_FACING} = x, y, facing*{FACING_SCALE}",
+    f"bytes {POS_X}-{POS_FACING} = x, y, facing*{FACING_SCALE} indoors; on a "
+    f"travel window the square is words ${TRAVEL_X:04X}/${TRAVEL_Y:04X} and "
+    f"{POS_X}/{POS_X + 1} go stale, {POS_FACING} staying live",
     f"word ${PARTY_SIZE:04X} and byte {PARTY_SIZE_BYTE} = the party size",
 )

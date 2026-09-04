@@ -683,7 +683,6 @@ def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
 
 
 @pytest.mark.parametrize("area, wanted", [
-    (25, "wilderness"),          # the travel grid: outdoor retarget undriven
     (3, "not supported"),        # dynamic_geo -- the script picks its map
     (8, "not supported"),        # Phlan City Hall loads no map at all
     (31, "not an area"),         # no such script on any disk
@@ -695,8 +694,13 @@ def test_an_area_with_no_legal_answer_is_named_rather_than_guessed(area,
 
 def test_the_areas_with_a_legal_answer_are_not_refused():
     """New Phlan among them: the C64 loads no WALLSET there, and a retarget
-    carrying an empty triple draws it identically -- `work/p60/run3` Z0."""
-    for area in (0, 20, 21):
+    carrying an empty triple draws it identically -- `work/p60/run3` Z0.
+
+    The three travel windows joined the list in #190, once an outdoor DOS
+    retarget had been driven; `tests/test_dosoutdoorwrite.py` is where the
+    outdoor write path is held to what an engine-written overland save holds.
+    """
+    for area in (0, 20, 21, 25, 26, 27):
         assert dos.retarget_reason(area) is None
 
 
