@@ -285,18 +285,21 @@ Six other bytes — `0x0B7`, `0x0D3`, `0x0D4`, `0x0E4`, `0x0E5` and `0x0FB` — 
 `$FF` for every NPC and `$00` for every player character, and were read as the
 flag for a while. They are **fill residue**, and the set is not even a set:
 every shipped `MON*` record carries `$FF` at the same sixteen offsets before any
-save exists, and the party loader overwrites the rest. `wish` leaves them alone,
-because rewriting bytes we do not understand is how a lossless editor stops
-being lossless.
+save exists, the party loader overwrites six of them, and ten survive. These six
+are the survivors that a player character reads `$00` at. `wish` leaves them
+alone, because rewriting bytes we do not understand is how a lossless editor
+stops being lossless.
 
-**This set held eight bytes until #224, and two of them were never residue.**
-`0x0B9` and `0x0BA` are a dual-classed human's old class slot and the level it
-was left at, written by Curse of the Azure Bonds, Secret of the Silver Blades
-and Gateway to the Savage Frontier, and never touched by Pool of Radiance — see
-`docs/20-character-record.md` and `#224`. While they were counted here, the
-import warned that a dual-classed character's record was in a state no real save
-had been seen in, which is `#229`. They are out of the set and the warning is
-right again.
+**This set held eight bytes until `#224 (0x0B9 and 0x0BA are documented both as
+an NPC marker and as the dual-class slot)`, and two of them were never
+residue.** `0x0B9` and `0x0BA` are a dual-classed human's old class slot and the
+level it was left at, written by Curse of the Azure Bonds, Secret of the Silver
+Blades and Gateway to the Savage Frontier, and never touched by Pool of Radiance
+— see `docs/20-character-record.md`. While they were counted here, the import
+warned that a dual-classed character's record was in a state no real save had
+been seen in, which is `#229 (A dual-classed Curse character imports with a
+warning that its record is corrupt)`. They are out of the set and the warning is
+right again. The other two survivors are `0x0E6`–`0x0E7` below.
 
 `0x0E6`–`0x0E7` are **not** part of that set and were briefly miscounted as
 such. They hold a non-zero, high-entropy per-character value in *every* player

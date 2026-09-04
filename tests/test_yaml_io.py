@@ -528,7 +528,7 @@ def test_the_party_is_all_player_characters():
 
 @live
 def test_the_npc_flag_writes_only_the_byte_the_game_tests(tmp_path):
-    """The eight $FF residue bytes must be left exactly as found. They are fill
+    """The six $FF residue bytes must be left exactly as found. They are fill
     that survives the load, not a marker, and rewriting them would be the
     editor inventing state."""
     from goldbox.record import NPC_FLAG_BIT, NPC_FLAG_OFFSET, NPC_MARKER_OFFSETS
