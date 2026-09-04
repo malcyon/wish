@@ -443,9 +443,13 @@ the difference are **five, not six**, and all five are named: `$49C3` and
 earlier count belonged to a specimen nobody can re-read, so it stays
 unaccounted for rather than being declared not to have existed.
 
-A conversion that refuses an outdoor party — which this one does — writes a
-save that is one of the eleven, so the 2407 figure is the one it rests on.
-CONFIRMED, and re-takeable in a second by anybody.
+**A conversion writes both kinds now** (#190), so neither figure alone is the
+one it rests on: an indoor conversion is one of the eleven and an outdoor one
+is one of the ten. That costs the sweep nothing, because the five words of the
+difference — `$49C3`, `$49C4` and `$507A`-`$507C` — are each either written by
+the converter or declared as dropped, so an outdoor save is covered by the same
+accounting: 13137 of 13137 bytes, 0 unwritten, on both of the runs that proved
+it in the game. CONFIRMED, and re-takeable in a second by anybody.
 
 ## What this leaves open
 
@@ -463,13 +467,18 @@ CONFIRMED, and re-takeable in a second by anybody.
   would put a value there. The experiment for each is a `BPM` write-watch in
   DOSBox-X on its word offset, one per word, played until it fires.
   **`$507A`-`$507C` came off this list**: ten overland saves seeded with
-  zeroes in all three came back holding values, so the engine writes them.
+  zeroes in all three came back holding values, so the engine writes them —
+  and #190's two conversions, built from nothing rather than seeded from a
+  copy, came back holding exactly what the band table below predicts,
+  (29, 1, 14) at y 25 and (26, 9, 9) at y 26. Predicted before the run and
+  reproduced from a different lineage, which is a reproduction rather than a
+  re-reading of the same specimens.
 * **What `$4FD2`/`$4FD3` count.** They partition perfectly by area over 21
   specimens and are nothing else this page can find. Experiment: a fifth
   area, then a `BPM` read-watch on `$4FD2`.
 * **What `$507A`-`$507C` are.** They track the travel y for y 26-28 and
   freeze at (29, 1, 14) for y 24-25, reproducibly on two boots from two
-  lineages. Experiment: a `BPM` write-watch on `$507A` across a dozen
+  lineages, and again on two from-nothing conversions (#190). Experiment: a `BPM` write-watch on `$507A` across a dozen
   overland steps.
 * **Whether a played overland save differs from a seeded one** beyond
   `$4DC3` -- the one word measured to differ. Experiment: sail out by boat
