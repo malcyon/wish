@@ -697,6 +697,24 @@ class Session:
     def _env(self) -> dict[str, str]:
         return dict(os.environ, DISPLAY=self.display)
 
+    def env(self) -> dict[str, str]:
+        """The `DISPLAY`-scoped environment `_env()` builds.
+
+        Public because `tools/doscurse.py` drives its own `xdotool type` and
+        `import` calls against this session's window and used to reach past
+        `_env` for it (#226 (Two tools reach into tools/dosbox.py's private
+        methods for want of a public seam)).
+
+        **This delegates to `_env()` rather than replacing it.**
+        `capture()`, `key()`, `grab()`, `shot()` and `boot()` all call
+        `_env()` directly, and `tools/dosboxx.py`'s `XSession` overrides that
+        name -- not this one -- to swap in `debug_env()`.  Renaming the
+        method those calls dispatch through would have silently dropped that
+        override, since a subclass overriding `_env` no longer overrides
+        `env`.
+        """
+        return self._env()
+
     def key(self, *keys: str, gap: float = 0.35) -> None:
         """Press keys one at a time, as X keysyms (`a`, `Up`, `Escape`)."""
         for k in keys:
@@ -1031,8 +1049,14 @@ class PoolOfRadiance:
 
     # -- the map ----------------------------------------------------------
 
-    def _move(self, key: str, timeout: float = 20.0) -> bool:
+    def move(self, key: str, timeout: float = 20.0) -> bool:
         """Press a movement key and wait for the map's command bar to return.
+
+        Public because outdoors the arrows move the party a square rather
+        than turning it, and `step`/`turn_left`/`turn_right` cannot express a
+        four-direction travel-grid route -- `tools/dosoutdoorprobe.py` needs
+        the raw key (#226 (Two tools reach into tools/dosbox.py's private
+        methods for want of a public seam)).
 
         A step is not over when the frame stops changing.  **The game blanks the
         command bar while the party moves** and redraws it a beat later, and
@@ -1056,13 +1080,13 @@ class PoolOfRadiance:
         return self.s.wait_until_ink(BAR, self.world_bar, timeout)
 
     def step(self) -> bool:
-        return self._move("Up")
+        return self.move("Up")
 
     def turn_left(self) -> bool:
-        return self._move("Left")
+        return self.move("Left")
 
     def turn_right(self) -> bool:
-        return self._move("Right")
+        return self.move("Right")
 
     # -- saving, which is the whole point ---------------------------------
 

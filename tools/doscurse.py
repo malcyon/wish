@@ -101,7 +101,7 @@ class Console:
         out = shots / f"{self.n:03d}-{name}.png"
         subprocess.run(
             ["import", "-window", self.s.window, "-depth", "8", str(out)],
-            env=self.s._env(), check=True, capture_output=True)
+            env=self.s.env(), check=True, capture_output=True)
         enlarge(out)
         for tail in ("", "-big"):
             src = out.with_name(out.stem + tail + ".png")
@@ -126,7 +126,7 @@ class Console:
         elif word == "type":
             subprocess.run(["xdotool", "type", "--clearmodifiers", "--window",
                             self.s.window, rest],
-                           env=self.s._env(), check=True, capture_output=True)
+                           env=self.s.env(), check=True, capture_output=True)
         elif word == "sleep":
             time.sleep(float(rest or 1))
         elif word == "settle":

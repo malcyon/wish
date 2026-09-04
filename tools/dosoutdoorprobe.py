@@ -163,7 +163,7 @@ def run(*, source: str, area: int, x: int, y: int, route: list[str],
             moved = 0
             for i, step in enumerate(route):
                 if step in MOVES:
-                    if not por._move(MOVES[step]):
+                    if not por.move(MOVES[step]):
                         raise SystemExit(
                             f"route step {i + 1} ({step}) did not complete -- "
                             f"the command bar never came back, so the party "

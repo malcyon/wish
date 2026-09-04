@@ -473,6 +473,90 @@ def test_the_shot_on_the_way_out_of_a_failure_is_written_anyway(tmp_path,
 
 
 # --------------------------------------------------------------------------
+# The public seam #226 (Two tools reach into tools/dosbox.py's private
+# methods for want of a public seam) opened, and the two tools that reached
+# past `_move` and `_env` before it existed.
+# --------------------------------------------------------------------------
+
+
+class _MoveSession:
+    """A `Session` stand-in that records only the keys `move()` sends.
+
+    `move()` also calls `settle()` and, once `world_bar` is set,
+    `wait_until_ink()` -- both stubbed to behave as though the command bar
+    always comes back, since what this test checks is which key reached
+    `key()`, not the wait itself.
+    """
+
+    def __init__(self):
+        self.pressed: list[str] = []
+
+    def key(self, *keys: str, gap: float = 0.0) -> None:
+        self.pressed.extend(keys)
+
+    def settle(self, quiet: float = 0.6, timeout: float = 30.0) -> None:
+        return None
+
+    def wait_until_ink(self, rect, want, timeout: float = 30.0) -> bool:
+        return True
+
+
+def test_move_is_public_and_step_turn_left_turn_right_still_wrap_it():
+    """`_move` became `move` (#226); the three wrappers keep working unchanged.
+
+    `tools/dosoutdoorprobe.py` needs the raw key directly -- outdoors the
+    arrows move the party rather than turn it, so no combination of
+    `step`/`turn_left`/`turn_right` can walk a four-direction travel-grid
+    route.
+    """
+    assert not hasattr(dosbox.PoolOfRadiance, "_move")
+    sess = _MoveSession()
+    por = dosbox.PoolOfRadiance(sess)
+    por.world_bar = "world"
+    assert por.step() is True
+    assert por.turn_left() is True
+    assert por.turn_right() is True
+    assert por.move("Down") is True
+    assert sess.pressed == ["Up", "Left", "Right", "Down"]
+
+
+class _DisplayStub:
+    display = ":40"
+    _env = dosbox.Session._env
+
+
+def test_session_env_is_public_and_returns_what_env_builds():
+    """`_env()` stays the implementation; `env()` is the seam (#226).
+
+    `tools/doscurse.py` used to write `session._env()` for the same
+    dictionary it now gets from `session.env()`.  `_env()` is not renamed
+    away, only wrapped: `tools/dosboxx.py`'s `XSession` overrides `_env`, not
+    `env`, to swap in its own `debug_env()`, and a plain rename of the name
+    every internal call dispatches through would have silently stopped that
+    override from firing.
+    """
+    stub = _DisplayStub()
+    built = dosbox.Session._env(stub)
+    assert dosbox.Session.env(stub) == built
+    assert built["DISPLAY"] == ":40"
+
+
+def test_dosoutdoorprobe_and_doscurse_no_longer_reach_past_the_seam():
+    """The two callers #226 was filed about, read back off their own source.
+
+    A grep is what would have caught either tool regaining a private call:
+    neither name is exercised by an emulator in this suite, so nothing else
+    here would notice a `._move(` or `._env(` creeping back in.
+    """
+    import inspect
+
+    from tools import doscurse, dosoutdoorprobe
+
+    assert "._move(" not in inspect.getsource(dosoutdoorprobe)
+    assert "._env(" not in inspect.getsource(doscurse)
+
+
+# --------------------------------------------------------------------------
 # The findings, measured off the player's saves
 # --------------------------------------------------------------------------
 
