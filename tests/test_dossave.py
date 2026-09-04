@@ -746,3 +746,47 @@ def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
     assert second.get("quantity") == 30
     assert second.get("weight") == 4
     assert second.get("value") == 50
+
+
+# --- an item file present and the wrong shape is a defect, not a gap (#221) ----
+# `min(count, len(itm) // stride)` used to paper over exactly this: a sibling
+# file that exists but does not reconcile with the record's own item count
+# read back as fewer items, with nothing to say why. #113's fix was to find
+# the *file*; this is the fix for the file being the wrong length.
+
+def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
+    """63 x 1 - 1 = 62 bytes: not a whole number of 63-byte items."""
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(1))
+    truncated = _synthetic_battle_axe()[:-1]
+    assert len(truncated) == 62
+    (tmp_path / "CHRDATC1.SWG").write_bytes(truncated)
+
+    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*62.*63"):
+        dos.read_character(record)
+
+
+def test_an_item_file_short_of_the_records_own_count_is_refused(tmp_path):
+    """The record claims two items; the sibling file only holds one."""
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(2))
+    (tmp_path / "CHRDATC1.SWG").write_bytes(_synthetic_battle_axe())
+
+    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*1.*2"):
+        dos.read_character(record)
+
+
+def test_an_absent_item_file_is_still_read_quietly(tmp_path):
+    """No sibling at all is the documented, deliberate case: an export."""
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(1))
+
+    character = dos.read_character(record)
+    assert character.get("item_count") == 1
+    assert not character.items

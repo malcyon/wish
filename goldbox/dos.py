@@ -591,6 +591,13 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     Darkness' `.THG` and its 63 are **not** measured that way: they rest on the
     shipped archives dividing evenly, which is the same check Silver Blades
     would have passed while being wrong.
+
+    No sibling item file at all is quiet -- an export normally has none.  A
+    sibling that **is** present and does not reconcile with the record's own
+    item count, because it is short of a whole number of items or short of
+    the count, raises `DosRecordError` naming the file, the stride and both
+    counts (#221) rather than silently handing back fewer items than the
+    record says it has.
     """
     path = pathlib.Path(path)
     data = path.read_bytes()
@@ -598,7 +605,9 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
         shape = shape_for(len(data))
     except DosShapeError as e:
         raise DosRecordError(f"{path.name}: {e}") from None
-    itm = _sibling(path, shape.item_suffix)
+    item_path = path.with_suffix(shape.item_suffix)
+    item_file_present = item_path.exists()
+    itm = item_path.read_bytes() if item_file_present else b""
     spc = _sibling(path, shape.effect_suffix)
     # The record's own item count is what says how many of the item file
     # belong to this character. It is zeroed in an export, and an export that
@@ -606,6 +615,18 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     # items it does not carry -- which is exactly what the archives hold.
     count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
     stride = shape.item_size
+    # No sibling item file at all is deliberate and documented above -- an
+    # export normally has none, and that case stays silent. A file that is
+    # *present* and the wrong shape is not: `min()` used to paper over a
+    # truncated or short `.ITM`/`.SWG`/`.STF`/`.THG`, which is exactly what a
+    # 63-byte `.ITM` did to every Curse and Silver Blades character (#113).
+    if item_file_present and (len(itm) % stride != 0
+                               or len(itm) // stride < count):
+        raise DosRecordError(
+            f"{item_path.name}: {len(itm)} bytes at a {stride}-byte stride "
+            f"is {len(itm) // stride} items, but {path.name}'s item_count "
+            f"says {count}"
+        )
     items = [DosItem(itm[i * stride:(i + 1) * stride], stride)
              for i in range(min(count, len(itm) // stride))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
