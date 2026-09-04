@@ -61,7 +61,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 |---|---|---|
 | 12801, 12802 | x, y — **indoors**. Outdoors both freeze at the square the party last stood on indoors and the live square is `$49C3`/`$49C4` | CONFIRMED — #6, re-proven by the step diff (4→5 on one step east); staleness **10 of 10** outdoor specimens, each frozen at its own lineage's last indoor square |
 | 12803 | facing, the C64's value doubled: 0 N, 2 E, 4 S, 6 W — and **still live outdoors** (2/0/2 = E/N/E against the screen while x,y sat stale) | CONFIRMED — turn diff, 0→2 on one right turn; outdoors 3 of 3. The ten seeded overland saves do not add to that count: `tools/dosoutdoorprobe.py` walks with the arrows, which move rather than turn, so the facing byte never had to change |
-| 12804 | **unnamed, and engine-maintained.** 0 in the eight walked-in indoor saves, 14 in B and in all three outdoor saves, 9 in the run-9 resave, **14 in the engine's own resave of a party standing indoors in the Slums** (#26, `work/p26/run2`). No byte offset and no VM word anywhere in the file carries its value vector, and none shares its partition — searched exhaustively over 13 files. It is computed at save time from state the save does not otherwise hold. **The engine writes it itself**: a hand-built save carrying 0 came back holding 9, and a from-nothing save carrying 0 came back holding 14. Refuted: `$49F0`, `$49F1`, `$49FE`, `$4AC4`, a step counter (flat across a turn, an indoor step and two overland steps); and **refuted, by #26's run: that the value partitions on indoors and out.** This page used to say "0 indoors and 14 outdoors are the measured values to write" and an indoor resave holding 14 is what took it out. A conversion writes 0 indoors because that is what 8 of the 9 indoor specimens hold and a save carrying it loads, not because 0 means indoors | UNKNOWN as a meaning; CONFIRMED engine-maintained |
+| 12804 | **`$C04E`: the wall-art nibble in front of the party**, read out of the `GEO`'s plane 0 or 1 by the facing (`GAME.OVR:0x2ED72`) and stored beside the square by the step routine and again on a turn. The measured 0, 9 and 14 are wall codes. Every negative result this row used to carry -- no copy in the file, not a step counter, no indoor/outdoor partition -- follows from its being a function of the map. A conversion writes 0 and the first step or turn recomputes it. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED from the code |
 | 12805 | **the low byte of VM word `$5200`** — and of `$5082`, which equals `$5200` — in **21 of 21** engine-written specimens, including a pair that moved together 26→0 on one indoor step and 26→1 across the boat, and the engine's resave (26→0 in both places at once) | CONFIRMED as a copy; which direction, unknown |
 | 12806 | **1 in the 11 indoor specimens, 3 in the 10 outdoor ones** — but it is *perfectly* correlated with `$49E6`, so nothing in the corpus separates "view mode" from a second encoding of the indoors flag. A converter can write it from `$49E6`, which it already knows | PROBABLE as view mode; CONFIRMED as a function of `$49E6`, **21 of 21** |
 | 12807 | **2 in all 21 genuine specimens**, indoors and out, before and after the engine's resave (0 only in the stub) | CONFIRMED as a constant to write; its meaning UNKNOWN |
@@ -97,13 +97,18 @@ quest flags convert unconditionally.
 | `$49FD`, `$49FE` | **per-area constants the area's own ECL prologue writes.** `ECL00` (New Phlan) opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]`; `ECL14` (the Slums) opens `SAVE [$6E7D],[$49FD] / SAVE 9,[$49FE]`. Every DOS specimen agrees (10 New Phlan, 9 Slums) and so does every C64 save. Sokol Keep's `ECL15` never writes `$49FE`, which is why slot B stands there still holding New Phlan's 10. The engine rewrote 10→9 by itself after loading a save retargeted into the Slums | CONFIRMED — the script text and 12 specimens on two ports |
 | `$4A00`-`$4A1F` | the per-script scratch, the C64's `SCRIPT_SCRATCH` at the same addresses, zeroed on every area change. Six words are live here and they partition cleanly by area; `$4A00` is 255 in both ports' Slums saves and 0 in both ports' New Phlan saves | CONFIRMED as the same region; the individual words UNKNOWN |
 | `$49FC`, `$49FF` | ECL-visible, but the two ports **disagree**: DOS reads (6, 3) — 4 for `$49FC` in the Slums — where the C64 reads (2, 129/1). So they are not copyable across even though the address is shared. `$49FC` is not the party count: J holds 4 with six live characters | UNKNOWN, and refuted as party count |
-| `$4FD2`, `$4FD3` | **a per-area pair the engine derives**, not the RNG seed this page once guessed at. Twenty-one engine-written specimens partition **perfectly by area, with one pair each**: New Phlan (1, 101) three times, the Slums (24, 24) seven times, Sokol Keep (2, 1) once, the overland (96, 10) ten times. Derived rather than carried, because two seeds holding *different* pairs — slot A's (1, 101) and slot B's (2, 1) — both came back (96, 10) once the party stood on the travel grid, and a party that walked out of the Slums into New Phlan came back holding New Phlan's. An older measurement, taken another way, agrees -- and it is a second source for the *derived* half rather than a twenty-second specimen for the partition, because slot J is one of the twenty-one already counted above, in the Slums' seven: `142-dosbox-x-debugger.md`'s memory-image search, run on that slot long before this partition was noticed, records these as the **only two** of 2560 words where the live image and the file disagree — `$18` = 24 in the file, which is the Slums pair, and **0 live**. So the value in the file is not simply the live VM word, which is a further reason to read it as derived at save or load time rather than carried. **What the numbers mean is UNKNOWN**: they are not the GEO block's dimensions, which are 32×32 for all four areas. Settling experiment: put a party in a fifth area and read the pair, then a `BPM` read-watch on `$4FD2` to catch what consumes it | CONFIRMED as area-derived and engine-written; the meaning UNKNOWN |
-| `$507A`, `$507B`, `$507C` | **overland-only, engine-written, and they track the travel y in a band and then stop** — the only three words in the array that are nonzero in an outdoor save and zero in all eleven indoor ones, and every outdoor seed carried zero in all three and came back holding values. See the table below; **"a copy of the travel y" is refuted as a general rule** | CONFIRMED overland-only and engine-written; the meaning UNKNOWN |
+| `$4FD2`, `$4FD3` | **`$6DD2`/`$6DD3` under the VM's own numbering: how many five-minute rest passes between interruption checks, and the percentage chance of one.** Written by the area script's entry 2 on ENCAMP through the VM store, zeroed by the area-init routine on load, read by the rest loop at `GAME.OVR:0x24A66` and by nothing else. The four pairs the 21 containers partition into are the four scripts' own `SAVE` statements: New Phlan (1, 101), the Slums (24, 24), Sokol Keep (2, 1), the overland (96, 10). The file holds the pair because a save is taken inside ENCAMP; the live image reads 0 because the init routine zeroes it on load. This row used to say the meaning was UNKNOWN; [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the code, the script text and the watched ENCAMP | CONFIRMED -- the code, the script text and a `BPM` on the write |
+| `$507A`, `$507B`, `$507C` | **`$6E7A`-`$6E7C`: the overland script's loop registers** while `ECL1A` entry 1 searches its fourteen-square table on every step -- the row's y, the row's count and the running index. The band table below is reproduced row for row by running that loop by hand, (29, 1, 14) included; nothing reads them after it. Rewritten on the first step, so a conversion writing 0 loses nothing. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) | CONFIRMED -- reproduced from the script and watched under a `BPM` |
 | `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across the whole corpus is identical | CONFIRMED as a copy |
-| `$4B00`-`$52FF` | **DOS engine state with no C64 counterpart.** No ECL script in the 30-script corpus references any address at or above `$4AF9` (2544 distinct bracketed addresses checked), and on the C64 `$4D00` upwards is the twelve character slots, not variables. So nothing here can be sourced from a C64 save; it has to be measured. Live and still unnamed: `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507D`, `$507F`-`$5080`, `$5202`-`$5207`, `$520A`-`$520F`. Constant in all twelve: `$4FE1` = 255, `$506D` = 16, `$50F6` = 1 | UNKNOWN individually; the boundary CONFIRMED |
+| `$4B00`-`$52FF` | **Two VM heap blocks whose real addresses are `$6B00`-`$6EFF` (file words 1024-2047) and `$9700`-`$98FF` (words 2048-2559).** The contiguous names this page uses are file positions rather than the addresses the engine or the scripts use, and the claim this row used to make -- that no script references the range -- rested on that misnaming: 28 of the 30 scripts name `$6DD2` and all 30 name `$6E79`. [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) has the classifier and the renaming table; `$4B00`-`$4CFF` is real and unreferenced. Live and still unnamed, under their VM names: `$6BB8`, `$6BC3`, `$6C0C`, `$6DA8`, `$6DC0`-`$6DC1`, `$6DC6`, `$6DC8`, `$6E7D`, `$6E7F`-`$6E80`, `$9802`-`$9807`, `$980A`-`$980F`. Constant in all twelve: `$6DE1` = 255, `$6E6D` = 16, `$6EF6` = 1 | the blocks CONFIRMED from the code; the words individually UNKNOWN |
 | engine-rebuilt | `$49F0`, `$49F1`, `$49FE`, `$4FD2`, `$4FD3`, `$5079`, `$5082`, `$5200`, `$5208` — the nine words the engine rewrote by itself when it loaded a hand-built save and the party moved (`work/p59/retarget-C.DAT` against `work/p59/run9/SAVGAMD.DAT`). The load path was already bisected as not needing them | CONFIRMED engine-maintained |
 
 ### `$507A`-`$507C`: a rule that holds in a band, and a refutation
+
+**Explained since: the band is the overland script's loop leaving its
+registers behind.** [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md) reproduces every
+row of the table below from nine bytes of `ECL1A`. The measurements stand as
+taken.
 
 Ten engine-written overland saves, from three seed lineages and four boots,
 across window 26's column x = 7 and x = 8:
@@ -583,8 +588,8 @@ legitimate ones in `.claude/rules/conversions.md`:
 |---|---|---|
 | the previous square | `$49F0`, `$49F1` | loading and one step |
 | the two wall colours, which the arriving area's own ECL prologue writes -- `ECL00` opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]` | `$49FD`, `$49FE` | loading |
-| unnamed | `$4FD2`, `$4FD3`, `$507D`, `$5208`, `$520F` | loading |
-| unnamed | `$5079`, `$5082`, `$5200` | walking into another area |
+| the rest-interruption pair `$6DD2`/`$6DD3`, and `$6E7D`, `$9808`, `$980F` under their VM names ([`163-dos-vm-address-map.md`](163-dos-vm-address-map.md)) | `$4FD2`, `$4FD3`, `$507D`, `$5208`, `$520F` | loading |
+| `$6E79` (a script register), `$6E82` (the departing square's attribute) and `$9800` (the name workspace), under their VM names | `$5079`, `$5082`, `$5200` | walking into another area |
 | unnamed | `$4FC0`, `$4FC6`, `$4FC8` | one fight |
 | the pending-encounter record | `$5202`, `$5205`, `$5206` | one fight |
 | the encounter and monster message buffers | `$522C`+ and `$5290`+ | one fight, which filled them with the sentence the game shouted |
@@ -599,7 +604,7 @@ to write". The engine's own resave of a party standing **indoors** in the
 Slums, walked in from a from-nothing save, holds **14** -- so the value does
 not partition on indoors and out, and the doc's own corpus already had an
 indoor 14 in slot B. What is CONFIRMED is only that the engine maintains it:
-it replaced a written 0 with 14 in `work/p26/run2` and with 9 in #59's run 9.
+it replaced a written 0 with 14 in `work/p26/run2` and with 9 in #59's run 9. It is `$C04E`, the wall the party faces -- [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md).
 
 **2. The C64 save has no such field.** Everything at `$4AF9` and above: no
 ECL script references any address there (2544 distinct addresses across 30
@@ -728,13 +733,11 @@ Pools of Darkness)`.
   (29, 1, 14) at y 25 and (26, 9, 9) at y 26. Predicted before the run and
   reproduced from a different lineage, which is a reproduction rather than a
   re-reading of the same specimens.
-* **What `$4FD2`/`$4FD3` count.** They partition perfectly by area over 21
-  specimens and are nothing else this page can find. Experiment: a fifth
-  area, then a `BPM` read-watch on `$4FD2`.
-* **What `$507A`-`$507C` are.** They track the travel y for y 26-28 and
-  freeze at (29, 1, 14) for y 24-25, reproducibly on two boots from two
-  lineages, and again on two from-nothing conversions (#190). Experiment: a `BPM` write-watch on `$507A` across a dozen
-  overland steps.
+* ~~**What `$4FD2`/`$4FD3` count.**~~ Settled: `$6DD2`/`$6DD3`, the
+  rest-interruption interval and chance the area script writes on ENCAMP --
+  [`163-dos-vm-address-map.md`](163-dos-vm-address-map.md).
+* ~~**What `$507A`-`$507C` are.**~~ Settled: `$6E7A`-`$6E7C`, the overland
+  script's loop registers, reproduced row for row on the same page.
 * **Whether a played overland save differs from a seeded one** beyond
   `$4DC3` -- the one word measured to differ. Experiment: sail out by boat
   once and census the result against `work/p59-wallset`.
