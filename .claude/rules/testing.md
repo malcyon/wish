@@ -107,17 +107,33 @@ off of any of the game disks might also have been edited."* His save disks are
 a player's disks, played and tinkered with over years. So the boundary is not
 a path -- it is **whether we watched it being written**.
 
-**So a measurement rests on records we can name the writer of.** Three sources
-qualify:
+**So a measurement rests on records we watched being written, and there is
+essentially one source.**
 
-* **saves an agent made by driving the game** -- the strongest, because
-  somebody watched the engine write them. `tools/dosgnome.py` is the worked
-  example: it rolls a character in the game's own creation screens under
-  DOSBox and reads back the bytes, and its five same-boot racial controls are
-  what make a single reading a measurement rather than an anecdote;
-* **the archives' `Default files/Saves`**, which the game shipped;
-* **records this project's own writers produced**, for testing the writer --
-  never as evidence about the game, since they carry what we already believe.
+**Saves an agent made by driving the game**, from character creation onward.
+`tools/dosgnome.py` is the worked example: it rolls a character in the game's
+own creation screens under DOSBox and reads back the bytes, and its five
+same-boot racial controls are what make a single reading a measurement rather
+than an anecdote. Donald, 2026-09-04: *"if we created our own characters and
+level them up, then you can know it is safe."*
+
+**A save found on a disk is not evidence, however official the disk looks.**
+Donald, 2026-09-04: *"You shouldn't assume that saves you find on a game disk
+are 'saves shipped with the game by the manufacturer'. Some random person on
+the internet might have created those and edited them with GBC. You have no way
+of knowing."* The archives here are a download -- `~/Downloads/fr-archives`,
+"Forgotten Realms The Archives" -- so `Default files/Saves` has no chain of
+custody either. It was listed as trustworthy in an earlier version of this
+rule and that was wrong.
+
+**A worked consequence:** six of the eighteen records in Pool of Radiance's
+`Default files/Saves` fail the encumbrance identity, against two of eighteen in
+the known-edited set. That was nearly filed as a question about the game. The
+likelier answer is that it is a stranger's edited party, and no amount of
+staring at it would have said which.
+
+**Records this project's own writers produced** test the writer and are never
+evidence about the game, since they carry what we already believe.
 
 **The cost of getting this wrong is silent.** On 2026-09-04 a single edited
 record -- SILAS, a *human* carrying two `.SPC` effect records where the engine
