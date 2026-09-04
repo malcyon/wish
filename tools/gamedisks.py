@@ -24,16 +24,28 @@ Three layers, highest precedence first:
 Every path is `~`-expanded so the same file works on any machine; nothing here
 is Linux-specific.
 
-**`automap/paths.py` is not wired to this, and that is the gap #212 has left
-open.** `automap.paths.find_disks()` keeps its own per-platform search, so
-Pool of Radiance, Curse and Silver Blades have two independent lookups rather
-than the one the issue asked for. Wiring the registry in as extra candidates
-was tried and reverted: `tests/test_preferences.py`'s `nowhere()` fixture
-stages "a machine with no disks anywhere" by monkeypatching `_home()` and the
-working directory only, and this file's defaults are real absolute paths that
-do not derive from either -- so five tests started finding disks on a machine
-the fixture had promised was empty. Joining them means sandboxing that fixture
-against `COMMITTED` and `LOCAL` first, the way `tests/test_gamedisks.py` does.
+**This is ours, and `automap/paths.py` is the player's. They are separate on
+purpose and must stay that way.** Donald, 2026-09-04: *"gamedisks.toml is for
+our tests and our tools and our reverse-engineering. It's not for the end
+user. It's not getting shipped in the release package."*
+
+So the two lookups answer two different questions:
+
+* `automap.paths.resolve_disks()` answers **where this player keeps their
+  disks** -- the Game directory they set in Preferences, the folder beside the
+  save they opened, the command-line flag. `wish/__main__.py`,
+  `editor/files.py`, `automap/maps.py` and `automap/actions.py` all go through
+  it, and `#22 (A disk folder setting per game, not one shared by all six)` is
+  the ticket that gives it one answer per title.
+* This module answers **where the seven games are on a machine running the
+  test suite or a reverse-engineering tool**, so a specimen is never known
+  only inside one test file again.
+
+Nothing under `automap/`, `editor/`, `goldbox/`, `wish/` or `ui/` imports this
+module, and nothing should. `gamedisks.toml` sits at the repository root with
+no package-data entry, so it is not in a wheel at all: shipped code calling
+`find()` would get a silent nothing on a player's machine, which is the worst
+shape a lookup can fail in.
 """
 
 from __future__ import annotations
