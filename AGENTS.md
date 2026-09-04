@@ -73,7 +73,7 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
 | a sentence that rates itself: **"worth saying"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
-| **floor**, for anything but a storey of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
+| **floor**, for anything but a story of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 
 **A row's examples are examples. The word is banned however it is phrased.**
 And the table is not the whole rule: the habit behind it is reaching for jargon
