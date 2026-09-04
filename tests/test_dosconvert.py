@@ -329,8 +329,8 @@ def test_the_dropped_list_names_the_losses_a_player_would_notice():
     for char in _records():
         _rec, report = dos.to_c64_record(char)
         for name in quiet:
-            assert not [d for d in report.dropped
-                        if d.startswith(f"DOS {name} @")], (char.name, name)
+            assert not [d for d in report.dropped if name in d], \
+                (char.name, name)
         assert report.dropped.count(dos.COMBAT_ICON_DROP) == 1, char.name
         seen += 1
     assert seen >= 6, "needs a party to check against"
@@ -347,12 +347,14 @@ def test_no_dropped_reason_carries_developer_detail():
     converting to C64, and nobody knows what they hold), and the way
     `portrait_head`'s already-shipped `(#57)` did before this test existed.
 
-    This does not check the `DOS {name} @{offset:#05x}:` prefix
-    `to_neutral` puts in front of every line in the composition at
-    `goldbox/dos.py` -- that prefix is unconditional, pre-dates #235, and
-    removing it is a wording decision across the whole table rather than
-    a fix to one entry; it is filed on its own issue rather than covered
-    here.
+    **This now checks the composed line, not only the `why` clause.**
+    `to_neutral` used to put an unconditional `DOS {name} @{offset:#05x}:`
+    in front of every one of the ~15 lines in the table, which would have
+    failed this test against every entry before
+    #244 (Every DROPPED entry's composed line carries a raw hex file offset
+    in front of the player, not only the two #235 fixed) took the prefix
+    out. Checking `report.dropped` itself, over a real conversion, is what
+    stops that returning.
     """
     import re
 
@@ -364,6 +366,41 @@ def test_no_dropped_reason_carries_developer_detail():
     for name, why in dos.WRITE_DROPPED:
         assert not hex_offset.search(why), (name, why)
         assert not bare_issue.search(why), (name, why)
+
+
+@needs_dos_saves
+def test_no_composed_dropped_line_carries_developer_detail():
+    """The same guard as `test_no_dropped_reason_carries_developer_detail`,
+    against `report.dropped` itself rather than the `why` clauses that feed
+    it -- the composed line is what a player actually reads in
+    `editor/dosimport.py`'s Import pane, through `dropped_text`.
+    """
+    import re
+
+    hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
+    bare_issue = re.compile(r"#\d+")
+    seen = 0
+    for char in _records():
+        _rec, report = dos.to_c64_record(char)
+        for line in report.dropped:
+            assert not hex_offset.search(line), (char.name, line)
+            assert not bare_issue.search(line), (char.name, line)
+        seen += 1
+    assert seen >= 6, "needs a party to check against"
+
+
+def test_every_visible_dropped_name_has_player_text():
+    """Every name in `DROPPED` that reaches a player through the composition
+    at `goldbox/dos.py` has a plain-English entry in `DROPPED_PLAYER_TEXT` --
+    the dict `to_neutral` reads instead of the field's own identifier and
+    file offset.  A name added to `DROPPED` with none would raise a
+    `KeyError` out of `to_neutral` instead of failing here, where the cause
+    is obvious.
+    """
+    visible = {name for name, _why in dos.DROPPED
+               if name not in dos.UNREPORTED_DROPS
+               and name not in dos.ICON_DROPS}
+    assert visible <= set(dos.DROPPED_PLAYER_TEXT)
 
 
 # --- the saved game ----------------------------------------------------------

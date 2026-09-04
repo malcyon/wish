@@ -446,6 +446,13 @@ def test_without_the_menu_tables_the_portrait_is_zero_and_reported():
     A conversion that cannot read the game's own tables leaves the pair zero
     -- a sheet with no face -- and says so, rather than writing a position
     that would draw somebody else's.
+
+    The line itself is `goldbox.dos.to_neutral`'s -- carried through from the
+    read side rather than composed again here -- and since
+    #244 (Every DROPPED entry's composed line carries a raw hex file offset
+    in front of the player, not only the two #235 fixed) it reads in plain
+    English rather than as the field's own identifier, so this checks
+    `DROPPED_PLAYER_TEXT` rather than the name.
     """
     char = _records()[0]
     rec, _, _, rep = dos.write(dos.to_neutral(char))
@@ -453,7 +460,8 @@ def test_without_the_menu_tables_the_portrait_is_zero_and_reported():
         f = dos_layout.FIELDS_BY_NAME[name]
         assert rec[f.offset] == 0, name
     text = " ".join(rep.dropped)
-    assert "portrait_head" in text and "portrait_body" in text
+    assert dos.DROPPED_PLAYER_TEXT["portrait_head"] in text
+    assert dos.DROPPED_PLAYER_TEXT["portrait_body"] in text
 
 
 @needs_dos_saves

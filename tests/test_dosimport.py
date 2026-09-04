@@ -171,13 +171,22 @@ def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
     go. `tests/test_dosconvert.py` is where the other half is checked: every
     suppressed name is still declared in `DROPPED` and still has a
     disposition, so nothing measured left the code.
+
+    **What is checked is the plain-English name, not the field's own
+    identifier.** `dos.DROPPED_PLAYER_TEXT` is what `to_neutral` composes in
+    place of `portrait_head`, `portrait_body` and `icon_colours` themselves
+    -- carrying a raw field name in front of a player is
+    #244 (Every DROPPED entry's composed line carries a raw hex file offset
+    in front of the player, not only the two #235 fixed), and this test used
+    to assert the very thing that ticket exists to remove.
     """
     from editor.dosimport import dropped_text, rehearse
-    from goldbox.dos import COMBAT_ICON_DROP
+    from goldbox.dos import COMBAT_ICON_DROP, DROPPED_PLAYER_TEXT
 
     text = dropped_text(rehearse(dos_save, "A", files).report)
     for field in ("portrait_head", "portrait_body", "icon_colours"):
-        assert field in text, field
+        assert DROPPED_PLAYER_TEXT[field] in text, field
+        assert field not in text, field
     assert COMBAT_ICON_DROP in text
     for field in ("encumbrance", "item_count", "strength_bonus",
                   "icon_head", "icon_body", "icon_dimension"):
@@ -196,11 +205,12 @@ def test_the_losses_are_on_screen_before_the_button_is_pressable(
     from PyQt6.QtWidgets import QDialogButtonBox
 
     from editor.dosimport import DROPPED_HEADING, DosImportDialog
+    from goldbox.dos import DROPPED_PLAYER_TEXT
 
     dialog = DosImportDialog(dos_save, files)
     text = dialog.report_pane.toPlainText()
     assert text.startswith(DROPPED_HEADING)
-    assert "portrait_head" in text
+    assert DROPPED_PLAYER_TEXT["portrait_head"] in text
     assert dialog.buttons.button(
         QDialogButtonBox.StandardButton.Ok).isEnabled()
 

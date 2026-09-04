@@ -816,6 +816,49 @@ ICON_DROPS = frozenset({"icon_head", "icon_body", "icon_dimension"})
 COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
                     "art does not convert")
 
+#: What a player reads for each name in :data:`DROPPED` that still reaches
+#: `report.dropped` -- a subject a person recognises, standing in for the
+#: field's own identifier and the file offset `to_neutral` used to put in
+#: front of it (`.claude/rules/gui-text.md`: no memory address or file
+#: offset in front of a player).  `DROPPED`'s own `(name, why)` pairs are
+#: untouched and still carry the byte-level account for `field_disposition()`
+#: and anyone reading the source; this dict is read only when composing what
+#: a player sees.  A name silenced by `UNREPORTED_DROPS` or folded into
+#: `COMBAT_ICON_DROP` by `ICON_DROPS` needs no entry -- nothing is composed
+#: for it -- and `portrait_head`/`portrait_body` are named here for the case
+#: where no creation tables were available at all; the menu-mismatch case
+#: has its own sentence at the call site, since it has to name the position.
+#:
+#: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
+#: word here Donald's; this is the working proposal for
+#: #244 (Every DROPPED entry's composed line carries a raw hex file offset
+#: in front of the player, not only the two #235 fixed), built so it can be
+#: seen running rather than only described.
+DROPPED_PLAYER_TEXT: dict[str, str] = {
+    "item_chain": "Item list bookkeeping: the C64 keeps a fixed list of "
+                  "sixteen slots instead of DOS's linked one",
+    "icon_colours": "Combat icon colours: the C64 draws its own combat "
+                    "icon and does not use them",
+    "heap_104": "Internal game state kept only while the game is running, "
+                "not shown to the player",
+    "effect_chain": "The running-effects list's own internal link; the "
+                    "effects themselves are carried separately",
+    "hands_used": "Which hand is holding a weapon right now; set again "
+                  "the next time the character fights",
+    "unnamed_0ab": "One byte in the DOS record nobody has identified yet",
+    "field_83_87": "Five bytes that make no difference to the character "
+                   "sheet, whatever they hold",
+    "field_10c_10f": "Whether the character is okay, unconscious or dead; "
+                     "whether their name shows red on the party screen; "
+                     "and whether their last fight used quickfight",
+    "portrait_head": "Character portrait (head): needs the game's own "
+                     "character-creation art, which this import could not "
+                     "read",
+    "portrait_body": "Character portrait (body): needs the game's own "
+                     "character-creation art, which this import could not "
+                     "read",
+}
+
 
 #: DOS fields converted by a rule rather than by a copy.  Named here so the
 #: disposition check below can see them; the rules themselves are in
@@ -1013,9 +1056,10 @@ def to_neutral(dos: DosCharacter,
         position = dos.get(name)
         art = getattr(portraits, art_of)(position)
         if art is None:
-            out.drop(f"DOS {name} @{f.offset:#05x}: {position} is not one of "
-                     f"the positions the creation menu offers, so no C64 "
-                     f"{stem}nn id corresponds to it")
+            label = "head" if name == "portrait_head" else "body"
+            out.drop(f"Character portrait ({label}): position {position} in "
+                     f"this save is not one the character-creation menu "
+                     f"offers, so no matching C64 {stem}nn portrait exists")
             continue
         out.set(name, art,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "
@@ -1027,12 +1071,12 @@ def to_neutral(dos: DosCharacter,
     # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
     # `field_disposition` still accounts for every one of them; what they are
     # kept out of is the list a person reads.
-    for name, why in DROPPED:
+    for name, _why in DROPPED:
         if name in UNREPORTED_DROPS or name in ICON_DROPS:
             continue
         if name in carried_portrait:
             continue
-        out.drop(f"DOS {name} @{FIELDS_BY_NAME[name].offset:#05x}: {why}")
+        out.drop(DROPPED_PLAYER_TEXT[name])
     out.drop(COMBAT_ICON_DROP)
     return out
 
