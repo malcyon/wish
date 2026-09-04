@@ -22,16 +22,16 @@ Seven cover one area of the tree each: `testing.md`, `conversions.md`,
 `#59 (Map the DOS saved game, not just the character record)`, never a bare
 `#59`. **Every mention** -- replies, comments, documents, tables, and the prose
 around a table as much as the table. There is no "already introduced it above"
-exemption; a reply is skimmed, not read in order.
+exemption: a reply is skimmed rather than read in order.
 
 A bare number makes Donald do the lookup: fast for the assistant, which has the
 number in hand, slow for him. *"When you only reference a number, it never means
 anything to me."* As the **subject** of a sentence it is worst of all, because
-that is where the reader most needs to know what is being talked about.
-`gh issue view N --json number,title` gives you the title.
+that is where the reader most needs to know the subject. The title comes from
+`gh issue view N --json number,title`.
 
 Two exceptions, both about where the reader is: a **commit message**, where the
-number goes bare in parentheses at the end of the one line, and the **body of an
+number goes bare in parentheses at the end of the line, and the **body of an
 issue**, read on the web where the number hovers into its title -- so do not go
 back and add titles to bare numbers in existing bodies.
 
@@ -45,8 +45,8 @@ the reader losing anything, delete it.** Lead with the answer, findings before
 method, tables for more than three data points, no closing summary of a reply
 the user just read. Report a failure with the shortest decisive line of output.
 
-**Explain a bug by the situation a person is in when they hit it, before any of
-the mechanism.** Not "`_flush` swallows a `ValueError`" -- *"you rename a
+**Explain a bug by the situation a person is in when they hit it, before the
+mechanism.** Not "`_flush` swallows a `ValueError`" -- *"you rename a
 character to `Bel'ana`, the apostrophe is a curly one because you copied it off
 a web page, you click Save, it says 'no changes', and the box still shows the name you
 typed."* Then the cause. A reader who has not seen the code cannot tell from a
@@ -73,11 +73,12 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
 | a sentence that rates itself: **"worth saying"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
+| **plainly** -- "say plainly", "state it plainly", "put it plainly" | just say the thing. The word promises the sentence after it will be clear, which is not the same as writing one |
 | **floor**, for anything but a story of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 
-**A row's examples are examples. The word is banned however it is phrased.**
-And the table is not the whole rule: the habit behind it is reaching for jargon
-that sounds precise and carries less than the plain phrase it replaced.
+**A row's examples are examples; the word is banned however it is phrased**,
+and the table is not the whole rule -- the habit behind it is reaching for
+jargon that sounds precise and carries less than the phrase it replaced.
 
 **Do not give a file the verb that belongs to the people in it** -- *"I don't
 know what a save walking means."* A save cannot walk; a **party** walks. Code
@@ -171,10 +172,8 @@ files**, and say which in the brief along with the standing constraints above,
 because a subagent starts cold. **Every agent gets an escape hatch, and using it
 is a success**: work that needs something the agent is not for stops and says
 so, because pressing on into a decision that was not its own costs more than the
-re-route.
-
-Which agent for what, how to write the brief, and the commit-review-push
-sequence: `.claude/rules/delegating.md`.
+re-route. Which agent for what, how to write the brief, and the
+commit-review-push sequence: `.claude/rules/delegating.md`.
 
 ## Findings go on the issue, when they arrive
 
