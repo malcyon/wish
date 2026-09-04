@@ -573,6 +573,52 @@ def test_the_written_icon_colours_are_not_zero():
         assert rec[f.offset:f.end] != bytes(f.size), char.name
 
 
+def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant():
+    """#235 (Two unattributed DOS byte ranges in the combat tail are dropped
+    converting to C64, and nobody knows what they hold): the census found the
+    engine writing `00 01 00 01` after a fight and `04 00 00 00` for a
+    character at zero hit points, so `00 01 00 00` is not "the one value all
+    specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
+    what a freshly made character carries, the same shape as `icon_colours`.
+
+    A record staged at status Unconscious (`0x10C` = 4, the load-side probe's
+    own reading) still writes back the fresh-character default; carrying the
+    real value is the rest of #235 and not this fix. What has to be true is
+    that the mismatch is an *accounted* default rather than an unexplained
+    byte a round trip would flag against a table claiming it never varies.
+    Reverting `field_10c_10f` to `WRITE_CONSTANTS` fails this: its provenance
+    note there reads "in all 24 DOS specimens" and says nothing about status,
+    active or quickfight, or that the value is not carried.
+    """
+    assert "field_10c_10f" not in {n for n, _, _ in dos.WRITE_CONSTANTS}
+    assert "field_10c_10f" in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
+
+    f = dos_layout.FIELDS_BY_NAME["field_10c_10f"]
+    raw = bytearray(dos_layout.RECORD_SIZE)
+    raw[f.offset:f.end] = b"\x04\x00\x00\x00"          # status: Unconscious
+    char = dos.DosCharacter(bytes(raw))
+    rec, _, _, rep = dos.write(dos.to_neutral(char))
+    assert rec[f.offset:f.end] == b"\x00\x01\x00\x00"
+    note = rep.sources[f.offset]
+    assert "Not carried" in note
+    assert "status" in note and "quickfight" in note
+
+
+def test_field_83_87_is_still_the_one_value_every_specimen_holds():
+    """The other half of #235 (Two unattributed DOS byte ranges in the combat
+    tail are dropped converting to C64, and nobody knows what they hold): the
+    census took the corpus from 24 records to 101 and `field_83_87` never
+    moved, so it stays a `WRITE_CONSTANTS` entry rather than following
+    `field_10c_10f` into `WRITE_DEFAULTS` -- the note names the new count so
+    the two claims are not confused."""
+    consts = {n: (data, why) for n, data, why in dos.WRITE_CONSTANTS}
+    assert "field_83_87" in consts
+    data, why = consts["field_83_87"]
+    assert data == b"\x00\x00\x01\x00\x00"
+    assert "101 of 101" in why
+    assert "field_83_87" not in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
+
+
 def test_two_characters_of_the_same_name_get_different_identity_bytes():
     """The whole of `#216 (Every converted DOS character carries the same
     identity byte at 0x0AB)`, pinned where the round trip cannot pin it.

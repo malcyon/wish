@@ -61,11 +61,17 @@ OUT = dosbox.REPO / "work" / "dosbox" / "p114"
 #: party fought one.  `goldbox/commissions.py` carries the reading.
 SLUMS_FIGHTS = 0x4ABB
 
-#: Candidate quickfight bit in the DOS record.  The C64 roster's `+0x0C` lands
-#: on DOS `0x10E` by the -2 displacement in `docs/117-save-conversion.md`, and
-#: `goldbox-bugs.md` bug 3 says QUICK sets it and nothing ever clears it.
-#: PROBABLE by alignment only; a run is what tests it.
-QUICKFIGHT_BYTE = 0x10E
+#: The quickfight bit in the DOS record.  `0x10E` was the candidate by the
+#: -2 displacement in `docs/117-save-conversion.md`, PROBABLE by alignment
+#: only -- and it is wrong, refuted in `docs/149-driving-a-dos-fight.md`
+#: ("The quickfight bit is not at 0x10E"), where `0x10E` read 00 in all
+#: eighteen records of three `QUICK`-driven fights while its neighbours
+#: moved.  CONFIRMED at `0x10F` by `#235 (Two unattributed DOS byte ranges in
+#: the combat tail are dropped converting to C64, and nobody knows what they
+#: hold)`: `tools/dosquickprobe.py` staged the byte and drove a fight with no
+#: `q` ever pressed, and it ran to completion with zero combat command bars,
+#: against 335 with the byte clear.
+QUICKFIGHT_BYTE = 0x10F
 
 #: `CHRDAT` offsets read directly, so a state snapshot needs no field table.
 #: Both are `goldbox/dos_layout.py`'s and are asserted against it in

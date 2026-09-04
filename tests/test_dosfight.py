@@ -48,6 +48,21 @@ def test_the_record_offsets_are_the_layouts_and_not_a_second_copy():
     assert FIELDS_BY_NAME["experience"].offset == dosfightrun.XP
     assert FIELDS_BY_NAME["experience"].size == 3
     assert FIELDS_BY_NAME["hp_current"].offset == dosfightrun.HP_CURRENT
+
+
+def test_the_quickfight_byte_is_0x10f_not_0x10e():
+    """#235 (Two unattributed DOS byte ranges in the combat tail are dropped
+    converting to C64, and nobody knows what they hold): `0x10E` was the
+    candidate by alignment alone and is refuted in
+    `docs/149-driving-a-dos-fight.md` -- it read `00` in eighteen records of
+    three `QUICK`-driven fights while its neighbours moved. `0x10F` is
+    CONFIRMED: `tools/dosquickprobe.py` staged it and a fight ran to
+    completion with zero combat command bars and `q` never pressed."""
+    from goldbox.dos_layout import FIELDS_BY_NAME
+
+    assert dosfightrun.QUICKFIGHT_BYTE == 0x10F
+    f = FIELDS_BY_NAME["field_10c_10f"]
+    assert f.offset <= dosfightrun.QUICKFIGHT_BYTE < f.end
     assert FIELDS_BY_NAME["hp_current"].size == 1
 
 

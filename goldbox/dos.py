@@ -755,10 +755,20 @@ DROPPED: tuple[tuple[str, str], ...] = (
                        "strength *index* and is computed instead"),
     ("hands_used", "live combat state"),
     ("unnamed_0ab", "one unattributed byte, stable per character"),
-    ("field_83_87", "unattributed; Curse's importer copies it without naming "
-                    "it either"),
-    ("field_10c_10f", "unattributed; 00 01 00 00 in all 24 specimens, inside "
-                      "the combat tail"),
+    ("field_83_87", "00 00 01 00 00 in 101 of 101 engine-written Pool of "
+                    "Radiance records -- 20 characters, eight classes, "
+                    "levels 1-4, before a fight and after one, and on a "
+                    "character the engine knocked unconscious (#235). The "
+                    "engine hands back whatever is staged there and the "
+                    "sheet is pixel-identical either way, so it is storage "
+                    "the game never fills for a player character"),
+    ("field_10c_10f", "**status, active, hostile and quickfight** -- 0x10C "
+                      "is the character's status (0 Okay .. 8 Gone, the "
+                      "order of the game's own nine status words), 0x10D an "
+                      "active flag the party panel greys a name out on, and "
+                      "0x10F the quickfight flag, all measured in the "
+                      "running game (#235). The C64 keeps the same state at "
+                      "record 0x100 and 0x10C and none of it is carried yet"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
@@ -1287,10 +1297,9 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
 WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
     ("icon_dimension", b"\x01", "1 in all 24 DOS specimens"),
     ("field_83_87", b"\x00\x00\x01\x00\x00",
-     "00 00 01 00 00 in all 24 DOS specimens"),
+     "00 00 01 00 00 in 101 of 101 engine-written Pool of Radiance records, "
+     "against the 24 this used to count (#235)"),
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
-    ("field_10c_10f", b"\x00\x01\x00\x00",
-     "00 01 00 00 in all 24 DOS specimens"),
 )
 
 #: Fields written to a **measured default** rather than carried from the
@@ -1316,6 +1325,14 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "across -- it has seven colour parts to DOS's six and one 3-bit "
      "colour per part against DOS's two 4-bit ones, so a correspondence "
      "would be a choice rather than a conversion"),
+    ("field_10c_10f", b"\x00\x01\x00\x00",
+     "awake, active, not hostile and not quick-fought -- the state a newly "
+     "made DOS character is in. 0x10C is the status (0 Okay .. 8 Gone, the "
+     "order of the game's own status words), 0x10D an active flag, 0x10F "
+     "the quickfight flag; all three measured in the running game (#235)",
+     "a DOS character who is unconscious, dying, dead, stoned or gone comes "
+     "out of the conversion in perfect health, and one the game had taken "
+     "out of the party comes out a full member"),
 )
 
 #: Fields written from a rule over the **record itself** rather than from a
