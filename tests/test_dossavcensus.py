@@ -173,7 +173,12 @@ def test_describe_refuses_to_invent_a_pools_of_darkness_reading(tmp_path):
     for field in ("area", "clock", "flags", "wallset", "dax_byte", "indoors"):
         assert got[field] is None, field
     assert got["party_size"] == 0          # the tail is still readable
-    assert len(got["tail"]) == 8
+    # Twelve, not eight. This asserted eight until #175 read the writer out of
+    # `GAME.OVR`: Pools of Darkness lays its square block out as five bytes
+    # from `DS:0xA9F3`, two interface-mode bytes, two words and the count of
+    # character files, and the four bytes in front of it that this project
+    # called "unnamed" were its own last four.
+    assert len(got["tail"]) == sg.SAVE_POOLS_OF_DARKNESS.square_bytes == 12
 
 
 def test_census_counts_the_words_that_are_zero_everywhere(tmp_path):

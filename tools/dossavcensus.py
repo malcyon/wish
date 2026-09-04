@@ -173,15 +173,31 @@ def describe(path: pathlib.Path,
         "sha": hashlib.sha256(save).hexdigest()[:12],
         "square": [x, y, facing],
         "party_size": sg.party_size(save, shape),
-        "tail": list(save[shape.square:shape.square + 8]),
+        "tail": list(save[shape.square:shape.party_table]),
         "hand_built": hand_built(path),
         "dax_byte": save[shape.head] if shape.dax_bytes else None,
     }
     if not shape.var_words:
-        # Pools of Darkness: no variable array, so no area, clock or flags.
+        # Pools of Darkness: no *word* array, so no `$49C5`, `$49C6` or
+        # `$4A20` to read.  It has the byte-wide one instead (#175), and what
+        # that carries goes in under its own keys rather than into fields
+        # whose meaning is "the word at this ECL address".
         out.update(area=None, area_name=None, indoors=None, travel=None,
                    clock=None, disk_word=None, wallset=None, wallmap=None,
                    flags=None, stub=None)
+        if shape.var_bytes:
+            digits = [sg.pod_var(save, sg.POD_CLOCK + i)
+                      for i in range(sg.POD_CLOCK_DIGITS)]
+            out.update(
+                pod_clock=list(sg.pod_clock(save)),
+                pod_in_dungeon=sg.pod_in_dungeon(save),
+                pod_party_count=sg.pod_var(save, sg.POD_PARTY_COUNT),
+                pod_live=[i + 1 for i in range(shape.var_bytes) if save[i]],
+                # A clock that has never run is the shipped stub, by the same
+                # test this tool applies to Pool of Radiance.  Both shipped
+                # containers read 00:00 and all eight engine-written ones on
+                # this machine read a time (#175).
+                stub=not any(digits))
         return out
     area = sg.current_area(save)
     where = areas.area(area)
@@ -250,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--nonzero", action="store_true",
                     help="List every live word with its per-specimen values")
     ap.add_argument("--tail", action="store_true",
-                    help="Report the eight bytes of the square block")
+                    help="Report the bytes of the square block")
     ap.add_argument("--json", action="store_true", help="Machine-readable")
     args = ap.parse_args(argv)
 
@@ -291,7 +307,11 @@ def main(argv: list[str] | None = None) -> int:
                                       else "  (stub)")
         clock = ("%02d:%02d d%d m%d" % tuple(s["clock"])
                  if s["clock"] and len(s["clock"]) == 4 else "-")
-        show = "y" if s["indoors"] else ("n" if s["indoors"] is False else "?")
+        if s.get("pod_clock"):
+            clock = "%02d:%02d d%d m%d y%d" % tuple(s["pod_clock"])
+        indoors = s["indoors"] if s["indoors"] is not None \
+            else s.get("pod_in_dungeon")
+        show = "y" if indoors else ("n" if indoors is False else "?")
         print(f"{s['label']:<22} {str(s['area'] if s['area'] is not None else '-'):>4} "
               f"{show:>3} "
               f"{str(s['square']):>12} {clock:>14} {s['party_size']:>3} "
@@ -302,15 +322,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"variables: {report['zero_everywhere']} of {shape.var_words} "
               f"words are zero in every counted specimen; "
               f"{len(report['live'])} are live somewhere")
+    elif shape.var_bytes:
+        live = sorted({n for s in specimens for n in s.get("pod_live", ())})
+        print(f"variables: {shape.var_bytes - len(live)} of "
+              f"{shape.var_bytes} one-byte variables are zero in every "
+              f"specimen; {len(live)} are live somewhere -- {live}")
     else:
-        print(f"{shape.title} has no ECL variable array "
-              f"(#175 is the issue that would decode what is there instead)")
+        print(f"{shape.title} has no ECL variable array")
 
     if args.tail:
         print()
         first = shape.square
-        print(f"{'specimen':<22} " + " ".join(f"{n:>5}"
-                                              for n in range(first, first + 8)))
+        print(f"{'specimen':<22} "
+              + " ".join(f"{n:>5}"
+                         for n in range(first, first + shape.square_bytes)))
         for s in specimens:
             print(f"{s['label']:<22} " +
                   " ".join(f"{b:>5}" for b in s["tail"]))

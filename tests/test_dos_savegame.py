@@ -573,14 +573,15 @@ def test_the_party_size_is_also_a_variable(key):
             sg.party_size(data, shape), path
 
 
-def test_pools_of_darkness_has_no_variable_array_to_read():
-    """Its container carries the same tail as the other three and nothing
-    else this project can name: no header byte, and `$5012` and `$503E` are
-    at no offset under Pool of Radiance's origin. Reading one anyway would
-    hand back a number out of the undecoded 1024 bytes, so it raises."""
+def test_pools_of_darkness_has_no_word_variable_array_to_read():
+    """It has the *other* array -- 1024 one-byte variables from file offset 0
+    (#175) -- so a caller that reaches for `$5012` or `$503E` is reaching for
+    a word that does not exist here, and gets a refusal rather than two bytes
+    out of the byte array."""
     shape = sg.save_shape_for("pools-of-darkness")
     assert shape.var_offset is None
     assert shape.script_buffer is None
+    assert shape.var_bytes == sg.POD_VAR_COUNT
     for _, data in _of("pools-of-darkness"):
         with pytest.raises(sg.DosSaveError):
             sg.word(data, sg.PARTY_SIZE, shape)
@@ -609,3 +610,225 @@ def test_a_container_of_an_unknown_length_is_refused():
         sg.save_shape_for(9999)
     with pytest.raises(sg.DosSaveError):
         sg.character_files(bytes(9999))
+
+
+# --- Pools of Darkness: the byte-wide variable array (#175) -------------------
+#
+# The first three titles write 2560 `u16le` ECL variables from `$4900`; this
+# one writes 1024 of them one byte wide from file offset 0, variable *N* at
+# offset *N* - 1. Everything above indexes the word array, so nothing above
+# covers a single line of this. The offsets came out of the writer in
+# `GAME.OVR` and are checked here against the containers on this machine.
+
+
+def pty() -> bytearray:
+    """A well-formed empty Pools of Darkness container."""
+    return bytearray(sg.SAVE_POOLS_OF_DARKNESS.size)
+
+
+def test_a_byte_variable_is_its_index_less_one_at_both_ends():
+    """`GetVar` decrements the index before adding it to the block base, so
+    variable 1 is offset 0 and variable 1024 is offset 1023. Tested at the
+    edges rather than the middle: an off-by-one here reads the neighbouring
+    variable and hands back a plausible number."""
+    assert sg.pod_var_offset(sg.POD_VAR_FIRST) == 0
+    assert sg.pod_var_offset(sg.POD_VAR_COUNT) == sg.POD_VAR_COUNT - 1
+    for outside in (0, -1, sg.POD_VAR_COUNT + 1):
+        with pytest.raises(sg.DosSaveError):
+            sg.pod_var_offset(outside)
+
+
+def test_the_byte_array_is_refused_on_a_title_that_has_no_such_thing():
+    """Offset `index - 1` in a Pool of Radiance save is the low byte of
+    somebody else's word, so answering there would be a lie rather than an
+    error."""
+    for key in ("pool-of-radiance", "curse-of-the-azure-bonds",
+                "secret-of-the-silver-blades"):
+        shape = sg.save_shape_for(key)
+        assert shape.var_bytes == 0
+        with pytest.raises(sg.DosSaveError):
+            sg.pod_var_offset(sg.POD_IN_DUNGEON, shape)
+    with pytest.raises(sg.DosSaveError):
+        sg.pod_var(bytes(sg.SAVGAM_SIZE), sg.POD_IN_DUNGEON)
+
+
+def test_a_byte_variable_goes_back_the_way_it_came():
+    save = pty()
+    sg.put_pod_var(save, sg.POD_PARTY_COUNT, 5)
+    assert sg.pod_var(bytes(save), sg.POD_PARTY_COUNT) == 5
+    assert save[sg.POD_PARTY_COUNT - 1] == 5
+    assert sum(save[:sg.POD_VAR_COUNT]) == 5   # and nothing else moved
+
+
+def test_the_clock_is_seven_digits_with_the_minutes_two_wide():
+    """Seven digits at file 4-10 -- one more than Pool of Radiance's six --
+    and the minutes are tens above units at file 6 and 5, which is the same
+    arithmetic `clock` does over words."""
+    save = pty()
+    for i, digit in enumerate((9, 3, 5, 21, 17, 11, 42)):
+        sg.put_pod_var(save, sg.POD_CLOCK + i, digit)
+    assert sg.pod_clock(bytes(save)) == (21, 53, 17, 11, 42)
+    assert save[4:11] == bytes((9, 3, 5, 21, 17, 11, 42))
+
+
+def test_every_clock_digit_has_a_radix_and_the_first_six_are_pool_of_radiances():
+    """The seventh radix is the new one: 100, and its overflow is what ages
+    every character by a year."""
+    assert len(sg.POD_CLOCK_RADIX) == sg.POD_CLOCK_DIGITS
+    assert sg.POD_CLOCK_RADIX[:6] == (10, 10, 6, 24, 30, 12)
+
+
+def test_the_pools_of_darkness_square_block_is_twelve_bytes():
+    """It was read as four unnamed bytes and then an eight-byte block until
+    #175, which put the square three bytes past where it is. The widths still
+    tile the file either way -- that is what makes the error survivable and
+    is why the tiling check alone cannot catch it."""
+    shape = sg.save_shape_for("pools-of-darkness")
+    assert shape.square_bytes == 12
+    assert (shape.pos_x, shape.pos_y, shape.pos_facing) == (1024, 1025, 1026)
+    assert shape.unnamed == 0
+    assert (sg.POD_PREVIOUS_MODE, sg.POD_MODE) == (1029, 1030)
+    assert (sg.POD_MAP, sg.POD_MAP_BLOCK) == (1031, 1033)
+    assert shape.party_table - 1 == 1035          # the count of names
+
+
+def test_the_character_table_is_eight_slots_in_every_title():
+    """8 x 41 = 328 = six entries plus the 82 bytes this module called UI
+    scratch, so no offset moves; what changed in #175 is what the 82 are.
+
+    The second reading is not a guess: Pools of Darkness' own loader seeks to
+    5140 in a Silver Blades container and reads 0x148 = 328 bytes there, and
+    5140 is that shape's count byte to the byte."""
+    assert sg.NAME_SLOTS * sg.PARTY_ENTRY == (sg.PARTY_ENTRIES * sg.PARTY_ENTRY
+                                              + sg.UI_SCRATCH)
+    silver = sg.save_shape_for("secret-of-the-silver-blades")
+    assert silver.party_table - 1 == 5140
+    for shape in sg.SAVE_SHAPES:
+        assert shape.size - shape.party_table == sg.NAME_SLOTS * sg.PARTY_ENTRY
+
+
+# --- and against the containers on this machine ------------------------------
+
+
+def _darkness_only():
+    """The shipped Pools of Darkness containers, without the Savage Frontier
+    ones that share their size.
+
+    The trap #175 names: a sweep that filters on 1364 bytes finds **four**
+    files under two slot letters and calls two titles' specimens one title's.
+    Only the directory says which game wrote a file, so that is what is
+    filtered on.
+    """
+    found = [(path, data) for path, data in _of("pools-of-darkness")
+             if "Pools of Darkness" in str(path)]
+    if not found:
+        pytest.skip("no shipped Pools of Darkness container here")
+    return found
+
+
+def test_the_two_titles_that_share_this_shape_are_not_the_same_specimen():
+    """Filtering on size alone doubles the apparent corpus. The containers
+    differ, so the filter is checkable rather than a matter of taste."""
+    darkness = {data for _, data in _darkness_only()}
+    others = {data for path, data in _of("pools-of-darkness")
+              if "Pools of Darkness" not in str(path)}
+    if not others:
+        pytest.skip("only one title of this shape is on this machine")
+    assert darkness.isdisjoint(others)
+
+
+def test_the_new_game_initialiser_accounts_for_every_byte_of_the_array():
+    """`FillChar(block, 1024, 0)` and then six assignments is the whole of
+    what a shipped container holds -- offsets 17, 31, 33, 38 and 56, which
+    are variables 18, 32, 34, 39 and 57.
+
+    So the containers are not merely unplayed; they are the initialiser's
+    output, and that is why no amount of reading them names a field."""
+    initialised = {17: 4, 31: 6, 33: 1, 38: 3, 56: 10}
+    for path, data in _darkness_only():
+        nonzero = {i: data[i] for i in range(sg.POD_VAR_COUNT) if data[i]}
+        assert nonzero == initialised, path
+
+
+def test_a_shipped_container_reads_as_a_party_of_six_in_a_dungeon():
+    for path, data in _darkness_only():
+        assert sg.pod_var(data, sg.POD_PARTY_COUNT) == 6, path
+        assert sg.pod_var(data, sg.POD_PARTY_COUNT) == sg.party_size(data), path
+        assert sg.pod_in_dungeon(data), path
+        assert sg.pod_clock(data) == (0, 0, 0, 0, 0), path
+        assert data[sg.POD_PREVIOUS_MODE] == sg.POD_MODE_DUNGEON, path
+
+
+# --- the engine-written containers, if a drive has left any ------------------
+#
+# `tools/dospod.py` drives the game and snapshots its `SAVE` directory into
+# `work/p175/`, which is gitignored: these run where a drive has been done and
+# skip everywhere else, CI included. What stands behind the offsets without
+# them is the writer in `GAME.OVR`, and #175's comment carries the byte tables
+# these assertions were read off so they can be re-taken after `work/` is
+# cleared.
+
+
+def _played():
+    """Every distinct engine-written Pools of Darkness container under
+    `work/p175`, which is where `tools/dospod.py` leaves them.
+
+    A file byte-identical to a shipped container is one `Session.stage`
+    copied in rather than one the engine wrote, so it is dropped: counting it
+    would put the initialiser's own output in a corpus of played saves.
+
+    That makes this need the archives as well as the drive output, which is
+    not a real limitation -- the drive stages the game out of the archives, so
+    a machine with `work/p175` and no archives is a machine where somebody
+    deleted them afterwards.
+    """
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent / "work" / "p175"
+    if not root.is_dir():
+        pytest.skip("no Pools of Darkness drive here; run tools/dospod.py")
+    shipped = {data for _, data in _of("pools-of-darkness")}
+    out = {}
+    for path in sorted(root.rglob("*.PTY")):
+        data = path.read_bytes()
+        if len(data) != sg.SAVE_POOLS_OF_DARKNESS.size or data in shipped:
+            continue
+        out.setdefault(data, path)
+    if not out:
+        pytest.skip("work/p175 holds no engine-written container")
+    return [(path, data) for data, path in out.items()]
+
+
+def test_every_played_container_reads_as_a_six_strong_party_in_a_dungeon():
+    """Eight distinct containers on this machine when #175 was written. The
+    party size agrees in both places it is carried -- variable 32 and the
+    count byte the writer emits after the loop -- which is what says the
+    twelve-byte block ends where this module puts it."""
+    played = _played()
+    for path, data in played:
+        assert sg.pod_var(data, sg.POD_PARTY_COUNT) == 6, path
+        assert sg.party_size(data) == 6, path
+        assert sg.pod_in_dungeon(data), path
+        assert len(sg.character_files(data)) == sg.PARTY_ENTRIES, path
+    assert len(played) >= 1
+
+
+def test_a_played_square_is_on_the_grid_and_the_facing_is_doubled():
+    """The facing is stored doubled -- 0 N, 2 E, 4 S, 6 W -- so an odd byte
+    there would mean the square block had slipped. Read against the game's
+    own status line, `11,2 S 00:04` and `8,2 W 00:07`."""
+    for path, data in _played():
+        x, y, facing = sg.position(data)
+        assert data[sg.SAVE_POOLS_OF_DARKNESS.pos_facing] % sg.FACING_SCALE == 0, path
+        assert 0 <= facing <= 3, path
+        assert 0 <= x < 16 and 0 <= y < 16, path
+
+
+def test_a_played_clock_is_a_time_and_not_seven_arbitrary_bytes():
+    """Every digit under its own radix. A block read one byte out would put
+    the party-count byte or a script variable in the clock, and those go
+    past 24 and 30 as digits never do."""
+    for path, data in _played():
+        digits = [sg.pod_var(data, sg.POD_CLOCK + i)
+                  for i in range(sg.POD_CLOCK_DIGITS)]
+        for digit, radix in zip(digits, sg.POD_CLOCK_RADIX):
+            assert 0 <= digit < radix, (path, digits)

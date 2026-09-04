@@ -34,12 +34,24 @@ The file, in five regions
                       as one byte.  Outdoors x and y freeze at the last
                       indoor square and the live square is the VM pair
                       ``$49C3``/``$49C4`` -- `travel_square`.
-``12809``-``13136``   six 41-byte character entries -- a length-prefixed
+``12809``-``13136``   eight 41-byte character slots -- a length-prefixed
                       ``CHRDAT<letter><n>`` filename the engine *actually
                       loads the party from* (proven: a slot-J file staged as
                       slot C loaded J's characters), each followed by 32
-                      bytes of heap scratch -- then 82 bytes of UI scratch.
+                      bytes of heap scratch.  Six are filled and the last two
+                      hold the stack, which is the 82 bytes this page called
+                      UI scratch until #175 -- see ``NAME_SLOTS``.
 ====================  =========================================================
+
+Pools of Darkness is the other shape
+------------------------------------
+It writes 1024 **byte-wide** ECL variables from file offset 0, variable *N* at
+offset *N* - 1, where the first three titles write 2560 ``u16le`` words from
+``$4900``.  Nothing in it can line up with ``$5012`` or ``$503E`` under any
+origin, which is why #53 could not find them.  ``pod_var`` reads it,
+``POD_CLOCK`` and its siblings name what the engine puts in it, and its square
+block is twelve bytes rather than eight -- ``SAVE_POOLS_OF_DARKNESS`` and
+`docs/141-dos-savegame.md` carry the evidence (#175).
 """
 from __future__ import annotations
 
@@ -133,6 +145,78 @@ PARTY_NAME_LEN = 9           # length byte + up to 8 of "CHRDAT<letter><n>"
 #: holds `Camp: ` in a Pool of Radiance save and `Choose a FUNCTION` in a
 #: Silver Blades one.
 UI_SCRATCH = 82
+#: The character-file table is **eight** 41-byte slots, not six and then 82
+#: bytes of scratch.  Pools of Darkness' save routine copies names into
+#: `[bp + 41*i - 0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes in
+#: one `BlockWrite` (`GAME.OVR:0x13595` and `0x13647`), and its *loader* reads
+#: the same 328 for a Silver Blades container after seeking to 5140 -- which is
+#: `SAVE_SECRET_OF_THE_SILVER_BLADES.party_table - 1` exactly (#175).
+#:
+#: So the 82 bytes are slots 6 and 7 left holding whatever was on the stack,
+#: which is why they read `Camp: ` and `Choose a FUNCTION`.  8 x 41 = 328 =
+#: `PARTY_ENTRIES * PARTY_ENTRY + UI_SCRATCH`, so no offset moves and both
+#: constants keep their values; what changes is what the last 82 bytes *are*.
+#: CONFIRMED for Pools of Darkness and Silver Blades from the code above;
+#: PROBABLE for Pool of Radiance and Curse, where the evidence is that slots 6
+#: and 7 land on the junk at exactly the 41-byte stride -- 13055 reads
+#: `lter Exit` and 13096 a heap word in Donald's A, B and J.
+#:
+#: `character_files` still reads `PARTY_ENTRIES` of them, because no container
+#: on this machine holds a seventh name and a junk slot with a plausible
+#: length byte would be read as a filename the engine loads the party from.
+NAME_SLOTS = 8
+
+# ---------------------------------------------------------------------------
+# Pools of Darkness: the byte-wide variable array (#175)
+# ---------------------------------------------------------------------------
+#: How many one-byte ECL variables the array holds.  `GAME.OVR:0x1A275` is the
+#: only `GetMem` that fills the pointer the save routine writes from, and it
+#: asks for `0x400`.
+POD_VAR_COUNT = 1024
+#: `GetVar`/`SetVar` (`GAME.OVR:0x6F14` and `0x6D51`) do `ax := index; dec ax`
+#: and land on `les di, [0x87F8] / add di, ax / add di, 0xFFFF`, so **variable
+#: *N* is file offset *N* - 1** and the numbering is 1-based.
+POD_VAR_FIRST = 1
+
+#: The clock: seven digits at file offsets 4-10, one byte each, each carrying
+#: into the next at its own radix.  `GAME.OVR:0x27AF4` copies `block[i + 4]`
+#: for `i` in 0..6 into a local word array, increments one digit, calls the
+#: carry routine at `0x279F6`, and copies all seven back.
+POD_CLOCK = 5                # variable 5, file offset 4
+POD_CLOCK_DIGITS = 7
+#: The radices, in digit order.  The carry routine indexes a seven-word table
+#: at `DS:0x6D0A`; `GAME.EXE` file offset `0xE8F0` holds
+#: `0a 00 0a 00 06 00 18 00 1e 00 0c 00 64 00` and nothing else in either
+#: binary is a run of seven plausible radices.  It is Pool of Radiance's own
+#: six -- `10 10 6 24 30 12`, `docs/141-dos-savegame.md` -- with **100**
+#: appended, and when the seventh overflows the engine walks the character
+#: list adding one to the word at record offset `0xB0` in each: the party
+#: ageing a year.
+POD_CLOCK_RADIX = (10, 10, 6, 24, 30, 12, 100)
+
+POD_DUNGEON_MAP = 19         # file 18: `LoadX(block[0x12])` at `0x12FCA`
+POD_WILDERNESS_X = 37        # file 36
+POD_WILDERNESS_Y = 38        # file 37
+POD_PARTY_COUNT = 32         # file 31: the save loop's bound, `es:[di + 0x1f]`
+#: File 33.  Nonzero runs the dungeon; zero runs the wilderness.  Two sites
+#: switch the interface mode on it alone -- `GAME.OVR:0x1522` and `0x6E1B`
+#: both read `es:[di + 0x21]` and write mode 4 when it is set, 3 when it is
+#: not -- and `GetVar` index 17 halves the facing only when it is set.
+POD_IN_DUNGEON = 34
+POD_WILDERNESS_REGION = 58   # file 57, indexed into a table at `DS:0x7D08`
+#: The last variable the engine itself names.  `tools/dosptrfields.py` finds
+#: displacements 0-58 and 195-197 off the block pointer and nothing else, so
+#: variables 1-59 and 196-198 are the engine's and every other index is
+#: whatever an `ECL1.DAX` script chooses to put there.
+POD_ENGINE_VARS = 59
+
+#: The twelve bytes of the Pools of Darkness square block, by file offset.
+#: `shape.pos_x`/`pos_y`/`pos_facing` are the first three; these name the rest.
+POD_PREVIOUS_MODE = 1029     # `DS:0x880D`, only ever assigned from `0x880C`
+POD_MODE = 1030              # `DS:0x880C`: 3 wilderness, 4 dungeon, 2 in camp
+POD_MAP = 1031               # `DS:0xA9F8`, a word; zeroed on leaving a dungeon
+POD_MAP_BLOCK = 1033         # `DS:0xA9FA`, a word; the loader's second argument
+POD_MODE_WILDERNESS, POD_MODE_DUNGEON = 3, 4
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +249,12 @@ class DosSaveShape:
     #: `.DAT` for the first three; Pools of Darkness writes `.PTY` and keeps
     #: a 12-byte `VAULT<slot>.DAT` beside it, all zero in both specimens.
     suffix: str = ".DAT"
+    #: One-byte ECL variables at file offset 0, variable *N* at offset *N*-1
+    #: -- 1024 of them in Pools of Darkness, none anywhere else (#175).
+    #: This is the *other* form of the variable array: the first three titles
+    #: write 2560 `u16le` words at `var_offset`, and this one writes one byte
+    #: per variable from the front of the file.
+    var_bytes: int = 0
     #: Bytes before the header byte that nothing here has decoded.
     head: int = 0
     #: 1 where byte `head` is the area's `.DAX` container number, 0 where the
@@ -177,10 +267,16 @@ class DosSaveShape:
     #: Bytes between the script buffer and the square block that no specimen
     #: has explained.  Zero in Pool of Radiance.
     unnamed: int = 0
+    #: The square block: x, y, facing, engine state, and the party size as its
+    #: last byte.  Eight bytes in the first three titles and **twelve** in
+    #: Pools of Darkness, whose writer lays it out as five bytes from
+    #: `DS:0xA9F3`, two interface-mode bytes, two words and the count (#175).
+    square_bytes: int = 8
 
     def __post_init__(self) -> None:
-        total = (self.head + self.dax_bytes + 2 * self.var_words
-                 + self.script_bytes + self.unnamed + 8
+        total = (self.var_bytes + self.head + self.dax_bytes
+                 + 2 * self.var_words
+                 + self.script_bytes + self.unnamed + self.square_bytes
                  + PARTY_ENTRIES * PARTY_ENTRY + UI_SCRATCH)
         if total != self.size:
             raise DosSaveError(
@@ -190,20 +286,28 @@ class DosSaveShape:
     @property
     def var_offset(self) -> "int | None":
         """File offset of the word for `$4900`, or None where there is none."""
-        return self.head + self.dax_bytes if self.var_words else None
+        return (self.var_bytes + self.head + self.dax_bytes
+                if self.var_words else None)
 
     @property
     def script_buffer(self) -> "tuple[int, int] | None":
         """Where the staged script sits, or None where none is staged."""
         if not self.script_bytes:
             return None
-        start = self.head + self.dax_bytes + 2 * self.var_words
+        start = self.var_bytes + self.head + self.dax_bytes + 2 * self.var_words
         return start, start + self.script_bytes
 
     @property
     def square(self) -> int:
-        """The eight-byte square block; its last byte is the party size."""
-        return self.size - UI_SCRATCH - PARTY_ENTRIES * PARTY_ENTRY - 8
+        """The square block; its last byte is the party size.
+
+        `square_bytes` wide, which is 8 in the first three titles and 12 in
+        Pools of Darkness.  Computed backwards from the end of the file
+        because the party table is the anchor every title's map was measured
+        from.
+        """
+        return (self.size - UI_SCRATCH - PARTY_ENTRIES * PARTY_ENTRY
+                - self.square_bytes)
 
     @property
     def pos_x(self) -> int:
@@ -216,6 +320,11 @@ class DosSaveShape:
         in a played save (#220). A writer that hardcodes Pool of Radiance's
         constants for another title's shape is the bug #220 found: use
         `pos_x`/`pos_y`/`pos_facing` instead.
+
+        Pools of Darkness is the second title to prove the point: its square
+        is at 1024 and not at the 1028 this row said until #175, because the
+        four bytes called `unnamed` in front of it were the last four bytes
+        of its square block all along.
         """
         return self.square
 
@@ -229,7 +338,7 @@ class DosSaveShape:
 
     @property
     def party_table(self) -> int:
-        return self.square + 8
+        return self.square + self.square_bytes
 
 
 #: Pool of Radiance, 13137 bytes.  Every offset above is this row's.
@@ -260,19 +369,31 @@ SAVE_SECRET_OF_THE_SILVER_BLADES = DosSaveShape(
     size=5469, script_bytes=0, unnamed=12)
 
 #: Pools of Darkness, 1364 bytes of `SAVGAM<slot>.PTY` and a 12-byte
-#: `VAULT<slot>.DAT` that is all zero in both specimens.  Its last 336 bytes
-#: are the other three titles' -- the square block ending in a party size of
-#: 6, six 41-byte `CHRDAT` entries, 82 bytes of UI scratch -- with four
-#: unnamed bytes of its own in front of them, where Curse and Silver Blades
-#: have twelve and Pool of Radiance none.
-#: **Everything before that is undecoded**: 1024 bytes holding five nonzero
-#: bytes between them, with no header byte and no variable array at Pool of
-#: Radiance's addresses.  `$5012` and `$503E` are not there under any origin
-#: tried.
+#: `VAULT<slot>.DAT` that is all zero in both specimens.
+#:
+#: **The 1024 bytes at the front are the ECL variable array, one byte per
+#: variable, variable *N* at file offset *N*-1** (#175).  Not the 2560
+#: `u16le` words the first three titles write -- which is why nothing here
+#: could find `$5012` or `$503E` under any origin: the array is byte wide and
+#: based at 0 rather than at an ECL address.  `var_bytes` rather than
+#: `var_words`, and `pod_var` rather than `word`.
+#:
+#: Read out of the writer, not out of a save: `GAME.OVR` file offset `0x134BA`
+#: is `BlockWrite(f, [DS:0x87F8]^, 0x400)`, and `GAME.OVR:0x1A275` is the one
+#: `GetMem(0x400)` that fills that pointer, so the region is one allocation
+#: written whole.  The five `BlockWrite`s that follow it name the twelve bytes
+#: of the square block, and the loop at `0x13595` names the party table.
+#:
+#: **Its square block is twelve bytes, not eight**, and the four this row
+#: called `unnamed` until #175 were its last four: `DS:0xA9F3`-`0xA9F7` (x, y,
+#: facing and two engine bytes), then `DS:0x880D` and `DS:0x880C` (the
+#: previous and current interface modes), then two words `DS:0xA9F8` and
+#: `DS:0xA9FA` the dungeon loader passes to `LoadMap`, then the count of
+#: character files.
 SAVE_POOLS_OF_DARKNESS = DosSaveShape(
     key="pools-of-darkness", title="Pools of Darkness", size=1364,
-    suffix=".PTY", head=1024, dax_bytes=0, var_words=0, script_bytes=0,
-    unnamed=4)
+    suffix=".PTY", var_bytes=POD_VAR_COUNT, dax_bytes=0, var_words=0,
+    script_bytes=0, square_bytes=12)
 
 SAVE_SHAPES: "tuple[DosSaveShape, ...]" = (
     SAVE_POOL_OF_RADIANCE, SAVE_CURSE_OF_THE_AZURE_BONDS,
@@ -424,6 +545,63 @@ def word(save: bytes, address: int,
     return struct.unpack_from("<H", save, word_offset(address, shape))[0]
 
 
+# --- Pools of Darkness: the byte-wide array ---------------------------------
+def pod_var_offset(index: int, shape: "DosSaveShape | None" = None) -> int:
+    """File offset of the byte holding ECL variable `index`.
+
+    `index - 1`, and the subtraction is the whole finding: `GetVar` and
+    `SetVar` decrement the index and add it to the block base (#175).  A shape
+    with no byte array raises rather than answering, because offset `index -
+    1` in a Pool of Radiance save is a word of somebody else's variable.
+    """
+    shape = shape or SAVE_POOLS_OF_DARKNESS
+    if not shape.var_bytes:
+        raise DosSaveError(
+            f"a {shape.title} saved game holds no byte-wide variable array")
+    if not POD_VAR_FIRST <= index < POD_VAR_FIRST + shape.var_bytes:
+        raise DosSaveError(
+            f"variable {index} is outside the {shape.var_bytes} this title "
+            f"has")
+    return index - POD_VAR_FIRST
+
+
+def pod_var(save: bytes, index: int,
+            shape: "DosSaveShape | None" = None) -> int:
+    """One ECL variable, as the engine's own 1-based index."""
+    shape = _shaped(save, shape)
+    return save[pod_var_offset(index, shape)]
+
+
+def put_pod_var(save: bytearray, index: int, value: int,
+                shape: "DosSaveShape | None" = None) -> None:
+    """Write one ECL variable.  One byte: `SetVar`'s word form writes the
+    variable and the one after it, so a caller wanting a word writes both."""
+    shape = _shaped(save, shape)
+    save[pod_var_offset(index, shape)] = value & 0xFF
+
+
+def pod_in_dungeon(save: bytes, shape: "DosSaveShape | None" = None) -> bool:
+    """Is the party in a dungeon rather than the wilderness?
+
+    Variable 34, file offset 33.  The counterpart of `outdoors` for a title
+    that has no `$49E6`, and read the same way round as the engine reads it:
+    two sites switch the interface mode on this byte and nothing else.
+    """
+    return pod_var(save, POD_IN_DUNGEON, shape) != 0
+
+
+def pod_clock(save: bytes, shape: "DosSaveShape | None" = None
+              ) -> "tuple[int, int, int, int, int]":
+    """(hour, minute, day, month, year) from the seven digits at 4-10.
+
+    Minutes are two digits at file 5 and 6, tens above units, exactly as Pool
+    of Radiance encodes them; `clock` above is the same arithmetic over words.
+    The sub-minute digit at file 4 is dropped, as it is there.
+    """
+    d = [pod_var(save, POD_CLOCK + i, shape) for i in range(POD_CLOCK_DIGITS)]
+    return d[3], d[2] * 10 + d[1], d[4], d[5], d[6]
+
+
 def dax_number(save: bytes, shape: "DosSaveShape | None" = None) -> int:
     """Which GEO/ECL/WALLDEF/8X8D container holds the current area."""
     shape = _shaped(save, shape)
@@ -476,6 +654,13 @@ def position(save: bytes, shape: "DosSaveShape | None" = None
 
     The shipped Curse and Silver Blades containers hold `$FF` in all three,
     which is a party that has never stood anywhere rather than a square.
+
+    **Pools of Darkness reads correctly here** as of #175, and did not before:
+    its square is at 1024-1026 rather than the 1028-1030 the old `unnamed=4`
+    row put it at.  Eight engine-written containers agree with the game's own
+    status line -- `11,2 S 00:04` against (11, 2, 2) and `8,2 W 00:07` against
+    (8, 2, 3) -- and a single right turn moved byte 1026 from 4 to 6 and
+    nothing else in the file's first 1036 bytes.
     """
     shape = _shaped(save, shape)
     return (save[shape.pos_x], save[shape.pos_y],

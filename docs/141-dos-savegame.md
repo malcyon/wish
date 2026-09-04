@@ -53,7 +53,7 @@ in different places and Pools of Darkness writes a `SAVGAM<slot>.PTY` instead.
 | 1-5120 | 5120 | 2560 `u16le` **VM variables**, indexed by ECL address: `offset = 1 + 2*(addr − $4900)`. Sparse: **2407 of 2560 words are zero in all 11 engine-written indoor specimens, and 2402 across all 21**. The five words in the difference are exactly `$49C3`, `$49C4`, `$507A`, `$507B` and `$507C` — the travel square and the three overland-only words below, nothing else. Re-take it with `tools/dossavcensus.py` | CONFIRMED |
 | 5121-12800 | 7680 | the **ECL text buffer**: the current area's script, byte-identical to its `ECL<n>.DAX` block from byte 2 on — every block opens `88 13`, `u16le` 5000, and the save carries everything after it. Bytes past the script's end are **all zeros** in every specimen held (6 of 6 checked, remnants of 209/1972/3/1113 bytes; an earlier claim of stale remnants was wrong). **Live on load**: a save built for a new area that still carries the old area's script dies in `Load3DMap` however many other variables it writes, so writing the target area's own script is one of the writes of the recipe below | CONFIRMED — #60, `work/p60/run2` variant X1; zero-fill measured in #59's outdoor pass |
 | 12801-12808 | 8 | the square and the party size — see below | CONFIRMED |
-| 12809-13136 | 328 | six 41-byte character entries, then 82 bytes of UI scratch (menu-text fragments, heap pointers). Each entry is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters | CONFIRMED |
+| 12809-13136 | 328 | **eight** 41-byte character slots, of which six are filled. Each is a length-prefixed `CHRDAT<letter><n>` filename followed by 32 bytes of heap junk. **The filenames are live**: the engine loads the party from the files named here, not from the slot letter chosen at the LOAD menu — slot J's file staged as slot C loaded J's characters — and its own resave rewrites the letters. This page said "six entries, then 82 bytes of UI scratch" until #175; the 82 are slots 6 and 7 holding the stack, which is why they read `lter Exit` and `Camp: ` at exactly the 41-byte stride | CONFIRMED as 328 bytes of `CHRDAT` slots; the count of **eight** is CONFIRMED for Pools of Darkness and Silver Blades from the code and PROBABLE here — see the settling experiment below |
 
 ## The square and the party size
 
@@ -232,14 +232,24 @@ most save directories twice and for three titles the copies are identical.
 
 | region | Pool of Radiance | Curse | Silver Blades | Pools of Darkness | grade |
 |---|---|---|---|---|---|
-| undecoded head | — | — | — | **1024** | UNKNOWN, and see below |
+| ECL variables, **one byte each**, variable *N* at offset *N*−1 | — | — | — | **1024** | CONFIRMED from the writer (#175) — see the next section |
 | container-number byte | 1 | 1 | 1 | — | CONFIRMED — it equals `$5012` in all nine containers that have both |
 | ECL variables, `u16le` from `$4900` | 2560 | 2560 | 2560 | — | CONFIRMED for the three; the word count is Pool of Radiance's and untested in the other two |
 | staged `ECL<n>.DAX` script | 7680 | 7680 | — | — | CONFIRMED for Pool of Radiance; PROBABLE for Curse, whose buffer is all zero in both shipped saves |
-| unnamed, before the square block | — | 12 | 12 | 4 | UNKNOWN — Curse and Silver Blades read `07 0d 00 00 00 00 00 00 00 01 00 ff` in both specimens each, Pools of Darkness `07 0d 00 00` |
-| square block, last byte the party size | 8 | 8 | 8 | 8 | CONFIRMED — the party-size byte reads 6 in all thirteen |
-| six 41-byte `CHRDAT` entries | 246 | 246 | 246 | 246 | CONFIRMED — six names, 41 apart, in all thirteen |
-| UI scratch | 82 | 82 | 82 | 82 | CONFIRMED — and it really is text scratch: `Camp: ` in a Pool of Radiance save, `Choose a FUNCTION` in a Silver Blades one |
+| unnamed, before the square block | — | 12 | 12 | — | UNKNOWN — Curse and Silver Blades read `07 0d 00 00 00 00 00 00 00 01 00 ff` in both specimens each. **Pools of Darkness has none**: the four this table gave it were the last four bytes of its own square block (#175) |
+| square block, last byte the party size | 8 | 8 | 8 | **12** | CONFIRMED — the party-size byte reads 6 in all thirteen, and Pools of Darkness' twelve bytes are named one `BlockWrite` at a time below |
+| 41-byte `CHRDAT` slots | 8 × 41 | 8 × 41 | 8 × 41 | 8 × 41 | CONFIRMED as 328 bytes in all thirteen; **eight** slots CONFIRMED for Pools of Darkness and Silver Blades from the code, PROBABLE for the other two |
+
+**The last two slots are the 82 bytes this page called UI scratch.** Pools of
+Darkness' save routine copies each character's filename to `[bp + 41*i −
+0x171]` for `i` up to 8 and then writes `0x148` = 328 bytes in one
+`BlockWrite` (`GAME.OVR:0x13595` and `0x13647`), so the region is eight slots
+and the party fills six of them; the rest is the stack under the buffer, which
+is why it reads `Camp: ` and `Choose a FUNCTION`. Its *loader* reads the same
+328 bytes out of a **Silver Blades** container after seeking to 5140 — which
+is that shape's own count byte exactly — so the eight-slot reading is the
+engine's for that title too. Settling experiment for Pool of Radiance and
+Curse: the same `BlockWrite` census on their `GAME.OVR`s.
 
 **Curse and Silver Blades share Pool of Radiance's variable array**, at the
 same offset with the same ECL addresses. Two readings 1602 words apart agree:
@@ -256,26 +266,211 @@ the engine reloads the script from the container rather than carrying it. The
 one write of the recipe above that needs the player's own game files is the
 one Silver Blades and Pools of Darkness would not need.
 
-**Pools of Darkness' first 1024 bytes are undecoded.** There is no header
-byte, and neither `$5012` nor `$503E` sits at any offset under Pool of
-Radiance's origin. Five nonzero bytes in the whole region — because the
-shipped container is a party that has never been played, which is the same
-limit every claim above runs into.
-
-**What is missing is a played save.** Every Curse, Silver Blades and Pools of
-Darkness container on this machine is a shipped starting party: 272 to 295
-nonzero bytes in the whole file, an all-`$FF` square where the title has one,
-a zero clock, no quest flags and a script buffer that is entirely zero. Nothing about the variable array's *contents* can
-be measured from them, and the `07 0d` block cannot be attributed. The
-Steam `SavesDir` holds Pool of Radiance's app id and no other, so no played
-save of the other three exists here — the same specimen
-`#113 (Play DOS Curse far enough to save a party with items)` is about.
+**What is missing for Curse and Silver Blades is a played save.** Both
+containers of each is a shipped starting party: 272 to 295 nonzero bytes in
+the whole file, an all-`$FF` square, a zero clock, no quest flags and a script
+buffer that is entirely zero. Nothing about the variable array's *contents*
+can be measured from them and the `07 0d` block cannot be attributed. The
+Steam `SavesDir` holds Pool of Radiance's app id and no other — the same
+specimen `#113 (Play DOS Curse far enough to save a party with items)` is
+about. **Pools of Darkness is no longer in that list**: see the next section.
 
 **The size names the shape, not the game.** Treasures of the Savage Frontier
 writes the same 1364-byte `SAVGAM<slot>.PTY` and 12-byte `VAULT<slot>.DAT`
 that Pools of Darkness does, with the same 336-byte tail, and its two
 containers read cleanly through the Pools of Darkness row. Only the directory
 a file came from says which game wrote it.
+
+## Pools of Darkness: the byte-wide variable array (#175)
+
+**The 1024 bytes at the front are the ECL variable array, one byte per
+variable, and variable *N* is at file offset *N*−1.** Not the 2560 `u16le`
+words the first three titles write, which is why nothing here could find
+`$5012` or `$503E` under any origin: the array is byte wide and based at 0
+rather than at an ECL address. `goldbox.dos_savegame.pod_var` reads it and
+`SAVE_POOLS_OF_DARKNESS` is the shape.
+
+Read out of `GAME.OVR` rather than out of a save, so the played-save blocker
+this ticket carried from the day it was filed never had to be lifted.
+`tools/dosptrfields.py` is what censuses the structure, and
+`tools/dospod.py` is the drive that produced the containers the readings are
+checked against.
+
+### Where the file comes from, byte for byte
+
+The save routine's eight `BlockWrite` calls, in file order
+(`GAME.OVR:0x134BA` onwards). The load routine at `0x12BC5` reads the same
+eight regions in the same order.
+
+| file | size | source | grade |
+|---|---|---|---|
+| 0–1023 | 1024 | `[DS:0x87F8]^`, the variable array | CONFIRMED |
+| 1024–1028 | 5 | `DS:0xA9F3`–`0xA9F7` — x, y, facing and two engine bytes | CONFIRMED |
+| 1029 | 1 | `DS:0x880D`, the **previous** interface mode | CONFIRMED |
+| 1030 | 1 | `DS:0x880C`, the **current** interface mode | CONFIRMED |
+| 1031–1032 | 2 | `DS:0xA9F8`, a word the dungeon loader passes to `LoadMap` | CONFIRMED |
+| 1033–1034 | 2 | `DS:0xA9FA`, its second argument | CONFIRMED |
+| 1035 | 1 | the count of character files the writer's loop emitted | CONFIRMED |
+| 1036–1363 | 328 | eight 41-byte filename slots | CONFIRMED |
+
+1024 + 5 + 1 + 1 + 2 + 2 + 1 + 328 = 1364, the whole file with nothing over.
+**The block really is 1024 bytes**: `GAME.OVR:0x1A275` is
+`mov ax, 0x400 / lcall GetMem / mov [0x87F8], ax`, and it is the only write to
+that pointer in either binary, so the first region is one allocation written
+whole rather than a window onto something larger.
+
+**So the square is at 1024, not 1028.** The four bytes this page called
+"unnamed, before the square block" were the *last four* of a twelve-byte
+square block, and `position()` returned three bytes of engine state for this
+title until #175.
+
+### Variable *N* at offset *N*−1
+
+`GetVar` (`GAME.OVR:0x6F14`) and `SetVar` (`0x6D51`) both do `ax := index;
+dec ax`, dispatch a handful of indices to engine globals, and otherwise reach
+
+    les di, [0x87F8] / add di, ax / add di, 0xFFFF     ; block[index − 1]
+
+one byte wide, two when the caller asks for a word. The intercepted indices
+corroborate the arithmetic rather than escaping it: index 34 reads and writes
+`es:[di+0x21]` — offset 33, its natural home — at `0x6E1B`, and index 58
+writes `es:[di+0x39]` (offset 57) at `0x6EB1`.
+
+`tools/dosptrfields.py GAME.OVR --pointer 0x87f8` finds 248 load sites and
+displacements 0–58 and 195–197 and nothing else, so **variables 1–59 and
+196–198 are the engine's** and every other index is whatever an `ECL1.DAX`
+script puts there.
+
+### What the engine keeps in it
+
+| variable | file | what | grade |
+|---|---|---|---|
+| 5–11 | 4–10 | **the clock**, seven digits, one byte each — see below | CONFIRMED as the region; the ordering CONFIRMED for the minutes |
+| 19 | 18 | **the current dungeon map**, the id the loader passes to `LoadX` (`0x12FCA`) | CONFIRMED — 16 in all eight played containers and 0 in the shipped ones, and it is one of the three bytes the community's own debug-menu recipe edits (below) |
+| 22 | 21 | a second copy of the current map: zeroed by the initialiser and 16 in all eight played containers, the same value variable 19 holds | PROBABLE — never seen to disagree with variable 19, and no specimen separates them |
+| 198 | 197 | a third: 16 in seven of the eight played containers and 0 in the eighth | PROBABLE — the eighth is the one standing at a door with a script message pending, so what distinguishes it is not established |
+| 23, 24 | 22, 23 | **the square before the last step** | CONFIRMED — one step west wrote (11,2) here as 1024 went 11 → 10 |
+| 32 | 31 | **the party count**. The save routine's own loop bound: `cmp al, es:[di+0x1f]` at `0x13205` | CONFIRMED — 6 in all ten containers, and equal to the count byte at 1035 in all ten |
+| 34 | 33 | **dungeon (nonzero) or wilderness (zero)**. Two sites switch the interface mode on this byte alone — `0x1522` and `0x6E1B` write mode 4 when it is set and 3 when it is not — and `GetVar` index 17 halves the facing only when it is set | CONFIRMED as the selector, from two call sites; **never observed zero** — all ten containers are in a dungeon |
+| 37, 38 | 36, 37 | the wilderness square | PROBABLE (code only); zero in all ten |
+| 58 | 57 | the wilderness region, indexed into a table at `DS:0x7D08` (`0x12FE7`) | PROBABLE (code only); zero in all ten |
+| 18, 27, 39, 43, 44, 52, 57, 83, 85, 151, 192, 193 | | live and unnamed — see the census below | UNKNOWN |
+| 751–764 | 750–763 | a **script string buffer**: one container holds `PASSENGER DOCK` in ASCII here, and its screen reads `THIS DOOR READS 'PASSENGER DOCK'` | PROBABLE — one specimen |
+
+**A second, independent source says the same thing.** The community's recipe
+for reaching Pools of Darkness' hidden debug area is to hex-edit the `.PTY`
+and *set offsets 18, 21 and 197 to 1* —
+[`126-forum-findings.md`](126-forum-findings.md), where the same three offsets
+set to 2 do it for Dark Queen of Krynn. Those are **single bytes**, which only
+makes sense if the array is byte wide, and under this decode they are
+variables 19, 22 and 198: the map id the loader reads, and two copies of it.
+Found by a different person by a different method, years earlier, and it
+agrees offset for offset.
+
+**There is no separate quest-flag region, and that is the answer rather than a
+gap.** The whole 1024 bytes *is* the variable space, so a flag an ECL script
+sets is a byte in it at the index the script names. Which indices Pools of
+Darkness' scripts use is a question for `ECL1.DAX` and not for the save file.
+
+### The clock: seven digits at 4–10
+
+`GAME.OVR:0x27AF4` copies `block[i + 4]` for `i` in 0..6 into a local word
+array, adds one to the digit it was asked for, calls the carry routine at
+`0x279F6` after each addition, and copies all seven back. Pool of Radiance's
+clock is the same idea in six words instead of seven bytes.
+
+| digit | file | radix | what |
+|---|---|---|---|
+| 0 | 4 | 10 | sub-minute |
+| 1 | 5 | 10 | minute units |
+| 2 | 6 | 6 | minute tens |
+| 3 | 7 | 24 | hour |
+| 4 | 8 | 30 | day |
+| 5 | 9 | 12 | month |
+| 6 | 10 | 100 | year, and its overflow is what ages the party |
+
+The carry routine indexes a seven-word table at `DS:0x6D0A`. That resolves to
+`GAME.EXE` file offset `0xE8F0` under a DGROUP base of `0x7BE6`, and what is
+there is `0a 00 0a 00 06 00 18 00 1e 00 0c 00 64 00` — Pool of Radiance's own
+six radices with **100** appended, with clean boundaries either side. It is
+the only run of seven plausible radices in either binary. When digit 6
+overflows, the routine walks the character list adding one to the word at
+record offset `0xB0` in every character, which is the party ageing a year.
+
+CONFIRMED for the region and for the minutes: the two containers whose status
+line was captured read `00:04` and `00:07` on screen against file offset 5 =
+4 and 5 = 7, with every other digit zero. PROBABLE for the four digits above
+the minutes, where the radix table is the only evidence — no container on
+this machine has a clock past nine minutes. Settling experiment: drive
+`tools/dospod.py` far enough to pass an hour and read offsets 6 and 7.
+
+### The square block, 1024–1035
+
+| file | what | grade |
+|---|---|---|
+| 1024, 1025 | x, y on a 16 × 16 grid. The dungeon step at `0x7870` wraps 0 → 15 and 15 → 0 in both | CONFIRMED — `11,2 S 00:04` and `8,2 W 00:07` on the game's own status line against (11,2) and (8,2) in the file, and one step west moved 1024 from 11 to 10 alone |
+| 1026 | facing, **doubled**: 0 N, 2 E, 4 S, 6 W, which is Pool of Radiance DOS's own encoding at 12803. `SetVar` index 17 takes 0–3 and stores 0/2/4/6 | CONFIRMED for S and W — one right turn from `11,2 S` to `11,2 W` moved this byte from 4 to 6 and **no other byte in the first 1036**. N and E are the code's reading only |
+| 1027, 1028 | `DS:0xA9F6` and `DS:0xA9F7`, reachable as variables 50 and 45 | UNKNOWN — 1028 is 3 in six played containers and 0 in the two saved right after a step |
+| 1029 | the **previous** interface mode. `DS:0x880D` is only ever assigned from `DS:0x880C` | CONFIRMED as the previous mode from the code; 4 in all ten containers |
+| 1030 | the **current** interface mode: 3 wilderness, 4 dungeon, and 2 in all eight engine-written containers because the game is showing its own save menu when it writes the file | CONFIRMED as the mode; the 3/4 pairing CONFIRMED from `0x1522` and `0x6E1B`, the 2 measured |
+| 1031–1032 | `DS:0xA9F8`. The loader takes the dungeon branch when this word is positive and the wilderness branch when it is not, and `SetVar` zeroes it when the party leaves a dungeon | PROBABLE — 1 in all eight played containers, 0 in the shipped stubs |
+| 1033–1034 | `DS:0xA9FA`, `LoadMap`'s second argument | UNKNOWN — zero in all ten |
+| 1035 | the count of character files, which is the party size | CONFIRMED — the writer's own loop counter, and 6 in all ten |
+
+### The corpus, and what the shipped containers actually are
+
+**`FillChar(block, 1024, 0)` and six assignments is the whole of a shipped
+container.** `GAME.OVR:0x1A4B5` zeroes the block and then writes
+`es:[di+0x26] = 3`, `es:[di+0x21] = 1`, `es:[di+0x15] = 0`,
+`es:[di+0x38] = 0xA` and `es:[di+0x11] = 4`, and the party count at
+`es:[di+0x1f]` follows when six characters join. That is offsets 38, 33, 21,
+56, 17 and 31 — **exactly and only** the five nonzero bytes both shipped
+containers hold, at 17 = 4, 31 = 6, 33 = 1, 38 = 3, 56 = 10. So they are not
+merely unplayed; they are the initialiser's output, which is why no amount of
+reading them named a field. CONFIRMED — the code and both containers agree on
+all five.
+
+**Eight engine-written containers exist**, from `tools/dospod.py` drives under
+`work/p175` (`clock1`, `diff1`, `diff2`, `run16`, `run17`), all in a dungeon
+at 00:04–00:07 with a six-strong party.
+`tools/dossavcensus.py --title pools-of-darkness work/p175` re-takes every
+count on this page and marks the two shipped stubs; 36 of the 1024 variables
+are live in at least one of them and 988 are zero in all twelve.
+
+**The two one-action diffs are the strongest evidence here**, and they are
+single-byte:
+
+| pair | action | bytes that moved below 1036 |
+|---|---|---|
+| `diff1/C` → `diff1/D` | one right turn | 1026 only, 4 → 6 |
+| `diff1/D` → `diff1/E` | one step west | 5 (the clock), 22 and 23 (the previous square, → 11, 2), 26, 56, 1024 (11 → 10) and 1028 |
+
+### Negative results, so nobody re-runs them
+
+* **There is no header byte and no `$4900`-based word array**, and there is now
+  a reason rather than an absence: the array is byte wide and 1-based from
+  file offset 0, so nothing in it can line up with `$5012` or `$503E` under
+  any origin. This page's earlier CONFIRMED "not the same array shifted"
+  stands and is explained.
+* **The `07 0d` at 1024–1025 is not a mystery pair**: it is the dungeon square
+  (7, 13) the initialiser leaves. Curse and Silver Blades' twelve unnamed
+  bytes **also open `07 0d 00 00 00`**, which is byte for byte what Pools of
+  Darkness writes from `DS:0xA9F3`–`0xA9F7`. Worth the same `BlockWrite`
+  census on their `GAME.OVR`s before anyone calls those twelve
+  unattributable.
+* **The eight-slot name table is not a Pools of Darkness peculiarity.** Its
+  own loader reads 328 bytes at 5140 out of a *Silver Blades* container,
+  which is the party-import path from the previous game, and 5140 is that
+  shape's count byte exactly.
+* **Treasures of the Savage Frontier's two containers differ from Pools of
+  Darkness' in three bytes and nowhere else**: 82, 84 (2 and 3, zero in Pools
+  of Darkness) and 1026, the facing. Both titles' A and B are byte-identical
+  to each other, so the four shipped containers are worth one specimen
+  between them.
+* **A wilderness Pools of Darkness save has never been seen.** All ten
+  containers hold variable 34 = 1, so everything this page says about the
+  wilderness square, the wilderness region and interface mode 3 rests on the
+  code alone. Experiment: drive out of the dungeon and save.
 
 ## The outdoor form (#59's outdoor pass)
 
@@ -487,6 +682,17 @@ it in the game. CONFIRMED, and re-takeable in a second by anybody.
   `$49C3`/`$49C4` in place of the square bytes) has not been driven;
   `#190 (A C64 party standing on the travel grid cannot be written into a
   DOS save)` owns the converter form of it.
+* **Pools of Darkness in the wilderness.** All ten containers hold variable
+  34 = 1, so the wilderness square, the wilderness region and interface mode
+  3 rest on the code alone. Experiment: `tools/dospod.py` out of the dungeon,
+  then save.
+* **The four clock digits above the minutes in Pools of Darkness.** No
+  container here has run past nine minutes, so the hour, day, month and year
+  positions rest on the radix table. Experiment: drive past an hour and read
+  offsets 6 and 7.
+* **Whether Pool of Radiance and Curse write eight name slots too.** Pools of
+  Darkness and Silver Blades do, from the code. Experiment: the same
+  `BlockWrite` census on `POOLRAD/GAME/POOLRAD/GAME.OVR`.
 * `#57 (Carry the character portrait across ports)` asks what the game does
   with `icon_choice` on load. Its four bytes have since been decoded on that
   issue -- `portrait_head`, `portrait_body`, `icon_head`, `icon_body` -- and

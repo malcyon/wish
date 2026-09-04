@@ -109,15 +109,15 @@ def describe(path: pathlib.Path, *, regions: bool, runs: bool) -> None:
 def region_map(shape) -> list[tuple[str, int, int]]:
     """`(what, offset, size)` for one shape, in file order."""
     out, at = [], 0
-    for label, size in (("Undecoded head", shape.head),
+    for label, size in (("ECL variables, one byte each", shape.var_bytes),
+                        ("Undecoded head", shape.head),
                         ("Container number", shape.dax_bytes),
                         ("ECL variables", 2 * shape.var_words),
                         ("Staged script", shape.script_bytes),
                         ("Unnamed", shape.unnamed),
-                        ("Square and party size", 8),
-                        ("Character entries",
-                         sg.PARTY_ENTRIES * sg.PARTY_ENTRY),
-                        ("UI scratch", sg.UI_SCRATCH)):
+                        ("Square and party size", shape.square_bytes),
+                        ("Character slots",
+                         sg.NAME_SLOTS * sg.PARTY_ENTRY)):
         if size:
             out.append((label, at, size))
             at += size
