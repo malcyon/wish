@@ -44,7 +44,9 @@ RECORD_NAME_SIZE = 20
 #: Padding byte for record names.
 RECORD_NAME_PAD = 0x00
 
-#: Width of a 1541 directory name field.
+#: Width of a 1541 directory name field. The 1541 User's Guide, September 1982,
+#: p. 67, gives it as bytes 3-18 of the 30-byte entry, "padded with shifted
+#: spaces", and p. 66 gives a shifted space as decimal 160.
 DIR_NAME_SIZE = 16
 #: Padding byte for directory names (shifted space).
 DIR_NAME_PAD = 0xA0

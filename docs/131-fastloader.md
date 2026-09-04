@@ -172,6 +172,21 @@ is the game's fastloader, present and running, in a cracked release. Both
 dumps are byte-identical run to run, and the pattern is the same under a stock
 kernal as under JiffyDOS.
 
+**Putting code in the drive is a documented facility, not a crack.** The 1541
+User's Guide, September 1982, ch. 8 "Programming the disk controller", gives
+`M-W` writing "up to 34 bytes at a time" into the drive's 2K of RAM and `M-E`
+running what it wrote (p. 46), and lists `U3`–`U8` as jumps to a table at
+`$0500`–`$050F` put there for this purpose (p. 47). A kilobyte of drive RAM
+that is on no sector of the disk therefore needs nothing irregular to explain
+it — though at 34 bytes a command it is at least 31 `M-W`s before the loader
+can start.
+
+**Whether the game enters through that table is not established** — the dumps
+that would say went with `work/p69/`. Re-running cell B and reading
+`m 8:0500 050f` on the text monitor would settle it: three-byte `4C xx xx`
+jumps there mean the documented entry points; anything else means the game
+found its own way in.
+
 ### Cell F: the "bad disk image" symptom, and its real cause
 
 With true drive emulation off, the boot **never reaches the fastloader prompt

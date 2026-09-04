@@ -90,8 +90,9 @@ Size         Tracks  Error bytes  Where it comes from
 byte per sector appended after the sector data, ``1`` meaning "read cleanly".
 They are exposed through :meth:`D64.error_code` and nothing else consults them,
 because on the specimens we hold they mark *padding*, not damage: all 85 sectors
-on Champions of Krynn side A's tracks 36-40 carry code 3 (no header found), they
-are simply unformatted, and no sector chain on that disk leaves track 35.
+on Champions of Krynn side A's tracks 36-40 carry code 3, which is DOS error 21,
+"no sync character" -- what an unformatted track reads as -- and no sector chain
+on that disk leaves track 35.
 Refusing an image because it reports errors would refuse a perfectly readable
 disk; hiding the codes would lose the evidence that says the padding is padding.
 
@@ -310,8 +311,13 @@ def _variants() -> dict[int, Variant]:
 VARIANTS: dict[int, Variant] = _variants()
 
 #: An error byte of 1 is "read cleanly"; anything else is the 1541 error the
-#: copier saw. 3 is "no header found", which is what an unformatted track reads
-#: as -- and that is what tracks 36-40 of every 40-track rip we hold report.
+#: copier saw: bytes 2 to 11 are DOS errors 20 to 29 in order, and byte 15 is
+#: error 74, drive not ready. So 3 is error 21, "READ ERROR -- no sync
+#: character", which the 1541 User's Guide (September 1982, p. 53) puts down to
+#: an "unformatted or improperly seated diskette" -- and that is what tracks
+#: 36-40 of every 40-track rip we hold report. The byte-to-code map is the
+#: emulators' convention rather than Commodore's; ``docs/10-disk-format.md``
+#: cites both.
 ERROR_OK = 1
 
 
