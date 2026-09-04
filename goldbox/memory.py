@@ -237,7 +237,11 @@ MAP: tuple[Region, ...] = (
                 "ends when all 64 are zero"),
     Region(0xCC00, 1000, "screen", OK,
            note="in the world. Recompute it from $D018 and $DD00 every read -- "
-                "it is $0400 at boot"),
+                "it is $0400 at boot. The top four bits of $D018 place the "
+                "screen in 1K steps inside the 16K bank bits 0-1 of $DD00 "
+                "select, so those two bytes are the whole answer (Commodore "
+                "64 Programmer's Reference Guide, Graphics Locations, "
+                "pp. 101-102; docs/152-commodore-manuals.md)"),
 )
 
 BY_NAME = {r.name: r for r in MAP}

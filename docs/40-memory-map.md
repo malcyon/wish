@@ -44,6 +44,36 @@ grades are in [50-experiments.md](50-experiments.md).
 roster blocks, `$8400` `ANIMATE00` -- that page tiles with no gap, which is a
 check on all five.
 
+### What the machine puts there, before the game does
+
+Every load address above lands in a region Commodore documents, and knowing
+which one is what turns an observed address into a fact with a reason. The
+regions are the *Programmer's Reference Guide*'s own summary of all 64K, p. 320
+(see [152-commodore-manuals.md](152-commodore-manuals.md) for the manuals).
+
+| region | Commodore calls it | what runs there |
+|---|---|---|
+| `$0400`-`$07FF` | screen memory, with the 25x40 video matrix at `$0400`-`$07E7` | `GEO*`. Safe only because the screen has moved to `$CC00` |
+| `$0800`-`$9FFF` | normal BASIC program space | everything from `DUNGEON` at `$0800` up to `ECL*` at `$9900` |
+| `$A000`-`$BFFF` | BASIC ROM, 8K -- "or 8K RAM" | `SPELLE*` `$A700`, `SPELLN*` `$AF00`, `FAST1.O` `$B700`, `MDRIVER`/`SOUNDFX` `$BA00` |
+| `$C000`-`$CFFF` | RAM, 4096 bytes | `GDRIVE*` at `$C000`, and the screen at `$CC00` |
+| `$D000`-`$DFFF` | I/O and colour RAM, or the character ROM, or RAM | the machine's registers; nothing of the game's |
+
+Two consequences worth having in front of you before reading a live address:
+
+* **An overlay in `$A700`-`$BFFF` is RAM behind BASIC ROM.** The 6510's on-chip
+  port at `$0001` decides which of the two answers a read -- LORAM in bit 0 for
+  `$A000`-`$BFFF`, HIRAM in bit 1 for `$E000`-`$FFFF`, CHAREN in bit 2 for
+  `$D000`-`$DFFF` (*Programmer's Reference Guide*, "Memory Management on the
+  Commodore 64", pp. 260-261). So a debugger read of `$B700` has to say which
+  it wants; VICE's `ram` bank is the one that gives the overlay. That the game
+  runs with BASIC banked out is the obvious reading and is PROBABLE, not
+  measured -- `$0001` has never been sampled here.
+* **`$C000`-`$CFFF` is the one 4K block that is plain RAM in every
+  configuration**, and the game keeps both its screen and its fast loader in
+  it. CONFIRMED as a property of the machine; that the game chose it *for* that
+  reason is PROBABLE.
+
 ## Party / character data
 
 | Range | Contents |

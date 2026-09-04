@@ -161,6 +161,15 @@ both the `cpu` and `ram` banks found no second copy. `ResidentGeo` reads it and
 `Automapper.poll()` names the area outright every tenth poll, with `Fingerprint`
 left running underneath as the contradiction check.
 
+**Why the page is free is a property of the machine, not of the game.**
+`$0400`–`$07E7` is where the C64 puts its screen at power-on, and it does not
+have to stay there: the top four bits of `$D018` place the screen in 1K steps
+inside the 16K bank that bits 0–1 of CIA 2 port A (`$DD00`) select. That is
+where `automap/screen.py`'s two lines of arithmetic come from, and it is why
+they have to be re-run on every poll rather than cached (*Commodore 64
+Programmer's Reference Guide*, "Graphics Locations", pp. 101–102 — see
+[152-commodore-manuals.md](152-commodore-manuals.md)).
+
 A `FilenameDigits` strategy — read the two digits the loader patches into the
 `GEO00` stem — was tried and is dead, and the code is gone. `$24B4`–`$24B9` in
 the running game reads `50 55 5a 5f 20 87`, not `GEO00`; the resident stem is at
