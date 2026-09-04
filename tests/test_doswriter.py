@@ -314,6 +314,91 @@ def test_the_written_icon_colours_are_not_zero():
         assert rec[f.offset:f.end] != bytes(f.size), char.name
 
 
+def test_two_characters_of_the_same_name_get_different_identity_bytes():
+    """The whole of `#216 (Every converted DOS character carries the same
+    identity byte at 0x0AB)`, pinned where the round trip cannot pin it.
+
+    The engine's "is this character already in the party" test is the name
+    **and** this byte, so two converted characters sharing a name were the
+    same character to it and the second was silently refused -- no message,
+    the entry starred as though added, the roster simply not gaining a line.
+    Measured in a driven DOSBox session by `tools/dosaddchar.py`.
+
+    `unnamed_0ab` is in `WRITE_DERIVED`, so every round-trip comparison masks
+    it out.  That is correct and it means **no round-trip test can catch this
+    coming back**: `identity_byte` reverted to `return 0` would restore the
+    bug with the whole suite green.  This is the test that goes red instead.
+    Needs no DOS save -- two neutral characters differing only in name.
+    """
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    one, two = _filled(), _filled()
+    made_up = "made up: two characters a player named the same thing"
+    one.set("name", "DUPLICO", made_up)
+    two.set("name", "DUPLICO", made_up)
+    two.set("experience", one.get("experience") + 1, made_up)
+    assert one.get("name") == two.get("name")
+    first, _, _, _ = dos.write(one)
+    second, _, _, _ = dos.write(two)
+    assert first[f.offset:f.end] != second[f.offset:f.end]
+
+
+def test_the_identity_byte_is_the_same_on_a_second_write():
+    """A random draw would fail this, and that is why it is not one.
+
+    Every acceptance check in this project converts a save twice and compares
+    the bytes, so a byte that changed between two runs of the same conversion
+    would make each of those checks fail for a reason that is not a defect.
+    A digest of the other 284 bytes gives the distinctness the engine needs
+    without giving up that comparison (#216).
+    """
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    char = _filled()
+    first, _, _, _ = dos.write(char)
+    second, _, _, _ = dos.write(char)
+    assert first[f.offset:f.end] == second[f.offset:f.end]
+
+
+@needs_dos_saves
+def test_every_shipped_record_writes_the_identity_its_own_bytes_derive():
+    """On the real specimens, and distinct within each party.
+
+    The sibling of `test_the_written_icon_colours_are_not_zero`, and asserted
+    the same way: what the written byte **is**, not what a comparison masks
+    out (#216).
+
+    Deliberately not `rec[f.offset] == dos.identity_byte(rec)`, which reads
+    like a stronger check and is a circular one -- `identity_byte` reverted
+    to `return 0` writes 0 and recomputes 0, and the assertion passes while
+    the bug is back. Nonzero and distinct are properties of the answer rather
+    than of the function that produced it, and the engine needs exactly those
+    two: a party of six converted characters has to be six characters to the
+    "already in the party" test.
+
+    **Distinct within a party, which is the only scope the engine compares
+    in.** Across all 24 shipped records two pairs collide -- SILAS with
+    RHIANNON and BRUTUS with BROTHER SEAN -- and both pairs are in different
+    parties, which the "already in the party" test never puts side by side.
+    Asserting global distinctness would be asserting something the fix does
+    not claim and does not need.
+    """
+    f = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    where = _save_dir()
+    parties: dict[str, dict[int, list[str]]] = {}
+    for path in sorted(where.glob("CHRDAT*.SAV")):
+        if path.stat().st_size != dos_layout.RECORD_SIZE:
+            continue
+        char = dos.read_character(path)
+        rec, _, _, _ = dos.write(dos.to_neutral(char))
+        assert rec[f.offset] != 0, path.name
+        # `CHRDAT<slot><n>.SAV`: the slot letter is the party.
+        parties.setdefault(path.name[6], {}).setdefault(
+            rec[f.offset], []).append(char.name)
+    assert parties, "no CHRDAT records to check"
+    for slot, seen in sorted(parties.items()):
+        clash = {v: n for v, n in seen.items() if len(n) > 1}
+        assert not clash, f"party {slot}: {clash}"
+
+
 @needs_dos_saves
 def test_a_record_round_trips_through_the_neutral_middle():
     """DOS -> to_neutral -> write, against the original bytes.  Everything
