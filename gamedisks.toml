@@ -64,8 +64,14 @@ paths = [
 
 [amiga-por-saves]
 env = "AMIGA_POR_SAVES"
-# No default: no exported Amiga Pool of Radiance record (a 288-byte .cha or
-# .sav) exists on any machine yet -- #211, waiting on #28 and #105.
+# No default, and the reason changed on 2026-09-04: twenty 288-byte records do
+# exist, but not as loose files -- six in the `save/` drawer of Pool of
+# Radiance disk 1 and fourteen in the Curse of the Azure Bonds save disk, both
+# reachable through the `amiga` entry above. `tools/amigasaves.py` extracts
+# them and `tests/test_amiga.py` calls it when this names nothing, so setting
+# the variable is now for pointing at a hand-picked corpus rather than for
+# having one at all. The old note here said none existed anywhere, which is
+# what left thirty-one tests skipping on the machine that holds them (#211).
 
 [pod-saves]
 env = "POD_SAVES"

@@ -501,9 +501,16 @@ line reads ` No `; everything else reads 1 and draws ` Yes `.
 the ready column lived in the text. It does — and so it does on **DOS**: the
 DOS `.ITM` files in `work/dos-saves` carry ` No   Long Sword +1 `,
 ` Yes  * Shield +1 ` and, on the same character, a plain `Plate Mail ` with
-stale bytes (`Mail           400`) past its own length byte. So a writer must
-compose the line, never trust it — which is what `goldbox/dos.py` already says of
-the DOS buffer.
+stale bytes (`Mail           400`) past its own length byte. So the line is
+**never a source**, and neither reader reads it.
+
+The tail is a second render showing through the first, and §1.12a works it out
+to the character: `' Yes  Long Sword '` overwritten by `'Long Sword \0'` leaves
+exactly `'word '` from index 12, on five of the five Amiga nodes that have a
+tail. **What a *writer* has to do about it is a separate question and it is
+still open** — `write_por` leaves all 42 bytes NUL, on the reading that the
+line is composed when the ITEMS screen draws. That is PROBABLE rather than
+measured; §1.12a has the argument and the one screenshot that settles it.
 
 **The effect node is 10 bytes with the pad at offset 1**, which #55 measured
 on 62 records; disk 1's six agree, and their payload bytes `0x02`-`0x05` read
@@ -757,8 +764,45 @@ declared list rather than by whatever happened to differ:
 | 288 -> 285 -> 288, no neutral record in the middle | **20 of 20** identical outside `POR_WRITE_UNSOURCED` |
 | Amiga -> neutral -> Amiga, the whole path | **20 of 20** identical outside that list plus `goldbox.dos`'s own `WRITE_UNSOURCED`, `WRITE_CONSTANTS` and computed fields |
 | the 65-byte item nodes | **17 of 17** identical past the display cache and `next` |
-| the 10-byte effect nodes | **6 of 6** identical past the four-byte `next` |
-| `.itm` and `.spc` lengths | identical to the originals, 6 of 6 |
+| the 10-byte effect nodes the neutral record can hold | **15 of 15** identical past the four-byte `next` |
+| `.itm` lengths | identical to the originals, **6 of 6** |
+| `.spc` lengths | identical to the originals, **9 of 12** -- see below |
+
+Re-measured 2026-09-04 against a corpus rebuilt by `tools/amigasaves.py`. The
+mask covers 125 of the 288 offsets, so **163 bytes of every record have to
+match exactly**, and they do on all twenty.
+
+**The `.spc` line was 6 of 6 and it is 9 of 12, and the difference is a
+defect.** The earlier figure was measured on the six records the game shipped
+on disk 1, every one of which carries only racial effects. Twelve of the twenty
+specimens have a `.spc` file, and **three of them lose it entirely**:
+`goldbox.dos.to_neutral` keeps only the ids in `INNATE_EFFECTS`, the neutral
+record has no field for the rest, and `write_por` therefore writes a zero-byte
+file. ADDERLY's extra strength (38), CONJURER's Ring of Fire Resistance (61)
+and MAGICIAN's displacement (89) -- **all three at duration zero**, so none of
+them is a spell that was going to expire anyway, and the only duration-bearing
+`.spc` record anybody has read is a DOS `BLESS` at `02 00 01 00`.
+`goldbox.amiga.to_neutral` now names each one in `dropped`, which is the
+minimum `.claude/rules/conversions.md` asks for; carrying them needs a neutral
+field and is `#232`.
+
+**C64 -> Amiga, which is the direction this writer exists for: 78 of 78.**
+Every character on every `PORSAVE*` disk the player has converts to a 288-byte
+record with `unaccounted` empty, a name that survives, an `item_count` that
+matches the `.itm` file's own length, and -- the check a wrong offset cannot
+fake -- **the encumbrance identity balancing**: the record's `encumbrance` word
+equals its seven money words plus the weight times quantity of every item node
+the same write produced. That single identity fixes the money offsets, the
+65-byte stride, and the weight and quantity offsets and byte order together,
+and it is what `test_a_c64_party_converts_to_a_coherent_amiga_record` asserts.
+Watched failing with the item shift map's second step moved by one.
+
+**The specimens come out of the disks now, not out of `work/`.**
+`tools/amigasaves.py` reads the twenty records back out of the images they live
+in -- six on Pool of Radiance disk 1 and fourteen on the Curse save disk -- and
+`tests/test_amiga.py` calls it when `$AMIGA_POR_SAVES` names nothing. The
+earlier corpus was extracted into `work/`, which is gitignored and was lost,
+and every one of these tests was skipping until 2026-09-04.
 
 **The second insertion is narrowed from six candidate positions to three, and
 it is measured.** DOS holds `00 00 01 00 00` at `0x083`-`0x087` in 24 of 24
@@ -803,6 +847,94 @@ slot B (§1.9b): `save/CHRDAT<slot><n>.sav` with `.itm` and `.spc` beside it,
 `n` from 1 to 6. `goldbox.amiga.por_filename` is the one place that knows it. **A
 character carrying nothing gets no `.itm` file at all** -- `b""` is not an
 empty file, and #62 is what handing the engine a zero-length one did on DOS.
+
+### 1.12a The engine's own rewrite of a party we wrote (#105)
+
+The strongest evidence the writer has is not a round trip -- it is the game
+writing the same six characters out itself and the two files being compared.
+That run already happened, in #109: slot `F` on a copy of disk 1 was written by
+`write_por_slot`, the game loaded it, and from that loaded party `E` `S` `C`
+saved it back into slot `C`. So `CHRDATF<n>` is ours and `CHRDATC<n>` is the
+engine's, for the same party in the same session.
+
+**The two differ in three field groups and nothing else**, and all three are
+already named in `POR_WRITE_UNSOURCED` or `goldbox.dos.WRITE_UNSOURCED` as
+live heap:
+
+| Amiga offset | field | bytes differing, 6 characters |
+|---|---|---|
+| `0x0CB`-`0x0CD` | `item_chain` | 17 |
+| `0x107`-`0x109` | `heap_104` | 15 |
+| `0x081`-`0x083` | `effect_chain` | 9 |
+| `0x077`-`0x07B` | five thief skills, on the one thief | 5 |
+
+Everything else in all six 288-byte records is byte-identical. So the writer's
+claim that those pointers are the engine's to fill is not an argument from
+plausibility any more: **the engine filled them.** Our NULLs went in, its own
+heap addresses came out, and the party played.
+
+The same three files say two more things:
+
+* **The item `next` chain: 17 of 17 nodes differ in `0x02A`-`0x02D` and in
+  nothing else.** The engine relinked a chain we wrote as all-NULL, and the
+  last node came back NULL because that is what a terminator is.
+* **The effect `next` chain: 4 of 4 nodes on the one character with a chain**,
+  same shape, `0x006`-`0x009` and nothing else. The payload bytes of all six
+  nodes across three characters are identical.
+
+**And the display line is not composed on load or on save.** All 17 item nodes
+we wrote carry 42 NUL bytes where the game's own files carry
+`Long Sword \0word \0          15\0`. The engine loaded them, ran a camp, saved,
+and **wrote all 17 back still NUL**. So the moment the line is written is
+neither of those two.
+
+Which leaves the drawing, and the seventeen genuine nodes say a good deal about
+it. Reading the region as three NUL-separated strings:
+
+| what the buffer holds | readied |
+|---|---|
+| `Long Sword ` / `word ` / `          15` | 1 |
+| `Banded Mail ` / `Mail ` / `         90` | 1 |
+| `Leather Armor ` / `rmor ` / `        5` | 1 |
+| ` Yes  Shield ` / `              15` | 1 |
+| ` No   60 Darts ` / `             1` | 0 |
+
+**The second string is the tail of an earlier, longer render of the same
+item.** `' Yes  Long Sword '` is seventeen characters; write `'Long Sword \0'`
+over the front of it and what is left from index 12 is exactly `'word '`.
+`' Yes  Banded Mail '` is eighteen, and from index 13 that is `'Mail '`. Five of
+five with a tail work out that way. So the buffer has been rendered **at least
+twice for the same item**, once with the ready column and once without -- a
+composer that runs repeatedly and on more than one screen, not once when the
+item was acquired.
+
+And **everything in the line is derivable from fields the writer carries**:
+`name1`, `name2` and `name3` at `0x02F`-`0x031` are the name-table indices
+(`Banded Mail` is `0, 48, 57` and `Leather Armor` is `0, 49, 50`), `readied` at
+`0x034` is the ` Yes `/` No ` column, `quantity` at `0x03A` is the `60` in
+`60 Darts`, and `value` at `0x03C` is the price column. Nothing in the 42 bytes
+is a source for anything.
+
+**PROBABLE, therefore, that the ITEMS screen composes the line from those
+fields and caches it back, so a NUL line is filled in on the first draw and
+`write_por`'s all-NUL buffer is correct as it stands.** It rests on an argument
+from the bytes rather than on a measurement, and **one screenshot settles it**:
+load a slot our code wrote, `E` ENCAMP → `V` VIEW → a character → `I` ITEMS. If
+the rows are blank, `amiga_por_item_from_dos` has to compose the line itself,
+including the ready column and the right-aligned price.
+
+**Five thief-skill bytes are derived, and this is the first evidence of it.**
+GOLDLEAF, a level-1 elf fighter/mage/thief with DEX 19, is the party's only
+thief. The record we wrote held `23 14 14 0F 14 0F 55 00` at `0x077`, copied
+exactly from the disk's own shipped record; the engine wrote back
+`32 28 1E 20 20 0F 55 00` -- pick pockets 35 to 50, open locks 20 to 40, find
+traps 20 to 30, move silently 15 to 32, hide in shadows 20 to 32, with hear
+noise, climb walls and read languages landing on the values already there.
+Those are the AD&D level-1 thief figures plus a DEX 19 adjustment, which the
+stored ones are not. **PROBABLE that the engine recomputes all eight on load**;
+one character, one run, and load and save cannot be told apart from the file
+alone. It costs a converter nothing either way -- the values we carry are
+overwritten with better ones.
 
 ### 1.13 Writing a whole save slot, and the list the picker reads (#109)
 

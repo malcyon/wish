@@ -1451,7 +1451,47 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
              "those bytes were written zero rather than guessed")
     out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
              "room for")
+    for record_bytes in _uncarried_effects(char):
+        out.drop(describe_uncarried_effect(record_bytes))
     return out
+
+
+def _uncarried_effects(char: AmigaPorCharacter) -> list[bytes]:
+    """The `.spc` nodes `goldbox.dos.to_neutral` turns away, in file order.
+
+    `INNATE_EFFECTS` keeps the racial bonuses and discards everything else,
+    and the neutral record has no field for the rest -- so those nodes cannot
+    be written back and the character loses them.  Three of the twenty
+    specimens are in this state, each with **duration zero**, so none of them
+    is a spell running down: ADDERLY's extra strength, CONJURER's Ring of Fire
+    Resistance and MAGICIAN's displacement.  `#232 (An item-granted effect is
+    dropped on the way through the neutral record, with no report)` is the fix;
+    naming them here is the minimum `.claude/rules/conversions.md` asks for
+    while it is open.
+    """
+    from . import dos as _dos
+
+    return [e for e in char.effects if e[0] not in _dos.INNATE_EFFECTS]
+
+
+def describe_uncarried_effect(node: bytes) -> str:
+    """One drop line for a `.spc` node the neutral record cannot hold.
+
+    The duration is in the line because it is what tells a player whether the
+    loss is one they keep: a spell with rounds left was going to expire
+    anyway, and Donald ruled on 2026-08-27 that those need no report, but an
+    effect at duration zero is a ring or a girdle they are still wearing.
+    """
+    from . import traits
+
+    eid = node[0]
+    duration = int.from_bytes(node[2:4], "big")
+    lasting = ("no duration, so it does not expire" if duration == 0
+               else f"{duration} rounds left")
+    return (f"Effect {eid} ({traits.describe(eid)}, {lasting}): the neutral "
+            f"record carries only the racial ids in "
+            f"goldbox.dos.INNATE_EFFECTS, so this .spc node is not written "
+            f"(#232)")
 
 
 # ---------------------------------------------------------------------------
@@ -1648,11 +1688,23 @@ def from_dos_record(record: bytes) -> bytes:
 def amiga_por_item_from_dos(item: bytes) -> bytes:
     """One DOS 63-byte item node as the Amiga's 65.
 
-    The display text is left NUL and the `next` pointer NULL, for the two
-    reasons `goldbox/dos.py` gives on its own side: the line is a cache the game
-    rewrites whenever it draws the ITEMS screen -- stale by construction on
-    both ports, `docs/124-amiga-port.md` §1.9 -- and the chain is heap the
-    loader relinks from the file's own length.
+    The display text is left NUL and the `next` pointer NULL.
+
+    **The chain is CONFIRMED**: the engine relinked one we wrote all-NULL, 17
+    nodes of 17, and the last came back NULL (`docs/124-amiga-port.md`
+    §1.12a).
+
+    **The display text is PROBABLE and the grade is deliberate.** The line is
+    a render, not a source -- everything in it comes from `name1`, `name2`,
+    `name3`, `readied`, `quantity` and `value`, which this node carries -- and
+    five of the five genuine nodes with a tail show a second, longer render
+    underneath the first, so the composer runs more than once and on more than
+    one screen. But the engine did **not** compose it on load and did not
+    compose it on save: 17 nodes written NUL survived a load, a camp and a
+    save still NUL. So "it will be filled in when ITEMS draws" is an argument
+    from the bytes, and what would refute it is one screenshot of that screen
+    on a party this wrote. Until then this is the one part of the writer that
+    might have to change.
     """
     if len(item) != dos_layout.ITEM_SIZE:
         raise AmigaRecordError(

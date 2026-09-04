@@ -25,6 +25,7 @@ from goldbox import amiga, dos_layout
 from goldbox.amiga import (
     ABILITIES,
     ALIGNMENTS,
+    AMIGA_POR_NAME_SIZE,
     AMIGA_POR_RECORD_SIZE,
     AMIGA_POR_UNPLACED,
     ARMOUR_CLASS,
@@ -1437,6 +1438,92 @@ def test_a_dos_effect_of_the_wrong_length_is_refused_by_name(length):
 def test_a_save_file_name_outside_the_scheme_is_refused(slot, index):
     with pytest.raises(AmigaRecordError):
         amiga.por_filename(slot, index)
+
+
+def c64_parties():
+    """Every character on every `PORSAVE*` disk the player has.
+
+    The direction this whole issue exists for -- a C64 party reaching the
+    Amiga -- had no test at all, only a hand-run conversion in a scratch
+    directory that has since been deleted.  A population rather than one
+    save, because the sample size is the finding.
+    """
+    import gamedata
+
+    from goldbox import c64_codec, items
+    from goldbox.d64 import D64
+    from goldbox.savegame import load_save
+
+    out = []
+    for path in gamedata.save_disks():
+        try:
+            game, sg0, sg1 = load_save(D64.open(str(path)))
+        except Exception:
+            # A `PORSAVE*` disk need not carry a save: one of the player's
+            # holds only spell stores. Skipping it is not a failure.
+            continue
+        save0 = sg0.to_bytes()
+        for slot in sg0.characters:
+            out.append(c64_codec.read(
+                slot.record,
+                roster=sg1.roster(slot.index) if sg1 is not None else None,
+                inventory=[i.raw
+                           for i in items.items_for_slot(save0, slot.index)],
+                game=game, source=f"{path.name} slot {slot.index}"))
+    if not out:
+        pytest.skip("needs the player's PORSAVE disks; set $POR_DISKS")
+    return out
+
+
+def test_a_c64_party_converts_to_a_coherent_amiga_record():
+    """C64 -> neutral -> Amiga, on every character the player has.
+
+    Not a round trip -- there is nothing to compare against, because no Amiga
+    file this party came from exists.  So the check is the one thing an Amiga
+    record has to satisfy that a wrong offset or byte order cannot fake: the
+    **encumbrance identity**.  The record's own `encumbrance` word has to be
+    money plus item weight times quantity, read out of the `.itm` nodes the
+    same write produced, and it fixes the seven money offsets, the 65-byte
+    stride, and the weight and quantity offsets and byte order together.
+
+    78 of 78 characters over the player's PORSAVE disks, 2026-09-04.
+    """
+    seen = 0
+    for char in c64_parties():
+        record, itm, spc, rep = amiga.write_por(char)
+        assert len(record) == AMIGA_POR_RECORD_SIZE, char.get("name")
+        assert rep.unaccounted == [], char.get("name")
+        assert len(itm) % amiga.AMIGA_POR_ITEM_SIZE == 0
+        assert len(spc) % amiga.AMIGA_POR_EFFECT_SIZE == 0
+
+        back = AmigaPorCharacter.from_bytes(record)
+        assert back.name == str(char.get("name"))[:AMIGA_POR_NAME_SIZE]
+        assert back.get("item_count") == len(itm) // amiga.AMIGA_POR_ITEM_SIZE
+
+        carried = 0
+        for n in range(len(itm) // amiga.AMIGA_POR_ITEM_SIZE):
+            node = amiga.AmigaPorItem.from_bytes(
+                itm[n * amiga.AMIGA_POR_ITEM_SIZE:
+                    (n + 1) * amiga.AMIGA_POR_ITEM_SIZE])
+            carried += node.get("weight") * max(1, node.get("quantity"))
+        assert back.get("encumbrance") == sum(back.money.values()) + carried, \
+            (char.get("name"), back.get("encumbrance"))
+        seen += 1
+    assert seen
+
+
+def test_a_c64_name_too_long_for_the_amiga_field_is_not_silently_cut():
+    """Sixteen bytes with no terminator is the Amiga's whole name field.
+
+    The C64 allows fifteen characters and DOS a count byte plus fifteen, so
+    nothing a real save holds overflows -- but a name of exactly sixteen would
+    fill the field with no NUL, which is the shape the reader warns about on
+    the way in.  Written here so the writer's behaviour is pinned rather than
+    assumed: fifteen is the most that can arrive, and it still terminates.
+    """
+    record, _, _, _ = amiga.write_por(sample(name="ABCDEFGHIJKLMNO"))
+    assert record[:AMIGA_POR_NAME_SIZE] == b"ABCDEFGHIJKLMNO\0"
+    assert AmigaPorCharacter.from_bytes(record).name == "ABCDEFGHIJKLMNO"
 
 
 def test_the_save_file_names_are_the_ones_on_the_shipped_disk():

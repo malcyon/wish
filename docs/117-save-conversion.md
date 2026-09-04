@@ -1538,6 +1538,7 @@ graph LR
   amiga --> layout
   amiga --> neutral
   amiga -.->|deferred| savegame
+  amiga -.->|deferred| traits
   areas -.->|deferred| geo
   areas --> layout
   c64_codec --> encoding
@@ -1587,6 +1588,7 @@ graph LR
   strength --> layout
   strength --> petscii
   strength --> savegame
+  world --> d64
   yaml_io --> c64_codec
   yaml_io --> d64
   yaml_io --> derive
