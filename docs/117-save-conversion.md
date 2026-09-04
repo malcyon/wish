@@ -221,9 +221,13 @@ Two side observations worth keeping. `reclac_player_values` computes
 encumbrance as `Σ (item weight × count) + Σ all seven money counts`, which is
 **the identity above, confirmed from code** — and it means the field is derived,
 not stored, so a converter never has to source it. And `docs/116`'s open
-question about where Curse keeps its dual-class array has a lead: DOS Curse
-`0xE6` is `multiclassLevel`, and it has no C64 counterpart under the alignment
-below.
+question about where Curse keeps its dual-class array is **answered** below,
+in "Where a dual-classed human's old class lives". The lead recorded here used
+to say DOS Curse `0xE6` was `multiclassLevel` with no C64 counterpart; it is
+neither. The byte is zero in all eleven multi-classed records this project can
+reach and holds the level a *dual*-classed human left his old class at, which
+is the C64's `dual_class_level` — corrected on `#234 (A dual-classed Curse or
+Silver Blades character converted to DOS loses the class he trained out of)`.
 
 ### Against our own measurement: 12 of the fifteen bytes
 
@@ -484,6 +488,75 @@ it is one more codec now, and `goldbox/yaml_io.entry_for` takes a
   specimen; reported, not dropped.
 * **Encumbrance and per-item weight**, which DOS keeps and the C64 does not.
   Both are derived; drop them.
+
+## Where a dual-classed human's old class lives
+
+**It was never on the list above.** `goldbox/c64_codec.py` drops the C64's
+`dual_class_slot`/`dual_class_level` because no DOS field had been attributed
+to them; two had been, under other names, and the pair maps onto both —
+`#234 (A dual-classed Curse or Silver Blades character converted to DOS loses
+the class he trained out of)`.
+
+| title | the old class's level | the level he left it at | `level` | current levels |
+|---|---|---|---|---|
+| Curse of the Azure Bonds | `former_class_levels` `0x111` + class number | `0x0E6` | `0x0E5` | `0x109` |
+| Secret of the Silver Blades | `0x118` + class number | `0x0EF` | `0x0EE` | `0x111` |
+| Pools of Darkness | `0x158` + class number | `0x139` | `0x138` | `0x151` |
+| Pool of Radiance | no such array | — | `0x073` | `0x096` |
+
+**The producer is one instruction per title, and it is the same routine five
+times.** Curse's `GAME.OVR` at `0x03BD7B` stores the level of the class the
+character has now into `former_class_levels` at the index of that class, then
+copies `level` into `0x0E6`, sets `level` to 1, zeroes `class_levels[old]`,
+sets `class_levels[new]` to 1 and zeroes `experience`. Counting every
+`es:[di+disp]` instruction in each of the six DOS Gold Box overlays on this
+machine, Curse, Silver Blades, Pools of Darkness, Gateway to the Savage
+Frontier and Treasures of the Savage Frontier each have **exactly one** writer
+of the former array against 20 to 31 readers, and Pool of Radiance has no such
+array at all — the same split `#224 (0x0B9 and 0x0BA are documented both as an
+NPC marker and as the dual-class slot)` measured on the C64. `tools/dualclassdos.py code` re-takes it.
+
+**`0x0E6` is not `multiclassLevel`,** whatever the community notes call it. It
+is zero in all eleven multi-classed records across three titles and equal to
+the former class's level in all three dual-classed ones (ABAGAIL, PAINE,
+OUGO), and its only semantic writer is the routine above — the second write
+site in each overlay is inside a field-by-field record copy. Curse's own
+readers say what it is for: the helper at `0x3C031` answers "has he got the old
+class back yet?" by comparing his current class level against it, which is
+AD&D's rule, and where the C64 stores that answer (`GEN $20A3` writes the old
+level back into the level array once `level` passes it) DOS derives it.
+
+**So the conversion is a transposition rather than a copy**, and this is what
+`goldbox/neutral.py` needs to carry — one field for the pair, because on DOS
+neither of the C64's two bytes exists as such:
+
+* the C64 indexes its level array by class **bit** and DOS by class **number**,
+  so the permutation `goldbox/dos.py` already carries for `class_levels`
+  applies here too;
+* DOS keeps `class_levels[old]` at **zero** for good and puts both classes'
+  bits in `class_bits` — `class_bits_for` already produces that, because it
+  ORs over both arrays;
+* writing DOS means writing the former array entry **and** the byte after
+  `level`, both with the old level;
+* reading DOS back to the C64 means setting `class_levels[old]` to that level
+  only when the character has already regained the class, `level > 0x0E6`,
+  which is the state `GEN $20A3` leaves behind;
+* more than one non-zero entry in the former array is a record nobody
+  understands — both engines gate on human and on not already being
+  dual-classed — and the conversion should refuse it rather than pick a slot.
+
+**One specimen short of CONFIRMED, and it is the same gap on both sides.** No
+422- or 439-byte record on this machine has a non-zero former array: 52
+distinct Curse records and 44 Silver Blades ones, all zero, because nobody has
+played either game past a training hall. The three that do are 510-byte
+records of the later engine. What closes it is one visit to a training hall in
+DOS Curse or DOS Silver Blades — `Train Character` and `Human Change Classes`
+are two of `START.EXE`'s thirteen party-menu items and appear **only** there,
+so the front-end menu is not a shortcut, and pressing `H` on it does nothing.
+`work/curse/234-ssb-town/` holds a Silver Blades party saved in New Verdigris
+at (3,12) for whoever picks it up, and `PAINE` is a human ranger 8 with
+`STR 18 INT 17 WIS 16` — the very transition SSI itself made, since the same
+character is a magic-user 13 who was a ranger 9 by Pools of Darkness.
 
 ## Losslessness, which is the project's whole promise
 
