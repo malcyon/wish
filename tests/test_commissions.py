@@ -586,3 +586,40 @@ def test_the_side_quest_group_is_not_built_unless_the_flag_says_so(app,
     monkeypatch.setenv(ENV, "1")
     panel = panel_for(app, _flags_4a81(250))
     assert "side_quests" in panel.groups
+
+
+
+def test_a_side_quest_state_with_no_approved_word_draws_no_row(caplog):
+    """And does not take the rest of the Quest Log down with it.
+
+    `SIDE_QUEST_WORDS` is deliberately partial -- no word has been proposed
+    for `QUEST_ACCEPTED`, because Ohlo's accept flag is not durable and the
+    state cannot arise yet. A bare subscript raised `KeyError` here, and
+    `tick()`'s broad handler turned that into `trouble reading the emulator:
+    'accepted'` on the alarm line: a raw internal word, blamed on the
+    emulator. `update_from` caches the flag bytes *before* this runs, so the
+    whole log stopped redrawing from then on -- commissions and summonses
+    too, not just the side quest (#158).
+    """
+    import logging
+
+    from automap import questlog
+
+    class _State:
+        durable_state = "accepted"
+        quest = questlog.book.SIDE_QUESTS[0]
+
+    assert "accepted" not in questlog.SIDE_QUEST_WORDS, (
+        "the fixture is a state with no approved word; give it one and this "
+        "test needs a different unworded state")
+
+    real = questlog.book.side_quests
+    questlog.book.side_quests = lambda flags: [_State()]
+    try:
+        with caplog.at_level(logging.WARNING, logger="wish.automap.questlog"):
+            rows = questlog.side_quest_rows(object())
+    finally:
+        questlog.book.side_quests = real
+
+    assert rows == []
+    assert "accepted" in caplog.text, caplog.text

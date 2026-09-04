@@ -30,6 +30,7 @@ they are useful and harmless. See `docs/103-quest-log-panel.md`.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -400,9 +401,25 @@ def commission_rows(flags) -> list[tuple]:
 # | in-hand state word    | right-hand column   | reuses `book.IN_PROGRESS`, already Donald's |
 # | finished state word   | right-hand column   | SIDE_QUEST_FINISHED         |
 # | sub-line               | under the name      | none -- left out, per the plan |
-# | tooltip                 | hover               | `_side_quest_tip`, composed below |
+# | tooltip line 1          | hover               | `SideQuest.name`, below |
+# | tooltip line 2          | hover               | the area's own name, `goldbox/areas.py` -- already Donald's |
+# | tooltip line 3          | hover               | **`QuestFlag.meaning`, `goldbox/commissions.py`** -- three sentences, see below |
 # | name                    | left column         | `SideQuest.name`, `goldbox/commissions.py` -- "Ohlo's potion" |
+#
+# **The tooltip's third line is not written in this file and is easy to miss
+# when approving the rest.** `_side_quest_tip` composes it from the
+# `QuestFlag.meaning` of whichever flag explains the state, and those three
+# sentences live in `goldbox/commissions.py` beside the flags themselves.
+# Nothing drew them before this feature existed, so they are as unapproved as
+# the words above and the flag does not come off until they are approved too.
 # ===========================================================================
+#: A side-quest state nobody has proposed a word for goes here rather than on
+#: the face of the window: it is what a bug report needs and nothing a player
+#: asked for. A child of `wish`, so `wish/debuglog.py`'s handler picks it up
+#: when the log is on and its level swallows it when the log is off -- and
+#: this module still imports nothing from `wish`.
+_log = logging.getLogger("wish.automap.questlog").warning
+
 SIDE_QUEST_HEADING = "Side quests"
 SIDE_QUEST_IN_HAND = book.IN_PROGRESS
 SIDE_QUEST_FINISHED = "finished"
@@ -455,9 +472,21 @@ def side_quest_rows(flags) -> list[tuple]:
         word = state.durable_state
         if word == book.QUEST_UNSEEN:
             continue
+        said = SIDE_QUEST_WORDS.get(word)
+        if said is None:
+            # A state nobody has proposed a word for draws **no row**, and
+            # takes nothing else down with it.  A bare `SIDE_QUEST_WORDS[word]`
+            # raised `KeyError` here, and `tick()`'s broad handler turned that
+            # into `trouble reading the emulator: 'accepted'` in the alarm
+            # line -- a raw internal word, blamed on the emulator.  Worse,
+            # `update_from` caches the flag bytes before calling this, so the
+            # whole log, commissions and summonses included, stopped redrawing
+            # from then on.  Skipping is not silent: the debug log says so.
+            _log("no approved word for the side-quest state %r", word)
+            continue
         rows.append((
             _sentence(state.quest.name),
-            SIDE_QUEST_WORDS[word],
+            said,
             _side_quest_tip(state),
             "",
             word == book.QUEST_FINISHED,
