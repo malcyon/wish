@@ -529,6 +529,7 @@ def test_a_backend_status_is_a_badge_beside_the_label_not_part_of_it(app,
             # A frame and a ground of its own, so it cannot read as more label.
             assert "border" in dialog.badges[name].styleSheet()
             assert "background" in dialog.badges[name].styleSheet()
-        assert dialog.unverified["Ultimate"].isVisibleTo(dialog)
+        # Reads confirmed on hardware, 2026-09-04 (#240): no badge any more.
+        assert dialog.unverified["Ultimate"].isVisibleTo(dialog) is False
     finally:
         win.close()

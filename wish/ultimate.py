@@ -1,10 +1,21 @@
 """A Commodore 64 Ultimate backend, over its documented HTTP interface.
 
-**UNVERIFIED. Nobody on this project has the hardware.** Every line below is
-written from the vendor documentation and has been exercised only against a
-stub server that implements what that documentation says. It may be wrong in
-ways only a real device can show, and it is labelled so wherever it appears:
-`Backend.verified` is False.
+**Connecting and reading are CONFIRMED on hardware, 2026-09-04.** Donald ran
+Pool of Radiance on his own C64 Ultimate and pointed Wish at it: *"I have Pool
+of Radiance running on the C64 Ultimate. I have Wish running on this machine,
+and it is able to successfully connect to the C64U and the automapper and
+roster work."* That exercises `configured`, `present`, `UltimateTarget.read`
+(the `readmem` call below) and every status-line and roster read the
+automapper and the roster panel make. `Backend.verified` is True for that
+reason -- see `#240 (Drive Pool of Radiance on the C64 Ultimate, so a VICE
+reading can be checked against hardware)`.
+
+**Still not yet exercised, rather than "nobody has the hardware", which is no
+longer true of this project:** `UltimateTarget.write` (`writemem`, below --
+used by Heal Party and fast travel) and the `X-Password` header firmware
+3.12+ may ask for. Donald's machine runs firmware 3.14 and needed no
+`$POR_ULTIMATE_PASSWORD` tonight, which says only that this device's Web
+Remote Control is not gated by one, not that the header itself works.
 
 The interface is the REST API the Ultimate firmware serves over HTTP from 3.11
 onwards (1541u-documentation.readthedocs.io, "REST API Calls"):
@@ -17,7 +28,7 @@ onwards (1541u-documentation.readthedocs.io, "REST API Calls"):
 `readmem` performs a **DMA read on the cartridge bus**, which is why this is a
 backend at all: it is the only documented way to read the machine's memory
 without a resident stub. Firmware 3.12 and later may require a password, sent
-as an `X-Password` header.
+as an `X-Password` header -- not yet exercised.
 
 Three things follow from the transport and are designed for rather than
 discovered late:
@@ -31,13 +42,25 @@ discovered late:
   sixty small ones. The four reads a fix costs are the budget worth watching.
 * **It should not disturb the machine.** VICE's 7%-fast effect comes from
   stopping and resuming the CPU; DMA does not stop it. Nothing here assumes
-  that either way, and `Backend.disturbs` says False only as documentation.
+  that either way, and `Backend.disturbs` says False only as documentation --
+  tonight's session did not measure it either way.
 
-Known-unknown, stated rather than buried: `party_fix` reads `$D011`, `$D018`
-and `$DD00` to find the screen. Whether a cartridge-bus DMA read returns
-sensible values for I/O registers is exactly the kind of thing that needs the
-hardware. If it does not, the status line cannot be found and the mapper falls
-back to the `$49C0` memory copy, which lags a move but works.
+Known-unknown, stated rather than buried: `party_fix` (`automap/target.py:145`)
+reads `$D011`, `$D018` and `$DD00` to find the screen, and it is not
+Ultimate-specific code -- it is the same free function VICE calls, taking any
+backend's `read`, so the only way it can fail here and not on VICE is a
+cartridge-bus DMA read of one of those three registers coming back wrong.
+`~/c64u-reference.md` already records three DMA reads of `$D012` returning
+`E0`, `48`, `FE` on this exact machine -- a moving raster counter, so DMA does
+reach live VIC state. That makes `party_fix` succeeding on this machine
+PROBABLE, not CONFIRMED: a working automapper is also exactly what the
+`$49C0` memory-copy fallback produces while somebody keeps walking, since that
+fallback lags by only one move. The one-minute check that would settle it:
+move one square, then stand still. The map catching up to the true square
+within a poll or two means the status line is being read -- the lag was only
+`default_interval_ms` and the network round trip. The map staying one square
+behind until the *next* move means `party_fix` fell back to the memory copy,
+which never catches up on its own.
 """
 
 from __future__ import annotations
@@ -78,7 +101,11 @@ def _password() -> str | None:
 
 
 class UltimateTarget:
-    """A `Target` over the Ultimate's REST API. Untested against hardware."""
+    """A `Target` over the Ultimate's REST API.
+
+    `read` is confirmed on Donald's own machine, 2026-09-04 -- see the module
+    docstring. `write` is not yet exercised.
+    """
 
     def __init__(self, host: str | None = None, port: int | None = None,
                  password: str | None = None, timeout: float = 5.0):
@@ -194,5 +221,7 @@ ULTIMATE = Backend(
     # machine, so a slower poll costs freshness and nothing else.
     default_interval_ms=500,
     disturbs=False,
-    verified=False,
+    # Reads confirmed on real hardware, 2026-09-04 (module docstring, #240).
+    # `write` and the password header are not part of what that proved.
+    verified=True,
 )

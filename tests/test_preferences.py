@@ -843,6 +843,14 @@ def test_the_backend_radios_are_the_menu_s_actions_and_still_act(
 
 def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
                                                            monkeypatch):
+    """The Ultimate's reads are confirmed on hardware now (#240), so its own
+    badge is gone -- this proves the badge still appears for whatever backend
+    genuinely is unverified, with a stand-in rather than the real Ultimate."""
+    import dataclasses
+
+    from wish import ultimate
+    monkeypatch.setattr(ultimate, "ULTIMATE",
+                        dataclasses.replace(ultimate.ULTIMATE, verified=False))
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
@@ -852,6 +860,18 @@ def test_an_unverified_backend_still_says_so_in_the_dialog(app, tmp_path,
     assert dialog.badges["Ultimate"].text() == "not answering"
     assert dialog.unverified["Ultimate"].isVisibleTo(dialog)
     assert dialog.unverified["VICE"].isVisibleTo(dialog) is False
+
+
+def test_the_confirmed_ultimate_carries_no_unverified_badge(app, tmp_path,
+                                                            monkeypatch):
+    """The real state, as of #240: reads confirmed on Donald's own hardware,
+    2026-09-04, so the badge that used to say "nobody has the hardware" must
+    not show for it any more."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    dialog = PreferencesDialog(win)
+    dialog.refresh()
+    assert dialog.unverified["Ultimate"].isVisibleTo(dialog) is False
 
 
 def test_the_view_menu_no_longer_carries_a_backend_submenu(app, tmp_path,

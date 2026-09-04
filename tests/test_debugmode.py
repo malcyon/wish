@@ -777,11 +777,15 @@ def test_the_backend_menu_offers_every_backend_and_no_preference(app, tmp_path,
 
 def test_the_menu_says_which_are_answering_and_which_are_unverified(
         app, tmp_path, monkeypatch):
-    """Nobody on this project has a Commodore 64 Ultimate, and the menu must
-    not imply otherwise."""
+    """The Ultimate's reads are confirmed on hardware now (#240), so it no
+    longer carries the caveat -- but the menu must still raise it for whatever
+    backend genuinely is unverified, which this proves with a stand-in rather
+    than the real Ultimate."""
     import dataclasses
 
-    from wish import backends
+    from wish import backends, ultimate
+    monkeypatch.setattr(ultimate, "ULTIMATE",
+                        dataclasses.replace(ultimate.ULTIMATE, verified=False))
     win = wish_window(app, tmp_path, monkeypatch)
     monkeypatch.setattr(backends, "VICE",
                         dataclasses.replace(backends.VICE, probe=lambda: True))
@@ -790,6 +794,8 @@ def test_the_menu_says_which_are_answering_and_which_are_unverified(
     for backend in backends.backends():
         if not backend.verified:
             assert "unverified" in win.backend_actions[backend.name].text()
+        else:
+            assert "unverified" not in win.backend_actions[backend.name].text()
 
 
 def test_choosing_a_backend_is_remembered_and_acted_on(app, tmp_path,

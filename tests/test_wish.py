@@ -743,10 +743,12 @@ def test_the_ultimate_is_not_offered_when_none_is_configured(monkeypatch):
     assert ultimate.ULTIMATE.present() is False
 
 
-def test_the_ultimate_is_marked_unverified():
-    """It has never met the hardware. Say so in the data, not just in a note."""
+def test_the_ultimate_is_marked_verified():
+    """Confirmed on Donald's own hardware, 2026-09-04 (#240): connecting and
+    reading. Writing is not part of that and stays undecided here -- this only
+    pins the flag the read confirmation earned."""
     from wish.ultimate import ULTIMATE
-    assert ULTIMATE.verified is False
+    assert ULTIMATE.verified is True
     assert ULTIMATE.disturbs is False
     assert ULTIMATE.default_interval_ms > bk.VICE.default_interval_ms
 
