@@ -1451,27 +1451,14 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
              "those bytes were written zero rather than guessed")
     out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
              "room for")
-    for record_bytes in _uncarried_effects(char):
-        out.drop(describe_uncarried_effect(record_bytes))
+    # `_dos.to_neutral`, called above, already reports every non-innate
+    # effect at duration zero -- it iterates `dos.effects`, which on this
+    # path are the same nodes `amiga_por_effect_to_dos` recut, and calls
+    # `describe_uncarried_effect` below on the same bytes.  A second loop
+    # here used to call it again, printing each lost effect's line twice
+    # (#238, An Amiga conversion's report shows an uncarried effect twice,
+    # once from goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
     return out
-
-
-def _uncarried_effects(char: AmigaPorCharacter) -> list[bytes]:
-    """The `.spc` nodes `goldbox.dos.to_neutral` turns away, in file order.
-
-    `INNATE_EFFECTS` keeps the racial bonuses and discards everything else,
-    and the neutral record has no field for the rest -- so those nodes cannot
-    be written back and the character loses them.  Three of the twenty
-    specimens are in this state, each with **duration zero**, so none of them
-    is a spell running down: ADDERLY's extra strength, CONJURER's Ring of Fire
-    Resistance and MAGICIAN's displacement.  `#232 (An item-granted effect is
-    dropped on the way through the neutral record, with no report)` is the fix;
-    naming them here is the minimum `.claude/rules/conversions.md` asks for
-    while it is open.
-    """
-    from . import dos as _dos
-
-    return [e for e in char.effects if e[0] not in _dos.INNATE_EFFECTS]
 
 
 def describe_uncarried_effect(node: bytes) -> str:

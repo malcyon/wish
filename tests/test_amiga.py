@@ -1132,7 +1132,13 @@ def test_an_effect_the_neutral_record_cannot_hold_is_reported():
         for eid in lost:
             said = traits.describe(eid)
             named = f"{said[:1].upper()}{said[1:]}"
-            assert any(d.startswith(named) for d in n.dropped), (path, eid)
+            matches = [d for d in n.dropped if d.startswith(named)]
+            # Exactly one line per lost effect: `goldbox.dos.to_neutral`
+            # already reports it and `goldbox.amiga.to_neutral` must not add
+            # a second copy of the same line (#238, An Amiga conversion's
+            # report shows an uncarried effect twice, once from
+            # goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
+            assert len(matches) == 1, (path, eid, matches)
             # `capitalize()` would render effect 61 as "Wearing a ring of
             # fire resistance" and take the item's own name down with it.
             assert not any("ring of fire" in d for d in n.dropped), path
