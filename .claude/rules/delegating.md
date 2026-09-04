@@ -15,7 +15,7 @@ writing the brief costs more than doing the work.
 
 | agent | model | when |
 |---|---|---|
-| `reverse-engineering` | Opus | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. No dearer than general-purpose |
+| `reverse-engineering` | Opus | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
 | `deep-research` | **Fable** | the hardest reverse engineering only, where rigorous analysis is the whole job. The expensive one; think before spending on it |
 | `architect` | **Fable** | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. Also Fable |
 | `junior-dev` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
