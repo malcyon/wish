@@ -41,12 +41,8 @@ not just the first. **Two exceptions, both about where the reader is:**
 and do not treat one as a defect in an audit. It is not a factual error, so
 "Reply, never rewrite" governs.
 
-**A screenshot of the game may be attached to an issue.** `AGENTS.md` governs
-what is **committed**; the tracker is not the repository, and a picture of what
-a player sees is often the fastest way to say what a ticket is about. Donald,
-2026-09-04: *"I don't think attaching a screenshot to a ticket will get us in
-legal trouble. It is fine to do that."* `gh` cannot upload one, so a ticket
-that wants an image says where the file is and a human drags it in.
+**A screenshot of the game may go on an issue.** `AGENTS.md` governs what is
+**committed**; the tracker is not the repository. Link one and move on.
 
 ## Labels
 
