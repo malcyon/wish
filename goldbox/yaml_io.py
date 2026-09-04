@@ -867,7 +867,7 @@ def _apply_npc(rec, entry, slot: int, who: str) -> list[str]:
     rec.set_npc(bool(entry["npc"]))
     return [
         f"slot {slot} {who}: npc {not entry['npc']} -> {bool(entry['npc'])}",
-        f"slot {slot} {who}: NOTE only bit 7 of 0x0B8 was written. The eight "
+        f"slot {slot} {who}: NOTE only bit 7 of 0x0B8 was written. The six "
         f"$FF residue bytes are left as found, so a character made an NPC this "
         f"way still looks like a player character to anything reading those "
         f"instead",
@@ -1030,7 +1030,7 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                 rec.set(field, want_level)
         if not rec.npc_marker_is_consistent:
             changes.append(
-                f"slot {slot} {who}: WARNING the eight NPC marker bytes disagree "
+                f"slot {slot} {who}: WARNING the six NPC marker bytes disagree "
                 f"with each other. No real save has been seen like that")
         changes += _apply_npc(rec, entry, slot, who)
 
