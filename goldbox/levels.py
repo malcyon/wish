@@ -636,10 +636,6 @@ def wisdom_bonus_spells(wisdom: int, game=None) -> tuple[int, ...]:
     wisdom 12, where Pool of Radiance grants a spell AD&D does not and Curse
     does not (`docs/125-bug-notes.md`).
 
-    **`goldbox.spells.capacity` does not pass a title here**, so a Curse
-    cleric's displayed capacity is still built from Pool of Radiance's bonus.
-    That is a one-line fix in a file `#18` did not own; see the issue.
-
     **The game's table starts one point low.** AD&D 1st edition gives the first
     bonus spell at wisdom 13 and the second at 14; `$10AD` holds 1 at 12 and 2
     from 13 up, so a wisdom-12 cleric memorises a first-level spell the rules

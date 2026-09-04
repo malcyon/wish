@@ -505,8 +505,9 @@ _CLERIC_CURSE = [(1, 0, 0, 0, 0), (2, 0, 0, 0, 0), (2, 1, 0, 0, 0),
 # game's, not AD&D's**: `goldbox.levels.wisdom_bonus_spells` implements `GEN
 # $10AD` and the shifts `$2108` puts it through, and the game's first-level
 # column starts a point low -- 1 at wisdom 12, where the rulebook gives the
-# first bonus spell at 13. See `docs/125-bug-notes.md` N13. Curse's copy has
-# not been read and takes Pool of Radiance's until it is.
+# first bonus spell at 13. See `docs/125-bug-notes.md` N13. Curse's own copy
+# is `ECL65 $8906`, read and CONFIRMED, and reaches it through `capacity`'s
+# `game` argument below.
 #
 # AD&D gives a fourth-level bonus at 18 and 19 as well; it is left out because
 # the record reserves six spell levels and neither game has been seen to grant
@@ -624,7 +625,7 @@ def capacity(class_bits: int, level: int, wisdom: int,
         out["magic-user"] = magic_user[level - 1]
     if class_bits & 2:
         row = cleric[min(level, len(cleric)) - 1]
-        bonus = levels.wisdom_bonus_spells(wisdom)
+        bonus = levels.wisdom_bonus_spells(wisdom, game)
         # A Wisdom bonus only applies at a spell level the cleric can already
         # reach, so a level-1 cleric with WIS 16 gets three first-level spells
         # and no second-level ones.

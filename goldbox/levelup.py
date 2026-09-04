@@ -503,7 +503,7 @@ def _spells_castable(record, class_levels: dict[str, int],
     if cleric:
         row = levels.at_level("cleric", cleric, game)
         slots = list(row.spells) if row else []
-        bonus = levels.wisdom_bonus_spells(record.get("wisdom"))
+        bonus = levels.wisdom_bonus_spells(record.get("wisdom"), game)
         for i in range(width):
             have = slots[i] if i < len(slots) else 0
             if have and i < len(bonus):

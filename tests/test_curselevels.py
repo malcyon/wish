@@ -367,6 +367,31 @@ def test_curse_spell_slots_are_the_games_own():
             assert disk == want + (0,) * (5 - len(want)), (name, level)
 
 
+def test_a_curse_clerics_capacity_uses_curses_own_wisdom_bonus():
+    """`spells.capacity` used to call `wisdom_bonus_spells` with no title, so
+    a Curse cleric's shown slots were built from Pool of Radiance's bonus
+    table whatever the character's own title (#231). The class row is
+    `ECL65 $88C4`, read here directly; the bonus is `$8906`, already
+    CONFIRMED in `tests/test_cursetrainer.py` and reached here through
+    `levels.wisdom_bonus_spells(wisdom, CURSE)` rather than a constant."""
+    ecl = gamedata.curse_file("ECL65")[2:]
+    level = 9
+    start = CURSE_SLOTS + 11 * 5
+    row = tuple(ecl[start + (level - 1) * 5:start + level * 5])
+    for wisdom in (12, 13, 18):
+        bonus = levels.wisdom_bonus_spells(wisdom, CURSE)
+        want = tuple(n + (bonus[i] if n and i < len(bonus) else 0)
+                     for i, n in enumerate(row))
+        assert spells.capacity(2, level, wisdom, CURSE)["cleric"] == want, \
+            wisdom
+    # The two numbers the issue measured against the running game: a cleric 9
+    # with wisdom 18 is offered three fourth-level slots, and one with wisdom
+    # 12 is offered four first-level slots -- Pool of Radiance's own bonus
+    # table would instead give 2 and 5.
+    assert spells.capacity(2, level, 18, CURSE)["cleric"][3] == 3
+    assert spells.capacity(2, level, 12, CURSE)["cleric"][0] == 4
+
+
 # --- spell names -------------------------------------------------------------
 
 def test_curse_reads_its_names_out_of_combat2():
