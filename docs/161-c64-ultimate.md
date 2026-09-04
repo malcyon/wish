@@ -10,6 +10,51 @@ whole reason it is worth the trouble.
 `tools/c64u.py` is the wrapper. `#240 (Drive Pool of Radiance on the C64
 Ultimate, so a VICE reading can be checked against hardware)` is the work.
 
+## When to reach for it, and when not to
+
+For most of this project's work VICE is strictly better and the Ultimate adds
+nothing. VICE's binary monitor gives breakpoints, watchpoints, single-step,
+execute-until-return and CPU history; the Ultimate has none of those over its
+REST API, only DMA memory reads and writes. Finding which routine writes a
+byte, reading a table out of an overlay, tracing what the engine decides — VICE
+answers those faithfully, and sixteen VICE slots run unattended in parallel
+where the Ultimate is one physical machine Donald is often using himself.
+
+Four things are genuinely the hardware's. These are arguments from how the
+machine is built, not measurements this project has taken:
+
+1. **The real 1541.** An FPGA 1541, not an emulation of one. The fastloader
+   (`docs/131-fastloader.md`), copy protection, and drive timing are exactly
+   where an emulator is most likely to diverge, and where nobody would notice
+   if it did.
+2. **A DMA read does not stop the CPU.** VICE's monitor stops and resumes it —
+   `wish/ultimate.py`'s docstring records the resulting 7%-fast effect.
+   Watching a value evolve under real timing is a different instrument, not a
+   slower one.
+3. **It is the arbiter.** Every C64 measurement this project has made came out
+   of VICE. When a reading is surprising, the Ultimate is the only thing that
+   can say whether the emulator was wrong.
+4. **The debug stream** — a clock-cycle-accurate trace of the 6510 and the
+   1541 bus together, with a disassembler, registers and watchpoints. VICE's
+   monitor gives the CPU; it does not give a cycle-accurate drive-bus trace.
+   For fastloader and protection work this is a capability the project does
+   not otherwise have — see "What needs the Ethernet cable" below for why it
+   is not currently reachable.
+
+One thing that is **not** a use case: a state an agent cannot cheaply drive to
+— a character trained at a hall, a party that actually loses a fight — is an
+argument for **manual testing**, not for this machine. Donald, 2026-09-04,
+correcting a proposed use case built on exactly this: *"I could do the same
+thing myself in VICE. It's just an argument for manual testing."* Manual
+testing is valuable on its own terms; it does not follow that it wants
+different hardware than VICE already offers.
+
+Measured, not argued: for `#240 (Drive Pool of Radiance on the C64 Ultimate,
+so a VICE reading can be checked against hardware)`, Donald ran Pool of
+Radiance on the Ultimate with Wish connected, and the automapper and roster
+worked, with about a second between moving and the map catching up against a
+500ms poll interval.
+
 ## The machine
 
 CONFIRMED, tested from this machine on 2026-09-04 and recorded in Donald's
@@ -107,7 +152,13 @@ What is lost is the **debug stream**: a clock-cycle-accurate 6510/VIC/1541 bus
 trace with a disassembler, CPU registers and watchpoints, over firmware 3.7+.
 That is the most powerful analysis tool on the device and the one that would
 most change what this project can do — a watchpoint on a real machine, against
-`d6502`'s static reading. It is blocked on a cable and on nothing else.
+`d6502`'s static reading.
+
+**The machine stays on WiFi, deliberately.** Donald, 2026-09-04: *"The C64U is
+connected via wifi. It is not connected via ethernet. I could figure that out
+if we really did need it, but I don't plan to right now."* The cost of the
+debug stream is one cable; it is worth asking for only when a disk-level
+question actually needs it, not by default.
 
 ## What is still UNKNOWN
 
