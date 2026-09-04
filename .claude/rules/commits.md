@@ -33,7 +33,21 @@ Run all three locally, or CI will find what you did not:
 3. `.venv/bin/python3 tools/genui.py --check` (every `.ui` compiled and current)
 
 **Run the whole suite, not the files you touched.** A scoped run is for
-working; it is not the check.
+working; it is not the check. `pytest tests/test_combatdrive.py` was green and
+`main` went red on all four jobs eight minutes later.
+
+**The exception is a change that touches no code.** Prose in `docs/`, a rule
+file, `AGENTS.md`, a README row: the only test that reads any of those is
+`tests/test_repository_contents.py`, which takes a second and a half. Run that
+and `ruff`, and push. Donald, 2026-09-03: *"Waiting on a full test suite when
+you've only changed a markdown file is a real bummer."* Six and a half minutes
+of suite to prove a sentence did not break a parser is not diligence, it is a
+habit that costs a person their evening.
+
+**"Touches no code" means no `.py`, no `.ui`, and no file a test reads as
+data.** A docstring is code for this purpose -- it ships in the module, and a
+comment change is the one that gets waved through and turns out to have been
+inside a string literal. If the diff has a `.py` in it at all, run everything.
 
 **And in a shared tree, run it somewhere the other agents are not.** With two
 subagents mid-edit -- the normal state on a busy night -- a run in place tests
