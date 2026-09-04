@@ -16,7 +16,7 @@ writing the brief costs more than doing the work.
 | agent | model | when |
 |---|---|---|
 | `reverse-engineering` | Opus | byte layouts, checksums, encodings, and the parsers that prove they were read right -- including a disassembly read. |
-| `deep-research` | **Fable** | the hardest reverse engineering only, where rigorous analysis is the whole job. The expensive one; think before spending on it |
+| `deep-research` | **Fable** | the hardest reverse engineering, where rigorous analysis is the whole job -- a question more specimens will not answer |
 | `architect` | **Fable** | a plan for another agent to execute, when the shape of the work is the hard part. Writes the plan, does not build it. Also Fable |
 | `junior-dev` | Sonnet | the issue's "What would fix it" names the **mechanism**: a port, a deduplication, narrowing a check. Never anything with a design decision left in it |
 | `general-purpose` | inherits | everything else, including work that looks like reverse engineering and is not |
@@ -24,6 +24,24 @@ writing the brief costs more than doing the work.
 | `docs-reviewer` | Sonnet | when documentation may have drifted from the code. Scope it to the files it owns |
 | `backlog-auditor` | Sonnet | before a refinement pass, or when the backlog has grown unwieldy. **It owns the issues**, including the banned-words sweep of titles, bodies and comments |
 | `changelog-writer` | Sonnet | after a batch of work lands, and before cutting a release |
+
+**Cost is not the filter on the two Fable agents; fit is.** Donald, 2026-09-04:
+*"consider deep-research and architect as available options to use when
+necessary. I don't want to waste tokens where another agent could do the job.
+But I don't think using Fable will run us out of tokens anytime soon."* So the
+question to ask is the same one the table asks of every row -- does this
+agent's definition already describe the work? -- and not whether the budget can
+stand it. Sending a measurement to `deep-research` is still waste, because a
+`reverse-engineering` agent would do it as well; sending it a question that
+more specimens cannot answer is what it is for.
+
+**The shape that earns `deep-research`** is an assumption that broke. On
+2026-09-04 the project had been reading a `.SPC` effect's duration of zero as
+"permanent", and SILAS turned up carrying two running spells at duration zero
+-- so the discriminator is not in the bytes anybody has been reading, and no
+number of further specimens says what it is. Reading the engine's own expiry
+routine does. That is the test: **would another hour of measuring answer it?**
+If yes, it is not this agent's work.
 
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
