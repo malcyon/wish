@@ -436,6 +436,71 @@ in-game routes to owning nothing — a freshly rolled character, and one who
 drops every item in play — render clean. It takes a file written from outside,
 which is how our own converter reached it (#62, fixed).
 
+## N19. A shop purchase leaves the buyer's encumbrance high by what it just paid
+
+**What the game does.** Curse of the Azure Bonds keeps each character's
+encumbrance -- `money + Σ(item weight × quantity)`, in tenths of a pound, at
+`0x187` of the DOS Curse record -- as a stored total that the engine
+recomputes when something changes. Buying an item in a shop does the two
+halves in the wrong order: it adds the item and recomputes the whole total,
+and *then* takes the coins off the character. The number written out is the
+sum as it stood before the price was paid, and it stays that way until the
+next recompute.
+
+**What it should do.** Take the money first, or recompute after taking it.
+Everything else that moves money -- pooling it, taking it back out of the pool
+-- keeps the total right.
+
+**The evidence.** Four measurements in a driven DOS session, on MATHEW of the
+Curse party from `#113 (Play DOS Curse far enough to save a party with
+items)`, plus two an earlier session took:
+
+| what was done, in order | money | Σ weight | stored | delta |
+|---|---|---|---|---|
+| before shopping | 300 | 0 | 300 | 0 |
+| buy a battle axe, listed at 5 gp | 297 | 75 | 375 | **+3** |
+| buy a dagger and four darts | 291 | 105 | 399 | **+3** |
+| ready the axe, which forces a recompute | 291 | 105 | 396 | 0 |
+| buy a composite long bow, listed at 100 gp | 288 | 185 | 476 | **+3** |
+| pool 288 away, then take 1000 back | 1000 | 185 | 1188 | **+3** |
+| buy two battle axes back to back | 994 | 335 | 1332 | **+3** |
+| pool *every* coin away, then buy an axe | 0 | 410 | 410 | 0 |
+
+Each stored number is the money term one debit behind: `375 = 300 + 75`,
+`476 = 291 + 185`, `1332 = 997 + 335`. It is never cumulative, because each
+purchase recomputes the whole sum and so overwrites the last purchase's error.
+The last row is the proof of which debit is at fault: with the character's
+coins all in the party pool the **pool** pays, his own money never moves, and
+a freshly shopped character balances exactly.
+
+The recovered Curse overlays agree -- `simeonpilgrim/coab`'s
+`engine/ovr007.cs` has `shop_buy` call `PlayerAddItem`, which ends in
+`reclac_player_values`, and subtract the money on the next statement.
+CONFIRMED, seven purchases across two sessions.
+
+**The same staleness, in Pool of Radiance, from a weight change.** The two
+DOS Pool of Radiance characters who fail the identity are both carrying a
+readied stack of darts, and the shortfall is exactly the darts the quantity
+byte has and the cached display line does not: ASTRID stores 635 against 700,
+`37 Darts` over a quantity of 50, and 13 x 5 = 65; GILES stores 787 against
+807, `46 Darts` over 50, and 4 x 5 = 20. Exact on both, 2 of 2. The stored
+total sides with the cached line, so throwing a dart decrements the quantity
+and recomputes neither -- the same field going stale on a weight change rather
+than a money one. It also settles which of the two disagreeing numbers is the
+fresh one, which `goldbox/dos_layout.py`'s field note leaves open: the
+quantity byte.
+
+**Why no player sees it.** Every screen that draws encumbrance recomputes
+first: `#113 (Play DOS Curse far enough to save a party with items)` watched
+the sheet draw 396 while the file held 399. The cost is entirely ours -- a save
+taken straight out of a shop is the only kind that fails the
+`money + Σ(weight × quantity)` identity this project checks records with, and
+it fails it by the coins of the last purchase, so a check on that identity has
+to allow it and a converter must go on recomputing the field rather than
+copying it. Measured for `#225 (A shopped Curse character's stored encumbrance
+is three tenths above the sum)`; how much the shop takes, and why it is always
+three, is bug 11 in [`../goldbox-bugs.md`](../goldbox-bugs.md).
+
 ## Not yet confirmed
 
 Three findings that a player *would* notice, and that are kept out of

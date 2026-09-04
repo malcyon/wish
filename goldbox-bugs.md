@@ -35,6 +35,7 @@ a port fixed one, that is said.
 | 8 | Training a multi-class character in the wrong order throws away a level it has earned | Pool of Radiance | engine | CONFIRMED, in game |
 | 9 | The slums fortune teller is alive again every time you come back | Pool of Radiance | script | CONFIRMED, in game |
 | 10 | Reload a save on the road and undiscovered places appear on the map | Pool of Radiance | engine | CONFIRMED, in game |
+| 11 | Every weapon in Tilverton's shop costs the same three platinum | Curse of the Azure Bonds | engine | CONFIRMED, in game |
 
 ---
 
@@ -482,3 +483,59 @@ camp; the other sites hang on the same one-shot paint, measured painted
 together on a fresh entry, so they reload revealed the same way — PROBABLE,
 one screen short of confirmed. Whether the other ports share the load-path
 omission is not known.
+
+---
+
+## 11. Every weapon in Tilverton's shop costs the same three platinum
+
+**Measured in a driven DOS session, buying four different weapons and watching
+the buyer's coins.**
+
+**What the game does.** The Weaponers of Cormyr in Tilverton draw a price
+beside every weapon on their list, in gold, and then charge the same three
+platinum pieces whatever the line says. A pack of darts listed at 1 gold and a
+composite long bow listed at 100 gold both cost three platinum, and so does
+everything in between.
+
+**What it should do.** Charge what it lists. The number in the right-hand
+column is the item's value in gold, and the record the game writes for the
+bought item carries that same number.
+
+**The evidence.** Seven purchases across two sessions, on two characters, with
+the buyer's platinum read out of the saved character record before and after
+each one. Every character in this party starts with 300 platinum and no other
+coin, so the arithmetic has nowhere to hide:
+
+| bought | listed | buyer | platinum before | after |
+|---|---|---|---|---|
+| battle axe | 5 gp | MATHEW | 300 | 297 |
+| dagger, then 4 darts | 2 gp, 1 gp | MATHEW | 297 | 291 |
+| dagger | 2 gp | PHILIPPE | 300 | 297 |
+| composite long bow | **100 gp** | MATHEW | 291 | 288 |
+| battle axe, twice in a row | 5 gp each | MATHEW | 1000 | 994 |
+
+The coin count is corroborated on screen and not only in the file: pooling the
+party's money in the shop after those purchases puts up **PLATINUM 1788**,
+which is the buyer's 288 plus five untouched characters' 300 each.
+
+**What the player sees.** The best weapon in the shop for the price of the
+worst. Three platinum is fifteen gold, so a 1 gp pack of darts costs fifteen
+times its list price while a 100 gp composite long bow goes for a seventh of
+it -- and with 300 platinum apiece, the party can equip itself with the most
+expensive weapons on the list a hundred times over.
+
+**Version.** Curse of the Azure Bonds, DOS v1.3, in the Forgotten Realms
+Archives release. CONFIRMED for that shop; **no other shop in the game has been
+tested**, and neither has another port -- across the one C64 pair of a
+Tilverton shopping trip, ten items appeared and **no character's coins moved at all**, so
+that party did not pay out of its own purses and the pair cannot say what the
+C64 charges.
+
+*Why* the charge is flat is not established. The recovered overlays scale an item's value per shop and then spend it from
+the character's coins cheapest-first, which cannot produce a constant, so
+either that reconstruction is not what shipped or the cost handed to it is not
+the item's. What the coins do say is how much: spending from a purse that is
+all platinum takes `cost/5 + 1` platinum and hands back the change from the
+top, and the only cost that takes three platinum and leaves **no gold** behind
+-- which is what every one of these records shows -- is **fifteen gold**,
+exactly what three platinum is worth.
