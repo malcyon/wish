@@ -22,6 +22,17 @@ hits, and without it the payload offset is printed instead.
 bitmap decodes exactly like a real instruction; a real routine's hits cluster
 two or three instructions apart. `--context` disassembles either side of each
 hit so the difference can be seen rather than assumed.
+
+`--indirect` censuses the other way a record offset can be reached: `LDY
+#$<low>`/`LDX #$<low>` followed within a short window by the matching
+indirect-indexed opcode -- `($nn),Y` after `LDY`, `($nn,X)` after `LDX`. The
+absolute-mode scan above finds nothing that goes through a pointer to the
+record; this is the check that rules a pointer out rather than assuming one
+was not used. It is a separate mode, beside the absolute census rather than
+in place of it -- `#230 (The indirect half of a record-offset census cannot
+be rerun, because its script was never kept)`:
+
+    tools/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
 """
 
 from __future__ import annotations
@@ -34,11 +45,18 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox.d64 import D64, split_load_address  # noqa: E402
 from tools import gamedisks  # noqa: E402
-from tools.d6502 import M_ABS, M_ABX, M_ABY, T, lines  # noqa: E402
+from tools.d6502 import M_ABS, M_ABX, M_ABY, M_IZX, M_IZY, T, lines  # noqa: E402
 from tools.trainerscan import TITLES  # noqa: E402
 
 #: How many bytes either side of a hit `--context` disassembles.
 CONTEXT = 12
+
+#: How far past an `LDY #$ll`/`LDX #$ll` `--indirect` looks for the matching
+#: indirect-indexed opcode. Ten bytes is what the script `#230 (The indirect
+#: half of a record-offset census cannot be rerun, because its script was
+#: never kept)` describes as having been used, and covers several
+#: instructions of setup between the load and the access.
+INDIRECT_WINDOW = 10
 
 
 def sides(title: str, directory: str | None = None, pattern: str | None = None):
@@ -83,6 +101,38 @@ def hits(data: bytes, want: set[int]):
             yield i, mnemonic, suffix[mode], target
 
 
+def indirect_hits(data: bytes, want: set[int], window: int = INDIRECT_WINDOW):
+    """Every `LDY #$ll`/`LDX #$ll` whose low byte is in `want`, followed
+    within `window` bytes by the matching indirect-indexed opcode -- an
+    `M_IZY` instruction after `LDY` (the record's own address held as a
+    zero-page pointer, indexed by `Y`), an `M_IZX` one after `LDX`.
+
+    Byte-level, the way `hits()` is: every position is a candidate load,
+    regardless of whether it starts a real instruction, so a hit is a claim
+    about bytes and not proof of an instruction boundary.
+
+    Yields `(load offset, register, low byte, opcode offset, mnemonic, mode)`.
+    """
+    load = {0xA0: ("Y", M_IZY), 0xA2: ("X", M_IZX)}
+    for i in range(len(data) - 1):
+        op = data[i]
+        if op not in load:
+            continue
+        reg, want_mode = load[op]
+        low = data[i + 1]
+        if low not in want:
+            continue
+        end = min(len(data), i + 2 + window)
+        for j in range(i + 2, end):
+            op2 = data[j]
+            if op2 not in T:
+                continue
+            mnemonic, mode = T[op2]
+            if mode == want_mode:
+                yield i, reg, low, j, mnemonic, mode
+                break
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--game", default="pool", choices=sorted(TITLES))
@@ -92,6 +142,10 @@ def main(argv=None) -> int:
     ap.add_argument("--record", help="the record's address, hex")
     ap.add_argument("--context", action="store_true",
                     help="disassemble either side of each hit")
+    ap.add_argument("--indirect", action="store_true",
+                    help="census LDY/LDX #$ll followed by the matching "
+                         "indirect-indexed opcode, instead of absolute-mode "
+                         "references")
     ap.add_argument("--dir", help="a directory of disk images, for a title "
                                   "gamedisks.toml has no entry for")
     ap.add_argument("--glob", help="which images in it, e.g. '*.d64'")
@@ -102,9 +156,21 @@ def main(argv=None) -> int:
         base = int(args.base.lstrip("$"), 16)
     if args.record:
         record = int(args.record.lstrip("$"), 16)
-    want = {record + int(o.lstrip("$"), 16) for o in args.offset}
-    print(f"{args.game}: record at ${record:04X}, looking for "
-          + " ".join(f"${a:04X}" for a in sorted(want)))
+    offsets = {int(o.lstrip("$"), 16) for o in args.offset}
+
+    if args.indirect:
+        bad = {o for o in offsets if o > 0xFF}
+        if bad:
+            raise SystemExit("recordsweep.py: --indirect wants a record "
+                              "offset, not an address: "
+                              + " ".join(f"${b:04X}" for b in sorted(bad)))
+        print(f"{args.game}: looking for LDY/LDX # then an indirect-indexed "
+              f"access, within {INDIRECT_WINDOW} bytes, low byte(s) "
+              + " ".join(f"${o:02X}" for o in sorted(offsets)))
+    else:
+        want = {record + o for o in offsets}
+        print(f"{args.game}: record at ${record:04X}, looking for "
+              + " ".join(f"${a:04X}" for a in sorted(want)))
 
     seen = set()
     total = 0
@@ -121,22 +187,39 @@ def main(argv=None) -> int:
             if key in seen:
                 continue                 # the same file on the other side
             seen.add(key)
-            found = list(hits(payload, want))
+            if args.indirect:
+                found = list(indirect_hits(payload, offsets))
+            else:
+                found = list(hits(payload, want))
             if not found:
                 continue
             print(f"\n{path.name}:{name}  {len(payload)} bytes")
-            for at, mnemonic, sfx, target in found:
-                print(f"  +0x{at:04X} (${base + at:04X})  "
-                      f"{mnemonic}{sfx} ${target:04X}")
-                total += 1
-                if args.context:
-                    start = max(0, at - CONTEXT)
-                    for line in lines(payload, base, base + start, 12):
-                        print("      " + line)
+            if args.indirect:
+                for at, reg, low, opat, mnemonic, mode in found:
+                    sfx = "),Y" if mode == M_IZY else ",X)"
+                    ptr = payload[opat + 1]
+                    print(f"  +0x{at:04X} (${base + at:04X})  LD{reg} #${low:02X}"
+                          f"  ->  +0x{opat:04X} (${base + opat:04X})  "
+                          f"{mnemonic} (${ptr:02X}{sfx}")
+                    total += 1
+                    if args.context:
+                        start = max(0, at - CONTEXT)
+                        for line in lines(payload, base, base + start, 12):
+                            print("      " + line)
+            else:
+                for at, mnemonic, sfx, target in found:
+                    print(f"  +0x{at:04X} (${base + at:04X})  "
+                          f"{mnemonic}{sfx} ${target:04X}")
+                    total += 1
+                    if args.context:
+                        start = max(0, at - CONTEXT)
+                        for line in lines(payload, base, base + start, 12):
+                            print("      " + line)
     # The sample size is part of the claim: "nothing references it" means
     # nothing in *these* files, and a negative is worth only as many files as
     # were actually opened.
-    print(f"\n{total} reference(s) in {len(seen)} distinct files")
+    kind = "indirect reference(s)" if args.indirect else "reference(s)"
+    print(f"\n{total} {kind} in {len(seen)} distinct files")
     return 0
 
 

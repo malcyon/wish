@@ -6387,13 +6387,22 @@ apparent contradiction: they read `$00` in twenty player characters for the
 least interesting possible reason.
 
 **The hole in an absolute-mode census, tested and closed.** A record reached
-through `(pointer),Y` would not show up. Scanning 571 Pool of Radiance files and
-412 Curse files for `LDY #$B9`/`LDY #$BA` followed within ten bytes by an
-indirect-indexed opcode gives two hits each, and all four are inside picture
-files — `PIC64`, `POOLRC`, `COMPIC05`. Curse, which certainly does use the
-bytes, has no legitimate indirect access to them either, so the engine reaches
-the record absolutely and Pool of Radiance's zero is not hiding behind a
-pointer.
+through `(pointer),Y` would not show up. The first run of this check was a
+script that was not kept, so `#230 (The indirect half of a record-offset
+census cannot be rerun, because its script was never kept)` gave
+`tools/recordsweep.py` a `--indirect` flag beside its absolute-mode one and
+reran it:
+
+    tools/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
+    tools/recordsweep.py --game curse --offset 0xB9 --offset 0xBA --indirect
+
+Scanning `LDY #$B9`/`LDY #$BA` followed within ten bytes by an
+indirect-indexed opcode across 589 Pool of Radiance files and 412 Curse files
+gives two hits each, reproducing the original figure exactly, and all four are
+inside picture files — `PIC64` and `POOLRC` for Pool, `PIC64` and `COMPIC05`
+for Curse. Curse, which certainly does use the bytes, has no legitimate
+indirect access to them either, so the engine reaches the record absolutely
+and Pool of Radiance's zero is not hiding behind a pointer.
 
 **Result 2. The dual-class reading is confirmed from the producer, not only
 the consumers.** `#18 (Measure Curse's trainer so Level Up works there)` read
