@@ -100,7 +100,12 @@ def _slot(blob: bytes, at: int, stride: int) -> str | None:
     if not 1 <= length <= stride - 1:
         return None
     text = blob[at + 1:at + 1 + length]
-    if not all(chr(b).isalpha() or b == ord("-") for b in text):
+    # `chr(b).isalpha()` is true for Latin-1 bytes above 0x7F -- À, É, Ø --
+    # which would pass the guard and then raise UnicodeDecodeError out of
+    # the ascii decode below, rather than the LookupError this module
+    # promises.  Bound it to ASCII so an unrecognised run is "not a slot".
+    if not all(b < 0x80 and (chr(b).isalpha() or b == ord("-"))
+               for b in text):
         return None
     if any(blob[at + 1 + length:at + stride]):
         return None
