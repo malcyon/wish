@@ -52,10 +52,14 @@ from tools import dosbox  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: The wallset triple an outdoor DOS save carries.  Measured (0, $FFFF, $FFFF)
-#: in all three of 2026-08's overland specimens -- and that is also what the
-#: indoor New Phlan slot A holds, so live-versus-stale was never separated and
-#: this is what the engine is given rather than what it is known to need.
+#: The wallset triple an outdoor DOS save carries -- **what the engine itself
+#: writes out there**, not what it is merely given.  This comment used to say
+#: live-versus-stale had never been separated, because every overland specimen
+#: had departed from the one indoor save that holds the same three words.
+#: `tools/dosoutdoorprobe.py --from B --wallset keep` separated it: a seed
+#: carrying Sokol Keep's (1, 5, 9) onto a travel window came back
+#: (0, $FFFF, $FFFF) from three engine resaves at three squares, and the load
+#: path did not read the wrong triple at all (#59, #190).
 OUTDOOR_WALLSET = (0, sg.EMPTY, sg.EMPTY)
 
 
