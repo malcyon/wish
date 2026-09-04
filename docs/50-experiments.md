@@ -5417,11 +5417,28 @@ exists nowhere in the first megabyte of the running game — `find` and
 `count` both 0 — so the save writer assembles it from scattered state and
 bytes 12804-12807 have no single live address to watch.
 
-**Left open.** The wallset triple outdoors reads (0,$FFFF,$FFFF) but the
-departure template's was the same, so live-versus-stale needs a sail from
-Sokol Keep (triple 1,5,9). Moving an outdoor save to a new area has not been
-driven; #50 owns the converter form. `$49F0`, `$5079`-`$507D`, 12804/12805/12807
-remain unnamed.
+**Left open, and since settled in part.** The wallset triple outdoors reads
+(0,$FFFF,$FFFF) and so did the departure template's, so live-versus-stale
+could not be separated here and this entry asked for a sail from Sokol Keep.
+
+**A sail was not needed.** `tools/dosoutdoorprobe.py --from B --wallset keep`
+seeded a travel window carrying Sokol Keep's (1, 5, 9) -- a triple no overland
+save has ever held -- and the engine's own `ENCAMP > SAVE` replaced it with
+(0,$FFFF,$FFFF) at three squares, 3 of 3. The triple outdoors is written by
+the engine rather than inherited. The same run answered the other half: a save
+carrying the wrong triple **loaded and drew anyway**, `20,29 N 01:22` on the
+status line, so the outdoor load path does not read it at all (#59, #190).
+
+Also no longer unnamed: `$5079`-`$507D` are partly named -- `$507A`-`$507C`
+are live only outdoors, deterministic and position-dependent, and are **not**
+the travel square (y = 25 and y = 24 both write (29, 1, 14), taken twice from
+different lineages) -- and byte 12805 carries the low byte of `$5200`, which
+`$5082` equals in 21 of 21 containers. `$49F0`, 12804 and 12807 are still
+unnamed; the counts and the whole map are `docs/141-dos-savegame.md`, which is
+the document that gets kept current.
+
+Moving an outdoor save to a new area has still not been driven; #50 owns the
+converter form.
 
 ## The later titles' mode flag is `$7F11`, and their LINKER is Pool of Radiance's
 
