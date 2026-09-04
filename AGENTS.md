@@ -73,7 +73,7 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **obviate** | it cannot happen any more, the fix is no longer needed |
 | **retarget** | move the party to where it actually was, point the save at the right map |
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
-| **"the test bites"** | the test fails without the fix; it goes red when the guard is removed |
+| **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
 | a sentence that rates itself: **"worth saying"**, **"to be clear"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
 
