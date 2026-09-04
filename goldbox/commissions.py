@@ -85,7 +85,7 @@ DONE = 254
 PAID_VALUE = 255
 
 NOT_DONE = "not done"
-IN_PROGRESS = "in progress"
+IN_PROGRESS = "In progress"
 REWARD_WAITING = "reward waiting"
 PAID = "paid"
 
@@ -570,13 +570,13 @@ SIDE_QUESTS = (
         # walk reaches it. It sits after the menu arm that agrees to serve
         # him rather than fight him.
         accept=QuestFlag(
-            0x4A04, 250, "the errand has been accepted",
+            0x4A04, 250, "The errand has been accepted",
             durable=False, where="ECL14 $A251 SAVE 250, [$4A04]"),
         # The booth in the old rope guild, gated on `$AE1E COMPARE [$4A81],
         # 250 / IF>= / EXIT` -- it will not serve a party that already has
         # the potion or has finished with him -- and on the password.
         progress=(QuestFlag(
-            0x4A81, 250, "the potion has been collected from the booth",
+            0x4A81, 250, "The potion has been collected from the booth",
             durable=True, where="ECL14 $B048 SAVE 250, [$4A81], after "
                                 "$B042 SAVE 255, [$4A19]"),),
         # Two routes to 255 and the flag does not tell them apart: the

@@ -389,15 +389,43 @@ def commission_rows(flags) -> list[tuple]:
 # --- side quests, #158, behind `WISH_EXPERIMENTAL_QUESTS` -------------------
 #
 # ===========================================================================
-# Every string below is a placeholder, not shipped wording. `.claude/rules/
-# gui-text.md`: propose, do not ship. None of it reaches a player unless
-# `enabled()` says so, and none of it is final until Donald has approved it
-# from a screenshot on #158 (Track the quests the game itself forgets,
-# starting with Ohlo's potion).
+# **Donald approved every string below on 2026-09-04**, with one change: each
+# opens with a capital letter, which is `AGENTS.md`'s standing rule and was
+# what the proposals got wrong.  That approval reaches `book.IN_PROGRESS` too
+# -- it was already shipping lowercase in the Commissions panel and is now
+# "In progress" in both places, because the same state word spelled two ways
+# in one window is worse than changing a string a player has already seen.
+#
+# He also settled two things underneath the wording.
+#
+# **A side quest is not marked as Wish's own record rather than the game's.**
+# The reason is `durable_state`: it back-fills from `$4A81` in every case but
+# one -- accepted, potion not yet collected, Wish not attached when it
+# happened -- and the next session in the Slums closes even that, because
+# `$4A04` is still 250 while the party has not left.  So the row is wrong only
+# inside a window that shuts by itself, which is not worth a sentence in front
+# of a player.
+#
+# **And there is no separate group on screen.**  Donald, 2026-09-04: *"I don't
+# think we need a separate 'Side Quests' section. Just lump them all
+# together."*  Then, once this was under way, he narrowed how far that goes:
+# *"You can keep track of commissions separately on the backend. Just display
+# them together? The player will not care about the difference."*  So the
+# merge is display only. `side_quest_rows()` stays its own function, still
+# gated by `enabled()` on its own, and `update_from` appends its rows to the
+# commissions `Group` rather than building one of their own.
+# `SIDE_QUEST_HEADING` is gone rather than merely unused, because it was the
+# only thing on screen that told the two kinds of row apart -- which is
+# exactly what the second instruction gave up. The distinction still exists
+# in the code, in this function and this table; it only stopped being
+# something a player sees.
+#
+# The flag does not come off yet: `.claude/rules/feature-flags.md` wants the
+# row seen to change at the booth, and that has not happened.  #158 (Track the
+# quests the game itself forgets, starting with Ohlo's potion) carries it.
 #
 # | what               | where it shows      | this placeholder            |
 # |---------------------|---------------------|------------------------------|
-# | group heading        | above the rows      | SIDE_QUEST_HEADING          |
 # | in-hand state word    | right-hand column   | reuses `book.IN_PROGRESS`, already Donald's |
 # | finished state word   | right-hand column   | SIDE_QUEST_FINISHED         |
 # | sub-line               | under the name      | none -- left out, per the plan |
@@ -420,9 +448,8 @@ def commission_rows(flags) -> list[tuple]:
 #: this module still imports nothing from `wish`.
 _log = logging.getLogger("wish.automap.questlog").warning
 
-SIDE_QUEST_HEADING = "Side quests"
 SIDE_QUEST_IN_HAND = book.IN_PROGRESS
-SIDE_QUEST_FINISHED = "finished"
+SIDE_QUEST_FINISHED = "Finished"
 
 #: `durable_state` -> the row's state word. Deliberately partial: Ohlo's own
 #: accept flag is not durable, so `QUEST_ACCEPTED` can never come out of
@@ -466,6 +493,10 @@ def side_quest_rows(flags) -> list[tuple]:
     this row. A quest whose `durable_state` is `QUEST_UNSEEN` gets no row:
     Donald's decision of 2026-09-04 is that the log shows nothing between
     accepting an errand and holding what it asked for.
+
+    `update_from` appends these after `commission_rows`' own, into the same
+    `Group` -- the merge is display only (#158). The two stay separate here
+    and separate in `goldbox/commissions.py`; only where the rows land moved.
     """
     rows = []
     for state in book.side_quests(flags):
@@ -522,13 +553,11 @@ class QuestLogPanel(QObject):
         if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
             self.column = self.scroll.widget().layout()
 
+        # One group for commissions and side quests together (#158): Donald,
+        # 2026-09-04, does not want a separate section, so there is no
+        # `self.groups["side_quests"]` to gate -- `update_from` decides
+        # whether `side_quest_rows()` contributes to this same group's rows.
         self.groups = {"commissions": Group()}
-        if enabled():
-            # Not hidden, not empty, not drawn -- built at all only behind
-            # `WISH_EXPERIMENTAL_QUESTS`, the way `wish/window.py` builds the
-            # Import submenu. Between commissions and summons in the dict so
-            # it lands there in the column too.
-            self.groups["side_quests"] = Group(SIDE_QUEST_HEADING)
         self.groups["summons"] = Group("Summoned to")
         if self.column is not None:
             for group in self.groups.values():
@@ -555,11 +584,11 @@ class QuestLogPanel(QObject):
         if self.completed is not None:
             self.completed.setText(f"Quests completed: {state.completed}")
 
+        rows = commission_rows(flags)
+        if enabled():                   # the gate covers only these rows now
+            rows = rows + side_quest_rows(flags)
         self.groups["commissions"].show_rows(
-            commission_rows(flags)
-            or [("The clerk has nothing on the books for this party", "", "")])
-        if "side_quests" in self.groups:
-            self.groups["side_quests"].show_rows(side_quest_rows(flags))
+            rows or [("The clerk has nothing on the books for this party", "", "")])
         self.groups["summons"].show_rows(
             [(_sentence(a.name), a.state, "")
              for a in state.outstanding])

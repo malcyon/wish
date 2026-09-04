@@ -272,7 +272,7 @@ def tips(panel, group="commissions"):
 
 @pytest.mark.parametrize("value, state", [
     (0, "offered"),                     # the clerk has it on the board
-    (3, "in progress"),                 # the slums' own progress marker
+    (3, "In progress"),                 # the slums' own progress marker
     (DONE, "reward waiting"),
     (PAID_VALUE, "paid"),
 ])
@@ -298,7 +298,7 @@ def test_no_unfinished_row_is_labelled_with_the_clerk_s_completion_speech(app):
 def test_a_commission_the_board_never_offers_still_gets_a_neutral_name(app):
     # Ledger 11's only words from the clerk are "Graveyard menace ended".
     panel = panel_for(app, put_ledger(blank(), 11, 2))
-    assert ("The graveyard menace", "in progress", "") in rows(panel)
+    assert ("The graveyard menace", "In progress", "") in rows(panel)
 
 
 def test_the_marker_value_is_never_the_state_word(app):
@@ -333,7 +333,7 @@ def test_the_six_library_books_are_one_row_that_says_how_many_are_in(app):
         put_ledger(flags, index, PAID_VALUE)
     panel = panel_for(app, flags)
     books = [r for r in rows(panel) if r[0].startswith("Bring back books")]
-    assert books == [("Bring back books, maps and tomes", "in progress",
+    assert books == [("Bring back books, maps and tomes", "In progress",
                       "3 of 6 books recovered")]
     tip = [t for t in tips(panel) if t.startswith("bring back books")][0]
     for index in range(4, 10):
@@ -532,8 +532,8 @@ def test_no_quest_log_tooltip_shows_a_memory_address_side_quests(monkeypatch):
 
 @pytest.mark.parametrize("value, has_row, state, dim", [
     (0, False, None, None),
-    (250, True, "in progress", False),
-    (255, True, "finished", True),
+    (250, True, "In progress", False),
+    (255, True, "Finished", True),
 ])
 def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, monkeypatch,
                                                               value, has_row,
@@ -541,51 +541,72 @@ def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, monkeypatch,
     """`$4A81` alone decides the row: 0 draws nothing, 250 and 255 draw one.
 
     Donald's decision of 2026-09-04: the log shows the errand once the potion
-    is in hand, never merely for having talked to Ohlo.
+    is in hand, never merely for having talked to Ohlo. The row lands in the
+    commissions group, appended after the commission rows (#158), so this
+    also pins the order: the same commission rows come first, unchanged,
+    whichever way the flag goes.
     """
     from automap import questlog
 
+    monkeypatch.delenv(questlog.ENV, raising=False)
+    commissions_only = rows(panel_for(app, _flags_4a81(value)), "commissions")
+
     monkeypatch.setenv(questlog.ENV, "1")
     panel = panel_for(app, _flags_4a81(value))
-    drawn = rows(panel, "side_quests")
+    everything = rows(panel, "commissions")
+    assert everything[:len(commissions_only)] == commissions_only
+    drawn = everything[len(commissions_only):]
     if not has_row:
         assert drawn == []
         return
     assert len(drawn) == 1
     assert drawn[0][1] == state
-    dimmed = panel.groups["side_quests"].visible_rows()[0]
+    dimmed = panel.groups["commissions"].visible_rows()[len(commissions_only)]
     assert bool(dimmed.what.styleSheet()) == dim
 
 
 def test_a_side_quest_row_never_appears_from_the_accepted_flag_alone(app,
                                                                       monkeypatch):
     """The decision, pinned at the panel: a full `$4A00` page with `$4A04` =
-    250 and `$4A81` = 0 draws no row, even though `side_quests()` itself
-    reads `accepted` from the same bytes."""
+    250 and `$4A81` = 0 appends no row to the commissions group, even though
+    `side_quests()` itself reads `accepted` from the same bytes."""
     from automap import questlog
+
+    monkeypatch.delenv(questlog.ENV, raising=False)
+    commissions_only = rows(panel_for(app, _page_4a04(250)), "commissions")
 
     monkeypatch.setenv(questlog.ENV, "1")
     panel = panel_for(app, _page_4a04(250))
-    assert rows(panel, "side_quests") == []
+    assert rows(panel, "commissions") == commissions_only
 
 
-def test_the_side_quest_group_is_not_built_unless_the_flag_says_so(app,
-                                                                    monkeypatch):
+def test_the_side_quest_rows_are_not_appended_unless_the_flag_says_so(app,
+                                                                       monkeypatch):
     """The gate, three ways -- `tests/test_dosimport.py` does the DOS import
-    flag the same way. Force it on and watch the other two fail first."""
+    flag the same way. Force it on and watch the other two fail first.
+
+    The rows now share a container with the commissions, which are always
+    drawn, so the thing worth pinning is that the flag governs only the
+    side-quest tail of the list and leaves the commissions list itself
+    byte-for-byte the same either way (#158).
+    """
     from automap.questlog import ENV
+
+    flags = _flags_4a81(250)            # would draw a row if the flag allowed it
+    monkeypatch.delenv(ENV, raising=False)
+    commissions_only = rows(panel_for(app, flags), "commissions")
 
     for value in (None, "", "0", "off", "no"):
         if value is None:
             monkeypatch.delenv(ENV, raising=False)
         else:
             monkeypatch.setenv(ENV, value)
-        panel = panel_for(app, _flags_4a81(250))
-        assert "side_quests" not in panel.groups, value
+        panel = panel_for(app, flags)
+        assert rows(panel, "commissions") == commissions_only, value
 
     monkeypatch.setenv(ENV, "1")
-    panel = panel_for(app, _flags_4a81(250))
-    assert "side_quests" in panel.groups
+    panel = panel_for(app, flags)
+    assert rows(panel, "commissions") != commissions_only
 
 
 

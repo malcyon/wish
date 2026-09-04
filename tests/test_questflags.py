@@ -286,7 +286,13 @@ def test_durable_state_on_real_saves_never_shows_accepted(stem, expected):
 ])
 def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn,
                                                                dim, monkeypatch):
-    """Every save in `SAVE_STATES`, through the actual panel this time."""
+    """Every save in `SAVE_STATES`, through the actual panel this time.
+
+    The side-quest row, when there is one, is appended to the commissions
+    group rather than drawn in a group of its own (#158) -- so the row is
+    whatever visible row comes after however many commission rows this same
+    save produces with the flag off.
+    """
     from PyQt6.QtWidgets import QApplication, QMainWindow
 
     from automap.questlog import ENV, QuestLogPanel
@@ -295,13 +301,24 @@ def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn,
     payload = _savedgame0(stem)
     if payload is None:
         pytest.skip(f"no {stem}.D64 with a SAVEDGAME0 here")
-    monkeypatch.setenv(ENV, "1")
     QApplication.instance() or QApplication([])
+
+    monkeypatch.delenv(ENV, raising=False)
+    base_root = QMainWindow()
+    Ui_WishWindow().setupUi(base_root)
+    base_panel = QuestLogPanel(base_root)
+    base_panel.update_from(payload)
+    base_count = len(base_panel.groups["commissions"].visible_rows())
+
+    monkeypatch.setenv(ENV, "1")
     root = QMainWindow()
     Ui_WishWindow().setupUi(root)
     panel = QuestLogPanel(root)
     panel.update_from(payload)
-    rows = panel.groups["side_quests"].visible_rows()
+    all_rows = panel.groups["commissions"].visible_rows()
+    assert [r.what.text() for r in all_rows[:base_count]] == [
+        r.what.text() for r in base_panel.groups["commissions"].visible_rows()]
+    rows = all_rows[base_count:]
     assert len(rows) == (1 if drawn else 0), stem
     if drawn:
         assert bool(rows[0].what.styleSheet()) == dim, stem
