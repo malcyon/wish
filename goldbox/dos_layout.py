@@ -390,9 +390,18 @@ _DECLARED: Sequence[Field] = (
     _f(0x0B5, 3, _RAW, "spells_castable_magic_user", "Magic-user spell slots",
        _MAYBE),
     _f(0x0BB, 1, _U8, "portrait_head", "Portrait head", _OK,
-       "**the four bytes at 0x0BB were one GUESS field called `icon_choice`; "
-       "they are two pairs** (#57). 0x0BB and 0x0BC index the sheet portrait "
-       "-- the `HEAD<n>.DAX` and `BODY<n>.DAX` sets -- and 0x0BD and 0x0BE "
+       "**a one-based position in the creation menu's fourteen heads, not a "
+       "block number** (#57). The menu's own table of art ids is in the "
+       "game's own `START.EXE`, and the same fourteen bytes in the same "
+       "order are in the C64's `GEN` on POOL3; the C64 record stores the id "
+       "where this stores the position. CONFIRMED in DOSBox: position 1 "
+       "draws `$00`, 7 draws `$16`, 12 draws `$39` and 14 draws `$44`, each "
+       "matched pixel for pixel against the block rendered out of "
+       "`HEAD<n>.DAX` -- `<n>` there is the disk the art is packed on, not "
+       "anything this byte names. `goldbox/portraits.py` reads the table.\n"
+       "**The four bytes at 0x0BB were one GUESS field called `icon_choice`; "
+       "they are two pairs.** 0x0BB and 0x0BC are the sheet portrait "
+       "and 0x0BD and 0x0BE "
        "the small combat icon, `CHEAD.DAX` and `CBODY.DAX`. Three things say "
        "so together. The community's per-title tables in "
        "`work/coab-research/formats/` name exactly this split and only Pool "
@@ -403,12 +412,10 @@ _DECLARED: Sequence[Field] = (
        "the same reason. And the values fit: 1-11 here and 1-10 at 0x0BC "
        "across the 18, against 0-13 and 3-31 for the icon pair, which is two "
        "small sets and one larger one.\n"
-       "**CONFIRMED in the running game** (#57), three sheets of one "
-       "character in DOSBox: BRUTUS ships as (12, 3) and draws a "
-       "dark-haired head on a bare torso; (1, 3) draws a *different head* on "
-       "**the same torso**; (1, 1) draws that same head on an armoured "
-       "torso. Head and body move independently, and each byte moves its own "
-       "half"),
+       "Head and body move independently, and each byte moves its own half: "
+       "BRUTUS ships as (12, 3) and draws a dark-haired head on a bare "
+       "torso; (1, 3) draws a *different head* on **the same torso**; "
+       "(1, 1) draws that same head on an armoured torso"),
     _f(0x0BC, 1, _U8, "portrait_body", "Portrait body", _OK,
        "see `portrait_head`: the body half of the same experiment"),
     _f(0x0BD, 1, _U8, "icon_head", "Combat icon head", _MAYBE,

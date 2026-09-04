@@ -238,7 +238,7 @@ twelve of them.
 | `0x098` fighting level set (1 byte) | `reclac_player_values`: `attackLevel = SkillLevel(Fighter)`, else 1 | **explained** |
 | `0x10F` roster armour class recomputed (1 byte) | `reclac_player_values`: `ac = base_ac`, then dexterity and readied-item bonuses | **explained** |
 | `0x073` `char_class` zeroed (1 byte) | the DOS routine *copies* the class byte straight across | **not explained** |
-| `0x0FE`, `0x0FF` portrait head and body zeroed (2 bytes) | the DOS routine copies `head_icon` and `weapon_icon` straight across | **not explained** — but they are probably not the same field. The C64's 36-byte combat icon at `0x220` passes through untouched, so `0x0FE`/`0x0FF` are the C64's own indices into `CHARPIC00`, which Curse does not share |
+| `0x0FE`, `0x0FF` portrait head and body zeroed (2 bytes) | the DOS routine copies `head_icon` and `weapon_icon` straight across | **explained since #57**: they are not the same field. `0x0FE`/`0x0FF` are the **sheet portrait**, the ids of the `HEAD<xx>` and `BODY<xx>` files, and only Pool of Radiance has one — from Curse onwards the pair is gone from the record, so there is nothing for the importer to carry. The combat icon at `0x220` passes through untouched because that is the field the DOS routine's `head_icon`/`weapon_icon` correspond to. (The earlier reading here, that `0x0FE`/`0x0FF` index `CHARPIC00`, was wrong: `CHARPIC00` is the icon charset and the portrait is a disk file.) |
 
 `docs/116` also saw saving throws change where an item bonus had been baked in,
 and **thief skills re-derived rather than copied**. Both are `ReclacClassBonuses`
@@ -1557,6 +1557,7 @@ graph LR
   dos -.->|deferred| items
   dos --> layout
   dos --> neutral
+  dos --> portraits
   dos --> record
   dos -.->|deferred| savegame
   dos -.->|deferred| spells
@@ -1576,6 +1577,8 @@ graph LR
   levelup --> spells
   memory --> layout
   neutral --> layout
+  portraits -.->|deferred| d64
+  portraits --> dos_savegame
   record --> encoding
   record --> layout
   record --> petscii
@@ -1724,9 +1727,10 @@ here fails a test. Four kinds of byte have no neutral source:
   from money plus item weight × quantity, the identity the engine itself
   uses;
 * **unsourced zeros**, the `WRITE_UNSOURCED` list — `effect_chain`,
-  `item_chain`, `heap_104`, `hands_used`, `portrait_head`,
-  `portrait_body`, `icon_head`, `icon_body` — live heap and the art ids,
-  ~73 bytes. Measured
+  `item_chain`, `heap_104`, `hands_used`, `icon_head`, `icon_body`, and
+  `portrait_head`/`portrait_body` **only when the game directory's creation
+  tables cannot be read** — live heap and the combat art ids, ~73 bytes.
+  Measured
   survivable for a character carrying items, and, since #62, for one carrying
   nothing too: the engine's own record for a character who dropped everything
   in play holds `item_chain` NULL and `hands_used` 0, which is what the writer
@@ -1939,12 +1943,10 @@ did **not** hold for free on the reader beside it: the first real consumer of
 
 ### What a converted party loses
 
-* **The sheet portrait**: `portrait_head` and `portrait_body` index the DOS
-  art set — `HEAD<n>.DAX` and `BODY<n>.DAX`, **CONFIRMED in DOSBox** by
-  changing one byte at a time and photographing the sheet (#57) — and no
-  other
-  port numbers it, and zero draws no portrait. Cosmetic, real, reported.
-  (What zero does to the *combat* icon is untested.)
+* ~~**The sheet portrait**~~ — **carried since #57, and seen on the sheet in
+  the game.** See "The portrait" below. What is still dropped is the
+  *combat* icon pair at `0x0BD`/`0x0BE`, which is a different art set and
+  #130.
 * **Running spell effects.** The innate bonuses are carried now (#61); a
   spell still running when the party saved is not, which is what the game's
   own importer does too.
@@ -1962,6 +1964,93 @@ did **not** hold for free on the reader beside it: the first real consumer of
   roster file (the game disks' own `SAVEDGAME0`-only saves) has no current
   hit points to give; the writer refuses and reports rather than writing
   hp_max as a guess, and the party arrives at 0 hit points on the sheet.
+
+### The portrait, which is one menu written two ways (#57)
+
+**The two ports choose a face from the same menu, and each stores the choice
+in its own spelling.** The C64 keeps the art's **id** — `portrait_head` at
+`0x0FE` is the two hex digits of a filename, so `$2D` is the file `HEAD2D`
+— and DOS keeps the **one-based position in the menu** at `0x0BB`, 1 to 14
+for the head and 1 to 12 for the body. So the conversion is a lookup, and
+nothing about it is a judgement.
+
+Three measurements, and none of them needs the game running:
+
+| what | measured | grade |
+|---|---|---|
+| The two ports number the art identically | The `HEAD<xx>`/`BODY<xx>` files on `POOL<n>.D64` and the block ids in `HEAD<n>.DAX`/`BODY<n>.DAX` are equal as sets **and disk by disk**, all sixteen containers, 41 head ids and 21 body ids | CONFIRMED |
+| The menu is a table in the game's own binary | A run of fourteen strictly increasing head ids then twelve body ids, unique in each file: DOS `START.EXE` and the C64's `GEN` on `POOL3`, which writes the bodies first | CONFIRMED |
+| The two tables are the same 26 bytes in the same order | Byte for byte | CONFIRMED |
+
+The check that could have failed and did not: **every portrait value in all
+114 filled slots of the nineteen C64 save disks on this machine is in those
+tables** — 7 distinct head values of 7, 8 body values of 8, no exception.
+
+`goldbox/portraits.py` reads the table out of whichever file is to hand and
+**checks every value in it against art that exists beside it**, so a table
+found is a table naming real portraits. Nothing of the game's is copied into
+this repository.
+
+**CONFIRMED in the running game**, `tools/portraitshot.py`, which opens the
+sheet under DOSBox and matches the drawn portrait against every block of
+`HEAD<n>.DAX` rendered from the player's own files — every non-background
+pixel has to agree:
+
+| `portrait_head` | drew | the table's entry |
+|---|---|---|
+| 1 | `$00` | `$00` |
+| 7 | `$16` | `$16` |
+| 12 | `$39` | `$39` |
+| 14 | `$44` | `$44` |
+
+Five runs, ten lookups counting the bodies, no exception, both ends of both
+tables included. The last of them is the acceptance: PORSAVE12's BRUTUS,
+whose C64 record carries `$08` and `$07`, arrives as DOS `(2, 5)` and the
+sheet draws `HEAD08` over `BODY07`.
+
+**An id the menu does not offer is reported, not substituted.** `$67` is a
+real C64 `HEAD67` and is not one of the fourteen, so the DOS record has no
+position for it: the byte stays zero and the loss names the id. No id outside
+the tables has ever been seen in a save.
+
+#### `$49FF`, and why right records were not enough
+
+**A converted party was still faceless after the records were right, and the
+cause was in the saved game.** Same six records, two saved games: on the
+engine's own `SAVGAM<slot>.DAT` the portrait drew, on `new_dos_save`'s
+from-nothing one nothing drew at all — same area, same disk, same records.
+Bisecting the 123 words that differ lands on one:
+
+| `$49FF` | the sheet |
+|---|---|
+| 0, which the conversion wrote | no portrait |
+| 3, which all three engine-written saves hold | the portrait |
+| 1, which the C64 holds at the same address | the portrait |
+
+It was in `SAVGAM_UNSOURCED` as *"unnamed: 3 in every specimen, and
+referenced by none of the thirty scripts"*, which was true and made every
+converted party faceless whatever its records said. `goldbox/dos.py` now
+writes 3, in `SAVGAM_MEASURED`, with the run beside it. **What the word means
+is still unknown; what it does is measured.**
+
+Two things this leaves open:
+
+* The same address is nonzero in all sixteen C64 saves on this machine — 1,
+  or `$81` in two — and `HEADER_ZEROED` writes zero there in the DOS → C64
+  direction. **SPECULATIVE**: if `$49FF` gates the C64's sheet portrait the
+  way it gates the DOS one, the import has the same defect waiting. The
+  experiment is to convert a DOS party to a `.d64`, `VIEW` a character in
+  VICE, then set `$49FF` to 1 by hand and look again.
+* **The game draws no sheet portrait in the Slums at all**, and that is the
+  game's own behaviour rather than ours: its own shipped Slums party (slot J)
+  shows none either, and a converted party there showed none even with
+  `$49FF = 3` and both blocks present in the Slums' own containers. What
+  decides it is UNKNOWN.
+
+**The DOS → C64 half is not done.** `to_neutral(dos, portraits=)` puts the
+art id in the neutral record, and `goldbox/c64_codec.py` still drops it,
+reporting that the two ports number different art — a sentence the table
+above refutes.
 
 ## Verification
 

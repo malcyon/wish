@@ -296,6 +296,216 @@ def _diff_against(char, rec: bytes) -> tuple[set[int], bool]:
     return differs - mask - set(range(ENC.offset, ENC.end)), enc
 
 
+# --- the sheet portrait (#57) ------------------------------------------------
+#
+# The pair at 0x0BB is a **menu position** where the C64 record holds the
+# art's own id, and the fourteen-and-twelve table that joins them is in both
+# ports' binaries (`goldbox/portraits.py`).  These tests are what keep the
+# writer from going back to zero, which is a character with no face on its
+# sheet.
+
+PORTRAIT_FIELDS = ("portrait_head", "portrait_body")
+
+
+def _portrait_offsets() -> set[int]:
+    out: set[int] = set()
+    for name in PORTRAIT_FIELDS:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        out.update(range(f.offset, f.end))
+    return out
+
+
+def _portrait_tables():
+    """The creation menu out of the game directory the DOS saves sit in.
+
+    `None` when the saves are somewhere else -- Steam redirects them out of
+    the game folder -- in which case the portrait pair stays masked and the
+    round trip says nothing about it, which is the honest outcome rather than
+    a skip of the whole test.
+    """
+    from goldbox import portraits
+
+    where = _save_dir()
+    if where is None:
+        return None
+    for root in (where, *where.parents):
+        if (root / "START.EXE").exists() and list(root.glob("HEAD[0-9].DAX")):
+            try:
+                return portraits.tables_from_dos(root)
+            except portraits.PortraitError:
+                return None
+    return None
+
+
+@needs_dos_saves
+def test_the_portrait_pair_round_trips_when_the_menu_can_be_read():
+    """DOS position -> C64 art id -> DOS position, unmasked, on every record.
+
+    The round trip above masks `portrait_head` and `portrait_body`, because
+    they are what a conversion with no game directory still writes as zero.
+    This one takes the mask off and asserts the bytes themselves: 24 of 24
+    come back identical, and the id in the middle is a real `HEAD<xx>` the
+    C64 would load.
+    """
+    tables = _portrait_tables()
+    if tables is None:
+        pytest.skip("the DOS saves here are not beside the game's own files")
+    total = 0
+    for char in _records():
+        original = char.to_bytes()
+        neutral_char = dos.to_neutral(char, portraits=tables)
+        rec, _, _, _ = dos.write(neutral_char, portraits=tables)
+        for name in PORTRAIT_FIELDS:
+            f = dos_layout.FIELDS_BY_NAME[name]
+            assert rec[f.offset] == original[f.offset], (char.name, name)
+            assert rec[f.offset] != 0, (char.name, name)
+        assert neutral_char.get("portrait_head") in tables.heads
+        assert neutral_char.get("portrait_body") in tables.bodies
+        total += 1
+    assert total >= 24
+
+
+@needs_dos_saves
+def test_the_portrait_is_the_only_thing_the_menu_tables_change():
+    """Handing the writer the tables must not move any other byte.
+
+    Cheap, and it is the check that would have caught a lookup wired to the
+    wrong field: everything outside the pair is identical with and without
+    them.
+
+    `unnamed_0ab` moves too and has to: it is a digest of the other 284
+    bytes, so a record that now carries a face is a different character to
+    the engine's "already in the party" test than the faceless one (#216).
+    """
+    tables = _portrait_tables()
+    if tables is None:
+        pytest.skip("the DOS saves here are not beside the game's own files")
+    identity = dos_layout.FIELDS_BY_NAME["unnamed_0ab"]
+    pair = _portrait_offsets() | set(range(identity.offset, identity.end))
+    for char in _records():
+        without, _, _, _ = dos.write(dos.to_neutral(char))
+        with_them, _, _, _ = dos.write(dos.to_neutral(char, portraits=tables),
+                                       portraits=tables)
+        differ = {i for i in range(len(without)) if without[i] != with_them[i]}
+        assert differ <= pair, (char.name, sorted(hex(i) for i in differ))
+
+
+@needs_dos_saves
+def test_without_the_menu_tables_the_portrait_is_zero_and_reported():
+    """The state #57 found, kept reachable and kept loud.
+
+    A conversion that cannot read the game's own tables leaves the pair zero
+    -- a sheet with no face -- and says so, rather than writing a position
+    that would draw somebody else's.
+    """
+    char = _records()[0]
+    rec, _, _, rep = dos.write(dos.to_neutral(char))
+    for name in PORTRAIT_FIELDS:
+        f = dos_layout.FIELDS_BY_NAME[name]
+        assert rec[f.offset] == 0, name
+    text = " ".join(rep.dropped)
+    assert "portrait_head" in text and "portrait_body" in text
+
+
+@needs_dos_saves
+def test_a_portrait_outside_the_menu_is_reported_rather_than_substituted():
+    """No nearest match and no default -- the standard the rest of the
+    conversion is held to.
+
+    `$67` is a real C64 `HEAD67`, and it is not one of the fourteen the
+    creation menu offers, so the DOS record has no position for it.  The byte
+    stays zero and the loss is named with the id in it, which is what tells
+    a player which face went missing.
+    """
+    tables = _portrait_tables()
+    if tables is None:
+        pytest.skip("the DOS saves here are not beside the game's own files")
+    outside = 0x67
+    assert outside not in tables.heads
+    char = dos.to_neutral(_records()[0], portraits=tables)
+    char.set("portrait_head", outside, "made up: an NPC's own portrait")
+    rec, _, _, rep = dos.write(char, portraits=tables)
+    f = dos_layout.FIELDS_BY_NAME["portrait_head"]
+    assert rec[f.offset] == 0
+    assert any("HEAD67" in d for d in rep.dropped), rep.dropped
+
+
+@needs_dos_saves
+def test_a_converted_party_arrives_with_its_own_faces(tmp_path):
+    """The whole of #57 from the outside: C64 save in, DOS records out.
+
+    Every character's `portrait_head` is the position of *its own* C64
+    `HEAD<xx>` in the creation menu, not zero and not one figure for
+    everybody -- which is what the player sees the moment the character sheet
+    opens.
+    """
+    from goldbox import c64_codec, portraits
+    from goldbox.savegame import SaveGame0
+
+    tables = _portrait_tables()
+    if tables is None:
+        pytest.skip("the DOS saves here are not beside the game's own files")
+    save0, save1 = _fixture_payloads()
+    dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+
+    wanted = []
+    for slot in SaveGame0.from_bytes(save0).characters:
+        c64 = c64_codec.read(slot.record, source="fixture")
+        wanted.append((tables.head_position(c64.get("portrait_head")),
+                       tables.body_position(c64.get("portrait_body"))))
+    wanted.reverse()          # DOS lists the party from the other end (#101)
+
+    head = dos_layout.FIELDS_BY_NAME["portrait_head"].offset
+    body = dos_layout.FIELDS_BY_NAME["portrait_body"].offset
+    seen = 0
+    for n, (want_head, want_body) in enumerate(wanted, start=1):
+        rec = (tmp_path / f"CHRDATA{n}.SAV").read_bytes()
+        assert (rec[head], rec[body]) == (want_head, want_body)
+        assert rec[head] and rec[body]
+        assert 1 <= rec[head] <= portraits.HEAD_COUNT
+        assert 1 <= rec[body] <= portraits.BODY_COUNT
+        seen += 1
+    assert seen == len(wanted) >= 1
+
+
+@needs_dos_saves
+def test_the_saved_game_carries_the_word_the_portrait_needs(tmp_path):
+    """Right records are not enough: `$49FF` has to be nonzero as well.
+
+    Measured in DOSBox with `tools/portraitshot.py`, and it is the reason a
+    converted party stayed faceless after the records were right: the same
+    six records draw their portraits on the engine's own saved game and
+    nothing at all on a from-nothing one, and the difference bisects to this
+    one word.  Zero, no portrait; 3, the portrait; 1, the portrait.
+
+    Asserted as the value in the file rather than as a table lookup -- a
+    table entry that the writer stops reading would pass the lookup.
+    """
+    save0, save1 = _fixture_payloads()
+    dos.new_dos_save(save0, save1, tmp_path, "A", _game_dir())
+    savgam = (tmp_path / "SAVGAMA.DAT").read_bytes()
+    assert sg.word(savgam, 0x49FF) == 3
+    assert 0x49FF not in {a for a, _, _ in dos.SAVGAM_UNSOURCED}
+
+
+@needs_dos_saves
+def test_a_conversion_with_no_game_directory_says_the_faces_went(tmp_path):
+    """`write_dos_save` without a game directory cannot read the menu, so it
+    reports the loss on the save's own report rather than leaving a party
+    silently faceless.
+
+    Both halves are asserted, because they reach the player through different
+    lists: the warning says why once, and the per-character drop names the
+    `HEAD<xx>` that went.  `editor/exports.py`'s `losses` reads both.
+    """
+    save0, save1 = _fixture_payloads()
+    report = dos.write_dos_save(save0, save1, _save_dir(), tmp_path, "A")
+    assert any("portrait" in w for w in report.warnings), report.warnings
+    assert any("portrait_head" in d for d in report.dropped), report.dropped
+    head = dos_layout.FIELDS_BY_NAME["portrait_head"].offset
+    assert (tmp_path / "CHRDATA1.SAV").read_bytes()[head] == 0
+
+
 @needs_dos_saves
 def test_the_written_icon_colours_are_not_zero():
     """A DOS combat icon whose six colour pairs are zero paints all six parts
@@ -882,7 +1092,7 @@ def test_a_character_that_cannot_be_written_leaves_the_slot_alone(
     before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
     assert before, "the first conversion must have written something"
 
-    def boom(char):
+    def boom(char, portraits=None):
         raise dos.DosRecordError("this character will not encode")
 
     monkeypatch.setattr(dos, "write", boom)
@@ -1042,6 +1252,7 @@ def test_every_nonzero_word_a_real_saved_game_holds_is_written_or_declared():
     written |= set(range(sg.WALLSET, sg.WALLSET + 3))
     written |= set(range(sg.WALLMAP, sg.WALLMAP + 3))
     written |= {a for a, _, _ in sg.SAVGAM_CONSTANTS}
+    written |= {a for a, _, _ in dos.SAVGAM_MEASURED}
     declared = {a + i for a, n, _ in dos.SAVGAM_UNSOURCED for i in range(n)}
 
     saves = sorted(_save_dir().glob("SAVGAM?.DAT"))
@@ -1070,12 +1281,17 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
             assert sg.VAR_BASE <= a <= sg.VAR_LAST, hex(a)
             assert a not in seen, hex(a)
             seen.add(a)
-    # 510 bytes of variables carry a stated reason for their zero, and 274
+    # 508 bytes of variables carry a stated reason for their zero, and 274
     # more are the character table's heap scratch and the menu text after it.
-    # Only 180 of the 510 have ever been seen holding anything in a container
+    # Only 178 of the 508 have ever been seen holding anything in a container
     # on this machine -- the rest is the message buffer's own tail, declared
     # whole because it is one buffer and not 217 findings, and $507A-$507C,
     # which #59 named live off specimens that no longer exist.
-    assert 2 * len(seen) == 510
+    #
+    # It was 510 until #57: `$49FF` left this table for `SAVGAM_MEASURED`,
+    # because zero there is what stopped the sheet portrait being drawn at
+    # all, so it is a word the conversion writes rather than one it cannot
+    # source.
+    assert 2 * len(seen) == 508
     assert (sg.PARTY_ENTRIES * (sg.PARTY_ENTRY - sg.PARTY_NAME_LEN)
             + sg.UI_SCRATCH) == 274

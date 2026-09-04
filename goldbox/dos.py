@@ -76,6 +76,7 @@ from .dos_layout import (
 )
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
+from .portraits import PortraitError, PortraitTables, tables_from_dos
 from .record import CharacterRecord
 
 __all__ = [
@@ -93,6 +94,8 @@ __all__ = [
     "WRITE_DEFAULTS",
     "WRITE_DERIVED",
     "identity_byte",
+    "PortraitTables",
+    "portrait_tables",
     "C64SaveReport",
     "item_to_c64",
     "item_from_c64",
@@ -729,9 +732,11 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("effect_chain", "live pointer to the effect list; the effects "
                      "themselves come from the .SPC file"),
     ("item_count", "implied by the C64's sixteen fixed slots"),
-    ("portrait_head", "DOS art: HEAD<n>.DAX, a different set from the C64's "
-                      "HEADnn with different numbering (#57)"),
-    ("portrait_body", "DOS art: BODY<n>.DAX, likewise"),
+    ("portrait_head", "the sheet portrait's head: a menu position, which "
+                      "needs the game's own creation tables to become the "
+                      "C64's HEADnn id. Carried when `to_neutral` is given "
+                      "them, dropped when it is not (#57)"),
+    ("portrait_body", "see portrait_head; the body half of the same pair"),
     ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. The C64 "
                   "stores the drawn 36-byte icon instead of an index"),
     ("icon_body", "DOS art: CBODY.DAX, likewise"),
@@ -808,13 +813,39 @@ def field_disposition() -> dict[str, str]:
     return neutral.disposition(DIRECT, TRANSFORMED, DROPPED, "the C64's")
 
 
-def to_neutral(dos: DosCharacter) -> NeutralCharacter:
+def portrait_tables(game: str | pathlib.Path | None
+                    ) -> tuple[PortraitTables | None, str]:
+    """The creation menu's portrait tables out of a DOS game directory.
+
+    Returns `(tables, why_not)`, never raises: the portrait is one cosmetic
+    pair of bytes and a game directory that cannot answer for them is a
+    reason to report them, not to refuse a conversion that is right in every
+    other field.  `goldbox/portraits.py` has the two tables and what they are.
+    """
+    if game is None:
+        return None, ("no DOS game directory was given, and the menu tables "
+                      "that turn a portrait into an art id are in its own "
+                      "START.EXE")
+    try:
+        return tables_from_dos(game), ""
+    except PortraitError as e:
+        return None, str(e)
+
+
+def to_neutral(dos: DosCharacter,
+               portraits: PortraitTables | None = None) -> NeutralCharacter:
     """Read one DOS character into the neutral record.
 
     The DOS half of the pair `goldbox/neutral.py` describes, and the only half
     that knows a DOS offset.  It names where every value came from and what
     the DOS record holds that no neutral field does; what becomes of them
     afterwards is a writer's business.
+
+    `portraits` is the creation menu's two tables, from
+    :func:`portrait_tables`.  With them the sheet portrait crosses -- the DOS
+    record's menu position becomes the art id the neutral record carries,
+    which is what the C64 stores -- and without them it is reported as a
+    drop, exactly as it was before #57.
     """
     if not dos.is_pool_of_radiance:
         raise WrongTitleError(
@@ -896,12 +927,41 @@ def to_neutral(dos: DosCharacter) -> NeutralCharacter:
             "the .ITM file, each 63-byte record projected onto sixteen bytes",
             Confidence.CONFIRMED)
 
+    # -- the sheet portrait: a menu position becomes the art's own id --------
+    # The two ports choose from one menu of fourteen heads and twelve bodies,
+    # and the table of ids is in both binaries, byte for byte and in the same
+    # order (#57).  DOS stores where in the menu; the C64 stores what the
+    # menu chose, which is the id of a `HEAD<xx>` file.  Head and body move
+    # independently -- CONFIRMED on three sheets of one character in DOSBox
+    # -- so a position the menu cannot answer for takes only its own half
+    # out.
+    carried_portrait: set[str] = set()
+    for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
+                               ("portrait_body", "body_art", "BODY")):
+        if portraits is None:
+            continue
+        f = FIELDS_BY_NAME[name]
+        position = dos.get(name)
+        art = getattr(portraits, art_of)(position)
+        if art is None:
+            out.drop(f"DOS {name} @{f.offset:#05x}: {position} is not one of "
+                     f"the positions the creation menu offers, so no C64 "
+                     f"{stem}nn id corresponds to it")
+            continue
+        out.set(name, art,
+                f"DOS {name} @{f.offset:#05x} = menu position {position}, "
+                f"which is {stem}{art:02X} in {portraits.source}",
+                f.confidence, Provenance.RESHAPED)
+        carried_portrait.add(name)
+
     # -- what the DOS record holds and no neutral field does ------------------
     # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
     # `field_disposition` still accounts for every one of them; what they are
     # kept out of is the list a person reads.
     for name, why in DROPPED:
         if name in UNREPORTED_DROPS or name in ICON_DROPS:
+            continue
+        if name in carried_portrait:
             continue
         out.drop(f"DOS {name} @{FIELDS_BY_NAME[name].offset:#05x}: {why}")
     out.drop(COMBAT_ICON_DROP)
@@ -1085,6 +1145,13 @@ WRITE_DIRECT: tuple[tuple[str, str], ...] = (
 #: Neutral fields the DOS writer takes by a rule rather than by a copy.
 WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("name", "length-prefixed into one count byte and fifteen ASCII"),
+    ("portrait_head", "the C64's HEADnn id becomes the DOS record's menu "
+                      "position, through the creation tables in the game's "
+                      "own START.EXE (#57). Zero, and reported, when those "
+                      "tables cannot be read or the id is not one of the "
+                      "fourteen the menu offers"),
+    ("portrait_body", "see portrait_head; twelve bodies rather than "
+                      "fourteen heads"),
     ("levels", "permuted onto the DOS eight slots, which are indexed by the "
                "class number; a class with no number (knight) is reported"),
     ("spells_known", "unpacked to one byte per spell; the ids are identical, "
@@ -1116,10 +1183,6 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
-    ("portrait_head", "the DOS record has a portrait head of its own at "
-                      "0x0BB, and it indexes the DOS art set, which no other "
-                      "port numbers; left zero until #57 chooses a mapping"),
-    ("portrait_body", "see portrait_head"),
 )
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
@@ -1154,12 +1217,17 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
                      "itself. Measured -- a slot loaded twice puts the same "
                      "party's nodes at different addresses (#61). NULL in "
                      "the engine's own record with items and without"),
-    ("portrait_head", "indexes the DOS art set, which no other port "
-                      "numbers; zero leaves the sheet portrait blank. "
-                      "Cosmetic, and the same with items and without (#57)"),
-    ("portrait_body", "see portrait_head"),
-    ("icon_head", "see portrait_head; this pair is the combat icon"),
-    ("icon_body", "see portrait_head"),
+    ("portrait_head", "**written whenever the game directory's creation "
+                      "tables can be read**: the C64's HEADnn id is a "
+                      "position in the same fourteen-entry menu DOS indexes "
+                      "(#57). Zero only when they cannot be read or the id "
+                      "is not one the menu offers, and reported when it is. "
+                      "Cosmetic, and the same with items and without"),
+    ("portrait_body", "see portrait_head; the body half of the same pair"),
+    ("icon_head", "the **combat** icon's head -- a different art set and a "
+                  "different pair from the two above, and a different "
+                  "ticket (#130). Zero"),
+    ("icon_body", "see icon_head"),
     ("item_chain", "live heap pointer block; the items themselves are in "
                    "the .ITM file. **Zero is what the engine itself writes "
                    "for a character carrying nothing** -- measured, #62 -- "
@@ -1309,13 +1377,21 @@ def _encode(f: Field, rec: bytearray, value: Any) -> None:
         rec[f.offset:f.end] = data
 
 
-def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
+def write(char: NeutralCharacter,
+          portraits: PortraitTables | None = None
+          ) -> tuple[bytes, bytes, bytes, WriteReport]:
     """Build a 285-byte DOS record and its `.ITM` and `.SPC` payloads from a
     neutral character.
 
     The reverse of :func:`to_neutral`, and the writer #26 asked for: with it,
     C64 to DOS is `c64_codec.read` plus this, and nothing else.  Returns
     `(record, itm, spc, report)`.
+
+    `portraits` is the creation menu's two tables, from
+    :func:`portrait_tables`.  With them the sheet portrait crosses -- the C64
+    art id the neutral record carries becomes the menu position DOS stores --
+    and without them the pair is left zero and reported, which is what a
+    converted party looked like before #57: no face on the sheet.
 
     Every byte of both outputs is justified in the report: it came from a
     neutral value, it was computed by a named rule, it is a documented
@@ -1425,6 +1501,38 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
     if tail is not None:
         put(tail, "roster_tail", " copied as a block")
 
+    # -- the sheet portrait: the art's own id becomes a menu position --------
+    # Both ports offer one menu of fourteen heads and twelve bodies and both
+    # binaries carry the same table of art ids in the same order (#57), so
+    # this is a lookup rather than a judgement.  What the C64 keeps is the id
+    # -- `$2D` is the file `HEAD2D` -- and what DOS keeps is where that id
+    # sits in the menu, counting from one.
+    #
+    # Nothing is substituted when the lookup cannot be made.  A portrait the
+    # menu does not offer has no DOS position to be written as, so the byte
+    # is left zero and the loss is reported: the alternative is a face that
+    # belongs to somebody else.
+    portraits_written: set[str] = set()
+    for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
+                                ("portrait_body", "body_position", "BODY")):
+        v = use(pname)
+        position = None
+        if v is not None and portraits is not None:
+            position = getattr(portraits, lookup)(int(v.value))
+        if position is not None:
+            put(v, pname,
+                f", the position of {stem}{int(v.value):02X} in the creation "
+                f"menu ({portraits.source})", value=position)
+            portraits_written.add(pname)
+        elif v is not None:
+            rep.dropped.append(
+                f"{pname}: {port} carries {stem}{int(v.value):02X} and " +
+                ("the creation menu does not offer it, so the DOS record "
+                 "has no position for it"
+                 if portraits is not None else
+                 "the creation menu's own tables were not available to turn "
+                 "it into the position the DOS record stores"))
+
     # -- the inventory becomes the .ITM file ---------------------------------
     itm = b""
     projected: list[bytes] = []
@@ -1522,7 +1630,12 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
                  f"{dname}: {data.hex()} -- {why}. Not carried: {lost}")
 
     # -- bytes with no source: live heap and the unattributed ----------------
+    # The portrait pair is in that list because it is what a conversion with
+    # no game directory still writes, and a note here would overwrite the
+    # provenance of a portrait that *was* carried.
     for uname, why in WRITE_UNSOURCED:
+        if uname in portraits_written:
+            continue
         f = FIELDS_BY_NAME[uname]
         rep.note(f.offset, f.size, f"{uname}: zero -- {why}")
 
@@ -2502,8 +2615,6 @@ SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
                 "[$49FD] / SAVE 10,[$49FE]` and ECL14 the same with 9, and "
                 "the engine rewrote 10 to 9 by itself after loading a save "
                 "moved into the Slums (#59)"),
-    (0x49FF, 1, "unnamed: 3 in every specimen, and referenced by none of the "
-                "thirty scripts, so nothing says what it would mean"),
     (0x4DB8, 1, DOS_ONLY), (0x4DC3, 1, DOS_ONLY), (0x4E0C, 1, DOS_ONLY),
     (0x4FA8, 1, DOS_ONLY), (0x4FC0, 2, DOS_ONLY), (0x4FC6, 1, DOS_ONLY),
     (0x4FC8, 1, DOS_ONLY),
@@ -2541,6 +2652,35 @@ SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
 #: nothing").
 PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
                        "and 82 bytes of menu text, zeroed")
+
+#: Saved-game words written to a value **measured in the running game**, as
+#: `(address, value, why)`.  Distinct from `dos_savegame.SAVGAM_CONSTANTS`,
+#: whose values are what every specimen holds: what is written here is what
+#: the game was watched *doing something with*.
+#:
+#: `$49FF` was in :data:`SAVGAM_UNSOURCED` as "unnamed: 3 in every specimen,
+#: and referenced by none of the thirty scripts", and zero there is what made
+#: a converted party **faceless whatever its records said** (#57).  Measured,
+#: DOSBox, `tools/portraitshot.py`: the same six converted records that draw
+#: their portraits on the shipped saved game draw nothing on a from-nothing
+#: one, and the difference bisects to this single word -- `$49FF = 0` no
+#: portrait, `= 3` the portrait, `= 1` the portrait, everything else in the
+#: file identical and the match against `HEAD<n>.DAX` pixel for pixel.  So it
+#: gates the sheet portrait and is not a constant nobody reads.
+#:
+#: **3 rather than 1**, though both were seen to work: 3 is what all three
+#: engine-written Pool of Radiance saved games hold, and a value the engine
+#: writes is a better answer than a value that merely worked once.  The C64
+#: holds 1 at the same address in fourteen of Donald's saves and `$81` in two
+#: more, so the ports do not agree on it and it is not carried across.
+#:
+#: **What it means is still unknown** and this does not claim otherwise --
+#: only what it does.
+SAVGAM_MEASURED: tuple[tuple[int, int, str], ...] = (
+    (0x49FF, 3, "the sheet portrait is not drawn at all when this word is "
+                "zero (#57), and 3 is what all three engine-written saved "
+                "games hold. What it means is unknown"),
+)
 
 
 def retarget_reason(area: int) -> str | None:
@@ -2745,6 +2885,10 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
         dos_savegame.put_word(savgam, address, value)
         _note_word(report, address, 1, f"a documented constant: {why}")
 
+    for address, value, why in SAVGAM_MEASURED:
+        dos_savegame.put_word(savgam, address, value)
+        _note_word(report, address, 1, f"measured in the running game: {why}")
+
 
 def savgam_zeroes(savgam: bytearray, report: "SaveReport") -> None:
     """Account for every byte of the file :func:`savgam_writes` left zero.
@@ -2901,13 +3045,26 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # leftover path, and it is worse, because the save then names files that
     # are not there.
     report = SaveReport(total=dos_savegame.SAVGAM_SIZE)
+    # The sheet portrait crosses through the creation menu's own tables, and
+    # they are in the game's own `START.EXE` -- the directory this function
+    # already needs for the party's area script (#57).  A directory that
+    # cannot answer for them costs the party its faces and nothing else, so
+    # it is reported rather than raised.
+    faces, why_not = portrait_tables(game)
+    if faces is None:
+        # A warning rather than a `carried` line: `carried` is what *did*
+        # cross, and `editor/exports.py`'s `losses` does not read it, so the
+        # one sentence saying why every character lost its face would not
+        # have reached the person doing the conversion.
+        report.warnings.append(
+            f"no character's sheet portrait crossed, because {why_not}")
     built = []
     for char_slot in party:
         block = sg1.roster(char_slot.index) if sg1 is not None else None
         inv = [i.raw for i in items_for_slot(bytes(save0), char_slot.index)]
         char = c64_codec.read(char_slot.record, roster=block, inventory=inv,
                               source=f"C64 slot {char_slot.index}")
-        rec, itm, spc, one = write(char)
+        rec, itm, spc, one = write(char, portraits=faces)
         built.append((char, rec, itm, spc, one, char_slot))
 
     # **The two ports list the party from opposite ends** (#101).  The C64
