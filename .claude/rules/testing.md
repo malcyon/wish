@@ -93,5 +93,45 @@ that is a slice of a game file is the same copy under a new name. So:
   contents are on an allowlist in `tests/test_repository_contents.py`. **Do not
   add to that allowlist** -- read from the disks, or generate it.
 
+## A specimen is only evidence if we know who wrote it
+
+**`/home/donald/dos_por_play/SAVE/` is Donald's own play directory and every
+character record in it has been edited with Gold Box Companion's character
+editor.** Assume all of them, not the ones that look wrong. Donald,
+2026-09-04: *"Assume all character records in /home/donald/dos_por_play/SAVE/
+were edited. Base your evidence and reasoning off saves you created
+yourself."*
+
+**So a measurement rests on records we can name the writer of.** Three sources
+qualify:
+
+* **saves an agent made by driving the game** -- the strongest, because
+  somebody watched the engine write them. `tools/dosgnome.py` is the worked
+  example: it rolls a character in the game's own creation screens under
+  DOSBox and reads back the bytes, and its five same-boot racial controls are
+  what make a single reading a measurement rather than an anecdote;
+* **the archives' `Default files/Saves`**, which the game shipped;
+* **records this project's own writers produced**, for testing the writer --
+  never as evidence about the game, since they carry what we already believe.
+
+**The cost of getting this wrong is silent.** On 2026-09-04 a single edited
+record -- SILAS, a *human* carrying two `.SPC` effect records where the engine
+writes a human none -- refuted "an effect at duration zero is permanent",
+stopped `#232 (An item-granted effect is dropped on the way through the
+neutral record, with no report)`, and sent a `deep-research` agent after a
+discriminator that may not exist. Nothing failed. The suite stayed green. It
+surfaced only because Donald happened to mention he had used the editor.
+
+**Two files can share a name and not each other's provenance.**
+`CHRDATA6.SAV` exists both in the archives, shipped, and in the edited play
+directory. A path finder resolves to one of them and the test cannot tell.
+**So say in the test where its specimen came from**, and when a finding is
+written up, give the corpus size *and* what the records are.
+
+The same trap caught a census that was sweeping an emulator instance's staged
+tree, where the sweeping tool's own tampered probe records sat -- our bytes
+read back as the engine's. `tools/dostailcensus.py` excludes what this project
+wrote, by name, and that exclusion is worth copying rather than reinventing.
+
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Testing".
