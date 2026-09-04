@@ -296,6 +296,40 @@ def test_halve_leaves_an_odd_sized_frame_alone():
     assert dosboxx.halve(screen) is screen
 
 
+def test_halve_raises_on_an_even_sized_frame_that_is_not_a_replication():
+    """`#215 (Nothing checks that a frame halve() is about to halve was really
+    line-doubled)`: an even-sized frame whose 2x2 blocks are not one pixel
+    must not be silently reduced to a plausible, wrong picture.
+    """
+    import random
+
+    from tools import dosbox
+
+    rng = random.Random(215)
+    w, h = 8, 6
+    screen = dosbox.Screen(w, h, bytes(rng.randrange(256) for _ in range(w * h * 3)))
+    with pytest.raises(dosboxx.NotLineDoubled):
+        dosboxx.halve(screen)
+
+
+def test_halve_raises_on_rows_that_repeat_horizontally_but_not_vertically():
+    """Each row pair must repeat the row above, not only its own columns.
+
+    A row that is itself a valid 2x2-wide doubling but whose partner row is a
+    *different* valid doubling is the case the old code -- which only ever
+    read the top row of each pair -- could not have caught: it read a clean,
+    doubled-looking row and never looked at the one below.
+    """
+    from tools import dosbox
+
+    w, h = 4, 2
+    row0 = bytes([10, 20, 30] * 2 + [40, 50, 60] * 2)  # itself doubled: p0 p0 p1 p1
+    row1 = bytes([11, 21, 31] * 2 + [41, 51, 61] * 2)  # itself doubled, different pixels
+    screen = dosbox.Screen(w, h, row0 + row1)
+    with pytest.raises(dosboxx.NotLineDoubled):
+        dosboxx.halve(screen)
+
+
 def test_capture_halves_a_line_doubled_frame_to_dosbox_074s_size(monkeypatch):
     """`XSession.capture()` must hand back the same size `Session.capture()` does.
 

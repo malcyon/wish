@@ -479,6 +479,20 @@ def debug_env(display: str | None, **extra: str) -> dict[str, str]:
     return env
 
 
+class NotLineDoubled(RuntimeError):
+    """`halve()` was handed an even-sized frame that is not a 2x2 replication.
+
+    `#215 (Nothing checks that a frame halve() is about to halve was really
+    line-doubled)`: parity alone used to be the whole guard, so a frame that
+    was even-sized without being doubled would have been halved anyway and
+    handed back a plausible, wrong picture. `tools/dosframeaudit.py` drove a
+    real session through `settle()`'s own poll and found 320 raw captures, 320
+    clean 2x2 replications, zero ragged -- so this is not expected to fire.
+    It exists so that if it ever does, the caller sees a named refusal
+    instead of a wrong measurement nobody notices.
+    """
+
+
 def halve(screen: dosbox.Screen) -> dosbox.Screen:
     """A 640x400 capture as the 320x200 one DOSBox-X doubled it from.
 
@@ -501,28 +515,52 @@ def halve(screen: dosbox.Screen) -> dosbox.Screen:
     not a line-doubled frame this can undo -- an `import` that clipped a
     window at its edge, say, rather than a defect in this function.
 
-    **What makes an even-sized frame safe to halve is the config this module
-    writes, not anything checked here**: `output=surface` and `scaler=none`,
-    the same two lines DOSBox 0.74 is given, so the only even frame that
-    reaches this is the 2x2-replicated one. A build or a config that scaled
-    some other way would be halved just as willingly and hand back a
-    plausible, wrong picture. Asserting the pairs are uniform is not obviously
-    right either, since a frame captured mid-redraw need not be -- so the
-    check that would be safe is written down rather than guessed at.
+    **Every 2x2 block is checked, not inferred from parity** (#215): each row
+    pair's own pixels must repeat every other column, and the row below must
+    repeat the row above, or this raises `NotLineDoubled` rather than halve a
+    frame that was never doubled. What makes that check nearly free is that it
+    reuses the same `top[0::6]`, `[1::6]`, `[2::6]` slices the halving already
+    builds -- comparing two byte strings is one C-level call, not a per-pixel
+    Python loop, so there is no walk-every-pixel-in-Python cost to weigh
+    against a cheaper dimensions-only check. `tools/dosframeaudit.py`'s 320
+    captures, all through a real `settle()` poll, came back clean, which is
+    also why this raises outright rather than logging and halving anyway: a
+    frame this check rejects has never yet been one `settle()` legitimately
+    produced.
     """
     if screen.width % 2 or screen.height % 2:
         return screen
     w, h = screen.width // 2, screen.height // 2
     px = screen.px
+    stride = screen.width * 3
     out = bytearray(w * h * 3)
     for y in range(h):
-        src = px[(2 * y) * screen.width * 3:(2 * y) * screen.width * 3 + screen.width * 3]
+        top = px[2 * y * stride:(2 * y + 1) * stride]
+        bottom = px[(2 * y + 1) * stride:(2 * y + 2) * stride]
+        r, g, b = top[0::6], top[1::6], top[2::6]
+        if top[3::6] != r or top[4::6] != g or top[5::6] != b or bottom != top:
+            raise NotLineDoubled(_ragged_block(screen.width, 2 * y, top, bottom))
         row = bytearray(w * 3)
-        row[0::3] = src[0::6]
-        row[1::3] = src[1::6]
-        row[2::3] = src[2::6]
+        row[0::3] = r
+        row[1::3] = g
+        row[2::3] = b
         out[y * w * 3:(y + 1) * w * 3] = row
     return dosbox.Screen(w, h, bytes(out))
+
+
+def _ragged_block(width: int, y: int, top: bytes, bottom: bytes) -> str:
+    """Describe the first 2x2 block in one row pair that is not one colour.
+
+    Only called on the refusal path, so a plain per-pixel loop here costs
+    nothing that matters -- the fast path above never runs it.
+    """
+    for x in range(0, width, 2):
+        a, b = top[x * 3:x * 3 + 3], top[x * 3 + 3:x * 3 + 6]
+        c, d = bottom[x * 3:x * 3 + 3], bottom[x * 3 + 3:x * 3 + 6]
+        if not (a == b == c == d):
+            return (f"block at ({x},{y}) is not one pixel: "
+                     f"{a.hex()} {b.hex()} {c.hex()} {d.hex()}")
+    return f"row pair at y={y} disagreed but no single block did"  # pragma: no cover
 
 
 class XSession(dosbox.Session):
