@@ -86,9 +86,12 @@ BASIC program space `$0800`–`$9FFF`, BASIC ROM `$A000`–`$BFFF` "(or 8K RAM)"
 plain RAM `$C000`–`$CFFF`, I/O and colour RAM `$D000`–`$DFFF`, KERNAL ROM
 `$E000`–`$FFFF` "(or 8K RAM)".
 
-**1541 User's Guide** — only its drive-side chapters add anything.
+**1541 User's Guide** — no *new* format knowledge, and read Appendix D anyway.
 `docs/10-disk-format.md` is ahead of it on the BAM, the directory, the geometry
-and the interleave, all measured off real disks. What it has that we do not is
+and the interleave, all measured off real disks. **Ahead is not the same as
+done with it**: Appendix D corroborated eight of those measured claims, and
+disagreeing with it twice is what found the error in our own gloss of D64
+error code 3. What it has that we do not is
 the drive's own side: `M-R`/`M-W`/`M-E`, the U-vector table, and the causes
 behind error codes 20–74. Its printed page is PDF page − 6.
 
