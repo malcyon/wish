@@ -731,7 +731,7 @@ No incident sits behind this one. "No AI-generated art, anywhere, ever" is
 Donald's standing rule, stated rather than learned, and it is not negotiable by
 an agent that finds it inconvenient.
 
-The extension of it -- do not modify somebody else's art either -- follows the
+The extension of it -- do not modify somebody else's art either -- rests on the
 same reasoning: an icon lifted from Font Awesome is drawn the way Fonticons drew
 it, and an assistant that moves a path point to make an icon work at a size is
 making art, which is the thing it must not do. The correct answer is a different
