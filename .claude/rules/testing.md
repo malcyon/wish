@@ -102,6 +102,11 @@ editor.** Assume all of them, not the ones that look wrong. Donald,
 were edited. Base your evidence and reasoning off saves you created
 yourself."*
 
+**And it is not only that directory.** Donald, 2026-09-04: *"any saves you got
+off of any of the game disks might also have been edited."* His save disks are
+a player's disks, played and tinkered with over years. So the boundary is not
+a path -- it is **whether we watched it being written**.
+
 **So a measurement rests on records we can name the writer of.** Three sources
 qualify:
 
@@ -132,6 +137,19 @@ The same trap caught a census that was sweeping an emulator instance's staged
 tree, where the sweeping tool's own tampered probe records sat -- our bytes
 read back as the engine's. `tools/dostailcensus.py` excludes what this project
 wrote, by name, and that exclusion is worth copying rather than reinventing.
+
+**The way out, when no specimen can be trusted, is to read the code instead.**
+A finding taken from the engine's own instructions cannot be poisoned by an
+edited save. `#232 (An item-granted effect is dropped on the way through the
+neutral record, with no report)` was settled that way on 2026-09-04 after
+SILAS had misled it: the expiry routine at `GAME.OVR:0x23DCC` reads the 16-bit
+duration at record bytes 1-2 and nothing else, so duration zero is permanence,
+which is what the project had believed before an edited record refuted it.
+Watching the routine run confirmed it, and readying a magical item in the
+running game produced the engine-written specimen the corpus had never had.
+
+**That is the order to prefer when provenance is in doubt: the code, then a
+specimen we made, then a specimen we merely found.**
 
 Why these rules exist, and the incidents behind them:
 `docs/160-why-these-rules.md`, "Testing".
