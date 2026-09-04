@@ -225,10 +225,16 @@ between them at sixteen wide — VICE stayed at `:10` (now `:10`-`:25`),
 `tools/dosbox.py` moved from `:30` to `:50` (`:50`-`:65`), and
 `tools/dosboxx.py` moved from `:40` to `:90` (`:90`-`:105`). Each base is 40
 past the last, which is double the sixteen-wide band it follows: every band
-therefore has 24 numbers of headroom before the next one starts, meaning
-**each pool can grow to 24 slots — fifty percent past where this issue widened
-it — with no further re-space.** That is deliberately more room than the
-sixteen this issue asks for: the whole reason a band needed re-spacing at all
+therefore has 24 numbers of headroom before the next one starts, so **the
+display bands alone would take 24 slots with no further re-space.**
+
+**The ports, not the displays, are what actually caps growth**, and the
+paragraph above has the arithmetic: `BIN_BASE` reaches `TEXT_BASE` at twenty
+slots and overlaps it at twenty-four. So sixteen is the number that fits
+comfortably, nineteen is the last that fits at all, and **growing past that
+means re-spacing the ports as well as the displays.** The display headroom is
+still worth having — it means the next widening is one change rather than two.
+That is deliberately more room than the sixteen this issue asks for: the whole reason a band needed re-spacing at all
 is that eight-to-sixteen was not foreseen when the original :10/:30/:40
 layout was chosen, and a margin sized to exactly today's number would put the
 next re-space one growth spurt away rather than several. Round bases (`:10`,

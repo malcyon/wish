@@ -115,7 +115,7 @@ that the pid filter is inert there: DOSBox 0.74 is SDL 1.2, which does not set
 The condition that starts it is a leaked process: `Xvfb` and `dosbox-x` are
 started with `start_new_session=True`, so a run whose Python is killed outright
 leaves both alive, holding the display against the next session to claim that
-slot. The same is true of plain DOSBox on `:30`-`:37`.
+slot. The same is true of plain DOSBox on `:50`-`:65`.
 
 ## Reaching the debugger
 
