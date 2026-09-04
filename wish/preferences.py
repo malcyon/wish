@@ -189,12 +189,24 @@ GAME_FOLDER_TITLES: tuple[games.Game, ...] = (
 
 
 def title_folder_report(folder: str, game: games.Game) -> str:
-    """What one title's own folder box has found, in `report`'s own words.
+    """What one title's own folder box has found.
 
     Not `report()`: that walks the whole precedence, and a per-title row is
     always about the one folder typed into it, whether or not it is the
     folder `resolve_disks` would actually pick. Empty when nothing has been
     typed -- there is nothing to say about a box nobody has used yet.
+
+    **The count alone, without the title**, which `report()`'s own line
+    carries. Up there the title is the whole point: the shared box searches
+    every title in turn and has to say which one it landed on, and that
+    guessing is what `#22 (A disk folder setting per game, not one shared by
+    all six)` exists to fix. Down here the row is already labelled with its
+    title, so saying it again says one thing the reader knows and one they
+    do not. Donald's wording, 2026-09-04.
+
+    **The empty case keeps the pattern**, because that is the case where a
+    reader needs to know what the folder was searched *for* -- they have
+    pointed it somewhere wrong and the glob is what tells them so.
     """
     folder = (folder or "").strip()
     if not folder:
@@ -203,7 +215,7 @@ def title_folder_report(folder: str, game: games.Game) -> str:
     n = len(_images(where, game)) if where.is_dir() else 0
     if not n:
         return f"none; no {_pretty(game.disk_glob)} here"
-    return f"{game.title} ({n} disk{'' if n == 1 else 's'})"
+    return f"{n} disk{'' if n == 1 else 's'}"
 
 
 def game_named(title: str | None) -> games.Game | None:

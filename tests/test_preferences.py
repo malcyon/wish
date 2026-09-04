@@ -276,8 +276,15 @@ def test_clearing_a_titles_row_removes_only_that_entry(app, tmp_path,
 
 def test_a_titles_row_reports_what_it_found_in_its_own_words(
         app, tmp_path, monkeypatch):
-    """`title_folder_report` reuses `report`'s own phrasing rather than
-    inventing a new one -- see #22's finding about GUI text."""
+    """The count, not the title the row is already labelled with.
+
+    `report()`'s own line names the title because the shared box searches
+    every title in turn and has to say which one it landed on. A per-title
+    row does not: the label above it says which. Donald's wording,
+    2026-09-04, on `#22 (A disk folder setting per game, not one shared by
+    all six)`. The empty case keeps the disk pattern, which is what tells a
+    reader they have pointed the box somewhere wrong.
+    """
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     try:
@@ -286,8 +293,10 @@ def test_a_titles_row_reports_what_it_found_in_its_own_words(
 
         found = disks(tmp_path / "curse-disks", "CURSE1.D64")
         dialog.set_game_folder(CURSE, str(found))
-        assert dialog.game_folder_reports[CURSE.key].text() == (
-            "Curse of the Azure Bonds (1 disk)")
+        assert dialog.game_folder_reports[CURSE.key].text() == "1 disk"
+        two = disks(tmp_path / "curse-two", "CURSE1.D64", "CURSE2.D64")
+        dialog.set_game_folder(CURSE, str(two))
+        assert dialog.game_folder_reports[CURSE.key].text() == "2 disks"
 
         empty = tmp_path / "typo"
         empty.mkdir()
