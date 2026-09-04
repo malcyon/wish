@@ -259,7 +259,7 @@ def claim(game: str = "por", note: str = "", slots: int = SLOTS) -> Slot:
             
         display_num = -1
         display_fd = -1
-        for i in range(100):
+        for i in range(slots):
             x = DISPLAY_BASE + i
             xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             try:
@@ -272,11 +272,19 @@ def claim(game: str = "por", note: str = "", slots: int = SLOTS) -> Slot:
             except OSError:
                 pass
             os.close(xfd)
-            
+
         if display_num == -1:
+            # The band, not the lease count, is what is exhausted here (#213):
+            # a display can be taken by something outside the pool -- Xwayland,
+            # a hand-started Xvfb -- while a slot lease still sits free.  That
+            # divergence is why this raises on the spot rather than moving to
+            # the next `n`: whether the band is full does not depend on which
+            # slot asked, so trying another slot cannot change the answer.
             os.close(fd)
-            continue
-            
+            raise PoolFull(
+                f"the VICE display band :{DISPLAY_BASE}-:{DISPLAY_BASE + slots - 1} is full"
+            )
+
         slot = Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
         _reap_held(slot)
         if _listening(slot.port):

@@ -200,7 +200,7 @@ def claim(note: str = "") -> Slot:
             
         display_num = -1
         display_fd = -1
-        for i in range(100):
+        for i in range(SLOTS):
             x = DISPLAY_BASE + i
             xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             try:
@@ -213,10 +213,17 @@ def claim(note: str = "") -> Slot:
             except OSError:
                 pass
             os.close(xfd)
-            
+
         if display_num == -1:
+            # The band, not the lease count, is what is exhausted here (#213):
+            # a display can be taken by something outside the pool while a slot
+            # lease still sits free, so whether the band is full does not
+            # depend on which slot asked -- raise on the spot rather than
+            # trying the next `n`, which cannot change the answer.
             os.close(fd)
-            continue
+            raise PoolFull(
+                f"the DOSBox display band :{DISPLAY_BASE}-:{DISPLAY_BASE + SLOTS - 1} is full"
+            )
 
         os.ftruncate(fd, 0)
         os.write(

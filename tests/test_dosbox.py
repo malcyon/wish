@@ -266,8 +266,15 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
 
 @posix_only
 def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
+    """`DISPLAY_BASE` moves off the real `:30`-`:31` so a band shrunk to two
+    for speed never depends on those two specific displays being free on a
+    machine other agents are using tonight -- `#213 (Each display pool walks
+    out of its own band once the band is full)` narrowed the search to
+    exactly `SLOTS` displays.
+    """
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 2)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 930)
     first = dosbox.claim("one")
     second = dosbox.claim("two")
     assert {first.n, second.n} == {0, 1}
@@ -282,16 +289,46 @@ def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
 
 
 @posix_only
+def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
+    """The band, not the lease count, is what is exhausted here: the lease
+    directory has a free slot throughout, and only the two displays are held.
+
+    Before #213 the search walked past a full band into whatever the next
+    free number happened to be instead of admitting its own was exhausted --
+    proven by reverting the fix and watching this raise nothing.
+    """
+    import fcntl  # local: unimportable on Windows, and @posix_only skips there
+
+    monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
+    monkeypatch.setattr(dosbox, "SLOTS", 2)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 940)
+    held = []
+    try:
+        for i in range(2):
+            fd = os.open(f"/tmp/.wish-x11-{940 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held.append(fd)
+        with pytest.raises(dosbox.PoolFull, match=r":940-:941"):
+            dosbox.claim("blocked")
+    finally:
+        for fd in held:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+
+@posix_only
 def test_a_lease_is_dropped_when_the_process_holding_it_dies(tmp_path, monkeypatch):
     """The reason the lease is an flock and not a lock file with a pid in it."""
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 1)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 950)
     repo = pathlib.Path(__file__).resolve().parent.parent
     script = (
         "import sys; sys.path.insert(0, %r)\n"
         "from tools import dosbox\n"
         "dosbox.INST = __import__('pathlib').Path(%r)\n"
         "dosbox.SLOTS = 1\n"
+        "dosbox.DISPLAY_BASE = 950\n"
         "dosbox.claim('doomed')\n" % (str(repo), str(tmp_path / "inst"))
     )
     subprocess.run([sys.executable, "-c", script], check=True)

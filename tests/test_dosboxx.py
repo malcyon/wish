@@ -438,43 +438,71 @@ def _band(module) -> range:
     return range(module.DISPLAY_BASE, module.DISPLAY_BASE + module.SLOTS)
 
 
-@posix_only
-def test_this_pools_displays_never_collide_with_the_other_two(tmp_path, monkeypatch):
-    """:10-:17 are VICE's, :30-:37 are `tools/dosbox.py`'s, :40-:47 are these.
-
-    Asserting the absolute number an idle machine hands out (`:40`) fails
-    whenever anything else already answers on it -- another agent's
-    `tools/dosboxx.py` session, running exactly as this harness is meant to be
-    used (#206).  What must hold regardless of the machine's state is the
-    property the docstring already states: this pool's two claims are distinct
-    from each other and land outside the other two pools' bands.
-
-    Landing *inside* its own band is deliberately not asserted, because
-    `claim` does not promise it: the search is `DISPLAY_BASE + i` for `i` in
-    `range(100)`, so a pool whose eight displays are all answering walks past
-    the end of its band by design.  What keeps two pools off one display is
-    the `/tmp/.wish-x11-<n>.lock` all three take, not the bands.
+def test_the_three_pools_bands_never_overlap():
+    """:10-:17 are VICE's, :30-:37 are `tools/dosbox.py`'s, :40-:47 are these
+    -- a fact about the three modules' own constants, so unlike the tests
+    below it needs no lock, no lease and no live machine state to check.
     """
     from tools import dosbox, instance
 
-    dosbox_band, vice_band = _band(dosbox), _band(instance)
+    vice_band, plain_band, x_band = _band(instance), _band(dosbox), _band(dosboxx)
+    assert not set(vice_band) & set(plain_band)
+    assert not set(vice_band) & set(x_band)
+    assert not set(plain_band) & set(x_band)
+
+
+@posix_only
+def test_a_claim_lands_inside_its_own_band(tmp_path, monkeypatch):
+    """`#213 (Each display pool walks out of its own band once the band is
+    full)`: `claim` now guarantees a display inside `DISPLAY_BASE`-
+    `DISPLAY_BASE + SLOTS`, or `PoolFull` -- never a number borrowed from
+    whichever of the other two pools' bands happened to have room, which is
+    what let this pool's `:40` collide with a real session on it (#206).
+
+    One claim, at the pool's real width, is enough to check the guarantee
+    without needing the whole band free.
+    """
+    from tools import dosbox
+
+    monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
+    slot = dosboxx.claim("one")
+    try:
+        n = int(slot.display.removeprefix(":"))
+        assert n in _band(dosboxx)
+        assert slot.dir != (dosbox.INST / str(slot.n))
+    finally:
+        slot.release()
+
+
+@posix_only
+def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
+    """Before #213 the search walked past a full band into whatever the next
+    free number happened to be, instead of admitting its own was exhausted.
+
+    `DISPLAY_BASE` moves off the real `:40`-`:41` so this never depends on
+    those two displays being free on a machine other agents are using
+    tonight, and never takes one they want: the two held here are locked
+    under a base nothing else on the machine uses.
+    """
+    import fcntl  # local: unimportable on Windows, and @posix_only skips there
+
+    from tools import dosbox
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosboxx, "SLOTS", 2)
-    first = dosboxx.claim("one")
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 960)
+    held = []
     try:
-        n1 = int(first.display.removeprefix(":"))
-        assert n1 not in dosbox_band and n1 not in vice_band
-        assert first.dir != (dosbox.INST / str(first.n))
-        second = dosboxx.claim("two")
-        n2 = int(second.display.removeprefix(":"))
-        assert n2 not in dosbox_band and n2 not in vice_band
-        assert n1 != n2
-        with pytest.raises(dosbox.PoolFull):
-            dosboxx.claim("three")
-        second.release()
+        for i in range(2):
+            fd = os.open(f"/tmp/.wish-x11-{960 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held.append(fd)
+        with pytest.raises(dosbox.PoolFull, match=r":960-:961"):
+            dosboxx.claim("blocked")
     finally:
-        first.release()
+        for fd in held:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
 
 def test_a_machine_with_only_the_debugger_build_can_open_a_session(tmp_path,

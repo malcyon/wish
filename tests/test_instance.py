@@ -80,11 +80,12 @@ def test_a_slot_owns_six_things(pool):
     with instance.claim() as slot:
         assert slot.n == 0
         assert (slot.port, slot.text_port, slot.cmd_port) == (6520, 6540, 6560)
-        # The display is searched, not computed -- `tools/instance.py:247-263`
-        # takes the first free `DISPLAY_BASE + i` within the search's own
-        # 100-slot range, so only its bounds are deterministic (#138).
+        # The display is searched, not computed -- `tools/instance.py`'s
+        # `claim` takes the first free `DISPLAY_BASE + i` within the band's
+        # own `slots` width, so only its bounds are deterministic (#138).
+        # #213 clamped that search to the band it advertises.
         num = int(slot.display.lstrip(":"))
-        assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + 100, slot.display
+        assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + instance.SLOTS, slot.display
         assert slot.display != instance.RESERVED_DISPLAY, slot.display
         assert slot.dir == Path(os.environ["POR_INST"]) / "0"
         assert slot.vicerc == slot.dir / "vicerc"
@@ -116,7 +117,7 @@ def test_claiming_a_slot_whose_display_is_taken_still_gets_a_usable_one(pool):
         with instance.claim() as slot:
             assert slot.display != held, slot.display
             num = int(slot.display.lstrip(":"))
-            assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + 100, slot.display
+            assert instance.DISPLAY_BASE <= num < instance.DISPLAY_BASE + instance.SLOTS, slot.display
     finally:
         if ours:
             fcntl.flock(fd, fcntl.LOCK_UN)
@@ -161,7 +162,13 @@ def test_the_lease_records_who_holds_it(pool):
 
 
 @posix
-def test_the_pool_can_be_full(pool):
+def test_the_pool_can_be_full(pool, monkeypatch):
+    """Lease exhaustion, not band exhaustion -- `#213 (Each display pool
+    walks out of its own band once the band is full)` has the latter, below.
+    `DISPLAY_BASE` is moved off the real VICE band so this never depends on
+    `:10`/`:11` being free on a machine other agents are using tonight.
+    """
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 910)
     held = [instance.claim(slots=2) for _ in range(2)]
     try:
         with pytest.raises(instance.PoolFull):
@@ -169,6 +176,37 @@ def test_the_pool_can_be_full(pool):
     finally:
         for slot in held:
             slot.release()
+
+
+@posix
+def test_the_pool_refuses_once_its_display_band_is_full(pool, monkeypatch):
+    """#213: the search used to wander past a full band into whatever the next
+    pool's numbers happened to be, rather than admitting its own band was
+    exhausted -- so a band that is genuinely full must raise `PoolFull`
+    naming the band, not hand back a display outside it.
+
+    `DISPLAY_BASE` moves to a base nothing on this machine uses, so filling
+    "the whole band" means locking two `/tmp/.wish-x11-<n>.lock` files this
+    test owns outright, never a display another agent's pool might want
+    tonight. The lease directory has two free slots throughout (`pool`
+    isolates it via `POR_INST`), so this is the display search failing, not
+    the lease count.
+    """
+    import fcntl  # local: unimportable on Windows, and @posix skips there
+
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 920)
+    held = []
+    try:
+        for i in range(2):
+            fd = os.open(f"/tmp/.wish-x11-{920 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held.append(fd)
+        with pytest.raises(instance.PoolFull, match=r":920-:921"):
+            instance.claim(slots=2)
+    finally:
+        for fd in held:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
 
 # -- contention between processes ------------------------------------------
