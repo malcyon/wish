@@ -159,6 +159,16 @@ def test_more_items_than_slots_is_reported():
     assert any("sixteen slots" in w for w in rep.warnings)
 
 
+def test_more_innate_effects_than_slots_is_reported():
+    """#236 (A character converted to the C64 with more than ten innate
+    effects loses the extra ones with no report): eleven ids, ten trait
+    slots -- the eleventh must be named in the report, not just cut off."""
+    char = _filled()
+    char.set("innate_effects", list(range(1, 12)), "made up")
+    _, rep = c64_codec.write(char)
+    assert any("11" in w and "ten slots" in w for w in rep.warnings)
+
+
 # --- the DOS reader, against real files --------------------------------------
 
 @needs_dos_saves

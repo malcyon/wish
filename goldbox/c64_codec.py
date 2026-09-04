@@ -312,9 +312,14 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     # -- innate effects: ten slots -------------------------------------------
     innate = use("innate_effects")
     if innate is not None:
-        ids = list(innate.value)[:10]
+        full = list(innate.value)
+        ids = full[:10]
         rec.set_raw("item_effects", bytes(ids) + bytes(10 - len(ids)))
         emit(innate, "item_effects", 0x0AD, 10)
+        if len(full) > 10:
+            rep.warnings.append(
+                f"{len(full)} innate effects and the C64 has ten slots; "
+                f"{len(full) - 10} dropped from the end")
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
@@ -386,7 +391,8 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("size_small", "copied to the C64's size byte"),
     ("turn_power", "copied to the C64's caster turning byte at 0x0A4"),
     ("attack_forms", "copied as a block to 0x0D9"),
-    ("innate_effects", "the first ten ids, into the C64's trait slots"),
+    ("innate_effects", "the first ten ids, into the C64's trait slots; the "
+                       "rest are warned about"),
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
