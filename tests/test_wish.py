@@ -372,8 +372,9 @@ def test_a_busy_monitor_is_not_the_same_as_no_game(app):
     assert s.state == CONNECTED
 
 
-def test_a_busy_monitor_is_said_in_red_on_the_map(app, tmp_path, monkeypatch):
-    """Red text on the map, not a pop-up: the condition clears on its own."""
+def test_a_busy_monitor_is_said_in_red_in_the_messages_panel(app, tmp_path,
+                                                              monkeypatch):
+    """Red text in the Messages panel, not a pop-up: it clears on its own."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from automap.target import MonitorBusy
@@ -388,9 +389,11 @@ def test_a_busy_monitor_is_said_in_red_on_the_map(app, tmp_path, monkeypatch):
     w = WishWindow(maps={}, session=Session(find=lambda pref=None: backend))
     w.tabs.setCurrentIndex(MAP_TAB)
     w.session.poll()
-    assert w.map.alarm
-    assert "something else is attached" in w.map._waiting
-    # assert "color: #c0392b" in w.map._status.styleSheet()
+    lines = [ln for ln in w.map.messages.lines() if "something else is attached" in ln]
+    assert lines
+    from automap.panel import DANGER
+    row = w.map.messages.list.item(w.map.messages.list.count() - 1)
+    assert row.foreground().color().name() == DANGER.name()
 
 
 # --- the window -------------------------------------------------------------
@@ -592,6 +595,23 @@ def test_a_hidden_map_tab_reads_nothing(app, tmp_path, monkeypatch):
     for _ in range(5):
         w.session.poll()
     assert len(target.reads) == quiet
+
+
+def test_the_seen_count_keeps_updating_without_leaving_the_tab(app, tmp_path,
+                                                                monkeypatch):
+    """The status bar used to be filled once, on arrival, and never again."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from wish.window import MAP_TAB, WishWindow
+    target = MemoryTarget(machine("E 16:48  5,2").memory)
+    w = WishWindow(maps={}, session=fake_session(target))
+    w.tabs.setCurrentIndex(MAP_TAB)
+    w.session.poll()
+    assert "1/256 seen" in w.statusBar().currentMessage()
+    row = screen_codes("E 16:49  5,3".ljust(40))
+    target.memory[0xCC00 + 14 * 40] = row
+    w.session.poll()
+    assert "2/256 seen" in w.statusBar().currentMessage()
 
 
 def test_the_emulator_going_away_leaves_the_editor_alone(app, save, tmp_path,

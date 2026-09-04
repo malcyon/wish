@@ -1066,7 +1066,6 @@ class AutomapBinding(QObject):
         self.canvas.update()
 
     def _say(self, text: str) -> None:
-        self._status.setStyleSheet(f"color: {ALARM.name()}" if self.alarm else "")
         self._status.setText(text)
         self.statusChanged.emit(text)
 

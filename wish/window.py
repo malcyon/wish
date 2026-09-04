@@ -157,6 +157,7 @@ class WishWindow(QMainWindow):
             preferred=getattr(self.settings, "backend", "") or None,
             interval_ms=getattr(self.settings, "interval_ms", 0) or None)
         self.session.changed.connect(self._session_said)
+        self.map.statusChanged.connect(self._map_said)
 
         self._menu()
         self._log_fasttravels()
