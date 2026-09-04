@@ -343,7 +343,61 @@ attempting the lock, because attempting it is not a read. A file that exists
 but names no pid is exactly the leftover this note describes: harmless,
 and left alone on purpose.
 
-### 3.5 The code change
+### 3.5 A held slot that is doing nothing
+
+Added 2026-09-04. `held` already meant "somebody's, do not touch it" -- it
+never said whether that somebody was doing anything. Found the way it always
+is here: a person asked, and `tools/instance.py status` showed three slots
+`held`, all with live process groups, and nothing on the page said that was
+odd. An agent that claims a slot, hits a problem, claims another and never
+releases the first leaves a display occupied all night; at eight agents that
+exhausts a band.
+
+`status` now carries four more fields, answered only for `HELD` rows and only
+from evidence that does not touch the slot:
+
+* **`held_for`** -- seconds since the lease's own `at`, which `record()` sets
+  on every claim.
+* **`idle_for`** -- seconds since anything but the lease file itself changed
+  inside the slot's directory: `vicerc` and a disk copy land there once near
+  the start of a run, `vice.log` grows for as long as VICE has something to
+  say on stdout, a screenshot lands at `<slot>/shot.png` whenever a driver
+  takes one. `None` until something besides the lease has ever been written.
+  The lease file is excluded on purpose -- `record()` rewrites it on its own
+  schedule (claim, launch, teardown), which is bookkeeping about the lease and
+  not evidence that anything happened *in* the slot.
+* **`owner_pgid`** -- `os.getpgid()` of the pid the lease names. A read, not a
+  lock or a connection, so it is safe to ask about a pid somebody else's
+  process owns.
+* **`shared_pgid`** -- true when two or more `held` rows resolve to the same
+  `owner_pgid`. **This is the case that matters most**: one process claimed
+  twice and released neither. The CLI prints a warning line naming the group
+  and its slots when it happens.
+
+**Neither field is proof of idleness.** A session driven by nothing but
+monitor reads -- no screenshot, no save -- writes nothing into its slot
+directory and reads as idle while it may not be. `held_for` next to a large
+`idle_for` is the case worth a second look; either number alone is not.
+
+Two things considered and rejected, both for touching what they were meant
+to only observe:
+
+* **CPU time between two reads of `/proc/<pid>/stat`.** VICE spins even when
+  idle, so a busy instance and an idle one were not expected to look
+  different -- the risk the task brief itself named, and nothing here
+  disproved it, so it was not built.
+* **`_listening`/`_greets` on a held slot.** Both open a connection to the
+  monitor, which is exactly what this module bans on a slot somebody else
+  holds -- `docs/160-why-these-rules.md` has the incident behind that ban.
+  `status` never calls either for a `HELD` row; `_reap_held` still does, but
+  only on a slot it is about to reclaim, never on one that is somebody's.
+
+**Nothing here reaps.** `_reap_held` is for a slot whose *holder* is gone --
+the flock is free. This is the opposite case: the holder is alive, the flock
+says so, and only a person or that holder can judge whether an idle slot
+should be given up. `status` reports; it does not decide.
+
+### 3.6 The code change
 
 Small, as the premise claimed. Six existing files, one new one.
 

@@ -423,6 +423,11 @@ def status(slots: int = SLOTS) -> list[dict]:
 
     A field the state does not vouch for is `None` rather than the last
     holder's value; `LEASE_FIELDS` says which those are and why.
+
+    `held_for`, `idle_for`, `owner_pgid` and `shared_pgid` are answered only
+    for `HELD` rows, and only from evidence that does not disturb the slot --
+    see `idle_seconds` and `_owner_pgid`.  A slot somebody else holds is
+    somebody's; this reports on it without touching it.
     """
     root = pool_root()
     out = []
@@ -431,7 +436,7 @@ def status(slots: int = SLOTS) -> list[dict]:
         state = inspect(n) if d.is_dir() else CLEAN
         info = _read_lease(d) if d.is_dir() else {}
         live = LEASE_FIELDS[state]
-        out.append({
+        row = {
             "slot": n,
             "state": state,
             "port": BIN_BASE + n,
@@ -440,8 +445,117 @@ def status(slots: int = SLOTS) -> list[dict]:
             "display": info.get("display") or f":{DISPLAY_BASE + n}",
             **{f: info.get(f) if f in live else None
                for f in ("pid", "pgid", "game", "note")},
-        })
+        }
+        if state == HELD:
+            row["held_for"] = _held_for(info)
+            row["idle_for"] = idle_seconds(n)
+            row["owner_pgid"] = _owner_pgid(row["pid"])
+        else:
+            row["held_for"] = None
+            row["idle_for"] = None
+            row["owner_pgid"] = None
+        out.append(row)
+    shared = _shared_pgids(out)
+    for row in out:
+        row["shared_pgid"] = row["owner_pgid"] in shared
     return out
+
+
+# --------------------------------------------------------------------------
+# A held slot that is doing nothing -- report it, never reap it
+# --------------------------------------------------------------------------
+#
+# `_reap_held` is for a slot whose *holder* is gone.  This is the other case:
+# the holder is alive, the flock says so, and the slot may still be sitting
+# untouched for hours -- an agent that claimed it, hit a problem, claimed
+# another, and never came back.  Found by a person asking, because nothing
+# said it was odd.  `docs/123-parallel-sessions.md` §3.5 is the design; the
+# two rules that bound it are the same ones that bound everything else here:
+# no attaching to a monitor an agent may be using, and no lock taken to see
+# if one is free.
+
+
+def idle_seconds(n: int) -> float | None:
+    """Seconds since anything but the lease file itself changed in slot *n*'s
+    own directory, or `None` if nothing but the lease has ever been written.
+
+    `vicerc` and a disk copy land there once, near the start of a run;
+    `vice.log` grows for as long as VICE has something to say on stdout; a
+    screenshot lands at `<slot>/shot.png` whenever a driver takes one.  The
+    lease file is excluded on purpose -- `record()` rewrites it on its own
+    schedule (claim, launch, teardown), which is bookkeeping about the lease
+    and not evidence that anything happened *in* the slot.
+
+    A plain `stat()` on files already on disk: no monitor connection, no
+    lock attempt, nothing written.  It is the one thing safe to read on a
+    slot somebody else holds.
+
+    **Evidence, not a verdict.** A session driven by nothing but monitor
+    reads -- no screenshot taken, no save made -- writes nothing here and
+    reads as idle while it may not be.  `held_for` alongside it is what
+    makes the case: a lease held for hours with this number the same size.
+    """
+    d = pool_root() / str(n)
+    try:
+        mtimes = [f.stat().st_mtime for f in d.iterdir()
+                  if f.is_file() and f.name != "lease"]
+    except OSError:
+        return None
+    if not mtimes:
+        return None
+    return time.time() - max(mtimes)
+
+
+def _held_for(info: dict) -> float | None:
+    """Seconds since this lease was claimed, from the `at` `record()` always
+    sets. `None` if the lease carries no `at` -- a lease from before this
+    field existed, or a hand-edited one."""
+    at = info.get("at")
+    if not isinstance(at, (int, float)):
+        return None
+    return time.time() - at
+
+
+def _owner_pgid(pid: object) -> int | None:
+    """The process group of the pid a lease names, or `None`.
+
+    `os.getpgid` is a query, not a lock or a connection, so it is safe to
+    call on a pid somebody else's process owns. `None` for anything that is
+    not a plausible pid, or for a pid the kernel no longer knows about -- the
+    lease's `pid` is informational, the same as everything else in it.
+    """
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+    try:
+        return os.getpgid(pid)
+    except OSError:
+        return None
+
+
+def _shared_pgids(rows: list[dict]) -> set[int]:
+    """Which `owner_pgid`s these rows found holding more than one slot --
+    one process that claimed twice and released neither, the leak
+    `docs/123-parallel-sessions.md` §3.5 was written for."""
+    counts: dict[int, int] = {}
+    for row in rows:
+        pgid = row.get("owner_pgid")
+        if pgid is not None:
+            counts[pgid] = counts.get(pgid, 0) + 1
+    return {pgid for pgid, c in counts.items() if c > 1}
+
+
+def _fmt_duration(seconds: float | None) -> str:
+    """`None` as `-`; otherwise the coarsest unit a person reads at a glance."""
+    if seconds is None:
+        return "-"
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m{seconds:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m"
 
 
 # --------------------------------------------------------------------------
@@ -754,12 +868,21 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(rows, indent=2))
         else:
             print(f"{'slot':>4} {'state':<9} {'bin':>5} {'text':>5} {'cmd':>5} "
-                  f"{'disp':>5}  {'pid':<8} {'pgid':<8} game")
+                  f"{'disp':>5}  {'pid':<8} {'pgid':<8} {'held':>7} {'idle':>7} game")
             for r in rows:
                 print(f"{r['slot']:>4} {r['state']:<9} {r['port']:>5} "
                       f"{r['text_port']:>5} {r['cmd_port']:>5} {r['display']:>5}  "
                       f"{str(r['pid'] or '-'):<8} {str(r['pgid'] or '-'):<8} "
+                      f"{_fmt_duration(r['held_for']):>7} {_fmt_duration(r['idle_for']):>7} "
                       f"{r['game'] or '-'}")
+            groups: dict[int, list[int]] = {}
+            for r in rows:
+                if r["shared_pgid"]:
+                    groups.setdefault(r["owner_pgid"], []).append(r["slot"])
+            for pgid, slots_held in groups.items():
+                print(f"warning: pgid {pgid} holds slots "
+                      f"{', '.join(map(str, slots_held))} -- one process, "
+                      f"several slots", file=sys.stderr)
         return 0
 
     if args.cmd == "reap":

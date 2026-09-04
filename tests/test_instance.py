@@ -405,8 +405,150 @@ def _capture_status(argv: tuple[str, ...] = ("status",)) -> str:
     return buf.getvalue()
 
 
-# -- the display view: #233 part 3 -------------------------------------------
+# -- a held slot that is doing nothing --------------------------------------
 #
+# "held" only ever meant "somebody's".  These pin the further question: is
+# that somebody doing anything?  Read-only throughout -- no `_greets`, no
+# `_listening`, no lock attempt -- which the last test in this block checks
+# directly.
+
+
+@posix
+def test_idle_for_is_none_until_something_besides_the_lease_is_written(pool):
+    """A freshly claimed slot holds nothing but its lease file, so there is
+    nothing yet to call idle -- `None`, not zero."""
+    with instance.claim() as slot:
+        assert instance.status()[slot.n]["idle_for"] is None
+        (slot.dir / "shot.png").write_bytes(b"x")
+        idle = instance.status()[slot.n]["idle_for"]
+        assert idle is not None and idle < 2
+
+
+@posix
+def test_idle_for_grows_with_the_newest_file_s_age_and_ignores_the_lease(pool):
+    """Backdating the one file besides the lease must move `idle_for`;
+    the lease itself must not count, or every `record()` call would reset it
+    to zero regardless of whether anything was actually captured."""
+    with instance.claim() as slot:
+        shot = slot.dir / "shot.png"
+        shot.write_bytes(b"x")
+        old = time.time() - 900
+        os.utime(shot, (old, old))
+        slot.record(note="still alive")           # touches the lease file
+        idle = instance.status()[slot.n]["idle_for"]
+        assert idle is not None and idle >= 899
+
+
+@posix
+def test_held_for_counts_from_the_lease_s_own_claim_time(pool):
+    with instance.claim() as slot:
+        slot.record(at=time.time() - 500)
+        held = instance.status()[slot.n]["held_for"]
+        assert held is not None and held >= 499
+
+
+@posix
+def test_idle_for_and_held_for_are_none_off_a_held_row(pool):
+    """The state governs which fields mean anything -- same discipline as
+    `LEASE_FIELDS` for `pid`/`pgid`/`game`/`note`."""
+    instance.claim().release()
+    row = instance.status()[0]
+    assert row["state"] == instance.CLEAN
+    assert row["held_for"] is None
+    assert row["idle_for"] is None
+    assert row["owner_pgid"] is None
+    assert row["shared_pgid"] is False
+
+
+@posix
+def test_two_slots_held_by_one_process_are_flagged_shared(pool):
+    """The leak that matters: one process claims twice and releases neither."""
+    a = instance.claim()
+    b = instance.claim()
+    try:
+        rows = instance.status()
+        assert rows[a.n]["owner_pgid"] is not None
+        assert rows[a.n]["owner_pgid"] == rows[b.n]["owner_pgid"]
+        assert rows[a.n]["shared_pgid"] is True
+        assert rows[b.n]["shared_pgid"] is True
+    finally:
+        a.release()
+        b.release()
+
+
+@posix
+def test_a_slot_held_by_a_different_process_is_not_flagged_shared(pool):
+    """A subprocess started with its own session (`start_new_session=True`,
+    the same flag `porlaunch.sh` runs under) gets its own process group --
+    without it, a plain child shares the parent's, which would make every
+    such fork look shared and defeat the point of the check."""
+    a = instance.claim()
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-c", textwrap.dedent(f"""
+                import sys, time
+                sys.path.insert(0, {str(TOOLS)!r})
+                import instance
+                instance.DISPLAY_BASE = 935
+                slot = instance.claim()
+                print(slot.n, flush=True)
+                time.sleep(60)
+            """)],
+            env=dict(os.environ, POR_INST=os.environ["POR_INST"]),
+            stdout=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        try:
+            n = int(proc.stdout.readline().strip())
+            rows = instance.status()
+            assert rows[a.n]["shared_pgid"] is False
+            assert rows[n]["shared_pgid"] is False
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        a.release()
+
+
+@posix
+def test_status_never_greets_or_listens_on_a_held_slot(pool, monkeypatch):
+    """The whole discipline this feature has to respect: no attaching to a
+    monitor an agent may be using, no lock taken to see if one is free.
+
+    Patched in only *after* claiming: `claim()` itself legitimately probes
+    a port while it is looking for a free slot to hand out, and that is a
+    different question from what `status` may do to a slot it is only
+    reporting on.
+    """
+    with instance.claim() as slot:
+        (slot.dir / "shot.png").write_bytes(b"x")
+
+        def _refuse(*a, **kw):
+            raise AssertionError("status must not probe a held slot's monitor")
+        monkeypatch.setattr(instance, "_greets", _refuse)
+        monkeypatch.setattr(instance, "_listening", _refuse)
+        rows = instance.status()          # must not raise
+        assert rows[slot.n]["state"] == instance.HELD
+
+
+@posix
+def test_the_cli_prints_held_and_idle_columns_and_a_shared_pgid_warning(pool):
+    a = instance.claim()
+    b = instance.claim()
+    try:
+        import contextlib
+        import io
+        out = io.StringIO()
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            assert instance.main(["status"]) == 0
+        assert "held" in out.getvalue() and "idle" in out.getvalue()
+        assert f"pgid {os.getpgid(0)}" in err.getvalue()
+        assert str(a.n) in err.getvalue() and str(b.n) in err.getvalue()
+    finally:
+        a.release()
+        b.release()
+
 # `_lock_holder` and `display_rows` never take a lock to answer -- taking one
 # is not a test of it, and the lock lives on the inode rather than the path
 # (see `tools/instance.py`'s own section docstring). These tests use plain
