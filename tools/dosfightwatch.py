@@ -41,6 +41,17 @@ Output -- a JSON report, the memory image and the PNGs -- goes under
 
     tools/dosfightwatch.py watch --c64 PORSAVE13.D64 --slot A
     tools/dosfightwatch.py locate --slot A     # stop after step 3
+    tools/dosfightwatch.py truth --c64 PORSAVE13.D64 --slot A --engine-slot B
+
+`truth` is the other half of the comparison: the same party saved back by the
+game's own `ENCAMP > SAVE` before it is walked anywhere, then reloaded and
+taken to an encounter menu, so what the engine holds at the moment a fight
+starts can be set beside what a conversion holds there.
+
+**The party has to be somewhere wandering encounters happen.**  Every save
+disk on the player's shelf but two puts the party in New Phlan, area 0, which
+has none; `PORSAVE13.D64` and `PORSAVE14.D64` are in the Slums, area 20, and
+are the ones to convert for this.
 """
 
 from __future__ import annotations
@@ -70,6 +81,23 @@ OUT = REPO / "work" / "issue69"
 #: `CHRDAT` offsets read directly, as `tools/dosfightrun.py` does.
 XP = 0x0AC
 HP_CURRENT = 0x11B
+
+#: Every bar that means a fight has started, and at which the walk must stop.
+#:
+#: **`encounter` is not the only one.**  A run that stopped only at
+#: `COMBAT WAIT FLEE ADVANCE` walked into a fight, was handed `MOVE VIEW AIM
+#: USE ... QUICK DONE`, pressed `q` at it because `PoolOfRadiance.COMBAT_KEYS`
+#: has a key for it, and fought the whole encounter with no watchpoint armed --
+#: counting it as one of ten "prompts".  The party then reached the *next*
+#: encounter with `hands_used` already 2 rather than the conversion's zero,
+#: which is precisely the state `#69 (No WRITE_UNSOURCED zero has been tested
+#: during combat)` exists to observe.
+#:
+#: `claim_treasure` is deliberately absent: its digest is a bare `YES NO`, and
+#: the world map asks one of those too -- the boat back to Phlan, the inn --
+#: so it is answered `n` and walked past.
+FIGHT_BARS = frozenset({"encounter", "message", "command",
+                        "continue_battle", "treasure"})
 
 
 def unsourced_fields() -> list[tuple[str, int, int]]:
@@ -294,7 +322,7 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int) -> dict:
             walked += 1
             continue
         kind = por.bar_kind()
-        if kind == "encounter":
+        if kind in FIGHT_BARS:
             return {"met": True, "at_step": i + 1, "bar": kind, "walked": walked,
                     "blocked": blocked, "prompts": prompts}
         key = por.COMBAT_KEYS.get(kind or "")
@@ -454,7 +482,15 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
                 report["resaved"] = False
                 report["resave_error"] = f"{type(e).__name__}: {e}"
                 checkpoint()
-            after = records(s.save_dir, slot)
+            # **The records to read back are the ones `save_game` just wrote,
+            # and they are not in `slot`.**  This read `records(s.save_dir,
+            # slot)` -- the converted slot, which the game never writes -- so
+            # it compared the conversion against itself: `experience_rose` was
+            # `0` for every character of every run and `fought` was always
+            # False.  The first fight this tool actually drove reported
+            # `fought: false` while the engine's own slot E held 16 more
+            # experience points for all six.
+            after = records(s.save_dir, resave)
             report["after_records"] = {
                 n: {"experience": int.from_bytes(d[XP:XP + 3], "little"),
                     "hp_current": d[HP_CURRENT],
@@ -467,7 +503,107 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
             report["fought"] = any(v > 0 for v in
                                    report["experience_rose"].values())
             for n, d in after.items():
-                (out / f"AFTER-CHRDAT{slot.upper()}{n}.SAV").write_bytes(d)
+                (out / f"AFTER-CHRDAT{resave.upper()}{n}.SAV").write_bytes(d)
+        finally:
+            checkpoint()
+            s.close()
+    return report
+
+
+def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
+          out: pathlib.Path) -> dict:
+    """What the engine's *own* party holds at an encounter menu (#69).
+
+    The comparison `#69 (No WRITE_UNSOURCED zero has been tested during
+    combat)` asks for and that no run has made: not the engine's resave after
+    a fight, but the engine's live records **at the same point in the same
+    place** as a converted party's.
+
+    The trick is that the party is the same one either way.  A converted save
+    is written to `slot`, loaded, and immediately saved back to `engine_slot`
+    through `ENCAMP > SAVE`, which makes the engine author all seven files for
+    a party it did not convert.  The emulator is restarted so the load is a
+    real load rather than a party still in memory, `engine_slot` is loaded,
+    and the walk to an encounter and the megabyte dump are the ones `locate`
+    takes.  Every field that then differs from the converted run's is a field
+    where our zero is not what the engine would have had when the fight began.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    game = dosbox.find_game()
+    report: dict = {"mode": "truth", "slot": slot, "engine_slot": engine_slot,
+                    "steps_asked": steps,
+                    "fields": [n for n, _, _ in unsourced_fields()]}
+
+    def checkpoint() -> None:
+        (out / "report.json").write_text(json.dumps(report, indent=1,
+                                                   default=str))
+
+    disk = find_c64_save(c64 if c64 is None else str(c64))
+    report["c64"] = str(disk)
+    save0 = load_payload(str(disk), POOL_OF_RADIANCE.save_file)
+    try:
+        save1 = load_payload(str(disk), POOL_OF_RADIANCE.roster_file)
+    except Exception:
+        save1 = None
+
+    with dosboxx.claim("issue69 engine truth") as claimed:
+        s = dosboxx.XSession(claimed, game)
+        try:
+            s.stage(fresh=True)
+            written = dos.new_dos_save(save0, save1, s.save_dir, slot,
+                                       s.game_dir)
+            report["accounted"] = f"{len(written.sources)}/{written.total}"
+            built = records(s.save_dir, slot)
+            report["built_records"] = {
+                n: {"unsourced": field_values(d, 0)} for n, d in built.items()}
+
+            s.boot(fresh=False)
+            por = dosbox.PoolOfRadiance(s)
+            por.to_main_menu()
+            por.load_game(slot)
+            report["status_at_load"] = por.status()
+            checkpoint()
+
+            # The engine authors the party.  Nothing has been fought and
+            # nothing walked: this is the same party, one `ENCAMP > SAVE`
+            # later, with every `WRITE_UNSOURCED` byte the engine's own.
+            por.save_game(engine_slot)
+            engine = records(s.save_dir, engine_slot)
+            report["engine_records"] = {
+                n: {"unsourced": field_values(d, 0)} for n, d in engine.items()}
+            for n, d in engine.items():
+                (out / f"ENGINE-CHRDAT{engine_slot.upper()}{n}.SAV").write_bytes(d)
+            checkpoint()
+
+            # A restart, so the party is loaded off disk rather than still in
+            # the heap the conversion was read into.
+            s.restart()
+            por = dosbox.PoolOfRadiance(s)
+            por.to_main_menu()
+            por.load_game(engine_slot)
+            shutil.copy(s.shot("engine-loaded"), out / "engine-loaded.png")
+            checkpoint()
+
+            report["walk"] = walk_to_encounter(por, steps)
+            checkpoint()
+            if not report["walk"]["met"]:
+                return report
+            shutil.copy(s.shot("engine-encounter", allow_blank=True),
+                        out / "engine-encounter.png")
+
+            report["attached"] = s.attach()
+            if not report["attached"]:
+                return report
+            image = s.read(0, 0x100000)
+            (out / "engine-memory-at-encounter.bin").write_bytes(image)
+            where = locate_records(image, engine)
+            report["records"] = {n: dict(v) for n, v in where.items()}
+            report["live_at_encounter"] = {
+                n: field_values(image, v["base"])
+                for n, v in where.items() if v["base"]}
+            checkpoint()
+            s.clear_breakpoints()
+            s.run()
         finally:
             checkpoint()
             s.close()
@@ -490,7 +626,7 @@ def _counts(hits: list[dict]) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("command", choices=("locate", "watch"))
+    ap.add_argument("command", choices=("locate", "watch", "truth"))
     ap.add_argument("--c64", default=None, help="the C64 save disk to convert")
     ap.add_argument("--slot", default="A", help="the DOS slot to write")
     ap.add_argument("--steps", type=int, default=40,
@@ -500,14 +636,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", default="",
                     help="watch only these fields, comma separated")
     ap.add_argument("--out", default=None, help="where the run's files go")
+    ap.add_argument("--engine-slot", default="B",
+                    help="the slot `truth` has the engine write for itself")
     args = ap.parse_args(argv)
 
     chars = tuple(int(x) for x in args.chars.split(",") if x.strip())
     only = tuple(x for x in args.only.split(",") if x.strip())
     out = pathlib.Path(args.out or OUT)
-    report = run(c64=args.c64, slot=args.slot, steps=args.steps, out=out,
-                 stop_after_locate=args.command == "locate",
-                 watch_chars=chars, only=only)
+    if args.command == "truth":
+        report = truth(c64=args.c64, slot=args.slot,
+                       engine_slot=args.engine_slot, steps=args.steps,
+                       out=out)
+    else:
+        report = run(c64=args.c64, slot=args.slot, steps=args.steps, out=out,
+                     stop_after_locate=args.command == "locate",
+                     watch_chars=chars, only=only)
     text = json.dumps(report, indent=1, default=str)
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(text)
