@@ -229,14 +229,15 @@ work/
 
 # AI files
 .agents/
-# The subagent definitions, the hooks and the project settings are the
-# project's, not one machine's; everything else under `.claude/` is local
-# state. The hooks are tracked because an untracked tool is a tool this
-# project has already lost twice -- `work/amiga/m68dis.py` and the 32
-# write-ups under `work/reports/` (#136, #148).
+# The subagent definitions, the standards under `rules/`, the hooks and the
+# project settings are the project's, not one machine's; everything else under
+# `.claude/` is local state. The hooks are tracked because an untracked tool is
+# a tool this project has already lost twice -- `work/amiga/m68dis.py` and the
+# 32 write-ups under `work/reports/` (#136, #148).
 .claude/*
 !.claude/agents/
 !.claude/hooks/
+!.claude/rules/
 !.claude/settings.json
 skills-lock.json
 # Written by hatch-vcs at build time; the tag is the source of truth.
