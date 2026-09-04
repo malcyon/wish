@@ -202,7 +202,7 @@ RULES_DIR = ".claude/rules"
 WHY = "docs/160-why-these-rules.md"
 
 #: A citation of a rule file or of the incidents page, anywhere in the tree.
-RULE_CITATION = re.compile(r"`?\.claude/rules/([a-z-]+\.md)`?")
+RULE_CITATION = re.compile(r"`?\.claude/rules/([a-z0-9_-]+\.md)`?")
 
 
 def test_no_citation_points_at_a_rule_file_that_is_not_there(files):
@@ -232,7 +232,7 @@ def test_no_citation_points_at_a_rule_file_that_is_not_there(files):
         + "\n\nRenaming a rule file means rewriting what points at it.")
 
 
-def test_every_rule_file_points_at_a_heading_that_exists():
+def test_every_rule_file_points_at_a_heading_that_exists(files):
     """Each rule file ends by naming its section of the incidents page.
 
     The pointer is the only thing joining a rule to the evidence for it, and a
@@ -240,16 +240,18 @@ def test_every_rule_file_points_at_a_heading_that_exists():
     still reads correctly, and the reason for it simply cannot be found.
     """
     why = ROOT / WHY
-    if not why.is_file():
-        pytest.skip(f"{WHY} is not there")
+    assert why.is_file(), (
+        f"{WHY} is not there, and every rule file cites a section of it.")
     headings = {
         line[3:].strip()
         for line in why.read_text(encoding="utf-8").splitlines()
         if line.startswith("## ")
     }
+    rules = sorted(p for p in files if p.parent.as_posix() == RULES_DIR)
+    assert rules, f"nothing is tracked under {RULES_DIR}"
     bad = []
-    for rule in sorted((ROOT / RULES_DIR).glob("*.md")):
-        text = rule.read_text(encoding="utf-8")
+    for rule in rules:
+        text = (ROOT / rule).read_text(encoding="utf-8")
         named = re.findall(rf'{re.escape(WHY)}`?,\s*"([^"]+)"', text)
         if not named:
             bad.append(f"{rule.name} names no section of {WHY}")
@@ -257,4 +259,6 @@ def test_every_rule_file_points_at_a_heading_that_exists():
         for heading in named:
             if heading not in headings:
                 bad.append(f'{rule.name} points at "{heading}", which is not a heading there')
-    assert not bad, "\n  ".join(["broken links to the incidents page:"] + bad)
+    assert not bad, "\n  ".join(
+        ["broken links to the incidents page:"] + bad
+        + ["", f"Rename a heading in {WHY} and the rule citing it must change too."])
