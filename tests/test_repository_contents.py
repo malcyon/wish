@@ -23,6 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: Extensions the game's content would arrive in. `.bin` is deliberately not
 #: here -- see `ALLOWED_FIXTURES`, which is stricter.
 FORBIDDEN_SUFFIXES = {
+    ".adf",                                             # Amiga disk images
     ".d64", ".d71", ".d81", ".g64", ".t64", ".tap",     # disk and tape images
     ".prg", ".p00", ".crt", ".rom",                     # executables
     ".sid", ".psid", ".mod", ".wav", ".mp3", ".ogg",    # music and sound

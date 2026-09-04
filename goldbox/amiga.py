@@ -1477,21 +1477,31 @@ def _uncarried_effects(char: AmigaPorCharacter) -> list[bytes]:
 def describe_uncarried_effect(node: bytes) -> str:
     """One drop line for a `.spc` node the neutral record cannot hold.
 
-    The duration is in the line because it is what tells a player whether the
-    loss is one they keep: a spell with rounds left was going to expire
-    anyway, and Donald ruled on 2026-08-27 that those need no report, but an
-    effect at duration zero is a ring or a girdle they are still wearing.
+    The duration decides whether there is a line at all: a spell with rounds
+    left was going to expire anyway, and Donald ruled on 2026-08-27 that
+    those need no report, but an effect at duration zero is a ring or a
+    girdle the character is still wearing.
+
+    **What it says, and what it deliberately does not.** Donald's wording,
+    2026-09-04: what the character had, and what it means for them. No
+    effect id, no module name, no issue number -- `AGENTS.md` says anything
+    a user reads in the interface carries no address or offset, and the
+    lines already in this list had been carrying both. He was shown the
+    longer form that named `goldbox.dos.INNATE_EFFECTS` and `#232 (An
+    item-granted effect is dropped on the way through the neutral record,
+    with no report)` and took this one instead; finding the code from the
+    effect's name is one grep, and the player is not the one who should be
+    paying for it.
     """
     from . import traits
 
-    eid = node[0]
-    duration = int.from_bytes(node[2:4], "big")
-    lasting = ("no duration, so it does not expire" if duration == 0
-               else f"{duration} rounds left")
-    return (f"Effect {eid} ({traits.describe(eid)}, {lasting}): the neutral "
-            f"record carries only the racial ids in "
-            f"goldbox.dos.INNATE_EFFECTS, so this .spc node is not written "
-            f"(#232)")
+    # `[:1].upper()`, never `str.capitalize()`: `.claude/rules/gui-text.md`
+    # bans it because it lower-cases the rest, and effect 61's own name is
+    # "wearing a Ring of Fire Resistance" -- `capitalize()` renders that as
+    # "Wearing a ring of fire resistance" and takes the item's name with it.
+    said = traits.describe(node[0])
+    return (f"{said[:1].upper()}{said[1:]}: not carried, so the character "
+            f"arrives without it")
 
 
 # ---------------------------------------------------------------------------

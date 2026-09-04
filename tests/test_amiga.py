@@ -1111,8 +1111,15 @@ def test_an_effect_the_neutral_record_cannot_hold_is_reported():
     `#232 (An item-granted effect is dropped on the way through the neutral
     record, with no report)` closes, the least the conversion owes the player
     is a line saying which effect went.
+
+    **The line names the effect and what it costs, and nothing else.**
+    Donald's wording, 2026-09-04: no effect id, no module name, no issue
+    number, because `AGENTS.md` says what a user reads in the interface
+    carries no address or offset. So this asserts the effect's own name is
+    in the line, which is what a player would look for, rather than an
+    internal id they have no way to know.
     """
-    from goldbox import dos
+    from goldbox import dos, traits
 
     seen = 0
     for path in amiga_por_records():
@@ -1123,7 +1130,13 @@ def test_an_effect_the_neutral_record_cannot_hold_is_reported():
         seen += 1
         n = amiga.to_neutral(c)
         for eid in lost:
-            assert any(f"Effect {eid} (" in d for d in n.dropped), (path, eid)
+            said = traits.describe(eid)
+            named = f"{said[:1].upper()}{said[1:]}"
+            assert any(d.startswith(named) for d in n.dropped), (path, eid)
+            # `capitalize()` would render effect 61 as "Wearing a ring of
+            # fire resistance" and take the item's own name down with it.
+            assert not any("ring of fire" in d for d in n.dropped), path
+            assert not any(str(eid) in d for d in n.dropped), (path, eid)
         # And it really is gone, so the line is not decoration.
         _, _, spc, _ = amiga.write_por(n)
         assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * (
