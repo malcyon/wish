@@ -646,6 +646,66 @@ the converter or declared as dropped, so an outdoor save is covered by the same
 accounting: 13137 of 13137 bytes, 0 unwritten, on both of the runs that proved
 it in the game. CONFIRMED, and re-takeable in a second by anybody.
 
+## The character record's combat tail, `0x10C`-`0x10F` (#235)
+
+**Not part of `SAVGAM<slot>.DAT`** — these four bytes are in the
+`CHRDAT<slot><n>.SAV` files the container's party table names, and they are
+here because the container page is where the DOS saved game's parts are
+listed and `goldbox/dos_layout.py` carries the per-field table. Measured for
+`#235 (Two unattributed DOS byte ranges in the combat tail are dropped
+converting to C64, and nobody knows what they hold)`, where the entries said
+only "unattributed".
+
+| offset | what | grade |
+|---|---|---|
+| `0x10C` | **status**, 0-based: 0 Okay, 1 Animated, 2 tempgone, 3 Running, 4 Unconscious, 5 Dying, 6 Dead, 7 Stoned, 8 Gone. The order is the game's own — nine length-prefixed strings in `START.EXE` from file offset `0xD191`, in that sequence — and two of the nine were read off the sheet: the same character staged 0 shows `STATUS OKAY` and staged 4 shows `STATUS UNCONSCIOUS`, with hit points and armour class unchanged. The engine writes 4 itself for a character it takes to zero hit points | CONFIRMED |
+| `0x10D` | **an active flag**. 0 draws the name red in the party panel and 1 does not: 3 of 3 against 9 of 9 across two boots, and it is `0x10D` alone — a character carrying status 5 or 6 with `0x10D` = 1 is *not* red | CONFIRMED |
+| `0x10E` | 0 in all 223 engine-written records of all four titles. The third-party workbooks call it `IsHostile`; a player character is never hostile and DOS monsters are not `CHRDAT` files, so no specimen separates it from fill | UNKNOWN |
+| `0x10F` | **the quickfight flag**. Staged 1 on all six of a party, the next fight ran to its end with the combat command bar never appearing and QUICK never pressed; staged 0, the same party at the same encounter stopped at the first character's `MOVE VIEW AIM USE QUICK DONE` and sat there for 335 captures. The engine sets it in a fight and nothing clears it — 11 of 11 characters resaved after one carry it — which is `goldbox-bugs.md` bug 3 in the DOS build | CONFIRMED |
+
+**The whole four-byte block is stored state, not scratch.** Twelve values
+staged across two boots — including `04 00 00 00`, `06 00 00 00` and
+`00 00 00 00` — all twelve came back byte for byte from the engine's own
+`ENCAMP > SAVE`, with a character left at the constant in each run as the
+control. So nothing here is recomputed on load, and a conversion that writes
+a fixed `00 01 00 00` replaces a player's value rather than filling a blank.
+
+**The other three titles carry the same four bytes**, at their own offsets in
+their own shapes — Curse `0x195`, Silver Blades `0x1A6`, Pools of Darkness
+`0x1ED` — and every one of the 122 records held reads `00 01 00 00` there.
+Nothing has been driven in those three titles, so the *names* above are Pool
+of Radiance's; the value is what carries across.
+
+`tools/dostailcensus.py` re-takes the counts, `tools/dostailprobe.py` re-runs
+the load-side probe and `tools/dosquickprobe.py` the quickfight pair.
+
+### `0x083`-`0x087`: a constant, and what that rests on
+
+`00 00 01 00 00` in **101 of 101** distinct engine-written Pool of Radiance
+records — 20 named characters, eight classes, levels 1 to 4, before a fight
+and after one. The engine hands back whatever is staged there (five distinct
+patterns including `FF FF FF FF FF`, all kept byte for byte), and BRUTUS's
+character sheet carrying `11 22 33 44 55` is pixel-identical to his sheet
+carrying the constant, so nothing the player sees is driven by it.
+
+Two limits, so nobody reads more into that than it holds. **No specimen on
+this machine is above level 4**, so a field that only fills later would not
+show. And the **third-party names** for the five bytes — `Morale` at `0x084`,
+`TreasureShare` at `0x085` — are neither confirmed nor refuted: a player
+character has no morale and takes one share, which is consistent with what is
+there and consistency is not evidence. A Pool of Radiance **monster or NPC**
+record, which shares this format, is where a morale value would have to
+appear.
+
+The **later titles do vary** in the window — Silver Blades' MALACHITE reads
+`00 00 00 00` where the other eleven read `00 01 00 00`, and Pools of Darkness
+splits 23 to 8 — but `goldbox/dos_layout.py` shrinks the field from five bytes
+to four in both of those shapes to make the record's widths add up, and
+nothing independent places the shrink there. The variation is real; which byte
+it is in is not settled, and it is not the class, the level or the dual-class
+array. A lead for `#53 (Read and write DOS saves for Curse, Silver Blades and
+Pools of Darkness)`.
+
 ## What this leaves open
 
 * **What the undecoded words mean.** Every one of them now has a *value* a
@@ -698,3 +758,17 @@ it in the game. CONFIRMED, and re-takeable in a second by anybody.
   issue -- `portrait_head`, `portrait_body`, `icon_head`, `icon_body` -- and
   all four live in the **character record**, not in `SAVGAM<slot>.DAT`.
   Nothing in this file bears on it, which is the answer rather than a gap.
+* **What `0x10E` is.** 0 in all 223 engine-written records of all four
+  titles, which is an absence rather than a reading. Experiment: read the
+  same offset out of a DOS `MON*` record, where a hostile creature would
+  have to set it — the format is shared and no monster record has been
+  looked at.
+* **Whether `0x084`/`0x085` are morale and treasure share.** Experiment: a
+  Pool of Radiance record for a monster or a joined NPC, which is the only
+  kind of character either value could be nonzero for.
+* **Which byte varies in Silver Blades' and Pools of Darkness'
+  `0x083`-`0x087` window**, and what it tracks. Their five-to-four shrink is
+  fitted to make the record's widths add up and nothing places it.
+  Experiment: anchor the window from the money block backwards in a played
+  save of each, then census the byte against the class, the level and the
+  party position.
