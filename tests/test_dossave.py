@@ -565,9 +565,16 @@ def test_the_dos_record_grows_with_every_title():
 
 @needs_dos_saves
 def test_item_and_effect_strides_are_constant_across_the_family():
-    """63 bytes an item and 9 an effect, from Pool of Radiance through Pools
-    of Darkness -- whatever else grew, these did not. The suffix changes per
-    title (`.ITM`, `.THG`, `.SWG`; `.SPC`, `.FX`, `.SFX`, `.EFX`)."""
+    """63 bytes an item and 9 an effect in the archives' own files.
+
+    The suffix changes per title -- `.ITM` for Pool of Radiance, `.SWG` for
+    Curse, `.STF` for Silver Blades, `.THG` for Pools of Darkness; `.SPC`,
+    `.FX`, `.SFX`, `.EFX` for the effects -- and **Silver Blades' item is 67
+    bytes, not 63** (#113). This walks the archives, which ship no `.STF` at
+    all because no shipped Silver Blades character carries anything, so the
+    63 it asserts is the other three titles'; the 67 is pinned by
+    `test_silver_blades_items_are_67_bytes_in_a_stf_file`.
+    """
     dirs = _game_dirs()
     if not dirs:
         pytest.skip("no DOS Gold Box game folders here")
@@ -603,3 +610,139 @@ def test_the_later_titles_store_each_ability_twice():
             if all(block[n] == block[n + 1] for n in range(0, 12, 2)):
                 doubled += 1
         assert doubled >= len(records) - 1, title
+
+
+# --- what a Curse character's items are called ---------------------------------
+# Measured in the running game rather than assumed: the party bought a battle
+# axe at the Weaponers of Cormyr and the file that appeared beside
+# `CHRDATI1.SAV` was `CHRDATI1.SWG` (#113). No archives are needed for the
+# test, and no save is copied into the repository -- the record and the item
+# below are built here from the documented layout.
+
+def _synthetic_curse_character(items: int) -> bytearray:
+    """A 422-byte Curse record carrying nothing but a name and an item count."""
+    from goldbox import dos_layout
+
+    record = bytearray(dos_layout.CURSE_OF_THE_AZURE_BONDS.record_size)
+    name = b"SHOPPER"
+    record[0] = len(name)
+    record[1:1 + len(name)] = name
+    fields = {f.name: f for f in dos_layout.layout_for("curse-of-the-azure-bonds")}
+    record[fields["item_count"].offset] = items
+    return record
+
+
+def _synthetic_battle_axe() -> bytearray:
+    """One 63-byte item record: type 1, 7.5 lb, 5 gold, nothing else set."""
+    from goldbox import dos_layout
+
+    item = bytearray(dos_layout.ITEM_SIZE)
+    line = b"Battle Axe "
+    item[0] = len(line)
+    item[1:1 + len(line)] = line
+    item[0x02E] = 1                       # type index
+    item[0x037] = 75                      # weight, tenths of a pound
+    item[0x03A] = 5                       # value, gold
+    return item
+
+
+def test_a_curse_character_keeps_its_items_in_a_swg_file(tmp_path):
+    """The suffix is `.SWG`, and a reader looking for `.ITM` finds nothing.
+
+    This is the failure it guards against and the reason it went unnoticed
+    for so long: `_sibling` reads a missing file as empty, so a character
+    whose record says three items reads back as carrying none -- exactly
+    what every shipped pregen looks like.
+    """
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(1))
+    (tmp_path / "CHRDATC1.SWG").write_bytes(_synthetic_battle_axe())
+
+    character = dos.read_character(record)
+    assert character.get("item_count") == 1
+    assert len(character.items) == 1, "the .SWG file was not read"
+    assert character.items[0].get("type_index") == 1
+    assert character.items[0].get("weight") == 75
+    assert character.items[0].get("value") == 5
+
+
+def test_a_curse_item_file_under_the_old_name_is_not_read(tmp_path):
+    """`.ITM` beside a Curse record is not that character's item file.
+
+    The counterpart of the test above: with the suffix restored to `.ITM`
+    the first test passes and this one fails, so the pair pins the direction
+    rather than merely the fact that some suffix works.
+    """
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(1))
+    (tmp_path / "CHRDATC1.ITM").write_bytes(_synthetic_battle_axe())
+
+    character = dos.read_character(record)
+    assert character.get("item_count") == 1
+    assert not character.items, "an .ITM beside a Curse record was read"
+
+
+# --- and Silver Blades', which are a different length in a different file ------
+# Also measured in the running game: Silver Blades' opening gives the party
+# twelve magic items, and `CHRDATC1.STF` came to 804 bytes for an item count
+# of 12 -- 12 x 67, and not divisible by 63 (#113).
+
+SILVER_BLADES_ITEM_SIZE = 67
+
+
+def _synthetic_silver_blades_character(items: int) -> bytearray:
+    from goldbox import dos_layout
+
+    record = bytearray(dos_layout.SECRET_OF_THE_SILVER_BLADES.record_size)
+    name = b"TAKER"
+    record[0] = len(name)
+    record[1:1 + len(name)] = name
+    fields = {f.name: f
+              for f in dos_layout.layout_for("secret-of-the-silver-blades")}
+    record[fields["item_count"].offset] = items
+    return record
+
+
+def _synthetic_silver_blades_items() -> bytearray:
+    """Two 67-byte records: a 6 lb sword worth 2000, then 30 arrows worth 50.
+
+    The second one is what pins the stride. Sliced at 63 its fields land four
+    bytes into the wrong place and the quantity reads 0 instead of 30.
+    """
+    out = bytearray()
+    for line, type_index, weight, quantity, value in (
+            (b"Long Sword +1 ", 18, 60, 0, 2000),
+            (b"30 Arrows +1 ", 30, 4, 30, 50)):
+        item = bytearray(SILVER_BLADES_ITEM_SIZE)
+        item[0] = len(line)
+        item[1:1 + len(line)] = line
+        item[0x02E] = type_index
+        item[0x032] = 1                                   # plus
+        item[0x037:0x039] = weight.to_bytes(2, "little")
+        item[0x039] = quantity
+        item[0x03A:0x03C] = value.to_bytes(2, "little")
+        out += item
+    return out
+
+
+def test_silver_blades_items_are_67_bytes_in_a_stf_file(tmp_path):
+    """`.STF`, stride 67, and every field still at Pool of Radiance's offset."""
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_silver_blades_character(2))
+    (tmp_path / "CHRDATC1.STF").write_bytes(_synthetic_silver_blades_items())
+
+    character = dos.read_character(record)
+    assert len(character.items) == 2, "the .STF file was not read"
+    first, second = character.items
+    assert first.get("type_index") == 18 and first.get("value") == 2000
+    # The second record is the one a 63-byte stride gets wrong.
+    assert second.get("type_index") == 30
+    assert second.get("quantity") == 30
+    assert second.get("weight") == 4
+    assert second.get("value") == 50

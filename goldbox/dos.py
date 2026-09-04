@@ -248,12 +248,17 @@ class _Fielded:
 
 
 class DosItem(_Fielded):
-    """One 63-byte record of a `.ITM` file."""
+    """One item record, 63 bytes in three titles and 67 in Silver Blades.
+
+    The four extra bytes are at the **end** and are zero in every specimen, so
+    every field below `0x03E` is at the same offset whichever title wrote it
+    (#113).  `size` is the title's, from `DosShape.item_size`.
+    """
 
     _TABLE = ITEM_FIELDS_BY_NAME
 
-    def __init__(self, data: bytes) -> None:
-        super().__init__(data, ITEM_SIZE, "item")
+    def __init__(self, data: bytes, size: int = ITEM_SIZE) -> None:
+        super().__init__(data, size, "item")
 
     @property
     def display_line(self) -> str:
@@ -575,9 +580,14 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
 
     Any of the four titles: the record's length names it, and the sibling
     item and effect files are whatever that title calls them -- `.ITM`/`.SPC`
-    for Pool of Radiance, `.ITM`/`.FX` for Curse, `.ITM`/`.SFX` for Silver
+    for Pool of Radiance, **`.SWG`**/`.FX` for Curse, `.ITM`/`.SFX` for Silver
     Blades, `.THG`/`.EFX` for Pools of Darkness.  An export normally has
     neither.
+
+    Curse's `.SWG` is measured, in the running game, on a character who went
+    shopping (#113); Silver Blades' `.ITM` is not, and no Silver Blades
+    character anybody has carries an item, so it is the one suffix in that
+    list still resting on an assumption.
     """
     path = pathlib.Path(path)
     data = path.read_bytes()
@@ -592,8 +602,9 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
     # sits beside a stale `.ITM` from an earlier save would otherwise be given
     # items it does not carry -- which is exactly what the archives hold.
     count = data[FIELDS_BY_NAME_FOR[shape.key]["item_count"].offset]
-    items = [DosItem(itm[i * ITEM_SIZE:(i + 1) * ITEM_SIZE])
-             for i in range(min(count, len(itm) // ITEM_SIZE))]
+    stride = shape.item_size
+    items = [DosItem(itm[i * stride:(i + 1) * stride], stride)
+             for i in range(min(count, len(itm) // stride))]
     effects = [spc[i:i + EFFECT_SIZE] for i in range(0, len(spc), EFFECT_SIZE)
                if len(spc[i:i + EFFECT_SIZE]) == EFFECT_SIZE]
     return DosCharacter(data, items, effects, source=str(path), shape=shape)

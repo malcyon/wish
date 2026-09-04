@@ -170,7 +170,17 @@ _DECLARED: Sequence[Field] = (
        "No specimen has a cleric id in a magic-user's list or the reverse. "
        "**The Curse importer never reads this region** (0x17-0x2C is one of "
        "its seven skipped runs), so nobody else's code corroborates the "
-       "width; sixteen is what the C64 declares and what tiles here"),
+       "width; sixteen is what the C64 declares and what tiles here. "
+       "**The same end-alignment is measured in the two later titles** "
+       "(#113), by memorising one spell at a time in DOSBox and diffing the "
+       "whole record: Curse's 84 bytes take a level-2 spell at 0x071, then a "
+       "level-1 at 0x070, and adding a level-3 shifts the pair down so the "
+       "three read 15 34 47 ending at 0x071 -- ids ascending towards the last "
+       "byte, a repeated memorisation stored as a repeated id, and casting "
+       "one clears the *lower* address and leaves the rest against the end. "
+       "Silver Blades' 75 bytes take a ranger's one druid spell at 0x068, "
+       "its own last byte. Five saves in Curse, one in Silver Blades, and "
+       "eight archive records in Pool of Radiance"),
     _f(0x02D, 1, _U8, "thac0_base", "THAC0 base (60 - value)", _OK,
        "40, 42 and 43 only, giving THAC0 20, 18 and 17. Gold Box Companion's "
        "Levels.txt states thac0_base = 40 for cleric 1 and 42 for cleric 4 "
@@ -631,6 +641,10 @@ class DosShape:
     #: The sibling files beside `CHRDAT<slot><n>.SAV`: items, then effects.
     item_suffix: str = ".ITM"
     effect_suffix: str = ".SPC"
+    #: Bytes an item record takes in that file.  63 in three of the four
+    #: titles and **67 in Silver Blades**, whose four extra bytes are at the
+    #: end and zero in 12 of 12 (#113).
+    item_size: int = ITEM_SIZE
     #: Bytes in the byte-per-spell book, which is spell ids 1..n in order.
     spellbook_spells: int = SPELLBOOK_SPELLS
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
@@ -679,9 +693,20 @@ POOL_OF_RADIANCE = DosShape(
 #: former-level array beside the class-level one, a druid spell-slot array
 #: between the cleric's and the magic-user's, and four bytes of its own
 #: before the combat tail.
+#:
+#: **Its items are in a `.SWG` file, not a `.ITM` one** -- measured in the
+#: running game rather than assumed (#113).  Every shipped Curse pregen
+#: carries nothing, so no `.ITM` was ever missing from a directory anybody
+#: had; the first character to buy a battle axe got `CHRDATI1.SWG` beside
+#: `CHRDATI1.SAV`, 63 bytes, and no `.ITM` appeared at any point.  This said
+#: `.ITM` until then, which made `goldbox.dos.read_character` hand back an
+#: item count of three and an empty item list -- silently, because a sibling
+#: that is not there reads as empty.  It corroborates `#55`: Gateway to the
+#: Savage Frontier's 422-byte `.GUY` exports read through this table and keep
+#: their items in `.SWG` too.
 CURSE_OF_THE_AZURE_BONDS = DosShape(
     key="curse-of-the-azure-bonds", title="Curse of the Azure Bonds",
-    record_size=422, item_suffix=".ITM", effect_suffix=".FX",
+    record_size=422, item_suffix=".SWG", effect_suffix=".FX",
     spellbook_spells=100,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
@@ -702,9 +727,19 @@ CURSE_OF_THE_AZURE_BONDS = DosShape(
 #: cleric's and the magic-user's rather than one.  It drops the monk level
 #: slot and the `type` byte, and its memorised region is *smaller* than
 #: Curse's at 75 bytes.
+#:
+#: **Its items are 67 bytes each in a `.STF` file** -- measured in the running
+#: game (#113), where the mayor of New Verdigris hands the party twelve magic
+#: items in its first minute and the file that appears beside the record is
+#: `CHRDATC1.STF`, 804 bytes for an item count of 12.  804 is 12 x 67 and is
+#: not divisible by 63.  Every field is still at Pool of Radiance's offset --
+#: the weights are the published AD&D figures in tenths of a pound, `quantity`
+#: is 30 on the line reading `30 Arrows`, and a `MAGE SCROLL 3 SPELLS` carries
+#: three ids inside this title's 1..117 space in the three special bytes -- so
+#: the four extra bytes are `0x03F`-`0x042` and are zero in 12 of 12.
 SECRET_OF_THE_SILVER_BLADES = DosShape(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
-    record_size=439, item_suffix=".ITM", effect_suffix=".SFX",
+    record_size=439, item_suffix=".STF", item_size=67, effect_suffix=".SFX",
     spellbook_spells=117,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
