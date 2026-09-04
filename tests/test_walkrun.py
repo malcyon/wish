@@ -25,6 +25,9 @@ import walkrun  # noqa: E402
 
 posix = pytest.mark.skipif(instance.fcntl is None, reason="flock is POSIX only")
 
+# Shares a group with tests/test_instance.py -- see that file's own note.
+pytestmark = pytest.mark.xdist_group(name="emulator-pool")
+
 
 @pytest.fixture
 def ports(monkeypatch):

@@ -30,6 +30,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import dosbox  # noqa: E402
 
+# Shares a group with tests/test_instance.py -- see that file's own note.
+# Only three tests here claim a pool slot, each at its own fixed display
+# base (950, 955, 960), but the whole module travels together so a future
+# test claiming one does not have to discover this on its own.
+pytestmark = pytest.mark.xdist_group(name="emulator-pool")
+
 SAVGAM_SIZE = 13137
 
 

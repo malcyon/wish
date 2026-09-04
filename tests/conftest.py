@@ -94,7 +94,14 @@ os.environ["QT_QPA_PLATFORM"] = os.environ.get("WISH_TEST_PLATFORM", "offscreen"
 
 @pytest.fixture(scope="session", autouse=True)
 def _one_qapplication():
-    """The reference that keeps the application alive from first test to last."""
+    """The reference that keeps the application alive from first test to last.
+
+    "The session" is one `pytest-xdist` worker's own process under `-n auto`
+    -- each gets its own interpreter and so its own single `QApplication`,
+    never two workers sharing one. Nothing here needed to change for that;
+    it is the same reason `_isolate_config` below only had to lean on
+    `tmp_path`, which pytest already keeps distinct per worker.
+    """
     try:
         from PyQt6.QtWidgets import QApplication
     except ImportError:          # the suite also runs without the gui extra

@@ -26,6 +26,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from tools import dosboxx  # noqa: E402
 
+# Shares a group with tests/test_instance.py -- see that file's own note.
+pytestmark = pytest.mark.xdist_group(name="emulator-pool")
+
 # --------------------------------------------------------------------------
 # Addresses
 # --------------------------------------------------------------------------

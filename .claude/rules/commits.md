@@ -68,6 +68,19 @@ ln -sfn "$PWD/work" "$WT/work"          # gitignored, so a fresh checkout has no
 git worktree remove "$WT" --force
 ```
 
+**Plain `pytest -q` is already this fast: parallel is the default, not an
+extra flag.** `-n auto --dist loadgroup` lives in `pyproject.toml`'s
+`addopts`, so the command above already runs on every core the machine has --
+about 1:40 on twelve cores against about 7:30 run one test at a time, both
+measured on 3,303 tests with the machine otherwise busy. `--dist loadgroup`
+keeps `tests/test_instance.py`, `tests/test_dosbox.py`, `tests/test_dosboxx.py`
+and `tests/test_walkrun.py` -- which claim a synthetic emulator-pool slot by a
+fixed, shared display number -- in one worker together, because two workers
+racing each other for the same number is exactly the failure the pool itself
+exists to prevent between real agents. `pytest -q -n0` drops back to one
+process, for a single flaky-looking failure that needs to be seen in
+isolation.
+
 **The symlink is the part that is easy to miss, and without it the run lies by
 omission.** `work/` is gitignored, so a bare worktree skips every test that
 reads a specimen out of it -- the ones with real game data behind them. CI has

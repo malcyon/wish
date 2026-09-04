@@ -12,7 +12,7 @@ license-files = ["LICENSE"]
 dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5"]
 gui = ["PyQt6>=6.6"]
 # The live automapper reads a running VICE; it needs the GUI extra.
 automap = ["PyQt6>=6.6"]
@@ -57,6 +57,16 @@ packages = ["goldbox", "editor", "automap", "wish", "tools", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The suite is overwhelmingly independent test files, so parallel is the
+# normal way to run it -- about 7:00 sequential on twelve cores, and pushing
+# often depends on that being cheap. `--dist loadgroup` keeps every test
+# carrying `@pytest.mark.xdist_group` in its own worker instead of scattering
+# it, which is how the emulator-pool tests (`tests/test_instance.py`,
+# `tests/test_dosbox.py`, `tests/test_dosboxx.py`, `tests/test_walkrun.py`)
+# stay safe: several of them claim a synthetic display band by a fixed
+# number, and two workers claiming the same band race each other. `-n 0`
+# on the command line disables this for a single debugging run.
+addopts = "-n auto --dist loadgroup"
 
 [tool.ruff]
 line-length = 88
