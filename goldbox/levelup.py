@@ -323,9 +323,11 @@ def _cleric_spell_ids(cleric_level: int, game=None) -> list[int]:
     `GEN $20CF` ORs whole spell levels in, so on Pool of Radiance this is
     exactly "every cleric spell of a level it can cast" and does not hard-code
     a bitmask. Curse replaced that routine with a per-level table and left two
-    of its own cleric spells out of it -- `SpellTable.not_granted`, 36 ANIMATE
-    DEAD and 100 BESTOW CURSE -- so those are skipped here as well; with them
-    the set is Curse's grant table id for id at every level it reaches.
+    of its own cleric spells out of it -- 36 ANIMATE DEAD and 100 BESTOW CURSE
+    -- so those are skipped here as well; with them the set is Curse's grant
+    table id for id at every level it reaches. `SpellTable.not_granted` also
+    carries the magic-user ANIMATE DEAD, id 90, which never reaches this
+    function because it is not a cleric spell (#223).
     """
     table = spells.for_game(game)
     castable = _castable_levels(cleric_level, game)

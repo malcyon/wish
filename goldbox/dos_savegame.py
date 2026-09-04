@@ -690,7 +690,7 @@ def put_word(save: bytearray, address: int, value: int) -> None:
 
 
 def put_position(save: bytearray, x: int, y: int, facing: int,
-                  shape: "DosSaveShape | None" = None) -> None:
+                 shape: "DosSaveShape | None" = None) -> None:
     """The square, with `facing` in the C64's 0-3.
 
     Writes through `shape.pos_x`/`pos_y`/`pos_facing`, not the Pool of
@@ -698,6 +698,14 @@ def put_position(save: bytearray, x: int, y: int, facing: int,
     put a Curse square twelve bytes into what is actually the "unnamed"
     region in front of it. `shape` defaults to whichever the buffer's own
     length names, so an existing Pool of Radiance caller is unaffected.
+
+    **This is the one writer here that takes a title other than Pool of
+    Radiance, and that is deliberate rather than an oversight.** Every other
+    one opens with `_whole`, which refuses anything but a 13137-byte buffer;
+    this one opens with `_shaped`, which takes any of the four known sizes.
+    It is groundwork for #192, and the rest of the module follows when that
+    lands. Until then a caller writing a whole Curse save gets this call and
+    a `DosSaveError` from the next one, which is loud rather than silent.
     """
     shape = _shaped(save, shape)
     save[shape.pos_x], save[shape.pos_y] = x, y

@@ -96,8 +96,9 @@ class SpellTable:
     #: never hands out, so a level-up must not either. Pool of Radiance has
     #: none: `GEN $20CF` ORs a whole spell level into the mask rather than
     #: reading a table, so a cleric who can cast a level knows all of it.
-    #: Curse replaced that with a per-level table and left two ids out of it --
-    #: see `CURSE_OF_THE_AZURE_BONDS` below. CONFIRMED.
+    #: Curse replaced that with a per-level table and left three ids out of it,
+    #: one of them not a cleric spell at all -- see `CURSE_OF_THE_AZURE_BONDS`
+    #: below. CONFIRMED.
     not_granted: tuple[int, ...] = ()
     #: `(level, ids)` pairs: the whole magic-user spell list a character of
     #: that level is granted, where the trainer hands out a row instead of
