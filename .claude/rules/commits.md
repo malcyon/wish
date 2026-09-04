@@ -32,9 +32,16 @@ Run all three locally, or CI will find what you did not:
 2. `.venv/bin/ruff check .` (no unused imports or linting errors)
 3. `.venv/bin/python3 tools/genui.py --check` (every `.ui` compiled and current)
 
-**Run the whole suite, not the files you touched.** A scoped run is for
-working; it is not the check. `pytest tests/test_combatdrive.py` was green and
-`main` went red on all four jobs eight minutes later.
+**Run the whole suite, not the files you touched -- and this one is the main
+window's, not a subagent's.** A scoped run is for working; it is not the check.
+`pytest tests/test_combatdrive.py` was green and `main` went red on all four
+jobs eight minutes later.
+
+**A subagent runs only the files it touched.** Six agents each running all
+3,190 tests is six copies of Qt on one machine: on 2026-09-04 a reviewer's run
+sat producing nothing under that load and was abandoned. The whole suite runs
+**once**, here, in the detached worktree below, before the push -- which is the
+run that gates anything, so nothing is lost by the agents not repeating it.
 
 **The exception is a change that touches no code.** Prose in `docs/`, a rule
 file, `AGENTS.md`, a README row: the only test that reads any of those is

@@ -48,6 +48,15 @@ collide. Assign non-overlapping areas, and say which in the brief.
 one, say so in a message to the agent, and prefer a targeted edit -- putting
 back the one hunk you changed -- to restoring the whole file you remember.
 
+**Tell the agent to run its own test files, not the suite.** `pytest` on what
+it touched, plus `ruff` and `genui.py --check`. The whole suite is the main
+window's, once, before the push -- `.claude/rules/commits.md`. Six agents each
+running all 3,190 tests is six copies of Qt on one machine, and on 2026-09-04
+that cost a reviewer its run. Tell it to run in the **foreground with a
+timeout** as well: a backgrounded `pytest` here has come back `killed` rather
+than with a result, and five agents ended turns that day waiting on runs that
+never reported.
+
 **The brief carries the standing constraints**, because a subagent starts cold:
 never write to the player's disk directory, never commit the game's code, art
 or data, never run the git commands that revert a file, and leave the VICE

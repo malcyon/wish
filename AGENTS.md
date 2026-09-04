@@ -190,9 +190,11 @@ issue in the same session**; the bar is low.
 Run all three from the repository root. A green suite proves nothing broke.
 It is not what you set out to learn.
 
-1. `pytest` -- the **whole** suite, not the files you touched
+1. `pytest` **on the files you touched**
 2. `.venv/bin/ruff check .`
 3. `.venv/bin/python3 tools/genui.py --check`
 
-The message, the push, the CI check, and running the suite somewhere the other
-agents are not: `.claude/rules/commits.md`.
+**The whole suite is the main window's job, once, in a detached worktree,
+before it pushes.** Six agents each running all 3,190 tests is six copies of Qt
+on one machine, and on 2026-09-04 that cost a reviewer its run. The message,
+the push, the CI check, and where to run it: `.claude/rules/commits.md`.
