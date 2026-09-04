@@ -5,8 +5,9 @@ paths:
 
 # Testing
 
-**A green suite is the floor, not the finding.** Everything here is about the
-gap between "the tests pass" and "we know this works".
+**A green suite proves nothing broke. It is not what you set out to learn.**
+Everything here is about the gap between "the tests pass" and "we know this
+works".
 
 **Test what would actually break.** A test that restates the implementation
 passes forever and catches nothing. Ask what a user would see go wrong, and

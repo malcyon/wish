@@ -76,12 +76,14 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **"bites"** -- a test, a bug, a case | say what happens: the test fails without the fix; the conversion drops a figure |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
 | a sentence that rates itself: **"worth saying"**, **"to be clear"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
+| **floor**, for anything but a storey of a building -- "a floor under the window", "a green suite is the floor" | say the thing: "the window never gets narrower than this", "passing it proves nothing broke" |
 
-**The table is a floor, and a row's examples are examples rather than its
-scope.** `Fair --` opening a reply is the `fair` row, though that row quotes
-`"that's fair"`. Above the floor it is a habit rather than a blocklist:
-reaching for jargon that sounds precise and carries less than the plain phrase
-it replaced.
+**Every word in the table is banned in every construction, and a row's
+examples are examples rather than the whole of what it bans.** `Fair --`
+opening a reply is the `fair` row, though that row quotes `"that's fair"`. The
+table is not the whole rule either: the habit it comes from is reaching for
+jargon that sounds precise and carries less than the plain phrase it
+replaced.
 
 **Do not give a file the verb that belongs to the people in it** -- *"I don't
 know what a save walking means."* A save cannot walk; a **party** walks. Code
@@ -194,8 +196,8 @@ issue in the same session**; the bar is low.
 
 ## Before you commit
 
-Run all three from the repository root. A green suite is the floor, not the
-finding.
+Run all three from the repository root. A green suite proves nothing broke.
+It is not what you set out to learn.
 
 1. `pytest` -- the **whole** suite, not the files you touched
 2. `.venv/bin/ruff check .`
