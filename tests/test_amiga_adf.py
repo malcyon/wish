@@ -41,13 +41,50 @@ from goldbox.amiga_adf import (
 WHEN = datetime.datetime(1991, 6, 4, 12, 34, 56)
 
 
-def real_disks() -> list[pathlib.Path]:
+#: Where Amiga disk images sit when nobody says. `$AMIGA_DISKS` still wins, so
+#: another machine needs no change; this is only so that the machine with the
+#: disks on it stops skipping tests it can run. These four skipped here for
+#: months against images that were on the disk the whole time -- `#211 (103
+#: tests skip on the machine that has the game files, and the game files are not
+#: why)`. `tests/gamedata.py` does the same for the C64 disks.
+AMIGA_ROOTS = (
+    pathlib.Path("/mnt/media/roms/amiga"),
+    pathlib.Path.home() / "amiga",
+    pathlib.Path.home() / "Downloads" / "amiga",
+)
+
+#: The Gold Box titles, as the directories under those roots are named.
+#: **The root is a whole Amiga library, not a Gold Box folder**, so scanning it
+#: whole picks up Lemmings -- which is a bootable disk with no AmigaDOS
+#: filesystem on it, and reading it fails correctly. That is not a fault in the
+#: reader and must not be asserted against.
+AMIGA_GAMES = ("Curse_Of_The_Azure_Bonds", "Secret_Of_The_Silver_Blades",
+               "Pool_Of_Radiance", "Pools_Of_Darkness")
+
+
+def amiga_dirs() -> list[pathlib.Path]:
+    """The directories holding Amiga Gold Box images, `$AMIGA_DISKS` first.
+
+    `$AMIGA_DISKS` is taken whole and is the caller's business to scope; the
+    defaults are narrowed to the game directories, because their roots hold
+    every Amiga disk on the machine.
+    """
     where = os.environ.get("AMIGA_DISKS")
+    if where:
+        return [pathlib.Path(where)]
+    return [root / name for root in AMIGA_ROOTS for name in AMIGA_GAMES
+            if (root / name).is_dir()]
+
+
+def real_disks() -> list[pathlib.Path]:
+    where = amiga_dirs()
     if not where:
-        pytest.skip("no Amiga disk images; set $AMIGA_DISKS")
-    found = sorted(p for p in pathlib.Path(where).rglob("*.adf") if p.is_file())
+        pytest.skip(
+            "no Amiga Gold Box disks; set $AMIGA_DISKS, or put them under "
+            + " or ".join(str(p) for p in AMIGA_ROOTS))
+    found = sorted(p for d in where for p in d.rglob("*.adf") if p.is_file())
     if not found:
-        pytest.skip(f"no .adf under {where}")
+        pytest.skip("no .adf under " + ", ".join(str(p) for p in where))
     return found
 
 
