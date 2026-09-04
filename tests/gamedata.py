@@ -12,7 +12,7 @@ def make_root():
 
 """Game data comes from the player's own disks, never from this repository.
 
-`CLAUDE.md` forbids committing the game's code, art or data files, and a test
+`AGENTS.md` forbids committing the game's code, art or data files, and a test
 fixture is not an exception -- a slice of `GEO04` in `tests/fixtures/` is the
 same copy the rule forbids, merely renamed. So the tests that need real game
 data read it off the player's disks at run time and skip when there are none.
@@ -88,7 +88,7 @@ needs_disks = pytest.mark.skipif(disk_dir() is None,
 # Curse of the Azure Bonds shares this project's decoders (docs/116). The tests
 # that check it must not break when the disks are absent, and must not read
 # anything out of the repository, so they look for the disks the same way the
-# Pool of Radiance ones are found -- with `work/` added, because `CLAUDE.md`
+# Pool of Radiance ones are found -- with `work/` added, because `AGENTS.md`
 # already names that as where disk images belong.
 
 CURSE_ENV = "COAB_DISKS"

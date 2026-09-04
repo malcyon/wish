@@ -79,7 +79,7 @@ Three workflows in `.github/workflows/`.
   one.
 
 **The tests that need the player's disks skip on CI, and that is the expected
-result** — `CLAUDE.md` forbids committing the data that would make them run. It
+result** — `AGENTS.md` forbids committing the data that would make them run. It
 was 27 when this was planned and is 30 now; the number moves as tests are added.
 Locally, with disks, the same suite runs them.
 

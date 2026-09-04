@@ -19,9 +19,9 @@ through the same code. See [116-second-game.md](116-second-game.md) and
 
 ## Disks on this machine
 
-`/home/donald/c64/Pool of Radiance Disks/` — which is the spelling the code and
-`CLAUDE.md` use. `/home/donald/c64` is a symlink to `/mnt/media/roms/c64`, so
-VICE's file picker shows the other path; they are the same directory.
+`/home/donald/c64/Pool of Radiance Disks/` — which is the spelling the code
+uses. `/home/donald/c64` is a symlink to `/mnt/media/roms/c64`, so VICE's file
+picker shows the other path; they are the same directory.
 
 | Image | Role |
 |---|---|

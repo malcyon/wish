@@ -1,6 +1,6 @@
 ---
 name: backlog-auditor
-description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by CLAUDE.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
+description: Audits the issue backlog for stale blockers, contradicted assumptions, duplicated work, facts discovered in one ticket that were never reflected in others, and jargon ruled out of prose by AGENTS.md's "Words to avoid" table, which is the only list of it. Use before refinement or when the backlog has grown unwieldy.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: high
@@ -8,7 +8,7 @@ memory: local
 color: orange
 ---
 
-**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/issues.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` and `AGENTS.md` reach you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/issues.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
 
 ## Premise
 
@@ -18,7 +18,7 @@ color: orange
 
 ## Where the backlog lives
 
-**This project's backlog is GitHub issues, read with `gh`.** There is no Jira server configured. `CLAUDE.md` is explicit: `gh issue list` is the register, `docs/` is the knowledge base, and the two must not drift into being the same thing.
+**This project's backlog is GitHub issues, read with `gh`.** There is no Jira server configured. `.claude/rules/issues.md` is explicit: `gh issue list` is the register, `docs/` is the knowledge base, and the two must not drift into being the same thing.
 
 The checks below are written in Jira's vocabulary because that is where they came from; the mapping is exact and you use the right-hand column:
 
@@ -52,7 +52,7 @@ gh issue list --state all --limit 200 \
 
 **2. Stale blockers.** Any open ticket blocked by one that is closed. Report the blocker's resolution **and whether it actually unblocks the dependent** — a blocker closed as "won't do" may still block.
 
-Here, blocking is the `blocked` label plus prose. `CLAUDE.md` defines the label narrowly: waiting on Donald *specifically* — a choice only he can make, a machine only he has, a save only he can play to. **Work blocked on a measurement we could take ourselves is not blocked**, and a `blocked` label that no longer meets that test is a finding.
+Here, blocking is the `blocked` label plus prose. `.claude/rules/issues.md` defines the label narrowly: waiting on Donald *specifically* — a choice only he can make, a machine only he has, a save only he can play to. **Work blocked on a measurement we could take ourselves is not blocked**, and a `blocked` label that no longer meets that test is a finding.
 
 **3. Resolved-in-passing.** Open bug tickets whose symptom may have been fixed incidentally. Cross-reference the described component or error text against recent commits and closed tickets in the same area — `git log --oneline`, and `git log -S'<identifier>'` for the specific string.
 
@@ -64,21 +64,23 @@ Here, blocking is the `blocked` label plus prose. `CLAUDE.md` defines the label 
 
 **6. Decayed context.** Tickets whose description references code paths, config keys, function names or file paths that no longer exist. **Grep every referenced identifier against the repository and report what no longer resolves.**
 
-**7. Banned language.** `CLAUDE.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
+**7. Banned language.** `AGENTS.md`'s "Words to avoid" table is a list of jargon this project has ruled out of prose, and **issue titles and bodies are prose**. Read that table at the start of every run — it grows — and grep the backlog for each entry.
 
-**The entries are not copied here on purpose.** `CLAUDE.md`'s table is the only list, so go and read it; a second copy in this file would drift out of step with the first, which is the exact defect the other seven checks hunt for. Report the table's contents at the top of your findings so the run says which version it was checking against.
+**The entries are not copied here on purpose.** `AGENTS.md`'s table is the only list, so go and read it; a second copy in this file would drift out of step with the first, which is the exact defect the other seven checks hunt for. Report the table's contents at the top of your findings so the run says which version it was checking against.
 
 Report every hit with its issue number and the sentence it sits in, and **say what the sentence is actually trying to say**, because that is the useful half. A title is what a reader sees first and never opens; one that needs the jargon explained is a title that fails.
 
-Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `CLAUDE.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
+Two exceptions, both narrow. A hit is **not** a finding when the word is a **code identifier** the ticket is citing by name — Qt's `ElideRight`, `RETARGET_WRITES` — since `AGENTS.md` keeps the API's spelling in code. And **not** when the ticket is quoting another issue's title verbatim to reference it, since a citation that does not match cannot be found.
 
-This check exists because the words got into the backlog faster than into the documentation: `#97` and `#102` were both filed by agents carrying language `CLAUDE.md` had already ruled out, and nobody noticed until Donald read them.
+This check exists because the words got into the backlog faster than into the documentation: `#97 (The character editor tab gets taller as the UI font grows, so a large font stops the window fitting a 720-high screen)` and `#102 (A minimally-cached save cannot walk into an area, and the party is stuck where it stands)` were both filed by agents carrying language `AGENTS.md` had already ruled out, and nobody noticed until Donald read them.
 
-**8. Unnamed issue references.** `CLAUDE.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in issue bodies, comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
+**8. Unnamed issue references.** `.claude/rules/issues.md` requires a citation to carry the issue's title — `#59 (Map the DOS saved game, not just the character record)` — in comments and documents. A bare `#59` is an opaque number to anyone reading without a browser open, and Donald reads it that way: *"when you only reference a number, it never means anything to me."*
 
-Grep bodies and comments for `#\d+` and report the ones with no title beside them. **Report by issue, not by occurrence** — a thread with thirty bare references is one finding with a count, not thirty findings, or this check will drown the other seven.
+**Issue bodies are exempt and are not a finding.** Donald ruled on 2026-09-01: *"Leave them alone. GitHub.com shows the ticket details on hover and makes it a hotlink, so it will be fine."* An issue body is read on the web, where the number is its own title to anybody with a pointer.
 
-**Commit messages are exempt** and so is a reference inside a code block or a URL. Rank a bare reference in a **description** above one in a comment: the description is the standing record and is the thing read first.
+Grep comments for `#\d+` and report the ones with no title beside them. **Report by issue, not by occurrence** — a thread with thirty bare references is one finding with a count, not thirty findings, or this check will drown the other seven.
+
+**Commit messages are exempt** and so is a reference inside a code block or a URL.
 
 **Never infer staleness from age alone.** An old ticket describing work nobody has started is not stale; it is unbuilt.
 

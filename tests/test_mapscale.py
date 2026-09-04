@@ -765,11 +765,11 @@ def test_the_window_still_fits_the_laptop_with_the_columns_at_either_extreme(
     Windows said so with `1376 <= 1366`.
 
     The second is subtler and cost two red pushes. **A `+N` offset is not the
-    same size on two platforms.** `CLAUDE.md` records that `+6` here measures
-    about like Windows' base font -- so on a Windows runner, whose base
-    already *is* that font, `+6` is Windows' base plus six more. Asserting a
-    width there is asserting it at a size no Windows user has, arrived at by
-    stacking one platform's default on another's.
+    same size on two platforms.** `docs/160-why-these-rules.md` records that
+    `+6` here measures about like Windows' base font -- so on a Windows
+    runner, whose base already *is* that font, `+6` is Windows' base plus six
+    more. Asserting a width there is asserting it at a size no Windows user
+    has, arrived at by stacking one platform's default on another's.
 
     So width is asserted at `+0`, which is whatever the machine running the
     test actually starts from, and that is the only offset that means the same
@@ -940,9 +940,9 @@ def test_the_top_row_asks_for_more_than_the_page_makes_room_for(
             app.setFont(base)
 
     # +0 and +10 -- this machine's own font, and 19pt, which is a large
-    # setting somebody really uses. `CLAUDE.md` records that +6 measures here
-    # about like Windows' base font, so +10 is Windows' normal with room on
-    # top.
+    # setting somebody really uses. `docs/160-why-these-rules.md` records that
+    # +6 measures here about like Windows' base font, so +10 is Windows' normal
+    # with room on top.
     small_page, small_row = measure(0)
     big_page, big_row = measure(10)
     grew_page = big_page - small_page

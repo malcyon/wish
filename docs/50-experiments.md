@@ -5545,7 +5545,7 @@ The question mattered because a DOS save holds six characters and a C64 save
 eight, so every conversion leaves at least two of the template's slots
 unwritten — and `#104` could not be fixed until somebody knew what "unwritten"
 should look like. Writing zeros over the whole slot was the obvious guess, and
-`CLAUDE.md`'s conversion standard forbids exactly that guess.
+`.claude/rules/conversions.md`'s standard forbids exactly that guess.
 
 ### The static half: no header byte holds a count
 
@@ -5680,9 +5680,9 @@ settled 53, and is the obvious next measurement.
 `work/amiga/m68dis.py` went with `work/`, and `docs/124-amiga-port.md` phase 1
 had been stopped on it since: "read the `.pc` loader" needs a 68000
 disassembler and there was not one in the tree. Donald's ruling on 2026-08-31
-was to rebuild it and put it in `tools/`, which is where `CLAUDE.md` now says a
-tool that regenerates an artefact belongs. `tools/m68dis.py` is the first one
-written under that rule.
+was to rebuild it and put it in `tools/`, which is where
+`.claude/rules/documentation.md` now says a tool that regenerates an artefact
+belongs. `tools/m68dis.py` is the first one written under that rule.
 
 ### The rule the tool is built around
 

@@ -219,7 +219,7 @@ Instead, three pieces:
 | piece | where | why it is allowed |
 |---|---|---|
 | the six records | `goldbox/testparty.py`, built at run time from `goldbox/layout.py` and `goldbox/levels.py` | generated from a format we documented — the same argument as `tests/gamedata.synthetic_geo` |
-| the disk | `work/drive/`, built at test time | `work/` is `.gitignore`d and `CLAUDE.md` already names it as where disk images belong |
+| the disk | `work/drive/`, built at test time | `work/` is `.gitignore`d and `AGENTS.md` already names it as where disk images belong |
 | the base disk | **the player's own**, via `tests/gamedata.save_disk("PORSAVE")` | read-only, never written, skipped when absent |
 
 ### How a VICE run gets a disk to boot

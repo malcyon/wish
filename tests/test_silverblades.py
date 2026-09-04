@@ -17,7 +17,7 @@ If a third title ever needs the same thing it should move there rather than be
 copied a second time.
 
 Every test skips when the disks are absent. Nothing here reads a committed
-fixture: `CLAUDE.md` forbids the game's data in this repository, test fixture
+fixture: `AGENTS.md` forbids the game's data in this repository, test fixture
 or not.
 """
 

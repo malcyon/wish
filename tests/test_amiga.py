@@ -976,7 +976,8 @@ def test_the_recut_refuses_to_invent_the_unplaced_window():
     """DOS holds `00 00 01 00 00` there in 24 of 24 specimens and the Amiga's
     own bytes are zero.  Copying the DOS constant in would be putting a DOS
     value into a record built from an Amiga one, which is the thing
-    `CLAUDE.md` forbids -- so the re-cut writes zero and says so."""
+    `.claude/rules/conversions.md` forbids -- so the re-cut writes zero and
+    says so."""
     for path in amiga_por_records():
         a = AmigaPorCharacter.from_bytes(path.read_bytes(), str(path))
         record = amiga.to_dos_record(a)

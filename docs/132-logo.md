@@ -334,10 +334,10 @@ the paper-versus-tile threshold on both sides. Measured with
 
 **It is shipped that way regardless**, for the same reason `hat-wizard` was:
 Donald — *"Is the agent modifying the art? We don't want to change the art.
-We should not be changing the art."* — and the rule in `CLAUDE.md`: an icon
-from somebody else's set is drawn the way they drew it, and if it does not
-work at a size the answer is a different icon, or not using it at that size —
-never nudging the geometry. Recolouring it and putting it on a tile is
+We should not be changing the art."* — and the rule in `.claude/rules/art.md`:
+an icon from somebody else's set is drawn the way they drew it, and if it does
+not work at a size the answer is a different icon, or not using it at that
+size — never nudging the geometry. Recolouring it and putting it on a tile is
 composition; moving a point is making art.
 
 So `ui/appicon.py` has no size-dependent geometry at all — `glyph()` hands

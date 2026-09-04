@@ -494,7 +494,7 @@ class Session:
         **It kills nothing first.**  This used to `pkill -x x64sc` and
         `pkill -x Xephyr`, which under the instance pool would kill every other
         agent's emulator and Donald's own game -- the same failure mode as the
-        incident behind `CLAUDE.md`'s rule, generalised.
+        incident in `docs/160-why-these-rules.md`, "The machine", generalised.
         """
         env = dict(os.environ, MONFLAGS=self.monflags, POR_DISPLAY=self.display)
         if self.slot is not None:

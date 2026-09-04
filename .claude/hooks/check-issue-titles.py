@@ -8,7 +8,7 @@ never means anything to me."* This docstring used to say the reason was that
 he reads replies with no browser open. It is not, and he corrected it on
 2026-09-02: *"It should not matter if I have a web browser open or not.
 You're forcing me to manually look up every number. That is fast for you, but
-slow for me."* The rule is the first one in `CLAUDE.md`, and it went on
+slow for me."* The rule is the first one in `AGENTS.md`, and it went on
 being broken anyway -- so this was written to stop it being a matter of
 remembering.
 
@@ -51,7 +51,7 @@ CITATION = re.compile(r"(?<![\w#/&])#(\d{1,6})\b")
 # `#59 (Map the DOS saved game...)`. A bare number is what we refuse.
 NAMED = re.compile(r"\s*\(")
 
-# The commit-message form, where `CLAUDE.md` rules the number goes bare: it
+# The commit-message form, where `AGENTS.md` rules the number goes bare: it
 # is inside parentheses at the end of the one line, and GitHub hotlinks it
 # there. `(closes #14)`, `(fixes #14)`, `(#10)` -- a title would break the
 # sentence, so quoting a commit message must not be refused here.

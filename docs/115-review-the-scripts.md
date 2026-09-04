@@ -62,7 +62,7 @@ that clearing the pollution swaps an impassable-terrain table.
 
 All under `work/`, which is gitignored — these are derived from the game's own
 files and **must not be committed**. See "What must never enter this repository"
-in `CLAUDE.md`. The decoder itself was never game data and could have lived in
+in `AGENTS.md`. The decoder itself was never game data and could have lived in
 `tools/`; that it did not is the lesson of #136.
 
 **One piece of this page's reading list does not need the decoder** and stays

@@ -104,8 +104,8 @@ MULTICOLOUR = 0x08
 # wrote the same 36 bytes for **8 of 8 newly created characters**, across four
 # classes and five races, and independently of the size bit -- a dwarf, a
 # halfling and a gnome all got the *large* figure (#57).  So this is a value
-# with evidence, which is what `CLAUDE.md` distinguishes from one inherited
-# from somebody else's save.
+# with evidence, which is what `.claude/rules/conversions.md` distinguishes
+# from one inherited from somebody else's save.
 #
 # It is stored as the choices rather than as the bytes.  `(large, weapon 0,
 # head 1)` is a pair of menu positions the way `portrait_head = 3` is a

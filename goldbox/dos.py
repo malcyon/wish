@@ -120,9 +120,9 @@ __all__ = [
 #: bytes with no source, the two outdoor signals disagreeing, an area with no
 #: row in `goldbox/areas.py`, and anything else `DosRecordError` is raised
 #: for.  Donald's wording, 2026-09-02 (#195), chosen over a longer version
-#: adding "not all of it has been decoded yet".  `CLAUDE.md` warns this
-#: interface kept growing sentences explaining itself and every one was
-#: removed on request, so this is the only sentence and it covers every case.
+#: adding "not all of it has been decoded yet".  `.claude/rules/gui-text.md`
+#: warns this interface kept growing sentences explaining itself and every one
+#: was removed on request, so this is the only sentence and it covers every case.
 CANNOT_CONVERT = "This save cannot be converted."
 
 

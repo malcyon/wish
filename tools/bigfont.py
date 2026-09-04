@@ -4,10 +4,10 @@
     .venv/bin/python tools/bigfont.py 6
     .venv/bin/python tools/bigfont.py 10 --tab map
 
-The number is points added to the font the desktop gives Qt. `CLAUDE.md`
-records that **+6 here measures about like Windows' base font**, and that +10
-is the largest worth caring about -- 9pt base here, so the range a person
-uses is 9pt to 19pt.
+The number is points added to the font the desktop gives Qt.
+`docs/160-why-these-rules.md` records that **+6 here measures about like
+Windows' base font**, and that +10 is the largest worth caring about -- 9pt
+base here, so the range a person uses is 9pt to 19pt.
 
 **Why a window and not a screenshot.** `tools/shotwindow.py` photographs the
 window offscreen at a chosen font and captions its floor, which is the right
@@ -24,8 +24,8 @@ constructed, and `wish.window.run` reuses an existing instance rather than
 making its own.
 
 **This puts a window on the screen**, which is the point, so it is a tool for
-a person at the machine and never for an unattended agent -- see `CLAUDE.md`,
-"Nothing an agent runs may put a window on Donald's screen".
+a person at the machine and never for an unattended agent -- see `AGENTS.md`,
+"Nothing an agent runs may put a window on his screen".
 """
 from __future__ import annotations
 

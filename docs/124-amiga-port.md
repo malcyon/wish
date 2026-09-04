@@ -693,9 +693,9 @@ reader refuse a genuine disk:
 The Curse rip still asks its code wheel, so this title could not be driven
 unattended at all until the challenge was answered from Donald's separate
 copy-protection repository. **Nothing about that is recorded here**, per
-`CLAUDE.md`; what matters is that the game now boots, loads and draws, and that
-one answer computed from the C64 tables was accepted on the Amiga — CONFIRMED,
-one challenge.
+`.claude/rules/documentation.md`; what matters is that the game now boots,
+loads and draws, and that one answer computed from the C64 tables was accepted
+on the Amiga — CONFIRMED, one challenge.
 
 **The route in**: title art takes RETURN; the `PLAY / DEMO / TRANSFER / QUIT`
 bar **does not respond to RETURN** and has to be picked by first letter, `P` —

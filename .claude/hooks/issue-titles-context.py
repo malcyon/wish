@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Put the open issue list, with titles, into context at the start of a session.
 
-`CLAUDE.md`'s first rule is that an issue is cited by number *and* title,
+`AGENTS.md`'s first rule is that an issue is cited by number *and* title,
 because a bare number makes Donald look it up -- fast for the assistant,
 slow for him. The rule was stated twice
 and broken five times in one session anyway, and the reason was not
@@ -57,7 +57,7 @@ def main() -> int:
 
     print(
         f"The {len(rows)} open issues, so a citation never needs a lookup. "
-        "CLAUDE.md's first rule: cite an issue by number AND title, at every "
+        "AGENTS.md's first rule: cite an issue by number AND title, at every "
         "mention, in replies, tables and the prose around them. Copy the "
         "form below exactly.\n\n"
         + "\n".join(rows)

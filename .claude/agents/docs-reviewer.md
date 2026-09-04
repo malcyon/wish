@@ -60,7 +60,8 @@ and true things nobody wrote down. You report; you never edit.
 **Find every documentation surface before reading any of it.** README files at
 every level, `docs/` trees, ADRs, `CHANGELOG`, `CONTRIBUTING`, runbooks, inline
 module docstrings, comments that *explain* rather than describe, config files
-with explanatory comments, and `CLAUDE.md` or similar agent-instruction files.
+with explanatory comments, and `AGENTS.md`, `CLAUDE.md` or similar
+agent-instruction files.
 
 **List what you found with its last-modified date from git** before you start
 reading:
@@ -142,10 +143,10 @@ you are not re-deriving it every time.
 
 ## This repository
 
-Read `CLAUDE.md` and `INDEX.md` first — they set rules that change what counts
+Read `AGENTS.md` and `INDEX.md` first — they set rules that change what counts
 as a finding here:
 
-**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` and `AGENTS.md` reach you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
 
 * **Generated documents must not be corrected in place.** `docs/20-character-record.md`
   comes from `goldbox/layout.py` via `tools/gendocs.py`, `docs/85-item-tables.md`

@@ -366,7 +366,7 @@ artefact before moving on.
 ## Hazards that cost time here already
 
 The emulator's own sharp edges are in [70-driving-the-game.md](70-driving-the-game.md)
-and the pool rules are in `CLAUDE.md` and
+and the pool rules are in `.claude/rules/emulator.md` and
 [123-parallel-sessions.md](123-parallel-sessions.md). Four that a cold agent on a
 new title keeps rediscovering:
 
@@ -388,7 +388,7 @@ new title keeps rediscovering:
 
 ## What must never enter the repository
 
-`CLAUDE.md` §"What must never enter this repository" is the rule and it is not
+`AGENTS.md` §"What must never enter this repository" is the rule and it is not
 restated here. The one thing a cold agent on a new title gets wrong: **a slice of
 a game file committed as a test fixture is the same copy the rule forbids,
 merely renamed** — and it does not feel like a copy while you are adding it.

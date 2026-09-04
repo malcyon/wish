@@ -80,7 +80,7 @@ def main(argv: list[str]) -> int:
                     help="print the party and write nothing")
     args = ap.parse_args(argv[1:])
 
-    # **Donald's own ports, and this tool writes.** `CLAUDE.md` is flat about
+    # **Donald's own ports, and this tool writes.** `AGENTS.md` is flat about
     # 6502, 6510 and 6600: anything listening there is a game a human started
     # from the desktop menu -- do not attach, do not probe. The read-only
     # tools beside this one default to 6502 and are harmless doing it; this

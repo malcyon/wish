@@ -223,9 +223,9 @@ why `$49C5` has nothing to carry out there.
 
 ## What a conversion inherits: nothing (#26)
 
-The rule in `CLAUDE.md` is **measured versus inherited**: a value we
-established is fine at any number, and a value taken from somebody else's
-save is not. This section used to be a list of what a converted save still
+The rule in `.claude/rules/conversions.md` is **measured versus inherited**: a
+value we established is fine at any number, and a value taken from somebody
+else's save is not. This section used to be a list of what a converted save still
 took from a template. It is now a list of nothing, because there is no
 template: `goldbox.dos.new_dos_save` builds all 13137 bytes from 13137 zeroes,
 and `goldbox.dos.SAVGAM_UNSOURCED` carries a stated reason for every zero it
@@ -246,8 +246,8 @@ running game says what the load path reads.
 | zeroed with a reason | 784 | `SAVGAM_UNSOURCED`'s 510 bytes of variables, and the 274 of character-table heap and menu text |
 | zeroed because every specimen reads zero there | 4070 | the rest of `$4900`-`$52FF` |
 
-**Three kinds of reason appear in `SAVGAM_UNSOURCED`,** and they are
-`CLAUDE.md`'s three legitimate ones:
+**Three kinds of reason appear in `SAVGAM_UNSOURCED`,** and they are the three
+legitimate ones in `.claude/rules/conversions.md`:
 
 **1. The engine rebuilds it.** Twenty words, and every one of them was
 *seen* being rebuilt -- each came back nonzero from the engine's own

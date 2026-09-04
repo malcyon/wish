@@ -4,8 +4,8 @@
 The sibling `check-issue-titles.py` is a `Stop` hook: it reads what the
 assistant said to Donald and refuses a bare `#59`. It never sees an issue
 comment, because that leaves through Bash rather than through a reply -- and
-`CLAUDE.md` says the rule covers "replies, issue comments and documents", so
-half the rule had no guard at all.
+`.claude/rules/issues.md` says the rule covers "replies, issue comments,
+documents and tables", so half the rule had no guard at all.
 
 Found on 2026-09-02, when Donald asked why the guard was not working: it was,
 for replies, while six issue comments had gone out with bare numbers in them.
@@ -108,11 +108,12 @@ def main() -> int:
         "Rewrite the comment before posting it: "
         + ", ".join(bare)
         + " each cite an issue without saying what it is.\n\n"
-        "`CLAUDE.md` says the rule covers replies, issue comments and "
-        "documents alike. A bare number makes Donald look it up -- fast for "
-        "you, slow for him. A comment is read in a terminal and in a "
-        "notification mail, where nothing does that lookup for him; an issue "
-        "*description* is exempt because on the web the hover does.\n\n"
+        "`.claude/rules/issues.md` says the rule covers replies, issue "
+        "comments, documents and tables alike. A bare number makes Donald "
+        "look it up -- fast for you, slow for him. A comment is read in a "
+        "terminal and in a notification mail, where nothing does that lookup "
+        "for him; an issue *description* is exempt because on the web the "
+        "hover does.\n\n"
         "    #59 (Map the DOS saved game, not just the character record)\n\n"
         "Get each title with:\n"
         "    gh issue view N --json number,title -q '\"#\\(.number) "

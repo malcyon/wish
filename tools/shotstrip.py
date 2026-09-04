@@ -7,10 +7,10 @@ always empty in it, which is the one thing this exists to look at. This builds
 the same form, feeds `BottomStrip` an effect table it makes up, and grabs the
 column.
 
-Why a tool and not a throwaway: `CLAUDE.md` says a string has to be judged in
-the running window rather than in the diff, and the party effects row is
-icons and tooltips -- so every future change to a badge, a grouping or the
-row's placement wants exactly this picture again.
+Why a tool and not a throwaway: `.claude/rules/gui-text.md` says a string has
+to be judged in the running window rather than in the diff, and the party
+effects row is icons and tooltips -- so every future change to a badge, a
+grouping or the row's placement wants exactly this picture again.
 
     .venv/bin/python tools/shotstrip.py                     # every badge lit
     .venv/bin/python tools/shotstrip.py --effects 1 49      # Bless and Prayer

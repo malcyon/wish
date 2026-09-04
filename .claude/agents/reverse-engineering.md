@@ -70,13 +70,13 @@ the bytes and say explicitly why it is not a mistake in the reader.
 
 ## Working in this repository
 
-Read `CLAUDE.md` at the top of the repo before you start, and `INDEX.md` for
+Read `AGENTS.md` at the top of the repo before you start, and `INDEX.md` for
 where things live. `docs/144-decoding-a-new-title.md` carries the decoding
 checklist and the order of attack for a Gold Box title. The knowledge base is `docs/`;
 `docs/50-experiments.md` is the one document that gets length, and is where
 reasoning belongs.
 
-**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/emulator.md`, `.claude/rules/conversions.md` and `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` and `AGENTS.md` reach you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/emulator.md`, `.claude/rules/conversions.md` and `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
 
 Standing constraints, because you start cold:
 

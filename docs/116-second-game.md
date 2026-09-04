@@ -281,7 +281,7 @@ base would fail on the other side. The Curse half skips when the disks are
 absent, like every other test that needs game data.
 
 Curse disks are found the same way Pool of Radiance's are: `$COAB_DISKS` first,
-then the usual home-directory names, then `work/` — which `CLAUDE.md` already
+then the usual home-directory names, then `work/` — which `AGENTS.md` already
 names as where disk images belong.
 
 ## 9. Levels, ceilings and experience

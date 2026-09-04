@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """The repository must not carry the game.
 
-`CLAUDE.md` forbids committing Pool of Radiance's code, art, music, manuals or
+`AGENTS.md` forbids committing Pool of Radiance's code, art, music, manuals or
 data files. That rule was broken once by accident -- four fixtures, one of them
 6502 machine code -- because a test fixture does not feel like a copy while you
 are adding it. It is one, so this checks.
@@ -79,7 +79,7 @@ def test_no_disk_image_executable_or_media_is_committed(files):
     bad = [str(p) for p in files if p.suffix.lower() in FORBIDDEN_SUFFIXES]
     assert not bad, (
         "these must not be committed -- see 'What must never enter this "
-        f"repository' in CLAUDE.md: {bad}")
+        f"repository' in AGENTS.md: {bad}")
 
 
 def test_only_the_players_own_saves_live_in_fixtures(files):
@@ -158,8 +158,9 @@ def test_no_citation_points_at_a_write_up_that_is_not_there(files):
     `work/` is gitignored, so a permanent citation into it survives exactly as
     long as one developer's scratch directory. `work/reports/` held 32
     write-ups and all 32 went when it was deleted, taking the evidence for 80
-    citations across 29 documents with them (#136). `CLAUDE.md` now puts a
-    write-up's permanent home in `docs/`; this is what stops the rule being
+    citations across 29 documents with them (#136).
+    `.claude/rules/documentation.md` now puts a write-up's permanent home in
+    `docs/`; this is what stops the rule being
     forgotten.
 
     **Scoped to `work/reports/` on purpose.** There are ~300 other references

@@ -56,7 +56,7 @@ thing that moved or is now called something else, a format or a title now
 supported, a limit lifted.
 
 No -- refactors, test changes, documentation, tooling, CI, an internal module
-split, a comment corrected, a rule written into `CLAUDE.md`. **Reverse
+split, a comment corrected, a rule written into `AGENTS.md`. **Reverse
 engineering is not a feature.** Decoding a save format changes nothing for a
 player until something uses it; the entry belongs to whatever shipped on top of
 it, not to the decode.
@@ -123,11 +123,11 @@ a link on the release page and stays plain text in the file; the written-out
 link becomes a link in both, and keeps the hovercard that shows the issue's
 title on hover.
 
-That hovercard is why this satisfies `CLAUDE.md`'s rule that a bare `#59`
+That hovercard is why this satisfies `AGENTS.md`'s rule that a bare `#59`
 carries nothing. The title is one hover away, so the line does not have to
 repeat in our words what it already says in a player's.
 
-This is the one place a bare number is right. `CLAUDE.md` asks everywhere else
+This is the one place a bare number is right. `AGENTS.md` asks everywhere else
 for `#59 (Map the DOS saved game, not just the character record)`, because a
 number alone carries nothing to somebody reading without a browser. Here the
 line itself already says what changed, in a player's words, so the title would
@@ -153,9 +153,9 @@ that list is where the next person looks when something is missing.
 
 ## This repository
 
-Read `CLAUDE.md`. Two of its rules bind here:
+Read `AGENTS.md`. Two of its rules bind here:
 
-**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md` and `.claude/rules/feature-flags.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` and `AGENTS.md` reach you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md` and `.claude/rules/feature-flags.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
 
 * **Every word a user reads is Donald's to approve.** He has said he will
   rewrite these before a release, which is why you may write the file directly

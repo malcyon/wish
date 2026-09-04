@@ -1059,7 +1059,7 @@ def _game_files():
     """The icon and `ANIMATE00` off the player's own disks, or skip.
 
     Read at run time, never stored: both are the game's own data and
-    `CLAUDE.md` forbids a fixture that is a slice of a game file.
+    `AGENTS.md` forbids a fixture that is a slice of a game file.
     """
     import gamedata
 

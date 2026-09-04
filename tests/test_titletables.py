@@ -5,7 +5,7 @@ from __future__ import annotations
 Level caps, experience thresholds, racial class limits, spell names, item
 names, and where each of those lives once the overlay that owns it is
 resident. Everything here is read off the player's own disks at run time and
-skips when they are absent -- `CLAUDE.md` forbids the game's tables in this
+skips when they are absent -- `AGENTS.md` forbids the game's tables in this
 repository, test fixture or not.
 
 **Every address here was fitted or read out of the game's own code, never out

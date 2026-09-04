@@ -1,6 +1,6 @@
 # Content audit
 
-Against the rule in `CLAUDE.md`: this project documents a game it does not
+Against the rule in `AGENTS.md`: this project documents a game it does not
 ship, and must not carry the game's art, music, manuals, executable code,
 disassembly listings, or data files.
 

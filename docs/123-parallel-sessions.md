@@ -116,9 +116,9 @@ of them are the actual work:
    `pkill -x x64sc` and `pkill -x Xephyr` on **every launch and every close**.
    Under a pool that is not a bug, it is a massacre: one agent starting a run
    kills every other agent's emulator and Donald's game with it. This is the
-   same failure mode as the incident behind the current `CLAUDE.md` rule,
-   generalised. Removing those four calls is the single most important change
-   in this plan.
+   same failure mode as the incident recorded in `docs/160-why-these-rules.md`,
+   "The machine", generalised. Removing those four calls is the single most
+   important change in this plan.
 3. **`SaveResourcesOnExit=1`.** `~/.var/app/net.sf.VICE/config/vice/vicerc`
    was last rewritten at 01:19 today and currently records
    `BinaryMonitorServerAddress="127.0.0.1:6502"` and
@@ -390,13 +390,15 @@ saving and is not the tenfold one the word "parallel" suggests.
 
 ## 5. The safety rules that replace the current one
 
-`CLAUDE.md` today says at most one agent drives the emulator, that the agent
-checks `ss -tnp | grep 6502` first, and that it never kills a process holding
-the monitor. Under a pool the first is wrong, the second is no longer a complete
+`CLAUDE.md` said, when this was written, that at most one agent drives the
+emulator, that the agent checks `ss -tnp | grep 6502` first, and that it never
+kills a process holding the monitor. Under a pool the first is wrong, the second is no longer a complete
 question, and the third is the one that must survive and get sharper.
 
-**Recommended replacement for the "Emulator work is single-threaded" paragraph.
-Reported here, not applied — three other agents are in this tree.**
+**Applied.** `.claude/rules/emulator.md` carries this nearly verbatim, and
+`AGENTS.md` carries the bare prohibitions — ports 6502, 6510 and 6600, and never
+killing a process by name. It is kept here as the argument for the change; the
+rules files are what binds.
 
 > **Emulator work goes through the instance pool.** VICE serves exactly one
 > binary-monitor connection *per process*, so running two things at once means
