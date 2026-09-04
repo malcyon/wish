@@ -155,6 +155,8 @@ that list is where the next person looks when something is missing.
 
 Read `CLAUDE.md`. Two of its rules bind here:
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md` and `.claude/rules/feature-flags.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 * **Every word a user reads is Donald's to approve.** He has said he will
   rewrite these before a release, which is why you may write the file directly
   -- but do not touch any *other* user-visible string, and do not rename a

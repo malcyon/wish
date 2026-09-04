@@ -8,6 +8,8 @@ memory: local
 color: orange
 ---
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/issues.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 ## Premise
 
 **A ticket is a claim about work, written at the moment of least knowledge.** Everything learned afterwards accumulates somewhere else — in comments, in other tickets, in the code. Your job is to find the claims that reality has overtaken.

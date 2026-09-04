@@ -33,8 +33,14 @@ import sys
 # Where the old file's content is allowed to have landed.
 CORPUS = ("CLAUDE.md", ".claude/rules/*.md", "docs/160-why-these-rules.md")
 
-QUOTE = re.compile(r'\*"(.+?)"\*', re.S)
 BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
+
+#: A quotation is `*"..."*`.  Bold markers are stripped before this runs,
+#: because `**"Follows" is ...` opens with `**"` and a pattern that allows
+#: anything inside then runs from there to a closing quote paragraphs away --
+#: which reported six whole sections as one missing quotation.  Forbidding a
+#: `"` inside stops the match at the end of the quotation it started in.
+QUOTE = re.compile(r'\*"([^"]+)"\*')
 
 
 def normalise(text: str) -> str:
@@ -79,8 +85,8 @@ def main() -> int:
     old = old_claude_md(args.base)
     new = corpus_text(root)
 
-    quotes = {normalise(m) for m in QUOTE.findall(old)}
     bolds = {normalise(m) for m in BOLD.findall(old)}
+    quotes = {normalise(m) for m in QUOTE.findall(old.replace("**", ""))}
 
     lost_quotes = sorted(q for q in quotes if q not in new)
     lost_bolds = sorted(b for b in bolds if b not in new)

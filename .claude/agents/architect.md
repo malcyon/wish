@@ -7,6 +7,8 @@ memory: project
 color: green
 ---
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/issues.md` and `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 You create reverse-engineering plans for other subagents to execute. You do not do the reverse-engineering yourself. Instead, you outline what we need to look for to achieve our goal, where we should look, and what techniques and patterns we should use to accomplish our goal.
 
 ## Planning Guidelines

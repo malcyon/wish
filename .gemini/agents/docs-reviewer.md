@@ -145,6 +145,8 @@ you are not re-deriving it every time.
 Read `CLAUDE.md` and `INDEX.md` first — they set rules that change what counts
 as a finding here:
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 * **Generated documents must not be corrected in place.** `docs/20-character-record.md`
   comes from `goldbox/layout.py` via `tools/gendocs.py`, `docs/85-item-tables.md`
   from `tools/genitems.py`, and several others say **Generated** at the top. A

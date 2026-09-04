@@ -121,6 +121,8 @@ Then say on your own issue which one you filed.
 
 Read `CLAUDE.md` and `INDEX.md` first. These bind you regardless of the task:
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/testing.md`, `.claude/rules/gui-text.md` and `.claude/rules/qt-designer.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 * **Nothing you run may put a window on the maintainer's screen.** He works at
   that desktop while you run. `tests/conftest.py` forces offscreen so `pytest`
   is safe; **everything else is not**. Anything building a GUI runs as:

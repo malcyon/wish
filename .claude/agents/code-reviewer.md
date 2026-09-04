@@ -128,6 +128,8 @@ violation, so you do not re-raise a settled question.
 
 Read `CLAUDE.md` and `INDEX.md`. Two of its rules bear directly on review:
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/testing.md`, `.claude/rules/commits.md` and `.claude/rules/gui-text.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 * **`goldbox/` stays transport-free, `editor/` stays emulator-free, and everything
   that talks to VICE lives in `automap/`.** An import that crosses those lines
   is a Critical finding — `tests/test_wish.py` greps for it, and the split is

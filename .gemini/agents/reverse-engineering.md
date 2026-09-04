@@ -77,6 +77,8 @@ checklist and the order of attack for a Gold Box title. The knowledge base is `d
 `docs/50-experiments.md` is the one document that gets length, and is where
 reasoning belongs.
 
+**The standards are in `.claude/rules/`, and a subagent does not inherit them.** `CLAUDE.md` reaches you automatically; those files do not. Read the ones that bind this work before you start: `.claude/rules/emulator.md`, `.claude/rules/conversions.md` and `.claude/rules/documentation.md`. `docs/160-why-these-rules.md` carries the incidents behind them, if you need to know why a rule is there.
+
 Standing constraints, because you start cold:
 
 * **Never write to `/home/donald/c64/Pool of Radiance Disks/`.** Read only,
