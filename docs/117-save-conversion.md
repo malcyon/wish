@@ -1786,7 +1786,9 @@ out of the same instrument plus a census of every `.SPC` in the archives:
 | bytes | what | grade |
 |---|---|---|
 | 0 | the effect id, in `goldbox/traits.py`'s namespace | CONFIRMED |
-| 1-4 | `00 00 FF 00` for every innate effect in 32 files, over six ids and three races. `BLESS` is the one record that differs, `02 00 01 00`, so `0xFF` is what a permanent effect holds where a spell holds its remaining duration (`INNATE_PAYLOAD`) | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds |
+| 1-2 | duration, a little-endian `u16`. `00 00` for every innate effect in 32 files, over six ids and three races, and for every item-granted permanent effect #232 found; `BLESS` is the one record with rounds left, `02 00`, and it is the only specimen anybody has read with a nonzero value here | CONFIRMED for 26, 47, 90, 97, 107, 124; PROBABLE for 18 and 48, which no save holds, and for the reading that a nonzero count is rounds remaining rather than something else that happens to vary with `BLESS` |
+| 3 | for a racial id, always `0xFF` (`INNATE_PAYLOAD`'s own reading of "permanent" bytes 1-4 as `00 00 FF 00` no longer holds beyond the six racial ids: #232 measured a Ring of Fire Resistance at `12`, extra strength at `92`, and displacement at `12` here, all three at duration zero, so this byte is not a universal permanence flag -- it is `0xFF` only because that is the value a racial bonus happens to carry) | CONFIRMED for the six racial ids; PROBABLE that a nonzero, non-`0xFF` value elsewhere is the effect's own magnitude |
+| 4 | `00` in every specimen measured, racial or item-granted | PROBABLE |
 | 5-8 | a far pointer to the next record, offset word then segment word. The saved value is dead: the engine allocates a node per record on load and relinks them (`EFFECT_NEXT_NULL`) | CONFIRMED |
 
 Three measurements say the pointer is rebuilt rather than relocated, and the
@@ -1949,7 +1951,17 @@ did **not** hold for free on the reader beside it: the first real consumer of
   #130.
 * **Running spell effects.** The innate bonuses are carried now (#61); a
   spell still running when the party saved is not, which is what the game's
-  own importer does too.
+  own importer does too, and needs no report -- Donald, 2026-08-27: an
+  effect that was going to expire anyway is not a loss a player need be told
+  about.
+* **An item-granted or racial-by-analogy permanent effect `INNATE_EFFECTS`
+  turns away.** Extra strength, a Ring of Fire Resistance, being displaced --
+  a `.spc` record at duration zero that is not one of the six racial ids.
+  `NeutralCharacter` has no field for it, so it is still not carried on
+  either port, but `goldbox.dos.to_neutral` and `goldbox.amiga.to_neutral`
+  now report it: `#232 (An item-granted effect is dropped on the way through
+  the neutral record, with no report)` is the fix that would carry it, and
+  is still open.
 * **A gnome's bonuses against giants.** Nobody in the archives is a gnome, so
   the effect ids the DOS engine writes for one have never been seen. A
   converted gnome is reported rather than guessed at — see "The `.SPC`

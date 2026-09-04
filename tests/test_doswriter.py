@@ -111,6 +111,55 @@ def test_item_to_c64_inverts_item_from_c64():
     assert dos.item_to_c64(dos.item_from_c64(sixteen)) == sixteen
 
 
+# --- the .SPC file, read: a permanent effect INNATE_EFFECTS turns away -------
+#
+# #232 (An item-granted effect is dropped on the way through the neutral
+# record, with no report): `NeutralCharacter` has no field for a `.spc` node
+# outside `INNATE_EFFECTS`, so the record is dropped either way -- the only
+# question is whether it is reported.  A running spell still needs no report
+# (Donald, 2026-08-27); an id at duration zero is a ring or a girdle the
+# character is still wearing, and has to be.
+
+def _dos_record(effects) -> dos.DosCharacter:
+    """An all-zero 285-byte Pool of Radiance record carrying only the given
+    `.SPC` nodes -- synthetic bytes, not a slice of a save."""
+    return dos.DosCharacter(bytes(dos_layout.RECORD_SIZE), effects=effects)
+
+
+def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
+    """One nine-byte `.SPC` node: the id, a little-endian `u16` duration at
+    byte 1, one payload byte, one more, and a NULL next pointer."""
+    return (bytes((effect_id,)) + duration.to_bytes(2, "little")
+            + bytes((value, 0)) + dos.EFFECT_NEXT_NULL)
+
+
+def test_a_permanent_item_granted_effect_is_reported_dropped():
+    """A Ring of Fire Resistance, id 61, at duration zero -- CONJURER's own
+    shape (#232) -- is not one of `INNATE_EFFECTS` and has nowhere in the
+    neutral record to go, so it must say so."""
+    char = _dos_record([_effect(61, duration=0, value=12)])
+    out = dos.to_neutral(char)
+    assert any("Ring of Fire Resistance" in d for d in out.dropped), \
+        out.dropped
+
+
+def test_a_record_with_only_innate_ids_reports_no_effect_drop():
+    """A racial id -- 18, the gnome's own THAC0 bonus -- is carried in
+    `innate_effects` and needs no line telling the player it was lost."""
+    char = _dos_record([_effect(18, duration=0, value=0xFF)])
+    out = dos.to_neutral(char)
+    assert not any("not carried" in d for d in out.dropped), out.dropped
+
+
+def test_a_running_spell_is_not_reported_either():
+    """Donald's 2026-08-27 ruling still holds for the ids `INNATE_EFFECTS`
+    turns away too: a spell with rounds left was never going to survive the
+    trip, and reporting it is noise a player did not ask for."""
+    char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
+    out = dos.to_neutral(char)
+    assert not any("not carried" in d for d in out.dropped), out.dropped
+
+
 # --- the writer, on a synthetic character ------------------------------------
 
 def test_a_filled_character_lands_field_for_field():

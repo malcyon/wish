@@ -922,6 +922,26 @@ def to_neutral(dos: DosCharacter,
             "effect-id namespace (goldbox/traits.py)",
             Confidence.PROBABLE)
 
+    # -- the .SPC records INNATE_EFFECTS turns away, and NeutralCharacter
+    # has no field to hold -- reported rather than silently gone (#232, An
+    # item-granted effect is dropped on the way through the neutral record,
+    # with no report).  A running spell still needs no report, which is
+    # Donald's 2026-08-27 ruling and is why this checks the duration before
+    # calling anything a loss: bytes 1-2 are a little-endian `u16` duration,
+    # `INNATE_PAYLOAD`'s own `00 00` and confirmed against the one
+    # duration-bearing specimen anybody has read, a `BLESS` at
+    # `02 00 01 00` -- 0 is a permanent, item-granted or racial effect the
+    # character keeps until it is taken off; anything else is a spell
+    # counting down that was never going to survive the trip.
+    # `goldbox.amiga.describe_uncarried_effect` composes the same line the
+    # Amiga side already gives for this; reused rather than duplicated.
+    from . import amiga as _amiga
+    for e in dos.effects:
+        if e[0] in INNATE_EFFECTS:
+            continue
+        if int.from_bytes(e[1:3], "little") == 0:
+            out.drop(_amiga.describe_uncarried_effect(e))
+
     # -- the .ITM file, projected -------------------------------------------
     out.set("inventory", [it.to_c64() for it in dos.items],
             "the .ITM file, each 63-byte record projected onto sixteen bytes",
