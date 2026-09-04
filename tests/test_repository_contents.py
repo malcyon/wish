@@ -191,5 +191,5 @@ def test_no_citation_points_at_a_write_up_that_is_not_there(files):
     assert not bad, (
         "these cite a write-up under gitignored `work/reports/` without saying "
         "it is lost, and the file is not there:\n  " + "\n  ".join(bad)
-        + "\n\nA write-up's permanent home is `docs/` -- see CLAUDE.md, "
-          "Documentation.")
+        + "\n\nA write-up's permanent home is `docs/` -- see "
+          "`.claude/rules/documentation.md`.")

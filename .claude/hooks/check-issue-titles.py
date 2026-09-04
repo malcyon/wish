@@ -8,9 +8,14 @@ never means anything to me."* This docstring used to say the reason was that
 he reads replies with no browser open. It is not, and he corrected it on
 2026-09-02: *"It should not matter if I have a web browser open or not.
 You're forcing me to manually look up every number. That is fast for you, but
-slow for me."* The rule has been in `CLAUDE.md` since the Issues section
-was written, it is restated in the Replies section three hundred lines later,
-and it went on being broken -- so this stops being a matter of remembering it.
+slow for me."* The rule is the first one in `CLAUDE.md`, and it went on
+being broken anyway -- so this was written to stop it being a matter of
+remembering.
+
+**It is not registered today.** `3ee1a3f "Disable github issue hooks."`
+(2026-09-03) took this and its sibling out of `.claude/settings.json`. The
+script still works and still runs by hand; it simply is not wired to `Stop`,
+so the rule is a matter of remembering again.
 
 A `Stop` hook: it reads the transcript, looks at the last thing the assistant
 said, and exits 2 with a reason if any `#N` in it is not followed by a title
@@ -19,8 +24,8 @@ the reply is rewritten before he ever sees it.
 
 Deliberately not flagged, because each is a place the number is already
 readable or is not an issue reference at all:
-  * a commit message -- `CLAUDE.md` rules the number goes bare in parentheses
-    at the end of the one line, and GitHub hotlinks it there;
+  * a commit message -- `.claude/rules/commits.md` rules the number goes bare
+    in parentheses at the end of the one line, and GitHub hotlinks it there;
   * anything inside a **fenced** code block, which is quoted output rather
     than prose;
   * a `#` that is a heading, a colour, a Python comment or an issue URL.

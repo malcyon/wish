@@ -247,7 +247,7 @@ def test_our_parser_draws_what_an_svg_renderer_draws(app, name, size):
     every pixel identical to Qt's own SVG renderer reading the same `d`.
 
     It fails if a curve is misread -- and a misread curve is a redrawn icon,
-    which is the one thing `CLAUDE.md`'s Art section forbids.
+    which is the one thing `.claude/rules/art.md` forbids.
 
     **512 is in the list because 128 is not enough.** Three arcs reach the
     parser, in `oppression` and `sparkling-sabre`, and all three are shallow:

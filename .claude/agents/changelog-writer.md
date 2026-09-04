@@ -62,7 +62,7 @@ player until something uses it; the entry belongs to whatever shipped on top of
 it, not to the decode.
 
 **A feature behind a flag has not shipped.** This project gates unproven work
-behind `WISH_EXPERIMENTAL_*` (see the Feature flags section of `CLAUDE.md`). Do
+behind `WISH_EXPERIMENTAL_*` (see `.claude/rules/feature-flags.md`). Do
 not announce something a user cannot reach. When the flag comes off, that is
 the release it belongs to.
 

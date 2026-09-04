@@ -159,7 +159,7 @@ Three of the seven exist in Font Awesome Free, three do not, and two of the
 marks — road and marsh tufts — are strokes across a square rather than glyphs at
 all, which the renderer draws directly the way `hatch_lines` already draws rock.
 
-**Under `CLAUDE.md`'s Art rule the answer for the rest is Font Awesome, another
+**Under `.claude/rules/art.md` the answer for the rest is Font Awesome, another
 set with a licence we can honour, or a human being. Never generated, not even
 as a placeholder "until we find a real one", and never a Font Awesome path
 nudged until it fits.** A hills symbol is two arcs; it is exactly the kind of

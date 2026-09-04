@@ -21,7 +21,7 @@ The previous session completed these items. Full test suite confirms: **2286 pas
 | Done | Component | Files |
 |---|---|---|
 | ✅ | **Infrastructure** | [genui.py](file:///home/donald/src/wish/tools/genui.py) generalized, [test.yml](file:///home/donald/src/wish/.github/workflows/test.yml) updated, [designer](file:///home/donald/src/wish/designer) updated |
-| ✅ | **CLAUDE.md rule** | [CLAUDE.md](file:///home/donald/src/wish/CLAUDE.md) — new "Qt Designer" section |
+| ✅ | **CLAUDE.md rule** | [CLAUDE.md](file:///home/donald/src/wish/CLAUDE.md) — new "Qt Designer" section, since moved to `.claude/rules/qt-designer.md` |
 | ✅ | **WishWindow** | [wish/window.ui](file:///home/donald/src/wish/wish/window.ui) + [wish/window.py](file:///home/donald/src/wish/wish/window.py) refactored |
 | ✅ | **AutomapWindow** | [automap/window.ui](file:///home/donald/src/wish/automap/window.ui) + [automap/window.py](file:///home/donald/src/wish/automap/window.py) refactored |
 | ✅ | **PreferencesDialog** | [wish/preferences.ui](file:///home/donald/src/wish/wish/preferences.ui) + [wish/preferences.py](file:///home/donald/src/wish/wish/preferences.py) refactored |

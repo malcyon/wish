@@ -293,7 +293,7 @@ displaced collision without choosing between them.
   smooth cubics and elliptical arcs, none of which Font Awesome's `svgs-full`
   emits and all of which these artists use. It grew rather than the icons being
   redrawn into a simpler `d`: redrawing somebody's art is the one thing
-  `CLAUDE.md`'s Art section forbids. `Q` and `T` are raised rather than guessed
+  `.claude/rules/art.md` forbids. `Q` and `T` are raised rather than guessed
   at.
 * **The card did not get any taller.** `IconRow` is a fixed 13 high and grows
   only sideways, so a card with every badge lit has the same

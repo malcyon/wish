@@ -4,11 +4,14 @@
 The sibling `check-issue-titles.py` is a `Stop` hook: it reads what the
 assistant said to Donald and refuses a bare `#59`. It never sees an issue
 comment, because that leaves through Bash rather than through a reply -- and
-`CLAUDE.md`'s Issues section says the rule covers "replies, issue comments and
-documents", so half the rule had no guard at all.
+`CLAUDE.md` says the rule covers "replies, issue comments and documents", so
+half the rule had no guard at all.
 
 Found on 2026-09-02, when Donald asked why the guard was not working: it was,
 for replies, while six issue comments had gone out with bare numbers in them.
+
+**It is not registered today**, along with its sibling -- `3ee1a3f "Disable
+github issue hooks."` (2026-09-03) removed both from `.claude/settings.json`.
 
 A `PreToolUse` hook on Bash. Exit 2 blocks the call and feeds stderr back, so
 the body is rewritten before it is posted.

@@ -2661,8 +2661,9 @@ def test_an_action_that_carries_a_confirm_asks_first(app):
     outcome = bar.run(identify)
     # The result is a line in the messages panel, not a pop-up to dismiss.
     assert outcome is not None
-    # A Messages panel line opens with a capital -- `CLAUDE.md`, "Help text
-    # in the GUI". The whole composed line is still what is pinned.
+    # A Messages panel line opens with a capital -- `CLAUDE.md`, and
+    # `.claude/rules/gui-text.md`. The whole composed line is still what
+    # is pinned.
     assert said == [f"Identify: {outcome.message}"]
 
 

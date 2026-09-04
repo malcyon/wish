@@ -1433,7 +1433,7 @@ def write(char: NeutralCharacter) -> tuple[bytes, bytes, bytes, WriteReport]:
     # source held that is not being carried.  It does **not** go in
     # `rep.dropped`, which is read by a person in the conversion pane -- that
     # is a sentence for Donald to approve rather than one to model on the
-    # sibling lines already there (CLAUDE.md, "Help text in the GUI").
+    # sibling lines already there (`.claude/rules/gui-text.md`).
     for dname, data, why, lost in WRITE_DEFAULTS:
         f = FIELDS_BY_NAME[dname]
         rec[f.offset:f.end] = data

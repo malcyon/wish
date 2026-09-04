@@ -30,9 +30,11 @@ KEEP_DAYS=30     # plus the first snapshot of each of the last 30 days
 THROTTLE=$((60 * 60))   # Donald, 2026-09-02: "once an hour is enough"
 
 # **This machine only.** The script is tracked so the technique is not lost
-# and `CLAUDE.md` can point at it, but it is registered in
-# `.claude/settings.local.json`, which is gitignored -- so a fresh clone runs
-# the citation hooks (project rules, right for anybody) and not this one.
+# and `.claude/rules/` can point at it, but it is registered in
+# `.claude/settings.local.json`, which is gitignored -- so a fresh clone gets
+# the script and never runs it. It used to say a fresh clone runs the citation
+# hooks instead; those were unregistered by `3ee1a3f` on 2026-09-03 and a
+# fresh clone now runs no hook but `issue-titles-context.py`.
 #
 # The guard below is the second lock, for the case where somebody copies the
 # registration along with the file: without it, a stranger's Claude Code would
