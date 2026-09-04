@@ -46,16 +46,23 @@ is why they are fully roofed with no doors.
 
 The stride comes from `$0612 + 1`, not `$0607`. For combat both are 56 and
 nothing is broken; for the overland map `$0607` is 20 against a true stride of
-18, so `automap/combat.py`'s `shape_from_params` would shear it. One-line fix,
-and it should be made before the reader is pointed at anything overland.
+18, so `automap/combat.py`'s `shape_from_params` would shear it. **Done**:
+`shape_from_params` reads `block[P_MAX_X] + 1`, and `goldbox/world.py`'s own
+`STRIDE = 18` is asserted against the disks in `tests/test_world.py`.
 
 ---
 
 ## What is unknown
 
-1. **Whether `$8C00` in memory equals `SQRDATA0n` on disk.** Everything else is
-   file archaeology; this is the one link that has never been observed. 648
-   bytes read while the party stands outdoors settles it.
+1. ~~Whether `$8C00` in memory equals `SQRDATA0n` on disk.~~ **Settled,
+   CONFIRMED**: 648 bytes read live at `$8C00` matched `SQRDATA05` in 647 of
+   648 bytes and `SQRDATA06` in 645 of 648, and every byte that differed was a
+   site square the script paints over while its flag is clear
+   (`work/reports/p3-saves.md` §4, lost with `work/`; restated in
+   `docs/137-wilderness-automap.md` §1's table and pinned on the disk side by
+   `tests/test_p3.py`, which this doc's own "unknown" list had fallen behind).
+   Kept numbered rather than removed: the saves table below still cross-refers
+   to "unknown 1".
 2. **`$49FB`**, which is 0 on the grid and 255 in the cave and gates a display
    item next to the clock. What it prints has not been seen.
 3. **Where the travel facing is kept.** `$033D` is page 3 and is not in the
@@ -146,21 +153,37 @@ answers unknown 2 on its own.
 
 ## The work, in order
 
-1. **Fix the stride** in `automap/combat.py` — `$0612 + 1`, not `$0607` — and
-   the note in `docs/101-combat-view.md`. Cheap, and everything downstream
-   depends on it.
-2. **`goldbox/world.py`**, transport-free. `work/analysis9/wild.py`, the script
-   this was to be promoted out of, is gone (`work/` is gitignored) — the module
-   has to be written fresh against the format below, not copied out of it:
-   read `SQRDATA0n` off a disk, expose the 18 x 36 grid and the 120 glyph
-   entries, stitch the three at 13, carry the site tables and the two terrain
-   tables, and answer `passable(map, x, y)` and `site_at(world_x, y)`. It needs
-   no emulator and can be tested against the disks today, the way
-   `tests/gamedata.py` already reads `GEO04`.
+1. ~~Fix the stride in `automap/combat.py`.~~ **Done**: `shape_from_params`
+   reads `block[P_MAX_X] + 1`, with the corrected note beside it; the doc had
+   fallen behind the code.
+2. **`goldbox/world.py`**, transport-free -- **now exists**, covering the part
+   of this step that a documented, byte-exact format could settle:
+   `Window.from_disk`/`World.from_disks` read `SQRDATA0n` off the disks,
+   expose the 18 x 36 grid and the 120 glyph entries (`Window.square`,
+   `Window.tile`), and stitch the three at world x 15 and 28 in the game's own
+   coordinate, `x + 13k` (`World.locate`/`World.square`). Tested against the
+   disks -- 3 windows, 1944 grid squares, the four known site squares from
+   `tests/test_p3.py`'s `PAINTED` table, and the 179/180 and 180/180 overlap
+   counts below, all in `tests/test_world.py`.
+
+   **The site tables and the two terrain tables are not carried, and
+   `passable()`/`site_at()` are not implemented.** Both live inside
+   `ECL19`/`ECL1A`/`ECL1B`'s own bytecode, not in `SQRDATA0n`, and their byte
+   offsets were in `work/reports/world-map.md`, lost with `work/`
+   (`#136 (Thirty-two cited write-ups are gone, because the knowledge base
+   pointed into gitignored scratch)`) -- `tools/windowsquare.py`'s own
+   docstring says the same thing from the other side: "the running game is
+   the only authority left." Recovering the offsets means rebuilding an ECL
+   decoder, and reading the ECL scripts at all was **closed at Donald's own
+   direction** on 2026-08-31 (`docs/115-review-the-scripts.md`) -- reopening
+   it is his call. `goldbox/world.py`'s two stubs raise `NotImplementedError`
+   naming this, rather than guessing at an address.
 3. **Tests from the disks**, no fixtures: the overlap counts (179/180,
-   180/180), the size identity 648 + 120 x 18 = 2808, the site tables' lengths
-   against the gaps between their addresses, and the kobold caves landing on
-   (6,15) — which `npc_party.d64` independently corroborates.
+   180/180) and the size identity 648 + 120 x 18 = 2808, both now in
+   `tests/test_world.py`. **Not yet done**: the site tables' lengths against
+   the gaps between their addresses, and the kobold caves landing on (6,15)
+   against `npc_party.d64` -- both need the site-table offsets step 2 above
+   is blocked on.
 4. **Detect the state.** `(ECL & $7F) in {$19, $1A, $1B}` says the party is on
    a travel map; `$4A9E` says grid or cave; `$4BC4 & $7F` says which
    `SQRDATA`. Add it to `goldbox/savegame.py` beside `.area`, and to the automapper
