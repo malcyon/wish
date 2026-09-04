@@ -42,9 +42,15 @@ correctly set `DISPLAY=:40` was ignored once and the dialog opened over the
 user's editor.  `debug_env()` unsets it, and the config sets a working directory
 so nothing is ever asked.  Both belts, every launch.
 
-Displays :40-:47 are this pool's; `tools/dosbox.py` has :30-:37 and VICE has
-:10-:17, so the three never collide.  Teardown kills the process groups this
+Displays :90-:105 are this pool's; `tools/dosbox.py` has :50-:65 and VICE has
+:10-:25, so the three never collide.  Teardown kills the process groups this
 instance started and nothing else: **never a process by name.**
+
+#233 (The test suite takes the emulator displays agents need, and eight
+slots is no longer enough) moved this pool from :40 to :90 when every pool
+widened to sixteen slots: :40-:55 would have landed inside `tools/dosbox.py`'s
+own widened :50-:65.  90 leaves 24 numbers of headroom before the next pool
+would start -- the same margin the other two pools were given.
 
 Run time it needs: `dosbox-x` *with the debugger* (`dosbox-x --help | grep -c
 helpdebug` is 1, not 0), `Xvfb`, `xdotool` and ImageMagick's `import`.
@@ -85,9 +91,9 @@ from tools import dosbox  # noqa: E402
 WORK = dosbox.WORK / "x"
 INST = WORK / "inst"
 
-#: :30-:37 are `tools/dosbox.py`'s and :10-:17 are the VICE pool's.
-DISPLAY_BASE = 40
-SLOTS = 8
+#: :50-:65 are `tools/dosbox.py`'s and :10-:25 are the VICE pool's.
+DISPLAY_BASE = 90
+SLOTS = 16
 
 DOSBOXX = os.environ.get("DOSBOXX") or shutil.which("dosbox-x") or "/usr/local/bin/dosbox-x"
 

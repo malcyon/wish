@@ -266,15 +266,18 @@ posix_only = pytest.mark.skipif(sys.platform == "win32",
 
 @posix_only
 def test_a_leased_slot_is_not_leased_twice(tmp_path, monkeypatch):
-    """`DISPLAY_BASE` moves off the real `:30`-`:31` so a band shrunk to two
+    """`DISPLAY_BASE` moves off the real `:50`-`:51` so a band shrunk to two
     for speed never depends on those two specific displays being free on a
     machine other agents are using tonight -- `#213 (Each display pool walks
     out of its own band once the band is full)` narrowed the search to
-    exactly `SLOTS` displays.
+    exactly `SLOTS` displays. 950 is this file's own base, moved by `#233
+    (The test suite takes the emulator displays agents need, and eight slots
+    is no longer enough)` off the old 930-941 once the real bands widened to
+    sixteen and needed the room those numbers used to give this file margin.
     """
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 2)
-    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 930)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 950)
     first = dosbox.claim("one")
     second = dosbox.claim("two")
     assert {first.n, second.n} == {0, 1}
@@ -301,14 +304,14 @@ def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
 
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 2)
-    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 940)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 955)
     held = []
     try:
         for i in range(2):
-            fd = os.open(f"/tmp/.wish-x11-{940 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fd = os.open(f"/tmp/.wish-x11-{955 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             held.append(fd)
-        with pytest.raises(dosbox.PoolFull, match=r":940-:941"):
+        with pytest.raises(dosbox.PoolFull, match=r":955-:956"):
             dosbox.claim("blocked")
     finally:
         for fd in held:
@@ -321,14 +324,14 @@ def test_a_lease_is_dropped_when_the_process_holding_it_dies(tmp_path, monkeypat
     """The reason the lease is an flock and not a lock file with a pid in it."""
     monkeypatch.setattr(dosbox, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosbox, "SLOTS", 1)
-    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 950)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 960)
     repo = pathlib.Path(__file__).resolve().parent.parent
     script = (
         "import sys; sys.path.insert(0, %r)\n"
         "from tools import dosbox\n"
         "dosbox.INST = __import__('pathlib').Path(%r)\n"
         "dosbox.SLOTS = 1\n"
-        "dosbox.DISPLAY_BASE = 950\n"
+        "dosbox.DISPLAY_BASE = 960\n"
         "dosbox.claim('doomed')\n" % (str(repo), str(tmp_path / "inst"))
     )
     subprocess.run([sys.executable, "-c", script], check=True)

@@ -433,15 +433,24 @@ def _band(module) -> range:
     """The displays a pool starts from: `SLOTS` of them, from its own base.
 
     Each module carries its own `SLOTS`, so read each one's rather than
-    sharing a width -- the three are 8 today and nothing ties them together.
+    sharing a width -- the three are 16 today and nothing ties them together.
     """
     return range(module.DISPLAY_BASE, module.DISPLAY_BASE + module.SLOTS)
 
 
 def test_the_three_pools_bands_never_overlap():
-    """:10-:17 are VICE's, :30-:37 are `tools/dosbox.py`'s, :40-:47 are these
-    -- a fact about the three modules' own constants, so unlike the tests
-    below it needs no lock, no lease and no live machine state to check.
+    """:10-:25 are VICE's, :50-:65 are `tools/dosbox.py`'s, :90-:105 are
+    these -- a fact about the three modules' own constants, so unlike the
+    tests below it needs no lock, no lease and no live machine state to
+    check.
+
+    **And no band may contain `:0` or `:7`** (`#233 (The test suite takes
+    the emulator displays agents need, and eight slots is no longer
+    enough)`): `:0` is Donald's own desktop and `:7` is `porlaunch.sh`'s
+    `RESERVED_DISPLAY` default, so a future re-space that quietly widened a
+    band across either would put a pooled instance on his screen or on top
+    of a session he started by hand. Pinned here so that re-space cannot
+    happen quietly.
     """
     from tools import dosbox, instance
 
@@ -449,6 +458,10 @@ def test_the_three_pools_bands_never_overlap():
     assert not set(vice_band) & set(plain_band)
     assert not set(vice_band) & set(x_band)
     assert not set(plain_band) & set(x_band)
+
+    for band in (vice_band, plain_band, x_band):
+        assert 0 not in band, band
+        assert 7 not in band, band
 
 
 @posix_only
@@ -459,16 +472,20 @@ def test_a_claim_lands_inside_its_own_band(tmp_path, monkeypatch):
     whichever of the other two pools' bands happened to have room, which is
     what let this pool's `:40` collide with a real session on it (#206).
 
-    The base is moved off the real `:40`-`:47` the way every other band test
+    The base is moved off the real `:90`-`:105` the way every other band test
     here moves it: `#206 (The DOSBox-X display test fails whenever another
     agent is using :40)` is what happens when a test claims from the live
     band, and on a busy night this would fail for a reason that has nothing
-    to do with whether the guarantee holds.
+    to do with whether the guarantee holds. 990 is this file's own base,
+    moved up from the old 970 by `#233 (The test suite takes the emulator
+    displays agents need, and eight slots is no longer enough)` once the
+    real bands widened to sixteen and this test's own (unpatched, sixteen
+    wide) band needed the room.
     """
     from tools import dosbox
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
-    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 970)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 990)
     slot = dosboxx.claim("one")
     try:
         n = int(slot.display.removeprefix(":"))
@@ -483,10 +500,11 @@ def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
     """Before #213 the search walked past a full band into whatever the next
     free number happened to be, instead of admitting its own was exhausted.
 
-    `DISPLAY_BASE` moves off the real `:40`-`:41` so this never depends on
+    `DISPLAY_BASE` moves off the real `:90`-`:91` so this never depends on
     those two displays being free on a machine other agents are using
     tonight, and never takes one they want: the two held here are locked
-    under a base nothing else on the machine uses.
+    under a base nothing else on the machine uses. 1010 leaves room after
+    this file's other test at 990-1005 (sixteen wide, unpatched `SLOTS`).
     """
     import fcntl  # local: unimportable on Windows, and @posix_only skips there
 
@@ -494,14 +512,14 @@ def test_the_pool_refuses_once_its_display_band_is_full(tmp_path, monkeypatch):
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
     monkeypatch.setattr(dosboxx, "SLOTS", 2)
-    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 960)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 1010)
     held = []
     try:
         for i in range(2):
-            fd = os.open(f"/tmp/.wish-x11-{960 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fd = os.open(f"/tmp/.wish-x11-{1010 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             held.append(fd)
-        with pytest.raises(dosbox.PoolFull, match=r":960-:961"):
+        with pytest.raises(dosbox.PoolFull, match=r":1010-:1011"):
             dosboxx.claim("blocked")
     finally:
         for fd in held:

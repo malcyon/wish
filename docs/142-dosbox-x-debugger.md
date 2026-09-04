@@ -289,8 +289,10 @@ game's 320x200 mode into a 640x400 window, so every rectangle
 `tools/dosbox.py` measures -- `BAR`, `STATUS` -- would land on the wrong
 pixels without `XSession.capture()` halving each frame back to 320x200 first,
 which is what actually gets a run to a loaded save with rectangles worth
-looking at. Displays :40-:47, so the two pools and VICE's :10-:17 never
-collide.
+looking at. Displays :90-:105, so the two pools and VICE's :10-:25 never
+collide (`#233 (The test suite takes the emulator displays agents need, and
+eight slots is no longer enough)` moved this from :40-:47 when every pool
+widened to sixteen slots).
 
 ```python
 from tools import dosbox, dosboxx

@@ -72,9 +72,15 @@ WORK = REPO / "work" / "dosbox"
 INST = WORK / "inst"
 
 # The pool never takes a display anything else here uses: `tools/porlaunch.sh`
-# defaults to :7 and `docs/123-parallel-sessions.md` allocates :10-:17 to VICE.
-DISPLAY_BASE = 30
-SLOTS = 8
+# defaults to :7 and `docs/123-parallel-sessions.md` allocates :10-:25 to VICE.
+#
+# #233 (The test suite takes the emulator displays agents need, and eight
+# slots is no longer enough) widened every pool to sixteen slots and moved
+# this one from :30 to :50: at sixteen wide, :30-:45 would have put this pool
+# on top of DOSBox-X's old :40.  50 leaves 24 numbers of headroom before the
+# next pool starts -- room to grow again past sixteen without another move.
+DISPLAY_BASE = 50
+SLOTS = 16
 
 sys.path.insert(0, str(REPO))
 from tools import gamedisks  # noqa: E402

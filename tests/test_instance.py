@@ -50,7 +50,21 @@ def ports(monkeypatch):
 
 @pytest.fixture
 def pool(tmp_path, monkeypatch, ports):
+    """An isolated lease directory *and* an off-band `DISPLAY_BASE`.
+
+    `POR_INST` isolates the leases, but a claim still searches the real
+    :10-:25 VICE band for a display unless this moves it -- and every test
+    that claims a slot took one of those eight (now sixteen) real displays
+    away from whatever agent needed it next (`#233 (The test suite takes the
+    emulator displays agents need, and eight slots is no longer enough)`).
+    900-915 is this file's own band, reserved for tests that do not
+    themselves need a narrower one; a test that does (band exhaustion, a
+    subprocess) picks its own base further up and says so, following the
+    numbering `#213 (Each display pool walks out of its own band once the
+    band is full)`'s own tests started.
+    """
     monkeypatch.setenv("POR_INST", str(tmp_path / "inst"))
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 900)
     return tmp_path
 
 
@@ -165,10 +179,14 @@ def test_the_lease_records_who_holds_it(pool):
 def test_the_pool_can_be_full(pool, monkeypatch):
     """Lease exhaustion, not band exhaustion -- `#213 (Each display pool
     walks out of its own band once the band is full)` has the latter, below.
-    `DISPLAY_BASE` is moved off the real VICE band so this never depends on
-    `:10`/`:11` being free on a machine other agents are using tonight.
+    `DISPLAY_BASE` moves to 920, past this file's own 900-915 default band
+    (`pool`'s own docstring), so this never depends on any real display being
+    free on a machine other agents are using tonight -- and `SLOTS` narrows
+    to 2 to match the two leases actually taken, so the display band this
+    claims is exactly as wide as what it needs.
     """
-    monkeypatch.setattr(instance, "DISPLAY_BASE", 910)
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 920)
+    monkeypatch.setattr(instance, "SLOTS", 2)
     held = [instance.claim(slots=2) for _ in range(2)]
     try:
         with pytest.raises(instance.PoolFull):
@@ -200,15 +218,15 @@ def test_the_pool_refuses_once_its_display_band_is_full(pool, monkeypatch):
     """
     import fcntl  # local: unimportable on Windows, and @posix skips there
 
-    monkeypatch.setattr(instance, "DISPLAY_BASE", 920)
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 925)
     monkeypatch.setattr(instance, "SLOTS", 2)
     held = []
     try:
         for i in range(2):
-            fd = os.open(f"/tmp/.wish-x11-{920 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
+            fd = os.open(f"/tmp/.wish-x11-{925 + i}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             held.append(fd)
-        with pytest.raises(instance.PoolFull, match=r":920-:921"):
+        with pytest.raises(instance.PoolFull, match=r":925-:926"):
             instance.claim(slots=2)
     finally:
         for fd in held:
@@ -219,11 +237,18 @@ def test_the_pool_refuses_once_its_display_band_is_full(pool, monkeypatch):
 # -- contention between processes ------------------------------------------
 
 
+#: A fresh process re-imports `instance` and inherits none of `pool`'s
+#: monkeypatches, so `DISPLAY_BASE` is set inline here -- 930, past this
+#: file's own 900-926 -- or this subprocess would search the real :10-:25
+#: VICE band for a display the way every un-patched test used to (#233
+#: (The test suite takes the emulator displays agents need, and eight slots
+#: is no longer enough)).
 HOLDER = textwrap.dedent("""
     import sys, time
     sys.path.insert(0, {tools!r})
     import instance
     instance._listening = lambda *a, **kw: False   # the `ports` fixture, out here
+    instance.DISPLAY_BASE = 930
     slot = instance.claim(note="holder")
     print(slot.n, flush=True)
     time.sleep(120)
@@ -370,14 +395,222 @@ def test_the_status_table_prints_a_dash_for_a_slot_nobody_holds(pool):
         assert line.split()[-3:] == ["-", "-", "-"], line
 
 
-def _capture_status() -> str:
+def _capture_status(argv: tuple[str, ...] = ("status",)) -> str:
     import contextlib
     import io
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        assert instance.main(["status"]) == 0
+        assert instance.main(list(argv)) == 0
     return buf.getvalue()
+
+
+# -- the display view: #233 part 3 -------------------------------------------
+#
+# `_lock_holder` and `display_rows` never take a lock to answer -- taking one
+# is not a test of it, and the lock lives on the inode rather than the path
+# (see `tools/instance.py`'s own section docstring). These tests use plain
+# `tmp_path` files rather than the real `/tmp/.wish-x11-<n>.lock` naming
+# except where a test needs the CLI's real path, in which case it picks
+# numbers -- 1080 upward -- past every other band this suite uses.
+
+
+@posix
+def test_lock_holder_says_nobody_for_a_file_that_does_not_exist(tmp_path):
+    assert instance._lock_holder(tmp_path / "nope.lock") is None
+
+
+@posix
+def test_lock_holder_says_nobody_for_a_file_nobody_locked(tmp_path):
+    """The leftover the whole feature exists to explain: a file that was
+    opened `O_CREAT` and never flocked, which is what a released slot's
+    lock file becomes -- and Donald's twenty-seven-of-them-one-in-use
+    machine was full of."""
+    path = tmp_path / "unlocked.lock"
+    path.write_bytes(b"")
+    assert instance._lock_holder(path) is None
+
+
+@posix
+def test_lock_holder_matches_the_inode_not_the_path(tmp_path):
+    """The property `#233 (The test suite takes the emulator displays
+    agents need, and eight slots is no longer enough)` part 3 exists to
+    respect: unlinking a path a process still holds locked would leave
+    that process holding an orphaned inode while the next claimer's file
+    at the same path starts unlocked. A fresh, unlocked file at a path
+    whose old inode is still locked must read as free.
+    """
+    import fcntl
+
+    path = tmp_path / "x.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        old_ino = os.fstat(fd).st_ino
+        path.unlink()                        # the path is gone; the lock is not
+        path.write_bytes(b"")                # a fresh, unlocked inode at the same path
+        assert path.stat().st_ino != old_ino
+        assert instance._lock_holder(path) is None
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def _needs_proc_locks():
+    if not Path("/proc/locks").exists():
+        pytest.skip("needs Linux's /proc/locks")
+
+
+@posix
+def test_lock_holder_names_the_pid_that_holds_the_flock_and_takes_none_itself(tmp_path):
+    """Read from `/proc/locks`, never by attempting the lock.
+
+    Also the read-only proof: after asking, the file is still locked by the
+    subprocess -- a probe that took the lock to test it would have released
+    it again by the time this checks, and the answer would look the same
+    either way. Only trying to flock it again and watching that fail tells
+    the two apart.
+    """
+    _needs_proc_locks()
+    import fcntl
+
+    path = tmp_path / "held.lock"
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl, os, sys, time\n"
+         "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+         "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+         "print('locked', flush=True)\n"
+         "time.sleep(60)\n",
+         str(path)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert proc.stdout.readline().strip() == "locked"
+        assert instance._lock_holder(path) == proc.pid
+
+        fd = os.open(path, os.O_RDWR)
+        try:
+            with pytest.raises(OSError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+@posix
+def test_display_rows_names_all_three_pools(monkeypatch):
+    from tools import dosbox, dosboxx
+
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 1080)
+    monkeypatch.setattr(instance, "SLOTS", 2)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 1085)
+    monkeypatch.setattr(dosbox, "SLOTS", 2)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 1090)
+    monkeypatch.setattr(dosboxx, "SLOTS", 2)
+
+    rows = instance.display_rows()
+    assert [r["display"] for r in rows] == [
+        ":1080", ":1081", ":1085", ":1086", ":1090", ":1091",
+    ]
+    assert [r["pool"] for r in rows] == \
+        ["vice", "vice", "dosbox", "dosbox", "dosboxx", "dosboxx"]
+
+
+@posix
+def test_display_rows_tells_a_stale_file_from_a_held_one_and_from_no_file_at_all(
+        monkeypatch):
+    """The three states a person actually finds in `/tmp`: nothing there,
+    a file nobody locked, and a file somebody genuinely holds."""
+    _needs_proc_locks()
+
+    from tools import dosbox, dosboxx
+
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 1095)
+    monkeypatch.setattr(instance, "SLOTS", 3)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 1200)
+    monkeypatch.setattr(dosbox, "SLOTS", 1)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 1210)
+    monkeypatch.setattr(dosboxx, "SLOTS", 1)
+
+    stale = Path("/tmp/.wish-x11-1096.lock")
+    held = Path("/tmp/.wish-x11-1097.lock")
+    stale.write_bytes(b"")
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl, os, sys, time\n"
+         "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+         "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+         "print('locked', flush=True)\n"
+         "time.sleep(60)\n",
+         str(held)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert proc.stdout.readline().strip() == "locked"
+        rows = {r["display"]: r for r in instance.display_rows()}
+
+        assert rows[":1095"]["exists"] is False
+        assert rows[":1095"]["held"] is False
+        assert rows[":1095"]["pid"] is None
+
+        assert rows[":1096"]["exists"] is True
+        assert rows[":1096"]["held"] is False
+        assert rows[":1096"]["pid"] is None
+
+        assert rows[":1097"]["exists"] is True
+        assert rows[":1097"]["held"] is True
+        assert rows[":1097"]["pid"] == proc.pid
+    finally:
+        proc.kill()
+        proc.wait()
+        stale.unlink(missing_ok=True)
+        held.unlink(missing_ok=True)
+
+
+@posix
+def test_status_displays_prints_a_state_and_a_pid_column(monkeypatch):
+    """The CLI a person actually reads, not just the dict.
+
+    One real held lock, so both the "somebody has it" row and the "nobody
+    has ever touched this number" rows appear in the same table.
+    """
+    _needs_proc_locks()
+    from tools import dosbox, dosboxx
+
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 1220)
+    monkeypatch.setattr(instance, "SLOTS", 1)
+    monkeypatch.setattr(dosbox, "DISPLAY_BASE", 1225)
+    monkeypatch.setattr(dosbox, "SLOTS", 1)
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 1230)
+    monkeypatch.setattr(dosboxx, "SLOTS", 1)
+
+    held = Path("/tmp/.wish-x11-1220.lock")
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl, os, sys, time\n"
+         "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+         "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+         "print('locked', flush=True)\n"
+         "time.sleep(60)\n",
+         str(held)],
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        assert proc.stdout.readline().strip() == "locked"
+        out = _capture_status(("status", "--displays"))
+    finally:
+        proc.kill()
+        proc.wait()
+        held.unlink(missing_ok=True)
+
+    body = [line for line in out.splitlines()[1:] if line.strip()]
+    assert len(body) == 3
+    assert ":1220" in body[0] and "held" in body[0] and str(proc.pid) in body[0]
+    assert ":1225" in body[1] and "no file" in body[1] and body[1].rstrip().endswith("-")
+    assert ":1230" in body[2] and "no file" in body[2] and body[2].rstrip().endswith("-")
 
 
 # -- the seeded vicerc ------------------------------------------------------

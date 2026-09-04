@@ -54,11 +54,21 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-SLOTS = 8
+#: #233 (The test suite takes the emulator displays agents need, and eight
+#: slots is no longer enough): eight was too few for the agent count this
+#: project now runs.  Sixteen keeps the port arithmetic comfortable --
+#: `BIN_BASE`, `TEXT_BASE` and `CMD_BASE` land at 6520-6535, 6540-6555 and
+#: 6560-6575, none of them touching the next -- where twenty leaves the
+#: binary monitor's top one port below `TEXT_BASE` and twenty-four overlaps
+#: it outright.
+SLOTS = 16
 # Bases, not offsets from 6502: the gap is the point.  See the module docstring.
 BIN_BASE = 6520
 TEXT_BASE = 6540
 CMD_BASE = 6560
+#: Unmoved by #233's re-spacing: at sixteen slots this is :10-:25, which
+#: already clears `tools/dosbox.py`'s old :30 with room to spare.  Only
+#: DOSBox and DOSBox-X had to move -- see their own modules.
 DISPLAY_BASE = 10
 
 # What a human's session uses, and what the pool must therefore never allocate.
@@ -435,6 +445,98 @@ def status(slots: int = SLOTS) -> list[dict]:
 
 
 # --------------------------------------------------------------------------
+# The display bands -- what /tmp actually holds, without touching it
+# --------------------------------------------------------------------------
+#
+# #233 (The test suite takes the emulator displays agents need, and eight
+# slots is no longer enough), part 3: `/tmp/.wish-x11-<n>.lock` files
+# accumulate and outlive the processes that created them -- a claim opens
+# one with `O_CREAT` and never unlinks it, because the lock is what matters
+# and the kernel drops that on its own.  Twenty-seven such files existed on
+# Donald's machine with exactly one display genuinely in use, and finding
+# that out took a `fuser` on each by hand.  What follows answers the same
+# question by reading `/proc/locks`, which the kernel already keeps.
+#
+# **This must never take a lock to find out whether one is free** -- taking
+# it is not a test of it, in this codebase specifically: the lock lives on
+# the file's *inode*, not its path, so a sweeper that unlinked a path a
+# process still held would leave that process holding an now-orphaned
+# inode while the next `claim()` opened a fresh file at the same path and
+# locked *that* -- two emulators, each believing it owns the display.
+# `Slot`'s own docstring already gives the reason there is no sweeper: the
+# kernel drops the flock when the holder dies however it dies, so there is
+# no stale-lock policy to get right.  Reading, never writing, is what keeps
+# this view from becoming one.
+
+
+def _lock_holder(path: Path) -> int | None:
+    """The pid holding an `flock` on `path`, or `None` if nothing does.
+
+    Answered from `/proc/locks` rather than by attempting the lock, because
+    attempting it is not read-only.  `flock()` locks are listed there as
+    `FLOCK` entries keyed by the file's device and inode, which is what is
+    matched here -- not the path, so a path whose original inode was
+    unlinked and recreated is correctly read as unheld even while the old
+    inode is still locked by whoever has it open.
+
+    `None` for a file that does not exist, for a kernel with no
+    `/proc/locks` (anything but Linux), and for any other read failure: the
+    caller then reports "free", and a human still has `fuser`/`lsof` to
+    reach for if that default is ever wrong for what they are looking at.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    try:
+        lines = Path("/proc/locks").read_text().splitlines()
+    except OSError:
+        return None
+    target = f"{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino}"
+    for line in lines:
+        fields = line.split()
+        # A pending request -- one process blocked waiting for another's
+        # lock -- prints as `<id>: -> FLOCK ...`, one field further along
+        # than a held one, and names the *waiter*, not the holder.
+        if len(fields) < 6 or fields[1] == "->" or fields[1] != "FLOCK":
+            continue
+        if fields[5] == target:
+            try:
+                return int(fields[4])
+            except ValueError:
+                continue
+    return None
+
+
+def display_rows() -> list[dict]:
+    """Every display number in all three pools' bands, and who -- if
+    anyone -- holds its `/tmp/.wish-x11-<n>.lock`. Read-only: see the
+    section docstring above for why it must stay that way.
+    """
+    from tools import dosbox, dosboxx  # local: instance.py stays importable alone
+
+    out = []
+    for pool_name, base, slots in (
+        ("vice", DISPLAY_BASE, SLOTS),
+        ("dosbox", dosbox.DISPLAY_BASE, dosbox.SLOTS),
+        ("dosboxx", dosboxx.DISPLAY_BASE, dosboxx.SLOTS),
+    ):
+        for i in range(slots):
+            n = base + i
+            path = Path(f"/tmp/.wish-x11-{n}.lock")
+            pid = _lock_holder(path)
+            out.append({
+                "pool": pool_name,
+                "display": f":{n}",
+                "path": str(path),
+                "exists": path.exists(),
+                "held": pid is not None,
+                "pid": pid,
+            })
+    return out
+
+
+# --------------------------------------------------------------------------
 # The per-instance vicerc
 # --------------------------------------------------------------------------
 
@@ -626,11 +728,25 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("status", help="every slot, and which row of the table it is on")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--displays", action="store_true",
+                   help="every display in all three bands, and who -- if anyone -- "
+                        "holds its lock; read-only, takes no lock itself")
 
     p = sub.add_parser("reap", help="free a slot that is nobody's")
     p.add_argument("slot", nargs="?", type=int)
 
     args = ap.parse_args(argv)
+
+    if args.cmd == "status" and args.displays:
+        rows = display_rows()
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        else:
+            print(f"{'display':>8} {'pool':<8} {'state':<7} pid")
+            for r in rows:
+                state = "held" if r["held"] else ("free" if r["exists"] else "no file")
+                print(f"{r['display']:>8} {r['pool']:<8} {state:<7} {r['pid'] or '-'}")
+        return 0
 
     if args.cmd == "status":
         rows = status()

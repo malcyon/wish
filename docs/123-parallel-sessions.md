@@ -203,13 +203,38 @@ template.
 | 0 | 6520 | 6540 | 6560 | `:10` | `work/inst/0/` |
 | 1 | 6521 | 6541 | 6561 | `:11` | `work/inst/1/` |
 | … | … | … | … | … | … |
-| 7 | 6527 | 6547 | 6567 | `:17` | `work/inst/7/` |
+| 15 | 6535 | 6555 | 6575 | `:25` | `work/inst/15/` |
 
 **6502 and 6510 stay exactly what they are today and the pool never allocates
 them.** That is the point of moving the pool off the legacy numbers: after this
 change, *anything on 6502 is a human's game*, launched by
 `~/.local/bin/pool-of-radiance` from the desktop menu. It restores the property
 that made the old `ss -tnp | grep 6502` rule work, instead of destroying it.
+
+**Sixteen slots, not eight** — widened by `#233 (The test suite takes the
+emulator displays agents need, and eight slots is no longer enough)`, once
+eight agents plus their own `pytest` runs stopped fitting in eight real
+displays. The port arithmetic stays comfortable at sixteen: `BIN_BASE`,
+`TEXT_BASE` and `CMD_BASE` land at 6520-6535, 6540-6555 and 6560-6575, none
+touching the next. Twenty would leave the binary monitor's top port one below
+`TEXT_BASE`, with no margin; twenty-four overlaps it outright.
+
+**The three display bands had to move, and here is the spacing chosen and
+why.** :10-:25, the old :30-:37 and the old :40-:47 no longer had room
+between them at sixteen wide — VICE stayed at `:10` (now `:10`-`:25`),
+`tools/dosbox.py` moved from `:30` to `:50` (`:50`-`:65`), and
+`tools/dosboxx.py` moved from `:40` to `:90` (`:90`-`:105`). Each base is 40
+past the last, which is double the sixteen-wide band it follows: every band
+therefore has 24 numbers of headroom before the next one starts, meaning
+**each pool can grow to 24 slots — fifty percent past where this issue widened
+it — with no further re-space.** That is deliberately more room than the
+sixteen this issue asks for: the whole reason a band needed re-spacing at all
+is that eight-to-sixteen was not foreseen when the original :10/:30/:40
+layout was chosen, and a margin sized to exactly today's number would put the
+next re-space one growth spurt away rather than several. Round bases (`:10`,
+`:50`, `:90`) cost nothing and read at a glance; the alternative — packing
+each band flush against the next with no headroom — was rejected because it
+reproduces this exact issue the moment any one pool needs to grow again.
 
 ### 3.2 Claiming and releasing
 
@@ -282,6 +307,35 @@ decide whether to kill. `--die-with-parent` means a crashed holder's VICE dies
 with it and the port falls silent, while the `Xvfb` it started survives — so the
 `clean` row has to kill the recorded pgid too, or nothing ever collects the X
 server. A free flock is the only permission needed, and it is the only one used.
+
+**`/tmp/.wish-x11-<n>.lock` files pile up, and that is intentional — nothing
+ever unlinks one.** `claim()` opens each with `O_CREAT` and locks it; a
+released slot leaves the file behind, unlocked, because the file itself was
+never the resource that mattered — the lock was, and the kernel already
+drops that when the holding process exits, however it exits. `#233 (The test
+suite takes the emulator displays agents need, and eight slots is no longer
+enough)` part 3 found twenty-seven of these files on Donald's machine with
+exactly **one** display genuinely in use, which reads at a glance like an
+exhausted pool and is not one.
+
+**There is deliberately no sweeper**, and the reason is the same one that
+rules out a stale-lock policy for the lease itself, sharpened: **the lock
+lives on the file's inode, not its path.** Unlinking a lock file a process
+still holds does not release anything — it leaves that process holding a
+lock on an inode with no name any more, while the very next `claim()` opens
+a *fresh* file at the same path and locks *that* one instead. Two processes
+would then each believe, correctly, that they hold the display's lock —
+because they do, on two different files that happen to share a path history.
+A cleaner script would recreate exactly the bug the flock design exists to
+prevent.
+
+**So the answer is a read, not a cleanup: `tools/instance.py status
+--displays`.** For every number in all three bands it says whether the file
+exists, and if it does, whether `/proc/locks` names a pid still holding it —
+found by matching the file's device and inode in that table, never by
+attempting the lock, because attempting it is not a read. A file that exists
+but names no pid is exactly the leftover this note describes: harmless,
+and left alone on purpose.
 
 ### 3.5 The code change
 

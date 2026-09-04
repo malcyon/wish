@@ -38,7 +38,18 @@ def ports(monkeypatch):
 
 @pytest.fixture
 def pool(tmp_path, monkeypatch, ports):
+    """An isolated lease directory *and* an off-band `DISPLAY_BASE`.
+
+    Without this, `test_refuses_when_no_slot_is_available` claims every one
+    of the real `:10`-`:25` VICE displays to prove the pool can be
+    exhausted -- and every agent runs this suite before reporting
+    (`#233 (The test suite takes the emulator displays agents need, and
+    eight slots is no longer enough)`). 1030 is this file's own band,
+    past `tests/test_instance.py`'s 900-945 and the other two harnesses'
+    950-1011.
+    """
     monkeypatch.setenv("POR_INST", str(tmp_path / "inst"))
+    monkeypatch.setattr(instance, "DISPLAY_BASE", 1030)
     return tmp_path
 
 
