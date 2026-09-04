@@ -32,7 +32,8 @@ def screen_codes(text: str) -> bytes:
 
 def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
             memory_xy: tuple[int, int, int] = (9, 9, 3),
-            memory_clock: tuple[int, int, int] = (3, 2, 9)) -> MemoryTarget:
+            memory_clock: tuple[int, int, int] = (3, 2, 9),
+            indoors: bool = True) -> MemoryTarget:
     """A C64 with the game's status line on screen at $CC00.
 
     `memory_xy` is the three bytes at $C04B, which is where the *engine* keeps
@@ -40,7 +41,13 @@ def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
     is only refreshed when `$1A3C` flushes it, so it lags a move (#29).
 
     `memory_clock` is the three bytes at $49C7: units of a minute, tens, then
-    the hour -- so (3, 2, 9) is 09:23."""
+    the hour -- so (3, 2, 9) is 09:23.
+
+    `indoors` is `$49E6`, which `party_fix` reads before choosing between
+    `memory_xy` and the travel grid's own pair -- default True, because every
+    existing caller here means a party in a `GEO` area, not on the grid
+    (`#205 (A party that walks out onto the travel grid leaves the
+    automapper's marker behind)`)."""
     row = screen_codes(status.ljust(40))
     return MemoryTarget({
         0xD011: bytes([0x3B if bitmap else 0x1B]),
@@ -49,6 +56,7 @@ def machine(status: str = "E 16:48  5,2", *, bitmap: bool = False,
         0xCC00 + 14 * 40: row,
         0xC04B: bytes(memory_xy),
         0x49C7: bytes(memory_clock),
+        0x49E6: bytes([1 if indoors else 0]),
     })
 
 
@@ -94,6 +102,91 @@ def test_a_target_with_no_fix_method_is_read_the_neutral_way():
 def test_a_target_that_answers_for_itself_is_believed():
     from automap.target import ReplayTarget
     assert read_fix(ReplayTarget([Fix(2, 2, 0, "status")])).square == (2, 2)
+
+
+# --- the travel grid: #205 -------------------------------------------------
+# A party that walks out onto the travel grid leaves the automapper's marker
+# behind. `party_fix` had no third answer for the travel grid at all, and the
+# loose `RE_STATUS` took the final `S` of `OUTDOORS` for a facing -- for a
+# party north of row 16 that produced a *plausible indoor* fix, which is worse
+# than none: the marker jumped there, facing south, and fed the explored set
+# and the fingerprint.
+
+from goldbox import games  # noqa: E402
+
+
+def test_the_outdoor_word_no_longer_reads_as_a_south_facing_indoors():
+    """Finding A on #205: the tightened `RE_STATUS` no longer matches `OUTDOORS`
+    at all, north of row 16 or not -- without the fix this returned
+    `Fix(7, 9, 2, "status")`, an indoor fix on a square the party never stood
+    on."""
+    fix = party_fix(machine("OUTDOORS 21:16 7,9", memory_xy=(99, 3, 0)).read)
+    assert fix != Fix(7, 9, 2, "status", 21 * 60 + 16)
+
+
+def test_the_travel_grids_status_line_is_an_outdoor_fix():
+    for status, minutes in (("OUTDOORS 21:16 7,29", 21 * 60 + 16),
+                            ("OUTDOORS 22:02 7,28", 22 * 60 + 2)):
+        x, y = (int(n) for n in status.split()[-1].split(","))
+        fix = party_fix(machine(status, memory_xy=(99, 3, 0)).read)
+        assert fix == Fix(x, y, None, "status", minutes, outdoors=True)
+
+
+def test_reading_an_outdoor_fix_costs_four_round_trips_too():
+    """Beside `test_reading_a_fix_costs_four_round_trips`: the outdoor status
+    pattern is matched against the same row already read for the indoor one,
+    so it costs no extra resume."""
+    m = machine("OUTDOORS 21:16 7,29", memory_xy=(99, 3, 0))
+    party_fix(m.read)
+    assert len(m.reads) == 4
+
+
+def test_a_travel_grid_square_outside_the_window_is_refused():
+    """A guard on the outdoor pattern's own bounds -- 18 x 36, not the
+    walkable band. Passes today for the wrong reason (the old regex refused
+    every `y >= 16`, indoors or out); the window bound is what should refuse
+    it once the indoor guard no longer applies to `OUTDOORS` at all."""
+    assert party_fix(machine("OUTDOORS 21:16 18,40",
+                             memory_xy=(99, 3, 0)).read) is None
+
+
+def test_the_memory_fallback_reads_the_indoors_flag_before_choosing_the_pair():
+    """#205's finding 3: with `$49E6` zero, `$49C3`/`$49C4` is the travel
+    square and `$C04B` is not consulted at all -- and with it non-zero,
+    `$C04B` is read exactly as before."""
+    m = machine("PRESS ANY KEY", memory_xy=(0x4C, 0x2F, 0xC5), indoors=False)
+    m.memory[0x49C3] = bytes([7, 29])
+    assert party_fix(m.read) == Fix(7, 29, None, "memory", None, outdoors=True)
+
+    m.memory[0x49E6] = b"\x01"
+    assert party_fix(m.read) is None    # $C04B's (0x4C, 0x2F, 0xC5) is not
+                                        # a plausible indoor square either
+
+
+def test_the_memory_fallback_is_off_for_a_title_with_no_travel_grid():
+    """Pins `travel_grid=False`: Curse of the Azure Bonds has no square-engine
+    overland at all (`docs/121-silver-blades.md`), so `$49E6` is never read
+    and the plain indoor fallback is what answers -- None here, because
+    `$C04B`'s bytes are not a plausible indoor square for it either."""
+    m = machine("PRESS ANY KEY", memory_xy=(0x4C, 0x2F, 0xC5), indoors=False)
+    m.memory[0x49C3] = bytes([7, 29])
+    assert games.CURSE_OF_THE_AZURE_BONDS.indoors_flag_base is None
+    assert party_fix(m.read, games.CURSE_OF_THE_AZURE_BONDS) is None
+
+
+@pytest.mark.parametrize("text", ["OUTDOORS", "NORTHWEST", "GATEHOUSE"])
+def test_neither_status_reader_takes_a_word_ending_in_a_facing_letter(text):
+    """`automap.target.RE_STATUS` and `tools/session.py`'s must agree on what
+    is not a facing, or one of the two readers can drift back into the #189
+    fault alone. Each word here ends in a real facing letter (S, W, E)."""
+    from conftest import load_tools_module
+
+    from automap.target import RE_STATUS
+    session = load_tools_module("session")
+
+    line = f"{text} 12:00 1,1"
+    assert RE_STATUS.search(line) is None
+    assert session.RE_STATUS.search(line) is None
 
 
 # --- the registry -----------------------------------------------------------

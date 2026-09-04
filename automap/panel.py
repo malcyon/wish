@@ -45,6 +45,8 @@ from PyQt6.QtWidgets import (
 from goldbox.levelup import best_next_class
 from ui.iconpaint import draw_icon, icon_pixmap
 
+from .state import OUTDOORS_WHERE
+
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and the level swallows them when it is off -- without
 #: `automap` importing `wish`.
@@ -920,10 +922,19 @@ class BottomStrip(QObject):
         """
         # `source` is empty until the first fix lands. Before that (0,0) facing
         # north is not where the party is; it is the dataclass's defaults.
+        #
+        # Outdoors there is no facing at all -- the game prints none on the
+        # travel grid -- so the word comes first and the game's own pair
+        # follows it, `OUTDOORS_WHERE` from `automap/state.py`
+        # (`#205 (A party that walks out onto the travel grid leaves the
+        # automapper's marker behind)`, Donald's wording).
         if self.where is not None:
-            self.where.setText(
-                f"({state.x},{state.y}) facing {state.facing_letter}"
-                if state.source else "square --")
+            if state.outdoors:
+                self.where.setText(f"{OUTDOORS_WHERE} ({state.x},{state.y})")
+            else:
+                self.where.setText(
+                    f"({state.x},{state.y}) facing {state.facing_letter}"
+                    if state.source else "square --")
         if self.area is not None:
             self.area.setText(state.area_label)
         self.show_effects(snap)

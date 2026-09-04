@@ -165,6 +165,18 @@ answers unknown 2 on its own.
    a travel map; `$4A9E` says grid or cave; `$4BC4 & $7F` says which
    `SQRDATA`. Add it to `goldbox/savegame.py` beside `.area`, and to the automapper
    as a third mode alongside area and combat.
+
+   **The live half is done**, in `#205 (A party that walks out onto the travel
+   grid leaves the automapper's marker behind)`: `automap/target.py`'s
+   `party_fix` answers a third kind of fix from `$49E6`/`$49C3`, and
+   `AutomapState.outdoors` is the mapper's own third mode. It carries no
+   `SQRDATA` number and no world coordinate -- only the window-local square
+   the game's own status line prints -- so it is *detecting* the state and
+   not yet *drawing* it. **The save-side half stays open**: `goldbox/savegame.py`
+   has no `.area`-style reader for `$4BC4`/`$4A9E` yet, which is why a window
+   opened while an outdoor party sits in camp keeps saying `identifying...` --
+   nothing proves a game is even running until the party leaves camp and the
+   status line, or a resident `GEO`, answers again.
 5. **Take W1 and the two live captures.** Stop here until they exist. Steps 6
    onward are drawing, and drawing the wrong map is worse than drawing none.
 6. **The canvas.** A third page in the automapper's `QStackedWidget`, since

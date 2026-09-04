@@ -326,45 +326,57 @@ Three facts from the same session, so nobody pays for them twice:
   What made VICE go quiet for five seconds in the first place is still
   **UNKNOWN**.
 
-## The travel grid: no fix at all, and a stale marker
+## The travel grid: a third answer, not a missing one
 
-**CONFIRMED in the running game, 2026-09-03, both ways in** -- `tools/mapmarker.py`
-on pool slot 2, photographing the real map tab after every step. `party_fix`
-produces **nothing** while the party is on the overland travel grid, so
-`Automapper.poll` returns before anything is recorded and `AutomapState` keeps
-its last square, facing and `Geo`.
+**CONFIRMED in the running game, 2026-09-03** -- `tools/mapmarker.py` on pool
+slot 2, photographing the real map tab after every step -- **found** `party_fix`
+producing **nothing** while the party was on the overland travel grid, so
+`Automapper.poll` returned before anything was recorded and `AutomapState` kept
+its last square, facing and `Geo`. `#205 (A party that walks out onto the
+travel grid leaves the automapper's marker behind)` fixed it; this section
+used to describe that broken state and now describes what replaced it.
 
-| what the game shows | what the map shows |
+| what the game shows | what the map showed, before the fix |
 |---|---|
 | `OUTDOORS 21:16 7,29` one step after leaving the Slums | `(14,4) facing W`, `The Slums`, marker on the square the party left |
 | `OUTDOORS 22:02 7,28` on a save that starts outdoors | an empty grid, `square --`, `identifying...` |
 
-Neither source survives out there:
+Neither source survived out there:
 
-* the **status line** is refused by `_plausible`, which caps y at `GRID` = 16 --
-  a dungeon's size -- while wilderness y runs to 28 and 29;
-* the **fallback**, `Game.live_position` = `$C04B`, reads `4C 2F C5` outdoors,
+* the **status line** was refused by `_plausible`, which caps y at `GRID` = 16 --
+  a dungeon's size -- while wilderness y runs to 28 and 29. North of row 16 it
+  was worse than refused: the loose `RE_STATUS` took the final `S` of
+  `OUTDOORS` for a facing, so a party there read as a *plausible indoor* fix on
+  a square it had never stood on -- the same fault `#189 (The emulator driver
+  cannot move a party on the travel grid, and reads its facing out of the word
+  OUTDOORS)` fixed in `tools/session.py` and not here, until `#205`;
+* the **fallback**, `Game.live_position` = `$C04B`, read `4C 2F C5` outdoors,
   unchanged over four steps: `DUNGEON` is not the resident overlay there, so
   those are somebody else's code bytes and not a triple. Indoors the same three
   read `0F 04 03` then `0E 04 03`, matching the status line, while `$49C0`
   lagged a move at `0F 04 03`.
 
-`RE_STATUS` also still takes the final `S` of `OUTDOORS` for a facing -- the
-`#189 (The emulator driver cannot move a party on the travel grid, and reads
-its facing out of the word OUTDOORS)` fault, fixed in `tools/session.py` and
-not here -- but that is not what
-decides the outcome: the fix is discarded on y before the facing is used.
+**What `#205` added.** `automap/target.py`'s `party_fix` now tries a second
+status pattern, `OUTDOORS +(\d+):(\d+) +(\d+),(\d+)`, plausible over the travel
+grid's own 18x36 window rather than the dungeon's 16x16 -- and `RE_STATUS`
+itself gained the lookarounds `tools/session.py` already had, so `OUTDOORS`
+can no longer be read as a south-facing indoor line at all. The memory
+fallback gained a third answer too, gated on `$49E6` (`goldbox/games.py`'s
+`Game.travel_grid`, **True for Pool of Radiance only** -- Curse and Silver
+Blades ship no `SQRDATA`/`SQRPACI`/`WALLS` on any side, `docs/121-silver-blades.md`):
+zero means the grid, and `$49C3`/`$49C4` is the window-local square; non-zero
+falls through to the ordinary `$C04B` read exactly as before. `automap/state.py`'s
+`AutomapState.outdoors` carries the flag to the tab: nothing is added to the
+explored set or the fingerprint while it is set, and `Automapper.poll` runs
+the resident check unconditionally on the first indoor fix after it, since
+`_started` being False leaves no jump for the ordinary crossing guard to
+notice.
 
-And because `poll` returns on `fix is None` **before** `_ticks` is incremented,
-`_check_resident` never runs outdoors: `$0400` is not re-read, the area is never
-re-identified, and `title_check` stays `UNKNOWN`. That is why a window opened on
-an outdoor party says `identifying...` for ever.
-
-Everything else on the tab is unaffected -- the roster, the clock and the Quest
-Log keep up, because `poll_live` reads its own blocks. Drawing the world itself
-is [113-world-map.md](113-world-map.md), researched and unbuilt; what a player
-sees today is `#205 (A party that walks out onto the travel grid leaves the
-automapper's marker behind)`.
+Everything else on the tab was unaffected either way -- the roster, the clock
+and the Quest Log keep up, because `poll_live` reads its own blocks. Drawing
+the world itself -- terrain, the world coordinate, which window the party is
+on -- is [113-world-map.md](113-world-map.md), researched and unbuilt, and
+stays `#11 (Draw the wilderness on the automapper)`'s.
 
 ## Still open
 

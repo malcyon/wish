@@ -139,6 +139,14 @@ NAMES_LOAD_ADDRESS_LATER = 0x9E00
 POSITION_OFFSET = 0x0C0        # x, y, facing -- the copy the game *saves*
 CLOCK_OFFSET = 0x0C7           # minute units, tens, hour
 
+# The travel grid's own two facts, both inside the save image and both
+# Pool of Radiance measurements (`docs/113-world-map.md`, `docs/118-debug-mode.md`,
+# `docs/140-loaded-files-cache.md`). `$49E6` is non-zero in a `GEO` area and
+# zero on the grid; `$49C3`/`$49C4` is the window-local square out there, x
+# then y, and it is not consulted unless the flag says to.
+INDOORS_FLAG_OFFSET = 0x0E6
+TRAVEL_POSITION_OFFSET = 0x0C3
+
 #: Where the **engine** keeps the party's square while the game runs, which is
 #: not where it writes it when the game saves. `$C04B` x, `$C04C` y, `$C04D`
 #: facing.
@@ -251,6 +259,24 @@ class Game:
     #: open rather than a gate that is missing.
     mode_flag: int | None = None
 
+    #: Does this title have a square-engine overland at all? **True for Pool
+    #: of Radiance only.** Curse of the Azure Bonds and Secret of the Silver
+    #: Blades carry no `SQRDATA`, `SQRPACI` or `WALLS` on either side of any
+    #: disk (`docs/121-silver-blades.md`, "No city-block/wilderness
+    #: structure"), so `$49E6` and `$49C3` there would be read as this
+    #: title's meaning of bytes that belong to something else -- a plausible
+    #: wrong square, which `party_fix` refuses to answer rather than guess
+    #: at. See `indoors_flag_base` and `travel_position_base`.
+    #:
+    #: The status line's own `OUTDOORS` pattern is a different question and
+    #: is not gated by this: `#205 (A party that walks out onto the travel
+    #: grid leaves the automapper's marker behind)` found the literal string
+    #: in both titles' `DUNGEON` overlay (`tools/outdoorsgrep.py`), sitting
+    #: among other short message fragments (`EXIT`, `SEARCH`, `" IS "`)
+    #: rather than proven to be a status-line reading -- open, and needs a
+    #: driven session, not this table.
+    travel_grid: bool = False
+
     # -- derived ----------------------------------------------------------
     @property
     def race_names(self) -> dict[int, str] | None:
@@ -305,6 +331,24 @@ class Game:
         return self.save_load_address + CLOCK_OFFSET
 
     @property
+    def indoors_flag_base(self) -> int | None:
+        """`$49E6`: zero on the travel grid, non-zero in a `GEO` area.
+
+        None unless `travel_grid`, the same refusal `live_position` makes for
+        the same reason: reading this on a title with no travel grid would
+        answer a byte of unrelated resident code as though it meant something.
+        """
+        return self.save_load_address + INDOORS_FLAG_OFFSET if self.travel_grid else None
+
+    @property
+    def travel_position_base(self) -> int | None:
+        """`$49C3`/`$49C4`: the window-local travel-grid square, x then y.
+
+        None unless `travel_grid`, for the same reason as `indoors_flag_base`.
+        """
+        return self.save_load_address + TRAVEL_POSITION_OFFSET if self.travel_grid else None
+
+    @property
     def roster_base(self) -> int:
         """The roster's live address, wherever it lives."""
         if self.roster_file is None:
@@ -338,6 +382,7 @@ POOL_OF_RADIANCE = Game(
     item_names_load_address=NAMES_LOAD_ADDRESS_POOL,
     live_position=LIVE_POSITION_GOLDBOX,
     mode_flag=MODE_FLAG_POOL,
+    travel_grid=True,
 )
 
 CURSE_OF_THE_AZURE_BONDS = Game(

@@ -109,6 +109,15 @@ HP_INK = {"hp-dim": FADED, "hp-ink": INK}
 NO_MAPS = ("No game disks found, so there are no maps. "
            "File > Preferences… to say where they are.")
 
+#: Said in the status line while the party is on the travel grid, where none
+#: of the loaded maps reach -- `#205 (A party that walks out onto the travel
+#: grid leaves the automapper's marker behind)`. Donald's ruling, 2026-09-04:
+#: the grid itself carries nothing, so this and `OUTDOORS_WHERE`/
+#: `OUTDOORS_AREA` in `automap/state.py` are the whole of what tells a player
+#: the map cannot follow them. The `[status]`/`[memory]` source suffix is
+#: added the same way the ordinary status line adds it.
+OUTDOORS_STATUS = "Outdoors, no map"
+
 #: Said in the Messages panel when the map the machine is drawing is a Gold Box
 #: map and none of the configured title's -- so the disks the window is set up
 #: for are not the game that is running. Donald's wording, exactly.
@@ -256,6 +265,11 @@ class MapCanvas(QWidget):
         # Both ends on the same square, or it was a drag and not a click.
         if square is None or square != pressed:
             return
+        # A click on the bare lattice outdoors would open a note on a
+        # window-local travel-grid square filed under the last indoor area --
+        # a note nobody could ever find again once the party moved on.
+        if self.state.outdoors:
+            return
         at = event.globalPosition().toPoint()
         # **Let the tooltip finish dying first.** `QToolTip.hideText()` does
         # not destroy the tip window, it queues a `deleteLater` on it -- so on
@@ -292,7 +306,14 @@ class MapCanvas(QWidget):
             p.drawLine(ox, oy + at, ox + span, oy + at)
 
         st = self.state
-        if st.geo is None:
+        # Outdoors, this map has nothing to draw: no `GEO` reaches the travel
+        # grid (`#11 (Draw the wilderness on the automapper)`'s to build), so
+        # the lattice above is drawn and left bare -- no marker, no notes, no
+        # primitives. Donald's ruling, 2026-09-04: the grid carries no text
+        # either; the strip and the status line say so instead
+        # (`OUTDOORS_WHERE`/`OUTDOORS_AREA` in `automap/state.py`,
+        # `OUTDOORS_STATUS` above).
+        if st.outdoors or st.geo is None:
             return
 
         # The primitives are asked for at margin zero and the painter is moved
@@ -1034,7 +1055,10 @@ class AutomapBinding(QObject):
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
         if self._waiting:
-            
+            self.canvas.update()
+            return
+        if st.outdoors:
+            self._say(OUTDOORS_STATUS + (f"   [{st.source}]" if st.source else ""))
             self.canvas.update()
             return
         seen = len(st.exploration)
@@ -1082,6 +1106,8 @@ class AutomapBinding(QObject):
 
     def note_here(self) -> None:
         """`N`: a note on the party's own square, if we know where that is."""
+        if self.state.outdoors:
+            return   # a window-local square, on no map this tab draws
         if self.state.source or self.snapshot is not None:
             self.edit_note(self.state.x, self.state.y)
 

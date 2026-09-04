@@ -38,6 +38,15 @@ from .target import Fix, read_fix
 #: "area 21" instead of guessing.
 AREA_NAMES = areas.GEO_NAMES
 
+#: Said on the strip and the area label while the party is on the travel
+#: grid, where none of the loaded maps reach -- `#205 (A party that walks out
+#: onto the travel grid leaves the automapper's marker behind)`. The grid
+#: itself carries nothing (Donald's ruling, 2026-09-04): these two, and the
+#: window's own status line beside `NO_MAPS` in `automap/window.py`, are the
+#: whole of what tells a player the map cannot follow them.
+OUTDOORS_WHERE = "Outdoors"
+OUTDOORS_AREA = "Wilderness"
+
 #: A child of the `wish` logger, so `wish/debuglog.py`'s handler takes these
 #: when the log is on and its level swallows them when it is off. The window's
 #: own message about the wrong game deliberately names neither title, so this
@@ -205,6 +214,11 @@ class AutomapState:
     y: int = 0
     facing: int = 0
     source: str = ""
+    #: True while the party is on the travel grid, where nothing here draws.
+    #: `x`, `y` and `source` still track the fix while this is set; `facing`,
+    #: `area`, `geo`, `exploration`, `notes`, `candidates` and the fingerprint
+    #: are the last indoor ones and are left alone -- see `Automapper.poll`.
+    outdoors: bool = False
     candidates: Candidates | None = None
     reveal: bool = False
     exploration: Exploration = field(default_factory=Exploration)
@@ -226,7 +240,15 @@ class AutomapState:
         what `geo_name` rather than `area_name` buys -- `area_name`'s own
         fallback, "area 21", says no more than the stem does and looks like a
         name.
+
+        Checked **before** `not self.area`: an outdoor party with no indoor
+        area yet identified used to read `identifying...` forever, which is
+        indistinguishable from a window that has nothing on it at all -- see
+        `#205 (A party that walks out onto the travel grid leaves the
+        automapper's marker behind)`.
         """
+        if self.outdoors:
+            return OUTDOORS_AREA
         if not self.area:
             return str(self.candidates) if self.candidates else "identifying..."
         return areas.geo_name(self.area, self.title) or self.area
@@ -438,6 +460,14 @@ class Automapper:
         **And nothing at all is recorded until the game has been proved to be
         in memory** -- see `_running`, which is what the second-opinion guard
         above cannot do for itself.
+
+        **The travel grid is a third state, not a missing fix.** `fix.outdoors`
+        goes straight to `_poll_outdoors`, which tracks the square for the
+        strip and nothing else -- see its docstring and
+        `#205 (A party that walks out onto the travel grid leaves the
+        automapper's marker behind)`. Coming back indoors runs the resident
+        check unconditionally, before anything below it, because `_started`
+        being False here means there is no jump to notice the crossing by.
         """
         if self.target is None:
             self._attached = None      # reattaching is starting again
@@ -469,10 +499,25 @@ class Automapper:
                 self._check_resident()
             return False
 
+        if fix.outdoors:
+            return self._poll_outdoors(fix)
+
+        returning = self.state.outdoors
+        changed_area = False
+        if returning:
+            # Coming back in, possibly somewhere else entirely -- the boat to
+            # Sokol Keep, the kobold caves, a random cave. `_started` is
+            # already False (the last outdoor poll left it that way), so the
+            # jump guard below has nothing to notice the crossing by; without
+            # this the new area's squares would be drawn on whatever map was
+            # loaded before the party left it, for up to `RESIDENT_EVERY`
+            # ticks.
+            self.state.outdoors = False
+            changed_area = self._check_resident()
+
         moved = (fix.x, fix.y) != (self.state.x, self.state.y)
         jumped = moved and self._started and not self._adjacent(fix.x, fix.y)
-        changed_area = False
-        if (jumped or self._ticks % self.RESIDENT_EVERY == 0
+        if not changed_area and (jumped or self._ticks % self.RESIDENT_EVERY == 0
                 or self._area_may_have_changed(fix)):
             changed_area = self._check_resident()
         if jumped and not changed_area:
@@ -482,7 +527,7 @@ class Automapper:
             # confirmed twice: believe it after all
         self._pending = None
 
-        changed = moved or fix.facing != self.state.facing or changed_area
+        changed = moved or fix.facing != self.state.facing or changed_area or returning
 
         if self.fingerprint and not changed_area:
             if moved and self._adjacent(fix.x, fix.y):
@@ -503,6 +548,35 @@ class Automapper:
         self._last = fix
         self.state.exploration.visit(fix.x, fix.y, self.state.geo)
         return changed
+
+    def _poll_outdoors(self, fix: Fix) -> bool:
+        """Track the party's presence on the travel grid, and nothing else.
+
+        No `GEO` reaches out there (`#11 (Draw the wilderness on the
+        automapper)`'s to build), so nothing is recorded into the explored
+        set, no edge is drawn into the fingerprint, and the periodic
+        `_check_resident` is skipped outright: no `GEO` is resident on the
+        travel grid (`docs/140-loaded-files-cache.md`), so it could only ever
+        answer `UNKNOWN` for the cost of a read.
+
+        `state.facing`, `area`, `geo`, `exploration`, `notes`, `candidates`
+        and the fingerprint are the party's last indoor ones and are left
+        exactly as they were, so the map is ready to draw them again the
+        moment the party is back inside.
+
+        `_started`, `_last` and `_pending` are cleared on every outdoor tick,
+        which is what lets `poll`'s return-indoors branch believe the return
+        square at once: there is no "last position" out here to be adjacent
+        to, or a second opinion to wait for.
+        """
+        moved = not self.state.outdoors or (fix.x, fix.y) != (self.state.x, self.state.y)
+        self.state.outdoors = True
+        self.state.x, self.state.y = fix.x, fix.y
+        self.state.source = fix.source
+        self._started = False
+        self._last = None
+        self._pending = None
+        return moved
 
     def _new_connection(self) -> None:
         """A new target, which is a new machine until it proves otherwise.

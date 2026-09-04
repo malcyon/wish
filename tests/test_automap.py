@@ -48,6 +48,8 @@ from automap.state import data_dir as state_data_dir
 from automap.target import Fix, MemoryTarget, ReplayTarget
 from goldbox import games
 from goldbox.geo import (
+    ATTRIBUTES,
+    BARRIERS,
     EAST,
     GEO_SIZE,
     GRID,
@@ -725,10 +727,15 @@ def fresh_boot(position=(0, 0, 0)) -> MemoryTarget:
     `position` is there for the other half of it: while a game loads, that
     triple passes through values that are plausible squares and hold still for
     several polls.
+
+    `$49E6` reads non-zero: `party_fix` reads it before choosing between
+    `$C04B` and the travel grid's own pair on a title with `travel_grid` set,
+    and every caller here means a machine indoors, not on the grid.
     """
     return MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x15]),
                          0xDD00: bytes([0x17]),
-                         games.DEFAULT.live_position: bytes(position)})
+                         games.DEFAULT.live_position: bytes(position),
+                         games.DEFAULT.indoors_flag_base: bytes([1])})
 
 
 def test_a_machine_with_no_game_on_it_records_nothing(tmp_path, monkeypatch):
@@ -814,6 +821,100 @@ def test_the_sight_radius_survives_a_crossing(tmp_path, monkeypatch):
     mapper.state.exploration.sight = 1
     mapper.set_area("GEO14")
     assert mapper.state.exploration.sight == 1
+
+
+# --- the travel grid ---------------------------------------------------------
+# #205 (A party that walks out onto the travel grid leaves the automapper's
+# marker behind): the mapper had no third answer for the travel grid at all,
+# so it kept drawing wherever the party stepped off, with the marker on the
+# last indoor square.
+
+def narrow_sight_geo(salt: int = 0) -> Geo:
+    """A door on every edge of every square: wall art everywhere, so sight
+    never crosses one and `exploration.visit` reveals only the standing
+    square -- but every edge is `PASSABLE`, so no square reads as impossible
+    and `_area_may_have_changed` never fires on it by itself.
+
+    `salt` writes one otherwise-unused attribute byte, so two calls can build
+    two maps a resident-block match can actually tell apart."""
+    raw = bytearray(GEO_SIZE)
+    for i in range(GRID * GRID):
+        raw[WALLS_NORTH_EAST + i] = 0x11
+        raw[WALLS_SOUTH_WEST + i] = 0x11
+        raw[BARRIERS + i] = 0x55            # PASSABLE on all four directions
+    raw[ATTRIBUTES] = salt
+    return Geo(bytes(raw))
+
+
+def test_an_outdoor_fix_records_the_square_and_nothing_else(tmp_path, monkeypatch):
+    """Finding the third answer: an outdoor fix moves the marker's own square
+    and touches nothing a map is built from."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    geo = narrow_sight_geo()
+    fixes = [Fix(14, 4, 3, "status"), Fix(7, 29, None, "status", outdoors=True)]
+    mapper = Automapper(ReplayTarget(fixes), {"GEO14": geo}, area="GEO14")
+
+    assert mapper.poll() is True
+    assert len(mapper.state.exploration) == 1
+    assert (14, 4) in mapper.state.exploration
+
+    calls = []
+    mapper.fingerprint.saw = lambda *a, **k: calls.append(("saw", a))
+    mapper.fingerprint.moved = lambda *a, **k: calls.append(("moved", a))
+    mapper.fingerprint.refused = lambda *a, **k: calls.append(("refused", a))
+
+    assert mapper.poll() is True                # the square moved
+    assert mapper.state.outdoors
+    assert (mapper.state.x, mapper.state.y) == (7, 29)
+    assert calls == []                           # the fingerprint never heard
+    assert len(mapper.state.exploration) == 1    # still just the one square
+    assert (7, 29) not in mapper.state.exploration
+    assert mapper.state.area == "GEO14"          # the last indoor area, kept
+
+
+def test_returning_indoors_names_the_new_area_before_recording_the_fix(
+        tmp_path, monkeypatch):
+    """The other half: coming back in somewhere else -- a boat, a cave -- with
+    `_started` False there is no jump for the ordinary guard to notice, so the
+    resident check has to run unconditionally on the way back in."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    geo14, geo15 = narrow_sight_geo(1), narrow_sight_geo(2)
+    fixes = [Fix(14, 4, 3, "status"),
+             Fix(7, 29, None, "status", outdoors=True),
+             Fix(8, 14, 0, "status")]
+    target = ReplayTarget(fixes, memory={RESIDENT_GEO: geo15.to_bytes()})
+    mapper = Automapper(target, {"GEO14": geo14, "GEO15": geo15}, area="GEO14")
+    mapper.poll()                # indoors, GEO14
+    mapper.poll()                # outdoors
+
+    assert mapper.poll() is True
+    assert mapper.state.area == "GEO15"
+    assert (8, 14) in mapper.state.exploration
+
+    kept = json.loads((state_data_dir() / title_dir("Pool of Radiance")
+                       / "GEO14.json").read_text())["seen"]
+    assert "8,14" not in kept
+
+
+def test_an_outdoor_memory_fix_needs_a_standing_proof(tmp_path, monkeypatch):
+    """The cold-RAM trap: a memory-sourced outdoor fix on a fresh connection
+    proves nothing by itself -- only the game's own status line, or a proof
+    still standing from one, may be believed."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    geo = narrow_sight_geo()
+    cold = ReplayTarget([Fix(7, 29, None, "memory", outdoors=True)] * 3)
+    mapper = Automapper(cold, {"GEO14": geo}, area="GEO14")
+    for _ in range(3):
+        assert mapper.poll() is False
+    assert mapper.state.outdoors is False
+
+    proven = ReplayTarget([Fix(7, 29, None, "status", 1000, outdoors=True),
+                          Fix(7, 30, None, "memory", outdoors=True)])
+    mapper.target = proven
+    assert mapper.poll() is True                 # the status fix proves it
+    assert mapper.state.outdoors
+    assert mapper.poll() is True                 # the memory fix, now believed
+    assert (mapper.state.x, mapper.state.y) == (7, 30)
 
 
 # --- the live party ---------------------------------------------------------
@@ -1002,10 +1103,13 @@ def test_the_memory_fallback_reads_the_engines_own_triple():
     for game in (games.POOL_OF_RADIANCE, CURSE,
                  games.SECRET_OF_THE_SILVER_BLADES):
         assert game.live_position == 0xC04B
-        machine = MemoryTarget({0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
-                                0xDD00: bytes([0x00]),
-                                0xC04B: bytes([6, 11, 2]),
-                                game.clock_base: bytes([4, 2, 9])})
+        mem = {0xD011: bytes([0x1B]), 0xD018: bytes([0x30]),
+              0xDD00: bytes([0x00]),
+              0xC04B: bytes([6, 11, 2]),
+              game.clock_base: bytes([4, 2, 9])}
+        if game.indoors_flag_base is not None:
+            mem[game.indoors_flag_base] = bytes([1])   # indoors, not the grid
+        machine = MemoryTarget(mem)
         fix = party_fix(machine.read, game)
         assert (fix.x, fix.y, fix.facing, fix.source) == (6, 11, 2, "memory")
         assert fix.clock == 9 * 60 + 24

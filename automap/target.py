@@ -64,11 +64,33 @@ CLOCK_BYTES = 3
 # The game's own status line, e.g. "E 16:48  5,2" -- facing, clock, x, y. It is
 # correct the moment the screen settles, where the memory copy at $49C0 lags a
 # move. Taken from tools/session.py, which learned this the hard way.
+#
+# The lookarounds are not decoration. Without them the final `S` of the
+# travel grid's `OUTDOORS 21:16 7,9` matched as a facing letter, and for a
+# party north of row 16 the reading was *plausible* -- inside the dungeon
+# grid -- so it was believed: the marker jumped to that square facing south,
+# fed the explored set and the fingerprint (`#189`, and finding A on
+# `#205 (A party that walks out onto the travel grid leaves the automapper's
+# marker behind)`). `tools/session.py`'s `RE_STATUS` already carries them;
+# `test_the_two_status_readers_agree_on_what_is_not_a_facing` pins that the
+# two cannot drift apart again.
 STATUS_ROW = 14
-RE_STATUS = re.compile(r"([NESW]) +(\d+):(\d+) +(\d+),(\d+)")
+RE_STATUS = re.compile(r"(?<![A-Z])([NESW])(?![A-Z]) +(\d+):(\d+) +(\d+),(\d+)")
 FACING_LETTERS = {"N": 0, "E": 1, "S": 2, "W": 3}
 
+#: The travel grid's own status line, e.g. "OUTDOORS 22:02 7,28" -- the word
+#: stands where the facing letter goes and there is no facing out there at
+#: all. Title-independent by construction, like `RE_STATUS`: it fires only if
+#: a title's status line actually prints the word, which for a title with no
+#: travel grid is harmless (`docs/121-silver-blades.md`; the disk-level check
+#: this ticket's plan asked for is on `#205`'s own thread).
+RE_OUTDOOR_STATUS = re.compile(r"OUTDOORS +(\d+):(\d+) +(\d+),(\d+)")
+
 GRID = 16
+#: The travel grid's own bounds, window-local -- not the walkable band, which
+#: is smaller: `docs/90-specimens.md` records the party standing at (17,2).
+#: `docs/113-world-map.md` has the geometry.
+WINDOW_W, WINDOW_H = 18, 36
 
 
 class Target(Protocol):
@@ -92,13 +114,19 @@ class Fix:
     not be read. It costs nothing -- the status line already carries it and the
     memory fallback reads it in the same ten bytes -- and it is what lets a
     *refused* step be spotted: see `Automapper.poll`.
+
+    `outdoors` is True on the travel grid, where `facing` is None -- the game
+    prints no facing out there, the same shape `tools/session.py`'s `Status`
+    already has. At the end of the field list so every positional
+    `Fix(x, y, f, "status")` already in this project still constructs.
     """
 
     x: int
     y: int
-    facing: int
+    facing: int | None
     source: str
     clock: int | None = None
+    outdoors: bool = False
 
     @property
     def square(self) -> tuple[int, int]:
@@ -109,13 +137,19 @@ def _plausible(x: int, y: int, facing: int) -> bool:
     return 0 <= x < GRID and 0 <= y < GRID and 0 <= facing < 4
 
 
+def _plausible_outdoors(x: int, y: int) -> bool:
+    """The travel grid's own window, not the walkable band -- see `WINDOW_W`."""
+    return 0 <= x < WINDOW_W and 0 <= y < WINDOW_H
+
+
 def party_fix(read, game: games.Game | None = None) -> Fix | None:
     """Where the party is, read through any backend's `read(addr, length)`.
 
-    Tries the game's own status line first and falls back to the engine's live
-    position triple. Returns None on a bitmap screen (title, credits), in camp,
-    in a menu, or before a save is loaded -- all ordinary states, not errors.
-    The caller holds its last good fix rather than drawing garbage.
+    Tries the game's own status line first -- indoors, then the travel grid's
+    own shape -- and falls back to the engine's live position triple. Returns
+    None on a bitmap screen (title, credits), in camp, in a menu, or before a
+    save is loaded -- all ordinary states, not errors. The caller holds its
+    last good fix rather than drawing garbage.
 
     **The status line is title-independent and the fallback is not.** Every
     title draws `E 16:48  5,2` on the same row 14 of the same screen, so the
@@ -129,6 +163,17 @@ def party_fix(read, game: games.Game | None = None) -> Fix | None:
     answering -- `test_curselive.py::test_the_memory_fallback_would_misread_a_
     curse_machine` is what that looks like.
 
+    **The travel grid's memory fallback is the same rule, one gate earlier.**
+    `game.indoors_flag_base` is None on any title `#205 (A party that walks
+    out onto the travel grid leaves the automapper's marker behind)`'s plan
+    did not measure a square-engine overland for, so those titles fall
+    straight through to the ordinary indoor read below and answer exactly as
+    they did before this existed. Where it is set, it is read *first*,
+    because `$C04B` and `$49C3` are two different facts about two different
+    worlds and a plausible reading of the wrong one is worse than none --
+    `Session.square_and_world()` in `tools/session.py` is the same shape, for
+    the same reason.
+
     Nothing here is VICE-specific, which is the point: reading the status line
     is four reads of ordinary memory, so a second backend gets it for free and
     a test gets it against a dictionary of bytes.
@@ -138,13 +183,29 @@ def party_fix(read, game: games.Game | None = None) -> Fix | None:
         return None
     base = screen_address(read)
     row = read(base + STATUS_ROW * SCREEN_COLS, SCREEN_COLS)
-    m = RE_STATUS.search(codes_to_text(row))
+    text = codes_to_text(row)
+    m = RE_STATUS.search(text)
     if m:
         facing = FACING_LETTERS[m.group(1)]
         x, y = int(m.group(4)), int(m.group(5))
         if _plausible(x, y, facing):
             clock = int(m.group(2)) * 60 + int(m.group(3))
             return Fix(x, y, facing, "status", clock)
+    m = RE_OUTDOOR_STATUS.search(text)
+    if m:
+        x, y = int(m.group(3)), int(m.group(4))
+        if _plausible_outdoors(x, y):
+            clock = int(m.group(1)) * 60 + int(m.group(2))
+            return Fix(x, y, None, "status", clock, outdoors=True)
+    if game.indoors_flag_base is not None:
+        indoors = read(game.indoors_flag_base, 1)[0] != 0
+        if not indoors:
+            x, y = read(game.travel_position_base, 2)
+            if _plausible_outdoors(x, y):
+                return Fix(x, y, None, "memory", None, outdoors=True)
+            return None
+        # Fall through to the ordinary indoor read below: `game.live_position`
+        # is the same $C04B either way.
     if game.live_position is None:
         return None
     x, y, facing = read(game.live_position, POSITION_BYTES)[:POSITION_BYTES]

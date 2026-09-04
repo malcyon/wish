@@ -88,6 +88,12 @@ drawing: a second status pattern for `OUTDOORS`, and a memory fallback that
 reads `$49C3`/`$49C4` when `$49E6` is 0. Until then the mapper is not merely
 silent outdoors, it is holding a wrong square.
 
+**Done** in `#205 (A party that walks out onto the travel grid leaves the
+automapper's marker behind)`: `automap/target.py`'s `party_fix` has both now,
+and `AutomapState.outdoors` stops (a) and (b) from ever reaching the explored
+set or the fingerprint. (c) -- naming the wilderness area itself, and drawing
+it -- is what the rest of this document is for.
+
 ## 3. The terrain, and the constraint that shapes everything
 
 Donald: *"We will need to figure out what to use for each terrain's graphic. We
