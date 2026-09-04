@@ -191,10 +191,17 @@ def test_the_pool_refuses_once_its_display_band_is_full(pool, monkeypatch):
     tonight. The lease directory has two free slots throughout (`pool`
     isolates it via `POR_INST`), so this is the display search failing, not
     the lease count.
+
+    **`SLOTS` is patched as well as `DISPLAY_BASE`, and that is the point.**
+    The band's width is `SLOTS`; `claim`'s own `slots` argument bounds how
+    many leases to try and deliberately does not narrow the band, so a caller
+    running a smaller worker pool cannot shrink the numbers this module
+    advertises.  A two-wide band here needs both.
     """
     import fcntl  # local: unimportable on Windows, and @posix skips there
 
     monkeypatch.setattr(instance, "DISPLAY_BASE", 920)
+    monkeypatch.setattr(instance, "SLOTS", 2)
     held = []
     try:
         for i in range(2):

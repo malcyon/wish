@@ -459,12 +459,16 @@ def test_a_claim_lands_inside_its_own_band(tmp_path, monkeypatch):
     whichever of the other two pools' bands happened to have room, which is
     what let this pool's `:40` collide with a real session on it (#206).
 
-    One claim, at the pool's real width, is enough to check the guarantee
-    without needing the whole band free.
+    The base is moved off the real `:40`-`:47` the way every other band test
+    here moves it: `#206 (The DOSBox-X display test fails whenever another
+    agent is using :40)` is what happens when a test claims from the live
+    band, and on a busy night this would fail for a reason that has nothing
+    to do with whether the guarantee holds.
     """
     from tools import dosbox
 
     monkeypatch.setattr(dosboxx, "INST", tmp_path / "inst")
+    monkeypatch.setattr(dosboxx, "DISPLAY_BASE", 970)
     slot = dosboxx.claim("one")
     try:
         n = int(slot.display.removeprefix(":"))

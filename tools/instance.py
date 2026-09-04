@@ -259,7 +259,12 @@ def claim(game: str = "por", note: str = "", slots: int = SLOTS) -> Slot:
             
         display_num = -1
         display_fd = -1
-        for i in range(slots):
+        # `SLOTS`, never the caller's `slots`: that argument bounds how many
+        # **leases** to try, and a caller running a smaller worker pool must
+        # not thereby narrow the band this module advertises everywhere else
+        # (#213).  The two counts are the same by default and are not the
+        # same thing.
+        for i in range(SLOTS):
             x = DISPLAY_BASE + i
             xfd = os.open(f"/tmp/.wish-x11-{x}.lock", os.O_RDWR | os.O_CREAT, 0o644)
             try:
@@ -282,7 +287,7 @@ def claim(game: str = "por", note: str = "", slots: int = SLOTS) -> Slot:
             # slot asked, so trying another slot cannot change the answer.
             os.close(fd)
             raise PoolFull(
-                f"the VICE display band :{DISPLAY_BASE}-:{DISPLAY_BASE + slots - 1} is full"
+                f"the VICE display band :{DISPLAY_BASE}-:{DISPLAY_BASE + SLOTS - 1} is full"
             )
 
         slot = Slot(n=n, dir=d, _fd=fd, _xfd=display_fd, _display_num=display_num)
