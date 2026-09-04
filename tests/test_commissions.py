@@ -29,6 +29,12 @@ from goldbox.commissions import DONE, LEDGER_BASE, PAID_VALUE  # noqa: E402
 from goldbox.savegame import SAVE0_SIZE, SaveGame0  # noqa: E402
 
 # A far-advanced save, kept out of the repository like every other game file.
+# No disk on this machine holds it, including every PORSAVE* the player has
+# today -- all of them read as completed == 0, the shipped-unplayed state, so
+# this state is not merely unlocated but genuinely unplayed by anyone yet
+# (#211). It takes a session that reaches six City Hall commissions paid and
+# the endgame quests offered, not a tool: nothing short of playing that far
+# and visiting City Hall produces it.
 ADVANCED = pathlib.Path("work/fields/npc_party.d64")
 
 
@@ -54,7 +60,10 @@ def put_ledger(flags: bytearray, index: int, value: int) -> bytearray:
 
 def advanced_save() -> bytes:
     if not ADVANCED.exists():
-        pytest.skip(f"needs {ADVANCED}, a far-advanced save")
+        pytest.skip(
+            f"needs {ADVANCED}: a save with six City Hall commissions paid "
+            "and the endgame quests offered -- only a session played that "
+            "far and saved there can produce it")
     from goldbox.d64 import load_payload
     return load_payload(str(ADVANCED), b"SAVEDGAME0")
 

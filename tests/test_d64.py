@@ -1,11 +1,41 @@
 from __future__ import annotations
 
-"""Tests for goldbox.d64 against the real Pool of Radiance disk images."""
+"""Tests for goldbox.d64 against the real Pool of Radiance disk images.
+
+This file used to read two frozen images out of `work/PORSAVE.D64` and
+`work/POOL1.D64.orig`. `work/` is gitignored scratch that has been lost
+twice, and even where the same *names* exist on the player's own disks today
+they are not the same bytes: `PORSAVE.D64` is a save disk that keeps getting
+played, so the party of three (`BRUTUS`, `SAVEDGAME1`, `SAVEDGAME0`) the old
+fixtures were captured from is long gone from it -- the live disk now carries
+eight exported characters, and even `BRUTUS`'s own record has drifted a byte
+since. That specific three-file state cannot be reconstructed from any disk
+on the machine, and committing a disk image to freeze it would be committing
+the game's data, which `AGENTS.md` forbids.
+
+What *is* still legitimate to keep are the three saved-game fixtures already
+in `tests/fixtures/` -- `testing.md` names saved games as the one exception
+that stays in the repository, because they are the player's own data and
+"several of them capture states that no disk still holds". So the specimen
+this file needs is rebuilt at test time from those fixtures with
+`D64.blank()` and `write_file()` (#118, exercised directly in
+`tests/test_d64_blank.py`), rather than read from a frozen image. Every test
+below that used to need `work/PORSAVE.D64` now needs nothing but the
+fixtures already committed, and runs on a bare checkout with no game files at
+all.
+
+`POOL1.D64.orig` has no such problem -- it is the unplayed distribution disk,
+so it never drifts -- and `tests/gamedata.py` already knows how to find one on
+whichever disks the player has; the three tests that need a whole 100-file
+directory to check now go through `gamedata.game_disk` and skip, same as the
+rest of the suite, when there is no game disk on the machine.
+"""
 
 
 from pathlib import Path
 
 import pytest
+from gamedata import game_disk
 
 from goldbox.d64 import (
     D64,
@@ -19,19 +49,7 @@ from goldbox.d64 import (
     split_load_address,
 )
 
-ROOT = Path(__file__).resolve().parent.parent
-WORK = ROOT / "work"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-PORSAVE = WORK / "PORSAVE.D64"
-POOL1 = WORK / "POOL1.D64.orig"
-# These need specimens under `work/`, which is gitignored, so a checkout
-# without them -- CI, or anyone who does not own the game -- skips rather
-# than fails. `tests/gamedata.py` is the pattern; these predate it.
-pytestmark = pytest.mark.skipif(
-    not (PORSAVE.exists() and POOL1.exists()),
-    reason="needs the disks under work/")
-
 
 BRUTUS = b"\x01BRUTUS"
 
@@ -45,7 +63,13 @@ SAVE_FILES = [
 
 @pytest.fixture(scope="module")
 def porsave_bytes() -> bytes:
-    return PORSAVE.read_bytes()
+    """A disk built from the three committed fixtures, in the same order and
+    at the same names `work/PORSAVE.D64` once carried them -- see the module
+    docstring for why it is built rather than read."""
+    disk = D64.blank()
+    for name, fixture, *_rest in SAVE_FILES:
+        disk.write_file(name, (FIXTURES / fixture).read_bytes())
+    return disk.to_bytes()
 
 
 @pytest.fixture()
@@ -55,7 +79,7 @@ def porsave(porsave_bytes: bytes) -> D64:
 
 @pytest.fixture(scope="module")
 def pool1_bytes() -> bytes:
-    return POOL1.read_bytes()
+    return game_disk("POOL1").read_bytes()
 
 
 # ---- geometry ------------------------------------------------------------
@@ -184,14 +208,18 @@ def test_fixture_sizes(porsave: D64):
 # ---- round trip ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("path", [PORSAVE, POOL1])
-def test_round_trip_bytes(path: Path):
-    data = path.read_bytes()
-    assert D64.from_bytes(data).to_bytes() == data
+def test_round_trip_bytes_porsave(porsave_bytes: bytes):
+    assert D64.from_bytes(porsave_bytes).to_bytes() == porsave_bytes
+
+
+def test_round_trip_bytes_pool1(pool1_bytes: bytes):
+    assert D64.from_bytes(pool1_bytes).to_bytes() == pool1_bytes
 
 
 def test_open_and_save_round_trip(tmp_path: Path, porsave_bytes: bytes):
-    disk = D64.open(PORSAVE)
+    src = tmp_path / "porsave.d64"
+    src.write_bytes(porsave_bytes)
+    disk = D64.open(src)
     out = tmp_path / "copy.d64"
     disk.save(out)
     assert out.read_bytes() == porsave_bytes

@@ -282,7 +282,26 @@ def _script_paths() -> dict[int, pathlib.Path]:
 def scripts() -> dict[int, pathlib.Path]:
     found = _script_paths()
     if not found:
-        pytest.skip("no ECL disassemblies under work/ecl-scripts/")
+        # `tools/eclwalk.py listing` looks like a rebuild -- it prints the
+        # same "LOADFILES 5, 5, 0" text these tests parse -- but it walks
+        # each script from its five entry points and stops wherever the walk
+        # cannot reach, not a linear sweep. Checked directly (#211): on
+        # `ECL1E` the walk reaches only 89% of the script and the missed 11%
+        # is exactly the `LOADFILES` this file's own
+        # `test_a_mapless_area_really_issues_no_loadfiles` checks for, and
+        # neither of the two dynamic areas' `[$6Exx]`-addressed `LOADFILES`
+        # is in the reached text either -- so it cannot regenerate this file
+        # honestly. A full linear ECL disassembler would; `work/analysis6/ecl6.py`
+        # was one, reaching 100% of every byte, and was lost with `work/`
+        # (#137). Rebuilding it is not this file's call to make: Donald closed
+        # that whole effort on 2026-08-31, at his own direction --
+        # `docs/115-review-the-scripts.md` -- "I don't need to see the ECL
+        # scripts. If I decide I want to see them, we can approach the issue
+        # again at that time." These five tests stay skipping until that
+        # reopens.
+        pytest.skip("no ECL disassemblies under work/ecl-scripts/; the "
+                     "decoder that produced them is gone and rebuilding it "
+                     "was deliberately shelved -- docs/115-review-the-scripts.md")
     return found
 
 
