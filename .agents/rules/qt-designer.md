@@ -1,0 +1,1 @@
+../../.claude/rules/qt-designer.md

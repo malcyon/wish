@@ -1,22 +1,22 @@
 # Working notes for Claude
 
 The rules that bind every task, wherever in the tree it lands. The rest is in
-`.claude/rules/`; `docs/160-why-these-rules.md` carries the incidents behind all
-of it. **A subagent inherits this file and does *not* inherit `.claude/rules/`**
--- so if you are one, read the files your brief names; if you are writing a
-brief, name them.
+`.claude/rules/`; `docs/160-why-these-rules.md` has the incidents behind all of
+it. **A subagent inherits this file and does *not* inherit `.claude/rules/`** --
+so if you are one, read the files your brief names; if writing a brief, name them.
 
-| Before you | Read |
+| Before you | Read (all under `.claude/rules/`) |
 |---|---|
-| Commit, push, or check CI | `.claude/rules/commits.md` |
-| File, label, prioritise or close an issue | `.claude/rules/issues.md` |
-| Write a brief for a subagent | `.claude/rules/delegating.md` |
-| End a turn, or end a session | `.claude/rules/sessions.md` |
-| Put a major feature behind a flag | `.claude/rules/feature-flags.md` |
+| Commit, push, or check CI | `commits.md` |
+| File, label, prioritise or close an issue | `issues.md` |
+| Write a brief for a subagent | `delegating.md` |
+| End a turn, or end a session | `sessions.md` |
+| Put a major feature behind a flag | `feature-flags.md` |
 
-Seven more load themselves when you read a file they cover: `testing.md`
-(`tests/`), `conversions.md` (`goldbox/`), `gui-text.md` (the GUIs),
-`qt-designer.md` (`.ui`), `documentation.md` (`docs/`), `art.md`, `emulator.md`.
+Seven more load themselves when you read a file they cover: `testing.md`,
+`conversions.md`, `gui-text.md`, `qt-designer.md`, `documentation.md`, `art.md`,
+`emulator.md`. This file is also `AGENTS.md`, and `.agents/rules/` is
+`.claude/rules/`, by symlink -- Google's tools read the one copy, so leave them.
 
 ## Name every issue you cite
 

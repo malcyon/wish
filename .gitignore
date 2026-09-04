@@ -228,7 +228,12 @@ work/
 *.d64.bak
 
 # AI files
-.agents/
+# `.agents/` is where Antigravity discovers workspace customizations. Its
+# `rules/` holds symlinks to `.claude/rules/`, so both tools read one copy of
+# the standards -- see `#209 (Give Antigravity the same rules as Claude Code,
+# without a second copy of them)`. Everything else under it is local state.
+.agents/*
+!.agents/rules/
 # The subagent definitions, the standards under `rules/`, the hooks and the
 # project settings are the project's, not one machine's; everything else under
 # `.claude/` is local state. The hooks are tracked because an untracked tool is

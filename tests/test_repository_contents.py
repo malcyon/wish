@@ -262,3 +262,66 @@ def test_every_rule_file_points_at_a_heading_that_exists(files):
     assert not bad, "\n  ".join(
         ["broken links to the incidents page:"] + bad
         + ["", f"Rename a heading in {WHY} and the rule citing it must change too."])
+
+
+#: Where each tool reads the standards from. `AGENTS.md` and everything under
+#: `.agents/rules/` are symlinks to the one copy -- see `#209 (Give Antigravity
+#: the same rules as Claude Code, without a second copy of them)`.
+SHARED_LINKS = ("AGENTS.md", ".agents/rules")
+
+
+def test_every_shared_rule_link_resolves(files):
+    """The links Antigravity reads point at files that are still there.
+
+    Claude Code reads `CLAUDE.md` and `.claude/rules/`; Antigravity reads
+    `AGENTS.md` and `.agents/rules/`. They are the same bytes because the second
+    set is symlinks, which is what keeps there being one copy. Nothing else
+    notices when a rule file is renamed and its link is left pointing at a name
+    that has gone -- Claude Code carries on working, and only the Google side
+    breaks, which is the half nobody is looking at.
+
+    **Skipped where the checkout has no symlinks.** `git` on Windows writes a
+    symlink as a plain file holding its target's path unless `core.symlinks` is
+    on, so on those runners there is nothing to resolve and nothing to check.
+    """
+    links = [
+        p for p in files
+        if (p.as_posix() in SHARED_LINKS or p.parent.as_posix() in SHARED_LINKS)
+    ]
+    assert links, "nothing tracked at " + ", ".join(SHARED_LINKS)
+
+    real = [p for p in links if (ROOT / p).is_symlink()]
+    if not real:
+        pytest.skip("this checkout has no symlinks, so there is nothing to resolve")
+
+    bad = [
+        f"{p.as_posix()} -> {(ROOT / p).readlink()}"
+        for p in real
+        if not (ROOT / p).resolve().is_file()
+    ]
+    assert not bad, (
+        "these links point at a file that is not there:\n  " + "\n  ".join(bad)
+        + "\n\nRenaming a rule file means moving the link that points at it.")
+
+
+def test_the_shared_rule_links_point_inside_this_repository(files):
+    """A link out of the tree would be one machine's, not the project's.
+
+    A symlink is committed as its target path, so one resolving to somebody's
+    home directory is a path that means something different on every machine --
+    and it would resolve on the machine it was written on, which is what makes
+    it easy to miss.
+    """
+    bad = []
+    for p in files:
+        if p.as_posix() not in SHARED_LINKS and p.parent.as_posix() not in SHARED_LINKS:
+            continue
+        if not (ROOT / p).is_symlink():
+            continue
+        target = (ROOT / p).resolve()
+        if not target.is_relative_to(ROOT):
+            bad.append(f"{p.as_posix()} -> {target}")
+    assert not bad, (
+        "these links leave the repository:\n  " + "\n  ".join(bad)
+        + "\n\nA link's target is committed verbatim, so it has to be relative "
+          "and inside the tree.")

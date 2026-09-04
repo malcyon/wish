@@ -1,0 +1,1 @@
+../../.claude/rules/gui-text.md

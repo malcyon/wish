@@ -18,6 +18,8 @@ What each directory in this repository is for.
 | `designer` | A launcher for Qt Designer, opening `wish/window.ui`, the unified layout (`docs/146-unified-ui.md`) — `editor/character.ui` is gone, absorbed into it. |
 | `.claude/agents/` | The subagent definitions -- each one a model, a tool list and a system prompt for a kind of work this project keeps handing out. |
 | `.claude/rules/` | The working standards, split out of `CLAUDE.md` under `#208 (Split CLAUDE.md into .claude/rules, so 21,800 tokens do not load before every task)`. A file carrying `paths:` frontmatter loads only when a file it names is read; one without loads at launch. Subagents do **not** inherit these, which is why the prohibitions stayed in `CLAUDE.md`. |
+| `.agents/rules/` | The same twelve files, as symlinks. Antigravity reads `AGENTS.md` and `.agents/rules/`; Claude Code reads `CLAUDE.md` and `.claude/rules/`. They are the same bytes, so there is one copy to keep true. `AGENTS.md` at the top level is a symlink to `CLAUDE.md` for the same reason. |
+| `.gemini/` | One file, `settings.json`, telling Gemini CLI to read `CLAUDE.md` as its context file -- it takes a list of filenames, so it needs no symlink at all. Nothing else; `.gemini/agents/` was deleted, having been read by neither tool. |
 | `.claude/` (the rest) | Local state -- agent memory, machine settings. Gitignored; `agents/`, `rules/`, `hooks/` and `settings.json` are the tracked exceptions. |
 | `work/` | Scratch: disk images, dumps, analysis runs. **Gitignored**, and where anything derived from the game lives so it never enters the repository. |
 | `build/` | PyInstaller's intermediate output. Gitignored. |
