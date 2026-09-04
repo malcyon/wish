@@ -441,12 +441,16 @@ Silver Blades' is 67 where the other three titles' is 63, so it cannot be
 assumed to be Curse's 66. **What settles both: one played Amiga Silver Blades
 save with something on somebody's back.**
 
-**A finding for the DOS side, not this one.** All six DOS Silver Blades
-records hold race 6, which `goldbox/dos_layout.py`'s `RACE_NUMBERS` calls
-`half-orc` -- but Guy de Valois is a paladin and MORGAINE is a magic-user, and
-AD&D allows a half-orc to be neither. PROBABLE: Silver Blades drops half-orc
-from the table, so 6 is `human` there and only there. The Amiga agrees byte
-for byte, so this is a question about the DOS table rather than about the
+**A finding for the DOS side, not this one, and it is settled.** All six DOS
+Silver Blades records hold race 6, which `goldbox/dos_layout.py`'s
+`RACE_NUMBERS` called `half-orc` -- but Guy de Valois is a paladin and
+MORGAINE is a magic-user, and AD&D allows a half-orc to be neither. **Silver
+Blades has its own race table**: `tribble`, `elf`, `half-elf`, `dwarf`,
+`gnome`, `halfling`, `human`, `monster`, so 6 is `human`. CONFIRMED, read out
+of the title's own `START.EXE` by `tools/dosraces.py` and corroborated by Gold
+Box Companion's per-title data (#237); it is `DosShape.race_numbers` now, and
+`RACE_NUMBERS` is Pool of Radiance's and Curse's only. The Amiga agrees byte
+for byte, so this was a question about the DOS table rather than about the
 port.
 
 ### 1.7 The Amiga saved game is the DOS file with its last region replaced

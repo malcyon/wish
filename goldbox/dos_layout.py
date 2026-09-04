@@ -69,6 +69,8 @@ __all__ = [
     "ITEM_FIELDS_BY_NAME",
     "CLASS_NUMBERS",
     "RACE_NUMBERS",
+    "SILVER_BLADES_RACE_NUMBERS",
+    "POOLS_OF_DARKNESS_RACE_NUMBERS",
     "SPELLBOOK_FIRST_ID",
     "SPELLBOOK_SPELLS",
     "iter_fields",
@@ -113,11 +115,77 @@ CLASS_NUMBERS = (
     "fighter/mage/thief", "mage/thief", "monster",
 )
 
-#: Race codes, again shared with the C64 -- except that the C64 table is
-#: 1-based on the same names with `monster` at 0 on both.
+#: Race codes for **Pool of Radiance and Curse only**, shared with the C64 --
+#: except that the C64 table is 1-based on the same names with `monster` at 0
+#: on both.  The two later titles renumber the races and this is not their
+#: table: read `DosShape.race_numbers`, never this, unless the title is known.
+#: It stays the module-level name so nothing that read it before #237 changed
+#: meaning, and it is the default `DosShape` field.
 RACE_NUMBERS = (
     "monster", "dwarf", "elf", "gnome", "half-elf", "halfling", "half-orc",
     "human",
+)
+
+#: Secret of the Silver Blades' race codes.  **Not a shift of the above**: the
+#: table is reordered and half-orc is gone, which is the switch to AD&D 2nd
+#: Edition, where the half-orc stopped being a player race.  Entry 0 is the
+#: game's own joke, and `tribble` is what the executable says.
+#:
+#: CONFIRMED, read two independent ways and cross-checked against the records
+#: (#237).  `tools/dosraces.py` reads it out of `START.EXE`, where the eight
+#: entries are counted strings on a stride of 9 beginning at file
+#: offset 0x00E721, bounded above by the eighteenth class name and below
+#: by the alignment table's `Lawful Good`; Gold Box Companion's
+#: `GBC/Games/03. Secret of the Silver Blades/Game.dat` carries the same list
+#: at 0x0863C4.  The same reader run against Pool of Radiance and Curse
+#: reproduces `RACE_NUMBERS` entry for entry, which is what makes it a
+#: measurement rather than a reading of a list that happened to be there.
+#:
+#: Three entries are exercised by a shipped record: 1 by ORATASI NOMOON, a
+#: fighter/magic-user/thief, which is an elf-or-half-elf class and which is
+#: race 2 = elf in Pool of Radiance -- so 0 is a slot ahead of `elf` and the
+#: table really does start at `tribble`; 3 by MALACHITE, a fighter/thief; and
+#: 6 by nine characters including the paladins DEMELTINA and Guy de Valois,
+#: which is human-only.  The other five rest on the two sources above.
+#:
+#: **The C64 side of this repository already knew.**  `goldbox/games.py`'s
+#: `RACES_SILVER_BLADES` is 1 elf, 2 half-elf, 3 dwarf, 4 gnome, 5 halfling,
+#: 6 human -- the same numbering, read out of the C64 `GEN` and confirmed on
+#: the shipped pre-generated characters -- and `goldbox/levels.py` reaches the
+#: same conclusion from a third direction, since Silver Blades' race-indexed
+#: level-limit table at `GEN $178A` has the dwarf's row at 3 and refuses to
+#: look one up at 6 or above, which is the human having no limit.  So this
+#: module and that one disagreed about the same game until #237.
+SILVER_BLADES_RACE_NUMBERS = (
+    "tribble", "elf", "half-elf", "dwarf", "gnome", "halfling", "human",
+    "monster",
+)
+
+#: Pools of Darkness' race codes: Silver Blades' table with `tribble` dropped
+#: from the front, so seven entries rather than eight.  CONFIRMED the same two
+#: ways (#237) -- `GAME.EXE` at file offset 0x00A9D4, stride 9, and Gold Box
+#: Companion's `04. Pools of Darkness/Game.dat` at 0x0863C4.
+#:
+#: Three entries are pinned by class legality alone, without either table:
+#: ORATISI NOMOON and SEV STAREKIAN read 0 and CHERROD reads 1, all three
+#: fighter/magic-user/thieves, which only an elf or a half-elf may be; ORATISI
+#: is an elf in Pool of Radiance, so 0 is `elf` and 1 is `half-elf`.  Four
+#: paladins read 5, and only a human may be a paladin.
+#:
+#: **Index 2 is confirmed in a running game**, on the other port: the Amiga
+#: Pools of Darkness table in `goldbox/amiga.py` is the same six names in the
+#: same order, and `HALF-ELF` and `DWARF` are two of the indices a probe there
+#: put on screen.  The Amiga tuple stops at `human`, having no `monster` entry
+#: to name.
+#:
+#: Treasures of the Savage Frontier's 510-byte records read through this table
+#: too, and only through this one: its fourteen shipped characters include
+#: paladins at 5 and a fighter/magic-user/thief at 1, which are a human and a
+#: half-elf here and a halfling and a dwarf under `RACE_NUMBERS`.  Its own
+#: `GAME.EXE` carries the same seven names.  Not a title this project reads,
+#: and one more thing the record size settles.
+POOLS_OF_DARKNESS_RACE_NUMBERS = (
+    "elf", "half-elf", "dwarf", "gnome", "halfling", "human", "monster",
 )
 
 
@@ -193,7 +261,12 @@ _DECLARED: Sequence[Field] = (
        "0 monster, 1 dwarf, 2 elf, 3 gnome, 4 half-elf, 5 halfling, 6 "
        "half-orc, 7 human -- the C64's table exactly. Every race/class pair "
        "in the 24 is legal AD&D: both cleric/fighter/mages are half-elves "
-       "and the fighter/mage/thief is an elf"),
+       "and the fighter/mage/thief is an elf. **That numbering is Pool of "
+       "Radiance's and Curse's, and no further** (#237): Silver Blades "
+       "reorders the table and loses the half-orc, and Pools of Darkness "
+       "drops an entry from the front of that. Look the byte up through "
+       "`DosShape.race_numbers`, which is per title, rather than through "
+       "`RACE_NUMBERS`"),
     _f(0x02F, 1, _U8, "char_class", "Class", _OK,
        "the 18-entry combined-class table, `CLASS_NUMBERS`. **It is the "
        "C64's own table**: 0 cleric, 2 fighter, 5 mage, 6 thief, 8 "
@@ -669,6 +742,12 @@ class DosShape:
     item_size: int = ITEM_SIZE
     #: Bytes in the byte-per-spell book, which is spell ids 1..n in order.
     spellbook_spells: int = SPELLBOOK_SPELLS
+    #: What the `race` byte means, indexed by it.  **Per title, and not a
+    #: shift**: Pool of Radiance and Curse share `RACE_NUMBERS`, Silver Blades
+    #: reorders it and loses the half-orc, and Pools of Darkness drops another
+    #: entry from the front (#237).  Look a race up through this, never
+    #: through the module-level default.
+    race_numbers: Sequence[str] = RACE_NUMBERS
     sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)
     inserts: "Mapping[str, int | Sequence[Field]]" = dataclasses.field(
         default_factory=dict)
@@ -762,7 +841,7 @@ CURSE_OF_THE_AZURE_BONDS = DosShape(
 SECRET_OF_THE_SILVER_BLADES = DosShape(
     key="secret-of-the-silver-blades", title="Secret of the Silver Blades",
     record_size=439, item_suffix=".STF", item_size=67, effect_suffix=".SFX",
-    spellbook_spells=117,
+    spellbook_spells=117, race_numbers=SILVER_BLADES_RACE_NUMBERS,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "gap_017": 0, "spells_memorised": 75, "spellbook": 117,
@@ -797,6 +876,7 @@ SECRET_OF_THE_SILVER_BLADES = DosShape(
 POOLS_OF_DARKNESS = DosShape(
     key="pools-of-darkness", title="Pools of Darkness", record_size=510,
     item_suffix=".THG", effect_suffix=".EFX", spellbook_spells=125,
+    race_numbers=POOLS_OF_DARKNESS_RACE_NUMBERS,
     sizes={"strength": 2, "intelligence": 2, "wisdom": 2, "dexterity": 2,
            "constitution": 2, "charisma": 2, "exceptional_strength": 2,
            "gap_017": 0, "spells_memorised": 141, "spellbook": 125,

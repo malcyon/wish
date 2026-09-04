@@ -131,7 +131,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
     through `60 - value` because that is what both ports display, and the
     money and experience are printed unrounded.
     """
-    from goldbox import dos_layout, dos_savegame
+    from goldbox import dos_savegame
     from goldbox.games import classes_to_names
 
     savgam = (folder / f"SAVGAM{slot}.DAT").read_bytes()
@@ -156,7 +156,7 @@ def sheet(folder: pathlib.Path, slot: str) -> list[str]:
             "",
             f"  {index + 1}. {v('name', '')}",
             f"     {SEXES[v('sex') & 1]} "
-            f"{dos_layout.RACE_NUMBERS[v('race')].upper()} AGE {v('age')}"
+            f"{char.shape.race_numbers[v('race')].upper()} AGE {v('age')}"
             f"  {ALIGNMENTS[v('alignment')]}"
             f"  {'/'.join(classes_to_names(v('class_bits'))).upper()}",
             f"     STR {v('strength')}"
