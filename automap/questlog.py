@@ -30,6 +30,7 @@ they are useful and harmless. See `docs/103-quest-log-panel.md`.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -44,11 +45,38 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from goldbox import areas
 from goldbox import commissions as book
 
 from .panel import CARD, LATTICE, MUTED
 
 PANEL_WIDTH = 248
+
+# ---------------------------------------------------------------------------
+# The gate for the side-quest group below the council's rows (#158). The
+# mechanism is proven -- `SideQuestState.durable_state` is a pure function of
+# `SAVEDGAME0`, and the poll that already feeds this panel already carries
+# it -- but every word the group draws is still a placeholder, listed beside
+# `side_quest_rows` below, and `.claude/rules/gui-text.md` says a player must
+# not meet one. So the group is not built at all unless the flag says to.
+#
+# **Comes off when both are true, on #158 (Track the quests the game itself
+# forgets, starting with Ohlo's potion):** Donald has approved the six
+# placeholder strings from a screenshot, and the row has been seen to appear
+# live against a running game -- a party collecting Ohlo's potion at the
+# booth, then delivering it, each within one poll. Both are the plan's step F
+# and neither is done yet.
+ENV = "WISH_EXPERIMENTAL_QUESTS"
+
+#: Anything else -- an empty string, `0`, `off` -- is off, matching
+#: `wish/debugmode.py`. A variable somebody exported once and forgot must not
+#: put an unapproved row in front of a player.
+TRUE = ("1", "true", "yes", "on")
+
+
+def enabled() -> bool:
+    """Is the side-quest group drawn in this run?"""
+    return os.environ.get(ENV, "").strip().lower() in TRUE
 
 #: The fourth state word. The other three are the decoder's own.
 OFFERED = "offered"
@@ -357,6 +385,86 @@ def commission_rows(flags) -> list[tuple]:
     return rows
 
 
+# --- side quests, #158, behind `WISH_EXPERIMENTAL_QUESTS` -------------------
+#
+# ===========================================================================
+# Every string below is a placeholder, not shipped wording. `.claude/rules/
+# gui-text.md`: propose, do not ship. None of it reaches a player unless
+# `enabled()` says so, and none of it is final until Donald has approved it
+# from a screenshot on #158 (Track the quests the game itself forgets,
+# starting with Ohlo's potion).
+#
+# | what               | where it shows      | this placeholder            |
+# |---------------------|---------------------|------------------------------|
+# | group heading        | above the rows      | SIDE_QUEST_HEADING          |
+# | in-hand state word    | right-hand column   | reuses `book.IN_PROGRESS`, already Donald's |
+# | finished state word   | right-hand column   | SIDE_QUEST_FINISHED         |
+# | sub-line               | under the name      | none -- left out, per the plan |
+# | tooltip                 | hover               | `_side_quest_tip`, composed below |
+# | name                    | left column         | `SideQuest.name`, `goldbox/commissions.py` -- "Ohlo's potion" |
+# ===========================================================================
+SIDE_QUEST_HEADING = "Side quests"
+SIDE_QUEST_IN_HAND = book.IN_PROGRESS
+SIDE_QUEST_FINISHED = "finished"
+
+#: `durable_state` -> the row's state word. Deliberately partial: Ohlo's own
+#: accept flag is not durable, so `QUEST_ACCEPTED` can never come out of
+#: `durable_state` today and no word has been proposed for it. The first
+#: quest whose accept flag *is* durable will produce one and needs a word
+#: added here before it can be shown -- the code does not otherwise change.
+SIDE_QUEST_WORDS = {
+    book.QUEST_IN_HAND: SIDE_QUEST_IN_HAND,
+    book.QUEST_FINISHED: SIDE_QUEST_FINISHED,
+}
+
+
+def _side_quest_flag(quest, word):
+    """Which `QuestFlag` explains this state, for the tooltip's meaning."""
+    if word == book.QUEST_FINISHED:
+        return quest.finish
+    if word == book.QUEST_ACCEPTED:
+        return quest.accept
+    durable_progress = [p for p in quest.progress if p.durable]
+    return durable_progress[0] if durable_progress else quest.finish
+
+
+def _side_quest_tip(state) -> str:
+    """The quest's name, the area, and what the state means -- no address."""
+    quest = state.quest
+    place = None
+    found = areas.area(quest.area)
+    if found is not None:
+        place = found.name
+    flag = _side_quest_flag(quest, state.durable_state)
+    return "\n".join([quest.name, place or f"area {quest.area}", flag.meaning])
+
+
+def side_quest_rows(flags) -> list[tuple]:
+    """One tuple per side quest the durable bytes say something about.
+
+    `(name, state word, tooltip, sub-line, draw the name muted)`, the same
+    shape `commission_rows` draws. Takes the same `Flags` object
+    `update_from` already built from `flags()` -- not the raw source, and
+    never `scratch()` -- so the byte the game itself forgets never reaches
+    this row. A quest whose `durable_state` is `QUEST_UNSEEN` gets no row:
+    Donald's decision of 2026-09-04 is that the log shows nothing between
+    accepting an errand and holding what it asked for.
+    """
+    rows = []
+    for state in book.side_quests(flags):
+        word = state.durable_state
+        if word == book.QUEST_UNSEEN:
+            continue
+        rows.append((
+            _sentence(state.quest.name),
+            SIDE_QUEST_WORDS[word],
+            _side_quest_tip(state),
+            "",
+            word == book.QUEST_FINISHED,
+        ))
+    return rows
+
+
 class QuestLogPanel(QObject):
     """The whole log: one row per commission, and the summonses under it.
 
@@ -385,10 +493,14 @@ class QuestLogPanel(QObject):
         if self.column is None and self.scroll is not None and self.scroll.widget() is not None:
             self.column = self.scroll.widget().layout()
 
-        self.groups = {
-            "commissions": Group(),
-            "summons": Group("Summoned to"),
-        }
+        self.groups = {"commissions": Group()}
+        if enabled():
+            # Not hidden, not empty, not drawn -- built at all only behind
+            # `WISH_EXPERIMENTAL_QUESTS`, the way `wish/window.py` builds the
+            # Import submenu. Between commissions and summons in the dict so
+            # it lands there in the column too.
+            self.groups["side_quests"] = Group(SIDE_QUEST_HEADING)
+        self.groups["summons"] = Group("Summoned to")
         if self.column is not None:
             for group in self.groups.values():
                 self.column.addWidget(group)
@@ -417,6 +529,8 @@ class QuestLogPanel(QObject):
         self.groups["commissions"].show_rows(
             commission_rows(flags)
             or [("The clerk has nothing on the books for this party", "", "")])
+        if "side_quests" in self.groups:
+            self.groups["side_quests"].show_rows(side_quest_rows(flags))
         self.groups["summons"].show_rows(
             [(_sentence(a.name), a.state, "")
              for a in state.outstanding])

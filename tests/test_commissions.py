@@ -491,3 +491,98 @@ def test_no_quest_log_tooltip_shows_a_memory_address():
     shown = [*questlog.GATE_NOTES.values(), *questlog.TOOLTIPS.values()]
     for text in shown:
         assert not address.search(text), f"a memory address reaches a player: {text!r}"
+
+
+# --- side quests, #158, behind WISH_EXPERIMENTAL_QUESTS ---------------------
+
+def _flags_4a81(value) -> bytearray:
+    return put(blank(), 0x4A81, value)
+
+
+def _page_4a04(value) -> bytearray:
+    """A full `$4A00` page -- scratch and flags both -- with only `$4A04` set."""
+    page = bytearray(0x100)
+    page[0x4A04 - 0x4A00] = value
+    return page
+
+
+def test_no_quest_log_tooltip_shows_a_memory_address_side_quests(monkeypatch):
+    """The same guarantee as the test above, for the side-quest rows.
+
+    `QuestFlag.where` is a script address for developers -- `goldbox/
+    commissions.py` is the authority for it -- and must never reach a tooltip.
+    """
+    import re
+
+    from automap import questlog
+    from goldbox import commissions as book
+
+    monkeypatch.setenv(questlog.ENV, "1")
+    address = re.compile(r"\$[0-9A-F]{4}\b")
+    quest = book.SIDE_QUESTS[0]
+    for value in (0, 250, 255):
+        rows = questlog.side_quest_rows(book.flags(_flags_4a81(value)))
+        for what, state, tip, note, _dim in rows:
+            for text in (what, state, tip, note):
+                assert not address.search(text), (
+                    f"a memory address reaches a player: {text!r}")
+                for flag in (quest.accept, *quest.progress, quest.finish):
+                    assert flag.where not in text
+
+
+@pytest.mark.parametrize("value, has_row, state, dim", [
+    (0, False, None, None),
+    (250, True, "in progress", False),
+    (255, True, "finished", True),
+])
+def test_a_side_quest_row_appears_once_the_potion_is_in_hand(app, monkeypatch,
+                                                              value, has_row,
+                                                              state, dim):
+    """`$4A81` alone decides the row: 0 draws nothing, 250 and 255 draw one.
+
+    Donald's decision of 2026-09-04: the log shows the errand once the potion
+    is in hand, never merely for having talked to Ohlo.
+    """
+    from automap import questlog
+
+    monkeypatch.setenv(questlog.ENV, "1")
+    panel = panel_for(app, _flags_4a81(value))
+    drawn = rows(panel, "side_quests")
+    if not has_row:
+        assert drawn == []
+        return
+    assert len(drawn) == 1
+    assert drawn[0][1] == state
+    dimmed = panel.groups["side_quests"].visible_rows()[0]
+    assert bool(dimmed.what.styleSheet()) == dim
+
+
+def test_a_side_quest_row_never_appears_from_the_accepted_flag_alone(app,
+                                                                      monkeypatch):
+    """The decision, pinned at the panel: a full `$4A00` page with `$4A04` =
+    250 and `$4A81` = 0 draws no row, even though `side_quests()` itself
+    reads `accepted` from the same bytes."""
+    from automap import questlog
+
+    monkeypatch.setenv(questlog.ENV, "1")
+    panel = panel_for(app, _page_4a04(250))
+    assert rows(panel, "side_quests") == []
+
+
+def test_the_side_quest_group_is_not_built_unless_the_flag_says_so(app,
+                                                                    monkeypatch):
+    """The gate, three ways -- `tests/test_dosimport.py` does the DOS import
+    flag the same way. Force it on and watch the other two fail first."""
+    from automap.questlog import ENV
+
+    for value in (None, "", "0", "off", "no"):
+        if value is None:
+            monkeypatch.delenv(ENV, raising=False)
+        else:
+            monkeypatch.setenv(ENV, value)
+        panel = panel_for(app, _flags_4a81(250))
+        assert "side_quests" not in panel.groups, value
+
+    monkeypatch.setenv(ENV, "1")
+    panel = panel_for(app, _flags_4a81(250))
+    assert "side_quests" in panel.groups

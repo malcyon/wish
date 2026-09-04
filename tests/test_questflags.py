@@ -224,3 +224,84 @@ def test_a_flag_block_alone_cannot_answer_whether_the_errand_was_accepted():
     state = commissions.side_quests(block)[0]
     assert state.state == commissions.QUEST_UNKNOWN
     assert state.accept_value is None
+
+
+# --- the durable-only reading, #158's 2026-09-04 decision -------------------
+
+@pytest.mark.parametrize("value, expected", [
+    (0, commissions.QUEST_UNSEEN),
+    (250, commissions.QUEST_IN_HAND),
+    (255, commissions.QUEST_FINISHED),
+])
+def test_durable_state_reads_4a81_alone_from_a_224_byte_block(value, expected):
+    """No scratch page in sight: a `Flags` alone is what the panel gets."""
+    flags = bytearray(commissions.FLAGS_SIZE)
+    flags[0x4A81 - commissions.FLAGS_BASE] = value
+    state = commissions.side_quests(commissions.flags(bytes(flags)))[0]
+    assert state.durable_state == expected
+
+
+def test_durable_state_ignores_the_accepted_flag_the_game_itself_forgets():
+    """The decision, pinned: `$4A04` = 250 reads `accepted` in `state` and
+    `not seen` in `durable_state`, because `$4A04` is scratch an area change
+    wipes and the game keeps no durable record of having merely talked to
+    Ohlo."""
+    page = bytearray(0x100)                     # the $4A00 page, then flags
+    page[0x4A04 - commissions.SCRATCH_BASE] = 250
+    state = commissions.side_quests(bytes(page))[0]
+    assert state.state == commissions.QUEST_ACCEPTED
+    assert state.durable_state == commissions.QUEST_UNSEEN
+
+
+@needs_disks
+@pytest.mark.parametrize("stem,expected", [
+    ("NEWSAVE3", commissions.QUEST_UNSEEN),
+    ("NEWSAVE4", commissions.QUEST_UNSEEN),
+    ("NEWSAVE5", commissions.QUEST_IN_HAND),
+    ("NEWSAVE6", commissions.QUEST_FINISHED),
+])
+def test_durable_state_on_real_saves_never_shows_accepted(stem, expected):
+    """`NEWSAVE3`/`NEWSAVE4` read `accepted` in `state` (`SAVE_STATES` above)
+    and `not seen` here -- the accept flag they carry is scratch."""
+    payload = _savedgame0(stem)
+    if payload is None:
+        pytest.skip(f"no {stem}.D64 with a SAVEDGAME0 here")
+    state = commissions.side_quests(payload)[0]
+    assert state.durable_state == expected
+
+
+# --- the panel, against real saves, behind WISH_EXPERIMENTAL_QUESTS ---------
+
+@needs_disks
+@pytest.mark.parametrize("stem,drawn,dim", [
+    ("NEWSAVE1", False, None),
+    ("NEWSAVE2", False, None),
+    ("NEWSAVE3", False, None),
+    ("NEWSAVE4", False, None),
+    ("NEWSAVE5", True, False),
+    ("NEWSAVE6", True, True),
+    ("POOL1", False, None),
+    ("PORSAVE", False, None),
+    ("PORSAVE13", False, None),
+])
+def test_the_side_quest_row_appears_on_the_saves_that_earn_it(stem, drawn,
+                                                               dim, monkeypatch):
+    """Every save in `SAVE_STATES`, through the actual panel this time."""
+    from PyQt6.QtWidgets import QApplication, QMainWindow
+
+    from automap.questlog import ENV, QuestLogPanel
+    from wish.ui_window import Ui_WishWindow
+
+    payload = _savedgame0(stem)
+    if payload is None:
+        pytest.skip(f"no {stem}.D64 with a SAVEDGAME0 here")
+    monkeypatch.setenv(ENV, "1")
+    QApplication.instance() or QApplication([])
+    root = QMainWindow()
+    Ui_WishWindow().setupUi(root)
+    panel = QuestLogPanel(root)
+    panel.update_from(payload)
+    rows = panel.groups["side_quests"].visible_rows()
+    assert len(rows) == (1 if drawn else 0), stem
+    if drawn:
+        assert bool(rows[0].what.styleSheet()) == dim, stem

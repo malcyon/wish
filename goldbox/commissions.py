@@ -501,6 +501,14 @@ def appointments(source) -> tuple[Appointment, ...]:
 # loads at `$9900`. The offsets quoted on #157 and #158 are not -- two of the
 # four are file offsets, one is an offset into the body after the two-byte
 # load address, and one points four bytes into the instruction it names.
+#
+# Donald's decision, 2026-09-04: the Quest Log shows the errand once the
+# player has the potion, and never shows it merely for having talked to
+# Ohlo -- because the game itself keeps no such state either. That makes the
+# row a pure function of the durable bytes: `SideQuestState.durable_state`
+# reads only `durable=True` flags, so `$4A04` -- scratch, wiped on every area
+# change -- never reaches anything a player sees. `state` and `scratch()`
+# stay as the full reading, for the debug log and the tests.
 
 #: A quest's state, as an identifier. Not interface text: what a panel says
 #: about a side quest is #158 step 4 and is Donald's to word.
@@ -592,6 +600,11 @@ class SideQuestState:
     accept_value: int | None
     finish_value: int
 
+    #: Whether a durable `progress` flag is at its value. Stored rather than
+    #: recomputed so `durable_state` needs nothing but this dataclass's own
+    #: fields -- no `Flags` kept around, no second read of the save.
+    progress_in_hand: bool = False
+
     @property
     def ambiguous(self) -> bool:
         """`QUEST_UNSEEN` here could equally mean "accepted, then left".
@@ -599,11 +612,32 @@ class SideQuestState:
         True whenever the accept flag is in the scratch page and the durable
         half says nothing. It is not a claim that the party accepted
         anything -- it is the statement that this save cannot tell the two
-        apart, which is the whole reason #158 exists. All 16 saves on the
+        apart. Donald's decision of 2026-09-04 settled what the panel does
+        about that: it shows the errand once the potion is in hand and never
+        from this scratch byte -- see `durable_state`. All 16 saves on the
         machine that never met Ohlo read exactly like a party that accepted
         the errand and walked out of the Slums.
         """
         return self.state == QUEST_UNSEEN and not self.quest.accept.durable
+
+    @property
+    def durable_state(self) -> str:
+        """The same reading with `durable=False` flags ignored.
+
+        Donald's decision, 2026-09-04: the Quest Log shows the errand once
+        the game's own durable bytes say so, and never shows `QUEST_ACCEPTED`
+        from `$4A04`, which is scratch an area change wipes. So this never
+        reads `accept_value` unless `quest.accept` is itself durable -- for
+        Ohlo it never is, and a page with `$4A04` = 250 alone reads
+        `QUEST_UNSEEN` here while `state` reads `QUEST_ACCEPTED`.
+        """
+        if self.finish_value == self.quest.finish.value:
+            return QUEST_FINISHED
+        if self.progress_in_hand:
+            return QUEST_IN_HAND
+        if self.quest.accept.durable and self.accept_value == self.quest.accept.value:
+            return QUEST_ACCEPTED
+        return QUEST_UNSEEN
 
 
 class Scratch:
@@ -662,7 +696,9 @@ def side_quests(source) -> tuple[SideQuestState, ...]:
     `scratch()` when the source carries it. A quest whose accept flag is in
     the scratch page and whose durable flag is still 0 reads as
     `QUEST_UNSEEN` from a save made outside its area **whether or not the
-    party accepted it**, which is the whole reason #158 exists.
+    party accepted it**. `SideQuestState.durable_state` is the reading
+    Donald's decision of 2026-09-04 asked for: it never looks at the scratch
+    page, so this ambiguity never reaches it.
     """
     f = flags(source)
     s = scratch(source)
@@ -674,10 +710,11 @@ def side_quests(source) -> tuple[SideQuestState, ...]:
             accept_value = f[quest.accept.address]
         elif s is not None:
             accept_value = s[quest.accept.address]
+        progress_in_hand = any(f[p.address] == p.value for p in quest.progress
+                               if p.durable)
         if finish_value == quest.finish.value:
             state = QUEST_FINISHED
-        elif any(f[p.address] == p.value for p in quest.progress
-                 if p.durable):
+        elif progress_in_hand:
             state = QUEST_IN_HAND
         elif accept_value is None:
             state = QUEST_UNKNOWN
@@ -687,7 +724,8 @@ def side_quests(source) -> tuple[SideQuestState, ...]:
             state = QUEST_UNSEEN
         out.append(SideQuestState(quest=quest, state=state,
                                   accept_value=accept_value,
-                                  finish_value=finish_value))
+                                  finish_value=finish_value,
+                                  progress_in_hand=progress_in_hand))
     return tuple(out)
 
 

@@ -163,8 +163,16 @@ script that wrote it is still resident.
 "accepted and left".** `side_quests()` reports that as `ambiguous` rather than
 guessing: a party that took the errand and walked out of the Slums leaves a
 save that is byte for byte the same, in these two flags, as one that never
-spoke to him. That is what `#158 (Track the quests the game itself forgets,
-starting with Ohlo's potion)` exists to work round.
+spoke to him.
+
+**Donald's decision, 2026-09-04, settles what the panel does with that:** the
+Quest Log shows the errand once the potion is in hand, never for having
+merely talked to Ohlo, so all sixteen read *not done* — which is the right
+answer under that decision rather than a gap. `SideQuestState.durable_state`
+is that reading: it ignores `$4A04` altogether and is a pure function of the
+durable half of `SAVEDGAME0`, `$4A81` alone for this quest. `state` and
+`ambiguous` are unchanged and stay useful for the debug log and the tests;
+`durable_state` is what `automap/questlog.py`'s `side_quest_rows()` draws.
 
 ## Appointments
 

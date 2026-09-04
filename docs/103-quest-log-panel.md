@@ -153,20 +153,41 @@ handled row by row above.
 
 ## What the panel is not, and the first quest that showed it
 
-Every row is a City Hall ledger entry: `_table()` joins the sixteen board
-candidates to the entries they settle and adds the six with no candidate, so
-`COMMISSIONS` has one member per index in `0..25` and there is no other kind of
-row. The interface calls the panel the Quest Log, and an area script's own side
-quest is a quest the panel cannot draw.
+Every commission row is a City Hall ledger entry: `_table()` joins the sixteen
+board candidates to the entries they settle and adds the six with no
+candidate, so `COMMISSIONS` has one member per index in `0..25` and there is
+no other kind of row in that group. The interface calls the panel the Quest
+Log, and an area script's own side quest — one the City Council never hears
+about — used to be a quest the panel could not draw at all.
 
 Ohlo's potion errand in the Slums is the first one found (#157): accepted from
 a man in the Slums, fetched from a booth in the old rope guild, and tracked in
 `$4A04` and `$4A81` rather than in any ledger byte
-([`134-commissions.md`](134-commissions.md)). Half of that state is in the
-scratch page below `$4A20`, which `goldbox.commissions.flags()` slices away and
-which the engine zeroes on every area change — so a side-quest row would need
-the decoder to keep `$4A00`-`$4A1F` as a separate block, and would need a rule
-for a state that is only true while the party stands in the area.
+([`134-commissions.md`](134-commissions.md)). `$4A04` is scratch, in the page
+below `$4A20` that the engine zeroes on every area change, so it is not durable
+and the panel never reads it.
+
+**Donald's decision, 2026-09-04: the Quest Log shows the errand once the
+player has the potion, and never shows it merely for having talked to Ohlo.**
+His framing is why: the game itself keeps no "accepted" state either, because
+it does not need one — Ohlo's own script branches on whether the party is
+carrying the potion, not on a flag, so there is nothing durable for the panel
+to show in that window. That makes the row a pure function of `$4A81`, which
+*is* inside `SAVEDGAME0`'s persistent block, so it costs nothing new: the poll
+that already hands the panel a `SAVEDGAME0` image is the whole of what feeds
+it (`automap/window.py`'s `_refresh_roster`).
+
+**A second group, `side_quests`, sits between the commissions and the
+summonses**, one row per side quest whose `SideQuestState.durable_state` is
+not `QUEST_UNSEEN` — `goldbox.commissions.side_quests()` reads the durable
+half only, through `side_quest_rows()` in `automap/questlog.py`. A finished
+side quest stays on the log, drawn muted, the way a paid commission does.
+
+**Built only behind `WISH_EXPERIMENTAL_QUESTS`** (`.claude/rules/
+feature-flags.md`), because every word the group draws — the heading, the two
+state words, the tooltip — is still a placeholder awaiting Donald's approval
+from a screenshot. The mechanism (steps A-C of #158) is done; the wording and
+the live check against a running game (steps E and F) are not.
 
 ## Where the code is
 
