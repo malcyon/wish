@@ -768,6 +768,24 @@ def test_an_item_file_short_of_a_whole_number_of_items_is_refused(tmp_path):
         dos.read_character(record)
 
 
+def test_an_item_file_that_is_present_and_empty_is_refused(tmp_path):
+    """Present and zero bytes is the case the absent-file silence must not cover.
+
+    `#221 (An item file that does not match its own count is read silently)`
+    turns on telling "no sibling file" from "a sibling file that is the wrong
+    shape", and a zero-byte file is the one that looks like both.  `_sibling`
+    handed back `b""` for either, which is why the check had to move out of it.
+    """
+    from goldbox import dos
+
+    record = tmp_path / "CHRDATC1.SAV"
+    record.write_bytes(_synthetic_curse_character(1))
+    (tmp_path / "CHRDATC1.SWG").write_bytes(b"")
+
+    with pytest.raises(dos.DosRecordError, match=r"CHRDATC1\.SWG.*0.*1"):
+        dos.read_character(record)
+
+
 def test_an_item_file_short_of_the_records_own_count_is_refused(tmp_path):
     """The record claims two items; the sibling file only holds one."""
     from goldbox import dos
