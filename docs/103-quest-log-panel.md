@@ -63,7 +63,7 @@ one state word:
 | word | when |
 |---|---|
 | offered | every entry untouched, and the clerk raises it next visit |
-| in progress | a marker, or some of a many-entry commission settled |
+| In progress | a marker, or some of a many-entry commission settled |
 | reward waiting | any entry at 254 — money sitting at the City Hall |
 | paid | every entry at 255 |
 
@@ -177,17 +177,33 @@ to show in that window. That makes the row a pure function of `$4A81`, which
 that already hands the panel a `SAVEDGAME0` image is the whole of what feeds
 it (`automap/window.py`'s `_refresh_roster`).
 
-**A second group, `side_quests`, sits between the commissions and the
-summonses**, one row per side quest whose `SideQuestState.durable_state` is
-not `QUEST_UNSEEN` — `goldbox.commissions.side_quests()` reads the durable
-half only, through `side_quest_rows()` in `automap/questlog.py`. A finished
-side quest stays on the log, drawn muted, the way a paid commission does.
+**There is no second group.** Donald, 2026-09-04: *"I don't think we need a
+separate 'Side Quests' section. Just lump them all together."* A side quest
+whose `SideQuestState.durable_state` is not `QUEST_UNSEEN` gets a row appended
+to the *commissions* group, after the ledger's own rows and before the
+`Summoned to` group — `goldbox.commissions.side_quests()` reads the durable
+half only, `side_quest_rows()` in `automap/questlog.py` turns that into a row,
+and `update_from` does the appending. The join stays display-only: the two
+kinds of row are still kept apart in the code — `side_quest_rows()` is its own
+function, gated on its own — and the commissions group carries no heading
+either way. A finished side quest stays on the log, drawn muted, the way a
+paid commission does.
 
-**Built only behind `WISH_EXPERIMENTAL_QUESTS`** (`.claude/rules/
-feature-flags.md`), because every word the group draws — the heading, the two
-state words, the tooltip — is still a placeholder awaiting Donald's approval
-from a screenshot. The mechanism (steps A-C of #158) is done; the wording and
-the live check against a running game (steps E and F) are not.
+**The flag gates the rows, not the group.** `enabled()`
+(`WISH_EXPERIMENTAL_QUESTS`, `.claude/rules/feature-flags.md`) wraps only the
+`side_quest_rows()` call inside `update_from`; the commissions group itself is
+always built. Donald approved all six placeholder strings from a screenshot on
+2026-09-04, with one change applied everywhere: each opens with a capital
+letter, `AGENTS.md`'s standing rule, which the proposals had missed. That pulled
+`goldbox/commissions.py`'s `IN_PROGRESS` along with it — it already shipped
+lowercase in the Commissions panel, so it is now `"In progress"` in both places
+rather than one state word spelled two ways in one window — and set
+`SIDE_QUEST_FINISHED` to `"Finished"`. What still holds the flag up is the
+tooltip's third line, `_side_quest_tip`'s rendering of a `QuestFlag.meaning`,
+which nothing drew before this feature existed and which Donald has not yet
+seen; the mechanism (steps A-C of #158 (Track the quests the game itself
+forgets, starting with Ohlo's potion)) is done, and the live check against a
+running game (steps E and F) is not.
 
 ## Where the code is
 
