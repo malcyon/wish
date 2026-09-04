@@ -168,6 +168,14 @@ NOT_ON_THE_SHEET = (
     "level_paladin",
     "level_ranger",
     "abilities_second",   # Curse's second ability block, zero in this game
+    # The class a dual-classed human left and the level it was left at. Curse,
+    # Silver Blades and Gateway write them; Pool of Radiance's code does not
+    # reference either byte, so they are zero in every character this editor
+    # opens (#224). They are a pair with a sentinel -- a slot number means
+    # nothing without a non-zero level beside it -- so a widget each would be
+    # two ways to make a character the game cannot read.
+    "dual_class_slot",
+    "dual_class_level",
     "inventory",          # editor/inventory.py edits the item slots
     # The high nine bytes of the spellbook bitmask. Not a field of its own on
     # the sheet: `field_spells_known` reads and writes both halves as one mask,

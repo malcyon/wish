@@ -438,6 +438,19 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
     ("strength_index", "derived from strength and the percentile; a writer "
                        "that wants it recomputes it"),
     ("roster_in_use", "roster bookkeeping, not character state"),
+    ("dual_class_slot", "the class a dual-classed human left, and "
+                        "dual_class_level the level it was left at. Zero in "
+                        "every Pool of Radiance specimen because that title's "
+                        "code never references either byte -- the pair is "
+                        "Curse, Silver Blades and Gateway's (#224). **This is "
+                        "a defect, not an exemption**: no DOS field has been "
+                        "attributed to it, so a dual-classed Curse character "
+                        "converted to DOS would lose its old class. What "
+                        "settles it is one DOS Curse save of a dual-classed "
+                        "human, diffed against the same character before the "
+                        "change, which names the DOS byte"),
+    ("dual_class_level", "see dual_class_slot: the two are one field with a "
+                         "sentinel, and neither has a DOS home yet"),
     ("region_220", "the combat icon: 18 CHARPIC00 screen codes and 18 "
                    "colours, a C64 character set no other port can draw"),
     ("missile_attack_adjustment",

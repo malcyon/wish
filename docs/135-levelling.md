@@ -435,13 +435,23 @@ it is what the two shipped mages hold.
 
 ### Two record bytes with names now
 
-`0x0B9` and `0x0BA`, which `goldbox/layout.py` calls `gap_0b9`, are the
-**dual-classed old class slot** and its **old level**. `$1470` and `$1321` skip
-that slot when a human has one, so it counts towards neither the clamp nor
-eligibility; `$20A3` writes the old level back into that slot and ORs the class
-bit into `class_bits`; `$124F` gives it its own constitution term in `hp_max`;
-and `$15E7` uses `0x0BA` to stop the hit-die roll running for a level already
-paid for.
+`0x0B9` and `0x0BA` are the **dual-classed old class slot** and its **old
+level**, and `goldbox/layout.py` now declares them under those names. `$1470`
+and `$1321` skip that slot when a human has one, so it counts towards neither
+the clamp nor eligibility; `$20A3` writes the old level back into that slot and
+ORs the class bit into `class_bits`; `$124F` gives it its own constitution term
+in `hp_max`; and `$15E7` uses `0x0BA` to stop the hit-die roll running for a
+level already paid for.
+
+**The writer, found on `#224` (`0x0B9` and `0x0BA` are documented both as an NPC
+marker and as the dual-class slot).** `GEN $2387` gates on race 7, on a check
+that refuses with carry clear, on `0x0BA` still being zero, and on level 2 or
+better, then `$23C9` stores the slot and `$23D2` the level. `$18EB` gives the
+convention the readers rely on: `LDY #$FF / LDA 0x0BA / BEQ / LDY 0x0B9` --
+**zero in `0x0BA` means "not dual-classed"**, so slot 0, the magic-user, is not
+ambiguous. Pool of Radiance and the two Krynn titles do not reference either
+byte anywhere on their disks; Silver Blades (`GEN $1FB7`/`$1FBD`) and Gateway
+(`GEN $23D3`) write the same pair.
 
 ### One more racial rule, not needed for a level-up but true
 

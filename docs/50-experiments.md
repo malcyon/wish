@@ -583,6 +583,13 @@ vary.
 Whether one is a flag and the rest follow, or all eight are "not applicable"
 sentinels, is unproven.
 
+*Corrected twice since, and the second correction retires it.* The mechanism is
+bit 7 of `0x0B8` and nothing else; these eight are `$FF` fill in the shipped
+`MON*` records, and the set is an artefact of which offsets the party loader
+leaves alone. Two of the eight, `0x0B9` and `0x0BA`, are a real field in three
+other titles. Both corrections are below -- "PRINCESS FATIMA was never
+impossible" for the fill, and "The NPC marker was never a marker" for the rest.
+
 *Corrected later.* This was first written up as **ten** bytes, adding
 `0x0E6`-`0x0E7`. Those do read `$FF FF` in an NPC, but they are a different
 field: every player character has a non-zero, high-entropy value there -- MALCYON
@@ -6339,3 +6346,102 @@ where they go at all.
 **Donald's decision, 2026-09-03: Fast Travel out of the area should run the
 exit's own handler before warping.** That is a design ruling and not a finding;
 the work it implies is not scheduled here.
+
+---
+
+## The NPC marker was never a marker, and two of its eight bytes are Curse's dual class (#224)
+
+**Hypothesis.** `goldbox/layout.py` called `0x0B9` and `0x0BA` part of an
+eight-byte NPC marker; `#18 (Measure Curse's trainer so Level Up works there)`
+called the same two bytes a dual-classed character's old class slot and old
+level. One of the two readings is wrong, or they are about different things.
+
+**Method.** Two censuses and one specimen count, no emulator.
+
+1. `tools/recordsweep.py` — every absolute-mode instruction in every file on a
+   title's own disks whose operand lands on a chosen record byte. The record
+   sits at a fixed address while an overlay runs (`$6B00` for Pool of Radiance,
+   `$7C00` for the five later titles), so the operand identifies the byte
+   whatever the file's load address is. Run for `+0x0B9`/`+0x0BA` on all six
+   C64 titles, with the neighbouring flags byte `+0x0B8` as the control.
+2. The producer routine in Curse's `GEN`, found by walking up from the two
+   stores the census turned up.
+3. The five shipped `MON*` records the five NPCs of `npc_party.d64` are copies
+   of, byte-counted for `$FF`, against 76 distinct player-character record
+   images off the Pool of Radiance disks.
+
+**Result 1. Pool of Radiance does not use the two bytes at all.** CONFIRMED.
+
+| Title | record | files | refs to `+0x0B9`/`+0x0BA` | control `+0x0B8` |
+|---|---|---:|---:|---:|
+| Pool of Radiance | `$6B00` | 589 | **0** | 42 |
+| Curse of the Azure Bonds | `$7C00` | 412 | 42 | 19 |
+| Secret of the Silver Blades | `$7C00` | 349 | 36 | 23 |
+| Gateway to the Savage Frontier | `$7C00` | 413 | 42 | 21 |
+| Champions of Krynn | `$7C00` | 335 | **0** | 18 |
+| Death Knights of Krynn | `$7C00` | 306 | **0** | 18 |
+
+Every specimen we hold is Pool of Radiance's, and Pool of Radiance is one of
+the three titles whose code never mentions the bytes. That is the whole of the
+apparent contradiction: they read `$00` in twenty player characters for the
+least interesting possible reason.
+
+**The hole in an absolute-mode census, tested and closed.** A record reached
+through `(pointer),Y` would not show up. Scanning 571 Pool of Radiance files and
+412 Curse files for `LDY #$B9`/`LDY #$BA` followed within ten bytes by an
+indirect-indexed opcode gives two hits each, and all four are inside picture
+files — `PIC64`, `POOLRC`, `COMPIC05`. Curse, which certainly does use the
+bytes, has no legitimate indirect access to them either, so the engine reaches
+the record absolutely and Pool of Radiance's zero is not hiding behind a
+pointer.
+
+**Result 2. The dual-class reading is confirmed from the producer, not only
+the consumers.** `#18 (Measure Curse's trainer so Level Up works there)` read
+the routines that *skip* the old slot. Curse `GEN $2387` is the routine that
+fills it, and its gate is AD&D 1st edition's rule for dual-classing:
+
+* `LDA race / CMP #$07 / BNE` — human only;
+* `JSR $23FC / BCC` — a check that refuses on carry clear;
+* `LDA 0x0BA / BNE` — refuses if the character has already dual-classed;
+* `LDA level / CMP #$02 / BCS` — level 2 or better.
+
+Then `$23C9` copies a workspace pair into the record: the class slot to
+`0x0B9`, the level to `0x0BA`. `GEN $18EB` reads it back as `LDY #$FF / LDA
+0x0BA / BEQ / LDY 0x0B9`, so **`0x0BA == 0` is the sentinel for "not
+dual-classed"** and `0x0B9` is a slot number only beside a non-zero level —
+which is what stops slot 0, the magic-user, being ambiguous. Silver Blades'
+`GEN $1FB7`/`$1FBD` and Gateway's `GEN $23D3` are the same stores.
+
+**Result 3. The eight-byte marker is an artefact of counting.** CONFIRMED, and
+it finishes what "PRINCESS FATIMA was never impossible" started. Every one of
+the five shipped `MON*` records carries exactly **16** `$FF` bytes in its first
+256, at the identical 16 offsets in all five: `0x0A1`, `0x0A2`, `0x0B7`,
+`0x0B8`, `0x0B9`, `0x0BA`, `0x0D1`, `0x0D2`, `0x0D3`, `0x0D4`, `0x0E2`, `0x0E4`,
+`0x0E5`, `0x0E6`, `0x0E7`, `0x0FB`. Loading one into a party slot overwrites six
+— `0x0A1`, `0x0A2`, `0x0B8`, `0x0D1`, `0x0D2`, `0x0E2` — and leaves ten. The
+published eight are those ten minus `0x0E6`-`0x0E7`, which were dropped only
+because a player character is non-zero there. Re-derived from the specimens as
+well: across 76 distinct player-character record images and the five NPCs, the
+offsets that are `$FF` in every NPC and `$00` in every player character are
+exactly those eight. So the set is the monster files' author's fill,
+intersected with what a player character happens to hold zero at. **Nothing in
+it is a flag**; bit 7 of `0x0B8` is the byte the engine tests.
+
+Curse's own 70 `MON*` files carry the same fill — `0x0BA` is `$FF` in 70 of 70
+and `0x0B9` in 69 of 70 — so a Curse monster record arrives looking dual-classed
+at old level 255, and is kept harmless only by the `CMP #$07` race gate in front
+of every read.
+
+**Result 4, unremarkable and recorded so nobody re-measures it.** The other six
+of the eight are close to unreferenced everywhere. Hits for the whole of a
+title's disks: `0x0B7` 0/1/0 for Pool, Curse and Silver Blades; `0x0D3` 0/1/2;
+`0x0D4` 0/1/3; `0x0E4` 0/1/0; `0x0E5` 0/1/1; `0x0FB` 6/5/6. Isolated single
+hits are what a coincidence inside data looks like. Only `0x0FB` is used in all
+three, and it is the byte the loaded orc at `$5500` had overwritten from `$FF`
+to 6.
+
+**What it cost us.** `goldbox/record.py`'s `npc_marker_is_consistent` warns when
+the eight disagree, so a dual-classed Curse, Silver Blades or Gateway character
+— `0x0B9`/`0x0BA` non-zero, the other six `$00` — trips a warning that says no
+real save has been seen in that state. Measured on a real record with the pair
+set to slot 3, level 5 and nothing else changed.

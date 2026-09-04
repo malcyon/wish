@@ -283,13 +283,20 @@ rather than in anecdote; NPC money is zeroed on it. So `npc:` writes one bit.
 
 Eight other bytes — `0x0B7`, `0x0B9`, `0x0BA`, `0x0D3`, `0x0D4`, `0x0E4`, `0x0E5`
 and `0x0FB` — read `$FF` for every NPC and `$00` for every player character, and
-were read as the flag for a while. They are **fill residue**: they already read
-`$FF` in the shipped `MON*` files, before any save exists. `wish` leaves them
-alone, because rewriting bytes we do not understand is how a lossless editor stops
-being lossless. If a save ever turns up with them half-set the import reports it
-as a warning; no genuine save has been seen in that state.
+were read as the flag for a while. They are **fill residue**, and the set is not
+even a set: every shipped `MON*` record carries `$FF` at the same sixteen offsets
+before any save exists, the party loader overwrites six of them, and these eight
+are the ten survivors minus the two a player character is non-zero at. `wish`
+leaves them alone, because rewriting bytes we do not understand is how a lossless
+editor stops being lossless. **Two of the eight are understood now and are not
+residue at all**: `0x0B9` and `0x0BA` are a dual-classed human's old class slot
+and the level it was left at, written by Curse of the Azure Bonds, Secret of the
+Silver Blades and Gateway to the Savage Frontier, and never touched by Pool of
+Radiance — see `docs/20-character-record.md` and `#224`. So the import's warning
+about the eight disagreeing is wrong for a dual-classed character of those three
+titles, which is the one save that will legitimately show them half-set.
 
-`0x0E6`–`0x0E7` are **not** part of that marker and were briefly miscounted as
+`0x0E6`–`0x0E7` are **not** part of that set and were briefly miscounted as
 such. They hold a non-zero, high-entropy per-character value in *every* player
 character, so they are not a `0`/`$FF` pair at all. What they are is UNKNOWN; the
 DOS record carries a single high-entropy byte in the same place, immediately
