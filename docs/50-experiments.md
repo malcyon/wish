@@ -4500,6 +4500,30 @@ citation audit, `dumpsearch.py` the RAM search, `run.py` the pooled session.
   `FastTravel`'s existing "`$49E6` is 0, so LOADFILES will ask for a SQRDATA" warning
   is describing a hang rather than an inconvenience.
 
+  **And writing `$49E6` = 1 before the jump is enough: the trip then works.**
+  CONFIRMED 2026-09-04 on pool slot 3, twice, with `tools/mapmarker.py --home`
+  (`#205 (A party that walks out onto the travel grid leaves the automapper's
+  marker behind)`, step 7, which needed a party to walk back off the grid).
+  Area 26 → area 20 with `$49E6` poked to 1 first: the loader asks for
+  `INSERT SIDE # 2` — the *target* area's disk rather than a `SQRDATA` — and
+  once that is answered the party is standing in `GEO14` on the dungeon's
+  movement prompt, at `$C04B` and on the game's own status line. With an
+  `arrival` passed it lands on the square asked for, so the arriving script
+  leaves `$C04B` alone here as it does elsewhere. This closes the sentence
+  above rather than contradicting it: the byte has to be right before `$2034`,
+  and making it right is all it takes. **It stays out of `FastTravel`**, whose
+  refusal is about a player, not a probe: arriving in an area the party never
+  walked to is what `HELP` is already about, and nothing has been measured
+  about what the Slums' script makes of a party that arrives from the
+  wilderness with `$49F2` = 26.
+
+  One trap, paid for once. A wait loop that asks `Session.indoors` after the
+  poke declares the arrival immediately — it is reading the byte the poke just
+  wrote — and nobody answers the disk prompt. The game then sits on
+  `INSERT SIDE # 2` with the *wilderness* status line still on screen, which
+  the automapper faithfully goes on reporting. Wait for the screen, not for
+  `$49E6`; `tools/mapmarker.py`'s `wait_indoors` does.
+
 - **P51: Amiga Pools of Darkness accepts a C64 Pool of Radiance export as a
   character file. CONFIRMED, and it deletes the premise of
   `docs/124-amiga-port.md` §2.2.**

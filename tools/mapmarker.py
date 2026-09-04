@@ -305,6 +305,22 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
         "status_bar": binding.status_text(),
         "waiting": binding.waiting_text(),
         "title_check": str(binding.mapper.title_check),
+        # Counted here as well as read off the status bar, which shows it only
+        # when it is non-zero: "no contradictions" is the claim a crossing back
+        # into the area the party left has to support, and a missing string is
+        # weaker evidence than a zero.
+        #
+        # The counter alone is not enough, and #205 is why. `_narrow` counts a
+        # contradiction only when an observation would leave **no** candidate;
+        # while the set is still wide it drops the map that no longer fits and
+        # says nothing, which is what a bogus edge does -- 20 candidates down
+        # to 15 with the right one gone, and the counter at 0 throughout. So
+        # record what the set actually holds: a run whose candidates shrink
+        # while this reads zero is the fault, not the absence of one.
+        "contradictions": (binding.mapper.fingerprint.contradictions
+                           if binding.mapper.fingerprint else None),
+        "candidates": (sorted(binding.mapper.fingerprint.names)
+                       if binding.mapper.fingerprint else None),
         "seen_squares": len(st.exploration),
         "geo_loaded": st.geo is not None,
         "messages": binding.messages.lines()[-6:],
@@ -321,6 +337,101 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
     shot(app, binding.canvas, out / f"{tag}-map.png")
     sess.kbd.screenshot(str(out / f"{tag}-game.png"))
     return seen
+
+
+def wait_indoors(sess, log: Log, seconds: float) -> str:
+    """Wait for a trip *off* the travel grid to actually finish.
+
+    **Not `clear_bars(want_outdoors=False)`, and the difference cost a run.**
+    That one asks `Session.indoors`, which reads `$49E6` -- the byte
+    `come_home` has just written -- so it answered "arrived" straight away,
+    while the game had not yet so much as asked for the disk.  Four looks
+    later the emulator was still sitting on `INSERT SIDE # 2, AND PRESS ANY
+    KEY` with the wilderness status line frozen on the screen, which the map
+    faithfully went on reporting.
+
+    What says the trip is over is the screen: an indoor command bar, and the
+    word `OUTDOORS` gone from row 14.  Disk prompts are answered on the way.
+    """
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        s = sess.screen()
+        if s is None:
+            time.sleep(1.0)
+            continue
+        if sess.handle_prompt(s):
+            continue
+        row = s.row(24)
+        if "OUTDOORS" not in s.row(14):
+            # Either bar counts, and the second one is why this says "bar"
+            # rather than "world": a party put back indoors by `come_home`
+            # lands on the dungeon's own movement prompt, `I,J,K,M, RETURN OR
+            # BUTTON`, not on the command bar -- the same thing
+            # `Session.outdoor_key` says about a walked exit on to the grid.
+            # A run that waited for `MOVE ENCAMP` alone reported `stuck` for a
+            # party that was standing in the Slums.
+            if ("MOVE" in row and "ENCAMP" in row) or "I,J,K,M" in row:
+                return "bar"
+        if "PRESS" in row:
+            sess.kbd.key("Return")
+        else:
+            for label in ("STAY", "NO"):
+                if label in row:
+                    log.say(f"    answering {label} to |{row.strip()}|")
+                    if not sess.select_bar(label, timeout=8):
+                        sess.kbd.key("Return")
+                    break
+        time.sleep(1.2)
+    return "stuck"
+
+
+def come_home(args, sess, target, app, binding, out, log, step: int) -> int:
+    """Bring the party back off the travel grid, into `--home`'s area.
+
+    **There is no supported way to do this and that is the point.**  A fast
+    travel out of an overland area into an indoors one wedges the loader for
+    ever -- `LOADFILES` dispatches on `$49E6` and asks for a `SQRDATA` the
+    indoor area has not got, and the game sits on `INSERT SIDE # n` with the
+    PC in the KERNAL's serial routines (`docs/50-experiments.md`).  That is
+    why `FastTravel.legality` refuses the trip outright, and why this is a
+    probe in a tool rather than anything the window offers.
+
+    The same experiment ends "so `$49E6` has to be right **before** `$2034`",
+    which was never tried.  This tries it: write `1` into `$49E6`, then make
+    the ordinary `FastTravel`, whose own refusal then no longer fires because
+    it re-reads the byte.  Whether the loader is satisfied by that is the
+    measurement, and either answer is worth writing down -- what this run
+    needs it for is the only crossing the offscreen tests cannot make, a
+    party walking back into the area it left.
+
+    `$49E6` is written for exactly this call.  `automap/actions.py` reads it
+    and never writes it, and nothing here changes that.
+    """
+    from goldbox.areas import AREAS_BY_ID
+    area = AREAS_BY_ID[args.home]
+    before = target.read(actions.FASTTRAVEL_INDOORS, 1)
+    target.write(actions.FASTTRAVEL_INDOORS, b"\x01")
+    after = target.read(actions.FASTTRAVEL_INDOORS, 1)
+    log.say(f"$49E6 {before.hex()} -> {after.hex()}, so LOADFILES will ask for "
+            f"a GEO rather than a SQRDATA")
+    log.emit("indoors_poke", before=before.hex(), after=after.hex())
+    for _ in range(8):                       # the busy retry `--travel` makes
+        outcome = actions.FastTravel().apply(target, area=area,
+                                             arrival=args.arrival)
+        if outcome.ok or "busy" not in outcome.message:
+            break
+        time.sleep(1.0)
+    log.say(f"Fast Travel home to {area.name}: ok={outcome.ok} {outcome.message}")
+    log.emit("fasttravel_home", area=area.name, ok=outcome.ok,
+             message=outcome.message)
+    if outcome.ok:
+        answered = wait_indoors(sess, log, seconds=args.arrive)
+        log.say(f"after the trip home the game is showing: {answered}")
+        log.emit("fasttravel_home_arrival", outcome=answered)
+        sess.settle(3)
+    step += 1
+    look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+    return step
 
 
 def run(args, log: Log) -> int:
@@ -390,6 +501,19 @@ def run(args, log: Log) -> int:
                 sess.settle(3)
             step += 1
             look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+            if args.place is not None:
+                # Put the party on a chosen travel square without walking to
+                # it. `#189` did this to measure the compass and it is the
+                # same two bytes `FastTravel` writes for a trip to a window,
+                # so the mechanism is proven; what it buys here is a *chosen*
+                # outdoor square, which is what makes the square the party
+                # comes back to next door to the one it left from. The screen
+                # does not redraw until a step, so a `--place` is only useful
+                # with an `--after` move behind it.
+                target.write(actions.FASTTRAVEL_TRAVEL_X,
+                             bytes(args.place[:2]))
+                log.say(f"placed the party at {tuple(args.place)} on the grid")
+                log.emit("place", x=args.place[0], y=args.place[1])
             for move in args.after:
                 step += 1
                 moved = sess.walk_one(move)
@@ -397,6 +521,14 @@ def run(args, log: Log) -> int:
                 log.emit("walk", move=move, moved=moved)
                 time.sleep(1.0)
                 look(app, binding, f"{args.tag}-step{step}", out, log, sess)
+
+        if args.home is not None:
+            step = come_home(args, sess, target, app, binding, out, log, step)
+
+        for _ in range(args.linger):
+            step += 1
+            time.sleep(2.0)
+            look(app, binding, f"{args.tag}-step{step}", out, log, sess)
         return 0
     finally:
         for what, fn in (("session close", lambda: sess and sess.close()),
@@ -406,6 +538,14 @@ def run(args, log: Log) -> int:
                 fn()
             except Exception as exc:
                 log.say(f"  {what} raised {type(exc).__name__}: {exc}")
+
+
+def _pair(text: str) -> tuple[int, ...]:
+    """`x,y` or `x,y,facing`, for the two options that name a square."""
+    got = tuple(int(part) for part in text.split(","))
+    if len(got) not in (2, 3):
+        raise argparse.ArgumentTypeError("give x,y or x,y,facing")
+    return got
 
 
 def main(argv=None) -> int:
@@ -423,6 +563,24 @@ def main(argv=None) -> int:
                         "reaches the travel grid without playing there")
     p.add_argument("--after", default="",
                    help="Moves to make after the Fast Travel")
+    p.add_argument("--home", type=int, default=None,
+                   help="After those moves, come back off the travel grid "
+                        "into this area id -- 20 is the Slums, which is the "
+                        "area a party fast travelled to 26 left. $49E6 is "
+                        "written to 1 first; see `come_home`")
+    p.add_argument("--place", type=_pair,
+                   help="Write $49C3/$49C4 after the Fast Travel: `x,y` on "
+                        "the travel grid, so the next `--after` move ends on "
+                        "a chosen square")
+    p.add_argument("--arrival", type=_pair,
+                   help="`x,y` or `x,y,facing` for `--home` to land on, "
+                        "written to $C04B: an area with no arrival square of "
+                        "its own otherwise lands wherever its script leaves "
+                        "the party")
+    p.add_argument("--linger", type=int, default=0,
+                   help="Extra looks after the last move, one every two "
+                        "seconds: an area change is a disk load and the map "
+                        "settles a poll or two after the game does")
     p.add_argument("--answer", default="NO",
                    help="what to answer a YES NO bar the arrival puts up")
     p.add_argument("--out", default="work/mapmarker",
