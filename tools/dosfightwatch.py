@@ -133,22 +133,48 @@ def records(save_dir: pathlib.Path, letter: str) -> dict[int, bytes]:
     return out
 
 
+#: How many of `dosboxx.locate`'s windows must agree before an address is
+#: believed enough to arm a watchpoint on it.
+#:
+#: `locate` votes with 12-byte windows two bytes apart over a 285-byte record,
+#: so about 136 windows are cast and one coincidental match anywhere in a
+#: megabyte scores 1.  Every record found in this issue's five runs -- 30 of
+#: them -- scored between **31 and 45**, so eight is a wide margin below the
+#: worst real one and far above a fluke.
+#:
+#: The guard matters because of what happens without it: `arm()` would put a
+#: `BPM` on a stranger's address, the fight would report hits on a byte that
+#: was never a character record, and nothing in the report would say so. The
+#: docstring here promised this check before it existed.
+MIN_VOTES = 8
+
+
 def locate_records(image: bytes, recs: dict[int, bytes]) -> dict[int, dict]:
     """Where each character's live record sits in a memory image.
 
     One `locate` per record.  A record found by fewer than `MIN_VOTES` windows
-    is reported with its vote count rather than believed: the caller decides.
+    is marked `trusted: False` and its `base` is **not** returned, so a caller
+    cannot arm a watchpoint on it by checking `base is not None` -- which is
+    the only check both callers here ever made.  The vote count and the
+    address are still reported, under `weak_base`, because a rejected match is
+    worth reading.
     """
     found: dict[int, dict] = {}
     for n, data in recs.items():
         hit = dosboxx.locate(image, data)
         if hit is None:
-            found[n] = {"base": None, "votes": 0, "matching": 0}
+            found[n] = {"base": None, "votes": 0, "matching": 0,
+                        "trusted": False}
             continue
         base, votes, same = hit
         seg, ofs = dosboxx.seg_off(base)
-        found[n] = {"base": base, "votes": votes, "matching": same,
-                    "of": len(data), "at": f"{seg:04X}:{ofs:04X}"}
+        row = {"base": base, "votes": votes, "matching": same,
+               "of": len(data), "at": f"{seg:04X}:{ofs:04X}",
+               "trusted": votes >= MIN_VOTES}
+        if not row["trusted"]:
+            row["weak_base"] = base
+            row["base"] = None
+        found[n] = row
     return found
 
 
@@ -405,9 +431,15 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
             report["dumped"] = len(image)
             where = locate_records(image, built)
             report["records"] = {n: dict(v) for n, v in where.items()}
+            # Named in the report rather than left to a reader counting rows:
+            # a record `MIN_VOTES` rejected is a character this run will not
+            # watch, and a run that silently watches five of six looks exactly
+            # like one that watched all six.
+            report["untrusted_records"] = [n for n, v in where.items()
+                                           if not v["trusted"]]
             report["live_at_encounter"] = {
                 n: field_values(image, v["base"])
-                for n, v in where.items() if v["base"]}
+                for n, v in where.items() if v["base"] is not None}
             checkpoint()
             if stop_after_locate:
                 return report
@@ -464,7 +496,7 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
                                                  for n, v in where2.items()}
                 report["live_after_fight"] = {
                     n: field_values(after_image, v["base"])
-                    for n, v in where2.items() if v["base"]}
+                    for n, v in where2.items() if v["base"] is not None}
                 checkpoint()
                 s.clear_breakpoints()
                 s.run()
@@ -527,6 +559,20 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
     and the walk to an encounter and the megabyte dump are the ones `locate`
     takes.  Every field that then differs from the converted run's is a field
     where our zero is not what the engine would have had when the fight began.
+
+    **Run once, `work/issue69/truth13`.**  It reached a wandering encounter at
+    step 44 and found all six records at 285 of 285 bytes -- a cleaner match
+    than the `watch` runs get, because the needle is the engine's own save of
+    the state it is being matched against rather than the file we wrote before
+    the game touched it.
+
+    **And the one thing it cannot answer, which that run is what showed.**  For
+    a field the engine only ever *carries*, an `ENCAMP > SAVE` hands back
+    whatever it was given: `unnamed_0ab`, `hands_used` and the four portrait
+    and icon bytes all came back `00` in `engine_slot`, because they were `00`
+    in the conversion it loaded.  So this says what the engine holds when a
+    fight begins, and says nothing about what it would have chosen for a
+    character it created itself.  For that, read the records the game ships.
     """
     out.mkdir(parents=True, exist_ok=True)
     game = dosbox.find_game()
@@ -598,9 +644,11 @@ def truth(*, c64: pathlib.Path | None, slot: str, engine_slot: str, steps: int,
             (out / "engine-memory-at-encounter.bin").write_bytes(image)
             where = locate_records(image, engine)
             report["records"] = {n: dict(v) for n, v in where.items()}
+            report["untrusted_records"] = [n for n, v in where.items()
+                                           if not v["trusted"]]
             report["live_at_encounter"] = {
                 n: field_values(image, v["base"])
-                for n, v in where.items() if v["base"]}
+                for n, v in where.items() if v["base"] is not None}
             checkpoint()
             s.clear_breakpoints()
             s.run()
