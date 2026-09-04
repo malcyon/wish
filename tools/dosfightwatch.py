@@ -319,8 +319,8 @@ def fight_watching(por: dosbox.PoolOfRadiance, w: Watcher, *,
             "seconds": round(time.time() - started, 1)}
 
 
-def _await_bar(por: dosbox.PoolOfRadiance, kind: str | None,
-              patience: float) -> tuple[str | None, bool]:
+def _await_bar(por: dosbox.PoolOfRadiance,
+               patience: float) -> tuple[str | None, bool]:
     """Wait out a bar with no key, the way `PoolOfRadiance.fight()` does.
 
     `blank` -- the bar row caught mid-redraw -- is carried in
@@ -334,14 +334,20 @@ def _await_bar(por: dosbox.PoolOfRadiance, kind: str | None,
     pass with it still unresolved.
     """
     deadline = time.time() + patience
+    screen = por.s.capture()
+    kind = por.bar_kind(screen)
     while kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
         if time.time() >= deadline:
-            screen = por.s.capture()
+            # The shot is named for **this** capture's bar, the one the walk
+            # actually gave up on.  Capturing again here to name it would let
+            # the emulator redraw in between and save a picture of some other
+            # frame -- which is the hazard this whole function exists for.
             por.s.shot(f"walk_unknown_bar_{screen.glyphs(dosbox.BAR)}",
-                      allow_blank=True)
+                       allow_blank=True)
             return kind, False
         time.sleep(0.25)
-        kind = por.bar_kind()
+        screen = por.s.capture()
+        kind = por.bar_kind(screen)
     return kind, True
 
 
@@ -361,9 +367,15 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
     in 4.7 seconds and reported a fight that never happened.
 
     **A bar with no key is given `patience` seconds before it is called
-    stuck**, the same window `fight()` grants -- see `_await_bar`.  Without
-    it, one captured frame landing on `blank` mid-redraw threw away a whole
-    run one frame before the encounter it was walking towards.
+    stuck** -- see `_await_bar`.  Without it, one captured frame landing on
+    `blank` mid-redraw threw away a whole run one frame before the encounter
+    it was walking towards.
+
+    The default is `fight_watching()`'s 90 rather than `fight()`'s 60, and
+    deliberately: giving up here throws away the booting, converting and
+    walking that got the party this far, where giving up in a fight throws
+    away the fight.  #217's body says `fight()` grants 90 and it grants 60;
+    the number here was never the one that ticket meant to copy.
     """
     walked = blocked = prompts = 0
     i = -1
@@ -379,14 +391,15 @@ def walk_to_encounter(por: dosbox.PoolOfRadiance, steps: int, *,
                 continue
             walked += 1
             continue
-        kind = por.bar_kind()
-        if kind not in FIGHT_BARS and por.COMBAT_KEYS.get(kind or "") is None:
-            kind, resolved = _await_bar(por, kind, patience)
-            if not resolved:
-                return {"met": False,
-                        "why": f"a bar nobody has labelled ({kind})",
-                        "at_step": i + 1, "walked": walked,
-                        "blocked": blocked, "prompts": prompts}
+        # No guard here: `_await_bar` returns at once on a bar the walk can
+        # already act on, and one copy of that test is easier to keep true
+        # than two.
+        kind, resolved = _await_bar(por, patience)
+        if not resolved:
+            return {"met": False,
+                    "why": f"a bar nobody has labelled ({kind})",
+                    "at_step": i + 1, "walked": walked,
+                    "blocked": blocked, "prompts": prompts}
         if kind in FIGHT_BARS:
             return {"met": True, "at_step": i + 1, "bar": kind, "walked": walked,
                     "blocked": blocked, "prompts": prompts}

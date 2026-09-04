@@ -78,21 +78,24 @@ def test_a_frame_caught_mid_redraw_is_not_the_end_of_the_walk():
     assert result["bar"] == "encounter"
 
 
-def test_a_bar_that_never_resolves_gives_up_after_its_patience():
-    """`blank` for ever is a stuck game, and the walk must not sit there long."""
-    por = _FakePoR(["blank"] * 10_000)
-    started = __import__("time").time()
-    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.3)
-    elapsed = __import__("time").time() - started
+def test_a_bar_that_never_resolves_gives_up_and_names_its_digest():
+    """`blank` for ever is a stuck game, and the shot is what names it later.
+
+    `patience=0.0` puts the deadline in the past before it is first checked,
+    so the give-up path runs with no real sleep at all -- the trick
+    `tests/test_dosfight.py::test_a_bar_nobody_has_labelled_gives_up_naming_its_digest`
+    already uses on `fight()`'s copy of this mechanism.
+    """
+    por = _FakePoR(["blank"])
+    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.0)
     assert result["met"] is False
     assert "blank" in result["why"]
-    assert elapsed < 5.0
     assert por.s.shots == ["walk_unknown_bar_blank-digest"]
 
 
 def test_a_bar_nobody_has_labelled_at_all_still_gives_up_by_its_digest():
     """`bar_kind` returning `None` is a bar not in `COMBAT_BARS` at all."""
-    por = _FakePoR([None] * 10)
-    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.2)
+    por = _FakePoR([None])
+    result = dosfightwatch.walk_to_encounter(por, steps=5, patience=0.0)
     assert result["met"] is False
     assert result["why"] == "a bar nobody has labelled (None)"
