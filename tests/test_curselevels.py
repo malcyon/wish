@@ -455,15 +455,20 @@ def _caster(class_bits: int, level: int, experience: int = 1_000_000,
 
 
 def test_a_curse_magic_user_reaching_seven_is_offered_fourth_level_spells():
-    """81-90, `CHARM MONSTERS` upward, which Pool of Radiance does not have.
+    """81-89, `CHARM MONSTERS` upward, which Pool of Radiance does not have.
 
-    The control matters more than the claim: the same record read as Pool of
-    Radiance is offered nothing above 55, because 55 is where its list stops.
+    Not 90: id 90 is the magic-user ANIMATE DEAD, and Curse's trainer never
+    offers it (`GEN $273F` marks it 9, `SpellTable.not_granted`,
+    `#223 (Curse's not-granted spell list is missing the magic-user
+    ANIMATE DEAD)`). The control matters more than the claim: the same record
+    read as Pool of Radiance is offered nothing above 55, because 55 is where
+    its list stops.
     """
     rec = _caster(0x01, 6)
     curse = levelup.learnable(rec, CURSE_KEY, level=7)
-    assert set(range(81, 91)) <= set(curse)
-    assert max(curse) == 90
+    assert set(range(81, 90)) <= set(curse)
+    assert 90 not in curse
+    assert max(curse) == 89
 
     pool = levelup.learnable(rec, POOL_KEY, level=7)
     assert max(pool) == 55

@@ -352,7 +352,15 @@ CURSE_OF_THE_AZURE_BONDS = SpellTable(
     # spells; neither is ever granted at a temple, and a player meets them on a
     # scroll. Pool of Radiance grants 36 to any cleric who can cast level 3,
     # which is the difference between ORing a spell level and reading a table.
-    not_granted=(36, 100),
+    #
+    # 90, the *magic-user* ANIMATE DEAD, belongs here too and the pattern above
+    # did not catch it because it is not a cleric spell. The trainer's own
+    # spell-level table at `GEN $273F` gives every id's magic-user spell level,
+    # 9 meaning never offer it, and marks id 90 with a 9 the same as the two
+    # cleric ids above -- read mechanically by
+    # `tests/test_cursetrainer.py::test_the_trainers_own_spell_level_table_
+    # agrees_with_goldbox_spells` (#18, #223).
+    not_granted=(36, 90, 100),
 )
 
 SECRET_OF_THE_SILVER_BLADES = SpellTable(

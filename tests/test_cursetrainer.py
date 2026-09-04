@@ -609,8 +609,10 @@ def test_the_trainers_own_spell_level_table_agrees_with_goldbox_spells():
     93 of the 94 ids from 1 up agree with `goldbox/spells.py`'s Curse groups.
     The one exception is **id 90, the magic-user ANIMATE DEAD**, which the
     trainer marks 9 and so never offers -- the same treatment `spells.py`
-    already gives id 36, the cleric ANIMATE DEAD, and id 100 BESTOW CURSE. So
-    `not_granted` is short by one for this title.
+    already gives id 36, the cleric ANIMATE DEAD, and id 100 BESTOW CURSE.
+    `not_granted` now carries it too
+    (`#223 (Curse's not-granted spell list is missing the magic-user
+    ANIMATE DEAD)`).
     """
     payload = _gen()
     table = _at(payload, MU_SPELL_LEVELS, 95)
@@ -622,7 +624,7 @@ def test_the_trainers_own_spell_level_table_agrees_with_goldbox_spells():
         if ours != table[spell_id]:
             disagree.append((spell_id, ours, table[spell_id]))
     assert disagree == [(90, 4, 9)], disagree
-    assert 90 not in curse.not_granted, "spells.py has caught up with this"
+    assert 90 in curse.not_granted, "the trainer never offers id 90, so not_granted must say so"
 
 
 def test_the_menu_stops_at_id_94_and_nothing_is_lost_by_it():
