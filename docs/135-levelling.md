@@ -64,7 +64,18 @@ from scratch at every training (`$2079`). So `hp_rolled` is the stored half and
 The roll is one die of the class's own size, divided by how many classes the
 character has and never less than 1 — and **never less than 4 for a
 single-class fighter**, which is a `CMP #$04` against `class_bits == 8` at
-`$205A`. The constitution table is AD&D 1st edition unchanged, including the
+`$205A`.
+
+**That division rounds up at random**, which this page used to describe as an
+ordinary rounding. `$208D` rolls again and adds a point when the roll is at or
+below the remainder, so the chance of it is `remainder / class_count` and two
+identical characters can gain different hit points from the same die. Curse
+does the same thing at `$11AB`. Nothing measured constrains it: all
+thirty-five before/after pairs hand `goldbox/levelup.py` the roll they are
+checking, so the divide has never been on trial. `divide_between_classes`
+implements the game's rule for both titles.
+
+The constitution table is AD&D 1st edition unchanged, including the
 cap of +2 for anybody without a fighter bit: MALCYON, an 18-constitution
 magic-user, gets 2 and not 4.
 
@@ -289,6 +300,8 @@ the bytes; what differs is whether any **byte on a disk** votes for it as well.
 | hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
 | thief skills including dexterity, `$0FAD` | **CONFIRMED** | the bytecode and the one shipped thief, 8 of 8 columns |
 | spell capacity never stored | **CONFIRMED** | no write in any of 411 files, and 6 of 6 characters hold zero |
+| `attack_forms`, `$1909` + `$191E` | **CONFIRMED** | the threshold row, 6 of 6 stored bytes, and Silver Blades' separately measured ranger band agreeing |
+| the class-count divide, `$11AB` | **PROBABLE** | the bytecode; `$2F6B`'s range is in a resident routine outside `GEN`, so the *probability* is read from the comparison rather than measured |
 
 **The racial saving-throw bonus is PROBABLE and was briefly written up as
 confirmed.** It is bytecode and nothing else: none of the six characters SSI
@@ -352,6 +365,7 @@ maximum of all **eight** class slots).
 | turning level | `$113F` | arithmetic, not a table |
 | constitution hit points | `$11D7` | one signed row, indexed by the raw score |
 | how far it counts | `$1282` | last level, per class slot — the same `roll_to` |
+| `attack_forms` | `$1909`, thresholds at `$191E` | fighter 7, paladin 7, **ranger 8**; stored outright |
 | `hp_max` | `$11F1` | per slot, summed, then divided by the class count |
 | hit die | `$161E` sides, `$1626` first flat level, `$162E` flat amount | 8 entries, class-slot order |
 | the roll | `$15E1` | **two dice, keep the higher** |
@@ -365,7 +379,38 @@ maximum of all **eight** class slots).
 | spell capacity | `ECL65` `$880D` | built in RAM at `$2BB6`, **never stored** |
 | wisdom bonus spells | `ECL65` `$88F6`, table `$8906` | one spell a point, from 13 |
 
-### The six rules that are not Pool of Radiance's
+### Where these tables live now, and why Curse is still refused
+
+**Every table above is in `goldbox/levels.py` and every rule in
+`goldbox/levelup.py`**, as per-title data rather than as a branch: `class_order`
+names the paladin and the ranger, `thief_skill_dexterity` carries the
+seventeen rows, `hp_bonus_by_score` the signed row, `wisdom_bonus_level` the
+`ECL65` table, `paladin_turn_offset` the turning branch, `hit_die_rolls` the
+second die, `attack_forms_overwritten` the unconditional store, and
+`stores_spell_capacity` is False so nothing writes `0x0EE`.
+
+**The check that they are in the right *shape*, and not merely present:
+74 derived fields across the six characters SSI shipped come back out of those
+two modules with no mismatches** — THAC0, five saving throws, the turning
+level, `attack_level`, `level`, `attack_forms` and `hp_max` for all six, and
+the eight thief skills for the one thief. Before the shapes were widened, the
+same run got the paladin's hit points 5 low, the ranger's 8 low and the
+fighter/thief's 1 high, and could not name the paladin's class at all.
+
+**`levels.TRAINER_MEASURED` still has one entry, and that is the finding rather
+than an omission.** Everything here was read off a file or reproduced on a
+character; **no Curse training has been driven and watched**. Two of the
+trainer's own steps cannot be settled any other way: `$11AB` divides both the
+hit-die roll and the constitution total by the class count and rounds up *at
+random* against the remainder, so a multi-class Curse level-up has no single
+right answer to compare against. That is this issue's step 3.
+
+`goldbox/levelup.plan` also **refuses a dual-classed character** on any title.
+Four Curse routines change behaviour for a non-zero `0x0BA` and all four have
+been read; not one has been seen happening, because no dual-classed character
+exists on these disks.
+
+### The seven rules that are not Pool of Radiance's
 
 **The hit die is rolled twice and the better roll kept** (`$15FC`), for every
 class -- PROBABLE, and it is the one rule here that no stored byte can ever
@@ -401,6 +446,19 @@ that is `1 2 3 5 6 7 8 9 10 10`, which is Pool of Radiance's `$2399` table
 entry for entry — the same numbers by a different mechanism, plus a paladin
 branch Pool of Radiance has no class for.
 
+**`attack_forms` is written outright, and the ranger's threshold is 8.**
+`$1909` starts at 2, walks all eight class slots comparing each level with the
+row at `$191E` — `63 63 63 07 63 63 07 08`, so 99 for magic-user, cleric and
+thief, 7 for the fighter, 7 for the paladin and **8 for the ranger** — and
+stores 2 or 3 with `STY $7CD9`. Pool of Radiance's `$2342` refuses to lower
+what is there and only ever writes 3, for a fighter at 7.
+
+`goldbox/levels.py` gave Curse's ranger the fighter's band and so said 7 until
+`$191E` was read. **Ours was the error, not the game's**: Silver Blades'
+`$13EF`/`$13F7` was measured separately on a different file and its ranger's
+first band has always ended at 7, which is the same rule. Two titles, two
+readings, and the transcription was the odd one out.
+
 **Spell capacity is never stored.** No instruction in `GEN`, `ECL64` or `ECL65`
 writes `0x0EE`-`0x0F3`, and all six shipped characters hold six zero bytes
 there. `ECL65 $880D` rebuilds the whole thing in fifteen bytes of workspace at
@@ -419,11 +477,16 @@ Curse does not have it.
 
 **The experience clamp is Pool of Radiance's rule.** `$1458` reads row `level`
 of the class's own thresholds, subtracts one, takes the maximum across the
-character's classes and writes it only if it lowers `0x0E8`. Curse needs no
-`clamp_thresholds` field, though: its rows are thirteen wide and every class
-has a real entry one past its ceiling — 750001, 675001, 660001, 1250001,
-1400001 and 975001, which are Silver Blades' *next* thresholds, measured
-separately off a different file.
+character's classes and writes it only if it lowers `0x0E8`. Curse's six clamp
+numbers come out of the *same* table the 78 thresholds did, rather than out of
+a neighbouring class's unused slot 0 the way Pool of Radiance's do: its rows
+are thirteen wide and every class has a real entry one past its ceiling —
+750001, 675001, 660001, 1250001, 1400001 and 975001, which are Silver Blades'
+*next* thresholds, measured separately off a different file. The
+`clamp_thresholds` field is still needed to carry them, because `at_level`
+stops at the ceiling and nothing else in `goldbox/levels.py` reaches entry
+thirteen. (An earlier version of this page said Curse needed no such field;
+that confused the shape of the game's table with the shape of ours.)
 
 **The magic-user picks one spell from a menu**, as in Pool of Radiance and
 unlike Silver Blades. `$2200` computes the castable level as `LSR A / ADC #$00`

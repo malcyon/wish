@@ -62,10 +62,30 @@ readings are a different *rule* rather than the same rule at a new address:
   workspace whenever the sheet is drawn, and all six shipped characters hold
   zero there.
 
-So the Curse fields below are still empty on purpose: filling them with the
-addresses above would put right numbers through the wrong arithmetic, and
-which shape to give `thief_skill_row`, `constitution_hp_bonus` and
-`wisdom_bonus_spells` is the decision `#18` leaves until Curse is switched on.
+**Curse's tables are now in this file, and the four shapes that could not
+carry them have been widened** (`#18`): `thief_skill_row` takes a dexterity,
+`constitution_hp_bonus` takes a class slot, `wisdom_bonus_spells` takes a title
+and returns as many spell levels as that title reaches, and `turning_level`
+takes a paladin. Each carries its own grade, because they are not evidenced
+alike -- what separates them is whether a byte on a disk votes for the reading
+or only the code does:
+
+| Curse table | grade | what votes for it |
+|---|---|---|
+| saving-throw rows, `$0F49` + `$0F5D` | CONFIRMED | 45 of 45 rows re-expanded, and 30 of 30 stored saves across six characters |
+| constitution hit points, `$11D7` | CONFIRMED | 6 of 6 shipped `hp_max` |
+| turning level, `$113F` | CONFIRMED | 2 of 2 shipped `turn_power`, and the same ten numbers Pool of Radiance tabulates |
+| thief skills, `$1004`/`$10A4`/`$1064` | CONFIRMED | 8 of 8 columns on the one shipped thief |
+| experience clamp, `$136E` entry 13 | CONFIRMED | the same table the 78 thresholds came from |
+| wisdom bonus spells, `ECL65 $8906` | CONFIRMED, and **no record can ever agree** | the table read, plus the *Players Handbook* row; the bonus lands in RAM at `$2BBB` and is never stored |
+| racial saving-throw bonus, `$0F19` | **PROBABLE** | the bytecode alone -- no dwarf, gnome or halfling Curse character exists to check it against |
+| hit die rolled twice, `$15FC` | **PROBABLE** | the bytecode alone; a roll leaves no trace in a record |
+
+**`TRAINER_MEASURED` still has one entry.** A table being right is not the same
+as a level-up being right: no Curse training has been driven and captured, and
+two of Curse's own steps -- the hit-die divide and the `hp_max` divide -- round
+up *at random* against the remainder (`$11AB`), so what they do can only be
+believed after being watched. That is `#18`'s step 3.
 
 **THAC0 is the game's, not a transcription**, and reading it caught an error
 that had been in this file since it was written: **a thief is THAC0 19 at
@@ -286,8 +306,16 @@ _THAC0_CLERIC = ((3, 20), (6, 18), (9, 16), (12, 14))
 _THAC0_THIEF = ((4, 21), (8, 19), (12, 16))
 _THAC0_FIGHTER = tuple((level, 21 - level) for level in range(1, 13))
 
-#: A fighter, paladin or ranger reaches two attacks in three rounds at 7.
+#: `GEN $1909` writes 2 or 3 into `attack_forms` by comparing every class
+#: slot's level with the row at `$191E`, which reads `63 63 63 07 63 63 07 08`
+#: -- 99, 99, 99, **7**, 99, 99, **7**, **8** in class-slot order. So a fighter
+#: and a paladin reach two attacks in three rounds at 7 and a **ranger at 8**.
+#:
+#: This file said 7 for the ranger until `#18` read `$191E`; the row was a
+#: transcription of the fighter's, and Silver Blades' separately measured
+#: `_ATTACKS_RANGER_SSB` had said 8 all along, which is the corroboration.
 _ATTACKS_FIGHTER = ((6, 1), (99, 1.5))
+_ATTACKS_RANGER = ((7, 1), (99, 1.5))
 
 #: `ECL65` payload `0x88D`: eleven magic-user rows of five, then ten cleric
 #: rows of five. Trailing zeroes are dropped so a row reads the way a character
@@ -340,7 +368,7 @@ CURSE_PALADIN = _progression(
     saves=_SAVES_PALADIN, die=10, roll_to=9, flat=3, attacks=_ATTACKS_FIGHTER)
 CURSE_RANGER = _progression(
     ceiling=11, experience=_XP_RANGER, thac0=_THAC0_FIGHTER,
-    saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_FIGHTER)
+    saves=_SAVES_RANGER, die=8, roll_to=10, flat=2, attacks=_ATTACKS_RANGER)
 
 
 # --- Secret of the Silver Blades ----------------------------------------------
@@ -462,6 +490,100 @@ _HP_BONUS_OTHER = (1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5)        # CON 15-25
 HP_BONUS_FROM = 15
 
 
+# --- what Curse's trainer rolls and looks up ---------------------------------
+# Read off `CURSE_A.D64`'s own `GEN` and `ECL65` (`#18`), by the instruction
+# that touches the character record at `$7C00` -- `tools/trainerscan.py`.
+# `tests/test_cursetrainer.py` re-reads every one of these off the player's
+# disk, so a wrong number here fails rather than sits.
+
+#: `GEN $1004`, nine rows of eight, indexed by `thief level - 1`. **The same
+#: 72 bytes as Pool of Radiance's `$102E`**, 42 bytes earlier in the file --
+#: one of only two Pool of Radiance tables that survive into Curse at all --
+#: so this is an alias rather than a second transcription, and
+#: `test_curses_thief_level_rows_are_pool_of_radiances_own_bytes` is what
+#: would notice if one moved.
+_THIEF_SKILLS_CURSE = _THIEF_SKILLS_POOL
+
+#: `GEN $1064`, eight rows of eight, indexed by `race - 1`. **Not Pool of
+#: Radiance's.** Dwarf and elf are identical; gnome, half-elf, halfling and
+#: half-orc are AD&D 1st edition verbatim where Pool of Radiance's carry the
+#: same numbers in different columns.
+_THIEF_SKILL_RACE_CURSE = (
+    (0, 10, 15, 0, 0, 0, -10, -5),      # dwarf
+    (5, -5, 0, 5, 10, 5, 0, 0),         # elf
+    (0, 5, 10, 5, 5, 10, -15, 0),       # gnome
+    (10, 0, 0, 0, 5, 0, 0, 0),          # half-elf
+    (5, 5, 5, 10, 15, 5, -15, -5),      # halfling
+    (-5, 5, 5, 0, 0, 5, 5, -10),        # half-orc
+    (0, 0, 0, 0, 0, 0, 0, 0),           # human
+    (0, 0, 0, 0, 0, 0, 0, 0),           # monster
+)
+
+#: `GEN $10A4`, seventeen rows of eight, and Pool of Radiance has nothing like
+#: it: `$0FC6 LDA $7C17 / SEC / SBC #$09` indexes this by
+#: `max(0, dexterity - 9)`, so row 0 answers for any dexterity of 9 or less and
+#: row 16 for 25. AD&D 1st edition's thief dexterity adjustment exactly.
+_THIEF_SKILL_DEX_CURSE = (
+    (-15, -10, -10, -20, -10, 0, 0, 0),     # dexterity 9 and below
+    (-10, -5, -10, -15, -5, 0, 0, 0),       # 10
+    (-5, 0, -5, -10, 0, 0, 0, 0),           # 11
+    (0, 0, 0, -5, 0, 0, 0, 0),              # 12
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 13
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 14
+    (0, 0, 0, 0, 0, 0, 0, 0),               # 15
+    (0, 5, 0, 0, 0, 0, 0, 0),               # 16
+    (5, 10, 0, 5, 5, 0, 0, 0),              # 17
+    (10, 15, 5, 10, 10, 0, 0, 0),           # 18
+    (15, 20, 10, 12, 12, 0, 0, 0),          # 19
+    (20, 25, 15, 15, 15, 0, 0, 0),          # 20
+    (25, 30, 20, 18, 18, 0, 0, 0),          # 21
+    (30, 35, 25, 20, 20, 0, 0, 0),          # 22
+    (35, 40, 30, 23, 23, 0, 0, 0),          # 23
+    (40, 45, 35, 25, 25, 0, 0, 0),          # 24
+    (45, 50, 40, 30, 30, 0, 0, 0),          # 25
+)
+THIEF_SKILL_DEX_FROM_CURSE = 9
+
+#: `GEN $11D7`, twenty-six **signed** bytes indexed by the raw constitution
+#: score, which is the whole of Curse's constitution rule. Two things Pool of
+#: Radiance's pair of banded rows does not do:
+#:
+#: * it has **no floor** -- a score of 1 to 3 is -2 and 4 to 6 is -1, so a
+#:   Curse character that frail loses a hit point a level where Pool of
+#:   Radiance's `CPX #$0F` refuses to look below 15 and gives zero;
+#: * there is no second row for a non-fighter. `$126D` clamps the *score* to
+#:   16 for class slots 0-2 instead (`CPY #$03 / BCS / CPX #$11 / BCC / LDX
+#:   #$10`), which reaches the same +2 ceiling from the other direction.
+#:
+#: From 7 to 18 the two titles agree on both rows, which is why nothing has
+#: been visibly wrong for an ordinary character. Above 18 they do not: Pool of
+#: Radiance gives a non-fighter up to +5, and Curse's score clamp holds it at
+#: +2 for ever. No score above 18 is reachable in play.
+_HP_BONUS_CURSE = (0, -2, -2, -2, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0,
+                   1, 2, 3, 4, 5, 5, 6, 6, 6, 7, 7)
+#: `$126D CPX #$11 / LDX #$10`, and the slot the test turns on.
+HP_BONUS_SCORE_CAP_CURSE = 16
+HP_BONUS_UNCAPPED_FROM_CURSE = 3
+
+#: `ECL65 $8906` at wisdom 13 to 19: which spell level -- 0 for the first --
+#: each point of wisdom from 13 up buys. `$88F6` loops `DEY / CPY #$0D / BCS`,
+#: so a cleric with wisdom 16 runs the loop four times and collects one spell
+#: at each of levels 1, 1, 2 and 2.
+#:
+#: **The range is the reachable one.** Below 13 the routine never enters
+#: (`CPY #$0D / BCC`); above 19 `LDX $8906,Y` would read past this table into
+#: the next one, and no character can hold a wisdom above 18.
+_WISDOM_BONUS_CURSE = (0, 0, 1, 1, 2, 3, 4)
+WISDOM_BONUS_FROM_CURSE = 13
+
+#: `GEN $113F` expanded over a Curse cleric's whole range, because Curse
+#: **computes** this where Pool of Radiance tabulates it: `max(cleric,
+#: paladin - 2)`, stored as it is below 4 and `+ 1` capped at 10 from 4 up.
+#: Over cleric 1 to 10 that is Pool of Radiance's `$2399` entry for entry, and
+#: `paladin_turn_offset` carries the branch Pool of Radiance has no class for.
+_TURN_POWER_CURSE = (1, 2, 3, 5, 6, 7, 8, 9, 10, 10)
+
+
 def hit_die(class_name: str, game=None) -> int | None:
     """How many sides the class rolls a level, or None for no such class."""
     tables = for_game(game)
@@ -475,24 +597,24 @@ def hit_die(class_name: str, game=None) -> int | None:
     return int(die)
 
 
-def constitution_hp_bonus(constitution: int, fighter: bool = False) -> int:
-    """Hit points a level from constitution. `GEN $2471`.
+def constitution_hp_bonus(constitution: int, fighter: bool = False,
+                          game=None, class_slot: int | None = None) -> int:
+    """Hit points a level from constitution. `GEN $2471`, or Curse's `$126D`.
 
-    **Pool of Radiance's**, the AD&D 1st edition table unchanged, including the
-    cap of +2 for anybody who is not a fighter.
+    **The default is Pool of Radiance's**, the AD&D 1st edition pair of banded
+    rows unchanged, including the cap of +2 for anybody who is not a fighter,
+    and every caller written before there was a second title means that one.
 
-    **It is not Curse's, and the difference is below 7.** Curse keeps one
-    signed row at `GEN $11D7` indexed by the raw score and caps a non-fighter
-    by clamping the *score* to 16 (`$126D`), so the two agree from 7 to 18 and
-    Curse alone takes hit points away: -2 at constitution 1-3 and -1 at 4-6,
-    where Pool of Radiance's `CPX #$0F` refuses to look below 15 and this
-    returns zero. A caller writing a Curse record needs Curse's row (#18).
+    **Curse's is one signed row and no floor** -- `_HP_BONUS_CURSE` says how
+    they differ. `class_slot` is Curse's own selector: `$126D` clamps the score
+    for slots 0-2 and reads the whole row for 3 and up, which is not the same
+    question as `fighter`, because a fighter/magic-user's *magic-user* slot is
+    capped and its fighter slot is not. Pass one when summing a Curse
+    character's slots; `fighter` still answers for a caller that has only the
+    class bits, and picks the capped reading for a non-fighter.
     """
-    score = int(constitution or 0)
-    if score < HP_BONUS_FROM:
-        return 0
-    row = _HP_BONUS_FIGHTER if fighter else _HP_BONUS_OTHER
-    return row[min(score - HP_BONUS_FROM, len(row) - 1)]
+    return for_game(game).constitution_hp_bonus(
+        constitution, fighter=fighter, class_slot=class_slot)
 
 
 #: `GEN $10AD`, indexed by the wisdom score. One number, which `GEN $2108`
@@ -500,13 +622,23 @@ def constitution_hp_bonus(constitution: int, fighter: bool = False) -> int:
 _WISDOM_BONUS_BASE = 12
 
 
-def wisdom_bonus_spells(wisdom: int) -> tuple[int, int, int]:
-    """Bonus cleric spells at the first three spell levels. `GEN $2108`.
+def wisdom_bonus_spells(wisdom: int, game=None) -> tuple[int, ...]:
+    """Bonus cleric spells, by spell level. `GEN $2108`, or Curse's `$88F6`.
 
-    **Pool of Radiance's only.** Curse's is `ECL65 $88F6`, a loop over every
-    point of wisdom from 13 up, each point buying one spell at the level the
-    table at `$8906` names -- so it reaches a fourth spell level and it has no
-    off-by-one. Nothing here answers for that title (#18).
+    **Three numbers for Pool of Radiance and five for Curse**, because the
+    width is how many spell levels the title's cleric rows reach. A caller
+    that passes no title gets Pool of Radiance's three, which is what every
+    caller written before there was a second title means.
+
+    **Curse's is a different table and a different rule** -- `ECL65 $88F6`
+    loops once for every point of wisdom from 13 up, each point buying one
+    spell at the level `$8906` names -- and the one visible difference is at
+    wisdom 12, where Pool of Radiance grants a spell AD&D does not and Curse
+    does not (`docs/125-bug-notes.md`).
+
+    **`goldbox.spells.capacity` does not pass a title here**, so a Curse
+    cleric's displayed capacity is still built from Pool of Radiance's bonus.
+    That is a one-line fix in a file `#18` did not own; see the issue.
 
     **The game's table starts one point low.** AD&D 1st edition gives the first
     bonus spell at wisdom 13 and the second at 14; `$10AD` holds 1 at 12 and 2
@@ -516,8 +648,11 @@ def wisdom_bonus_spells(wisdom: int) -> tuple[int, int, int]:
 
     The bonus is only granted where the class table already gives a slot at
     that spell level (`GEN $210A` skips a zero), so a level-1 cleric gets no
-    second-level spell however wise it is.
+    second-level spell however wise it is. That last clause is Curse's too.
     """
+    tables = for_game(game)
+    if tables.wisdom_bonus_level:
+        return tables.wisdom_bonus_spells(wisdom)
     score = int(wisdom or 0)
     if score < _WISDOM_BONUS_BASE:
         return (0, 0, 0)
@@ -575,18 +710,156 @@ class LevelTables:
     #: cleric 6, 160,001 for a thief 9 and 250,001 for a fighter 8. Kept apart
     #: from the rows because `next_threshold` must stay None at the ceiling --
     #: an experience bar there has nothing to fill towards.
+    #:
+    #: Curse's rows are thirteen wide and every class has a real entry one past
+    #: its ceiling, so its six numbers come out of the same table the 78
+    #: thresholds did rather than out of a neighbouring class's slot 0. The
+    #: field is still needed: `at_level` stops at the ceiling, so nothing else
+    #: in here can reach that thirteenth entry.
     clamp_thresholds: tuple[tuple[str, int], ...] = ()
+    #: `GEN $10A4`, added to the level row alongside the racial one. Empty
+    #: where the title's thief routine reads no ability score at all, which is
+    #: Pool of Radiance (`$1FEC`). A title that has this table **cannot answer
+    #: without a dexterity** and `thief_skill_row` returns None rather than
+    #: reading row 0, which would be the adjustment for a dexterity of 9.
+    thief_skill_dexterity: tuple[tuple[int, ...], ...] = ()
+    #: The score row 0 answers for; `$0FC6 SBC #$09`.
+    thief_skill_dexterity_from: int = 0
+    #: `GEN $11D7`: hit points a level from constitution, indexed by the raw
+    #: score and **signed**. Empty means the title uses the two banded rows in
+    #: `_HP_BONUS_FIGHTER` and `_HP_BONUS_OTHER` from `HP_BONUS_FROM` up, which
+    #: is Pool of Radiance's shape.
+    hp_bonus_by_score: tuple[int, ...] = ()
+    #: What a capped score is clamped to, and the first class slot that is not
+    #: capped. `$126D CPY #$03 / BCS / CPX #$11 / BCC / LDX #$10`.
+    hp_bonus_score_cap: int = 0
+    hp_bonus_uncapped_from: int = 0
+    #: `ECL65 $8906`: which spell level each point of wisdom from
+    #: `wisdom_bonus_from` up buys a cleric. Empty means the title uses Pool of
+    #: Radiance's `$10AD` arithmetic in `wisdom_bonus_spells`.
+    wisdom_bonus_level: tuple[int, ...] = ()
+    wisdom_bonus_from: int = 0
+    #: How many levels behind a cleric a paladin turns undead, or None where
+    #: the title has no paladin at all. Curse's `$113F SBC #$02`.
+    paladin_turn_offset: int | None = None
+    #: How many hit dice the trainer rolls, keeping the best. Pool of Radiance
+    #: rolls one (`$2037`) and Curse rolls two (`$15FC`). Only a title in
+    #: `TRAINER_MEASURED` may lean on this: an unread title keeps the default
+    #: because something has to be the default, not because anybody looked.
+    hit_die_rolls: int = 1
+    #: The floor a *single-class fighter*'s roll takes -- Pool of Radiance's
+    #: `CMP #$04`. None where the title has no floor of any kind, which is
+    #: Curse: `$15E1` has no `CMP #$04` in its 61 bytes.
+    hit_die_fighter_floor: int | None = 4
+    #: What a divided roll is floored at. Pool of Radiance's `$20A2 BNE / LDA
+    #: #$01`; Curse's `$11CC` is a bare `LDA $4C / RTS`, so a Curse
+    #: multi-class character can gain nothing from a die.
+    hit_die_divide_floor: int = 1
+    #: Whether the recompute writes `attack_forms` outright or only raises it.
+    #: Pool of Radiance's `$2342` refuses to lower (`LDX #$03 / CPX $6BD9 /
+    #: BCC skip`) and never writes anything but 3; Curse's `$1909` stores what
+    #: it computed, 2 or 3, whatever was there before.
+    attack_forms_overwritten: bool = False
+    #: Whether `spells_castable` at `0x0EE` is a field this title writes at
+    #: all. False for Curse, where nothing in `GEN`, `ECL64` or `ECL65` writes
+    #: those six bytes and all six shipped characters hold zero -- `ECL65
+    #: $880D` rebuilds the number in RAM whenever the sheet is drawn.
+    stores_spell_capacity: bool = True
 
-    def thief_skill_row(self, level: int, race: int) -> tuple[int, ...] | None:
+    def constitution_hp_bonus(self, constitution: int, *,
+                              fighter: bool = False,
+                              class_slot: int | None = None) -> int:
+        """Hit points a level from constitution, this title's way.
+
+        `class_slot` is Curse's selector and `fighter` is Pool of Radiance's;
+        see the module-level function of the same name for why they are not
+        the same question.
+        """
+        score = int(constitution or 0)
+        if self.hp_bonus_by_score:
+            capped = (class_slot < self.hp_bonus_uncapped_from
+                      if class_slot is not None else not fighter)
+            if capped and score > self.hp_bonus_score_cap:
+                score = self.hp_bonus_score_cap
+            return self.hp_bonus_by_score[
+                max(0, min(score, len(self.hp_bonus_by_score) - 1))]
+        if score < HP_BONUS_FROM:
+            return 0
+        row = _HP_BONUS_FIGHTER if fighter else _HP_BONUS_OTHER
+        return row[min(score - HP_BONUS_FROM, len(row) - 1)]
+
+    def wisdom_bonus_spells(self, wisdom: int) -> tuple[int, ...]:
+        """Bonus cleric spells by spell level, for a title that tabulates it.
+
+        One spell for every point of wisdom from `wisdom_bonus_from` up, at
+        the level `wisdom_bonus_level` names for that point -- `ECL65 $88F6`,
+        which loops `DEY / CPY #$0D / BCS`. Returns as many spell levels as
+        the table can name.
+        """
+        table = self.wisdom_bonus_level
+        if not table:
+            return ()
+        out = [0] * (max(table) + 1)
+        top = min(int(wisdom or 0), self.wisdom_bonus_from + len(table) - 1)
+        for score in range(self.wisdom_bonus_from, top + 1):
+            out[table[score - self.wisdom_bonus_from]] += 1
+        return tuple(out)
+
+    def hit_dice_rolled(self, class_name: str, level: int) -> int | None:
+        """How many dice the class has rolled by `level` -- `min(level,
+        roll_to)`, which is the dice count `_progression` wrote into the row.
+
+        This is the same `roll_to` the trainer keeps at `GEN $1282`, and it is
+        what stops a Curse constitution bonus counting past the level the dice
+        stop at.
+        """
+        row = self.at_level(class_name, level)
+        if row is None:
+            return None
+        return int(row.hit_dice.partition("d")[0])
+
+    def flat_hit_points(self, class_name: str, level: int) -> int | None:
+        """What this level adds instead of rolling, or None if it rolls.
+
+        `GEN $15F2 CMP $1626,X / BCC roll`: past `roll_to` the class stops
+        rolling and adds a flat number a level (`$162E`). Pool of Radiance
+        caps every class below the level this starts at, so it is None there
+        for every class and every level it has a row for.
+        """
+        here, before = (self.at_level(class_name, level),
+                        self.at_level(class_name, level - 1))
+        if here is None or before is None:
+            return None
+        if self.hit_dice_rolled(class_name, level) != \
+                self.hit_dice_rolled(class_name, level - 1):
+            return None
+        return here.hp_max - before.hp_max
+
+    def thief_skill_row(self, level: int, race: int,
+                        dexterity: int = 0) -> tuple[int, ...] | None:
         """The eight percentages a thief of that level and race stores.
 
-        The level row plus the racial row, which is the whole rule: `GEN $1FEC`
-        writes one and adds the other and reads nothing else.
+        **Pool of Radiance's rule is the level row plus the racial row and
+        nothing else** -- `GEN $1FEC` writes one, adds the other, and reads no
+        ability score. **Curse adds a dexterity row** between them (`$0FAD`),
+        so a title with `thief_skill_dexterity` returns None when it is not
+        given one rather than silently reading the row for a dexterity of 9.
+
+        Sums are left as they come out, including the negative ones: a
+        dwarf thief's read-languages column is 0 - 5, and -5 is the byte the
+        game's own `ADC` leaves behind as `$FB`.
         """
         if not self.thief_skills:
             return None
         level = max(1, min(int(level or 1), len(self.thief_skills)))
         row = self.thief_skills[level - 1]
+        if self.thief_skill_dexterity:
+            if not dexterity:
+                return None
+            at = max(0, min(int(dexterity) - self.thief_skill_dexterity_from,
+                            len(self.thief_skill_dexterity) - 1))
+            row = tuple(a + b for a, b in
+                        zip(row, self.thief_skill_dexterity[at]))
         index = int(race or 0) - 1
         if 0 <= index < len(self.thief_skill_race):
             row = tuple(a + b for a, b in
@@ -602,11 +875,30 @@ class LevelTables:
             return dict(self.clamp_thresholds).get(class_name)
         return None
 
-    def turning_level(self, cleric_level: int) -> int | None:
-        """What `0x0A4` holds for a cleric of that level, or None."""
-        if not self.turn_power or not cleric_level:
+    def turning_level(self, cleric_level: int,
+                      paladin_level: int = 0) -> int | None:
+        """What `0x0A4` holds, or None where this title has no answer.
+
+        **Pool of Radiance never writes the byte for a non-cleric**: `GEN
+        $2388` is `LDX level_cleric / BEQ` straight to the `RTS`, so None here
+        means "leave it alone" rather than "zero".
+
+        **Curse writes it for everybody**, `$113F` ending in an unconditional
+        `STA $7CA4`, and a paladin turns as a cleric `paladin_turn_offset`
+        levels weaker -- so a title with that offset answers 0 for a character
+        who turns nothing, which is the byte the game stores.
+        """
+        if not self.turn_power:
             return None
-        level = max(1, min(int(cleric_level), len(self.turn_power)))
+        effective = int(cleric_level or 0)
+        if self.paladin_turn_offset is not None:
+            effective = max(effective,
+                            int(paladin_level or 0) - self.paladin_turn_offset)
+            if effective <= 0:
+                return 0
+        elif not effective:
+            return None
+        level = max(1, min(effective, len(self.turn_power)))
         return self.turn_power[level - 1]
 
     @property
@@ -713,6 +1005,28 @@ CURSE_OF_THE_AZURE_BONDS = LevelTables(
              UNLIMITED, UNLIMITED)),
     ),
     constitution_save_columns=(0, 2, 4),
+    thief_skills=_THIEF_SKILLS_CURSE,
+    thief_skill_race=_THIEF_SKILL_RACE_CURSE,
+    thief_skill_dexterity=_THIEF_SKILL_DEX_CURSE,
+    thief_skill_dexterity_from=THIEF_SKILL_DEX_FROM_CURSE,
+    turn_power=_TURN_POWER_CURSE,
+    paladin_turn_offset=2,
+    hp_bonus_by_score=_HP_BONUS_CURSE,
+    hp_bonus_score_cap=HP_BONUS_SCORE_CAP_CURSE,
+    hp_bonus_uncapped_from=HP_BONUS_UNCAPPED_FROM_CURSE,
+    wisdom_bonus_level=_WISDOM_BONUS_CURSE,
+    wisdom_bonus_from=WISDOM_BONUS_FROM_CURSE,
+    hit_die_rolls=2,
+    hit_die_fighter_floor=None,
+    hit_die_divide_floor=0,
+    attack_forms_overwritten=True,
+    stores_spell_capacity=False,
+    #: `GEN $136E`, entry thirteen of each class's own row -- the same table
+    #: the 78 thresholds above came from, read one past each ceiling. They are
+    #: Silver Blades' *next* thresholds, measured separately off another file.
+    clamp_thresholds=(("magic-user", 750001), ("cleric", 675001),
+                      ("thief", 660001), ("fighter", 1250001),
+                      ("paladin", 1400001), ("ranger", 975001)),
 )
 
 #: Race 3 is the dwarf in this title (`games.RACES_SILVER_BLADES`), not the
@@ -758,13 +1072,22 @@ DEFAULT = POOL_OF_RADIANCE
 #: saving-throw masks at `$1F44`, the constitution tables at `$247B`/`$2486`,
 #: the spell capacity at `$20BC`.
 #:
-#: **Curse's own copies have now been located and read** (#18,
-#: `tests/test_cursetrainer.py`), and that is why the key is still not here:
-#: four of them turn out to be a different rule rather than the same rule at a
-#: new address, so a level-up run through this module would write wrong numbers
-#: rather than none. The module docstring lists which four. Adding the key
-#: needs `goldbox/levelup.py` taught those differences and a Curse training
-#: replayed against them, which is what `#18`'s order of work leaves last.
+#: **Curse's own copies have now been located, read and written into this
+#: module** (#18, `tests/test_cursetrainer.py` and `tests/test_curselevels.py`),
+#: and `goldbox/levelup.py` has been taught every rule of Curse's that is not
+#: Pool of Radiance's. The key is still not here, for one reason: **no Curse
+#: training has been driven and captured.** Every number above was read off a
+#: file or reproduced on a character SSI shipped, and two of the trainer's own
+#: steps cannot be reproduced that way at all -- `$11AB` divides both the
+#: hit-die roll and the constitution total by the class count and rounds up
+#: *at random* against the remainder, so a multi-class Curse level-up has no
+#: single right answer to check. That is `#18`'s step 3, and it is what would
+#: put this key here.
+#:
+#: Two of the readings behind it are PROBABLE rather than CONFIRMED -- the
+#: racial saving-throw bonus at `$0F19` and the double hit-die roll at `$15FC`
+#: -- because the bytecode is the whole of their evidence. The module
+#: docstring's grade table says which, and why each is where it is.
 #:
 #: Silver Blades is the same case: its level tables are in this module now
 #: (#187), and its trainer's own inputs -- the constitution hit-point bonus,
@@ -835,12 +1158,14 @@ def saving_throws(class_levels, race: int = 0, constitution: int = 0,
     return for_game(game).saving_throws(class_levels, race, constitution)
 
 
-def thief_skills(level: int, race: int, game=None) -> tuple[int, ...] | None:
-    return for_game(game).thief_skill_row(level, race)
+def thief_skills(level: int, race: int, game=None,
+                 dexterity: int = 0) -> tuple[int, ...] | None:
+    return for_game(game).thief_skill_row(level, race, dexterity)
 
 
-def turning_level(cleric_level: int, game=None) -> int | None:
-    return for_game(game).turning_level(cleric_level)
+def turning_level(cleric_level: int, game=None,
+                  paladin_level: int = 0) -> int | None:
+    return for_game(game).turning_level(cleric_level, paladin_level)
 
 
 def clamp_threshold(class_name: str, level: int, game=None) -> int | None:

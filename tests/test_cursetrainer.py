@@ -30,7 +30,7 @@ is committed: `AGENTS.md` forbids that, test fixture or not.
 
 import pytest
 
-from goldbox import levels, spells
+from goldbox import levels, levelup, spells
 from goldbox.savegame import load_save
 from tests import gamedata
 
@@ -265,10 +265,18 @@ def test_the_constitution_hit_point_table_has_no_floor_and_caps_by_score():
     for score in range(7, 19):
         assert table[score] == levels.constitution_hp_bonus(score, fighter=True)
         assert table[min(score, 16)] == levels.constitution_hp_bonus(score)
-    # Below 7 they do not, and it is `goldbox/levels.py` that is not Curse's.
+    # Below 7 they do not, and Pool of Radiance's is the one that is not
+    # Curse's -- which is why `constitution_hp_bonus` takes a title now.
     for score in range(1, 7):
         assert _signed(table[score]) < 0, score
         assert levels.constitution_hp_bonus(score, fighter=True) == 0, score
+    # Every one of the 26 entries, through Curse's own descriptor, on both
+    # sides of the `$126D` score clamp.
+    for score in range(len(table)):
+        assert CURSE.constitution_hp_bonus(score, class_slot=3) == \
+            _signed(table[score]), score
+        assert CURSE.constitution_hp_bonus(score, class_slot=0) == \
+            _signed(table[min(score, 16)]), score
 
 
 def test_the_hit_die_triple_is_the_progression_this_module_already_carries():
@@ -379,11 +387,14 @@ def test_the_shipped_partys_hit_points_come_out_of_this_derivation():
     assert checked == 6, checked
 
 
-def test_todays_hit_point_formula_disagrees_with_three_of_the_six():
-    """The negative half, so the fix cannot land without something going green.
+def test_pool_of_radiances_hit_point_formula_gets_three_of_the_six_wrong():
+    """The measurement `_hit_point_maximum`'s Curse branch exists for.
 
-    If `levelup`'s formula is ever made Curse's, this test is what says so --
-    it fails, and the count in its name is what has to change.
+    `hp_rolled + level * bonus` is `GEN $2079` and it is right in Pool of
+    Radiance. On Curse's own party it is 5 low on the paladin, 8 low on the
+    ranger and 1 high on the fighter/thief -- the three characters whose class
+    slots, ranger term and class-count divide the one-line formula has no place
+    for.
     """
     wrong = []
     for slot in _party():
@@ -393,8 +404,218 @@ def test_todays_hit_point_formula_disagrees_with_three_of_the_six():
             levels.constitution_hp_bonus(record.get("constitution"),
                                          fighter=bool(bits & 8)))
         if theirs != record.get("hp_max"):
-            wrong.append((record.name, theirs, record.get("hp_max")))
-    assert [w[0] for w in wrong] == ["PALADIN", "RANGER", "F/T"], wrong
+            wrong.append((record.name, theirs - record.get("hp_max")))
+    assert wrong == [("PALADIN", -5), ("RANGER", -8), ("F/T", 1)], wrong
+
+
+def test_levelups_own_hit_point_maximum_reproduces_all_six():
+    """The same 6 of 6, through `goldbox/levelup.py` rather than through this
+    file's `_hp_max` -- so the derivation is in the shipping code and not only
+    in a test that agrees with itself.
+
+    Moving `HP_BONUS` by one byte, or dropping the ranger term at `$128A`,
+    turns this red along with `_hp_max`'s own test.
+    """
+    checked = 0
+    for slot in _party():
+        record = slot.record
+        class_levels = {name: levelup.class_level(record, name)
+                        for name in levelup.classes_of(record, CURSE)}
+        assert class_levels, record.name
+        assert levelup._hit_point_maximum(
+            record, class_levels, record.get("hp_rolled"),
+            CURSE) == record.get("hp_max"), record.name
+        checked += 1
+    assert checked == 6, checked
+
+
+def test_curses_paladin_and_ranger_are_classes_levelup_can_name():
+    """`classes_of` read `CLASS_BITS_CLASSIC` and stopped at the fighter, so
+    `plan` told the character literally named PALADIN that it was not one.
+
+    It reads the title's own `class_order` now, which is the same four for
+    Pool of Radiance and six for Curse.
+    """
+    named = {}
+    for slot in _party():
+        named[slot.record.name] = levelup.classes_of(slot.record, CURSE)
+    assert named["PALADIN"] == ["paladin"], named
+    assert named["RANGER"] == ["ranger"], named
+    assert named["F/T"] == ["thief", "fighter"], named
+    # Pool of Radiance's four bits name the same four they always did.
+    for slot in _party():
+        pool = levelup.classes_of(slot.record, levels.POOL_OF_RADIANCE)
+        assert all(name in ("magic-user", "cleric", "thief", "fighter")
+                   for name in pool), pool
+
+
+def test_every_derived_field_of_the_shipped_party_comes_out_of_this_module():
+    """74 fields across six characters, through `goldbox/levels.py` and
+    `goldbox/levelup.py`, against what SSI's own party stores.
+
+    THAC0, five saving throws, the turning level, `attack_level`, `level`,
+    `attack_forms` and `hp_max` for all six, plus the eight thief skills for
+    the one thief. **Zero mismatches**, and this is the broadest single check
+    that Curse's tables are in the right shapes rather than merely present.
+
+    It says nothing about the racial saving-throw bonus: none of the six is a
+    dwarf, gnome or halfling, which is why `$0F19` is PROBABLE. Nor does it
+    reach the `attack_forms` band boundary -- all six are level 5, below the
+    fighter's 7 and the ranger's 8 -- so
+    `test_curses_ranger_reaches_three_attacks_in_two_rounds_at_eight_not_seven`
+    is what pins that, against `$191E` rather than against a character.
+    """
+    checked = 0
+    for slot in _party():
+        record = slot.record
+        class_levels = {name: levelup.class_level(record, name)
+                        for name in levelup.classes_of(record, CURSE)}
+        want = {
+            "thac0_base": 60 - min(CURSE.at_level(n, lv).thac0
+                                   for n, lv in class_levels.items()),
+            "turn_power": CURSE.turning_level(class_levels.get("cleric", 0),
+                                              class_levels.get("paladin", 0)),
+            "attack_level": max(class_levels.get(n, 0) for n in
+                                ("fighter", "paladin", "ranger")),
+            "level": max(class_levels.values()),
+            "hp_max": levelup._hit_point_maximum(
+                record, class_levels, record.get("hp_rolled"), CURSE),
+        }
+        for name, value in zip(levelup.SAVE_FIELDS, CURSE.saving_throws(
+                class_levels, record.get("race"),
+                record.get("constitution"))):
+            want[name] = value
+        if class_levels.get("thief"):
+            for name, value in zip(levelup.THIEF_FIELDS,
+                                   CURSE.thief_skill_row(
+                                       class_levels["thief"],
+                                       record.get("race"),
+                                       record.get("dexterity"))):
+                want[name] = value
+        for name, value in want.items():
+            assert value is not None, (record.name, name)
+            assert record.get(name) & 0xFF == value & 0xFF, (record.name, name)
+            checked += 1
+        attacks = max(CURSE.at_level(n, lv).attacks
+                      for n, lv in class_levels.items())
+        assert record.get_raw("attack_forms")[0] == int(round(attacks * 2)), \
+            record.name
+        checked += 1
+    assert checked == 74, checked
+
+
+def test_curses_ranger_reaches_three_attacks_in_two_rounds_at_eight_not_seven():
+    """`GEN $1909`, and this file used to say 7 for the ranger.
+
+    `LDY #$02` then, over all eight class slots, `LDA level[X] / CMP $191E,X /
+    BCC / LDY #$03`, and `$191E` reads `63 63 63 07 63 63 07 08` -- 99 for the
+    three classes that never get there, 7 for the fighter, 7 for the paladin
+    and **8 for the ranger**. `goldbox/levels.py` gave the ranger the fighter's
+    band and so said 7.
+
+    The corroboration is a second file: Silver Blades' `$13EF`/`$13F7` was
+    measured separately (`#187`) and its `_ATTACKS_RANGER_SSB` has always said
+    the ranger's first band ends at 7. Two titles, two readings, same rule.
+
+    **`STY $7CD9` is unconditional**, where Pool of Radiance's `$2342` refuses
+    to lower what is stored -- which is `attack_forms_overwritten`.
+    """
+    payload = _gen()
+    assert _at(payload, 0x1909, 4) == b"\xA2\x07\xA0\x02"        # LDX #7 / LDY #2
+    assert _at(payload, 0x1910, 6) == b"\xDD\x1E\x19\x90\x02\xA0"  # CMP $191E,X
+    assert _at(payload, 0x191A, 3) == b"\x8C\xD9\x7C"             # STY attack_forms
+    thresholds = list(_at(payload, 0x191E, 8))
+    assert thresholds == [99, 99, 99, 7, 99, 99, 7, 8]
+    for slot, name in enumerate(CLASS_SLOTS):
+        if name is None:
+            continue
+        for level in range(1, CURSE.ceiling(name) + 1):
+            want = 1.5 if level >= thresholds[slot] else 1
+            assert CURSE.at_level(name, level).attacks == want, (name, level)
+    assert CURSE.attack_forms_overwritten
+    assert not levels.POOL_OF_RADIANCE.attack_forms_overwritten
+
+
+def test_curses_thief_level_rows_are_pool_of_radiances_own_bytes():
+    """`goldbox/levels.py` aliases `_THIEF_SKILLS_CURSE` to Pool of Radiance's
+    72 bytes rather than transcribing them twice, and this is what makes that
+    safe: `$1004` in Curse and `$102E` in Pool of Radiance hold the same
+    bytes, 42 apart in the file. One of only two tables that survive the
+    rewrite.
+    """
+    curse, pool = _gen(), gamedata.game_file("GEN")
+    rows = _at(curse, THIEF_LEVEL_ROWS, 72)
+    assert rows == pool[0x102E - GEN_BASE:0x102E - GEN_BASE + 72]
+    assert CURSE.thief_skills == levels.POOL_OF_RADIANCE.thief_skills
+    for level, row in enumerate(CURSE.thief_skills, start=1):
+        assert list(row) == list(rows[(level - 1) * 8:level * 8]), level
+
+
+def test_the_dexterity_and_racial_rows_in_levels_py_are_curses_bytes():
+    """All 17 dexterity rows and all 8 racial rows, 200 bytes, off the disk.
+
+    Moving `THIEF_DEX_ROWS` by one row is what this catches, and it is the
+    difference between a dexterity-18 thief and a dexterity-17 one.
+    """
+    payload = _gen()
+
+    def row(address, index):
+        return tuple(_signed(b) for b in _at(payload, address + index * 8, 8))
+
+    assert CURSE.thief_skill_dexterity_from == 9
+    for index, declared in enumerate(CURSE.thief_skill_dexterity):
+        assert declared == row(THIEF_DEX_ROWS, index), index
+    for index, declared in enumerate(CURSE.thief_skill_race):
+        assert declared == row(THIEF_RACE_ROWS, index), index
+    assert len(CURSE.thief_skill_dexterity) == 17
+    assert len(CURSE.thief_skill_race) == 8
+
+
+def test_curses_hit_die_rules_are_the_ones_levelup_now_rolls():
+    """Two dice and no floor, and the flat tail past `roll_to`.
+
+    `hit_die_rolls` is 2 and `hit_die_fighter_floor` is None for Curse, which
+    is `$15FC`'s pair of `JSR $2F6A` and the absence of any `CMP #$04`.
+    `flat_hit_points` is the other half: past `roll_to` the class stops rolling
+    and adds `$162E`'s number, which is 2 for a cleric and 3 for a fighter, and
+    is None for every level Pool of Radiance has a row for.
+    """
+    payload = _gen()
+    flat = _at(payload, HIT_DIE_FLAT, 8)
+    stop = _at(payload, HIT_DIE_STOP, 8)
+    assert CURSE.hit_die_rolls == 2 and CURSE.hit_die_fighter_floor is None
+    assert CURSE.hit_die_divide_floor == 0
+    assert levels.POOL_OF_RADIANCE.hit_die_rolls == 1
+    assert levels.POOL_OF_RADIANCE.hit_die_fighter_floor == 4
+    for slot, name in enumerate(CLASS_SLOTS):
+        if name is None:
+            continue
+        for level in range(2, CURSE.ceiling(name) + 1):
+            want = flat[slot] if level >= stop[slot] else None
+            assert CURSE.flat_hit_points(name, level) == want, (name, level)
+    for name in levels.POOL_OF_RADIANCE.class_names:
+        ceiling = levels.POOL_OF_RADIANCE.ceiling(name)
+        for level in range(2, ceiling + 1):
+            assert levels.POOL_OF_RADIANCE.flat_hit_points(name, level) is None
+
+
+def test_a_curse_level_up_is_still_refused_and_names_the_title():
+    """Every table above is in `goldbox/levels.py` and Curse is **still not**
+    in `TRAINER_MEASURED`, which is deliberate rather than an oversight.
+
+    Nothing here is a driven training: every number was read off a file or
+    reproduced on a character SSI shipped. Two of the trainer's own steps
+    cannot be reproduced that way at all -- `$11AB` divides both the hit-die
+    roll and the constitution total by the class count and rounds up at random
+    -- so `#18`'s step 3 is what would move the key, not another table.
+    """
+    assert CURSE.key not in levels.TRAINER_MEASURED
+    assert not levels.trainer_measured(CURSE)
+    for slot in _party():
+        with pytest.raises(levelup.CannotLevel) as caught:
+            levelup.plan(slot.record, game=CURSE)
+        assert "Curse of the Azure Bonds" in str(caught.value)
+        break
 
 
 # --- the turning level -------------------------------------------------------
@@ -427,6 +648,15 @@ def test_the_turning_level_is_arithmetic_and_agrees_with_pool_of_radiance():
     pool = levels.POOL_OF_RADIANCE.turn_power
     for level in range(1, CURSE.ceiling("cleric") + 1):
         assert _turn_power(payload, level, 0) == pool[level - 1], level
+    # And `goldbox/levels.py` now carries that expansion, paladin branch and
+    # all: `$115D STA $7CA4` is unconditional, so a Curse character who turns
+    # nothing stores 0 where Pool of Radiance's `$2388 BEQ` writes no byte.
+    for cleric in range(0, CURSE.ceiling("cleric") + 1):
+        for paladin in range(0, CURSE.ceiling("paladin") + 1):
+            assert CURSE.turning_level(cleric, paladin) == \
+                _turn_power(payload, cleric, paladin), (cleric, paladin)
+    assert CURSE.turning_level(0, 0) == 0
+    assert levels.POOL_OF_RADIANCE.turning_level(0) is None
 
 
 def test_the_shipped_cleric_and_paladin_store_that_turning_level():
@@ -508,9 +738,14 @@ def test_the_shipped_thief_stores_the_eight_skills_this_gives():
     """One thief, eight columns, and the level row alone does not reach them.
 
     F/T is a half-elf thief 5 with dexterity 18 and stores
-    `70 57 45 50 46 20 90 25`. `LevelTables.thief_skill_row` has no tables for
-    Curse and returns None, and Pool of Radiance's rows applied to the same
-    character give `50 42 40 45 31 20 90 30`.
+    `70 57 45 50 46 20 90 25`. Pool of Radiance's rows applied to the same
+    character give `50 42 40 45 31 20 90 30`, so the dexterity term is not
+    decoration -- it is five of the eight columns.
+
+    `LevelTables.thief_skill_row` now carries Curse's three tables and is
+    checked against the same eight bytes. **It refuses without a dexterity**
+    rather than reading row 0, which would be the adjustment for a dexterity
+    of 9 and would quietly take 65 points off this character.
     """
     payload = _gen()
     thieves = 0
@@ -527,6 +762,8 @@ def test_the_shipped_thief_stores_the_eight_skills_this_gives():
             "thief_move_silently", "thief_hide_in_shadows",
             "thief_hear_noise", "thief_climb_walls",
             "thief_read_languages")], record.name
+        assert CURSE.thief_skill_row(
+            level, record.get("race"), record.get("dexterity")) == tuple(want)
         assert CURSE.thief_skill_row(level, record.get("race")) is None
     assert thieves == 1, thieves
 
@@ -555,7 +792,13 @@ def test_the_experience_rows_and_the_clamp_come_out_of_one_table():
             r.experience for r in CURSE.table(name)], name
     assert [rows[n][CURSE.ceiling(n)] for n in rows] == [
         750001, 675001, 660001, 1250001, 1400001, 975001]
-    assert CURSE.clamp_thresholds == (), "still unread by goldbox/levels.py"
+    # `clamp_thresholds` is still a field, because `at_level` stops at the
+    # ceiling and nothing else in `goldbox/levels.py` can reach entry thirteen.
+    assert dict(CURSE.clamp_thresholds) == {
+        name: rows[name][CURSE.ceiling(name)] for name in rows}
+    for name in rows:
+        assert CURSE.clamp_threshold(name, CURSE.ceiling(name)) == \
+            rows[name][CURSE.ceiling(name)], name
 
 
 def test_the_clamp_skips_a_humans_dual_classed_old_class():
@@ -769,6 +1012,14 @@ def test_the_wisdom_bonus_starts_at_thirteen_and_is_one_spell_a_point():
     assert list(table[13:20]) == [0, 0, 1, 1, 2, 3, 4]
     # Pool of Radiance gives a wisdom-12 cleric a bonus spell; Curse does not.
     assert levels.wisdom_bonus_spells(12) == (1, 0, 0)
+    assert levels.wisdom_bonus_spells(12, CURSE) == (0, 0, 0, 0, 0)
+    # Every reachable score, counted the way `$88F6`'s loop counts.
+    for wisdom in range(3, 20):
+        want = [0] * 5
+        for point in range(13, wisdom + 1):
+            want[table[point]] += 1
+        assert levels.wisdom_bonus_spells(wisdom, CURSE) == tuple(want), wisdom
+    assert levels.wisdom_bonus_spells(18, CURSE) == (2, 2, 1, 1, 0)
 
 
 # --- the sequence, and one rule that is not a level-up ------------------------

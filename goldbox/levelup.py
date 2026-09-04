@@ -18,11 +18,38 @@ the sequence a level-up runs, and every routine it calls has been read:
 | a hit die, and hit points from it | `$2037`, `$2079` | `roll_hit_points` |
 | experience clamped to the next threshold | `$23D4` | `_experience` |
 
+**Curse of the Azure Bonds runs the same eight steps at different addresses
+and by eight different rules**, all of them read off its own `GEN` and `ECL65`
+(`#18`, `docs/135-levelling.md`). Each is a per-title field on
+`goldbox.levels.LevelTables` rather than a branch here:
+
+| rule | Pool of Radiance | Curse | where |
+|---|---|---|---|
+| the hit die | one roll (`$2037`) | two, keep the higher (`$15FC`) | `hit_die_rolls` |
+| a lone fighter's floor | 4 (`CMP #$04`) | none | `hit_die_fighter_floor` |
+| a divided roll's floor | 1 (`$20A2`) | none (`$11CC`) | `hit_die_divide_floor` |
+| `hp_max` | `hp_rolled + level * bonus` (`$2079`) | per class slot, summed and divided (`$11F1`) | `_hit_point_maximum` |
+| the constitution bonus | two banded rows from 15 (`$247B`) | one signed row, no floor (`$11D7`) | `hp_bonus_by_score` |
+| thief skills | level and race (`$1FEC`) | level, **dexterity** and race (`$0FAD`) | `thief_skill_dexterity` |
+| `attack_forms` | raised to 3, never lowered (`$2342`) | written outright, 2 or 3 (`$1909`) | `attack_forms_overwritten` |
+| `spells_castable` | written (`$20BC`) | **never stored** | `stores_spell_capacity` |
+
+**Curse is still refused**, because `levels.TRAINER_MEASURED` has one entry:
+none of this has been checked against a training anybody watched. What it *has*
+been checked against is the six characters SSI shipped, whose every derived
+field comes back out of this module -- `tests/test_cursetrainer.py`.
+
 **One field is a die and cannot be anything else.** `hp_rolled` at `0x0ED`
 takes a fresh roll of the class's hit die at every training, so this module
 rolls one too rather than pretending to derive it. Everything the roll feeds --
 `hp_max`, and the roster's current hit points -- follows from it exactly, by
 `hp_max = hp_rolled + level * constitution bonus`, which is `$2079`.
+
+**And a multi-class character's roll is not deterministic in either title.**
+Both divide it by how many classes the character has and round up *at random*
+against the remainder -- `$208D` and `$11AB`, the same routine twice -- so two
+identical characters can gain different hit points from the same die. No
+measured training constrains it, because every replay hands `plan` its roll.
 
 **Money is not touched, and the trainer does touch it.** A training costs a
 flat 1000 gold at every level and the rest of the character's coin is converted
@@ -46,12 +73,11 @@ from . import levels, spells
 from .games import CLASS_BITS_CLASSIC
 
 #: `0x0C9` upwards, in class-bit order -- the order every one of the game's own
-#: tables is indexed in. `ranger` is not in `CLASS_BITS_CLASSIC` and so never
-#: appears in `classes_of`'s output today; it is here so `class_level` works
-#: on a ranger's record wherever a caller already has one in hand (#89).
+#: tables is indexed in. Paladin and ranger are here because Curse has both and
+#: `classes_of` names them for a title whose `class_order` does (#18).
 CLASS_LEVEL_FIELD = {"magic-user": "level_magic_user", "cleric": "level_cleric",
                      "thief": "level_thief", "fighter": "level_fighter",
-                     "ranger": "level_ranger"}
+                     "paladin": "level_paladin", "ranger": "level_ranger"}
 
 #: The five saving throws, in stored order at `0x09A`.
 SAVE_FIELDS = ("save_paralysis", "save_petrification", "save_wands",
@@ -139,10 +165,24 @@ def _tables_for(game):
     return tables
 
 
-def classes_of(record) -> list[str]:
-    """The character's classes, in class-bit order."""
+def classes_of(record, game=None) -> list[str]:
+    """The character's classes, in class-bit order.
+
+    **Which bits exist is the title's**, and `LevelTables.class_order` is that
+    list: index `n` is bit `n` of `0x0EB` and slot `n` of the per-class level
+    array at `0x0C9`, with None for a bit the title has no class for. Pool of
+    Radiance's four are the first four, which is `CLASS_BITS_CLASSIC` exactly;
+    Curse adds the paladin at `0x40` and the ranger at `0x80`, and without them
+    `plan` told a Curse paladin it was not one (#18).
+
+    A title `goldbox.levels` has no tables for falls back to Pool of Radiance's
+    order, which would miss a Krynn knight at `0x10`. Nothing reaches that:
+    `_tables_for` refuses such a title before `plan` asks.
+    """
     bits = record.get("class_bits") or 0
-    return [name for bit, name in CLASS_BITS_CLASSIC if bits & bit]
+    order = levels.for_game(game).class_order
+    return [name for index, name in enumerate(order)
+            if name and bits & (1 << index)]
 
 
 def class_level(record, class_name: str) -> int:
@@ -169,7 +209,7 @@ def ready_classes(record, game=None) -> list[str]:
     """
     experience = record.get("experience") or 0
     out = []
-    for name in classes_of(record):
+    for name in classes_of(record, game):
         want = levels.next_threshold(name, class_level(record, name), game)
         if want is not None and experience >= want:
             out.append(name)
@@ -177,6 +217,8 @@ def ready_classes(record, game=None) -> list[str]:
 
 
 #: Class-bit order, as a plain list, for the tie-break in `best_next_class`.
+#: Pool of Radiance's four; a title with more of them overrides it from its own
+#: `LevelTables.class_order`, which is the same list with the gaps in.
 _CLASS_ORDER = [name for _, name in CLASS_BITS_CLASSIC]
 
 
@@ -199,17 +241,20 @@ def best_next_class(ready, class_levels, game=None) -> str | None:
     combination in Pool of Radiance's tables the post-level rule never gains
     fewer levels and sometimes gains more.
 
-    Ties break in class-bit order -- magic-user, cleric, thief, fighter --
-    which is the order `0x0C9` stores and the order every one of the game's own
-    tables is indexed in. Repeated calls then walk down the order themselves,
-    because each level raises the class it just picked.
+    Ties break in class-bit order -- magic-user, cleric, thief, fighter, and
+    then Curse's paladin and ranger -- which is the order `0x0C9` stores and
+    the order every one of the game's own tables is indexed in. Repeated calls
+    then walk down the order themselves, because each level raises the class it
+    just picked.
     """
+    order_of = [name for name in levels.for_game(game).class_order if name] \
+        or _CLASS_ORDER
+
     def rank(name: str):
         # None where the title's tables have no entry past the ceiling; sorts
         # last rather than raising, since something has to be picked.
         after = levels.clamp_threshold(name, class_levels[name] + 1, game)
-        order = (_CLASS_ORDER.index(name) if name in _CLASS_ORDER
-                 else len(_CLASS_ORDER))
+        order = (order_of.index(name) if name in order_of else len(order_of))
         return (after or 0, -order)
 
     ready = [name for name in ready if name in class_levels]
@@ -221,28 +266,84 @@ def best_class(record, game=None) -> str | None:
     ready."""
     return best_next_class(
         ready_classes(record, game),
-        {name: class_level(record, name) for name in classes_of(record)},
+        {name: class_level(record, name) for name in classes_of(record, game)},
         game)
 
 
-def roll_hit_points(class_name: str, class_count: int = 1,
-                    fighter_only: bool = False, rng=None, game=None) -> int:
-    """One hit die, the way `GEN $2037` rolls it.
+def divide_between_classes(value: int, class_count: int, rng=None,
+                           game=None) -> int:
+    """Split hit points between a multi-class character's classes.
 
-    The die is the class's own (`GEN $20A7`); a multi-class character divides
-    the roll by how many classes it has, and never gets less than 1. **A
-    single-class fighter never rolls below 4** -- `CMP #$04` against
-    `class_bits == 8` and nothing else -- which is why no fighter in twenty-nine
-    trainings gained fewer than four hit points.
+    `GEN $208D` in Pool of Radiance and `$11AB` in Curse, and they are the same
+    routine twice: divide, then **round up at random against the remainder**.
+    Pool of Radiance increments when the roll is at or below the remainder
+    (`CMP $6E3F / BEQ inc / BCS out`) and Curse when it is below it
+    (`CMP $7F3F / BCS out`).
+
+    **`remainder / class_count` is PROBABLE, not read.** It is what the two
+    comparisons come to *if* Pool of Radiance's roll runs 1 to `class_count`
+    and Curse's 0 to `class_count - 1`, which is what the `DEY` in front of
+    Curse's `JSR $2F6B` implies. Both random routines are resident and outside
+    `GEN`, so neither range is readable from the overlay. What is CONFIRMED is
+    that the round-up happens at all and that its chance rises with the
+    remainder.
+
+    **So two identical characters can gain different hit points from the same
+    die**, and no replay can pin this: none of the twenty-nine measured
+    trainings constrains it, because every one of them hands `plan` the roll it
+    is checking. That is why a multi-class Curse training has to be watched
+    rather than derived (`#18`'s step 3).
+
+    Pool of Radiance then floors the result at 1 (`$20A2 BNE / LDA #$01`) and
+    Curse does not (`$11CC` is a bare `LDA $4C / RTS`), so a Curse character
+    with three classes can come out of a training with nothing.
     """
-    die = levels.hit_die(class_name, game)
-    if not die:
-        raise CannotLevel(f"no hit die is known for {class_name}")
-    rolled = (rng or random).randint(1, die)
-    if class_count > 1:
-        rolled = max(1, round(rolled / class_count))
-    if fighter_only and rolled < 4:
-        rolled = 4
+    tables = levels.for_game(game)
+    if class_count <= 1:
+        return value
+    quotient, remainder = divmod(value, class_count)
+    if remainder and (rng or random).randrange(class_count) < remainder:
+        quotient += 1
+    return max(quotient, tables.hit_die_divide_floor)
+
+
+def roll_hit_points(class_name: str, class_count: int = 1,
+                    fighter_only: bool = False, rng=None, game=None,
+                    level: int | None = None) -> int:
+    """One hit die, the way the title's trainer rolls it.
+
+    The die is the class's own -- `GEN $20A7` in Pool of Radiance, `$161E` in
+    Curse -- and the roll is then split between the character's classes by
+    `divide_between_classes`. Three things are the title's:
+
+    * **how many dice.** Pool of Radiance rolls one (`$2037`); Curse rolls two
+      and keeps the higher (`$15FC`), which is `hit_die_rolls`. PROBABLE, from
+      the bytecode alone: a roll leaves no trace of itself in a record.
+    * **the single-class fighter's floor of 4.** Pool of Radiance's `CMP #$04`
+      against `class_bits == 8` and nothing else, which is why no fighter in
+      twenty-nine trainings gained fewer than four hit points. Curse has no
+      floor of any kind -- `$15E1` carries no `CMP #$04` in its 61 bytes.
+    * **when the dice stop.** Past `roll_to` a class adds a flat number a
+      level instead of rolling (`$15F2 CMP $1626,X / BCC roll`), and the flat
+      number goes through the same divide. `level` is the level being trained
+      *to*; without it this always rolls, which is right for Pool of Radiance,
+      where no class reaches its own `roll_to`.
+    """
+    tables = levels.for_game(game)
+    flat = tables.flat_hit_points(class_name, level) if level else None
+    if flat is None:
+        die = levels.hit_die(class_name, game)
+        if not die:
+            raise CannotLevel(f"no hit die is known for {class_name}")
+        source = rng or random
+        rolled = max(source.randint(1, die)
+                     for _ in range(max(1, tables.hit_die_rolls)))
+    else:
+        rolled = flat
+    rolled = divide_between_classes(rolled, class_count, rng, game)
+    floor = tables.hit_die_fighter_floor
+    if fighter_only and floor is not None and rolled < floor:
+        rolled = floor
     return rolled
 
 
@@ -417,6 +518,76 @@ def _spells_castable(record, class_levels: dict[str, int],
     return out[:width]
 
 
+def _hit_point_maximum(record, class_levels: dict[str, int], hp_rolled: int,
+                       game=None, rng=None) -> int:
+    """`hp_max` at `0x076`, the way the title's recompute builds it.
+
+    **Pool of Radiance's is one line** -- `GEN $2079`, `hp_rolled + level *
+    bonus`, with the constitution row picked by the fighter bit.
+
+    **Curse's is a loop over the eight class slots** (`$11F1`), and it
+    disagrees with Pool of Radiance's on three of the six characters SSI
+    shipped: 5 low on the paladin, 8 low on the ranger, 1 high on the
+    fighter/thief. Per slot it takes `min(level, roll_to)` -- the dice count,
+    so **the constitution bonus stops when the dice stop** (`$1204 SBC
+    $1282,Y`) -- times that slot's constitution bonus, which is the capped one
+    for slots 0 to 2. It adds one whole extra bonus for a ranger (`$128A`,
+    because a ranger is 2d8 at level 1), divides by the class count, adds
+    `hp_rolled`, and finally floors the answer at the character's `level` and
+    throws away anything reaching 200 (`$123C`/`$1241`).
+
+    **The arithmetic is eight-bit and the constitution row is signed**, which
+    is why the total is masked here rather than left as a Python integer: a
+    character with a constitution of 6 or less has a negative total, `$1230
+    BMI` skips the divide for it, and the addition wraps.
+
+    **Three branches nothing has ever taken.** No character SSI shipped has a
+    constitution below 14, so the negative total is unexercised; all six are
+    level 5 against a `roll_to` of 9 or more, so the dice cap is; and nothing
+    can approach 200 at level 5. The dual-class terms are unexercised too, and
+    for a stronger reason: there is no dual-classed Curse character anywhere on
+    these disks, which is why `plan` refuses one rather than writing this.
+    """
+    tables = levels.for_game(game)
+    level = max(class_levels.values(), default=1)
+    if not tables.hp_bonus_by_score:
+        bits = record.get("class_bits") or 0
+        return hp_rolled + level * tables.constitution_hp_bonus(
+            record.get("constitution"), fighter=bool(bits & 8))
+
+    constitution = record.get("constitution")
+    old_level = record.get("dual_class_level") or 0
+    old_slot = record.get("dual_class_slot") or 0
+    order = tables.class_order
+    total = 0
+    if old_level:
+        # `$124F`: the class the character left keeps its own term, once.
+        name = order[old_slot] if old_slot < len(order) else None
+        if name:
+            dice = tables.hit_dice_rolled(name, tables.ceiling(name)) or 0
+            total += min(old_level, dice) * tables.constitution_hp_bonus(
+                constitution, class_slot=old_slot)
+    counted = 0
+    for slot, name in enumerate(order):
+        if not name or not class_levels.get(name):
+            continue
+        if not (old_level and slot == old_slot):
+            counted += 1        # `$18E4` leaves the old class out of the count
+        dice = tables.hit_dice_rolled(name, class_levels[name]) or 0
+        total += max(0, dice - old_level) * tables.constitution_hp_bonus(
+            constitution, class_slot=slot)
+    if class_levels.get("ranger") or (old_level and old_slot < len(order)
+                                      and order[old_slot] == "ranger"):
+        total += tables.constitution_hp_bonus(
+            constitution, class_slot=order.index("ranger"))
+
+    total &= 0xFF
+    if total < 0x80 and counted:
+        total = divide_between_classes(total, counted, rng, game)
+    points = (hp_rolled + total) & 0xFF
+    return points if level <= points < 200 else level
+
+
 def _experience(record, class_levels: dict[str, int], game=None) -> int:
     """The clamp at `GEN $23D4`: one short of the largest next threshold.
 
@@ -472,12 +643,26 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
         # Nothing ready falls through to the threshold check below, which says
         # which class and what it is short of -- a better answer than "no".
         class_name = (best_class(record, game)
-                      or (classes_of(record) or [""])[0])
-    if class_name not in classes_of(record):
+                      or (classes_of(record, game) or [""])[0])
+    if class_name not in classes_of(record, game):
         raise CannotLevel(f"{record.name} is not a {class_name}")
+    if record.is_stored("dual_class_level") and record.get("dual_class_level"):
+        # `0x0BA` non-zero is the "has dual-classed" sentinel (`GEN $18EB`),
+        # and four routines change behaviour for it: `$15E7` refuses the die
+        # until the new class passes the old level, `$124F` gives the old class
+        # its own hit-point term, `$1470` and `$1321` leave its slot out of the
+        # clamp and out of eligibility, and `$20A3` puts it back afterwards.
+        # All four were read off Curse's `GEN` and **not one has been seen
+        # happening**: no dual-classed character exists on any disk here, so
+        # this refuses rather than writing a rule nothing has checked (#18).
+        #
+        # UNAPPROVED WORDING: a new string Donald has not seen, reaching a user
+        # as the level-up button's reason for saying no.
+        raise CannotLevel(f"{record.name} has dual-classed, and what the "
+                          f"trainer does then has been read but never watched")
 
     class_levels = {name: class_level(record, name)
-                    for name in classes_of(record)}
+                    for name in classes_of(record, game)}
     from_level = class_levels[class_name]
     to_level = from_level + 1
     row = levels.at_level(class_name, to_level, game)
@@ -500,10 +685,9 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     if rolled is None:
         rolled = roll_hit_points(
             class_name, class_count=len(class_levels),
-            fighter_only=(bits == 8), rng=rng, game=game)
+            fighter_only=(bits == 8), rng=rng, game=game, level=to_level)
     hp_rolled = (record.get("hp_rolled") or 0) + rolled
-    hp_max = hp_rolled + level * levels.constitution_hp_bonus(
-        record.get("constitution"), fighter=bool(bits & 8))
+    hp_max = _hit_point_maximum(record, class_levels, hp_rolled, game, rng)
 
     fields: dict[str, object] = {
         CLASS_LEVEL_FIELD[class_name]: to_level,
@@ -514,7 +698,12 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
         "hp_rolled": hp_rolled,
         "hp_max": hp_max,
         "experience": _experience(record, class_levels, game),
-        "attack_level": class_levels.get("fighter", 0),
+        # `GEN $2342` writes the fighter's level; Curse's `$0DF1` writes the
+        # best of fighter, paladin and ranger, and that byte is what feeds the
+        # fighter group's THAC0 and its saving-throw column.
+        "attack_level": max((class_levels.get(name, 0)
+                             for name in ("fighter", "paladin", "ranger")),
+                            default=0),
     }
 
     saves = levels.saving_throws(class_levels, race,
@@ -522,24 +711,48 @@ def plan(record, class_name: str | None = None, *, game=None, rng=None,
     for name, value in zip(SAVE_FIELDS, saves):
         fields[name] = value
 
-    if class_levels.get("fighter", 0) >= 7:
-        forms = bytearray(record.get_raw("attack_forms"))
-        if forms and forms[0] < 3:
-            forms[0] = 3
+    # `attack_forms` at `0x0D9` holds attacks a round doubled, so 2 or 3.
+    # **Pool of Radiance only ever raises it to 3** -- `$2342 LDX #$03 / CPX
+    # $6BD9 / BCC skip`, and only for a fighter at 7. **Curse writes what it
+    # computed**, `$1909 STY $7CD9`, comparing every class slot's level with
+    # the row at `$191E`: fighter 7, paladin 7, **ranger 8**.
+    want = int(round(max((levels.at_level(n, lv, game).attacks
+                          for n, lv in class_levels.items()
+                          if levels.at_level(n, lv, game)), default=1) * 2))
+    forms = bytearray(record.get_raw("attack_forms"))
+    if forms:
+        if tables.attack_forms_overwritten:
+            new_forms = want
+        elif want >= 3:
+            new_forms = max(forms[0], want)
+        else:
+            new_forms = forms[0]
+        if new_forms != forms[0]:
+            forms[0] = new_forms
             fields["attack_forms"] = bytes(forms)
 
-    if class_levels.get("cleric"):
-        turning = levels.turning_level(class_levels["cleric"], game)
-        if turning is not None:
-            fields["turn_power"] = turning
+    turning = levels.turning_level(class_levels.get("cleric", 0), game,
+                                   class_levels.get("paladin", 0))
+    if turning is not None:
+        fields["turn_power"] = turning
 
     if class_levels.get("thief"):
-        skills = tables.thief_skill_row(class_levels["thief"], race)
+        skills = tables.thief_skill_row(class_levels["thief"], race,
+                                        record.get("dexterity") or 0)
+        if skills is None:
+            raise CannotLevel(f"{tables.title}'s thief skills need a "
+                              f"dexterity and {record.name} has none")
         for name, value in zip(THIEF_FIELDS, skills):
             fields[name] = value
 
-    fields["spells_castable"] = bytes(
-        _spells_castable(record, class_levels, game))
+    # **Curse never stores spell capacity**: nothing in `GEN`, `ECL64` or
+    # `ECL65` writes `0x0EE`-`0x0F3`, `ECL65 $880D` rebuilds the number in
+    # fifteen bytes of workspace whenever the sheet is drawn, and all six
+    # shipped characters hold zero there. Writing it would be the only field
+    # in this plan the game itself leaves alone.
+    if tables.stores_spell_capacity:
+        fields["spells_castable"] = bytes(
+            _spells_castable(record, class_levels, game))
 
     known = set(spells.spells_known(bytes(record), game))
     learned = None
