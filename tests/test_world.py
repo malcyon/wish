@@ -31,6 +31,8 @@ from goldbox.world import (
     Window,
     World,
     WorldError,
+    passable,
+    site_at,
 )
 from tests.gamedata import disk_dir
 
@@ -203,8 +205,9 @@ def test_the_seam_agreement_matches_the_documented_counts():
     """`docs/113-world-map.md`: 179 of 180 squares agree between the west and
     middle windows across their overlap, 180 of 180 between the middle and
     east. The overlap is the raw grid, all 36 rows, over the five columns
-    (18 - 13) two neighbouring windows share -- not just the playable band --
-    which is what makes it 180 rather than 32.
+    (18 - 13) two neighbouring windows share -- 36 x 5 = 180, and the count
+    is over the whole grid rather than the playable band, which would give
+    32 x 5 = 160.
     """
     world = World.from_disks(_pool_disks())
     west, middle, east = world.windows
@@ -233,3 +236,24 @@ def test_sample_size():
     assert len(world.windows) == 3
     assert all(len(w.to_bytes()) >= MIN_FILE_SIZE for w in world.windows)
     assert 3 * GRID_SIZE == 1944
+
+
+def test_the_two_blocked_functions_say_what_blocks_them():
+    """`passable` and `site_at` are declared and raise, which is deliberate.
+
+    Their tables are not in `SQRDATA0n` at all -- they live in `ECL19`/`1A`/
+    `1B`'s own bytecode, and the addresses were in a write-up lost with
+    `work/` (`#136`). Declaring them and failing loudly is better than
+    leaving a caller to guess the module simply has no such idea, and much
+    better than guessing an address; but a function that raises is exactly
+    what a reader mistakes for dead code, so the message is part of the
+    contract and is asserted here.
+    """
+    for call in (lambda: passable(Window(bytes(GRID_SIZE + TILE_TABLE_SIZE)),
+                                  0, 0),
+                 lambda: site_at(0, 0)):
+        with pytest.raises(NotImplementedError) as caught:
+            call()
+        said = str(caught.value)
+        assert "ECL19" in said and "#136" in said, said
+        assert "world-map.md" in said, said

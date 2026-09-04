@@ -227,7 +227,11 @@ class World:
             for image in images:
                 entry = image.find(encoded)
                 if entry is not None:
-                    windows.append(Window(load_payload(image, entry.name), name=name))
+                    # Through `from_disk`, not a second copy of its three
+                    # lines: two ways to build a `Window` drift apart the
+                    # first time either changes, and only one of them would
+                    # have a test.
+                    windows.append(Window.from_disk(image, entry.name))
                     break
             else:
                 raise WorldError(f"no disk here carries {name}")
@@ -256,6 +260,14 @@ class World:
 
         `y` is not stitched -- every window shares the same y range, and only
         x moves between them.
+
+        **The int this returns does not carry the window it came from, and a
+        terrain code only means anything against its own window's table**:
+        `2E` is walkable mountain on map `19` and solid on `1B`. Nothing here
+        can be asked what a bare code means -- there is no global code-to-name
+        table to misuse -- but a caller that stores this number and decodes it
+        later, once `passable` exists, is the way that protection is lost.
+        Use `locate` and keep the `Window`, or call `Window.square` directly.
         """
         if y not in PLAYABLE_Y:
             raise IndexError(f"y {y} is outside {WORLD_Y_MIN}..{WORLD_Y_MAX}")
