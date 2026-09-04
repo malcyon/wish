@@ -135,8 +135,8 @@ def test_a_folder_that_holds_no_disks_is_still_the_answer(tmp_path,
 
 # --- a folder per title (#22, steps 1 and 3) ---------------------------------
 #
-# Step 2 -- a row per title in Preferences -- needs a label, which is
-# Donald's, and is deliberately not built here.
+# Step 2 -- a row per title in Preferences -- is below, in its own section:
+# "a folder per title (#22, step 2)".
 
 def test_a_titles_own_folder_wins_over_the_shared_one(tmp_path, monkeypatch):
     nowhere(tmp_path, monkeypatch)
@@ -217,6 +217,115 @@ def test_a_file_already_using_game_folders_is_not_migrated_again(tmp_path,
     shelf = disks(tmp_path / "shelf", "CURSE1.D64")
     Settings(disks=str(shelf), game_folders={}).save()
     assert Settings.load().game_folders == {}
+
+
+# --- a folder per title (#22, step 2) -----------------------------------------
+#
+# A row per title, each optional and each reporting what it found the way the
+# shared folder above does. Pool of Radiance, Curse of the Azure Bonds and
+# Secret of the Silver Blades only -- the three titles `goldbox.games.GAMES`
+# gives a real C64 `disk_glob` for. Pools of Darkness is the fourth row Donald
+# settled on and is not built: it has no entry in `goldbox.games.GAMES` at all
+# and never shipped on the C64 this search reads, so there is no `disk_glob`
+# a folder for it could search against -- a finding left on #22 rather than
+# guessed at here.
+
+SILVER_BLADES = games.SECRET_OF_THE_SILVER_BLADES
+
+
+def test_the_dialog_has_a_row_per_title_that_writes_its_own_folder(
+        app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert set(dialog.game_folder_edits) == {
+            g.key for g in preferences.GAME_FOLDER_TITLES}
+        assert dialog.game_folder_edits[CURSE.key].text() == ""
+
+        mine = tmp_path / "my curse disks"
+        dialog.set_game_folder(CURSE, str(mine))
+        assert win.settings.game_folders == {CURSE.key: str(mine)}
+        assert Settings.load().game_folders == {CURSE.key: str(mine)}
+
+        # A second title's row is independent of the first's.
+        pool_folder = tmp_path / "my pool disks"
+        dialog.set_game_folder(games.POOL_OF_RADIANCE, str(pool_folder))
+        assert win.settings.game_folders == {
+            CURSE.key: str(mine), games.POOL_OF_RADIANCE.key: str(pool_folder)}
+    finally:
+        win.close()
+
+
+def test_clearing_a_titles_row_removes_only_that_entry(app, tmp_path,
+                                                        monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        dialog.set_game_folder(CURSE, str(tmp_path / "curse"))
+        dialog.set_game_folder(SILVER_BLADES, str(tmp_path / "silver"))
+        dialog.set_game_folder(CURSE, "")
+        assert win.settings.game_folders == {
+            SILVER_BLADES.key: str(tmp_path / "silver")}
+        assert Settings.load().game_folders == {
+            SILVER_BLADES.key: str(tmp_path / "silver")}
+    finally:
+        win.close()
+
+
+def test_a_titles_row_reports_what_it_found_in_its_own_words(
+        app, tmp_path, monkeypatch):
+    """`title_folder_report` reuses `report`'s own phrasing rather than
+    inventing a new one -- see #22's finding about GUI text."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        dialog = PreferencesDialog(win)
+        assert dialog.game_folder_reports[CURSE.key].text() == ""
+
+        found = disks(tmp_path / "curse-disks", "CURSE1.D64")
+        dialog.set_game_folder(CURSE, str(found))
+        assert dialog.game_folder_reports[CURSE.key].text() == (
+            "Curse of the Azure Bonds (1 disk)")
+
+        empty = tmp_path / "typo"
+        empty.mkdir()
+        dialog.set_game_folder(CURSE, str(empty))
+        text = dialog.game_folder_reports[CURSE.key].text()
+        assert text.startswith("none") and "CURSE*.D64" in text
+    finally:
+        win.close()
+
+
+def test_a_titles_folder_reaches_resolve_disks_without_a_restart(
+        app, tmp_path, monkeypatch):
+    """The acceptance case for step 2, as `set_disks`'s own docstring states
+    it for the shared folder: set one folder in the dialog, get it without a
+    restart -- here, for a title's own row rather than the shared one."""
+    nowhere(tmp_path, monkeypatch)
+    win = window(app, title=CURSE.title)
+    try:
+        assert win.disks is None
+        found = disks(tmp_path / "curse-only", "CURSE1.D64")
+        PreferencesDialog(win).set_game_folder(CURSE, str(found))
+        assert win.disks == found
+        assert win.disks_source == paths.GAME_PREFERENCE
+    finally:
+        win.close()
+
+
+def test_a_titles_own_folder_survives_a_restart(app, tmp_path, monkeypatch):
+    nowhere(tmp_path, monkeypatch)
+    win = window(app)
+    try:
+        mine = tmp_path / "my curse disks"
+        PreferencesDialog(win).set_game_folder(CURSE, str(mine))
+    finally:
+        win.close()
+    assert Settings.load().game_folders == {CURSE.key: str(mine)}
+    reopened = PreferencesDialog(window(app, settings=Settings.load()))
+    assert reopened.game_folder_edits[CURSE.key].text() == str(mine)
 
 
 # --- the report --------------------------------------------------------------
@@ -1024,26 +1133,36 @@ def test_every_control_is_wide_enough_for_what_it_has_to_show(app, tmp_path,
     assert dialog.width() >= max(needed.values())
 
 
-def test_two_tabs_and_it_opens_on_general_every_time(app, tmp_path,
-                                                      monkeypatch):
+def test_three_tabs_and_it_opens_on_general_every_time(app, tmp_path,
+                                                        monkeypatch):
     """Donald: "What about tabs across the top? Can we have a General tab and
     a Fast Travel tab?" Nothing about which one was open is remembered -- a
-    dialog reopening on a tab nobody chose is worse than one that forgets."""
+    dialog reopening on a tab nobody chose is worse than one that forgets.
+
+    **Game disks** joined as a third tab of its own when #22 gave the shared
+    folder three more rows, one per title -- stacked on General they pushed
+    its natural height 77 px past what `fit` can give it on Donald's own
+    1280x675 desktop (§12, §14), the same squeeze that put Fast travel on its
+    own tab in the first place."""
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     dialog = PreferencesDialog(win)
     assert [dialog.tabs.tabText(i) for i in range(dialog.tabs.count())] == [
-        "General", "Fast travel"]
+        "General", "Game disks", "Fast travel"]
     assert dialog.tabs.currentIndex() == 0
+    # The disks tab holds the folder box; General no longer does.
+    disks_tab = dialog.tabs.widget(1)
+    assert disks_tab.isAncestorOf(dialog.folder)
+    assert not dialog.tabs.widget(0).isAncestorOf(dialog.folder)
     # The warning belongs beside the thing it warns about.
-    travel = dialog.tabs.widget(1)
+    travel = dialog.tabs.widget(2)
     assert travel.isAncestorOf(dialog.travel_table)
     assert not dialog.tabs.widget(0).isAncestorOf(dialog.travel_table)
     assert [w for w in travel.findChildren(type(dialog.travel_note))
             if w.text().startswith("Fast travel to areas")]
     assert not [f for f in fields(Settings) if "tab" in f.name.lower()]
 
-    dialog.tabs.setCurrentIndex(1)
+    dialog.tabs.setCurrentIndex(2)
     assert PreferencesDialog(win).tabs.currentIndex() == 0
 
 
@@ -1075,7 +1194,7 @@ def test_it_opens_inside_the_work_area_with_nothing_squeezed(app, tmp_path,
         assert not dialog._general_scroll.horizontalScrollBar().isVisible()
         # The table takes the tab, which was the point of splitting it: it was
         # capped at 160 px in one column and shows three times as much now.
-        dialog.tabs.setCurrentIndex(1)
+        dialog.tabs.setCurrentIndex(2)
         assert dialog.travel_table.height() > 400
     finally:
         dialog.close()

@@ -22,9 +22,10 @@ Three things about the shape of it:
 * **`report()` is a plain function over a folder.** It takes settings and a
   path, not a window, so what the dialog claims can be tested without opening
   one.
-* **Two tabs, and every width in it is measured.** General holds the form;
-  Fast travel holds the 29-row area table, which stretches to fill it. In one
-  column neither could have the height it wanted, and a dialog compressed below
+* **Three tabs, and every width in it is measured.** General holds the form;
+  Game disks holds the shared folder and each title's own (#22); Fast travel
+  holds the 29-row area table, which stretches to fill it. In one column none
+  of the three could have the height it wanted, and a dialog compressed below
   its layout's minimum squeezes the controls that can be squeezed rather than
   refusing -- which is what "a lot of fields are squished" was. No width here
   is a chosen number either: `room_for` asks the style what a line edit needs
@@ -165,6 +166,44 @@ def room_for(edit: QLineEdit, text: str) -> int:
 def _pretty(glob: str) -> str:
     """`POOL*.[dD]64` as somebody would say it."""
     return re.sub(r"\[[a-zA-Z]*([a-zA-Z])\]", r"\1", glob)
+
+
+#: The titles a per-title disk folder can be set for today (#22). Every one
+#: of these carries a real Commodore 64 `disk_glob` in `goldbox.games.GAMES`,
+#: which is what this search machinery needs. Champions of Krynn, Death
+#: Knights of Krynn and Gateway to the Savage Frontier are left off by
+#: Donald's own ruling on #22 (2026-09-04): a row here is a promise that the
+#: title works, and this project does not support those yet.
+#:
+#: **Pools of Darkness is left off for a different reason.** It has no entry
+#: in `goldbox.games.GAMES` at all, and it never shipped on the Commodore 64
+#: this whole module searches for -- DOS and the Amiga are its only two ports
+#: (`#194`). There is no `disk_glob` a folder for it could search against, and
+#: inventing one would be exactly the fabricated data `.claude/rules/
+#: conversions.md` refuses. Left as a finding on #22 rather than built here.
+GAME_FOLDER_TITLES: tuple[games.Game, ...] = (
+    games.POOL_OF_RADIANCE,
+    games.CURSE_OF_THE_AZURE_BONDS,
+    games.SECRET_OF_THE_SILVER_BLADES,
+)
+
+
+def title_folder_report(folder: str, game: games.Game) -> str:
+    """What one title's own folder box has found, in `report`'s own words.
+
+    Not `report()`: that walks the whole precedence, and a per-title row is
+    always about the one folder typed into it, whether or not it is the
+    folder `resolve_disks` would actually pick. Empty when nothing has been
+    typed -- there is nothing to say about a box nobody has used yet.
+    """
+    folder = (folder or "").strip()
+    if not folder:
+        return ""
+    where = pathlib.Path(folder)
+    n = len(_images(where, game)) if where.is_dir() else 0
+    if not n:
+        return f"none; no {_pretty(game.disk_glob)} here"
+    return f"{game.title} ({n} disk{'' if n == 1 else 's'})"
 
 
 def game_named(title: str | None) -> games.Game | None:
@@ -321,6 +360,7 @@ class PreferencesDialog(QDialog):
         self.tabs.removeTab(1)
         self.tabs.removeTab(0)
         self.tabs.addTab(self._general_tab(), "General")
+        self.tabs.addTab(self._disks_tab(), "Game disks")
         self.tabs.addTab(self._travel_tab(), "Fast travel")
         # General every time. A dialog that reopens on a tab nobody chose is
         # worse than one that remembers nothing, so nothing is remembered.
@@ -335,19 +375,18 @@ class PreferencesDialog(QDialog):
         self.fit()
 
     def _general_tab(self) -> QWidget:
-        """Everything except fast travel: the disks, the backups, the backend
-        and the log.
+        """Everything except the disks and fast travel: the backups, the
+        backend and the log.
 
         **The scroll area is a floor, not a feature.** At the size `fit` opens
         it there is nothing to scroll -- the bar is not drawn. It is here for
-        the display that cannot give this tab its 578 lines, where the choice
+        the display that cannot give this tab its lines, where the choice
         is a scrollbar or the crushed line edits this dialog was rebuilt to
         stop. Never sideways: the width is the width the content measured.
         """
         self._general = QWidget()
         box = QVBoxLayout(self._general)
         box.setContentsMargins(0, 0, 0, 0)
-        box.addWidget(self._disks_group())
         # Side by side, not stacked: both are a folder, a Browse… and a
         # Clear, and stacking a third one of those pushed the tab's minimum
         # height past what `fit` can give it on Donald's own 1280x675 desktop
@@ -424,8 +463,27 @@ class PreferencesDialog(QDialog):
 
     # -- the game disks --------------------------------------------------
 
+    def _disks_tab(self) -> QWidget:
+        """The shared folder and every title's own (#22), on its own tab.
+
+        Moved off General once a row per title joined the one shared folder
+        already there: three more rows of a folder, a Browse… and a Clear
+        pushed General's natural height 77 px past what `fit` can give it on
+        Donald's own 1280x675 desktop (§12, §14) -- the same squeeze that put
+        Fast travel on a tab of its own. A tab this short needs no scroll
+        area of its own; General's stays because it is still the fullest
+        page.
+        """
+        box = QWidget()
+        outer = QVBoxLayout(box)
+        outer.addWidget(self._disks_group())
+        outer.addStretch(1)
+        return box
+
     def _disks_group(self) -> QGroupBox:
-        box = QGroupBox("Game disks")
+        # No title of its own: it is the whole of the "Game disks" tab now,
+        # and the tab already says so -- the box stayed only for the border.
+        box = QGroupBox("")
         outer = QVBoxLayout(box)
         row = QHBoxLayout()
         self.folder = QLineEdit(getattr(self.win.settings, "disks", "") or "")
@@ -460,7 +518,84 @@ class PreferencesDialog(QDialog):
             self.report_rows[name] = value
             form.addRow(name, value)
         outer.addLayout(form)
+
+        # One row per title (#22), each optional and each reporting what it
+        # found the same way the shared folder above does. A title's own
+        # folder wins over the shared one in `paths.resolve_disks`; the
+        # shared folder above is what a player who keeps everything in one
+        # place still uses, and is untouched by any of these.
+        self.game_folder_edits: dict[str, QLineEdit] = {}
+        self.game_folder_reports: dict[str, QLabel] = {}
+        for game in GAME_FOLDER_TITLES:
+            outer.addLayout(self._game_folder_block(game))
         return box
+
+    def _game_folder_block(self, game: games.Game) -> QVBoxLayout:
+        """One title's own folder: a row, and what it found under it."""
+        block = QVBoxLayout()
+        row = QHBoxLayout()
+        stored = dict(getattr(self.win.settings, "game_folders", None) or {})
+        edit = QLineEdit(stored.get(game.key, ""))
+        edit.setPlaceholderText(self.folder.placeholderText())
+        edit.setMinimumWidth(room_for(edit, edit.placeholderText()))
+        edit.editingFinished.connect(
+            lambda g=game: self._game_folder_settled(g))
+        browse = QPushButton("Browse…")
+        browse.clicked.connect(lambda _c=False, g=game: self.browse_game_folder(g))
+        clear = QPushButton("Clear")
+        clear.clicked.connect(lambda _c=False, g=game: self.set_game_folder(g, ""))
+        row.addWidget(QLabel(game.title))
+        row.addWidget(edit, 1)
+        row.addWidget(browse)
+        row.addWidget(clear)
+        block.addLayout(row)
+
+        note = QLabel("")
+        note.setWordWrap(True)
+        note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        note.setVisible(False)
+        block.addWidget(note)
+
+        self.game_folder_edits[game.key] = edit
+        self.game_folder_reports[game.key] = note
+        return block
+
+    def game_folder_text(self, game: games.Game) -> str:
+        return self.game_folder_edits[game.key].text().strip()
+
+    def browse_game_folder(self, game: games.Game) -> None:
+        """The folder picker. A method so a test can replace it."""
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Where the game disks are",
+            self.game_folder_text(game) or str(pathlib.Path.home()))
+        if chosen:
+            self.set_game_folder(game, chosen)
+
+    def set_game_folder(self, game: games.Game, folder: str) -> None:
+        """Type this in and apply it, as Browse and Clear do."""
+        self.game_folder_edits[game.key].setText(folder)
+        self._game_folder_settled(game)
+
+    def _game_folder_settled(self, game: games.Game) -> None:
+        folder = self.game_folder_text(game)
+        table = dict(getattr(self.win.settings, "game_folders", None) or {})
+        changed = table.get(game.key, "") != folder
+        if folder:
+            table[game.key] = folder
+        else:
+            table.pop(game.key, None)
+        if changed:
+            self.win.settings.game_folders = table
+            self.win.settings.save()
+            self.win.reload_disks()
+        self.refresh()
+
+    def _say_game_folders(self) -> None:
+        for game in GAME_FOLDER_TITLES:
+            text = title_folder_report(self.game_folder_text(game), game)
+            note = self.game_folder_reports[game.key]
+            note.setText(text)
+            note.setVisible(bool(text))
 
     # -- where `File > Open` starts ----------------------------------------
 
@@ -917,6 +1052,7 @@ class PreferencesDialog(QDialog):
                                   beside=self.win.editor.path,
                                   game=self.win.game()):
             self.report_rows[name].setText(value)
+        self._say_game_folders()
         self._say_backups()
         self.win.label_backends()
         for name, button in self.radios.items():

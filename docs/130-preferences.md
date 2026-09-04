@@ -726,7 +726,7 @@ row to repopulate. No second storage, no second precedence rule.
 
 ---
 
-## 14. Two tabs, and how big it opens
+## 14. Three tabs, and how big it opens
 
 Donald: *"The Preferences dialog needs to be bigger. A lot of fields are
 squished and unusable."* Then, on the widened one: *"I can see all fields. But
@@ -741,27 +741,34 @@ of them is wide enough. The cause is §12's cap: one column of groups wants
 minimum does not refuse** — it takes the shortfall out of whatever can be
 squeezed, which is exactly the line edits, the spin box and the table.
 
-* **`General` and `Fast travel`.** General holds the disks, the backups line,
-  the backend and the debug log; Fast travel holds the area table and the amber
-  warning, which belongs beside the thing it warns about. Split, neither has to
-  fight the other for height: General needs 578 lines and gets them, and the
-  table has a whole tab to stretch into — **15 of the 29 areas visible instead
-  of 5**, with no cap on it at all (`TABLE_MIN_ROWS` is a floor, not a
-  ceiling). The table still scrolls internally; 29 rows is 900 px and no
-  662-line screen will ever show them all.
+* **`General`, `Game disks` and `Fast travel`.** General holds the backups
+  line, the backend and the debug log; Game disks holds the shared folder and
+  each title's own (`#22`); Fast travel holds the area table and the amber
+  warning, which belongs beside the thing it warns about. Split, none of the
+  three has to fight the others for height: General needs 458 lines and gets
+  them now that Game disks is its own tab (578 with the disks group still in
+  it), and the table has a whole tab to stretch into — **15 of the 29 areas
+  visible instead of 5**, with no cap on it at all (`TABLE_MIN_ROWS` is a
+  floor, not a ceiling). The table still scrolls internally; 29 rows is 900 px
+  and no 662-line screen will ever show them all. **Game disks moved out of
+  General** when `#22` gave the one shared folder three more rows, one per
+  title: stacked on General they pushed its natural height 77 px past what
+  `fit` can give it on Donald's own 1280x675 desktop, the same squeeze that put
+  Fast travel on its own tab in the first place. It needs no scroll area of its
+  own -- four rows and their reports are well inside the budget that forced
+  General's.
 * **It opens on General, always.** Nothing about the current tab is stored, and
-  `test_two_tabs_and_it_opens_on_general_every_time` asserts no settings field
-  mentions one. A dialog reopening on a tab nobody chose is worse than one that
-  remembers nothing.
+  `test_three_tabs_and_it_opens_on_general_every_time` asserts no settings
+  field mentions one. A dialog reopening on a tab nobody chose is worse than
+  one that remembers nothing.
 * **Width is spent to buy height.** The work area is 662 lines tall and 1280
   across, so the scarce one is height, and every line a paragraph wraps to is a
   line a wider dialog would not have spent. `fit()` widens while that is still
   true and stops — as narrow as it can be without costing height. Here that is
-  **667 × 648** with nothing open and 647 wide once the backup box has a path
-  in it: the search hint goes from two lines to one, and the dialog fits the
-  cap with 14 px to spare. It was 784 × 640 while the backups line was a
-  three-line paragraph; the note that replaced it is one line by
-  construction (§5c), which is where the width went.
+  **784 × 544** with nothing open, General being the shorter of the three tabs
+  now that Game disks (§5a) has its own. It was 667 × 648 with Game disks
+  still inside General; the height that bought back is most of what the three
+  new per-title rows spent.
   `heightForWidth` under-reports what the group boxes then take, by 19 px, so
   it is the *saving* that is read off it and the size hint, measured at the
   hint width, that is trusted.
@@ -785,11 +792,25 @@ squeezed, which is exactly the line edits, the spin box and the table.
 * **`sight` has no UI anywhere** and is deliberately left that way. Whether it
   should get one, and on the map rather than in this dialog, is a separate
   question nobody has asked yet.
-* **Per-title folders.** Somebody with Pool of Radiance and Curse in different
-  directories gets one folder box and has to change it when they switch games.
-  Correct for one folder holding both (the common case); wrong for a split
-  shelf. Deferred until it bites — the fix is additive, a folder per title in
-  the same box.
+* **Per-title folders, three of the four rows Donald settled on.** `#22 (A
+  disk folder setting per game, not one shared by all six)` gives Pool of
+  Radiance, Curse of the Azure Bonds and Secret of the Silver Blades each
+  their own folder, on a **Game disks** tab of their own -- split out of
+  General because three more rows pushed its natural height past what `fit`
+  can give it on Donald's 1280x675 desktop (§12, §14), the same squeeze that
+  put Fast travel on its own tab. `Settings.game_folders: dict[str, str]`,
+  keyed by `Game.key`, with the migration `Settings.fast_travel_targets`
+  already set the pattern for: a file with no `game_folders` key migrates
+  today's shared `disks` folder into whichever title's disks it turns out to
+  hold, once. `paths.resolve_disks` tries a title's own entry first, then the
+  shared folder, then the search, so a player with everything in one place is
+  no worse off. **Pools of Darkness has no row.** Donald settled on four
+  (2026-09-04): Pool of Radiance, Curse, Silver Blades and Pools of Darkness.
+  The fourth is not built -- it has no entry in `goldbox.games.GAMES` at all,
+  and it never shipped on the Commodore 64 this whole module searches for (DOS
+  and the Amiga are its only two ports, `#194`), so there is no `disk_glob` a
+  folder for it could search against. Left as a finding on `#22` for whoever
+  picks it up next, rather than a guessed-at `disk_glob`.
 * **`wish-editor` standalone** (`editor/__main__.py`) takes `--game-disk` and
   cannot read a preference: the grep test globs `editor/*.py`, which includes
   `__main__.py`, so that entry point may not import `automap` either. It either

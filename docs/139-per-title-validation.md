@@ -113,7 +113,7 @@ applicable.
 
 | # | feature | PoR | COAB | SSB | evidence |
 |---|---|---|---|---|---|
-| D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | one folder setting is shared by all six titles — issue #22 |
+| D1 | Preferences: disks folder, and the report of what was found | V | **U** | **U** | `#22`: Curse and Silver Blades each have their own folder row now, on the Game disks tab, and the report reuses the shared box's own wording -- built and tested in `tests/test_preferences.py`, not yet exercised against a live machine on either title, which is what keeps this U |
 | D2 | Preferences: the Fast Travel tick table | V | — | — | built straight off `goldbox/areas.py:AREAS`, which is PoR's alone |
 | D3 | backend selection, VICE | V | V | V | title-independent; exercised by every live test |
 | D4 | backend, Commodore 64 Ultimate | **U** | **U** | **U** | `wish/ultimate.py` — "UNVERIFIED. Nobody on this project has the hardware", and `Backend.verified` is False |
