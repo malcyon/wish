@@ -125,6 +125,21 @@ def test_no_hardcoded_user_paths(files):
                         bad.append(f"{path}:{node.lineno}")
         except SyntaxError:
             pass
+
+    # `gamedisks.toml` (#212) is a committed list of absolute paths, which is
+    # exactly what this test polices -- and it is not Python, so the walk above
+    # never sees it.  A candidate under somebody's home directory has to be
+    # written `~/...`, which works on every machine; spelling the home out
+    # names one person's and nobody else's.
+    for path in (p for p in files if p.suffix == ".toml"):
+        for n, line in enumerate((ROOT / path).read_text(encoding="utf-8").splitlines(), 1):
+            val = line.lower()
+            if "/home/ada" in val:
+                continue
+            if ("/home/" + "donald" in val or "/users/" + "donald" in val
+                    or "c:\\users\\" + "donald" in val):
+                bad.append(f"{path}:{n}")
+
     assert not bad, f"Hardcoded developer paths found in string literals: {bad}"
 
 
