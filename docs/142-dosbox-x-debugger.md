@@ -228,9 +228,12 @@ is 6.
 3. Searched that image, on the host, for every 12-byte window of the save's own
    5120-byte VM array that is not mostly zeros. **All 62 of them vote for one
    base: linear `$39940`**, where 5118 of the 5120 bytes equal the file. (The
-   two that differ are `$4FD2` and `$4FD3`, `$18` in the file and 0 live — both
-   in the unnamed group. The runner-up bases, 7 votes each, are the same array
-   matched at an offset.)
+   two that differ are `$4FD2` and `$4FD3`, `$18` in the file and 0 live — at
+   the time this was written they were unnamed, and `#59 (Map the DOS saved
+   game, not just the character record)` has since measured them as a per-area
+   pair the engine derives, `(24, 24)` being the Slums' and `$18` being 24:
+   see `141-dos-savegame.md`. The runner-up bases, 7 votes each, are the same
+   array matched at an offset.)
 4. So `$49C7` is at `$39940 + 2*0xC7` = linear `$39ACE` = `39AC:000E`, and the
    dump has `06` there, which is what the file has.
 5. `BPM 39AC:E`, absorb the spurious hit, `RUN`, then one step forward:

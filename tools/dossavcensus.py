@@ -55,6 +55,19 @@ def _roots() -> list[pathlib.Path]:
     return [p for p in gamedisks.candidates("dos-archives") if p.is_dir()]
 
 
+#: A file we assembled rather than one the engine wrote.  Kept out of every
+#: count: a seed is a thing we put together and is not evidence about what the
+#: engine does with it.  `work/p26/issue191/built/SAVGAMA.DAT` carries no
+#: prefix, so the directory name is the second test.
+HAND_BUILT_PREFIXES = ("BUILT-", "SEED-")
+HAND_BUILT_DIRS = ("built",)
+
+
+def hand_built(path: pathlib.Path) -> bool:
+    return (path.stem.startswith(HAND_BUILT_PREFIXES)
+            or path.parent.name in HAND_BUILT_DIRS)
+
+
 def find_saves(extra: list[pathlib.Path] | None = None,
                shape: "sg.DosSaveShape | None" = None) -> list[pathlib.Path]:
     """Every saved game of one title's size, deduplicated on its bytes.
@@ -75,11 +88,16 @@ def find_saves(extra: list[pathlib.Path] | None = None,
     for root in where:
         if not root.exists():
             continue
+        # `*SAVGAM*` already covers the `BUILT-`/`SEED-`/`RESAVE-` prefixes,
+        # so matching `SAVGAM*` as well would read every unprefixed file twice
+        # for the deduplicator to throw the second copy away.  The sort key
+        # puts unprefixed names first, so that if a seed ever were byte for
+        # byte an engine-written save, the surviving entry is the one whose
+        # name does not claim we assembled it.
         paths = ([root] if root.is_file()
-                 else sorted(root.rglob("SAVGAM*.DAT")) +
-                 sorted(root.rglob("SAVGAM*.PTY")) +
-                 sorted(root.rglob("*SAVGAM*.DAT")) +
-                 sorted(root.rglob("*SAVGAM*.PTY")))
+                 else sorted(list(root.rglob("*SAVGAM*.DAT"))
+                             + list(root.rglob("*SAVGAM*.PTY")),
+                             key=lambda p: (hand_built(p), str(p))))
         for path in paths:
             try:
                 data = path.read_bytes()
@@ -136,19 +154,6 @@ def _buffer_zero(save: bytes, shape: sg.DosSaveShape) -> bool:
     return not any(save[span[0]:span[1]])
 
 
-#: A file we assembled rather than one the engine wrote.  Kept out of every
-#: count: a seed is a thing we put together and is not evidence about what the
-#: engine does with it.  `work/p26/issue191/built/SAVGAMA.DAT` carries no
-#: prefix, so the directory name is the second test.
-HAND_BUILT_PREFIXES = ("BUILT-", "SEED-")
-HAND_BUILT_DIRS = ("built",)
-
-
-def hand_built(path: pathlib.Path) -> bool:
-    return (path.stem.startswith(HAND_BUILT_PREFIXES)
-            or path.parent.name in HAND_BUILT_DIRS)
-
-
 def describe(path: pathlib.Path,
              shape: "sg.DosSaveShape | None" = None) -> dict:
     """What a reader needs in order to tell one specimen from another.
@@ -203,10 +208,13 @@ def words(save: bytes, shape: sg.DosSaveShape) -> list[int]:
 
 def census(specimens: list[dict], saves: list[bytes],
            shape: sg.DosSaveShape) -> dict:
-    """Per-word values across the corpus, and the zero-everywhere count."""
-    if not shape.var_words:
-        return {"specimens": [s["label"] for s in specimens],
-                "words_total": 0, "zero_everywhere": 0, "live": {}}
+    """Per-word values across the corpus, and the zero-everywhere count.
+
+    A title with no variable array needs no special case: `var_words` is 0,
+    so `words` returns nothing and the loop does not run. There was an early
+    return here for Pools of Darkness and it was dead -- removing it changed
+    no test, which is what said so.
+    """
     table = [words(s, shape) for s in saves]
     live: dict[str, list[int]] = {}
     for i in range(shape.var_words):

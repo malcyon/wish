@@ -102,11 +102,28 @@ def fields(save: bytes) -> dict:
 
 
 def parse_route(text: str) -> list[str]:
+    """`"U,SC,R,SD"` as a list of steps, refusing anything that would lie.
+
+    Two things are rejected rather than run. A step that is neither a move
+    nor `S<slot>` is a typo, and letting it through would walk a route that
+    is not the one the caller asked for. **And a slot letter used twice is
+    the one that matters**: the game writes `SAVGAM<slot>.DAT` in place, so
+    the second `SC` overwrites the first waypoint's specimen and its
+    screenshot, and the run reports two waypoints while keeping the evidence
+    for one. Keeping every waypoint's own file is what this tool is for.
+    """
     steps = [s.strip().upper() for s in text.split(",") if s.strip()]
+    slots: list[str] = []
     for s in steps:
         if s in MOVES:
             continue
         if len(s) == 2 and s[0] == "S" and s[1].isalpha():
+            if s[1] in slots:
+                raise ValueError(
+                    f"route saves to slot {s[1]} twice; the second would "
+                    f"overwrite the first waypoint's specimen and its "
+                    f"screenshot, so give every waypoint its own slot")
+            slots.append(s[1])
             continue
         raise ValueError(f"route step {s!r} is neither a move nor S<slot>")
     return steps

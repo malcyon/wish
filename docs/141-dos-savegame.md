@@ -97,7 +97,7 @@ quest flags convert unconditionally.
 | `$49FD`, `$49FE` | **per-area constants the area's own ECL prologue writes.** `ECL00` (New Phlan) opens `SAVE [$6E7D],[$49FD] / SAVE 10,[$49FE]`; `ECL14` (the Slums) opens `SAVE [$6E7D],[$49FD] / SAVE 9,[$49FE]`. Every DOS specimen agrees (10 New Phlan, 9 Slums) and so does every C64 save. Sokol Keep's `ECL15` never writes `$49FE`, which is why slot B stands there still holding New Phlan's 10. The engine rewrote 10→9 by itself after loading a save retargeted into the Slums | CONFIRMED — the script text and 12 specimens on two ports |
 | `$4A00`-`$4A1F` | the per-script scratch, the C64's `SCRIPT_SCRATCH` at the same addresses, zeroed on every area change. Six words are live here and they partition cleanly by area; `$4A00` is 255 in both ports' Slums saves and 0 in both ports' New Phlan saves | CONFIRMED as the same region; the individual words UNKNOWN |
 | `$49FC`, `$49FF` | ECL-visible, but the two ports **disagree**: DOS reads (6, 3) — 4 for `$49FC` in the Slums — where the C64 reads (2, 129/1). So they are not copyable across even though the address is shared. `$49FC` is not the party count: J holds 4 with six live characters | UNKNOWN, and refuted as party count |
-| `$4FD2`, `$4FD3` | **a per-area pair the engine derives**, not the RNG seed this page once guessed at. Twenty-one engine-written specimens partition **perfectly by area, with one pair each**: New Phlan (1, 101) three times, the Slums (24, 24) seven times, Sokol Keep (2, 1) once, the overland (96, 10) ten times. Derived rather than carried, because two seeds holding *different* pairs — slot A's (1, 101) and slot B's (2, 1) — both came back (96, 10) once the party stood on the travel grid, and a party that walked out of the Slums into New Phlan came back holding New Phlan's. **What the numbers mean is UNKNOWN**: they are not the GEO block's dimensions, which are 32×32 for all four areas. Settling experiment: put a party in a fifth area and read the pair, then a `BPM` read-watch on `$4FD2` to catch what consumes it | CONFIRMED as area-derived and engine-written; the meaning UNKNOWN |
+| `$4FD2`, `$4FD3` | **a per-area pair the engine derives**, not the RNG seed this page once guessed at. Twenty-one engine-written specimens partition **perfectly by area, with one pair each**: New Phlan (1, 101) three times, the Slums (24, 24) seven times, Sokol Keep (2, 1) once, the overland (96, 10) ten times. Derived rather than carried, because two seeds holding *different* pairs — slot A's (1, 101) and slot B's (2, 1) — both came back (96, 10) once the party stood on the travel grid, and a party that walked out of the Slums into New Phlan came back holding New Phlan's. An older measurement, taken another way, agrees -- and it is a second source for the *derived* half rather than a twenty-second specimen for the partition, because slot J is one of the twenty-one already counted above, in the Slums' seven: `142-dosbox-x-debugger.md`'s memory-image search, run on that slot long before this partition was noticed, records these as the **only two** of 2560 words where the live image and the file disagree — `$18` = 24 in the file, which is the Slums pair, and **0 live**. So the value in the file is not simply the live VM word, which is a further reason to read it as derived at save or load time rather than carried. **What the numbers mean is UNKNOWN**: they are not the GEO block's dimensions, which are 32×32 for all four areas. Settling experiment: put a party in a fifth area and read the pair, then a `BPM` read-watch on `$4FD2` to catch what consumes it | CONFIRMED as area-derived and engine-written; the meaning UNKNOWN |
 | `$507A`, `$507B`, `$507C` | **overland-only, engine-written, and they track the travel y in a band and then stop** — the only three words in the array that are nonzero in an outdoor save and zero in all eleven indoor ones, and every outdoor seed carried zero in all three and came back holding values. See the table below; **"a copy of the travel y" is refuted as a general rule** | CONFIRMED overland-only and engine-written; the meaning UNKNOWN |
 | `$5082` | **equals `$5200` in 21 of 21** engine-written specimens, which makes it a third name for the value file byte 12805 also carries. Not previously noted; found by searching the variable array for words whose value vector across the whole corpus is identical | CONFIRMED as a copy |
 | `$4B00`-`$52FF` | **DOS engine state with no C64 counterpart.** No ECL script in the 30-script corpus references any address at or above `$4AF9` (2544 distinct bracketed addresses checked), and on the C64 `$4D00` upwards is the twelve character slots, not variables. So nothing here can be sourced from a C64 save; it has to be measured. Live and still unnamed: `$4DB8`, `$4DC3`, `$4E0C`, `$4FA8`, `$4FC0`-`$4FC1`, `$4FC6`, `$4FC8`, `$507D`, `$507F`-`$5080`, `$5202`-`$5207`, `$520A`-`$520F`. Constant in all twelve: `$4FE1` = 255, `$506D` = 16, `$50F6` = 1 | UNKNOWN individually; the boundary CONFIRMED |
@@ -123,9 +123,35 @@ the triple is (29, 1, 14) and does not move with the square at all.
 **Reproducible, not noise.** The (7,25) reading was taken twice, on two
 separate boots from two different seeds — one party that walked there from
 (7,29) over four steps, and one seeded at (7,26) that took a single step —
-and both wrote exactly (29, 1, 14). The word diff of the step that crosses
-the boundary moves only `$49C4`, the two clock words, `$5079` and these
-three: no encounter, no event, the ECL buffer byte-identical.
+and both wrote exactly (29, 1, 14).
+
+**And the pair to diff is the same-slot one.** `work/p59-wallset/ycol/SAVGAMC.DAT`
+at (7,28) against `work/p59-wallset/y25/SAVGAMC.DAT` at (7,25) — both engine
+written, both from a slot A seed, both saved to **slot C**, and their clocks
+happen to agree — differ in **23 bytes**, of which only **five words** sit
+below the character table:
+
+| word | (7,28) | (7,25) |
+|---|---|---|
+| `$49C4` | 28 | 25 |
+| `$5079` | 13 | 6 |
+| `$507A` | 28 | **29** |
+| `$507B` | 11 | **1** |
+| `$507C` | 11 | **14** |
+
+Byte 0, the tail 12801-12808 and the whole 7680-byte ECL buffer are identical,
+so nothing about the place, the party or the script moved. The remaining 18
+bytes are in the six 41-byte character entries and are the heap scratch this
+page calls engine-refilled junk.
+
+**A caution about the obvious diff, because it looks alarming.** Diffing the
+consecutive saves E and F of the `ycol` walk gives **25** differing bytes
+rather than 7, and an earlier version of this section said "only" seven. Six
+of the extra eighteen are byte +7 of each character entry — the **slot
+letter** in `CHRDATE<n>` against `CHRDATF<n>`, because those two specimens
+were saved to different slots — and the other twelve are the same per-entry
+heap scratch. Diff two saves under one slot letter, or the confound is in
+every comparison.
 
 So whatever these words are, they are deterministic and position-dependent
 and they are **not** the travel square. Settling experiment: a `BPM`
