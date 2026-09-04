@@ -75,7 +75,7 @@ offset -- `.claude/rules/gui-text.md` has both rules and how to apply them.
 | **"X follows Y"** | say what happens: "gets taller as Y grows", "is recomputed whenever Y changes" |
 | **"the test bites"** | the test fails without the fix; it goes red when the guard is removed |
 | a file "walks", "arrives", "stands" | name who does it: *the party* walks, *the player* sees it |
-| **"saying so plainly"**, **"says so out loud"** | drop the announcement and say the thing: "the label is wrong, because" |
+| a sentence that rates itself: **"worth saying"**, **"to be clear"**, **"says so out loud"** | delete the rating and keep the sentence -- you would not have written it otherwise |
 
 A habit rather than a blocklist: reaching for jargon that sounds precise and
 carries less than the plain phrase it replaced. **Do not give a file the verb
