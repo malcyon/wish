@@ -35,7 +35,8 @@ import subprocess
 import sys
 
 # Where the old file's content is allowed to have landed.
-CORPUS = ("CLAUDE.md", ".claude/rules/*.md", "docs/160-why-these-rules.md")
+CORPUS = ("AGENTS.md", "CLAUDE.md", ".claude/rules/*.md",
+          "docs/160-why-these-rules.md")
 
 BOLD = re.compile(r"\*\*(.+?)\*\*", re.S)
 

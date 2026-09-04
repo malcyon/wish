@@ -264,10 +264,14 @@ def test_every_rule_file_points_at_a_heading_that_exists(files):
         + ["", f"Rename a heading in {WHY} and the rule citing it must change too."])
 
 
-#: Where each tool reads the standards from. `AGENTS.md` and everything under
-#: `.agents/rules/` are symlinks to the one copy -- see `#209 (Give Antigravity
-#: the same rules as Claude Code, without a second copy of them)`.
-SHARED_LINKS = ("AGENTS.md", ".agents/rules")
+#: Everything under `.agents/rules/` is a symlink to the one copy in
+#: `.claude/rules/` -- see `#209 (Give Antigravity the same rules as Claude
+#: Code, without a second copy of them)`.
+SHARED_LINKS = (".agents/rules",)
+
+#: `CLAUDE.md` holds no rules of its own. It imports the file that does, which
+#: Google's tools read directly.
+IMPORTED = "AGENTS.md"
 
 
 def test_every_shared_rule_link_resolves(files):
@@ -325,3 +329,30 @@ def test_the_shared_rule_links_point_inside_this_repository(files):
         "these links leave the repository:\n  " + "\n  ".join(bad)
         + "\n\nA link's target is committed verbatim, so it has to be relative "
           "and inside the tree.")
+
+
+def test_claude_md_imports_the_file_that_holds_the_rules():
+    """`CLAUDE.md` is an import line and a few Claude-only paragraphs.
+
+    The rules live in `AGENTS.md` because Antigravity reads that name and not
+    this one. Claude Code reaches them through the `@AGENTS.md` import, so **the
+    import is the only thing carrying 200 lines of rules into a Claude session**
+    -- delete the line, or rename the target, and every session silently starts
+    with almost no rules and nothing says so.
+    """
+    claude = ROOT / "CLAUDE.md"
+    assert claude.is_file(), "CLAUDE.md is not there"
+    text = claude.read_text(encoding="utf-8")
+
+    assert f"@{IMPORTED}" in text, (
+        f"CLAUDE.md no longer imports {IMPORTED}, so a Claude session gets none "
+        f"of the rules. The import is a bare `@{IMPORTED}` on its own line.")
+    assert (ROOT / IMPORTED).is_file(), (
+        f"CLAUDE.md imports {IMPORTED}, which is not there.")
+
+    # The rules are meant to be in the imported file, not copied back here.
+    assert "## Words to avoid" not in text, (
+        f"the rules belong in {IMPORTED}; CLAUDE.md carries only what is true "
+        "of Claude Code alone.")
+    assert "## Words to avoid" in (ROOT / IMPORTED).read_text(encoding="utf-8"), (
+        f"{IMPORTED} no longer holds the rules.")
