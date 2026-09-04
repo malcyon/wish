@@ -52,17 +52,6 @@ from tools import dosbox  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-#: The wallset triple an outdoor DOS save carries -- **what the engine itself
-#: writes out there**, not what it is merely given.  This comment used to say
-#: live-versus-stale had never been separated, because every overland specimen
-#: had departed from the one indoor save that holds the same three words.
-#: `tools/dosoutdoorprobe.py --from B --wallset keep` separated it: a seed
-#: carrying Sokol Keep's (1, 5, 9) onto a travel window came back
-#: (0, $FFFF, $FFFF) from three engine resaves at three squares, and the load
-#: path did not read the wrong triple at all (#59, #190).
-OUTDOOR_WALLSET = (0, sg.EMPTY, sg.EMPTY)
-
-
 def ecl_block(game: pathlib.Path, dax: int, area: int) -> bytes:
     """The area's script, out of the player's own `ECL<n>.DAX`."""
     data = (game / f"ECL{dax}.DAX").read_bytes()
@@ -85,9 +74,13 @@ def seed(save: bytes, *, area: int, x: int, y: int, script: bytes) -> bytes:
     if where is None or not where.outdoors:
         raise ValueError(f"area {area} is not one of the travel windows")
     out = bytearray(save)
-    sg.retarget(out, area=area, dax=where.disk,
-                wallset=OUTDOOR_WALLSET, script=script)
-    sg.put_word(out, sg.AREA, 0)        # $49C5: no GEO on the overland
+    # The triple and the `$49C5` = 0 are both `goldbox`'s to state, not this
+    # tool's: `dos_savegame.OUTDOOR_WALLSET` carries the six specimens behind
+    # it and `outdoors=True` writes the area word (#59, #190).  This file had
+    # its own copy of the constant and wrote `$49C5` by hand, which is two
+    # places to update the day a measurement moves and one of them forgotten.
+    sg.retarget(out, area=area, dax=where.disk, outdoors=True,
+                wallset=sg.OUTDOOR_WALLSET, script=script)
     sg.put_word(out, sg.INDOORS, 0)     # $49E6 = 0 is what boots travel mode
     sg.put_travel_square(out, x, y)
     sg.put_tail_state(out, indoors=False)

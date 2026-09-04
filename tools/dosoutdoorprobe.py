@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.wallset == "keep":
         wallset = None
     elif args.wallset == "outdoor":
-        wallset = dosoutdoor.OUTDOOR_WALLSET
+        wallset = sg.OUTDOOR_WALLSET
     else:
         wallset = tuple(int(v) for v in args.wallset.split(":"))
         if len(wallset) != 3:

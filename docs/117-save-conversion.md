@@ -1690,11 +1690,13 @@ converter sources the triple from the C64 and does not refuse the empty case
 (`work/p60/run3` Z0 against `run2` X3, 229 differing pixels and every one of
 them in the colour-cycling command bar).
 
-Four kinds of area are refused, each because there is no legal answer rather
-than because it is untested: an area this project has no row for, an area
-whose script picks its map at run time or loads none at all, the travel grid,
-where no DOS specimen exists at all (#50), and an area whose `ECL<n>.DAX` is
-not there to read. The last of those used to leave the party on the
+**Three** kinds of area are refused, each because there is no legal answer
+rather than because it is untested: an area this project has no row for, an
+area whose script picks its map at run time or loads none at all, and an area
+whose `ECL<n>.DAX` is not there to read. The travel grid was a fourth until
+#190: it was refused for want of a specimen rather than for want of an answer,
+and now it converts and the result has been loaded, walked and resaved by the
+game itself. The last of those used to leave the party on the
 template's square with a warning, and a warning is not enough: the file
 loads, the party is standing somewhere it has never been, and nothing about
 the run says so. Donald's ruling in the other direction, 2026-08-27, is the
@@ -2079,13 +2081,20 @@ finding in the useful direction: they cannot be got wrong.
   `141-dos-savegame.md`'s "What this leaves open". Zero in them is CONFIRMED
   survivable across all five runs and nothing says what would put a value
   there.
-* **An outdoor C64 party is still refused** (#50). No overland DOS retarget
-  has been driven, and the converter will not guess one.
-* **The sweep's census is nine indoor specimens, not twelve.** Six words are
-  nonzero only in three overland saves that no longer exist; a conversion
-  that refuses an outdoor party never writes one of those saves, but the
-  claim is PROBABLE rather than CONFIRMED until `tools/dosoutdoor.py` makes
-  another specimen and the census is re-run.
+* **Settled, both of them (#190).** An outdoor C64 party is no longer
+  refused: the overland retarget has been driven twice, on two squares, and
+  each result loaded, drew the overland, walked, and was resaved by the game's
+  own `ENCAMP > SAVE`. The blocker had never been the converter -- none of the
+  player's twenty C64 save disks stands outdoors, every one reading `$49E6` =
+  1, so `tools/c64outdoor.py` had to make the specimen the branch could be
+  driven against.
+* **And the census is re-taken rather than PROBABLE.** `tools/dossavcensus.py`
+  over the 21 containers that exist now gives 2407 zero across the 11 indoor
+  ones -- the same figure the nine gave -- and 2402 across all 21. The words
+  in the difference are **five**, not the six the older count claimed, and all
+  five are named: `$49C3`, `$49C4` and `$507A`-`$507C`. A conversion now
+  writes both kinds of save, and each of those five is either written or
+  declared, so 13137 of 13137 bytes are accounted for either way.
 
 ## The template's spare characters (#104)
 

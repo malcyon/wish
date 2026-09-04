@@ -112,14 +112,13 @@ def _indoor_with_a_wallset() -> bytes:
     already held `(0, $FFFF, $FFFF)` whether or not the code kept anything.
     Slot B stands in Sokol Keep and holds `(1, 5, 9)`.
     """
-    from tools import dosoutdoor
     for slot in "BJA":
         where = _save_dir()
         if where is None or not (where / f"SAVGAM{slot}.DAT").exists():
             continue
         save = (where / f"SAVGAM{slot}.DAT").read_bytes()
         if not sg.outdoors(save) and \
-                sg.wall_triple(save) != dosoutdoor.OUTDOOR_WALLSET:
+                sg.wall_triple(save) != sg.OUTDOOR_WALLSET:
             return save
     pytest.skip("no indoor save here carries a distinctive wallset triple")
 
