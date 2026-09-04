@@ -303,7 +303,7 @@ Steam redirects that directory to `SavesDir/<steamid>/<appid>/English/`.
 |---|---|
 | `CHRDAT<slot><1..6>.SAV` | one character of the saved party. **285 bytes** |
 | `<NAME>.CHA` | one *exported* character. **The same 285 bytes, same layout** — the export is the slot copied out, not a reduced form. The only systematic difference is that the item count at `0x0C7` is zeroed |
-| `<stem>.ITM` | that character's items, **63 bytes each**, no header |
+| `<stem>.ITM` | that character's items, **63 bytes each**, no header. **The suffix is per title and so is the stride** (#113): Curse writes `.SWG` and Silver Blades `.STF` at **67** bytes, measured on a played game — 804 bytes for 12 items, which 63 does not divide. Until that was found, `read_character` returned an item *count* with an **empty item list** and no error for both titles |
 | `<stem>.SPC` | that character's active effects, **9 bytes each**; absent when there are none. One effect id, four payload bytes and a four-byte far pointer to the next record, which the loader rebuilds -- see "The `.SPC` effects file" |
 | `CHARLIST.TXT` | the names the "add character" menu offers. Plain text, CRLF |
 | `SAVGAM<slot>.DAT` | the saved game. **13137 bytes** — one header byte, then the engine's variable space as `u16le`; see obstacle 1. The header byte is the `GEO`/`ECL` `.DAX` file number of the current area, 1–8; see obstacle 2 |
@@ -349,7 +349,8 @@ rubbish.
 | | Pool of Radiance | Curse | Silver Blades | Pools of Darkness |
 |---|---|---|---|---|
 | record | 285 | 422 | 439 | 510 |
-| item / effect file | `.ITM` / `.SPC` | `.ITM` / `.FX` | `.ITM` / `.SFX` | `.THG` / `.EFX` |
+| item / effect file | `.ITM` / `.SPC` | **`.SWG`** / `.FX` | **`.STF`** / `.SFX` | `.THG` / `.EFX` |
+| bytes per item | 63 | 63 | **67** | 63 |
 | bytes per ability | 1 | 2 | 2 | 2 |
 | memorised-spell region | 21 | 84 | 75 | 141 |
 | spellbook entries | 56 | 100 | 117 | 125 |
