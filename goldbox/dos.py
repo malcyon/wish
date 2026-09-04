@@ -317,14 +317,22 @@ def item_to_c64(record: bytes) -> bytes:
 #: added here because the DOS party carries it on the dwarf and on the
 #: halfling and `goldbox/traits.py` names it the same kind of thing -- a racial
 #: constitution bonus to poison and death saves.  PROBABLE.
+#:
+#: **18 and 48 are the gnome's, and a gnome is where they come from.**  #84
+#: rolled three in the game's own creation screens and the engine wrote 97,
+#: 18, 47 and 48 for every one -- so both are innate, both are racial, and
+#: neither is carried by any other race.  CONFIRMED.
 INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
 
 #: Bytes 1-4 of a `.SPC` record for an innate effect.  A record is nine bytes:
 #: the effect id, these four, and a four-byte far pointer to the next record.
 #: Every innate specimen in the archives -- 26, 47, 90, 97, 107 and 124, over
-#: three races and 32 files -- reads `00 00 FF 00`.  18 and 48 have no
-#: specimen anywhere -- nobody in the archives is a gnome -- so those two are
-#: this shape by analogy.  PROBABLE.
+#: three races and 32 files -- reads `00 00 FF 00`.  **18 and 48 do too, and
+#: they are no longer an analogy**: #84 rolled three gnomes in DOS Pool of
+#: Radiance's own creation screens -- one of each class the game offers a
+#: gnome, both sexes, three alignments -- and each got 97, 18, 47 and 48 with
+#: these four bytes, twice over, once as `<NAME>.SPC` at creation and again as
+#: `CHRDAT<slot><n>.SPC` when the party was saved.  CONFIRMED, six files.
 #:
 #: **Byte 3's `0xFF` is an innate effect's own payload, not a universal marker
 #: for "permanent."**  This note used to read it that way, against `BLESS`'s
@@ -741,10 +749,12 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("effect_chain", "live pointer to the effect list; the effects "
                      "themselves come from the .SPC file"),
     ("item_count", "implied by the C64's sixteen fixed slots"),
+    # #57: `to_neutral` carries this across when it is given the game's own
+    # creation tables, and only drops it when it is not.
     ("portrait_head", "the sheet portrait's head: a menu position, which "
                       "needs the game's own creation tables to become the "
-                      "C64's HEADnn id. Carried when `to_neutral` is given "
-                      "them, dropped when it is not (#57)"),
+                      "C64's HEADnn id. Carried across when those tables "
+                      "are available, dropped when they are not"),
     ("portrait_body", "see portrait_head; the body half of the same pair"),
     ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. The C64 "
                   "stores the drawn 36-byte icon instead of an index"),
@@ -755,20 +765,28 @@ DROPPED: tuple[tuple[str, str], ...] = (
                        "strength *index* and is computed instead"),
     ("hands_used", "live combat state"),
     ("unnamed_0ab", "one unattributed byte, stable per character"),
-    ("field_83_87", "00 00 01 00 00 in 101 of 101 engine-written Pool of "
-                    "Radiance records -- 20 characters, eight classes, "
-                    "levels 1-4, before a fight and after one, and on a "
-                    "character the engine knocked unconscious (#235). The "
-                    "engine hands back whatever is staged there and the "
-                    "sheet is pixel-identical either way, so it is storage "
-                    "the game never fills for a player character"),
-    ("field_10c_10f", "**status, active, hostile and quickfight** -- 0x10C "
-                      "is the character's status (0 Okay .. 8 Gone, the "
-                      "order of the game's own nine status words), 0x10D an "
-                      "active flag the party panel greys a name out on, and "
-                      "0x10F the quickfight flag, all measured in the "
-                      "running game (#235). The C64 keeps the same state at "
-                      "record 0x100 and 0x10C and none of it is carried yet"),
+    # `field_83_87` and `field_10c_10f` (#235): the byte-level evidence is
+    # in `docs/141-dos-savegame.md`, under "0x083-0x087: a constant, and
+    # what that rests on" and "The character record's combat tail,
+    # 0x10C-0x10F".  0x083-0x087 reads 00 00 01 00 00 in 101 of 101
+    # engine-written Pool of Radiance records -- 20 characters, eight
+    # classes, levels 1-4, before a fight and after one, and on a character
+    # the engine knocked unconscious -- and the sheet is pixel-identical
+    # whatever it holds.  Of the combat tail, 0x10C is the status byte (0
+    # Okay .. 8 Gone), 0x10D is the flag that draws a name red in the party
+    # panel when it is 0, and 0x10F is the quickfight flag; all three
+    # CONFIRMED.  0x10E is still UNKNOWN: 0 in all 223 engine-written
+    # records, and the untried experiment is the same offset in a monster
+    # record, where a hostile creature would have to set the third-party
+    # workbooks' `IsHostile`.
+    ("field_83_87", "always the same five bytes, and the character sheet "
+                    "looks identical whichever value they hold, so nothing "
+                    "here is a loss a player would notice"),
+    ("field_10c_10f", "the character's status (okay, unconscious, dead and "
+                      "the rest of the game's own states), whether their "
+                      "name is shown red in the party panel, and whether "
+                      "their last fight ran on quickfight -- none of it "
+                      "carried yet"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
@@ -1326,10 +1344,13 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "colour per part against DOS's two 4-bit ones, so a correspondence "
      "would be a choice rather than a conversion"),
     ("field_10c_10f", b"\x00\x01\x00\x00",
-     "awake, active, not hostile and not quick-fought -- the state a newly "
-     "made DOS character is in. 0x10C is the status (0 Okay .. 8 Gone, the "
-     "order of the game's own status words), 0x10D an active flag, 0x10F "
-     "the quickfight flag; all three measured in the running game (#235)",
+     "okay, not shown red, and not quick-fought -- the state a newly made "
+     "DOS character is in. 0x10C is the status (0 Okay .. 8 Gone, the "
+     "order of the game's own status words), 0x10D the flag that draws a "
+     "name red in the party panel when it is 0, and 0x10F the quickfight "
+     "flag; all three measured in the running game. 0x10E is written "
+     "zero, the fill value in all 223 engine-written records, and its "
+     "meaning is still UNKNOWN (#235)",
      "a DOS character who is unconscious, dying, dead, stoned or gone comes "
      "out of the conversion in perfect health, and one the game had taken "
      "out of the party comes out a full member"),

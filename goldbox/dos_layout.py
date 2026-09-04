@@ -366,8 +366,15 @@ _DECLARED: Sequence[Field] = (
        "right thing to write: the engine allocates the nodes on load and "
        "sets this pointer itself, measured under DOSBox-X (#61)"),
     _f(0x083, 5, _RAW, "field_83_87", "unnamed @0x083", _NOPE,
-       "zero but for 0x085, which is 1 in all 24. Curse's importer copies "
-       "the run verbatim to its own 0xF6-0xFA without naming it either",
+       "00 00 01 00 00 in 101 of 101 engine-written Pool of Radiance "
+       "records (#235; was 24) -- the engine hands back whatever is "
+       "staged there and the sheet is pixel-identical either way, so "
+       "nothing a player sees is driven by it. Curse's importer copies "
+       "the run verbatim to its own 0xF6-0xFA without naming it either. "
+       "The third-party names 'Morale' at 0x084 and 'TreasureShare' at "
+       "0x085 are neither confirmed nor refuted -- a player character has "
+       "no morale and takes one share, which is consistent but not "
+       "evidence. See docs/141-dos-savegame.md",
        candidate=True),
     _f(0x088, 2, _U16, "copper", "Copper", _OK,
        "seven u16le coin counts, 0x088-0x095, in the C64's order: copper, "
@@ -561,13 +568,27 @@ _DECLARED: Sequence[Field] = (
     _f(0x104, 8, _RAW, "heap_104", "unnamed @0x104 (LIVE)", _NOPE,
        "another of the runs Curse's importer skips; 0x106/0x107 move with "
        "the heap. LIVE"),
-    _f(0x10C, 4, _RAW, "field_10c_10f", "unnamed @0x10C", _NOPE,
-       "00 01 00 00 in all 24 specimens -- found by the writer's round trip, "
-       "which the reader's hand-the-bytes-back check could never catch. "
-       "0x10C-0x10E sit inside the combat tail Curse's importer copies "
-       "verbatim and 0x10F is one of the bytes it skips; none is named on "
-       "either side. The constant 1 at 0x10D is plausibly a health status "
-       "('okay'), but nothing corroborates that", candidate=True),
+    _f(0x10C, 4, _RAW, "field_10c_10f", "status, active, unknown, quickfight",
+       _MAYBE,
+       "the combat tail (#235), stored state rather than scratch -- twelve "
+       "values staged across two boots, including 04 00 00 00 and "
+       "06 00 00 00, all came back byte for byte from the engine's own "
+       "ENCAMP > SAVE. 0x10C is the status, 0-based: 0 Okay .. 8 Gone, the "
+       "order of nine length-prefixed strings in START.EXE from file "
+       "offset 0xD191, CONFIRMED against the sheet showing STATUS OKAY and "
+       "STATUS UNCONSCIOUS for the same character staged 0 and 4. 0x10D is "
+       "an active flag, CONFIRMED: 0 draws the name red in the party panel "
+       "and 1 does not, 3 of 3 against 9 of 9 across two boots. 0x10E is "
+       "UNKNOWN: 0 in all 223 engine-written records of all four titles; "
+       "the third-party workbooks call it IsHostile, but a player "
+       "character is never hostile, so no specimen separates it from "
+       "fill -- a Pool of Radiance monster record, which shares this "
+       "format, is the untried experiment. 0x10F is the quickfight flag, "
+       "CONFIRMED: staged 1, a fight ran to its end with QUICK never "
+       "pressed; staged 0, the same encounter stopped at the command bar. "
+       "The default 00 01 00 00 is what a freshly made character carries, "
+       "not a constant every specimen holds -- see "
+       "docs/141-dos-savegame.md", candidate=False),
     _f(0x110, 1, _U8, "thac0_current", "THAC0 current (60 - value)", _MAYBE,
        "40-47, one above the base for the fighter with 18/17 strength. "
        "Derived from the readied weapon. The C64's roster keeps the same "

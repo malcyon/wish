@@ -336,6 +336,36 @@ def test_the_dropped_list_names_the_losses_a_player_would_notice():
     assert seen >= 6, "needs a party to check against"
 
 
+def test_no_dropped_reason_carries_developer_detail():
+    """`.claude/rules/gui-text.md`: no memory address, file offset or bare
+    issue number in front of a player.  `DROPPED`'s and `WRITE_DROPPED`'s own
+    `why` text is what reaches `editor/dosimport.py`'s Import pane and the
+    DOS writer's own report, verbatim -- a hex offset or a bare `#NNN`
+    written into one entry reaches a player the same way `field_10c_10f`'s
+    and `field_83_87`'s did after
+    #235 (Two unattributed DOS byte ranges in the combat tail are dropped
+    converting to C64, and nobody knows what they hold), and the way
+    `portrait_head`'s already-shipped `(#57)` did before this test existed.
+
+    This does not check the `DOS {name} @{offset:#05x}:` prefix
+    `to_neutral` puts in front of every line in the composition at
+    `goldbox/dos.py` -- that prefix is unconditional, pre-dates #235, and
+    removing it is a wording decision across the whole table rather than
+    a fix to one entry; it is filed on its own issue rather than covered
+    here.
+    """
+    import re
+
+    hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
+    bare_issue = re.compile(r"#\d+")
+    for name, why in dos.DROPPED:
+        assert not hex_offset.search(why), (name, why)
+        assert not bare_issue.search(why), (name, why)
+    for name, why in dos.WRITE_DROPPED:
+        assert not hex_offset.search(why), (name, why)
+        assert not bare_issue.search(why), (name, why)
+
+
 # --- the saved game ----------------------------------------------------------
 
 def _savgam(slot: str) -> bytes:
