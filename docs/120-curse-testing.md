@@ -240,6 +240,75 @@ example.
 ran at all. Nothing further about it belongs in this repository. A live session
 still writes only to `work/`, never to the player's own disks.
 
+### 3.1 The item area, and what the last four pages really are
+
+**The item area is Pool of Radiance's, in Curse too. CONFIRMED (#32).** Ten
+items bought in a Tilverton shop land at payload `$1500` -- `$1000 + 5 x $100`,
+the buying character's slot -- and `goldbox/items.py` reads them with no change
+at all: `SILVER MIRROR` 1.0 lb 25 gp seven times, `FLASK OF OIL` 2.5 lb 20 gp
+three times, one of the flasks readied. Every weight and price matches what the
+shop printed on its own screen, and the readied bit is `$80` at `+6` of exactly
+the one record whose row the game drew as `YES`.
+
+**But there are eight item pages, not twelve.** `goldbox/games.py` describes
+twelve `$100` character slots and twelve `$100` item pages; `SaveGame0` reads
+**eight** slots, and payload `$1800`-`$1BFF` -- pages 8 to 11 -- holds two-bit
+repeating patterns (`55 55 75 55`, `aa aa aa aa`, a run of `0e 0c 09` at
+`$1BC0`) that are all zero in a save made before the party walked anywhere.
+That is an explored-squares bitmap and its colour row, not item records.
+
+The strongest evidence is what the engine itself rewrote. A save disk carrying
+items was loaded, the party took one step's worth of time, and the game saved
+again: **24 bytes differ, in 18 runs, and every one of them is either the clock
+at `+$00C7` or inside `$1A87`-`$1BF7`.** The item area came back byte for byte.
+So `$1000`-`$17FF` is what the party owns and `$1800`-`$1BFF` is where it has
+been. PROBABLE rather than CONFIRMED on the page count: one party, six
+characters, and nobody has yet given a seventh and eighth character items to
+watch pages 6 and 7 fill.
+
+**Position, clock and area, corroborated.** The same save reads `(4,4)` facing
+north, clock `3:41`, area byte `$01`, against a status line reading
+`N 3:40 4,4`; and `$0400` was a **1024 of 1024** byte match for `GEO01` off
+`CURSE_B.D64`. That is §3's `$0400` finding reproduced in a second session, and
+it settles the area byte this document left PROBABLE for want of a boundary
+crossing.
+
+### 3.2 The disk prompt cannot be answered by this harness
+
+**`INSERT SIDE # 2, AND PRESS ANY KEY.` loops forever with side 2 in the
+drive.** The routine at `$453B` leaves only by a key the game reads out of the
+KERNAL buffer (`$C6`/`$0277`, through `$2FD7`), by the joystick fire button
+(`$DC00 & $1F == $0F`), and then only if `$406C` -- send `I` on the drive's
+command channel, read the error channel back through `$401E` -- answers `00`.
+`$03F1` held `$3E`, DOS error 62 FILE NOT FOUND, continuously. Three
+explanations were measured and all three are **negative**: the game's own
+fastloader left on, a stock VICE kernal and 1541-II DOS instead of JiffyDOS,
+and a rip whose six sides are all one version.
+
+`CurseSession.patch_disk_prompt` in `tools/curserun.py` `NOP`s the two loop-back
+branches at `$459A` and `$459F`, checking the original bytes first, so the
+routine falls through to its retry -- which succeeds as soon as `handle_prompt`
+has attached the side the prompt named. It is a disk-swap confirmation and not
+the release's start-up check.
+
+**Curse asks for a disk in three wordings and Pool of Radiance's needle matches
+only one.** `INSERT SIDE # n, AND PRESS ANY KEY.`, `INSERT CURSE SAVE DISK,
+PRESS A KEY` from the party-formation menu, and `INSERT YOUR SAVE GAME DISK`
+from camp.
+
+### 3.3 The `ITEMS` screen takes Return and nothing else
+
+The character's item list -- `READY TRADE DROP HALVE JOIN SELL ID EXIT` on row
+24 -- highlights its bar in colour **7**, where every other bar in this engine
+uses colour 1, so `Session.select_bar`'s `span_in` finds no highlight and
+presses nothing. Cursor Left, Right, Up and Down move neither the bar nor the
+item cursor; nor does a letter, nor Return through the KERNAL buffer, nor the
+numpad joystick on either port. Return alone works, which is how an item gets
+readied and why a party that enters that screen cannot leave it.
+
+So a shopping run must leave by `ITEMS: BUY EXIT` and then `BUY VIEW POOL
+APPRAISE EXIT`, both of which highlight in colour 1 and drive normally.
+
 ---
 
 ## Tier 4 — the automapper
@@ -349,7 +418,7 @@ that rip**. What is left:
 |---|---|---|
 | the area byte across a boundary is unwatched | `$4DC2` stays PROBABLE | drive the party over an area edge and read it either side. One session |
 | the automapper's memory fallback has no per-title base | the live view works off the status line and has nothing to fall back to in camp or combat | thread a party base through `automap/target.py` the way `goldbox/games.py` threads the save geometry. Curse's value is `$C04B`, and it is *not* a save-image offset |
-| no Curse save from a *played* party with inventory | the item area at `$5B00` stays PROBABLE and no Curse item record has ever been seen | play far enough to pick something up, then save. Needs the emulator |
+| ~~no Curse save from a *played* party with inventory~~ **cleared** | the item area is Pool of Radiance's, payload `$1000` -- resident `$5B00` -- and the 16-byte record decodes field for field: type at `+0`, name indices at `+3`/`+2`, readied bit `$80` at `+6`, weight in tenths at `+8`, quantity at `+10`, cost at `+11`. Ten items bought in a Tilverton shop, one readied, every weight and price matching what the shop printed | done (#32). A save disk the game wrote carrying them is `work/issue32/specimens/D-curse-party-with-items.D64`, which is scratch and will not survive; the measurements are in §3.1 below |
 | ~~Curse's level caps are not measured~~ **cleared** | ceilings `GEN $15A1`, racial limits `$15A9` (rows for races 1-5; race 6 and above skip the check at `$155B`), experience `$136E`, hit dice `$161E` — all in `goldbox/levels.py` and asserted in `tests/test_titletables.py` | done. `tools/coldread.py levels curse-of-the-azure-bonds` reads them off the disk again in one command |
 | ~~the spellbook's width in Curse~~ **cleared** | it is **13**, and no specimen was needed: `CAMP $2A25` walks spell ids from 1 with `INY / CPY #$65 / BCC`, so it stops after id 100, and reads the mask as `TYA / LSR x3 / TAX / LDA $7C78,X` — id 100 puts X at 12, so the game itself reads `0x078`-`0x084` | done (#31). Whether `0x085`-`0x087` are also mask stays UNKNOWN in Curse, whose `GEN` has no clear loop; thirteen is what the game reads and no more is claimed |
 | Curse's `$200` attribute plane — indoor bit and script id | GUESS and UNKNOWN, tier 2 | needs Curse's ECL decoded, which nothing else depends on |
