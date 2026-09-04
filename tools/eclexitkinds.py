@@ -20,6 +20,17 @@ route to every `NEWECL`, and reports the kind, the `ONGOTO` index and the
 squares, and the statements on the route that a player would notice: a
 menu, printed text, a `LOADCHAR`, a quest flag, a position write.
 
+Six kinds come out of the 79 exits on the disks here. `edge` is entry 0
+gated on `$6DD5` with no `ONGOTO` on the route; `square` is entry 1's
+`ONGOTO`; `edge+square` is entry 0, gated *and* carrying an `ONGOTO`;
+`square-via-entry0` is entry 0's `ONGOTO` with no gate;
+`entry1-unconditional` is entry 1 with neither. The sixth, `entryN`, is the
+other three entries -- 2 before camping, 3 camp interrupted, 4 after loading
+-- which reach a `NEWECL` directly, with no edge or square dispatch of their
+own: `ECL0B`'s `$A20F` is the one exit only entry 3 reaches, run when camping
+is interrupted rather than off any square or edge a walking party can stand
+on.
+
     eclexitkinds.py            every script
     eclexitkinds.py ECL0D      one
 

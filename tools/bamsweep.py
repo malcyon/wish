@@ -62,6 +62,36 @@ def header(path: str) -> bytes:
     return D64.open(path).read_sector(18, 0)[144:]
 
 
+def describe(value: bytes) -> str:
+    """Render a short byte string the way `docs/10-disk-format.md` names it.
+
+    `2A`, the DOS-type bytes, is the literal two ASCII characters, and
+    `.hex()` on it prints the unreadable `3241`. A run of `\\xa0` pads is not
+    ASCII and stays hex, which is the shorter and clearer form for those.
+    """
+    if 1 <= len(value) <= 4 and all(0x20 <= b < 0x7F for b in value):
+        return value.decode("ascii")
+    return value.hex()
+
+
+def check(head: bytes, fixed=FIXED) -> tuple[dict[tuple[int, int], bool], list[str]]:
+    """Compare `head`'s fixed byte ranges against `fixed`.
+
+    Pure byte matching over a 112-byte buffer -- no disk, no `D64`. Returns
+    the per-range agreement and the human-readable mismatch lines `main`
+    prints; a range's own label never enters either, only its byte window.
+    """
+    agree: dict[tuple[int, int], bool] = {}
+    odd: list[str] = []
+    for label, first, last, want in fixed:
+        got = head[first - 144:last - 143]
+        ok = got == want
+        agree[first, last] = ok
+        if not ok:
+            odd.append(f"{first}-{last} is {describe(got)}, not {describe(want)}")
+    return agree, odd
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("paths", nargs="*", help="images, or directories of them")
@@ -83,13 +113,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{os.path.basename(path):16s} unreadable: {exc}")
             continue
         read += 1
-        odd = []
-        for _, first, last, want in FIXED:
-            got = head[first - 144:last - 143]
-            if got == want:
-                agree[first, last] += 1
-            else:
-                odd.append(f"{first}-{last} is {got.hex()}, not {want.hex()}")
+        per_range, odd = check(head)
+        for key, ok in per_range.items():
+            if ok:
+                agree[key] += 1
         if not opts.quiet:
             name = head[0:16].rstrip(b"\xa0").decode("latin-1")
             print(f"{os.path.basename(path):16s} {name!r:20s} "
@@ -98,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"{read} of {len(paths)} images read")
     for label, first, last, want in FIXED:
-        shown = want.hex() if len(want) <= 4 else f"{len(want)} nulls"
+        shown = describe(want) if len(want) <= 4 else f"{len(want)} nulls"
         print(f"  {first:3d}-{last:3d} {label:5s} == {shown:10s} "
               f"on {agree[first, last]} of {read}")
     return 0
