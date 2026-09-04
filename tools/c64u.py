@@ -608,6 +608,13 @@ def main(argv: list[str] | None = None) -> int:
     except NotReachable as exc:
         print(f"c64u: {exc}", file=sys.stderr)
         return NO_DEVICE
+    except subprocess.TimeoutExpired as exc:
+        # A timeout anywhere but `info()`/`available()` -- a dump, a mount, a
+        # poll -- reaches here.  Without this branch it left `main()` as a raw
+        # traceback rather than the one error format the tool otherwise keeps.
+        print(f"c64u: the device did not answer within {exc.timeout:g}s; "
+              f"set $C64U_TIMEOUT to allow longer", file=sys.stderr)
+        return NO_DEVICE
     except (UltimateError, FileNotFoundError) as exc:
         print(f"c64u: {exc}", file=sys.stderr)
         return 1
