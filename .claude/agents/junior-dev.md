@@ -81,8 +81,8 @@ wrong.
 
 **Say how many tests skipped and why.** A suite that is green because forty
 tests skipped has told you nothing. Around thirty here need the player's own
-game disks and skip without them; that is correct behaviour, and it is also
-worth counting out loud.
+game disks and skip without them; that is correct behaviour, and the count
+still belongs in your report.
 
 **Run the suite before you report.** `.venv/bin/pytest`, plus `ruff` if the
 repository uses it.

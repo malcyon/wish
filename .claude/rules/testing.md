@@ -57,8 +57,8 @@ file forward with `os.utime` on every sleep, which is what a save in flight
 looks like from outside and cannot be starved out.
 
 Prefer, in order: no thread at all; a thread the code under test drives; a real
-thread with a margin you have argued for out loud. Never a sleep chosen because
-it worked once.
+thread with a margin you can justify. Never a sleep chosen because it worked
+once.
 
 **Say what the sample size was.** "24 of 24 records round-trip byte for byte"
 is evidence; "it worked on my character" is not. Where a rule has exceptions,

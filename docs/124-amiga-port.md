@@ -1509,7 +1509,7 @@ Two side experiments worth naming, both cheap and neither on the critical path:
 
 ## 7. What cannot survive the trip
 
-Stated out loud, so nobody is surprised and nobody tries.
+So nobody is surprised, and nobody tries.
 
 | thing | why it cannot cross | what to do instead |
 |---|---|---|

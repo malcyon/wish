@@ -498,8 +498,8 @@ experiment on the list.
 
 ## 7. What the web does *not* have
 
-Stated plainly, because it changes how we should budget effort: **there is no published C64 Pool of
-Radiance character-record layout.** There is no Amiga one either. What exists is (a) an excellent
+**There is no published C64 Pool of Radiance character-record layout**, and
+that changes how we should budget effort. There is no Amiga one either. What exists is (a) an excellent
 DOS field catalogue, (b) one 1989 C64 BASIC editor whose author documented roughly twenty offsets
 and admitted he could not work out several more, and (c) our own disk. Everything beyond that has
 to come from controlled experiment. The good news is that (b) plus our specimen already agree on

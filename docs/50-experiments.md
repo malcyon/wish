@@ -3142,7 +3142,7 @@ fight was a combatant occupying a real slot.
 which the game enforces at six player characters and eight total. The extra four
 are combat scratch and must not appear in a party list.
 
-### Limitations, stated plainly
+### Limitations
 
 * **One monster, observed twice.** Both fights were training-hall duels with a
   single opponent at index 8. Monsters at 9, 10, 11 and slot sharing follow from
@@ -3463,8 +3463,8 @@ ended, so that experiment is still open and is written up in
 `docs/80-fields-wanted.md`.
 
 `automap/actions.py` clears it all the same. Clearing restores the byte every
-clean save has, so the write cannot hurt; the action says plainly that its
-effect on the next fight is unproven.
+clean save has, so the write cannot hurt; its effect on the next fight is
+unproven.
 
 
 ## Does the save know where the party has been

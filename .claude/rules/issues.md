@@ -149,7 +149,7 @@ checking `gh issue view N --json state`.**
 
 Donald asks for a recommended order regularly. **It is a recommendation.** He
 recurates the `Priority:` labels by hand, so a list that disagrees with a label
-says so out loud and leaves the label alone.
+says so and leaves the label alone.
 
 **Lead with what you would do first and why, one line each.** Not an exhaustive
 survey, not a table of everything open. Group by category when there are more

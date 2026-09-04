@@ -167,7 +167,7 @@ the owner byte matching this character's slot, and name the id through
 character's own slots, so one code table serves both and nothing new is needed
 to name them.
 
-**The honest limit, stated plainly: the badge can say *running*, not *how
+**The honest limit: the badge can say *running*, not *how
 long*.** The duration byte is a count in bits 0–5 and a **unit in bits 6–7 that
 is not decoded**, so "8" on a badge could be 8 rounds, turns or hours. Show the
 name and no number until `docs/133-active-effects.md`'s one experiment — cast,

@@ -48,8 +48,8 @@ find it; do not open an issue for it. Two things a correction owes:
 * **Say why it changed**, in a sentence, where the claim was. A correction with
   no reason is the same trap with the values swapped.
 
-If the wrong claim held up a *conclusion* rather than a detail, say so plainly
-rather than quietly fixing the line.
+If the wrong claim held up a *conclusion* rather than a detail, say what the
+conclusion should be now rather than quietly fixing the line.
 
 **Leave the top-level `README.md` alone** unless Donald asks for it by name. It
 is the page a stranger reads first and it is his. A finding goes in `docs/`; if

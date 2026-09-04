@@ -153,7 +153,7 @@ agents using the documented `wish-re` tag share one lease file, and
 `winvm release` shuts the VM down when the last lease goes — so the polite
 thing at the end of a run kills the other agent's emulator.
 
-`winuae.ps1` now says the constraint out loud and enforces it:
+`winuae.ps1` now enforces the constraint and names who holds it:
 
 | call | what it does |
 |---|---|

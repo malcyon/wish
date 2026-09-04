@@ -256,10 +256,10 @@ reality — `DRIDER` is a drow, and fighter/magic-user is what a drow should be.
 **What the player sees.** These are NPC and monster records, so the effect is
 confined to what the character sheet prints for one of them if it ever joins.
 
-**Version.** Pool of Radiance, Commodore 64. CONFIRMED. Worth stating plainly
-because a tool that "tidies" the two fields into agreement cannot represent
-records the game itself ships — ours did, and it silently rewrote two bytes on
-an import that edited nothing.
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED. A tool that "tidies"
+the two fields into agreement cannot represent records the game itself ships
+— ours did, and it silently rewrote two bytes on an import that edited
+nothing.
 
 ---
 

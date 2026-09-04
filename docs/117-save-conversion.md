@@ -461,7 +461,7 @@ it is one more codec now, and `goldbox/yaml_io.entry_for` takes a
 
 ---
 
-## What cannot survive the trip, and must be said out loud
+## What cannot survive the trip
 
 * **The combat icon.** C64 icons are 18 screen codes into `CHARPIC00` plus 18
   colours — a C64 charset. DOS has no such thing, so the icon must be built
@@ -1924,7 +1924,7 @@ did **not** hold for free on the reader beside it: the first real consumer of
   declared (`field_10c_10f`) and written as a constant; plausibly a health
   status byte, uncorroborated.
 
-### What a converted party loses, said out loud
+### What a converted party loses
 
 * **The sheet portrait**: `portrait_head` and `portrait_body` index the DOS
   art set — `HEAD<n>.DAX` and `BODY<n>.DAX`, **CONFIRMED in DOSBox** by
