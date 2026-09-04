@@ -81,8 +81,17 @@ _log = logging.getLogger("wish.editor.dosimport")
 #: guessable: Donald, who wrote the format documentation, was stopped by it on
 #: 2026-08-26 -- the folder holds no subdirectories, so the dialog listed
 #: nothing and there was no sign he was already standing in the right place.
-#: A player meeting it cold has less to go on than he did. Three conditions,
-#: all stated; a flag with no way out is a second code path kept forever.
+#: A player meeting it cold has less to go on than he did.
+#:
+#: **A fourth condition, and it is the largest: nothing may be dropped at
+#: all.** Donald, 2026-09-04: *"We should not be dropping anything when
+#: converting a save. Anything less is a bug, and the feature flag cannot be
+#: lifted until that is true."* So `goldbox.dos.DROPPED` and every list like
+#: it must be empty, and every entry standing on one today is a bug with an
+#: issue of its own rather than a documented exemption -- see
+#: `.claude/rules/conversions.md`. That subsumes the portrait and the clock,
+#: which were only the two drops anybody had named. Four conditions, all
+#: stated; a flag with no way out is a second code path kept forever.
 ENV = "WISH_EXPERIMENTAL_DOS_IMPORT"
 
 #: Anything else -- an empty string, `0`, `off` -- is off, matching

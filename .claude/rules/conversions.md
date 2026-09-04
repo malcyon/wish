@@ -8,6 +8,14 @@ paths:
 **The standard is a perfect conversion.** Reporting a dropped field is the
 minimum; it is not permission to drop it.
 
+**And a drop is a bug.** Donald, 2026-09-04: *"We should not be dropping
+anything when converting a save. Anything less is a bug, and the feature flag
+cannot be lifted until that is true."* So the three reasons below explain why a
+field is not carried **yet** -- they are not a licence, and a drop list is not
+a state a conversion is allowed to rest in. **Every entry on every drop list
+has an issue**, and `WISH_EXPERIMENTAL_DOS_IMPORT` does not come off while any
+of them is open.
+
 **Every field is carried, or it is on a short list with a tested reason.**
 Three reasons are legitimate:
 
