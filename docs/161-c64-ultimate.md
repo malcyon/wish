@@ -124,11 +124,12 @@ Nothing below has been measured. Each line says what would settle it.
 
 * **It is one physical device on somebody's desk.** Only one agent has it at a
   time, and if Donald is playing, nobody does.
-* **Never `config save-to-flash` or `config reset-to-default`.** The first
-  persists a change past power-off; the second cannot be undone from the CLI.
-  `config export > work/c64u-config-backup.json` before changing any setting,
-  and leave the device on the settings it started with. `tools/c64u.py` refuses
-  all three, and `machine poweroff` with them.
+* **Never `config save-to-flash`, `config load-from-flash` or `config
+  reset-to-default`.** The first persists a change past power-off; the second
+  replaces the live settings wholesale; the third cannot be undone from the
+  CLI. `config export > work/c64u-config-backup.json` before changing any
+  setting, and leave the device on the settings it started with.
+  `tools/c64u.py` refuses all three, and `machine poweroff` with them.
 * **Never `c64u ui` or `c64u streams listen`** from an agent: both put a window
   on the desktop Donald is working at. Refused in the wrapper too.
 * **Do not leave it paused, frozen or looping.** `machine reset` is the way out

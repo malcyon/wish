@@ -13,10 +13,11 @@ things it does that a bare CLI call does not, each of them a rule from
 `docs/161-c64-ultimate.md` made mechanical:
 
 1. **Refuses the commands that are not ours to run.**  `config save-to-flash`
-   persists a setting past power-off, `config reset-to-default` cannot be
-   undone from the CLI, `machine poweroff` turns off a machine on somebody's
-   desk, and `streams`/`ui` open a window on it.  `Refused` is raised before
-   anything reaches the wire.
+   persists a setting past power-off, `config load-from-flash` replaces the
+   live settings wholesale, `config reset-to-default` cannot be undone from
+   the CLI, `machine poweroff` turns off a machine on somebody's desk, and
+   `streams`/`ui` open a window on it.  `Refused` is raised before anything
+   reaches the wire.
 2. **`paused()` always resumes.**  A 64K dump is many HTTP round-trips, so it
    has to be taken with the machine paused or it is a smear across time; a
    failure mid-dump must not leave a paused machine on the desk.
@@ -129,8 +130,27 @@ def mask_vic_colour(value: int) -> int:
     return value & 0x0F
 
 
+#: How long a CLI call may run before this wrapper gives up on it, in
+#: seconds.  Generous, because a paused 64K dump is a single CLI invocation
+#: doing many round trips over WiFi -- but finite, because "no timeout" is
+#: what turned a slow or flaky device into a `pytest` collection that could
+#: not be interrupted.  `$C64U_TIMEOUT` overrides it.
+DEFAULT_TIMEOUT_S = 120.0
+
+
+def _subprocess_timeout() -> float:
+    raw = os.environ.get("C64U_TIMEOUT")
+    if not raw:
+        return DEFAULT_TIMEOUT_S
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_TIMEOUT_S
+
+
 def _run_subprocess(argv: list[str], binary: bool) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, capture_output=True, text=not binary)
+    return subprocess.run(argv, capture_output=True, text=not binary,
+                          timeout=_subprocess_timeout())
 
 
 class Ultimate:
@@ -186,7 +206,7 @@ class Ultimate:
         can skip instead of failing -- CI has no C64 Ultimate."""
         try:
             self.info()
-        except (UltimateError, OSError, ValueError):
+        except (UltimateError, OSError, ValueError, subprocess.TimeoutExpired):
             return False
         return True
 
@@ -253,29 +273,43 @@ class Ultimate:
         """
         path = pathlib.Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        wanted = end - start + 1
         with self.paused():
             self.run("machine", "read-mem", self.addr(start),
                      "--to", self.addr(end), "-o", str(path))
-        self.write_sidecar(path, start=start, end=end, banking=banking, note=note)
+        got = path.stat().st_size
+        if got != wanted:
+            raise UltimateError(
+                f"dump {self.addr(start)}..{self.addr(end)} asked for "
+                f"{wanted} bytes, got {got} in {path} -- no sidecar written, "
+                "the file cannot be trusted")
+        self.write_sidecar(path, start=start, end=end, length=wanted,
+                           banking=banking, note=note)
         return path
 
     def write_sidecar(self, path: str | os.PathLike, **fields) -> pathlib.Path:
-        """The JSON beside a dump: what it is, and which state it was taken in."""
+        """The JSON beside a dump: what it is, and which state it was taken in.
+
+        `info()` only enriches the record with device identity, and a broken
+        CLI binary raises a bare `OSError` from `subprocess.run()` rather than
+        `UltimateError` -- the same set `available()` catches, below.  The
+        core fields are built first so a failure enriching the record cannot
+        cost the sidecar its bank state, which is the only thing that matters.
+        """
         path = pathlib.Path(path)
-        try:
-            device = self.info()
-        except UltimateError:
-            device = {}
         body = {
             "tool": "tools/c64u.py",
             "taken": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "device": device,
             "banking_note": (
                 "DMA follows the CPU's current banking and $01 reads as the "
                 "RAM underneath, so this bank state is recorded rather than "
                 "measured."),
             **fields,
         }
+        try:
+            body["device"] = self.info()
+        except (UltimateError, OSError, ValueError, subprocess.TimeoutExpired):
+            body["device"] = {}
         side = path.with_suffix(path.suffix + ".json")
         side.write_text(json.dumps(body, indent=2) + "\n")
         return side
@@ -420,18 +454,25 @@ def boot_disk(game: games.Game | None = None, number: int = 1,
               root: str | None = None) -> str:
     """Disk `number` of the title, the one VICE boots from.
 
-    `tools/session.py` stages `POOL1.D64` as `SIDE1.D64` and boots that, so
-    this picks the same image: two readings of the same disk are the only kind
-    worth comparing.
+    `game_disks()` already lists every image of a title correctly, sorted --
+    disk numbering follows that order rather than a filename guessed from
+    `disk_glob`.  A prefix guess broke on Champions of Krynn and Death Knights
+    of Krynn, whose globs are `*[cC]hampions*.[dD]64` and
+    `*[dD]eath*[kK]nights*.[dD]64`: both start with a wildcard, so the guessed
+    prefix was empty and the search always missed.
+
+    `tools/session.py` stages `POOL1.D64` as `SIDE1.D64` and boots that; sorted
+    order puts `POOL1.D64` first among Pool of Radiance's disks, so this picks
+    the same image.
     """
     game = game or games.DEFAULT
-    want = f"{game.disk_glob.split('*')[0]}{number}.d64".lower()
-    for path in game_disks(game, root):
-        if os.path.basename(path).lower() == want:
-            return path
+    disks = game_disks(game, root)
+    if 1 <= number <= len(disks):
+        return disks[number - 1]
     raise FileNotFoundError(
-        f"no {want.upper()} under {root if root is not None else disk_dir(game)!r} "
-        "-- set $POR_DISKS to the directory holding the game disks")
+        f"no disk {number} of {game.title} under "
+        f"{root if root is not None else disk_dir(game)!r} -- set $POR_DISKS "
+        "to the directory holding the game disks")
 
 
 def work_dir() -> pathlib.Path:
@@ -555,8 +596,8 @@ def main(argv: list[str] | None = None) -> int:
             for (addr, length), data in zip(memory_blocks(game), dev.poll(game)):
                 name = out / f"block-{addr:04x}.bin"
                 name.write_bytes(data)
-                dev.write_sidecar(name, start=addr, length=length,
-                                  banking=args.banking,
+                dev.write_sidecar(name, start=addr, end=addr + length - 1,
+                                  length=length, banking=args.banking,
                                   note="one automap poll block, read over DMA")
                 print(f"${addr:04X}  {length} bytes  {name}")
         elif args.cmd == "time-reads":

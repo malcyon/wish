@@ -176,7 +176,7 @@ def test_the_machine_is_resumed_even_when_the_dump_fails(tmp_path):
 
 def test_a_dump_is_taken_paused_and_in_that_order(tmp_path):
     dev, fake = device()
-    (tmp_path / "mem.bin").write_bytes(b"x")
+    (tmp_path / "mem.bin").write_bytes(b"x" * 0x100)  # 0x0000..0x00FF inclusive
     dev.dump(0x0000, 0x00FF, tmp_path / "mem.bin", banking="default 37")
     order = [c for c in fake.calls if _has(c, ("machine",))]
     assert _has(order[0], ("pause",))
@@ -189,12 +189,62 @@ def test_a_dump_records_the_bank_state_it_was_taken_in(tmp_path):
     the processor port, so the dump cannot say for itself whether `$A000` was
     BASIC ROM or the RAM beneath it.  The sidecar is the only record there is."""
     dev, _ = device()
-    (tmp_path / "mem.bin").write_bytes(b"x")
+    (tmp_path / "mem.bin").write_bytes(b"x" * 0x100)  # 0xA000..0xA0FF inclusive
     dev.dump(0xA000, 0xA0FF, tmp_path / "mem.bin", banking="ROMs out, $01 = $35")
     side = json.loads((tmp_path / "mem.bin.json").read_text())
     assert side["banking"] == "ROMs out, $01 = $35"
     assert side["start"] == 0xA000 and side["end"] == 0xA0FF
+    assert side["length"] == 0x100
     assert "banking" in side["banking_note"]
+
+
+def test_a_short_dump_gets_no_sidecar_claiming_the_full_range(tmp_path):
+    """A transfer truncated over WiFi still returns a zero exit; the sidecar
+    is the only thing that says how much of the range actually arrived, so a
+    dump whose file is short must not get one claiming the full range."""
+    dev, _ = device()
+    (tmp_path / "mem.bin").write_bytes(b"x" * 10)  # asked for 0x100 = 256
+    with pytest.raises(c64u.UltimateError, match="asked for 256 bytes, got 10"):
+        dev.dump(0x0000, 0x00FF, tmp_path / "mem.bin")
+    assert not (tmp_path / "mem.bin.json").exists()
+
+
+def test_a_dump_still_gets_a_sidecar_when_info_raises_a_bare_oserror(tmp_path):
+    """A broken `c64u` CLI binary raises a bare `OSError` from
+    `subprocess.run()`, not `UltimateError` -- `available()` already catches
+    that set; `write_sidecar()` must too, or the machine is safely resumed and
+    the dump is on disk with no record of the bank state it was taken in."""
+    dev, _ = device()
+    (tmp_path / "mem.bin").write_bytes(b"x" * 0x100)
+    dev.info = lambda: (_ for _ in ()).throw(OSError("c64u binary is gone"))
+    dev.dump(0x0000, 0x00FF, tmp_path / "mem.bin", banking="default 37")
+    side = json.loads((tmp_path / "mem.bin.json").read_text())
+    assert side["device"] == {}
+    assert side["banking"] == "default 37"
+
+
+def test_dump_and_poll_sidecars_share_one_schema(tmp_path, monkeypatch):
+    """`dump()` used to carry `start`/`end` while the `poll` command's sidecar
+    carried `start`/`length` -- a future reader had to know which command
+    wrote a sidecar before it could read one. Both now carry all three."""
+    from automap.live import memory_blocks
+    dev, _ = device()
+    (tmp_path / "mem.bin").write_bytes(b"x" * 0x100)
+    dev.dump(0x0000, 0x00FF, tmp_path / "mem.bin")
+    dump_side = json.loads((tmp_path / "mem.bin.json").read_text())
+    assert dump_side.keys() >= {"start", "end", "length"}
+
+    want = memory_blocks(None)
+    monkeypatch.setattr(c64u, "find_cli", lambda: None)  # no real device, ever
+    monkeypatch.setattr(c64u.Ultimate, "available", lambda self: True)
+    monkeypatch.setattr(c64u.Ultimate, "poll",
+                        lambda self, game=None: [b"\x00" * n for _, n in want])
+    out = tmp_path / "run1"
+    assert c64u.main(["poll", "-o", str(out)]) == 0
+    for addr, length in want:
+        poll_side = json.loads((out / f"block-{addr:04x}.bin.json").read_text())
+        assert poll_side.keys() >= {"start", "end", "length"}
+        assert poll_side["end"] == poll_side["start"] + poll_side["length"] - 1
 
 
 # -- the keyboard experiment ------------------------------------------------
@@ -289,15 +339,60 @@ def test_no_device_exits_three_rather_than_one(monkeypatch, capsys):
 # -- the one test that wants hardware ---------------------------------------
 
 
-def _hardware():
-    if os.environ.get("C64U_HARDWARE_TESTS", "").lower() not in ("1", "true",
-                                                                "yes", "on"):
-        return None
-    dev = c64u.Ultimate()
-    return dev if dev.available() else None
+def test_collecting_this_file_with_hardware_tests_enabled_touches_no_device(
+        tmp_path):
+    """`@pytest.mark.skipif`'s condition is evaluated once, when this file is
+    collected -- including `--collect-only` and a `-k` that selects something
+    else in the suite entirely. Setting `C64U_HARDWARE_TESTS=1` must not make
+    *collecting this file* reach out to the device, however slow, mid-game or
+    unreachable it is: `.claude/rules/commits.md` requires a whole-suite run
+    before every push, and a hang here hangs that run.
+
+    Stands in for the device with a script that only ever appends to a marker
+    file -- never a real socket -- so this is safe regardless of whether a C64
+    Ultimate is actually reachable from this machine right now.
+    """
+    marker = tmp_path / "invoked.log"
+    stub = tmp_path / "stub-c64u"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"open({str(marker)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        "print('{}')\n")
+    stub.chmod(0o755)
+
+    repo_root = pathlib.Path(c64u.__file__).resolve().parent.parent
+    env = dict(os.environ)
+    env.update({
+        "C64U_HARDWARE_TESTS": "1",
+        "C64U_CLI": str(stub),
+        "C64U_HOST": "203.0.113.1",  # TEST-NET-3: reserved, never routed
+    })
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider",
+         "-o", "addopts=", "--collect-only", "-q", str(pathlib.Path(__file__))],
+        cwd=repo_root, env=env, capture_output=True, text=True, timeout=60)
+
+    assert not marker.exists(), (
+        "collecting this file invoked the device stub -- a pytest run must "
+        "never reach out and touch a machine somebody is playing on\n"
+        + result.stdout + result.stderr)
 
 
-@pytest.mark.skipif(_hardware() is None,
+def _hardware_tests_requested() -> bool:
+    """Whether `$C64U_HARDWARE_TESTS` opts in -- the environment only.
+
+    This is what the `skipif` below evaluates, and `skipif`'s condition runs
+    once, at collection, for every run of this file: `--collect-only`, a `-k`
+    that selects something else entirely, all of it. Anything that reaches
+    the device -- even `available()`, which is a real REST call -- belongs in
+    a test body behind a runtime `pytest.skip()`, never here.
+    """
+    return os.environ.get("C64U_HARDWARE_TESTS", "").lower() in (
+        "1", "true", "yes", "on")
+
+
+@pytest.mark.skipif(not _hardware_tests_requested(),
                     reason="set C64U_HARDWARE_TESTS=1 with a device reachable")
 def test_the_raster_counter_moves_between_two_reads():
     """The only claim worth a hardware test here: a DMA read reaches live I/O.
@@ -305,7 +400,12 @@ def test_the_raster_counter_moves_between_two_reads():
     of $D012 coming back different disproves it for reads at least.
 
     Read-only, and it still does not run unless somebody opts in: the machine
-    is on a desk and may have somebody playing on it."""
-    dev = _hardware()
+    is on a desk and may have somebody playing on it. The device probe itself
+    -- `available()`, a real network call -- happens here, in the test body,
+    and skips at runtime; it must never run merely from collecting this file.
+    """
+    dev = c64u.Ultimate()
+    if not dev.available():
+        pytest.skip("no C64 Ultimate answered")
     seen = {dev.read_mem(0xD012, 1)[0] for _ in range(8)}
     assert len(seen) > 1, f"$D012 never moved across 8 reads: {seen}"
