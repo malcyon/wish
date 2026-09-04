@@ -133,7 +133,28 @@ likelier answer is that it is a stranger's edited party, and no amount of
 staring at it would have said which.
 
 **Records this project's own writers produced** test the writer and are never
-evidence about the game, since they carry what we already believe.
+evidence about the game, since they carry what we already believe. **Including
+saves a person edited in Wish.** Donald, 2026-09-04, of the C64 party on
+`work/drive/P18PARTY.D64` that `#10 (Finish the high-level test party)` drove
+through the training hall: *"I edited the C64 characters you mentioned with
+WISH. I gave them gold. I increased their ability scores. I changed the weight
+of their items."* Driving a party through the game does not keep it clean
+afterwards.
+
+**But there is a distinction worth holding on to, because it rescues real
+work.** Editing an **input** and then watching the game compute from it is a
+valid experiment -- the engine does not care how a byte got there. Reading back
+a **stored value that Wish wrote** and calling it the game's arithmetic is not.
+
+So: raise a cleric's wisdom in Wish, drive the trainer, and what the trainer
+offers is the game's answer for that wisdom. Raise the weight of an item in
+Wish and read the stored encumbrance, and you have measured Wish.
+
+`docs/125-bug-notes.md`'s N13 is the worked example of surviving this. Its
+evidence is *"the table's bytes and the three compares"* -- `GEN $10AD`, read
+out of the code -- with ROLAND at wisdom 16 as corroboration. The code half is
+untouchable and the finding stands on it. Had it rested on ROLAND alone it
+would now be worthless.
 
 **The cost of getting this wrong is silent.** On 2026-09-04 a single edited
 record -- SILAS, a *human* carrying two `.SPC` effect records where the engine
