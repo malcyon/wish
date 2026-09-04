@@ -293,7 +293,9 @@ def test_a_titles_row_reports_what_it_found_in_its_own_words(
         empty.mkdir()
         dialog.set_game_folder(CURSE, str(empty))
         text = dialog.game_folder_reports[CURSE.key].text()
-        assert text.startswith("none") and "CURSE*.D64" in text
+        # Capitalised: on this tab the sentence is the whole line, not a
+        # value beside a form label the way `report()`'s is.
+        assert text.startswith("None") and "CURSE*.D64" in text
     finally:
         win.close()
 

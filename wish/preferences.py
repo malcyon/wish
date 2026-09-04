@@ -591,10 +591,22 @@ class PreferencesDialog(QDialog):
         self.refresh()
 
     def _say_game_folders(self) -> None:
+        """Say under each row what that title's own folder holds.
+
+        **Capitalised here, at the composed line, and not in
+        `title_folder_report`.** The same words are a value fragment beside
+        the `Titles` form label in `report()`, where a lowercase `none; no
+        POOL*.D64 here` reads correctly; on this tab they are the whole of a
+        line with nothing in front of them, and
+        `.claude/rules/gui-text.md` wants a line a person reads to open with
+        a capital.  `FastTravelBar._report` and `ActionBar._report` do the
+        same thing in the same place for the same reason -- only the first
+        letter, never `str.capitalize()`, which would lower-case a title.
+        """
         for game in GAME_FOLDER_TITLES:
             text = title_folder_report(self.game_folder_text(game), game)
             note = self.game_folder_reports[game.key]
-            note.setText(text)
+            note.setText(text[:1].upper() + text[1:])
             note.setVisible(bool(text))
 
     # -- where `File > Open` starts ----------------------------------------
