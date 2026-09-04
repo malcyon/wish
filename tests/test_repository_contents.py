@@ -193,3 +193,68 @@ def test_no_citation_points_at_a_write_up_that_is_not_there(files):
         "it is lost, and the file is not there:\n  " + "\n  ".join(bad)
         + "\n\nA write-up's permanent home is `docs/` -- see "
           "`.claude/rules/documentation.md`.")
+
+
+#: The rule files, and the page holding the incidents behind them. Both are
+#: cited by path from tests, package code, `docs/` and the agent definitions,
+#: and none of those citations is checked by anything else.
+RULES_DIR = ".claude/rules"
+WHY = "docs/160-why-these-rules.md"
+
+#: A citation of a rule file or of the incidents page, anywhere in the tree.
+RULE_CITATION = re.compile(r"`?\.claude/rules/([a-z-]+\.md)`?")
+
+
+def test_no_citation_points_at_a_rule_file_that_is_not_there(files):
+    """A `.claude/rules/X.md` citation names a file that exists.
+
+    `#208 (Split CLAUDE.md into .claude/rules, so 21,800 tokens do not load
+    before every task)` turned one file into thirteen and rewrote eighteen
+    citations to point at them. That trades a file everybody knew for a set of
+    paths nothing verifies -- rename `gui-text.md` and the tooltip rule in
+    `goldbox/dos.py` quietly points at nothing.
+
+    Scoped to tracked `.md` and `.py` files, and to the two paths the split
+    created, because those are the ones with no other guard.
+    """
+    bad = []
+    for rel in files:
+        if rel.suffix not in (".md", ".py") or rel.parts[0] == "work":
+            continue
+        for i, line in enumerate((ROOT / rel).read_text(encoding="utf-8").splitlines()):
+            for name in RULE_CITATION.findall(line):
+                if not (ROOT / RULES_DIR / name).is_file():
+                    bad.append(f"{rel.as_posix()}:{i + 1}  {RULES_DIR}/{name}")
+            if WHY in line and not (ROOT / WHY).is_file():
+                bad.append(f"{rel.as_posix()}:{i + 1}  {WHY}")
+    assert not bad, (
+        "these cite a rule file that is not there:\n  " + "\n  ".join(bad)
+        + "\n\nRenaming a rule file means rewriting what points at it.")
+
+
+def test_every_rule_file_points_at_a_heading_that_exists():
+    """Each rule file ends by naming its section of the incidents page.
+
+    The pointer is the only thing joining a rule to the evidence for it, and a
+    heading renamed on one side of that link breaks it silently -- the rule
+    still reads correctly, and the reason for it simply cannot be found.
+    """
+    why = ROOT / WHY
+    if not why.is_file():
+        pytest.skip(f"{WHY} is not there")
+    headings = {
+        line[3:].strip()
+        for line in why.read_text(encoding="utf-8").splitlines()
+        if line.startswith("## ")
+    }
+    bad = []
+    for rule in sorted((ROOT / RULES_DIR).glob("*.md")):
+        text = rule.read_text(encoding="utf-8")
+        named = re.findall(rf'{re.escape(WHY)}`?,\s*"([^"]+)"', text)
+        if not named:
+            bad.append(f"{rule.name} names no section of {WHY}")
+            continue
+        for heading in named:
+            if heading not in headings:
+                bad.append(f'{rule.name} points at "{heading}", which is not a heading there')
+    assert not bad, "\n  ".join(["broken links to the incidents page:"] + bad)
