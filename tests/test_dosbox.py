@@ -189,6 +189,74 @@ def test_the_ink_digest_ignores_a_recolour_and_not_a_reshape():
     assert white.ink() != moved.ink()
 
 
+# --------------------------------------------------------------------------
+# A frame from one harness read with the other's geometry (#204)
+# --------------------------------------------------------------------------
+#
+# DOSBox-X line-doubles this game's 320x200 mode into a 640x400 window; DOSBox
+# 0.74 does not.  `BAR` -- `(0, 192, 320, 7)` -- is measured in the 320x200
+# frame, so reading it against a 640x400 one lands on the picture panel, not
+# the command bar.  Reproduced here with no emulator and no game pixels: a
+# synthetic bar, doubled the way DOSBox-X draws it, and `tools/dosboxx.py`'s
+# `halve()` putting it back.
+
+
+def _double_frame(screen: dosbox.Screen) -> dosbox.Screen:
+    """The way DOSBox-X draws this game's 320x200 mode into a 640x400 window."""
+    w, h = screen.width, screen.height
+    px = screen.px
+    stride = w * 2 * 3
+    out = bytearray(stride * h * 2)
+    for y in range(h):
+        row = bytearray(stride)
+        for x in range(w):
+            p = px[(y * w + x) * 3:(y * w + x) * 3 + 3]
+            row[x * 6:x * 6 + 3] = p
+            row[x * 6 + 3:x * 6 + 6] = p
+        out[2 * y * stride:(2 * y + 1) * stride] = row
+        out[(2 * y + 1) * stride:(2 * y + 2) * stride] = row
+    return dosbox.Screen(w * 2, h * 2, bytes(out))
+
+
+def test_bar_kind_reads_the_picture_panel_when_the_frame_is_not_halved_back(monkeypatch):
+    """A real 640x400 DOSBox-X frame read with `BAR`'s 320x200 numbers.
+
+    This is `#204 (The DOSBox-X harness measures the picture panel where it
+    means to measure the command bar)`'s own fault, stated as an assertion: a
+    320x200 frame with a bar `bar_kind()` names correctly is doubled the way
+    DOSBox-X draws it, and the same rectangle on the doubled frame names
+    nothing -- the `fight_unknown_bar` symptom, a plausible `None` rather than
+    an error.  `tools/dosboxx.py`'s `halve()` is what recovers the answer.
+    """
+    from tools import dosboxx
+
+    width, height = 320, 200
+    px = bytearray(width * height * 3)  # all-black paper
+    # A bar: alternating black-and-white columns across BAR's own row band.
+    for y in range(dosbox.BAR[1], dosbox.BAR[1] + dosbox.BAR[3]):
+        for x in range(0, width, 5):
+            i = (y * width + x) * 3
+            px[i:i + 3] = b"\xff\xff\xff"
+    screen = dosbox.Screen(width, height, bytes(px))
+
+    digest = screen.glyphs(dosbox.BAR)
+    monkeypatch.setattr(dosbox.PoolOfRadiance, "COMBAT_BARS",
+                        ((dosbox.BAR[2], digest, "test_bar"),))
+    por = dosbox.PoolOfRadiance(None)
+
+    assert por.bar_kind(screen) == "test_bar"
+
+    doubled = _double_frame(screen)
+    assert por.bar_kind(doubled) is None, (
+        f"a {doubled.width}x{doubled.height} frame read with "
+        f"{width}x{height} rectangles should not name a bar by luck"
+    )
+
+    halved = dosboxx.halve(doubled)
+    assert (halved.width, halved.height) == (width, height)
+    assert por.bar_kind(halved) == "test_bar"
+
+
 #: The lease is an `flock`, which Windows has no equivalent of. Everything
 #: else in this file -- the PPM decode, the digest, and the findings about a
 #: DOS save -- is platform-independent and runs everywhere.

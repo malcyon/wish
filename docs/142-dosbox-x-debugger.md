@@ -279,9 +279,15 @@ allowed to be a finding.
 
 `tools/dosboxx.py` is `tools/dosbox.py` with the launch replaced: the same slot
 lease, the same staged game tree, the same `Screen` digests, and
-`PoolOfRadiance` drives it unchanged, which is what gets a run to a loaded save
-before there is anything worth looking at. Displays :40-:47, so the two pools
-and VICE's :10-:17 never collide.
+`PoolOfRadiance` drives it unchanged. **Corrected, `#204 (The DOSBox-X harness
+measures the picture panel where it means to measure the command bar)`:**
+"unchanged" held only for the whole-screen paths. DOSBox-X line-doubles this
+game's 320x200 mode into a 640x400 window, so every rectangle
+`tools/dosbox.py` measures -- `BAR`, `STATUS` -- would land on the wrong
+pixels without `XSession.capture()` halving each frame back to 320x200 first,
+which is what actually gets a run to a loaded save with rectangles worth
+looking at. Displays :40-:47, so the two pools and VICE's :10-:17 never
+collide.
 
 ```python
 from tools import dosbox, dosboxx

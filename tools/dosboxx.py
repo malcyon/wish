@@ -479,6 +479,52 @@ def debug_env(display: str | None, **extra: str) -> dict[str, str]:
     return env
 
 
+def halve(screen: dosbox.Screen) -> dosbox.Screen:
+    """A 640x400 capture as the 320x200 one DOSBox-X doubled it from.
+
+    **DOSBox-X line-doubles this game's 320x200 mode into a 640x400 window and
+    DOSBox 0.74 does not** (#204), so every rectangle `tools/dosbox.py`
+    measures -- `BAR`, `STATUS` -- lands on the wrong pixels unless a capture
+    is halved back first: `BAR` on an unhalved frame is the left half of the
+    picture panel, not the bottom text row, and every digest in
+    `PoolOfRadiance.COMBAT_BARS` is then a digest of the wrong pixels.
+
+    Every other pixel of every other row, which is exact rather than an
+    approximation: each source pixel is a 2x2 block of identical bytes, so
+    nothing is thrown away.  Measured: `import -sample 50%` on a DOSBox-X
+    frame of the loaded world map gives `Screen.glyphs(BAR)` =
+    `158ce64b7cdf4362`, exactly the world bar digest
+    `docs/149-driving-a-dos-fight.md` recorded under DOSBox 0.74, and this is
+    byte for byte what `-sample 50%` does.
+
+    A screen with an odd width or height is returned unchanged, since it is
+    not a line-doubled frame this can undo -- an `import` that clipped a
+    window at its edge, say, rather than a defect in this function.
+
+    **What makes an even-sized frame safe to halve is the config this module
+    writes, not anything checked here**: `output=surface` and `scaler=none`,
+    the same two lines DOSBox 0.74 is given, so the only even frame that
+    reaches this is the 2x2-replicated one. A build or a config that scaled
+    some other way would be halved just as willingly and hand back a
+    plausible, wrong picture. Asserting the pairs are uniform is not obviously
+    right either, since a frame captured mid-redraw need not be -- so the
+    check that would be safe is written down rather than guessed at.
+    """
+    if screen.width % 2 or screen.height % 2:
+        return screen
+    w, h = screen.width // 2, screen.height // 2
+    px = screen.px
+    out = bytearray(w * h * 3)
+    for y in range(h):
+        src = px[(2 * y) * screen.width * 3:(2 * y) * screen.width * 3 + screen.width * 3]
+        row = bytearray(w * 3)
+        row[0::3] = src[0::6]
+        row[1::3] = src[1::6]
+        row[2::3] = src[2::6]
+        out[y * w * 3:(y + 1) * w * 3] = row
+    return dosbox.Screen(w, h, bytes(out))
+
+
 class XSession(dosbox.Session):
     """A booted DOSBox-X with the debugger on a pty.
 
@@ -649,6 +695,22 @@ class XSession(dosbox.Session):
 
     def _env(self) -> dict[str, str]:
         return debug_env(self.display)
+
+    # -- output ------------------------------------------------------------
+
+    def capture(self) -> dosbox.Screen:
+        """The window capture, halved back to DOSBox 0.74's 320x200 (#204).
+
+        Every rectangle in `tools/dosbox.py` -- `BAR`, `STATUS` -- is measured
+        in DOSBox 0.74's 320x200 coordinates, and DOSBox-X's window is
+        640x400.  Halving here, once, is what lets `PoolOfRadiance` drive
+        either harness with the same rectangles.
+
+        `grab()` is deliberately left unscaled: its two callers only ask "is
+        there content" and "is this one flat colour", and both answers are
+        the same at either size.
+        """
+        return halve(super().capture())
 
     # -- input -----------------------------------------------------------
 

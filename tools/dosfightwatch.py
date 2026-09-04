@@ -72,50 +72,6 @@ XP = 0x0AC
 HP_CURRENT = 0x11B
 
 
-def halve(screen: dosbox.Screen) -> dosbox.Screen:
-    """A 640x400 capture as the 320x200 one it was doubled from.
-
-    Every other pixel of every other row, which is exact rather than an
-    approximation: DOSBox-X line-doubles, so each source pixel is a 2x2 block
-    of identical bytes and nothing is being thrown away.  Sliced rather than
-    looped because `settle()` captures several times a second.
-    """
-    if screen.width % 2 or screen.height % 2:
-        return screen
-    w, h = screen.width // 2, screen.height // 2
-    px = screen.px
-    out = bytearray(w * h * 3)
-    for y in range(h):
-        src = px[(2 * y) * screen.width * 3:(2 * y) * screen.width * 3 + screen.width * 3]
-        row = bytearray(w * 3)
-        row[0::3] = src[0::6]
-        row[1::3] = src[1::6]
-        row[2::3] = src[2::6]
-        out[y * w * 3:(y + 1) * w * 3] = row
-    return dosbox.Screen(w, h, bytes(out))
-
-
-class HalvedSession(dosboxx.XSession):
-    """`dosboxx.XSession` whose captures are 320x200, like DOSBox 0.74's.
-
-    **DOSBox-X line-doubles the game's 320x200 mode to a 640x400 window and
-    DOSBox 0.74 does not**, so every rectangle in `tools/dosbox.py` -- `BAR`,
-    `STATUS` -- lands somewhere else under the debugger build, and every
-    digest in `PoolOfRadiance.COMBAT_BARS` is a digest of the wrong pixels.
-    `docs/142-dosbox-x-debugger.md` says `PoolOfRadiance` drives `XSession`
-    unchanged; that is true only of the paths comparing whole screens.
-
-    Measured: `import -sample 50%` on a DOSBox-X frame of the loaded world map
-    gives `Screen.glyphs(BAR)` = `158ce64b7cdf4362`, which is exactly the
-    world bar `docs/149-driving-a-dos-fight.md` recorded under DOSBox 0.74.
-    `-sample` is point sampling, so it is byte for byte the same as taking
-    every other pixel by hand, and nothing is interpolated.
-    """
-
-    def capture(self) -> dosbox.Screen:
-        return halve(super().capture())
-
-
 def unsourced_fields() -> list[tuple[str, int, int]]:
     """`(name, offset, size)` for every field `goldbox.dos.write` zeroes.
 
@@ -384,7 +340,7 @@ def run(*, c64: pathlib.Path | None, slot: str, steps: int, out: pathlib.Path,
         save1 = None
 
     with dosboxx.claim("issue69 fight watch") as claimed:
-        s = HalvedSession(claimed, game)
+        s = dosboxx.XSession(claimed, game)
         try:
             s.stage(fresh=True)
             written = dos.new_dos_save(save0, save1, s.save_dir, slot,

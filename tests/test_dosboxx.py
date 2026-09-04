@@ -237,6 +237,89 @@ def test_the_clock_lives_where_the_save_format_says_it_does():
 
 
 # --------------------------------------------------------------------------
+# DOSBox-X's line-doubled window, and `capture()` undoing it (#204)
+# --------------------------------------------------------------------------
+#
+# `#204 (The DOSBox-X harness measures the picture panel where it means to
+# measure the command bar)`: DOSBox-X draws this game's 320x200 mode into a
+# 640x400 window, and every rectangle `tools/dosbox.py` measures -- `BAR`,
+# `STATUS` -- is in DOSBox 0.74's 320x200 coordinates.  `XSession.capture()`
+# halves a frame back before anything else sees it, which is the fix `#69 (No
+# WRITE_UNSOURCED zero has been tested during combat)` was blocked on.
+
+
+def _double(screen):
+    """The way DOSBox-X draws this game's 320x200 mode into a 640x400 window.
+
+    Each source pixel becomes an identical 2x2 block of itself -- exactly what
+    `dosboxx.halve()` undoes.
+    """
+    from tools import dosbox
+
+    w, h = screen.width, screen.height
+    px = screen.px
+    stride = w * 2 * 3
+    out = bytearray(stride * h * 2)
+    for y in range(h):
+        row = bytearray(stride)
+        for x in range(w):
+            p = px[(y * w + x) * 3:(y * w + x) * 3 + 3]
+            row[x * 6:x * 6 + 3] = p
+            row[x * 6 + 3:x * 6 + 6] = p
+        out[2 * y * stride:(2 * y + 1) * stride] = row
+        out[(2 * y + 1) * stride:(2 * y + 2) * stride] = row
+    return dosbox.Screen(w * 2, h * 2, bytes(out))
+
+
+def test_halve_recovers_the_frame_dosboxx_doubled_it_from():
+    """`halve()` undoes DOSBox-X's line-doubling exactly, not approximately."""
+    import random
+
+    from tools import dosbox
+
+    rng = random.Random(204)
+    w, h = 40, 30
+    original = dosbox.Screen(w, h, bytes(rng.randrange(256) for _ in range(w * h * 3)))
+    doubled = _double(original)
+    assert (doubled.width, doubled.height) == (w * 2, h * 2)
+
+    halved = dosboxx.halve(doubled)
+    assert (halved.width, halved.height) == (w, h)
+    assert halved.px == original.px
+
+
+def test_halve_leaves_an_odd_sized_frame_alone():
+    """Nothing this harness captures is odd-sized; refusing to guess is safer."""
+    from tools import dosbox
+
+    screen = dosbox.Screen(3, 3, bytes(27))
+    assert dosboxx.halve(screen) is screen
+
+
+def test_capture_halves_a_line_doubled_frame_to_dosbox_074s_size(monkeypatch):
+    """`XSession.capture()` must hand back the same size `Session.capture()` does.
+
+    Without this override, `PoolOfRadiance.bar_kind()` reads `BAR` --
+    `(0, 192, 320, 7)` -- against a 640x400 DOSBox-X window and measures the
+    left half of the picture panel instead of the command bar, so every fight
+    stands at the encounter menu pressing nothing until `patience` runs out.
+    `dosbox.Session.capture` is stubbed here rather than launching anything --
+    it is the one line this override calls, and the whole point is what
+    happens to what it returns.
+    """
+    from tools import dosbox
+
+    original = dosbox.Screen(4, 4, bytes(range(48)))
+    doubled = _double(original)
+    monkeypatch.setattr(dosbox.Session, "capture", lambda self: doubled)
+
+    session = dosboxx.XSession.__new__(dosboxx.XSession)
+    got = session.capture()
+    assert (got.width, got.height) == (original.width, original.height)
+    assert got.px == original.px
+
+
+# --------------------------------------------------------------------------
 # Which window, and whether anything is in it
 # --------------------------------------------------------------------------
 
