@@ -132,22 +132,31 @@ def _encode_field(f: Field, value: Any) -> bytes:
 # ---------------------------------------------------------------------------
 # The record
 # ---------------------------------------------------------------------------
-# Eight bytes read $FF in every one of the five NPCs on npc_party.d64 and $00
-# in all twenty player characters we hold, so an NPC is reliably recognisable.
+# Six bytes read $FF in every one of the five NPCs on npc_party.d64 and $00 in
+# every player character we hold, so an NPC is reliably recognisable.
 #
 # What they are is now clearer and less flag-like: all five of those NPCs are
-# records the game itself ships in its MON* files, and the eight bytes read $FF
+# records the game itself ships in its MON* files, and the six bytes read $FF
 # *in the shipped file*, before any save is involved. So this is residue of the
 # $FF fill a shipped record carries, surviving the load into a party slot, and
 # a player character has $00 because nothing ever wrote $FF. Whether the game
 # tests any of them is unproven -- possibly none -- so we read and write all
-# eight together and treat writing the flag as unproven in both directions.
+# six together and treat writing the flag as unproven in both directions.
+#
+# Two more offsets of the original eight, 0x0B9 and 0x0BA, are not fill at
+# all: they are dual_class_slot and dual_class_level, a dual-classed human's
+# old class and the level it was left at, written by Curse of the Azure
+# Bonds, Secret of the Silver Blades and Gateway to the Savage Frontier and
+# never touched by Pool of Radiance -- see goldbox/layout.py and #224
+# (0x0B9 and 0x0BA are documented both as an NPC marker and as the dual-class
+# slot). A dual-classed character of those three titles is non-zero there and
+# $00 at the other six, which is not corruption -- #229 (A dual-classed
+# Curse character imports with a warning that its record is corrupt).
 #
 # 0x0E6-0x0E7 read $FF FF in those NPCs too and were briefly counted here, but
 # they are a *different* field: every player character has a non-zero,
 # high-entropy value there, so they are not a 0/$FF pair and are left alone.
-NPC_MARKER_OFFSETS = (0x0B7, 0x0B9, 0x0BA, 0x0D3, 0x0D4,
-                      0x0E4, 0x0E5, 0x0FB)
+NPC_MARKER_OFFSETS = (0x0B7, 0x0D3, 0x0D4, 0x0E4, 0x0E5, 0x0FB)
 NPC_MARKER = 0xFF
 
 # The flag the game actually tests, at record offset 0x0B8.
@@ -397,7 +406,7 @@ class CharacterRecord:
         and NPC money is zeroed on it. npc_party.d64 splits three players from
         five NPCs exactly here.
 
-        The eight $FF bytes at `NPC_MARKER_OFFSETS` correlate perfectly and
+        The six $FF bytes at `NPC_MARKER_OFFSETS` correlate perfectly and
         were read as the flag for a while. They are fill residue -- they read
         $FF in the shipped MON* files before any save exists.
         """
@@ -415,15 +424,22 @@ class CharacterRecord:
 
     @property
     def npc_marker_is_consistent(self) -> bool:
-        """False if the eight residue bytes are half set -- no save has been
-        seen like that, so it means something has corrupted the record."""
+        """False if the six residue bytes are half set -- no save has been
+        seen like that, so it means something has corrupted the record.
+
+        `0x0B9`/`0x0BA` used to be two of the eight and are gone from the
+        set: they are `dual_class_slot`/`dual_class_level`, a real field in
+        three titles, and a dual-classed character legitimately holds them
+        non-zero while these six stay $00 -- #229 (A dual-classed Curse
+        character imports with a warning that its record is corrupt).
+        """
         vals = {self._data[o] for o in NPC_MARKER_OFFSETS}
         return vals in ({NPC_MARKER}, {0x00})
 
     def set_npc(self, value: bool) -> None:
         """Set or clear the flag the game tests.
 
-        The eight residue bytes are left alone: writing them changes nothing
+        The six residue bytes are left alone: writing them changes nothing
         the game reads, and rewriting bytes we do not understand is how a
         lossless editor stops being lossless.
         """

@@ -501,3 +501,50 @@ def test_the_experience_award_is_base_plus_a_rate_per_hit_point():
     raw[0x0F7], raw[0x0F8], raw[0x0F9] = 0x2C, 0x01, 4        # 300 + 4/hp
     rec = CharacterRecord(bytes(raw))
     assert monster.experience_award(rec, hp_max=11) == 344
+
+
+# ---------------------------------------------------------------------------
+# npc_marker_is_consistent -- #229 (A dual-classed Curse character imports
+# with a warning that its record is corrupt)
+# ---------------------------------------------------------------------------
+def test_a_dual_classed_record_is_not_reported_inconsistent():
+    """0x0B9/0x0BA are dual_class_slot/dual_class_level, not fill residue --
+    #224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
+    dual-class slot). A Curse, Silver Blades or Gateway character who dual-
+    classed is non-zero there and $00 at the other six NPC_MARKER_OFFSETS,
+    which used to trip the warning as if the record had been corrupted."""
+    rec = CharacterRecord.blank()
+    rec.dual_class_slot = 3
+    rec.dual_class_level = 5
+    assert rec.npc_marker_is_consistent
+
+
+def test_a_real_npc_is_still_recognised():
+    """The six residue bytes reading $FF, with the flag bit set, is what a
+    shipped NPC record looks like -- narrowing the set must not stop that
+    from reading as consistent."""
+    from goldbox.record import (
+        NPC_FLAG_BIT,
+        NPC_FLAG_OFFSET,
+        NPC_MARKER,
+        NPC_MARKER_OFFSETS,
+    )
+
+    raw = bytearray(layout.RECORD_SIZE)
+    raw[NPC_FLAG_OFFSET] = NPC_FLAG_BIT
+    for o in NPC_MARKER_OFFSETS:
+        raw[o] = NPC_MARKER
+    rec = CharacterRecord(bytes(raw))
+    assert rec.is_npc
+    assert rec.npc_marker_is_consistent
+
+
+def test_the_six_residue_bytes_half_set_is_still_reported_inconsistent():
+    """Removing the two dual-class bytes must narrow the check, not gut it:
+    the remaining six half set is still nothing any real save has shown."""
+    from goldbox.record import NPC_MARKER, NPC_MARKER_OFFSETS
+
+    raw = bytearray(layout.RECORD_SIZE)
+    raw[NPC_MARKER_OFFSETS[0]] = NPC_MARKER
+    rec = CharacterRecord(bytes(raw))
+    assert not rec.npc_marker_is_consistent
