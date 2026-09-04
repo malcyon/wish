@@ -226,6 +226,10 @@ __marimo__/
 # Project-specific
 work/
 *.d64.bak
+# One machine's own game-disk locations -- #212. `gamedisks.toml` is the
+# search list this project ships; this is where a clone of the repository
+# says where *its* disks are, without editing a tracked file.
+gamedisks.local.toml
 
 # AI files
 # `.agents/` is where Antigravity discovers workspace customizations. Its

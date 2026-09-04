@@ -10,11 +10,9 @@ putting these two phases first.
 The Pool of Radiance half of every check is the control. An invariant asserted
 on one title only is an invariant that will be quietly broken for the other.
 
-**Where the disks are found.** `tests/gamedata.py` carries `POR_DISKS` and
-`COAB_DISKS` hooks and no Silver Blades one, and that module is not this
-module's to edit, so the lookup is here, behind `SSB_DISKS`, in the same shape.
-If a third title ever needs the same thing it should move there rather than be
-copied a second time.
+**Where the disks are found.** `gamedisks.toml`'s `secret-of-the-silver-blades`
+entry, behind `$SSB_DISKS` -- `tools/gamedisks.py` is the one registry now
+(#212), so this module no longer carries its own copy of the search.
 
 Every test skips when the disks are absent. Nothing here reads a committed
 fixture: `AGENTS.md` forbids the game's data in this repository, test fixture
@@ -23,7 +21,6 @@ or not.
 
 
 import functools
-import os
 import pathlib
 import re
 import statistics
@@ -59,23 +56,18 @@ SSB = games.SECRET_OF_THE_SILVER_BLADES
 POOL = games.POOL_OF_RADIANCE
 
 SSB_ENV = "SSB_DISKS"
-_REPO = pathlib.Path(__file__).resolve().parent.parent
+SSB_KEY = "secret-of-the-silver-blades"
 
 
 def _candidates():
-    env = os.environ.get(SSB_ENV)
-    if env:
-        return [pathlib.Path(env)]
-    home = pathlib.Path.home()
-    names = ("Secret of the Silver Blades Disks",
-             "Secret of the Silver Blades",
-             "SecretOfTheSilverBlades-Lithium",
-             "Silver Blades", "SSB")
-    roots = [pathlib.Path.cwd(), home, home / "Documents", home / "Games",
-             home / "c64", home / "roms", home / "Downloads"]
-    out = [r / n for r in roots for n in names]
-    out.append(_REPO / "work" / "silverblades")
-    return out
+    """`gamedisks.toml`'s own search list for this title (#212).
+
+    No candidate here may sit under `work/`: that directory is scratch and has
+    been deleted twice, so a default that resolved into it stopped resolving
+    the day it was.
+    """
+    from tools import gamedisks
+    return gamedisks.candidates(SSB_KEY)
 
 
 @functools.lru_cache(maxsize=1)

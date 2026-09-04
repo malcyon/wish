@@ -76,16 +76,21 @@ INST = WORK / "inst"
 DISPLAY_BASE = 30
 SLOTS = 8
 
+sys.path.insert(0, str(REPO))
+from tools import gamedisks  # noqa: E402
+
 # Where the player's copy of Forgotten Realms: The Archives is unpacked.
 # Read only, always: a game tree is copied into `work/` before DOSBox sees it.
-ARCHIVES = Path(
-    os.environ.get("FR_ARCHIVES", Path.home() / "Downloads" / "fr-archives")
-)
+# `$FR_ARCHIVES` first -- taken as given, even when it does not exist, so a
+# wrong setting is named in the error rather than silently ignored -- then
+# `gamedisks.toml`'s own search list (#212).
+_fr_archives_env = os.environ.get("FR_ARCHIVES")
+ARCHIVES = (Path(_fr_archives_env) if _fr_archives_env else
+           gamedisks.find("dos-archives") or Path.home() / "Downloads" / "fr-archives")
 
 TOOLS = ("dosbox", "Xvfb", "xdotool", "import")
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from goldbox import dos as _por_dos  # noqa: E402
 from goldbox import dos_savegame as _sav  # noqa: E402
 

@@ -20,28 +20,20 @@ being told where to look.  Everything else in `goldbox.dos_savegame`'s
 """
 
 import argparse
-import os
 import pathlib
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from goldbox import dos_savegame as sg  # noqa: E402
+from tools import gamedisks  # noqa: E402
 
 
 def archive_roots() -> list[pathlib.Path]:
-    """Where the Forgotten Realms Archives might be, `$FR_ARCHIVES` first.
-
-    The same candidates `tests/test_dossave.py` uses, so a machine where the
-    suite finds the archives is a machine where this tool finds them.
-    """
-    env = os.environ.get("FR_ARCHIVES")
-    if env:
-        return [pathlib.Path(env)]
-    home = pathlib.Path.home()
-    return [home / "Downloads" / "fr-archives", home / "fr-archives",
-            pathlib.Path(__file__).resolve().parent.parent / "work"
-            / "fr-archives"]
+    """Where the Forgotten Realms Archives might be: `gamedisks.toml`'s own
+    search list (#212), so a machine where the suite finds the archives is a
+    machine where this tool finds them too."""
+    return gamedisks.candidates("dos-archives")
 
 
 def containers(roots=None) -> list[pathlib.Path]:

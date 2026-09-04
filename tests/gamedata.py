@@ -92,34 +92,33 @@ needs_disks = pytest.mark.skipif(disk_dir() is None,
 # already names that as where disk images belong.
 
 CURSE_ENV = "COAB_DISKS"
-_REPO = pathlib.Path(__file__).resolve().parent.parent
+CURSE_KEY = "curse-of-the-azure-bonds"
 
 
 def _curse_candidates():
-    env = os.environ.get(CURSE_ENV)
-    if env:
-        return [pathlib.Path(env)]
-    home = pathlib.Path.home()
-    names = ("Curse of the Azure Bonds Disks", "Curse of the Azure Bonds",
-             "CoAB", "Azure Bonds")
-    roots = [pathlib.Path.cwd(), home, home / "Documents", home / "Games",
-             home / "c64", home / "roms", home / "Downloads"]
-    out = [r / n for r in roots for n in names]
-    out += [_REPO / "work" / "curse", _REPO / "work" / "coab-research" / "disks"]
-    # A rip is often unpacked under a name nobody would guess -- the set on
-    # this machine is `~/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS`, which
-    # matches none of `names` and was found by hand after every Curse test had
-    # been quietly skipping. So also take one level of subdirectory under each
-    # root and under `~/c64/All Games`, and let the `CURSE*.D64` glob in
-    # `curse_dir` decide which of them is real. A test that skips is not a test
-    # that passes, and a suite green because ninety of them skipped has said
-    # nothing.
-    for root in roots + [home / "c64" / "All Games"]:
-        try:
-            out.extend(sorted(child for child in root.iterdir()
-                              if child.is_dir()))
-        except OSError:
-            continue
+    """Where Curse disks might be: `gamedisks.toml`'s own list (#212), plus
+    one level of subdirectory under `~/c64/All Games`.
+
+    A rip is often unpacked under a name nobody would guess -- the one on this
+    machine is `~/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS`, which
+    matches no name the registry's own list would try, and was found by hand
+    after every Curse test had been quietly skipping. Scanning one level under
+    that one directory is cheap and finds it without a matching name; the
+    `CURSE*.D64` glob in `curse_dir` still decides which candidate is real. A
+    test that skips is not a test that passes, and a suite green because
+    ninety of them skipped has said nothing.
+    """
+    from tools import gamedisks
+    base = gamedisks.candidates(CURSE_KEY)
+    if os.environ.get(CURSE_ENV):
+        return base                      # taken whole; no further guessing
+    out = list(base)
+    all_games = pathlib.Path.home() / "c64" / "All Games"
+    try:
+        out.extend(sorted(child for child in all_games.iterdir()
+                          if child.is_dir()))
+    except OSError:
+        pass
     return out
 
 

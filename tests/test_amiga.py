@@ -15,7 +15,6 @@ data lives in this repository.
 """
 
 
-import os
 import pathlib
 
 import pytest
@@ -196,11 +195,11 @@ def test_the_writer_refuses_an_index_no_table_has():
 # -- the player's own files, when they have them -------------------------
 
 def pc_files() -> list[pathlib.Path]:
-    where = os.environ.get("POD_SAVES")
-    if not where:
-        return []
-    root = pathlib.Path(where)
-    return sorted(p for p in root.rglob("*.pc") if p.is_file())
+    """`gamedisks.toml`'s `pod-saves` entry (#212) -- no default candidates:
+    no exported Pools of Darkness `.pc` file exists on any machine yet."""
+    from tools import gamedisks
+    return sorted(p for root in gamedisks.candidates("pod-saves")
+                 for p in root.rglob("*.pc") if p.is_file())
 
 
 def real_records() -> list[pathlib.Path]:
@@ -668,10 +667,14 @@ def test_a_record_of_the_wrong_length_is_refused_by_name(length):
 
 
 def amiga_por_records() -> list[pathlib.Path]:
-    where = os.environ.get("AMIGA_POR_SAVES")
+    """`gamedisks.toml`'s `amiga-por-saves` entry (#212) -- no default
+    candidates: no exported Amiga Pool of Radiance record exists on any
+    machine yet."""
+    from tools import gamedisks
+    where = gamedisks.candidates("amiga-por-saves")
     if not where:
         pytest.skip("no Amiga Pool of Radiance records; set $AMIGA_POR_SAVES")
-    found = sorted(p for p in pathlib.Path(where).rglob("*")
+    found = sorted(p for root in where for p in root.rglob("*")
                    if p.is_file() and p.suffix.lower() in (".cha", ".sav")
                    and p.stat().st_size == AMIGA_POR_RECORD_SIZE)
     if not found:

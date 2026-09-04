@@ -1,0 +1,73 @@
+# Where this project's tests and tools look for the player's own game disks
+# and saves, tried in this order: `$<env>` first and taken whole, then
+# `gamedisks.local.toml` (gitignored, for a clone of this repository to add
+# its own candidates without editing this file), then the `paths` below.
+#
+# `tools/gamedisks.py` is the loader and the report; #212 is why this file
+# exists instead of the seven searches it replaces. An entry with no `paths`
+# means nobody has produced that data on any machine yet -- setting the
+# environment variable is the only way in.
+#
+# No path here may sit under `work/`: that directory is scratch, gitignored,
+# and has been deleted twice, so a default that resolves into it stops
+# resolving the day somebody runs `rm -rf work/`.
+
+[pool-of-radiance]
+env = "POR_DISKS"
+glob = ["POOL*.d64", "POOL*.D64"]
+paths = [
+    "/mnt/media/roms/c64/Pool of Radiance Disks",
+    "~/c64/Pool of Radiance Disks",
+    "~/Pool of Radiance Disks",
+]
+
+[curse-of-the-azure-bonds]
+env = "COAB_DISKS"
+glob = ["CURSE*.d64", "CURSE*.D64"]
+paths = [
+    "/mnt/media/roms/c64/All Games/Curse_of_the_Azure_Bonds.SSI.PIS",
+    "~/c64/Curse of the Azure Bonds Disks",
+    "~/Curse of the Azure Bonds Disks",
+]
+
+[secret-of-the-silver-blades]
+env = "SSB_DISKS"
+glob = ["SILVER*.d64", "SILVER*.D64"]
+paths = [
+    "/mnt/media/roms/c64/SecretOfTheSilverBlades-Lithium",
+    "~/c64/Secret of the Silver Blades Disks",
+    "~/Secret of the Silver Blades Disks",
+]
+
+[dos-archives]
+env = "FR_ARCHIVES"
+# Every DOS Gold Box title's saved games, under Forgotten Realms: The
+# Archives -- there is no single game glob, so the callers check for their
+# own file names underneath.
+paths = [
+    "~/Downloads/fr-archives",
+    "~/fr-archives",
+]
+
+[amiga]
+env = "AMIGA_DISKS"
+# Whole Amiga ROM libraries, not a Gold Box folder -- scanning one whole is
+# how #211 found `Lemmings/lemm1.adf`, which is not an error and must not be
+# asserted against. Callers narrow to the game directories by name
+# themselves; `$AMIGA_DISKS`, when set, is taken whole and scoping it is the
+# caller's business.
+paths = [
+    "/mnt/media/roms/amiga",
+    "~/amiga",
+    "~/Downloads/amiga",
+]
+
+[amiga-por-saves]
+env = "AMIGA_POR_SAVES"
+# No default: no exported Amiga Pool of Radiance record (a 288-byte .cha or
+# .sav) exists on any machine yet -- #211, waiting on #28 and #105.
+
+[pod-saves]
+env = "POD_SAVES"
+# No default: no exported Pools of Darkness .pc file exists on any machine
+# yet -- #211, waiting on the same play session as amiga-por-saves.

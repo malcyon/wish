@@ -18,8 +18,6 @@ Findings and their reasoning: `work/reports/dos-saves.md`.
 
 
 import functools
-import os
-import pathlib
 import struct
 
 import pytest
@@ -71,14 +69,9 @@ CLASSES = ("cleric", "druid", "fighter", "paladin", "ranger", "mage", "thief",
            "fighter/mage/thief", "mage/thief", "monster")
 
 def _candidates():
-    env = os.environ.get("FR_ARCHIVES")
-    if env:
-        return [pathlib.Path(env)]
-    home = pathlib.Path.home()
-    return [home / "Downloads" / "fr-archives",
-            home / "fr-archives",
-            pathlib.Path(__file__).resolve().parent.parent / "work"
-            / "fr-archives"]
+    """`gamedisks.toml`'s own search list for the DOS archives (#212)."""
+    from tools import gamedisks
+    return gamedisks.candidates("dos-archives")
 
 
 @functools.lru_cache(maxsize=1)
