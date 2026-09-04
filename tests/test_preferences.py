@@ -1241,13 +1241,16 @@ def test_settings_from_before_this_still_give_a_size(app, tmp_path,
 
 def test_the_empty_map_tab_says_where_to_go(app, tmp_path, monkeypatch):
     """The failure this whole dialog exists for used to be reported to a
-    stderr that a desktop launcher throws away."""
-    from automap.window import NO_MAPS
+    stderr that a desktop launcher throws away, then to nowhere at all once
+    the paint that once put it on the grid was quietly removed --
+    `#214 (The automapper's empty grid never says there are no game disks,
+    though the code and a test believe it does)`. The grid itself still says
+    nothing; the Messages panel is where a player actually sees this."""
+    from automap.window import NO_DISKS
     nowhere(tmp_path, monkeypatch)
     win = window(app)
     assert win.map.no_maps is True
-    assert NO_MAPS in win.map.waiting_text()
-    assert "File > Preferences" in win.map.waiting_text()
+    assert any(NO_DISKS in line for line in win.map.messages.lines())
     win.close()
 
 

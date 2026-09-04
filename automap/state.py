@@ -42,8 +42,8 @@ AREA_NAMES = areas.GEO_NAMES
 #: grid, where none of the loaded maps reach -- `#205 (A party that walks out
 #: onto the travel grid leaves the automapper's marker behind)`. The grid
 #: itself carries nothing (Donald's ruling, 2026-09-04): these two, and the
-#: window's own status line beside `NO_MAPS` in `automap/window.py`, are the
-#: whole of what tells a player the map cannot follow them.
+#: window's own status line (`OUTDOORS_STATUS` in `automap/window.py`), are
+#: the whole of what tells a player the map cannot follow them.
 OUTDOORS_WHERE = "Outdoors"
 OUTDOORS_AREA = "Wilderness"
 

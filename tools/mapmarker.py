@@ -303,7 +303,11 @@ def look(app, binding, tag: str, out: pathlib.Path, log: Log, sess) -> dict:
         "where_label": binding.strip.where.text() if binding.strip.where else None,
         "area_strip": binding.strip.area.text() if binding.strip.area else None,
         "status_bar": binding.status_text(),
-        "waiting": binding.waiting_text(),
+        # `waiting_text()` went with `#214 (The automapper's empty grid never
+        # says there are no game disks, though the code and a test believe it
+        # does)` -- nothing painted it, so this field had no source but the
+        # method's own string. What it reported is in "messages" below,
+        # which is where a player actually sees it now.
         "title_check": str(binding.mapper.title_check),
         # Counted here as well as read off the status bar, which shows it only
         # when it is non-zero: "no contradictions" is the claim a crossing back

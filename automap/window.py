@@ -104,10 +104,13 @@ COMBATANT_FILL = {"party": FRIEND, "enemy": FOE, "helpless": HELPLESS_FILL}
 HP_INK = {"hp-dim": FADED, "hp-ink": INK}
 
 
-#: Said on the grid when there are no maps at all. The one failure that used
-#: to go to stderr and nowhere else.
-NO_MAPS = ("No game disks found, so there are no maps. "
-           "File > Preferences… to say where they are.")
+#: Said in the Messages panel when there are no game disks configured at all,
+#: so there is nothing for the grid to draw -- the one failure that used to go
+#: to stderr and nowhere else, then to nowhere at all once the paint that once
+#: put it on the grid was removed without a word
+#: (`#214 (The automapper's empty grid never says there are no game disks,
+#: though the code and a test believe it does)`). Donald's wording, exactly.
+NO_DISKS = "No game disks found. Set the game folder in File > Preferences…"
 
 #: Said in the status line while the party is on the travel grid, where none
 #: of the loaded maps reach -- `#205 (A party that walks out onto the travel
@@ -675,9 +678,14 @@ class AutomapBinding(QObject):
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
         #: No maps at all is its own state, and not the same as no emulator:
-        #: an emulator will not fill the grid either. Said on the grid, where
-        #: the map would be, because that is where somebody is looking.
+        #: an emulator will not fill the grid either. Said in the Messages
+        #: panel, alongside `Waiting to connect...` and the rest -- the grid
+        #: itself carries nothing (Donald's ruling, 2026-09-04, on
+        #: `#214 (The automapper's empty grid never says there are no game
+        #: disks, though the code and a test believe it does)`).
         self.no_maps = not getattr(mapper, "_maps", None)
+        if self.no_maps:
+            self.messages.say(NO_DISKS)
         self._popover: NotePopover | None = None
         self._waiting = "" if mapper.target is not None else "Waiting to connect..."
         #: The last swallowed poll failure, so its traceback is written once
@@ -717,6 +725,8 @@ class AutomapBinding(QObject):
         self._said_wrong_game = False
         self._apply_title()
         self.no_maps = not self.mapper._maps
+        if self.no_maps:
+            self.messages.say(NO_DISKS)
         self.disks = disks
         self.item_names = live.item_names(disks, game_named(self.state.title))
         self._refresh()
@@ -1035,28 +1045,11 @@ class AutomapBinding(QObject):
         self.messages.say(text, alarm=alarm)
         self._refresh()
 
-    def waiting_text(self) -> str:
-        """What the empty grid says: what is being waited for, and why.
-
-        With no maps loaded that comes first, because the emulator is beside
-        the point while there is nothing to draw -- and because this is the one
-        failure that used to be reported only to a stderr that a desktop
-        launcher throws away. It is said on the grid rather than in the status
-        bar: the grid is where somebody looking for a map is looking, and the
-        status line still belongs to the connection.
-        """
-        if not self.no_maps:
-            return self._waiting
-        return NO_MAPS + (f"  ({self._waiting})" if self._waiting else "")
-
     def _refresh(self) -> None:
         st = self.state
         self.strip.show_state(st, self.snapshot)
         # Cheap: the panel compares the notes to what it drew and returns.
         self.notes_panel.show_notes(st.notes)
-        if self._waiting:
-            self.canvas.update()
-            return
         if st.outdoors:
             self._say(OUTDOORS_STATUS + (f"   [{st.source}]" if st.source else ""))
             self.canvas.update()
