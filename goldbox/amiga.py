@@ -1458,6 +1458,20 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
     # here used to call it again, printing each lost effect's line twice
     # (#238, An Amiga conversion's report shows an uncarried effect twice,
     # once from goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
+    #
+    # **That equivalence holds on the corpus measured, not in general.** The
+    # deleted loop filtered by id alone, with no duration check; the
+    # surviving one skips a nonzero duration, per Donald's 2026-08-27 ruling
+    # that a spell about to expire needs no report.  The two agree only
+    # because every non-innate effect lost on the twenty Amiga specimens
+    # happens to be at duration zero (this function's own docstring for
+    # `describe_uncarried_effect` says as much) -- a specimen with a
+    # nonzero-duration non-innate id would have been reported by the old
+    # loop and is silent under this one.  None has been seen yet; #232 (An
+    # item-granted effect is dropped on the way through the neutral record,
+    # with no report) is still open on whether duration zero even means
+    # "permanent" reliably, so this is not a gap to close by adding the loop
+    # back -- see that issue's 2026-09-04 comment.
     return out
 
 

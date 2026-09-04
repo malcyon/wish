@@ -322,11 +322,20 @@ INNATE_EFFECTS = frozenset({18, 26, 47, 48, 90, 97, 107, 124})
 #: Bytes 1-4 of a `.SPC` record for an innate effect.  A record is nine bytes:
 #: the effect id, these four, and a four-byte far pointer to the next record.
 #: Every innate specimen in the archives -- 26, 47, 90, 97, 107 and 124, over
-#: three races and 32 files -- reads `00 00 FF 00`, and the only record that
-#: differs is a running spell: `BLESS` carries `02 00 01 00`, so `0xFF` in
-#: byte 3 is what a permanent effect looks like beside a spell's remaining
-#: duration.  18 and 48 have no specimen anywhere -- nobody in the archives is
-#: a gnome -- so those two are this shape by analogy.  PROBABLE.
+#: three races and 32 files -- reads `00 00 FF 00`.  18 and 48 have no
+#: specimen anywhere -- nobody in the archives is a gnome -- so those two are
+#: this shape by analogy.  PROBABLE.
+#:
+#: **Byte 3's `0xFF` is an innate effect's own payload, not a universal marker
+#: for "permanent."**  This note used to read it that way, against `BLESS`'s
+#: `02 00 01 00` as the only counterexample -- but #232's own measurement
+#: refutes the generalisation: ADDERLY's extra strength, CONJURER's Ring of
+#: Fire Resistance and MAGICIAN's displacement are all permanent (duration
+#: zero, bytes 1-2) and hold `92`, `12` and `12` at byte 3, not `0xFF`.  What
+#: decides permanence is bytes 1-2, the duration, and byte 3 is simply
+#: whatever magnitude the effect carries -- `0xFF` because that is what a
+#: racial bonus happens to be, and an item-granted effect's own value
+#: otherwise.  `docs/117-save-conversion.md` carries the same correction.
 INNATE_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x00))
 
 #: The `.SPC` record's last four bytes are the far pointer to the next record,
@@ -933,6 +942,18 @@ def to_neutral(dos: DosCharacter,
     # `02 00 01 00` -- 0 is a permanent, item-granted or racial effect the
     # character keeps until it is taken off; anything else is a spell
     # counting down that was never going to survive the trip.
+    #
+    # **Held back from carrying it whole rather than just reporting it**
+    # (the shape #232 asks for): SILAS -- `CHRDATA6.SAV`, a fighter/thief --
+    # carries Detect Magic (id 5) and Protection from Evil, 10' Radius
+    # (id 45) at this exact duration-zero, byte-3-`0xFF` shape, and both are
+    # plainly someone else's spell on him, not his own permanent effect. The
+    # DOS corpus has no confirmed item-granted specimen to check duration
+    # against at all -- only the three *Amiga* ones this issue's table
+    # names -- so duration zero cannot yet be trusted to mean "permanent"
+    # here.  Carrying it as specified would make SILAS's borrowed buffs
+    # permanent, which is worse than the drop this reports.  Comment on
+    # #232, 2026-09-04.
     # `goldbox.amiga.describe_uncarried_effect` composes the same line the
     # Amiga side already gives for this; reused rather than duplicated.
     from . import amiga as _amiga
