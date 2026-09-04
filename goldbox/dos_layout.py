@@ -87,8 +87,12 @@ RECORD_SIZE = 285
 #: One count byte plus fifteen bytes of ASCII.
 NAME_SIZE = 16
 
-#: One item in a `.ITM` file.  Constant across the whole DOS family, Pool of
-#: Radiance through Pools of Darkness and into the Savage Frontier pair.
+#: One item, in three of the four titles.  **Not constant across the family**,
+#: which this comment claimed until #113 measured a played Silver Blades game:
+#: Pool of Radiance, Curse and Pools of Darkness are 63 and **Silver Blades is
+#: 67** -- 804 bytes for twelve items, which 63 does not divide.  Read the
+#: stride from `DosShape.item_size` rather than from here; this is the default
+#: that shape overrides, and slicing a `.STF` at 63 is the bug #113 closed.
 ITEM_SIZE = 63
 
 #: One active effect in a `.SPC` file.  Also constant across the family.

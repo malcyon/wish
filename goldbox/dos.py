@@ -580,14 +580,17 @@ def read_character(path: str | pathlib.Path) -> DosCharacter:
 
     Any of the four titles: the record's length names it, and the sibling
     item and effect files are whatever that title calls them -- `.ITM`/`.SPC`
-    for Pool of Radiance, **`.SWG`**/`.FX` for Curse, `.ITM`/`.SFX` for Silver
-    Blades, `.THG`/`.EFX` for Pools of Darkness.  An export normally has
-    neither.
+    for Pool of Radiance, **`.SWG`**/`.FX` for Curse, **`.STF`**/`.SFX` for
+    Silver Blades, `.THG`/`.EFX` for Pools of Darkness.  An export normally has
+    neither.  **The stride is per title too**: 63 everywhere except Silver
+    Blades, which is 67, so slice at `shape.item_size`.
 
-    Curse's `.SWG` is measured, in the running game, on a character who went
-    shopping (#113); Silver Blades' `.ITM` is not, and no Silver Blades
-    character anybody has carries an item, so it is the one suffix in that
-    list still resting on an assumption.
+    Curse's `.SWG` and Silver Blades' `.STF` are both measured in the running
+    game, on characters who went shopping (#113) -- 63 and 67 bytes
+    respectively, the second from 804 bytes holding twelve items.  Pools of
+    Darkness' `.THG` and its 63 are **not** measured that way: they rest on the
+    shipped archives dividing evenly, which is the same check Silver Blades
+    would have passed while being wrong.
     """
     path = pathlib.Path(path)
     data = path.read_bytes()
