@@ -83,3 +83,24 @@ def test_indirect_hits_is_byte_level_like_hits():
     data = bytes([0x00, 0xA0, 0xB9, 0xB1, 0x1A])
     found = list(indirect_hits(data, {0xB9}))
     assert found == [(1, "Y", 0xB9, 3, "LDA", M_IZY)]
+
+
+def test_indirect_hits_ignores_a_match_with_no_operand_byte():
+    """A `(zp),Y` opcode as a file's last byte is a truncated instruction.
+
+    `main` prints the pointer byte after the opcode, so reporting a match
+    with nothing after it raised `IndexError` and aborted the whole census
+    partway through -- a traceback instead of a result, on any offset or
+    title where a file happened to end that way. Found by review on
+    `#230 (The indirect half of a record-offset census cannot be rerun,
+    because its script was never kept)`; the two real hits land three and
+    four bytes past their load, nowhere near a tail, so no reported figure
+    ever depended on it.
+    """
+    data = bytes([0xA0, 0xB9]) + bytes([0xEA] * 7) + bytes([0xB1])
+    assert data[-1] == 0xB1 and len(data) == 10
+    assert list(indirect_hits(data, {0xB9})) == []
+    # One byte further from the tail and it is a hit again, so the guard
+    # rejects the truncation rather than the whole window.
+    assert list(indirect_hits(data + b"\x1a", {0xB9})) == [
+        (0, "Y", 0xB9, 9, "LDA", M_IZY)]

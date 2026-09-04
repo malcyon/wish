@@ -5235,7 +5235,11 @@ entries are now measured against a character carrying none as well —
 `item_chain` and `hands_used` are the values the engine itself writes, and
 `effect_chain`, `unnamed_0ab`, `icon_colours` and `heap_104` are carried
 through a resave unread in both cases. The portrait ids remain a known
-cosmetic drop.
+cosmetic drop. **Two of those four have since stopped being evidence of
+safety**: `icon_colours` (#112) and `unnamed_0ab` (#216) are both fields the
+engine carries unread *because* it trusts whoever made the character, and both
+are now written rather than zeroed — see "Two same-named characters and one
+byte" below.
 
 **Two of those names were wrong and are corrected here (#57).** What this
 paragraph called `heap_0c1` is `icon_colours`, the combat icon's six colour
@@ -6400,9 +6404,21 @@ Scanning `LDY #$B9`/`LDY #$BA` followed within ten bytes by an
 indirect-indexed opcode across 589 Pool of Radiance files and 412 Curse files
 gives two hits each, reproducing the original figure exactly, and all four are
 inside picture files — `PIC64` and `POOLRC` for Pool, `PIC64` and `COMPIC05`
-for Curse. Curse, which certainly does use the bytes, has no legitimate
-indirect access to them either, so the engine reaches the record absolutely
-and Pool of Radiance's zero is not hiding behind a pointer.
+for Curse. The `LDX` half was scanned too, which the lost script never did,
+and finds nothing on either title. Curse, which certainly does use the bytes,
+has no legitimate indirect access to them either.
+
+**The file count changed and the hits did not.** This paragraph said 571 Pool
+of Radiance files before the rerun and says 589 now, which is the number the
+absolute-mode table above reports for the same title through the same
+`sides()` and the same dedup. Nothing about the disks changed; the lost script
+counted them differently, and the two hits are the same two either way.
+
+So the engine reaches the record absolutely and Pool of Radiance's zero is not
+hiding behind a pointer **of this shape**. The scan matches an immediate
+`LDY #$ll`/`LDX #$ll` near the opcode; an index computed at run time or folded
+into the pointer's own low byte would leave no trace in it. That is the limit
+of what the zero rules out.
 
 **Result 2. The dual-class reading is confirmed from the producer, not only
 the consumers.** `#18 (Measure Curse's trainer so Level Up works there)` read
@@ -6454,3 +6470,127 @@ the eight disagree, so a dual-classed Curse, Silver Blades or Gateway character
 — `0x0B9`/`0x0BA` non-zero, the other six `$00` — trips a warning that says no
 real save has been seen in that state. Measured on a real record with the pair
 set to slot 3, level 5 and nothing else changed.
+
+## Two same-named characters and one byte: `unnamed_0ab` (#216)
+
+`goldbox.dos.write` used to leave DOS `0x0AB` zero in every record it made,
+on the grounds that the byte was unattributed and the engine carried our zero
+through a resave unread (#69). The question `#216 (Every converted DOS
+character carries the same identity byte at 0x0AB)` asked was whether that
+costs a player anything, and it does: **two converted characters of the same
+name cannot both be in one party**, and the game says nothing when it refuses
+the second.
+
+### The routine, read out of a memory image
+
+`tools/dosfieldrefs.py` over `work/issue69/watch13b/memory-after-fight.bin`
+finds three `es:[di+0xab]` sites: one write inside character creation, and two
+reads eleven bytes apart inside one routine. Disassembled 16-bit from the
+image, that routine is the game's `ADD A CHARACTER: ADD EXIT` screen. It reads
+`0x11D` = 285 bytes of the chosen file onto the heap and walks the party
+through the record's own `0x104` next pointer, comparing each member with the
+candidate:
+
+```
+call 131A:0C10            ; compare the two Pascal names
+jne  next
+les  di, [bp-0x10]        ; the party member
+mov  al, es:[di+0xab]
+les  di, [bp-0x0c]        ; the candidate
+cmp  al, es:[di+0xab]
+je   duplicate
+```
+
+Both reads use the same displacement with `di` reloaded between them, which is
+what the description of #216 had transcribed as the same operand twice.
+`131A:0C10` is an exact comparison of two length-prefixed strings — `repe
+cmpsb` over `min(len)` bytes, then the lengths — so it is the whole name, not a
+prefix and not case-folded.
+
+Three details the read added:
+
+* **The refusal is silent.** `duplicate` frees the 285 bytes with a sized free
+  and returns to the menu, landing at the same place the party-full refusal
+  does. Nothing is drawn.
+* **The candidate is starred before the party is walked.** The routine builds
+  `"* "` + the entry name, 40 characters wide, and copies it back over the
+  menu entry — so an entry is starred whether it was let in or turned away,
+  and a starred entry is refused at the top of the loop by
+  `cmp byte es:[di+1], 0x2a` before the file is opened. The list is rebuilt
+  from `CHARLIST.TXT` on the next visit, so the star lasts one visit and this
+  byte is what stops a re-add across visits.
+* **Capacity is a separate test after this one**: six with `0x84 < 0x80`,
+  eight in total, so a party with room cannot be refused for being full.
+
+### The measurement, one byte apart
+
+`tools/dosaddchar.py`. Two `.CHA` files built by `goldbox.dos.write` from two
+**different** shipped records, both renamed `DUPLICO` through the neutral
+character, offered to an **empty** party so capacity cannot be the cause.
+
+| run | `ALPHA.CHA` `0x0AB` | `BETA.CHA` `0x0AB` | the engine's own save | party |
+|---|---|---|---|---|
+| `--ident 0` | `0x00` | `0x00` | `CHRDATC1.SAV` | one `DUPLICO` |
+| `--ident 0x42` | `0x00` | `0x42` | `CHRDATC1.SAV`, `CHRDATC2.SAV` | two, `0x0AB` `0x00` and `0x42` |
+| `--writer` | `0x6E` | `0x17` | both | two |
+
+`cmp -l` on the first two runs' `BETA.CHA`: `172 0 102`. One byte.
+
+Ground truth is the file count, not the screen: after the two adds the run
+uses the game's own `SAVE CURRENT GAME` into slot C, which the archives do not
+use, and counts what the engine wrote. **CONFIRMED.**
+
+The control that makes it worth believing is the star: both runs show
+`* ALPHA` *and* `* BETA` after the second pick, so the refused record really
+was opened and really did reach the comparison. A run that mis-drove the menu
+would otherwise look exactly like a refusal — and one did, because
+**the arrow keys do nothing in that menu**. `Home` and `End` move the
+highlight within the page, `N`/`P` and `PgDn`/`PgUp` turn the page, `E` and
+`Escape` leave, and any other key picks whatever is highlighted. Pressing
+`Down` then `Return` offers the engine the first entry twice.
+
+### The fix, and why it is a digest and not a draw
+
+`unnamed_0ab` moves out of `WRITE_UNSOURCED` into a new one-entry
+`WRITE_DERIVED`, written by `goldbox.dos.identity_byte` as a one-byte
+`blake2b` of the other 284 bytes of the finished record. Not `random`, because
+every acceptance run this project has — `tools/dosnewsave.py`'s resave diff,
+the round trip in `tests/test_doswriter.py` — converts twice and compares, and
+a converter that writes different bytes each run cannot be diffed against
+itself.
+
+Measured over the 24 shipped Pool of Radiance records: distinct **6 of 6** in
+each of the four parties (slots A, B, J and the six `.CHA` exports), and
+identical on a second write in **24 of 24**. Across all 24 there are 22
+distinct values; the two clashes are between different parties, which the
+engine never compares.
+
+**What it does not give, said out loud.** The engine's byte is stable per
+character across a play session and ours is not: slots A and B hold the same
+six characters saved twice, and their derived bytes differ because their
+experience does. Inside one converted save that does not matter — #69
+established that the engine never rewrites this byte — so the exposure is a
+player who converts the same party into two slots at two points in play and
+then moves a character between them, where the engine would refuse a duplicate
+and we would let it in. That is the mirror of the bug being fixed and much
+narrower.
+
+**The better answer, if the C64 pair turns out to be the same field.**
+`goldbox/layout.py`'s `region_0e3` note and `docs/127-community-formats.md`
+both put a high-entropy per-character value at C64 `0x0E6`-`0x0E7`,
+immediately before experience, opposite DOS `0x0AB` in the same place — the
+region `#224 (0x0B9 and 0x0BA are documented both as an NPC marker and as the
+dual-class slot)` took two other bytes out of. If they are the same field the
+conversion should carry the C64 value rather than invent one, and it would be
+stable as well as distinct. SPECULATIVE. What would settle it: read `0x0E6`-`0x0E7` from a C64
+character, export that character to a DOS `.CHA` through the game's own
+`ADD CHARACTER TO PARTY` on both ports, and see whether the DOS `0x0AB` is one
+of the two bytes.
+
+### The lesson, which is #112's again
+
+"Carried through a resave unread" was read as evidence that a zero is safe.
+For `icon_colours` it turned out to be evidence of a defect (#112); for
+`unnamed_0ab` it has now turned out the same way. The engine not touching a
+field is not the engine not *needing* it — it is the engine trusting whatever
+created the character to have got it right.

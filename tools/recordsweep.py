@@ -27,9 +27,11 @@ hit so the difference can be seen rather than assumed.
 #$<low>`/`LDX #$<low>` followed within a short window by the matching
 indirect-indexed opcode -- `($nn),Y` after `LDY`, `($nn,X)` after `LDX`. The
 absolute-mode scan above finds nothing that goes through a pointer to the
-record; this is the check that rules a pointer out rather than assuming one
-was not used. It is a separate mode, beside the absolute census rather than
-in place of it -- `#230 (The indirect half of a record-offset census cannot
+record; this is what tests for one rather than assuming none was used. **It
+tests for that one shape and no other**: an index computed at run time, or
+folded into the pointer's own low byte, leaves no trace here, so no hits
+means the shape is absent rather than that no pointer exists. It is a
+separate mode, beside the absolute census rather than in place of it -- `#230 (The indirect half of a record-offset census cannot
 be rerun, because its script was never kept)`:
 
     tools/recordsweep.py --game pool --offset 0xB9 --offset 0xBA --indirect
@@ -111,6 +113,13 @@ def indirect_hits(data: bytes, want: set[int], window: int = INDIRECT_WINDOW):
     regardless of whether it starts a real instruction, so a hit is a claim
     about bytes and not proof of an instruction boundary.
 
+    **And read a zero narrowly.**  This matches one shape: an immediate
+    `LDY #$ll`/`LDX #$ll` within `window` bytes of the opcode.  A record byte
+    reached with an index computed at run time -- loaded from a variable,
+    walked by a loop, or folded into the pointer's own low byte -- produces no
+    hit here and is still a real reference.  No hits means that shape is
+    absent, not that no pointer exists.
+
     Yields `(load offset, register, low byte, opcode offset, mnemonic, mode)`.
     """
     load = {0xA0: ("Y", M_IZY), 0xA2: ("X", M_IZX)}
@@ -122,7 +131,11 @@ def indirect_hits(data: bytes, want: set[int], window: int = INDIRECT_WINDOW):
         low = data[i + 1]
         if low not in want:
             continue
-        end = min(len(data), i + 2 + window)
+        # `len(data) - 1`, not `len(data)`: a match on the very last byte has
+        # no operand byte after it, and `main` prints one.  A census that
+        # aborts with a traceback partway through is worse than one that
+        # misses a truncated instruction at a file's tail (#230).
+        end = min(len(data) - 1, i + 2 + window)
         for j in range(i + 2, end):
             op2 = data[j]
             if op2 not in T:
