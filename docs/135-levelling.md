@@ -86,7 +86,8 @@ it is. ROLAND, wisdom 16, stores `50 50 20` at cleric 6, which is `3,3,2` plus
 **Thief skills.** The level row plus the racial row, and **nothing else**.
 `docs/119` guessed that dexterity was folded in as well; it is not — `$1FEC`
 reads no ability score. LADY KATHERINE's measured ladder is the half-elf row
-exactly.
+exactly. **That is Pool of Radiance's rule and not the family's**: Curse's
+`$0FAD` adds a dexterity row as well, and the section on Curse below has it.
 
 **The magic-user's new spell is a choice, not a roll.** `$215A` collects every
 spell id from 1 to 55 the character does not know, whose spell level is at or
@@ -252,3 +253,156 @@ So what would unblock Curse is not a decision but the same work again in
 Curse's `GEN`: find those four, and the roll and capacity routines, and replay
 measured Curse trainings through them. Until then `TRAINER_MEASURED` has one
 entry and the refusal says which title it is refusing.
+
+## Curse of the Azure Bonds, table by table
+
+**Every routine above has now been found in Curse's own overlays** (`#18`), and
+`tests/test_cursetrainer.py` reads each one off the player's disk rather than
+trusting this document. What follows is where they are and, where the rule is
+not Pool of Radiance's, what the rule is instead.
+
+**How they were found, which is the transferable part.** Not one Pool of
+Radiance address survives, so the way in was the record rather than the code:
+Curse keeps the working character at `$7C00`, so a census of every absolute
+instruction in the overlay whose operand lands in `$7C00`-`$7DFF`, printed
+against `goldbox/layout.py`'s field names, puts every routine within two
+instructions of the table it reads. `tools/trainerscan.py` is that census, and
+`--callers` walks back up from a routine to the sequence that calls it. None of
+this needed the emulator.
+
+`GEN` runs at `$0800`. **`ECL65` runs at `$8000`**, which is settled by its own
+`LDA $888D,X` reading the spell-slot rows that sit at payload offset `0x88D`.
+
+### The sequence
+
+`GEN $2041`, the trainer's own, against `$1B8C`'s fourteen `JSR`s in Pool of
+Radiance.
+
+| | routine | what it does |
+|---|---|---|
+| 1 | `$14F8` | raise every qualifying class **by one level**, and roll a hit die (`$15E1`) for each |
+| 2 | `$1649` | the cleric's spell grant, from the level table at `$1660` |
+| 3 | `$2200` | the magic-user's menu of one new spell |
+| 4 | `$22F4` | a paladin's cleric spells, from level 9 |
+| 5 | `$2305` | a ranger's druid spells at 8 and magic-user spells at 9 |
+| 6 | `$2086` | the experience clamp (`$1458`) |
+| 7 | `$0DD0` | recompute everything derived — and this is also what character creation calls |
+| 8 | `$20A3` | put a dual-classed human's old class back |
+
+`$0DD0` is the recompute, and its order is `$2515`, `$0DF1` (fighting level),
+`$0E08` (THAC0), `$0E5E` (saving throws), `$0FAD` (thief skills), `$113F`
+(turning), `$11F1` (hit points), `$1909`, `$1939`, `$112C` (`level` = the
+maximum of all **eight** class slots).
+
+### Where each table is
+
+| what | where | shape |
+|---|---|---|
+| the level-up sequence | `$2041` | eight `JSR`s, above |
+| eligible level per class | `$1308` | walks the class's own 13 thresholds upward |
+| THAC0 | `$0E2C`/`$0E39`/`$0E46`; fighter group `21 - attack_level` at `$0E08` | indexed by level |
+| saving throws | `$0F49` level-1 rows, `$0F5D` masks | 4 x 5 x 4 bytes, **two bits a level** |
+| paladin's -2 | `$0F01` | code, all five columns, floored at 0 |
+| racial save bonus | `$0F19` | `constitution * 2 / 7`, races 1/3/5, columns 0/2/4 |
+| thief skills | `$1004` level, `$10A4` **dexterity**, `$1064` race | 9, 17 and 8 rows of 8 |
+| turning level | `$113F` | arithmetic, not a table |
+| constitution hit points | `$11D7` | one signed row, indexed by the raw score |
+| how far it counts | `$1282` | last level, per class slot — the same `roll_to` |
+| `hp_max` | `$11F1` | per slot, summed, then divided by the class count |
+| hit die | `$161E` sides, `$1626` first flat level, `$162E` flat amount | 8 entries, class-slot order |
+| the roll | `$15E1` | **two dice, keep the higher** |
+| experience thresholds | `$136E` | 6 rows x 13 x 3 bytes, big-endian |
+| class ceilings | `$15A1` | 8 bytes |
+| racial class limits | `$15A9` | 7 rows of 8, adjusted by the prime requisite at `$1599` |
+| cleric spell grant | `$1649`, tables `$1660`/`$166B`/`$1675` | level → record offsets and masks |
+| magic-user menu | `$2200`, spell levels at `$273F` | `(level + 1) / 2`, 95 ids |
+| starting spellbook | `$167F`, tables `$169C`/`$16A8`/`$16AF` | creation only, not the trainer |
+| spell slots | `ECL65` `$888D` magic-user, `$88C4` cleric | 11 and 10 rows of 5 |
+| spell capacity | `ECL65` `$880D` | built in RAM at `$2BB6`, **never stored** |
+| wisdom bonus spells | `ECL65` `$88F6`, table `$8906` | one spell a point, from 13 |
+
+### The six rules that are not Pool of Radiance's
+
+**The hit die is rolled twice and the better roll kept** (`$15FC`), for every
+class. Pool of Radiance rolls once and floors a *single-class fighter* at 4;
+Curse has no floor of any kind. A multi-class character's roll is then divided
+by how many classes it has, and the division rounds up *probabilistically* —
+`$11AB` rolls again against the remainder — so two identical characters can
+gain different hit points from the same die.
+
+**`hp_max` is per class slot.** For each slot, `min(level, roll_to) * bonus`,
+summed, **plus one extra bonus for a ranger** (`$128A`, because a ranger is 2d8
+at level 1), divided by the class count, plus `hp_rolled`, floored at the
+character's `level`. Pool of Radiance's is `hp_rolled + level * bonus` with one
+row chosen by the fighter bit. On the six characters SSI shipped, Curse's
+formula reproduces all six and Pool of Radiance's reproduces three — it is 5
+low on the paladin, 8 low on the ranger and 1 high on the fighter/thief.
+
+**The constitution table has no floor and one row.** `$11D7` is indexed by the
+raw score and is signed: -2 at 1-3, -1 at 4-6. The "not a fighter" cap is done
+by clamping the *score* to 16 for class slots 0-2 (`$126D`), which is why the
+two titles agree from 7 to 18 and only Curse takes hit points away.
+
+**Thief skills read dexterity.** `$0FC6 LDA $7C17 / SEC / SBC #$09` indexes a
+17-row table at `$10A4`, AD&D 1st edition's adjustment exactly. Curse's racial
+rows at `$1064` are also not Pool of Radiance's: dwarf and elf are identical
+and gnome, half-elf, halfling and half-orc are not — Curse's are the rulebook
+verbatim and Pool of Radiance's carry the same numbers in different columns.
+
+**The turning level is arithmetic**: `max(cleric, paladin - 2)`, stored as it
+is below 4 and `+ 1` capped at 10 from 4 up. Over a Curse cleric's whole range
+that is `1 2 3 5 6 7 8 9 10 10`, which is Pool of Radiance's `$2399` table
+entry for entry — the same numbers by a different mechanism, plus a paladin
+branch Pool of Radiance has no class for.
+
+**Spell capacity is never stored.** No instruction in `GEN`, `ECL64` or `ECL65`
+writes `0x0EE`-`0x0F3`, and all six shipped characters hold six zero bytes
+there. `ECL65 $880D` rebuilds the whole thing in fifteen bytes of workspace at
+`$2BB6` — magic-user, cleric, and a third column for what a paladin and a
+ranger borrow — every time the sheet is drawn. So a writer must leave that
+field alone on this title rather than fill it.
+
+The wisdom bonus is the same shape as Pool of Radiance's and a different table:
+`ECL65 $88F6` loops once for **every point of wisdom from 13 up**, each point
+buying one spell at the level `$8906` names — `0 0 1 1 2 3 4` at wisdom 13 to
+19 — and only where the class row already gives a slot. Pool of Radiance's
+`$10AD` starts at wisdom 12, which is `docs/125-bug-notes.md`'s off-by-one;
+Curse does not have it.
+
+### Two things that turned out to be the same
+
+**The experience clamp is Pool of Radiance's rule.** `$1458` reads row `level`
+of the class's own thresholds, subtracts one, takes the maximum across the
+character's classes and writes it only if it lowers `0x0E8`. Curse needs no
+`clamp_thresholds` field, though: its rows are thirteen wide and every class
+has a real entry one past its ceiling — 750001, 675001, 660001, 1250001,
+1400001 and 975001, which are Silver Blades' *next* thresholds, measured
+separately off a different file.
+
+**The magic-user picks one spell from a menu**, as in Pool of Radiance and
+unlike Silver Blades. `$2200` computes the castable level as `LSR A / ADC #$00`
+— `(level + 1) / 2` — copies the 32-byte spellbook mask aside, rotates it a bit
+at a time and lists every id the character does not know whose level is at or
+below that. Curse *does* have a magic-user grant loop of Silver Blades' shape
+at `$167F`, and the trainer never calls it: it is the starting spellbook, and
+it is what the two shipped mages hold.
+
+### Two record bytes with names now
+
+`0x0B9` and `0x0BA`, which `goldbox/layout.py` calls `gap_0b9`, are the
+**dual-classed old class slot** and its **old level**. `$1470` and `$1321` skip
+that slot when a human has one, so it counts towards neither the clamp nor
+eligibility; `$20A3` writes the old level back into that slot and ORs the class
+bit into `class_bits`; `$124F` gives it its own constitution term in `hp_max`;
+and `$15E7` uses `0x0BA` to stop the hit-die roll running for a level already
+paid for.
+
+### One more racial rule, not needed for a level-up but true
+
+`$1553`'s racial class limit is **adjusted by the prime requisite**. `$1599`
+names the ability that governs each class — intelligence for a magic-user,
+dexterity for a thief, strength for the fighter group, and `$80` for a cleric,
+which means none — and `$15A9` holds the limit a character with 18 in it
+reaches. A score of exactly 17 loses one level and anything below 17 loses two.
+So `LevelTables.racial_limit` returns the best case for Curse: a dwarf fighter
+is capped at 9 with strength 18, 8 with 17 and 7 with anything less.
