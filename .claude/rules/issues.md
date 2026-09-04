@@ -57,39 +57,55 @@ have to and say in the body that you guessed. Then:
   machine only he has, a save only he can play to. Work blocked on a
   measurement we could take ourselves is **not** blocked.
 
-**Never undo a label or an edit somebody else made.** Donald curates labels and
-priorities by hand. A label that is not what you expected is his decision until
-proven otherwise, so **an agent never changes one silently, and never on a
-judgement.**
+**Keeping a label right is part of doing the work.** An issue you have just
+worked is an issue you know more about than whoever filed it, and a label that
+no longer matches what is known is an error like any other -- an *invisible*
+one, because it fails no test, turns no CI red, and produces no symptom except
+work quietly going to the wrong place. Set it, change it, add `blocked` or take
+it off, the way you would fix a wrong sentence in a doc.
 
-**It may change one when it can state the evidence in a comment on the issue in
-the same breath**, saying what it changed and why. The bar is a fact about the
-world rather than an opinion about the work:
+**Two things must never happen, and they are the whole of the caution.**
+
+**Do not reverse a change a person made.** An agent asked for `enhancement`,
+Donald set `question`, and the agent set it back -- treating his decision as
+the defect. If you think a label a person chose is wrong, say why in a comment
+and leave it as they left it. He reads the comments. Donald, 2026-09-04: *"I
+just don't want it resetting labels back to what they were for no reason at
+all."* Undoing your *own* earlier change is not this, and neither is a label
+the world has since made wrong; what is banned is correcting a person.
+
+**Do not change a label without a comment saying what you changed and why**, in
+the same breath. That comment is the entire safety mechanism -- it is what
+makes the change visible, arguable and reversible -- and a change without one
+leaves no record anybody can read.
+
+**Everything else is ordinary work, and not doing it is its own failure.** All
+of these are yours, each with its comment:
+
+* **Add `blocked`** when the work is waiting on Donald specifically, and
+  **remove it** when the blocker is gone. `blocked` is a claim about the world
+  rather than a judgement about the work, so it can be checked and it can be
+  wrong, and a label nobody corrects outlives the fact it recorded. Name the
+  evidence: the disks are at this path, the question was answered on this
+  issue, the choice is still his to make.
+* **Correct a type label** to what the body describes. Ask of the label what
+  you ask of the work -- what does the player see? -- and "nothing, we do not
+  know yet" means `question`, whatever it says now.
+* **Set a priority on an issue that has none**, saying in the comment that you
+  guessed. An issue without one falls off the list.
+
+**Write the reason as a fact rather than an opinion**, because a fact is
+something Donald can check and contradict:
 
 * *"The body says nothing is observed and nobody can name what a player sees,
-  so it is a question rather than a bug"* -- a fact, checkable by reading the
-  issue. Change it and say so.
-* *"This feels more important now"*, *"this looks doable"* -- a judgement.
-  Leave it alone and say so in the reply.
+  so it is a question rather than a bug"* -- checkable by reading the issue.
+* *"This feels more important now"*, *"this looks doable"* -- an opinion, and
+  it belongs in your reply rather than in a label.
 
-**The thing that must never happen is a change with no comment**, because that
-leaves no record anybody can read or reverse.
-
-**And the rule cuts the other way.** A mislabelled issue is an *invisible*
-error: it fails no test, turns no CI red, and produces no symptom except work
-quietly going to the wrong place. So ask of the label what you ask of the work
--- **what does the player see?** -- and "nothing, we do not know yet" means
-`question`. The same goes for a title, a priority, a milestone, or an issue
-somebody closed.
-
-**`blocked` is the one exception, and only in the one direction.** An agent may
-**remove** `blocked` when it has established that the blocker is gone, because
-`blocked` is a claim about the *world* rather than a judgement about the work,
-so it can be checked and it can be wrong. It may not add it to somebody else's
-issue, may not change any other label, and may not remove `blocked` because the
-work now looks doable or important. **The bar is evidence, not inference**: the
-disks are at this path, the measurement is in this commit, the question was
-answered on this issue. Say what you removed and why in a comment.
+**Priorities are the one place to hold back.** Donald re-curates `Priority:` by
+hand and reads the backlog through it, so changing one moves what he sees next
+without telling him. Recommend it in your reply, leave the label, and say which
+you would have set.
 
 ## The three templates
 

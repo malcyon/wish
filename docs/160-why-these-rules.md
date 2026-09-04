@@ -398,13 +398,25 @@ as nobody looks. The question already asked of a bug -- what does the player see
 -- turns out to be worth asking of the label, and "nothing, we do not know yet"
 means `question`.
 
-**`blocked` is the one label an agent may remove, and the reason is an
-incident.** `#29 (The live reader uses Pool of Radiance's addresses on every
-title)` sat blocked on Curse and Silver Blades disks that were on the machine
-the whole time -- an assistant had written that they were missing without
-looking. `blocked` is a claim about the world rather than a judgement about the
-work, so it can be checked and it can be wrong, and a label nobody may correct
-is a label that outlives the fact it was recording.
+**`blocked` outlives the fact it recorded when nobody will touch it.**
+`#29 (The live reader uses Pool of Radiance's addresses on every title)` sat
+blocked on Curse and Silver Blades disks that were on the machine the whole
+time -- an assistant had written that they were missing without looking.
+`blocked` is a claim about the world rather than a judgement about the work, so
+it can be checked and it can be wrong.
+
+**Then the caution itself became the defect, which is why the rule reads the
+way it does now.** Written as "never undo a label", with the permissions added
+underneath as exceptions, it taught agents to leave every label alone: by
+2026-09-04 an audit of all 46 open issues reported four labels it believed
+wrong and changed none of them, including a `blocked`-shaped issue carrying no
+`blocked` label. Donald: *"Now, it won't mark a ticket blocked, it won't remove
+the blocked label on a ticket it knows isn't blocked anymore... I just don't
+want it resetting labels back to what they were for no reason at all."* The
+rule was rewritten to ban the two things that actually went wrong -- reversing
+a person's decision, and changing anything with no comment -- and to say that
+everything else is ordinary work. A prohibition stated first and in bold is
+what a reader takes away, whatever the paragraphs after it permit.
 
 **An issue filed without a priority falls off the list.**
 `#41 (The window's minimum width is 1546px on Windows and 1071px on Linux)` was
