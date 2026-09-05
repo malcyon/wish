@@ -1240,7 +1240,8 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # part of the memorised list read above, and reading them here as well
     # would put seven spell ids into the neutral record's ability array.
     if shape.second_abilities and rec.is_stored("abilities_second"):
-        out.set("abilities_second", list(rec.get_raw("abilities_second")),
+        out.set("abilities_second",
+                dict(zip(neutral.ABILITIES, rec.get_raw("abilities_second"))),
                 "the second ability array @0x065", grade("abilities_second"))
     if rec.is_stored("dual_class_slot") and rec.get("dual_class_slot") != 0xFF:
         out.set("former_levels", {rec.get("dual_class_slot"):
