@@ -2623,7 +2623,13 @@ def _resident_geo(savgam: bytes, where: "areas.Area", title: str) -> int:
     """
     geo = dos_savegame.geo_block(savgam)
     known = {areas.geo_number(g) for g in areas.geos_in(title)}
-    if geo not in known:
+    # An empty set is not a contradiction, it is a title whose area table
+    # nobody has built yet -- `areas.geos_in` says so itself: "if this ever
+    # refuses a save the game itself wrote, the row is what is incomplete."
+    # Curse of the Azure Bonds has no rows at all, so refusing on an empty
+    # set refused every Curse save there is, which is the opposite of what
+    # #257 set out to do: trust the word in the save.
+    if known and geo not in known:
         raise DosRecordError(
             f"the save's own $49C5 says GEO{geo:02X} is the resident map, "
             f"and no area of {title} loads that map -- so either the save is "
