@@ -13,7 +13,7 @@ They are. But the dialog is the last problem, not the first.
 | Is the area table per-title? | **No.** `goldbox/areas.py:AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL`-disk numbers in them. What P10/P24 made per-title was `GEO_NAMES` — map file → name — and nothing else | CONFIRMED, read |
 | What do we have for Curse and Silver Blades? | Decoded `GEO` files and nothing else. No area ids, no names, no disks, no arrival squares, no `ECL` decode | CONFIRMED |
 | What do we have for Pools of Darkness? | **The C64 never got it.** `docs/124` §1: the four-game run ends on the Amiga precisely because of this, and `goldbox/games.py` has six titles and PoD is not one of them | CONFIRMED |
-| Does the fasttravel mechanism transfer? | The five writes are three different kinds of address and they grade differently. §5 | mixed |
+| Does the fasttravel mechanism transfer? | **Yes.** `NEWECL` is the same routine in Curse and in Silver Blades, and four driven warps landed a Curse party in four different areas. §6 | CONFIRMED for Curse, PROBABLE for Silver Blades |
 
 So the honest shape of the feature today is **one title with a list and two
 with an empty one**, and the work that matters is building the tables, not
@@ -190,28 +190,67 @@ callers: `FastTravelBar.chosen_rows`, `PreferencesDialog._travel_tab`, and
 
 ## 6. Does the fasttravel mechanism transfer?
 
+**Yes.** This section used to say the overlay half was UNKNOWN and that one
+emulator session would settle it. That session happened —
+`#19 (Can Curse be fast-travelled at all, or is the mechanism Pool of
+Radiance's alone?)` — so the UNKNOWN row is gone rather than annotated, and
+the answer is below.
+
 `docs/117` established that **the `ECL` bytecode is one artefact across
-*ports*** — DOS, C64, Amiga of the same title. That is not the claim needed
-here. Across *titles*, the five writes fall into three classes:
+*ports*** — DOS, C64, Amiga of the same title. That is not the claim this
+needed, and the claim it needed is now measured directly across *titles*.
 
-| what | Pool of Radiance | other titles | grade |
+**`NEWECL` is the same routine in all three C64 titles.** Curse's handler is
+`DUNGEON $21BA` and Silver Blades' is `$20E6`, against Pool of Radiance's
+`$2011`; disassembled, Curse's is instruction for instruction identical bar
+three relocations, and Silver Blades' differs by one added store. Nothing was
+found by name or by an offset carried over — `tools/newecl.py` locates the
+script VM by its **self-modifying dispatch**, a `JSR` whose own operand bytes
+two `STA`s elsewhere write, and takes entry `$20` of the tables it builds.
+Every one of Pool of Radiance's documented addresses comes back out of that
+procedure exactly, including the two windows that were measured from 400 PC
+samples in the running machine.
+
+| what | Pool of Radiance | Curse | Silver Blades |
 |---|---|---|---|
-| the live party triple `$C04B`–`$C04D` | measured | **measured in Curse and in Silver Blades, unchanged** (`docs/120` §4, `docs/121` §5) | CONFIRMED for three titles |
-| payload-relative bytes — `$49F2` came-from (payload `+$0F2`), `$4A00` scratch (`+$100`) | measured | should move with `Game.save_load_address`: `$4900` → `$4B00` for Curse and Silver Blades, so `$4BF2` and `$4C00`. The one payload address actually re-measured, the area byte, did exactly this: `$4BC2` → `$4DC2` | PROBABLE |
-| loader and overlay addresses — `$6E11` resident-overlay flag, `$6E12` disk, `$6E1B` cache slot, the `NEWECL` tail `$2034`, the key-wait window `$10C2`–`$10EC`, `$2E4E`–`$2E6B` | measured | the **loader's page is now read**: `LINKER` in Curse and Silver Blades is resident at `$2D00` and dispatches on `$7F11`, with the disk byte at `$7F12` and the cache from `$7F13` — the same `+1`/`+2` layout Pool of Radiance has at `$6E11`–`$6E13` (#29). The rest are `DUNGEON`'s and `LIBRARY`'s own code and remain **UNKNOWN** | CONFIRMED for the flag in both; UNKNOWN for the rest |
-| the opcode: `$20` is `NEWECL` | CONFIRMED | Curse's DOS opcode table has `20 1 NEWECL`, and Pools of Darkness's independently produced listing agrees on fourteen opcodes (the write-up, `work/reports/forum-sweep-2.md` §1, is lost) | PROBABLE for Curse, and it is the *opcode*, not the handler's address |
+| live party triple | `$C04B`–`$C04D` | same, **unrelocated** | same, unrelocated |
+| came-from | `$49F2` | `$4BF2` | `$4BF2` |
+| 32-byte scratch wipe | `$4A00` | `$4C00` | `$4C00`, **and `$4BFB`** |
+| cache slot | `$6E1B` | `$7F1B` | `$7F1B` |
+| mode flag / disk | `$6E11` / `$6E12` | `$7F11` / `$7F12` | `$7F11` / `$7F12` |
+| indoors flag | `$49E6` | `$4BE6` | `$4BE6` |
+| `NEWECL` handler | `$2011` | `$21BA` | `$20E6` |
+| **tail, where a fast travel enters** | `$2034` | `$21DD` | `$210C` |
+| key-wait window | `$10C2`–`$10EC` | `$101D`–`$1056` | `$1050`–`$1089` |
+| key fetcher | `LIBRARY $2E4E`–`$2E6B` | `LIBRARY $2FD7`–`$2FF8` | `LIBRARY $4101`–`$4123` |
+| opcodes in the VM | 62 | 65 | 66 |
 
-**The first experiment is therefore not a UI question.** Half of it is now
-answered: Curse's resident-overlay flag is `$7F11` and its disk byte `$7F12`,
-read out of `LINKER`'s own first six bytes (#29). What is still open is whether
-there is a `NEWECL` handler whose tail can be entered, and where the key-wait
-loop is. One emulator session with the disassembler answers whether fast travel
-is possible for Curse at all.
-Until it does, a Curse tab is an empty tab whatever the data says.
+The payload-relative row is no longer a prediction: `$49F2`→`$4BF2` and
+`$4A00`→`$4C00` are the operands `NEWECL` itself uses, which is the +`$0200`
+`save_load_address` predicted. **GRADE: CONFIRMED**, from the bytecode.
 
-Also note that `FastTravel` writes the `POOL` disk number to `$6E12`, and *Curse's
-disks are not numbered like Pool of Radiance's.* Even with the addresses, the
-disk column of a Curse area table is a separate measurement.
+**And a Curse party was fast-travelled, four times.** Areas `$03`, `$04` and
+`$10` from area `$01`, on a pooled VICE instance: the map at `$0400` matched
+the target `GEO` byte for byte off the disk each time, the arriving script's
+own text appeared, and the party then turned and walked one key at a time.
+One of the trips crossed a disk, so `$7F12` is the disk byte end to end and
+Curse's numbering is 1-based over its six sides. **GRADE: CONFIRMED**, in the
+running machine. `tools/cursewarp.py` is the driver.
+
+Two differences that are not relocations, and neither can be assumed away:
+
+* **Silver Blades' `NEWECL` zeroes `$4BFB` as well as the 32 bytes.** Six
+  writes, not five. What that byte holds is unread.
+* **Curse's key-wait loop has a block Pool of Radiance has nothing at**,
+  `$102E`–`$103A`, gated on the indoors flag and calling `GDRIVE00 $C003`. So
+  the claim that warping out of the travel grid wedges the loader — Pool of
+  Radiance's, and unrecoverable — must be tested in Curse rather than carried
+  across. `tools/cursewarp.py` refuses it without `--force`.
+
+The disk column of a Curse area table is still a separate measurement, but a
+smaller one than this section used to say: the number is the side that carries
+that area's `ECL`, and four of the sixteen are now measured by warping to them
+and seeing which map loaded.
 
 ## 7. Ordered tasks, smallest first
 
@@ -220,8 +259,8 @@ disk column of a Curse area table is a separate measurement.
 | 1 | **Done.** **Say the dropdown is Pool of Radiance's.** When `AutomapState.title` is not Pool of Radiance, the Fast Travel row offers nothing and says why — *"No areas are known for Curse of the Azure Bonds."* — with the button disabled, the way `NOTHING_TICKED` already does. It must never fall back to Pool of Radiance's ids | nothing. This is the only change that is a **correctness** fix rather than a feature: today a Curse session gets Pool of Radiance's areas, and fasttraveling on them writes Pool of Radiance disk numbers and `ECL` ids into a Curse machine |
 | 2 | **Done.** **Key the setting by game.** `fast_travel_targets` becomes `{game key: [ids]}`, with the list-to-dict migration in `Settings.load` and the per-title default table. No visible change | nothing. Do it before any second table exists, so no config is ever written in a shape that has to be migrated twice |
 | 3 | **Label the tick table with the title**, and build its rows from a per-title area table looked up by key — a table that has one entry today. Still one table, still no selector | task 2 |
-| 4 | **Measure whether Curse can fasttravel at all.** The flag is done — `$7F11`, #29. What is left in that session: a `NEWECL` handler and its tail, the key-wait window, and whether the payload-relative writes land where §6 predicts | an emulator slot, and a Curse disk set — both present |
-| 5 | **Build Silver Blades' area table.** The cheap one: 17 maps, disk side free from the id's high nibble, names blank. Enough for a dropdown that says `GEO32` | task 3 for somewhere to put it; task 4's answer for whether it can be acted on |
+| 4 | **Done.** **Measure whether Curse can fasttravel at all.** Answered yes, both ways: `NEWECL` read off Curse's own `DUNGEON`, and four driven warps. §6 | — |
+| 5 | **Build Silver Blades' area table.** The cheap one: 17 maps, disk side free from the id's high nibble, names blank. Enough for a dropdown that says `GEO32` | task 3 for somewhere to put it. Task 4 no longer gates it: §6 has Silver Blades' handler and tail as well |
 | 6 | **Name Curse's sixteen maps.** Needs somebody who has played it, or the `ECL` decode. This is the item with no engineering answer | a human |
 | 7 | **The game selector in Preferences.** One row above the table, defaulting to the automapper's title, with the empty-title sentence in the body | a second real table — task 5 |
 | 8 | **Done.** **Check the running game against memory**, so attaching to a title the disks folder does not name stops being a silent mislabel | nothing depends on it; it is what makes every one of the above fail closed rather than open |
