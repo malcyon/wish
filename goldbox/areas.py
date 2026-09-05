@@ -555,6 +555,18 @@ def _c(id: int, disk: int, geos: tuple[str, ...]) -> Area:
 #: `ECL02` loads `GEO01`, `ECL22` loads `GEO21` and `ECL31`/`ECL32` both load
 #: `GEO32`, so it cannot be derived from the id the way a straight numbering
 #: could be.
+#:
+#: **There is no area 0, and the table is not missing it.**  A DOS Curse save
+#: whose area word is 0 is one the player made from the party-formation menu
+#: before pressing `BEGIN ADVENTURING`, and 0 is the initialiser's value
+#: rather than a place: no `ECL00` is on any of the six sides and no `ECL`
+#: container holds a block 0, and the same goes for `GEO00`.  Adding a row
+#: would move `goldbox.dos`'s refusal from `area_in` to `_resident_geo`
+#: rather than remove it, and a C64 save naming area 0 sends the loader
+#: after `GEO00` -- measured, `$B7`/`$BB` at the disk prompt -- which it can
+#: never find.  `#301 (A DOS Curse save standing in area 0 is refused by the
+#: import, because no row of the area table names area 0)` and
+#: `docs/185-a-party-that-has-not-set-out.md` have the measurements.
 AREAS_CURSE: tuple[Area, ...] = (
     _c(0x01, 2, ("GEO01",)), _c(0x02, 2, ("GEO01",)), _c(0x03, 2, ("GEO03",)),
     _c(0x04, 2, ("GEO04",)), _c(0x10, 3, ("GEO10",)), _c(0x11, 3, ("GEO11",)),

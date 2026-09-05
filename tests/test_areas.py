@@ -669,6 +669,30 @@ def test_curse_is_offered_too_now_that_its_table_exists():
                for a in areas.AREAS_CURSE)
 
 
+def test_curse_has_no_area_zero_and_the_table_is_not_missing_it():
+    """A Curse save whose area word is 0 is a party that has not pressed
+    `BEGIN ADVENTURING` -- 0 is the initialiser's value, not a place.
+
+    No `ECL00` is on any of the six C64 sides and no `ECL` or `GEO` container
+    holds a block 0, so a row here would be a place the game does not have.
+    Adding one would move `goldbox.dos`'s refusal from `area_in` to
+    `_resident_geo` rather than remove it, and a C64 save naming area 0 sends
+    the loader after `GEO00`, which is on none of the sides
+    (`#301 (A DOS Curse save standing in area 0 is refused by the import,
+    because no row of the area table names area 0)`,
+    `docs/185-a-party-that-has-not-set-out.md`).
+
+    This guards against the row rather than a defect: it is here so that the
+    next reader of the refusal message reads the reason before writing one.
+    """
+    assert areas.area_in(0, CURSE_OF_THE_AZURE_BONDS) is None
+    assert min(a.id for a in areas.AREAS_CURSE) == 0x01
+    assert "GEO00" not in areas.geos_in(CURSE_OF_THE_AZURE_BONDS)
+    # Pool of Radiance is the contrast, and the reason this is not a rule
+    # about Gold Box area tables in general: its area 0 is New Phlan.
+    assert areas.area_in(0, POOL_OF_RADIANCE) is not None
+
+
 def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():
     """Blocked by side, with `ECL04` the one id whose high nibble is not its
     side. Anything walking `range(...)` over these invents twenty-six areas
