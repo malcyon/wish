@@ -134,8 +134,7 @@ Icons are from **[Game-icons.net](https://game-icons.net/)**, licensed
 
 ## Documentation
 
-[`docs/README.md`](docs/README.md) is the index. The knowledge base covers the
-D64 container, the character record, the save game layout, and an append-only
-log of every experiment — including the ones that failed.
+Reverse engineering notes can be found in [`docs/README.md`](docs/README.md). This include the details on the D64 
+container, the character record, the save game layout, and experiment logs.
 
 API Reference is at [https://wish-goldbox.readthedocs.io](https://wish-goldbox.readthedocs.io).
