@@ -698,27 +698,76 @@ def test_an_added_item_is_a_copy_of_the_games_own_record(editor, save):
     assert raw == load_item_templates(GAME_DISK)["POTION OF HEALING"]
 
 
+def _flattened_ring() -> bytes:
+    """`ITEMFILE17`'s Ring of Fire Resistance, off the player's own disk.
+
+    The one copy of the ring on the eight sides that grants nothing: +14 and
+    +15 are zero, so `CAMP $10B5` never sees bit 7 set. Read rather than
+    written down, because a slice of a game file in this repository is the
+    same copy under a new name.
+    """
+    from gamedata import game_file
+
+    from goldbox.items import (
+        ITEM_SIZE,
+        PASSIVE_POWER,
+        POWER,
+        RING_OF_FIRE_RESISTANCE_ID,
+    )
+    payload = game_file("ITEMFILE17")
+    for i in range(len(payload) // ITEM_SIZE):
+        raw = bytes(payload[i * ITEM_SIZE:(i + 1) * ITEM_SIZE])
+        if (tuple(raw[:4]) == RING_OF_FIRE_RESISTANCE_ID
+                and not raw[POWER] & PASSIVE_POWER):
+            return raw
+    pytest.skip("ITEMFILE17 has no flattened Ring of Fire Resistance")
+
+
 @game_disks
-def test_the_ring_of_fire_resistance_is_repaired_on_an_editor_save(save):
-    """#285: the shipped template's `+14` and `+15` are both zero, so `CAMP
-    $10B5` never sees bit 7 set and readying the ring grants nothing. Opening
-    a save that holds one and saving repairs it -- the two bytes and nothing
-    else on the whole disk."""
+def test_adding_a_ring_of_fire_resistance_gives_the_one_that_works(save):
+    """#285: a player who adds the ring in Wish gets a ring that resists fire.
+
+    Two records print that name -- `ITEMFILE17`'s, which grants nothing, and
+    `ITEMFILE1D`'s, which DOS matches byte for byte -- and taking the first
+    one found handed out the dead one, because POOL3 sorts before POOL4.
+    """
     from editor.window import EditorBinding
-    from goldbox.items import load_item_templates
+    from goldbox.items import EFFECT, PASSIVE_POWER, POWER, load_item_templates
 
     template = load_item_templates(GAME_DISK)["RING OF FIRE RESISTANCE"]
-    assert (template[14], template[15]) == (0, 0)          # the shipped bug
+    assert (template[EFFECT], template[POWER]) == (61, 0x81)
+    assert template != _flattened_ring()
 
     first = EditorBinding(make_root(), str(save), GAME_DISK)
     first.roster.selectRow(3)                    # ROLAND -- row 3, #160; two items
-    note = first.add_item("RING OF FIRE RESISTANCE")
-    assert "slot 2" in note
+    assert "slot 2" in first.add_item("RING OF FIRE RESISTANCE")
+    assert "wrote" in first.save(interactive=False)
+
+    again = EditorBinding(make_root(), str(save), GAME_DISK)
+    again.roster.selectRow(3)
+    raw = again.items.inventory.original[2]
+    assert raw == template
+    assert raw[POWER] & PASSIVE_POWER
+
+
+@game_disks
+def test_the_ring_of_fire_resistance_is_repaired_on_an_editor_save(save):
+    """#285: a save that already holds the dead ring -- one an older Wish
+    handed out -- comes back resisting fire, and nothing else on the disk
+    moves. Opening and saving is the whole trigger; no edit is needed."""
+    from editor.window import EditorBinding
+    from goldbox.items import EFFECT, POWER
+
+    flat = _flattened_ring()
+    assert (flat[EFFECT], flat[POWER]) == (0, 0)
+
+    first = EditorBinding(make_root(), str(save), GAME_DISK)
+    first.roster.selectRow(3)                    # ROLAND -- row 3, #160; two items
+    first.items.inventory.set_raw(2, flat)
     assert "wrote" in first.save(interactive=False)
     broken = save.read_bytes()
 
-    # A second window, no edits at all -- opening and saving is the whole
-    # trigger.
+    # A second window, no edits at all.
     second = EditorBinding(make_root(), str(save), GAME_DISK)
     assert "wrote" in second.save(interactive=False)
     repaired = save.read_bytes()
@@ -729,13 +778,13 @@ def test_the_ring_of_fire_resistance_is_repaired_on_an_editor_save(save):
     lo, hi = sorted(diffs)
     assert hi == lo + 1                                     # +14 then +15
     assert (broken[lo], broken[hi]) == (0, 0)
-    assert (repaired[lo], repaired[hi]) == (61, 0x80)
+    assert (repaired[lo], repaired[hi]) == (61, 0x81)
 
     third = EditorBinding(make_root(), str(save), GAME_DISK)
     third.roster.selectRow(3)
     raw = third.items.inventory.original[2]
-    assert (raw[14], raw[15]) == (61, 0x80)
-    assert raw[:14] == template[:14]                        # nothing else moved
+    assert (raw[EFFECT], raw[POWER]) == (61, 0x81)
+    assert raw[:EFFECT] == flat[:EFFECT]                    # nothing else moved
 
 
 @game_disks

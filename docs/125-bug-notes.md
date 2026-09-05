@@ -604,35 +604,39 @@ codes 3, 4 and 5 as `MAGIC-USER`. Its author was reading the game's own table.
 
 ---
 
-## U4. The Ring of Fire Resistance does nothing on the C64
+## U4. One of the C64's five Ring of Fire Resistance records is flattened
+
+**This entry said the ring does nothing on the C64. That was ours**, and
+`docs/183-the-two-rings-of-fire-resistance.md` has the whole of it. Kept here
+narrowed rather than deleted, because the flattened record is real.
 
 **What the game does.** Readying a magical item is what grants its effect:
 `CAMP $10B5` reads the item's byte `+15`, and only when bit 7 is set does it
 dispatch through `ECL65`'s power table to `SPELLE04 $ADD4`, which puts byte
-`+14` -- the effect id -- into a free trait slot. The C64's RING OF FIRE
-RESISTANCE template is `45 cd a7 42 00 00 00 00 01 00 00 88 13 00 00 00`:
-`+14 = 0`, `+15 = $00`, and the protection bytes `+4`/`+5` a Ring of
-Protection uses are zero too. So readying it grants nothing, and nothing
-else in the engine reads an item for fire resistance. The engine *does*
-implement the effect: id 61 is on the spell-damage and saving-throw check
-lists, and its handler at `SPELLE01 $A9EE` zeroes fire-spell damage -- the
-ring just never puts 61 anywhere (`docs/171-c64-trait-slots.md`).
+`+14` -- the effect id -- into a free trait slot.
 
-**What the player sees.** A character wearing the ring takes full damage
-from Fireball and Burning Hands, the same as one without it. The four
-templates that do set the bit -- the Cloak of Displacement, the Gauntlets of
-Ogre Power, the undead-slaying two-handed sword and the alignment-locked
-Long Sword +3 -- work.
+**Five records on the eight sides print RING OF FIRE RESISTANCE and four of
+them set the bit** -- `ITEMFILE1D` on POOL4 and three readied on monsters in
+`MON32` and `MON56`, all `+14 = 61`, `+15 = $81`, which `ECL65`'s table sends
+to `$ADD4` like `$80`. `ITEMFILE1D` is DOS `ITEM4.DAX` block 29 byte for
+byte. The fifth, `ITEMFILE17` record 3 on POOL3, is `45 cd a7 42 00 00 00 00
+01 00 00 88 13 00 00 00`: `+14` and `+15` zero, so readying it grants
+nothing. Watched -- three READY presses in camp moved no byte of the record
+and left the ten trait slots at zero (`work/issue285/ring-shipped/`).
 
-**Version.** Pool of Radiance, Commodore 64. PROBABLE: that the ring grants
-no effect is CONFIRMED from the template and the READY gate, both quoted
-above; that a wearer takes full damage has not been watched. **What would
-promote it:** Fireball from a level-5 magic-user at a party member wearing
-the ring, readied in camp, against one with 61 written into a trait slot by
-`tools/traitask.py --stage`: the wearer takes the full roll, the 61-carrier
-less. Burning Hands at level 1 cannot show it -- the handler never takes
-one die below one point, and `work/issue252/fire9/` watched a 61-carrier
-take exactly that.
+`ITEMFILE17`'s other three items are flattened the same way, and DOS has no
+block 23 at all.
+
+**What the player sees.** Probably nothing: no `TREASURE` statement in the
+thirty area scripts names `ITEMFILE17`, so a player is unlikely ever to hold
+the flattened ring. The ring the game hands out comes from `ECL0A $AD17`,
+operand 29 -- `ITEMFILE1D`, the working one.
+
+**Version.** Pool of Radiance, Commodore 64. CONFIRMED that the `ITEMFILE17`
+record grants nothing, from its bytes, from the READY gate and from the
+emulator run. PROBABLE that no player can reach it: three `TREASURE`
+statements take the file number from a variable and the tables that could
+fill those variables were not enumerated.
 
 ## Attribution we are not sure of
 
@@ -661,6 +665,7 @@ damning than the evidence supports, and because the failure modes repeat.
 | PRINCESS FATIMA's race byte is 0, which is outside the enumeration and proves tampering | Ours. **Race 0 is the commonest race in the game** — 75 of 135 monster records carry it — and `LIBRARY $3508` deliberately underflows it to print `MONSTER`. Nothing was tampered with |
 | The 1989 BASIC editor wrongly lists class codes 3, 4 and 5 as `MAGIC-USER` | The game's, not the editor's — and not a bug either. See *Unfinished, not broken* |
 | `WALLDEF`'s colours decode wrongly, so the format is not understood | Ours. `$7A00` is a general RLE expander and its encoding is **count-then-value**; we had it the other way round, and 548 of 780 bytes came out wrong |
+| The C64's Ring of Fire Resistance grants nothing, so the ring is a shipped bug | Ours, mostly. Four of the disks' five records grant effect 61; `load_item_templates` kept the **first** record it met for a printed name and POOL3 sorts before POOL4, so every reading of "the shipped template" was the one flattened copy. The editor handed that copy out to players. `docs/183-the-two-rings-of-fire-resistance.md` |
 | Roster bytes `+0x03`–`+0x05` are memorised-spell counts | Ours. They matched for all four casters on one disk. A controlled test — memorise five spells across three characters, rest, save — produced a byte-identical roster page still reading `0/0/0` |
 | The combat log picks up garbage because something else is rewriting the file | Ours, twice, both in `automap/combatlog.py`, and both only visible against a running fight |
 | Driving the game wedges at the training hall, four runs running | Ours. Four runs of one wrong assumption is not four pieces of evidence; the training schools are not on that square and not in that area at all |

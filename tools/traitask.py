@@ -135,12 +135,20 @@ def parse_items(text: str) -> list[tuple[int, str]]:
 
 
 def stage_items(path: pathlib.Path, game_disk: str,
-                wanted: list[tuple[int, str]]) -> list[dict]:
+                wanted: list[tuple[int, str]],
+                repair: bool = False) -> list[dict]:
     """Put a readied item template into a party slot of a **copy** of a save.
 
     The record is the game's own template for that name, byte for byte, with
     the readied bit set -- so the item the engine sees is one it could have
     sold the party itself.
+
+    With `repair`, `goldbox.items.repair_ring_of_fire_resistance` runs over
+    the template first, which is what the character editor writes into a save
+    for `#285 (The C64's Ring of Fire Resistance grants nothing, and Wish
+    should repair it on conversion and on an editor save)`.  Nothing else in
+    the record moves, so a run with the flag and a run without it differ by
+    the two bytes under test and nothing more.
     """
     names = I.load_item_names(game_disk)
     templates = I.load_item_templates(game_disk, names)
@@ -152,6 +160,8 @@ def stage_items(path: pathlib.Path, game_disk: str,
         if name not in templates:
             raise SystemExit(f"no item template called {name!r}")
         raw = bytearray(templates[name])
+        if repair:
+            raw = bytearray(I.repair_ring_of_fire_resistance(bytes(raw)))
         raw[6] |= I.READIED
         base = I.ITEM_AREA_BASE - SAVE0_LOAD + slot * I.ITEM_BLOCK_STRIDE
         for n in range(I.ITEMS_PER_CHARACTER):
@@ -776,6 +786,9 @@ def report(out: pathlib.Path) -> None:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--save", default="PORSAVE13.D64")
+    p.add_argument("--repair", action="store_true",
+                   help="run the editor's Ring of Fire Resistance repair "
+                        "over each staged template first (#285)")
     p.add_argument("--item", default=None, metavar="SLOT=NAME",
                    help="item templates to put in, readied; comma separated")
     p.add_argument("--stage", default=None, metavar="SLOT:INDEX=ID",
@@ -841,7 +854,7 @@ def main(argv=None) -> int:
     staged_items: list[dict] = []
     if args.item:
         staged_items = stage_items(staging_dir / save, game_disk,
-                                   parse_items(args.item))
+                                   parse_items(args.item), args.repair)
         log.emit("items", values=staged_items)
         for w in staged_items:
             log.say(f"staged slot {w['slot']} item {w['item']}: {w['name']} "

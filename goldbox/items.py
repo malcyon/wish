@@ -221,17 +221,30 @@ EFFECT_BIAS = 23
 # table is in ECL65, relocated to $9900, and covers $80-$88, $8A and $8B.
 PASSIVE_POWER = 0x80
 
+# The two bytes that decide whether readying an item grants anything.
+EFFECT, POWER = 14, 15
+
 # The C64's RING OF FIRE RESISTANCE, identified by +0 (type index) and the
 # three name words at +1..+3 (suffix, qualifier, noun) -- 69, 205 (FIRE
-# RESISTANCE), 167 (OF), 66 (RING). `#285 (The C64's Ring of Fire Resistance
-# grants nothing, and Wish should repair it on conversion and on an editor
-# save)`: the shipped template is `45 cd a7 42 00 00 00 00 01 00 00 88 13 00
-# 00 00` -- +14 = 0 and +15 = 0, so `CAMP $10B5` never sees bit 7 set and
-# never reaches `SPELLE04 $ADD4`, and readying it grants nothing
-# (`docs/171-c64-trait-slots.md`, `docs/125-bug-notes.md` U4).
+# RESISTANCE), 167 (OF), 66 (RING).
+#
+# `#285 (The C64's Ring of Fire Resistance grants nothing, and Wish should
+# repair it on conversion and on an editor save)`. **The disks carry five of
+# these records and four of them work.** `ITEMFILE1D` on POOL4, `MON32` and
+# `MON56` all hold `... 3d 81` -- effect 61 with bit 7 of +15 set, matching
+# DOS `ITEM4.DAX` block 29 byte for byte -- and readying one dispatches
+# through `CAMP $10B5` to `SPELLE04 $ADD4` like any other passive item. The
+# fifth, `ITEMFILE17` record 3 on POOL3, is `45 cd a7 42 00 00 00 00 01 00 00
+# 88 13 00 00 00`: +14 and +15 both zero, so bit 7 is never set and readying
+# it grants nothing. Watched in the running game -- three READY presses in
+# camp moved no byte of the character record and left the ten trait slots at
+# zero (`work/issue285/ring-shipped/`).
+#
+# The repair below writes the working record's own two bytes, so a repaired
+# ring is the game's `ITEMFILE1D` ring rather than a value of ours.
 RING_OF_FIRE_RESISTANCE_ID = (0x45, 0xCD, 0xA7, 0x42)
 RING_OF_FIRE_RESISTANCE_EFFECT = 61            # SPELLE01 $A9EE zeroes fire damage
-RING_OF_FIRE_RESISTANCE_POWER = 0x80           # the plain passive-dispatch bit
+RING_OF_FIRE_RESISTANCE_POWER = 0x81           # ECL65's table sends $81 to $ADD4
 
 
 def repair_ring_of_fire_resistance(raw: bytes) -> bytes:
@@ -242,24 +255,31 @@ def repair_ring_of_fire_resistance(raw: bytes) -> bytes:
     or identification does not stop it being recognised as this ring.
 
     Only when the item is not already dispatching (bit 7 of +15 clear): a
-    ring already granting something -- converted from DOS, whose own item
-    already carries a working effect and power byte, or repaired by an
-    earlier pass -- is returned unchanged rather than overwritten.
+    ring off `ITEMFILE1D` or a monster, one converted from DOS, or one an
+    earlier pass repaired is returned unchanged rather than overwritten.
 
-    This repairs one named item, not a class of items: `.claude/rules/
-    conversions.md` and the four other shipped templates that already set
-    bit 7 (the Cloak of Displacement, the Gauntlets of Ogre Power, the
-    undead-slaying two-handed sword and the alignment-locked Long Sword +3)
-    say the game's own data is inconsistent rather than uniformly broken, so
-    nothing here generalises past this one ring.
+    **What this is for, now that four of the five shipped records work.** A
+    save the game itself wrote holds a working ring, so the repair fires on
+    two kinds of ring only: one Wish handed out itself before
+    `load_item_templates` learnt to prefer the working record, and one from
+    `ITEMFILE17`, which no `TREASURE` statement in the thirty area scripts
+    names.
+
+    This repairs one named item, not a class of items. Across all 163 C64
+    templates against all 352 DOS item records, exactly two names disagree
+    about whether the item grants anything, and both live in `ITEMFILE17`:
+    this ring and LONG SWORD +2, whose working copy carries `$84` -- the
+    alignment lock, which takes hit points off a character of the wrong
+    alignment. Making that one match its DOS twin would take something away
+    from a player rather than give it, so nothing here generalises.
     """
     if len(raw) != ITEM_SIZE or tuple(raw[:4]) != RING_OF_FIRE_RESISTANCE_ID:
         return bytes(raw)
-    if raw[15] & PASSIVE_POWER:
+    if raw[POWER] & PASSIVE_POWER:
         return bytes(raw)
     out = bytearray(raw)
-    out[14] = RING_OF_FIRE_RESISTANCE_EFFECT
-    out[15] = RING_OF_FIRE_RESISTANCE_POWER
+    out[EFFECT] = RING_OF_FIRE_RESISTANCE_EFFECT
+    out[POWER] = RING_OF_FIRE_RESISTANCE_POWER
     return bytes(out)
 
 
@@ -506,8 +526,13 @@ class Item:
         +14's high nibble off current hit points; $87 demands strength 19, the
         giant's boulder.
 
-        Two values on the game disks, 34 and 42, fall outside the table and are
-        unexplained.
+        **34 and 42 were listed here as values on the disks falling outside
+        the table and unexplained. They are neither.** Every non-zero +15
+        below 128 anywhere in the game's item lists belongs to a *scroll* --
+        `MU SCROLL WITH 3 SPELLS` and `CLERICAL SCROLL WITH 3 SPELLS` -- where
+        the byte is the third spell id and not a power at all, which is what
+        `effects` above says. 34 is in `ECL65`'s table in any case, at index
+        5; 42 is not, and neither reading of it was ever needed.
         """
         return self.raw[15]
 
@@ -600,6 +625,22 @@ def load_item_templates(disk: D64 | str,
 
     Given a path, its sibling disks are scanned too, because the item files are
     spread across all eight sides. `game` chooses which siblings count.
+
+    **Where two records print the same name, the one that grants an effect
+    wins.** Nineteen of Pool of Radiance's 163 names have more than one
+    distinct record, and two of those nineteen disagree about whether the item
+    does anything when it is readied: RING OF FIRE RESISTANCE and LONG SWORD
+    +2 each have a flattened copy in `ITEMFILE17` on POOL3 with +14 and +15
+    zeroed, beside the working copy in `ITEMFILE1D` on POOL4 that DOS
+    `ITEM4.DAX` block 29 matches byte for byte. Taking the first record found
+    handed both flattened copies back, because POOL3 sorts before POOL4 --
+    which is how `#285 (The C64's Ring of Fire Resistance grants nothing, and
+    Wish should repair it on conversion and on an editor save)` came to be
+    filed against the game. A character given a ring in the editor got one
+    that does nothing in the game; now they get the game's own working ring.
+
+    The rule decides only those two names. For the other seventeen every copy
+    agrees about granting, so the first one still wins and nothing moves.
     """
     disks: list[D64] = []
     if isinstance(disk, str):
@@ -634,7 +675,10 @@ def load_item_templates(disk: D64 | str,
                 if not any(raw):
                     continue
                 name = Item(raw, names).name
-                out.setdefault(name, raw)
+                have = out.get(name)
+                if have is None or (not have[POWER] & PASSIVE_POWER
+                                    and raw[POWER] & PASSIVE_POWER):
+                    out[name] = raw
     return out
 
 

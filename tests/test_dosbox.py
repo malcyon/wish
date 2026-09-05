@@ -936,12 +936,19 @@ def test_the_dos_item_type_table_is_the_c64_one():
 
 
 def test_the_dos_item_tail_projects_onto_the_c64_record():
-    """157 of the C64's 163 distinct item records, byte for byte, from DOS.
+    """159 of the C64's 163 distinct item records, byte for byte, from DOS.
 
     Every offset in `tools.dosbox.item_to_c64` rests on this: get the plus,
     the saving-throw bonus, the readied bit, the hidden-name mask, the cursed
     bit, the weight, the quantity, the cost or the three special bytes wrong
     and the count collapses.
+
+    It was 157 until `#285 (The C64's Ring of Fire Resistance grants nothing,
+    and Wish should repair it on conversion and on an editor save)`, when
+    `load_item_templates` learnt to prefer the copy of a name that grants an
+    effect. The two it gained are the Ring of Fire Resistance and the Long
+    Sword +2, whose `ITEMFILE17` copies have their special bytes zeroed and
+    whose `ITEMFILE1D` copies the DOS projection reproduces exactly.
     """
     from goldbox.items import load_item_templates
     from tests.gamedata import game_disk
@@ -949,7 +956,7 @@ def test_the_dos_item_tail_projects_onto_the_c64_record():
     c64 = set(load_item_templates(str(game_disk("POOL1"))).values())
     dos = {dosbox.item_to_c64(r) for r in _need_templates()}
     assert len(c64) == 163
-    assert len(c64 & dos) == 157
+    assert len(c64 & dos) == 159
 
 
 def test_the_dos_name_words_are_the_c64_itemnames_indices():

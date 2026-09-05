@@ -11,10 +11,14 @@ state meaning "this character has effect N", with no owner, no duration and
 no record of who wrote it. The engine applies it wherever it asks "has this
 character got N?" through `LIBRARY $4027`, which is every combat check list,
 the surprise check and any script that asks -- and never anywhere else. So
-the id is the whole of what the game needs, and for 61, the Ring of Fire
+the id is the whole of what the game needs.**
+
+One clause of that sentence used to read "and for 61, the Ring of Fire
 Resistance, a converted character with the id in a slot resists fire on the
 C64 better than any character born there, because the C64's own ring never
-grants it.**
+grants it". **That is wrong**: four of the five rings on the disks do grant
+it, and `docs/183-the-two-rings-of-fire-resistance.md` says why they looked
+otherwise.
 
 Grades follow `docs/50-experiments.md`'s scale. Addresses are Pool of
 Radiance's; the three C64 titles share the mechanism but not the numbers
@@ -224,23 +228,34 @@ full roll. The ring-wearing control of that run (LADY KATHERINE, the C64
 RING OF FIRE RESISTANCE readied) was never reached: the driver's fight
 ran out its budget after the first cast.
 
-The C64's RING OF FIRE RESISTANCE template, byte for byte off `ITEMFILE`:
+**This paragraph said the C64's ring is inert. It is not**, and the
+correction is `docs/183-the-two-rings-of-fire-resistance.md`. The disks carry
+five RING OF FIRE RESISTANCE records and four of them grant: `ITEMFILE1D` on
+POOL4 and three readied on monsters in `MON32` and `MON56`, all
 
 ```
-45 cd a7 42 00 00 00 00 01 00 00 88 13 00 00 00
+45 cd a7 42 03 00 06 00 00 00 00 88 13 00 3d 81
 ```
 
-`+14 = 0`, `+15 = $00`, and the protection bytes `+4`/`+5` a Ring of
-Protection uses are 0 too. Bit 7 of `+15` is the only way into `$ADD4`, so
-readying it grants nothing, and nothing else in the engine reads an item
-for fire resistance. **The ring is inert on this port** -- CONFIRMED that it
-grants no effect and has no protection byte; that a wearer takes full
-fire damage is the same Fireball experiment, with the ring readied in camp
-(`docs/125-bug-notes.md` U4). Only four templates set
-the bit: CLOAK OF DISPLACEMENT (`+14` 89, `+15` `$85`), GAUNTLETS OF OGRE
+-- `+14 = 61`, `+15 = $81`, which `ECL65`'s table sends to `$ADD4` like
+`$80`. Readying `ITEMFILE1D`'s ring in camp writes 61 into a trait slot and
+un-readying it takes 61 back out, one byte each way, watched
+(`work/issue285/ring-81/`).
+
+What stood here rested on the **fifth** record, `ITEMFILE17` record 3 on
+POOL3 -- `45 cd a7 42 00 00 00 00 01 00 00 88 13 00 00 00`, `+14 = 0` and
+`+15 = $00`, with the protection bytes `+4`/`+5` a Ring of Protection uses
+zero too. That one does grant nothing, and three READY presses on it moved no
+byte at all (`work/issue285/ring-shipped/`). `load_item_templates` handed it
+back because it kept the first record it met for a printed name and POOL3
+sorts before POOL4.
+
+Templates that set bit 7, with the corrected count: RING OF FIRE RESISTANCE
+(`+14` 61, `+15` `$81`), CLOAK OF DISPLACEMENT (89, `$85`), GAUNTLETS OF OGRE
 POWER (38, `$83`, which goes to the array through `$AE2D`), TWO-HANDED SWORD
-+1 +3 VS UNDEAD (3, `$88`) and LONG SWORD +3 (`$84`, an alignment lock, not
-an id).
++1 +3 VS UNDEAD (3, `$88`), LONG SWORD +3 (82, `$84`, an alignment lock
+rather than an id) and LONG SWORD +2 (240, `$84`, the same lock -- and it too
+has a flattened copy in `ITEMFILE17`).
 
 ## What this means for a conversion
 
@@ -256,13 +271,16 @@ reason that is now wrong on both clauses:
 2. **Give the converted item the power bytes the C64 grants and revokes
    by.** DOS keys the grant on item byte `0x3D` with bit 7 of `0x3E`; the C64
    keys it on `+14` with bit 7 of `+15`. Same design, two bytes each. A
-   converted ring with `+14 = 61`, `+15 = $80` is un-granted by the C64's own
-   `$AE13` when it comes off and re-granted by `$ADD4` when it goes back on;
-   a converted ring with the C64 template's `00 00` leaves 61 in the slot for
-   ever. `$80` shares `$ADD4` with `$85`, `$88` and the rest; whether any code
-   reads the low bits of `+15` for anything but the dispatch is UNKNOWN, and
-   the experiment is READY and UNREADY on the converted item, reading the
-   slot each time.
+   converted ring with `+14 = 61`, `+15 = $81` -- the bytes both ports use
+   for this ring -- is granted by `$ADD4` when it goes on and un-granted by
+   `$AE13` when it comes off; a ring with `00 00` grants nothing and, if 61
+   is in the slot from somewhere else, leaves it there for ever. That
+   experiment has now been run: READY, UNREADY and READY again on the
+   converted item, one byte moving each way (`work/issue285/ring-81/`), so
+   `$81` reaching `$ADD4` is CONFIRMED in the running machine rather than
+   only from `ECL65`'s table. Whether any code reads the low bits of `+15`
+   for anything but the dispatch is still UNKNOWN, and nothing in the record
+   or the effect arrays moved on either press.
 3. **The DOS payload bytes have no C64 home and need none.** `0C 00` on a
    ring is what the DOS ready path writes for every item grant; the C64
    handler holds the magnitude. The one grant that has a value of its own, a
