@@ -265,7 +265,7 @@ def checkpoint_hits(mon, number: int) -> int:
     return struct.unpack("<I", body[13:17])[0]
 
 
-def windows(slots: list[dict], control: int = 0) -> list[dict]:
+def windows(slots: list[dict], control: int | None = None) -> list[dict]:
     """Every range to count the engine's reads of, per occupied slot.
 
     Two levels, because they answer two different questions.
@@ -287,6 +287,14 @@ def windows(slots: list[dict], control: int = 0) -> list[dict]:
     fires when the engine does draw from the table.
     """
     out = []
+    if control is None:
+        # The first *occupied* slot, not slot 0: a save whose slot 0 is empty
+        # would arm no control at all and the run would look the same, with
+        # nothing to say the instrument was never proved to fire.
+        occupied = [e["slot"] for e in slots if e["occupied"]]
+        if not occupied:
+            return out
+        control = occupied[0]
     for entry in slots:
         if not entry["occupied"]:
             continue
@@ -298,7 +306,7 @@ def windows(slots: list[dict], control: int = 0) -> list[dict]:
                         "start": start, "end": start + POSE_CODES - 1})
         for pose in (0, 1):
             if pose == 0 and n != control:
-                continue
+                continue  # the control is armed once, on the first occupied slot
             start = EXPANDED + n * EXPANDED_STRIDE + pose * 72
             out.append({"kind": "glyphs", "slot": n, "pose": pose,
                         "start": start, "end": start + 71})
@@ -380,13 +388,20 @@ def prune(sess, watch: list[dict], log, ceiling: int = 500) -> None:
     drop_over(sess, watch, log, ceiling)
 
 
-def disarm(sess, watch: list[dict]) -> None:
+def disarm(sess, watch: list[dict], log=None) -> None:
+    """Clear the checkpoints, and say so if that fails.
+
+    The slot is torn down a moment later either way, so a failure here costs
+    the run nothing -- but a cleanup that cannot report is a cleanup nobody
+    can tell went wrong, and the sibling step in `run`'s `finally` does log.
+    """
     try:
         with sess.mon(10) as m:
             m.checkpoints_clear()
             m.resume()
-    except Exception:
-        pass
+    except Exception as exc:
+        if log is not None:
+            log.emit("disarm_failed", error=str(exc))
     for w in watch:
         w["cp"] = None
 
@@ -548,7 +563,7 @@ def run(args, log) -> int:
         return 2
     finally:
         if sess is not None:
-            disarm(sess, watch)
+            disarm(sess, watch, log)
         for what, step in (("session close", lambda: sess and sess.close()),
                            ("slot teardown", slot.teardown),
                            ("slot release", slot.release)):
