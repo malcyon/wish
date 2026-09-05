@@ -684,6 +684,9 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("innate_effects", "racial abilities and item powers share one id "
                        "namespace with the C64's, and PoD's is a third; "
                        "nothing here can be crossed by number"),
+    ("granted_effects", "what a ring or a girdle granted, whole -- and the "
+                        "id inside it is in the earlier game's numbering, so "
+                        "it cannot be crossed either. See `innate_effects`"),
     ("spells_memorised", "PoD runs cleric spells to level 7 and mage to 9, so "
                          "its id space is larger than the C64's 1-56 and the "
                          "mapping is not the identity. Re-memorise in game"),
@@ -712,6 +715,12 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("armour_class_base", "recomputed on load -- see `armour_class`"),
     ("movement_current", "recomputed on load: a probe that set the derived "
                          "movement to 99 drew the base's 12"),
+    ("status", "no located home in the `.pc`. The sheet has a STATUS line and "
+               "every payload a probe has put on screen drew OKAY, so the "
+               "byte behind it has never been separated from fill -- see "
+               "`CONFIDENCE['status']`. The character arrives well"),
+    ("active", "see `status`: whether PoD marks a character out of the party "
+               "the way DOS and the C64 do is not located either"),
 )
 
 
@@ -1451,37 +1460,33 @@ def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
              "those bytes were written zero rather than guessed")
     out.drop("Amiga 0x11F: the trailing pad, which the DOS record has no "
              "room for")
-    # `_dos.to_neutral`, called above, already reports every non-innate
-    # effect at duration zero -- it iterates `dos.effects`, which on this
-    # path are the same nodes `amiga_por_effect_to_dos` recut, and calls
-    # `describe_uncarried_effect` below on the same bytes.  A second loop
-    # here used to call it again, printing each lost effect's line twice
-    # (#238, An Amiga conversion's report shows an uncarried effect twice,
-    # once from goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
-    #
-    # **That equivalence holds on the corpus measured, not in general.** The
-    # deleted loop filtered by id alone, with no duration check; the
-    # surviving one skips a nonzero duration, per Donald's 2026-08-27 ruling
-    # that a spell about to expire needs no report.  The two agree only
-    # because every non-innate effect lost on the twenty Amiga specimens
-    # happens to be at duration zero (this function's own docstring for
-    # `describe_uncarried_effect` says as much) -- a specimen with a
-    # nonzero-duration non-innate id would have been reported by the old
-    # loop and is silent under this one.  None has been seen yet; #232 (An
-    # item-granted effect is dropped on the way through the neutral record,
-    # with no report) is still open on whether duration zero even means
-    # "permanent" reliably, so this is not a gap to close by adding the loop
-    # back -- see that issue's 2026-09-04 comment.
+    # There is no loop here reporting the effects the neutral record cannot
+    # hold, and there should not be one.  `_dos.to_neutral`, called above,
+    # now **carries** every non-innate node at duration zero in
+    # `granted_effects` -- the same nodes, since `amiga_por_effect_to_dos`
+    # recut them on the way in -- so an Amiga-to-Amiga or Amiga-to-DOS
+    # conversion writes the ring's record back rather than losing it, and a
+    # report line saying it was lost would be untrue.  Only a writer that
+    # cannot take the field says so, which is `goldbox/c64_codec.py` and
+    # `write_pod` below, each in its own words.  A loop here reported every
+    # loss twice while there was one (#238, An Amiga conversion's report
+    # shows an uncarried effect twice, once from goldbox.amiga.to_neutral
+    # and once from goldbox.dos.to_neutral).
     return out
 
 
 def describe_uncarried_effect(node: bytes) -> str:
-    """One drop line for a `.spc` node the neutral record cannot hold.
+    """One drop line for a `.spc` node a destination cannot hold.
 
-    The duration decides whether there is a line at all: a spell with rounds
-    left was going to expire anyway, and Donald ruled on 2026-08-27 that
-    those need no report, but an effect at duration zero is a ring or a
-    girdle the character is still wearing.
+    Names what the character had, from the node's first byte, and leaves the
+    caller to add why its own destination could not take it.  Only a writer
+    that cannot take `granted_effects` says any of this: the neutral record
+    holds the node, so DOS and Amiga write it back, and it is the C64 -- ten
+    trait slots of one number each -- that has to explain itself.
+
+    A node with rounds left never reaches here at all.  It was going to
+    expire anyway, and Donald ruled on 2026-08-27 that those need no report;
+    `goldbox.dos.to_neutral` is where that line is drawn, on the duration.
 
     **What it says, and what it deliberately does not.** Donald's wording,
     2026-09-04: what the character had, and what it means for them. No
@@ -1842,8 +1847,13 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
         rep.note(at + AMIGA_POR_EFFECT_PAD, 1,
                  f".spc record {n}: the extra byte, a pad. Zero in every "
                  f"Pool of Radiance and Curse record read (68)")
-        rep.note(at + 2, 4,
-                 dosrep.sources.get(dos_at + 1, f".spc record {n}: payload"))
+        # The Amiga keeps the duration big-endian where DOS keeps it little,
+        # so the two bytes swap and the value and flag follow unchanged.
+        rep.note(at + 2, 2,
+                 dosrep.sources.get(dos_at + 1,
+                                    f".spc record {n}: duration, byte-swapped"))
+        rep.note(at + 4, 2,
+                 dosrep.sources.get(dos_at + 3, f".spc record {n}: payload"))
         rep.note(at + 6, 4,
                  dosrep.sources.get(dos_at + 5,
                                     f".spc record {n}: next pointer NULL"))

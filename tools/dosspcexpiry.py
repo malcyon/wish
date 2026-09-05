@@ -369,6 +369,26 @@ def cmd_ready(args: argparse.Namespace) -> int:
             for png in (s.dir / "shots").glob("*.png"):
                 (out / png.name).write_bytes(png.read_bytes())
             (out / "ready.json").write_text(json.dumps(result, indent=1))
+            # Copy the slot the engine just wrote out before the instance
+            # goes.  `s.close()` takes the staged tree with it, and the first
+            # run of this command lost the only engine-written DOS
+            # item-granted `.SPC` this project has ever had that way -- the
+            # incident behind `.claude/rules/testing.md`'s "A specimen dies
+            # with the emulator slot that made it".  `work/` is a staging
+            # post, not a home: `tools/specimens.py add` is what makes it
+            # keep.
+            if args.save:
+                saved = out / "save"
+                saved.mkdir(parents=True, exist_ok=True)
+                letter = args.save.upper()
+                # `CHRDAT<letter><n>.SAV/.ITM/.SPC` and `SAVGAM<letter>.DAT`
+                # both carry the slot letter at the seventh character.
+                for src in sorted(s.save_dir.glob("*")):
+                    if src.is_file() and src.name[6:7] == letter:
+                        (saved / src.name).write_bytes(src.read_bytes())
+                print("== copied to", saved)
+                for p in sorted(saved.glob("*")):
+                    print("  ", p.name, p.stat().st_size)
             s.close()
     return 0
 

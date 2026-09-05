@@ -38,6 +38,7 @@ __all__ = [
     "DIRECT",
     "TRANSFORMED",
     "DROPPED",
+    "GRANTED_EFFECT_REASON",
 ]
 
 
@@ -144,6 +145,84 @@ INFRAVISION = {0: 0, 1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 0}
 #: How many item slots the C64 record has.
 ITEM_SLOTS = 16
 ITEM_SIZE = 16
+
+#: Why a C64 conversion cannot carry `granted_effects`, in the words a player
+#: reads.  The other ports keep a whole nine-byte record per effect -- the id,
+#: a duration, the value the effect is worth and a flag the engine reads when
+#: the item comes off -- and the C64 keeps ten slots of one byte each and
+#: nothing beside them.
+#:
+#: **The ten is CONFIRMED and cannot be widened**: `goldbox/layout.py`'s
+#: `item_effects` is a fixed ten-byte field, and three measured titles -- Pool
+#: of Radiance, Curse of the Azure Bonds and Secret of the Silver Blades --
+#: read it with the same three-instruction, `LDX #$09`-indexed loop.  A
+#: character with more innate ids than slots is a different loss with its own
+#: ticket (#236, A character converted to the C64 with more than ten innate
+#: effects loses the extra ones with no report); this one is about a slot
+#: being a single number with no room for what the effect is worth.
+GRANTED_EFFECT_REASON = (
+    "a C64 character sheet keeps ten trait slots holding one number each, "
+    "with nowhere for what the effect is worth or for what the game needs to "
+    "take it away again when the item comes off")
+
+#: Neutral status name -> the low three bits of C64 record `0x100`.  The
+#: C64's own enumeration, read off the routine that draws the STATUS line:
+#: `LIBRARY $38BE` is `LDA $6C00 / AND #$07 / CLC / ADC #$29 / TAX`, and the
+#: string table at `LIBRARY $3439`/`$347B` holds ids `$29`-`$30` as
+#: HITPOINTS, OK, GONE, DEAD, DYING, UNCONSIOUS -- the game's own spelling --
+#: RUNNING, STONED.  Index 0 is unreachable: zero at `0x100` means the slot
+#: is **empty**, which is what DROP CHARACTER writes (`CAMP $0C0B`), so the
+#: word the table holds there is never drawn.
+#:
+#: CONFIRMED three ways (#235): the display arithmetic above; a character an
+#: orc took to 0 hit points in a driven fight, whose byte went `$01` -> `$84`
+#: and then `$84` -> `$85` as the fight ended, which is what the engine
+#: saved; and each of `$82`-`$87` staged into a copy of that save and read
+#: back off the sheet as GONE, DEAD, UNCONSIOUS, RUNNING and STONED.
+#:
+#: **Two neutral names are missing from it and that is the finding, not an
+#: omission**: `animated` and `temporarily gone` are DOS states with no C64
+#: value.  `SPELLE04 $AA11` writes `$03` beside creature type 4, undead, for
+#: Animate Dead -- but `$03` is DEAD with bit 7 clear, written on a thing the
+#: same routine marks as not a player character, so it is the nearest thing
+#: rather than the same thing.
+STATUS_BITS: dict[str, int] = {
+    "okay": 1, "gone": 2, "dead": 3, "dying": 4, "unconscious": 5,
+    "running": 6, "stoned": 7,
+}
+
+#: The same table read the other way, for :func:`read`.
+STATUS_BY_BITS: dict[int, str] = {v: k for k, v in STATUS_BITS.items()}
+
+#: Bit 7 of record `0x100`, and it is a flag in its own right rather than
+#: part of the status: `LIBRARY $38BE` masks it off with `AND #$07` before
+#: drawing the word, `$1BF6` skips a slot carrying it when it sums the
+#: party's strength, and `$3E4A` picks the greyed colour for the party panel
+#: with `CMP #$80` -- and the colour it picks is **2, red**, not grey.  Set
+#: means the character is out of play, which is the same thing DOS says at
+#: `0x10D` with the opposite polarity, and DOS draws its own name red too.
+#:
+#: **CONFIRMED, and independent of the low three bits** (#235): one boot with
+#: `$81` -- OK with the flag set -- beside `$05` -- unconscious with it clear
+#: -- and three controls at `$01` drew OK in red for the first and UNCONSIOUS
+#: in the panel's ordinary colour for the second.  Two of two red against
+#: three of three not, partitioning on bit 7 and on nothing else.
+OUT_OF_PLAY = 0x80
+
+#: What a player is told when the source's status has no C64 value.
+#:
+#: **PROPOSED, not yet approved.** `.claude/rules/gui-text.md` makes every
+#: word a player reads Donald's; this is the working proposal, written so it
+#: can be seen running rather than only described.  No file offset and no
+#: issue number, which `tests/test_dosconvert.py`'s two guard tests enforce
+#: for the DOS table and this one follows.
+NO_C64_STATUS: dict[str, str] = {
+    "animated": "The character had been animated by a spell. The C64 game "
+                "has no such state, so they arrive as they were before it",
+    "temporarily gone": "The character had temporarily left the party. The "
+                        "C64 game has no such state, so they arrive with the "
+                        "party",
+}
 
 
 def strength_index(strength: int, percentile: int) -> int:
@@ -321,6 +400,19 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 f"{len(full)} innate effects and the C64 has ten slots; "
                 f"{len(full) - 10} dropped from the end")
 
+    # -- what a ring or a girdle granted: named, and not carried -------------
+    # Taken so that the closing sweep does not report it a second time in the
+    # writer's own words; what a player reads is one line per effect saying
+    # what the character had, rather than one line saying a field was
+    # skipped.
+    granted = use("granted_effects")
+    if granted is not None:
+        from . import amiga as _amiga
+        for node in granted.value:
+            rep.dropped.append(
+                f"{_amiga.describe_uncarried_effect(bytes(node))} -- "
+                f"{GRANTED_EFFECT_REASON}")
+
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
     if inventory is not None:
@@ -351,8 +443,47 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rep.note(0x0FE, 2, f"portrait_head/body: zero. HEADnn/BODYnn name C64 "
                        f"disk files; the {port} art is a different set")
     rep.dropped.append(f"portrait ids: the {port} art has different numbering")
-    rep.note(0x100, 1, "roster status: 1 (OK)")
-    rec.set("roster_in_use", 1)
+    # -- the status, and the out-of-play flag packed above it -----------------
+    # One byte holding two things: the low three bits are the state the sheet
+    # puts into words (:data:`STATUS_BITS`) and bit 7 is whether the game is
+    # still playing the character (:data:`OUT_OF_PLAY`).  Writing a hard 1
+    # here is what brought a dead DOS character across alive (#235).
+    #
+    # The two neutral fields are taken separately because the sources hold
+    # them separately -- DOS at 0x10C and 0x10D -- and a source that supplies
+    # a status and no `active` gets bit 7 from the status instead: every
+    # value the six C64 overlays are seen to write for a party member carries
+    # it for every state but OK, and a DOS record the engine wrote pairs the
+    # two the same way.  `$03`, DEAD with bit 7 clear, is written only by
+    # Animate Dead on a thing the same routine marks as not a player
+    # character.
+    status, active = use("status"), use("active")
+    bits = STATUS_BITS["okay"]
+    where = ["1 (OK), the state a character with no source for one is in"]
+    if status is not None:
+        found = STATUS_BITS.get(status.value)
+        if found is None:
+            rep.dropped.append(
+                NO_C64_STATUS.get(
+                    status.value,
+                    f"The character's state, {status.value}, has no value in "
+                    f"the C64 game; they arrive well"))
+            where = [f"1 (OK): {status.value} has no C64 value"]
+        else:
+            bits = found
+            where = [f"{found} ({status.value}) <- {status.origin}"]
+        rep.dropped.extend(status.dropped)
+    in_play = active.value if active is not None else bits == STATUS_BITS["okay"]
+    if active is not None:
+        where.append(f"bit 7 {'clear' if in_play else 'set'} <- {active.origin}")
+        rep.dropped.extend(active.dropped)
+    else:
+        where.append(f"bit 7 {'clear' if in_play else 'set'}: computed from "
+                     f"the status, which is how every value the C64 engine "
+                     f"writes for a party member pairs the two")
+    byte = bits | (0 if in_play else OUT_OF_PLAY)
+    rec.set("roster_in_use", byte)
+    rep.note(0x100, 1, f"roster status ${byte:02X}: " + ", ".join(where))
     tail = use("roster_tail")
     if tail is not None:
         rec.set_raw("roster_tail", bytes(tail.value))
@@ -396,6 +527,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("inventory", "the first sixteen items, into the C64's fixed slots; the "
                   "rest are warned about"),
     ("roster_tail", "copied as a block into the C64's roster tail"),
+    ("status", "the name indexed into the C64's own seven-value table, into "
+               "the low three bits of record 0x100; a state the C64 does not "
+               "have is reported and the character arrives OK"),
+    ("active", "bit 7 of that same byte, set when the character is out of "
+               "play -- the opposite polarity to DOS's own flag"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
@@ -411,6 +547,9 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("portrait_head", "HEADnn names a C64 disk file; another port's art is a "
                       "different set with different numbering"),
     ("portrait_body", "BODYnn -- see portrait_head"),
+    ("granted_effects", GRANTED_EFFECT_REASON + ". The write itself names "
+                        "each effect the character had, one line apiece, "
+                        "rather than saying a field was skipped"),
 )
 
 
@@ -443,7 +582,6 @@ READ_DROPPED: tuple[tuple[str, str], ...] = (
                    "the caster's"),
     ("strength_index", "derived from strength and the percentile; a writer "
                        "that wants it recomputes it"),
-    ("roster_in_use", "roster bookkeeping, not character state"),
     ("dual_class_slot", "the class a dual-classed human left, and "
                         "dual_class_level the level it was left at. Zero in "
                         "every Pool of Radiance specimen because that title's "
@@ -490,6 +628,9 @@ READ_TARGETS: dict[str, str] = (
        "size_small": "read as neutral size_small",
        "portrait_head": "read as neutral portrait_head",
        "portrait_body": "read as neutral portrait_body",
+       "roster_in_use": "the low three bits read as neutral status and bit 7 "
+                        "as neutral active; zero is an empty roster slot and "
+                        "is neither",
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
@@ -570,6 +711,29 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
 
     out.set("npc", rec.is_npc, "bit 7 of the C64's 0x0B8, the byte the game "
             "itself counts player characters with", grade("flags_0b8"))
+
+    # -- the status byte, unpacked into the two things it holds --------------
+    # Zero is not a state: it is an **empty roster slot**, which is what DROP
+    # CHARACTER writes, so a record holding it says nothing about a character
+    # and neither field is set.  A low three bits of 0 with bit 7 set is the
+    # same nothing wearing the flag, and has never been seen.
+    if rec.is_stored("roster_in_use"):
+        raw = rec.get("roster_in_use")
+        name = STATUS_BY_BITS.get(raw & 0x07)
+        if name is not None:
+            out.set("status", name,
+                    f"the low three bits of C64 record 0x100, ${raw:02X}, "
+                    f"indexed into the game's own seven status words",
+                    grade("roster_in_use"), Provenance.RESHAPED)
+            out.set("active", not raw & OUT_OF_PLAY,
+                    f"bit 7 of the same byte, ${raw:02X} -- set means the "
+                    f"party panel greys the name and the party's strength "
+                    f"leaves the character out",
+                    grade("roster_in_use"), Provenance.RESHAPED)
+        elif raw:
+            out.drop("The character's state: this save holds a value the "
+                     "game reads as an empty roster slot, which is not one "
+                     "of the states it can put into words")
 
     # As wide as the *title's* mask, not as wide as Pool of Radiance's. Seven
     # bytes stop at id 55, which cost MORGAINE five of her twenty-nine spells

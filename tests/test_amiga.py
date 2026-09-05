@@ -1100,26 +1100,25 @@ def test_the_innate_effects_reach_the_neutral_record():
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
 
 
-def test_an_effect_the_neutral_record_cannot_hold_is_reported():
-    """A dropped `.spc` node has to be named, not left to a zero-byte file.
+def test_an_effect_a_ring_granted_is_carried_and_only_the_c64_reports_it():
+    """Three of the twenty specimens carry an effect `INNATE_EFFECTS` turns
+    away -- ADDERLY's extra strength (38), CONJURER's Ring of Fire Resistance
+    (61) and MAGICIAN's displacement (89), all three at duration zero, which
+    is the engine's own definition of an effect that never runs out.
 
-    Three of the twenty specimens carry an effect `INNATE_EFFECTS` turns away
-    -- ADDERLY's extra strength (38), CONJURER's Ring of Fire Resistance (61)
-    and MAGICIAN's displacement (89), all three at duration zero, so none of
-    them is a spell that was going to expire anyway.  `write_por` writes them
-    a zero-byte `.spc`, and until
+    So an Amiga conversion **carries** them now and says nothing, because
+    nothing was lost, and only the C64 -- ten trait slots holding one number
+    each -- has to explain itself.  Before
     `#232 (An item-granted effect is dropped on the way through the neutral
-    record, with no report)` closes, the least the conversion owes the player
-    is a line saying which effect went.
+    record, with no report)` the Amiga wrote these three a zero-byte `.spc`
+    and reported the loss.
 
-    **The line names the effect and what it costs, and nothing else.**
+    **The C64's line names the effect and what it costs, and nothing else.**
     Donald's wording, 2026-09-04: no effect id, no module name, no issue
     number, because `AGENTS.md` says what a user reads in the interface
-    carries no address or offset. So this asserts the effect's own name is
-    in the line, which is what a player would look for, rather than an
-    internal id they have no way to know.
+    carries no address or offset.
     """
-    from goldbox import dos, traits
+    from goldbox import c64_codec, dos, traits
 
     seen = 0
     for path in amiga_por_records():
@@ -1129,24 +1128,26 @@ def test_an_effect_the_neutral_record_cannot_hold_is_reported():
             continue
         seen += 1
         n = amiga.to_neutral(c)
+        _rec, c64rep = c64_codec.write(n)
         for eid in lost:
             said = traits.describe(eid)
             named = f"{said[:1].upper()}{said[1:]}"
-            matches = [d for d in n.dropped if d.startswith(named)]
-            # Exactly one line per lost effect: `goldbox.dos.to_neutral`
-            # already reports it and `goldbox.amiga.to_neutral` must not add
-            # a second copy of the same line (#238, An Amiga conversion's
-            # report shows an uncarried effect twice, once from
+            # The Amiga carries it, so nothing on that side says it went.
+            assert not [d for d in n.dropped if d.startswith(named)], \
+                (path, eid, n.dropped)
+            # Exactly one line per lost effect on the C64 side: two would
+            # mean a second loop reporting the same node (#238, An Amiga
+            # conversion's report shows an uncarried effect twice, once from
             # goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
+            matches = [d for d in c64rep.dropped if d.startswith(named)]
             assert len(matches) == 1, (path, eid, matches)
             # `capitalize()` would render effect 61 as "Wearing a ring of
             # fire resistance" and take the item's own name down with it.
-            assert not any("ring of fire" in d for d in n.dropped), path
-            assert not any(str(eid) in d for d in n.dropped), (path, eid)
-        # And it really is gone, so the line is not decoration.
+            assert "ring of fire" not in matches[0], path
+            assert str(eid) not in matches[0], (path, eid)
+        # And the Amiga really keeps it, so the silence is not a second loss.
         _, _, spc, _ = amiga.write_por(n)
-        assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * (
-            len(c.effects) - len(lost)), path
+        assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * len(c.effects), path
     if not seen:
         pytest.skip("no specimen carries a non-innate effect")
 
@@ -1296,11 +1297,16 @@ def test_the_item_nodes_round_trip_past_their_cached_line():
 def test_the_effect_nodes_round_trip_past_their_next_pointer():
     """Every node the neutral record can hold comes back byte for byte.
 
-    Fifteen of the eighteen nodes on the twenty specimens, and nine of the
-    twelve `.spc` files whole.  The other three files lose their only node to
+    **18 of 18 nodes and 12 of 12 `.spc` files whole**, since
     `#232 (An item-granted effect is dropped on the way through the neutral
-    record, with no report)`; when that closes this becomes 18 of 18 and 12 of
-    12, and the counts below are what say so rather than a comment.
+    record, with no report)` gave the middle a home for the three nodes
+    `INNATE_EFFECTS` turns away -- ADDERLY's girdle, CONJURER's ring and
+    MAGICIAN's cloak.  It was 15 of 18 and 9 of 12 before, and the counts
+    below are what say so rather than a comment.
+
+    Only the first six bytes can survive: bytes 6-9 are the next pointer, a
+    live Amiga heap address the engine rebuilds on load, and three of the
+    twelve files hold a non-NULL one.
     """
     from goldbox import dos
 
@@ -1310,7 +1316,12 @@ def test_the_effect_nodes_round_trip_past_their_next_pointer():
         if not c.effects:
             continue
         files += 1
-        kept = [e for e in c.effects if e[0] in dos.INNATE_EFFECTS]
+        # Written innate first, then what an item granted -- the engine finds
+        # a node by walking the chain for its id, so the order is ours.
+        innate = [e for e in c.effects if e[0] in dos.INNATE_EFFECTS]
+        kept = innate + [e for e in c.effects
+                         if e[0] not in dos.INNATE_EFFECTS
+                         and int.from_bytes(e[2:4], "big") == 0]
         _, _, spc, _ = amiga.write_por(amiga.to_neutral(c))
         assert len(spc) == len(kept) * amiga.AMIGA_POR_EFFECT_SIZE, path
         if len(kept) == len(c.effects):
@@ -1323,7 +1334,8 @@ def test_the_effect_nodes_round_trip_past_their_next_pointer():
             nodes += 1
     if not files:
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
-    assert nodes and whole <= files
+    assert nodes
+    assert whole == files, f"{whole} of {files} .spc files survive whole"
 
 
 # -- the synthetic half: no game data, so these run everywhere --------------

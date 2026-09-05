@@ -975,6 +975,35 @@ def to_neutral(dos: DosCharacter,
 
     out.set("turn_power", dos.get("turn_power"), "DOS 0x076",
             FIELDS_BY_NAME["turn_power"].confidence)
+
+    # -- the combat tail's first two bytes: how the character is -------------
+    # `field_10c_10f` is four bytes and two of them are a character's own
+    # state rather than fill (#235).  0x10C is the status, 0-based, indexing
+    # the nine words `neutral.STATUS_NAMES` carries in the engine's own
+    # order -- CONFIRMED against the sheet, which drew STATUS OKAY and
+    # STATUS UNCONSCIOUS for one character staged 0 and 4.  0x10D is an
+    # active flag, CONFIRMED: 0 draws the name red in the party panel and 1
+    # does not, 3 of 3 against 9 of 9 across two boots of the running game.
+    #
+    # A value past the end of the table is not a state the engine can draw,
+    # so it is reported rather than turned into the nearest name.  The other
+    # two bytes stay in `DROPPED`: 0x10E is UNKNOWN and 0x10F is quickfight,
+    # which has no named C64 field yet.
+    # Both are graded CONFIRMED where the four-byte field they sit in is
+    # PROBABLE, and the difference is the point: the field's grade is the
+    # weakest of its four bytes, 0x10E, which is still UNKNOWN.
+    tail = dos.raw("field_10c_10f")
+    if tail[0] < len(neutral.STATUS_NAMES):
+        out.set("status", neutral.STATUS_NAMES[tail[0]],
+                f"DOS status @0x10C = {tail[0]}, the game's own "
+                f"{len(neutral.STATUS_NAMES)} status words in order",
+                Confidence.CONFIRMED, Provenance.RESHAPED)
+    else:
+        out.drop(f"The character's status: this save holds {tail[0]} there "
+                 f"and the game has only {len(neutral.STATUS_NAMES)} states")
+    out.set("active", bool(tail[1]),
+            "DOS 0x10D: 0 is the flag that draws the name red in the party "
+            "panel", Confidence.CONFIRMED)
     out.set("attack_forms", dos.raw("attack_forms"), "DOS 0x0A1 (PROBABLE)",
             FIELDS_BY_NAME["attack_forms"].confidence)
     out.set("roster_tail", dos.raw("roster_tail"),
@@ -1002,37 +1031,42 @@ def to_neutral(dos: DosCharacter,
             "effect-id namespace (goldbox/traits.py)",
             Confidence.PROBABLE)
 
-    # -- the .SPC records INNATE_EFFECTS turns away, and NeutralCharacter
-    # has no field to hold -- reported rather than silently gone (#232, An
-    # item-granted effect is dropped on the way through the neutral record,
-    # with no report).  A running spell still needs no report, which is
-    # Donald's 2026-08-27 ruling and is why this checks the duration before
-    # calling anything a loss: bytes 1-2 are a little-endian `u16` duration,
-    # `INNATE_PAYLOAD`'s own `00 00` and confirmed against the one
-    # duration-bearing specimen anybody has read, a `BLESS` at
-    # `02 00 01 00` -- 0 is a permanent, item-granted or racial effect the
-    # character keeps until it is taken off; anything else is a spell
-    # counting down that was never going to survive the trip.
+    # -- the .SPC records INNATE_EFFECTS turns away, carried whole ------------
+    # A ring, a girdle or a cloak grants an effect the same way a race does,
+    # and the id alone cannot say what the ring is worth: the record's own
+    # value byte and the flag the engine reads when the item comes off are
+    # what make the effect what it is, so the whole record crosses rather
+    # than a number out of it (#232, An item-granted effect is dropped on the
+    # way through the neutral record, with no report).
     #
-    # **Held back from carrying it whole rather than just reporting it**
-    # (the shape #232 asks for): SILAS -- `CHRDATA6.SAV`, a fighter/thief --
-    # carries Detect Magic (id 5) and Protection from Evil, 10' Radius
-    # (id 45) at this exact duration-zero, byte-3-`0xFF` shape, and both are
-    # plainly someone else's spell on him, not his own permanent effect. The
-    # DOS corpus has no confirmed item-granted specimen to check duration
-    # against at all -- only the three *Amiga* ones this issue's table
-    # names -- so duration zero cannot yet be trusted to mean "permanent"
-    # here.  Carrying it as specified would make SILAS's borrowed buffs
-    # permanent, which is worse than the drop this reports.  Comment on
-    # #232, 2026-09-04.
-    # `goldbox.amiga.describe_uncarried_effect` composes the same line the
-    # Amiga side already gives for this; reused rather than duplicated.
-    from . import amiga as _amiga
-    for e in dos.effects:
-        if e[0] in INNATE_EFFECTS:
-            continue
-        if int.from_bytes(e[1:3], "little") == 0:
-            out.drop(_amiga.describe_uncarried_effect(e))
+    # **The engine's own test for "has this run out" is the duration at
+    # bytes 1-2, and nothing else.** Its expiry routine compares that word
+    # against zero: zero skips the node for ever, and anything else is
+    # counted down as the clock advances and the node removed on the step
+    # that reaches it -- so a saved record at zero was written that way and
+    # never counted down to it. The id is not consulted and the engine holds
+    # no table of permanent ids. CONFIRMED from the routine's own
+    # instructions and watched running: six two-minute BLESS records gone
+    # after four steps, eight zero-duration racial records untouched.
+    # `docs/162-spc-permanence.md` has the routine, every one of the 38
+    # places that add a record, and the runs.
+    #
+    # So a **nonzero** duration is a spell counting down, and Donald's
+    # 2026-08-27 ruling says it needs no report: it was going to expire
+    # anyway and the player will not go looking for it.  It is the one thing
+    # here that is neither carried nor reported.
+    #
+    # The next pointer is dropped rather than carried: it is a live heap
+    # address the engine rebuilds on load (`EFFECT_NEXT_NULL`).
+    granted = [bytes(e[:5]) + EFFECT_NEXT_NULL for e in dos.effects
+               if e[0] not in INNATE_EFFECTS
+               and int.from_bytes(e[1:3], "little") == 0]
+    if granted:
+        out.set("granted_effects", granted,
+                "the .SPC records that are not innate and never expire -- an "
+                "item's grant, whole, since what it is worth is in the "
+                "record rather than in the id",
+                Confidence.CONFIRMED)
 
     # -- the .ITM file, projected -------------------------------------------
     out.set("inventory", [it.to_c64() for it in dos.items],
@@ -1286,6 +1320,10 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "+ a NULL next pointer the engine rebuilds; only the "
                        "INNATE_EFFECTS ids are written, the rest reported, "
                        "and a character with none gets no .SPC file"),
+    ("granted_effects", "written into the same .SPC file after the innate "
+                        "records, each one's own five bytes with the next "
+                        "pointer NULLed -- the value byte and the removal "
+                        "flag are the record's, not INNATE_PAYLOAD's"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -1296,6 +1334,21 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
+    # Both are read out of 0x10C and 0x10D by `to_neutral` and both have a
+    # DOS home to go back to, so these two entries are a **defect and not an
+    # exemption** (#235): a C64 character who is dead or out of the party
+    # converts to DOS well and in it. What is missing is the write, which
+    # replaces `WRITE_DEFAULTS["field_10c_10f"]`'s fixed `00 01 00 00` for
+    # the first two of those four bytes and is the last piece of the carry.
+    # The two reasons below are read by a player, so they carry neither
+    # (`.claude/rules/gui-text.md`, and `tests/test_dosconvert.py`'s
+    # `test_no_dropped_reason_carries_developer_detail`).
+    ("status", "Whether the character was well, unconscious, dying, dead, "
+               "stoned or gone: read out of the save being converted, and "
+               "not yet written into the DOS one, so they arrive well"),
+    ("active", "Whether the game had taken the character out of the party: "
+               "read out of the save being converted, and not yet written "
+               "into the DOS one, so they arrive a full member"),
 )
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
@@ -1687,8 +1740,21 @@ def write(char: NeutralCharacter,
                if e not in carried]
     keep = derived + [e for e in carried if e in INNATE_EFFECTS]
 
-    spc = b"".join(bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
-                   for e in keep)
+    # An item's grant follows the innate records in the same file, each one
+    # its own five bytes rather than `INNATE_PAYLOAD`: a girdle's record
+    # carries the strength it replaced and a flag the engine reads when the
+    # girdle comes off, and writing `INNATE_PAYLOAD` over those would leave
+    # the character with the girdle's strength for ever (#232, An
+    # item-granted effect is dropped on the way through the neutral record,
+    # with no report).  The order is innate then granted; the engine walks
+    # the chain looking for an id and rebuilds it from the file's length, so
+    # the order in the file is not something it reads meaning from.
+    given = use("granted_effects")
+    grants = [bytes(g)[:5] + EFFECT_NEXT_NULL
+              for g in (given.value if given is not None else ())]
+
+    spc = b"".join([bytes((e,)) + INNATE_PAYLOAD + EFFECT_NEXT_NULL
+                    for e in keep] + grants)
     base = RECORD_SIZE + len(itm)
     for n, e in enumerate(keep):
         at = base + n * EFFECT_SIZE
@@ -1700,6 +1766,22 @@ def write(char: NeutralCharacter,
         rep.note(at + 1, 4,
                  f".SPC record {n}: INNATE_PAYLOAD, the four bytes every "
                  f"innate specimen in the archives holds")
+        rep.note(at + 5, 4,
+                 f".SPC record {n}: next pointer NULL -- the loader allocates "
+                 f"a node per record and relinks them, and the count comes "
+                 f"from the file's length")
+    for i, g in enumerate(grants):
+        n = len(keep) + i
+        at = base + n * EFFECT_SIZE
+        rep.note(at, 1, f".SPC record {n}: effect {g[0]} "
+                        f"({traits.describe(g[0])}), {port} granted_effects")
+        rep.note(at + 1, 2,
+                 f".SPC record {n}: duration zero -- the engine's expiry pass "
+                 f"skips a node at zero and never removes it")
+        rep.note(at + 3, 2,
+                 f".SPC record {n}: the value the effect carries and the flag "
+                 f"the engine reads when the item comes off, the source "
+                 f"record's own two bytes")
         rep.note(at + 5, 4,
                  f".SPC record {n}: next pointer NULL -- the loader allocates "
                  f"a node per record and relinks them, and the count comes "

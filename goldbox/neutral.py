@@ -53,6 +53,7 @@ __all__ = [
     "Provenance",
     "Value",
     "FIELDS",
+    "STATUS_NAMES",
     "NeutralCharacter",
     "NeutralError",
     "Report",
@@ -191,8 +192,27 @@ FIELDS: dict[str, str] = {
     # -- effects and the roster ---------------------------------------------
     "innate_effects": "effect ids that are properties of the character rather "
                       "than spells running on it",
+    "granted_effects": "whole effect records that never expire and are not "
+                       "innate -- what a readied ring, girdle or cloak "
+                       "granted. Nine bytes each, in the shared shape "
+                       "`goldbox/dos.py` reads: the effect id, a "
+                       "little-endian duration of zero, the value the effect "
+                       "carries, the flag the engine reads when the item "
+                       "comes off, and a next pointer left NULL because the "
+                       "engine rebuilds the chain on load",
     "roster_tail": "the derived combat block the roster keeps beside the "
                    "record",
+    # -- how the character is, and whether the game is still playing them ---
+    "status": "the state the game puts into words on the character sheet, as "
+              "one of the names in STATUS_NAMES. A name and not a number "
+              "because the ports number these differently and DOS holds two "
+              "the C64 has no value for at all",
+    "active": "false for a character the game has taken out of the party and "
+              "marks as such. Both ports draw the name **red** in the party "
+              "panel for it, and the C64 also leaves the character out of "
+              "the party's own strength; they hold the flag at opposite "
+              "polarities and each codec converts. True is the ordinary "
+              "state",
     "npc": "true for a companion the party picked up rather than one the "
            "player made",
     # -- carried by some ports and not others -------------------------------
@@ -202,6 +222,22 @@ FIELDS: dict[str, str] = {
     "portrait_head": "portrait head index, in the source port's own art set",
     "portrait_body": "portrait body index, in the source port's own art set",
 }
+
+
+#: Every value the neutral `status` field may hold, and the whole of it: a
+#: codec handed a name outside this tuple has a bug, and a codec that cannot
+#: spell one of them in its own port reports the loss rather than choosing the
+#: nearest thing.
+#:
+#: **The order is DOS's own numbering** -- nine length-prefixed words in
+#: `START.EXE` from file offset 0xD191, which is the enumeration DOS record
+#: 0x10C indexes -- so the DOS reader may use the index and **no other codec
+#: may**.  The C64 numbers seven of these differently in the low three bits of
+#: record 0x100 and has no value at all for `animated` or `temporarily gone`;
+#: `goldbox/c64_codec.py`'s `STATUS_BITS` is that port's own table.
+STATUS_NAMES: tuple[str, ...] = (
+    "okay", "animated", "temporarily gone", "running", "unconscious",
+    "dying", "dead", "stoned", "gone")
 
 
 class NeutralCharacter:

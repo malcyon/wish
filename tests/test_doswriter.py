@@ -111,14 +111,16 @@ def test_item_to_c64_inverts_item_from_c64():
     assert dos.item_to_c64(dos.item_from_c64(sixteen)) == sixteen
 
 
-# --- the .SPC file, read: a permanent effect INNATE_EFFECTS turns away -------
+# --- the .SPC file: a permanent effect INNATE_EFFECTS turns away ------------
 #
 # #232 (An item-granted effect is dropped on the way through the neutral
-# record, with no report): `NeutralCharacter` has no field for a `.spc` node
-# outside `INNATE_EFFECTS`, so the record is dropped either way -- the only
-# question is whether it is reported.  A running spell still needs no report
-# (Donald, 2026-08-27); an id at duration zero is a ring or a girdle the
-# character is still wearing, and has to be.
+# record, with no report): a `.SPC` node outside `INNATE_EFFECTS` and at
+# duration zero is a ring, a girdle or a cloak the character is still
+# wearing, and `granted_effects` carries the whole nine bytes of it, because
+# the id alone cannot say what the ring is worth.  The engine's own test for
+# "has this run out" is the duration word and nothing else
+# (`docs/162-spc-permanence.md`), so a node with rounds left is a spell
+# counting down and needs no report at all -- Donald, 2026-08-27.
 
 def _dos_record(effects) -> dos.DosCharacter:
     """An all-zero 285-byte Pool of Radiance record carrying only the given
@@ -133,31 +135,94 @@ def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
             + bytes((value, 0)) + dos.EFFECT_NEXT_NULL)
 
 
-def test_a_permanent_item_granted_effect_is_reported_dropped():
-    """A Ring of Fire Resistance, id 61, at duration zero -- CONJURER's own
-    shape (#232) -- is not one of `INNATE_EFFECTS` and has nowhere in the
-    neutral record to go, so it must say so."""
-    char = _dos_record([_effect(61, duration=0, value=12)])
+def test_a_permanent_item_granted_effect_is_carried_whole():
+    """A Ring of Fire Resistance, id 61, at duration zero -- the shape the
+    engine wrote in front of `tools/dosspcexpiry.py` and the shape CONJURER
+    carries on the Amiga -- reaches `granted_effects` with all five of its
+    meaning-bearing bytes, and comes back out of the writer as the same
+    record.
+
+    The id alone would not do it: 12 is what the ring is worth, and a writer
+    that put `INNATE_PAYLOAD` there instead would write `0xFF`.
+    """
+    node = _effect(61, duration=0, value=12)
+    char = _dos_record([node])
     out = dos.to_neutral(char)
-    assert any("Ring of Fire Resistance" in d for d in out.dropped), \
-        out.dropped
+    assert [bytes(g) for g in out.get("granted_effects")] == [node]
+    _rec, _itm, spc, _rep = dos.write(out)
+    assert spc == node
 
 
-def test_a_record_with_only_innate_ids_reports_no_effect_drop():
+def test_a_strength_items_own_flag_byte_survives_the_write():
+    """ADDERLY's girdle: `26 00 00 5C 01`.  Byte 4 is the flag the engine
+    reads when the girdle comes off -- `add_affect`'s fifth argument, not
+    payload -- and byte 3 is the strength it replaced.  A writer that filled
+    both from `INNATE_PAYLOAD` would write `FF 00` and leave the character
+    with the girdle's strength for good.
+    """
+    node = bytes((38, 0, 0, 0x5C, 0x01)) + dos.EFFECT_NEXT_NULL
+    _rec, _itm, spc, _rep = dos.write(dos.to_neutral(_dos_record([node])))
+    assert spc == node
+    assert spc[1:5] != dos.INNATE_PAYLOAD
+
+
+def test_the_innate_records_come_first_and_the_granted_ones_after():
+    """Both kinds in one file, each written its own way.
+
+    The engine finds a node by walking the chain for an id and rebuilds the
+    chain from the file's length, so the order is ours to choose; what must
+    not happen is one kind being written with the other's four bytes.
+    """
+    innate = _effect(18, duration=0, value=0xFF)
+    ring = _effect(61, duration=0, value=12)
+    _rec, _itm, spc, _rep = dos.write(
+        dos.to_neutral(_dos_record([ring, innate])))
+    assert spc == innate + ring
+
+
+def test_a_record_with_only_innate_ids_sets_no_granted_field():
     """A racial id -- 18, the gnome's own THAC0 bonus -- is carried in
-    `innate_effects` and needs no line telling the player it was lost."""
+    `innate_effects`, and the field that would make a writer explain itself
+    is not set at all, so no player is told about a loss that did not
+    happen."""
     char = _dos_record([_effect(18, duration=0, value=0xFF)])
     out = dos.to_neutral(char)
+    assert "granted_effects" not in out
     assert not any("not carried" in d for d in out.dropped), out.dropped
 
 
-def test_a_running_spell_is_not_reported_either():
-    """Donald's 2026-08-27 ruling still holds for the ids `INNATE_EFFECTS`
-    turns away too: a spell with rounds left was never going to survive the
-    trip, and reporting it is noise a player did not ask for."""
+def test_a_running_spell_is_neither_carried_nor_reported():
+    """Donald's 2026-08-27 ruling: a spell with rounds left was going to
+    expire anyway, so it is not carried across and not put in front of the
+    player either.  The engine counts a nonzero duration down and removes the
+    node on the step that reaches it, so this one was on its way out.
+    """
     char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
     out = dos.to_neutral(char)
+    assert "granted_effects" not in out
     assert not any("not carried" in d for d in out.dropped), out.dropped
+    _rec, rep = c64_codec.write(out)
+    assert not any("not carried" in d for d in rep.dropped), rep.dropped
+
+
+def test_the_c64_names_the_granted_effect_it_cannot_carry():
+    """The one destination that still loses a ring's effect says so, in the
+    words a player reads: what the character had, and why this record has no
+    room for it.
+
+    No effect id, no file offset, no issue number -- Donald's wording,
+    2026-09-04, and `tests/test_dosconvert.py`'s two developer-detail guards
+    are what hold the line for the whole report.
+    """
+    char = _dos_record([_effect(61, duration=0, value=12)])
+    _rec, rep = c64_codec.write(dos.to_neutral(char))
+    lines = [d for d in rep.dropped if "Ring of Fire Resistance" in d]
+    assert len(lines) == 1, rep.dropped
+    assert "ten trait slots" in lines[0], lines[0]
+    # The id is the player's business to never see, and `capitalize()` would
+    # have rendered the effect's own name as "ring of fire resistance".
+    assert "61" not in lines[0], lines[0]
+    assert "ring of fire" not in lines[0], lines[0]
 
 
 # --- the writer, on a synthetic character ------------------------------------
@@ -263,6 +328,65 @@ def test_a_race_with_no_innate_effects_gets_no_spc_file():
         char.set("innate_effects", [], "made up: nothing in the trait slots")
         _, _, spc, _ = dos.write(char)
         assert spc == b"", race
+
+
+def _item_granted_specimen():
+    """The engine-written DOS record of a readied magical item, or None.
+
+    `$WISH_SPECIMENS`' `por-item-granted`: THRENDER GRONE's flail was given
+    effect byte 61 and power byte `0x80` in a staged copy of the shipped
+    party, readied through the game's own `VIEW > ITEMS > READY`, and the
+    party saved to slot D **by the game**, which is what wrote the `.SPC`.
+    `tools/dosspcexpiry.py ready` regenerates it in about five minutes.
+
+    Staging the item's two bytes and then reading what the engine computed
+    from them is the experiment `.claude/rules/testing.md` calls valid: the
+    engine does not care how a byte got into its input.  What is being read
+    back is the engine's own output.
+    """
+    import pathlib
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    from tools import specimens
+
+    for entry in specimens.list_specimens():
+        if entry.get("name") == "por-item-granted":
+            for path in entry["_files"]:
+                if path.name.endswith(".SAV"):
+                    return path
+    return None
+
+
+def test_the_engines_own_item_granted_record_survives_the_round_trip():
+    """The one DOS record anybody has that a ring's effect was written into
+    by the game itself.
+
+    Its `.SPC` is six nodes: four racial, a `BLESS` at two minutes, and
+    `3D 00 00 0C 00 00 00 00 00` -- effect 61 at duration zero, the value
+    `0x0C` and the removal flag clear.  The writer must hand back the four
+    racial records and the ring, drop the `BLESS`, and put `0x0C` rather than
+    `INNATE_PAYLOAD`'s `0xFF` in the ring's value byte.
+    """
+    path = _item_granted_specimen()
+    if path is None:
+        pytest.skip("no por-item-granted specimen; "
+                    "tools/dosspcexpiry.py ready makes one")
+    char = dos.read_character(path)
+    nodes = [bytes(e) for e in char.effects]
+    ring = [e for e in nodes if e[0] == 61]
+    assert len(ring) == 1 and ring[0][:5] == bytes((61, 0, 0, 0x0C, 0)), nodes
+
+    out = dos.to_neutral(char)
+    assert [bytes(g) for g in out.get("granted_effects")] == \
+        [ring[0][:5] + dos.EFFECT_NEXT_NULL]
+    _rec, _itm, spc, _rep = dos.write(out)
+    written = [spc[i:i + 9] for i in range(0, len(spc), 9)]
+    assert [w[0] for w in written] == [90, 97, 26, 47, 61], written
+    assert written[-1] == ring[0][:5] + dos.EFFECT_NEXT_NULL
+    # The BLESS had two minutes left and is neither written nor reported.
+    assert 1 not in [w[0] for w in written]
+    assert not any("not carried" in d for d in _rep.dropped), _rep.dropped
 
 
 def test_a_value_graded_unknown_is_not_written_to_dos():
@@ -717,8 +841,16 @@ def test_a_record_round_trips_through_the_neutral_middle():
     """DOS -> to_neutral -> write, against the original bytes.  Everything
     outside the writer's own unsourced list survives byte for byte, 24 of
     24; encumbrance is recomputed and matches wherever the original's own
-    identity balanced (22 of 24 -- the two stale dart stacks)."""
-    total = enc_misses = 0
+    identity balanced (22 of 24 -- the two stale dart stacks).
+
+    **The `.SPC` file is now every node the engine would not expire**, innate
+    and granted alike, and only a node with rounds left is left behind: 2 of
+    the 24 records carry a granted node and both come back byte for byte.
+    Before #232 (An item-granted effect is dropped on the way through the
+    neutral record, with no report) the assertion here was the innate records
+    alone.
+    """
+    total = enc_misses = granted = 0
     for char in _records():
         rec, itm, spc, _ = dos.write(dos.to_neutral(char))
         outside, enc = _diff_against(char, rec)
@@ -729,15 +861,21 @@ def test_a_record_round_trips_through_the_neutral_middle():
         for n, item in enumerate(char.items):
             ours = itm[n * 63:(n + 1) * 63]
             assert ours[0x02E:] == item.to_bytes()[0x02E:], (char.name, n)
-        # The `.SPC` is the original's innate records with the next pointers
-        # NULLed -- which is also the claim that every innate record in the
-        # player's own saves carries `INNATE_PAYLOAD` in bytes 1-4.
+        # The `.SPC` is the original's permanent records with the next
+        # pointers NULLed -- which is also the claim that every innate record
+        # in the player's own saves carries `INNATE_PAYLOAD` in bytes 1-4.
         innate = [e for e in char.effects if e[0] in dos.INNATE_EFFECTS]
-        assert spc == b"".join(e[:5] + bytes(4) for e in innate), char.name
+        kept = [e for e in char.effects
+                if e[0] not in dos.INNATE_EFFECTS
+                and int.from_bytes(e[1:3], "little") == 0]
+        granted += bool(kept)
+        assert spc == b"".join(e[:5] + bytes(4) for e in innate + kept), \
+            char.name
         for e in innate:
             assert e[1:5] == dos.INNATE_PAYLOAD, (char.name, e.hex())
     assert total >= 24
     assert enc_misses <= 2, f"{enc_misses} encumbrance misses of {total}"
+    assert granted, "no record here carries a permanent non-innate effect"
 
 
 @needs_dos_saves
