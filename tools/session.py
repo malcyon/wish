@@ -135,8 +135,23 @@ PARTY_COLUMN = 17
 PARTY_HEADER = "AC"
 PARTY_ROWS = range(0, 12)
 
+#: The dungeon's own move sub-bar, `I,J,K,M, RETURN OR BUTTON` -- `MOVE`
+#: already selected and waiting for a direction key.  It is what the game is
+#: showing right after a step that a script has interrupted, and the word
+#: `MOVE` is not on this row at all, so a caller that insists on selecting it
+#: first -- `walk_one` used to -- spends every one of its tries failing to
+#: find a word that was never going to be there (`#275`).
+MOVE_SUBBAR = "I,J,K,M"
+
 #: The bar the character sheet puts on row 24.  It carries no `NEXT`.
-SHEET_BAR = "VIEW:ITEMS"
+#:
+#: **Not one fixed string.**  A character carrying something gets
+#: `VIEW:ITEMS EXIT`; a character who owns nothing gets `VIEW:EXIT`, with no
+#: `ITEMS` on it because there is nothing to list -- so a driver waiting for
+#: the longer string waits out its whole timeout on an itemless character
+#: while the sheet sits drawn on screen (`#280`).  `VIEW:` is what both bars
+#: share, and nothing else on any other bar carries a colon.
+SHEET_BAR = "VIEW:"
 
 
 class Status(NamedTuple):
@@ -928,8 +943,8 @@ class Session:
         while time.time() < deadline:
             s = self.screen()
             # The name row fills in after the bar does, so wait for both --
-            # a sheet read on the first screen that says `VIEW:ITEMS` comes
-            # back half drawn.
+            # a sheet read on the first screen that says `VIEW:` comes back
+            # half drawn.
             if s is not None and SHEET_BAR in s.row(24) and s.row(1).strip():
                 time.sleep(0.6)
                 s = self.screen()
@@ -1172,6 +1187,17 @@ class Session:
         a move that never moves it is reported as blocked, which for a forward
         step is exactly the map fact worth having.
 
+        **Row 24 can already be `MOVE_SUBBAR`** -- a square with a script on
+        it answers the previous step with a room description, a load or a
+        `YES NO`, and comes back to `I,J,K,M, RETURN OR BUTTON` rather than to
+        the world's own command bar.  `MOVE` is already selected there, so
+        the direction key goes straight at it; asking `select_bar("MOVE")` to
+        find a word that is not on the row spent every one of the four tries
+        failing and reported the step as blocked when the game was only
+        waiting for a key (`#275`).  Whatever else a script's own screens
+        need answering is `tools/savecheck.py`'s `answer_bars`, called after
+        this returns.
+
         **None of that paragraph is true on the travel grid**, which is why
         the world is asked for first.  Out there the bar takes compass digits
         rather than `I J K M`, a turn does not exist so nothing may be re-sent
@@ -1182,11 +1208,16 @@ class Session:
             return self.walk_outdoors(move, hold, gap)
         before = self.status()
         for _ in range(tries):
-            if not self.select_bar("MOVE", timeout=8):
+            s = self.screen()
+            row = "" if s is None else s.row(24)
+            if MOVE_SUBBAR in row:
+                self.kbd.key(move.lower(), hold, gap)
+            elif self.select_bar("MOVE", timeout=8):
+                time.sleep(0.6)
+                self.kbd.key(move.lower(), hold, gap)
+            else:
                 self.leave_move(2)
                 continue
-            time.sleep(0.6)
-            self.kbd.key(move.lower(), hold, gap)
             time.sleep(1.2)
             if self.status() != before:
                 self.leave_move()
@@ -1308,7 +1339,7 @@ class Session:
                 self.kbd.key("Return", 0.20, 0.30)
             time.sleep(0.6)
             s = self.screen()
-            if s is not None and not s.contains("I,J,K,M"):
+            if s is not None and not s.contains(MOVE_SUBBAR):
                 return True
             self.handle_prompt(s)
         return False
@@ -1864,7 +1895,7 @@ class Session:
         `tactic(session, state)` is called once per command bar and returns
         what it chose; the default passes the turn with `DONE`.
 
-        **`budget` is a floor on when this gives up, not a ceiling on how
+        **`budget` says how long this runs at minimum, not a limit on how
         long it runs.**  The deadline is tested once per iteration, and the
         calls inside one iteration carry their own timeouts: this method
         clamps its own to whatever is left, but a tactic's do not, so

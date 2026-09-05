@@ -152,6 +152,22 @@ def answer_bars(sess, log: Log, answer: str = "NO", tries: int = 60,
     return "stuck"
 
 
+def walk_step_routed(sess, log: Log, answer: str = "NO") -> str:
+    """What got answered after one walked move, on top of `Session.handle_prompt`.
+
+    A square with a script on it answers a walked step with several screens,
+    not one -- a room description, `PRESS <RETURN>`, a load, a `YES NO` --
+    and `Session.walk_one` only ever presses the move key itself, so nothing
+    else read those screens.  This used to run only when `--route` asked for
+    it, so a walk into the training hall reported the party blocked, four
+    tries and about two minutes at a time, on a game that was only waiting on
+    a question (`#275`).  Now it runs after every move, the way the walk
+    loop already runs `answer_bars` once after `BEGIN ADVENTURING`.
+    """
+    sess.handle_prompt()
+    return answer_bars(sess, log, answer)
+
+
 def icon_bytes(disks: pathlib.Path) -> bytes:
     """The 36 bytes of the icon a conversion writes, off a game disk.
 
@@ -775,10 +791,7 @@ def run(args, log: Log) -> int:
         log.say(f"the resident area is {was}")
         for move in args.walk:
             moved = sess.walk_one(move)
-            sess.handle_prompt()
-            if args.route:
-                # A walked area change is several screens, not one keypress.
-                log.say(f"  after {move}: {answer_bars(sess, log, args.answer)}")
+            log.say(f"  after {move}: {walk_step_routed(sess, log, args.answer)}")
             now = area(sess)
             # Read once and reported three times.  It used to be read three
             # times, which is up to 24 screen reads for one line of log -- and
@@ -981,10 +994,8 @@ def main(argv=None) -> int:
                         "write the party back, and copy that disk here")
     p.add_argument("--icon", action="store_true",
                    help="check the combat floor against the composed icon")
-    p.add_argument("--route", action="store_true",
-                   help="answer the screens a walked area change puts up")
     p.add_argument("--answer", default="NO",
-                   help="what to answer a YES NO bar while routing")
+                   help="what to answer a YES NO bar a walked step puts up")
     p.add_argument("--arrive", type=float, default=240.0,
                    help="seconds to wait for the world bar after BEGIN "
                         "ADVENTURING; an arrival that animates needs longer")
