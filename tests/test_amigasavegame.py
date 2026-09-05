@@ -256,3 +256,84 @@ def test_a_pool_of_radiance_save_names_its_party_after_its_slot(specimens):
         seen += 1
     if not seen:
         pytest.skip("no Pool of Radiance saved game on this machine")
+
+
+# -- writing a party back into a saved game (#28 step 4) ---------------------
+
+def test_a_synthetic_save_rebuilds_to_the_bytes_it_was_read_from():
+    """The identity that makes every other claim about the writer testable.
+
+    `rebuild` puts the header back, writes the count, and concatenates each
+    character's `block_bytes`; a save whose party has not changed must come
+    back byte for byte, or the writer is doing something the reader did not
+    see.
+    """
+    for build in (synthetic_curse, synthetic_silver_blades):
+        data = build()
+        assert amigasavegame.rebuild(parse(data)) == data
+
+
+def test_a_shorter_party_shortens_the_file_and_moves_nothing_else():
+    """The party region is the last thing in the file, so a party that loses
+    a character shortens it by exactly that character's block and leaves
+    every byte in front of the count where it was."""
+    data = synthetic_curse(("ALPHA", "BETA"))
+    save = parse(data)
+    out = amigasavegame.rebuild(save, save.characters[:1])
+    assert len(out) == len(data) - amiga.CURSE_SHAPE.record_size
+    at = CURSE.vm_offset(0x503E)
+    moved = [i for i in range(CURSE.count_at) if out[i] != data[i]]
+    assert moved == [at + 1], moved
+    again = parse(out)
+    assert again.count == 1
+    assert [c.name for c in again.characters] == ["ALPHA"]
+    assert all(ok for _, ok, _ in check(again)), check(again)
+
+
+def test_the_party_size_word_is_kept_truthful():
+    """`$503E` is cleared and rebuilt by both loaders, so the file's copy is
+    never read -- but a saved game that says six in one place and one in
+    another is a file that lies to the next reader, including `check`."""
+    save = parse(synthetic_curse(("ALPHA", "BETA")))
+    out = parse(amigasavegame.rebuild(save, save.characters[:1]))
+    assert out.word(0x503E) == out.count == 1
+
+
+def test_a_party_from_the_wrong_title_is_refused():
+    save = parse(synthetic_curse())
+    other = parse(synthetic_silver_blades()).characters
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.rebuild(save, other)
+
+
+def test_an_empty_or_oversized_party_is_refused():
+    save = parse(synthetic_curse())
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.rebuild(save, [])
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.rebuild(save, save.characters * 4)
+
+
+def test_pool_of_radiance_is_refused_because_its_party_is_not_in_the_file():
+    save = parse(synthetic_pool_of_radiance())
+    with pytest.raises(AmigaSaveError):
+        amigasavegame.rebuild(save)
+
+
+def test_a_specimen_saved_game_rebuilds_byte_for_byte(specimens):
+    """The same identity against the two saved games this project has.
+
+    They are **found** files rather than ones we watched being written, so
+    this tests our reader and writer against each other and establishes
+    nothing about the format; what establishes the format is the loader,
+    read in `goldbox/amiga.py`.
+    """
+    seen = 0
+    for label, data in specimens:
+        save = parse(data, source=label)
+        if save.shape.party != "records":
+            continue
+        assert amigasavegame.rebuild(save) == data, label
+        seen += 1
+    if not seen:
+        pytest.skip("no Curse or Silver Blades saved game on this machine")

@@ -26,6 +26,7 @@ import argparse
 import dataclasses
 import pathlib
 import sys
+from typing import Sequence
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -317,6 +318,57 @@ def parse(data: bytes, shape: SaveShape | None = None,
                          count, tuple(characters), tuple(blocks), tuple(names))
 
 
+#: The most characters either later title's picker will put in a party.  The
+#: count is a `u16be` in the file and the loader trusts it with no bound of
+#: its own, so this is the game's rule rather than the format's.
+PARTY_MAX = 6
+
+
+def rebuild(save: AmigaSavegame,
+            characters: "Sequence[amiga.AmigaCharacter] | None" = None
+            ) -> bytes:
+    """A saved game with a new party in it, and everything else untouched.
+
+    The party region is the **last** thing in a Curse or Silver Blades saved
+    game -- both specimens end exactly where the last block does -- so the
+    file is the header up to the count, the count as a `u16be`, and then the
+    blocks.  Nothing before the count moves, which is the point: the variable
+    array, the staged area script and the square block are the caller's own
+    save, and this changes only the region it can account for byte by byte.
+
+    `characters` defaults to the ones already in the file, which makes the
+    identity a test rather than a claim: `rebuild(parse(data)) == data` on
+    every specimen there is.
+
+    **What this cannot say** is whether the game will load the result.  The
+    format takes it -- the loader has no checksum, no length field and no
+    signature, and `goldbox.amiga.AmigaCharacter.block_bytes` sets the three
+    chain fields it does test -- but a save the engine has actually accepted
+    is an emulator's word and nobody has had one on screen.
+    """
+    s = save.shape
+    if s.party != "records":
+        raise AmigaSaveError(
+            f"{s.title} keeps its party in files beside the saved game, not "
+            f"in it; goldbox.amiga.write_por_slot writes that one")
+    party = save.characters if characters is None else tuple(characters)
+    if not 1 <= len(party) <= PARTY_MAX:
+        raise AmigaSaveError(
+            f"a {s.title} party is 1 to {PARTY_MAX} characters; "
+            f"{len(party)} given")
+    for n, char in enumerate(party):
+        if char.shape is not s.record_shape:
+            raise AmigaSaveError(
+                f"character {n} is a {char.shape.title} record and this is a "
+                f"{s.title} saved game")
+    head = bytearray(save.data[:s.count_at])
+    at = s.vm_offset(0x503E)
+    head[at:at + 2] = len(party).to_bytes(2, "big")
+    return (bytes(head)
+            + len(party).to_bytes(s.count_bytes, "big")
+            + amiga.party_block_bytes(party))
+
+
 def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
     """Every way the file can contradict the map, as `(claim, ok, detail)`.
 
@@ -350,6 +402,10 @@ def check(save: AmigaSavegame) -> list[tuple[str, bool, str]]:
                         and n[7].isdigit() for n in used), str(used)))
         out.append(("the count is at most the eight slots",
                     save.count <= NAME_SLOTS, str(save.count)))
+    if s.party == "records":
+        out.append(("the party rebuilds to the bytes it was read from",
+                    rebuild(save) == save.data,
+                    f"{len(rebuild(save))} bytes against {len(save.data)}"))
     out.append(("facing is doubled: 0, 2, 4 or 6",
                 save.square["facing"] in (0, 2, 4, 6),
                 str(save.square["facing"])))

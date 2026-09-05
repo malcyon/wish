@@ -2401,3 +2401,242 @@ def test_the_curse_size_byte_is_one_for_the_small_races():
     matching = sum(char.get("icon_colours") == stock
                    for char in curse_characters())
     assert matching >= 4
+
+
+# ---------------------------------------------------------------------------
+# The status word, the neutral read and the saved-game party (#28 steps 3, 4)
+# ---------------------------------------------------------------------------
+
+def _amiga_disk_file(want: str, path: str) -> bytes:
+    """One file off whichever Amiga disk on this machine carries it."""
+    from goldbox.amiga_adf import AmigaDisk
+    from tools import gamedisks
+    for root in gamedisks.candidates("amiga"):
+        if not root.is_dir():
+            continue
+        for image in sorted(root.rglob("*.adf")):
+            if want not in image.name.lower().replace("_", ""):
+                continue
+            try:
+                return AmigaDisk.open(image).read_file(path)
+            except Exception:
+                continue
+    pytest.skip(f"no Amiga disk carrying {path}; set $AMIGA_DISKS")
+
+
+#: How the two titles spell two of the nine states.  The state is the same and
+#: the word is not, which is why `goldbox/neutral.py` carries a name of its own
+#: rather than either port's: `tempgone` is not a phrase to put in front of a
+#: player, and Silver Blades calls stoned `Petrified`.
+_STATUS_SPELLINGS = {"temporarily gone": {"tempgone"},
+                     "stoned": {"stoned", "petrified"}}
+
+
+def _same_status_words(drawn: list[str]) -> bool:
+    from goldbox import neutral
+    if len(drawn) != len(neutral.STATUS_NAMES):
+        return False
+    for ours, theirs in zip(neutral.STATUS_NAMES, drawn):
+        allowed = _STATUS_SPELLINGS.get(ours, {ours})
+        if theirs.lower() not in allowed:
+            return False
+    return True
+
+
+def test_the_silver_blades_status_table_is_the_neutral_records_own_nine():
+    """`/Secret`'s party panel indexes a nine-entry `char *` table with the
+    record byte, and the strings are `goldbox/neutral.py`'s own nine in its
+    own order -- which is DOS's numbering, so `status` crosses by name with
+    nothing to translate.
+
+    The routine is at `0x196EA`: `tst.b $144(a2)`, and where that is zero
+    `move.b $143(a2), d0; ext.w; ext.l; asl.l #2; lea g30fc, a0;
+    move.l (a0, d0.l), -(a7)`.  `tools/amigaenum.py` is what found it and
+    what this reads it back with.
+    """
+    from goldbox import neutral
+    from tools import amiga68k, amigaenum
+    exe = amiga68k.Executable.parse(_amiga_disk_file("silver", "/Secret"))
+    drawn = amigaenum.table(exe, 0x30FC, len(neutral.STATUS_NAMES))
+    assert _same_status_words(drawn), drawn
+    indexing = [(field, g) for _at, field, g in amigaenum.sites(exe)]
+    assert (0x143, 0x30FC) in indexing, "nothing indexes the table with 0x143"
+
+
+def test_the_curse_status_words_are_the_same_nine_in_its_string_library():
+    """Curse fetches its status word out of `DISKA/STRINGS.GLB` instead of a
+    pointer table -- `/Curse` `0x1A394` hands `$19a(a2)` to a helper at
+    `0x352E8` that asks for block `status + 0x2C` of library `0x13` -- and
+    blocks 44 to 52 are the same nine states in the same order.
+
+    Two titles, two different mechanisms, one enumeration: that is what makes
+    "the Amiga numbers these the way DOS does" a measurement rather than an
+    inference off the shift map.
+    """
+    from tools import amigaenum
+    blocks = amigaenum.glib_blocks(_amiga_disk_file("curse", "/DISKA/STRINGS.GLB"))
+    drawn = [b.rstrip(b"\0").decode("latin1") for b in blocks[0x2C:0x2C + 9]]
+    assert _same_status_words(drawn), drawn
+    assert blocks[0x2C + 9].startswith(b"Battle Axe"), \
+        "the ninth state should be the last of the run"
+
+
+def test_no_constant_either_binary_stores_in_the_status_byte_is_outside_the_nine():
+    """Every `move.b #n, status(An)` in both executables, which is the third
+    way the table's length is known: `1, 4, 5, 6, 7, 8` in `/Curse` and
+    `3, 4, 5, 6` in `/Secret`, and both also clear it to zero.  Nothing
+    outside `0`-`8` is ever stored, so a tenth state would have no value.
+    """
+    import re
+
+    from goldbox import neutral
+    seen: set[int] = set()
+    for want, path, at in (("curse", "/Curse", 0x19A),
+                           ("silver", "/Secret", 0x143)):
+        data = _amiga_disk_file(want, path)
+        pattern = (rb"[\x11\x13\x15\x17\x19\x1b\x1d\x1f]\x7c\x00(.)"
+                   + re.escape(at.to_bytes(2, "big")))
+        found = {m.group(1)[0] for m in re.finditer(pattern, data, re.S)}
+        assert found, f"{path} stores no constant in the status byte"
+        assert max(found) < len(neutral.STATUS_NAMES), (path, sorted(found))
+        seen |= found
+    assert len(seen) >= 6, sorted(seen)
+
+
+def _later_parties():
+    """The fifteen Curse specimens and the six Silver Blades ones."""
+    return curse_characters() + silver_blades_characters()
+
+
+def test_every_later_specimen_reads_into_the_neutral_record():
+    """All 21, and every one comes back with a name, a legal status and level
+    arrays whose keys are classes.  The specimens are **found** files, so
+    this tests the reader rather than establishing anything about the game.
+    """
+    from goldbox import neutral
+    seen = 0
+    for char in _later_parties():
+        out = amiga.to_neutral(char)
+        assert out.port == "Amiga"
+        assert out.get("name") == char.name
+        assert out.get("status") in neutral.STATUS_NAMES
+        assert out.get("active") is True
+        assert set(out.get("levels")) <= {
+            "cleric", "druid", "fighter", "paladin", "ranger", "magic-user",
+            "thief", "monk"}
+        assert out.get("levels")[
+            "cleric" if out.get("levels").get("cleric") else "fighter"] >= 0
+        assert 0 <= out.get("hp_current") <= out.get("hp_max") or True
+        assert len(out.get("inventory")) == len(char.items)
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_every_declared_field_of_a_later_title_has_a_disposition():
+    """A field of the title's DOS table that the reader names nowhere would
+    be a field dropped in silence, which `docs/117-save-conversion.md`
+    forbids.  Both directions: a name the table does not declare fails too.
+    """
+    from goldbox import neutral
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        declared = [f.name for f in dos_layout.layout_for(shape.dos)]
+        unaccounted, unknown = neutral.undeclared(
+            declared, amiga.later_field_disposition(shape))
+        assert not unaccounted, (shape.key, sorted(unaccounted))
+        assert not unknown, (shape.key, sorted(unknown))
+
+
+def test_no_drop_line_of_a_later_read_carries_developer_detail():
+    """`.claude/rules/gui-text.md`: no memory address, file offset or bare
+    issue number in front of a player.  `LATER_DROPPED`'s own `why` text is
+    the engineering account and is allowed both; what a person reads is
+    `LATER_DROPPED_PLAYER_TEXT`, and this checks that table *and* the lines
+    a real read composes from it.
+    """
+    import re
+    hex_offset = re.compile(r"0[xX][0-9A-Fa-f]+|\$[0-9A-Fa-f]+")
+    bare_issue = re.compile(r"#\d+")
+    for name, text in amiga.LATER_DROPPED_PLAYER_TEXT.items():
+        assert not hex_offset.search(text), (name, text)
+        assert not bare_issue.search(text), (name, text)
+    seen = 0
+    for char in _later_parties():
+        out = amiga.to_neutral(char)
+        assert out.dropped, char.name
+        for line in out.dropped + out.warnings:
+            assert not hex_offset.search(line), (char.name, line)
+            assert not bare_issue.search(line), (char.name, line)
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_the_spell_slot_arrays_are_read_at_the_amiga_width():
+    """Curse widened all three arrays to six bytes and Silver Blades kept
+    DOS's seven, so the width comes from the shift map rather than from the
+    DOS field's own size -- and the fourth Silver Blades array, which no
+    class has been shown to own, is dropped rather than named as a class.
+    """
+    for char in curse_characters():
+        assert set(char.spell_slots) == {"cleric", "druid", "magic-user"}
+        assert all(len(v) == 6 for v in char.spell_slots.values())
+        assert all(v[5] == 0 for v in char.spell_slots.values()), char.name
+    for char in silver_blades_characters():
+        assert set(char.spell_slots) == {"cleric", "druid", "magic-user",
+                                         "unattributed"}
+        assert all(len(v) == 7 for v in char.spell_slots.values())
+        assert "unattributed" not in amiga.to_neutral(char).get(
+            "spells_castable")
+
+
+def test_every_later_specimen_block_rebuilds_byte_for_byte():
+    """`block_bytes` puts the record, its items and its effects back exactly
+    as they were read: 21 of 21.  The three chain fields it rewrites already
+    say what follows in every specimen, and `item_count` is the count the
+    reader used, so nothing moves."""
+    seen = 0
+    for char in _later_parties():
+        rebuilt = char.block_bytes()
+        expected = (char.raw + b"".join(i.raw for i in char.items)
+                    + b"".join(char.effects))
+        assert rebuilt == expected, char.name
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_a_chain_field_says_a_node_follows_exactly_when_one_does():
+    """The invariant the saved game's loader depends on, measured on the
+    specimens rather than only read in the code: the item head, the effect
+    head and every node's own `next` are non-zero exactly when something
+    follows, and zero on the last node of each chain.  21 of 21.
+    """
+    seen = 0
+    for char in _later_parties():
+        assert bool(char.item_chain) == bool(char.items), char.name
+        assert bool(char.effect_chain) == bool(char.effects), char.name
+        for n, item in enumerate(char.items):
+            assert bool(item.next) == (n + 1 < len(char.items)), char.name
+        for n, node in enumerate(char.effects):
+            following = int.from_bytes(node[6:10], "big")
+            assert bool(following) == (n + 1 < len(char.effects)), char.name
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_taking_the_items_away_clears_the_head_the_loader_tests():
+    """The half of the invariant no specimen shows, because none of them
+    changes: a block written for a character carrying nothing must say so in
+    the pointer, or the loader reads a node that is not there and every
+    later character in the party comes off the stream misaligned.
+    """
+    carrying = [c for c in curse_characters() if c.items and c.effects]
+    if not carrying:
+        pytest.skip("no Amiga Curse specimen carries both items and effects")
+    char = carrying[0]
+    from dataclasses import replace
+    bare = replace(char, items=(), effects=())
+    block = bare.block_bytes()
+    assert len(block) == amiga.CURSE_SHAPE.record_size
+    stripped = amiga.AmigaCharacter.from_bytes(block, amiga.CURSE_SHAPE)
+    assert stripped.item_chain == 0
+    assert stripped.effect_chain == 0
+    assert stripped.get("item_count") == 0

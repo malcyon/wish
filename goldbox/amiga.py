@@ -41,7 +41,7 @@ from typing import Sequence
 
 from . import dos_layout, games, neutral
 from .amiga_adf import AmigaDiskError
-from .layout import Kind
+from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
 
 #: The C64 record's `60 - value` bias turns up here too, on armour class.
@@ -1422,15 +1422,22 @@ def to_dos_record(char: AmigaPorCharacter) -> bytes:
     return bytes(out)
 
 
-def to_neutral(char: AmigaPorCharacter) -> NeutralCharacter:
-    """One Amiga Pool of Radiance character in the neutral record.
+def to_neutral(char) -> NeutralCharacter:
+    """One Amiga character in the neutral record, whichever title wrote it.
 
     The Amiga third of `goldbox/neutral.py`'s reader set, beside
     `goldbox.c64_codec.read` and `goldbox.dos.to_neutral`.  It reports what it could
     not carry rather than filling it in: an item file the record's own count
     disagrees with, a name that fills all sixteen bytes, and the unplaced
     window.
+
+    An `AmigaCharacter` -- Curse or Silver Blades -- goes to
+    :func:`to_neutral_later`, which reads its own title's field table.  The
+    rest of this function is Pool of Radiance's, and re-cuts the record into
+    the DOS one so that `goldbox.dos.to_neutral` does the reading.
     """
+    if isinstance(char, AmigaCharacter):
+        return to_neutral_later(char)
     # Deferred: `goldbox.dos` is the heavier module and this is its only caller.
     from . import dos as _dos
 
@@ -2459,6 +2466,112 @@ AMIGA_SSB_SPELLBOOK_BYTES = 15
 AMIGA_SSB_SPELLBOOK_AT = 0x071
 
 
+# ---------------------------------------------------------------------------
+# The status word, named from the routine that draws it (#28, step 3)
+# ---------------------------------------------------------------------------
+#
+# **Both later Amiga titles number the nine states the way DOS does**, so
+# `goldbox/neutral.py`'s `STATUS_NAMES` is their table as well and `status`
+# crosses by name with nothing to translate.  That is not an assumption from
+# the shift map: it is two string tables in two binaries, each reached by the
+# routine that paints the party panel.
+#
+#   * `/Secret` `0x196EA`: `tst.b $144(a2)`, and where that is zero
+#     `move.b $143(a2), d0; ext.w; ext.l; asl.l #2; lea g30fc, a0;
+#     move.l (a0, d0.l), -(a7)` -- a nine-entry `char *` table at file offset
+#     `0x4F9B8` pointing at `Okay`, `Animated`, `tempgone`, `Running`,
+#     `Unconscious`, `Dying`, `Dead`, `Petrified`, `Gone`.  The same table is
+#     indexed a second time at `0x2208C`, off the current character.
+#   * `/Curse` `0x1A38E`: `tst.b $19b(a2)`, and where that is zero
+#     `move.w $19a(a2)` into a helper at `0x352E8` that fetches block
+#     `status + 0x2C` of text library `0x13`.  That library is
+#     `DISKA/STRINGS.GLB`, and its blocks 44 to 52 read `Okay`, `Animated`,
+#     `tempgone`, `Running`, `Unconscious`, `Dying`, `Dead`, `Stoned`,
+#     `Gone` -- DOS's own ninth word where `/Secret` says `Petrified`.
+#
+# Amiga `0x143` is DOS `0x1A6` under `SILVER_BLADES_SHAPE` and Amiga `0x19A`
+# is DOS `0x195` under `CURSE_SHAPE`, and both are the **first byte of
+# `field_10c_10f`** -- the same field DOS Pool of Radiance keeps the status in
+# at `0x10C` (#235).  Each title's unpacker copies those bytes one at a time
+# rather than as a run, which is a third routine agreeing that they are three
+# separate fields.
+#
+#: The DOS field whose first byte is the status the party panel draws.
+AMIGA_LATER_STATUS_FIELD = "field_10c_10f"
+
+#: The byte after the status, and **it is not DOS Pool of Radiance's `active`
+#: flag on the evidence there is.**  Where it is non-zero the panel draws
+#: `(Helpless)` or `(Casting)` in place of the status word, which is combat
+#: state rather than "the game has taken this character out of the party".
+#: UNKNOWN, and not carried.  What would settle it: knock a character down in
+#: an Amiga Curse fight, save, and read the byte; and put a character in the
+#: state that draws the name red and read it again.
+AMIGA_LATER_STATUS_GATE = 1
+
+# ---------------------------------------------------------------------------
+# What the loader needs of a block it did not write (#28, step 4)
+# ---------------------------------------------------------------------------
+#
+# The saved game's per-character loader -- `/Curse` `0x25056`, `/Secret`
+# `0x268C0` -- reads the record and then **decides whether an item node
+# follows by testing the pointer the record itself carries**:
+#
+#     read(fd, record, 0x1AC)              ; 0x154 in /Secret
+#     tst.l   $152(a0)                     ; $fe(a0) in /Secret
+#     beq     no items
+#     alloc(&record[0x152], 0x42)          ; overwrites the tested value
+#     read(fd, record[0x152], 0x42)
+#     a3 = record[0x152]
+#   loop:
+#     tst.l   $2a(a3)                      ; the node's own next pointer
+#     beq     done
+#     alloc(&a3[0x2a], 0x42); read(...); a3 = a3->next
+#
+# and the effect chain the same way from `$f2(a0)` / `$96(a0)`, ten bytes a
+# node, next at node offset 6.  **The stored pointer is a boolean.**  Its
+# value is never dereferenced: `alloc` overwrites it with the address it
+# returns before the `read` that fills the node.  `item_count` is not
+# consulted by the loader at all.
+#
+# So a saved game we write must carry a **non-zero** head where nodes follow
+# and a **zero** one where they do not, and a wrong answer is not a cosmetic
+# fault: every character is read from one file descriptor in sequence, so a
+# head left NULL in front of a node that is really there leaves the stream
+# mid-block and every later character in the party reads rubbish.
+#
+# That is the opposite of the Pool of Radiance rule, where `.itm` and `.spc`
+# are separate files and the chain is rebuilt from the file's length -- which
+# is why `write_por` writes NULL and this must not.
+#
+# Corroborated on **21 of 21 records** off the shipped disks, independently of
+# the code: the eleven Curse `.guy` pregens, the four characters in
+# `SAVE/savgamA.dat` and the six in `SAVE/savgamA.sav` all carry a non-zero
+# head exactly when a node follows, a non-zero `next` on every node but the
+# last, and zero on the last.  The addresses step by 66 along an item chain
+# and by 10 along an effect chain, which is what a heap of those node sizes
+# looks like.
+#
+#: What to put in a chain field when a node follows and the record's own value
+#: cannot be kept.  Any non-zero longword does; 1 is chosen because it cannot
+#: be mistaken for an Amiga heap address in a dump.
+AMIGA_LATER_CHAIN_PRESENT = 1
+#: The item node's own next pointer, and the effect node's.
+AMIGA_LATER_ITEM_NEXT = 0x02A
+AMIGA_LATER_EFFECT_NEXT = 0x006
+
+
+def _chain_bytes(present: bool, current: int) -> bytes:
+    """Four big-endian bytes for a chain field, keeping what is there.
+
+    A value whose truth already matches what follows is left alone, so a
+    saved game read and written back is byte for byte the file it came from;
+    only a field that would lie to the loader is changed.
+    """
+    if bool(current) == present:
+        return current.to_bytes(4, "big")
+    return (AMIGA_LATER_CHAIN_PRESENT if present else 0).to_bytes(4, "big")
+
+
 @dataclass(frozen=True)
 class AmigaItem:
     """One item node of a later Amiga Gold Box title.
@@ -2524,6 +2637,36 @@ class AmigaItem:
         if f.kind is Kind.U8:
             return chunk[0]
         return chunk
+
+    def to_dos_bytes(self) -> bytes:
+        """This node as the 63 bytes `goldbox/dos_layout.py` describes.
+
+        The same re-cut :meth:`AmigaPorItem.to_dos_bytes` makes, through this
+        title's own item shift map: the display text becomes DOS's count byte
+        and 41, every `u16` is byte-swapped, and the `next` far pointer is
+        written NULL because it is a live Amiga heap address.
+
+        **Silver Blades' node is 70 bytes and the last four are not carried.**
+        `AMIGA_SSB_SCROLL_CHAIN` heads a scroll's extra spell nodes, and the
+        63 bytes DOS's shared item table describes have no room for it; DOS
+        Silver Blades' own item is 67 bytes and `#254` is where its last four
+        are being read.
+        """
+        out = bytearray(dos_layout.ITEM_SIZE)
+        text = self.raw[:self.shape.item_text]
+        line = text.split(b"\0")[0]
+        size = dos_layout.ITEM_FIELDS_BY_NAME["text"].size
+        out[0] = min(len(line), size)
+        out[1:1 + size] = text[:size].ljust(size, b"\0")
+        for f in dos_layout.ITEM_LAYOUT:
+            if f.name in ("text_length", "text", "next"):
+                continue
+            at = self.shape.item_offset(f.offset)
+            chunk = self.raw[at:at + f.size]
+            if f.kind in (Kind.U16LE, Kind.UINT_LE):
+                chunk = chunk[::-1]
+            out[f.offset:f.offset + f.size] = chunk
+        return bytes(out)
 
 
 @dataclass(frozen=True)
@@ -2639,6 +2782,94 @@ class AmigaCharacter:
         word and a segment word."""
         return int.from_bytes(self.get("effect_chain"), "big")
 
+    @property
+    def item_chain(self) -> int:
+        """The item list head, `u32` big-endian: the first slot of the DOS
+        record's 56-byte pointer array, which is what the saved game's writer
+        walks and its loader tests."""
+        return int.from_bytes(self.get("item_chain")[:4], "big")
+
+    @property
+    def status(self) -> int:
+        """The state the party panel puts into words, 0 to 8.
+
+        `AMIGA_LATER_STATUS_FIELD`'s first byte, indexing
+        `goldbox.neutral.STATUS_NAMES` -- **DOS's own numbering**, read out of
+        the string table each title's panel routine indexes.
+        """
+        return self.get(AMIGA_LATER_STATUS_FIELD)[0]
+
+    @property
+    def spell_slots(self) -> dict[str, tuple[int, ...]]:
+        """Each spell-slot array, at the width the Amiga record gives it.
+
+        Curse widens all three arrays to **six** bytes where DOS spends five
+        and Silver Blades keeps DOS's seven, so the width is taken from the
+        shift map -- the distance from one array's Amiga base to the next
+        field's -- rather than from the DOS field's own size.  The key is the
+        class the array belongs to, or the DOS field's name where nobody has
+        attributed it.
+        """
+        table = dos_layout.layout_for(self.shape.dos)
+        out: dict[str, tuple[int, ...]] = {}
+        for n, f in enumerate(table):
+            if not f.name.startswith("spells_castable"):
+                continue
+            at = self.shape.offset(f.offset)
+            end = (self.shape.offset(table[n + 1].offset)
+                   if n + 1 < len(table) else self.shape.record_size)
+            out[f.name[len("spells_castable_"):].replace("_", "-")] = tuple(
+                self.raw[at:end])
+        return out
+
+    def block_bytes(self) -> bytes:
+        """The record, its item nodes and its effect chain, as a saved game
+        holds them -- and as the loader will accept them.
+
+        The three chain fields the loader tests are made to match what
+        actually follows (`_chain_bytes`), and `item_count` is set to the
+        number of nodes there really are; everything else is the bytes this
+        object was read from.  A block read out of a saved game and written
+        back through here is byte for byte the block that came in, because
+        `_amiga_block` read the nodes by that same count and a chain field
+        whose truth already matches is left alone.
+        """
+        record = bytearray(self.raw)
+        record[self.shape.offset(
+            self.shape.dos_field("item_count").offset)] = len(self.items)
+        at = self.shape.offset(self.shape.dos_field("item_chain").offset)
+        record[at:at + 4] = _chain_bytes(bool(self.items), self.item_chain)
+        at = self.shape.offset(self.shape.dos_field("effect_chain").offset)
+        record[at:at + 4] = _chain_bytes(bool(self.effects), self.effect_chain)
+
+        items = []
+        for n, item in enumerate(self.items):
+            raw = bytearray(item.raw)
+            here = AMIGA_LATER_ITEM_NEXT
+            raw[here:here + 4] = _chain_bytes(n + 1 < len(self.items),
+                                              item.next)
+            items.append(bytes(raw))
+        effects = []
+        for n, node in enumerate(self.effects):
+            raw = bytearray(node)
+            here = AMIGA_LATER_EFFECT_NEXT
+            raw[here:here + 4] = _chain_bytes(
+                n + 1 < len(self.effects),
+                int.from_bytes(node[here:here + 4], "big"))
+            effects.append(bytes(raw))
+        return bytes(record) + b"".join(items) + b"".join(effects)
+
+
+def party_block_bytes(characters: Sequence[AmigaCharacter]) -> bytes:
+    """A saved game's whole character region, in marching order.
+
+    The party is a plain concatenation of :meth:`AmigaCharacter.block_bytes`
+    with no separator and no index: the loader reads the party-count word and
+    then reads one block after another off the same file descriptor, so the
+    blocks' own lengths are what tell it where each begins.
+    """
+    return b"".join(c.block_bytes() for c in characters)
+
 
 def _amiga_block(data: bytes, at: int, shape: AmigaShape,
                  source: str = "") -> "tuple[AmigaCharacter, int]":
@@ -2750,3 +2981,306 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
         else:
             at += 1
     return found
+
+
+# ---------------------------------------------------------------------------
+# Amiga Curse and Silver Blades -> the neutral record (#28, step 3)
+# ---------------------------------------------------------------------------
+#
+# The third and fourth readers in `goldbox/neutral.py`'s set, beside
+# `goldbox.c64_codec.read`, `goldbox.dos.to_neutral` and `to_neutral` above.
+#
+# **It does not go through `goldbox.dos.to_neutral` the way the Amiga Pool of
+# Radiance reader does, and that is not a choice.**  That reader re-cuts its
+# record into the 285-byte DOS one and hands it over, so every grade and every
+# provenance line the DOS side earned carries across.  `goldbox.dos.to_neutral`
+# raises `WrongTitleError` for anything but Pool of Radiance -- no other pair
+# of ports has been measured against each other yet (#53) -- so there is
+# nothing here to hand a Curse record to.  What this reader shares with it
+# instead is the **field table**: every value below is read through
+# `goldbox/dos_layout.py`'s own table for the title, at that field's own
+# confidence, so a correction there reaches here with no second edit.
+#
+# Two conventions come from what landed for the DOS side on 2026-09-04 and are
+# followed rather than reinvented:
+#
+#   * `granted_effects` carries **whole nine-byte effect records** -- the id,
+#     a little-endian duration of zero, the value the effect carries and the
+#     flag the engine reads when the item comes off -- because what a ring is
+#     worth is in the record rather than in the id (#232);
+#   * `status` is carried as a **name** (#235).  Here the name costs nothing:
+#     both later Amiga titles index `neutral.STATUS_NAMES` in DOS's own order,
+#     which is measured rather than assumed -- see
+#     `AMIGA_LATER_STATUS_FIELD` above for the two string tables.
+#
+#: Fields of the title's DOS table with a neutral home of the same name.
+#: Taken from `goldbox.dos.DIRECT` at call time rather than copied, because a
+#: field that changes meaning there must not go on meaning the old thing here.
+#: Every one of the fifty is in both later titles' tables.
+#:
+#: What is **not** here and is carried by a rule below: the name, the
+#: spellbook, the memorised spells, the level arrays, the spell-slot arrays,
+#: size, turn power, the status and its flag, the attack forms, the roster
+#: tail, the effect records and the items.
+LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
+    ("name_length", "there is no count byte: the Amiga name is 16 bytes "
+                    "terminated and padded with NUL"),
+    ("name_text", "the sixteen NUL-padded bytes, as the neutral name"),
+    ("spellbook", "the spell ids in the book, ascending; Silver Blades' 15 "
+                  "bytes of bitmask are unpacked and Curse's 100 flags read "
+                  "straight"),
+    ("spells_memorised", "reversed, the way the DOS reader reads its own: "
+                         "highest first"),
+    ("class_levels", "named rather than numbered, into the neutral levels "
+                     "map"),
+    ("spells_castable_cleric", "into the neutral spells_castable map, at the "
+                               "Amiga's own array width"),
+    ("spells_castable_druid", "into the same map"),
+    ("spells_castable_magic_user", "into the same map"),
+    ("size", "1/2 on DOS becomes 0/1 in the neutral size_small"),
+    ("turn_power", "copied, as the DOS reader copies it"),
+    ("attack_forms", "copied as a block"),
+    ("roster_tail", "copied as a block"),
+    ("field_10c_10f", "its first byte becomes the neutral status, by name, "
+                      "and its second the active flag; the last two are not "
+                      "carried"),
+    ("encumbrance", "copied, and it is money plus item weight -- a writer "
+                    "that recomputes it should"),
+)
+
+#: Fields the read leaves behind, and why.  Every one is reported: a drop that
+#: nobody names is what `docs/117-save-conversion.md` forbids.
+LATER_DROPPED: tuple[tuple[str, str], ...] = (
+    ("former_class_levels", "what each class was before the character dual-"
+                            "classed. **There is no neutral field for it**: "
+                            "`goldbox/neutral.py` has `levels` and nothing "
+                            "beside it, and adding one obliges every writer "
+                            "to declare what it does with the name -- three "
+                            "modules, which is why this is #256 rather than "
+                            "half a change"),
+    ("item_chain", "live heap state: the head of the Amiga's item list, "
+                   "which the loader overwrites with the address it "
+                   "allocates. The items themselves are carried"),
+    ("item_count", "implied by the inventory that is carried"),
+    ("effect_chain", "live heap state, the same way; the effect records "
+                     "themselves are carried"),
+    ("heap_104", "live heap pointers -- two longwords the saved game's own "
+                 "loader clears outright"),
+    ("hands_used", "live combat state"),
+    ("unnamed_0ab", "one unattributed byte, stable per character"),
+    ("strength_bonus", "a boolean on DOS, derived from strength"),
+    ("icon_colours", "the combat icon's colour pairs, which are art"),
+    ("icon_head", "combat icon art, an index into this port's own library"),
+    ("icon_body", "combat icon art, likewise"),
+    ("icon_dimension", "the combat icon's size"),
+    ("portrait_head", "the sheet portrait's head: a position in the Amiga's "
+                      "own creation menu, and nobody has read that menu's "
+                      "tables out of the Amiga executables. Reading them is "
+                      "what would let the portrait cross, exactly as it did "
+                      "for DOS"),
+    ("portrait_body", "see portrait_head; the body half of the same pair"),
+    ("field_83_87", "five bytes DOS calls unknown and every specimen of "
+                    "either title reads zero"),
+    ("spells_castable_unattributed", "Silver Blades' fourth spell-slot "
+                                     "array, which no character of either "
+                                     "port sets a byte of and no class has "
+                                     "been shown to use"),
+)
+
+#: The plain-English half of `LATER_DROPPED`, and the only one a person ever
+#: reads.  `.claude/rules/gui-text.md` keeps a memory address, a file offset
+#: and a bare issue number out of anything shown in the interface, and the
+#: entries above carry all three kinds of detail on purpose -- so the reader
+#: composes its report from this table and never from those.  A name with no
+#: entry here is a drop the report stays silent about; only the fields whose
+#: loss a player could notice have one, which is the same line
+#: `goldbox/dos.py` draws with `UNREPORTED_DROPS`.
+LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
+    "former_class_levels": "The levels a dual-classed character reached in "
+                           "the class they gave up: the conversion has "
+                           "nowhere to put them yet",
+    "item_chain": "Item list bookkeeping: the list's own internal links, "
+                  "which the game rebuilds when it loads the party",
+    "effect_chain": "The running-effects list's own internal link; the "
+                    "effects themselves are carried separately",
+    "heap_104": "Internal game state kept only while the game is running, "
+                "not shown to the player",
+    "hands_used": "Which hand is holding a weapon right now; set again the "
+                  "next time the character fights",
+    "unnamed_0ab": "One byte in the character record nobody has identified "
+                   "yet",
+    "icon_colours": "Combat icon colours: this conversion does not carry the "
+                    "combat icon",
+    "icon_head": "Combat icon (head): this conversion does not carry the "
+                 "combat icon",
+    "icon_body": "Combat icon (body): this conversion does not carry the "
+                 "combat icon",
+    "icon_dimension": "Combat icon size: this conversion does not carry the "
+                      "combat icon",
+    "portrait_head": "Character portrait (head): the character-creation art "
+                     "this game chooses portraits from has not been read, so "
+                     "the portrait cannot be matched",
+    "portrait_body": "Character portrait (body): the character-creation art "
+                     "this game chooses portraits from has not been read, so "
+                     "the portrait cannot be matched",
+    "field_83_87": "Five bytes that make no difference to the character "
+                   "sheet, whatever they hold",
+    "spells_castable_unattributed": "A fourth list of spell slots that no "
+                                    "character of this game uses and no "
+                                    "class has been shown to own",
+}
+
+#: The one thing the neutral record cannot say about these two titles, and it
+#: is a classification rather than a byte: which effect records are **innate**
+#: -- a property of the race or the class -- and which an item granted.
+#: `goldbox.dos.INNATE_EFFECTS` is Pool of Radiance's id space and must not be
+#: applied here: 107 is an elf in Curse where Silver Blades' PAINE carries 105
+#: for a ranger, so the two titles do not even share one namespace with each
+#: other.  Everything at duration zero therefore goes into `granted_effects`
+#: whole, and this warning says so.
+LATER_EFFECT_SPLIT_UNKNOWN = (
+    "The effects that never expire are all carried together: which of them "
+    "are racial or class properties and which came from an item cannot be "
+    "told apart yet for this game, because the list of built-in effects has "
+    "only ever been read for Pool of Radiance")
+
+
+def later_field_disposition(shape: AmigaShape) -> dict[str, str]:
+    """Every field of this title's DOS table, and what the read does with it.
+
+    The test that keeps the reader honest, and the same shape
+    `goldbox.dos.field_disposition` returns: a field the table declares and
+    this names nowhere would be a field dropped in silence.  `gap_` fields are
+    the bytes no field of the DOS table claims and are accounted for here as a
+    group rather than one at a time.
+    """
+    from . import dos as _dos
+
+    declared = {f.name for f in dos_layout.layout_for(shape.dos)}
+    direct = [(n, n) for n, _ in _dos.DIRECT if n in declared]
+    transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
+    dropped = [(n, why) for n, why in LATER_DROPPED if n in declared]
+    dropped += [(n, "bytes no field of the DOS table for this title claims")
+                for n in sorted(declared) if n.startswith("gap_")]
+    return neutral.disposition(direct, transformed, dropped, "the neutral")
+
+
+def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
+    """One Amiga Curse or Silver Blades character in the neutral record.
+
+    Every value is read through `goldbox/dos_layout.py`'s table for the
+    title, at that field's own confidence, so a writer asking for a grade it
+    will stand behind gets the same answer it would get from a DOS record of
+    the same title.  What the record holds and no neutral field does is named
+    on the way past rather than lost -- `LATER_DROPPED` is the whole list and
+    :func:`later_field_disposition` is the test that it is.
+    """
+    from . import dos as _dos
+
+    shape = char.shape
+    table = dos_layout.FIELDS_BY_NAME_FOR[shape.dos.key]
+    out = NeutralCharacter("Amiga", source=char.source,
+                           game=games.by_key(shape.key))
+
+    def grade(name: str) -> Confidence:
+        return table[name].confidence
+
+    out.set("name", char.name,
+            f"the Amiga {AMIGA_NAME_SIZE}-byte NUL-padded name at 0x000",
+            grade("name_text"), neutral.Provenance.RESHAPED)
+
+    for name, _ in _dos.DIRECT:
+        f = table[name]
+        out.set(name, char.get(name),
+                f"Amiga {shape.title} {name} @{shape.offset(f.offset):#05x} "
+                f"({f.confidence}), read big-endian through the DOS table",
+                f.confidence)
+
+    out.set("spells_known", char.spellbook,
+            "the Amiga spellbook, "
+            + ("15 bytes of bitmask unpacked least significant bit first"
+               if shape.spellbook_bytes else "one byte per spell"),
+            grade("spellbook"))
+
+    memorised = [b for b in reversed(char.get("spells_memorised")) if b]
+    out.set("spells_memorised", memorised,
+            "the Amiga memorised region, reversed into the neutral "
+            "highest-first order",
+            grade("spells_memorised"))
+    if not memorised:
+        out.warnings.append(
+            "No character of this game on any disk here has a spell "
+            "memorised, so the order they are stored in has not been checked "
+            "for it; the order the other games use was assumed")
+
+    slots = table["class_levels"].size
+    named = _dos.CLASS_LEVEL_SLOTS[:slots]
+    raw = char.get("class_levels")
+    out.set("levels", {name: raw[n] for n, name, _ in named},
+            f"Amiga class_levels @"
+            f"{shape.offset(table['class_levels'].offset):#05x}, permuted "
+            f"from class number to class name",
+            grade("class_levels"))
+
+    castable = dict(char.spell_slots)
+    castable.pop("unattributed", None)
+    out.set("spells_castable", castable,
+            "the Amiga spell-slot arrays, "
+            + ("six bytes each where DOS spends five"
+               if shape is CURSE_SHAPE else "seven bytes each, as DOS"),
+            grade("spells_castable_cleric"))
+
+    out.set("size_small", max(0, char.get("size") - 1),
+            "the Amiga size byte, less one", grade("size"))
+    out.set("turn_power", char.get("turn_power"),
+            f"Amiga turn_power @{shape.offset(table['turn_power'].offset):#05x}",
+            grade("turn_power"))
+    out.set("attack_forms", char.get("attack_forms"),
+            f"Amiga attack_forms @"
+            f"{shape.offset(table['attack_forms'].offset):#05x}",
+            grade("attack_forms"))
+    out.set("roster_tail", char.get("roster_tail"),
+            f"Amiga roster_tail @"
+            f"{shape.offset(table['roster_tail'].offset):#05x}",
+            grade("roster_tail"))
+    out.set("encumbrance", char.get("encumbrance"),
+            f"Amiga encumbrance @"
+            f"{shape.offset(table['encumbrance'].offset):#05x}",
+            grade("encumbrance"))
+
+    tail = char.get(AMIGA_LATER_STATUS_FIELD)
+    at = shape.offset(table[AMIGA_LATER_STATUS_FIELD].offset)
+    if tail[0] < len(neutral.STATUS_NAMES):
+        out.set("status", neutral.STATUS_NAMES[tail[0]],
+                f"Amiga status @{at:#05x} = {tail[0]}, the same "
+                f"{len(neutral.STATUS_NAMES)} status words in the same order "
+                f"the DOS record indexes",
+                Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
+    else:
+        out.drop(f"The character's status: this save holds {tail[0]} there "
+                 f"and the game has only {len(neutral.STATUS_NAMES)} states")
+    out.set("active", bool(tail[AMIGA_LATER_STATUS_GATE]),
+            f"Amiga @{at + AMIGA_LATER_STATUS_GATE:#05x}: the flag the engine "
+            f"clears whenever the status leaves okay or animated",
+            Confidence.PROBABLE)
+
+    granted = [amiga_por_effect_to_dos(e) for e in char.effects]
+    granted = [e for e in granted if int.from_bytes(e[1:3], "little") == 0]
+    if granted:
+        out.set("granted_effects", granted,
+                "the Amiga effect nodes that never expire, each re-cut to "
+                "the nine bytes the DOS .SPC record holds",
+                Confidence.PROBABLE)
+        out.warnings.append(LATER_EFFECT_SPLIT_UNKNOWN)
+
+    out.set("inventory", [_dos.item_to_c64(it.to_dos_bytes())
+                          for it in char.items],
+            f"the {shape.item_size}-byte Amiga item nodes, each re-cut to the "
+            f"63 DOS holds and projected onto sixteen",
+            Confidence.CONFIRMED)
+
+    declared = {f.name for f in dos_layout.layout_for(shape.dos)}
+    for name, _why in LATER_DROPPED:
+        if name in declared and name in LATER_DROPPED_PLAYER_TEXT:
+            out.drop(LATER_DROPPED_PLAYER_TEXT[name])
+    return out
