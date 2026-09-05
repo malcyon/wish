@@ -55,11 +55,21 @@ DISKS = pathlib.Path(os.environ.get("POR_DISKS") or find_disks() or "")
 AREA_AT = 0x6E1B
 
 
-def area(sess) -> int | None:
+def area(sess, log: "Log | None" = None) -> int | None:
+    """The resident area, or None with the reason said out loud.
+
+    A monitor that breaks part way through a run would otherwise leave every
+    later `area=` field reading None with nothing anywhere saying why, and
+    the whole point of this tool is reading what the screen and the engine
+    say. The cleanup block below logs what it catches; so does this.
+    """
     try:
         with sess.mon(5) as m:
             return m.read(AREA_AT, 1)[0] & 0x7F
-    except Exception:
+    except Exception as exc:
+        if log is not None:
+            log.emit("area_unread", error=repr(exc))
+            log.say(f"  could not read the area: {exc!r}")
         return None
 
 
@@ -141,7 +151,7 @@ def watch(sess, log: Log, tag: str, answer: str, seconds: float) -> str:
             png = str(log.dir / f"{tag}-{shot:02d}.png")
             sess.kbd.screenshot(png)
             log.emit("screen", tag=tag, n=shot, bar=bar, rows=text, png=png,
-                     area=area(sess))
+                     area=area(sess, log))
             log.say(f"  [{tag}.{shot:02d}] {bar:5s} |{text[24].strip()}|")
         if bar == "world":
             return "world"
@@ -174,8 +184,8 @@ def run(args, log: Log) -> int:
         if watch(sess, log, "arrive", args.answer, args.arrive) != "world":
             raise RuntimeError("no world bar after BEGIN ADVENTURING")
         sess.settle(3)
-        log.say(f"arrived in area {area(sess)} at {sess.square()}")
-        log.emit("arrived", area=area(sess), square=sess.square())
+        log.say(f"arrived in area {area(sess, log)} at {sess.square()}")
+        log.emit("arrived", area=area(sess, log), square=sess.square())
 
         for n, move in enumerate(args.walk.upper(), 1):
             tag = f"{n:02d}{move}"
@@ -189,7 +199,7 @@ def run(args, log: Log) -> int:
             else:
                 sess.kbd.key(move.lower(), 0.15, 0.30)
             out = watch(sess, log, tag, args.answer, args.patience)
-            here, sq = area(sess), sess.square()
+            here, sq = area(sess, log), sess.square()
             log.say(f"move {move}: {out}, area {here}, square {sq}")
             log.emit("move", move=move, outcome=out, area=here, square=sq,
                      move_bar=picked)
