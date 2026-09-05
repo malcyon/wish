@@ -57,6 +57,14 @@ class Report(neutral.Report):
 
     total: int = RECORD_SIZE
 
+    #: True when this character's own sheet portrait crossed -- both
+    #: `portrait_head` and `portrait_body` written from a source, not left at
+    #: whatever `CharacterRecord.blank()` starts with.  Kept separate from
+    #: reading the record's own bytes back: `HEAD00` is a real portrait, so a
+    #: written zero and an unwritten zero are the same byte and only the
+    #: report can tell them apart (#57).
+    has_portrait: bool = False
+
     @property
     def unaccounted(self) -> list[int]:
         """C64 offsets this conversion cannot explain. Should be empty."""
@@ -446,9 +454,27 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
 
     # -- fields with no source, written as documented constants --------------
     rep.note(0x0B8, 1, "flags_0b8: zero -- a player character, bit 7 clear")
-    rep.note(0x0FE, 2, f"portrait_head/body: zero. HEADnn/BODYnn name C64 "
-                       f"disk files; the {port} art is a different set")
-    rep.dropped.append(f"portrait ids: the {port} art has different numbering")
+
+    # -- the sheet portrait: the art's own id, both ports' one menu ----------
+    # The C64 fetches `HEAD<xx>` and `BODY<xx>` by these two bytes, measured
+    # in the running game: six of six converted characters fetched their own
+    # art (#57).  A source that gave no id leaves the byte zero, and zero is
+    # a real portrait -- `HEAD00` is the first entry of the menu -- so a
+    # character with no id is reported rather than quietly given that face.
+    both = True
+    for name, offset, stem in (("portrait_head", 0x0FE, "HEAD"),
+                               ("portrait_body", 0x0FF, "BODY")):
+        v = use(name)
+        if v is None:
+            both = False
+            rep.dropped.append(
+                f"the character sheet's portrait {stem[:4].lower()}: "
+                f"{port} gave none, so the sheet draws no face")
+        else:
+            rec.set(name, v.value)
+            emit(v, name, offset, 1, f"{stem}{v.value:02X}")
+    rep.has_portrait = both
+
     # -- the status, and the out-of-play flag packed above it -----------------
     # One byte holding two things: the low three bits are the state the sheet
     # puts into words (:data:`STATUS_BITS`) and bit 7 is whether the game is
@@ -539,6 +565,15 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                "have is reported and the character arrives OK"),
     ("active", "bit 7 of that same byte, set when the character is out of "
                "play -- the opposite polarity to DOS's own flag"),
+    # #57: the two ports share one 14-head, 12-body menu, byte for byte, in
+    # both binaries -- so the neutral value is already the C64's own art id
+    # and this is a copy, not a table lookup.  Kept out of `DIRECT` because a
+    # source that gives no id is reported with its own sentence rather than
+    # left to `DIRECT`'s silent `continue`; see the write itself.
+    ("portrait_head", "the art's own id, copied to 0x0FE; a character with no "
+                      "id gets none written and the sheet draws no face"),
+    ("portrait_body", "the art's own id, copied to 0x0FF -- see "
+                      "portrait_head"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
@@ -551,9 +586,6 @@ DROPPED: tuple[tuple[str, str], ...] = (
             "business"),
     ("encumbrance", "derived -- the C64 has no such field and recomputes what "
                     "it needs"),
-    ("portrait_head", "HEADnn names a C64 disk file; another port's art is a "
-                      "different set with different numbering"),
-    ("portrait_body", "BODYnn -- see portrait_head"),
     ("granted_effects", GRANTED_EFFECT_REASON + ". The write itself names "
                         "each effect the character had, one line apiece, "
                         "rather than saying a field was skipped"),

@@ -219,8 +219,11 @@ FIELDS: dict[str, str] = {
     # Declared here because a character has them, not because every writer
     # wants them: a writer that takes nothing from a field reports so.
     "encumbrance": "total weight carried, in tenths of a pound",
-    "portrait_head": "portrait head index, in the source port's own art set",
-    "portrait_body": "portrait body index, in the source port's own art set",
+    "portrait_head": "which of the fourteen creation-menu heads the character "
+                     "sheet draws, as the art's own id -- the C64 record's "
+                     "spelling; the DOS codec converts its menu position to "
+                     "and from it",
+    "portrait_body": "the body half of the same pair, one of twelve",
 }
 
 

@@ -1195,6 +1195,117 @@ def test_the_combat_icons_of_the_party_are_the_ones_creation_writes():
             assert any(got), f"slot {place} would draw as black hooks"
 
 
+# --- the sheet portrait, and the trap in its switch (#57) -------------------
+#
+# `$49FF` bit 7 is what makes `LIBRARY $2C5C` fetch `HEAD<xx>`/`BODY<xx>` at
+# all.  Turning it on over a party some of whom carry no id sends the loader
+# after `HEAD00` -- a real portrait -- and `BODY00`, which is on none of the
+# eight sides, and the sheet sticks with no way off it.  So the two tests
+# below are the two ways this can go wrong, not one: the switch has to come
+# on when it is safe and stay off when it is not.
+
+def _portrait_tables_from_disks():
+    """The creation menu off the player's own C64 game disks, or `None`.
+
+    The import direction reads the **destination** port's own binary --
+    `goldbox/portraits.py`'s `tables_from_disks` -- because the directory a
+    conversion already holds for the combat icon and `ANIMATE00` is the C64
+    disks, not the DOS folder.
+    """
+    from goldbox import portraits
+
+    where = gamedata.disk_dir()
+    if where is None:
+        return None
+    try:
+        return portraits.tables_from_disks(where)
+    except portraits.PortraitError:
+        return None
+
+
+@needs_dos_saves
+def test_an_imported_party_carries_its_own_faces_and_switches_the_portrait_on():
+    """Every character keeps the face DOS gave it, and `$49FF` comes out
+    `$81` -- the byte the drawing routine reads before it fetches `HEAD<xx>`
+    and `BODY<xx>` at all.
+
+    Needs a slot whose whole party sits in the fourteen-and-twelve menu; a
+    party with one member outside it is the next test, on purpose.
+    """
+    tables = _portrait_tables_from_disks()
+    if tables is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    icon, animate = _game_files()
+    where = _save_dir()
+    slot = party = None
+    for candidate in dos.slots_available(where):
+        candidate_party = dos.read_party(where, candidate)
+        neutral = [dos.to_neutral(c, portraits=tables) for c in candidate_party]
+        if all("portrait_head" in n and "portrait_body" in n
+               for n in neutral):
+            slot, party = candidate, candidate_party
+            break
+    if slot is None:
+        pytest.skip("no DOS slot here has every character in the menu")
+
+    save0, _save1, _report = dos.new_save(where, slot, icon, animate,
+                                          portraits=tables)
+    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
+    assert save0[at] == dos.PORTRAIT_ON
+
+    seen = 0
+    for index, char in enumerate(party):
+        place = dos.marching_slot(index, len(party))
+        head_want = tables.head_art(char.get("portrait_head"))
+        body_want = tables.body_art(char.get("portrait_body"))
+        rec_at = dos.SLOT_AREA - dos.SAVE0_BASE + place * dos.SLOT_STRIDE
+        assert save0[rec_at + 0x0FE] == head_want, char.name
+        assert save0[rec_at + 0x0FF] == body_want, char.name
+        seen += 1
+    assert seen == len(party)
+
+
+@needs_dos_saves
+def test_a_party_missing_one_face_leaves_the_portrait_switched_off(tmp_path):
+    """One character with no id in the menu, and the whole party goes dark
+    rather than sticking on a character sheet with no way off it.
+
+    Turning `$49FF` on over a record left at zero sends the loader after
+    `HEAD00` -- a real portrait -- and `BODY00`, which is on none of the
+    eight sides: measured, VICE, the sheet then draws with `INSERT SIDE # 2,
+    AND PRESS ANY KEY.` where its command bar should be and never leaves it.
+    So a party like this one must come out `$01`, not `$81`.
+    """
+    import shutil
+
+    tables = _portrait_tables_from_disks()
+    if tables is None:
+        pytest.skip("needs the game disks; set POR_DISKS to where they are")
+    icon, animate = _game_files()
+    where = _save_dir()
+    slot = None
+    for candidate in dos.slots_available(where):
+        if len(list(where.glob(f"CHRDAT{candidate}?.SAV"))) >= 2:
+            slot = candidate
+            break
+    if slot is None:
+        pytest.skip("needs a DOS slot holding at least two characters")
+
+    for path in sorted(where.glob(f"CHRDAT{slot}?.*")):
+        shutil.copy(path, tmp_path / path.name)
+    shutil.copy(where / f"SAVGAM{slot}.DAT", tmp_path / f"SAVGAM{slot}.DAT")
+
+    first = sorted(tmp_path.glob(f"CHRDAT{slot}?.SAV"))[0]
+    raw = bytearray(first.read_bytes())
+    raw[dos_layout.FIELDS_BY_NAME["portrait_head"].offset] = 99  # outside
+    first.write_bytes(bytes(raw))                                # the menu
+
+    save0, _save1, _report = dos.new_save(tmp_path, slot, icon, animate,
+                                          portraits=tables)
+    at = dos.PORTRAIT_SWITCH - dos.SAVE0_BASE
+    assert save0[at] == dos.PORTRAIT_OFF
+
+
 @needs_disks
 def test_the_default_icon_is_what_the_engine_seeded_the_table_with():
     """Composed from the option tables, and checked against the player's own

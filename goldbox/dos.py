@@ -1133,21 +1133,24 @@ def to_neutral(dos: DosCharacter,
     return out
 
 
-def to_c64_record(dos: DosCharacter,
-                  icon: bytes | None = None) -> tuple[CharacterRecord, Report]:
+def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
+                  portraits: PortraitTables | None = None,
+                  ) -> tuple[CharacterRecord, Report]:
     """Build a 580-byte C64 character record from a DOS one.
 
     A DOS read and a C64 write with the neutral record between them, which is
     all this function is now.  `icon` is the 36-byte combat icon; DOS has no
     equivalent -- its art is a different set -- so with none given the field
-    is left zero and reported.
+    is left zero and reported.  `portraits` is the creation menu's two
+    tables, from :func:`portrait_tables`; without them the sheet portrait is
+    reported as a drop rather than carried (#57).
 
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
     knows the slot and the marching position.  `convert_save` prefixes each of
     its own notes that way (#107).
     """
-    return c64_codec.write(to_neutral(dos), icon=icon)
+    return c64_codec.write(to_neutral(dos, portraits=portraits), icon=icon)
 
 
 # ---------------------------------------------------------------------------
@@ -2246,7 +2249,7 @@ SLOT_TOTAL = 12
 # ---------------------------------------------------------------------------
 #: The header bytes no part of the conversion computes, as `(address, size)`.
 #:
-#: All 193 of them were written as zero in a converted save that was then
+#: All 192 of them were written as zero in a converted save that was then
 #: loaded, walked, taken into a random encounter and taken through an area
 #: change in VICE (#118, `work/p118-step3/runC.log` and `runE.log`).  The
 #: template was `PORSAVE13`, chosen because it is one of the few saves that
@@ -2275,9 +2278,52 @@ SLOT_TOTAL = 12
 #: that in this direction, and zero is measured, so zero is what is written.
 HEADER_ZEROED: tuple[tuple[int, int], ...] = (
     (0x49C3, 2), (0x49CC, 26), (0x49E7, 3), (0x49EB, 5), (0x49F0, 2),
-    (0x49F3, 9), (0x49FC, 1), (0x49FD, 2), (0x49FF, 1),
+    (0x49F3, 9), (0x49FC, 1), (0x49FD, 2),
     (0x4AF9, 135), (0x4BD9, 7),
 )
+
+#: The C64 save's own portrait switch, and the one word of `$4900`-`$52FF`
+#: this conversion writes to a value **measured in the running game** rather
+#: than to a measured zero.
+#:
+#: `LIBRARY $2C5C` is the routine that draws the sheet portrait:
+#:
+#:     LDA $49EB / BNE done      ; the arriving area's script scratch
+#:     LDA $49FF / BPL done      ; bit 7 clear: draw nothing
+#:     LDX #$0B / JSR $4222      ; loaded-files slot 11: ANIMATE
+#:     LDA $6BFE / LDX #$0E ...  ; record 0x0FE into cache slot 14, HEAD<xx>
+#:     LDA $6BFF / LDX #$0D ...  ; record 0x0FF into cache slot 13, BODY<xx>
+#:
+#: Measured, VICE, `tools/c64portraitprobe.py`: PORSAVE12 with `$49FF = $01`
+#: fetches no portrait art at all and the sheet is blank; the **same image
+#: with this one byte set to `$81`** fetches `$08`/`$07` for BRUTUS and
+#: `$09`/`$02` for MALCYON -- each character's own record -- and draws the
+#: face. Zero here made every converted party faceless whatever its records
+#: said, which is the same defect `SAVGAM_MEASURED` records in the other
+#: direction, at the same address.
+#:
+#: **`$81` because `INIT $1156` is `LDA #$81 / STA $49FF`** -- what the engine
+#: itself writes when a new game starts. It is a **player's switch**, not a
+#: constant: `CAMP $11C7`-`$11F8` reads bit 7 and bit 0, draws a four-item
+#: menu and writes the byte back, and Donald's own save disks hold `$81` on
+#: five and `$01` on fourteen. Bit 0 is a second flag, read twice by
+#: `DUNGEON $1F3C` and `$1FA6` in the view-drawing path and set in 19 of 19 of
+#: his saves; what it does is UNKNOWN and `$81` sets it either way.
+#: **Two values, and which one is written depends on the party.** `$81` turns
+#: the portrait on and is what `INIT` writes; `$01` is the same byte with bit
+#: 7 clear, which is the portrait switched off and is what fourteen of the
+#: nineteen engine-written C64 saves on this machine hold. A party whose
+#: records carry no portrait id must get `$01`: with `$81` and a zero id the
+#: loader goes after `HEAD00` -- a real portrait -- and `BODY00`, which is on
+#: none of the eight sides, and the sheet sticks on `INSERT SIDE # 2, AND
+#: PRESS ANY KEY.` with no bar and no way out. Measured (#57).
+PORTRAIT_ON = 0x81
+PORTRAIT_OFF = 0x01
+PORTRAIT_SWITCH = 0x49FF
+PORTRAIT_SWITCH_WHY = (
+    "the sheet portrait is not drawn at all when bit 7 of this byte is clear "
+    "(#57), and $81 is what INIT writes on a new game. Bit 0 is a second flag "
+    "DUNGEON reads and is set in 19 of 19 of the player's saves")
 
 #: The party's square and facing on the **dungeon** map, `$49C0`-`$49C2`.
 #:
@@ -2529,7 +2575,8 @@ class C64SaveReport(Report):
 def convert_save(folder: str | pathlib.Path, slot: str,
                  save0: bytearray, save1: bytearray | None = None,
                  icon: bytes | None = None,
-                 animate: bytes | None = None) -> C64SaveReport:
+                 animate: bytes | None = None,
+                 portraits: PortraitTables | None = None) -> C64SaveReport:
     """Write a DOS save into C64 `SAVEDGAME0` / `SAVEDGAME1` payloads.
 
     Both payloads are modified in place, and **the conversion writes every
@@ -2545,6 +2592,14 @@ def convert_save(folder: str | pathlib.Path, slot: str,
     Leave either out and that region keeps whatever the payload already held,
     which is only ever right when the payload came from a real C64 save;
     `Report.unwritten` is what says so afterwards.
+
+    `portraits` is the creation menu's two tables, from
+    :func:`portrait_tables`.  With them each character's sheet portrait
+    crosses and `PORTRAIT_SWITCH` is turned on; without them, or when a
+    character's own position is not one the menu offers, the switch is left
+    off rather than turned on over a party some of whom have no art id --
+    turning it on over a zero id sends the C64 hunting a `BODY00` that is on
+    none of the eight sides, and the sheet sticks with no way off it (#57).
 
     The report covers both files: an offset below `len(save0)` is a
     `SAVEDGAME0` offset and one at or above it is `SAVEDGAME1`'s (#120).
@@ -2578,9 +2633,11 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                 "and nothing in the game reads it there, measured at 0 reads "
                 "across a load, eight travel steps and an area change (#118)")
 
+    all_faced = True
     for index, char in enumerate(party):
         place = marching_slot(index, len(party))
-        rec, one = to_c64_record(char, icon=icon)
+        rec, one = to_c64_record(char, icon=icon, portraits=portraits)
+        all_faced = all_faced and one.has_portrait
         # `party_order` in a roster block is the record's slot index, not the
         # marching position -- `goldbox/layout.py` 0x10D, and identity in every
         # engine-written save read.  It follows the slot the record lands in.
@@ -2611,6 +2668,14 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                         f"the character record does not hold")
         report.dropped.extend(d for d in one.dropped if d not in report.dropped)
         report.warnings.extend(f"{char.name}: {w}" for w in one.warnings)
+
+    at = PORTRAIT_SWITCH - SAVE0_BASE
+    faces = bool(party) and all_faced
+    save0[at] = PORTRAIT_ON if faces else PORTRAIT_OFF
+    report.note(at, 1, f"${save0[at]:02X}: {PORTRAIT_SWITCH_WHY}"
+                       + ("" if faces else ". Written with bit 7 clear "
+                          "because a character here has no portrait id, and "
+                          "the game hunts for a BODY00 that is on no side"))
 
     # The party fills slots `len(party) - 1` down to 0, so everything above it
     # is somebody else's and would otherwise walk into the converted party
@@ -2719,19 +2784,24 @@ def convert_save(folder: str | pathlib.Path, slot: str,
 
 
 def new_save(folder: str | pathlib.Path, slot: str, icon: bytes,
-             animate: bytes) -> tuple[bytearray, bytearray, C64SaveReport]:
+             animate: bytes, portraits: PortraitTables | None = None,
+             ) -> tuple[bytearray, bytearray, C64SaveReport]:
     """A whole C64 save from a DOS one, owing nothing to another save (#118).
 
     `icon` is the 36-byte combat icon each character gets and `animate` is
     `ANIMATE00`'s payload; both come off the player's own game disks, and
     there is no default for either -- a conversion that cannot read them is
-    one that would have to invent bytes, and it refuses instead.
+    one that would have to invent bytes, and it refuses instead.  `portraits`
+    is the creation menu's two tables (#57); unlike `icon` and `animate` it
+    is not required -- a party converted without it keeps its own records
+    but arrives with the sheet portrait switched off, which is the same
+    thing an engine-written save does when the player has turned it off.
 
     Returns the two payloads and the report, whose `unwritten` is empty.
     """
     save0, save1 = bytearray(SAVE0_SIZE), bytearray(SAVE1_SIZE)
     report = convert_save(folder, slot, save0, save1,
-                          icon=icon, animate=animate)
+                          icon=icon, animate=animate, portraits=portraits)
     if report.unwritten:
         raise DosRecordError(
             f"{len(report.unwritten)} bytes of the save have no source and "
@@ -2844,7 +2914,7 @@ ENCOUNTER_STATE = ("the pending-encounter record: it changes together with "
 #: **What settles them is the running game, not the census.**  A save built
 #: with every one of these zero loads, walks, fights and changes area under
 #: DOSBox: `docs/117-save-conversion.md`, "A DOS save from nothing".  That is
-#: the same bar #118 held the C64 direction's 193 header bytes to.
+#: the same bar #118 held the C64 direction's 192 header bytes to.
 SAVGAM_UNSOURCED: tuple[tuple[int, int, str], ...] = (
     (0x49F0, 2, f"the previous square -- {ENGINE_REBUILT}"),
     (0x49FC, 1, "ECL0F's own scratch -- the one script of thirty that names "

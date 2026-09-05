@@ -136,13 +136,18 @@ def test_every_value_a_writer_takes_comes_back_out_of_the_record():
 
 def test_a_field_the_target_cannot_represent_is_reported():
     """Never dropped silently: a class the C64 has no level slot for, and a
-    field this writer takes nothing from."""
+    field this writer takes nothing from.
+
+    `encumbrance` is the example rather than `portrait_head`: since #57 the
+    C64 writer copies a `portrait_head` it is given, so a field genuinely
+    left untaken is one still in `c64_codec.DROPPED`.
+    """
     char = _filled()
     char.set("levels", {"fighter": 7, "druid": 4}, "made up")
-    char.set("portrait_head", 3, "made up")
+    char.set("encumbrance", 42, "made up")
     _, rep = c64_codec.write(char)
     assert any("druid" in w for w in rep.warnings)
-    assert any(d.startswith("portrait_head:") for d in rep.dropped)
+    assert any(d.startswith("encumbrance:") for d in rep.dropped)
 
 
 def test_a_spell_the_target_has_no_bit_for_is_reported():
