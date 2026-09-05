@@ -779,14 +779,20 @@ DROPPED: tuple[tuple[str, str], ...] = (
     # records, and the untried experiment is the same offset in a monster
     # record, where a hostile creature would have to set the third-party
     # workbooks' `IsHostile`.
+    #
+    # **0x10C and 0x10D are carried now**: `to_neutral` reads them as the
+    # neutral `status` and `active`, `goldbox/c64_codec.py` packs both into
+    # C64 record 0x100 through a table -- the two enumerations differ -- and
+    # `write` puts them back.  What is left in this entry is 0x10F, the
+    # quickfight flag, whose C64 home is a byte inside `goldbox/layout.py`'s
+    # `gap_101` that no field names yet, and 0x10E.
     ("field_83_87", "always the same five bytes, and the character sheet "
                     "looks identical whichever value they hold, so nothing "
                     "here is a loss a player would notice"),
-    ("field_10c_10f", "the character's status (okay, unconscious, dead and "
-                      "the rest of the game's own states), whether their "
-                      "name is shown red in the party panel, and whether "
-                      "their last fight ran on quickfight -- none of it "
-                      "carried yet"),
+    ("field_10c_10f", "whether their last fight ran on quickfight, and one "
+                      "byte nobody has identified. The character's status "
+                      "and whether the game had taken them out of the party "
+                      "are carried now and are no longer part of this"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
@@ -848,9 +854,10 @@ DROPPED_PLAYER_TEXT: dict[str, str] = {
     "unnamed_0ab": "One byte in the DOS record nobody has identified yet",
     "field_83_87": "Five bytes that make no difference to the character "
                    "sheet, whatever they hold",
-    "field_10c_10f": "Whether the character is okay, unconscious or dead; "
-                     "whether their name shows red on the party screen; "
-                     "and whether their last fight used quickfight",
+    "field_10c_10f": "Quickfight: not carried, so the character arrives "
+                     "choosing their own actions in the next fight -- the "
+                     "C64 keeps that in a byte this conversion has not "
+                     "identified yet",
     "portrait_head": "Character portrait (head): needs the game's own "
                      "character-creation art, which this import could not "
                      "read",
@@ -1320,6 +1327,13 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                        "+ a NULL next pointer the engine rebuilds; only the "
                        "INNATE_EFFECTS ids are written, the rest reported, "
                        "and a character with none gets no .SPC file"),
+    ("status", "the neutral name indexed back into the engine's own nine "
+               "status words at 0x10C, which is the order neutral.STATUS_NAMES "
+               "is in, so the index is the DOS number. A name DOS has no word "
+               "for is reported"),
+    ("active", "written to 0x10D, 1 for a character the party panel draws "
+               "normally and 0 for one it draws red -- the opposite polarity "
+               "to the C64's own bit, which is set for the same character"),
     ("granted_effects", "written into the same .SPC file after the innate "
                         "records, each one's own five bytes with the next "
                         "pointer NULLed -- the value byte and the removal "
@@ -1334,21 +1348,6 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
-    # Both are read out of 0x10C and 0x10D by `to_neutral` and both have a
-    # DOS home to go back to, so these two entries are a **defect and not an
-    # exemption** (#235): a C64 character who is dead or out of the party
-    # converts to DOS well and in it. What is missing is the write, which
-    # replaces `WRITE_DEFAULTS["field_10c_10f"]`'s fixed `00 01 00 00` for
-    # the first two of those four bytes and is the last piece of the carry.
-    # The two reasons below are read by a player, so they carry neither
-    # (`.claude/rules/gui-text.md`, and `tests/test_dosconvert.py`'s
-    # `test_no_dropped_reason_carries_developer_detail`).
-    ("status", "Whether the character was well, unconscious, dying, dead, "
-               "stoned or gone: read out of the save being converted, and "
-               "not yet written into the DOS one, so they arrive well"),
-    ("active", "Whether the game had taken the character out of the party: "
-               "read out of the save being converted, and not yet written "
-               "into the DOS one, so they arrive a full member"),
 )
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
@@ -1833,6 +1832,40 @@ def write(char: NeutralCharacter,
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size,
                  f"{dname}: {data.hex()} -- {why}. Not carried: {lost}")
+
+    # -- the combat tail's first two bytes, over the default just written ----
+    # `field_10c_10f` is four bytes and two of them are the character's own
+    # state (#235): 0x10C is the status, 0-based over the engine's own nine
+    # words -- which is the order `neutral.STATUS_NAMES` is in, so the index
+    # *is* the DOS number -- and 0x10D is the flag that draws a name red in
+    # the party panel when it is 0.  The other two stay at the default
+    # whatever the source holds: 0x10E is UNKNOWN and 0x10F is the quickfight
+    # flag, which has no named C64 field to have come from.
+    #
+    # A source that carries neither leaves all four at the default, which is
+    # the state a freshly made DOS character is in.
+    f = FIELDS_BY_NAME["field_10c_10f"]
+    status, active = w.use("status"), w.use("active")
+    said = []
+    if status is not None:
+        if status.value in neutral.STATUS_NAMES:
+            rec[f.offset] = neutral.STATUS_NAMES.index(status.value)
+            said.append(f"0x10C is {rec[f.offset]} ({status.value}) "
+                        f"<- {status.origin}")
+        else:
+            rep.dropped.append(
+                f"{status.value.capitalize()}: not carried, so the character "
+                f"arrives well -- the DOS game has no such state")
+    if active is not None:
+        rec[f.offset + 1] = 1 if active.value else 0
+        said.append(f"0x10D is {rec[f.offset + 1]} <- {active.origin}")
+    if said:
+        rep.note(f.offset, f.size,
+                 f"field_10c_10f: {bytes(rec[f.offset:f.end]).hex()} -- "
+                 + "; ".join(said)
+                 + ". Not carried: 0x10E, still UNKNOWN and written zero, "
+                   "and 0x10F, the quickfight flag, which the C64 keeps in "
+                   "a byte no field names yet")
 
     # -- bytes with no source: live heap and the unattributed ----------------
     # The portrait pair is in that list because it is what a conversion with

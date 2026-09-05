@@ -188,7 +188,10 @@ def test_a_record_with_only_innate_ids_sets_no_granted_field():
     char = _dos_record([_effect(18, duration=0, value=0xFF)])
     out = dos.to_neutral(char)
     assert "granted_effects" not in out
-    assert not any("not carried" in d for d in out.dropped), out.dropped
+    # Compared against the same record with no `.SPC` at all rather than
+    # against a phrase: "not carried" is a phrase other drop lines use for
+    # their own reasons, and this test is about what the effect adds.
+    assert out.dropped == dos.to_neutral(_dos_record([])).dropped
 
 
 def test_a_running_spell_is_neither_carried_nor_reported():
@@ -200,9 +203,10 @@ def test_a_running_spell_is_neither_carried_nor_reported():
     char = _dos_record([_effect(61, duration=2, value=1)])   # BLESS's shape
     out = dos.to_neutral(char)
     assert "granted_effects" not in out
-    assert not any("not carried" in d for d in out.dropped), out.dropped
+    bare = dos.to_neutral(_dos_record([]))
+    assert out.dropped == bare.dropped
     _rec, rep = c64_codec.write(out)
-    assert not any("not carried" in d for d in rep.dropped), rep.dropped
+    assert rep.dropped == c64_codec.write(bare)[1].dropped
 
 
 def test_the_c64_names_the_granted_effect_it_cannot_carry():
@@ -386,7 +390,12 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
     assert written[-1] == ring[0][:5] + dos.EFFECT_NEXT_NULL
     # The BLESS had two minutes left and is neither written nor reported.
     assert 1 not in [w[0] for w in written]
-    assert not any("not carried" in d for d in _rep.dropped), _rep.dropped
+    # Compared against the same record with the running node taken out, so
+    # the claim is "the BLESS adds nothing a player reads" rather than "no
+    # line anywhere uses the words not carried", which other fields do.
+    kept = [n for n in nodes if int.from_bytes(n[1:3], "little") == 0]
+    without = dos.DosCharacter(bytes(char), effects=kept)
+    assert _rep.dropped == dos.write(dos.to_neutral(without))[3].dropped
 
 
 def test_a_value_graded_unknown_is_not_written_to_dos():
@@ -713,14 +722,18 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
     what a freshly made character carries, the same shape as `icon_colours`.
 
-    A record staged at status Unconscious (`0x10C` = 4, the load-side probe's
-    own reading) still writes back the fresh-character default; carrying the
-    real value is the rest of #235 and not this fix. What has to be true is
-    that the mismatch is an *accounted* default rather than an unexplained
-    byte a round trip would flag against a table claiming it never varies.
-    Reverting `field_10c_10f` to `WRITE_CONSTANTS` fails this: its provenance
-    note there reads "in all 24 DOS specimens" and says nothing about status,
-    active or quickfight, or that the value is not carried.
+    **Two of the four bytes are carried now and two are not**, and this is
+    what pins the split. A record staged at status Unconscious with the
+    active flag clear (`0x10C` = 4, `0x10D` = 0 -- the pair the engine itself
+    wrote for a character it knocked out) comes back with both, because
+    `to_neutral` reads them and the writer puts them back. `0x10E` is still
+    UNKNOWN and `0x10F` is the quickfight flag with no named C64 field to
+    have come from, so those two stay at the default and the note says so.
+
+    Reverting `field_10c_10f` to `WRITE_CONSTANTS` still fails this: its
+    provenance note there reads "in all 24 DOS specimens" and says nothing
+    about status, active or quickfight, or that half the field is not
+    carried. `tests/test_c64status.py` is where the carry itself is tested.
     """
     assert "field_10c_10f" not in {n for n, _, _ in dos.WRITE_CONSTANTS}
     assert "field_10c_10f" in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
@@ -730,10 +743,15 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     raw[f.offset:f.end] = b"\x04\x00\x00\x00"          # status: Unconscious
     char = dos.DosCharacter(bytes(raw))
     rec, _, _, rep = dos.write(dos.to_neutral(char))
-    assert rec[f.offset:f.end] == b"\x00\x01\x00\x00"
+    assert rec[f.offset:f.end] == b"\x04\x00\x00\x00"
     note = rep.sources[f.offset]
     assert "Not carried" in note
-    assert "status" in note and "quickfight" in note
+    assert "unconscious" in note and "quickfight" in note
+
+    # And a character the source says nothing about still gets the
+    # fresh-character default across all four.
+    bare = dos.write(neutral.NeutralCharacter("test"))[0]
+    assert bare[f.offset:f.end] == b"\x00\x01\x00\x00"
 
 
 def test_field_83_87_is_still_the_one_value_every_specimen_holds():

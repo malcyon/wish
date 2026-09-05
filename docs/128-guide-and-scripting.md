@@ -119,8 +119,66 @@ That is the enumeration the three "sir" editors carry, so those three tools --
 one author's table, and one source -- now have a fourth source that is the game
 itself. **Bit 7 is a separate flag**, masked off for display: `$1BF6` skips a
 slot with bit 7 set when it sums the party's strength
-([`114`](114-party-strength.md)), and `$3E4A` picks the greyed party-panel
-colour with `CMP #$80`.
+([`114`](114-party-strength.md)), and the party panel draws such a name in
+**red**.
+
+### Bit 7, and the colour it picks
+
+That colour was recorded here as grey and it is not. `LIBRARY $3E47` is
+`LDX $6E34 / CMP #$80 / BCC + / LDX #$02`, and 2 is red; `$6E34` is the
+panel's ordinary colour, which measured 3 on the player's own save. `A` still
+holds the whole byte at the compare, so the low three bits cannot reach it,
+and `$38BE` masks bit 7 off before it draws the word -- two fields in one
+byte, and neither routine can see the other's.
+
+**CONFIRMED in the running game** — `#235 (Two unattributed DOS byte
+ranges in the combat tail are dropped converting to C64, and nobody
+knows what they hold)` — by pulling the two apart in one boot: `$81`, which is OK with the flag set,
+drew `OK` on the sheet and **red** in the panel, and `$05`, which is
+unconscious with the flag clear, drew `UNCONSIOUS` on the sheet and the
+panel's ordinary colour. Colour 2 appeared on 2 of 2 slots carrying bit 7 and
+on 0 of 9 that did not, counting an all-`$01` control boot -- which is the
+control that matters, because 3, 2, 3, 2, 3 down a column is also what an
+alternating row colour would look like.
+
+DOS holds the same flag in a byte of its own, at `0x10C`'s neighbour `0x10D`,
+and draws its name red too -- but the *other way up*: 0 there is the character
+the game has taken out, where the C64 sets bit 7 for the same character. So a
+conversion converts the flag rather than copying it.
+
+### Six words on one screen
+
+The table above is the routine's own arithmetic. It has also been reproduced
+end to end, in one boot, with six distinct values staged into six roster slots
+of a save the engine itself wrote:
+
+| roster slot | staged | panel position | the sheet drew |
+|---|---|---|---|
+| 5 | `$01` | 0 | `OK` |
+| 4 | `$87` | 1 | `STONED` |
+| 3 | `$86` | 2 | `RUNNING` |
+| 2 | `$84` | 3 | `DYING` |
+| 1 | `$83` | 4 | `DEAD` |
+| 0 | `$82` | 5 | `GONE` |
+
+Six of six, and the words come out in the reverse of the slot order because of
+the loop below. `DYING` is on that list: the game will not show it by playing,
+since `COMBAT $2161` turns every `$84` in the party into `$85` as the fight
+ends, but it draws it for a staged one — the engine does not normalise the
+byte on load.
+
+### The panel is drawn from slot 7 down to 0
+
+`$3E21` is `LDA #$07 / STA $6DB4`, `$3E26` starts the screen row at 4,
+`$3EAA` and `$3EAD` step the row on and the slot down, and `$3189` -- which
+`$3E30` calls first -- copies `$8300 + $6DB4 * $20` into the staging page
+everything else reads. A slot holding zero is skipped outright (`$3E36 BEQ`).
+
+**So panel position 0 is the highest occupied roster slot, not slot 0.** A
+driven run that reads the character sheets back by panel position and calls
+the position a slot gets every staged value against the wrong character;
+`tools/statusdrive.py` reports both, since it was written before this was
+known.
 
 Every value has a writer that says what it means:
 

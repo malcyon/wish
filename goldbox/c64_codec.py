@@ -39,6 +39,10 @@ __all__ = [
     "TRANSFORMED",
     "DROPPED",
     "GRANTED_EFFECT_REASON",
+    "STATUS_BITS",
+    "STATUS_BY_BITS",
+    "OUT_OF_PLAY",
+    "NO_C64_STATUS",
 ]
 
 
@@ -217,11 +221,13 @@ OUT_OF_PLAY = 0x80
 #: issue number, which `tests/test_dosconvert.py`'s two guard tests enforce
 #: for the DOS table and this one follows.
 NO_C64_STATUS: dict[str, str] = {
-    "animated": "The character had been animated by a spell. The C64 game "
-                "has no such state, so they arrive as they were before it",
-    "temporarily gone": "The character had temporarily left the party. The "
-                        "C64 game has no such state, so they arrive with the "
-                        "party",
+    "animated": "Animated by a spell: not carried, so the character arrives "
+                "as they were before it -- the C64 game has no such state, "
+                "and the nearest thing it has is a dead creature the game "
+                "runs as a monster rather than a member of the party",
+    "temporarily gone": "Temporarily gone from the party: not carried, so "
+                        "the character arrives with it -- the C64 game has "
+                        "no such state",
 }
 
 
@@ -466,8 +472,9 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             rep.dropped.append(
                 NO_C64_STATUS.get(
                     status.value,
-                    f"The character's state, {status.value}, has no value in "
-                    f"the C64 game; they arrive well"))
+                    f"{status.value.capitalize()}: not carried, so the "
+                    f"character arrives well -- the C64 game has no such "
+                    f"state"))
             where = [f"1 (OK): {status.value} has no C64 value"]
         else:
             bits = found

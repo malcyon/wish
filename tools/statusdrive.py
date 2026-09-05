@@ -25,6 +25,15 @@ a save and reads every character's `VIEW` sheet, whose last line is the STATUS
 word `LIBRARY $38BE` draws.  Run it on the disk the first mode wrote and the
 byte and the word are measured on the same character.
 
+`--panel` adds the world screen's party panel colour per character and then
+reads the sheets, so one boot answers both halves of what the byte holds.  The
+sheet is drawn from `value & 7` and the panel from bit 7 (`LIBRARY $3E4A`,
+`CMP #$80`), so staging an OK status with bit 7 set beside a non-OK status
+with bit 7 clear is what says whether the two are one field or two:
+
+    tools/statusdrive.py --panel --save-path work/p235c64/run1/saved.d64 \
+        --stage 0=0x01,1=0x81,2=0x05,3=0x85,4=0x01,5=0x01
+
 `PORSAVE13.D64` three steps into the Slums is the one-ambush reproduction the
 combat harness was built on: six characters, eight orcs, everybody in contact
 on turn 1.  `--victim` is a save slot index, 0-7; the default is the last
@@ -187,6 +196,11 @@ def main(argv=None) -> int:
                    help="a save disk anywhere, rather than one inside --disks")
     p.add_argument("--sheets", action="store_true",
                    help="read every character's VIEW sheet and stop; no fight")
+    p.add_argument("--panel", action="store_true",
+                   help="read the world screen's party panel colour per "
+                        "character before the sheets, which is what separates "
+                        "bit 7 of record 0x100 from its low three bits; "
+                        "implies --sheets")
     p.add_argument("--stage", default=None, metavar="SLOT=VALUE,...",
                    help="write these bytes into record 0x100 of --save-path "
                         "before booting, and read the sheets back: what the "
@@ -251,14 +265,82 @@ def main(argv=None) -> int:
         log.say(f"in the world at {sess.position()}")
         before = log.sample(sess, "in the world")
 
-        if args.sheets:
+        if args.panel:
+            # The party panel's own colour, one row per character.  The sheet
+            # says what the low three bits mean and nothing says what bit 7
+            # does, so this is the other half: `LIBRARY $3E4A` picks the
+            # greyed colour with `CMP #$80`, which is an arithmetic the low
+            # three bits cannot reach.  Stage an OK status with bit 7 set
+            # beside a non-OK status with bit 7 clear and the panel partitions
+            # on one of them or the other.
+            #
+            # **The panel is drawn from roster slot 7 down to 0**, so panel
+            # position 0 is the *highest* occupied slot and not slot 0.
+            # `LIBRARY $3E21` is `LDA #$07 / STA $6DB4`, `$3E26` starts the
+            # screen row at 4, `$3EAA`/`$3EAD` step the row on and the slot
+            # down, and `$3189` -- which `$3E30` calls first -- copies
+            # `$8300 + $6DB4 * $20` into the staging page the rest of the
+            # routine reads.  A slot holding zero is skipped outright
+            # (`$3E36 BEQ`), so the occupied slots are what the rows count.
+            s = sess.screen()
+            rows = sess.party_rows(s) if s else []
+            hi = sess.party_highlight(s) if s else None
+            occupied = [i for i, v in enumerate(before) if v][::-1]
+            panel = []
+            for i, r in enumerate(rows):
+                name = s.row(r)[S.PARTY_COLUMN:].strip()
+                colour = s.colours[r * 40 + S.PARTY_COLUMN]
+                value = before[occupied[i]] if i < len(occupied) else None
+                # Not `slot`: that name is the pool slot the run holds, and
+                # rebinding it here made the `finally` block's teardown raise
+                # `AttributeError: 'int' object has no attribute 'teardown'`
+                # after a run that had otherwise worked.
+                at = occupied[i] if i < len(occupied) else None
+                panel.append({"index": i, "row": r, "slot": at,
+                              "name": name, "colour": colour,
+                              "status": value, "highlighted": i == hi})
+                log.say(f"  party {i}  slot {at}  {name:<20} "
+                        f"colour {colour:2d}  0x100 = ${(value or 0):02X}"
+                        + ("  <- highlighted" if i == hi else ""))
+            log.emit("panel", rows=panel, highlight=hi)
+            # The whole screen with its colour row beside it, because the
+            # panel's colour has turned out not to be one colour per
+            # character: rows 5-9 of the first run came back 3, 2, 3, 2, 3
+            # with three different status bytes among them, which is what an
+            # alternating row colour looks like.  A reading that cannot be
+            # re-read is not a measurement.
+            screen = []
+            if s is not None:
+                for r in range(25):
+                    line = s.row(r)
+                    cols = " ".join(f"{c:X}" for c in
+                                    s.colours[r * 40:(r + 1) * 40])
+                    screen.append(f"{r:2d} |{line}|\n   |{cols}|")
+            (out / "panel.txt").write_text("\n".join(
+                [f"party {d['index']} slot {d['slot']} {d['name']} "
+                 f"colour={d['colour']} status=${(d['status'] or 0):02X} "
+                 f"highlighted={d['highlighted']}" for d in panel]
+                + ["", "--- the whole screen, text over colour RAM ---"]
+                + screen) + "\n")
+
+        if args.sheets or args.panel:
             # The sheet's last line inside the border is the STATUS word:
             # `LIBRARY $38BE` masks record 0x100 with 7 and indexes a
             # seven-name table with it, and `$38C7 LDA #$16` is the row.
+            #
+            # **`character_sheet(i)` selects the i'th row of the party panel,
+            # which is not roster slot i.** The panel is drawn slot 7 down to
+            # 0 (`LIBRARY $3E21`, and the loop above), so position 0 is the
+            # highest occupied slot.  A run that stages a different value
+            # into every slot and reads the sheets back by position gets the
+            # words in the reverse order, which is exactly how a staged value
+            # ends up reported against the wrong slot.
             text = []
-            for i in range(len([v for v in before if v])):
+            shown = [i for i, v in enumerate(before) if v][::-1]
+            for i, at in enumerate(shown):
                 lines = sess.character_sheet(i)
-                log.emit("sheet", index=i, lines=lines)
+                log.emit("sheet", index=i, slot=at,
+                         staged=before[at], lines=lines)
                 # The sheet is a box: rows drawn between two `$` columns, a
                 # bottom border, then the bar.  The name is its first boxed
                 # row and the status its last, so both are read by shape
@@ -267,8 +349,10 @@ def main(argv=None) -> int:
                          if ln.startswith("$") and ln.strip("$ ")]
                 name = boxed[0] if boxed else "?"
                 word = boxed[-1] if boxed else "?"
-                log.say(f"  party {i}  {name:<16} STATUS {word}")
-                text.append(f"--- party {i} ---\n"
+                log.say(f"  party {i}  slot {at}  ${before[at]:02X}  "
+                        f"{name:<16} STATUS {word}")
+                text.append(f"--- party {i}, roster slot {at}, "
+                            f"0x100 = ${before[at]:02X} ---\n"
                             + "\n".join(lines or ["(no sheet)"]))
             (out / "sheets.txt").write_text("\n".join(text) + "\n")
             log.say("sheets written to " + str(out / "sheets.txt"))
