@@ -162,6 +162,12 @@ class RecordShape:
     spell_slots: bool = True
     #: Does the record store the dual-class pair at `0x0B9`/`0x0BA`?
     dual_class: bool = False
+    #: Does this title's GEN draw the identity pair at `0x0E6`-`0x0E7`? Pool
+    #: of Radiance's alone -- Curse of the Azure Bonds and Secret of the
+    #: Silver Blades never write it and hold `00 00` in every shipped party
+    #: (#258, The C64 side of 0x0AB is unnamed, so the conversion drops it
+    #: with no issue behind it).
+    identity_pair: bool = False
 
 
 #: Pool of Radiance: **81 memorised slots, `0x020`-`0x070`**, and no second
@@ -184,7 +190,8 @@ class RecordShape:
 #: converted character never arrives with more (#192).
 POOL_OF_RADIANCE_RECORD = RecordShape(
     key="pool-of-radiance",
-    memorised=("spells_memorised", "abilities_second", "gap_06c"))
+    memorised=("spells_memorised", "abilities_second", "gap_06c"),
+    identity_pair=True)
 
 #: Curse of the Azure Bonds: **69 memorised slots, `0x020`-`0x064`**, a second
 #: ability array at `0x065`, the dual-class pair, and **no spell-slot array at
@@ -691,6 +698,18 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     rep.note(0x0E2, 1, f"strength_index: computed from strength and the "
                        f"percentile; the {port} byte at the aligned offset is "
                        f"a different field")
+    # The index above is inert without this: `LIBRARY $375C` reads 0x0E3 and
+    # indexes the AD&D strength tables at $3651/$3670 with 0 unless it is
+    # non-zero, so a converted fighter with 18/75 swung at no bonus to hit and
+    # did no bonus damage the moment the engine next rebuilt his roster block
+    # (#277).  One is what `GEN $0B79` writes for every character it creates,
+    # and it is what every engine-made player character on the C64 disks of
+    # all three titles holds; the monsters that share the record layout are
+    # the only things that read zero, and this writer never builds one.
+    rec.set("strength_bonus_flag", 1)
+    rep.note(0x0E3, 1, "strength_bonus_flag: 1, the value the C64's own "
+                       "character creation writes -- without it the engine "
+                       "gives no strength bonus to hit or to damage")
 
     # -- innate effects: ten slots -------------------------------------------
     innate = use("innate_effects")
@@ -837,6 +856,24 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         rec.set_raw("roster_tail", bytes(tail.value))
         emit(tail, "roster_tail", 0x110, 9)
 
+    # -- the identity draw: a home instead of a drop --------------------------
+    # GEN draws two bytes at 0x0E6-0x0E7 at creation and nothing on the C64
+    # reads them back; DOS's own 0x0AB is the same field on one byte (#258,
+    # docs/170-c64-identity-pair.md).  Only Pool of Radiance's GEN draws the
+    # pair -- Curse of the Azure Bonds and Secret of the Silver Blades never
+    # write it -- so a source with a value and a title with nowhere to put it
+    # is reported rather than written.
+    identity = use("unnamed_0ab")
+    if identity is not None and shape.identity_pair:
+        rec.set_raw("identity_pair", bytes([int(identity.value) & 0xFF, 0]))
+        emit(identity, "identity_pair", 0x0E6, 2,
+             "; 0x0E7 is the pair's second byte, which nothing on the C64 "
+             "reads back")
+    elif identity is not None:
+        rep.dropped.append(
+            "the identity byte: this title's GEN never draws the identity "
+            "pair, so there is nowhere on the C64 to put it")
+
     # -- the closing sweep: unwritten fields, then the reader's own drops ----
     w.finish()
 
@@ -899,6 +936,12 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "id gets none written and the sheet draws no face"),
     ("portrait_body", "the art's own id, copied to 0x0FF -- see "
                       "portrait_head"),
+    ("unnamed_0ab", "the first byte into the C64's identity_pair at 0x0E6, "
+                    "second byte zero; reported instead in Curse of the "
+                    "Azure Bonds or Secret of the Silver Blades, whose GEN "
+                    "never draws the pair (#258, The C64 side of 0x0AB is "
+                    "unnamed, so the conversion drops it with no issue "
+                    "behind it)"),
 )
 
 #: Neutral fields the C64 writer takes nothing from, and why.  Reported by
@@ -940,6 +983,16 @@ def field_disposition() -> dict[str, str]:
 #:
 #: C64 fields this reader deliberately leaves behind, and why.
 READ_DROPPED: tuple[tuple[str, str], ...] = (
+    ("strength_bonus_flag", "the strength-adjustment gate LIBRARY's roster "
+                            "recompute reads at 0x0E3. Every character any "
+                            "port creates holds 1 there -- GEN writes it at "
+                            "creation and only the monsters that share the "
+                            "record layout read 0 -- so `write` sets it from "
+                            "the same rule rather than from a source value, "
+                            "and a C64 record read here and written back "
+                            "keeps it (#277, A DOS character converted to the "
+                            "C64 loses the strength bonus to hit and damage, "
+                            "because 0x0E3 is written zero)"),
     ("abilities_second", "not a field of its own in Pool of Radiance -- these "
                          "seven bytes are part of that title's memorised list "
                          "and are read with it (#268), and they are zero in "
@@ -1009,7 +1062,11 @@ READ_TARGETS: dict[str, str] = (
        "roster_tail": "read as neutral roster_tail, from the roster block's "
                       "+0x10-+0x18 or the record",
        "inventory": "read as neutral inventory, from the save's item page "
-                    "or the record's sixteen slots"}
+                    "or the record's sixteen slots",
+       "identity_pair": "the first byte read as neutral unnamed_0ab, in "
+                        "Pool of Radiance only; Curse of the Azure Bonds "
+                        "and Secret of the Silver Blades never draw it "
+                        "(#258)"}
     | {f: "read into neutral levels, named by the class bit"
        for f in _LEVEL_ORDER}
     | {name: f"dropped: {why}" for name, why in READ_DROPPED}
@@ -1192,6 +1249,17 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     if rec.is_stored("roster_tail") and "roster_tail" not in out:
         out.set("roster_tail", rec.get_raw("roster_tail"),
                 origin("roster_tail"), grade("roster_tail"))
+
+    # -- the identity pair: Pool of Radiance's alone --------------------------
+    # GEN draws two bytes at 0x0E6-0x0E7 at creation and nothing on the C64
+    # reads them back (#258, docs/170-c64-identity-pair.md); only the first
+    # is DOS's own 0x0AB, and only Pool of Radiance's GEN draws the pair at
+    # all -- Curse of the Azure Bonds and Secret of the Silver Blades hold
+    # `00 00` in every shipped party because their GEN never writes it.
+    if shape.identity_pair and rec.is_stored("identity_pair"):
+        out.set("unnamed_0ab", rec.get_raw("identity_pair")[0],
+                "the C64's identity pair @0x0E6, the first byte",
+                grade("identity_pair"))
 
     for name, why in READ_DROPPED:
         out.drop(f"C64 {name}: {why}")

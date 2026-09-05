@@ -426,9 +426,20 @@ _DECLARED: Sequence[Field] = (
        "what the C64's 0x0E1 holds for every player character it has ever "
        "been read from, at the offset this one aligns to"),
     _f(0x0AA, 1, _U8, "strength_bonus", "Strength bonus flag", _MAYBE,
-       "1 in all 24. The C64's aligned byte 0x0E2 is a *strength index* "
-       "holding 15-22, so the two are different fields and neither should "
-       "be copied onto the other"),
+       "1 in all 24 shipped records and in the six this project rolled in "
+       "the game's own creation screens. The C64 keeps a flag of the same "
+       "name and shape one byte further on, at 0x0E3, and its LIBRARY reads "
+       "it at $375C to decide whether the AD&D strength tables apply at "
+       "all; so the C64's counterpart of this byte is strength_bonus_flag, "
+       "and `goldbox.c64_codec.write` sets it. PROBABLE rather than "
+       "CONFIRMED for the DOS half: the C64 gate is read off the machine, "
+       "and no DOS routine reading 0x0AA has been found, so the two are "
+       "matched by name, position and a value that never varies. What is "
+       "certainly *not* its counterpart is the C64's aligned byte 0x0E2, a "
+       "strength *index* holding 15-22, which is why the pair were read as "
+       "unrelated for a long time; neither should be copied onto the other. "
+       "#277 (A DOS character converted to the C64 loses the strength bonus "
+       "to hit and damage, because 0x0E3 is written zero)"),
     _f(0x0AB, 1, _U8, "unnamed_0ab", "unnamed @0x0AB", _OK,
        "the byte that tells two characters of the same name apart. Stable "
        "per character across the A/B save pair and different for every "

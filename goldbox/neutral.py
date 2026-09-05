@@ -261,6 +261,21 @@ FIELDS: dict[str, str] = {
                      "spelling; the DOS codec converts its menu position to "
                      "and from it",
     "portrait_body": "the body half of the same pair, one of twelve",
+    "unnamed_0ab": "the identity draw the engine makes at creation and uses "
+                   "for exactly one thing -- telling two characters of the "
+                   "same name apart when one is added to a party. DOS keeps "
+                   "one byte of it at 0x0AB; Pool of Radiance's C64 GEN "
+                   "draws two at 0x0E6-0x0E7 and never rewrites them. "
+                   "Neither port ever reads it back once written, so a "
+                   "writer with no source for it is free to derive one "
+                   "instead, which is what a DOS destination with no "
+                   "supplied value does (#216, Every converted DOS "
+                   "character carries the same identity byte at 0x0AB). "
+                   "Curse of the Azure Bonds and Secret of the Silver "
+                   "Blades never draw the C64 pair at all, so a source "
+                   "from either has none to give (#258, The C64 side of "
+                   "0x0AB is unnamed, so the conversion drops it with no "
+                   "issue behind it)",
 }
 
 

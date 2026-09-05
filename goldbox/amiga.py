@@ -733,6 +733,9 @@ DROPPED: tuple[tuple[str, str], ...] = (
                 "side and no Amiga specimen separates the byte from fill -- "
                 "see `docs/169-dos-combat-side.md`"),
     ("quickfight", "no located home for the quickfight flag"),
+    ("unnamed_0ab", "the DOS and C64 identity draw, used to break a same-name "
+                    "tie at creation; no home has been located for it in the "
+                    "`.pc`, and Pools of Darkness has its own creation flow"),
 )
 
 

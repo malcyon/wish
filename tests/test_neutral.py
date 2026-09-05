@@ -317,6 +317,11 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     slots of the memorised list, so neither half of the codec touches them
     under that name, and a reader that set the field anyway would be putting
     spell ids into an ability array (#268).
+
+    And `unnamed_0ab` is a field in only one of the three: Pool of Radiance's
+    GEN draws the identity pair at `0x0E6`-`0x0E7` and Curse of the Azure
+    Bonds' and Secret of the Silver Blades' never do (#258, The C64 side of
+    0x0AB is unnamed, so the conversion drops it with no issue behind it).
     """
     char = _filled(game=game)
     rec, _ = c64_codec.write(char)
@@ -325,6 +330,8 @@ def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
              | {n for n, _ in c64_codec.TRANSFORMED})
     if not c64_codec.record_shape(game).second_abilities:
         taken.discard("abilities_second")
+    if not c64_codec.record_shape(game).identity_pair:
+        taken.discard("unnamed_0ab")
     assert taken - set(back.keys()) == set()
 
 

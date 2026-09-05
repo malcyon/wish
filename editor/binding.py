@@ -185,6 +185,21 @@ NOT_ON_THE_SHEET = (
     # has dropped him. Quickfight is a setting of the last fight rather than
     # anything about the character.
     "combat_side",
+    # The strength-to-hit-and-damage gate: GEN sets it to 1 for every player
+    # character it creates and leaves it 0 only for the handful of monsters
+    # that share the record layout (#258, The C64 side of 0x0AB is unnamed,
+    # so the conversion drops it with no issue behind it). Nothing a player
+    # chooses sets it apart from being a player character at all, so a
+    # widget here would only invite switching off a bonus AD&D says every
+    # strength score of 18 or more is owed.
+    "strength_bonus_flag",
+    # The identity pair GEN draws from the random generator when the
+    # character is created and never rewrites (#258). Nothing in the game
+    # ever reads it back -- it exists only so two characters of the same
+    # name would not collide, and the C64's own add screen tests the name
+    # alone -- so a widget would offer a number nobody chose, and changing
+    # it would change nothing.
+    "identity_pair",
     "inventory",          # editor/inventory.py edits the item slots
     # The high nine bytes of the spellbook bitmask. Not a field of its own on
     # the sheet: `field_spells_known` reads and writes both halves as one mask,

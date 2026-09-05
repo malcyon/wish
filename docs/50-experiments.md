@@ -6594,3 +6594,168 @@ For `icon_colours` it turned out to be evidence of a defect (#112 (A converted D
 `unnamed_0ab` it has now turned out the same way. The engine not touching a
 field is not the engine not *needing* it — it is the engine trusting whatever
 created the character to have got it right.
+
+---
+
+## The strength gate at `0x0E3`, and why a converted fighter looked right until his first fight (#277 (A DOS character converted to the C64 loses the strength bonus to hit and damage, because 0x0E3 is written zero))
+
+You import a DOS party with `WISH_EXPERIMENTAL_DOS_IMPORT` on, load it on the
+C64, and your 18/75 fighter's sheet reads `THACO 18  DAMAGE 1D2+3`, which is
+exactly right. You walk five steps into the Slums, something ambushes you, and
+from that moment his sheet reads `THACO 20  DAMAGE 1D2`. Nothing announced the
+change and nothing on the sheet says why.
+
+### The gate
+
+The C64 keeps the AD&D strength adjustment in **two** bytes. `strength_index`
+at `0x0E2` says which row of the tables applies — 18 is row 18, 18/51-75 is
+row 20, 18/00 is row 23 — and `strength_bonus_flag` at `0x0E3` says whether
+any row applies at all:
+
+```
+$375C  AE E3 6B   LDX $6BE3      ; the flag
+$375F  F0 03      BEQ $3764      ; zero: row 0, no adjustment either way
+$3761  AE E2 6B   LDX $6BE2      ; else the index
+$3764  BD 51 36   LDA $3651,X    ; to hit
+$376A  BD 70 36   LDA $3670,X    ; damage
+```
+
+Row 0 of both tables is zero, so a record with a correct index and a cleared
+flag is a character AD&D owes +2/+3 and the engine gives nothing. `GEN $0B79`
+writes 1 there for every character it creates, and Curse's `GEN $0C31` does
+the same at `$7CE3`. `goldbox.c64_codec.write` wrote neither byte's flag.
+
+**Curse of the Azure Bonds makes the same gate at `LIBRARY $394B`**, reading
+`$7CE3` and indexing `$3840`/`$385F`, and those two tables are byte-identical
+to Pool of Radiance's over all 26 rows. `#258 (The C64 side of 0x0AB is
+unnamed, so the conversion drops it with no issue behind it)` first wrote the
+address down as `$1383`, which is the same instruction at the overlay base
+`$0800` rather than at `LIBRARY`'s resident `$2DC8` — the difference is
+`$25C8`, and both files' bases are in `docs/116-second-game.md`.
+
+`LIBRARY` is resident at **`$2C48`**, and `tools/d6502.py` takes the address
+of file byte 0 rather than skipping the PRG header — so pass it a headerless
+image, or every address in the listing is two too high. The first reading of
+this routine had `$3764 LDA $3651,X` where the machine has `$3766`.
+
+### The tables, read off the player's own `LIBRARY`
+
+| row | to hit `$3651` | damage `$3670` | the score that reaches it |
+|---|---|---|---|
+| 0 | +0 | +0 | *a cleared flag* |
+| 3 | -3 | -1 | 3 |
+| 8-15 | +0 | +0 | 8 to 15 |
+| 16 | +0 | +1 | 16 |
+| 17 | +1 | +1 | 17 |
+| 18 | +1 | +2 | 18 |
+| 19 | +1 | +3 | 18/01-50 |
+| 20 | +2 | +3 | 18/51-75 |
+| 21 | +2 | +4 | 18/76-90 |
+| 22 | +2 | +5 | 18/91-99 |
+| 23 | +3 | +6 | 18/00 |
+
+The Players Handbook exactly, including the rows past 18 that only a magically
+raised score reaches.
+
+### Why nothing looked wrong until the fight
+
+Three things had to be told apart, and only the running machine could do it.
+
+`goldbox.dos.to_c64_record` copies DOS's *own* THAC0 and damage bonus into the
+roster block — `0x10E` and roster `+0x17` — and those are right, because DOS
+did the same arithmetic on its side. The C64's `VIEW CHARACTER` draws that
+block verbatim. So the sheet after an import is correct **whatever `0x0E3`
+holds**, and a sheet is not evidence about the flag.
+
+The engine recomputes the whole roster through `LIBRARY $3726` — the entry the
+overlays reach is `$2CA2 JMP $3729`, and no on-disk overlay carries a literal
+`JSR` to either, because LINKER patches the operands at load. An execution
+checkpoint on `$375C` that never stops the machine counts the recomputes, and
+across two boots it read **0 at the main menu, 0 after LOAD SAVED GAME, 0 after
+BEGIN ADVENTURING, 0 on every VIEW, and 0 after each of the first four steps**.
+On the fifth step, the ambush: **33**, all eight blocks at once. Combat
+preparation is the only thing that does it.
+
+### The measurement
+
+`tools/c64strength.py`, one boot, `work/issue277/run3/`. The same DOS specimen
+converted into four slots of one party — `WISH-SPEC-elf6`, an elf fighter with
+18/75 rolled in DOS Pool of Radiance's own creation screens — differing only in
+`0x0E3` and in whether the roster block was spoiled first. `PORSAVE13.D64`'s
+own MAGNUS (18/80) and BRUTUS (18/98) stayed as engine-written controls.
+
+**Spoiling is what makes the reading a measurement.** Two of the four went in
+with a stored THAC0 of 50 and a damage bonus of +7, numbers no level-1 fighter
+can hold. A sensible number afterwards is then the engine's arithmetic and
+cannot be a copy of what the conversion wrote.
+
+| stage | `$375C` | `ZEROFLAG` (=0) | `ONEFLAG` (=1) | `SPOILZERO` (=0) | `SPOILONE` (=1) | MAGNUS | BRUTUS |
+|---|---|---|---|---|---|---|---|
+| LOAD SAVED GAME | 0 | 18 / +3 | 18 / +3 | 50 / +7 | 50 / +7 | 18 / +4 | 18 / +5 |
+| in the world | 0 | 18 / +3 | 18 / +3 | 50 / +7 | 50 / +7 | 18 / +4 | 18 / +5 |
+| ambushed, five steps in | 33 | **20 / +0** | **18 / +3** | **20 / +0** | **18 / +3** | 18 / +4 | 18 / +5 |
+
+Both spoiled slots landed on exactly the value their own `0x0E3` dictates. One
+byte, +2 to hit and +3 damage.
+
+**Run 4 (`work/issue277/run4/`) repeats it against the fixed writer**, with a
+fifth copy called `ASWRITTEN` whose `0x0E3` the tool never touches after
+`goldbox.dos.to_c64_record` returns and whose roster went in spoiled to 50 /
++7. It came out of the same ambush at **18 / +3**, beside `ZEROFLAG` at 20 /
++0. The gate count was 33 again, at the same step, so the reading is
+reproduced rather than seen once. Combat's own `VIEW` drew the sheet
+afterwards: `THACO 18  DAMAGE 1D2+3`.
+
+### What the fix is, and why it is a constant
+
+`goldbox.c64_codec.write` now sets `strength_bonus_flag` to 1 for every
+character it writes, rather than taking it from a source field. Three reasons,
+and the third is the one that decides it:
+
+* the destination's own character creation writes 1 unconditionally;
+* every engine-made player character on the C64 disks of all three titles
+  reads 1, and every DOS record anybody has — 24 shipped and the six this
+  project rolled — reads 1 at DOS `0x0AA`;
+* **the DOS writer already does the same thing in the other direction.**
+  `goldbox.dos`'s `WRITE_DEFAULTS` has carried `("strength_bonus", b"\x01")`
+  since long before this, and that half is proven in the running DOS game.
+  A constant on one side and a copied field on the other would have been two
+  answers to one question.
+
+Zero is what a *monster* holds — the five shipped `MON*` records share the
+record layout — and this writer never builds one.
+
+### What is still open
+
+`goldbox/dos.py`'s `DROPPED` still lists `strength_bonus` with the reason *"a
+boolean on DOS; the C64's aligned byte is a strength index and is computed
+instead"*. The first half is right and the second describes `0x0E2`, not the
+field's actual C64 home at `0x0E3`. The entry stays — no neutral field carries
+it — but the reason wants rewording to say the destination writes the same
+constant. Nothing a player sees turns on it; `UNREPORTED_DROPS` already keeps
+the line out of the pane.
+
+And every converted record came out of that same recompute at **armour class 9
+where the conversion wrote 10**. `armour_class` is copied straight from DOS,
+and the C64 overwrites it at the first fight: `LIBRARY $3753` indexes
+dexterity into a table at `$400D` and `$37C8` adds it to `armour_class_base`.
+So a `DIRECT` copy is a field the destination derives anyway, and the two
+ports do not agree on the answer — DOS says 10 for this character and the C64
+says 9. The conversion did not cause it and no player loses anything by it.
+
+**The table settles a doubt `goldbox/derive.py` records beside its own copy.**
+That comment says Pool of Radiance starts the dexterity bonus at 14 rather
+than the Players Handbook's 15 — read off saves where nobody is wearing
+anything — and then says the penalties below 12 are book values nothing we
+hold could check. The machine's own table, indexed from 0, is
+
+```
+ 0  -4 -4 -4 -3 -2 -1   0 0 0 0 0 0 0   1 1 2 3 4 4 4 5 5 5 6 6
+```
+
+so dexterity 3, 4, 5 and 6 give −4, −3, −2 and −1, which is exactly what
+`_DEX_AC` already holds: CONFIRMED from the code rather than assumed, and the
+table is *not* shifted at the bottom even though it is at the top. Two things
+it also says: 14 and 15 share `+1`, and above 18 the bonus keeps climbing —
+`+5` at 21 and `+6` at 24 — where `dexterity_ac_bonus` caps at 4. Only a
+magically raised score reaches those rows.
