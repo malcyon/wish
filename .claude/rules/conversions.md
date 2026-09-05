@@ -42,6 +42,12 @@ licence to silence anything else** -- propose and leave it in place. The same
 instinct applied to a character's status would have hidden a dead character
 arriving alive, which is what `#235` turned out to be.
 
+**Silent is about the pane, not about the work.** Asked whether quickfight
+should therefore come off `#131`'s list, Donald, 2026-09-04: *"I agree, we
+should try to convert it. We just shouldn't tell the player about
+quickfight."* So a field nobody would miss still gets converted; it just does
+not get a line.
+
 **And a silent drop is still a drop.** It stays in `field_disposition` and in
 the accounting; `#131` is blocked on it either way. Only the line in the pane
 goes.
