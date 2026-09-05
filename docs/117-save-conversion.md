@@ -1830,13 +1830,15 @@ graph LR
   c64_codec --> neutral
   c64_codec --> record
   c64_codec --> spells
+  c64_save --> games
   derive --> items
   dos --> areas
   dos --> c64_codec
+  dos --> c64_save
   dos -.->|deferred| d64
   dos --> dos_layout
   dos --> dos_savegame
-  dos -.->|deferred| games
+  dos --> games
   dos -.->|deferred| icons
   dos -.->|deferred| items
   dos --> layout

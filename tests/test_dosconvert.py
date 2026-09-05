@@ -624,8 +624,11 @@ def test_an_area_whose_map_we_cannot_name_is_refused():
     savgam = bytearray(_savgam("A"))
     save0 = bytearray(0x1C00)
     for id in (3, 8):
-        sg.put_word(savgam, sg.AREA, id)
-        assert sg.area_id(bytes(savgam)) == id
+        # `$49F2`, not `$49C5`: the area is the script word, and area 8 --
+        # Phlan City Hall -- is one of the places that proves it, since its
+        # script loads no map and leaves `$49C5` at New Phlan's 0 (#257).
+        sg.put_word(savgam, sg.SCRIPT, id)
+        assert sg.current_area(bytes(savgam)) == id
         with pytest.raises(dos.DosRecordError):
             dos.apply_file_cache(save0, bytes(savgam))
 
@@ -733,9 +736,10 @@ def test_an_outdoor_bit_with_an_indoor_script_id_is_refused():
 
 
 def test_an_indoor_bit_with_an_outdoor_script_id_is_refused():
-    """`$49E6` != 0 (indoors) but the area id (`$49C5`, read since the save
-    is not outdoors) is one of the three overland windows."""
-    savgam = _mismatched_savgam(indoors_word=1, area=26, script=0)
+    """`$49E6` != 0 (indoors) but the area, `$49F2`, is one of the three
+    overland windows.  It read `$49C5` here until #257 established that the
+    area is the script word indoors as well as out."""
+    savgam = _mismatched_savgam(indoors_word=1, area=0, script=26)
     assert sg.outdoors(savgam) is False
     assert areas.area(sg.current_area(savgam)).outdoors is True
     save0 = bytearray(0x1C00)
