@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from . import dos_layout, games, neutral
-from .amiga_adf import AmigaDiskError
+from .amiga_adf import AmigaDisk, AmigaDiskError
 from .layout import Confidence, Kind
 from .neutral import NeutralCharacter
 
@@ -1918,10 +1918,21 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
 # why saving to slot B rewrote all six to `CHRDATB<n>` (#28, §1.9b).  So a
 # saved game moved to another slot has to be pointed at the files it will
 # actually find, or the party that loads is the one it came from.
-POR_SLOT_LIST = f"/{POR_SAVE_DRAWER}/save"
+POR_SLOT_LIST_NAME = "save"
+POR_SLOT_LIST = f"/{POR_SAVE_DRAWER}/{POR_SLOT_LIST_NAME}"
 POR_SLOT_LIST_SIZE = 10
 #: Ten legal slots, which is exactly what the ten-byte list holds.
 POR_SLOT_LETTERS = "ABCDEFGHIJ"
+#: The volume a Pool of Radiance *save disk* carries, as against the game
+#: disk's own `poolgame` (#36).
+#:
+#: `LOAD SAVED GAME` prompts `PATH FOR SAVE  RETURN = POOLSAVE:` and the
+#: default is a **volume name**, not a drawer on the game disk -- which is why
+#: a bare RETURN on the game disk raises Kickstart's *please insert volume
+#: POOLSAVE* requester and `docs/124-amiga-port.md` §1.8 had to type `SAVE/`
+#: instead.  `Put save disk in any drive` sits beside both the load and the
+#: save path in `/program`, and "any drive" is what a volume lookup means.
+POR_SAVE_VOLUME = "POOLSAVE"
 POR_SAVEGAME_SIZE = 13141
 POR_CHARACTER_TABLE = 12813
 POR_CHARACTER_TABLE_STRIDE = 41
@@ -1945,6 +1956,25 @@ def _por_slot_letter(slot: str) -> str:
 def por_savegame_filename(slot: str) -> str:
     """`savgamA.dat`, the case the shipped disk uses."""
     return f"savgam{_por_slot_letter(slot)}.dat"
+
+
+def por_save_path(name: str, drawer: str = POR_SAVE_DRAWER) -> str:
+    """Where a save file sits, given which kind of disk it is on (#36).
+
+    The game builds every one of these names by sticking a filename on the
+    end of whatever the player typed at `PATH FOR SAVE`, so the answer to
+    that prompt is the whole difference between the two shapes:
+
+    | answered | opens | `drawer` |
+    |---|---|---|
+    | `SAVE/` on the game disk | `SAVE/save` | `"save"` |
+    | `POOLSAVE:`, the prompt's own default | `POOLSAVE:save` | `""` |
+
+    An empty `drawer` is therefore the root of a save disk, and it is a real
+    case rather than a degenerate one: it is what the game asks for when the
+    player presses RETURN.
+    """
+    return f"/{drawer}/{name}" if drawer else f"/{name}"
 
 
 def _remove_if_there(disk, path: str) -> bool:
@@ -1990,7 +2020,7 @@ def _all_or_nothing(disk):
         raise
 
 
-def read_slot_list(disk) -> list[str]:
+def read_slot_list(disk, drawer: str = POR_SAVE_DRAWER) -> list[str]:
     """The slots the picker will offer.
 
     A disk with no `save/save` returns an empty list: the file is what the
@@ -2004,7 +2034,7 @@ def read_slot_list(disk) -> list[str]:
     back in its proper place is a repair rather than a loss.
     """
     try:
-        raw = disk.read_file(POR_SLOT_LIST)
+        raw = disk.read_file(por_save_path(POR_SLOT_LIST_NAME, drawer))
     except AmigaDiskError:
         return []
     out: list[str] = []
@@ -2067,7 +2097,8 @@ def retarget_savegame(save: bytes, slot: str) -> bytes:
 
 
 def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
-                   savegame: bytes | None = None) -> list[str]:
+                   savegame: bytes | None = None,
+                   drawer: str = POR_SAVE_DRAWER) -> list[str]:
     """Write a whole save slot onto an Amiga disk, slot list and all.
 
     Returns the paths written, in the order they were written.  `disk` is an
@@ -2088,6 +2119,10 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
     Without one the character files land in the drawer and the slot still
     cannot be loaded, so it is required unless the slot already has a saved
     game of its own.
+
+    `drawer` is `save` for a copy of the game disk and `""` for the root of a
+    `POOLSAVE` save disk -- see :func:`por_save_path`, which is the whole of
+    the difference between the two.
     """
     letter = _por_slot_letter(slot)
     if not 1 <= len(characters) <= POR_PARTY_MAX:
@@ -2098,9 +2133,10 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
     with _all_or_nothing(disk):
         # Feasibility first: nothing is written for a slot the picker will not
         # be told about.
-        wanted = slot_list_bytes(read_slot_list(disk) + [letter])
+        wanted = slot_list_bytes(read_slot_list(disk, drawer) + [letter])
 
-        savegame_path = f"/{POR_SAVE_DRAWER}/{por_savegame_filename(letter)}"
+        savegame_path = por_save_path(
+            por_savegame_filename(letter), drawer)
         if savegame is None:
             try:
                 disk.lookup(savegame_path)
@@ -2117,7 +2153,7 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
                 raise AmigaRecordError(
                     f"{len(rep.unaccounted)} bytes of character {index} have "
                     f"no provenance; refusing to write an unexplained record")
-            stem = f"/{POR_SAVE_DRAWER}/{por_filename(letter, index, '')}"
+            stem = por_save_path(por_filename(letter, index, ""), drawer)
             disk.write_file(stem + ".sav", record)
             written.append(stem + ".sav")
             for suffix, payload in ((".itm", itm), (".spc", spc)):
@@ -2136,7 +2172,7 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
         # four-character one would otherwise leave CHRDAT?5 and CHRDAT?6 on
         # the disk, loadable and belonging to somebody else.
         for index in range(len(characters) + 1, POR_PARTY_MAX + 1):
-            stem = f"/{POR_SAVE_DRAWER}/{por_filename(letter, index, '')}"
+            stem = por_save_path(por_filename(letter, index, ""), drawer)
             for suffix in (".sav", ".itm", ".spc"):
                 _remove_if_there(disk, stem + suffix)
 
@@ -2145,13 +2181,45 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
                             retarget_savegame(savegame, letter))
             written.append(savegame_path)
 
-        disk.write_file(POR_SLOT_LIST, wanted)
-        written.append(POR_SLOT_LIST)
-        if letter not in read_slot_list(disk):
+        slot_list = por_save_path(POR_SLOT_LIST_NAME, drawer)
+        disk.write_file(slot_list, wanted)
+        written.append(slot_list)
+        if letter not in read_slot_list(disk, drawer):
             raise AmigaRecordError(
-                f"slot {letter} is still not in {POR_SLOT_LIST} after writing "
+                f"slot {letter} is still not in {slot_list} after writing "
                 f"it; the picker would not offer it")
         return written
+
+
+#: The empty file the game disk ships in its save drawer, listing the
+#: characters `ADD CHARACTER TO PARTY` can reach.  Zero bytes on disk 1, and
+#: `/program` opens it by name for reading; a save disk without one would meet
+#: `file not found,check your save path` the first time somebody opened that
+#: menu.  One block, so it goes on every disk this writes.
+POR_CHARACTER_LIST_NAME = "charlist.txt"
+
+
+def make_por_save_disk(slot: str, characters: Sequence[NeutralCharacter],
+                       savegame: bytes,
+                       volume: str = POR_SAVE_VOLUME) -> AmigaDisk:
+    """A save disk with one slot on it, formatted from nothing (#36).
+
+    This is what a player can actually be handed: an 880K OFS floppy named
+    `POOLSAVE` carrying a converted party and no game code at all.  Put it in
+    any drive beside the game disk and the answer to `PATH FOR SAVE  RETURN =
+    POOLSAVE:` is RETURN -- the prompt's own default, which is a volume name
+    rather than a drawer, and which is why `Put save disk in any drive` sits
+    beside both the load and the save path in the game's own `/program`.
+
+    `savegame` is the 13,141-byte `savgam<letter>.dat` the slot is wrapped in.
+    It has to come off the player's game disk, because it holds the map, the
+    party's square and the clock, and a character record holds none of the
+    three.  Everything else on the disk is made here.
+    """
+    disk = AmigaDisk.blank(volume)
+    disk.write_file(por_save_path(POR_CHARACTER_LIST_NAME, ""), b"")
+    write_por_slot(disk, slot, characters, savegame, drawer="")
+    return disk
 
 
 # ---------------------------------------------------------------------------

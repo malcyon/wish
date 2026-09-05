@@ -27,8 +27,21 @@ saved game is copied and pointed at the new slot's files; it defaults to `A`,
 the slot the game ships.  So the party is ours and the place is the disk's,
 and a run says so rather than leaving a reader to work it out.
 
-**The input disk is opened read-only and `--out` is required.**  The player's
-own disks are never written to; work on a copy.
+**`--save-disk` writes a save disk instead of a copy of the game disk**, which
+is what a player is actually handed (#36):
+
+    tools/toamigapor.py work/por1.adf --to B --save-disk work/poolsave.adf \\
+        --c64 ~/wish-specimens/por-c64/WISH-SPEC-por-party-twin-pair.d64
+
+That output is an 880K floppy named `POOLSAVE` with no game code on it at all
+-- put it in any drive beside the game disk and answer `LOAD SAVED GAME`'s
+`PATH FOR SAVE  RETURN = POOLSAVE:` with a bare RETURN.  The disk named on the
+command line is still read, because the 13,141-byte saved game has to come
+from somewhere and only the game disk has one; nothing else on the output is
+copied.
+
+**The input disk is opened read-only, and one of `--out` and `--save-disk` is
+required.**  The player's own disks are never written to; work on a copy.
 """
 
 from __future__ import annotations
@@ -88,6 +101,17 @@ def read_dos_party(folder: str, slot: str) -> list:
     return [dos.to_neutral(char) for char in party]
 
 
+def _walk_names(disk) -> list[str]:
+    """Every file on a disk, for the run's own report.
+
+    `write_por_slot` returns the paths it wrote, which is the whole of a game
+    disk's news but only most of a save disk's: the volume itself and
+    `charlist.txt` came from `make_por_save_disk` and a player is entitled to
+    see what is actually on the floppy they are handed.
+    """
+    return sorted(path for path, entry in disk.walk() if not entry.is_dir)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -95,8 +119,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("disk", help="an Amiga Pool of Radiance disk 1 image")
     parser.add_argument("--to", dest="target", required=True,
                         help="the slot letter to write, A to J")
-    parser.add_argument("--out", required=True,
-                        help="where the new image is written")
+    parser.add_argument("--out",
+                        help="where a copy of the input disk, with the slot "
+                             "written into its save drawer, is put")
+    parser.add_argument("--save-disk", dest="save_disk",
+                        help="where a freshly formatted POOLSAVE save disk, "
+                             "carrying the slot and no game code, is put")
     parser.add_argument("--container", default="A",
                         help="the slot whose saved game is copied around the "
                              "party (default A)")
@@ -108,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if bool(args.c64) == bool(args.dos):
         raise SystemExit("give exactly one of --c64 and --dos")
+    if bool(args.out) == bool(args.save_disk):
+        raise SystemExit("give exactly one of --out and --save-disk")
 
     if args.c64:
         party = read_c64_party(args.c64)
@@ -134,16 +164,27 @@ def main(argv: list[str] | None = None) -> int:
         for line in char.warnings:
             print(f"    {line}")
 
-    written = amiga.write_por_slot(disk, args.target, party, savegame)
+    if args.save_disk:
+        # A save disk is not a copy of anything: it is formatted here, and the
+        # only byte of the input that reaches it is the saved game read above.
+        out_path, drawer = args.save_disk, ""
+        disk = amiga.make_por_save_disk(args.target, party, savegame)
+        written = [p for p in _walk_names(disk)]
+    else:
+        out_path, drawer = args.out, amiga.POR_SAVE_DRAWER
+        written = amiga.write_por_slot(disk, args.target, party, savegame)
     problems = disk.verify()
     if problems:
         raise SystemExit("the new disk does not verify:\n  "
                          + "\n  ".join(problems))
-    disk.save(args.out)
+    disk.save(out_path)
     for path in written:
         print(f"  wrote {path}")
-    print(f"{args.out}: slot list {amiga.read_slot_list(disk)}, "
+    print(f"{out_path}: volume {disk.volume_name!r}, slot list "
+          f"{amiga.read_slot_list(disk, drawer)}, "
           f"{disk.free_count()} blocks free")
+    if args.save_disk:
+        print("  put it in any drive and answer PATH FOR SAVE with RETURN")
     return 0
 
 

@@ -52,8 +52,9 @@ def field_at(offset: int) -> str:
     return f"unmapped {offset:#05x}"
 
 
-def slot_files(disk: AmigaDisk, slot: str, index: int) -> dict[str, bytes]:
-    stem = f"/{amiga.POR_SAVE_DRAWER}/{amiga.por_filename(slot, index, '')}"
+def slot_files(disk: AmigaDisk, slot: str, index: int,
+               drawer: str = amiga.POR_SAVE_DRAWER) -> dict[str, bytes]:
+    stem = amiga.por_save_path(amiga.por_filename(slot, index, ""), drawer)
     out = {}
     for suffix in (".sav", ".itm", ".spc"):
         try:
@@ -72,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="the slot letter to compare from")
     parser.add_argument("--to", dest="right", required=True,
                         help="the slot letter to compare to")
+    parser.add_argument("--drawer", default=amiga.POR_SAVE_DRAWER,
+                        help="the drawer the slots sit in: 'save' on a game "
+                             "disk, and empty for the root of a POOLSAVE save "
+                             "disk (#36)")
     args = parser.parse_args(argv)
 
     disk = AmigaDisk.open(args.disk)
@@ -82,8 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     # and whether the engine fills it in is a question about the engine.
     blank_left = blank_right = item_nodes = 0
     for index in range(1, amiga.POR_PARTY_MAX + 1):
-        left = slot_files(disk, args.left, index)
-        right = slot_files(disk, args.right, index)
+        left = slot_files(disk, args.left, index, args.drawer)
+        right = slot_files(disk, args.right, index, args.drawer)
         if not left or not right:
             continue
         a, b = left.get(".sav", b""), right.get(".sav", b"")
