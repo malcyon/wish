@@ -318,3 +318,44 @@ def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
     raise PortraitError(
         f"{disks}: none of the sides here carries the creation menu "
         f"({'; '.join(why)})")
+
+
+# ---------------------------------------------------------------------------
+# Which titles have a sheet portrait at all
+# ---------------------------------------------------------------------------
+#: The game keys whose C64 character sheet draws a portrait.
+#:
+#: **Only Pool of Radiance's does**, and that is a fact about the engine
+#: rather than about the art on a player's disks: its `LIBRARY $48A4` reads
+#: `portrait_head` and `portrait_body` out of the live record, asks the
+#: loader for the `HEAD<xx>` and `BODY<xx>` files they name, and draws them
+#: with `ANIMATE00`'s `$8406` and `$8409` entries at screen `$CC44`.  Curse
+#: of the Azure Bonds' and Secret of the Silver Blades' `LIBRARY` never call
+#: the loader at all, and no file on any of their twelve sides calls either
+#: of those two `ANIMATE` entries -- 558 and 571 files searched
+#: (`tools/portraitdraw.py`, which prints the census).
+#:
+#: Watched as well as read: a Curse sheet and a Silver Blades sheet with
+#: `$41` -- art that exists on `CURSE_B` -- written into both record bytes
+#: draw exactly as they do with the pair at zero, and loader slots 13 and 14
+#: stay `$FF`, so no art was even asked for.  The runs are in
+#: `docs/188-the-sheet-portrait-per-title.md` and the screenshots on `#300`.
+#:
+#: Kept here rather than in the conversion so both directions read one fact:
+#: `goldbox.dos` decides today with `shape is POOL_OF_RADIANCE` in the
+#: C64-to-DOS direction and does not decide at all in the other, which is
+#: why a Curse import reports a portrait it never could have written.
+SHEET_PORTRAIT_TITLES = frozenset({"pool-of-radiance"})
+
+
+def draws_sheet_portrait(game) -> bool:
+    """Whether this title's C64 character sheet draws a portrait at all.
+
+    `game` is a `goldbox.games.Game`, anything else carrying a `key`, or the
+    key itself.  A title this answers False for has nothing to convert and
+    nothing to report: a character arriving there without a face is a
+    character arriving correct, because the engine draws none for any
+    character, including one it made itself.
+    """
+    key = getattr(game, "key", game)
+    return str(key) in SHEET_PORTRAIT_TITLES
