@@ -2645,6 +2645,97 @@ def test_every_later_specimen_sets_a_class_mask_its_levels_agree_with():
     assert moved == 1, moved
 
 
+# --- the ability pairs: a (base, current) pair here too, as on DOS ---------
+def _ability_record(shape, name: str, first: int, second: int):
+    """A record of `shape` holding one ability pair and nothing else.
+
+    Built from `goldbox/dos_layout.py`'s own table through the shape's shift
+    map, the way `_later_record` builds a class mask above, so it belongs to
+    this project and runs with no disks.
+    """
+    raw = bytearray(shape.record_size)
+    raw[:6] = b"TESTER"
+    at = shape.offset(shape.dos_field(name).offset)
+    raw[at] = first
+    raw[at + 1] = second
+    return amiga.AmigaCharacter.from_bytes(bytes(raw), shape)
+
+
+def test_a_later_amiga_ability_reaches_the_neutral_record_as_a_number():
+    """The regression: the seven ability pairs came out of `to_neutral_later`
+    as the raw two-byte pair instead of a score, and
+    `goldbox.c64_codec.write` raised `ValueError: invalid literal for int()
+    with base 10: b'\\x12\\x12'` before it wrote a byte (#294).
+    `to_neutral_later` builds its copied-field list by iterating
+    `goldbox.dos.DIRECT`, which has no `continue` for the seven ability
+    names the way the DOS reader's own loop does.
+    """
+    from goldbox import c64_codec
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        char = _ability_record(shape, "strength", 0x12, 0x12)
+        out = amiga.to_neutral_later(char)
+        assert isinstance(out.get("strength"), int), shape.key
+        assert out.get("strength") == 0x12, shape.key
+        c64_codec.write(out)          # raised ValueError before the fix
+
+
+def test_a_later_amiga_ability_pair_splits_first_and_second_byte():
+    """A synthetic pair with a different byte in each half pins which half
+    the neutral ability takes and which goes to `abilities_second` -- the 21
+    specimens on the disks cannot, because every one of them holds equal
+    bytes in every pair.
+    """
+    for shape in (amiga.CURSE_SHAPE, amiga.SILVER_BLADES_SHAPE):
+        char = _ability_record(shape, "dexterity", 0x0A, 0x0B)
+        out = amiga.to_neutral_later(char)
+        assert out.get("dexterity") == 0x0A, shape.key
+        assert out.get("abilities_second")["dexterity"] == 0x0B, shape.key
+
+
+def test_every_later_specimen_converts_a_legal_ability_score_end_to_end():
+    """21 of 21, against the records on the disks: every ability score
+    reaches the neutral record as a number in range and the conversion
+    completes all the way to a C64 record -- which raised `ValueError` for
+    all 21 before the fix.
+    """
+    from goldbox import c64_codec
+    seen = 0
+    for char in _later_parties():
+        out = amiga.to_neutral(char)
+        for name in ("strength", "intelligence", "wisdom", "dexterity",
+                     "constitution", "charisma"):
+            score = out.get(name)
+            assert isinstance(score, int), (char.name, name, score)
+            assert 1 <= score <= 25, (char.name, name, score)
+        pct = out.get("exceptional_strength")
+        assert isinstance(pct, int), (char.name, pct)
+        assert 0 <= pct <= 100, (char.name, pct)
+        c64_codec.write(out)
+        seen += 1
+    assert seen == 21, seen
+
+
+def test_a_field_shaped_like_the_abilities_raises_rather_than_copies_bytes(
+        monkeypatch):
+    """The guard the fix for `#294` adds: a name that reaches
+    `to_neutral_later`'s `DIRECT` loop and reads back as raw bytes -- the
+    shape every one of the seven abilities had before the fix -- raises
+    rather than handing a byte pair to a neutral field the writer expects to
+    be a number.  Simulated by adding a field `goldbox.dos.DIRECT` does not
+    carry today, because no other field of either later title is shaped this
+    way to test it against for real -- which is the coupling `#292 (An Amiga
+    Curse or Silver Blades character arrives on the C64 with no class at
+    all, since class_bits dropped out of dos.DIRECT)` named as the hole
+    nothing else closes.
+    """
+    from goldbox import dos as _dos
+    monkeypatch.setattr(_dos, "DIRECT", _dos.DIRECT + (("spellbook",
+                                                         "spellbook"),))
+    char = _ability_record(amiga.CURSE_SHAPE, "strength", 0x12, 0x12)
+    with pytest.raises(AmigaRecordError, match="spellbook"):
+        amiga.to_neutral_later(char)
+
+
 def test_no_drop_line_of_a_later_read_carries_developer_detail():
     """`.claude/rules/gui-text.md`: no memory address, file offset or bare
     issue number in front of a player.  `LATER_DROPPED`'s own `why` text is

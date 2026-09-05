@@ -3038,9 +3038,12 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #: `later_field_disposition` backs are what catch it, so keep them.
 #:
 #: What is **not** here and is converted by a rule below: the class mask, the
-#: name, the spellbook, the memorised spells, the level arrays, the spell-slot
-#: arrays, size, turn power, the status and its flag, the attack forms, the
-#: roster tail, the effect records and the items.
+#: abilities, the name, the spellbook, the memorised spells, the level
+#: arrays, the spell-slot arrays, size, turn power, the status and its flag,
+#: the attack forms, the roster tail, the effect records and the items.
+#: `abilities_second` is one more: it has no DOS field name of its own, so it
+#: never appears in `later_field_disposition`'s table, the same way DOS's own
+#: `field_disposition` never names it either.
 LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("class_bits", "reread from the level array into the shared bit order, "
                    "the way the DOS reader rereads its own: this port gives "
@@ -3076,6 +3079,12 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "converted"),
     ("encumbrance", "copied, and it is money plus item weight -- a writer "
                     "that recomputes it should"),
+) + tuple(
+    (name, "a (base, current) pair here as it is on DOS from Curse onwards; "
+           "the first byte crosses as the neutral score and the second goes "
+           "to abilities_second, and neither codec claims to know which the "
+           "engine treats as current")
+    for name in neutral.ABILITIES
 )
 
 #: Fields the read leaves behind, and why.  Every one is reported: a drop that
@@ -3177,7 +3186,8 @@ def later_field_disposition(shape: AmigaShape) -> dict[str, str]:
     from . import dos as _dos
 
     declared = {f.name for f in dos_layout.layout_for(shape.dos)}
-    direct = [(n, n) for n, _ in _dos.DIRECT if n in declared]
+    direct = [(n, n) for n, _ in _dos.DIRECT
+              if n in declared and n not in _dos.ABILITY_ORDER]
     transformed = [(n, why) for n, why in LATER_TRANSFORMED if n in declared]
     dropped = [(n, why) for n, why in LATER_DROPPED if n in declared]
     dropped += [(n, "bytes no field of the DOS table for this title claims")
@@ -3210,11 +3220,55 @@ def to_neutral_later(char: AmigaCharacter) -> NeutralCharacter:
             grade("name_text"), neutral.Provenance.RESHAPED)
 
     for name, _ in _dos.DIRECT:
+        if name in _dos.ABILITY_ORDER:
+            continue                      # a (base, current) pair; see below
         f = table[name]
-        out.set(name, char.get(name),
+        value = char.get(name)
+        if isinstance(value, (bytes, bytearray)):
+            # `#294`, the shape rather than one field of it: a name in
+            # `DIRECT` whose base table declares it `U8`/`I8` is read back
+            # raw the moment a later title's `sizes` widens it -- the check
+            # `goldbox/dos_layout.py:layout_for` itself makes.  The abilities
+            # are the only field this has happened to today; the next one
+            # would otherwise reach here as a silent byte-pair copy, exactly
+            # as the abilities did before this fix.
+            raise AmigaRecordError(
+                f"{shape.title} {name} is {f.size} raw bytes on this port "
+                f"and `to_neutral_later`'s DIRECT loop copies it as a "
+                f"number: it needs the same kind of exception the abilities "
+                f"got, not a straight copy")
+        out.set(name, value,
                 f"Amiga {shape.title} {name} @{shape.offset(f.offset):#05x} "
                 f"({f.confidence}), read big-endian through the DOS table",
                 f.confidence)
+
+    # -- the abilities, a (base, current) pair here exactly as they are on ---
+    # DOS from Curse onwards: `goldbox.dos.DIRECT` hands every name in
+    # `ABILITY_ORDER` back as a two-byte `RAW` chunk rather than a number
+    # (`goldbox/dos_layout.py`'s `sizes` widen every one of the seven), so the
+    # loop above would otherwise pass the pair whole into a field the neutral
+    # record and `goldbox.c64_codec.write` both expect to be a score -- which
+    # is `#294`.  DOS's own reader steps around the same widening with a
+    # `continue` at the top of its `DIRECT` loop and a second pass that calls
+    # `_ability_pair`; this is that second pass, written locally because
+    # `_ability_pair` takes a `DosCharacter` and this reader has no DOS record
+    # to hand it -- `char.get(name)` already returns the same two raw bytes
+    # `_ability_pair` reads with `dos.raw(name)`.  The first byte crosses as
+    # the neutral ability and the second into `abilities_second`; neither
+    # codec claims to know which the engine treats as current.
+    second: dict[str, int] = {}
+    for name in _dos.ABILITY_ORDER:
+        f = table[name]
+        pair = char.get(name)
+        out.set(name, pair[0],
+                f"Amiga {shape.title} {name} @{shape.offset(f.offset):#05x} "
+                f"({f.confidence}), the first of its two bytes",
+                f.confidence)
+        second[name] = pair[-1]
+    out.set("abilities_second", second,
+            f"Amiga {shape.title} keeps every ability twice; these are the "
+            f"second byte of each pair",
+            Confidence.CONFIRMED, neutral.Provenance.RESHAPED)
 
     # -- the class mask, which is not a copy on this port either -------------
     # The Amiga stores this field exactly as DOS does, ambiguity and all:
