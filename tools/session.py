@@ -591,7 +591,20 @@ class Session:
 
     # -- disk -------------------------------------------------------------
 
-    def attach(self, path: str, unit: int = 8) -> None:
+    #: How long to let the machine *run* after a disk goes into the drive.
+    #:
+    #: An emulated 1541 answers `74, DRIVE NOT READY` for a little over a
+    #: second of its own clock after an image is attached, which is how it
+    #: tells the computer the disk changed.  Curse reads that number straight
+    #: out of the drive (`LIBRARY $402D`) and turns it into
+    #: `UNABLE TO LOAD SAVED GAME.`, so a load taken too soon after an attach
+    #: fails with a message that names neither the disk nor the reason
+    #: (`#291`).  Three seconds is comfortably past it and is still shorter
+    #: than a person takes to swap a disk.
+    ATTACH_SETTLE = 3.0
+
+    def attach(self, path: str, unit: int = 8,
+               settle: float | None = None) -> None:
         if str(path).isdigit():
             path = f"{self.here}/SIDE{path}.D64"
         path = os.path.abspath(path)
@@ -604,6 +617,11 @@ class Session:
                 self.text.recv(65536)  # drained; it is only prompt echo
         self.attached = path
         self.log(f"  attached {os.path.basename(path)}")
+        # **Out here, and not in the block above.**  The machine is stopped
+        # for as long as a monitor connection is open, so the half second
+        # inside it passes no emulated cycles at all and the drive's own
+        # settling time never runs down.
+        time.sleep(self.ATTACH_SETTLE if settle is None else settle)
 
     # -- screen -----------------------------------------------------------
 
