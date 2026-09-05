@@ -1758,7 +1758,6 @@ class FastTravel(Action):
         reads `$4BF2` and `$4BE6` rather than quoting Pool of Radiance's
         numbers at a machine that keeps something else there.
         """
-        addr = self.addresses or POOL_ADDRESSES
         out = ["the arriving script assumes quest flags the party never set; "
                "arriving this way is not the same as having played there"]
         outdoors_target = getattr(area, "outdoors", False)
@@ -1789,13 +1788,17 @@ class FastTravel(Action):
                 # `self.addresses.travel_square`.
                 out.append(f"no overland square is known for {name}, so the "
                            f"party stays on whatever square it last held")
-        indoors = self.current_indoors(target, addr)
-        if indoors is not None:
-            outdoors_now = indoors == 0
-            if outdoors_now != outdoors_target:
-                out.append(f"${addr.indoors:04X} is {indoors}, so LOADFILES "
-                           f"will ask for a "
-                           f"{'SQRDATA' if outdoors_now else 'GEO'}")
+        # #263: there used to be a fifth note here, saying which of two file
+        # kinds `LOADFILES` would ask for when the party is indoors and the
+        # target is outdoors or the other way about.  Every word of it was a
+        # developer's -- an address and two file names -- and unlike the three
+        # notes above it, nothing was left once they came out.  Donald,
+        # 2026-09-05, asked for it dropped rather than paraphrased: the notes
+        # above already say the trip is risky and why, and nobody has watched
+        # what a person would actually see when the kinds disagree, so any
+        # replacement sentence would describe the code rather than the game.
+        # `self.current_indoors` and `self.addresses.indoors` are still here
+        # for whoever measures it.
         return tuple(out)
 
     #: `ECL1E` is the attract-mode demo and fasttraveling into it ends the session:

@@ -37,7 +37,13 @@ PICTURE_ASSET = (pathlib.Path(__file__).resolve().parent.parent
 #: boxes use that for a bare application icon -- and Donald asked for it
 #: doubled once the combo mark, with its own lettering, was the picture:
 #: *"Use the color combo with the black background, but double its size."*
-PICTURE = 128
+#:
+#: Doubled again on 2026-09-05, for a reason about the drawing rather than
+#: about the layout: *"The circle around the star is broken up and does not
+#: look clear at all."*  The ring is a thin stroke in the vector, and at 128
+#: it lands under a pixel wide, so antialiasing leaves it as a dotted line
+#: rather than a circle.  At 256 the stroke has a whole pixel to sit in.
+PICTURE = 256
 
 
 def _picture(size: int) -> QPixmap:
