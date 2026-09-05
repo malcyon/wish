@@ -35,6 +35,7 @@ from __future__ import annotations
 import pathlib
 
 import pytest
+from test_neutral import _filled
 
 from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame
 from goldbox import dos_savegame as sg
@@ -222,6 +223,90 @@ def test_a_curse_dwarf_still_has_infravision():
                                          race=1))
     rec, _ = dos.to_c64_record(dwarf)
     assert rec.get("infravision") == 6
+
+
+# --- innate combat effects, going back to DOS: keyed by race name too --------
+# `RACE_COMBAT_EFFECTS` is `dos.write`'s twin of `INFRAVISION` above: a C64
+# record carries no trait id for a dwarf's constitution bonus or a gnome's, so
+# the DOS `.SPC` file the writer builds has to derive them from the race byte,
+# the same way the C64 record's own infravision byte is derived.  It used to
+# be keyed by Pool of Radiance's race numbers and applied to every title
+# (#293, A converted Silver Blades dwarf, elf or gnome gets another race's
+# innate combat effect, because RACE_COMBAT_EFFECTS is keyed by Pool of
+# Radiance's race numbers): Silver Blades' race 1 is the elf and its 3 the
+# dwarf, so a converted Silver Blades elf was handed the dwarf's 90, 97, 26
+# and 47, a converted dwarf the gnome's 97, 18, 47 and 48, and a converted
+# gnome -- race 4, no entry at all -- nothing.
+def _spc_ids(spc: bytes) -> list[int]:
+    """The effect ids of a `.SPC` payload, one per nine-byte record."""
+    assert len(spc) % dos.EFFECT_SIZE == 0
+    return [spc[n] for n in range(0, len(spc), dos.EFFECT_SIZE)]
+
+
+def test_a_silver_blades_elf_carries_his_own_effect_not_the_dwarfs():
+    """`race=1` is Silver Blades' elf -- Pool of Radiance's dwarf slot.
+    `goldbox/traits.py`'s `NAMES_SILVER_BLADES` seed table gives this title's
+    elf 95 alone, not the dwarf's 90, 97, 26 and 47."""
+    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char.set("race", 1, "made up: elf")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [95]
+
+
+def test_a_silver_blades_dwarf_carries_his_own_effects_not_the_gnomes():
+    """`race=3` is Silver Blades' dwarf -- Pool of Radiance's gnome slot, so a
+    converted dwarf used to be handed 97, 18, 47 and 48."""
+    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char.set("race", 3, "made up: dwarf")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [26, 47]
+
+
+def test_a_silver_blades_gnome_carries_his_own_effects():
+    """`race=4` had no entry at all in the old, Pool-of-Radiance-numbered
+    table, so a converted Silver Blades gnome carried nothing."""
+    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char.set("race", 4, "made up: gnome")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [48, 7]
+
+
+def test_a_silver_blades_half_elf_and_halfling_carry_their_own_effect():
+    for race, expect in ((2, [18]), (5, [92])):
+        char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+        char.set("race", race, "made up")
+        char.set("innate_effects", [], "made up: nothing in the trait slots")
+        _, _, spc, _ = dos.write(char)
+        assert _spc_ids(spc) == expect, race
+
+
+def test_a_silver_blades_human_carries_no_innate_effect():
+    char = _filled(game=games.SECRET_OF_THE_SILVER_BLADES)
+    char.set("race", 6, "made up: human")
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert spc == b""
+
+
+def test_a_pool_of_radiance_dwarf_is_unmoved_by_the_silver_blades_split():
+    """The table this project measured from must not move: Pool of Radiance's
+    own race 1, still the dwarf, still carries all four."""
+    char = _filled()                        # game=None, race 1, dwarf
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [90, 97, 26, 47]
+
+
+def test_a_curse_dwarf_still_carries_his_four():
+    """Curse shares Pool of Radiance's race numbering (`race=1` dwarf) and
+    its table, the way it does for infravision above."""
+    char = _filled(game=games.CURSE_OF_THE_AZURE_BONDS)
+    char.set("innate_effects", [], "made up: nothing in the trait slots")
+    _, _, spc, _ = dos.write(char)
+    assert _spc_ids(spc) == [90, 97, 26, 47]
 
 
 # --- the item record: 67 bytes in this title alone ---------------------------

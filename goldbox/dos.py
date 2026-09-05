@@ -403,12 +403,27 @@ INNATE_PAYLOAD = bytes((0x00, 0x00, 0xFF, 0x00))
 #: NULL terminator.  So this is what a converter writes.  CONFIRMED.
 EFFECT_NEXT_NULL = bytes(4)
 
-#: Race code -> the innate ids a **C64** record cannot hand over, because the
+#: Race name -> the innate ids a **C64** record cannot hand over, because the
 #: C64 engine either works them out when the blow lands or keeps them inside
 #: another field, and stores no trait id for them at all.
 #:
-#: Two races have a DOS specimen, and each is written the whole set the
-#: engine's own save holds for it:
+#: **Keyed by name, not by the record's race number** (#293, A converted
+#: Silver Blades dwarf, elf or gnome gets another race's innate combat
+#: effect, because RACE_COMBAT_EFFECTS is keyed by Pool of Radiance's race
+#: numbers).  The number is an index into the record's *own title's* race
+#: table, and Secret of the Silver Blades renumbers them -- its dwarf is 3,
+#: where Pool of Radiance's 3 is the gnome, so a converted Silver Blades
+#: dwarf used to be handed the gnome's set.  `_race_combat_effects` looks the
+#: number up through `goldbox.games.race_table` for the record's own title
+#: before either table below is asked, the way `_infravision` in
+#: `goldbox/c64_codec.py` does for #287 (A converted Silver Blades human sees
+#: in the dark, because the infravision table is keyed by Pool of Radiance's
+#: race numbers).
+#:
+#: This table is Pool of Radiance's and Curse of the Azure Bonds' -- they
+#: share race names for dwarf, gnome and halfling, and both were measured
+#: only on Pool of Radiance specimens.  Two races have a DOS specimen, and
+#: each is written the whole set the engine's own save holds for it:
 #:
 #: * **the dwarf (1): 90, 97, 26 and 47** -- THRENDER GRONE's `.SPC`, in both
 #:   of the archives' Pool of Radiance save directories;
@@ -458,19 +473,61 @@ EFFECT_NEXT_NULL = bytes(4)
 #: constitution would be handed a bonus he did not roll.  18, 47 and 48 do
 #: not carry this doubt: #84 measured them as this race's own,
 #: unconditionally.
-RACE_COMBAT_EFFECTS: dict[int, tuple[int, ...]] = {
-    1: (90, 97, 26, 47),
-    3: (97, 18, 47, 48),
-    5: (90, 97),
+RACE_COMBAT_EFFECTS: dict[str, tuple[int, ...]] = {
+    "dwarf": (90, 97, 26, 47),
+    "gnome": (97, 18, 47, 48),
+    "halfling": (90, 97),
 }
 
-#: Races the C64 gives a constitution save bonus to.  `goldbox/levels.py`
-#: reads the same three out of the game's own `GEN`.  On the C64 that bonus
-#: lives inside the five saving-throw bytes; on DOS it lives in the `.SPC`
-#: records above, and the five bytes on disk are not where the engine reads it
-#: from -- see #191 (A converted dwarf loses his constitution bonus to saving
-#: throws).
-STURDY_RACES = (1, 3, 5)
+#: Secret of the Silver Blades' own ids, from the same seed table
+#: `goldbox/traits.py`'s `NAMES_SILVER_BLADES` reads: `GEN $0C5B`/`$0C62`
+#: seed elf 95, half-elf 18, dwarf 26 and 47, gnome 48 and 7, halfling 92,
+#: human nothing.  PROBABLE throughout, the grade `goldbox/traits.py` gives
+#: the same nine codes -- no Silver Blades `.SPC` has been watched carrying
+#: any of them yet, so this is the seed table's own claim rather than a
+#: measurement of a written file the way the two races above are.
+RACE_COMBAT_EFFECTS_SILVER_BLADES: dict[str, tuple[int, ...]] = {
+    "elf": (95,),
+    "half-elf": (18,),
+    "dwarf": (26, 47),
+    "gnome": (48, 7),
+    "halfling": (92,),
+}
+
+#: Title key -> its table.  A title not listed gets Pool of Radiance's and
+#: Curse of the Azure Bonds', which is what every caller written before this
+#: split existed means.
+_RACE_COMBAT_EFFECTS_TABLES: dict[str, dict[str, tuple[int, ...]]] = {
+    games.SECRET_OF_THE_SILVER_BLADES.key: RACE_COMBAT_EFFECTS_SILVER_BLADES,
+}
+
+
+def _race_combat_effects(game: object, race: int) -> tuple[int, ...]:
+    """This title's innate combat ids for a race code, empty for an unnamed one.
+
+    `game` is whatever a caller has in hand for the title -- a
+    `goldbox.games.Game`, its `.key`, or None for Pool of Radiance -- the same
+    three shapes `c64_codec._infravision` accepts, and for the same reason: a
+    conversion carries a bare key rather than the descriptor.
+    """
+    resolved = (game if hasattr(game, "race_names")
+               else games.BY_KEY.get(getattr(game, "key", game)))
+    name = games.race_table(resolved).get(race)
+    table = _RACE_COMBAT_EFFECTS_TABLES.get(
+        getattr(resolved, "key", resolved), RACE_COMBAT_EFFECTS)
+    return table.get(name, ())
+
+
+# `STURDY_RACES = (1, 3, 5)` used to live here, Pool-of-Radiance-numbered like
+# `RACE_COMBAT_EFFECTS` above and the same bug's shape -- but a repository-wide
+# grep for it, done for #293 (A converted Silver Blades dwarf, elf or gnome
+# gets another race's innate combat effect, because RACE_COMBAT_EFFECTS is
+# keyed by Pool of Radiance's race numbers), found no reader anywhere: not in
+# this file, not in any tool, not in any test.  `goldbox/levels.py`'s
+# `Progression.sturdy_races` already carries the same decision correctly, per
+# title -- Pool of Radiance `(1, 3, 5)`, Silver Blades `(3,)`, the dwarf alone
+# and 3 is the dwarf there -- so this was dead rather than wrong, and is
+# removed rather than renumbered.
 
 #: DOS class number -> the C64 record field holding that class's level.  DOS
 #: indexes its eight slots by the class *number* and the C64 by the class
@@ -2182,7 +2239,7 @@ def write(char: NeutralCharacter,
     innate = use("innate_effects")
     converted = [int(e) for e in innate.value] if innate is not None else []
     race = int(w.get("race", 0) or 0)
-    derived = [e for e in RACE_COMBAT_EFFECTS.get(race, ())
+    derived = [e for e in _race_combat_effects(char.game, race)
                if e not in converted]
     keep = derived + [e for e in converted if e in INNATE_EFFECTS]
 
