@@ -29,7 +29,7 @@ import pathlib
 
 import pytest
 
-from goldbox import areas, c64_codec, c64_save, dos, dos_layout, games, savegame
+from goldbox import c64_codec, c64_save, dos, dos_layout, games, savegame
 from goldbox import dos_savegame as sg
 from goldbox.d64 import D64, split_load_address
 
@@ -41,37 +41,6 @@ DOS_SESSION = WORK / "curse" / "H-square-5-13"
 
 
 # --- helpers ----------------------------------------------------------------
-@pytest.fixture
-def converts_curse(monkeypatch):
-    """Put Curse on the list `to_neutral` will convert.
-
-    The refusal is data (`goldbox.dos.CONVERTS`) and step 4 of `#192` adds
-    Curse to it for real, once the conversion has been loaded in the running
-    game.  Until then the tests reach past it deliberately rather than the
-    import doing so by accident.
-    """
-    monkeypatch.setattr(dos, "CONVERTS", (dos_layout.POOL_OF_RADIANCE, CURSE))
-
-
-#: One area row for Curse, so the cache recipe has a `GEO` and a disk side to
-#: name.  `goldbox/areas.py` has no Curse table yet -- `#20 (Build an area
-#: table for Silver Blades)` owns that file and `#192` step 0b measured the
-#: rows -- so the writer is exercised against the row it will be given.
-#: Area 1 is Tilverton: `ECL01` on side 2, loading `GEO01`.
-CURSE_AREA_1 = areas.Area(
-    id=1, name=None, disk=2, geos=("GEO01",), arrival=None,
-    confidence=areas.Confidence.CONFIRMED, side_name="CURSE_{}")
-
-
-@pytest.fixture
-def curse_areas(monkeypatch):
-    def area_in(id_, title):
-        if title == CURSE_GAME.title:
-            return CURSE_AREA_1 if id_ == 1 else None
-        return areas.area(id_)
-    monkeypatch.setattr(areas, "area_in", area_in)
-
-
 def curse_record(**values) -> bytes:
     """A 422-byte Curse record with the named fields set.
 
@@ -95,7 +64,7 @@ def neutral_curse(**values):
 
 
 # --- the record: the abilities are a pair -----------------------------------
-def test_both_copies_of_every_ability_reach_the_c64_record(converts_curse):
+def test_both_copies_of_every_ability_reach_the_c64_record():
     """Curse keeps each ability twice and the C64 record keeps it twice too.
 
     Without the carry the second copy is written as seven zeroes -- which is
@@ -112,7 +81,7 @@ def test_both_copies_of_every_ability_reach_the_c64_record(converts_curse):
     assert raw[0x065:0x06C] == want
 
 
-def test_the_two_bytes_of_a_pair_stay_apart(converts_curse):
+def test_the_two_bytes_of_a_pair_stay_apart():
     """The pair is equal in every record on this machine and the conversion
     does not rely on that: given two different bytes it carries both, the
     first to `0x014` and the second to `0x065`.
@@ -160,8 +129,7 @@ def test_the_memorised_list_is_the_titles_own_width():
     assert sum(c64_codec.span_of(c64_codec.CURSE_RECORD.memorised)) == 0x065
 
 
-def test_a_curse_caster_keeps_more_than_sixteen_memorised_spells(
-        converts_curse):
+def test_a_curse_caster_keeps_more_than_sixteen_memorised_spells():
     """The C64 writer truncated the list to sixteen with no warning, which is
     Pool of Radiance's width and nobody's field width.
 
@@ -181,8 +149,7 @@ def test_a_curse_caster_keeps_more_than_sixteen_memorised_spells(
 
 
 # --- the record: the dual class ---------------------------------------------
-def test_a_dual_classed_curse_character_carries_the_class_it_left(
-        converts_curse):
+def test_a_dual_classed_curse_character_carries_the_class_it_left():
     """A cleric 1 who was a paladin 5 arrives as a cleric 1 who was a paladin
     5: the C64 keeps the pair at `0x0B9`/`0x0BA`, indexed by the slot in its
     own level array, where DOS keeps a whole second level array.
@@ -198,13 +165,12 @@ def test_a_dual_classed_curse_character_carries_the_class_it_left(
     assert raw[0x0BA] == 5
 
 
-def test_a_character_who_left_no_class_leaves_the_pair_alone(converts_curse):
+def test_a_character_who_left_no_class_leaves_the_pair_alone():
     raw = c64_codec.write(neutral_curse())[0].to_bytes()
     assert raw[0x0B9:0x0BB] == bytes(2)
 
 
-def test_two_former_classes_are_reported_rather_than_half_written(
-        converts_curse):
+def test_two_former_classes_are_reported_rather_than_half_written():
     """The C64 has room for one class trained out of.  Two is a state no
     engine-written record holds and the conversion says so rather than
     picking one."""
@@ -215,8 +181,7 @@ def test_two_former_classes_are_reported_rather_than_half_written(
 
 
 # --- the record: the spell slots Curse does not store -----------------------
-def test_curse_reports_the_spell_slots_its_c64_record_cannot_hold(
-        converts_curse):
+def test_curse_reports_the_spell_slots_its_c64_record_cannot_hold():
     """`0x0EE`-`0x0F3` has 32 code references in Pool of Radiance and none in
     Curse over 411 files, and all six records of the engine-written Curse save
     read zero there -- including a level-5 cleric with nothing memorised, who
@@ -251,15 +216,22 @@ def test_every_declared_field_has_a_disposition_in_every_title(shape):
     assert set(table) - declared == set()
 
 
-def test_the_conversion_refuses_a_title_it_has_not_been_proven_on():
-    """Curse is built and byte-tested and has not been loaded in the running
-    game, so the refusal is still there and `CONVERTS` is what lifts it."""
-    assert CURSE not in dos.CONVERTS
+def test_the_conversion_no_longer_refuses_curse():
+    """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
+    which the importer refuses today)` step 3 loaded a converted Curse save
+    in the running game and read the sheet, so step 4 puts Curse on
+    `CONVERTS` for real. Silver Blades, which has not been proven this way,
+    is still refused."""
+    assert CURSE in dos.CONVERTS
+    dos.to_neutral(dos.DosCharacter(curse_record()))     # does not raise
+    silver = next(s for s in dos_layout.SHAPES
+                  if s.key == "secret-of-the-silver-blades")
+    assert silver not in dos.CONVERTS
     with pytest.raises(dos.WrongTitleError):
-        dos.to_neutral(dos.DosCharacter(curse_record()))
+        dos.to_neutral(dos.DosCharacter(bytes(silver.record_size)))
 
 
-def test_a_curse_address_is_not_a_variable_address(converts_curse):
+def test_a_curse_address_is_not_a_variable_address():
     """`$4C20` is a Curse quest flag and `$4A20` is Pool of Radiance's, and
     they are the same word of the same array.
 
@@ -353,7 +325,7 @@ def _dos_save():
     return DOS_SESSION
 
 
-def test_a_curse_save_is_written_whole(converts_curse, curse_areas):
+def test_a_curse_save_is_written_whole():
     """`new_save` refuses a byte with no source, so this passing at all is the
     claim: 7424 bytes, none of them inherited and none left zero by accident.
 
@@ -381,8 +353,7 @@ def test_a_curse_save_is_written_whole(converts_curse, curse_areas):
     assert save0[c.name(6):0x1000] == bytes(0x1000 - c.name(6))
 
 
-def test_the_written_cache_names_the_area_with_bit_seven_set(
-        converts_curse, curse_areas):
+def test_the_written_cache_names_the_area_with_bit_seven_set():
     """Curse ORs bit 7 on the **save** path and copies raw on load, the
     reverse of Pool of Radiance, so a converted save has to set it itself."""
     save0, _, _ = dos.new_save(_dos_save(), "H", icon=bytes(36),
@@ -399,8 +370,7 @@ def test_the_written_cache_names_the_area_with_bit_seven_set(
     assert save0[0xEA] == 0
 
 
-def test_the_script_scratch_is_copied_and_the_map_is_not(
-        converts_curse, curse_areas):
+def test_the_script_scratch_is_copied_and_the_map_is_not():
     """`DUNGEON $21BA` clears `+$100`-`+$11F` only when the script id changes,
     so a save taken inside an area is carrying live scratch -- the DOS save's
     own thirty-two words cross rather than being zeroed.
@@ -421,7 +391,7 @@ def test_the_script_scratch_is_copied_and_the_map_is_not(
     assert bytes(save0[at:at + size]) == bytes(size)
 
 
-def test_the_disk_carries_one_file(converts_curse, curse_areas):
+def test_the_disk_carries_one_file():
     """Pool of Radiance writes `SAVEDGAME0` and `SAVEDGAME1`; every later
     title writes one file, and `save_disk` no longer writes a roster file for
     a title that has no roster file."""

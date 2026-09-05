@@ -61,6 +61,7 @@ from . import areas, c64_codec, c64_save, dos_savegame, games, neutral, traits
 from .c64_codec import Report
 from .dos_layout import (
     CLASS_NUMBERS,
+    CURSE_OF_THE_AZURE_BONDS,
     EFFECT_SIZE,
     FIELDS_BY_NAME,
     FIELDS_BY_NAME_FOR,
@@ -157,9 +158,12 @@ class WrongTitleError(DosRecordError):
     """A record from a title this operation does not handle.
 
     Reading is per title and works for all four; **converting to the C64 is
-    Pool of Radiance's alone**, because that is the only pair whose two ports
-    have been measured against each other.  Raising here is the difference
-    between "not yet" and a conversion that silently reads the wrong bytes.
+    only for titles in `CONVERTS`**, each pair whose two ports have been
+    measured against each other and proven in the running game -- Pool of
+    Radiance, and Curse of the Azure Bonds since `#192 (Convert a Curse of
+    the Azure Bonds DOS save into a C64 one, which the importer refuses
+    today)`.  Raising here is the difference between "not yet" and a
+    conversion that silently reads the wrong bytes.
 
     The message carries the developer's reason, including the issue number,
     because that is what a traceback and a log are for.  `player_message` is
@@ -775,7 +779,6 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("strength_bonus", "a boolean on DOS; the C64's aligned byte is a "
                        "strength *index* and is computed instead"),
     ("hands_used", "live combat state"),
-    ("unnamed_0ab", "one unattributed byte, stable per character"),
     # `field_83_87` (#235): the byte-level evidence is in
     # `docs/141-dos-savegame.md`, under "0x083-0x087: a constant, and what
     # that rests on".  It reads 00 00 01 00 00 in 101 of 101 engine-written
@@ -848,7 +851,6 @@ DROPPED_PLAYER_TEXT: dict[str, str] = {
                     "effects themselves are kept separately",
     "hands_used": "Which hand is holding a weapon right now; set again "
                   "the next time the character fights",
-    "unnamed_0ab": "One byte in the DOS record nobody has identified yet",
     "field_83_87": "Five bytes that make no difference to the character "
                    "sheet, whatever they hold",
     "portrait_head": "Character portrait (head): needs the game's own "
@@ -883,6 +885,11 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
                       "neutral status, 0x10D into active, 0x10E into "
                       "hostile and 0x10F into quickfight (#235, "
                       "docs/169-dos-combat-side.md)"),
+    ("unnamed_0ab", "the identity draw the C64's add screen never needs, "
+                    "given a home instead of a digest: written into the "
+                    "C64's identity_pair at 0x0E6, with 0x0E7 left zero "
+                    "(#258, The C64 side of 0x0AB is unnamed, so the "
+                    "conversion drops it with no issue behind it)"),
 )
 
 
@@ -967,14 +974,17 @@ def portrait_tables(game: str | pathlib.Path | None
 
 
 #: The DOS shapes :func:`to_neutral` will read into a neutral character, and
-#: therefore the titles the import converts.  **The list is what step 4 of
-#: #192 adds Curse of the Azure Bonds to**, once step 3 has loaded a converted
-#: Curse save in the running game and read the sheet: everything below this
-#: line is built and byte-tested for Curse, and `.claude/rules/conversions.md`
-#: is explicit that bytes matching is necessary and not sufficient.
+#: therefore the titles the import converts.  **Curse of the Azure Bonds
+#: joined this list as step 4 of `#192 (Convert a Curse of the Azure Bonds
+#: DOS save into a C64 one, which the importer refuses today)`**, after step 3
+#: loaded a converted Curse save in the running game and read the sheet: six
+#: characters matched their DOS save on race, sex, age, alignment, class, all
+#: seven abilities, level, experience, HP, AC, THAC0, movement and money, the
+#: spellbook listed all nine ids, the party walked, and `ENCAMP > SAVE` came
+#: back differing only in bytes the engine itself rewrote.
 #:
 #: Pools of Darkness will never join it -- there is no C64 port to convert to.
-CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE,)
+CONVERTS: tuple[DosShape, ...] = (POOL_OF_RADIANCE, CURSE_OF_THE_AZURE_BONDS)
 
 #: The seven abilities in the order both ports store them, which is also the
 #: order Curse's pairs run in.  `goldbox/neutral.py`'s, because the C64 codec
@@ -1117,6 +1127,18 @@ def to_neutral(dos: DosCharacter,
 
     out.set("turn_power", dos.get("turn_power"), "DOS 0x076",
             FIELDS_BY_NAME["turn_power"].confidence)
+
+    # -- the identity draw: no longer a drop, now that it has a C64 home -----
+    # `to_c64_record` writes this into the C64's identity_pair at 0x0E6, with
+    # 0x0E7 left zero (#258, docs/170-c64-identity-pair.md).  A pure DOS
+    # round trip still ignores it in favour of `identity_byte`'s digest --
+    # see `write`'s own comment on the point -- so carrying it here changes
+    # nothing about that guarantee and only gives the C64 writer something to
+    # take.
+    ident = FIELDS_BY_NAME["unnamed_0ab"]
+    out.set("unnamed_0ab", dos.get("unnamed_0ab"),
+            f"DOS unnamed_0ab @{ident.offset:#05x} ({ident.confidence})",
+            ident.confidence)
 
     # -- the combat tail: how the character is, and which side it fights on --
     # `field_10c_10f` is four bytes and all four are a character's own state
@@ -1487,6 +1509,12 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                         "records, each one's own five bytes with the next "
                         "pointer NULLed -- the value byte and the removal "
                         "flag are the record's, not INNATE_PAYLOAD's"),
+    ("unnamed_0ab", "taken and written to 0x0AB when the source is a C64 "
+                    "Pool of Radiance record, whose GEN draws the same "
+                    "value at 0x0E6; anything else -- a DOS source, or a "
+                    "Curse of the Azure Bonds or Silver Blades one, whose "
+                    "GEN never draws it -- gets `identity_byte`'s digest "
+                    "instead, exactly as before (#258, WRITE_DERIVED)"),
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
@@ -1635,7 +1663,16 @@ WRITE_DERIVED: tuple[tuple[str, str], ...] = (
      "CHRDATC<n>.SAV against two. So it is derived from the rest of the "
      "record instead -- a digest rather than a random draw, because a "
      "converter that writes different bytes on two runs of the same save "
-     "cannot be diffed against itself"),
+     "cannot be diffed against itself.\n"
+     "**One exception**: a C64 Pool of Radiance record keeps this same "
+     "draw at 0x0E6-0x0E7 and never rewrites it either (#258, The C64 "
+     "side of 0x0AB is unnamed, so the conversion drops it with no issue "
+     "behind it), so a source that supplies one -- `write` checks "
+     "`char.port == 'C64'` before taking it -- writes that byte back "
+     "instead of a digest of a record it never held. A DOS source's own "
+     "copy of this field is not eligible: `to_neutral` carries it only so "
+     "`goldbox.c64_codec.write` has something to give the C64, and a pure "
+     "DOS-to-DOS conversion keeps deriving the digest exactly as before"),
 )
 
 
@@ -2039,12 +2076,22 @@ def write(char: NeutralCharacter,
     # Last, so the digest covers the finished record: a field written after
     # this would change the character without changing its identity byte.
     # `WRITE_DERIVED` is the declaration the tests read; the rule itself is
-    # per field, and there is one.
+    # per field, and there is one -- with the one exception its own note
+    # describes: a C64 Pool of Radiance source's own draw, taken instead of
+    # a digest of a record it never held (#258).  `w.use`, not `char.get`,
+    # so a value graded below the floor is refused and reported rather than
+    # taken, and so the field counts as consumed either way.
     (_derived_name, _derived_why), = WRITE_DERIVED
     f = FIELDS_BY_NAME[_derived_name]
-    rec[f.offset] = identity_byte(rec)
-    rep.note(f.offset, f.size,
-             f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
+    supplied = w.use(_derived_name)
+    if supplied is not None and char.port == "C64":
+        rec[f.offset] = int(supplied.value) & 0xFF
+        rep.note(f.offset, f.size,
+                 f"{_derived_name}: {rec[f.offset]:#04x} <- {supplied.origin}")
+    else:
+        rec[f.offset] = identity_byte(rec)
+        rep.note(f.offset, f.size,
+                 f"{_derived_name}: {rec[f.offset]:#04x} -- {_derived_why}")
 
     # -- the gaps, zero in every specimen held -------------------------------
     for f in LAYOUT:

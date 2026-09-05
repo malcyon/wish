@@ -104,7 +104,9 @@ def test_the_maps_a_title_loads_are_a_set_and_not_a_range():
     assert 12 not in {areas.geo_number(g) for g in pool}
     silver = areas.geos_in(areas.SECRET_OF_THE_SILVER_BLADES)
     assert silver and silver != pool
-    assert areas.geos_in(areas.CURSE_OF_THE_AZURE_BONDS) == frozenset()
+    curse = areas.geos_in(areas.CURSE_OF_THE_AZURE_BONDS)
+    assert len(curse) == 16          # #192 step 0b's sixteen decoded maps
+    assert curse != pool and curse != silver
     assert areas.geos_in(None) == frozenset()
 
 
@@ -639,18 +641,32 @@ def test_fast_travel_is_offered_silver_blades_now_that_one_has_been_driven():
     """Two things had to be true and both are: `#15 (Fast Travel for more than
     one Gold Box title)` moved the addresses off Pool of Radiance's, and a
     party has been fast-travelled into fourteen of these areas on a running
-    machine with the map checked byte for byte at every landing. Curse still
-    answers nothing, for the older reason that nobody has built its table."""
+    machine with the map checked byte for byte at every landing."""
     assert len(areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES)) == 22
     assert areas.areas_for_title(areas.SECRET_OF_THE_SILVER_BLADES) \
         == areas.AREAS_SILVER_BLADES
     assert len(areas.areas_for(areas.SECRET_OF_THE_SILVER_BLADES)) == 22
     assert areas.areas_for_title(POOL_OF_RADIANCE) == areas.AREAS
     assert areas.areas_for(POOL_OF_RADIANCE) == areas.AREAS
-    assert areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS) == ()
-    assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == ()
     assert areas.areas_for_title(None) == ()
     assert areas.areas_for(None) == ()
+
+
+def test_curse_is_offered_too_now_that_its_table_exists():
+    """`#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one,
+    which the importer refuses today)` step 0b built `AREAS_CURSE`, and
+    `automap.fasttravel`'s addresses for Curse were CONFIRMED by four driven
+    warps (`#19`) before this table existed -- so both of
+    `automap.actions.area_rows`'s gates are open, the same as Silver Blades'.
+
+    Unlike Silver Blades, no individual row has been landed on by a driven
+    fast travel: every row here is UNKNOWN rather than CONFIRMED.
+    """
+    assert len(areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS)) == 25
+    assert areas.areas_for_title(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
+    assert areas.areas_for(CURSE_OF_THE_AZURE_BONDS) == areas.AREAS_CURSE
+    assert all(a.confidence is areas.Confidence.UNKNOWN
+               for a in areas.AREAS_CURSE)
 
 
 def test_the_silver_blades_ids_are_sparse_and_must_not_be_enumerated():

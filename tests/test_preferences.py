@@ -1047,17 +1047,24 @@ def test_a_saved_choice_is_what_the_next_window_opens_with(app, tmp_path,
 
 def test_a_title_with_no_area_table_gets_an_empty_table_and_a_sentence(
         app, tmp_path, monkeypatch):
-    """#14. Ticking Pool of Radiance's thirty areas for a Curse session would
-    file Pool of Radiance's ids under Curse's key, and the dropdown would then
-    offer them. The table is the map's title's, and five of the six titles have
-    none -- `docs/138-multiple-games.md` §7 task 1."""
+    """#14. Ticking Pool of Radiance's thirty areas for a session of a title
+    with no table of its own would file Pool of Radiance's ids under that
+    title's key, and the dropdown would then offer them. The table is the
+    map's title's, and four of the six titles have none --
+    `docs/138-multiple-games.md` §7 task 1.
+
+    Champions of Krynn stands in here -- Curse of the Azure Bonds had a table
+    built for it by `#192 (Convert a Curse of the Azure Bonds DOS save into a
+    C64 one, which the importer refuses today)` step 0b, the way Silver
+    Blades did under `#20 (Build an area table for Silver Blades)`.
+    """
     nowhere(tmp_path, monkeypatch)
-    win = window(app, title=games.CURSE_OF_THE_AZURE_BONDS.title)
+    win = window(app, title=games.CHAMPIONS_OF_KRYNN.title)
     dialog = PreferencesDialog(win)
     assert dialog.travel_rows == []
     assert dialog.travel_table.rowCount() == 0
-    assert dialog.travel_note.text() == ("No areas are known for Curse of the "
-                                         "Azure Bonds.")
+    assert dialog.travel_note.text() == ("No areas are known for Champions "
+                                         "of Krynn.")
     assert win.map.fasttravel_bar.rows == ()
 
 

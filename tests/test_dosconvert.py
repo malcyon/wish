@@ -1073,12 +1073,19 @@ def test_the_level_array_is_indexed_by_class_number_in_every_title(shape):
 
 
 @_all_titles()
-def test_no_title_converts_but_pool_of_radiance(shape):
-    """Reading is per title; converting is not.  Handing a Curse record to
-    the C64 writer would read Pool of Radiance's offsets out of a 422-byte
-    record, so it raises instead."""
+def test_only_the_proven_titles_convert(shape):
+    """Reading is per title; converting is not, until a title has been proven
+    the way `.claude/rules/conversions.md` asks for -- bytes matching and a
+    converted save loaded in the running game.
+
+    Pool of Radiance was always proven; Curse joined it as step 4 of
+    `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
+    the importer refuses today)`, after step 3 read a converted party's sheet
+    in VICE. Handing a Silver Blades record to the C64 writer would read
+    Curse's or Pool of Radiance's offsets out of a 439-byte record, so it
+    still raises instead."""
     char = _title_records(shape)[0]
-    if shape is dos_layout.POOL_OF_RADIANCE:
+    if shape in dos.CONVERTS:
         dos.to_neutral(char)
         return
     with pytest.raises(dos.WrongTitleError):

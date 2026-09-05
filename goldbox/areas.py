@@ -55,6 +55,13 @@ sparse ids, no names, disk sides 1-6, and five areas whose map is not their own
 id. Its own comment carries what does not carry over, and every row is
 PROBABLE.
 
+`AREAS_CURSE` is the third, measured for `#192 (Convert a Curse of the Azure
+Bonds DOS save into a C64 one, which the importer refuses today)` step 0b by
+the same tool. It carries no name and no arrival square -- a conversion needs
+neither -- and every row is UNKNOWN, because unlike Silver Blades no Curse
+area has been entered by a driven fast travel yet, only walked by the
+bytecode.
+
 Enumerating maps by count or assuming a `GEO00` is wrong for every Gold Box
 title after this one: Curse's ids are sparse and chapter-grouped, and Silver
 Blades, Champions and Death Knights start at `$10` or `$20`
@@ -80,6 +87,7 @@ __all__ = [
     "Arrival",
     "Area",
     "AREAS",
+    "AREAS_CURSE",
     "AREAS_SILVER_BLADES",
     "AREAS_BY_ID",
     "TABLES",
@@ -520,11 +528,49 @@ AREAS_SILVER_BLADES: tuple[Area, ...] = (
     _s(0x63, 6, ("GEO62",), Arrival(0, 0, 2), Confidence.CONFIRMED),
 )
 
-#: Game title -> that title's areas. Curse is absent rather than empty: its
-#: twenty-three scripts read the same way and nobody has built the table yet,
-#: and an empty tuple would say we had looked and found none.
+
+def _c(id: int, disk: int, geos: tuple[str, ...]) -> Area:
+    """One Curse row: id, disk side and the maps its script loads. No name,
+    no arrival square -- a conversion needs neither, and nobody has played
+    Curse far enough to name a place or watch a driven arrival."""
+    return Area(id=id, name=None, disk=disk, geos=geos, arrival=None,
+                confidence=Confidence.UNKNOWN, side_name="CURSE_{}")
+
+
+#: Curse of the Azure Bonds: twenty-five scripts, on six sides
+#: (`CURSE_A.D64`-`CURSE_F.D64`), `ECL64`/`ECL65` excluded the same way
+#: Silver Blades excludes its two -- they carry no `LOADFILES` and are not
+#: places.  Measured for `#192 (Convert a Curse of the Azure Bonds DOS save
+#: into a C64 one, which the importer refuses today)` step 0b by
+#: `tools/areatable.py curse-of-the-azure-bonds`, which walks every script's
+#: control flow from its five entry `GOTO`s and reads the `LOADFILES`
+#: operands, corroborated by the loader's own disk byte `$7F12` agreeing
+#: with the target script's side on all 23 static `NEWECL`s it precedes, and
+#: re-checked directly off the disks by `tools/cursedisk.py --check-areas`
+#: on 2026-09-05 with 0 disagreements against this table.
+#:
+#: `confidence` is UNKNOWN for every row, unlike Silver Blades' table: no
+#: Curse area has been entered by a driven fast travel, only walked by the
+#: bytecode.  The `geos` column is the strongest part of it regardless --
+#: `ECL02` loads `GEO01`, `ECL22` loads `GEO21` and `ECL31`/`ECL32` both load
+#: `GEO32`, so it cannot be derived from the id the way a straight numbering
+#: could be.
+AREAS_CURSE: tuple[Area, ...] = (
+    _c(0x01, 2, ("GEO01",)), _c(0x02, 2, ("GEO01",)), _c(0x03, 2, ("GEO03",)),
+    _c(0x04, 2, ("GEO04",)), _c(0x10, 3, ("GEO10",)), _c(0x11, 3, ("GEO11",)),
+    _c(0x12, 3, ()), _c(0x15, 3, ("GEO15",)), _c(0x1E, 1, ()),
+    _c(0x20, 4, ("GEO20",)), _c(0x21, 4, ()), _c(0x22, 4, ("GEO21",)),
+    _c(0x23, 4, ()), _c(0x25, 4, ("GEO25",)), _c(0x30, 5, ()),
+    _c(0x31, 5, ("GEO32",)), _c(0x32, 5, ("GEO32",)), _c(0x33, 5, ("GEO33",)),
+    _c(0x35, 5, ("GEO35",)), _c(0x40, 6, ("GEO40",)), _c(0x42, 6, ("GEO42",)),
+    _c(0x43, 6, ("GEO43",)), _c(0x45, 6, ("GEO45",)), _c(0x50, 1, ()),
+    _c(0x51, 1, ()),
+)
+
+#: Game title -> that title's areas.
 TABLES: Mapping[str, tuple[Area, ...]] = MappingProxyType({
     POOL_OF_RADIANCE: AREAS,
+    CURSE_OF_THE_AZURE_BONDS: AREAS_CURSE,
     SECRET_OF_THE_SILVER_BLADES: AREAS_SILVER_BLADES,
 })
 
@@ -575,9 +621,17 @@ def areas_for_title(title: str | None) -> tuple[Area, ...]:
     driven was what the PROBABLE grade on the whole table was warning about,
     and that is what stopped being true.
 
-    Curse still answers nothing here and for the older reason: nobody has
-    built its table. `areas_for` above is the accessor for everything that
-    only reads, and answers for every title that has a table at all.
+    **Curse is offered too, now that its table exists.** `#192 (Convert a
+    Curse of the Azure Bonds DOS save into a C64 one, which the importer
+    refuses today)` step 0b built `AREAS_CURSE` off the bytecode, and
+    `automap/fasttravel.py`'s addresses for it were already CONFIRMED by four
+    driven warps (`#19`) before this table existed -- so both of
+    `automap.actions.area_rows`'s gates are open. **Unlike Silver Blades, no
+    individual Curse row has been landed on by a driven fast travel**: every
+    row's `confidence` is UNKNOWN, and a caller reading that field before
+    trusting a row -- which nothing here does yet -- would need to know that.
+    `areas_for` above is the accessor for everything that only reads, and
+    answers for every title that has a table at all.
     """
     return TABLES.get(title or "", ())
 

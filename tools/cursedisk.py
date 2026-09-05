@@ -13,20 +13,17 @@ than a `--game` on the first.
     tools/cursedisk.py --folder work/curse/H-square-5-13 --slot H \\
         --out work/issue192/CURSESAVE.D64 --report --sheet
 
-**Two things it reaches past deliberately, and both are step 4's to remove.**
-
-* `goldbox.dos.CONVERTS` holds Pool of Radiance alone, so `to_neutral`
-  refuses Curse.  This tool adds Curse to that tuple **in its own process**,
-  the same way `tests/test_curseconvert.py`'s `converts_curse` fixture does.
-  Nothing a user runs is changed: `File > Import` still refuses Curse until
-  somebody edits `goldbox/dos.py`.
-* `goldbox/areas.py` has no Curse rows.  `#192` step 0b measured all
-  twenty-five off Curse's own `ECL` bytecode -- id, disk side and the maps
-  each script loads -- and `goldbox/areas.py` belonged to another ticket the
-  night they were measured, so they are carried here and injected into
-  `areas.TABLES` for this process only.  `tools/areatable.py
-  curse-of-the-azure-bonds --python` re-derives them from the disks, and
-  `--check-areas` here runs that comparison rather than trusting the copy.
+**Two reach-arounds this tool used to need, both closed by step 4.**
+`goldbox.dos.CONVERTS` now carries Curse for real and `goldbox/areas.py` now
+carries these same twenty-five rows in `areas.TABLES` -- `File > Import`
+converts a Curse folder too, once `WISH_EXPERIMENTAL_DOS_IMPORT` is set.
+`enable_curse()` and `CURSE_AREAS` below are kept as a defensive no-op rather
+than removed: both guard on "is this already true" before touching anything,
+so a copy of this file run against an older checkout still works, and
+`--check-areas` still re-derives the twenty-five off the disks with
+`tools/areatable.py curse-of-the-azure-bonds --python` and diffs them against
+this copy rather than against `goldbox/areas.py`'s -- catching either table
+going stale on its own.
 
 Everything else is the shipped conversion.  No byte comes from another save:
 `goldbox.dos.new_save` refuses a payload with an unsourced byte in it, and
@@ -88,7 +85,8 @@ CURSE_AREAS: tuple[areas.Area, ...] = tuple(
 def enable_curse() -> None:
     """Put Curse on `CONVERTS` and its areas in `TABLES`, in this process.
 
-    Both are the header's two reach-arounds and neither is written to disk.
+    Both are true already on a checkout with `#192` step 4 landed, so both
+    guards below are no-ops there; kept for a checkout that predates it.
     `areas.TABLES` is what `areas_for`, `area_in` and `geos_in` all read, so
     replacing it is the whole injection -- `AREAS_BY_ID` stays Pool of
     Radiance's, which is right, because `areas.area()` is the C64-to-DOS

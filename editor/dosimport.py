@@ -216,13 +216,23 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     was called, and the result exists only as the returned `Conversion`.
     Anything `goldbox.dos.new_save` refuses raises from in here, which is what
     the dialog turns into a sentence.
+
+    **The title comes from the save itself, not from an assumption.** A
+    character's own record length names its shape (`goldbox.dos.shape_for`),
+    so a Curse or Silver Blades folder converts into its own title rather than
+    being written out as a Pool of Radiance save it never was (#192). A
+    Curse save has no separate roster file -- its roster lives inside the one
+    payload `goldbox/c64_save.py` describes -- so `save1` stays `None` rather
+    than an empty `SaveGame1`, which the constructor would refuse anyway.
     """
+    party = dos.read_party(folder, slot)
+    game = games.by_key(party[0].shape.key)
     payload0, payload1, report = dos.new_save(folder, slot,
                                               files.icon, files.animate,
-                                              portraits=files.portraits)
-    game = games.POOL_OF_RADIANCE
+                                              portraits=files.portraits,
+                                              game=game)
     sg0 = SaveGame0.from_bytes(bytes(payload0), game)
-    sg1 = SaveGame1(bytes(payload1), game)
+    sg1 = SaveGame1(bytes(payload1), game) if payload1 else None
     disk = dos.save_disk(bytes(payload0), bytes(payload1), game)
     return Conversion(disk, game, sg0, sg1, report,
                       pathlib.Path(folder), slot)

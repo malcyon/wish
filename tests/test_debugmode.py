@@ -546,27 +546,34 @@ def test_nothing_ticked_says_so_rather_than_looking_broken(app):
 
 def test_a_session_of_another_title_is_offered_nothing_and_told_why(app):
     """#14. `AREAS` is thirty Pool of Radiance `ECL` scripts with `POOL` disk
-    numbers in them, and a trip writes both into the machine -- so a Curse
-    session that was offered them would write Pool of Radiance's numbers into
-    Curse. Offering nothing is the fix; falling back to that list is the one
-    answer that corrupts."""
+    numbers in them, and a trip writes both into the machine -- so a session
+    of a title with no table of its own that was offered them would write
+    Pool of Radiance's numbers into it. Offering nothing is the fix; falling
+    back to that list is the one answer that corrupts.
+
+    Champions of Krynn stands in for "a title with no table" here -- Curse of
+    the Azure Bonds moved out of this role when `#192 (Convert a Curse of the
+    Azure Bonds DOS save into a C64 one, which the importer refuses today)`
+    step 0b built its own twenty-five rows, the way Silver Blades moved out of
+    it under `#20 (Build an area table for Silver Blades)`.
+    """
     from automap.config import Settings
     from goldbox import games
 
     row = bar(app, machine(area=13), settings=Settings(),
-              title=games.CURSE_OF_THE_AZURE_BONDS.title,
-              game=games.CURSE_OF_THE_AZURE_BONDS)
+              title=games.CHAMPIONS_OF_KRYNN.title,
+              game=games.CHAMPIONS_OF_KRYNN)
     assert row.all_rows == () and row.rows == ()
     assert not row.has_areas
     assert not row.combo.isEnabled()
-    assert row.combo.itemText(0) == ("No areas are known for Curse of the "
-                                     "Azure Bonds.")
+    assert row.combo.itemText(0) == ("No areas are known for Champions of "
+                                     "Krynn.")
     assert not row.button.isEnabled()
-    assert "Curse of the Azure Bonds" in row.button.toolTip()
+    assert "Champions of Krynn" in row.button.toolTip()
     assert row.run() is None
     # And the ticks are not Pool of Radiance's either: nothing is ticked for a
     # title with no table to tick.
-    assert row.settings.chosen_areas(games.CURSE_OF_THE_AZURE_BONDS) == ()
+    assert row.settings.chosen_areas(games.CHAMPIONS_OF_KRYNN) == ()
 
 
 def test_the_row_follows_the_title_when_the_disks_change(app):
@@ -972,7 +979,11 @@ def test_the_level_up_button_is_not_offered_in_a_title_we_would_refuse(app):
         Automapper(MemoryTarget({}), {},
                    title="Curse of the Azure Bonds"), drive=False)
     assert not curse.roster.levelling
-    assert not curse.fasttravel_bar.has_areas
+    # Fast Travel and Level Up are refused on separate grounds -- Curse got
+    # its own area table under `#192 (Convert a Curse of the Azure Bonds DOS
+    # save into a C64 one, which the importer refuses today)` step 0b, so it
+    # is offered here even though levelling still is not.
+    assert curse.fasttravel_bar.has_areas
     # Cards built after the fact are told too -- they are made on demand.
     card = curse.roster.cards[0]
     assert not card.levelling

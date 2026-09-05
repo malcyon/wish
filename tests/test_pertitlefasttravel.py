@@ -60,8 +60,8 @@ def machine(game, *, area: int = 1, disk: int = 2, indoors: int = 1,
 
 class Row:
     """One area of a table, as `FastTravel` reads one: an id, a disk and a
-    square. Not `goldbox.areas.Area` -- Curse has no table at all, and a test
-    of the write path should not wait on somebody building one."""
+    square. Not `goldbox.areas.Area` -- a test of the write path should not
+    wait on a title's own table, real or not."""
 
     def __init__(self, id: int, disk: int, arrival=None, outdoors=False):
         self.id, self.disk, self.arrival, self.outdoors = (id, disk, arrival,
@@ -298,17 +298,20 @@ def test_the_way_back_is_looked_up_in_the_title_being_travelled_in():
     resolve it in the title being travelled in rather than in Pool of
     Radiance's table, which is what it did whatever was running.
 
-    Curse answers None: it has no table at all. **Silver Blades answers with a
-    row now** -- it did not when this test was written, because
-    `goldbox.areas.areas_for_title` refused the title until a party had been
-    fast-travelled into its areas on a running machine
-    (`#20 (Build an area table for Silver Blades)`). `$21` is a different
-    place in each of the two titles, which is the whole point of the lookup:
-    Sokol Keep in Pool of Radiance and a side-2 area on `GEO21` here.
+    **Both Curse and Silver Blades answer with a row now** -- neither did when
+    this test was written, because `goldbox.areas.areas_for_title` refused
+    each title until its table was built
+    (`#20 (Build an area table for Silver Blades)`,
+    `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which
+    the importer refuses today)` step 0b). `21` decimal is `$15`, a different
+    place in each of the three titles: Sokol Keep in Pool of Radiance, a
+    side-2 area on `GEO21` in Silver Blades, and Curse's own `$15` on `GEO15`.
     """
     assert actions.FastTravel()._row(21) is not None
-    assert actions.FastTravel(CURSE)._row(21) is None
+    curse = actions.FastTravel(CURSE)._row(21)
+    assert curse is not None and curse.geos == ("GEO15",)
     silver = actions.FastTravel(SILVER)._row(0x21)
     assert silver is not None and silver.geos == ("GEO21",)
     assert actions.FastTravel()._row(21).name == "Sokol Keep"
     assert actions.FastTravel(SILVER)._row(0x0C) is None
+    assert actions.FastTravel(CURSE)._row(0x0C) is None
