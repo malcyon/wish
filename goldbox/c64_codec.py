@@ -1150,18 +1150,33 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # CHARACTER writes, so a record holding it says nothing about a character
     # and neither field is set.  A low three bits of 0 with bit 7 set is the
     # same nothing wearing the flag, and has never been seen.
-    if rec.is_stored("roster_in_use"):
-        raw = rec.get("roster_in_use")
+    #
+    # A save *slot* stores only the record's first 256 bytes and this byte is
+    # at 0x100, one past that -- so `rec.is_stored` is False for every real
+    # save and this never fired at all until the roster block's own copy of
+    # the same byte was read instead (#281, A dead character on a C64 save
+    # converts to DOS alive, because the reader never reads the four bytes
+    # past 0x100).
+    if roster is not None:
+        raw, roster_in_use_origin = (roster.roster_in_use,
+                                      "the C64 roster block's roster_in_use")
+    elif rec.is_stored("roster_in_use"):
+        raw, roster_in_use_origin = (rec.get("roster_in_use"),
+                                      "C64 record 0x100")
+    else:
+        raw = None
+    if raw is not None:
         name = STATUS_BY_BITS.get(raw & 0x07)
         if name is not None:
             out.set("status", name,
-                    f"the low three bits of C64 record 0x100, ${raw:02X}, "
-                    f"indexed into the game's own seven status words",
+                    f"the low three bits of {roster_in_use_origin}, "
+                    f"${raw:02X}, indexed into the game's own seven status "
+                    f"words",
                     grade("roster_in_use"), Provenance.RESHAPED)
             out.set("active", not raw & OUT_OF_PLAY,
-                    f"bit 7 of the same byte, ${raw:02X} -- set means the "
-                    f"party panel greys the name and the party's strength "
-                    f"leaves the character out",
+                    f"bit 7 of {roster_in_use_origin}, ${raw:02X} -- set "
+                    f"means the party panel greys the name and the party's "
+                    f"strength leaves the character out",
                     grade("roster_in_use"), Provenance.RESHAPED)
         elif raw:
             out.drop("The character's state: this save holds a value the "
@@ -1169,13 +1184,21 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
                      "of the states it can put into words")
 
     # -- the combat side and quickfight flag, unpacked from one byte ---------
-    if rec.is_stored("combat_side"):
-        raw = rec.get("combat_side")
+    # Same reason: 0x10C is past the 256 a slot stores, so this is the C64
+    # roster block's own copy when there is one (#281).
+    if roster is not None:
+        raw, combat_side_origin = (roster.combat_side,
+                                    "the C64 roster block's combat_side")
+    elif rec.is_stored("combat_side"):
+        raw, combat_side_origin = rec.get("combat_side"), "C64 record 0x10C"
+    else:
+        raw = None
+    if raw is not None:
         out.set("hostile", bool(raw & 0x01),
-                f"bit 0 of C64 record 0x10C, ${raw:02X}",
+                f"bit 0 of {combat_side_origin}, ${raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
         out.set("quickfight", bool(raw & 0x80),
-                f"bit 7 of the same byte, ${raw:02X}",
+                f"bit 7 of {combat_side_origin}, ${raw:02X}",
                 grade("combat_side"), Provenance.RESHAPED)
 
     # As wide as the *title's* mask, not as wide as Pool of Radiance's. Seven

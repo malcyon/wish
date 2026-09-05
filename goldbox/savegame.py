@@ -76,6 +76,13 @@ ROSTER_COUNT = 8
 ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 
 # Offsets within one roster block.
+# +0x00 is the same status/in-play byte the record itself keeps at 0x100 --
+# `goldbox/layout.py`'s `roster_in_use`, low three bits the status, bit 7
+# `OUT_OF_PLAY` -- present here because a save *slot* stops storing the
+# record 0x100 bytes shy of this one (#281, A dead character on a C64 save
+# converts to DOS alive, because the reader never reads the four bytes past
+# 0x100).
+ROSTER_IN_USE = 0x00
 # Three bytes whose meaning is NOT established. They were read as the number of
 # spells memorised at levels 1, 2 and 3 -- which matches npc_party.d64 level by
 # level, and PORSAVE11 too, and is contradicted by PORSAVE4, where they read
@@ -85,6 +92,10 @@ ROSTER_AREA_END = SAVE1_LOAD_ADDRESS + ROSTER_COUNT * ROSTER_STRIDE   # $8400
 # carried through a round trip rather than interpreted.
 ROSTER_UNKNOWN_03 = 0x03
 ROSTER_UNKNOWN_03_LEN = 3
+# The record's own `combat_side` at 0x10C, one byte before `ROSTER_SLOT_INDEX`
+# -- which side the character fights on and the quickfight flag, packed the
+# same way the record packs them. Same reason as `ROSTER_IN_USE` (#281).
+ROSTER_COMBAT_SIDE = 0x0C
 ROSTER_SLOT_INDEX = 0x0D
 ROSTER_THAC0 = 0x0E
 ROSTER_ARMOUR_CLASS = 0x0F
@@ -664,6 +675,19 @@ class RosterBlock:
     @movement.setter
     def movement(self, value: int) -> None:
         self._set(ROSTER_MOVEMENT, value)
+
+    @property
+    def roster_in_use(self) -> int:
+        """The status/in-play byte, `goldbox/layout.py`'s `roster_in_use`
+        at record offset 0x100 -- which a save slot stops short of storing,
+        so this is where a real save actually keeps it (#281)."""
+        return self._get(ROSTER_IN_USE)
+
+    @property
+    def combat_side(self) -> int:
+        """The combat-side and quickfight byte, `goldbox/layout.py`'s
+        `combat_side` at record offset 0x10C -- same reason (#281)."""
+        return self._get(ROSTER_COMBAT_SIDE)
 
     @property
     def unknown_03_05(self) -> tuple[int, ...]:

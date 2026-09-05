@@ -24,9 +24,11 @@ import re
 import pytest
 
 from goldbox import c64_codec, dos, dos_layout, neutral
+from goldbox.games import POOL_OF_RADIANCE
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter
 from goldbox.record import CharacterRecord
+from goldbox.savegame import SaveGame0, SaveGame1
 
 #: The C64 bytes the six overlays are seen to write for a party member, and
 #: the word `LIBRARY $38BE` draws for each.  `$84` DYING is in the list even
@@ -465,3 +467,78 @@ def test_the_dos_reader_grades_the_two_bytes_above_the_field_they_sit_in():
     out = dos.to_neutral(_dos_record(b"\x04\x00\x00\x00"))
     assert out.value("status").confidence is Confidence.CONFIRMED
     assert out.value("active").confidence is Confidence.CONFIRMED
+
+
+# --- through the real path: Slot and RosterBlock, not a hand-built record ---
+#
+# Every test above builds its C64 side with `_c64_record`, a full 580-byte
+# `CharacterRecord` with the default `stored_size` -- so `is_stored` is True
+# for `roster_in_use` and `combat_side` whatever their offset, and none of
+# them could have caught #281 (A dead character on a C64 save converts to
+# DOS alive, because the reader never reads the four bytes past 0x100).  A
+# save actually reaches `c64_codec.read` as a `goldbox.savegame.Slot.record`,
+# whose `stored_size` is 256 -- both fields end past that, so `is_stored` was
+# False unconditionally and neither was ever set.  These build the save the
+# way `goldbox/dos.py` and `goldbox/amiga.py` do, through `SaveGame0.slot`
+# and `SaveGame1.roster`.
+
+def _occupied_save() -> SaveGame0:
+    """A synthetic `SAVEDGAME0` with one character in slot 0, built from the
+    format rather than copied off a disk -- `looks_occupied` wants a letter
+    for a name and six ability scores in range."""
+    sg0 = SaveGame0(bytes(POOL_OF_RADIANCE.save_size), POOL_OF_RADIANCE)
+    rec = CharacterRecord.blank()
+    rec.set("name", "TESTCHAR")
+    for ability in ("strength", "intelligence", "wisdom", "dexterity",
+                    "constitution", "charisma"):
+        rec.set(ability, 10)
+    sg0.write_record(0, rec)
+    return sg0
+
+
+def _roster_with(offset_0x00: int, offset_0x0c: int) -> SaveGame1:
+    """A synthetic `SAVEDGAME1` whose slot-0 block carries the given
+    `roster_in_use` byte at +0x00 and `combat_side` byte at +0x0C."""
+    payload = bytearray(POOL_OF_RADIANCE.roster_size)
+    payload[0x00] = offset_0x00
+    payload[0x0C] = offset_0x0c
+    return SaveGame1(bytes(payload), POOL_OF_RADIANCE)
+
+
+def test_a_slot_record_alone_never_delivers_status_or_combat_side():
+    """The failure mode itself, isolated: a real save's `Slot.record` has
+    `stored_size` 256, `roster_in_use` (0x100) and `combat_side` (0x10C) both
+    end past it, and with no roster block to fall back on the fields are
+    simply absent -- never a wrong value, which is why this went unnoticed."""
+    slot = _occupied_save().slot(0)
+    assert slot.record.stored_size == 256
+    assert not slot.record.is_stored("roster_in_use")
+    assert not slot.record.is_stored("combat_side")
+
+    out = c64_codec.read(slot.record)
+    assert "status" not in out
+    assert "active" not in out
+    assert "hostile" not in out
+    assert "quickfight" not in out
+
+
+def test_a_dead_quick_fought_character_reads_and_converts_correctly_through_slot_and_roster():
+    """$83 at the roster block's +0x00 is DEAD and out of play -- the byte
+    `ENCAMP` writes and `ENGINE_WRITES` above already names -- and $81 at
+    +0x0C is hostile and quickfight together, the same byte
+    `test_dos_hostile_and_quickfight_pack_into_one_c64_byte` proves the DOS
+    side packs. Read through the real `Slot`/`RosterBlock` path, both must
+    reach the neutral record, and the character must convert to DOS as dead
+    rather than arriving Okay and a full party member."""
+    slot = _occupied_save().slot(0)
+    roster = _roster_with(0x83, 0x81)
+
+    out = c64_codec.read(slot.record, roster=roster.roster(0))
+    assert out.get("status") == "dead"
+    assert out.get("active") is False
+    assert out.get("hostile") is True
+    assert out.get("quickfight") is True
+
+    rec, _, _, _ = dos.write(out)
+    assert rec[TAIL.offset] == 6           # DOS's own number for Dead
+    assert rec[TAIL.offset + 1] == 0       # not active
