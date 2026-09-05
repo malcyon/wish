@@ -111,3 +111,19 @@ def test_the_later_titles_library_never_calls_the_loader(key, env):
         f"asks for slot 13 or 14 this title draws a sheet portrait after "
         f"all, and goldbox.portraits.SHEET_PORTRAIT_TITLES is wrong")
     assert not portraits.draws_sheet_portrait(key)
+
+
+def test_no_title_means_pool_of_radiance_like_every_other_resolver():
+    """`draws_sheet_portrait(None)` answers True, and the reason is a habit.
+
+    Every other resolver in this package treats a missing title as Pool of
+    Radiance -- `goldbox.spells.for_game`, `goldbox.levels.for_game`,
+    `goldbox.traits.for_game`, `goldbox.c64_save.container_for` and
+    `goldbox.c64_codec.record_shape` -- because every caller that passes none
+    predates the second game and means the first. A predicate that answered
+    False here would be the one in the family that disagreed, and it would
+    disagree in the direction that drops a portrait Pool of Radiance really
+    does draw.
+    """
+    assert portraits.draws_sheet_portrait(None) is True
+    assert portraits.draws_sheet_portrait() is True

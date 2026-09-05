@@ -345,10 +345,15 @@ def tables_from_disks(disks: str | pathlib.Path) -> PortraitTables:
 #: `goldbox.dos` decides today with `shape is POOL_OF_RADIANCE` in the
 #: C64-to-DOS direction and does not decide at all in the other, which is
 #: why a Curse import reports a portrait it never could have written.
-SHEET_PORTRAIT_TITLES = frozenset({"pool-of-radiance"})
+#: Spelled out rather than imported from `goldbox.games`: `goldbox.traits`
+#: does the same and says why -- this package duck-types on `.key` to keep
+#: the import graph acyclic.
+POOL_OF_RADIANCE_KEY = "pool-of-radiance"
+
+SHEET_PORTRAIT_TITLES = frozenset({POOL_OF_RADIANCE_KEY})
 
 
-def draws_sheet_portrait(game) -> bool:
+def draws_sheet_portrait(game=None) -> bool:
     """Whether this title's C64 character sheet draws a portrait at all.
 
     `game` is a `goldbox.games.Game`, anything else carrying a `key`, or the
@@ -356,6 +361,18 @@ def draws_sheet_portrait(game) -> bool:
     nothing to report: a character arriving there without a face is a
     character arriving correct, because the engine draws none for any
     character, including one it made itself.
+
+    **`None` means Pool of Radiance**, which is the answer every other
+    resolver in this package gives -- `goldbox.spells.for_game`,
+    `goldbox.levels.for_game`, `goldbox.traits.for_game`,
+    `goldbox.c64_save.container_for` and `goldbox.c64_codec.record_shape` all
+    resolve it that way, because every caller that passes no title predates
+    the second game and means the first.  Answering False for `None` here
+    would have been the one predicate in the family that disagreed, and it
+    would disagree in the direction that silently drops a portrait Pool of
+    Radiance really does draw.
     """
     key = getattr(game, "key", game)
+    if key is None:
+        key = POOL_OF_RADIANCE_KEY
     return str(key) in SHEET_PORTRAIT_TITLES

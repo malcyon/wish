@@ -14,11 +14,28 @@ that side for it to have.
 
 **The picture**, which is the evidence a reader can check without a
 disassembly: `work/issue300/three-sheets.png` -- one character sheet from
-each title, same harness, same window. Pool of Radiance draws a face in a
-framed box on the right; Curse leaves that side of the screen blank; Silver
-Blades draws a framed panel there and puts the character's money in it.
-(Lost when `work/` next goes; `tools/portraitdraw.py` and the run recipe
-below rebuild it.)
+each title. Pool of Radiance draws a face in a framed box on the right;
+Curse leaves that side of the screen blank; Silver Blades draws a framed
+panel there and puts the character's money in it.
+
+**Two of the three were taken in this session's own harness and the Pool of
+Radiance one was not.** It is `work/issue57/c64-slotA/sheet-1.png`, taken in
+an earlier session in a different pool slot, and it is there because three
+attempts to load `WISH-SPEC-por-party-twin-pair.d64` in this session answered
+`SAVED GAME NOT FOUND!` (`$03F1` = `$3C`) despite the disk carrying both
+`SAVEDGAME` files. That failure is undiagnosed and is listed below. So the
+composite is three sheets rather than one controlled comparison, and the
+Curse and Silver Blades halves are the two that were taken together.
+
+**How the Silver Blades panel was read as money rather than as an empty
+frame**: two characters, one sheet apart. PAINE has no money and his panel
+looks like an empty portrait frame; MALACHITE's identical panel reads
+`GOLD 4`. The screenshots are on
+`#300 (A Curse or Silver Blades party imported to the C64 arrives with no
+sheet portrait, because the creation menu is read only off a POOL<n>.D64)`.
+
+(All of these are lost when `work/` next goes; `tools/portraitdraw.py` and
+the run recipe below rebuild the census, and the sheets need the emulator.)
 
 ## What Pool of Radiance does
 
@@ -187,6 +204,13 @@ should close on.
   it maps the PRG header to $0800)` is the ticket.
 
 ## What is still unmeasured
+
+**A fresh Pool of Radiance control in this session's harness.**
+`WISH-SPEC-por-party-twin-pair.d64` answered `SAVED GAME NOT FOUND!` three
+times in pool slot 4, `$03F1` = `$3C`, with both `SAVEDGAME` files present on
+the disk. One specimen, one slot, undiagnosed -- so it may be the specimen,
+the slot or the harness, and the next reader should not assume the harness is
+broken. `WISH-SPEC-porunconscious1.d64` is the specimen to try instead.
 
 * **Whether DOS Curse and DOS Silver Blades draw a sheet portrait.** This
   page is about the C64 destination. All 12 shipped Curse `CHRDAT*.SAV`
