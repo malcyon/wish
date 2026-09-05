@@ -264,6 +264,41 @@ def test_a_script_too_long_for_the_buffer_is_refused():
                     script=bytes(room + sg.ECL_HEADER + 1))
 
 
+def test_retarget_writes_the_resident_geo_from_its_own_argument():
+    """#276: `$49C5` and `$49F2` are two different words, and a caller with
+    the save's own `$49C5` in hand passes it rather than letting `geo`
+    default to `area` -- which is what a retarget onto the training hall (an
+    area whose script loads no map) needs, since writing the area id into
+    both there names `GEO0B`, a map no script loads."""
+    save = blank()
+    script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
+    sg.retarget(save, area=11, dax=3, wallset=(sg.EMPTY,) * 3, script=script,
+                geo=0)
+    save = bytes(save)
+    assert sg.word(save, sg.SCRIPT) == 11
+    assert sg.area_id(save) == 0
+
+
+def test_retarget_defaults_the_resident_geo_to_the_area():
+    """A caller with no separate `$49C5` -- every one before #276 -- keeps
+    the old behaviour, which is right wherever the area loads its own map."""
+    save = blank()
+    script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
+    sg.retarget(save, area=20, dax=2, wallset=(2, 4, 1), script=script)
+    assert sg.area_id(bytes(save)) == 20
+
+
+def test_retarget_geo_is_ignored_outdoors():
+    """`outdoors` still forces `$49C5` to 0 regardless of `geo`, because the
+    DOS travel grid names no `GEO` in 10 of 10 specimens."""
+    save = blank()
+    script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
+    sg.put_word(save, sg.INDOORS, 1)
+    sg.retarget(save, area=26, dax=7, wallset=sg.OUTDOOR_WALLSET,
+                script=script, outdoors=True, geo=26)
+    assert sg.area_id(bytes(save)) == 0
+
+
 # --- the .DAX container ------------------------------------------------------
 
 

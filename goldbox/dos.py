@@ -3742,12 +3742,22 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
 
     **A party on the travel grid takes a different value in four places**
     (#190), and everything else about the write is the same: `$49C5` = 0
-    rather than the area id, the wallset triple is the overland's own
+    rather than the resident GEO, the wallset triple is the overland's own
     measured `(0, $FFFF, $FFFF)` rather than the C64 cache's, the square is
     the travel pair at `$49C3`/`$49C4`, and `$49E6` = 0 is what boots the
     engine into travel mode.  `put_tail_state` takes the fifth.
+
+    **`$49C5` and `$49F2` are two different words, and each is read from its
+    own address in the C64 save** (#276).  `$49F2` is the area, always;
+    `$49C5` is the resident map, and the two part company for an area whose
+    script loads none of its own, such as the training hall -- writing the
+    area id into both there names `GEO0B`, a map no script loads.  This used
+    to derive `$49C5` from `area`, which is `retarget`'s own default and is
+    right for the areas that load their own map and wrong for the six
+    `retarget_reason` refuses before this can run.
     """
     area = save0[CURRENT_SCRIPT - SAVE0_BASE]
+    geo = save0[CURRENT_GEO - SAVE0_BASE]
     where = areas.area(area)
     x, y, facing = (save0[PARTY_X - SAVE0_BASE], save0[PARTY_Y - SAVE0_BASE],
                     save0[PARTY_FACING - SAVE0_BASE])
@@ -3762,12 +3772,12 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
                else dos_savegame.OUTDOOR_WALLSET)
     dos_savegame.retarget(savgam, area=area, dax=where.disk,
                           wallset=wallset, script=script,
-                          outdoors=not indoors)
+                          outdoors=not indoors, geo=geo)
     report.note(dos_savegame.DAX_NUMBER, 1,
                 f"the DAX container number, {where.disk}, for area "
                 f"{area} ({where.name or where.ecl})")
     _note_word(report, dos_savegame.AREA, 1,
-               "the area id" if indoors else
+               "the resident GEO, the C64's own $49C5" if indoors else
                "zero: the overland names no GEO, which is what an outdoor "
                "DOS save holds here in 10 of 10 -- and it is not the C64's "
                "own $49C5, which outdoors holds the SQRDATA number (#59)")

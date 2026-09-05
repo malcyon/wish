@@ -1116,23 +1116,34 @@ def wall_map(wallset) -> tuple[int, int, int]:
 
 
 def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes,
-             outdoors: bool = False) -> None:
+             outdoors: bool = False, geo: "int | None" = None) -> None:
     """Move a saved game to another area.  `script` is its `ECL` DAX block.
 
     Every write `RETARGET_WRITES` lists except the square and the party
     size, which a conversion sets separately because they change on their
     own.  Take any of these away and the game exits to DOS.
 
-    **`outdoors` changes one of the nine writes, `$49C5`.**  A travel window
-    is an area like any other everywhere else -- byte 0 and `$5012` are its
-    DAX number, `$49F2` is its id, the ECL buffer is its own block -- but
-    `$49C5` is **0** rather than the id, in 10 of 10 outdoor specimens, and
-    that is the field that says the overland names no `GEO`.  The C64 is not
-    the same here: its `$49C5` outdoors holds the `SQRDATA` number.
+    **`area` and `geo` are two different words and a caller that has both
+    passes both** (#276).  `area` is `$49F2`, always; `geo` is `$49C5`, the
+    resident map, and is **not the same number** for an area whose script
+    loads no map of its own, such as the training hall.  `geo` defaults to
+    `area`, which is right for the areas that load their own map -- most of
+    them -- and wrong for the six `retarget_reason` refuses before this runs,
+    so a caller that knows the save's own `$49C5` passes it here rather than
+    letting the default stand in for it.
+
+    **`outdoors` changes `$49C5` regardless of `geo`.**  A travel window is
+    an area like any other everywhere else -- byte 0 and `$5012` are its DAX
+    number, `$49F2` is its id, the ECL buffer is its own block -- but `$49C5`
+    is **0** rather than the id, in 10 of 10 outdoor specimens, and that is
+    the field that says the overland names no `GEO`.  The C64 is not the
+    same here: its `$49C5` outdoors holds the `SQRDATA` number.
     """
     _whole(save)
+    if geo is None:
+        geo = area
     save[0] = dax
-    put_word(save, AREA, 0 if outdoors else area)
+    put_word(save, AREA, 0 if outdoors else geo)
     put_word(save, SCRIPT, area)
     put_word(save, DISK, dax)
     for i, w in enumerate(wallset):
@@ -1159,7 +1170,9 @@ def retarget(save: bytearray, *, area: int, dax: int, wallset, script: bytes,
 #: it is a recipe for.
 RETARGET_WRITES = (
     "byte 0 = the target area's DAX number",
-    f"word ${AREA:04X} = the target area id, or 0 onto a travel window",
+    f"word ${AREA:04X} = the resident GEO (defaults to the target area id, "
+    f"but a caller with the save's own $49C5 passes it), or 0 onto a travel "
+    f"window",
     f"word ${SCRIPT:04X} = the target area id",
     f"word ${DISK:04X} = the target area's DAX number",
     f"words ${WALLSET:04X}-${WALLSET + 2:04X} = the target's wallset triple "

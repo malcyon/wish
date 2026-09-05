@@ -1245,6 +1245,31 @@ def test_a_conversion_with_no_game_files_refuses_rather_than_borrowing_an_area(
     assert not (tmp_path / "out" / "SAVGAMA.DAT").exists()
 
 
+def test_savgam_writes_reads_the_resident_geo_from_the_c64_saves_own_word():
+    """#276: the export direction wrote the area id into `$49C5`, the
+    resident-map word, which is the same mistake #257 fixed on the way in.
+
+    Area 11, the training hall, is where the two words part company: its
+    script loads no map at all, so an engine-written save there holds
+    `$49C5` = 0 with `$49F2` = 11.  `dos.write_dos_save` cannot reach this --
+    `retarget_reason` refuses area 11 before `savgam_writes` is ever called,
+    which is the refusal the issue says hides the fault -- so this calls
+    `savgam_writes` directly, the same way that caller does.
+    """
+    save0 = bytearray(dos.SAVE0_SIZE)
+    save0[dos.CURRENT_SCRIPT - dos.SAVE0_BASE] = 11
+    save0[dos.CURRENT_GEO - dos.SAVE0_BASE] = 0
+    save0[dos.PARTY_X - dos.SAVE0_BASE] = 5
+    save0[dos.PARTY_Y - dos.SAVE0_BASE] = 0
+    save0[dos.PARTY_FACING - dos.SAVE0_BASE] = 0
+    script = bytes([0x88, 0x13]) + bytes(range(256)) * 4
+    savgam = bytearray(sg.SAVGAM_SIZE)
+    report = dos.SaveReport(total=sg.SAVGAM_SIZE)
+    dos.savgam_writes(savgam, report, bytes(save0), "A", 1, script)
+    assert sg.word(bytes(savgam), sg.SCRIPT) == 11
+    assert sg.area_id(bytes(savgam)) == 0
+
+
 @pytest.mark.parametrize("area, wanted", [
     (3, "not supported"),        # dynamic_geo -- the script picks its map
     (8, "not supported"),        # Phlan City Hall loads no map at all
