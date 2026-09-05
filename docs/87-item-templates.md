@@ -131,7 +131,7 @@ bytes at `+13`–`+15`, which on a scroll are its spells.
 | RING | 1 gp | 0.0 lb | magic-user, cleric, thief, fighter |
 | RING MAIL | 30 gp | 25.0 lb | AC 7; cleric, fighter |
 | RING OF FEATHER FALLING | 5000 gp | 0.0 lb | magic-user, cleric, thief, fighter |
-| RING OF FIRE RESISTANCE | 5000 gp | 0.1 lb | magic-user, cleric, thief, fighter |
+| RING OF FIRE RESISTANCE | 5000 gp | 0.0 lb | magic-user, cleric, thief, fighter |
 | RING OF PROTECTION +1 | 10000 gp | 0.0 lb | AC +0; magic-user, cleric, thief, fighter |
 | ROTTING LEATHER SADDLE | 1 gp | 25.0 lb | magic-user, cleric, thief, fighter |
 | ROTTING RUG | 1 gp | 100.0 lb | magic-user, cleric, thief, fighter |
