@@ -52,6 +52,34 @@ not get a line.
 the accounting; `#131` is blocked on it either way. Only the line in the pane
 goes.
 
+**No player ever sees a dropped-field message.** Donald, 2026-09-05: *"I don't
+want the player to EVER see a message saying any field was dropped. The
+conversion needs to be perfect."* So the drop list is **our accounting**, and
+the pane that shows it to a player is a temporary state rather than a feature
+-- what it is for is telling us the flag cannot come off yet. Rewording an
+entry is worth less than removing it, and an agent polishing a drop line is
+usually an agent working on the wrong half of the problem.
+
+**"Nobody has measured it" is not "it cannot be done", and saying so is how an
+agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
+on the combat icon: *"We absolutely can figure out how to convert combat
+icons. They are not that complex. What is the problem, exactly? Are there
+differing amounts of colors? Are there differing amounts of pixels? We can
+figure it out. Don't give up so easily."* So an UNKNOWN in a conversion is a
+measurement somebody has to go and take, named in numbers -- how many colours
+each side stores, how many pixels, which file the art is in -- and never a
+reason to stop.
+
+**Never tell a player something untrue about their own game to make a drop
+line shorter.** Proposed for the combat-icon line on 2026-09-05 and rejected:
+*"DOS has no combat art"*. DOS has combat art. What it does not have is the
+C64's **encoding** of it -- 18 `CHARPIC00` screen codes plus 18 colours out of
+the C64's own character set -- and the converter has no route between the two
+yet, which is `#130 (A converted DOS party arrives with six identical combat
+figures, not its own)`. Donald, 2026-09-05: *"DOS absolutely does have combat
+art. What does that mean?"* Compressing "no equivalent encoding" into "none"
+reads as a claim about the game the player owns.
+
 Three reasons are legitimate:
 
 * the destination format **has no such field** -- and that has been established

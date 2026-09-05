@@ -43,6 +43,16 @@ number of further specimens says what it is. Reading the engine's own expiry
 routine does. That is the test: **would another hour of measuring answer it?**
 If yes, it is not this agent's work.
 
+**Widened on 2026-09-05: an issue whose remaining obstacle is an UNKNOWN goes
+here by default.** Donald: *"Honestly, just use the deep-research agent to
+figure out the unknowns. That should help a lot. You can't use it for
+everything, but you could use it for the hardest tickets."* So the broken
+assumption above is a **sufficient** reason to route here rather than the only
+one, and a ticket that has sat because nobody could say what some bytes hold is
+this agent's work now. What still does not come here is ordinary building and
+ordinary measuring: a `reverse-engineering` agent does those as well, and
+sending them to Fable buys nothing.
+
 **`junior-dev`'s filter is a property of the issue body** -- does it name the
 mechanism, or only the goal? `#71 (Character draws on top of itself when the header is squeezed to its floor)`
 looked like ordinary work and took nine rounds and a `QTableView` subclass.
