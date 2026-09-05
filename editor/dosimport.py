@@ -226,7 +226,20 @@ def rehearse(folder: str | pathlib.Path, slot: str,
     than an empty `SaveGame1`, which the constructor would refuse anyway.
     """
     party = dos.read_party(folder, slot)
-    game = games.by_key(party[0].shape.key)
+    try:
+        game = games.by_key(party[0].shape.key)
+    except games.UnknownGameError:
+        # Pools of Darkness is the one title this reads and `goldbox/games.py`
+        # does not list, because there is no C64 port to convert it to. Before
+        # the title came from the save, that folder ran on into `to_neutral`
+        # and got Donald's own sentence for exactly this case (#176). Without
+        # this, `UnknownGameError` is not a `DosRecordError`, so the dialog
+        # falls through to "This save cannot be converted." and the player is
+        # told less than we know.
+        raise dos.WrongTitleError(
+            f"{party[0].shape.title} has no C64 port to convert to, so "
+            f"goldbox/games.py has no entry for it (#176)",
+            party[0].shape.title) from None
     payload0, payload1, report = dos.new_save(folder, slot,
                                               files.icon, files.animate,
                                               portraits=files.portraits,
