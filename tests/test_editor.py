@@ -32,6 +32,7 @@ from editor.binding import (
 )
 from editor.files import automatic_dir, back_up, prune
 from editor.roster import Party
+from goldbox import c64_codec
 from goldbox.layout import LAYOUT, Confidence
 
 # Wherever the player keeps them, not wherever one machine did.
@@ -782,9 +783,36 @@ def test_an_untouched_spell_field_is_written_back_byte_for_byte(editor):
     book, memorised = editor._spell_widgets()
     record = editor.party.member(2).record
     # The widget holds the whole mask, both declared fields of it, because how
-    # far into it a title reaches is the title's business.
+    # far into it a title reaches is the title's business. The memorised list
+    # is the same idea: 81 slots in Pool of Radiance, which is three declared
+    # fields and not the 69 `spells_memorised` covers on its own (#268).
     assert book.to_bytes() == editor._spellbook_raw(record)
-    assert memorised.to_bytes() == record.get_raw("spells_memorised")
+    assert memorised.to_bytes() == editor._memorised_raw(record)
+    assert len(memorised.to_bytes()) == 81
+
+
+def test_the_memorised_widget_holds_as_many_slots_as_it_was_given():
+    """Twenty prepared spells, and the widget shows twenty and writes eighty-one
+    bytes back.
+
+    It stopped at sixteen -- the width `spells_memorised` used to be declared
+    as -- so a cleric 6 / magic-user 6 lost the last spells they memorised the
+    moment the sheet was saved (#268). The widget takes its width from the
+    bytes the window hands it, which is the span the window writes back.
+    """
+    from editor.spellwidget import MemorisedEditor
+
+    size = c64_codec.memorised_span(None)[1]
+    ids = list(range(1, 21))
+    raw = bytes(ids) + bytes(size - len(ids))
+    w = MemorisedEditor(make_root())
+    w.set_bytes(raw)
+    assert w.slot_count() == size == 81
+    assert w.ids() == ids
+    assert w.to_bytes() == raw                 # untouched: back byte for byte
+    assert w.add_spell(21)                     # seventeen was refused before
+    assert len(w.ids()) == 21
+    assert len(w.to_bytes()) == size
 
 
 @game_disks

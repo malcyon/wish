@@ -19,7 +19,7 @@ import pytest
 
 from automap import actions, live
 from automap.target import MemoryTarget
-from goldbox import games, levelup
+from goldbox import c64_codec, games, levelup
 from goldbox import items as por_items
 from goldbox.record import RECORD_SIZE, CharacterRecord
 from goldbox.savegame import ROSTER_HP_CURRENT
@@ -228,20 +228,52 @@ def test_a_character_already_at_full_is_not_named():
 # --- memorised spells --------------------------------------------------------
 
 
+# Pool of Radiance's whole list, which is 81 slots and not the 69 the layout
+# declares nor the 16 it used to (#268).
+MEMORISED = c64_codec.memorised_span(None)[1]
+
+
 def test_storing_then_restoring_puts_the_memorised_list_back(tmp_path):
     store = actions.SpellStore(tmp_path / "spells.json")
     target = machine()
     # BRUTUS is a fighter and prepares nothing, so give him a list: ids 1
     # BLESS and 3 CURE LIGHT WOUNDS, the two the layout note names.
-    target.write(0x4D20, bytes([1, 3]) + bytes(14))
+    target.write(0x4D20, bytes([1, 3]) + bytes(MEMORISED - 2))
     assert find("store-spells", store).apply(target, disk="PORSAVE11").ok
 
-    prepared = bytes(target.read(0x4D20, 16))
-    target.write(0x4D20, bytes(16))              # everything cast
+    prepared = bytes(target.read(0x4D20, MEMORISED))
+    target.write(0x4D20, bytes(MEMORISED))       # everything cast
 
     outcome = find("restore-spells", store).apply(target, disk="PORSAVE11")
     assert outcome.ok and outcome.writes == ((0x4D20, prepared),)
-    assert target.read(0x4D20, 16) == prepared
+    assert target.read(0x4D20, MEMORISED) == prepared
+
+
+def test_a_list_stored_before_the_span_was_known_still_restores(tmp_path):
+    """A `spells.json` written when the field was sixteen bytes holds sixteen,
+    and those sixteen are the front of the same run.
+
+    Refusing it -- which the length check did, on "not 81 bytes" -- would have
+    told a player nothing could be restored for a list this program itself
+    stored last week (#268). Sixteen bytes go back at the front and the rest
+    of the run is left alone, which is exactly what restoring did before.
+    """
+    store = actions.SpellStore(tmp_path / "spells.json")
+    store.put("PORSAVE11", "BRUTUS", bytes([1, 3]) + bytes(14))
+    target = machine()
+    outcome = find("restore-spells", store).apply(target, disk="PORSAVE11")
+    assert outcome.ok
+    assert outcome.writes == ((0x4D20, bytes([1, 3]) + bytes(14)),)
+    assert target.read(0x4D20, 16) == bytes([1, 3]) + bytes(14)
+
+
+def test_a_stored_list_wider_than_the_record_is_refused(tmp_path):
+    store = actions.SpellStore(tmp_path / "spells.json")
+    store.put("PORSAVE11", "BRUTUS", bytes(MEMORISED + 1))
+    outcome = find("restore-spells", store).apply(machine(), disk="PORSAVE11")
+    assert outcome.writes == ()
+    assert any("BRUTUS" in note and str(MEMORISED) in note
+               for note in outcome.notes)
 
 
 def test_the_store_survives_the_window_closing(tmp_path):
@@ -275,8 +307,9 @@ def test_restoring_with_nothing_stored_writes_nothing_and_says_so(tmp_path):
 
 
 def test_the_memorised_list_is_written_inside_the_slot_the_character_owns():
-    """0x020 + 16 is well inside the $100 a live slot holds. A field past that
-    belongs to the next character and must raise rather than corrupt them."""
+    """0x020 + 81 ends at 0x071, well inside the $100 a live slot holds. A
+    field past that belongs to the next character and must raise rather than
+    corrupt them."""
     party = actions.read_party(machine())
     member = party.by_slot(0)
     assert member.field_address("spells_memorised") == 0x4D20

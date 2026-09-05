@@ -31,9 +31,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from goldbox.layout import FIELDS_BY_NAME
 from goldbox.spells import SpellTable, describe, for_game, spell_group
 
-MEMORISED_SIZE = 16          # the packed list at 0x020
+#: How many slots the widget shows when nobody has handed it any bytes yet.
+#: The real width is the title's, and it arrives with `set_bytes`: Pool of
+#: Radiance walks 81 slots from `0x020`, Curse of the Azure Bonds 69, Secret
+#: of the Silver Blades 74 from `0x01B`. `goldbox.c64_codec.memorised_span` is
+#: where that comes from, and this widget never asks -- it takes its width
+#: from the bytes the window gives it, which is the same span the window
+#: writes back (#268).
+MEMORISED_SIZE = FIELDS_BY_NAME["spells_memorised"].size
 
 UNKNOWN = QColor("#b03a2e")  # memorised but not in the spellbook
 
@@ -357,8 +365,21 @@ class MemorisedEditor(SpellEditor):
         self.set_ids(ids)
 
     def set_bytes(self, raw: bytes) -> None:
+        """The list as the window read it, and with it the width to write.
+
+        However many bytes arrive is however many go back: the window hands
+        over this title's whole span, so a Pool of Radiance character with
+        more than sixteen spells prepared keeps them all (#268).
+        """
         self._raw = bytes(raw)
-        self.set_ids([b for b in raw[:MEMORISED_SIZE] if b])
+        self.set_ids([b for b in self._raw if b])
+
+    def slot_count(self) -> int:
+        """How many slots this character's list has, as the window read it.
+
+        Not `size`, which on anything Qt means a `QSize` in pixels.
+        """
+        return len(self._raw)
 
     def to_bytes(self) -> bytes:
         """The packed list -- or the bytes as read, when nothing moved.
@@ -367,10 +388,10 @@ class MemorisedEditor(SpellEditor):
         it, and anything after that is residue we cannot account for. An
         untouched field therefore goes back exactly as it came.
         """
-        ids = self.ids()[:MEMORISED_SIZE]
-        if ids == [b for b in self._raw[:MEMORISED_SIZE] if b]:
+        ids = self.ids()[:self.slot_count()]
+        if ids == [b for b in self._raw if b]:
             return self._raw
-        return bytes(ids) + bytes(MEMORISED_SIZE - len(ids))
+        return bytes(ids) + bytes(self.slot_count() - len(ids))
 
     # -- state ------------------------------------------------------------
 
@@ -435,7 +456,7 @@ class MemorisedEditor(SpellEditor):
         return (spell_group(sid, self._table) or ("", 0))[1]
 
     def add_spell(self, sid: int) -> bool:
-        if self.list is None or self.list.count() >= MEMORISED_SIZE:
+        if self.list is None or self.list.count() >= self.slot_count():
             return False
         level = self._level(sid)
         at = self.list.count()

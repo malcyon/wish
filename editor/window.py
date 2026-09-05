@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from goldbox import c64_codec
 from goldbox import games as por_games
 from goldbox.encoding import combat_byte, combat_value
 from goldbox.iconparts import IconParts
@@ -786,6 +787,26 @@ class EditorBinding(QObject):
                 record.set_raw(name, chunk)
             at += size
 
+    def _memorised_raw(self, record) -> bytes:
+        """The memorised-spell list, as wide as the open title reads it.
+
+        Not `record.get_raw("spells_memorised")`: the declared field is the 69
+        bytes every measured title agrees about, and Pool of Radiance's own
+        list is 81 from `0x020` while Silver Blades' is 74 from `0x01B`. A
+        character with more than the declared width memorised lost the rest
+        the moment the sheet was saved (#268).
+        """
+        return c64_codec.get_memorised(record, self._game())
+
+    def _set_memorised_raw(self, record, raw: bytes) -> None:
+        """The inverse, over the same span, and only when it moved."""
+        if raw != c64_codec.get_memorised(record, self._game()):
+            c64_codec.set_memorised(record, raw, self._game())
+
+    def _game(self):
+        """The open title, or None before a save is open."""
+        return self.party.game if self.party is not None else None
+
     def _spell_widgets(self) -> tuple[SpellbookEditor | None, MemorisedEditor | None]:
         book = self._widgets.get("spells_known")
         memorised = self._widgets.get("spells_memorised")
@@ -1259,6 +1280,8 @@ class EditorBinding(QObject):
                         record.set(name, w.currentData())
                 elif isinstance(w, SpellbookEditor):
                     self._set_spellbook_raw(record, w.to_bytes())
+                elif isinstance(w, MemorisedEditor):
+                    self._set_memorised_raw(record, w.to_bytes())
                 elif isinstance(w, SpellEditor):
                     if record.get_raw(name) != w.to_bytes():
                         record.set_raw(name, w.to_bytes())
@@ -1348,9 +1371,12 @@ class EditorBinding(QObject):
             elif isinstance(w, QComboBox):
                 _select(w, value)
             elif hasattr(w, "set_bytes"):
-                w.set_bytes(self._spellbook_raw(record)
-                            if isinstance(w, SpellbookEditor)
-                            else record.get_raw(name))
+                if isinstance(w, SpellbookEditor):
+                    w.set_bytes(self._spellbook_raw(record))
+                elif isinstance(w, MemorisedEditor):
+                    w.set_bytes(self._memorised_raw(record))
+                else:
+                    w.set_bytes(record.get_raw(name))
                 if hasattr(w, "codes"):
                     _fit_height(w, fixed=True)
         self._show_boxes(record)

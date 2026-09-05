@@ -19,6 +19,7 @@ import shutil
 import pytest
 from gamedata import disk_dir
 
+from goldbox import c64_codec
 from goldbox.d64 import D64
 from goldbox.record import FieldNotStored
 from goldbox.savegame import ROSTER_STRIDE, SaveGame0, SaveGame1
@@ -359,9 +360,12 @@ def test_a_memorised_spell_outside_the_spellbook_survives_a_round_trip(tmp_path)
     img = D64.open(str(src))
     sg = SaveGame0.from_prg(img.read_file(b"SAVEDGAME0"))
     rec = sg.slot(MALCYON).record
-    rec.set_raw("spells_memorised", bytes([44]) + bytes(15))   # not in his book
+    # The whole list as Pool of Radiance walks it -- 81 slots, not the 69 the
+    # layout declares (#268) -- so this writes a full field and not a prefix.
+    size = c64_codec.memorised_span(None)[1]
+    c64_codec.set_memorised(rec, bytes([44]) + bytes(size - 1))  # not in his book
     sg.write_record(MALCYON, rec)
     img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
     img.save(str(src))
-    assert _record(src, MALCYON).get_raw("spells_memorised")[0] == 44
+    assert c64_codec.get_memorised(_record(src, MALCYON))[0] == 44
     _unchanged(src, tmp_path)

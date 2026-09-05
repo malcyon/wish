@@ -7,11 +7,13 @@ carried through untouched.
 """
 
 import pathlib
+import shutil
 
 import pytest
 import yaml
 from gamedata import disk_dir
 
+from goldbox import c64_codec
 from goldbox.d64 import D64
 from goldbox.savegame import SaveGame0
 from goldbox.yaml_io import export_save, import_into, strip_annotations, to_yaml
@@ -599,6 +601,45 @@ def test_spells_can_be_edited(tmp_path):
     changes = import_into(SAVE4, data, str(out), game_disk=GAME)
     assert _record(out, "MALCYON").get_raw("spells_memorised")[:3] == bytes([15, 21, 0])
     assert any("NOTE" in c for c in changes)      # the count caveat is reported
+
+
+@live4
+def test_more_than_sixteen_memorised_spells_survive_a_round_trip(tmp_path):
+    """Twenty ids in the region come back as twenty and the disk is unchanged.
+
+    A cleric 6 who is also a magic-user 6 may prepare twenty-one spells, and
+    the export listed sixteen of them: the declared field was sixteen bytes
+    where Pool of Radiance's list is eighty-one (#268). Importing that export
+    then wrote the sixteen back and cleared nothing, so the five that vanished
+    from the file were the five the player had memorised last.
+
+    The twenty are staged into a copy of the save because no C64 party on
+    this machine has more than three prepared -- the case cannot be taken off
+    a disk, only built.
+    """
+    src = tmp_path / "twenty.d64"
+    shutil.copy(SAVE4, src)
+    img = D64.open(str(src))
+    sg = SaveGame0.from_prg(img.read_file(b"SAVEDGAME0"))
+    slot = next(s for s in sg.characters if s.record.name == "ROLAND")
+    ids = list(range(1, 21))
+    size = c64_codec.memorised_span(None)[1]
+    rec = slot.record
+    c64_codec.set_memorised(rec, bytes(ids) + bytes(size - len(ids)))
+    sg.write_record(slot.index, rec)
+    img.write_file_inplace(b"SAVEDGAME0", sg.to_prg())
+    img.save(str(src))
+
+    data = export_save(str(src), GAME)
+    roland = next(e for e in data["party"] if e["name"] == "ROLAND")
+    assert roland["spells"] == ids
+    assert len(roland["_spells_named"]) == 20
+
+    out = tmp_path / "rt.d64"
+    assert import_into(str(src), data, str(out), game_disk=GAME) == []
+    assert out.read_bytes() == src.read_bytes()
+    assert c64_codec.get_memorised(_record(out, "ROLAND")) \
+        == bytes(ids) + bytes(size - len(ids))
 
 
 @live4

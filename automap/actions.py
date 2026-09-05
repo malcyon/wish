@@ -51,7 +51,7 @@ import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
-from goldbox import games, levels, levelup
+from goldbox import c64_codec, games, levels, levelup
 from goldbox import items as por_items
 from goldbox.layout import Confidence, field_by_name
 from goldbox.record import CharacterRecord
@@ -67,12 +67,6 @@ from goldbox.savegame import (
 from . import fasttravel, live
 from .combat import COMBAT
 from .paths import config_dir
-
-# The whole memorised list, as the record stores it: a packed list of spell ids
-# at 0x020. Sixteen bytes is exactly enough -- Pool of Radiance caps a cleric at
-# 3/3/2 and a magic-user at 4/2/2, so even a multi-class caster at the ceiling
-# has sixteen spells prepared and no more.
-SPELLS_MEMORISED = field_by_name("spells_memorised")
 
 SPELL_FILE = "spells.json"
 UNKNOWN_DISK = "unknown disk"
@@ -521,7 +515,7 @@ class StoreSpells(Action):
                     
         notes = []
         for m in party:
-            raw = m.record.get_raw("spells_memorised")
+            raw = c64_codec.get_memorised(m.record, self.descriptor)
             self.store.put(disk, m.name, raw)
             spells = [b for b in raw if b]
             if spells:
@@ -536,9 +530,10 @@ class StoreSpells(Action):
 class RestoreSpells(Action):
     """Write the stored memorised list back, so nobody has to rest for it.
 
-    **Illegal in combat.** The write is record `0x020`, sixteen bytes, in the
-    slot area at `Game.slot_area_base + slot * $100` -- inside the stored 256
-    bytes, so it is also what the next save writes out.
+    **Illegal in combat.** The write is the memorised list where this title
+    keeps it -- 81 bytes from record `0x020` in Pool of Radiance -- in the slot
+    area at `Game.slot_area_base + slot * $100`, inside the stored 256 bytes,
+    so it is also what the next save writes out.
 
     Only the memorised list moves. The capacity at `0x0EE` says how many spells
     of each level the character *may* prepare and does not change with resting,
@@ -575,19 +570,25 @@ class RestoreSpells(Action):
                     continue
                     
         writes, notes, display_notes = [], [], []
+        mem_at, mem_size = c64_codec.memorised_span(self.descriptor)
         for m in party:
             raw = self.store.get(disk, m.name)
             if raw is None:
                 notes.append(f"nothing stored for {m.name}")
                 continue
-            if len(raw) != SPELLS_MEMORISED.size:
+            # A list stored before #268 is sixteen bytes where this title's is
+            # eighty-one, and it is still a good list: it is the front of the
+            # same run. Write as much of the span as was stored and leave the
+            # rest, which is what restoring did before the span was known.
+            if len(raw) > mem_size:
                 notes.append(f"the stored list for {m.name} is {len(raw)} "
-                             f"bytes, not {SPELLS_MEMORISED.size}")
+                             f"bytes, more than the {mem_size} this title's "
+                             f"record holds")
                 continue
-            if raw == m.record.get_raw("spells_memorised"):
+            if raw == c64_codec.get_memorised(m.record, self.descriptor)[:len(raw)]:
                 continue
-            
-            writes.append((m.field_address("spells_memorised"), raw))
+
+            writes.append((m.record_base + mem_at, raw))
             
             spells = [b for b in raw if b]
             if spells:

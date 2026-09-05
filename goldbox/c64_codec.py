@@ -34,6 +34,11 @@ __all__ = [
     "write",
     "read",
     "READ_TARGETS",
+    "record_shape",
+    "span_of",
+    "memorised_span",
+    "get_memorised",
+    "set_memorised",
     "field_disposition",
     "DIRECT",
     "TRANSFORMED",
@@ -144,9 +149,11 @@ class RecordShape:
 
     key: str
     #: The declared fields the memorised-spell list spans, in offset order.
-    #: The list runs from `0x020` to the byte before `thac0_base` in both
-    #: titles measured, and what moves the end is whether the title spends
-    #: twelve of those bytes on a second copy of the abilities.
+    #: Both ends move between titles: what shortens it is spending twelve of
+    #: those bytes on a second copy of the abilities at `0x065`, and Silver
+    #: Blades starts it five bytes earlier because it mirrors only seven of
+    #: them.  :func:`memorised_span` turns this into an offset and a width,
+    #: and every reader and the writer ask it rather than the layout (#268).
     memorised: tuple[str, ...]
     #: Does this title keep a second copy of the seven ability scores at
     #: `0x065`, which `0x014` is then a copy of?
@@ -160,26 +167,33 @@ class RecordShape:
 #: Pool of Radiance: **81 memorised slots, `0x020`-`0x070`**, and no second
 #: ability array, no dual-class pair.
 #:
-#: The 81 is read out of its own `CAMP`, which walks the list at five sites
-#: and counts from `#$50` down at every one -- `LDX #$50 / LDA $6B20,X` at
-#: `+$0C52`, `+$10A5` and `+$21E5`, `LDY #$50 / LDA $6B20,Y` at `+$11F2` and
-#: `+$176E`, with `AND #$7F / STA $6B20,Y` at `+$16CA` clearing the cast bit
-#: the same way Curse's does.  `0x020 + 80 = 0x070`, and `0x071` is
-#: `thac0_base`, so the region ends exactly where the next field begins.
-#: CONFIRMED, and it corrects two documents that disagreed with each other:
-#: `goldbox/layout.py` declares sixteen and `docs/117-save-conversion.md`
-#: said twenty-one.  Nothing is lost today either way -- DOS Pool of
-#: Radiance allots sixteen, so a converted character never has more (#192).
+#: The 81 is read out of its own `CAMP`, which counts down from `#$50` at
+#: every site that seeds an index -- `LDX #$50 / LDA $6B20,X` at `+$0C52`,
+#: `+$10A5` and `+$21E5`, `LDY #$50 / LDA $6B20,Y` at `+$11F2` and `+$176E`,
+#: with `AND #$7F / STA $6B20,Y` at `+$16CA` clearing the cast bit the same
+#: way Curse's does.  Those six were read by hand and are offsets into the
+#: file; `tools/memorisedwidth.py` walks the whole overlay, finds sixteen
+#: sites and one immediate across all of them, and prints run-time addresses
+#: -- the same six are `$1450`, `$18A3`, `$29E3`, `$19F0`, `$1F6C` and
+#: `$1EC8`, the overlay running at `$0800`.  `0x020 + 80 = 0x070`, and
+#: `0x071` is `thac0_base`, so the region ends exactly where the next field
+#: begins.  CONFIRMED, and it corrected two documents that disagreed with
+#: each other: `goldbox/layout.py` declared sixteen until #268 and
+#: `docs/117-save-conversion.md` said twenty-one.  Nothing crosses to DOS
+#: past sixteen either way -- DOS Pool of Radiance allots sixteen slots, so a
+#: converted character never arrives with more (#192).
 POOL_OF_RADIANCE_RECORD = RecordShape(
     key="pool-of-radiance",
-    memorised=("spells_memorised", "gap_030", "abilities_second", "gap_06c"))
+    memorised=("spells_memorised", "abilities_second", "gap_06c"))
 
 #: Curse of the Azure Bonds: **69 memorised slots, `0x020`-`0x064`**, a second
 #: ability array at `0x065`, the dual-class pair, and **no spell-slot array at
 #: all**.
 #:
-#: The 69 is Curse's own `CAMP` counting from `#$44` at five sites
-#: (`$2037`, `$1A1F`, `$1A5A`, `$1AE6`, `$20BB`), and the twelve bytes it
+#: The 69 is Curse's own `CAMP` counting from `#$44` at every site that seeds
+#: an index; five of those `LDX`/`LDY` were read by hand at `$2037`, `$1A1F`,
+#: `$1A5A`, `$1AE6` and `$20BB`, and `tools/memorisedwidth.py` finds twelve
+#: accesses in all with `#$44` behind every one.  The twelve bytes it
 #: stops short of are the ability block: `GEN $1E9C` is `LDX #$0B / LDA
 #: $7C65,X / STA $7C14,X`, so `0x065`-`0x070` is the array the engine works
 #: in and clamps against the racial minimum and maximum, and `0x014`-`0x01F`
@@ -194,11 +208,57 @@ POOL_OF_RADIANCE_RECORD = RecordShape(
 #: out for itself (#192 step 0d).
 CURSE_RECORD = RecordShape(
     key="curse-of-the-azure-bonds",
-    memorised=("spells_memorised", "gap_030"),
+    memorised=("spells_memorised",),
+    second_abilities=True, spell_slots=False, dual_class=True)
+
+#: Secret of the Silver Blades: **74 memorised slots, `0x01B`-`0x064`** -- the
+#: only title measured whose list does not start at `0x020`.
+#:
+#: Its `CAMP` walks the list at twelve sites that line up one for one with
+#: Curse's twelve -- the same addressing modes in the same order, and eleven
+#: of the twelve the same instruction, the odd one being a `CMP` where Curse
+#: has an `LDA` -- counting from `#$49` at every site that seeds an index:
+#: `LDX #$49 / CMP $7C1B,X` at `$1412`, `LDA $7C1B,X` at `$1824`, `$18EE` and
+#: `$28BC`, `LDY #$49 / LDA $7C1B,Y` at `$18FF` and `$1EB7`, with
+#: `AND #$7F / STA $7C1B,Y` at `$1E13` clearing the cast bit -- the same
+#: instruction sequence as Curse's at `$2016`.  `0x01B + 73 = 0x064`, so the
+#: list ends where Curse's ends, immediately before `abilities_second`.
+#:
+#: **Why it starts five bytes earlier**, from a second overlay and so an
+#: independent reading: Curse's `GEN $1E9C` is `LDX #$0B / LDA $7C65,X /
+#: STA $7C14,X`, copying twelve bytes, so `0x01B`-`0x01F` is the tail of
+#: Curse's ability block.  Silver Blades' `GEN $1F0A` is the same three
+#: instructions with `LDX #$06` -- seven bytes, `0x065`-`0x06B` into
+#: `0x014`-`0x01A` -- so those five bytes are free and the spell list has
+#: them.  CONFIRMED; `tools/memorisedwidth.py` reads it again off the disks.
+#:
+#: **All three flags are this title's own, by a reference census of its 347
+#: files** -- the same question `#192` asked of Curse's 411, counting the
+#: little-endian address of each byte of the region wherever it appears.
+#:
+#: * `second_abilities`: `GEN $1F0A` reads `$7C65`, so the array is there.
+#:   CONFIRMED, from the copy loop above.
+#: * `dual_class`: `$7CB9`/`$7CBA` appear **32 times, all in code** -- `GEN`
+#:   14, `ECL65` 6, `SPELLE65` 6, `POST.COM` 4, `LIBRARY` 1 -- which is the
+#:   same set of files as Curse's 45 and unlike Pool of Radiance's **zero**.
+#:   CONFIRMED, and it corroborates `#224`'s reading that the pair is Curse's,
+#:   Silver Blades' and Gateway's.
+#: * `spell_slots`: `$7CEE`-`$7CF3` appear 20 times and **not once in a code
+#:   file** -- every hit is a `PIC`, `COMPIC`, `SPRITE` or `WALLSET`, one or
+#:   two per file, which is what a 16-bit value looks like in bitmap data.
+#:   Pool of Radiance has 24 in `GEN` and `POOLRB` alone.  PROBABLE rather
+#:   than CONFIRMED: Curse's answer had a second leg this one has not, six
+#:   engine-written records reading zero at `0x0EE`, and no Silver Blades save
+#:   on this machine has been written by the engine.  One that reads zero
+#:   there for a caster who has memorised nothing settles it.
+SILVER_BLADES_RECORD = RecordShape(
+    key="secret-of-the-silver-blades",
+    memorised=("gap_01b", "spells_memorised"),
     second_abilities=True, spell_slots=False, dual_class=True)
 
 RECORD_SHAPES: dict[str, RecordShape] = {
-    s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD)}
+    s.key: s for s in (POOL_OF_RADIANCE_RECORD, CURSE_RECORD,
+                       SILVER_BLADES_RECORD)}
 
 
 def record_shape(game=None) -> RecordShape:
@@ -244,6 +304,38 @@ def _set_span(rec: CharacterRecord, names: "tuple[str, ...]",
         f = _field(name)
         rec.set_raw(name, data[cursor:cursor + f.size])
         cursor += f.size
+
+
+def _get_span(rec: CharacterRecord, names: "tuple[str, ...]") -> bytes:
+    """Read back what :func:`_set_span` writes, in one piece."""
+    span_of(names)                      # refuses a run with a hole in it
+    return b"".join(rec.get_raw(n) for n in names)
+
+
+def memorised_span(game=None) -> tuple[int, int]:
+    """`(offset, size)` of this title's memorised-spell list.
+
+    **Every reader of the list goes through here, and so does the writer.**
+    `goldbox/layout.py` declares `spells_memorised` as the 69 bytes at
+    `0x020` that all three measured titles agree about, which is not any one
+    title's list: Pool of Radiance runs 81 bytes to `0x070`, Curse of the
+    Azure Bonds stops at 69 because `0x065` is its second ability array, and
+    Secret of the Silver Blades starts five bytes *earlier* at `0x01B` and
+    runs 74.  Asking the record for the declared field instead is what lost a
+    Pool of Radiance character everything past their sixteenth memorised
+    spell (#268).
+    """
+    return span_of(record_shape(game).memorised)
+
+
+def get_memorised(rec: CharacterRecord, game=None) -> bytes:
+    """The whole memorised-spell list, as wide as this title reads it."""
+    return _get_span(rec, record_shape(game).memorised)
+
+
+def set_memorised(rec: CharacterRecord, data: bytes, game=None) -> None:
+    """Write the whole list back.  `data` must be the title's own width."""
+    _set_span(rec, record_shape(game).memorised, bytes(data))
 
 
 #: Class name -> the C64 field holding that class's level.  The C64 indexes
@@ -821,8 +913,12 @@ def field_disposition() -> dict[str, str]:
 #:
 #: C64 fields this reader deliberately leaves behind, and why.
 READ_DROPPED: tuple[tuple[str, str], ...] = (
-    ("abilities_second", "zero in every Pool of Radiance specimen; Curse's "
-                         "(base, current) pairs, unused here"),
+    ("abilities_second", "not a field of its own in Pool of Radiance -- these "
+                         "seven bytes are part of that title's memorised list "
+                         "and are read with it (#268), and they are zero in "
+                         "every Pool of Radiance specimen. In Curse of the "
+                         "Azure Bonds and Silver Blades it is the second "
+                         "ability array and the reader takes it whole"),
     ("turn_class", "zero for every player character -- the undead's row, not "
                    "the caster's"),
     ("strength_index", "derived from strength and the percentile; a writer "
@@ -863,7 +959,12 @@ READ_TARGETS: dict[str, str] = (
                             "goldbox.spells.SpellTable.spellbook_size -- 7, 13 or "
                             "16 -- so Pool of Radiance reads none of them and "
                             "Curse stops at 0x084",
-       "spells_memorised": "zeroes stripped into neutral spells_memorised",
+       "spells_memorised": "zeroes stripped into neutral spells_memorised, "
+                           "over the span goldbox.c64_codec.memorised_span "
+                           "gives for the title -- 81 bytes from 0x020 in "
+                           "Pool of Radiance, 69 in Curse of the Azure Bonds, "
+                           "74 from 0x01B in Secret of the Silver Blades -- "
+                           "and not the declared field's 69 (#268)",
        "spells_castable": "nibbles unpacked into neutral spells_castable",
        "item_effects": "zeroes stripped into neutral innate_effects",
        "flags_0b8": "bit 7 read as neutral npc",
@@ -902,6 +1003,7 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     in; it travels on the neutral record so a writer can name them.
     """
     out = NeutralCharacter("C64", source=source, game=game)
+    shape = record_shape(game)
 
     def grade(name: str) -> Confidence:
         return _field(name).confidence
@@ -987,9 +1089,14 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
             f"the C64's spellbook mask @0x078, "
             f"{spells.for_game(game).spellbook_size} bytes on this title, "
             f"unpacked to ids", grade("spells_known"))
+    # As wide as this title's own list, which is not the declared field: Pool
+    # of Radiance reads 81 bytes from 0x020 and Silver Blades 74 from 0x01B.
+    # Asking the record for `spells_memorised` cost a Pool of Radiance cleric
+    # 6 / magic-user 6 everything past their sixteenth spell (#268).
+    mem_at, mem_size = memorised_span(game)
     out.set("spells_memorised",
-            [b for b in rec.get_raw("spells_memorised") if b],
-            "the C64's sixteen slots @0x020, zeroes stripped",
+            [b for b in get_memorised(rec, game) if b],
+            f"the C64's {mem_size} slots @{mem_at:#05x}, zeroes stripped",
             grade("spells_memorised"))
 
     out.set("levels",
@@ -1010,7 +1117,10 @@ def read(rec: CharacterRecord, roster=None, inventory=None,
     # cannot survive its own round trip.  Neither is stored in every title:
     # `abilities_second` is Curse's and Silver Blades' second array, and
     # `former_levels` is the pair a dual-classed character carries.
-    if rec.is_stored("abilities_second"):
+    # Only in a title that has one. In Pool of Radiance these seven bytes are
+    # part of the memorised list read above, and reading them here as well
+    # would put seven spell ids into the neutral record's ability array.
+    if shape.second_abilities and rec.is_stored("abilities_second"):
         out.set("abilities_second", list(rec.get_raw("abilities_second")),
                 "the second ability array @0x065", grade("abilities_second"))
     if rec.is_stored("dual_class_slot") and rec.get("dual_class_slot") != 0xFF:

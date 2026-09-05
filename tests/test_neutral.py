@@ -18,6 +18,7 @@ from goldbox import amiga, c64_codec, dos, dos_layout, neutral
 from goldbox.layout import FIELDS_BY_NAME as C64_FIELDS
 from goldbox.layout import Confidence
 from goldbox.neutral import NeutralCharacter, Provenance
+from goldbox.record import CharacterRecord
 
 # --- the vocabulary ----------------------------------------------------------
 
@@ -84,10 +85,10 @@ def test_a_grade_a_writer_will_take_is_written():
 
 # --- losslessness through the middle -----------------------------------------
 
-def _filled() -> NeutralCharacter:
+def _filled(game=None) -> NeutralCharacter:
     """A neutral character with a different value in every field, so a value
     landing in the wrong place cannot pass."""
-    char = NeutralCharacter("test", source="a made-up character")
+    char = NeutralCharacter("test", source="a made-up character", game=game)
     char.set("name", "ROUNDTRIP", "made up", Confidence.CONFIRMED,
              Provenance.RESHAPED)
     for n, (field, _) in enumerate(c64_codec.DIRECT):
@@ -276,14 +277,54 @@ def test_the_closing_sweep_names_a_field_the_codec_never_declared():
 
 # --- the C64 reader, as far as the Amiga and YAML writers need it ------------
 
-def test_the_c64_reader_supplies_what_the_c64_writer_takes():
+@pytest.mark.parametrize("game,at,size", [
+    ("pool-of-radiance", 0x020, 81),
+    ("curse-of-the-azure-bonds", 0x020, 69),
+    ("secret-of-the-silver-blades", 0x01B, 74),
+])
+def test_a_character_with_twenty_memorised_spells_keeps_all_twenty(
+        game, at, size):
+    """The reader stopped at the declared field and lost everything past it.
+
+    A Pool of Radiance cleric 6 who is also a magic-user 6 may prepare
+    twenty-one spells, and the reader took sixteen -- so five vanished from
+    the Spells tab, from the YAML export and from anything converted, while
+    the C64 game still had them (#268).
+
+    Synthetic on purpose: no C64 party on this machine has more than three
+    spells prepared, so the case that would catch this is one nobody can take
+    off a disk.
+    """
+    ids = list(range(1, 21))
+    rec = CharacterRecord.blank()
+    assert c64_codec.memorised_span(game) == (at, size)
+    c64_codec.set_memorised(rec, bytes(ids) + bytes(size - len(ids)), game)
+    assert c64_codec.read(rec, game=game).get("spells_memorised") == ids
+    # And the same twenty go back to the same bytes.
+    char = NeutralCharacter("test", game=game)
+    char.set("spells_memorised", ids, "made up")
+    written, _ = c64_codec.write(char)
+    assert written.to_bytes()[at:at + size] == bytes(ids) + bytes(size - 20)
+
+
+@pytest.mark.parametrize("game", sorted(c64_codec.RECORD_SHAPES))
+def test_the_c64_reader_supplies_what_the_c64_writer_takes(game):
     """Read a full record and write it back: every neutral name the writer's
-    disposition says it takes is one the reader set."""
-    char = _filled()
+    disposition says it takes is one the reader set.
+
+    Once per title, because `abilities_second` is a field in only two of the
+    three. In Pool of Radiance those seven bytes at `0x065` are seven more
+    slots of the memorised list, so neither half of the codec touches them
+    under that name, and a reader that set the field anyway would be putting
+    spell ids into an ability array (#268).
+    """
+    char = _filled(game=game)
     rec, _ = c64_codec.write(char)
-    back = c64_codec.read(rec)
+    back = c64_codec.read(rec, game=game)
     taken = ({n for n, _ in c64_codec.DIRECT}
              | {n for n, _ in c64_codec.TRANSFORMED})
+    if not c64_codec.record_shape(game).second_abilities:
+        taken.discard("abilities_second")
     assert taken - set(back.keys()) == set()
 
 

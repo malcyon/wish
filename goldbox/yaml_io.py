@@ -1053,10 +1053,16 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
 
         if "spells" in entry:
             ids = [int(s) for s in (entry["spells"] or [])]
-            if len(ids) > 16:
+            # As many slots as this title's own engine walks, which is not
+            # the width `goldbox/layout.py` declares: 81 in Pool of Radiance,
+            # 69 in Curse of the Azure Bonds, 74 in Silver Blades. Sixteen
+            # was Pool of Radiance's old declared width and nobody's real one,
+            # and a character over it silently lost the rest (#268).
+            mem_size = c64_codec.memorised_span(game)[1]
+            if len(ids) > mem_size:
                 raise ValueError_(
                     f"slot {slot} {who}: {len(ids)} memorised spells, but only "
-                    f"16 fit in the record")
+                    f"{mem_size} fit in the record")
             last_spell = spell_table(game).last_spell
             for sid in ids:
                 if not 1 <= sid <= last_spell:
@@ -1064,12 +1070,13 @@ def import_into(save_path: str, data: dict[str, Any], out_path: str,
                         f"slot {slot} {who}: {sid} is not a spell id "
                         f"(1-{last_spell}); above that the table continues "
                         f"with combat messages")
-            want = bytes(ids) + bytes(16 - len(ids))
-            if want != rec.get_raw("spells_memorised"):
+            want = bytes(ids) + bytes(mem_size - len(ids))
+            before = c64_codec.get_memorised(rec, game)
+            if want != before:
                 changes.append(
                     f"slot {slot} {who}: spells "
-                    f"{[b for b in rec.get_raw('spells_memorised') if b]} -> {ids}")
-                rec.set_raw("spells_memorised", want)
+                    f"{[b for b in before if b]} -> {ids}")
+                c64_codec.set_memorised(rec, want, game)
                 changes.append(
                     f"slot {slot} {who}: NOTE a memorised spell should also be "
                     f"in spells_known, and within the capacity the character's "
