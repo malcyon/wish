@@ -55,7 +55,7 @@ import hashlib
 import pathlib
 import shutil
 import tempfile
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence
 
 from . import areas, c64_codec, c64_save, dos_savegame, games, neutral, traits
 from .c64_codec import Report
@@ -78,7 +78,12 @@ from .dos_layout import (
 )
 from .layout import Confidence, Field, Kind
 from .neutral import NeutralCharacter, Provenance
-from .portraits import PortraitError, PortraitTables, tables_from_dos
+from .portraits import (
+    PortraitError,
+    PortraitTables,
+    draws_sheet_portrait,
+    tables_from_dos,
+)
 from .record import CharacterRecord
 
 __all__ = [
@@ -120,6 +125,8 @@ __all__ = [
     "save_disk",
     "WriteReport",
     "write",
+    "WRITE_UNREPORTED_DROPS",
+    "SilencingWriter",
     "write_field_disposition",
     "write_dos_save",
     "new_dos_save",
@@ -1019,9 +1026,28 @@ DROPPED: tuple[tuple[str, str], ...] = (
                     "field and recomputes what it needs"),
     ("item_chain", "live heap state: the DOS item list is a chain of far "
                    "pointers, the C64 has sixteen fixed slots"),
-    ("icon_colours", "six pairs of 4-bit colour indices for the DOS combat "
-                     "icon; the C64 draws its own 36-byte icon and numbers "
-                     "no such thing"),
+    # #267 (The import tells the player the C64 has no combat icon colours,
+    # and it has one for every part of the figure): this used to read "the
+    # C64 draws its own 36-byte icon and numbers no such thing", which is
+    # false in the direction that matters.  A C64 icon is eighteen screen
+    # codes and **eighteen colours**, one per cell of the 3x3 figure, and the
+    # game's own ICON > COLOR menu names seven parts --
+    # WEAPON BODY CAP HAIR SHIELD ARM LEG.  `goldbox/iconparts.py` reads
+    # and writes them and `docs/186-ready-and-action.md` proved all eighteen
+    # of a converted figure against the game's own drawing.  What is really
+    # in the way is that the two sets do not correspond, which is
+    # #130 (A converted DOS party arrives with six identical combat figures,
+    # not its own).
+    ("icon_colours", "the DOS combat figure's own colours: six pairs of "
+                     "4-bit indices, one pair per part, the low nibble the "
+                     "main colour and the high one the highlight. The C64 "
+                     "keeps eighteen colours instead, one per cell, over "
+                     "seven named parts to DOS's six, and one 3-bit colour "
+                     "each where DOS has two 4-bit ones -- with no brown and "
+                     "no light grey in the eight it can draw, both of which "
+                     "the DOS default set uses. So a correspondence would be "
+                     "a choice rather than a conversion, and the C64 figure "
+                     "is composed in the game's own default colours instead"),
     ("heap_104", "live heap pointers"),
     ("effect_chain", "live pointer to the effect list; the effects "
                      "themselves come from the .SPC file"),
@@ -1082,16 +1108,35 @@ DROPPED: tuple[tuple[str, str], ...] = (
 UNREPORTED_DROPS = frozenset({"encumbrance", "item_count",
                               "strength_bonus", "turn_class"})
 
-#: The three DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
-#: All three say the same thing to a player -- the DOS combat figure does not
-#: come across -- and three offsets do not make that any clearer.
-ICON_DROPS = frozenset({"icon_head", "icon_body", "icon_dimension"})
+#: The four DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
+#: All four say the same thing to a player -- the DOS combat figure does not
+#: come across -- and four offsets do not make that any clearer.
+#:
+#: `icon_colours` joined the other three for #267 (The import tells the player
+#: the C64 has no combat icon colours, and it has one for every part of the
+#: figure).  It had a sentence of its own claiming the C64 "does not use"
+#: combat icon colours, which is untrue -- the C64 keeps eighteen of them,
+#: one per cell -- and the colours of a converted figure are set by exactly
+#: the same thing as its shapes: the game's own default art.  So it is the
+#: same fact as the other three and reads as one line rather than two.
+ICON_DROPS = frozenset({"icon_head", "icon_body", "icon_dimension",
+                        "icon_colours"})
 
-#: What the player is told instead, in place of those three.  Donald's words,
+#: What the player is told instead, in place of those four.  Donald's words,
 #: approved 2026-08-27.  It is true because the conversion composes the icon
-#: the game's own character creation writes (#118); if a conversion ever
-#: carries the DOS figure across (#130), this sentence stops being true and
-#: goes back to naming the fields.
+#: the game's own character creation writes (#118), colours included: all
+#: eighteen screen codes and all eighteen colours of a converted figure were
+#: matched against the game's own drawing for #184 (A converted combat icon's
+#: colours are proven in the game and its shapes are not),
+#: `docs/186-ready-and-action.md`.  If a conversion ever brings the DOS figure
+#: across (#130), this sentence stops being true and goes back to naming the
+#: fields.
+#:
+#: **Still a line about a field that did not convert**, which
+#: `.claude/rules/conversions.md` no longer wants a player to read at all
+#: (Donald, 2026-09-05).  Left in place because it is his own approved
+#: wording and because the figure really does arrive as the default one
+#: until #130 is done; taking the line out is his call, not an agent's.
 COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
                     "art does not convert")
 
@@ -1116,8 +1161,6 @@ COMBAT_ICON_DROP = ("Combat icons: set to the game's own default, since DOS "
 DROPPED_PLAYER_TEXT: dict[str, str] = {
     "item_chain": "Item list bookkeeping: the C64 keeps a fixed list of "
                   "sixteen slots instead of DOS's linked one",
-    "icon_colours": "Combat icon colours: the C64 draws its own combat "
-                    "icon and does not use them",
     "heap_104": "Internal game state kept only while the game is running, "
                 "not shown to the player",
     "effect_chain": "The running-effects list's own internal link; the "
@@ -1282,8 +1325,9 @@ def portrait_tables(game: str | pathlib.Path | None
 #: sheets matched, `MEMORIZE` on a magic-user 9 offered her 117-spell book and
 #: took four picks out of six presses from a ceiling the engine worked out
 #: itself, the party walked, and the engine's own resave differed in 600 bytes
-#: of 7424 -- every one of them the engine's, 594 being the area map it
-#: rebuilds on load.  Four faults were found and fixed on the way, two of
+#: of 7424 -- every one of them the engine's, 594 being `ANIMATE00`'s picture
+#: buffer, which the engine decodes afresh at every camp (#309,
+#: `docs/181-curse-picture-buffer.md`).  Four faults were found and fixed on the way, two of
 #: which Curse had shipped with: a lower-case name drawing as punctuation, and
 #: a ranger arriving as a paladin.  It waited on #287, where every converted
 #: human saw in the dark.
@@ -1595,6 +1639,21 @@ def to_neutral(dos: DosCharacter,
     # independently -- CONFIRMED on three sheets of one character in DOSBox
     # -- so a position the menu cannot answer for takes only its own half
     # out.
+    #
+    # **Only Pool of Radiance's C64 sheet draws a face at all**, so only Pool
+    # of Radiance has anything here to lose -- #300 (A Curse or Silver Blades
+    # party imported to the C64 arrives with no sheet portrait, because the
+    # creation menu is read only off a POOL<n>.D64).  `LIBRARY $48A4` asks
+    # the loader for the `HEAD<xx>`/`BODY<xx>` the record names; Pool of
+    # Radiance calls it from three places and Curse and Silver Blades from
+    # none, over 558 and 571 files, and a real portrait id written into every
+    # record in the running game changes neither of their sheets
+    # (`docs/188-the-sheet-portrait-per-title.md`).  A converted Curse or
+    # Silver Blades character arrives correct with no face, so nothing is
+    # said: the conversion is still attempted where the tables allow it,
+    # because a byte converted costs nothing, but a title whose engine draws
+    # no portrait gets no line whatever happens.
+    draws_portrait = draws_sheet_portrait(dos.shape.key)
     converted_portrait: set[str] = set()
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
@@ -1605,9 +1664,11 @@ def to_neutral(dos: DosCharacter,
         art = getattr(portraits, art_of)(position)
         if art is None:
             label = "head" if name == "portrait_head" else "body"
-            out.drop(f"Character portrait ({label}): position {position} in "
-                     f"this save is not one the character-creation menu "
-                     f"offers, so no matching C64 {stem}nn portrait exists")
+            if draws_portrait:
+                out.drop(f"Character portrait ({label}): position {position} "
+                         f"in this save is not one the character-creation "
+                         f"menu offers, so no matching C64 {stem}nn portrait "
+                         f"exists")
             continue
         out.set(name, art,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "
@@ -1619,8 +1680,13 @@ def to_neutral(dos: DosCharacter,
     # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
     # `field_disposition` still accounts for every one of them; what they are
     # kept out of is the list a person reads.
+    silent = set(UNREPORTED_DROPS) | set(ICON_DROPS)
+    if not draws_portrait:
+        # Nothing was lost: this title's sheet draws no face for any
+        # character, including one the engine made itself (#300).
+        silent |= {"portrait_head", "portrait_body"}
     for name, _why in DROPPED:
-        if name in UNREPORTED_DROPS or name in ICON_DROPS:
+        if name in silent:
             continue
         if name in converted_portrait:
             continue
@@ -1920,17 +1986,22 @@ WRITE_TRANSFORMED: tuple[tuple[str, str], ...] = (
 )
 
 #: Neutral fields the DOS writer takes nothing from, and why.  Reported by
-#: `Writer.finish` for any character that carries one, never silent.
+#: `Writer.finish` for any character that carries one, unless
+#: :data:`WRITE_UNREPORTED_DROPS` names it.
 WRITE_DROPPED: tuple[tuple[str, str], ...] = (
     ("infravision", "DOS does not store it; the DOS engine derives what it "
                     "needs from the race byte"),
+    # The defensive half of this used to be in the `why` itself -- "this is
+    # not a byte we have failed to find" -- which is a developer arguing with
+    # a reviewer rather than an account of the field, and it reached a
+    # report.  The argument, kept here where it belongs: the turn-undead
+    # routine has been read end to end and the only record byte it takes is
+    # the row belonging to the creature being turned, so there is no caster
+    # byte to look for (#297, docs/178-turning-undead.md).
     ("turn_power", "the DOS game works a cleric's turning strength out for "
-                   "itself, from his own class level, at the moment the "
-                   "player presses the command -- so it keeps no byte for it "
-                   "and there is nothing to write. This is not a byte we "
-                   "have failed to find: the turn-undead routine has been "
-                   "read, and the only record byte it takes is the row "
-                   "belonging to the creature being turned"),
+                   "itself, from his own class and level, at the moment the "
+                   "player presses the command, so it keeps no byte for it "
+                   "and there is nothing to write"),
     ("npc", "no attributed DOS field holds it"),
     ("encumbrance", "recomputed from money and item weight -- the identity "
                     "the DOS engine itself uses -- rather than copied"),
@@ -1946,6 +2017,70 @@ WRITE_DROPPED: tuple[tuple[str, str], ...] = (
                       "level array; that title does not let a character "
                       "change class"),
 )
+
+#: Writer drops the **player** is not shown, the mirror of the reader's
+#: :data:`UNREPORTED_DROPS` on the way out.  The reader has had two lists
+#: since 2026-08-27 and the writer had one, so every entry in
+#: :data:`WRITE_DROPPED` reached a report -- #307 (The DOS writer's drop list
+#: has no way to silence a field the DOS engine puts back on load).
+#:
+#: **Nothing measured leaves the code.**  A name here is still in
+#: :data:`WRITE_DROPPED`, so :func:`write_field_disposition` still calls it a
+#: drop and the accounting is unchanged; what goes is the line.
+#:
+#: **An entry needs a measurement, not an argument.**
+#: `.claude/rules/conversions.md` allows silence for a field the destination
+#: *derives*, and only when the derivation has been demonstrated in the
+#: running game.
+#:
+#: * `turn_power` -- both engines work a cleric's turning strength out from
+#:   his class and level when the player presses the command.  The DOS
+#:   turn-undead routine was read end to end for #297 (A cleric converted
+#:   from the C64 to DOS is given an undead's turning row, because the DOS
+#:   writer puts turn_power in the undead's byte): the only record byte it
+#:   reads is the row belonging to the creature being turned, and eleven of
+#:   the 103 distinct DOS Pool of Radiance monster records carry a non-zero
+#:   one against 0 for every player character in either port
+#:   (`docs/178-turning-undead.md`).  The reader already silences its
+#:   counterpart, `turn_class`, in :data:`UNREPORTED_DROPS`.
+#:
+#: **`spells_castable` is not here and that is not an oversight.**  #307 named
+#: it as the second entry, and this writer composes no line for it: it is
+#: `use`\\ d on every path, so the closing sweep never sees it, and a neutral
+#: record with no `spells_castable` at all -- which is what a C64 Curse or
+#: Silver Blades source produces, `RecordShape.spell_slots` being `False` for
+#: both -- writes zeroes and reports nothing.  Measured over the 24 records
+#: on the player's own disks: `turn_power` is the only `WRITE_DROPPED` line
+#: any of them reaches.  The `spells_castable` line a player can actually see
+#: is `goldbox.c64_codec.NO_SPELL_SLOTS`, on the DOS-to-C64 direction, and
+#: the measurement in `docs/180-writing-a-later-dos-record.md` is about the
+#: **DOS** engine rebuilding the field on load, so it does not license
+#: silencing a line about arriving on the C64.
+WRITE_UNREPORTED_DROPS = frozenset({"turn_power"})
+
+
+class SilencingWriter(neutral.Writer):
+    """A `goldbox.neutral.Writer` with the reader's second list.
+
+    `neutral.Writer.finish` composes a line for every neutral field the
+    writer took nothing from.  This adds the other half the DOS *reader* has
+    had since 2026-08-27: which of those a player is not told about, because
+    the destination puts the field back for itself.
+
+    The names in `silent` are counted as consumed by the sweep and by nothing
+    else -- :func:`write_field_disposition` still calls each one a drop -- so
+    the accounting is the same and only the list in front of a person is
+    shorter.
+    """
+
+    def __init__(self, *args: Any, silent: Iterable[str] = (),
+                 **kw: Any) -> None:
+        super().__init__(*args, **kw)
+        self.silent = frozenset(silent)
+
+    def finish(self) -> None:
+        self.taken.extend(n for n in self.silent if n not in self.taken)
+        super().finish()
 
 #: **A character carrying nothing gets no `.ITM` file at all**, and an empty
 #: file is not the same thing as no file.  Measured, #62: the engine's own
@@ -1980,10 +2115,16 @@ WRITE_UNSOURCED: tuple[tuple[str, str], ...] = (
                      "party's nodes at different addresses (#61). NULL in "
                      "the engine's own record with items and without"),
     ("portrait_head", "**written whenever the game directory's creation "
-                      "tables can be read**: the C64's HEADnn id is a "
-                      "position in the same fourteen-entry menu DOS indexes "
-                      "(#57). Zero only when they cannot be read or the id "
-                      "is not one the menu offers, and reported when it is. "
+                      "tables can be read, and only for Pool of Radiance**: "
+                      "the C64's HEADnn id is a position in the same "
+                      "fourteen-entry menu DOS indexes (#57). Zero when the "
+                      "tables cannot be read or the id is not one the menu "
+                      "offers, and reported in those two cases. Zero and "
+                      "**not** reported for Curse of the Azure Bonds and "
+                      "Secret of the Silver Blades: neither title draws a "
+                      "sheet portrait on either port, so a character of one "
+                      "of them has no face at either end and nothing was "
+                      "lost (#300, docs/188-the-sheet-portrait-per-title.md). "
                       "Cosmetic, and the same with items and without"),
     ("portrait_body", "see portrait_head; the body half of the same pair"),
     ("icon_head", "the **combat** icon's head -- a different art set and a "
@@ -2394,7 +2535,8 @@ def write(char: NeutralCharacter,
     later = {n for n, _ in WRITE_TRANSFORMED_LATER}
     dropped = (WRITE_DROPPED if shape is POOL_OF_RADIANCE else
                tuple((n, w) for n, w in WRITE_DROPPED if n not in later))
-    w = neutral.Writer(char, rep, into="DOS", dropped=dropped)
+    w = SilencingWriter(char, rep, into="DOS", dropped=dropped,
+                        silent=WRITE_UNREPORTED_DROPS)
     use, emit = w.use, w.emit
 
     def put(v: neutral.Value, dos_name: str, extra: str = "",
@@ -2650,11 +2792,19 @@ def write(char: NeutralCharacter,
     # is left zero and the loss is reported: the alternative is a face that
     # belongs to somebody else.
     #
-    # **Only Pool of Radiance has a sheet portrait.**  The pair is zero in
-    # all 32 Curse and all 44 Silver Blades records this project holds, and
-    # the sheet those two titles draw has no face on it, so writing a menu
-    # position there would put a number where the engine writes none.
-    draws_portrait = shape is POOL_OF_RADIANCE
+    # **Only Pool of Radiance has a sheet portrait**, on either port.  The
+    # DOS pair is zero in all 32 Curse and all 44 Silver Blades records this
+    # project holds, so writing a menu position there would put a number
+    # where the engine writes none -- and #300 (A Curse or Silver Blades
+    # party imported to the C64 arrives with no sheet portrait, because the
+    # creation menu is read only off a POOL<n>.D64) established the same
+    # thing on the C64 side: `LIBRARY $48A4` draws the face and neither later
+    # title's `LIBRARY` calls it, over 558 and 571 files
+    # (`docs/188-the-sheet-portrait-per-title.md`).  So a Curse or Silver
+    # Blades character has no face at either end and there is no loss to
+    # report; the line below is for the two cases that are one, where Pool of
+    # Radiance's own sheet draws a portrait the DOS record cannot name.
+    draws_portrait = draws_sheet_portrait(shape.key)
     portraits_written: set[str] = set()
     for pname, lookup, stem in (("portrait_head", "head_position", "HEAD"),
                                 ("portrait_body", "body_position", "BODY")):
@@ -2667,13 +2817,10 @@ def write(char: NeutralCharacter,
                 f", the position of {stem}{int(v.value):02X} in the creation "
                 f"menu ({portraits.source})", value=position)
             portraits_written.add(pname)
-        elif v is not None:
+        elif v is not None and draws_portrait:
             rep.dropped.append(
                 f"{pname}: {port} carries {stem}{int(v.value):02X} and " +
-                ("the sheet a DOS " + shape.title + " character has draws no "
-                 "portrait -- the pair is zero in every record of that title"
-                 if not draws_portrait else
-                 "the creation menu does not offer it, so the DOS record "
+                ("the creation menu does not offer it, so the DOS record "
                  "has no position for it"
                  if portraits is not None else
                  "the creation menu's own tables were not available to turn "
@@ -3332,7 +3479,14 @@ HEADER_ZEROED: tuple[tuple[int, int], ...] = (
 #: this conversion writes to a value **measured in the running game** rather
 #: than to a measured zero.
 #:
-#: `LIBRARY $2C5C` is the routine that draws the sheet portrait:
+#: `LIBRARY $48A4` is the routine that draws the sheet portrait, and
+#: **only Pool of Radiance calls it** -- #300 (A Curse or Silver
+#: Blades party imported to the C64 arrives with no sheet portrait,
+#: because the creation menu is read only off a POOL<n>.D64),
+#: `docs/188-the-sheet-portrait-per-title.md`.  The address was
+#: written here as `$2C5C`, which is the file offset before
+#: `LIBRARY`'s own `$2C48` base is added; the instructions quoted
+#: below were right and only the address was wrong:
 #:
 #:     LDA $49EB / BNE done      ; the arriving area's script scratch
 #:     LDA $49FF / BPL done      ; bit 7 clear: draw nothing
@@ -3894,14 +4048,21 @@ def convert_save(folder: str | pathlib.Path, slot: str,
             (container.indoors, "outdoors -- 0 boots into travel mode" if
              outdoors else "indoors")):
         report.note(at, 1, f"{what}, from the area the DOS party is in")
-    if container.map_memory is not None:
-        at, size = container.map_memory
+    if container.picture_buffer is not None:
+        at, size = container.picture_buffer
         save0[at:at + size] = bytes(size)
+        # Not a map -- #309 (Eight files still call Curse's picture buffer a
+        # map region, which is what it was guessed to be before anybody read
+        # it).  Zero is measured rather than inherited: the engine zeroes the
+        # buffer itself before every decode and reads nothing from it before
+        # then, watched in the running game
+        # (`docs/181-curse-picture-buffer.md`).
         report.note(at, size,
-                    "the map the party has walked: zeroed, which is what an "
-                    "engine-written save of a party that has not walked yet "
-                    "holds. Nothing in the DOS save has been attributed to "
-                    "it")
+                    "`ANIMATE00`'s picture buffer -- the decoded glyphs and "
+                    "colours of the picture in the view window, which on "
+                    "ENCAMP is the camp scene: zeroed, and the engine "
+                    "rebuilds it before it draws. Nothing in the DOS save "
+                    "corresponds to it")
 
     changed = apply_quest_flags(save0, savgam, shape, container.quest_flags)
     report.note(*container.quest_flags,
@@ -4053,7 +4214,24 @@ def c64_wall_triple(save0: bytes) -> tuple[int, int, int]:
 #: whatever the party last faced indoors.  Writing it here would put a
 #: direction on the DOS status line derived from an unrelated moment, which
 #: is wrong data that looks right.  North is a value the engine itself
-#: writes, and it is said out loud in the report instead.
+#: writes, and the byte's whole account is in the report's provenance note.
+#:
+#: **This is a note and no longer a line a player reads** -- #248 (The DOS
+#: export pane's outdoor-facing drop line carries a memory address and a raw
+#: byte number in front of a player).  It went verbatim into
+#: `report.dropped`, so `editor/exports.py`'s pane showed `$033D`,
+#: `$4900-$64FF` and "byte 12803" to somebody exporting an outdoor party,
+#: which is what `.claude/rules/gui-text.md` calls a developer's note that
+#: escaped.  `report.note` is where an address belongs: those never leave the
+#: byte-by-byte accounting.
+#:
+#: **Nothing replaced it, on purpose.**  Every word a player reads is
+#: Donald's to approve (`.claude/rules/gui-text.md`), so a new sentence is
+#: proposed on #248 rather than shipped here.  The player is told nothing
+#: today, which is also where `.claude/rules/conversions.md` points -- the
+#: DOS engine rewrites the byte on the party's first step, measured in both
+#: of #190's runs, so a converted party faces north for as long as it stands
+#: still and is right from then on.
 OUTDOOR_FACING = 0
 OUTDOOR_FACING_WHY = (
     "which way the party faces on the travel grid: north. The C64 keeps its "
@@ -4378,8 +4556,9 @@ def savgam_writes(savgam: bytearray, report: "SaveReport", save0: bytes,
                     f"the stale indoor square ({x},{y}) the party left the "
                     f"grid on, the C64's own $49C0/$49C1 -- frozen on both "
                     f"ports out here and read by neither")
+        # The note keeps the addresses; the player-facing copy of this
+        # sentence is gone (#248, and see OUTDOOR_FACING above).
         report.note(dos_savegame.POS_FACING, 1, OUTDOOR_FACING_WHY)
-        report.dropped.append(OUTDOOR_FACING_WHY)
     dos_savegame.put_tail_state(savgam, indoors=indoors)
     where_stood = "indoors" if indoors else "outdoors"
     report.note(dos_savegame.SCRATCH_BYTE, 4,

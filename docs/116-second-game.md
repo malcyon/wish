@@ -168,9 +168,16 @@ FOUND: `$5800`–`$5AFF` was zero in both saves taken.
 
 The **item area is not confirmed**. `$5B00` is the position that makes the
 geometry close — twelve `$100` blocks ending exactly where the roster begins —
-and the region above `$6300` did change between two saves, which is what slots
-8–11 would do. But the party used had no inventory, so no item record has ever
-been seen in Curse. PROBABLE, not CONFIRMED.
+and the region above `$6300` did change between two saves. That change was
+read here as item slots 8–11 and it is nothing of the kind: `$6300` is
+`ANIMATE00`'s picture buffer, and it changes because the picture in the view
+window animates. `#283 (What Curse keeps in the area map region at +$1800 is
+unread, and a conversion writes zeroes there)` settled it three ways and
+`docs/181-curse-picture-buffer.md` is the write-up — the two saves differ by
+23 bytes and every one of them is frame 1 against frame 3 of the campfire.
+The item area itself stands on the geometry alone: the party used had no
+inventory, so no item record has ever been seen in Curse. PROBABLE, not
+CONFIRMED.
 
 ## 4. The import routine, which is the real answer
 

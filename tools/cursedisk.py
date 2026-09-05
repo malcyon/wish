@@ -4,8 +4,8 @@
 `tools/dosdisk.py` does this for Pool of Radiance and is that title's alone:
 it writes `SAVEDGAME0`/`SAVEDGAME1` and never names a `Game`.  Curse's
 container is one 7424-byte `SAVEAZURE` at `$4B00` with eight slots, a name
-table, eight item pages, the explored map and the roster all inside the one
-payload (`goldbox/c64_save.py`, `#192 (Convert a Curse of the Azure Bonds DOS
+table, eight item pages, `ANIMATE00`'s picture buffer and the roster all
+inside the one payload (`goldbox/c64_save.py`, `#192 (Convert a Curse of the Azure Bonds DOS
 save into a C64 one, which the importer refuses today)` steps 1 and 2), so
 the two tools differ by more than a flag and this is a second file rather
 than a `--game` on the first.

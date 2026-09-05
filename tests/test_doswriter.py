@@ -1616,3 +1616,93 @@ def test_the_unsourced_words_are_addresses_and_do_not_overlap():
     assert 2 * len(seen) == 508
     assert (sg.PARTY_ENTRIES * (sg.PARTY_ENTRY - sg.PARTY_NAME_LEN)
             + sg.UI_SCRATCH) == 274
+
+
+# --- #307 (The DOS writer's drop list has no way to silence a field the DOS
+# --- engine puts back on load) -----------------------------------------------
+
+def _writer_drops(char) -> list[str]:
+    """Every line `dos.write` puts in front of a person for this character."""
+    return list(dos.write(char)[3].dropped)
+
+
+def test_a_field_both_engines_work_out_for_themselves_is_not_reported():
+    """A converted cleric is told nothing about his turning strength, because
+    nothing was lost.
+
+    Both engines derive it from the caster's class and level when the player
+    presses the command; the DOS turn-undead routine was read end to end for
+    #297 (A cleric converted from the C64 to DOS is given an undead's turning
+    row, because the DOS writer puts turn_power in the undead's byte) and the
+    only record byte it reads belongs to the creature being turned
+    (`docs/178-turning-undead.md`). The reader has silenced its counterpart,
+    `turn_class`, since 2026-08-27; until #307 the writer had no way to.
+    """
+    char = _filled()
+    char.set("turn_power", 6, "made up: a cleric 5's turning strength")
+    assert "turn_power" in char
+    assert not [d for d in _writer_drops(char) if "turn_power" in d]
+
+
+def test_a_writer_drop_that_is_not_silenced_still_reaches_the_report():
+    """The other direction, which is what stops the silencing list becoming a
+    way to make the pane short: a field with no measurement behind it is
+    still named. `npc` has none -- no attributed DOS field holds it.
+    """
+    char = _filled()
+    char.set("npc", 1, "made up: a companion the engine runs itself")
+    assert "npc" not in dos.WRITE_UNREPORTED_DROPS
+    assert [d for d in _writer_drops(char) if d.startswith("npc:")]
+
+
+def test_nothing_measured_leaves_the_code_when_a_writer_drop_goes_silent():
+    """A silenced name is still a declared drop, so `field_disposition` still
+    accounts for it and the conversion still knows it happened. The failure
+    worth catching is a fact being deleted rather than a line being hidden --
+    the same assertion `tests/test_dosconvert.py` makes for the reader's
+    `UNREPORTED_DROPS`.
+    """
+    declared = dict(dos.WRITE_DROPPED)
+    assert dos.WRITE_UNREPORTED_DROPS <= set(declared)
+    disposition = dos.write_field_disposition()
+    for name in dos.WRITE_UNREPORTED_DROPS:
+        assert disposition[name].startswith("dropped:"), name
+
+
+def test_the_writer_silencing_list_cannot_grow_without_a_measurement():
+    """`.claude/rules/conversions.md` allows a line to go only for a field the
+    destination *derives*, demonstrated in the running game. So every name in
+    `WRITE_UNREPORTED_DROPS` has to be argued where the list is defined, with
+    a `docs/` page behind it -- and a name added without one fails here
+    instead of quietly shortening the pane.
+    """
+    import pathlib
+    import re
+
+    source = pathlib.Path(dos.__file__).read_text(encoding="utf-8")
+    block = re.search(
+        r"((?:^#:.*\n)+)WRITE_UNREPORTED_DROPS = ", source, re.M)
+    assert block, "WRITE_UNREPORTED_DROPS has lost its documentation block"
+    why = block.group(1)
+    for name in dos.WRITE_UNREPORTED_DROPS:
+        assert name in why, name
+    assert "docs/" in why
+
+
+def test_only_turn_power_is_silenced_today():
+    """The measured state of the list, so a future entry is a deliberate
+    change rather than a drift.
+
+    Counted over the 24 DOS records on the player's own disks in
+    `tests/test_dosconvert.py`'s corpus: `turn_power` is the only
+    `WRITE_DROPPED` line the C64-to-DOS direction reaches for any of them.
+    `spells_castable` -- named by #307 (The DOS writer's drop list has no way
+    to silence a field the DOS engine puts back on load) as the second entry
+    -- never reaches this report at all: the writer `use`s it on every path,
+    so the closing sweep never sees it, and a source with none writes zeroes
+    in silence.
+    """
+    assert dos.WRITE_UNREPORTED_DROPS == frozenset({"turn_power"})
+    char = _filled()
+    del char.fields["spells_castable"]
+    assert not [d for d in _writer_drops(char) if "spells_castable" in d]

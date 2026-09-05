@@ -216,7 +216,9 @@ square at the same minute, before the party walked:
 600 bytes differ in 134 runs, of 7424
 
   by region:
-      594  [engine] the area map the engine builds on load
+      594  [engine] `ANIMATE00`'s picture buffer: the decoded picture in
+             the view window at the moment of the save, `PIC3B` in all four
+             specimens here
         5  [engine] the loaded-files cache, refilled as files load
         1  [engine] the six clock digits, which tick as time passes
 ```
@@ -230,8 +232,18 @@ the script id, the portrait switch, and the five per-area bytes at `+$E7` and
 
 A second `ENCAMP > SAVE` after the two steps differs from the first in **six
 bytes**: the party's y, the previous square, two bytes of per-script scratch
-at `+$104`/`+$105`, and one clock digit. The area map at `+$1800` did not
-move, which Curse's did over the same distance.
+at `+$104`/`+$105`, and one clock digit. `+$1800` did not move, which Curse's
+did over the same distance.
+
+**That region was called the area map here and it is not one.** It is
+`ANIMATE00`'s picture buffer -- the decoded glyphs and colours of the picture
+in the view window -- and the 594 bytes are frame 0 of `PIC3B` in all four
+specimens. It did not move over two steps because it has nothing to do with
+where the party walked: Curse's moved over the same distance because Curse's
+camp picture `PIC1D` has four frames and animates, while `PIC3B` has one.
+`#283 (What Curse keeps in the area map region at +$1800 is unread, and a
+conversion writes zeroes there)` settled it and
+`docs/181-curse-picture-buffer.md` is the write-up.
 
 The four saves are in the specimen tree as `ssb-d-engine-resave`,
 `ssb-d-engine-resave-walked`, `ssb-d-converted-resave` and

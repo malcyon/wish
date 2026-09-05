@@ -92,7 +92,9 @@ REGIONS: tuple[tuple[int, int, str, str], ...] = (
     (0x400, 0xBFF, "ours", "the eight character slots"),
     (0xC00, 0xFFF, "ours", "the name table"),
     (0x1000, 0x17FF, "ours", "the eight item pages"),
-    (0x1800, 0x1BFF, "engine", "the area map the engine builds on load"),
+    (0x1800, 0x1BFF, "engine",
+     "`ANIMATE00`'s picture buffer: the decoded picture in the view window "
+     "at the moment of the save, `PIC3B` in all four specimens here"),
     (0x1C00, 0x1CFF, "ours", "the roster"),
 )
 

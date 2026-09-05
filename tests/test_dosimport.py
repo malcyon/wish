@@ -163,8 +163,16 @@ def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
     The pane used to name every entry in `goldbox/dos.py`'s `DROPPED`, and
     Donald cut three kinds of line out of it on 2026-08-27: a field the C64
     works out for itself, a spell effect that was about to expire, and the
-    three DOS combat-icon fields, which became one sentence. None of the
-    three is a loss anybody using the program can see.
+    DOS combat-icon fields, which became one sentence. None of the three is a
+    loss anybody using the program can see.
+
+    **`icon_colours` is one of the icon fields now**, since
+    #267 (The import tells the player the C64 has no combat icon colours, and
+    it has one for every part of the figure): its own sentence claimed the
+    C64 "does not use" combat icon colours, and the C64 keeps eighteen of
+    them. A converted figure's colours come from the same place its shapes do
+    -- the game's own default art -- so it is `COMBAT_ICON_DROP`'s fact and
+    not a second one.
 
     So this asserts both directions. The portrait ids stay -- they are the
     character's face and #57 is still open on them -- and the derived fields
@@ -184,13 +192,16 @@ def test_the_report_names_the_fields_with_no_c64_home(dos_save, files):
     from goldbox.dos import COMBAT_ICON_DROP, DROPPED_PLAYER_TEXT
 
     text = dropped_text(rehearse(dos_save, "A", files).report)
-    for field in ("portrait_head", "portrait_body", "icon_colours"):
+    for field in ("portrait_head", "portrait_body"):
         assert DROPPED_PLAYER_TEXT[field] in text, field
         assert field not in text, field
     assert COMBAT_ICON_DROP in text
+    assert text.count(COMBAT_ICON_DROP) == 1
     for field in ("encumbrance", "item_count", "strength_bonus",
-                  "icon_head", "icon_body", "icon_dimension"):
+                  "icon_head", "icon_body", "icon_dimension", "icon_colours"):
         assert field not in text, field
+    # #267: the sentence that said the C64 has no combat icon colours.
+    assert "does not use them" not in text
     assert ".SPC effect" not in text
 
 

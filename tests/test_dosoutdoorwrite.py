@@ -236,11 +236,22 @@ def test_the_outdoor_facing_is_dropped_rather_than_taken_from_the_stale_byte(
     square beside it; DOS's 12803 is live out there and prints the facing
     letter.  Copying one into the other would put a direction on the status
     line taken from an unrelated moment, so the field is written north and
-    said out loud instead."""
+    the reason kept in the byte-by-byte accounting.
+
+    **The reason is a note and not a line a player reads**, which is
+    #248 (The DOS export pane's outdoor-facing drop line carries a memory
+    address and a raw byte number in front of a player): the same sentence
+    used to go into `report.dropped`, so `editor/exports.py`'s pane showed
+    `$033D`, `$4900-$64FF` and "byte 12803" to whoever was exporting.
+    `report.sources` is where an address belongs -- nothing renders it in
+    front of a person.
+    """
     savgam, report = _write(_c64_on_the_travel_grid(facing=3), tmp_path,
                             game_dir)
     assert savgam[sg.POS_FACING] == 0
-    assert any("$033D" in d for d in report.dropped), report.dropped
+    assert "$033D" in report.sources[sg.POS_FACING]
+    assert not [d for d in report.dropped if "$033D" in d or "12803" in d], \
+        report.dropped
 
 
 def test_every_byte_of_an_outdoor_conversion_has_a_source(tmp_path, game_dir):

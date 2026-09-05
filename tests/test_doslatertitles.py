@@ -332,14 +332,51 @@ def test_silver_blades_fourth_slot_array_is_written_zero_and_declared():
 def test_the_later_titles_draw_no_sheet_portrait():
     """`portrait_head` and `portrait_body` are 0 in all 32 Curse and all 44
     Silver Blades records here, so a menu position written there would be a
-    number the sheet never draws."""
+    number the sheet never draws.
+
+    **And nothing is said about it**, since #300 (A Curse or Silver Blades
+    party imported to the C64 arrives with no sheet portrait, because the
+    creation menu is read only off a POOL<n>.D64): the C64 sides of these two
+    titles draw no face either -- `LIBRARY $48A4` is the routine and neither
+    calls it -- so a Curse or Silver Blades character has no portrait at
+    either end and a converted one has lost nothing
+    (`docs/188-the-sheet-portrait-per-title.md`).
+    """
     for shape in LATER:
         table = dos_layout.FIELDS_BY_NAME_FOR[shape.key]
         rec, _, _, rep = dos.write(_neutral(shape.key, portrait_head=0x2D,
                                             portrait_body=0x01))
         assert rec[table["portrait_head"].offset] == 0
         assert rec[table["portrait_body"].offset] == 0
-        assert any("draws no portrait" in d for d in rep.dropped), rep.dropped
+        assert not [d for d in rep.dropped
+                    if "portrait" in d.lower()], rep.dropped
+
+
+def test_a_later_titles_import_says_nothing_about_a_face_it_never_had():
+    """The other direction of the same fact, and the one a player reaches:
+    importing a Curse or Silver Blades DOS party mentions no portrait.
+
+    #300 (A Curse or Silver Blades party imported to the C64 arrives with no
+    sheet portrait, because the creation menu is read only off a POOL<n>.D64)
+    read `LIBRARY $48A4`, the routine that fetches the `HEAD<xx>`/`BODY<xx>`
+    the record names, and found Pool of Radiance calling it from three places
+    and Curse and Silver Blades from none, over 558 and 571 files -- with the
+    running game agreeing: a real portrait id written into every record in
+    memory changes neither sheet and the loader's art slots stay `$FF`
+    (`docs/188-the-sheet-portrait-per-title.md`).
+
+    So the import pane used to tell a Curse player that two things were lost
+    that his game never drew. Pool of Radiance is the control: it does draw
+    one, so its own two lines have to stay until #57 is done.
+    """
+    for shape in LATER:
+        char = dos.DosCharacter(bytes(shape.record_size), shape=shape.key)
+        dropped = dos.to_neutral(char).dropped
+        assert not [d for d in dropped if "portrait" in d.lower()], \
+            (shape.key, dropped)
+    pool = dos.DosCharacter(bytes(POOL.record_size), shape=POOL.key)
+    assert len([d for d in dos.to_neutral(pool).dropped
+                if "portrait" in d.lower()]) == 2
 
 
 def test_the_identity_byte_is_digested_at_the_titles_own_offset():

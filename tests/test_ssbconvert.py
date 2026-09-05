@@ -345,7 +345,7 @@ def test_the_container_is_curses_geometry_under_a_different_name():
     ssb = c64_save.container_for(SSB_GAME)
     curse = c64_save.container_for(CURSE_GAME)
     for field in ("slot_area", "party_slots", "record_pages", "name_table",
-                  "item_area", "item_pages", "icon_table", "map_memory",
+                  "item_area", "item_pages", "icon_table", "picture_buffer",
                   "roster_offset", "cache", "cache_bit7", "disk_hint"):
         assert getattr(ssb, field) == getattr(curse, field), field
     assert ssb.payload_size == 0x1D00

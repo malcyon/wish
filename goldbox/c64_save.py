@@ -22,8 +22,8 @@ What is **not** the same is the container around those bytes.  Pool of
 Radiance writes two files and keeps twelve character pages, twelve item pages
 and its roster in the second file; every later title writes one file with
 eight character pages, a table of the party's names where Pool of Radiance's
-ninth character page would be, eight item pages, a page of map memory and the
-roster at the end.
+ninth character page would be, eight item pages, `ANIMATE00`'s picture
+buffer and the roster at the end.
 
 Confidence: Pool of Radiance's row and Curse of the Azure Bonds' are each
 measured on that title's own engine-written saves.  Secret of the Silver
@@ -87,9 +87,20 @@ class Container:
     #: the slot area begins.
     icon_table: int = 0x2E0
     icon_size: int = 36
-    #: The map the party has walked, or None for a title that keeps none in
-    #: its saved game.
-    map_memory: tuple[int, int] | None = None
+    #: `ANIMATE00`'s picture buffer: the decoded glyphs and colours of
+    #: whatever picture was in the view window when the save was written,
+    #: which on `ENCAMP` is always the camp scene.  None for a title whose
+    #: save does not span it.
+    #:
+    #: **Not a map**, though it was called one until #309 (Eight files still
+    #: call Curse's picture buffer a map region, which is what it was guessed
+    #: to be before anybody read it).  It is not a region the game keeps
+    #: anything in: a Curse or Silver Blades save is one KERNAL `SAVE` of
+    #: `$4B00`-`$67FF` and `$6300` is simply what lies between the item pages
+    #: and the roster.  `docs/181-curse-picture-buffer.md` has the decode,
+    #: the two specimens matching a frame byte for byte, and the driven
+    #: session in which nothing read the region before the engine zeroed it.
+    picture_buffer: tuple[int, int] | None = None
     #: Where the roster blocks are.  An offset means "in this payload"; None
     #: means the title writes them into `game.roster_file` instead.
     roster_offset: int | None = None
@@ -233,7 +244,7 @@ CURSE_OF_THE_AZURE_BONDS = Container(
     record_pages=8,
     name_table=0xC00,
     item_pages=8,
-    map_memory=(0x1800, 0x400),
+    picture_buffer=(0x1800, 0x400),
     roster_offset=0x1C00,
     cache_bit7=True,
     disk_hint=0xEE,
@@ -293,9 +304,10 @@ _SILVER_ZERO = ("zero: what the one Secret of the Silver Blades save on this "
 #: Secret of the Silver Blades.  **The container is Curse of the Azure Bonds'
 #: byte for byte under a different file name** -- one 7424-byte `SAVEDBASH` at
 #: `$4B00`, header `$400`, eight character pages, a name table at `+$C00`,
-#: eight item pages at `+$1000`, map memory at `+$1800` and the roster at
-#: `+$1C00` (`tests/test_silverblades.py`).  Three rows differ from Curse's,
-#: and each was read out of this title's own overlays rather than assumed:
+#: eight item pages at `+$1000`, the picture buffer at `+$1800` and the
+#: roster at `+$1C00` (`tests/test_silverblades.py`).  Three rows differ from
+#: Curse's, and each was read out of this title's own overlays rather than
+#: assumed:
 #:
 #: * **the cache bit and the disk hint are Curse's, and the code says so.**
 #:   `CAMP $0CA5` is `LDX #$18 / LDA $7F13,X / ORA #$80 / STA $4DC0,X` on the
@@ -332,7 +344,7 @@ SECRET_OF_THE_SILVER_BLADES = Container(
     name_table=0xC00,
     names_in_marching_order=True,
     item_pages=8,
-    map_memory=(0x1800, 0x400),
+    picture_buffer=(0x1800, 0x400),
     roster_offset=0x1C00,
     cache_bit7=True,
     disk_hint=0xEE,

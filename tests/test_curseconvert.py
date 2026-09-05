@@ -272,7 +272,7 @@ def test_the_curse_container_is_one_file_with_a_name_table():
     assert c.payload_size == 0x1D00
     assert (c.record_pages, c.item_pages) == (8, 8)
     assert c.name_table == 0xC00 and c.roster_offset == 0x1C00
-    assert c.map_memory == (0x1800, 0x400)
+    assert c.picture_buffer == (0x1800, 0x400)
     assert c.cache_bit7 and c.disk_hint == 0xEE
     assert c64_save.container_for(CURSE_GAME) is c
     assert c64_save.container_for(None) is c64_save.POOL_OF_RADIANCE
@@ -428,7 +428,7 @@ def test_the_script_scratch_is_copied_and_the_map_is_not():
     want = bytes(sg.word(savgam, 0x4A00 + i, shape) & 0xFF for i in range(0x20))
     assert bytes(save0[0x100:0x120]) == want
     assert any(want)                     # the copy is not a copy of nothing
-    at, size = c64_save.CURSE_OF_THE_AZURE_BONDS.map_memory
+    at, size = c64_save.CURSE_OF_THE_AZURE_BONDS.picture_buffer
     assert bytes(save0[at:at + size]) == bytes(size)
 
 

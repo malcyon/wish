@@ -5,10 +5,10 @@ The third of three: `tools/dosdisk.py` writes Pool of Radiance's
 `SAVEDGAME0`/`SAVEDGAME1` pair and `tools/cursedisk.py` writes Curse of the
 Azure Bonds' single `SAVEAZURE`.  Silver Blades' container is Curse's byte for
 byte under the name `SAVEDBASH` -- one 7424-byte file at `$4B00`, eight
-character pages, a name table at `+$C00`, eight item pages, the explored map
-at `+$1800` and the roster at `+$1C00` -- but three header rows differ and the
-name table may be keyed the other way round, so the geometry lives in
-`goldbox/c64_save.py` and this file is the runner (`#193 (Convert a Secret of
+character pages, a name table at `+$C00`, eight item pages, `ANIMATE00`'s
+picture buffer at `+$1800` and the roster at `+$1C00` -- but three header rows
+differ and the name table may be keyed the other way round, so the geometry
+lives in `goldbox/c64_save.py` and this file is the runner (`#193 (Convert a Secret of
 the Silver Blades DOS save into a C64 one, which the importer refuses today)`).
 
     tools/ssbdisk.py --folder work/curse/SSB-D-paine-memorised --slot D \\
