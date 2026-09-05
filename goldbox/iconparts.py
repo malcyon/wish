@@ -49,7 +49,10 @@ hardcoded `$A700` raised `IndexError` on both.
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass
+
+import yaml
 
 from .d64 import D64, load_payload
 
@@ -133,6 +136,77 @@ DEFAULT_PART_COLOURS = {PART_CLASSES.index(part): colour for part, colour in
 #: way -- but writing it is what makes the composed icon the engine's bytes
 #: rather than merely one that looks like them.
 DEFAULT_BACKGROUND = 6
+
+# -- converting a DOS figure -------------------------------------------------
+#
+# DOS keeps a character's combat figure as a body, a head, a size and six
+# colour pairs (`goldbox/dos_layout.py` at `0x0BE`, `0x0BD`, `0x0C0`,
+# `0x0C1`); the C64 keeps eighteen screen codes and eighteen colours.  Neither
+# side stores the other's, and the two sets of art do not correspond index for
+# index -- the DOS list is 32 bodies and 14 heads, the C64's 35 large weapons,
+# 28 small ones, 23 large heads and 14 small ones, and the highest overlap
+# between any pair of *bitmaps* is 0.782 where the same art drawn twice would
+# be 0.95 (#130).  So which C64 option each DOS one becomes is a judgement
+# about what the figure *shows* -- a bow is a bow, a robed caster is a robed
+# caster -- and it is Donald's judgement rather than a measurement.
+#
+# It lives in `tools/iconproposal.yaml`, one line a row, and is read from
+# there at run time rather than copied into this file.  A copy would be a
+# second source: Donald edits the YAML by hand, and a table here would either
+# go quietly out of step with his edit or fail the build for having been
+# edited, both of which have already happened once.
+
+#: Donald's table, the single source.  `tools/iconproposal.py` draws it and
+#: `dos_icon_tables` reads it; nothing else may hold a second copy.
+#:
+#: **This is outside the package**, so a frozen build does not carry it --
+#: `wish.spec` has no `datas` at all.  `#315 (A frozen Wish cannot convert a
+#: combat figure, because the table it needs lives outside the package)` is
+#: the work of giving it a home that ships.
+PROPOSAL_PATH = (pathlib.Path(__file__).resolve().parent.parent
+                 / "tools" / "iconproposal.yaml")
+
+#: Record bytes `0x0C1`-`0x0C6` in order, and which C64 part class each one
+#: paints.  `GAME.OVR:0x1E55C` builds its recolour lookup from the table at
+#: `ds:0x3CF5` -- `0A 01 02 03 04 06 07` -- so `0x0C1` is the body, `0x0C2`
+#: the arm, `0x0C3` the leg, `0x0C4` the hair and face, `0x0C5` the shield and
+#: `0x0C6` the weapon (#130, and confirmed in the running game on #112).
+DOS_PAIR_CLASSES = ("body", "arm", "leg", "hair", "shield", "weapon")
+
+#: The C64's seventh part, CAP, which DOS has no pair for: every DOS hat and
+#: plume is drawn in pixel values 5 and 13, which the recolour lookup never
+#: touches, so a DOS hat is always magenta.  Purple is the C64's magenta.
+DOS_CAP_COLOUR = 4
+
+#: DOS `size` `@0x0C0` is 1 small and 2 medium; the C64 keeps the same
+#: distinction one lower at `0x099`.  Anything else is a record this reader
+#: does not understand, and a monster's zero is one of them.
+DOS_SIZES = {1: "small", 2: "large"}
+
+
+@dataclass(frozen=True)
+class DosIconTables:
+    """Which C64 option each DOS one becomes, and which colour each colour."""
+
+    weapons: dict[int, int]         # DOS icon_body -> C64 weapon option
+    heads: dict[int, int]           # DOS icon_head -> C64 head option
+    ega_to_c64: tuple[int, ...]     # 16 EGA indices -> the C64's eight
+
+
+def dos_icon_tables(path: "pathlib.Path | str | None" = None) -> DosIconTables:
+    """Read the three tables out of :data:`PROPOSAL_PATH`."""
+    source = pathlib.Path(path or PROPOSAL_PATH)
+    try:
+        data = yaml.safe_load(source.read_text())
+    except OSError as exc:
+        raise FileNotFoundError(
+            f"the combat-figure table is not at {source}; without it a DOS "
+            f"figure has no C64 option to become") from exc
+    return DosIconTables(
+        weapons={int(k): v["c64"] for k, v in data["weapons"].items()},
+        heads={int(k): v["c64"] for k, v in data["heads"].items()},
+        ega_to_c64=tuple(data["colours"][i]["c64"]
+                         for i in sorted(data["colours"])))
 
 
 @dataclass(frozen=True)
@@ -310,6 +384,56 @@ class IconParts:
         seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
         return shape + self.colours_for(shape, DEFAULT_PART_COLOURS, seed)
 
+    # -- a DOS character's own figure -------------------------------------
+
+    def dos_icon(self, head: int, body: int, size: str, colours: bytes,
+                 tables: "DosIconTables | None" = None) -> bytes:
+        """The 36 bytes a DOS character's own combat figure becomes.
+
+        `head` and `body` are the DOS record's `icon_head` and `icon_body`,
+        `size` is `"small"` or `"large"` off its `size` byte, and `colours`
+        is its six `icon_colours` pairs.  The result is eighteen screen codes
+        and eighteen colours, composed out of this disk's own option tables
+        the way the ICON menu composes one -- so every icon this returns is
+        an icon the game itself can make.
+
+        **A row that lands past a small character's own list is composed
+        large.**  The C64 offers a small character 28 weapons and 14 heads
+        against a large one's 35 and 23, and six of the thirty-two weapon
+        rows and three of the fourteen head rows name an option only the
+        large list has.  Size is never written back by the ICON menu
+        (`SPELLN64` has no store to `0x099`), so a mixed icon is one the
+        game's own menus reach and one is on the player's disks already --
+        HOGARTH's.  The head glyph starts at cell 1 in both lists, so a large
+        head on a small figure sits where a head always sits.
+
+        The colour half takes the **low** nibble of each pair, which is the
+        part's main colour; the high nibble is a highlight and the C64 keeps
+        one colour a part, so it has nowhere to go.  The cap has no DOS pair
+        at all -- a DOS hat is drawn in pixel values the record cannot
+        recolour -- and gets :data:`DOS_CAP_COLOUR`.
+        """
+        tables = tables or dos_icon_tables()
+        if head not in tables.heads:
+            raise ValueError(f"DOS icon head {head} is not one of "
+                             f"{len(tables.heads)} the table names")
+        if body not in tables.weapons:
+            raise ValueError(f"DOS icon body {body} is not one of "
+                             f"{len(tables.weapons)} the table names")
+        weapon, c64_head = tables.weapons[body], tables.heads[head]
+        shape = bytes([SPACE] * (CELLS_PER_POSE * 2))
+        shape = self.apply(shape, self._size_for(size, "weapon", weapon),
+                           "weapon", weapon)
+        shape = self.apply(shape, self._size_for(size, "head", c64_head),
+                           "head", c64_head)
+        seed = bytes([DEFAULT_BACKGROUND | MULTICOLOUR] * len(shape))
+        return shape + self.colours_for(
+            shape, dos_part_colours(colours, tables), seed)
+
+    def _size_for(self, size: str, kind: str, option: int) -> str:
+        """`size`, unless only the large list is long enough to hold `option`."""
+        return "large" if option >= self.count("small", kind) else size
+
     # -- the legal set ---------------------------------------------------
 
     def legal_shapes(self, sizes: tuple[str, ...] = ("small", "large")) -> set[bytes]:
@@ -379,3 +503,26 @@ class IconParts:
             base = per_class.get(klass, 0) & 0x07
             out[cell] = base | (MULTICOLOUR if self.multicolour(glyph) else 0)
         return bytes(out)
+
+
+def dos_part_colours(icon_colours: bytes,
+                     tables: "DosIconTables | None" = None) -> dict[int, int]:
+    """The seven C64 part colours a DOS record's six colour pairs become.
+
+    Keyed by part class, which is what :meth:`IconParts.colours_for` takes.
+    """
+    tables = tables or dos_icon_tables()
+    out = {PART_CLASSES.index(part): tables.ega_to_c64[icon_colours[i] & 0x0F]
+           for i, part in enumerate(DOS_PAIR_CLASSES)}
+    out[PART_CLASSES.index("cap")] = DOS_CAP_COLOUR
+    return out
+
+
+def dos_size(size_byte: int) -> str:
+    """DOS `size` `@0x0C0` as the C64's own word for it."""
+    try:
+        return DOS_SIZES[size_byte]
+    except KeyError:
+        raise ValueError(
+            f"DOS size {size_byte} is neither 1 (small) nor 2 (medium); "
+            f"every player record any title writes holds one of those") from None

@@ -51,7 +51,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import iconcorrespond as ic  # noqa: E402
 
 from goldbox import icons  # noqa: E402
-from goldbox.iconparts import MULTICOLOUR, PART_CLASSES, IconParts  # noqa: E402
+from goldbox.iconparts import (  # noqa: E402
+    MULTICOLOUR,
+    IconParts,
+    dos_icon_tables,
+    dos_part_colours,
+)
 
 # -- the proposal -------------------------------------------------------------
 #
@@ -96,24 +101,19 @@ def load_tables(path: pathlib.Path = TABLE_PATH,
 (WEAPONS, WEAPON_ALTERNATIVES, HEADS, HEAD_ALTERNATIVES,
  EGA_TO_C64) = load_tables()
 
-#: A DOS hat or plume is drawn in values 5/13, which the character cannot
-#: recolour, so it is always magenta; a C64 cap gets purple.
-CAP_COLOUR = 4
-
-#: Record bytes `0x0C1`-`0x0C6`, in order, and the C64 part class each one
-#: colours.  `goldbox/dos_layout.py` has the running-game measurement.
-DOS_PAIR_CLASSES = ("body", "arm", "leg", "hair", "shield", "weapon")
-
 #: The shipped default set, `91 A2 B3 C4 E6 F7`.
 DEFAULT_COLOURS = bytes.fromhex("91a2b3c4e6f7")
+
+#: How the same three tables reach the conversion itself.  Drawn here and
+#: applied there, out of the one YAML file, so a sheet is a picture of what a
+#: converted character would actually get rather than of a second copy of the
+#: rules (#130).
+TABLES = dos_icon_tables()
 
 
 def c64_part_colours(icon_colours: bytes) -> dict[int, int]:
     """The seven C64 part colours a DOS record's six colour pairs become."""
-    out = {PART_CLASSES.index(part): EGA_TO_C64[icon_colours[i] & 0x0F]
-           for i, part in enumerate(DOS_PAIR_CLASSES)}
-    out[PART_CLASSES.index("cap")] = CAP_COLOUR
-    return out
+    return dos_part_colours(icon_colours, TABLES)
 
 
 # -- drawing --------------------------------------------------------------------
