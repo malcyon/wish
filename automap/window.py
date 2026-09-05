@@ -74,7 +74,6 @@ ROOF = QColor("#e7ecf2")
 PARTY = QColor("#0067c7")
 WIZARD = QColor("#9e2b9e")
 NOTE = QColor("#b8601f")
-ALARM = QColor("#c0392b")       # something is wrong and it is not our doing
 
 # The fight. Party green and enemies red, as Gold Box Companion has them, in the
 # shades the roster panel already uses for hit points so that the two halves of
@@ -695,7 +694,6 @@ class AutomapBinding(QObject):
         #: refusal latches in the mapper, so without this the same line would
         #: be said on every tick for the rest of the session.
         self._said_wrong_game = False
-        self.alarm = False
         self._live_ticks = 0
         self.snapshot = None
         self.timer = QTimer(self)
@@ -1016,13 +1014,10 @@ class AutomapBinding(QObject):
             self.mapper.target = self.connect_target()
         except MonitorBusy as exc:
             self._waiting = str(exc)
-            self.alarm = True
         except NotConnected:
             self._waiting = "Waiting to connect..."
-            self.alarm = False
         else:
             self._waiting = "connected - waiting for a save to be loaded"
-            self.alarm = False
         self._refresh()
 
     def status_text(self) -> str:
@@ -1038,7 +1033,6 @@ class AutomapBinding(QObject):
         when the other client lets go.
         """
         self._waiting = text
-        self.alarm = alarm
         # The busy-monitor line is the one that matters, and it is the one that
         # used to be red text in a status bar and nothing else. It is a message
         # like any other now, and repeats are dropped by the panel.
