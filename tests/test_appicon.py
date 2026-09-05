@@ -148,6 +148,41 @@ def test_the_about_box_shows_the_icon(app):
         dialog.deleteLater()
 
 
+#: `assets/logo/combo-mark-color.svg`, as delivered on 2026-09-05 -- the
+#: pentacle with the WISH lettering inside it, on its own near-black ground.
+#: Pinned for the same reason `MARK_SHA256` is: an edit here would be
+#: redrawing somebody else's art.
+COMBO_MARK_SHA256 = \
+    "8a37717b86678a0ca105bec8378da59055dfce2a35ec0b7809ae6b46d2f03956"
+
+
+def test_the_about_picture_is_the_artists_own_file_unmodified():
+    from wish.about import PICTURE_ASSET
+
+    assert PICTURE_ASSET.exists(), PICTURE_ASSET
+    digest = hashlib.sha256(PICTURE_ASSET.read_bytes()).hexdigest()
+    assert digest == COMBO_MARK_SHA256, (
+        "assets/logo/combo-mark-color.svg has changed -- update "
+        "COMBO_MARK_SHA256 if this is a deliberate new delivery")
+
+
+def test_the_about_picture_is_the_combo_mark_on_its_own_ground(app):
+    """Donald's answer to the escape hatch this document raised: the black
+    combo mark was line art on transparency and would have needed the About
+    dialog's palette detected to avoid vanishing on a dark theme. The colour
+    combo he chose instead carries its own ground -- opaque at every pixel,
+    the same property `test_the_icon_is_opaque_at_every_size` holds the
+    taskbar icon to -- so nothing here has to read `QStyleHints.colorScheme()`
+    to stay visible."""
+    from wish.about import PICTURE, _picture
+
+    pix = _picture(PICTURE).toImage().convertToFormat(
+        QImage.Format.Format_RGBA8888)
+    raw = pix.constBits().asstring(pix.sizeInBytes())
+    alphas = raw[3::4]
+    assert all(a == 255 for a in alphas), "the combo mark is not fully opaque"
+
+
 # --- the files under assets/ --------------------------------------------
 
 
