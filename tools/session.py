@@ -215,11 +215,28 @@ AFTER_MOVE = (BAR_COMMAND, BAR_DONE, BAR_PRESS, BAR_CONTINUE, BAR_YESNO,
 RE_MOVE_LEFT = re.compile(r"MOVE\s*LEFT\s*=\s*(\d+)")
 
 # What a fight prints when it is over.  `THE PARTY HAS WON !` was read off two
-# fights (`work/p118-step3/runF.log`, `runH.log`); the losing wording has never
-# been seen here, so `DEFEATED` is a guess and `fight()` reports `ended` rather
-# than `lost` when it does not match.
+# fights (`work/p118-step3/runF.log`, `runH.log`).
+#
+# **`LOST_TEXT` is no longer a guess.**  It was `DEFEATED`, invented, and the
+# game does not say that.  `POST.COM`'s own string table -- lo `$2A8D`, hi
+# `$2AC5`, at overlay base `$0800` -- holds three end-of-fight lines next to
+# each other, and `$0903` picks between them off the result byte `$6DC7`:
+#
+#   index 2, `$6DC7` = $81  THE PARTY RUNS AWAY   nobody standing, somebody ran
+#   index 3, `$6DC7` = $80  THE PARTY HAS LOST    nobody standing, nobody ran
+#   index 4, `$6DC7` = $00  THE PARTY HAS WON !   somebody still standing
+#
+# The losing line was then read off a driven defeat -- six characters wounded
+# to 1 hit point through the monitor and every turn passed, `work/issue128`,
+# `tools/defeatdrive.py` -- where it appeared on row 10 with `$6DC7` = $80.
+# No exclamation mark, unlike the winning line (`#128`).
+#
+# `THE PARTY RUNS AWAY` is not classified here.  It needs every character to
+# have fled, which a driven fight has never produced, and `fight()` answering
+# `NO` to `CONTINUE BATTLE` is not it -- that leaves the party standing, which
+# the engine counts as a win.
 WON_TEXT = "THE PARTY HAS WON"
-LOST_TEXT = "DEFEATED"
+LOST_TEXT = "THE PARTY HAS LOST"
 
 # Lines worth keeping out of a fight: they are the evidence that a turn did
 # something.  A driver that only records the command bar cannot tell an attack
@@ -234,9 +251,16 @@ LOST_TEXT = "DEFEATED"
 #   fight -- so the word is `HITS`, never `HIT` (`work/p126/quick.log`);
 # * `THAC0 17  DAMAGE 1D3`, on the VIEW panel -- so it is `POINTS OF DAMAGE`,
 #   never `DAMAGE` on its own (`work/p126/run1.log`).
+#
+# `HAS LOST` and `RUNS AWAY` are here rather than `DEFEATED`, which nothing in
+# the game ever printed.  `GOES DOWN` is the line a character actually gets
+# when it reaches 0 hit points -- `GOES DOWN` then `AND IS DYING`, six times
+# over in the defeat at `work/issue128` -- and `UNCONSCIOUS` is kept although
+# the game spells the status word `UNCONSIOUS`, because the sheet is where
+# that spelling appears and the message band has never used either.
 RE_NOTABLE = re.compile(
-    r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|HAS WON"
-    r"|DEFEATED|EXPERIENCE|GUARDING)\b|POINTS OF DAMAGE")
+    r"\b(HITS|MISSES|SLAIN|KILLED|IS DEAD|DYING|UNCONSCIOUS|GOES DOWN"
+    r"|HAS WON|HAS LOST|RUNS AWAY|EXPERIENCE|GUARDING)\b|POINTS OF DAMAGE")
 
 # Of those, the ones only a blow can produce -- **by either side**.  This is
 # not who swung and cannot be made into it: the game prints the party's blows

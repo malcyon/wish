@@ -37,6 +37,8 @@ started.
 | who is fighting | `$8300 + i*32`, the roster block continued past `$83FF` |
 | whose record | roster `+0x0D` names one of the twelve record slots at `$4D00` |
 | initiative | `$A380 + i`; the round ends when all 64 are zero |
+| how a combatant is | roster `+0x00`, record `0x100`: bit 7 means out of the fight, the low three bits name the state |
+| how the fight ended | `$6DC7` — `$00`/`$01` won, `$80` lost, `$81` ran away |
 
 `i` is 0–63: **0–7 the party in save-slot order, 8 upward the monsters** — the
 same encoding the effects owner byte uses. **Monsters share one record per
@@ -75,6 +77,13 @@ roster carries what they are actually fighting at.
 * **Dead or fled combatants dimmed**, not removed. One that leaves the map keeps
   the last square the previous poll saw it on, and is never invented: with
   nothing remembered there is nothing to draw.
+
+  The states behind that word are readable and the view does not yet
+  distinguish them: `LIBRARY $38BE` masks roster `+0x00` with 7 and draws
+  1 `OK`, 2 `GONE`, 3 `DEAD`, 4 `DYING`, 5 `UNCONSIOUS` (the game's spelling),
+  6 `RUNNING`, 7 `STONED`, with bit 7 on top meaning out of the fight — so
+  `$84` is dying and `$85` unconscious. `docs/110-combat-log.md` has the
+  table and where it was read.
 * Only the part of the map the fight uses. 56 x 26 is 1456 squares and both maps
   seen put the action in a corner, so the box covers the combatants and the
   camera window, padded, and the cell shrinks to fit rather than the window

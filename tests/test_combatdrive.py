@@ -413,27 +413,43 @@ def test_one_return_per_prompt_and_not_one_per_reading():
 
 
 def test_a_fight_the_party_loses_is_classified_from_the_screen():
-    """The losing branch, exercised against the word `session.py` guesses.
+    """The losing branch, against the row a driven defeat actually drew.
 
-    **`LOST_TEXT` is a guess and is said to be one** beside its definition:
-    `THE PARTY HAS WON !` was read off two real fights and the losing wording
-    off none, so `fight` reports `ended` rather than `lost` when it does not
-    match.  This test does not claim the game says `DEFEATED`; it claims the
-    classification works when the text it is looking for is on the screen, so
-    the branch is not unexercised code that a later edit could break in
-    silence.  `#128` is the ticket for reading the real wording off a fight
-    the party actually loses.
+    `LOST_TEXT` used to be `DEFEATED`, invented, and this test was careful to
+    say it claimed nothing about the game's wording.  It can now: a party of
+    six wounded to 1 hit point through the monitor and left to the orcs drew
+    `THE PARTY HAS LOST` at row 10 with the result byte `$6DC7` at `$80`
+    (`#128`, `tools/defeatdrive.py`), so the row below is the shape the game
+    puts on the screen -- the line alone in a cleared full-width window,
+    which is why nothing else is on the row.
     """
     bar = "MOVE VIEW AIM USE QUICK DONE"
     sess = FakeSession([
         (COMBAT, command_bar(bar, "DONE")),
-        (DUNGEON, FakeScreen({6: f"THE PARTY IS {LOST_TEXT}",
-                              24: "PRESS <RETURN> OR BUTTON TO CONTINUE"})),
+        (DUNGEON, FakeScreen({10: LOST_TEXT})),
         (DUNGEON, FakeScreen({14: STATUS, 24: "MOVE VIEW CAST AREA ENCAMP"})),
     ])
     out = sess.fight(budget=20.0, poll=0.0)
     assert out.outcome == LOST
-    assert f"THE PARTY IS {LOST_TEXT}" in out.lines
+    assert LOST_TEXT in out.lines
+
+
+def test_the_losing_line_is_the_one_the_game_prints_rather_than_a_guess():
+    """`THE PARTY HAS LOST`, and the two lines it is chosen between.
+
+    A regression test on a *word*, which is unusual and is the point: the
+    word was wrong for as long as nobody had lost a fight, and the failure it
+    caused was silent -- `fight` reported `ended`, which reads like an
+    unremarkable end rather than a wiped-out party.  The three lines are
+    `POST.COM`'s string table entries 2, 3 and 4, and the winning one has an
+    exclamation mark where the other two do not.
+    """
+    assert session.LOST_TEXT == "THE PARTY HAS LOST"
+    assert session.WON_TEXT == "THE PARTY HAS WON"
+    assert "DEFEATED" not in session.RE_NOTABLE.pattern
+    for line in ("THE PARTY HAS LOST", "THE PARTY RUNS AWAY",
+                 "MAGNUS GOES DOWN"):
+        assert session.RE_NOTABLE.search(line), line
 
 
 def test_a_fight_that_never_ends_reports_its_budget_rather_than_a_win():

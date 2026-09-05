@@ -177,6 +177,105 @@ honest answer.
   outcome is shown verbatim, and the raw rows travel with every message as the
   panel row's tooltip.
 
+## The last line of all: how the game says who won
+
+**Three lines, and until 2026-09-04 only one of them had been read.** They are
+not in `SPELLN00` with the rest of the messages — they belong to `POST.COM`,
+which runs after `COMBAT` returns, and they come out of its own 56-entry split
+pointer table (lo `$2A8D`, hi `$2AC5`, at overlay base `$0800` and not the
+`$1000` the PRG header claims). Entries 2, 3 and 4 sit next to each other:
+
+| `$6DC7` | line, exactly as the game spells it | when |
+|---|---|---|
+| `$80` | `THE PARTY HAS LOST` | nobody on the party's side is standing and nobody ran |
+| `$81` | `THE PARTY RUNS AWAY` | nobody standing, and at least one character's status is `RUNNING` |
+| `$00`, `$01` | `THE PARTY HAS WON !` | somebody is still standing |
+
+**The winning line has an exclamation mark and the other two do not.**
+`THE PARTY HAS LOST` was read off two driven defeats
+(`#128 (Nothing has ever read what the game prints when the party loses a
+fight)`); the other two are CONFIRMED from the table. `DEFEATED`, which
+`tools/session.py` guessed at for months, is not a word the game uses
+anywhere.
+
+`POST.COM $0896` is what decides, by walking every combatant's record and
+counting on the status byte at record `0x100`, indexed by the side in
+`$6C0C & $7F` — 0 the party, 1 the monsters. `$0903` then reads the party's
+living count and writes the answer to `$6DC7`, which is the byte the ECL
+scripts branch on (`docs/128-guide-and-scripting.md`,
+`docs/134-commissions.md`).
+
+**The line is printed in the full-width text window at row 10, column 1** —
+not in the message band. `$0938` loads `#$0A` for the row and `$0E65` takes
+the column from `$03F2`, which by then is the whole window rather than the
+band `$0970` describes, so a reader that only slices columns 23–38 will miss
+it. `CombatLog` does exactly that, so the end of a fight has to be found from
+the mode byte and never from this line.
+
+**And the losing line is where a Pool of Radiance game stops.** After the
+message and its delay, `$0942`-`$0957` takes three readings and two of the
+three ways out are `JMP $0957`, at `$0957` — a jump to itself.
+
+Measured on the running machine, twice, with the same six-character party out
+of `PORSAVE13.D64` (`tools/defeatdrive.py`, `work/issue128/run2` and `run3`):
+
+* **66 of 66 program-counter samples read `$0957`** over 70 seconds in the
+  second run, and 30 of 31 in the first — the odd one was `$2E25`, inside
+  `LIBRARY $2E1F`'s own message delay, taken before the delay had expired;
+* **the screen never changed again**, 67 consecutive readings of the same 25
+  rows, and **row 24 is blank** — there is no `PRESS <RETURN>` and nothing to
+  answer;
+* pressing Return, then space, then Return at it changed neither the screen
+  nor the program counter;
+* `$6DC7` read `$80` and `$6E3E` read 6 throughout.
+
+Nothing on any of the eight disk sides writes `$0957`, `$0958` or `$0959`, so
+it is not a dispatch slot patched at run time, and `POST.COM` is byte-identical
+on all eight sides. The player's machine is locked and their only way on is to
+reset and reload.
+
+The two runs are one party and one save, so what is CONFIRMED is that *this*
+defeat locks the machine; that every defeat does rests on the branch, where
+both remaining exits also reach `$0957` — `$2B70 >= $6E3E` is the whole party
+`GONE` or `DEAD`, and `$6DE6` is written zero by `INIT $091A` and
+`POST.COM $14D2` and by nothing else on the side. The one escape left is
+`$2B5D`, the party's count of statuses with bit 4 set, and no instruction on
+POOL1 sets that bit on a character's status.
+
+## The seven status words, and what a defeat leaves behind
+
+`LIBRARY $38BE` draws the `STATUS` line of the character sheet from the low
+three bits of record `0x100`: `LDA $6C00 / AND #$07 / CLC / ADC #$29 / TAX`
+into LIBRARY's own string table (lo `$3439`, hi `$347B`, 66 entries, base
+`$2C48`), on row 22.
+
+| status & 7 | word | notes |
+|---|---|---|
+| 0 | — | not a status; an empty roster slot reads 0 |
+| 1 | `OK` | what every occupied slot of every save reads |
+| 2 | `GONE` | |
+| 3 | `DEAD` | |
+| 4 | `DYING` | written the turn a character reaches 0 hit points |
+| 5 | `UNCONSIOUS` | the game's spelling. Written when the fight ends and the party binds its dying (`COMBAT $2161`) |
+| 6 | `RUNNING` | the state that turns a defeat into `THE PARTY RUNS AWAY` |
+| 7 | `STONED` | |
+
+Bit 7 on top of those means "out of the fight", which is what `POST.COM`'s
+census tests first. So `$84` is a dying character and `$85` an unconscious
+one, which is the pair `#235` watched the engine write.
+
+**A party that loses is left dying, not dead, and nothing binds it.** In both
+driven defeats all six characters took `GOES DOWN` then `AND IS DYING`, and
+the fight ended with every one of them at `$84`; the binding pass that turns
+`$84` into `$85` belongs to the winning path. Nobody reached `DEAD` — a
+character at 0 hit points has ten rounds of losing one a round to go, and the
+fight was over before then.
+
+**The save disk was not written.** `work/issue128/run3/save-after.d64` has the
+same SHA-256 as the player's `PORSAVE13.D64`, `f7e7f1a2…`, so a defeat costs
+whatever has happened since the last `ENCAMP > SAVE` and nothing more — and
+there is no specimen to keep, because the game authored no bytes.
+
 ## Cost
 
 **One extra burst per tick while a fight is running, and nothing at all outside
@@ -235,6 +334,7 @@ second one.
 | 6 | the split | **CONFIRMED.** `MAGNUS ATTACKS ORC AND HITS FOR 10 POINTS OF DAMAGE` and `ORC GOES DOWN AND IS DYING` came out of one eight-row frame as two messages, split on the `$03F4` = 15 the follow-up set |
 | 7 | the scroll | **CONFIRMED. It scrolls.** Third fight, kobolds and bugbears in the Slums with the P18 party. No natural block reaches row 22, so the window was made small instead: `COMBAT $0970`'s own four bytes were poked to `17 1E 01 11` — columns 23-29, bottom row 16 — while COMBAT was resident, and the game's own messages then overflowed it every round. Two things were watched. **A block that overflowed lost its top line**: `NAME / ATTACKS / SILAS / AND HIT / S FOR 3 / POINTS / OF DAMA / GE` came out as seven rows starting at `ATTACKS`, the name gone. And **rows moved up between two consecutive polls**: row 17 went `KOBOLD ` → `GOES DO` and row 18 `GOES` → `WN` while `$03F4`/`$03F5` stood at 17. At the shipped width nothing wraps far enough — a block would have to run about thirteen rows — which is why 2478 frames of two fights never saw it |
 | 8 | after the fight | **not reached** — the fight was ended from the emulator, not through the panel |
+| 9 | a fight the party **loses** | **CONFIRMED.** Two runs, `work/issue128/run2` and `run3`, six characters wounded to 1 hit point through the monitor and every turn passed. All six took `GOES DOWN` then `AND IS DYING`, then `THE PARTY HAS LOST` on row 10 of an otherwise empty full-width window, `$6DC7` = `$80`, all six roster statuses `$84`, the save disk untouched, and the machine stopped at `POST.COM $0957` |
 
 Left to do: the same run through the real `AutomapWindow` rather than through
 `CombatLog` alone.
