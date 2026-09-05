@@ -127,7 +127,7 @@ def make(*, c64: pathlib.Path, slot: str = "A", steps: int = 2,
                                        s.game_dir)
             report["accounted"] = f"{len(written.sources)}/{written.total}"
             report["unwritten"] = len(written.unwritten)
-            report["carried"] = written.carried
+            report["converted"] = written.converted
             report["warnings"] = written.warnings
             ours = s.save_file(slot).read_bytes()
             (out / f"BUILT-SAVGAM{slot.upper()}.DAT").write_bytes(ours)

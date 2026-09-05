@@ -36,7 +36,7 @@ def race_labels(game: Game | None = None) -> dict[int, str]:
     is left out: the caller then prints the raw number, which is the honest
     answer where a name would be a guess. Curse's 6 is the case that matters --
     its own label table points both 6 and 7 at HUMAN, so `goldbox/games.py` names
-    neither and a Pool of Radiance half-orc carried across shows as a bare 6.
+    neither and a Pool of Radiance half-orc converted across shows as a bare 6.
 
     The sheet's dropdown wants these in capitals (`race_names`); the roster
     wants them as the tables spell them (`editor/roster.py`). One table, two

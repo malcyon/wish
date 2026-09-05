@@ -139,8 +139,12 @@ BUTTON_BROWSE = "Browse…"
 #: or browsed to, which is theirs.
 DEFAULT_NAME = "PORSAVE{slot}.D64"
 
-#: The heading over the list of fields the conversion cannot carry.
-DROPPED_HEADING = "The conversion cannot carry these:"
+#: The heading over the list of what a converted character loses.
+#:
+#: **PROPOSED, not yet approved** -- replaces "The conversion cannot carry
+#: these:", which named fields and a conversion rather than the player's own
+#: party; `.claude/rules/gui-text.md` makes the wording Donald's.
+DROPPED_HEADING = "What your characters lose:"
 
 #: The refusal when the player's game disks cannot be found, which is the one
 #: thing the conversion cannot do without: the combat icon comes out of

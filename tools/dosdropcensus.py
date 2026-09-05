@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Does any record on this machine set a field the conversion cannot carry?
+"""Does any record on this machine set a field the conversion cannot convert?
 
 `#192 (Convert a Curse of the Azure Bonds DOS save into a C64 one, which the
 importer refuses today)` step 0c is the ticket. `.claude/rules/conversions.md`
-says every field is carried or is on a short list with a tested reason -- so
-before writing the carry, somebody has to say which of Curse's extra fields any
-record on this machine actually uses. A field nothing sets still has to be
-carried; the difference is whether there is a specimen to test the carry
-against, or whether one has to be made.
+says every field is converted or is on a short list with a tested reason -- so
+before writing the conversion, somebody has to say which of Curse's extra
+fields any record on this machine actually uses. A field nothing sets still
+has to be converted; the difference is whether there is a specimen to test the
+conversion against, or whether one has to be made.
 
     dosdropcensus.py curse-of-the-azure-bonds
     dosdropcensus.py secret-of-the-silver-blades --records

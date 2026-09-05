@@ -78,7 +78,7 @@ RACES_FORGOTTEN_REALMS = ((1, "dwarf"), (2, "elf"), (3, "gnome"),
 #: points BOTH 6 and 7 at HUMAN. 6 is left out here on purpose -- naming it
 #: "half-orc" would contradict what the game prints, and naming it "human"
 #: would give two codes one name and let an import silently rewrite a 7 as a 6.
-#: A Pool of Radiance half-orc carried across shows as a bare `6`, which is the
+#: A Pool of Radiance half-orc converted across shows as a bare `6`, which is the
 #: honest answer.
 RACES_CURSE = ((1, "dwarf"), (2, "elf"), (3, "gnome"), (4, "half-elf"),
                (5, "halfling"), (7, "human"), (8, "monster"))

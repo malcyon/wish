@@ -237,18 +237,18 @@ def test_the_converted_items_are_the_dos_items():
     """Sixteen fixed C64 slots against a DOS chain of 63-byte records."""
     from goldbox.items import ITEM_SIZE as C64_ITEM_SIZE
 
-    carried = 0
+    converted = 0
     for char in _records():
         rec, _ = dos.to_c64_record(char)
         inv = rec.get_raw("inventory")
         for n, item in enumerate(char.items[:16]):
             assert inv[n * C64_ITEM_SIZE:(n + 1) * C64_ITEM_SIZE] \
                 == item.to_c64()
-            carried += 1
+            converted += 1
         # Nothing past the last item.
         rest = inv[len(char.items[:16]) * C64_ITEM_SIZE:]
         assert rest == bytes(len(rest))
-    assert carried >= 50
+    assert converted >= 50
 
 
 @needs_dos_saves
@@ -279,7 +279,7 @@ def test_innate_effects_survive_and_running_ones_do_not():
     any more.**  Donald, 2026-08-27: *"For running effects, that would expire
     after a certain period of time, we do not need to report those. The user
     will not expect this to carry over, so reporting it is unnecessary."*  An
-    innate effect that cannot be carried is the opposite case and is still
+    innate effect that cannot be converted is the opposite case and is still
     reported -- `write`'s gnome line is the one specimen of it.  So what this
     asserts moved from "it is reported" to "it is not written", which is the
     thing a player would meet.
@@ -403,6 +403,45 @@ def test_every_visible_dropped_name_has_player_text():
     assert visible <= set(dos.DROPPED_PLAYER_TEXT)
 
 
+def test_no_player_text_says_something_was_not_carried():
+    """#270 (A conversion's drop text still tells the player a field was
+    "not carried", the word AGENTS.md banned tonight): every sentence already
+    named the loss in the clause after the comma -- "not carried, so the
+    character arrives without it" -- so the fix is the three words before it,
+    not a rewrite of what the line says.
+
+    Checked in the tables directly, across all three codecs that build a
+    player-facing drop sentence this way, rather than only through one
+    conversion's own output.
+    """
+    from goldbox import amiga, c64_codec
+
+    tables = (dos.DROPPED_PLAYER_TEXT.values(),
+             c64_codec.NO_C64_STATUS.values(),
+             amiga.LATER_DROPPED_PLAYER_TEXT.values())
+    for values in tables:
+        for text in values:
+            assert "not carried" not in text, text
+            assert "carried separately" not in text, text
+
+
+def test_a_status_drop_line_does_not_say_not_carried():
+    """The inline-composed sentence, not just the tables: a status the C64
+    has no value for is built with an f-string in `goldbox/c64_codec.py`, so
+    the table guard above cannot see it."""
+    from goldbox import c64_codec
+    from goldbox.layout import Confidence
+    from goldbox.neutral import NeutralCharacter
+
+    char = NeutralCharacter("test")
+    char.set("status", "made up: not a real status", "made up",
+             Confidence.CONFIRMED)
+    _rec, rep = c64_codec.write(char)
+    assert rep.dropped, "expected the made-up status to be reported dropped"
+    for line in rep.dropped:
+        assert "not carried" not in line, line
+
+
 # --- the saved game ----------------------------------------------------------
 
 def _savgam(slot: str) -> bytes:
@@ -515,13 +554,13 @@ def test_a_dos_party_exports_as_the_same_yaml_a_c64_party_does():
 @needs_dos_saves
 def test_convert_save_accounts_for_the_whole_payload():
     """Every one of the 9216 bytes of **both** files has a provenance,
-    including "carried through from the template save", which is why a
-    template is required at all.
+    including "not converted -- left as the template save had it", which is
+    why a template is required at all.
 
     `SAVEDGAME1` used to be absent from the report entirely (#120): its 194
-    written bytes had no provenance line and its 1854 carried ones were not
-    counted, so `3833/7168 bytes accounted for` was a statement about half
-    the output.
+    written bytes had no provenance line and its 1854 template-inherited ones
+    were not counted, so `3833/7168 bytes accounted for` was a statement
+    about half the output.
     """
     save0 = bytearray(0x1C00)
     save1 = bytearray(0x0800)
@@ -762,7 +801,7 @@ def test_the_roster_tail_comes_from_the_dos_combat_tail():
 
 @needs_dos_saves
 def test_the_converted_clock_is_the_dos_partys_and_not_the_templates():
-    """The time of day is carried, not inherited (#103).
+    """The time of day is converted, not inherited (#103).
 
     Three DOS saves, three different clocks -- 10:02, 1:22 and 10:56 -- each
     converted onto a template whose own six clock bytes are a sentinel no
@@ -848,8 +887,8 @@ def test_the_converted_inventory_follows_its_owner_to_the_reversed_slot():
     sg0 = savegame.SaveGame0.from_bytes(bytes(save0))
     for place in [s.index for s in sg0.slots if s.occupied]:
         who = sg0.slots[place].record.name
-        carried = list(items.items_for_slot(bytes(save0), place))
-        assert len(carried) == want[who], (who, place)
+        converted = list(items.items_for_slot(bytes(save0), place))
+        assert len(converted) == want[who], (who, place)
 
 
 # --- the other three titles (#53) -------------------------------------------

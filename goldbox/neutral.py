@@ -237,7 +237,7 @@ FIELDS: dict[str, str] = {
               "state",
     "npc": "true for a companion the party picked up rather than one the "
            "player made",
-    # -- carried by some ports and not others -------------------------------
+    # -- converted by some ports and not others ------------------------------
     # Declared here because a character has them, not because every writer
     # wants them: a writer that takes nothing from a field reports so.
     "encumbrance": "total weight carried, in tenths of a pound",

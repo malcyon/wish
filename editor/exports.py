@@ -111,7 +111,9 @@ WRONG_GAME = "This is a {title} save. Only Pool of Radiance can be exported."
 #: The headings in the report pane. `DROPPED_HEADING` is
 #: `dosimport.DROPPED_HEADING` verbatim: one conversion vocabulary, whichever
 #: way it is going.
-DROPPED_HEADING = "The conversion cannot carry these:"
+#:
+#: **PROPOSED, not yet approved**, along with the sibling in `dosimport.py`.
+DROPPED_HEADING = "What your characters lose:"
 WRITES_HEADING = "This writes:"
 REPLACES_HEADING = "It replaces these, already there:"
 REMOVES_HEADING = "It removes these, left by an earlier export:"
@@ -268,7 +270,7 @@ class Plan:
 def losses(report) -> str:
     """A report's `dropped` and `warnings`, in the codec's own words.
 
-    Not `summary()`: that also carries the byte count and the `carried` list,
+    Not `summary()`: that also carries the byte count and the `converted` list,
     which are not losses and would sit under a heading that says they are.
     A warning is -- `neutral.Report` defines it as anything the conversion
     could not do faithfully, which is the same question the heading asks.

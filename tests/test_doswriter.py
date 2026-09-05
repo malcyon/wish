@@ -135,7 +135,7 @@ def _effect(effect_id: int, duration: int = 0, value: int = 0xFF) -> bytes:
             + bytes((value, 0)) + dos.EFFECT_NEXT_NULL)
 
 
-def test_a_permanent_item_granted_effect_is_carried_whole():
+def test_a_permanent_item_granted_effect_is_converted_whole():
     """A Ring of Fire Resistance, id 61, at duration zero -- the shape the
     engine wrote in front of `tools/dosspcexpiry.py` and the shape CONJURER
     carries on the Amiga -- reaches `granted_effects` with all five of its
@@ -181,7 +181,7 @@ def test_the_innate_records_come_first_and_the_granted_ones_after():
 
 
 def test_a_record_with_only_innate_ids_sets_no_granted_field():
-    """A racial id -- 18, the gnome's own THAC0 bonus -- is carried in
+    """A racial id -- 18, the gnome's own THAC0 bonus -- is converted into
     `innate_effects`, and the field that would make a writer explain itself
     is not set at all, so no player is told about a loss that did not
     happen."""
@@ -189,14 +189,14 @@ def test_a_record_with_only_innate_ids_sets_no_granted_field():
     out = dos.to_neutral(char)
     assert "granted_effects" not in out
     # Compared against the same record with no `.SPC` at all rather than
-    # against a phrase: "not carried" is a phrase other drop lines use for
+    # against a fixed phrase: other drop lines share the same shape for
     # their own reasons, and this test is about what the effect adds.
     assert out.dropped == dos.to_neutral(_dos_record([])).dropped
 
 
-def test_a_running_spell_is_neither_carried_nor_reported():
+def test_a_running_spell_is_neither_converted_nor_reported():
     """Donald's 2026-08-27 ruling: a spell with rounds left was going to
-    expire anyway, so it is not carried across and not put in front of the
+    expire anyway, so it is not converted across and not put in front of the
     player either.  The engine counts a nonzero duration down and removes the
     node on the step that reaches it, so this one was on its way out.
     """
@@ -209,7 +209,7 @@ def test_a_running_spell_is_neither_carried_nor_reported():
     assert rep.dropped == c64_codec.write(bare)[1].dropped
 
 
-def test_the_c64_names_the_granted_effect_it_cannot_carry():
+def test_the_c64_names_the_granted_effect_it_cannot_convert():
     """The one destination that still loses a ring's effect says so, in the
     words a player reads: what the character had, and why this record has no
     room for it.
@@ -265,7 +265,7 @@ def test_a_filled_character_lands_field_for_field():
     # `_filled` carries innate effects 18 and 47 and is race 1, so a `.SPC`
     # goes beside the record: nine bytes each, id + INNATE_PAYLOAD + a NULL
     # next pointer.  90, 97 and 26 come first because a dwarf's four innate
-    # ids are derived from the race byte, and 47 is already carried.
+    # ids are derived from the race byte, and 47 is already converted.
     assert _spc == b"".join(bytes((e,)) + dos.INNATE_PAYLOAD + bytes(4)
                             for e in (90, 97, 26, 18, 47))
     # And every byte of all three outputs has a provenance.
@@ -392,7 +392,7 @@ def test_the_engines_own_item_granted_record_survives_the_round_trip():
     assert 1 not in [w[0] for w in written]
     # Compared against the same record with the running node taken out, so
     # the claim is "the BLESS adds nothing a player reads" rather than "no
-    # line anywhere uses the words not carried", which other fields do.
+    # line anywhere uses a fixed phrase", which other fields do.
     kept = [n for n in nodes if int.from_bytes(n[1:3], "little") == 0]
     without = dos.DosCharacter(bytes(char), effects=kept)
     assert _rep.dropped == dos.write(dos.to_neutral(without))[3].dropped
@@ -438,7 +438,7 @@ def _unsourced_offsets() -> set[int]:
     for name, _ in dos.WRITE_UNSOURCED:
         f = dos_layout.FIELDS_BY_NAME[name]
         out.update(range(f.offset, f.end))
-    # A measured default is not carried either: it is what a *newly made*
+    # A measured default is not converted either: it is what a *newly made*
     # character has, and a played one's own value differs -- 12 of the 24
     # specimens here for `icon_colours` (#112).
     for name, _, _, _ in dos.WRITE_DEFAULTS:
@@ -722,7 +722,7 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     specimens hold" that `WRITE_CONSTANTS`' own docstring promises -- it is
     what a freshly made character carries, the same shape as `icon_colours`.
 
-    **Two of the four bytes are carried now and two are not**, and this is
+    **Two of the four bytes are converted now and two are not**, and this is
     what pins the split. A record staged at status Unconscious with the
     active flag clear (`0x10C` = 4, `0x10D` = 0 -- the pair the engine itself
     wrote for a character it knocked out) comes back with both, because
@@ -733,7 +733,8 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     Reverting `field_10c_10f` to `WRITE_CONSTANTS` still fails this: its
     provenance note there reads "in all 24 DOS specimens" and says nothing
     about status, active or quickfight, or that half the field is not
-    carried. `tests/test_c64status.py` is where the carry itself is tested.
+    converted. `tests/test_c64status.py` is where the conversion itself is
+    tested.
     """
     assert "field_10c_10f" not in {n for n, _, _ in dos.WRITE_CONSTANTS}
     assert "field_10c_10f" in {n for n, _, _, _ in dos.WRITE_DEFAULTS}
@@ -745,7 +746,7 @@ def test_field_10c_10f_status_active_and_quickfight_are_a_default_not_a_constant
     rec, _, _, rep = dos.write(dos.to_neutral(char))
     assert rec[f.offset:f.end] == b"\x04\x00\x00\x00"
     note = rep.sources[f.offset]
-    assert "Not carried" in note
+    assert "Not converted" in note
     assert "unconscious" in note and "quickfight" in note
 
     # And a character the source says nothing about still gets the
@@ -987,14 +988,14 @@ def test_write_dos_save_writes_a_readable_party(tmp_path):
     # byte is the C64's doubled.
     assert facing == save0[0x49C2 - 0x4900]
     assert savgam[sg.POS_FACING] == save0[0x49C2 - 0x4900] * 2
-    # #67: the clock and the party size are carried, not left the template's.
+    # #67: the clock and the party size are converted, not left the template's.
     for i in range(sg.CLOCK_DIGITS):
         assert sg.word(savgam, sg.CLOCK + i) == \
             save0[sg.CLOCK + i - dos.SAVE0_BASE], i
     assert sg.party_size(savgam) == len(party) == 1
     assert sg.word(savgam, sg.PARTY_SIZE) == len(party)
-    assert any("the clock" in c for c in report.carried)
-    assert any("party size" in c for c in report.carried)
+    assert any("the clock" in c for c in report.converted)
+    assert any("party size" in c for c in report.converted)
     # #59: the engine loads the party from these names, so they name this
     # save's own files rather than the template's.
     assert sg.character_files(savgam) == [f"CHRDATA{n}" for n in range(1, 7)]
@@ -1040,12 +1041,12 @@ def test_a_party_of_six_writes_six_characters(tmp_path):
     assert sg.position(savgam) == (save0[0x49C0 - 0x4900],
                                    save0[0x49C1 - 0x4900],
                                    save0[0x49C2 - 0x4900])
-    assert any(c.startswith("the place: area") for c in report.carried)
+    assert any(c.startswith("the place: area") for c in report.converted)
 
 
 @needs_dos_saves
 def test_the_racial_bonuses_arrive_as_a_spc_file(tmp_path):
-    """#61: an elf's sleep resistance is not a spell buff and is carried.
+    """#61: an elf's sleep resistance is not a spell buff and is converted.
 
     DOS does not re-derive these from race and constitution -- measured under
     DOSBox-X, `docs/117-save-conversion.md` -- so without the file the elf
@@ -1117,7 +1118,7 @@ def test_a_second_conversion_replaces_the_slot_rather_than_overlaying_it(
     for n in range(2, 7):
         for suffix in (".SAV", ".ITM", ".SPC"):
             assert not (tmp_path / f"CHRDATB{n}{suffix}").exists()
-    assert any("removed" in c for c in report.carried)
+    assert any("removed" in c for c in report.converted)
 
 
 @needs_dos_saves
@@ -1214,7 +1215,7 @@ def test_a_party_from_another_area_lands_in_its_own_area(tmp_path):
     assert savgam[start:start + len(body)] == body
     assert not report.warnings or not any(
         "stand on the template's square" in w for w in report.warnings)
-    assert any(c.startswith("the place: area") for c in report.carried)
+    assert any(c.startswith("the place: area") for c in report.converted)
 
 
 @needs_dos_saves

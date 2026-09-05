@@ -293,7 +293,7 @@ GRANTED_EFFECT_REASON = (
     "take it away again when the item comes off")
 
 #: What a player reads when a title's C64 record has no home for something
-#: the source carried.  **PROPOSED, not yet approved**:
+#: the source held.  **PROPOSED, not yet approved**:
 #: `.claude/rules/gui-text.md` makes every word a player reads Donald's, and
 #: these five are written so they can be seen running rather than only
 #: described.  None names an offset, a field or a ticket.
@@ -367,11 +367,11 @@ OUT_OF_PLAY = 0x80
 #: issue number, which `tests/test_dosconvert.py`'s two guard tests enforce
 #: for the DOS table and this one follows.
 NO_C64_STATUS: dict[str, str] = {
-    "animated": "Animated by a spell: not carried, so the character arrives "
+    "animated": "Animated by a spell: the character arrives "
                 "as they were before it -- the C64 game has no such state, "
                 "and the nearest thing it has is a dead creature the game "
                 "runs as a monster rather than a member of the party",
-    "temporarily gone": "Temporarily gone from the party: not carried, so "
+    "temporarily gone": "Temporarily gone from the party: "
                         "the character arrives with it -- the C64 game has "
                         "no such state",
 }
@@ -489,8 +489,8 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
     if known is not None:
         table = spells.for_game(char.game)
         ceiling = table.last_spellbook_spell
-        carried = [i for i in known.value if i <= ceiling]
-        spells.write_spellbook(rec, carried, char.game)
+        converted = [i for i in known.value if i <= ceiling]
+        spells.write_spellbook(rec, converted, char.game)
         emit(known, "spells_known", 0x078, table.spellbook_size,
              " packed to one bit; ids are identical")
         for i in known.value:
@@ -612,7 +612,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
                 f"{len(full)} innate effects and the C64 has ten slots; "
                 f"{len(full) - 10} dropped from the end")
 
-    # -- what a ring or a girdle granted: named, and not carried -------------
+    # -- what a ring or a girdle granted: named, and not converted -----------
     # Taken so that the closing sweep does not report it a second time in the
     # writer's own words; what a player reads is one line per effect saying
     # what the character had, rather than one line saying a field was
@@ -622,22 +622,22 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
         from . import amiga as _amiga
         for node in granted.value:
             rep.dropped.append(
-                f"{_amiga.describe_uncarried_effect(bytes(node))} -- "
+                f"{_amiga.describe_unconverted_effect(bytes(node))} -- "
                 f"{GRANTED_EFFECT_REASON}")
 
     # -- the inventory: sixteen fixed slots ----------------------------------
     inventory = use("inventory")
     if inventory is not None:
-        carried = list(inventory.value)
+        converted = list(inventory.value)
         inv = bytearray(ITEM_SLOTS * ITEM_SIZE)
-        for n, item in enumerate(carried[:ITEM_SLOTS]):
+        for n, item in enumerate(converted[:ITEM_SLOTS]):
             inv[n * ITEM_SIZE:(n + 1) * ITEM_SIZE] = item
         rec.set_raw("inventory", bytes(inv))
         emit(inventory, "inventory", 0x120, 256)
-        if len(carried) > ITEM_SLOTS:
+        if len(converted) > ITEM_SLOTS:
             rep.warnings.append(
-                f"{len(carried)} items and the C64 has sixteen slots; "
-                f"{len(carried) - ITEM_SLOTS} dropped from the end")
+                f"{len(converted)} items and the C64 has sixteen slots; "
+                f"{len(converted) - ITEM_SLOTS} dropped from the end")
 
     # -- the combat icon: only the C64 has one -------------------------------
     if icon is not None:
@@ -696,7 +696,7 @@ def write(char: NeutralCharacter, icon: bytes | None = None,
             rep.dropped.append(
                 NO_C64_STATUS.get(
                     status.value,
-                    f"{status.value.capitalize()}: not carried, so the "
+                    f"{status.value.capitalize()}: the "
                     f"character arrives well -- the C64 game has no such "
                     f"state"))
             where = [f"1 (OK): {status.value} has no C64 value"]

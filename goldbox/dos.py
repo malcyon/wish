@@ -764,7 +764,7 @@ DROPPED: tuple[tuple[str, str], ...] = (
     # creation tables, and only drops it when it is not.
     ("portrait_head", "the sheet portrait's head: a menu position, which "
                       "needs the game's own creation tables to become the "
-                      "C64's HEADnn id. Carried across when those tables "
+                      "C64's HEADnn id. Converted across when those tables "
                       "are available, dropped when they are not"),
     ("portrait_body", "see portrait_head; the body half of the same pair"),
     ("icon_head", "DOS art: CHEAD.DAX, the combat icon's head. The C64 "
@@ -791,7 +791,7 @@ DROPPED: tuple[tuple[str, str], ...] = (
     # record, where a hostile creature would have to set the third-party
     # workbooks' `IsHostile`.
     #
-    # **0x10C and 0x10D are carried now**: `to_neutral` reads them as the
+    # **0x10C and 0x10D are converted now**: `to_neutral` reads them as the
     # neutral `status` and `active`, `goldbox/c64_codec.py` packs both into
     # C64 record 0x100 through a table -- the two enumerations differ -- and
     # `write` puts them back.  What is left in this entry is 0x10F, the
@@ -803,22 +803,33 @@ DROPPED: tuple[tuple[str, str], ...] = (
     ("field_10c_10f", "whether their last fight ran on quickfight, and one "
                       "byte nobody has identified. The character's status "
                       "and whether the game had taken them out of the party "
-                      "are carried now and are no longer part of this"),
+                      "are converted now and are no longer part of this"),
 )
 
 #: Drops the **player** is not shown, though the conversion still knows them.
 #:
 #: Every name here is still in :data:`DROPPED`, so `field_disposition` still
 #: accounts for it and `goldbox/dos_layout.py` still carries its field note --
-#: what changes is only the list in front of somebody importing a save.  Each
-#: of these three is a value the C64 works out for itself, so there is nothing
-#: for a player to see go missing: encumbrance is money plus item weight,
-#: item_count is implied by the sixteen fixed slots, and strength_bonus is a
-#: boolean the C64 replaces with a computed strength index.
+#: what changes is only the list in front of somebody importing a save.  The
+#: first three are each a value the C64 works out for itself, so there is
+#: nothing for a player to see go missing: encumbrance is money plus item
+#: weight, item_count is implied by the sixteen fixed slots, and
+#: strength_bonus is a boolean the C64 replaces with a computed strength
+#: index.
 #:
 #: Donald, 2026-08-27: *"We do not need to report derived lines as being
 #: dropped. The user will not notice the difference."*
-UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus"})
+#:
+#: **`field_10c_10f` is silenced for a different reason, and it is Donald's
+#: alone rather than a precedent.** The quickfight flag genuinely does not
+#: convert -- the C64 has a byte for it and the value is lost -- so this is
+#: not derivation, and `.claude/rules/conversions.md`'s bar for silencing a
+#: drop does not apply here. Donald, 2026-09-04: *"The player will not care
+#: if Quickfight isn't converted. Don't bother alerting on that."*  It stays
+#: a counted drop -- `field_disposition` and #131's accounting still see it
+#: -- only the pane goes quiet.
+UNREPORTED_DROPS = frozenset({"encumbrance", "item_count", "strength_bonus",
+                              "field_10c_10f"})
 
 #: The three DOS icon fields that become :data:`COMBAT_ICON_DROP`'s one line.
 #: All three say the same thing to a player -- the DOS combat figure does not
@@ -859,16 +870,12 @@ DROPPED_PLAYER_TEXT: dict[str, str] = {
     "heap_104": "Internal game state kept only while the game is running, "
                 "not shown to the player",
     "effect_chain": "The running-effects list's own internal link; the "
-                    "effects themselves are carried separately",
+                    "effects themselves are kept separately",
     "hands_used": "Which hand is holding a weapon right now; set again "
                   "the next time the character fights",
     "unnamed_0ab": "One byte in the DOS record nobody has identified yet",
     "field_83_87": "Five bytes that make no difference to the character "
                    "sheet, whatever they hold",
-    "field_10c_10f": "Quickfight: not carried, so the character arrives "
-                     "choosing their own actions in the next fight -- the "
-                     "C64 keeps that in a byte this conversion has not "
-                     "identified yet",
     "portrait_head": "Character portrait (head): needs the game's own "
                      "character-creation art, which this import could not "
                      "read",
@@ -886,7 +893,7 @@ TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("name_text", "re-padded into the C64's 20-byte name"),
     ("spellbook", "56 bytes packed into 56 bits; the ids are identical"),
     ("spells_memorised", "reversed: DOS fills from the end, the C64 from the "
-                         "start. The arrangement is not carried and does not "
+                         "start. The arrangement is not converted and does not "
                          "need to be -- the C64 engine ignores position "
                          "entirely and repacks the field itself by the first "
                          "camp (#110, goldbox/layout.py 0x020)"),
@@ -909,8 +916,8 @@ LATER_TITLE_TRANSFORMED: tuple[tuple[str, str], ...] = (
                             "permuted from class number to class name and "
                             "written into the C64's dual_class_slot and "
                             "dual_class_level"),
-    ("spells_castable_druid", "the third slot array, carried into the neutral "
-                              "record beside the cleric's and the "
+    ("spells_castable_druid", "the third slot array, converted into the "
+                              "neutral record beside the cleric's and the "
                               "magic-user's"),
 )
 
@@ -1175,7 +1182,7 @@ def to_neutral(dos: DosCharacter,
     # not expect this to carry over, so reporting it is unnecessary."*  A
     # Bless that had four rounds left is not a loss anybody can see.
     #
-    # An **innate** effect that cannot be carried is the opposite and is
+    # An **innate** effect that cannot be converted is the opposite and is
     # always reported -- a racial bonus a player paid for at character
     # creation and would go looking for.  `INNATE_EFFECTS` is where the line
     # is drawn in the bytes and it is the same line drawn here.
@@ -1187,7 +1194,7 @@ def to_neutral(dos: DosCharacter,
             "effect-id namespace (goldbox/traits.py)",
             Confidence.PROBABLE)
 
-    # -- the .SPC records INNATE_EFFECTS turns away, carried whole ------------
+    # -- the .SPC records INNATE_EFFECTS turns away, converted whole ----------
     # A ring, a girdle or a cloak grants an effect the same way a race does,
     # and the id alone cannot say what the ring is worth: the record's own
     # value byte and the flag the engine reads when the item comes off are
@@ -1210,9 +1217,9 @@ def to_neutral(dos: DosCharacter,
     # So a **nonzero** duration is a spell counting down, and Donald's
     # 2026-08-27 ruling says it needs no report: it was going to expire
     # anyway and the player will not go looking for it.  It is the one thing
-    # here that is neither carried nor reported.
+    # here that is neither converted nor reported.
     #
-    # The next pointer is dropped rather than carried: it is a live heap
+    # The next pointer is dropped rather than converted: it is a live heap
     # address the engine rebuilds on load (`EFFECT_NEXT_NULL`).
     granted = [bytes(e[:5]) + EFFECT_NEXT_NULL for e in dos.effects
                if e[0] not in INNATE_EFFECTS
@@ -1237,7 +1244,7 @@ def to_neutral(dos: DosCharacter,
     # independently -- CONFIRMED on three sheets of one character in DOSBox
     # -- so a position the menu cannot answer for takes only its own half
     # out.
-    carried_portrait: set[str] = set()
+    converted_portrait: set[str] = set()
     for name, art_of, stem in (("portrait_head", "head_art", "HEAD"),
                                ("portrait_body", "body_art", "BODY")):
         if portraits is None:
@@ -1255,7 +1262,7 @@ def to_neutral(dos: DosCharacter,
                 f"DOS {name} @{f.offset:#05x} = menu position {position}, "
                 f"which is {stem}{art:02X} in {portraits.source}",
                 f.confidence, Provenance.RESHAPED)
-        carried_portrait.add(name)
+        converted_portrait.add(name)
 
     # -- what the DOS record holds and no neutral field does ------------------
     # `UNREPORTED_DROPS` and `ICON_DROPS` are still in `DROPPED`, so
@@ -1264,7 +1271,7 @@ def to_neutral(dos: DosCharacter,
     for name, _why in DROPPED:
         if name in UNREPORTED_DROPS or name in ICON_DROPS:
             continue
-        if name in carried_portrait:
+        if name in converted_portrait:
             continue
         out.drop(DROPPED_PLAYER_TEXT[name])
     out.drop(COMBAT_ICON_DROP)
@@ -1281,7 +1288,7 @@ def to_c64_record(dos: DosCharacter, icon: bytes | None = None,
     equivalent -- its art is a different set -- so with none given the field
     is left zero and reported.  `portraits` is the creation menu's two
     tables, from :func:`portrait_tables`; without them the sheet portrait is
-    reported as a drop rather than carried (#57).
+    reported as a drop rather than converted (#57).
 
     The report names no character: it is one character's provenance, and which
     character that is belongs to the caller, which is the only thing that
@@ -1319,9 +1326,9 @@ class WriteReport(neutral.Report):
 
 @dataclasses.dataclass
 class SaveReport(neutral.Report):
-    """A whole-save conversion's report: what was carried, and what was not.
+    """A whole-save conversion's report: what was converted, and what was not.
 
-    `sources` covers all 13137 bytes of `SAVGAM<slot>.DAT` and `carried` is
+    `sources` covers all 13137 bytes of `SAVGAM<slot>.DAT` and `converted` is
     the same account written for a person -- one line per field taken from
     the C64 save -- because a reader who wants to know whether the clock came
     across should not have to read 13137 provenance lines to find out.
@@ -1329,7 +1336,7 @@ class SaveReport(neutral.Report):
     """
 
     #: One line per field taken from the C64 save and written into the DOS one.
-    carried: list[str] = dataclasses.field(default_factory=list)
+    converted: list[str] = dataclasses.field(default_factory=list)
 
     #: Offsets the conversion did not write, and so left to whatever the
     #: template held.  **Empty when there was no template**, and that is what
@@ -1352,7 +1359,7 @@ class SaveReport(neutral.Report):
         return f"byte {offset}"
 
     def summary_notes(self) -> list[str]:
-        lines = [f"  carried: {c}" for c in self.carried]
+        lines = [f"  converted: {c}" for c in self.converted]
         if self.unwritten:
             lines.append(f"  {len(self.unwritten)} bytes left to the "
                          f"template, from {self.address(self.unwritten[0])}")
@@ -1579,7 +1586,7 @@ WRITE_CONSTANTS: tuple[tuple[str, bytes, str], ...] = (
     ("strength_bonus", b"\x01", "1 in all 24 DOS specimens"),
 )
 
-#: Fields written to a **measured default** rather than carried from the
+#: Fields written to a **measured default** rather than converted from the
 #: source, because the source holds something that does not correspond.
 #: Distinct from :data:`WRITE_CONSTANTS`, whose values are the same in every
 #: specimen we hold: a default is what a *newly made* character has, and a
@@ -1598,7 +1605,7 @@ WRITE_DEFAULTS: tuple[tuple[str, bytes, str, str], ...] = (
      "zero is not neutral here: all six parts become EGA 8, dark grey, "
      "which is the combat floor's own colour, so the character is about 64 "
      "black outline pixels on its own shade and reads as not being there "
-     "(#112, three fights). The C64's own icon colours are not carried "
+     "(#112, three fights). The C64's own icon colours are not converted "
      "across -- it has seven colour parts to DOS's six and one 3-bit "
      "colour per part against DOS's two 4-bit ones, so a correspondence "
      "would be a choice rather than a conversion"),
@@ -1896,11 +1903,11 @@ def write(char: NeutralCharacter,
     # constitutional ids.  A character with none gets no file, the state the
     # engine itself writes for a party member with nothing running.
     innate = use("innate_effects")
-    carried = [int(e) for e in innate.value] if innate is not None else []
+    converted = [int(e) for e in innate.value] if innate is not None else []
     race = int(w.get("race", 0) or 0)
     derived = [e for e in RACE_COMBAT_EFFECTS.get(race, ())
-               if e not in carried]
-    keep = derived + [e for e in carried if e in INNATE_EFFECTS]
+               if e not in converted]
+    keep = derived + [e for e in converted if e in INNATE_EFFECTS]
 
     # An item's grant follows the innate records in the same file, each one
     # its own five bytes rather than `INNATE_PAYLOAD`: a girdle's record
@@ -1948,7 +1955,7 @@ def write(char: NeutralCharacter,
                  f".SPC record {n}: next pointer NULL -- the loader allocates "
                  f"a node per record and relinks them, and the count comes "
                  f"from the file's length")
-    for e in carried:
+    for e in converted:
         if e not in INNATE_EFFECTS:
             rep.dropped.append(
                 f"innate_effects {e} ({traits.describe(e)}): not one of the "
@@ -1978,7 +1985,7 @@ def write(char: NeutralCharacter,
 
     # -- measured defaults, where the source holds no matching value --------
     # The provenance note carries both halves: why this value, and what the
-    # source held that is not being carried.  It does **not** go in
+    # source held that is not being converted.  It does **not** go in
     # `rep.dropped`, which is read by a person in the conversion pane -- that
     # is a sentence for Donald to approve rather than one to model on the
     # sibling lines already there (`.claude/rules/gui-text.md`).
@@ -1986,7 +1993,7 @@ def write(char: NeutralCharacter,
         f = FIELDS_BY_NAME[dname]
         rec[f.offset:f.end] = data
         rep.note(f.offset, f.size,
-                 f"{dname}: {data.hex()} -- {why}. Not carried: {lost}")
+                 f"{dname}: {data.hex()} -- {why}. Not converted: {lost}")
 
     # -- the combat tail's first two bytes, over the default just written ----
     # `field_10c_10f` is four bytes and two of them are the character's own
@@ -2009,7 +2016,7 @@ def write(char: NeutralCharacter,
                         f"<- {status.origin}")
         else:
             rep.dropped.append(
-                f"{status.value.capitalize()}: not carried, so the character "
+                f"{status.value.capitalize()}: the character "
                 f"arrives well -- the DOS game has no such state")
     if active is not None:
         rec[f.offset + 1] = 1 if active.value else 0
@@ -2018,14 +2025,14 @@ def write(char: NeutralCharacter,
         rep.note(f.offset, f.size,
                  f"field_10c_10f: {bytes(rec[f.offset:f.end]).hex()} -- "
                  + "; ".join(said)
-                 + ". Not carried: 0x10E, still UNKNOWN and written zero, "
+                 + ". Not converted: 0x10E, still UNKNOWN and written zero, "
                    "and 0x10F, the quickfight flag, which the C64 keeps in "
                    "a byte no field names yet")
 
     # -- bytes with no source: live heap and the unattributed ----------------
     # The portrait pair is in that list because it is what a conversion with
     # no game directory still writes, and a note here would overwrite the
-    # provenance of a portrait that *was* carried.
+    # provenance of a portrait that *was* converted.
     for uname, why in WRITE_UNSOURCED:
         if uname in portraits_written:
             continue
@@ -2078,7 +2085,7 @@ def export_party(folder: str | pathlib.Path, slot: str,
     carries the conversion's own `_dropped` beside it.  That is why the extra
     hop through `goldbox/c64_codec.py` is there and is not a detour.
 
-    Everything DOS keeps and the C64 does not is carried as a `_`-prefixed
+    Everything DOS keeps and the C64 does not is kept as a `_`-prefixed
     annotation: `strip_annotations` drops those on import, so the document
     still describes exactly what a C64 save can hold.
     """
@@ -2817,7 +2824,7 @@ def convert_save(folder: str | pathlib.Path, slot: str,
         report.note(at, ICON_SIZE, f"{who} -- " + (
             "the combat icon the game's own character creation writes, "
             "composed from the player's own disk. The DOS character's own "
-            "icon_head, icon_body and icon_colours are not carried: the two "
+            "icon_head, icon_body and icon_colours are not converted: the two "
             "ports draw from different art and the palettes have not been "
             "compared (#57)" if icon is not None else
             "icon from the record, which is zero"))
@@ -2984,7 +2991,8 @@ def convert_save(folder: str | pathlib.Path, slot: str,
                         if i not in report.sources]
     for i in report.unwritten:
         report.sources[i] = (
-            f"{report.address(i)}: carried through from the template save")
+            f"{report.address(i)}: not converted -- left as the template "
+            f"save had it")
     return report
 
 
@@ -3192,7 +3200,7 @@ PARTY_TABLE_SCRATCH = ("display scratch: 32 heap bytes after each filename "
 #: engine-written Pool of Radiance saved games hold, and a value the engine
 #: writes is a better answer than a value that merely worked once.  The C64
 #: holds 1 at the same address in fourteen of Donald's saves and `$81` in two
-#: more, so the ports do not agree on it and it is not carried across.
+#: more, so the ports do not agree on it and it is not converted across.
 #:
 #: **What it means is still unknown** and this does not claim otherwise --
 #: only what it does.
@@ -3585,7 +3593,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     # it is reported rather than raised.
     faces, why_not = portrait_tables(game)
     if faces is None:
-        # A warning rather than a `carried` line: `carried` is what *did*
+        # A warning rather than a `converted` line: `converted` is what *did*
         # cross, and `editor/exports.py`'s `losses` does not read it, so the
         # one sentence saying why every character lost its face would not
         # have reached the person doing the conversion.
@@ -3630,7 +3638,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                 cleared += 1
 
     if cleared:
-        report.carried.append(
+        report.converted.append(
             f"slot {slot} was already written here: {cleared} stale "
             f"CHRDAT{slot}<n> file(s) from the previous party removed")
     for n, (char, rec, itm, spc, one, char_slot) in enumerate(built, start=1):
@@ -3673,7 +3681,7 @@ def write_dos_save(save0: bytes, save1: bytes | None,
                  f"({world},{ty}) on the status line")
     else:
         stood = f"at ({x},{y}) facing {facing}"
-    report.carried.extend((
+    report.converted.extend((
         f"the place: area {c64_area}, {where.name}, {stood} -- every write "
         f"dos_savegame.RETARGET_WRITES names, including the area's own "
         f"script out of {ECL_DAX.format(dax=where.disk)}",
@@ -3695,7 +3703,9 @@ def write_dos_save(save0: bytes, save1: bytes | None,
     report.unwritten = [i for i in range(dos_savegame.SAVGAM_SIZE)
                         if i not in report.sources]
     for i in report.unwritten:
-        report.sources[i] = f"{report.address(i)}: carried from the template"
+        report.sources[i] = (
+            f"{report.address(i)}: not converted -- left as the template "
+            f"had it")
     (out / f"SAVGAM{slot}.DAT").write_bytes(bytes(savgam))
     return report
 
@@ -3748,7 +3758,7 @@ def new_dos_save(save0: bytes, save1: bytes | None,
                     path.unlink()
                     cleared += 1
         if cleared:
-            report.carried.append(
+            report.converted.append(
                 f"slot {slot} was already written here: {cleared} stale "
                 f"CHRDAT{slot}<n> file(s) from the previous party removed")
         for built in sorted(staging.iterdir()):

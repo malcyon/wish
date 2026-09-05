@@ -250,8 +250,8 @@ def test_every_byte_of_an_outdoor_conversion_has_a_source(tmp_path, game_dir):
     savgam, report = _write(_c64_on_the_travel_grid(), tmp_path, game_dir)
     assert report.unwritten == []
     assert len(report.sources) == report.total == sg.SAVGAM_SIZE == len(savgam)
-    assert any("travel grid at (7,27)" in c for c in report.carried), \
-        report.carried
+    assert any("travel grid at (7,27)" in c for c in report.converted), \
+        report.converted
 
 
 def test_an_indoor_party_is_still_written_the_indoor_way(tmp_path, game_dir):

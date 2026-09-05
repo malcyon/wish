@@ -1100,7 +1100,7 @@ def test_the_innate_effects_reach_the_neutral_record():
         pytest.skip("no .spc beside any record under $AMIGA_POR_SAVES")
 
 
-def test_an_effect_a_ring_granted_is_carried_and_only_the_c64_reports_it():
+def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
     """Three of the twenty specimens carry an effect `INNATE_EFFECTS` turns
     away -- ADDERLY's extra strength (38), CONJURER's Ring of Fire Resistance
     (61) and MAGICIAN's displacement (89), all three at duration zero, which
@@ -1136,9 +1136,10 @@ def test_an_effect_a_ring_granted_is_carried_and_only_the_c64_reports_it():
             assert not [d for d in n.dropped if d.startswith(named)], \
                 (path, eid, n.dropped)
             # Exactly one line per lost effect on the C64 side: two would
-            # mean a second loop reporting the same node (#238, An Amiga
-            # conversion's report shows an uncarried effect twice, once from
-            # goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral).
+            # mean a second loop reporting the same node
+            # (#238 (An Amiga conversion's report shows an unconverted effect
+            # twice, once from goldbox.amiga.to_neutral and once from
+            # goldbox.dos.to_neutral)).
             matches = [d for d in c64rep.dropped if d.startswith(named)]
             assert len(matches) == 1, (path, eid, matches)
             # `capitalize()` would render effect 61 as "Wearing a ring of

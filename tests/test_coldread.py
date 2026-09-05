@@ -321,7 +321,7 @@ def test_a_titles_item_types_decode_to_the_rulebooks_numbers(game):
     """`ITEMS` read through the unmodified decoder, against AD&D, per title.
 
     Each title's *own* templates name its *own* type indices, which is the
-    part that cannot be carried across: type 54 is scale mail in Pool of
+    part that cannot be converted across: type 54 is scale mail in Pool of
     Radiance and Curse and the CANARY in Silver Blades. So this asks each game
     the same question in its own vocabulary and counts the answers.
     """

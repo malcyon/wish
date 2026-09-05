@@ -279,7 +279,7 @@ def test_the_five_bytes_at_0x083_still_reach_nothing_in_the_c64_record():
     """The other half of #235, kept from drifting: `field_83_87` is
     `00 00 01 00 00` in 101 of 101 engine-written Pool of Radiance records
     and the character sheet is pixel-identical whatever it holds, so it is a
-    documented constant and **not** carried.
+    documented constant and **not** converted.
 
     Two records differing only in those five bytes have to convert to the
     same C64 record.  The pair below it is the control: two differing only in

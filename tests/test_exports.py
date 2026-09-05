@@ -125,10 +125,10 @@ def test_the_losses_are_the_codecs_own_words(one, dos_template, tmp_path):
     # written to the `.SPC`, so they are not a loss and must not be named as
     # one.
     assert "innate_effects" not in text
-    # `summary()` also carries a byte count and the `carried` list; neither is
-    # a loss and neither belongs under that heading.
+    # `summary()` also carries a byte count and the `converted` list; neither
+    # is a loss and neither belongs under that heading.
     assert "bytes accounted for" not in text
-    assert "carried:" not in text
+    assert "converted:" not in text
 
 
 # --- the destination, which is what an export has and an import does not -----

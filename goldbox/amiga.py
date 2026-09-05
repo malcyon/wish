@@ -143,7 +143,7 @@ DERIVED = (0x056, 0x186, 0x187, 0x18B, 0x18D, 0x18F, 0x192)
 #: `LBIBase: Invalid Library File` -- and `Disk3_CHEAD.TLB`, the portrait
 #: heads, holds exactly 29 items. So the two numbers are a library item index
 #: and the library's item count: PoD asked `CHEAD.TLB` for item -1. The
-#: region carries a portrait selector, not carried inventory, and **zero in
+#: region carries a portrait selector, not converted inventory, and **zero in
 #: it is accepted**: every payload here has zeros from 0x0B9 up and joins the
 #: party.
 ITEMS = 0x0B6
@@ -574,7 +574,7 @@ THIEF_KEYS = ("thief_pick_pockets", "thief_open_locks", "thief_find_traps",
               "thief_read_languages")
 
 #: What an unarmoured, unarmed character is, and what all twelve genuine
-#: records hold: armour class 10 and 1d2. **Not** carried from the source. A
+#: records hold: armour class 10 and 1d2. **Not** converted from the source. A
 #: Gold Box armour class is a cache that already includes worn armour and a
 #: dexterity bonus, PoD re-applies dexterity itself, and no item crosses -- so
 #: a converted character genuinely arrives with nothing on and 10 is the right
@@ -1308,7 +1308,7 @@ class AmigaPorItem:
     def to_dos_bytes(self) -> bytes:
         """This item as the 63 bytes `goldbox/dos_layout.py` describes.
 
-        The `next` far pointer is written NULL rather than carried: it is a
+        The `next` far pointer is written NULL rather than converted: it is a
         live Amiga heap address, and the DOS engine rebuilds its own chain
         from the file's length regardless (`goldbox/dos.py`, `EFFECT_NEXT_NULL`
         records the same measurement for the effect chain).
@@ -1377,7 +1377,7 @@ def amiga_por_effect_to_dos(node: bytes) -> bytes:
 #     is lossless either way round because the fourth byte is zero below
 #     16 777 216 experience and no Gold Box character reaches it;
 #   * the two live pointers -- the effect chain and each item's `next` -- are
-#     written NULL rather than carried.  They are Amiga heap addresses.
+#     written NULL rather than converted.  They are Amiga heap addresses.
 #
 # Two regions are **not** transposed and are reported instead of guessed:
 #
@@ -1477,20 +1477,20 @@ def to_neutral(char) -> NeutralCharacter:
              "room for")
     # There is no loop here reporting the effects the neutral record cannot
     # hold, and there should not be one.  `_dos.to_neutral`, called above,
-    # now **carries** every non-innate node at duration zero in
+    # now **converts** every non-innate node at duration zero in
     # `granted_effects` -- the same nodes, since `amiga_por_effect_to_dos`
     # recut them on the way in -- so an Amiga-to-Amiga or Amiga-to-DOS
     # conversion writes the ring's record back rather than losing it, and a
     # report line saying it was lost would be untrue.  Only a writer that
     # cannot take the field says so, which is `goldbox/c64_codec.py` and
     # `write_pod` below, each in its own words.  A loop here reported every
-    # loss twice while there was one (#238, An Amiga conversion's report
-    # shows an uncarried effect twice, once from goldbox.amiga.to_neutral
-    # and once from goldbox.dos.to_neutral).
+    # loss twice while there was one
+    # (#238 (An Amiga conversion's report shows an unconverted effect twice,
+    # once from goldbox.amiga.to_neutral and once from goldbox.dos.to_neutral)).
     return out
 
 
-def describe_uncarried_effect(node: bytes) -> str:
+def describe_unconverted_effect(node: bytes) -> str:
     """One drop line for a `.spc` node a destination cannot hold.
 
     Names what the character had, from the node's first byte, and leaves the
@@ -1521,7 +1521,7 @@ def describe_uncarried_effect(node: bytes) -> str:
     # "wearing a Ring of Fire Resistance" -- `capitalize()` renders that as
     # "Wearing a ring of fire resistance" and takes the item's name with it.
     said = traits.describe(node[0])
-    return (f"{said[:1].upper()}{said[1:]}: not carried, so the character "
+    return (f"{said[:1].upper()}{said[1:]}: the character "
             f"arrives without it")
 
 
@@ -1550,7 +1550,7 @@ def describe_uncarried_effect(node: bytes) -> str:
 #     node per `.spc` record and per `.itm` record on load and relinks them
 #     itself, which is what the reader measured in the other direction.
 #
-# Three bytes have no DOS source and are written rather than carried:
+# Three bytes have no DOS source and are written rather than converted:
 #
 #   * `0x07F`, the first insertion: zero in 20 of 20 specimens;
 #   * `0x089`ish, the second: see AMIGA_POR_FIELD_83_87 below;
@@ -1602,7 +1602,7 @@ POR_WRITE_UNSOURCED: tuple[tuple[int, int, str], ...] = (
      "DOS's field_83_87 plus the second insertion, written as the six bytes "
      "all six of the game's own disk-1 records hold; twelve of the fourteen "
      "exported .cha files hold six zeros instead, so this one is written "
-     "rather than carried"),
+     "rather than converted"),
     (AMIGA_POR_TAIL_PAD, 1,
      "the trailing pad, which the 285-byte DOS record has no room for; zero "
      "in 15 of 20 and uninitialised junk in the other five"),
@@ -1806,16 +1806,16 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
         "field table both ports share")
     rep.total = AMIGA_POR_RECORD_SIZE + len(amiga_itm) + len(amiga_spc)
 
-    def carried(name: str) -> str:
+    def converted(name: str) -> str:
         f = dos_layout.FIELDS_BY_NAME[name]
         return dosrep.sources.get(f.offset, f"{name}: no DOS provenance")
 
     rep.note(0, AMIGA_POR_NAME_SIZE,
              f"name: {AMIGA_POR_NAME_SIZE} NUL-padded bytes composed from "
-             f"DOS's count byte and fifteen -- {carried('name_length')}")
+             f"DOS's count byte and fifteen -- {converted('name_length')}")
     rep.note(AMIGA_POR_EXPERIENCE, 4,
              f"experience: one u32 big-endian spanning DOS's 24-bit field and "
-             f"gap_0af -- {carried('experience')}")
+             f"gap_0af -- {converted('experience')}")
     rep.note(AMIGA_POR_PAD, 1,
              "0x07F: the first insertion, a pad ahead of the effect pointer. "
              "Zero in 20 of 20 Amiga specimens")
@@ -1831,7 +1831,7 @@ def write_por(char: NeutralCharacter) -> tuple[bytes, bytes, bytes,
     for f in dos_layout.LAYOUT:
         if _por_special(f):
             continue
-        rep.note(amiga_por_offset(f.offset), f.size, carried(f.name))
+        rep.note(amiga_por_offset(f.offset), f.size, converted(f.name))
 
     for n in range(len(items)):
         base = AMIGA_POR_RECORD_SIZE + n * AMIGA_POR_ITEM_SIZE
@@ -2158,7 +2158,7 @@ def write_por_slot(disk, slot: str, characters: Sequence[NeutralCharacter],
 #
 #   * `effect_chain` and `heap_104`, which are live pointers -- an Amiga heap
 #     address against a DOS far pointer.  They cannot agree and must not be
-#     carried;
+#     converted;
 #   * MALACHITE's four saving throws and eight thief percentages, where the
 #     two ports' shipped copies of that character genuinely differ.  One
 #     specimen of six; the other five agree on both groups.
@@ -2511,7 +2511,7 @@ AMIGA_LATER_STATUS_FIELD = "field_10c_10f"
 #: flag on the evidence there is.**  Where it is non-zero the panel draws
 #: `(Helpless)` or `(Casting)` in place of the status word, which is combat
 #: state rather than "the game has taken this character out of the party".
-#: UNKNOWN, and not carried.  What would settle it: knock a character down in
+#: UNKNOWN, and not converted.  What would settle it: knock a character down in
 #: an Amiga Curse fight, save, and read the byte; and put a character in the
 #: state that draws the name red and read it again.
 AMIGA_LATER_STATUS_GATE = 1
@@ -2654,7 +2654,7 @@ class AmigaItem:
         and 41, every `u16` is byte-swapped, and the `next` far pointer is
         written NULL because it is a live Amiga heap address.
 
-        **Silver Blades' node is 70 bytes and the last four are not carried.**
+        **Silver Blades' node is 70 bytes and the last four are not converted.**
         `AMIGA_SSB_SCROLL_CHAIN` heads a scroll's extra spell nodes, and the
         63 bytes DOS's shared item table describes have no room for it; DOS
         Silver Blades' own item is 67 bytes and `#254` is where its last four
@@ -2689,7 +2689,7 @@ class AmigaCharacter:
     An effect node is the same ten bytes in all three Amiga titles, so
     `amiga_por_effect_to_dos` reads one of these too.  **The id space is
     per-title**: 107 is an elf in Curse and PAINE's ranger effect in Silver
-    Blades is 105, so an id must never be carried from one title to another.
+    Blades is 105, so an id must never be converted from one title to another.
     """
 
     raw: bytes
@@ -3016,7 +3016,7 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #     a little-endian duration of zero, the value the effect carries and the
 #     flag the engine reads when the item comes off -- because what a ring is
 #     worth is in the record rather than in the id (#232);
-#   * `status` is carried as a **name** (#235).  Here the name costs nothing:
+#   * `status` is converted as a **name** (#235).  Here the name costs nothing:
 #     both later Amiga titles index `neutral.STATUS_NAMES` in DOS's own order,
 #     which is measured rather than assumed -- see
 #     `AMIGA_LATER_STATUS_FIELD` above for the two string tables.
@@ -3026,7 +3026,7 @@ def party_in_savegame(data: bytes, shape: AmigaShape) -> list[AmigaCharacter]:
 #: field that changes meaning there must not go on meaning the old thing here.
 #: Every one of the fifty is in both later titles' tables.
 #:
-#: What is **not** here and is carried by a rule below: the name, the
+#: What is **not** here and is converted by a rule below: the name, the
 #: spellbook, the memorised spells, the level arrays, the spell-slot arrays,
 #: size, turn power, the status and its flag, the attack forms, the roster
 #: tail, the effect records and the items.
@@ -3051,7 +3051,7 @@ LATER_TRANSFORMED: tuple[tuple[str, str], ...] = (
     ("roster_tail", "copied as a block"),
     ("field_10c_10f", "its first byte becomes the neutral status, by name, "
                       "and its second the active flag; the last two are not "
-                      "carried"),
+                      "converted"),
     ("encumbrance", "copied, and it is money plus item weight -- a writer "
                     "that recomputes it should"),
 )
@@ -3068,10 +3068,10 @@ LATER_DROPPED: tuple[tuple[str, str], ...] = (
                             "half a change"),
     ("item_chain", "live heap state: the head of the Amiga's item list, "
                    "which the loader overwrites with the address it "
-                   "allocates. The items themselves are carried"),
-    ("item_count", "implied by the inventory that is carried"),
+                   "allocates. The items themselves are converted"),
+    ("item_count", "implied by the inventory that is converted"),
     ("effect_chain", "live heap state, the same way; the effect records "
-                     "themselves are carried"),
+                     "themselves are converted"),
     ("heap_104", "live heap pointers -- two longwords the saved game's own "
                  "loader clears outright"),
     ("hands_used", "live combat state"),
@@ -3110,7 +3110,7 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
     "item_chain": "Item list bookkeeping: the list's own internal links, "
                   "which the game rebuilds when it loads the party",
     "effect_chain": "The running-effects list's own internal link; the "
-                    "effects themselves are carried separately",
+                    "effects themselves are kept separately",
     "heap_104": "Internal game state kept only while the game is running, "
                 "not shown to the player",
     "hands_used": "Which hand is holding a weapon right now; set again the "
@@ -3147,7 +3147,7 @@ LATER_DROPPED_PLAYER_TEXT: dict[str, str] = {
 #: other.  Everything at duration zero therefore goes into `granted_effects`
 #: whole, and this warning says so.
 LATER_EFFECT_SPLIT_UNKNOWN = (
-    "The effects that never expire are all carried together: which of them "
+    "The effects that never expire are all converted together: which of them "
     "are racial or class properties and which came from an item cannot be "
     "told apart yet for this game, because the list of built-in effects has "
     "only ever been read for Pool of Radiance")

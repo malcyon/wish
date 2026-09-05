@@ -265,7 +265,7 @@ def test_changing_game_leaves_no_stale_race_behind(window):
 
 
 def test_a_code_the_title_does_not_name_shows_its_number(window):
-    """A Pool of Radiance half-orc carried into Curse, and Curse's own 6."""
+    """A Pool of Radiance half-orc converted into Curse, and Curse's own 6."""
     from editor.window import _select
     race = window._widgets["race"]
     window._fill_combos(CURSE)
