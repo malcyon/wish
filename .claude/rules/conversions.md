@@ -82,28 +82,42 @@ the pane that shows it to a player is a temporary state rather than a feature
 entry is worth less than removing it, and an agent polishing a drop line is
 usually an agent working on the wrong half of the problem.
 
-**The one exception, and it is about capacity rather than understanding: a
-destination that genuinely holds fewer things than the source.** Donald,
-2026-09-05, on a character carrying more items than the C64's sixteen slots:
-*"If there is a difference in the number of items a character can carry on
-different platforms, then this is a case where the converter is allowed to
-tell the user what will not convert. However, if we have to do that, the
-player will need to get a choice of what items to drop off the list."*
+**The one exception, and it covers every field alike: a destination that
+genuinely holds fewer things than the source.** Donald, 2026-09-05: *"If a
+limit is truly part of the platform's design, inform the user during the
+convert about the limit. Offer them a choice on which to keep and which to
+discard. It would be a limit of the platform, not something we just didn't
+feel like fixing."*
 
-The two are not in tension, because they are different situations. A **field**
-we do not convert is our failure and the player is never told about it -- the
+The two rules are not in tension, because they are different situations. A
+**field** we do not convert is our failure, the player is never told, and the
 answer is to convert it. A **thing that does not fit** is the destination
 telling the truth about itself, and then the player is entitled both to know
-and to choose which of their own items goes.
+and to choose which of their own things goes.
 
-**And do not build the picker until the measurement says it is needed.**
-Donald, same day: *"we shouldn't build that unless we are sure it is
-necessary."* The C64 record has sixteen item slots; DOS keeps a one-byte
-`item_count` and its items in a sibling `.ITM` file, so the format allows far
-more -- but **what the DOS game itself allows is unmeasured**, and if it also
-stops at sixteen there is nothing here to build. Measure the ceiling per
-title before designing anything, because `#113 (Silver Blades' items are 67
-bytes, not 63)` already proved this family is not uniform.
+**The test is whether the limit is the platform's or ours.** Sixteen item
+slots in a C64 record and ten trait slots are the machine's design, and no
+amount of work on our side makes an eleventh trait slot exist. A field we
+have not decoded, a value we have nowhere to put yet, an effect whose bytes
+nobody has read -- those are ours, and they get fixed rather than announced.
+
+**So it is one mechanism, not one per field.** Items, trait slots and anything
+else with a hard count all take the same shape: say what will not fit, and let
+the player pick which of them to keep. Do not design a chooser for items and
+a different one for effects.
+
+**And do not build it until a measurement says it is needed.** Donald, same
+day: *"we shouldn't build that unless we are sure it is necessary."* Known
+limits and what is measured about reaching them:
+
+| | the ceiling | can it be reached? |
+|---|---|---|
+| C64 items | 16 slots in the record | DOS keeps a one-byte `item_count` and its items in a sibling `.ITM`, so the format allows far more -- **what the DOS game itself allows is UNMEASURED** |
+| C64 trait slots | 10, shared between racial effects and item grants | racial ids are 0-4 by race, CONFIRMED (`#84`: human 0, elf 1, half-elf 1, halfling 2, dwarf 4, gnome 4), so it needs a dwarf or gnome with **seven or more effect-granting items readied at once** -- **UNMEASURED** |
+
+Measure per title before designing anything: `#113 (Play DOS Curse far enough
+to save a party with items)` proved this family is not uniform, its items
+being 67 bytes where the others are 63.
 
 **"Nobody has measured it" is not "it cannot be done", and saying so is how an
 agent gives up in a sentence that sounds like a finding.** Donald, 2026-09-05,
