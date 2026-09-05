@@ -31,6 +31,24 @@ player would notice, finding it one is the work.
 think."* The word is in this file, in `field_disposition` prose and in drop
 lines a player reads.
 
+**What a player would notice decides what a player is told.** Two things are
+silent for two different reasons, and only one of them is a measurement.
+
+* A field the destination **derives** on load needs no line, and that
+  derivation has to be *demonstrated in the running game* first.
+* A field a player **would not care about** needs no line either. Donald,
+  2026-09-04, of the quickfight setting: *"The player will not care if
+  Quickfight isn't converted. Don't bother alerting on that."*
+
+The second is his judgement rather than anybody's finding, so **it is not a
+licence to silence anything else** -- propose and leave it in place. The same
+instinct applied to a character's status would have hidden a dead character
+arriving alive, which is what `#235` turned out to be.
+
+**And a silent drop is still a drop.** It stays in `field_disposition` and in
+the accounting; `#131` is blocked on it either way. Only the line in the pane
+goes.
+
 Three reasons are legitimate:
 
 * the destination format **has no such field** -- and that has been established
