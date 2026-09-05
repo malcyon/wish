@@ -1106,17 +1106,23 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
     (61) and MAGICIAN's displacement (89), all three at duration zero, which
     is the engine's own definition of an effect that never runs out.
 
-    So an Amiga conversion **carries** them now and says nothing, because
-    nothing was lost, and only the C64 -- ten trait slots holding one number
-    each -- has to explain itself.  Before
+    So an Amiga conversion converts them now and says nothing, because
+    nothing was lost.  Before
     `#232 (An item-granted effect is dropped on the way through the neutral
     record, with no report)` the Amiga wrote these three a zero-byte `.spc`
     and reported the loss.
 
-    **The C64's line names the effect and what it costs, and nothing else.**
-    Donald's wording, 2026-09-04: no effect id, no module name, no issue
-    number, because `AGENTS.md` says what a user reads in the interface
-    carries no address or offset.
+    **The C64 side writes the id into a free trait slot and says nothing
+    either**, the way `goldbox.dos.to_c64_record` already does for the same
+    three ids off a DOS record
+    (`tests/test_dosconvert.py::test_an_item_granted_effect_reaches_a_c64_trait_slot`)
+    -- the id is the whole of what the item's own READY would write there
+    (`#252 (Does a C64 trait slot apply an item-granted effect id, or only the
+    ones its own READY routine wrote?)`, `docs/171-c64-trait-slots.md`), so
+    there is nothing left to name once it lands.  This test used to check for
+    a dropped line naming the effect and what it cost; `#232`'s own fix
+    (`d68c307`) removed that line in favour of actually writing the slot, and
+    this test was not updated to match until now.
     """
     from goldbox import c64_codec, dos, traits
 
@@ -1128,24 +1134,19 @@ def test_an_effect_a_ring_granted_is_converted_and_only_the_c64_reports_it():
             continue
         seen += 1
         n = amiga.to_neutral(c)
-        _rec, c64rep = c64_codec.write(n)
+        rec, c64rep = c64_codec.write(n)
+        slots = [b for b in rec.get_raw("item_effects") if b]
         for eid in lost:
             said = traits.describe(eid)
             named = f"{said[:1].upper()}{said[1:]}"
-            # The Amiga carries it, so nothing on that side says it went.
+            # The Amiga converts it, so nothing on that side says it went.
             assert not [d for d in n.dropped if d.startswith(named)], \
                 (path, eid, n.dropped)
-            # Exactly one line per lost effect on the C64 side: two would
-            # mean a second loop reporting the same node
-            # (#238 (An Amiga conversion's report shows an unconverted effect
-            # twice, once from goldbox.amiga.to_neutral and once from
-            # goldbox.dos.to_neutral)).
-            matches = [d for d in c64rep.dropped if d.startswith(named)]
-            assert len(matches) == 1, (path, eid, matches)
-            # `capitalize()` would render effect 61 as "Wearing a ring of
-            # fire resistance" and take the item's own name down with it.
-            assert "ring of fire" not in matches[0], path
-            assert str(eid) not in matches[0], (path, eid)
+            # And the C64 places it in a trait slot rather than reporting it
+            # dropped.
+            assert eid in slots, (path, eid, slots)
+            assert not [d for d in c64rep.dropped if said in d], \
+                (path, eid, c64rep.dropped)
         # And the Amiga really keeps it, so the silence is not a second loss.
         _, _, spc, _ = amiga.write_por(n)
         assert len(spc) == amiga.AMIGA_POR_EFFECT_SIZE * len(c.effects), path
