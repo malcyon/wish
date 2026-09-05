@@ -16,6 +16,7 @@ bank, the way VICE itself does at `$D000` (measured with
 
 import struct
 
+import pytest
 from conftest import load_tools_module
 
 savecheck = load_tools_module("savecheck")
@@ -49,10 +50,15 @@ class FakeMonitor:
     check fails).
     """
 
-    def __init__(self, ram_bank: int, real: dict, wrong: dict):
+    def __init__(self, ram_bank: int, real: dict, wrong: dict,
+                 offer_ram: bool = True):
         self.ram_bank = ram_bank
         self.real = real
         self.wrong = wrong
+        # An older VICE, or a build that names its banks differently. The
+        # point of the flag is that `icon_evidence` must refuse rather than
+        # read the registers again (#265).
+        self.offer_ram = offer_ram
 
     def __enter__(self):
         return self
@@ -62,8 +68,10 @@ class FakeMonitor:
 
     def command(self, cmd, body=b""):
         assert cmd == CMD_BANKS
-        return banks_response([("default", 0), ("cpu", 0),
-                                ("ram", self.ram_bank), ("io", 3), ("cart", 4)])
+        pairs = [("default", 0), ("cpu", 0), ("io", 3), ("cart", 4)]
+        if self.offer_ram:
+            pairs.insert(2, ("ram", self.ram_bank))
+        return banks_response(pairs)
 
     def read(self, addr, length, bank=0, side_effects=0):
         if addr == 0xD018:
@@ -129,35 +137,24 @@ def test_two_different_figures_read_as_two_once_the_ram_bank_is_used():
     assert found["distinct_figures"] == 2
 
 
-def test_reading_the_default_bank_instead_collapses_to_one_figure():
-    """The bug this issue describes, reproduced with the fake standing in.
+def test_a_vice_with_no_ram_bank_is_refused_rather_than_read_anyway():
+    """No `ram` bank means no reading, because bank 0 is the bug (#265).
 
-    Both figures have real, different bitmaps, and a read that ignores the
-    `ram` bank -- passing `bank=0` regardless -- sees the registers instead,
-    which read the same for every glyph. This is `#265`'s
-    `distinct_figures == 1` "for any party at all".
+    An earlier version fell back to `bank_ids(m).get("ram", 0)`, and bank 0
+    is `default` -- the one that answers the VIC's registers at `$D000`. So
+    the fallback put the read straight back into the defect and reported
+    `distinct_figures` 1 for every party with nothing to say it had. This
+    calls the real `icon_evidence` against a monitor that offers every bank
+    except `ram`, and it has to refuse.
     """
     figure_a, figure_b = figure(0x5E), figure(0x70)
     real = {**figure_a, **figure_b}
     wrong = {code: bytes(8) for code in real}
 
     codes = floor_codes([(0, 0, 0x5E), (5, 5, 0x70)])
-    mon = FakeMonitor(ram_bank=1, real=real, wrong=wrong)
-    sess = FakeSession(codes, mon)
+    sess = FakeSession(codes, FakeMonitor(ram_bank=1, real=real, wrong=wrong,
+                                          offer_ram=False))
 
-    # Simulate the unfixed read directly: every glyph read pinned to bank 0,
-    # the way `icon_evidence` did before it asked `bank_ids` for `ram`.
-    with sess.mon(5) as m:
-        d018 = m.read(0xD018, 1)[0]
-        dd00 = m.read(0xDD00, 1)[0]
-        bank = (~dd00 & 3) * 0x4000
-        chars = bank + ((d018 >> 1) & 7) * 0x800
-        blocks = savecheck.combatants(sess)
-        glyphs = {code: m.read(chars + code * 8, 8)
-                  for _r, _c, block in blocks for code in block}
-    shapes = []
-    for _r, _c, block in blocks:
-        shape = b"".join(glyphs[code] for code in block)
-        if shape not in shapes:
-            shapes.append(shape)
-    assert len(shapes) == 1
+    with pytest.raises(SystemExit) as refused:
+        icon_evidence(sess, bytes(36))
+    assert "ram" in str(refused.value)

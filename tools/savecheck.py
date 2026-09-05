@@ -425,7 +425,17 @@ def icon_evidence(sess, icon: bytes) -> dict:
         dd00 = m.read(0xDD00, 1)[0]
         bank = (~dd00 & 3) * 0x4000
         chars = bank + ((d018 >> 1) & 7) * 0x800
-        ram_bank = bank_ids(m).get("ram", 0)
+        # Fail rather than fall back. Bank 0 is `default`, which is the bank
+        # that answers the VIC's registers at `$D000` -- so `.get("ram", 0)`
+        # would put this read straight back into the bug, reporting
+        # `distinct_figures` 1 for every party with nothing to say it had
+        # (#265). `tools/vicebankcheck.py` refuses the same way.
+        banks = bank_ids(m)
+        if "ram" not in banks:
+            raise SystemExit(f"this VICE offers no bank called ram, so the "
+                             f"combat character set cannot be read: "
+                             f"{sorted(banks)}")
+        ram_bank = banks["ram"]
         colours = bytes(c & 0x0F for c in m.read(0xD800, 1000))
         glyphs = {}
         for _r, _c, block in blocks:
