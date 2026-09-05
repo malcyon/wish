@@ -90,12 +90,21 @@ def _picture(size: int) -> QPixmap:
     pixmap.setDevicePixelRatio(ratio)
     return pixmap
 
+#: Donald's own wording, 2026-09-05, replacing two lines that were mine.
+#:
+#: `GPL-3.0-or-later` is an SPDX identifier -- the machine-readable form that
+#: belongs in `pyproject.toml`, where it still is. It was never meant to be
+#: read by a person, and he said so: *"is 'GPL-3.0-or-later.' a common
+#: phrasing in licensing? It looks really awkward."*
+#:
+#: The Game-icons.net attribution came out on his instruction -- *"I think
+#: having the icon licenses under help->licenses is enough"* -- and the
+#: artists are still credited there, which is where the CC BY attribution
+#: lives.
 TEXT = f"""<h3>Wish {__version__}</h3>
 <p>A character editor and live automapper for Pool of Radiance (Commodore 64).</p>
-<p>GPL-3.0-or-later.</p>
-<p>The application icon and the interface icons are from
-<a href="https://game-icons.net/">Game-icons.net</a>, licensed CC BY 3.0. The
-artists are credited under <b>Help &gt; Licenses</b>.</p>"""
+<p>Wish is licensed under GPLv3.</p>
+<p>Wish logo and logo mark designed by Dustin Geddy Parker.</p>"""
 
 
 def box(parent: QMainWindow | None = None) -> QMessageBox:
